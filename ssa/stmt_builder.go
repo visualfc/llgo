@@ -51,6 +51,7 @@ type aBuilder struct {
 	impl llvm.Builder
 	fn   Function
 	Prog Program
+	phis []func()
 }
 
 // Builder represents a builder for creating instructions in a function.

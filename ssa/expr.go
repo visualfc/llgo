@@ -141,7 +141,11 @@ func (b Builder) Const(v constant.Value, typ Type) Expr {
 		switch {
 		case kind == types.Bool:
 			return prog.BoolVal(constant.BoolVal(v))
-		case kind >= types.Int && kind <= types.Uintptr:
+		case kind >= types.Int && kind <= types.Int64:
+			if v, exact := constant.Int64Val(v); exact {
+				return prog.IntVal(uint64(v), typ)
+			}
+		case kind >= types.Uint && kind <= types.Uintptr:
 			if v, exact := constant.Uint64Val(v); exact {
 				return prog.IntVal(v, typ)
 			}
@@ -704,6 +708,40 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	}
 	ret.impl = llvm.CreateCall(b.impl, fn.ll, fn.impl, llvmValues(args))
 	return
+}
+
+// The Phi instruction represents an SSA φ-node, which combines values
+// that differ across incoming control-flow edges and yields a new
+// value.  Within a block, all φ-nodes must appear before all non-φ
+// nodes.
+//
+// Pos() returns the position of the && or || for short-circuit
+// control-flow joins, or that of the *Alloc for φ-nodes inserted
+// during SSA renaming.
+//
+// Example printed form:
+//
+//	t2 = phi [0: t0, 1: t1]
+func (b Builder) CreatePhi(typ Type, fn func()) (ret Expr) {
+	if debugInstr {
+		log.Printf("CreatePhi %v\n", typ.t)
+	}
+	ret.Type = typ
+	ret.impl = b.impl.CreatePHI(typ.ll, "")
+	b.phis = append(b.phis, fn)
+	return
+}
+
+// Operations on phi nodes
+func (b Builder) AddIncoming(phi Expr, val Expr, block BasicBlock) {
+	phi.impl.AddIncoming([]llvm.Value{val.impl}, []llvm.BasicBlock{block.impl})
+}
+
+// compete builder
+func (b Builder) Complete() {
+	for _, fn := range b.phis {
+		fn()
+	}
 }
 
 // A Builtin represents a specific use of a built-in function, e.g. len.

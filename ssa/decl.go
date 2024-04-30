@@ -148,7 +148,7 @@ func (p Function) NewBuilder() Builder {
 	b := prog.ctx.NewBuilder()
 	// TODO(xsw): Finalize may cause panic, so comment it.
 	// b.Finalize()
-	return &aBuilder{b, p, prog}
+	return &aBuilder{impl: b, fn: p, Prog: prog}
 }
 
 // MakeBody creates nblk basic blocks for the function, and creates

@@ -219,6 +219,7 @@ func (p *context) compileFunc(pkg llssa.Package, pkgTypes *types.Package, f *ssa
 		for i, block := range f.Blocks {
 			p.compileBlock(b, block, i == 0 && name == "main")
 		}
+		b.Complete()
 	})
 }
 
@@ -390,6 +391,14 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	case *ssa.TypeAssert:
 		x := p.compileValue(b, v.X)
 		ret = b.TypeAssert(x, p.prog.Type(v.AssertedType), v.CommaOk)
+	case *ssa.Phi:
+		ret = b.CreatePhi(p.prog.Type(v.Type()), func() {
+			for i, edge := range v.Edges {
+				val := p.compileValue(b, edge)
+				block := p.fn.Block(v.Block().Preds[i].Index)
+				b.AddIncoming(ret, val, block)
+			}
+		})
 	default:
 		panic(fmt.Sprintf("compileInstrAndValue: unknown instr - %T\n", iv))
 	}
