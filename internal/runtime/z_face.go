@@ -83,6 +83,11 @@ const (
 	itabHdrSize          = unsafe.Sizeof(itab{}) - pointerSize
 )
 
+const (
+	uncommonTypeHdrAlign = unsafe.Alignof(abi.UncommonType{})
+	methodAlign          = unsafe.Alignof(abi.Method{})
+)
+
 var hdrSizes = [...]uintptr{
 	arrayTypeHdrSize,
 	chanTypeHdrSize,
@@ -102,27 +107,57 @@ func hdrSizeOf(kind abi.Kind) uintptr {
 	return typeHdrSize
 }
 
+var hdrAligns = [...]uintptr{
+	unsafe.Alignof(abi.ArrayType{}),
+	unsafe.Alignof(abi.ChanType{}),
+	unsafe.Alignof(abi.FuncType{}),
+	unsafe.Alignof(abi.InterfaceType{}),
+	unsafe.Alignof(abi.MapType{}),
+	unsafe.Alignof(abi.PtrType{}),
+	unsafe.Alignof(abi.SliceType{}),
+	unsafe.Alignof(abi.Type{}),
+	unsafe.Alignof(abi.StructType{}),
+}
+
+func hdrAlignOf(kind abi.Kind) uintptr {
+	if kind >= abi.Array && kind <= abi.Struct {
+		return hdrAligns[kind-abi.Array]
+	}
+	return unsafe.Alignof(abi.Type{})
+}
+
 // NewNamed returns an uninitialized named type.
 func NewNamed(kind abi.Kind, methods, ptrMethods int) *Type {
 	ret := newUninitedNamed(kind, methods)
-	ret.PtrToThis_ = newUninitedNamed(abi.Pointer, ptrMethods)
+	//ret.PtrToThis_ = newUninitedNamed(abi.Pointer, ptrMethods)
 	return ret
 }
 
 // InitNamed initializes an uninitialized named type.
 func InitNamed(ret *Type, pkgPath, name string, underlying *Type, methods, ptrMethods []Method) {
-	ptr := ret.PtrToThis_
+	//	ptr := ret.PtrToThis_
 	doInitNamed(ret, pkgPath, name, underlying, methods)
-	doInitNamed(ptr, pkgPath, name, newPointer(ret), ptrMethods)
-	ret.PtrToThis_ = ptr
-	ptr.TFlag |= abi.TFlagExtraStar
+	//	doInitNamed(ptr, pkgPath, name, newPointer(ret), ptrMethods)
+	//	ret.PtrToThis_ = ptr
+	//ptr.TFlag |= abi.TFlagExtraStar
 }
 
 func newUninitedNamed(kind abi.Kind, methods int) *Type {
+	size2, _, offsets := structInfo(
+		fieldInfo{hdrSizeOf(kind), hdrAlignOf(kind)},
+		fieldInfo{uncommonTypeHdrSize, uncommonTypeHdrAlign},
+		fieldInfo{uintptr(methods) * methodSize, methodAlign},
+	)
 	size := hdrSizeOf(kind) + uncommonTypeHdrSize + uintptr(methods)*methodSize
 	ret := (*Type)(AllocU(size))
 	ret.Kind_ = uint8(kind)
 	ret.TFlag = abi.TFlagUninited
+	println("=====>", ret, size, size2, hdrSizeOf(kind), uncommonTypeHdrSize, offsets[1], offsets[2],
+		unsafe.Sizeof(struct {
+			Type
+			u abi.UncommonType
+			_ [1]abi.Method
+		}{}), hdrSizeOf(kind)+uncommonTypeHdrSize)
 	return ret
 }
 
@@ -139,7 +174,8 @@ func doInitNamed(ret *Type, pkgPath, name string, underlying *Type, methods []Me
 
 	ptr := unsafe.Pointer(ret)
 	baseSize := hdrSizeOf(kind)
-	c.Memcpy(ptr, unsafe.Pointer(underlying), baseSize)
+	//c.Memcpy(ptr, unsafe.Pointer(underlying), baseSize)
+	//*ret = *underlying
 
 	ret.TFlag = tflag | abi.TFlagNamed | abi.TFlagUncommon
 	ret.Str_ = name
@@ -153,6 +189,7 @@ func doInitNamed(ret *Type, pkgPath, name string, underlying *Type, methods []Me
 		xcount++
 	}
 	uncommon := (*abi.UncommonType)(c.Advance(ptr, int(baseSize)))
+	println("=====> init", ptr, ret.Kind(), pkgPath, baseSize, uncommonTypeHdrSize, baseSize+uncommonTypeHdrSize, uncommon, ret.Uncommon())
 	uncommon.PkgPath_ = pkgPath
 	uncommon.Mcount = uint16(n)
 	uncommon.Xcount = xcount
@@ -167,9 +204,11 @@ func doInitNamed(ret *Type, pkgPath, name string, underlying *Type, methods []Me
 func Func(in, out []*Type, variadic bool) *FuncType {
 	ret := &FuncType{
 		Type: Type{
-			Size_: unsafe.Sizeof(uintptr(0)),
-			Hash:  uint32(abi.Func), // TODO(xsw): hash
-			Kind_: uint8(abi.Func),
+			Size_:       unsafe.Sizeof(uintptr(0)) * 2,
+			Hash:        uint32(abi.Func), // TODO(xsw): hash
+			Kind_:       uint8(abi.Func),
+			Align_:      uint8(pointerAlign),
+			FieldAlign_: uint8(pointerAlign),
 		},
 		In:  in,
 		Out: out,
@@ -185,10 +224,12 @@ func Func(in, out []*Type, variadic bool) *FuncType {
 func Interface(pkgPath, name string, methods []Imethod) *InterfaceType {
 	ret := &abi.InterfaceType{
 		Type: Type{
-			Size_: unsafe.Sizeof(eface{}),
-			Hash:  uint32(abi.Interface), // TODO(xsw): hash
-			Kind_: uint8(abi.Interface),
-			Str_:  name,
+			Size_:       unsafe.Sizeof(eface{}),
+			Hash:        uint32(abi.Interface), // TODO(xsw): hash
+			Kind_:       uint8(abi.Interface),
+			Align_:      uint8(pointerAlign),
+			FieldAlign_: uint8(pointerAlign),
+			Str_:        name,
 		},
 		PkgPath_: pkgPath,
 		Methods:  methods,

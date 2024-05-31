@@ -73,13 +73,37 @@ var (
 		abi.Complex128: 16,
 		abi.String:     unsafe.Sizeof(String{}),
 	}
+	alignBasicTypes = [...]uintptr{
+		abi.Bool:       unsafe.Alignof(false),
+		abi.Int:        unsafe.Alignof(0),
+		abi.Int8:       1,
+		abi.Int16:      2,
+		abi.Int32:      4,
+		abi.Int64:      8,
+		abi.Uint:       unsafe.Alignof(uint(0)),
+		abi.Uint8:      1,
+		abi.Uint16:     2,
+		abi.Uint32:     4,
+		abi.Uint64:     8,
+		abi.Uintptr:    unsafe.Alignof(uintptr(0)),
+		abi.Float32:    4,
+		abi.Float64:    8,
+		abi.Complex64:  8,
+		abi.Complex128: 16,
+		abi.String:     unsafe.Alignof(""),
+	}
 )
 
+const pointerAlign = unsafe.Alignof(uintptr(0))
+
 func basicType(kind abi.Kind) *Type {
+	align := alignBasicTypes[kind]
 	return &Type{
-		Size_: sizeBasicTypes[kind],
-		Hash:  uint32(kind), // TODO(xsw): hash
-		Kind_: uint8(kind),
+		Size_:       sizeBasicTypes[kind],
+		Hash:        uint32(kind), // TODO(xsw): hash
+		Kind_:       uint8(kind),
+		Align_:      uint8(align),
+		FieldAlign_: uint8(align),
 	}
 }
 
@@ -107,7 +131,38 @@ func Struct(pkgPath string, size uintptr, fields ...abi.StructField) *Type {
 		PkgPath_: pkgPath,
 		Fields:   fields,
 	}
+	var typalign uint8
+	for _, f := range fields {
+		ft := f.Typ
+		if ft.Align_ > typalign {
+			typalign = ft.Align_
+		}
+	}
+	ret.Align_ = typalign
+	ret.FieldAlign_ = typalign
 	return &ret.Type
+}
+
+type fieldInfo struct {
+	size  uintptr
+	align uintptr
+}
+
+func structInfo(fields ...fieldInfo) (size uintptr, typalign uintptr, offsets []uintptr) {
+	offsets = make([]uintptr, len(fields))
+	for i, ft := range fields {
+		offset := align(size, ft.align)
+		if ft.align > typalign {
+			typalign = ft.align
+		}
+		size = offset + ft.size
+		offsets[i] = offset
+	}
+	return
+}
+
+func align(x, n uintptr) uintptr {
+	return (x + n - 1) &^ (n - 1)
 }
 
 // -----------------------------------------------------------------------------
@@ -125,9 +180,11 @@ func PointerTo(elem *Type) *Type {
 func newPointer(elem *Type) *Type {
 	ptr := &abi.PtrType{
 		Type: Type{
-			Size_: unsafe.Sizeof(uintptr(0)),
-			Hash:  uint32(abi.Pointer), // TODO(xsw): hash
-			Kind_: uint8(abi.Pointer),
+			Size_:       unsafe.Sizeof(uintptr(0)),
+			Hash:        uint32(abi.Pointer), // TODO(xsw): hash
+			Kind_:       uint8(abi.Pointer),
+			Align_:      uint8(pointerAlign),
+			FieldAlign_: uint8(pointerAlign),
 		},
 		Elem: elem,
 	}
@@ -138,9 +195,11 @@ func newPointer(elem *Type) *Type {
 func SliceOf(elem *Type) *Type {
 	ret := &abi.SliceType{
 		Type: Type{
-			Size_: unsafe.Sizeof([]int{}),
-			Hash:  uint32(abi.Slice),
-			Kind_: uint8(abi.Slice),
+			Size_:       unsafe.Sizeof([]int{}),
+			Hash:        uint32(abi.Slice),
+			Kind_:       uint8(abi.Slice),
+			Align_:      uint8(pointerAlign),
+			FieldAlign_: uint8(pointerAlign),
 		},
 		Elem: elem,
 	}
@@ -151,9 +210,11 @@ func SliceOf(elem *Type) *Type {
 func ArrayOf(length uintptr, elem *Type) *Type {
 	ret := &abi.ArrayType{
 		Type: Type{
-			Size_: length * elem.Size_,
-			Hash:  uint32(abi.Array),
-			Kind_: uint8(abi.Array),
+			Size_:       length * elem.Size_,
+			Hash:        uint32(abi.Array),
+			Kind_:       uint8(abi.Array),
+			Align_:      elem.Align_,
+			FieldAlign_: elem.FieldAlign_,
 		},
 		Elem:  elem,
 		Slice: SliceOf(elem),
