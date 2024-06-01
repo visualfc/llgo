@@ -129,35 +129,30 @@ func hdrAlignOf(kind abi.Kind) uintptr {
 // NewNamed returns an uninitialized named type.
 func NewNamed(kind abi.Kind, methods, ptrMethods int) *Type {
 	ret := newUninitedNamed(kind, methods)
-	//ret.PtrToThis_ = newUninitedNamed(abi.Pointer, ptrMethods)
+	ret.PtrToThis_ = newUninitedNamed(abi.Pointer, ptrMethods)
 	return ret
 }
 
 // InitNamed initializes an uninitialized named type.
 func InitNamed(ret *Type, pkgPath, name string, underlying *Type, methods, ptrMethods []Method) {
-	//	ptr := ret.PtrToThis_
+	ptr := ret.PtrToThis_
 	doInitNamed(ret, pkgPath, name, underlying, methods)
-	//	doInitNamed(ptr, pkgPath, name, newPointer(ret), ptrMethods)
-	//	ret.PtrToThis_ = ptr
-	//ptr.TFlag |= abi.TFlagExtraStar
+	doInitNamed(ptr, pkgPath, name, newPointer(ret), ptrMethods)
+	ret.PtrToThis_ = ptr
+	ptr.TFlag |= abi.TFlagExtraStar
 }
 
 func newUninitedNamed(kind abi.Kind, methods int) *Type {
-	size2, _, offsets := structInfo(
-		fieldInfo{hdrSizeOf(kind), hdrAlignOf(kind)},
-		fieldInfo{uncommonTypeHdrSize, uncommonTypeHdrAlign},
-		fieldInfo{uintptr(methods) * methodSize, methodAlign},
-	)
+	// size2, _, offsets := structInfo(
+	// 	fieldInfo{hdrSizeOf(kind), hdrAlignOf(kind)},
+	// 	fieldInfo{uncommonTypeHdrSize, uncommonTypeHdrAlign},
+	// 	fieldInfo{uintptr(methods) * methodSize, methodAlign},
+	// )
 	size := hdrSizeOf(kind) + uncommonTypeHdrSize + uintptr(methods)*methodSize
+	// println("=>", size, size2, offsets)
 	ret := (*Type)(AllocU(size))
 	ret.Kind_ = uint8(kind)
 	ret.TFlag = abi.TFlagUninited
-	println("=====>", ret, size, size2, hdrSizeOf(kind), uncommonTypeHdrSize, offsets[1], offsets[2],
-		unsafe.Sizeof(struct {
-			Type
-			u abi.UncommonType
-			_ [1]abi.Method
-		}{}), hdrSizeOf(kind)+uncommonTypeHdrSize)
 	return ret
 }
 
@@ -174,7 +169,7 @@ func doInitNamed(ret *Type, pkgPath, name string, underlying *Type, methods []Me
 
 	ptr := unsafe.Pointer(ret)
 	baseSize := hdrSizeOf(kind)
-	//c.Memcpy(ptr, unsafe.Pointer(underlying), baseSize)
+	c.Memcpy(ptr, unsafe.Pointer(underlying), baseSize)
 	//*ret = *underlying
 
 	ret.TFlag = tflag | abi.TFlagNamed | abi.TFlagUncommon
@@ -189,7 +184,7 @@ func doInitNamed(ret *Type, pkgPath, name string, underlying *Type, methods []Me
 		xcount++
 	}
 	uncommon := (*abi.UncommonType)(c.Advance(ptr, int(baseSize)))
-	println("=====> init", ptr, ret.Kind(), pkgPath, baseSize, uncommonTypeHdrSize, baseSize+uncommonTypeHdrSize, uncommon, ret.Uncommon())
+	//println("=====> init", ptr, ret.Kind(), pkgPath, baseSize, uncommonTypeHdrSize, baseSize+uncommonTypeHdrSize, uncommon, ret.Uncommon())
 	uncommon.PkgPath_ = pkgPath
 	uncommon.Mcount = uint16(n)
 	uncommon.Xcount = xcount

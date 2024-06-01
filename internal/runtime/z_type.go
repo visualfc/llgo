@@ -143,27 +143,27 @@ func Struct(pkgPath string, size uintptr, fields ...abi.StructField) *Type {
 	return &ret.Type
 }
 
-type fieldInfo struct {
-	size  uintptr
-	align uintptr
-}
+// type fieldInfo struct {
+// 	size  uintptr
+// 	align uintptr
+// }
 
-func structInfo(fields ...fieldInfo) (size uintptr, typalign uintptr, offsets []uintptr) {
-	offsets = make([]uintptr, len(fields))
-	for i, ft := range fields {
-		offset := align(size, ft.align)
-		if ft.align > typalign {
-			typalign = ft.align
-		}
-		size = offset + ft.size
-		offsets[i] = offset
-	}
-	return
-}
+// func structInfo(fields ...fieldInfo) (size uintptr, typalign uintptr, offsets []uintptr) {
+// 	offsets = make([]uintptr, len(fields))
+// 	for i, ft := range fields {
+// 		offset := align(size, ft.align)
+// 		if ft.align > typalign {
+// 			typalign = ft.align
+// 		}
+// 		size = offset + ft.size
+// 		offsets[i] = offset
+// 	}
+// 	return
+// }
 
-func align(x, n uintptr) uintptr {
-	return (x + n - 1) &^ (n - 1)
-}
+// func align(x, n uintptr) uintptr {
+// 	return (x + n - 1) &^ (n - 1)
+// }
 
 // -----------------------------------------------------------------------------
 
