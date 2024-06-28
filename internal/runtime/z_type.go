@@ -40,6 +40,9 @@ func Basic(kind Kind) *Type {
 			FieldAlign_: uint8(align),
 			Kind_:       uint8(kind),
 			Str_:        name,
+			Equal: func(a, b unsafe.Pointer) bool {
+				return uintptr(a) == uintptr(b)
+			},
 		}
 	}
 	return tyBasic[kind]
@@ -188,6 +191,31 @@ func ArrayOf(length uintptr, elem *Type) *Type {
 		Elem:  elem,
 		Slice: SliceOf(elem),
 		Len:   length,
+	}
+	return &ret.Type
+}
+
+func MapOf(key, elem *Type, bucket *Type, flags int) *Type {
+	ret := &abi.MapType{
+		Type: Type{
+			Size_:       unsafe.Sizeof(uintptr(0)),
+			Hash:        uint32(abi.Map),
+			Align_:      pointerAlign,
+			FieldAlign_: pointerAlign,
+			Kind_:       uint8(abi.Map),
+			Str_:        "map[" + key.String() + "]" + elem.String(),
+		},
+		Key:        key,
+		Elem:       elem,
+		Bucket:     bucket,
+		KeySize:    uint8(key.Size_),
+		ValueSize:  uint8(elem.Size_),
+		BucketSize: uint16(bucket.Size_),
+		Flags:      uint32(flags),
+	}
+	// TODO hasher
+	ret.Hasher = func(p unsafe.Pointer, seed uintptr) uintptr {
+		return uintptr(p)
 	}
 	return &ret.Type
 }

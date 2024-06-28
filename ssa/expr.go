@@ -1001,6 +1001,8 @@ func (b Builder) BuiltinCall(fn string, args ...Expr) (ret Expr) {
 				return b.SliceLen(arg)
 			case vkString:
 				return b.StringLen(arg)
+			case vkMap:
+				return b.MapLen(arg)
 			}
 		}
 	case "cap":
@@ -1114,6 +1116,9 @@ func (b Builder) PrintEx(ln bool, args ...Expr) (ret Expr) {
 		case vkComplex:
 			fn = "PrintComplex"
 			typ = prog.Complex128()
+		case vkMap:
+			fn = "PrintPointer"
+			typ = prog.VoidPtr()
 		default:
 			panic(fmt.Errorf("illegal types for operand: print %v", arg.RawType()))
 		}
