@@ -213,9 +213,8 @@ func MapOf(key, elem *Type, bucket *Type, flags int) *Type {
 		BucketSize: uint16(bucket.Size_),
 		Flags:      uint32(flags),
 	}
-	// TODO hasher
 	ret.Hasher = func(p unsafe.Pointer, seed uintptr) uintptr {
-		return uintptr(p)
+		return typehash(key, p, seed)
 	}
 	return &ret.Type
 }
