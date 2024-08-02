@@ -25,6 +25,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/goplus/llgo/cl/blocks"
 	"github.com/goplus/llgo/internal/typepatch"
@@ -812,6 +813,21 @@ func NewPackageEx(prog llssa.Program, patches Patches, pkg *ssa.Package, files [
 	ctx.initPyModule()
 	ctx.initFiles(pkgPath, files)
 	ret.SetPatch(ctx.patchType)
+	ret.SetLinks(func(name string) string {
+		if v, ok := ctx.link[name]; ok {
+			if strings.HasPrefix(v, "C.") {
+				return v[2:]
+			}
+			if strings.HasPrefix(v, "py.") {
+				return v[3:]
+			}
+			if strings.HasPrefix(v, "llgo.") {
+				return v[5:]
+			}
+			return v
+		}
+		return name
+	})
 
 	if hasPatch {
 		skips := ctx.skips
