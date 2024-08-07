@@ -945,6 +945,8 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	var kind = fn.kind
 	if kind == vkPyFuncRef {
 		return b.pyCall(fn, args)
+	} else if kind == vkClosure {
+		return b.closureCall(fn, args...)
 	}
 	var ll llvm.Type
 	var data Expr
@@ -971,6 +973,58 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
 	return
+}
+
+func (b Builder) closureCall(v Expr, args ...Expr) (ret Expr) {
+	prog := b.Prog
+	data := b.Field(v, 1)
+	fn := b.Field(v, 0)
+	sig := fn.raw.Type.Underlying().(*types.Signature)
+	sig2 := closureRemoveCtx(sig)
+	ll := prog.FuncDecl(sig, InC).ll
+	isNil := llvm.CreateICmp(b.impl, llvm.IntEQ, data.impl, llvm.ConstNull(prog.VoidPtr().ll))
+	rtyp := b.Prog.retType(sig)
+
+	blks := b.Func.MakeBlocks(3)
+	b.If(Expr{isNil, prog.Bool()}, blks[0], blks[1])
+	b.SetBlockEx(blks[2], AtEnd, false)
+	if rtyp == prog.Void() {
+		b.SetBlockEx(blks[0], AtEnd, false)
+		llvm.CreateCall(b.impl, ll, fn.impl, llvmParams(0, args, sig2.Params(), b))
+		b.Jump(blks[2])
+		b.SetBlockEx(blks[1], AtEnd, false)
+		llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
+		b.Jump(blks[2])
+		b.SetBlockEx(blks[2], AtEnd, false)
+		b.blk.last = blks[2].last
+		return
+	}
+	phi := b.Phi(rtyp)
+	phi.AddIncoming(b, blks[:2], func(i int, blk BasicBlock) (ret Expr) {
+		b.SetBlockEx(blk, AtEnd, false)
+		ret.Type = rtyp
+		if i == 0 {
+			ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParams(0, args, sig2.Params(), b))
+		} else {
+			ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
+		}
+		b.Jump(blks[2])
+		return
+	})
+	b.SetBlockEx(blks[2], AtEnd, false)
+	b.blk.last = blks[2].last
+	return phi.Expr
+}
+
+func closureRemoveCtx(sig *types.Signature) *types.Signature {
+	tParams := sig.Params()
+	nParams := tParams.Len() - 1
+	params := make([]*types.Var, nParams)
+	for i := 0; i < nParams; i++ {
+		params[i] = tParams.At(i + 1)
+	}
+	return types.NewSignatureType(
+		nil, nil, nil, types.NewTuple(params...), sig.Results(), sig.Variadic())
 }
 
 func logCall(da string, fn Expr, args []Expr) {
@@ -1221,7 +1275,8 @@ func (b Builder) PrintEx(ln bool, args ...Expr) (ret Expr) {
 func checkExpr(v Expr, t types.Type, b Builder) Expr {
 	if st, ok := t.Underlying().(*types.Struct); ok && isClosure(st) {
 		if v.kind != vkClosure {
-			return b.Pkg.closureStub(b, t, v)
+			prog := b.Prog
+			return b.aggregateValue(prog.rawType(t), v.impl, llvm.ConstNull(prog.VoidPtr().ll))
 		}
 	}
 	return v
