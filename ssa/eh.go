@@ -101,7 +101,7 @@ type aDefer struct {
 	procBlk   BasicBlock   // deferProc block
 	panicBlk  BasicBlock   // panic block (runDefers and rethrow)
 	rundsNext []BasicBlock // next blocks of RunDefers
-	stmts     []func(bits Expr)
+	stmts     []func(argsPtr, bits Expr)
 }
 
 func (p Package) keyInit(name string) {
@@ -234,22 +234,22 @@ func (b Builder) Defer(kind DoAction, fn Expr, args ...Expr) {
 	default:
 		panic("todo: DeferInLoop is not supported - " + b.Func.Name())
 	}
-	typ := b.saveDeferArgs(self, fn, args)
-	self.stmts = append(self.stmts, func(bits Expr) {
+	typ := b.saveDeferArgs(self.argsPtr, fn, args)
+	self.stmts = append(self.stmts, func(argsPtr Expr, bits Expr) {
 		switch kind {
 		case DeferInCond:
 			zero := prog.Val(uintptr(0))
 			has := b.BinOp(token.NEQ, b.BinOp(token.AND, bits, nextbit), zero)
 			b.IfThen(has, func() {
-				b.callDefer(self, typ, fn, len(args))
+				b.callDefer(argsPtr, typ, fn, len(args))
 			})
 		case DeferAlways:
-			b.callDefer(self, typ, fn, len(args))
+			b.callDefer(argsPtr, typ, fn, len(args))
 		}
 	})
 }
 
-func (b Builder) saveDeferArgs(self *aDefer, fn Expr, args []Expr) Type {
+func (b Builder) saveDeferArgs(argsPtr Expr, fn Expr, args []Expr) Type {
 	var offset int
 	if fn.kind != vkBuiltin {
 		offset = 1
@@ -268,14 +268,14 @@ func (b Builder) saveDeferArgs(self *aDefer, fn Expr, args []Expr) Type {
 	typ := prog.Struct(typs...)
 	voidPtr := prog.VoidPtr()
 	ptr := Expr{b.aggregateMalloc(typ, flds...), voidPtr}
-	b.Store(self.argsPtr, b.BuiltinCall("append", b.Load(self.argsPtr), b.SliceLit(prog.Slice(voidPtr), ptr)))
+	b.Store(argsPtr, b.BuiltinCall("append", b.Load(argsPtr), b.SliceLit(prog.Slice(voidPtr), ptr)))
 	return typ
 }
 
-func (b Builder) callDefer(self *aDefer, typ Type, fn Expr, nargs int) {
-	nLen := b.FieldAddr(Expr{self.argsPtr.impl, b.Prog.Pointer(b.Prog.rtType("Slice"))}, 1)
+func (b Builder) callDefer(argsPtr Expr, typ Type, fn Expr, nargs int) {
+	nLen := b.FieldAddr(Expr{argsPtr.impl, b.Prog.Pointer(b.Prog.rtType("Slice"))}, 1)
 	index := b.BinOp(token.SUB, b.Load(nLen), b.Prog.Val(1))
-	ptr := b.Load(b.IndexAddr(b.Load(self.argsPtr), index))
+	ptr := b.Load(b.IndexAddr(b.Load(argsPtr), index))
 	b.Store(nLen, index)
 	data := Expr{llvm.CreateLoad(b.impl, typ.ll, ptr.impl), typ}
 	args := make([]Expr, nargs)
@@ -322,6 +322,7 @@ func (p Function) endDefer(b Builder) {
 	rethPtr := self.rethPtr
 	rundPtr := self.rundPtr
 	bitsPtr := self.bitsPtr
+	argsPtr := self.argsPtr
 
 	stmts := self.stmts
 	n := len(stmts)
@@ -335,7 +336,7 @@ func (p Function) endDefer(b Builder) {
 		rethNext := rethsNext[i]
 		b.SetBlockEx(rethsNext[i+1], AtEnd, true)
 		b.Store(rethPtr, rethNext.Addr())
-		stmts[i](b.Load(bitsPtr))
+		stmts[i](argsPtr, b.Load(bitsPtr))
 		if i != 0 {
 			b.Jump(rethNext)
 		}
