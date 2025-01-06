@@ -63,7 +63,7 @@ func elemOfType(typ types.Type) int {
 func isWrapABI(prog Program, i int, typ types.Type) (bool, bool) {
 	switch typ := typ.Underlying().(type) {
 	case *types.Struct, *types.Array:
-		if elemOfType(typ) > 2 {
+		if elemOfType(typ) >= 2 && prog.sizes.Sizeof(typ) > int64(prog.ptrSize) {
 			return true, false
 		}
 	case *types.Signature:
