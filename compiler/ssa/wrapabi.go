@@ -72,13 +72,20 @@ func isWrapABI(prog Program, i int, typ types.Type) (bool, bool) {
 	return false, false
 }
 
+func ctypName(typ types.Type) string {
+	if named, ok := typ.(*types.Named); ok {
+		return named.Obj().Name()
+	}
+	hash := md5.Sum([]byte(typ.String()))
+	return "T_" + fmt.Sprintf("%x", hash[:])
+}
+
 func wrapParam(pkg Package, typ types.Type, param string) string {
 	switch t := typ.Underlying().(type) {
 	case *types.Struct:
 		name, ok := pkg.wrapCType[t]
 		if !ok {
-			hash := md5.Sum([]byte(t.String()))
-			name = "typ_" + fmt.Sprintf("%x", hash[:])
+			name = ctypName(typ)
 			pkg.wrapCType[t] = name
 			pkg.wrapCode = append(pkg.wrapCode, toCType(t, name)+";")
 		}
@@ -86,10 +93,9 @@ func wrapParam(pkg Package, typ types.Type, param string) string {
 	case *types.Array:
 		name, ok := pkg.wrapCType[t]
 		if !ok {
-			st := types.NewStruct([]*types.Var{types.NewVar(token.NoPos, nil, "", t)}, nil)
-			hash := md5.Sum([]byte(t.String()))
-			name = "typ_" + fmt.Sprintf("%x", hash[:])
+			name = ctypName(typ)
 			pkg.wrapCType[t] = name
+			st := types.NewStruct([]*types.Var{types.NewVar(token.NoPos, nil, "", t)}, nil)
 			pkg.wrapCode = append(pkg.wrapCode, toCType(st, name)+";")
 		}
 		return name + " " + param
