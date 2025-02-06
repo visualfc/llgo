@@ -46,6 +46,7 @@ import (
 	"github.com/goplus/llgo/xtool/env/llvm"
 
 	llssa "github.com/goplus/llgo/compiler/ssa"
+	llruntime "github.com/goplus/llgo/runtime"
 	clangCheck "github.com/goplus/llgo/xtool/clang/check"
 )
 
@@ -152,7 +153,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	sizes := prog.TypeSizes
 	dedup := packages.NewDeduper()
 	dedup.SetPreload(func(pkg *types.Package, files []*ast.File) {
-		if canSkipToBuild(pkg.Path()) {
+		if llruntime.SkipToBuild(pkg.Path()) {
 			return
 		}
 		cl.ParsePkgSyntax(prog, pkg, files)
@@ -511,7 +512,7 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) (cgoLdflags []string, 
 	if debugBuild || verbose {
 		fmt.Fprintln(os.Stderr, pkgPath)
 	}
-	if canSkipToBuild(pkgPath) {
+	if llruntime.SkipToBuild(pkgPath) {
 		pkg.ExportFile = ""
 		return
 	}
@@ -566,7 +567,7 @@ const (
 func altPkgs(initial []*packages.Package, alts ...string) []string {
 	packages.Visit(initial, nil, func(p *packages.Package) {
 		if p.Types != nil && !p.IllTyped {
-			if _, ok := hasAltPkg[p.PkgPath]; ok {
+			if llruntime.HasAltPkg(p.PkgPath) {
 				alts = append(alts, altPkgPathPrefix+p.PkgPath)
 			}
 		}
@@ -615,7 +616,7 @@ func allPkgs(ctx *context, initial []*packages.Package, verbose bool) (all []*aP
 			}
 			var altPkg *packages.Cached
 			var ssaPkg = createSSAPkg(prog, p, verbose)
-			if _, ok := hasAltPkg[pkgPath]; ok {
+			if llruntime.HasAltPkg(pkgPath) {
 				if altPkg = ctx.dedup.Check(altPkgPathPrefix + pkgPath); altPkg == nil {
 					return
 				}
@@ -783,19 +784,6 @@ func pkgExists(initial []*packages.Package, pkg *packages.Package) bool {
 	return false
 }
 
-func canSkipToBuild(pkgPath string) bool {
-	if _, ok := hasAltPkg[pkgPath]; ok {
-		return false
-	}
-	switch pkgPath {
-	case "unsafe":
-		return true
-	default:
-		return strings.HasPrefix(pkgPath, "internal/") ||
-			strings.HasPrefix(pkgPath, "runtime/internal/")
-	}
-}
-
 // findDylibDep finds the dylib dependency in the executable. It returns empty
 // string if not found.
 func findDylibDep(exe, lib string) string {
@@ -813,41 +801,6 @@ func findDylibDep(exe, lib string) string {
 }
 
 type none struct{}
-
-var hasAltPkg = map[string]none{
-	"crypto/hmac":              {},
-	"crypto/md5":               {},
-	"crypto/rand":              {},
-	"crypto/sha1":              {},
-	"crypto/sha256":            {},
-	"crypto/sha512":            {},
-	"crypto/subtle":            {},
-	"fmt":                      {},
-	"hash/crc32":               {},
-	"internal/abi":             {},
-	"internal/bytealg":         {},
-	"internal/itoa":            {},
-	"internal/filepathlite":    {},
-	"internal/oserror":         {},
-	"internal/race":            {},
-	"internal/reflectlite":     {},
-	"internal/stringslite":     {},
-	"internal/syscall/execenv": {},
-	"internal/syscall/unix":    {},
-	"math":                     {},
-	"math/big":                 {},
-	"math/cmplx":               {},
-	"math/rand":                {},
-	"reflect":                  {},
-	"sync":                     {},
-	"sync/atomic":              {},
-	"syscall":                  {},
-	"time":                     {},
-	"os":                       {},
-	"os/exec":                  {},
-	"runtime":                  {},
-	"io":                       {},
-}
 
 func check(err error) {
 	if err != nil {

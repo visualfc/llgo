@@ -30,6 +30,7 @@ import (
 
 	"github.com/goplus/llgo/compiler/internal/env"
 	llssa "github.com/goplus/llgo/compiler/ssa"
+	llruntime "github.com/goplus/llgo/runtime"
 )
 
 // -----------------------------------------------------------------------------
@@ -624,22 +625,7 @@ func replaceGoName(v string, pos int) string {
 }
 
 func ignoreName(name string) bool {
-	/* TODO(xsw): confirm this is not needed more
-	if name == "unsafe.init" {
-		return true
-	}
-	*/
-	const internal = "internal/"
-	return (strings.HasPrefix(name, internal) && !supportedInternal(name[len(internal):])) ||
-		strings.HasPrefix(name, "runtime/") || strings.HasPrefix(name, "arena.") ||
-		strings.HasPrefix(name, "maps.") || strings.HasPrefix(name, "plugin.")
-}
-
-func supportedInternal(name string) bool {
-	return strings.HasPrefix(name, "abi.") || strings.HasPrefix(name, "bytealg.") ||
-		strings.HasPrefix(name, "itoa.") || strings.HasPrefix(name, "oserror.") || strings.HasPrefix(name, "race.") ||
-		strings.HasPrefix(name, "reflectlite.") || strings.HasPrefix(name, "stringslite.") || strings.HasPrefix(name, "filepathlite.") ||
-		strings.HasPrefix(name, "syscall/unix.") || strings.HasPrefix(name, "syscall/execenv.")
+	return llruntime.IgnoreName(name)
 }
 
 // -----------------------------------------------------------------------------
