@@ -313,7 +313,7 @@ func (p *Transform) transformCFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Valu
 		b.CreateRet(b.CreateLoad(info.Return.Type, pret, ""))
 	default:
 		call := llvm.CreateCall(b, nft, nfn, nparams)
-		call.SetTailCall(true)
+		//call.SetTailCall(true)
 		b.CreateRet(call)
 	}
 	return wrapFunc, true
@@ -417,7 +417,7 @@ func (p *Transform) transformGoFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Val
 		b.CreateRet(b.CreateLoad(returnType, iptr, ""))
 	default:
 		call := llvm.CreateCall(b, info.Type, fn, nparams)
-		call.SetTailCall(true)
+		//call.SetTailCall(true)
 		b.CreateRet(call)
 	}
 	return wrapFunc, true
