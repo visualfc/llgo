@@ -38,6 +38,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/goplus/llgo/cl"
+	"github.com/goplus/llgo/internal/cabi"
 	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/env"
 	"github.com/goplus/llgo/internal/mockable"
@@ -261,6 +262,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		buildConf:     conf,
 		crossCompile:  export,
 		isCheckEnable: IsCheckEnable(),
+		cTransformer:  cabi.NewTransformer(prog),
 	}
 	pkgs, err := buildAllPkgs(ctx, initial, verbose)
 	check(err)
@@ -357,6 +359,8 @@ type context struct {
 
 	buildConf    *Config
 	crossCompile crosscompile.Export
+
+	cTransformer *cabi.Transformer
 
 	testFail bool
 }
@@ -764,6 +768,9 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		cl.SetDebug(0)
 	}
 	check(err)
+
+	ctx.cTransformer.TransformModule(ret.Module())
+
 	aPkg.LPkg = ret
 	cgoLLFiles, cgoLdflags, err := buildCgo(ctx, aPkg, aPkg.Package.Syntax, externs, verbose)
 	if err != nil {
