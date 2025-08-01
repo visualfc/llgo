@@ -256,6 +256,10 @@ func (p *Transformer) transformFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Val
 		nfn.AddAttributeAtIndex(i, attr)
 	}
 	nfn.SetLinkage(fn.Linkage())
+	nfn.SetFunctionCallConv(fn.FunctionCallConv())
+	for _, attr := range fn.GetFunctionAttributes() {
+		nfn.AddAttributeAtIndex(-1, attr)
+	}
 
 	if !fn.IsDeclaration() {
 		p.replaceFunc(ctx, &info, fn, nfn, nft)
