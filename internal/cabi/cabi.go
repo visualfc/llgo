@@ -7,13 +7,22 @@ import (
 	"github.com/goplus/llvm"
 )
 
-func NewTransformer(prog ssa.Program) *Transformer {
+type Mode int
+
+const (
+	ModeNone Mode = iota
+	ModeCFunc
+	ModeAllFunc
+)
+
+func NewTransformer(prog ssa.Program, mode Mode) *Transformer {
 	target := prog.Target()
 	tr := &Transformer{
 		prog:   prog,
 		td:     prog.TargetData(),
 		GOOS:   target.GOOS,
 		GOARCH: target.GOARCH,
+		mode:   mode,
 	}
 	switch target.GOARCH {
 	case "amd64":
@@ -33,41 +42,42 @@ type Transformer struct {
 	GOOS   string
 	GOARCH string
 	sys    TypeInfoSys
+	mode   Mode
 }
 
 func (p *Transformer) isCFunc(name string) bool {
-	return true
 	return !strings.Contains(name, ".")
 }
 
 func (p *Transformer) TransformModule(m llvm.Module) {
-	var cfns []llvm.Value
-	//var exports []llvm.Value
-	fn := m.FirstFunction()
-	for !fn.IsNil() {
-		if p.isCFunc(fn.Name()) {
-			//p.TransformFuncCall(m, fn)
-			if p.isWrapFunctionType(m.Context(), fn.GlobalValueType()) {
-				if fn.IsDeclaration() {
-					cfns = append(cfns, fn)
-				} else {
-					cfns = append(cfns, fn)
-					//exports = append(exports, fn)
+	var fns []llvm.Value
+	switch p.mode {
+	case ModeNone:
+		return
+	case ModeCFunc:
+		fn := m.FirstFunction()
+		for !fn.IsNil() {
+			if p.isCFunc(fn.Name()) {
+				p.transformFuncCall(m, fn)
+				if p.isWrapFunctionType(m.Context(), fn.GlobalValueType()) {
+					fns = append(fns, fn)
 				}
 			}
+			fn = llvm.NextFunction(fn)
 		}
-		fn = llvm.NextFunction(fn)
+	case ModeAllFunc:
+		var cfns []llvm.Value
+		fn := m.FirstFunction()
+		for !fn.IsNil() {
+			if p.isWrapFunctionType(m.Context(), fn.GlobalValueType()) {
+				cfns = append(cfns, fn)
+			}
+			fn = llvm.NextFunction(fn)
+		}
 	}
-	for _, fn := range cfns {
-		p.transformCFunc(m, fn)
+	for _, fn := range fns {
+		p.transformFunc(m, fn)
 	}
-	// for _, fn := range exports {
-	// 	if wrap, ok := p.transformGoFunc(m, fn); ok {
-	// 		fname := fn.Name()
-	// 		fn.SetName("__llgo_godecl$" + fname)
-	// 		wrap.SetName(fname)
-	// 	}
-	// }
 }
 
 func (p *Transformer) isWrapFunctionType(ctx llvm.Context, ft llvm.Type) bool {
@@ -125,7 +135,7 @@ type TypeInfo struct {
 	Align int
 }
 
-func (p *Transformer) TransformFuncCall(m llvm.Module, fn llvm.Value) {
+func (p *Transformer) transformFuncCall(m llvm.Module, fn llvm.Value) {
 	u := fn.FirstUse()
 	ctx := m.Context()
 	for !u.IsNil() {
@@ -142,7 +152,7 @@ func (p *Transformer) TransformFuncCall(m llvm.Module, fn llvm.Value) {
 							continue
 						}
 						if p.isWrapFunctionType(ctx, ft) {
-							if wrap, ok := p.transformGoFunc(m, gv); ok {
+							if wrap, ok := p.transformCallbackFunc(m, gv); ok {
 								call.SetOperand(i, wrap)
 							}
 						}
@@ -201,7 +211,7 @@ func (p *Transformer) GetFuncInfo(ctx llvm.Context, typ llvm.Type) (info FuncInf
 	return
 }
 
-func (p *Transformer) transformCFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Value, ok bool) {
+func (p *Transformer) transformFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Value, ok bool) {
 	var paramTypes []llvm.Type
 	var returnType llvm.Type
 	attrs := make(map[int]llvm.Attribute)
@@ -394,7 +404,7 @@ func (p *Transformer) replaceCallInstrs(ctx llvm.Context, info *FuncInfo, fn llv
 	}
 }
 
-func (p *Transformer) transformGoFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Value, ok bool) {
+func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Value, ok bool) {
 	var paramTypes []llvm.Type
 	var returnType llvm.Type
 	attrs := make(map[int]llvm.Attribute)

@@ -262,7 +262,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		buildConf:     conf,
 		crossCompile:  export,
 		isCheckEnable: IsCheckEnable(),
-		cTransformer:  cabi.NewTransformer(prog),
+		cTransformer:  cabi.NewTransformer(prog, cabi.ModeCFunc),
 	}
 	pkgs, err := buildAllPkgs(ctx, initial, verbose)
 	check(err)
