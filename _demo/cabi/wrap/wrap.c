@@ -127,7 +127,7 @@ struct point7 pt7(struct point7 pt) {
 
 struct data1 {
     char x;
-    size_t y;
+    long long y;
 };
 
 struct data1 fn1(struct data1 pt) {
@@ -137,7 +137,7 @@ struct data1 fn1(struct data1 pt) {
 
 struct data2 {
     int x;
-    size_t y;
+    long long y;
 };
 
 struct data2 fn2(struct data2 pt) {
@@ -146,7 +146,7 @@ struct data2 fn2(struct data2 pt) {
 }
 
 struct data3 {
-    size_t x;
+    long long x;
     char y;
 };
 
