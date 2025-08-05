@@ -24,6 +24,8 @@ func NewTransformer(prog ssa.Program) *Transformer {
 		tr.sys = &TypeInfo32{tr}
 	case "riscv64":
 		tr.sys = &TypeInfoRiscv64{tr}
+	case "arm":
+		tr.sys = &TypeInfoArm{tr}
 	}
 	return tr
 }
