@@ -331,6 +331,11 @@ func (p *TypeInfoArm) GetTypeInfo(ctx llvm.Context, typ llvm.Type, bret bool) *T
 			if checkTypes(types, ctx.Int64Type()) {
 				return info
 			}
+			if checkTypes(types, ctx.DoubleType()) {
+				info.Kind = AttrWidthType
+				info.Type1 = llvm.ArrayType(ctx.Int64Type(), n)
+				return info
+			}
 		}
 		if n <= 16 {
 			if checkTypesOrKind(types, ctx.Int32Type(), llvm.PointerTypeKind) {
@@ -346,10 +351,7 @@ func (p *TypeInfoArm) GetTypeInfo(ctx llvm.Context, typ llvm.Type, bret bool) *T
 				info.Type1 = ctx.Int32Type()
 			}
 		} else {
-			if checkTypes(types, ctx.DoubleType()) {
-				info.Kind = AttrWidthType
-				info.Type1 = llvm.ArrayType(ctx.Int64Type(), n)
-			} else if info.Size > 8 {
+			if info.Size > 64 {
 				info.Kind = AttrPointer
 				info.Type1 = llvm.PointerType(typ, 0)
 			} else {
