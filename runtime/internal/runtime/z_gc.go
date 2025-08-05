@@ -26,6 +26,10 @@ import (
 	"github.com/goplus/llgo/runtime/internal/clite/bdwgc"
 )
 
+func init() {
+	bdwgc.Init()
+}
+
 // AllocU allocates uninitialized memory.
 func AllocU(size uintptr) unsafe.Pointer {
 	return bdwgc.Malloc(size)

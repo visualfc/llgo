@@ -23,14 +23,10 @@ import (
 	_ "github.com/goplus/llgo/runtime/internal/clite/bdwgc/link"
 )
 
-func init() {
-	gc_init()
-}
-
 // -----------------------------------------------------------------------------
 
-//go:linkname gc_init C.GC_init
-func gc_init()
+//go:linkname Init C.GC_init
+func Init()
 
 //go:linkname Malloc C.GC_malloc
 func Malloc(size uintptr) c.Pointer
