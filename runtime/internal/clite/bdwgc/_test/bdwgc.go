@@ -90,8 +90,6 @@ func check(b bool, msg *c.Char) {
 }
 
 func TestFinalizer(t *testing.T) {
-	bdwgc.Init()
-
 	callFunc()
 	clearStack()
 	bdwgc.Gcollect()
