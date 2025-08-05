@@ -361,7 +361,7 @@ func (p *TypeInfoArm) GetTypeInfo(ctx llvm.Context, typ llvm.Type, bret bool) *T
 			} else {
 				info.Kind = AttrWidthType
 				if hasTypes(types, ctx.DoubleType()) {
-					info.Type1 = llvm.ArrayType(ctx.Int64Type(), (info.Size/8+3)&^3)
+					info.Type1 = llvm.ArrayType(ctx.Int64Type(), (info.Size/8+7)&^7)
 				} else {
 					info.Type1 = llvm.ArrayType(ctx.Int32Type(), (info.Size/4+3)&^3)
 				}
