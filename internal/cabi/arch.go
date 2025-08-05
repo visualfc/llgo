@@ -46,6 +46,15 @@ func checkTypes(typs []llvm.Type, typ llvm.Type) bool {
 	return true
 }
 
+func hasTypes(typs []llvm.Type, typ llvm.Type) bool {
+	for _, t := range typs {
+		if t == typ {
+			return true
+		}
+	}
+	return false
+}
+
 func checkTypesOrKind(typs []llvm.Type, typ llvm.Type, kind llvm.TypeKind) bool {
 	for _, t := range typs {
 		if !(t == typ || t.TypeKind() == kind) {
@@ -340,11 +349,6 @@ func (p *TypeInfoArm) GetTypeInfo(ctx llvm.Context, typ llvm.Type, bret bool) *T
 				if checkTypes(types, ctx.Int64Type()) {
 					return info
 				}
-				if checkTypes(types, ctx.DoubleType()) {
-					info.Kind = AttrWidthType
-					info.Type1 = llvm.ArrayType(ctx.Int64Type(), n)
-					return info
-				}
 			}
 			if n <= 16 {
 				if checkTypesOrKind(types, ctx.Int32Type(), llvm.PointerTypeKind) {
@@ -356,7 +360,11 @@ func (p *TypeInfoArm) GetTypeInfo(ctx llvm.Context, typ llvm.Type, bret bool) *T
 				info.Type1 = llvm.PointerType(typ, 0)
 			} else {
 				info.Kind = AttrWidthType
-				info.Type1 = llvm.ArrayType(ctx.Int32Type(), (n+3)&^3)
+				if hasTypes(types, ctx.DoubleType()) {
+					info.Type1 = llvm.ArrayType(ctx.Int64Type(), (info.Size/8+3)&^3)
+				} else {
+					info.Type1 = llvm.ArrayType(ctx.Int32Type(), (info.Size/4+3)&^3)
+				}
 			}
 		}
 	}

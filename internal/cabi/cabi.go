@@ -1,7 +1,6 @@
 package cabi
 
 import (
-	"log"
 	"strings"
 
 	"github.com/goplus/llgo/ssa"
@@ -16,7 +15,6 @@ func NewTransformer(prog ssa.Program) *Transformer {
 		GOOS:   target.GOOS,
 		GOARCH: target.GOARCH,
 	}
-	log.Println("~~~~~~~", target.GOARCH, target.GOOS, target.GOARM)
 	switch target.GOARCH {
 	case "amd64":
 		tr.sys = &TypeInfoAmd64{tr}
