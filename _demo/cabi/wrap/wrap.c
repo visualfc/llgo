@@ -131,7 +131,7 @@ struct data1 {
 };
 
 struct data1 fn1(struct data1 pt) {
-    printf("data1: %d %zu\n",pt.x,pt.y);
+    printf("data1: %d %lld\n",pt.x,pt.y);
     return pt;
 }
 
@@ -141,7 +141,7 @@ struct data2 {
 };
 
 struct data2 fn2(struct data2 pt) {
-    printf("data2: %d %zu\n",pt.x,pt.y);
+    printf("data2: %d %lld\n",pt.x,pt.y);
     return pt;
 }
 
@@ -151,7 +151,7 @@ struct data3 {
 };
 
 struct data3 fn3(struct data3 pt) {
-    printf("data3: %zu %d\n",pt.x,pt.y);
+    printf("data3: %lld %d\n",pt.x,pt.y);
     return pt;
 }
 
