@@ -350,11 +350,11 @@ func (p *TypeInfoArm) GetTypeInfo(ctx llvm.Context, typ llvm.Type, bret bool) *T
 					return info
 				}
 			}
-			if n <= 16 {
-				if checkTypesOrKind(types, ctx.Int32Type(), llvm.PointerTypeKind) {
-					return info
-				}
-			}
+			// if n <= 16 {
+			// 	if checkTypesOrKind(types, ctx.Int32Type(), llvm.PointerTypeKind) {
+			// 		return info
+			// 	}
+			// }
 			if info.Size > 64 {
 				info.Kind = AttrPointer
 				info.Type1 = llvm.PointerType(typ, 0)
