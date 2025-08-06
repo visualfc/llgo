@@ -345,25 +345,15 @@ func (p *TypeInfoArm) GetTypeInfo(ctx llvm.Context, typ llvm.Type, bret bool) *T
 				info.Type1 = ctx.Int32Type()
 			}
 		} else {
-			if n <= 8 {
-				if checkTypes(types, ctx.Int64Type()) {
-					return info
-				}
-			}
-			// if n <= 16 {
-			// 	if checkTypesOrKind(types, ctx.Int32Type(), llvm.PointerTypeKind) {
-			// 		return info
-			// 	}
-			// }
 			if info.Size > 64 {
 				info.Kind = AttrPointer
 				info.Type1 = llvm.PointerType(typ, 0)
 			} else {
 				info.Kind = AttrWidthType
 				if hasTypes(types, ctx.Int64Type()) || hasTypes(types, ctx.DoubleType()) {
-					info.Type1 = llvm.ArrayType(ctx.Int64Type(), (info.Size/8+7)&^7)
+					info.Type1 = llvm.ArrayType(ctx.Int64Type(), info.Size/8)
 				} else {
-					info.Type1 = llvm.ArrayType(ctx.Int32Type(), (info.Size/4+3)&^3)
+					info.Type1 = llvm.ArrayType(ctx.Int32Type(), info.Size/4)
 				}
 			}
 		}
