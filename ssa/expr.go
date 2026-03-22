@@ -1258,11 +1258,15 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	default:
 		log.Panicf("unreachable: %d(%T), %v\n", kind, raw, fn.RawType())
 	}
+	var reflectKind int
 	if b.Pkg.Path() != "reflect" {
-		b.checkReflect(fn, args)
+		reflectKind = b.checkReflect(fn, args)
 	}
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
+	if reflectKind&ReflectMethodMask != 0 {
+		b.Prog.methodCheckedLoad(b.impl, b.Pkg.Module(), b.Extract(ret, 1).impl, "go.method.reflect")
+	}
 	return
 }
 
@@ -1280,23 +1284,23 @@ const (
 	ReflectMethodMask = ReflectMethodByIndex | ReflectMethodByName | ReflectMethodDynamic
 )
 
-func (b Builder) checkReflect(fn Expr, args []Expr) {
+func (b Builder) checkReflect(fn Expr, args []Expr) (reflectKind int) {
 	pkg := b.Pkg
 	switch fn.Name() {
 	case "reflect.ArrayOf":
-		pkg.NeedAbiInit |= ReflectArrayOf
+		reflectKind = ReflectArrayOf
 	case "reflect.ChanOf":
-		pkg.NeedAbiInit |= ReflectChanOf
+		reflectKind = ReflectChanOf
 	case "reflect.FuncOf":
-		pkg.NeedAbiInit |= ReflectFuncOf
+		reflectKind = ReflectFuncOf
 	case "reflect.MapOf":
-		pkg.NeedAbiInit |= ReflectMapOf
+		reflectKind = ReflectMapOf
 	case "reflect.PointerTo", "reflect.PtrTo":
-		pkg.NeedAbiInit |= ReflectPointerTo
+		reflectKind = ReflectPointerTo
 	case "reflect.SliceOf", "reflect.Value.Slice":
-		pkg.NeedAbiInit |= ReflectSliceOf
+		reflectKind = ReflectSliceOf
 	case "reflect.StructOf":
-		pkg.NeedAbiInit |= ReflectStructOf
+		reflectKind = ReflectStructOf
 	case "reflect.Value.Method":
 		if len(args) == 2 {
 			if v, ok := extractConstInt(args[1].impl); ok {
@@ -1305,9 +1309,9 @@ func (b Builder) checkReflect(fn Expr, args []Expr) {
 				}
 				pkg.MethodByIndex[v] = none{}
 				pkg.NeedAbiInit |= ReflectMethodByIndex
-				return
+				break
 			}
-			pkg.NeedAbiInit |= ReflectMethodDynamic
+			reflectKind = ReflectMethodDynamic
 		}
 	case "reflect.Value.MethodByName":
 		if len(args) == 2 {
@@ -1316,12 +1320,14 @@ func (b Builder) checkReflect(fn Expr, args []Expr) {
 					pkg.MethodByName = make(map[string]none)
 				}
 				pkg.MethodByName[v] = none{}
-				pkg.NeedAbiInit |= ReflectMethodByName
-				return
+				reflectKind = ReflectMethodByName
+				break
 			}
-			pkg.NeedAbiInit |= ReflectMethodDynamic
+			reflectKind = ReflectMethodDynamic
 		}
 	}
+	pkg.NeedAbiInit |= reflectKind
+	return
 }
 
 func extractConstInt(v llvm.Value) (r int, ok bool) {

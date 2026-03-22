@@ -198,6 +198,188 @@ func TestNewFuncExLLVMUsed(t *testing.T) {
 	}
 }
 
+func TestAddTypeMetadata(t *testing.T) {
+	prog := NewProgram(nil)
+	prog.EnableGoGlobalDCE(true)
+	pkg := prog.NewPackage("main", "main")
+	g := pkg.NewVarEx("g", prog.Pointer(prog.Int()))
+	prog.addTypeMetadata(g.impl, 8, "go.method.F:func()")
+	prog.addTypeMetadata(g.impl, 16, "go.method.G:func()")
+	prog.setVCallVisibilityMetadata(g.impl, vcallVisibilityLinkageUnit)
+	ir := pkg.String()
+	if !strings.Contains(ir, `!type !`) {
+		t.Fatalf("missing !type metadata:\n%s", ir)
+	}
+	if !strings.Contains(ir, `!"go.method.F:func()"`) {
+		t.Fatalf("missing F type metadata:\n%s", ir)
+	}
+	if !strings.Contains(ir, `!"go.method.G:func()"`) {
+		t.Fatalf("missing G type metadata:\n%s", ir)
+	}
+	if !strings.Contains(ir, `!vcall_visibility !`) {
+		t.Fatalf("missing !vcall_visibility metadata:\n%s", ir)
+	}
+	if !strings.Contains(ir, `!"Virtual Function Elim"`) {
+		t.Fatalf("missing Virtual Function Elim module flag:\n%s", ir)
+	}
+	if !strings.Contains(ir, `i32 8, !"Virtual Function Elim", i32 1`) {
+		t.Fatalf("missing min-behavior Virtual Function Elim module flag:\n%s", ir)
+	}
+}
+
+func TestMethodCapabilitySigIgnoresParameterNames(t *testing.T) {
+	errType := types.Universe.Lookup("error").Type()
+	named := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, nil, "path", types.Typ[types.String])),
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "fd", types.Typ[types.Int]),
+			types.NewVar(token.NoPos, nil, "err", errType),
+		),
+		false)
+	unnamed := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.String])),
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "", types.Typ[types.Int]),
+			types.NewVar(token.NoPos, nil, "", errType),
+		),
+		false)
+
+	got := methodCapabilitySig(named)
+	want := methodCapabilitySig(unnamed)
+	if got != want {
+		t.Fatalf("methodCapabilitySig should ignore parameter names: got %q, want %q", got, want)
+	}
+	if got != "func(string) (int, error)" {
+		t.Fatalf("methodCapabilitySig kept parameter names: %q", got)
+	}
+}
+
+func TestMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *testing.T) {
+	pkg := types.NewPackage("p", "p")
+	tname := types.NewTypeName(token.NoPos, pkg, "T", nil)
+	recvType := types.NewNamed(tname, types.NewStruct(nil, nil), nil)
+	recv := types.NewVar(token.NoPos, pkg, "", recvType)
+	concrete := types.NewFunc(token.NoPos, pkg, "F", types.NewSignatureType(recv, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "path", types.Typ[types.String])),
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "ret", types.Typ[types.Int])),
+		false))
+	iface := types.NewFunc(token.NoPos, pkg, "F", types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "", types.Typ[types.String])),
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "", types.Typ[types.Int])),
+		false))
+
+	got := methodCapabilityKey(concrete)
+	want := methodCapabilityKey(iface)
+	if got != want {
+		t.Fatalf("concrete and interface method capability keys differ: got %q, want %q", got, want)
+	}
+	if want := "go.method.F:func(string) int"; got != want {
+		t.Fatalf("methodCapabilityKey = %q, want %q", got, want)
+	}
+}
+
+func TestMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
+	pkg := types.NewPackage("example.com/p", "p")
+	pointStruct := func() *types.Struct {
+		return types.NewStruct([]*types.Var{
+			types.NewField(token.NoPos, pkg, "x", types.Typ[types.Float64], false),
+			types.NewField(token.NoPos, pkg, "y", types.Typ[types.Float64], false),
+		}, nil)
+	}
+	myPoint := types.NewAlias(types.NewTypeName(token.NoPos, pkg, "MyPoint", nil), pointStruct())
+	iPoint := types.NewAlias(types.NewTypeName(token.NoPos, pkg, "IPoint", nil), pointStruct())
+	recvType := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "S", nil), types.NewStruct(nil, nil), nil)
+	recv := types.NewVar(token.NoPos, pkg, "", recvType)
+	params := types.NewTuple(
+		types.NewVar(token.NoPos, pkg, "dx", types.Typ[types.Float64]),
+		types.NewVar(token.NoPos, pkg, "dy", types.Typ[types.Float64]),
+	)
+	concrete := types.NewFunc(token.NoPos, pkg, "NewPoint", types.NewSignatureType(recv, nil, nil,
+		params,
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "", types.NewPointer(myPoint))),
+		false))
+	iface := types.NewFunc(token.NoPos, pkg, "NewPoint", types.NewSignatureType(nil, nil, nil,
+		params,
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "", types.NewPointer(iPoint))),
+		false))
+
+	got := methodCapabilityKey(concrete)
+	want := methodCapabilityKey(iface)
+	if got != want {
+		t.Fatalf("methodCapabilityKey should ignore aliases: got %q, want %q", got, want)
+	}
+	if strings.Contains(got, "MyPoint") || strings.Contains(got, "IPoint") {
+		t.Fatalf("methodCapabilityKey kept alias names: %q", got)
+	}
+}
+
+func TestReflectPackageDisablesVirtualFunctionElim(t *testing.T) {
+	prog := NewProgram(nil)
+	prog.EnableGoGlobalDCE(true)
+	pkg := prog.NewPackage("reflect", "reflect")
+
+	ir := pkg.String()
+	if !strings.Contains(ir, `i32 8, !"Virtual Function Elim", i32 0`) {
+		t.Fatalf("missing disabled Virtual Function Elim module flag for reflect:\n%s", ir)
+	}
+}
+
+func TestMarkLLVMUsedDedup(t *testing.T) {
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	fn := pkg.NewFunc("Foo", sig, InGo)
+	pkg.markLLVMUsed(fn.impl)
+	pkg.markLLVMUsed(fn.impl)
+	pkg.MaterializePreserveSyms()
+
+	ir := pkg.String()
+	if !strings.Contains(ir, `@llvm.compiler.used = appending global [1 x ptr] [ptr @Foo], section "llvm.metadata"`) {
+		t.Fatalf("unexpected llvm.compiler.used entry:\n%s", ir)
+	}
+}
+
+func TestFakeUseValueInlineAsm(t *testing.T) {
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	target := pkg.NewFunc("Target", sig, InGo)
+	fn := pkg.NewFunc("Use", sig, InGo)
+	b := fn.MakeBody(1)
+	prog.fakeUseValueInlineAsm(b.impl, target.impl)
+	b.Return()
+
+	ir := pkg.String()
+	if !strings.Contains(ir, "asm sideeffect") {
+		t.Fatalf("missing inline asm fake-use:\n%s", ir)
+	}
+	if !strings.Contains(ir, "ptr @Target") {
+		t.Fatalf("missing inline asm operand:\n%s", ir)
+	}
+}
+
+func TestEmitFakeUsesAtEntry(t *testing.T) {
+	prog := NewProgram(nil)
+	prog.EnableGoGlobalDCE(true)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	targetA := pkg.NewFunc("TargetA", sig, InGo)
+	targetB := pkg.NewFunc("TargetB", sig, InGo)
+	fn := pkg.NewFunc("Use", sig, InGo)
+	b := fn.MakeBody(1)
+	fn.recordFakeUse(targetA.impl)
+	fn.recordFakeUse(targetB.impl)
+	fn.recordFakeUse(targetA.impl)
+	b.Return()
+	b.EndBuild()
+
+	ir := pkg.String()
+	if !strings.Contains(ir, "call void (...) @llvm.fake.use(ptr @TargetA, ptr @TargetB)") &&
+		!strings.Contains(ir, "call void @llvm.fake.use(ptr @TargetA, ptr @TargetB)") {
+		t.Fatalf("missing aggregated llvm.fake.use call:\n%s", ir)
+	}
+}
+
 func TestSetBlock(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {

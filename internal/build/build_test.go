@@ -393,3 +393,43 @@ func TestLTOEnabledExplicitOverride(t *testing.T) {
 		t.Fatal("expected LTO=off to disable LTO for target build")
 	}
 }
+
+func TestGoGlobalDCEDefaultsToFullLTO(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want bool
+	}{
+		{name: "lto off", conf: &Config{LTO: lto.Off}, want: false},
+		{name: "thin lto", conf: &Config{LTO: lto.Thin}, want: false},
+		{name: "full lto", conf: &Config{LTO: lto.Full}, want: true},
+		{name: "full lto explicit disabled", conf: &Config{LTO: lto.Full, GoGlobalDCESpecified: true, GoGlobalDCE: false}, want: false},
+		{name: "full lto explicit enabled", conf: &Config{LTO: lto.Full, GoGlobalDCESpecified: true, GoGlobalDCE: true}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.conf.goGlobalDCEEnabled(); got != tt.want {
+				t.Fatalf("goGlobalDCEEnabled() = %v, want %v", got, tt.want)
+			}
+			if err := tt.conf.Validate(); err != nil {
+				t.Fatalf("Validate() unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestGoGlobalDCERequiresFullLTO(t *testing.T) {
+	for _, ltoMode := range []lto.Mode{lto.Off, lto.Thin} {
+		t.Run(ltoMode.String(), func(t *testing.T) {
+			conf := &Config{LTO: ltoMode, GoGlobalDCESpecified: true, GoGlobalDCE: true}
+			err := conf.Validate()
+			if err == nil {
+				t.Fatal("Validate() expected error")
+			}
+			if !strings.Contains(err.Error(), "full LTO") {
+				t.Fatalf("Validate() error = %v, want full LTO error", err)
+			}
+		})
+	}
+}

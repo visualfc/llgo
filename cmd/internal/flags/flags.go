@@ -3,6 +3,7 @@ package flags
 import (
 	"flag"
 	"fmt"
+	"strconv"
 
 	"github.com/goplus/llgo/cmd/internal/compilerhash"
 	"github.com/goplus/llgo/internal/build"
@@ -73,6 +74,36 @@ func AddLTOFlag(fs *flag.FlagSet) {
 	fs.Var(&LTO, "lto", "Enable LTO optimization: thin or full (default: off)")
 }
 
+type goGlobalDCEFlag struct {
+	Specified bool
+	Enabled   bool
+}
+
+func (o *goGlobalDCEFlag) String() string {
+	return strconv.FormatBool(o.Enabled)
+}
+
+func (o *goGlobalDCEFlag) Set(v string) error {
+	enabled, err := strconv.ParseBool(v)
+	if err != nil {
+		return err
+	}
+	o.Specified = true
+	o.Enabled = enabled
+	return nil
+}
+
+func (o *goGlobalDCEFlag) IsBoolFlag() bool {
+	return true
+}
+
+var GoGlobalDCE goGlobalDCEFlag
+
+func AddGlobalDCEFlag(fs *flag.FlagSet) {
+	GoGlobalDCE = goGlobalDCEFlag{}
+	fs.Var(&GoGlobalDCE, "globaldce", "Enable Go global DCE with full LTO (default: true when -lto=full)")
+}
+
 func ResolveLTOMode(defaultValue lto.Mode) lto.Mode {
 	if LTO.Specified {
 		return LTO.Mode
@@ -123,6 +154,7 @@ func AddBuildFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&PrintCommands, "x", false, "Print the commands")
 	AddOptLevelFlags(fs)
 	AddLTOFlag(fs)
+	AddGlobalDCEFlag(fs)
 	fs.StringVar(&Tags, "tags", "", "Build tags")
 	fs.StringVar(&BuildEnv, "buildenv", "", "Build environment")
 	if buildenv.Dev {
@@ -256,6 +288,10 @@ func UpdateConfig(conf *build.Config) error {
 	if LTO.Specified {
 		conf.LTO = LTO.Mode
 	}
+	if GoGlobalDCE.Specified {
+		conf.GoGlobalDCE = GoGlobalDCE.Enabled
+		conf.GoGlobalDCESpecified = true
+	}
 	if SizeReport || SizeFormat != "" || SizeLevel != "" {
 		conf.SizeReport = true
 		if SizeFormat != "" {
@@ -295,7 +331,7 @@ func UpdateConfig(conf *build.Config) error {
 		conf.GenLL = GenLLFiles
 		conf.ForceEspClang = ForceEspClang
 	}
-	return nil
+	return conf.Validate()
 }
 
 func UpdateBuildConfig(conf *build.Config) error {
