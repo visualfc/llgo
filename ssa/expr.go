@@ -810,10 +810,23 @@ func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 				b.Store(r, x)
 				return b.Load(r)
 			}
+			convNamedType := func() Expr {
+				agg := llvm.Undef(t.ll)
+				for i := range t.ll.StructElementTypes() {
+					field := b.impl.CreateExtractValue(x.impl, i, "")
+					agg = b.impl.CreateInsertValue(agg, field, i, "")
+				}
+				return Expr{agg, t}
+			}
 			switch t.RawType().(type) {
 			case *types.Named:
-				if _, ok := x.RawType().(*types.Struct); ok {
+				switch x.RawType().(type) {
+				case *types.Struct:
 					return convType()
+				case *types.Named:
+					if x.impl.Type().String() != t.ll.String() {
+						return convNamedType()
+					}
 				}
 			case *types.Struct:
 				if _, ok := x.RawType().(*types.Named); ok {
