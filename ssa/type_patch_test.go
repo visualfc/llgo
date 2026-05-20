@@ -232,3 +232,20 @@ func f() {
 		t.Fatalf("toType(opaque elem) raw = %v, want unsafe.Pointer", got)
 	}
 }
+
+func TestCvtStructPreservesTags(t *testing.T) {
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	st := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, nil, "Fn", sig, false),
+	}, []string{`protobuf:"bytes,1,opt,name=fn" json:"fn,omitempty"`})
+
+	raw, cvt := newGoTypes().cvtType(st)
+	if !cvt {
+		t.Fatalf("cvtType did not convert function field")
+	}
+	got := raw.(*types.Struct).Tag(0)
+	want := `protobuf:"bytes,1,opt,name=fn" json:"fn,omitempty"`
+	if got != want {
+		t.Fatalf("converted struct tag = %q, want %q", got, want)
+	}
+}
