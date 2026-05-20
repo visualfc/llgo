@@ -353,7 +353,14 @@ func isInstance(f *ssa.Function) bool {
 		return true
 	}
 	if recv := f.Type().(*types.Signature).Recv(); recv != nil {
-		return recv.Origin() != recv
+		if recv.Origin() != recv {
+			return true
+		}
+		if named := recvNamedOk(recv.Type()); named != nil {
+			if hasTypeArgs(named) {
+				return true
+			}
+		}
 	}
 	return false
 }
