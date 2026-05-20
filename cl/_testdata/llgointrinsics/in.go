@@ -104,3 +104,9 @@ func UseSkip() {
 	a, b := skipWithMultiRet()
 	print(a, b)
 }
+
+var libc_foo_trampoline_addr uintptr
+
+func UseAddr() {
+	println(libc_foo_trampoline_addr)
+}

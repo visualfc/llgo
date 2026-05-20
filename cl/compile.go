@@ -882,6 +882,20 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 					}
 				}
 			}
+			// "libc_XXX_trampoline_addr" -> "XXX"
+			if strings.HasSuffix(v.X.Name(), "_trampoline_addr") {
+				if g, ok := v.X.(*ssa.Global); ok && g.Type().(*types.Pointer).Elem() == types.Typ[types.Uintptr] {
+					name := v.X.Name()
+					if cname := strings.TrimPrefix(name[:len(name)-16], "libc_"); cname != "" {
+						cname = p.remapTrampolineCName(cname)
+						fnSig := p.syscallFnSig(0)
+						cfn := b.Pkg.NewFunc(cname, fnSig, llssa.InC)
+						ret = b.Convert(p.type_(types.Typ[types.Uintptr], llssa.InGo), cfn.Expr)
+						p.bvals[iv] = ret
+						return ret
+					}
+				}
+			}
 		}
 		x := p.compileValue(b, v.X)
 		if v.Op == token.ARROW {
