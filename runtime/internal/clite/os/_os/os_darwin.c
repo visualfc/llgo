@@ -24,15 +24,20 @@ uintptr_t llgo_closedir(uintptr_t dir) {
 
 uintptr_t llgo_readdir_r(uintptr_t dir, uintptr_t entry, uintptr_t result) {
 #if READDIR_R_DEPRECATED
-	struct dirent *dp = readdir((DIR *)dir);
-	if (dp == NULL) {
-		*(struct dirent **)result = NULL;
-		return (uintptr_t)(intptr_t)(errno);
-	}
-	size_t len = offsetof(struct dirent, d_name) + strlen(dp->d_name) + 1;
-	memcpy((struct dirent *)entry, dp, len);
-	*(struct dirent **)result = (struct dirent *)entry;
-	return 0;
+    int old_errno = errno;
+    errno = 0;
+    struct dirent *dp = readdir((DIR*)dir);
+    if (dp == NULL) {
+        int save_errno = errno;
+        *(struct dirent **)result = NULL;
+        errno = old_errno;
+        return save_errno;
+    }
+    size_t len = offsetof(struct dirent, d_name) + strlen(dp->d_name) + 1;
+    memcpy((struct dirent *)entry, dp, len);
+    *(struct dirent **)result = (struct dirent *)entry;
+    errno = old_errno;
+    return 0;
 #else
 	int ret = readdir_r((DIR *)dir, (struct dirent *)entry, (struct dirent **)result);
 	return (uintptr_t)(intptr_t)ret;
