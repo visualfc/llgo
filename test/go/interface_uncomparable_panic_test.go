@@ -16,6 +16,20 @@ func TestInterfaceCompareUncomparableDirectValuePanics(t *testing.T) {
 	})
 }
 
+func TestComparableTypeParamInterfaceValuePanics(t *testing.T) {
+	type uncomparableParam struct {
+		s []int
+	}
+	v := any(uncomparableParam{s: []int{1}})
+	expectPanicContaining(t, "comparing uncomparable type gotest.uncomparableParam", func() {
+		_ = eqComparable[any](v, v)
+	})
+}
+
+func eqComparable[T comparable](a, b T) bool {
+	return a == b
+}
+
 func TestInterfaceCompareEvaluationPanicsAreRuntimeErrors(t *testing.T) {
 	var (
 		x interface{}
