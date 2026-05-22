@@ -15,13 +15,12 @@ import (
 // CHECK-LINE: @17 = private unnamed_addr constant [7 x i8] c"imethod", align 1
 // CHECK-LINE: @18 = private unnamed_addr constant [6 x i8] c"method", align 1
 // CHECK-LINE: @22 = private unnamed_addr constant [10 x i8] c"call.slice", align 1
-// CHECK-LINE: @23 = private unnamed_addr constant [40 x i8] c"type assertion interface{} -> int failed", align 1
-// CHECK-LINE: @37 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @38 = private unnamed_addr constant [5 x i8] c"world", align 1
-// CHECK-LINE: @39 = private unnamed_addr constant [14 x i8] c"MapIndex error", align 1
-// CHECK-LINE: @40 = private unnamed_addr constant [4 x i8] c"todo", align 1
-// CHECK-LINE: @41 = private unnamed_addr constant [12 x i8] c"must invalid", align 1
-// CHECK-LINE: @42 = private unnamed_addr constant [13 x i8] c"MapIter error", align 1
+// CHECK-LINE: @36 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK-LINE: @37 = private unnamed_addr constant [5 x i8] c"world", align 1
+// CHECK-LINE: @38 = private unnamed_addr constant [14 x i8] c"MapIndex error", align 1
+// CHECK-LINE: @39 = private unnamed_addr constant [4 x i8] c"todo", align 1
+// CHECK-LINE: @40 = private unnamed_addr constant [12 x i8] c"must invalid", align 1
+// CHECK-LINE: @41 = private unnamed_addr constant [13 x i8] c"MapIter error", align 1
 
 func main() {
 	callSlice()
@@ -714,10 +713,7 @@ func callMethod() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   %37 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @23, i64 40 }, ptr %37, align 8
-// CHECK-NEXT:   %38 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %37, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %38)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %22, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

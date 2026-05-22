@@ -11,7 +11,7 @@ import (
 // CHECK-LINE: @29 = private unnamed_addr constant [11 x i8] c"short write", align 1
 // CHECK-LINE: @30 = private unnamed_addr constant [11 x i8] c"hello world", align 1
 // CHECK-LINE: @53 = private unnamed_addr constant [50 x i8] c"{{.*}}/cl/_testgo/reader.nopCloser", align 1
-// CHECK-LINE: @54 = private unnamed_addr constant [122 x i8] c"type assertion {{.*}}/cl/_testgo/reader.Reader -> {{.*}}/cl/_testgo/reader.WriterTo failed", align 1
+// CHECK-LINE: @54 = private unnamed_addr constant [49 x i8] c"interface { WriteTo(main.Writer) (int64, error) }", align 1
 // CHECK-LINE: @55 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/reader.nopCloserWriterTo", align 1
 // CHECK-LINE: @56 = private unnamed_addr constant [37 x i8] c"stringsReader.ReadAt: negative offset", align 1
 // CHECK-LINE: @57 = private unnamed_addr constant [34 x i8] c"stringsReader.Seek: invalid whence", align 1
@@ -689,10 +689,7 @@ func main() {
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %23
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %24 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @54, i64 122 }, ptr %24, align 8
-// CHECK-NEXT:   %25 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %24, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %25)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %5, %"{{.*}}/runtime/internal/runtime.String" { ptr @54, i64 49 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 7 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
