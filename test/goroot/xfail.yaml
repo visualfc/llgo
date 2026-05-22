@@ -1784,10 +1784,6 @@ xfails:
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
-    case: init1.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: method.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
