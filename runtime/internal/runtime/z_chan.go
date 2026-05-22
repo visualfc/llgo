@@ -88,10 +88,24 @@ func ChanClose(p *Chan) {
 		panic("close of nil channel")
 	}
 	p.mutex.Lock()
+	if p.close {
+		p.mutex.Unlock()
+		panic("close of closed channel")
+	}
 	p.close = true
 	notifyOps(p)
 	p.mutex.Unlock()
 	p.cond.Broadcast()
+}
+
+func panicSendOnClosedChan() {
+	panic("send on closed channel")
+}
+
+func zeroChanRecv(v unsafe.Pointer, eltSize int) {
+	if v != nil && eltSize > 0 {
+		c.Memset(v, 0, uintptr(eltSize))
+	}
 }
 
 func ChanTrySend(p *Chan, v unsafe.Pointer, eltSize int) bool {
@@ -102,7 +116,7 @@ func ChanTrySend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 	p.mutex.Lock()
 	if p.close {
 		p.mutex.Unlock()
-		panic("send on closed channel")
+		panicSendOnClosedChan()
 	}
 	if n == 0 {
 		if p.getp != chanHasRecv {
@@ -148,7 +162,7 @@ func ChanSend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 		}
 		if p.close {
 			p.mutex.Unlock()
-			panic("send on closed channel")
+			panicSendOnClosedChan()
 		}
 		if p.data != nil {
 			c.Memcpy(p.data, v, uintptr(eltSize))
@@ -160,7 +174,7 @@ func ChanSend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 		}
 		if p.close {
 			p.mutex.Unlock()
-			panic("send on closed channel")
+			panicSendOnClosedChan()
 		}
 		off := (p.getp + p.len) % n
 		c.Memcpy(c.Advance(p.data, off*eltSize), v, uintptr(eltSize))
@@ -185,6 +199,9 @@ func chanTryRecv(p *Chan, v unsafe.Pointer, eltSize int, acceptSelectSend bool) 
 	if n == 0 {
 		if p.sends == 0 || p.getp == chanHasRecv || p.close {
 			tryOK = p.close
+			if p.close {
+				zeroChanRecv(v, eltSize)
+			}
 			p.mutex.Unlock()
 			return
 		}
@@ -197,6 +214,9 @@ func chanTryRecv(p *Chan, v unsafe.Pointer, eltSize int, acceptSelectSend bool) 
 	} else {
 		if p.len == 0 {
 			tryOK = p.close
+			if p.close {
+				zeroChanRecv(v, eltSize)
+			}
 			p.mutex.Unlock()
 			return
 		}
@@ -235,6 +255,7 @@ func ChanRecv(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool) {
 			p.cond.Wait(&p.mutex)
 		}
 		if p.close {
+			zeroChanRecv(v, eltSize)
 			p.mutex.Unlock()
 			return false
 		}
@@ -243,6 +264,7 @@ func ChanRecv(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool) {
 	} else {
 		for p.len == 0 {
 			if p.close {
+				zeroChanRecv(v, eltSize)
 				p.mutex.Unlock()
 				return false
 			}
