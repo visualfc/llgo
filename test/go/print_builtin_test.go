@@ -37,6 +37,8 @@ func main() {
 	println(int64(-7))
 	println(uint64(7), uint32(7), uint16(7), uint8(7), uint(7), uintptr(7))
 	println(8.0, complex(9.0, 10.0))
+	println(1e7, -1e7, 1.001e2, 4.4e-1, 8e-2)
+	println(complex(1e7, -1e7), complex(4.4e-1, 8e-2))
 	println(true, false, "hello")
 	print("inline: ")
 	println("one", "two")
