@@ -158,7 +158,7 @@ type N struct {
 // CHECK-NEXT:   %35 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %34, 0
 // CHECK-NEXT:   %36 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %34, 1
 // CHECK-NEXT:   %37 = icmp uge i64 0, %36
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %37)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %37, {{.*}})
 // CHECK-NEXT:   %38 = getelementptr inbounds i64, ptr %35, i64 0
 // CHECK-NEXT:   %39 = load i64, ptr %38, align 8
 // CHECK-NEXT:   %40 = icmp ne i64 %39, 1
@@ -191,7 +191,7 @@ type N struct {
 // CHECK-NEXT:   %50 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %34, 0
 // CHECK-NEXT:   %51 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %34, 1
 // CHECK-NEXT:   %52 = icmp uge i64 1, %51
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %52)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %52, {{.*}})
 // CHECK-NEXT:   %53 = getelementptr inbounds i64, ptr %50, i64 1
 // CHECK-NEXT:   %54 = load i64, ptr %53, align 8
 // CHECK-NEXT:   %55 = icmp ne i64 %54, 2

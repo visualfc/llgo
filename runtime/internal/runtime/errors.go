@@ -69,6 +69,39 @@ var boundsNegErrorFmts = [...]string{
 
 func (e boundsError) RuntimeError() {}
 
+func panicBounds(x int64, signed bool, y int, code boundsErrorCode) {
+	panic(boundsError{x: x, signed: signed, y: y, code: code})
+}
+
+func boundsOutOfRange(x int64, signed bool, y int, inclusive bool) bool {
+	if signed {
+		if x < 0 {
+			return true
+		}
+		if inclusive {
+			return x > int64(y)
+		}
+		return x >= int64(y)
+	}
+	if inclusive {
+		return uint64(x) > uint64(y)
+	}
+	return uint64(x) >= uint64(y)
+}
+
+func boundsAbove(x int64, signed bool, y int64) bool {
+	if signed {
+		return x < 0 || x > y
+	}
+	return uint64(x) > uint64(y)
+}
+
+func CheckIndexRange(b bool, x int64, signed bool, y int) {
+	if b {
+		panicBounds(x, signed, y, boundsIndex)
+	}
+}
+
 func appendIntStr(b []byte, v int64, signed bool) []byte {
 	if signed && v < 0 {
 		b = append(b, '-')

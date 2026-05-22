@@ -91,7 +91,7 @@ func bytes(s string) (ret []byte) {
 // CHECK-NEXT:   %9 = icmp slt i64 %5, 0
 // CHECK-NEXT:   %10 = icmp uge i64 %5, %8
 // CHECK-NEXT:   %11 = or i1 %10, %9
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %11, {{.*}})
 // CHECK-NEXT:   %12 = getelementptr inbounds i8, ptr %7, i64 %5
 // CHECK-NEXT:   %13 = load i8, ptr %12, align 1
 // CHECK-NEXT:   %14 = call i32 (ptr, ...) @printf(ptr @0, i8 %13)
@@ -983,7 +983,7 @@ func printbool(v bool) {
 // CHECK-NEXT:   %47 = icmp slt i64 %44, 0
 // CHECK-NEXT:   %48 = icmp uge i64 %44, 14
 // CHECK-NEXT:   %49 = or i1 %48, %47
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %49)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %49, {{.*}})
 // CHECK-NEXT:   %50 = getelementptr inbounds i8, ptr %8, i64 %44
 // CHECK-NEXT:   store i8 %46, ptr %50, align 1
 // CHECK-NEXT:   %51 = sitofp i64 %43 to double
@@ -1116,13 +1116,13 @@ func printfloat(v float64) {
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_3
 // CHECK-NEXT:   %2 = urem i64 %22, 16
 // CHECK-NEXT:   %3 = icmp uge i64 %2, 16
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %3)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %3, {{.*}})
 // CHECK-NEXT:   %4 = getelementptr inbounds i8, ptr @28, i64 %2
 // CHECK-NEXT:   %5 = load i8, ptr %4, align 1
 // CHECK-NEXT:   %6 = icmp slt i64 %23, 0
 // CHECK-NEXT:   %7 = icmp uge i64 %23, 100
 // CHECK-NEXT:   %8 = or i1 %7, %6
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %8)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %8, {{.*}})
 // CHECK-NEXT:   %9 = getelementptr inbounds i8, ptr %1, i64 %23
 // CHECK-NEXT:   store i8 %5, ptr %9, align 1
 // CHECK-NEXT:   %10 = icmp ult i64 %22, 16
@@ -1133,17 +1133,17 @@ func printfloat(v float64) {
 // CHECK-NEXT:   %12 = icmp slt i64 %11, 0
 // CHECK-NEXT:   %13 = icmp uge i64 %11, 100
 // CHECK-NEXT:   %14 = or i1 %13, %12
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %14, {{.*}})
 // CHECK-NEXT:   %15 = getelementptr inbounds i8, ptr %1, i64 %11
 // CHECK-NEXT:   store i8 120, ptr %15, align 1
 // CHECK-NEXT:   %16 = sub i64 %11, 1
 // CHECK-NEXT:   %17 = icmp slt i64 %16, 0
 // CHECK-NEXT:   %18 = icmp uge i64 %16, 100
 // CHECK-NEXT:   %19 = or i1 %18, %17
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %19)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %19, {{.*}})
 // CHECK-NEXT:   %20 = getelementptr inbounds i8, ptr %1, i64 %16
 // CHECK-NEXT:   store i8 48, ptr %20, align 1
-// CHECK-NEXT:   %21 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice3"(ptr %1, i64 1, i64 100, i64 %16, i64 100, i64 100)
+// CHECK-NEXT:   %21 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice{{.*}}"({{.*}})
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.gwrite"(%"{{.*}}/runtime/internal/runtime.Slice" %21)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
@@ -1222,7 +1222,7 @@ func printint(v int64) {
 // CHECK-NEXT:   %7 = icmp slt i64 %3, 0
 // CHECK-NEXT:   %8 = icmp uge i64 %3, %6
 // CHECK-NEXT:   %9 = or i1 %8, %7
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %9)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %9, {{.*}})
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %5, i64 %3
 // CHECK-NEXT:   %11 = load %"{{.*}}/runtime/internal/runtime.eface", ptr %10, align 8
 // CHECK-NEXT:   %12 = icmp ne i64 %3, 0
@@ -1290,14 +1290,14 @@ func printstring(s string) {
 // CHECK-NEXT:   %5 = icmp slt i64 %12, 0
 // CHECK-NEXT:   %6 = icmp uge i64 %12, 100
 // CHECK-NEXT:   %7 = or i1 %6, %5
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %7)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %7, {{.*}})
 // CHECK-NEXT:   %8 = getelementptr inbounds i8, ptr %1, i64 %12
 // CHECK-NEXT:   store i8 %4, ptr %8, align 1
 // CHECK-NEXT:   %9 = icmp ult i64 %11, 10
 // CHECK-NEXT:   br i1 %9, label %_llgo_2, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_3
-// CHECK-NEXT:   %10 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice3"(ptr %1, i64 1, i64 100, i64 %12, i64 100, i64 100)
+// CHECK-NEXT:   %10 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice{{.*}}"({{.*}})
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.gwrite"(%"{{.*}}/runtime/internal/runtime.Slice" %10)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:

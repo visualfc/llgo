@@ -500,7 +500,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %257 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %256, 0
 // CHECK-NEXT:   %258 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %256, 1
 // CHECK-NEXT:   %259 = icmp uge i64 0, %258
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %259)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %259, {{.*}})
 // CHECK-NEXT:   %260 = getelementptr inbounds %reflect.Value, ptr %257, i64 0
 // CHECK-NEXT:   %261 = load %reflect.Value, ptr %260, align 8
 // CHECK-NEXT:   %262 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %261)
@@ -528,7 +528,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %273 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %272, 0
 // CHECK-NEXT:   %274 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %272, 1
 // CHECK-NEXT:   %275 = icmp uge i64 0, %274
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %275)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %275, {{.*}})
 // CHECK-NEXT:   %276 = getelementptr inbounds %reflect.Value, ptr %273, i64 0
 // CHECK-NEXT:   %277 = load %reflect.Value, ptr %276, align 8
 // CHECK-NEXT:   %278 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %277)
@@ -563,7 +563,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %8 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 0
 // CHECK-NEXT:   %9 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 1
 // CHECK-NEXT:   %10 = icmp uge i64 0, %9
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %10)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %10, {{.*}})
 // CHECK-NEXT:   %11 = getelementptr inbounds %reflect.Value, ptr %8, i64 0
 // CHECK-NEXT:   %12 = load %reflect.Value, ptr %11, align 8
 // CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %12)
@@ -596,7 +596,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %8 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 0
 // CHECK-NEXT:   %9 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 1
 // CHECK-NEXT:   %10 = icmp uge i64 0, %9
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %10)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %10, {{.*}})
 // CHECK-NEXT:   %11 = getelementptr inbounds %reflect.Value, ptr %8, i64 0
 // CHECK-NEXT:   %12 = load %reflect.Value, ptr %11, align 8
 // CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %12)

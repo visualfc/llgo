@@ -60,11 +60,20 @@ func CStrDup(s String) *int8 {
 }
 
 func StringSlice(base String, i, j int) String {
-	if i < 0 || j < i || j > base.len {
-		panic("string slice index out of bounds")
+	return StringSlice2(base, int64(i), int64(j), true, true)
+}
+
+func StringSlice2(base String, i, j int64, iSigned, jSigned bool) String {
+	if boundsOutOfRange(j, jSigned, base.len, true) {
+		panicBounds(j, jSigned, base.len, boundsSliceAlen)
 	}
-	if i < base.len {
-		return String{c.Advance(base.data, i), j - i}
+	if boundsAbove(i, iSigned, j) {
+		panicBounds(i, iSigned, int(j), boundsSliceB)
+	}
+	ii := int(i)
+	jj := int(j)
+	if ii < base.len {
+		return String{c.Advance(base.data, ii), jj - ii}
 	}
 	// Keep the source base for empty suffix slices to avoid advancing past
 	// the underlying allocation while still preserving a stable non-nil base.

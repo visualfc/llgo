@@ -123,7 +123,7 @@ type S []int
 // CHECK-NEXT:   %61 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %60, 0
 // CHECK-NEXT:   %62 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %60, 1
 // CHECK-NEXT:   %63 = icmp uge i64 1, %62
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %63)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %63, {{.*}})
 // CHECK-NEXT:   %64 = getelementptr inbounds i64, ptr %61, i64 1
 // CHECK-NEXT:   %65 = load i64, ptr %64, align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %65)
