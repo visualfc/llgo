@@ -7,7 +7,7 @@ import (
 
 // CHECK-LINE: @2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1
 // CHECK-LINE: @5 = private unnamed_addr constant [7 x i8] c"Context", align 1
-// CHECK-LINE: @10 = private unnamed_addr constant [97 x i8] c"type assertion any -> {{.*}}/cl/_testgo/genericembediface.ReflectionServer failed", align 1
+// CHECK-LINE: @10 = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1
 // CHECK-LINE: @19 = private unnamed_addr constant [4 x i8] c"pass", align 1
 // CHECK-LINE: @20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1
 // CHECK-LINE: @21 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1
@@ -48,10 +48,7 @@ type ReflectionServer interface {
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %21
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %22 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 97 }, ptr %22, align 8
-// CHECK-NEXT:   %23 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %22, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %23)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 68 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
