@@ -24,25 +24,9 @@ func formatFloat(v float64) string {
 	if s, ok := formatSpecialFloat(v); ok {
 		return s
 	}
-	return padLegacyPrintExponent(formatFloatWithC(v, c.Str("%+.6e")))
+	return formatFloatWithC(v, c.Str("%+.6e"))
 }
 
 func formatComplex(v complex128) string {
 	return "(" + formatFloat(real(v)) + formatFloat(imag(v)) + "i)"
-}
-
-func padLegacyPrintExponent(s string) string {
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] != 'e' && s[i] != 'E' {
-			continue
-		}
-		if i+2 >= len(s) || (s[i+1] != '+' && s[i+1] != '-') {
-			return s
-		}
-		for digits := len(s) - (i + 2); digits < 3; digits++ {
-			s = s[:i+2] + "0" + s[i+2:]
-		}
-		return s
-	}
-	return s
 }

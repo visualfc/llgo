@@ -23,52 +23,76 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-const (
-	printComplexReal = 5
-	printComplexImag = 6i
+const printLegacyExponentProbe = `package main
 
-	printComplexValue = printComplexReal + printComplexImag
-)
+func printLegacyProbeFloat(v float64) {
+	println(v)
+}
 
-func printComplexLegacyArg(c complex128) {
+func printLegacyProbeComplex(c complex128) {
 	println(c)
 }
 
-func TestBuiltinPrintComplexLegacyHelper(t *testing.T) {
-	if os.Getenv("LLGO_PRINT_COMPLEX_LEGACY_HELPER") == "" {
-		t.Skip("helper process")
+func main() {
+	println(5.0, 8.0)
+	printLegacyProbeFloat(100.1)
+	println(1 + 2i)
+	printLegacyProbeComplex(1 + 2i)
+	c := complex(4.0, 6.0)
+	println(c)
+}
+`
+
+func TestBuiltinPrintLegacyExponentWidth(t *testing.T) {
+	dir := t.TempDir()
+	mainFile := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(mainFile, []byte(printLegacyExponentProbe), 0644); err != nil {
+		t.Fatal(err)
 	}
 
-	println(printComplexValue)
-	printComplexLegacyArg(printComplexValue)
-
-	c := printComplexValue
-	println(c)
-	printComplexLegacyArg(c)
-}
-
-func TestBuiltinPrintComplexLegacyExponentWidth(t *testing.T) {
-	cmd := exec.Command(os.Args[0], "-test.run=^TestBuiltinPrintComplexLegacyHelper$")
-	cmd.Env = append(os.Environ(), "LLGO_PRINT_COMPLEX_LEGACY_HELPER=1")
+	root := findLLGoRoot(t)
+	cmd := exec.Command("go", "run", "./cmd/llgo", "run", mainFile)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "LLGO_ROOT="+root)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("builtin print complex probe failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+		t.Fatalf("builtin print probe failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 
-	got := strings.ReplaceAll(stderr.String(), "\r\n", "\n")
+	got := filterPrintProbeOutput(stderr.String())
 	want := "" +
-		"(+5.000000e+000+6.000000e+000i)\n" +
-		"(+5.000000e+000+6.000000e+000i)\n" +
-		"(+5.000000e+000+6.000000e+000i)\n" +
-		"(+5.000000e+000+6.000000e+000i)\n"
+		"+5.000000e+00 +8.000000e+00\n" +
+		"+1.001000e+02\n" +
+		"(+1.000000e+00+2.000000e+00i)\n" +
+		"(+1.000000e+00+2.000000e+00i)\n" +
+		"(+4.000000e+00+6.000000e+00i)\n"
 	if got != want {
-		t.Fatalf("builtin print complex output mismatch:\n got %q\nwant %q", got, want)
+		t.Fatalf("builtin print output mismatch:\n got %q\nwant %q", got, want)
 	}
+}
+
+func filterPrintProbeOutput(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	var out strings.Builder
+	for _, line := range strings.SplitAfter(s, "\n") {
+		trimmed := strings.TrimLeft(strings.TrimRight(line, "\n"), " \t")
+		switch {
+		case strings.HasPrefix(trimmed, "ld64.lld: warning: "):
+			continue
+		case strings.HasPrefix(trimmed, "ld.lld: warning: "):
+			continue
+		case strings.HasPrefix(trimmed, "ld: warning: "):
+			continue
+		}
+		out.WriteString(line)
+	}
+	return out.String()
 }
