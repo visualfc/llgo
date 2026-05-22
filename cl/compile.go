@@ -1646,7 +1646,7 @@ func (p *context) patchLocalGenericNamed(t *types.Named) (*types.Named, bool) {
 	if isPatchedLocalGenericName(t.Obj().Name()) {
 		return nil, false
 	}
-	obj := types.NewTypeName(t.Obj().Pos(), t.Obj().Pkg(), p.localNamedName(t, true), nil)
+	obj := types.NewTypeName(t.Obj().Pos(), t.Obj().Pkg(), p.localNamedName(t, false), nil)
 	return types.NewNamed(obj, t.Underlying(), nil), true
 }
 
@@ -1716,7 +1716,7 @@ func (p *context) typeArgName(t types.Type) string {
 	case *types.Named:
 		name := p.localNamedName(t, p.isLocalType(t.Obj()))
 		if pkg := t.Obj().Pkg(); pkg != nil {
-			return pkg.Path() + "." + name
+			return reflectTypeArgPkgPath(pkg) + "." + name
 		}
 		return name
 	case *types.Pointer:
@@ -1737,12 +1737,7 @@ func (p *context) typeArgName(t types.Type) string {
 		}
 		return fmt.Sprintf("%s %s", s, elem)
 	default:
-		return types.TypeString(t, func(pkg *types.Package) string {
-			if pkg == nil {
-				return ""
-			}
-			return pkg.Name()
-		})
+		return types.TypeString(t, reflectTypeArgPkgPath)
 	}
 }
 
@@ -1757,6 +1752,16 @@ func chanDirName(dir types.ChanDir) string {
 	default:
 		panic("invalid channel direction")
 	}
+}
+
+func reflectTypeArgPkgPath(pkg *types.Package) string {
+	if pkg == nil {
+		return ""
+	}
+	if pkg.Path() == "command-line-arguments" && pkg.Name() != "" {
+		return pkg.Name()
+	}
+	return llssa.PathOf(pkg)
 }
 
 func (p *context) isGenericLocalType(obj types.Object) bool {
