@@ -1772,10 +1772,6 @@ flakes:
 xfails:
   - platform: darwin/arm64
     directive: run
-    case: append.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: chancap.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64

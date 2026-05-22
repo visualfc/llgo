@@ -55,11 +55,11 @@ func NewSlice3(base unsafe.Pointer, eltSize, cap, i, j, k int) (s Slice) {
 
 // SliceAppend append elem data and returns a slice.
 func SliceAppend(src Slice, data unsafe.Pointer, num, etSize int) Slice {
+	oldLen := src.len
+	src = GrowSlice(src, num, etSize)
 	if etSize == 0 {
 		return src
 	}
-	oldLen := src.len
-	src = GrowSlice(src, num, etSize)
 	c.Memcpy(c.Advance(src.data, oldLen*etSize), data, uintptr(num*etSize))
 	return src
 }
