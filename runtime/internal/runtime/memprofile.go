@@ -1,7 +1,5 @@
 package runtime
 
-import "github.com/goplus/llgo/runtime/internal/clite/sync/atomic"
-
 // MemProfileRecord describes allocations aggregated by size class.
 type MemProfileRecord struct {
 	AllocBytes, FreeBytes     int64
@@ -29,7 +27,7 @@ func (r *MemProfileRecord) Stack() []uintptr {
 type memProfileBucket struct {
 	size uintptr
 
-	objects uint64
+	objects memProfileCounter
 }
 
 var memProfileBuckets = [...]memProfileBucket{
@@ -70,7 +68,7 @@ func recordMemProfileAlloc(size uintptr) {
 	for i := range memProfileBuckets {
 		b := &memProfileBuckets[i]
 		if b.size == size {
-			atomic.Add(&b.objects, uint64(1))
+			memProfileAddObject(&b.objects)
 			return
 		}
 	}
@@ -90,7 +88,7 @@ func memProfileSizeClass(size uintptr) uintptr {
 
 func MemProfile(p []MemProfileRecord, inuseZero bool) (n int, ok bool) {
 	for i := range memProfileBuckets {
-		if atomic.Load(&memProfileBuckets[i].objects) != 0 {
+		if memProfileLoadObjects(&memProfileBuckets[i].objects) != 0 {
 			n++
 		}
 	}
@@ -100,12 +98,12 @@ func MemProfile(p []MemProfileRecord, inuseZero bool) (n int, ok bool) {
 	j := 0
 	for i := range memProfileBuckets {
 		b := &memProfileBuckets[i]
-		objects := atomic.Load(&b.objects)
+		objects := memProfileLoadObjects(&b.objects)
 		if objects == 0 {
 			continue
 		}
 		p[j] = MemProfileRecord{
-			AllocBytes:   int64(uint64(b.size) * objects),
+			AllocBytes:   int64(uint64(b.size) * uint64(objects)),
 			AllocObjects: int64(objects),
 		}
 		j++
