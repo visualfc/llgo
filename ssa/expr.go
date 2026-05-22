@@ -1378,7 +1378,7 @@ func (b Builder) SliceToArrayPointer(x Expr, typ Type) (ret Expr) {
 	max := b.Prog.IntVal(uint64(typ.RawType().Underlying().(*types.Pointer).Elem().Underlying().(*types.Array).Len()), b.Prog.Int())
 	failed := Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, b.SliceLen(x).impl, max.impl), b.Prog.Bool()}
 	b.IfThen(failed, func() {
-		b.InlineCall(b.Pkg.rtFunc("PanicSliceConvert"), b.SliceLen(x), max)
+		b.InlineCall(b.Pkg.rtFunc("PanicSliceConvert"), max, b.SliceLen(x))
 	})
 	ret.impl = b.SliceData(x).impl
 	return

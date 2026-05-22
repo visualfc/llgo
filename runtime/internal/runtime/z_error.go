@@ -63,7 +63,7 @@ func AssertDivideByZero(b bool) {
 
 func AssertNilDeref(b bool) {
 	if b {
-		panic(errorString("invalid memory address or nil pointer dereference").Error())
+		panic(errorString("invalid memory address or nil pointer dereference"))
 	}
 }
 
