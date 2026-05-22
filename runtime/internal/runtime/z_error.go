@@ -37,6 +37,14 @@ func (e plainError) Error() string {
 	return string(e)
 }
 
+type typeAssertionErrorString string
+
+func (e typeAssertionErrorString) RuntimeError() {}
+
+func (e typeAssertionErrorString) Error() string {
+	return string(e)
+}
+
 func AssertRuntimeError(b bool, msg string) {
 	if b {
 		panic(errorString(msg))
@@ -99,6 +107,10 @@ func panicWrapTypeName(recvType string) string {
 		}
 	}
 	return recvType
+}
+
+func PanicTypeAssertionError(msg string) {
+	panic(typeAssertionErrorString(msg))
 }
 
 // printany prints an argument passed to panic.
