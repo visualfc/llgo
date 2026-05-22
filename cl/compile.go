@@ -1012,16 +1012,6 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			}
 			if refs := v.Referrers(); refs != nil && len(*refs) == 0 {
 				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil {
-					if p.isLargeNonPointerValue(t) {
-						x := p.compileValue(b, v.X)
-						p.assertNilDerefBase(b, v.X)
-						b.AssertNilDeref(x)
-						return
-					}
-				}
-				if _, ok := types.Unalias(v.Type()).Underlying().(*types.Slice); ok {
-					// Zero-length slice-to-array conversions can leave only
-					// an unused slice deref; preserve its required nil check.
 					x := p.compileValue(b, v.X)
 					p.assertNilDerefBase(b, v.X)
 					b.AssertNilDeref(x)
@@ -1060,13 +1050,8 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			ret = b.Recv(x, v.CommaOk)
 		} else {
 			if v.Op == token.MUL {
-				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil && p.prog.SizeOf(t) == 0 {
-					p.assertNilDerefBase(b, v.X)
-				}
-				if isInterfaceCompareDeref(v) {
-					p.assertNilDerefBase(b, v.X)
-					b.AssertNilDeref(x)
-				}
+				p.assertNilDerefBase(b, v.X)
+				b.AssertNilDeref(x)
 			}
 			ret = b.UnOp(v.Op, x)
 		}
@@ -1288,6 +1273,7 @@ func (p *context) compileValueAs(b llssa.Builder, v ssa.Value, typ types.Type) l
 
 func (p *context) assertNilDerefBase(b llssa.Builder, addr ssa.Value) {
 	if field, ok := addr.(*ssa.FieldAddr); ok {
+		p.assertNilDerefBase(b, field.X)
 		base := p.compileValue(b, field.X)
 		b.AssertNilDeref(base)
 	}

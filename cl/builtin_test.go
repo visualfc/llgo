@@ -106,6 +106,39 @@ func compareInterfacePtr(p *interface{}, q interface{}) bool {
 	}
 }
 
+func TestCompileSmallNilDerefGuards(t *testing.T) {
+	_, m := mustCompileLLPkgFromSrc(t, `
+package foo
+
+type value struct {
+	n int
+}
+
+func (v value) method() int {
+	return v.n
+}
+
+func deref(p *int) int {
+	return *p
+}
+
+func unused(p *int) {
+	_ = *p
+}
+
+func field(p *value) int {
+	return p.n
+}
+
+func methodExpr(p *value) int {
+	return (*value).method(p)
+}
+`)
+	if got := strings.Count(m.String(), "AssertNilDeref"); got < 4 {
+		t.Fatalf("compiled IR has %d AssertNilDeref calls, want at least 4:\n%s", got, m.String())
+	}
+}
+
 func TestToBackground(t *testing.T) {
 	if v := toBackground(""); v != llssa.InGo {
 		t.Fatal("toBackground:", v)
