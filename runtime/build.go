@@ -56,4 +56,5 @@ var sourcePatchPkgs = map[string]struct{}{
 	"crypto/internal/constanttime": {},
 	"internal/sync":                {},
 	"iter":                         {},
+	"runtime/metrics":              {},
 }
