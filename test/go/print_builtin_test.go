@@ -41,6 +41,10 @@ const complexConst = 5 + 6i
 
 func printComplex(c complex128) { println(c) }
 
+func printFloatPair(v [2]float64) [2]float64 {
+	return [2]float64{v[0], v[1]}
+}
+
 func printFoo[T any](i interface{}) {
 	switch x := i.(type) {
 	case interface{ foo() T }:
@@ -60,6 +64,9 @@ func main() {
 	println(8.0, complex(9.0, 10.0))
 	println(1e7, -1e7, 1.001e2, 4.4e-1, 8e-2)
 	println(complex(1e7, -1e7), complex(4.4e-1, 8e-2))
+	a := printFloatPair([2]float64{1, 2})
+	b := printFloatPair([2]float64{3, 4})
+	println(a[0], a[1], b[0], b[1])
 	println(complexConst)
 	printComplex(complexConst)
 	printFoo[int](myint(6))
