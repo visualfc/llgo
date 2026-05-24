@@ -49,6 +49,12 @@ func TestAppendZeroSizedElementsLengthOverflow(t *testing.T) {
 	expectAppendPanicContaining(t, "len out of range", func() {
 		s = append(s, oneElem...)
 	})
+
+	a := make([]appendZeroSize, maxInt)
+	b := make([]appendZeroSize, maxInt)
+	expectAppendPanicContaining(t, "len out of range", func() {
+		_ = append(a, b...)
+	})
 }
 
 func expectAppendPanicContaining(t *testing.T, want string, f func()) {

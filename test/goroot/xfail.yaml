@@ -3682,10 +3682,6 @@ xfails:
     reason: go1.26 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
-    case: fixedbugs/issue7550.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: fixedbugs/issue8048.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
@@ -3874,10 +3870,6 @@ xfails:
     directive: run
     case: fixedbugs/issue73920.go
     reason: go1.26 goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue7550.go
-    reason: current main goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue8048.go
