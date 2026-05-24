@@ -136,6 +136,8 @@ func TestMapUpdateAppendRHSOrder(t *testing.T) {
 	}
 }
 
+// Mirrors fixedbugs/issue23017: LHS addresses are evaluated before stores,
+// then stores proceed left-to-right even when a later store panics.
 func TestMultipleAssignmentMapUpdateBeforeNilStore(t *testing.T) {
 	m := map[int]int{}
 	var p *int
