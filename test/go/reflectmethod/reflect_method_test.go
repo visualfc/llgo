@@ -24,6 +24,14 @@ func (m *pointerTarget) Bump(delta int) int {
 	return m.n
 }
 
+type methodIndexLookup interface {
+	Method(int) reflect.Method
+}
+
+type methodNameLookup interface {
+	MethodByName(string) (reflect.Method, bool)
+}
+
 func TestReflectTypeMethodFuncInvocation(t *testing.T) {
 	typ := reflect.TypeOf(target(10))
 	if got, want := typ.NumMethod(), 2; got != want {
@@ -66,6 +74,27 @@ func TestReflectTypeMethodExpressionRetention(t *testing.T) {
 	beta := betaMethod.Func.Interface().(func(target) string)
 	if got, want := beta(7), "beta"; got != want {
 		t.Fatalf("reflect.Type.MethodByName Func call = %q, want %q", got, want)
+	}
+}
+
+func TestReflectTypeMethodFuncInterfaceDispatch(t *testing.T) {
+	typ := reflect.TypeOf(target(11))
+
+	var byIndex methodIndexLookup = typ
+	method := byIndex.Method(0)
+	alpha := method.Func.Interface().(func(target, int) int)
+	if got, want := alpha(11, 4), 15; got != want {
+		t.Fatalf("interface Method Func call = %d, want %d", got, want)
+	}
+
+	var byName methodNameLookup = typ
+	betaMethod, ok := byName.MethodByName("Beta")
+	if !ok {
+		t.Fatal("interface MethodByName returned ok=false")
+	}
+	beta := betaMethod.Func.Interface().(func(target) string)
+	if got, want := beta(11), "beta"; got != want {
+		t.Fatalf("interface MethodByName Func call = %q, want %q", got, want)
 	}
 }
 
