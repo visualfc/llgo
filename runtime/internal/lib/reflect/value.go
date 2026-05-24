@@ -2284,6 +2284,9 @@ func toFFIArg(v Value, typ *abi.Type) unsafe.Pointer {
 	case abi.Chan:
 		return unsafe.Pointer(&v.ptr)
 	case abi.Func:
+		if v.flag&flagIndir != 0 {
+			return v.ptr
+		}
 		return unsafe.Pointer(&v.ptr)
 	case abi.Interface:
 		i := v.Interface()
