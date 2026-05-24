@@ -25,6 +25,8 @@ import (
 
 const builtinPrintProbe = `package main
 
+import "math"
+
 type withMethod interface {
 	f()
 }
@@ -38,6 +40,8 @@ type myfloat float64
 func (x myfloat) foo() float64 { return float64(x) }
 
 const complexConst = 5 + 6i
+
+func f() (int16, float64, string) { return -42, 42.0, "x" }
 
 func printComplex(c complex128) { println(c) }
 
@@ -62,6 +66,9 @@ func main() {
 	println(int64(-7))
 	println(uint64(7), uint32(7), uint16(7), uint8(7), uint(7), uintptr(7))
 	println(8.0, complex(9.0, 10.0))
+	print(f())
+	println(f())
+	println(math.Copysign(0, -1))
 	println(1e7, -1e7, 1.001e2, 4.4e-1, 8e-2)
 	println(complex(1e7, -1e7), complex(4.4e-1, 8e-2))
 	a := printFloatPair([2]float64{1, 2})
