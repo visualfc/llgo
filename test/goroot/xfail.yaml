@@ -2216,10 +2216,6 @@ xfails:
     reason: latest main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
-    case: peano.go
-    reason: latest main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: recover.go
     reason: latest main goroot run failure on darwin/arm64
   - platform: darwin/arm64
@@ -3307,10 +3303,6 @@ xfails:
   - platform: linux/amd64
     directive: run
     case: nilptr.go
-    reason: current main goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: peano.go
     reason: current main goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
