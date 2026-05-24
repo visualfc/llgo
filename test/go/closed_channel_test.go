@@ -1,8 +1,7 @@
 package gotest
 
 import (
-	"fmt"
-	"strings"
+	"strconv"
 	"testing"
 )
 
@@ -75,16 +74,51 @@ func TestCloseClosedChannelPanics(t *testing.T) {
 	})
 }
 
-func expectChannelPanicContaining(t *testing.T, want string, f func()) {
-	t.Helper()
-	defer func() {
-		err := recover()
-		if err == nil {
-			t.Fatalf("expected panic containing %q", want)
+func TestMakeChannelCapacityOutOfRangePanics(t *testing.T) {
+	type intChan chan int
+
+	n := -1
+	expectChannelPanicContaining(t, "makechan: size out of range", func() {
+		_ = make(intChan, n)
+	})
+	expectChannelPanicContaining(t, "makechan: size out of range", func() {
+		_ = make(intChan, int64(n))
+	})
+
+	if strconv.IntSize == 64 {
+		var n2 int64 = 1 << 59
+		expectChannelPanicContaining(t, "makechan: size out of range", func() {
+			_ = make(intChan, int(n2))
+		})
+		n2 = 1<<63 - 1
+		expectChannelPanicContaining(t, "makechan: size out of range", func() {
+			_ = make(intChan, int(n2))
+		})
+	} else {
+		n = 1<<31 - 1
+		expectChannelPanicContaining(t, "makechan: size out of range", func() {
+			_ = make(intChan, n)
+		})
+		expectChannelPanicContaining(t, "makechan: size out of range", func() {
+			_ = make(intChan, int64(n))
+		})
+	}
+}
+
+func TestUnbufferedRangeReceivesLastValueBeforeClose(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		ch := make(chan int)
+		go func(v int) {
+			ch <- v
+			close(ch)
+		}(i)
+
+		var got []int
+		for v := range ch {
+			got = append(got, v)
 		}
-		if got := fmt.Sprint(err); !strings.Contains(got, want) {
-			t.Fatalf("panic = %q, want contains %q", got, want)
+		if len(got) != 1 || got[0] != i {
+			t.Fatalf("iteration %d: range over send-then-close channel = %v, want [%d]", i, got, i)
 		}
-	}()
-	f()
+	}
 }
