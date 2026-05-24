@@ -76,6 +76,37 @@ func TestClosedChannelSelectRecvReturnsZero(t *testing.T) {
 	}
 }
 
+func TestHighFrequencySelectRecvHandshake(t *testing.T) {
+	const n = 100000
+	ch := make(chan int)
+	dummy := make(chan int)
+	done := make(chan struct{})
+
+	go func() {
+		for i := 0; i < n; i++ {
+			ch <- i
+		}
+		close(done)
+	}()
+
+	for i := 0; i < n; i++ {
+		select {
+		case v := <-ch:
+			if v != i {
+				t.Fatalf("receive %d = %d", i, v)
+			}
+		case <-dummy:
+			t.Fatal("dummy channel selected")
+		}
+	}
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("sender did not finish")
+	}
+}
+
 func expectChannelPanicContaining(t *testing.T, want string, f func()) {
 	t.Helper()
 	defer func() {

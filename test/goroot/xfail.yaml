@@ -3559,14 +3559,6 @@ xfails:
     reason: go1.26 goroot run failure on linux/amd64
   - platform: darwin/arm64
     directive: run
-    case: chan/doubleselect.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
-    case: chan/select2.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: convert4.go
     reason: current main goroot run failure on darwin/arm64
   - version: go1.26
