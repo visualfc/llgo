@@ -3721,10 +3721,6 @@ xfails:
     directive: run
     case: typeparam/typeswitch5.go
     reason: go1.25 goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: runoutput
-    case: index0.go
-    reason: current main goroot runoutput failure on darwin/arm64
   - platform: linux/amd64
     directive: run
     case: chan/select3.go
@@ -3943,7 +3939,3 @@ xfails:
     directive: run
     case: typeparam/typeswitch5.go
     reason: go1.25 goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: runoutput
-    case: index0.go
-    reason: current main goroot runoutput failure on linux/amd64
