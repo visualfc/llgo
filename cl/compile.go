@@ -1014,6 +1014,11 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		if v.Op == token.ARROW {
 			ret = b.Recv(x, v.CommaOk)
 		} else {
+			if v.Op == token.MUL {
+				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil && p.prog.SizeOf(t) == 0 {
+					p.assertNilDerefBase(b, v.X)
+				}
+			}
 			ret = b.UnOp(v.Op, x)
 		}
 	case *ssa.ChangeType:

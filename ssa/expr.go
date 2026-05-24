@@ -1190,6 +1190,9 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 		ctx := types.NewParam(token.NoPos, nil, closureCtx, types.Typ[types.UnsafePointer])
 		sigCtx := FuncAddCtx(ctx, sig)
 		ret.Type = b.Prog.retType(sig)
+		if sig.Results().Len() == 1 && b.Prog.SizeOf(ret.Type) == 0 {
+			b.AssertNilDeref(fn)
+		}
 		ll = b.Prog.FuncDecl(sigCtx, InC).ll
 		ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sigCtx.Params(), b))
 		return ret
