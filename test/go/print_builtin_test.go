@@ -29,6 +29,27 @@ type withMethod interface {
 	f()
 }
 
+type myint int
+
+func (x myint) foo() int { return int(x) }
+
+type myfloat float64
+
+func (x myfloat) foo() float64 { return float64(x) }
+
+const complexConst = 5 + 6i
+
+func printComplex(c complex128) { println(c) }
+
+func printFoo[T any](i interface{}) {
+	switch x := i.(type) {
+	case interface{ foo() T }:
+		println("fooer", x.foo())
+	default:
+		println("other")
+	}
+}
+
 func main() {
 	println((interface{})(nil))
 	println((withMethod)(nil))
@@ -39,6 +60,12 @@ func main() {
 	println(8.0, complex(9.0, 10.0))
 	println(1e7, -1e7, 1.001e2, 4.4e-1, 8e-2)
 	println(complex(1e7, -1e7), complex(4.4e-1, 8e-2))
+	println(complexConst)
+	printComplex(complexConst)
+	printFoo[int](myint(6))
+	printFoo[int](myfloat(7))
+	printFoo[float64](myint(8))
+	printFoo[float64](myfloat(9))
 	println(true, false, "hello")
 	print("inline: ")
 	println("one", "two")
