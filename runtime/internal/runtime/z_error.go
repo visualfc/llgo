@@ -57,7 +57,7 @@ func AssertIndexRange(b bool) {
 
 func AssertDivideByZero(b bool) {
 	if b {
-		panic(errorString("integer divide by zero").Error())
+		panic(errorString("integer divide by zero"))
 	}
 }
 
