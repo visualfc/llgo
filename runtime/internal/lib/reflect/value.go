@@ -2263,6 +2263,13 @@ type closure struct {
 	env unsafe.Pointer
 }
 
+func toFFIWordArg(v Value) unsafe.Pointer {
+	if v.flag&flagIndir != 0 {
+		return v.ptr
+	}
+	return unsafe.Pointer(&v.ptr)
+}
+
 func toFFIArg(v Value, typ *abi.Type) unsafe.Pointer {
 	kind := typ.Kind()
 	switch kind {
@@ -2282,16 +2289,16 @@ func toFFIArg(v Value, typ *abi.Type) unsafe.Pointer {
 		}
 		return unsafe.Pointer(&v.ptr)
 	case abi.Chan:
-		return unsafe.Pointer(&v.ptr)
+		return toFFIWordArg(v)
 	case abi.Func:
 		return unsafe.Pointer(&v.ptr)
 	case abi.Interface:
 		i := v.Interface()
 		return unsafe.Pointer(&i)
 	case abi.Map:
-		return unsafe.Pointer(&v.ptr)
+		return toFFIWordArg(v)
 	case abi.Pointer:
-		return unsafe.Pointer(&v.ptr)
+		return toFFIWordArg(v)
 	case abi.Slice:
 		return v.ptr
 	case abi.String:
@@ -2302,7 +2309,7 @@ func toFFIArg(v Value, typ *abi.Type) unsafe.Pointer {
 		}
 		return unsafe.Pointer(&v.ptr)
 	case abi.UnsafePointer:
-		return unsafe.Pointer(&v.ptr)
+		return toFFIWordArg(v)
 	}
 	panic("reflect.toFFIArg unsupport type " + v.typ().String())
 }
