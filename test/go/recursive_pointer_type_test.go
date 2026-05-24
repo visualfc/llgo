@@ -25,6 +25,7 @@ import (
 const recursivePointerTypeProbe = `package main
 
 type Link *Link
+type Peano *Peano
 
 func box(v Link) *Link {
 	p := new(Link)
@@ -36,11 +37,38 @@ func unbox(p *Link) Link {
 	return *p
 }
 
+func makePeano(n int) *Peano {
+	if n == 0 {
+		return nil
+	}
+	p := Peano(makePeano(n - 1))
+	return &p
+}
+
+var countArg Peano
+var countResult int
+
+func countPeano() {
+	if countArg == nil {
+		countResult = 0
+		return
+	}
+	countArg = *countArg
+	countPeano()
+	countResult++
+}
+
 func main() {
 	sentinel := Link(new(Link))
 	p := box(sentinel)
 	if unbox(p) != sentinel {
 		panic("recursive pointer type lost value")
+	}
+
+	countArg = makePeano(4096)
+	countPeano()
+	if countResult != 4096 {
+		panic("recursive Peano pointer count failed")
 	}
 }
 `
