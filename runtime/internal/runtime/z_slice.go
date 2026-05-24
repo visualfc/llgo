@@ -68,9 +68,16 @@ func SliceAppend(src Slice, data unsafe.Pointer, num, etSize int) Slice {
 func GrowSlice(src Slice, num, etSize int) Slice {
 	oldLen := src.len
 	newLen := oldLen + num
+	if newLen < 0 {
+		panicgrowslicelen()
+	}
 	if newLen > src.cap {
 		newCap := nextslicecap(newLen, src.cap)
-		p := AllocZ(uintptr(newCap * etSize))
+		mem, overflow := math.MulUintptr(uintptr(etSize), uintptr(newCap))
+		if overflow || mem > maxAlloc {
+			panicgrowslicelen()
+		}
+		p := AllocZ(mem)
 		if oldLen != 0 {
 			c.Memcpy(p, src.data, uintptr(oldLen*etSize))
 		}
@@ -146,6 +153,10 @@ func panicmakeslicelen() {
 
 func panicmakeslicecap() {
 	panic(errorString("makeslice: cap out of range"))
+}
+
+func panicgrowslicelen() {
+	panic(errorString("growslice: len out of range"))
 }
 
 func SliceClear(t *abi.SliceType, s Slice) {

@@ -1,6 +1,10 @@
 package gotest
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 type appendZeroSize struct{}
 
@@ -31,4 +35,39 @@ func TestAppendZeroSizedElementsWithinCapacity(t *testing.T) {
 	if cap(got) != 4 {
 		t.Fatalf("cap after append within capacity = %d, want 4", cap(got))
 	}
+}
+
+func TestAppendZeroSizedElementsLengthOverflow(t *testing.T) {
+	const maxInt = int(^uint(0) >> 1)
+
+	s := make([]appendZeroSize, maxInt)
+	expectAppendPanicContaining(t, "len out of range", func() {
+		s = append(s, appendZeroSize{})
+	})
+
+	oneElem := make([]appendZeroSize, 1)
+	expectAppendPanicContaining(t, "len out of range", func() {
+		s = append(s, oneElem...)
+	})
+}
+
+func expectAppendPanicContaining(t *testing.T, want string, f func()) {
+	t.Helper()
+	defer func() {
+		err := recover()
+		if err == nil {
+			t.Fatalf("expected panic containing %q", want)
+		}
+		if got := appendPanicString(err); !strings.Contains(got, want) {
+			t.Fatalf("panic = %q, want contains %q", got, want)
+		}
+	}()
+	f()
+}
+
+func appendPanicString(v any) string {
+	if err, ok := v.(interface{ Error() string }); ok {
+		return err.Error()
+	}
+	return fmt.Sprint(v)
 }
