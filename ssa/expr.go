@@ -824,7 +824,7 @@ func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 				case *types.Struct:
 					return convType()
 				case *types.Named:
-					if x.impl.Type().String() != t.ll.String() {
+					if !types.Identical(x.RawType(), t.RawType()) {
 						return convNamedType()
 					}
 				}
