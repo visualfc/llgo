@@ -142,6 +142,29 @@ type T19 T18
 	}
 }
 
+func TestGoProgramSizesUnaliasFunctionFieldStruct(t *testing.T) {
+	prog := NewProgram(nil)
+	sizes := prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	fnStruct := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, nil, "Fn", sig, false),
+	}, nil)
+	alias := types.NewAlias(types.NewTypeName(token.NoPos, nil, "FnStruct", nil), fnStruct)
+	fields := []*types.Var{
+		types.NewField(token.NoPos, nil, "A", alias, false),
+		types.NewField(token.NoPos, nil, "B", types.Typ[types.Int], false),
+	}
+
+	want := int64(prog.PointerSize() * 2)
+	if got := sizes.Sizeof(alias); got != want {
+		t.Fatalf("Sizeof(alias to func-field struct) = %d, want %d", got, want)
+	}
+	if got := sizes.Offsetsof(fields)[1]; got != want {
+		t.Fatalf("Offsetsof(field after alias to func-field struct) = %d, want %d", got, want)
+	}
+}
+
 func TestNamedStructLayoutEquivalent(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))

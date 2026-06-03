@@ -134,6 +134,9 @@ retry:
 		}
 		typ = t.Underlying()
 		goto retry
+	case *types.Alias:
+		typ = types.Unalias(t)
+		goto retry
 	case *types.Signature:
 		return ptrSize
 	case *types.Struct:
