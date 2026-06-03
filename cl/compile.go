@@ -95,6 +95,10 @@ func (p *context) isLargeNonPointerValue(t llssa.Type) bool {
 	return sizes.Sizeof(raw) > maxDirectDerefSize
 }
 
+func (p *context) isZeroSizedValue(t llssa.Type) bool {
+	return p.prog.SizeOf(t) == 0
+}
+
 func dbgGoSSADump(f interface {
 	WriteTo(io.Writer) (int64, error)
 }) {
@@ -1039,7 +1043,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		t := p.type_(v.Type(), llssa.InGo)
 		if unop, ok := v.X.(*ssa.UnOp); ok && unop.Op == token.MUL {
 			if vt := p.type_(unop.Type(), llssa.InGo); vt.RawType() != nil {
-				if p.isLargeNonPointerValue(vt) {
+				if p.isLargeNonPointerValue(vt) || p.isZeroSizedValue(vt) {
 					if ptr := p.compileValue(b, unop.X); ptr.Type != nil {
 						p.assertNilDerefBase(b, unop.X)
 						ret = b.MakeInterfaceFromPtr(t, ptr)
