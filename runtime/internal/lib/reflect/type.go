@@ -352,6 +352,9 @@ func (t *rtype) PkgPath() string {
 	if t.t.TFlag&abi.TFlagNamed == 0 {
 		return ""
 	}
+	if t.t.Kind() == abi.UnsafePointer {
+		return "unsafe"
+	}
 	ut := t.uncommon()
 	if ut == nil {
 		return ""

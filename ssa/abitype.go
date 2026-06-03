@@ -322,7 +322,7 @@ func (b Builder) abiExtendedFields(t types.Type, name string) (fields []llvm.Val
 		for i := 0; i < n; i++ {
 			if f := t.Field(i); !f.Exported() {
 				if pkg := f.Pkg(); pkg != nil {
-					pkgPath = pkg.Path()
+					pkgPath = reflectPkgPath(pkg)
 					break
 				}
 			}
@@ -351,9 +351,19 @@ retry:
 		goto retry
 	case *types.Named:
 		pkg := typ.Obj().Pkg()
-		return pkg, abi.PathOf(pkg)
+		return pkg, reflectPkgPath(pkg)
 	}
 	return nil, b.Pkg.Path()
+}
+
+func reflectPkgPath(pkg *types.Package) string {
+	if pkg == nil {
+		return ""
+	}
+	if pkg.Path() == "command-line-arguments" && pkg.Name() != "" {
+		return pkg.Name()
+	}
+	return abi.PathOf(pkg)
 }
 
 func (b Builder) abiUncommonMethodSet(t types.Type) (mset *types.MethodSet, ok bool) {

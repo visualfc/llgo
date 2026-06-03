@@ -119,6 +119,29 @@ func TestToLLVMFuncPtrUsesVoidPtr(t *testing.T) {
 	}
 }
 
+func TestPointerTypeDoesNotExpandRecursiveNamedElement(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "recursive.go", `package p
+
+type T18 *[10]T19
+type T19 T18
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("example.com/p", "p")
+	if err := types.NewChecker(&types.Config{}, fset, pkg, nil).Files([]*ast.File{f}); err != nil {
+		t.Fatal(err)
+	}
+
+	prog := NewProgram(nil)
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	t18 := pkg.Scope().Lookup("T18").Type()
+	if got, want := prog.Type(t18, InGo).ll.String(), prog.tyVoidPtr().String(); got != want {
+		t.Fatalf("recursive named pointer LLVM type = %q, want %q", got, want)
+	}
+}
+
 func TestNamedStructLayoutEquivalent(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
@@ -230,5 +253,22 @@ func f() {
 	}
 	if got := prog.toType(ptrTy.Elem()).RawType(); got != types.Typ[types.UnsafePointer] {
 		t.Fatalf("toType(opaque elem) raw = %v, want unsafe.Pointer", got)
+	}
+}
+
+func TestCvtStructPreservesTags(t *testing.T) {
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	st := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, nil, "Fn", sig, false),
+	}, []string{`protobuf:"bytes,1,opt,name=fn" json:"fn,omitempty"`})
+
+	raw, cvt := newGoTypes().cvtType(st)
+	if !cvt {
+		t.Fatalf("cvtType did not convert function field")
+	}
+	got := raw.(*types.Struct).Tag(0)
+	want := `protobuf:"bytes,1,opt,name=fn" json:"fn,omitempty"`
+	if got != want {
+		t.Fatalf("converted struct tag = %q, want %q", got, want)
 	}
 }
