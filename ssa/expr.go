@@ -339,70 +339,17 @@ func (b Builder) Str(v string) Expr {
 	return Expr{aggregateValue(b.impl, prog.rtString(), data, size), prog.String()}
 }
 
-// unsafeStringHeader constructs a string header from data and size.
-func (b Builder) unsafeStringHeader(data, size llvm.Value) Expr {
+// unsafeString(data *byte, size int) string
+func (b Builder) unsafeString(data, size llvm.Value) Expr {
 	prog := b.Prog
 	return Expr{aggregateValue(b.impl, prog.rtString(), data, size), prog.String()}
 }
 
-// unsafeSliceHeader constructs a slice header from data, size, and cap.
-func (b Builder) unsafeSliceHeader(data Expr, size, cap llvm.Value) Expr {
+// unsafeSlice(data *T, size, cap int) []T
+func (b Builder) unsafeSlice(data Expr, size, cap llvm.Value) Expr {
 	prog := b.Prog
 	tslice := prog.Slice(prog.Elem(data.Type))
 	return Expr{aggregateValue(b.impl, prog.rtSlice(), data.impl, size, cap), tslice}
-}
-
-func (b Builder) checkedUnsafeString(data, size Expr) Expr {
-	size = b.FitIntSize(size)
-	b.checkUnsafeBuiltinBounds("unsafe.String", data, size, 1)
-	return b.unsafeStringHeader(data.impl, size.impl)
-}
-
-func (b Builder) checkedUnsafeSlice(data, size Expr) Expr {
-	prog := b.Prog
-	size = b.FitIntSize(size)
-	elemSize := prog.SizeOf(prog.Elem(data.Type))
-	b.checkUnsafeBuiltinBounds("unsafe.Slice", data, size, elemSize)
-	return b.unsafeSliceHeader(data, size.impl, size.impl)
-}
-
-func (b Builder) checkUnsafeBuiltinBounds(name string, data, size Expr, elemSize uint64) {
-	prog := b.Prog
-	zero := llvm.ConstInt(size.ll, 0, false)
-	isNegative := llvm.CreateICmp(b.impl, llvm.IntSLT, size.impl, zero)
-	b.assertRuntimeError(isNegative, name+": len out of range")
-
-	isNonZero := llvm.CreateICmp(b.impl, llvm.IntNE, size.impl, zero)
-	isNil := llvm.CreateICmp(b.impl, llvm.IntEQ, data.impl, llvm.ConstPointerNull(data.impl.Type()))
-	b.assertRuntimeError(llvm.CreateAnd(b.impl, isNil, isNonZero), name+": nil pointer with non-zero length")
-
-	if elemSize == 0 {
-		return
-	}
-
-	uptr := prog.Uintptr()
-	length := castUintptr(b, size.impl, size.Type, uptr)
-	maxAddr := ^uint64(0)
-	if bits := uint(prog.PointerSize() * 8); bits < 64 {
-		maxAddr = (uint64(1) << bits) - 1
-	}
-	maxLen := llvm.ConstInt(uptr.ll, maxAddr/elemSize, false)
-	lenTooLarge := llvm.CreateICmp(b.impl, llvm.IntUGT, length, maxLen)
-	b.assertRuntimeError(lenTooLarge, name+": len out of range")
-
-	byteSize := length
-	if elemSize != 1 {
-		byteSize = b.impl.CreateMul(length, llvm.ConstInt(uptr.ll, elemSize, false), "")
-	}
-	lastOffset := b.impl.CreateSub(byteSize, llvm.ConstInt(uptr.ll, 1, false), "")
-	addr := llvm.CreatePtrToInt(b.impl, data.impl, uptr.ll)
-	end := b.impl.CreateAdd(addr, lastOffset, "")
-	wrapped := llvm.CreateICmp(b.impl, llvm.IntULT, end, addr)
-	b.assertRuntimeError(llvm.CreateAnd(b.impl, isNonZero, wrapped), name+": len out of range")
-}
-
-func (b Builder) assertRuntimeError(check llvm.Value, msg string) {
-	b.InlineCall(b.Pkg.rtFunc("AssertRuntimeError"), Expr{check, b.Prog.Bool()}, b.Str(msg))
 }
 
 // -----------------------------------------------------------------------------
@@ -1479,9 +1426,10 @@ func (b Builder) BuiltinCall(fn string, args ...Expr) (ret Expr) {
 	case "imag":
 		return b.getField(args[0], 1)
 	case "String": // unsafe.String
-		return b.checkedUnsafeString(args[0], args[1])
+		return b.unsafeString(args[0].impl, args[1].impl)
 	case "Slice": // unsafe.Slice
-		return b.checkedUnsafeSlice(args[0], args[1])
+		size := b.FitIntSize(args[1])
+		return b.unsafeSlice(args[0], size.impl, size.impl)
 	case "StringData":
 		return b.StringData(args[0]) // TODO(xsw): check return type
 	case "SliceData":
