@@ -2346,16 +2346,54 @@ func toFFIType(typ *abi.Type) *ffi.Type {
 	case abi.String:
 		return ffi.TypeString
 	case abi.Struct:
-		st := typ.StructType()
-		fields := make([]*ffi.Type, len(st.Fields))
-		for i, fs := range st.Fields {
-			fields[i] = toFFIType(fs.Typ)
-		}
-		return ffi.StructOf(fields...)
+		return toFFIStructType(typ)
 	case abi.UnsafePointer:
 		return ffi.TypePointer
 	}
 	panic("reflect.toFFIType unsupport type " + typ.String())
+}
+
+func toFFIStructType(typ *abi.Type) *ffi.Type {
+	st := typ.StructType()
+	fields := make([]*ffi.Type, 0, len(st.Fields))
+	var off uintptr
+	for _, fs := range st.Fields {
+		if fs.Offset > off {
+			fields, off = appendFFIPadding(fields, off, fs.Offset-off)
+		}
+		if fs.Typ.Size_ == 0 {
+			continue
+		}
+		fields = append(fields, toFFIType(fs.Typ))
+		off = fs.Offset + fs.Typ.Size_
+	}
+	// Do not pad to typ.Size_: trailing zero-sized fields can enlarge the
+	// Go-visible size without consuming registers in llgo's callable ABI.
+	return ffi.StructOf(fields...)
+}
+
+func appendFFIPadding(fields []*ffi.Type, off, size uintptr) ([]*ffi.Type, uintptr) {
+	for size > 0 {
+		switch {
+		case off%8 == 0 && size >= 8:
+			fields = append(fields, ffi.TypeUint64)
+			off += 8
+			size -= 8
+		case off%4 == 0 && size >= 4:
+			fields = append(fields, ffi.TypeUint32)
+			off += 4
+			size -= 4
+		case off%2 == 0 && size >= 2:
+			fields = append(fields, ffi.TypeUint16)
+			off += 2
+			size -= 2
+		default:
+			fields = append(fields, ffi.TypeUint8)
+			off++
+			size--
+		}
+	}
+	return fields, off
 }
 
 func toFFISig(tin, tout []*abi.Type) (*ffi.Signature, error) {
