@@ -1168,6 +1168,10 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 				return
 			}
 		}
+		if isBlankFieldStore(va) {
+			_ = p.compileValue(b, v.Val)
+			return
+		}
 		if p.rewrites != nil {
 			if g, ok := va.(*ssa.Global); ok {
 				if _, ok := p.rewriteInitStore(v, g); ok {
@@ -1300,6 +1304,15 @@ func (p *context) compileValue(b llssa.Builder, v ssa.Value) llssa.Expr {
 		}
 	}
 	panic(fmt.Sprintf("compileValue: unknown value - %T\n", v))
+}
+
+func isBlankFieldStore(addr ssa.Value) bool {
+	field, ok := addr.(*ssa.FieldAddr)
+	if !ok {
+		return false
+	}
+	_, st, ok := fieldAddrStruct(field)
+	return ok && st.Field(field.Field).Name() == "_"
 }
 
 const rangeOverFuncYieldSynthetic = "range-over-func yield"
