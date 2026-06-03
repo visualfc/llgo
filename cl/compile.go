@@ -772,6 +772,50 @@ func (p *context) checkVArgs(v *ssa.Alloc, t *types.Pointer) bool {
 	return false
 }
 
+func (p *context) skipSyntheticMakeSliceAlloc(v *ssa.Alloc) bool {
+	refs := v.Referrers()
+	if refs == nil || len(*refs) != 1 {
+		return false
+	}
+	slice, ok := (*refs)[0].(*ssa.Slice)
+	if !ok {
+		return false
+	}
+	_, ok = p.syntheticMakeSliceCap(slice)
+	return ok
+}
+
+func (p *context) compileSyntheticMakeSlice(b llssa.Builder, v *ssa.Slice) (llssa.Expr, bool) {
+	capacity, ok := p.syntheticMakeSliceCap(v)
+	if !ok {
+		return llssa.Expr{}, false
+	}
+	t := p.type_(v.Type(), llssa.InGo)
+	length := p.compileValue(b, v.High)
+	return b.MakeSlice(t, length, capacity), true
+}
+
+func (p *context) syntheticMakeSliceCap(v *ssa.Slice) (llssa.Expr, bool) {
+	alloc, ok := v.X.(*ssa.Alloc)
+	if !ok || alloc.Comment != "makeslice" || v.Low != nil || v.High == nil || v.Max != nil {
+		return llssa.Expr{}, false
+	}
+	t, ok := alloc.Type().(*types.Pointer)
+	if !ok {
+		return llssa.Expr{}, false
+	}
+	arr, ok := t.Elem().(*types.Array)
+	if !ok {
+		return llssa.Expr{}, false
+	}
+	if high, ok := v.High.(*ssa.Const); ok {
+		if n, exact := constant.Int64Val(high.Value); exact && n >= 0 && n <= arr.Len() {
+			return llssa.Expr{}, false
+		}
+	}
+	return p.prog.IntVal(uint64(arr.Len()), p.prog.Int()), true
+}
+
 func isAllocVargs(ctx *context, v *ssa.Alloc) bool {
 	refs := *v.Referrers()
 	n := len(refs)
@@ -924,6 +968,9 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		if p.checkVArgs(v, t) { // varargs: this maybe a varargs allocation
 			return
 		}
+		if p.skipSyntheticMakeSliceAlloc(v) {
+			return
+		}
 		elem := p.type_(t.Elem(), llssa.InGo)
 		ret = b.Alloc(elem, v.Heap)
 	case *ssa.IndexAddr:
@@ -951,6 +998,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		idx := p.compileValue(b, v.Index)
 		ret = b.Lookup(x, idx, v.CommaOk)
 	case *ssa.Slice:
+		if makeSlice, ok := p.compileSyntheticMakeSlice(b, v); ok {
+			ret = makeSlice
+			break
+		}
 		vx := v.X
 		if _, ok := p.isVArgs(vx); ok { // varargs: this is a varargs slice
 			return
