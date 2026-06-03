@@ -5,9 +5,12 @@ import (
 	"github.com/goplus/llgo/cl/_testgo/genericembediface/streamlib"
 )
 
+// CHECK-LINE: @2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1
 // CHECK-LINE: @5 = private unnamed_addr constant [7 x i8] c"Context", align 1
 // CHECK-LINE: @10 = private unnamed_addr constant [97 x i8] c"type assertion any -> {{.*}}/cl/_testgo/genericembediface.ReflectionServer failed", align 1
 // CHECK-LINE: @19 = private unnamed_addr constant [4 x i8] c"pass", align 1
+// CHECK-LINE: @20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1
+// CHECK-LINE: @21 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1
 
 type Request struct{}
 type Response struct{}
@@ -50,6 +53,20 @@ type ReflectionServer interface {
 // CHECK-NEXT:   %23 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %22, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %23)
 // CHECK-NEXT:   unreachable
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/genericembediface.init"(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/genericembediface.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/genericembediface.init$guard", align 1
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/genericembediface/streamlib.init"()
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
 func handler(srv any, stream streamlib.ServerStream) error {
@@ -96,9 +113,11 @@ func main() {
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/genericembediface.(*server).ServerReflectionInfo"(ptr %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/genericembediface.server", ptr %0, align 1
-// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/genericembediface.server.ServerReflectionInfo"(%"{{.*}}/cl/_testgo/genericembediface.server" %2, %"{{.*}}/runtime/internal/runtime.iface" %1)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %3
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @20, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
+// CHECK-NEXT:   %3 = load %"{{.*}}/cl/_testgo/genericembediface.server", ptr %0, align 1
+// CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/genericembediface.server.ServerReflectionInfo"(%"{{.*}}/cl/_testgo/genericembediface.server" %3, %"{{.*}}/runtime/internal/runtime.iface" %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %4
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/genericembediface.stream.Context"(%"{{.*}}/cl/_testgo/genericembediface.stream" %0){{.*}} {
@@ -108,9 +127,11 @@ func main() {
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/genericembediface.(*stream).Context"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load %"{{.*}}/cl/_testgo/genericembediface.stream", ptr %0, align 1
-// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/genericembediface.stream.Context"(%"{{.*}}/cl/_testgo/genericembediface.stream" %1)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 7 })
+// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/genericembediface.stream", ptr %0, align 1
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/genericembediface.stream.Context"(%"{{.*}}/cl/_testgo/genericembediface.stream" %2)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %3
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.interequal"(ptr %0, ptr %1, ptr %2){{.*}} {
@@ -152,4 +173,10 @@ func main() {
 // CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %9, 0
 // CHECK-NEXT:   %12 = call %"{{.*}}/runtime/internal/runtime.String" %11(ptr %10)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %12
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal0"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal0"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
