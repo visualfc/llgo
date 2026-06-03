@@ -199,24 +199,6 @@ timeouts:
     reason: bug230 run runs past the default timeout on darwin/arm64
   - version: go1.24
     platform: darwin/arm64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    timeout: 12m
-    reason: bug449 runoutput generation runs past the 4m timeout on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    timeout: 12m
-    reason: bug449 runoutput generation runs past the 4m timeout on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    timeout: 12m
-    reason: bug449 runoutput generation runs past the 4m timeout on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
     directive: run
     case: fixedbugs/bug452.go
     timeout: 2m
@@ -685,12 +667,6 @@ timeouts:
     reason: bug230 run runs past the default timeout on darwin/arm64
   - version: go1.25
     platform: darwin/arm64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    timeout: 4m
-    reason: bug449 runoutput generation runs past the 2m timeout on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
     directive: run
     case: fixedbugs/bug452.go
     timeout: 2m
@@ -1085,12 +1061,6 @@ timeouts:
     case: closure.go
     timeout: 2m
     reason: closure run runs past the default timeout on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    timeout: 4m
-    reason: bug449 runoutput generation runs past the 2m timeout on darwin/arm64
   - version: go1.26
     platform: darwin/arm64
     directive: run
@@ -2312,21 +2282,6 @@ xfails:
     directive: runoutput
     case: rangegen.go
     reason: go1.26 goroot ci-mode runoutput failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    reason: bug449 runoutput emits an empty llgo_tmp__.go on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    reason: bug449 runoutput emits an empty llgo_tmp__.go on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    reason: bug449 runoutput emits an empty llgo_tmp__.go on linux/amd64
   - platform: darwin/arm64
     directive: run
     case: deferfin.go
