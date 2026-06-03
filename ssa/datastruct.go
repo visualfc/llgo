@@ -671,7 +671,9 @@ func (b Builder) Send(ch Expr, x Expr) (ret Expr) {
 	dbgInstrf("Send %v, %v\n", ch.impl, x.impl)
 	prog := b.Prog
 	eltSize := prog.IntVal(prog.SizeOf(prog.Elem(ch.Type)), prog.Int())
+	sp := b.StackSave()
 	ret = b.InlineCall(b.Pkg.rtFunc("ChanSend"), ch, b.toPtr(x), eltSize)
+	b.StackRestore(sp)
 	return
 }
 
@@ -688,14 +690,16 @@ func (b Builder) Recv(ch Expr, commaOk bool) (ret Expr) {
 	prog := b.Prog
 	eltSize := prog.IntVal(prog.SizeOf(prog.Elem(ch.Type)), prog.Int())
 	etyp := prog.Elem(ch.Type)
+	sp := b.StackSave()
 	ptr := b.Alloc(etyp, false)
 	ok := b.InlineCall(b.Pkg.rtFunc("ChanRecv"), ch, ptr, eltSize)
+	val := b.Load(ptr)
+	b.StackRestore(sp)
 	if commaOk {
-		val := b.Load(ptr)
 		t := prog.Struct(etyp, prog.Bool())
 		return b.aggregateValue(t, val.impl, ok.impl)
 	} else {
-		return b.Load(ptr)
+		return val
 	}
 }
 
@@ -743,6 +747,7 @@ type SelectState struct {
 //	t3 = select nonblocking [<-t0, t1<-t2]
 //	t4 = select blocking []
 func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
+	sp := b.StackSave()
 	ops := make([]Expr, len(states))
 	for i, s := range states {
 		ops[i] = b.chanOp(s)
@@ -755,7 +760,7 @@ func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
 	}
 	prog := b.Prog
 	tSlice := lastParamType(prog, fn)
-	slice := b.SliceLit(tSlice, ops...)
+	slice := b.selectOpsSlice(tSlice, ops)
 	ret = b.Call(fn, slice)
 	chosen := b.impl.CreateExtractValue(ret.impl, 0, "")
 	recvOK := b.impl.CreateExtractValue(ret.impl, 1, "")
@@ -775,7 +780,20 @@ func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
 			results = append(results, r.impl)
 		}
 	}
+	b.StackRestore(sp)
 	return b.aggregateValue(b.Prog.Struct(typs...), results...)
+}
+
+func (b Builder) selectOpsSlice(t Type, ops []Expr) Expr {
+	prog := b.Prog
+	telem := prog.Index(t)
+	size := SizeOf(prog, telem, int64(len(ops)))
+	opPtr := Expr{b.Alloca(size).impl, prog.Pointer(telem)}
+	for i, op := range ops {
+		b.Store(b.Advance(opPtr, prog.Val(i)), op)
+	}
+	n := llvm.ConstInt(prog.tyInt(), uint64(len(ops)), false)
+	return b.unsafeSlice(opPtr, n, n)
 }
 
 func lastParamType(prog Program, fn Expr) Type {

@@ -95,6 +95,10 @@ func (p *context) isLargeNonPointerValue(t llssa.Type) bool {
 	return sizes.Sizeof(raw) > maxDirectDerefSize
 }
 
+func (p *context) isZeroSizedValue(t llssa.Type) bool {
+	return p.prog.SizeOf(t) == 0
+}
+
 func dbgGoSSADump(f interface {
 	WriteTo(io.Writer) (int64, error)
 }) {
@@ -353,7 +357,14 @@ func isInstance(f *ssa.Function) bool {
 		return true
 	}
 	if recv := f.Type().(*types.Signature).Recv(); recv != nil {
-		return recv.Origin() != recv
+		if recv.Origin() != recv {
+			return true
+		}
+		if named := recvNamedOk(recv.Type()); named != nil {
+			if hasTypeArgs(named) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -765,6 +776,50 @@ func (p *context) checkVArgs(v *ssa.Alloc, t *types.Pointer) bool {
 	return false
 }
 
+func (p *context) skipSyntheticMakeSliceAlloc(v *ssa.Alloc) bool {
+	refs := v.Referrers()
+	if refs == nil || len(*refs) != 1 {
+		return false
+	}
+	slice, ok := (*refs)[0].(*ssa.Slice)
+	if !ok {
+		return false
+	}
+	_, ok = p.syntheticMakeSliceCap(slice)
+	return ok
+}
+
+func (p *context) compileSyntheticMakeSlice(b llssa.Builder, v *ssa.Slice) (llssa.Expr, bool) {
+	capacity, ok := p.syntheticMakeSliceCap(v)
+	if !ok {
+		return llssa.Expr{}, false
+	}
+	t := p.type_(v.Type(), llssa.InGo)
+	length := p.compileValue(b, v.High)
+	return b.MakeSlice(t, length, capacity), true
+}
+
+func (p *context) syntheticMakeSliceCap(v *ssa.Slice) (llssa.Expr, bool) {
+	alloc, ok := v.X.(*ssa.Alloc)
+	if !ok || alloc.Comment != "makeslice" || v.Low != nil || v.High == nil || v.Max != nil {
+		return llssa.Expr{}, false
+	}
+	t, ok := alloc.Type().(*types.Pointer)
+	if !ok {
+		return llssa.Expr{}, false
+	}
+	arr, ok := t.Elem().(*types.Array)
+	if !ok {
+		return llssa.Expr{}, false
+	}
+	if high, ok := v.High.(*ssa.Const); ok {
+		if n, exact := constant.Int64Val(high.Value); exact && n >= 0 && n <= arr.Len() {
+			return llssa.Expr{}, false
+		}
+	}
+	return p.prog.IntVal(uint64(arr.Len()), p.prog.Int()), true
+}
+
 func isAllocVargs(ctx *context, v *ssa.Alloc) bool {
 	refs := *v.Referrers()
 	n := len(refs)
@@ -882,6 +937,18 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 					}
 				}
 			}
+			// "libc_XXX_trampoline_addr" -> "XXX"
+			if strings.HasSuffix(v.X.Name(), "_trampoline_addr") {
+				name := v.X.Name()
+				if cname := strings.TrimPrefix(name[:len(name)-16], "libc_"); cname != "" {
+					cname = p.remapTrampolineCName(cname)
+					fnSig := p.syscallFnSig(0)
+					cfn := b.Pkg.NewFunc(cname, fnSig, llssa.InC)
+					ret = b.Convert(p.type_(types.Typ[types.Uintptr], llssa.InGo), cfn.Expr)
+					p.bvals[iv] = ret
+					return ret
+				}
+			}
 		}
 		x := p.compileValue(b, v.X)
 		if v.Op == token.ARROW {
@@ -903,6 +970,9 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	case *ssa.Alloc:
 		t := v.Type().(*types.Pointer)
 		if p.checkVArgs(v, t) { // varargs: this maybe a varargs allocation
+			return
+		}
+		if p.skipSyntheticMakeSliceAlloc(v) {
 			return
 		}
 		elem := p.type_(t.Elem(), llssa.InGo)
@@ -932,6 +1002,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		idx := p.compileValue(b, v.Index)
 		ret = b.Lookup(x, idx, v.CommaOk)
 	case *ssa.Slice:
+		if makeSlice, ok := p.compileSyntheticMakeSlice(b, v); ok {
+			ret = makeSlice
+			break
+		}
 		vx := v.X
 		if _, ok := p.isVArgs(vx); ok { // varargs: this is a varargs slice
 			return
@@ -969,7 +1043,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		t := p.type_(v.Type(), llssa.InGo)
 		if unop, ok := v.X.(*ssa.UnOp); ok && unop.Op == token.MUL {
 			if vt := p.type_(unop.Type(), llssa.InGo); vt.RawType() != nil {
-				if p.isLargeNonPointerValue(vt) {
+				if p.isLargeNonPointerValue(vt) || p.isZeroSizedValue(vt) {
 					if ptr := p.compileValue(b, unop.X); ptr.Type != nil {
 						p.assertNilDerefBase(b, unop.X)
 						ret = b.MakeInterfaceFromPtr(t, ptr)
@@ -1097,6 +1171,10 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 				args[idx] = p.compileValue(b, val)
 				return
 			}
+		}
+		if isBlankFieldStore(va) {
+			_ = p.compileValue(b, v.Val)
+			return
 		}
 		if p.rewrites != nil {
 			if g, ok := va.(*ssa.Global); ok {
@@ -1230,6 +1308,15 @@ func (p *context) compileValue(b llssa.Builder, v ssa.Value) llssa.Expr {
 		}
 	}
 	panic(fmt.Sprintf("compileValue: unknown value - %T\n", v))
+}
+
+func isBlankFieldStore(addr ssa.Value) bool {
+	field, ok := addr.(*ssa.FieldAddr)
+	if !ok {
+		return false
+	}
+	_, st, ok := fieldAddrStruct(field)
+	return ok && st.Field(field.Field).Name() == "_"
 }
 
 const rangeOverFuncYieldSynthetic = "range-over-func yield"

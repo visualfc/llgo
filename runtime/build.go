@@ -49,10 +49,12 @@ var altPkgs = map[string]altPkgMode{
 	"sync/atomic":           altPkgReplace,
 	"syscall/js":            altPkgReplace,
 	"unique":                altPkgReplace,
+	"golang.org/x/sys/unix": altPkgReplace,
 }
 
 var sourcePatchPkgs = map[string]struct{}{
 	"crypto/internal/constanttime": {},
 	"internal/sync":                {},
 	"iter":                         {},
+	"runtime/metrics":              {},
 }
