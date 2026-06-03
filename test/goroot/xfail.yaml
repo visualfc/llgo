@@ -1786,6 +1786,10 @@ xfails:
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
+    case: unsafebuiltins.go
+    reason: current main goroot run failure on darwin/arm64
+  - platform: darwin/arm64
+    directive: run
     case: switch.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
@@ -1899,6 +1903,11 @@ xfails:
   - version: go1.24
     platform: linux/amd64
     directive: run
+    case: unsafebuiltins.go
+    reason: go1.24 goroot run failure on linux/amd64
+  - version: go1.24
+    platform: linux/amd64
+    directive: run
     case: switch.go
     reason: go1.24 goroot run failure on linux/amd64
   - version: go1.24
@@ -1985,6 +1994,11 @@ xfails:
     platform: linux/amd64
     directive: run
     case: recover3.go
+    reason: go1.25 goroot run failure on linux/amd64
+  - version: go1.25
+    platform: linux/amd64
+    directive: run
+    case: unsafebuiltins.go
     reason: go1.25 goroot run failure on linux/amd64
   - version: go1.25
     platform: linux/amd64
@@ -2080,6 +2094,11 @@ xfails:
     platform: linux/amd64
     directive: run
     case: recover3.go
+    reason: go1.26 goroot run failure on linux/amd64
+  - version: go1.26
+    platform: linux/amd64
+    directive: run
+    case: unsafebuiltins.go
     reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64

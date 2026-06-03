@@ -93,7 +93,7 @@ func (b Builder) MakeString(cstr Expr, n ...Expr) (ret Expr) {
 func (b Builder) StringData(x Expr) Expr {
 	dbgInstrf("StringData %v\n", x.impl)
 	ptr := llvm.CreateExtractValue(b.impl, x.impl, 0)
-	return Expr{ptr, b.Prog.Pointer(b.Prog.Byte())}
+	return Expr{ptr, b.Prog.CStr()}
 }
 
 // StringLen returns the length of a string.
@@ -354,7 +354,7 @@ func (b Builder) Slice(x, low, high, max Expr) (ret Expr) {
 			nCap = prog.IntVal(uint64(te.Len()), prog.Int())
 			if high.IsNil() {
 				if lowIsNil && max.IsNil() {
-					ret.impl = b.unsafeSliceHeader(x, nCap.impl, nCap.impl).impl
+					ret.impl = b.unsafeSlice(x, nCap.impl, nCap.impl).impl
 					return
 				}
 				high = nCap
@@ -378,7 +378,7 @@ func (b Builder) SliceLit(t Type, elts ...Expr) Expr {
 		b.Store(b.Advance(ptr, prog.Val(i)), elt)
 	}
 	size := llvm.ConstInt(prog.tyInt(), uint64(len(elts)), false)
-	return b.unsafeSliceHeader(ptr, size, size)
+	return b.unsafeSlice(ptr, size, size)
 }
 
 // The MakeSlice instruction yields a slice of length Len backed by a
@@ -412,9 +412,9 @@ func (b Builder) FitIntSize(n Expr) Expr {
 	typ := prog.Int()
 	if prog.SizeOf(n.Type) != prog.SizeOf(typ) {
 		srcType := n.Type
+		n.Type = typ
 		n.impl = castInt(b, n.impl, srcType, typ)
 	}
-	n.Type = typ
 	return n
 }
 
