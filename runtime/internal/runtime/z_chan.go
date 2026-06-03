@@ -37,6 +37,7 @@ type Chan struct {
 	getp  int
 	len   int
 	cap   int
+	sop   *selectOp
 	sops  []*selectOp
 	// sends counts goroutines blocked in unbuffered send, including select-send.
 	sends uint16
@@ -74,12 +75,18 @@ func ChanCap(p *Chan) int {
 }
 
 func notifyOps(p *Chan) {
+	if p.sop != nil {
+		p.sop.notify()
+	}
 	for _, sop := range p.sops {
 		sop.notify()
 	}
 }
 
 func ChanClose(p *Chan) {
+	if p == nil {
+		panic("close of nil channel")
+	}
 	p.mutex.Lock()
 	p.close = true
 	notifyOps(p)
@@ -88,10 +95,17 @@ func ChanClose(p *Chan) {
 }
 
 func ChanTrySend(p *Chan, v unsafe.Pointer, eltSize int) bool {
+	if p == nil {
+		return false
+	}
 	n := p.cap
 	p.mutex.Lock()
+	if p.close {
+		p.mutex.Unlock()
+		panic("send on closed channel")
+	}
 	if n == 0 {
-		if p.getp != chanHasRecv || p.close {
+		if p.getp != chanHasRecv {
 			p.mutex.Unlock()
 			return false
 		}
@@ -100,7 +114,7 @@ func ChanTrySend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 		}
 		p.getp = chanNoSendRecv
 	} else {
-		if p.len == n || p.close {
+		if p.len == n {
 			p.mutex.Unlock()
 			return false
 		}
@@ -115,6 +129,10 @@ func ChanTrySend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 }
 
 func ChanSend(p *Chan, v unsafe.Pointer, eltSize int) bool {
+	if p == nil {
+		blockForever()
+		return false
+	}
 	n := p.cap
 	p.mutex.Lock()
 	if n == 0 {
@@ -130,19 +148,19 @@ func ChanSend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 		}
 		if p.close {
 			p.mutex.Unlock()
-			return false
+			panic("send on closed channel")
 		}
 		if p.data != nil {
 			c.Memcpy(p.data, v, uintptr(eltSize))
 		}
 		p.getp = chanNoSendRecv
 	} else {
-		for p.len == n {
+		for p.len == n && !p.close {
 			p.cond.Wait(&p.mutex)
 		}
 		if p.close {
 			p.mutex.Unlock()
-			return false
+			panic("send on closed channel")
 		}
 		off := (p.getp + p.len) % n
 		c.Memcpy(c.Advance(p.data, off*eltSize), v, uintptr(eltSize))
@@ -155,6 +173,9 @@ func ChanSend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 }
 
 func ChanTryRecv(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool, tryOK bool) {
+	if p == nil {
+		return false, false
+	}
 	return chanTryRecv(p, v, eltSize, true)
 }
 
@@ -193,8 +214,8 @@ func chanTryRecv(p *Chan, v unsafe.Pointer, eltSize int, acceptSelectSend bool) 
 		for p.getp == chanHasRecv && !p.close {
 			p.cond.Wait(&p.mutex)
 		}
-		recvOK = !p.close
-		tryOK = recvOK
+		recvOK = p.getp != chanHasRecv
+		tryOK = recvOK || p.close
 		p.mutex.Unlock()
 	} else {
 		recvOK, tryOK = true, true
@@ -203,6 +224,10 @@ func chanTryRecv(p *Chan, v unsafe.Pointer, eltSize int, acceptSelectSend bool) 
 }
 
 func ChanRecv(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool) {
+	if p == nil {
+		blockForever()
+		return false
+	}
 	n := p.cap
 	p.mutex.Lock()
 	if n == 0 {
@@ -237,12 +262,23 @@ func ChanRecv(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool) {
 		for p.getp == chanHasRecv && !p.close {
 			p.cond.Wait(&p.mutex)
 		}
-		recvOK = !p.close
+		recvOK = p.getp != chanHasRecv
 		p.mutex.Unlock()
 	} else {
 		recvOK = true
 	}
 	return
+}
+
+func blockForever() {
+	var mutex sync.Mutex
+	var cond sync.Cond
+	mutex.Init(nil)
+	cond.Init(nil)
+	mutex.Lock()
+	for {
+		cond.Wait(&mutex)
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -313,10 +349,9 @@ func TrySelect(ops ...ChanOp) (isel int, recvOK, tryOK bool) {
 
 // Select executes a blocking select operation.
 func Select(ops ...ChanOp) (isel int, recvOK bool) {
-	selOp := new(selectOp) // TODO(xsw): use c.AllocaNew[selectOp]()
+	selOp := (*selectOp)(c.Alloca(unsafe.Sizeof(selectOp{})))
 	selOp.init()
 	sendFirst := selectSendFirst(ops)
-	sendChans := selectSendChans(ops)
 	for _, op := range ops {
 		if op.C == nil {
 			continue
@@ -325,7 +360,7 @@ func Select(ops ...ChanOp) (isel int, recvOK bool) {
 	}
 	var tryOK bool
 	for {
-		if isel, recvOK, tryOK = trySelect(ops, sendFirst, sendChans); tryOK {
+		if isel, recvOK, tryOK = trySelect(ops, sendFirst); tryOK {
 			break
 		}
 		selOp.wait()
@@ -340,7 +375,7 @@ func Select(ops ...ChanOp) (isel int, recvOK bool) {
 	return
 }
 
-func trySelect(ops []ChanOp, sendFirst bool, sendChans map[*Chan]bool) (isel int, recvOK, tryOK bool) {
+func trySelect(ops []ChanOp, sendFirst bool) (isel int, recvOK, tryOK bool) {
 	// Split probing by direction. If sends are probed first, the recv phase must
 	// not accept select-only senders, because this select's own sends already
 	// failed to commit to a peer. If recvs are probed first, they may accept
@@ -349,15 +384,15 @@ func trySelect(ops []ChanOp, sendFirst bool, sendChans map[*Chan]bool) (isel int
 		if isel, recvOK, tryOK = trySelectDir(ops, true, false, nil); tryOK {
 			return
 		}
-		return trySelectDir(ops, false, false, sendChans)
+		return trySelectDir(ops, false, false, ops)
 	}
-	if isel, recvOK, tryOK = trySelectDir(ops, false, true, sendChans); tryOK {
+	if isel, recvOK, tryOK = trySelectDir(ops, false, true, ops); tryOK {
 		return
 	}
 	return trySelectDir(ops, true, true, nil)
 }
 
-func trySelectDir(ops []ChanOp, send bool, acceptSelectSend bool, sendChans map[*Chan]bool) (isel int, recvOK, tryOK bool) {
+func trySelectDir(ops []ChanOp, send bool, acceptSelectSend bool, allOps []ChanOp) (isel int, recvOK, tryOK bool) {
 	for isel = range ops {
 		op := ops[isel]
 		if op.C == nil || op.Send != send {
@@ -370,7 +405,7 @@ func trySelectDir(ops []ChanOp, send bool, acceptSelectSend bool, sendChans map[
 			continue
 		}
 		accept := acceptSelectSend
-		if accept && sendChans[op.C] {
+		if accept && selectHasSend(allOps, op.C) {
 			accept = false
 		}
 		if recvOK, tryOK = chanTryRecv(op.C, op.Val, int(op.Size), accept); tryOK {
@@ -380,14 +415,13 @@ func trySelectDir(ops []ChanOp, send bool, acceptSelectSend bool, sendChans map[
 	return
 }
 
-func selectSendChans(ops []ChanOp) map[*Chan]bool {
-	sendChans := make(map[*Chan]bool)
+func selectHasSend(ops []ChanOp, ch *Chan) bool {
 	for _, op := range ops {
-		if op.C != nil && op.Send {
-			sendChans[op.C] = true
+		if op.C == ch && op.Send {
+			return true
 		}
 	}
-	return sendChans
+	return false
 }
 
 func selectSendFirst(ops []ChanOp) bool {
@@ -432,7 +466,11 @@ func prepareSelect(c *Chan, selOp *selectOp, isSend bool) {
 		c.sends++
 		c.selsends++
 	}
-	c.sops = append(c.sops, selOp)
+	if c.sop == nil {
+		c.sop = selOp
+	} else {
+		c.sops = append(c.sops, selOp)
+	}
 	if c.cap == 0 && isSend {
 		// A newly-registered select-send can make a select-recv runnable.
 		notifyOps(c)
@@ -446,9 +484,16 @@ func endSelect(c *Chan, selOp *selectOp, isSend bool) {
 		c.sends--
 		c.selsends--
 	}
+	if c.sop == selOp {
+		c.sop = nil
+		c.mutex.Unlock()
+		return
+	}
 	for i, op := range c.sops {
 		if op == selOp {
-			c.sops = append(c.sops[:i], c.sops[i+1:]...)
+			copy(c.sops[i:], c.sops[i+1:])
+			c.sops[len(c.sops)-1] = nil
+			c.sops = c.sops[:len(c.sops)-1]
 			break
 		}
 	}

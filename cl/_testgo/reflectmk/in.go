@@ -7,20 +7,21 @@ import (
 )
 
 // CHECK-LINE: @1 = private unnamed_addr constant [7 x i8] c"(%v,%v)", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [6 x i8] c"String", align 1
-// CHECK-LINE: @11 = private unnamed_addr constant [13 x i8] c"arrayOf error", align 1
-// CHECK-LINE: @12 = private unnamed_addr constant [12 x i8] c"chanOf error", align 1
-// CHECK-LINE: @13 = private unnamed_addr constant [12 x i8] c"funcOf error", align 1
-// CHECK-LINE: @14 = private unnamed_addr constant [11 x i8] c"mapOf error", align 1
-// CHECK-LINE: @15 = private unnamed_addr constant [15 x i8] c"pointerTo error", align 1
-// CHECK-LINE: @16 = private unnamed_addr constant [13 x i8] c"sliceOf error", align 1
-// CHECK-LINE: @17 = private unnamed_addr constant [1 x i8] c"T", align 1
-// CHECK-LINE: @18 = private unnamed_addr constant [14 x i8] c"structOf error", align 1
-// CHECK-LINE: @19 = private unnamed_addr constant [12 x i8] c"method error", align 1
-// CHECK-LINE: @20 = private unnamed_addr constant [18 x i8] c"methodByName error", align 1
-// CHECK-LINE: @21 = private unnamed_addr constant [5 x i8] c"(1,2)", align 1
-// CHECK-LINE: @22 = private unnamed_addr constant [18 x i8] c"value.Method error", align 1
-// CHECK-LINE: @23 = private unnamed_addr constant [24 x i8] c"value.MethodByName error", align 1
+// CHECK-LINE: @2 = private unnamed_addr constant [49 x i8] c"{{.*}}/cl/_testgo/reflectmk.Point", align 1
+// CHECK-LINE: @3 = private unnamed_addr constant [6 x i8] c"String", align 1
+// CHECK-LINE: @12 = private unnamed_addr constant [13 x i8] c"arrayOf error", align 1
+// CHECK-LINE: @13 = private unnamed_addr constant [12 x i8] c"chanOf error", align 1
+// CHECK-LINE: @14 = private unnamed_addr constant [12 x i8] c"funcOf error", align 1
+// CHECK-LINE: @15 = private unnamed_addr constant [11 x i8] c"mapOf error", align 1
+// CHECK-LINE: @16 = private unnamed_addr constant [15 x i8] c"pointerTo error", align 1
+// CHECK-LINE: @17 = private unnamed_addr constant [13 x i8] c"sliceOf error", align 1
+// CHECK-LINE: @18 = private unnamed_addr constant [1 x i8] c"T", align 1
+// CHECK-LINE: @19 = private unnamed_addr constant [14 x i8] c"structOf error", align 1
+// CHECK-LINE: @20 = private unnamed_addr constant [12 x i8] c"method error", align 1
+// CHECK-LINE: @21 = private unnamed_addr constant [18 x i8] c"methodByName error", align 1
+// CHECK-LINE: @22 = private unnamed_addr constant [5 x i8] c"(1,2)", align 1
+// CHECK-LINE: @23 = private unnamed_addr constant [18 x i8] c"value.Method error", align 1
+// CHECK-LINE: @24 = private unnamed_addr constant [24 x i8] c"value.MethodByName error", align 1
 
 type Point struct {
 	x int
@@ -130,9 +131,11 @@ func methodByName(name string) {
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.(*Point).String"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %0, align 8
-// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.Point.String"(%"{{.*}}/cl/_testgo/reflectmk.Point" %1)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 49 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
+// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %0, align 8
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.Point.String"(%"{{.*}}/cl/_testgo/reflectmk.Point" %2)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %3
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflectmk.init"(){{.*}} {
@@ -186,7 +189,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %30 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @11, i64 13 }, ptr %30, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 13 }, ptr %30, align 8
 // CHECK-NEXT:   %31 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %30, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %31)
 // CHECK-NEXT:   unreachable
@@ -216,7 +219,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   %52 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 12 }, ptr %52, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 12 }, ptr %52, align 8
 // CHECK-NEXT:   %53 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %52, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %53)
 // CHECK-NEXT:   unreachable
@@ -258,7 +261,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_7, %_llgo_4
 // CHECK-NEXT:   %84 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 12 }, ptr %84, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @14, i64 12 }, ptr %84, align 8
 // CHECK-NEXT:   %85 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %84, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %85)
 // CHECK-NEXT:   unreachable
@@ -310,7 +313,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_10, %_llgo_6
 // CHECK-NEXT:   %125 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @14, i64 11 }, ptr %125, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @15, i64 11 }, ptr %125, align 8
 // CHECK-NEXT:   %126 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %125, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %126)
 // CHECK-NEXT:   unreachable
@@ -362,7 +365,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_11:                                         ; preds = %_llgo_9
 // CHECK-NEXT:   %166 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @15, i64 15 }, ptr %166, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @16, i64 15 }, ptr %166, align 8
 // CHECK-NEXT:   %167 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %166, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %167)
 // CHECK-NEXT:   unreachable
@@ -392,7 +395,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_13:                                         ; preds = %_llgo_12
 // CHECK-NEXT:   %188 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @16, i64 13 }, ptr %188, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @17, i64 13 }, ptr %188, align 8
 // CHECK-NEXT:   %189 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %188, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %189)
 // CHECK-NEXT:   unreachable
@@ -402,7 +405,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %191 = getelementptr inbounds %reflect.StructField, ptr %190, i64 0
 // CHECK-NEXT:   %192 = getelementptr inbounds %reflect.StructField, ptr %191, i32 0, i32 0
 // CHECK-NEXT:   %193 = getelementptr inbounds %reflect.StructField, ptr %191, i32 0, i32 2
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @17, i64 1 }, ptr %192, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @18, i64 1 }, ptr %192, align 8
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.iface" %9, ptr %193, align 8
 // CHECK-NEXT:   %194 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %190, 0
 // CHECK-NEXT:   %195 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %194, i64 1, 1
@@ -432,7 +435,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_15:                                         ; preds = %_llgo_14
 // CHECK-NEXT:   %218 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @18, i64 14 }, ptr %218, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @19, i64 14 }, ptr %218, align 8
 // CHECK-NEXT:   %219 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %218, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %219)
 // CHECK-NEXT:   unreachable
@@ -452,13 +455,13 @@ func methodByName(name string) {
 // CHECK-NEXT:   store %reflect.Method %229, ptr %220, align 8
 // CHECK-NEXT:   %230 = getelementptr inbounds %reflect.Method, ptr %220, i32 0, i32 0
 // CHECK-NEXT:   %231 = load %"{{.*}}/runtime/internal/runtime.String", ptr %230, align 8
-// CHECK-NEXT:   %232 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %231, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 6 })
+// CHECK-NEXT:   %232 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %231, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
 // CHECK-NEXT:   %233 = xor i1 %232, true
 // CHECK-NEXT:   br i1 %233, label %_llgo_17, label %_llgo_18
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_17:                                         ; preds = %_llgo_16
 // CHECK-NEXT:   %234 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @19, i64 12 }, ptr %234, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @20, i64 12 }, ptr %234, align 8
 // CHECK-NEXT:   %235 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %234, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %235)
 // CHECK-NEXT:   unreachable
@@ -474,7 +477,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %242 = insertvalue { ptr, ptr } %241, ptr %237, 1
 // CHECK-NEXT:   %243 = extractvalue { ptr, ptr } %242, 1
 // CHECK-NEXT:   %244 = extractvalue { ptr, ptr } %242, 0
-// CHECK-NEXT:   %245 = call { %reflect.Method, i1 } %244(ptr %243, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 6 })
+// CHECK-NEXT:   %245 = call { %reflect.Method, i1 } %244(ptr %243, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
 // CHECK-NEXT:   %246 = extractvalue { %reflect.Method, i1 } %245, 0
 // CHECK-NEXT:   store %reflect.Method %246, ptr %236, align 8
 // CHECK-NEXT:   %247 = extractvalue { %reflect.Method, i1 } %245, 1
@@ -482,7 +485,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_19:                                         ; preds = %_llgo_21, %_llgo_18
 // CHECK-NEXT:   %248 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @20, i64 18 }, ptr %248, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 18 }, ptr %248, align 8
 // CHECK-NEXT:   %249 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %248, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %249)
 // CHECK-NEXT:   unreachable
@@ -504,26 +507,26 @@ func methodByName(name string) {
 // CHECK-NEXT:   %260 = getelementptr inbounds %reflect.Value, ptr %257, i64 0
 // CHECK-NEXT:   %261 = load %reflect.Value, ptr %260, align 8
 // CHECK-NEXT:   %262 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %261)
-// CHECK-NEXT:   %263 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %262, %"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 5 })
+// CHECK-NEXT:   %263 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %262, %"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 5 })
 // CHECK-NEXT:   %264 = xor i1 %263, true
 // CHECK-NEXT:   br i1 %264, label %_llgo_22, label %_llgo_23
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_21:                                         ; preds = %_llgo_18
 // CHECK-NEXT:   %265 = getelementptr inbounds %reflect.Method, ptr %236, i32 0, i32 0
 // CHECK-NEXT:   %266 = load %"{{.*}}/runtime/internal/runtime.String", ptr %265, align 8
-// CHECK-NEXT:   %267 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %266, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 6 })
+// CHECK-NEXT:   %267 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %266, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
 // CHECK-NEXT:   %268 = xor i1 %267, true
 // CHECK-NEXT:   br i1 %268, label %_llgo_19, label %_llgo_20
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_22:                                         ; preds = %_llgo_20
 // CHECK-NEXT:   %269 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 18 }, ptr %269, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @23, i64 18 }, ptr %269, align 8
 // CHECK-NEXT:   %270 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %269, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %270)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_23:                                         ; preds = %_llgo_20
-// CHECK-NEXT:   %271 = call %reflect.Value @reflect.Value.MethodByName(%reflect.Value %254, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 6 })
+// CHECK-NEXT:   %271 = call %reflect.Value @reflect.Value.MethodByName(%reflect.Value %254, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
 // CHECK-NEXT:   %272 = call %"{{.*}}/runtime/internal/runtime.Slice" @reflect.Value.Call(%reflect.Value %271, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
 // CHECK-NEXT:   %273 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %272, 0
 // CHECK-NEXT:   %274 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %272, 1
@@ -532,20 +535,20 @@ func methodByName(name string) {
 // CHECK-NEXT:   %276 = getelementptr inbounds %reflect.Value, ptr %273, i64 0
 // CHECK-NEXT:   %277 = load %reflect.Value, ptr %276, align 8
 // CHECK-NEXT:   %278 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %277)
-// CHECK-NEXT:   %279 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %278, %"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 5 })
+// CHECK-NEXT:   %279 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %278, %"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 5 })
 // CHECK-NEXT:   %280 = xor i1 %279, true
 // CHECK-NEXT:   br i1 %280, label %_llgo_24, label %_llgo_25
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_24:                                         ; preds = %_llgo_23
 // CHECK-NEXT:   %281 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @23, i64 24 }, ptr %281, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @24, i64 24 }, ptr %281, align 8
 // CHECK-NEXT:   %282 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %281, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %282)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_25:                                         ; preds = %_llgo_23
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflectmk.method"(i64 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflectmk.methodByName"(%"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 6 })
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflectmk.methodByName"(%"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -567,13 +570,13 @@ func methodByName(name string) {
 // CHECK-NEXT:   %11 = getelementptr inbounds %reflect.Value, ptr %8, i64 0
 // CHECK-NEXT:   %12 = load %reflect.Value, ptr %11, align 8
 // CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %12)
-// CHECK-NEXT:   %14 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %13, %"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 5 })
+// CHECK-NEXT:   %14 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %13, %"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 5 })
 // CHECK-NEXT:   %15 = xor i1 %14, true
 // CHECK-NEXT:   br i1 %15, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %16 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 18 }, ptr %16, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @23, i64 18 }, ptr %16, align 8
 // CHECK-NEXT:   %17 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %16, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %17)
 // CHECK-NEXT:   unreachable
@@ -600,13 +603,13 @@ func methodByName(name string) {
 // CHECK-NEXT:   %11 = getelementptr inbounds %reflect.Value, ptr %8, i64 0
 // CHECK-NEXT:   %12 = load %reflect.Value, ptr %11, align 8
 // CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value %12)
-// CHECK-NEXT:   %14 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %13, %"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 5 })
+// CHECK-NEXT:   %14 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %13, %"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 5 })
 // CHECK-NEXT:   %15 = xor i1 %14, true
 // CHECK-NEXT:   br i1 %15, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %16 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @23, i64 24 }, ptr %16, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @24, i64 24 }, ptr %16, align 8
 // CHECK-NEXT:   %17 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %16, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %17)
 // CHECK-NEXT:   unreachable

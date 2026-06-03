@@ -9,6 +9,11 @@ import (
 
 // CHECK-LINE: @0 = private unnamed_addr constant [36 x i8] c"iterator call did not preserve panic", align 1
 // CHECK-LINE: @2 = private unnamed_addr constant [43 x i8] c"yield function called after range loop exit", align 1
+// CHECK-LINE: @3 = private unnamed_addr constant [47 x i8] c"{{.*}}/cl/_testgo/cursor.Cursor", align 1
+// CHECK-LINE: @4 = private unnamed_addr constant [8 x i8] c"FindNode", align 1
+// CHECK-LINE: @5 = private unnamed_addr constant [4 x i8] c"Node", align 1
+// CHECK-LINE: @6 = private unnamed_addr constant [8 x i8] c"Preorder", align 1
+// CHECK-LINE: @7 = private unnamed_addr constant [7 x i8] c"indices", align 1
 
 func main() {
 	c := &Cursor{in: &Inspector{}}
@@ -732,38 +737,46 @@ const (
 
 // CHECK-LABEL: define { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } @"{{.*}}/cl/_testgo/cursor.(*Cursor).FindNode"(ptr %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %3 = call { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } @"{{.*}}/cl/_testgo/cursor.Cursor.FindNode"(%"{{.*}}/cl/_testgo/cursor.Cursor" %2, %"{{.*}}/runtime/internal/runtime.iface" %1)
-// CHECK-NEXT:   %4 = extractvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %3, 0
-// CHECK-NEXT:   %5 = extractvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %3, 1
-// CHECK-NEXT:   %6 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } undef, %"{{.*}}/cl/_testgo/cursor.Cursor" %4, 0
-// CHECK-NEXT:   %7 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %6, i1 %5, 1
-// CHECK-NEXT:   ret { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %7
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 8 })
+// CHECK-NEXT:   %3 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
+// CHECK-NEXT:   %4 = call { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } @"{{.*}}/cl/_testgo/cursor.Cursor.FindNode"(%"{{.*}}/cl/_testgo/cursor.Cursor" %3, %"{{.*}}/runtime/internal/runtime.iface" %1)
+// CHECK-NEXT:   %5 = extractvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %4, 0
+// CHECK-NEXT:   %6 = extractvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %4, 1
+// CHECK-NEXT:   %7 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } undef, %"{{.*}}/cl/_testgo/cursor.Cursor" %5, 0
+// CHECK-NEXT:   %8 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %7, i1 %6, 1
+// CHECK-NEXT:   ret { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %8
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.(*Cursor).Node"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.Cursor.Node"(%"{{.*}}/cl/_testgo/cursor.Cursor" %1)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %2
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 4 })
+// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.Cursor.Node"(%"{{.*}}/cl/_testgo/cursor.Cursor" %2)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %3
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" @"{{.*}}/cl/_testgo/cursor.(*Cursor).Preorder"(ptr %0, %"{{.*}}/runtime/internal/runtime.Slice" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %3 = call %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" @"{{.*}}/cl/_testgo/cursor.Cursor.Preorder"(%"{{.*}}/cl/_testgo/cursor.Cursor" %2, %"{{.*}}/runtime/internal/runtime.Slice" %1)
-// CHECK-NEXT:   ret %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" %3
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 8 })
+// CHECK-NEXT:   %3 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
+// CHECK-NEXT:   %4 = call %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" @"{{.*}}/cl/_testgo/cursor.Cursor.Preorder"(%"{{.*}}/cl/_testgo/cursor.Cursor" %3, %"{{.*}}/runtime/internal/runtime.Slice" %1)
+// CHECK-NEXT:   ret %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" %4
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define { i32, i32 } @"{{.*}}/cl/_testgo/cursor.(*Cursor).indices"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %2 = call { i32, i32 } @"{{.*}}/cl/_testgo/cursor.Cursor.indices"(%"{{.*}}/cl/_testgo/cursor.Cursor" %1)
-// CHECK-NEXT:   %3 = extractvalue { i32, i32 } %2, 0
-// CHECK-NEXT:   %4 = extractvalue { i32, i32 } %2, 1
-// CHECK-NEXT:   %5 = insertvalue { i32, i32 } undef, i32 %3, 0
-// CHECK-NEXT:   %6 = insertvalue { i32, i32 } %5, i32 %4, 1
-// CHECK-NEXT:   ret { i32, i32 } %6
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 7 })
+// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
+// CHECK-NEXT:   %3 = call { i32, i32 } @"{{.*}}/cl/_testgo/cursor.Cursor.indices"(%"{{.*}}/cl/_testgo/cursor.Cursor" %2)
+// CHECK-NEXT:   %4 = extractvalue { i32, i32 } %3, 0
+// CHECK-NEXT:   %5 = extractvalue { i32, i32 } %3, 1
+// CHECK-NEXT:   %6 = insertvalue { i32, i32 } undef, i32 %4, 0
+// CHECK-NEXT:   %7 = insertvalue { i32, i32 } %6, i32 %5, 1
+// CHECK-NEXT:   ret { i32, i32 } %7
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/cursor.init"(){{.*}} {
