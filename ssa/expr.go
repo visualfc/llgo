@@ -1470,7 +1470,7 @@ func (b Builder) BuiltinCall(fn string, args ...Expr) (ret Expr) {
 		return b.Advance(args[0], args[1])
 	case "Sizeof":
 		// instance of generic function
-		return b.Prog.Val(int(b.Prog.SizeOf(args[0].Type)))
+		return b.Prog.IntVal(b.Prog.SizeOf(args[0].Type), b.Prog.Uintptr())
 	case "Alignof":
 		// instance of generic function
 		return b.Prog.Val(int(b.Prog.td.ABITypeAlignment(args[0].ll)))
