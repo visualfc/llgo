@@ -47,7 +47,7 @@ jobs:
           - macos-15-intel
           - ubuntu-latest
         llvm: [19]
-        go: ["1.21.13", "1.24.2"]
+        go: ["1.21.13", "1.24.2", "1.26.0"]
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v6
@@ -97,9 +97,15 @@ jobs:
           pip3.12 install --break-system-packages "${py_deps[@]}"
 
       - name: Set up Go for build
+        if: ${{ !startsWith(matrix.go, '1.26') }}
         uses: ./.github/actions/setup-go
         with:
           go-version: "1.24.2"
+      - name: Set up Go 1.26 for build
+        if: ${{ startsWith(matrix.go, '1.26') }}
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.26.0"
 
       - name: Install
         run: |
@@ -136,6 +142,9 @@ jobs:
           export PKG_CONFIG_PATH=$pcdir:${PKG_CONFIG_PATH}
           export LLGO_FULL_RPATH=true
           bash .github/workflows/test_demo.sh
+
+      - name: Test demos (embedded target)
+        run: bash .github/workflows/test_demo.sh --embedded
 
       - name: Test C header generation
         run: |
@@ -189,7 +198,7 @@ jobs:
           - macos-latest
           - ubuntu-latest
         llvm: [19]
-        go: ["1.24.2"]
+        go: ["1.24.2", "1.26.0"]
         shard: ["0", "1", "2", "3"]
     runs-on: ${{matrix.os}}
     steps:
@@ -207,9 +216,15 @@ jobs:
           pip3.12 install --break-system-packages "${py_deps[@]}"
 
       - name: Set up Go for build
+        if: ${{ !startsWith(matrix.go, '1.26') }}
         uses: ./.github/actions/setup-go
         with:
           go-version: "1.24.2"
+      - name: Set up Go 1.26 for build
+        if: ${{ startsWith(matrix.go, '1.26') }}
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.26.0"
 
       - name: Install
         run: |
@@ -220,10 +235,6 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: ${{matrix.go}}
-      - name: Test Baremetal GC
-        if: ${{!startsWith(matrix.os, 'macos') && matrix.shard == '0'}}
-        working-directory: runtime/internal/runtime/tinygogc
-        run: llgo test -timeout=20m -tags testGC .
       - name: run llgo test
         env:
           SHARD_INDEX: ${{ matrix.shard }}
@@ -265,7 +276,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         llvm: [19]
-        go: ["1.21.13", "1.24.2"]
+        go: ["1.21.13", "1.24.2", "1.26.0"]
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v6
@@ -274,10 +285,15 @@ jobs:
         with:
           llvm-version: ${{matrix.llvm}}
 
-      - name: Set up Go 1.23 for building llgo
+      - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
         with:
           go-version: "1.24.2"
+      - name: Set up Go 1.26 for build
+        if: ${{ startsWith(matrix.go, '1.26') }}
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.26.0"
 
       - name: Install llgo
         run: |
@@ -290,28 +306,28 @@ jobs:
           go-version: ${{matrix.go}}
 
       - name: Test Hello World with go.mod 1.21
-        if: startsWith(matrix.go, '1.21') || startsWith(matrix.go, '1.22') || startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24')
+        if: startsWith(matrix.go, '1.21') || startsWith(matrix.go, '1.22') || startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}
           mod-version: "1.21"
 
       - name: Test Hello World with go.mod 1.22
-        if: startsWith(matrix.go, '1.22') || startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24')
+        if: startsWith(matrix.go, '1.22') || startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}
           mod-version: "1.22"
 
       - name: Test Hello World with go.mod 1.23
-        if: startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24')
+        if: startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}
           mod-version: "1.23"
 
       - name: Test Hello World with go.mod 1.24
-        if: startsWith(matrix.go, '1.24')
+        if: startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}

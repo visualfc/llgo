@@ -21,7 +21,7 @@ import (
 	"go/types"
 	"strconv"
 
-	"github.com/goplus/llvm"
+	"github.com/xgo-dev/llvm"
 )
 
 // -----------------------------------------------------------------------------
@@ -51,16 +51,14 @@ func (b Builder) pthreadCreate(pp, attr, routine, arg Expr) Expr {
 //	go println(t0, t1)
 //	go t3()
 //	go invoke t5.Println(...t6)
-func (b Builder) Go(fn Expr, args ...Expr) {
-	if debugInstr {
-		logCall("Go", fn, args)
-	}
+func (b Builder) Go(fn Expr, buildCall func(Builder, Expr, ...Expr) Expr, args ...Expr) {
+	dbgInstrCall("Go", fn, args)
 
 	prog := b.Prog
 	pkg := b.Pkg
 
 	var offset int
-	if fn.kind != vkBuiltin {
+	if fn != Nil && fn.kind != vkBuiltin {
 		offset = 1
 	}
 	typs := make([]Type, len(args)+offset)
@@ -75,10 +73,12 @@ func (b Builder) Go(fn Expr, args ...Expr) {
 	}
 	t := prog.Struct(typs...)
 	voidPtr := prog.VoidPtr()
-	data := Expr{b.aggregateMalloc(t, flds...), voidPtr}
+	// Goroutine startup data may carry Go pointers, including closure ctx.
+	// Keep it in GC-managed memory so it remains visible across the thread start.
+	data := Expr{b.aggregateAllocU(t, flds...), voidPtr}
 	size := prog.SizeOf(voidPtr)
 	pthd := b.Alloca(prog.IntVal(uint64(size), prog.Uintptr()))
-	b.pthreadCreate(pthd, prog.Nil(voidPtr), pkg.routine(t, fn, len(args)), data)
+	b.pthreadCreate(pthd, prog.Nil(voidPtr), pkg.routine(t, fn, buildCall, len(args)), data)
 }
 
 func (p Package) routineName() string {
@@ -86,7 +86,7 @@ func (p Package) routineName() string {
 	return p.Path() + "._llgo_routine$" + strconv.Itoa(p.iRoutine)
 }
 
-func (p Package) routine(t Type, fn Expr, n int) Expr {
+func (p Package) routine(t Type, fn Expr, buildCall func(Builder, Expr, ...Expr) Expr, n int) Expr {
 	prog := p.Prog
 	routine := p.NewFunc(p.routineName(), prog.tyRoutine(), InC)
 	b := routine.MakeBody(1)
@@ -94,15 +94,14 @@ func (p Package) routine(t Type, fn Expr, n int) Expr {
 	data := Expr{llvm.CreateLoad(b.impl, t.ll, param.impl), t}
 	args := make([]Expr, n)
 	var offset int
-	if fn.kind != vkBuiltin {
+	if fn != Nil && fn.kind != vkBuiltin {
 		fn = b.getField(data, 0)
 		offset = 1
 	}
 	for i := 0; i < n; i++ {
 		args[i] = b.getField(data, i+offset)
 	}
-	b.Call(fn, args...)
-	b.free(param)
+	buildCall(b, fn, args...)
 	b.Return(prog.Nil(prog.VoidPtr()))
 	return routine.Expr
 }
