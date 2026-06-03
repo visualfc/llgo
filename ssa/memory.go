@@ -343,6 +343,12 @@ func (b Builder) assertStaticNilDeref(ptr Expr) {
 	}
 }
 
+func (b Builder) WrapNilCheck(ptr, recvType, methodName Expr) Expr {
+	isNil := b.BinOp(token.EQL, ptr, b.Prog.Nil(ptr.Type))
+	b.Call(b.Pkg.rtFunc("PanicWrapNilPointer"), isNil, recvType, methodName)
+	return ptr
+}
+
 // Load returns the value at the pointer ptr.
 func (b Builder) Load(ptr Expr) Expr {
 	dbgInstrf("Load %v\n", ptr.impl)

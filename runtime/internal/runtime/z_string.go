@@ -97,7 +97,7 @@ func StringIterNext(it *StringIter) (ok bool, k int, v rune) {
 
 func StringToBytes(s String) []byte {
 	if s.len == 0 {
-		return nil
+		return []byte{}
 	}
 	data := make([]byte, s.len)
 	c.Memcpy(unsafe.Pointer(&data[0]), s.data, uintptr(s.len))
@@ -106,7 +106,7 @@ func StringToBytes(s String) []byte {
 
 func StringToRunes(s string) []rune {
 	if len(s) == 0 {
-		return nil
+		return []rune{}
 	}
 	data := make([]rune, len(s))
 	var index uint

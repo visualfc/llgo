@@ -5,9 +5,65 @@ package main
 // struct.  In particular, this test exercises that the correct
 // method is called.
 
+// CHECK-LINE: @0 = private unnamed_addr constant [3 x i8] c"two", align 1
+// CHECK-LINE: @1 = private unnamed_addr constant [48 x i8] c"{{.*}}/cl/_testgo/ifaceprom.impl", align 1
+// CHECK-LINE: @2 = private unnamed_addr constant [3 x i8] c"one", align 1
+// CHECK-LINE: @13 = private unnamed_addr constant [116 x i8] c"type assertion {{.*}}/cl/_testgo/ifaceprom.I -> {{.*}}/cl/_testgo/ifaceprom.I failed", align 1
+// CHECK-LINE: @14 = private unnamed_addr constant [4 x i8] c"pass", align 1
+
 type I interface {
 	one() int
 	two() string
+}
+
+type S struct {
+	I
+}
+
+type impl struct{}
+
+func (impl) one() int {
+	return 1
+}
+
+func (impl) two() string {
+	return "two"
+}
+
+func main() {
+	var s S
+	s.I = impl{}
+	if one := s.I.one(); one != 1 {
+		panic(one)
+	}
+	if one := s.one(); one != 1 {
+		panic(one)
+	}
+	closOne := s.I.one
+	if one := closOne(); one != 1 {
+		panic(one)
+	}
+	closOne = s.one
+	if one := closOne(); one != 1 {
+		panic(one)
+	}
+
+	if two := s.I.two(); two != "two" {
+		panic(two)
+	}
+	if two := s.two(); two != "two" {
+		panic(two)
+	}
+	closTwo := s.I.two
+	if two := closTwo(); two != "two" {
+		panic(two)
+	}
+	closTwo = s.two
+	if two := closTwo(); two != "two" {
+		panic(two)
+	}
+
+	println("pass")
 }
 
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/ifaceprom.S.one"(%"{{.*}}/cl/_testgo/ifaceprom.S" %0){{.*}} {
@@ -47,27 +103,79 @@ type I interface {
 // CHECK-NEXT:   %12 = call %"{{.*}}/runtime/internal/runtime.String" %11(ptr %10)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %12
 // CHECK-NEXT: }
-type S struct {
-	I
-}
 
-type impl struct{}
+// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/ifaceprom.(*S).one"(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/ifaceprom.S", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %2 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %1, align 8
+// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %2)
+// CHECK-NEXT:   %4 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %2, 0
+// CHECK-NEXT:   %5 = getelementptr ptr, ptr %4, i64 3
+// CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
+// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
+// CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %11 = call i64 %10(ptr %9)
+// CHECK-NEXT:   ret i64 %11
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/ifaceprom.(*S).two"(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/ifaceprom.S", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %2 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %1, align 8
+// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %2)
+// CHECK-NEXT:   %4 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %2, 0
+// CHECK-NEXT:   %5 = getelementptr ptr, ptr %4, i64 4
+// CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
+// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
+// CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %11 = call %"{{.*}}/runtime/internal/runtime.String" %10(ptr %9)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %11
+// CHECK-NEXT: }
 
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/ifaceprom.impl.one"(%"{{.*}}/cl/_testgo/ifaceprom.impl" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret i64 1
 // CHECK-NEXT: }
-func (impl) one() int {
-	return 1
-}
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/ifaceprom.impl.two"(%"{{.*}}/cl/_testgo/ifaceprom.impl" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 }
 // CHECK-NEXT: }
-func (impl) two() string {
-	return "two"
-}
+
+// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/ifaceprom.(*impl).one"(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/ifaceprom.impl", ptr %0, align 1
+// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testgo/ifaceprom.impl.one"(%"{{.*}}/cl/_testgo/ifaceprom.impl" %2)
+// CHECK-NEXT:   ret i64 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/ifaceprom.(*impl).two"(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 })
+// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/ifaceprom.impl", ptr %0, align 1
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/ifaceprom.impl.two"(%"{{.*}}/cl/_testgo/ifaceprom.impl" %2)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceprom.init"(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/ifaceprom.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/ifaceprom.init$guard", align 1
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceprom.main"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -226,7 +334,7 @@ func (impl) two() string {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_23
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 4 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @14, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
@@ -243,7 +351,7 @@ func (impl) two() string {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_4
 // CHECK-NEXT:   %95 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 116 }, ptr %95, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 116 }, ptr %95, align 8
 // CHECK-NEXT:   %96 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %95, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %96)
 // CHECK-NEXT:   unreachable
@@ -261,7 +369,7 @@ func (impl) two() string {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_20:                                         ; preds = %_llgo_6
 // CHECK-NEXT:   %104 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 116 }, ptr %104, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 116 }, ptr %104, align 8
 // CHECK-NEXT:   %105 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %104, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %105)
 // CHECK-NEXT:   unreachable
@@ -280,7 +388,7 @@ func (impl) two() string {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_22:                                         ; preds = %_llgo_12
 // CHECK-NEXT:   %114 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 116 }, ptr %114, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 116 }, ptr %114, align 8
 // CHECK-NEXT:   %115 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %114, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %115)
 // CHECK-NEXT:   unreachable
@@ -299,43 +407,58 @@ func (impl) two() string {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_24:                                         ; preds = %_llgo_14
 // CHECK-NEXT:   %124 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 116 }, ptr %124, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 116 }, ptr %124, align 8
 // CHECK-NEXT:   %125 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %124, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %125)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
-func main() {
-	var s S
-	s.I = impl{}
-	if one := s.I.one(); one != 1 {
-		panic(one)
-	}
-	if one := s.one(); one != 1 {
-		panic(one)
-	}
-	closOne := s.I.one
-	if one := closOne(); one != 1 {
-		panic(one)
-	}
-	closOne = s.one
-	if one := closOne(); one != 1 {
-		panic(one)
-	}
 
-	if two := s.I.two(); two != "two" {
-		panic(two)
-	}
-	if two := s.two(); two != "two" {
-		panic(two)
-	}
-	closTwo := s.I.two
-	if two := closTwo(); two != "two" {
-		panic(two)
-	}
-	closTwo = s.two
-	if two := closTwo(); two != "two" {
-		panic(two)
-	}
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal0"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal0"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
 
-	println("pass")
-}
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal64"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal64"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.interequal"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.interequal"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/ifaceprom.I.one$bound"(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = load { %"{{.*}}/runtime/internal/runtime.iface" }, ptr %0, align 8
+// CHECK-NEXT:   %2 = extractvalue { %"{{.*}}/runtime/internal/runtime.iface" } %1, 0
+// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %2)
+// CHECK-NEXT:   %4 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %2, 0
+// CHECK-NEXT:   %5 = getelementptr ptr, ptr %4, i64 3
+// CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
+// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
+// CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %11 = call i64 %10(ptr %9)
+// CHECK-NEXT:   ret i64 %11
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/ifaceprom.I.two$bound"(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = load { %"{{.*}}/runtime/internal/runtime.iface" }, ptr %0, align 8
+// CHECK-NEXT:   %2 = extractvalue { %"{{.*}}/runtime/internal/runtime.iface" } %1, 0
+// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %2)
+// CHECK-NEXT:   %4 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %2, 0
+// CHECK-NEXT:   %5 = getelementptr ptr, ptr %4, i64 4
+// CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
+// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
+// CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %11 = call %"{{.*}}/runtime/internal/runtime.String" %10(ptr %9)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %11
+// CHECK-NEXT: }
