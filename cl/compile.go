@@ -367,7 +367,7 @@ func isCgoFuncPtrVar(name string) bool {
 
 func (p *context) methodValue(sel *types.Selection) *ssa.Function {
 	f := p.goProg.MethodValue(sel)
-	if f != nil && f.Pkg == nil {
+	if f != nil && f.Pkg == nil && hasGenericInstantiation(f) {
 		p.markLinkOnce(f)
 	}
 	return f
@@ -387,19 +387,44 @@ func (p *context) needsLinkOnce(f *ssa.Function) bool {
 		if _, ok := p.linkOnceFns[f]; ok {
 			return true
 		}
-		if f.Origin() != nil {
+		if hasGenericInstantiation(f) {
 			return true
 		}
-		if recv := f.Type().(*types.Signature).Recv(); recv != nil {
-			if recv.Origin() != recv {
-				return true
-			}
-			if named := recvNamedOk(recv.Type()); named != nil {
-				if hasTypeArgs(named) {
-					return true
-				}
-			}
-		}
+	}
+	return false
+}
+
+func hasGenericInstantiation(f *ssa.Function) bool {
+	if f.Origin() != nil || len(f.TypeArgs()) != 0 {
+		return true
+	}
+	if sig, ok := f.Type().(*types.Signature); ok && hasInstantiatedRecv(sig.Recv()) {
+		return true
+	}
+	return hasInstantiatedMethodObject(f)
+}
+
+func hasInstantiatedMethodObject(f *ssa.Function) bool {
+	obj, ok := f.Object().(*types.Func)
+	if !ok {
+		return false
+	}
+	if obj.Origin() != obj {
+		return true
+	}
+	sig, ok := obj.Type().(*types.Signature)
+	return ok && hasInstantiatedRecv(sig.Recv())
+}
+
+func hasInstantiatedRecv(recv *types.Var) bool {
+	if recv == nil {
+		return false
+	}
+	if recv.Origin() != recv {
+		return true
+	}
+	if named := recvNamedOk(recv.Type()); named != nil {
+		return hasTypeArgs(named)
 	}
 	return false
 }
