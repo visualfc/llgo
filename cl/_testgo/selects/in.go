@@ -1,13 +1,13 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [4 x i8] c"c1<-", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [4 x i8] c"<-c2", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [4 x i8] c"<-c4", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [31 x i8] c"blocking select matched no case", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [4 x i8] c"<-c1", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [4 x i8] c"c2<-", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [4 x i8] c"<-c3", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [4 x i8] c"c1<-", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [4 x i8] c"<-c2", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [4 x i8] c"<-c4", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [31 x i8] c"blocking select matched no case", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [4 x i8] c"<-c1", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [4 x i8] c"c2<-", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [4 x i8] c"<-c3", align 1{{$}}
 
 func main() {
 	c1 := make(chan struct{}, 1)

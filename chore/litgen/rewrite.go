@@ -401,7 +401,7 @@ func buildGlobalChecks(prog irProgram, modulePath string) []string {
 		if !needed[symbol] {
 			continue
 		}
-		lines = append(lines, "// CHECK-LINE: "+generalizeIRLine(defs[symbol], modulePath))
+		lines = append(lines, "// CHECK: {{^}}"+generalizeIRLine(defs[symbol], modulePath)+"{{$}}")
 	}
 	return lines
 }

@@ -1,8 +1,8 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [17 x i8] c"bad Ascend result", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [2 x i8] c"ok", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [17 x i8] c"bad Ascend result", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [2 x i8] c"ok", align 1{{$}}
 
 type IteratorG[T any] func(T) bool
 

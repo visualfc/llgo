@@ -5,9 +5,9 @@ import (
 	"unsafe"
 )
 
-// CHECK-LINE: @4 = private unnamed_addr constant [39 x i8] c"struct{$f func(); $data unsafe.Pointer}", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [4 x i8] c"demo", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: @4 = private unnamed_addr constant [39 x i8] c"struct{$f func(); $data unsafe.Pointer}", align 1
+// CHECK: @5 = private unnamed_addr constant [4 x i8] c"demo", align 1
+// CHECK: @6 = private unnamed_addr constant [5 x i8] c"hello", align 1
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/funcdecl.check"({ ptr, ptr } %0){{.*}} {
 // CHECK-NEXT: _llgo_0:

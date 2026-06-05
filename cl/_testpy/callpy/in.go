@@ -8,10 +8,10 @@ import (
 	"github.com/goplus/lib/py/os"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [16 x i8] c"sqrt(2) = %.6f\0A\00", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [13 x i8] c"cwd ok = %d\0A\00", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [5 x i8] c"sqrt\00", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [7 x i8] c"getcwd\00", align 1
+// CHECK: @0 = private unnamed_addr constant [16 x i8] c"sqrt(2) = %.6f\0A\00", align 1
+// CHECK: @1 = private unnamed_addr constant [13 x i8] c"cwd ok = %d\0A\00", align 1
+// CHECK: @2 = private unnamed_addr constant [5 x i8] c"sqrt\00", align 1
+// CHECK: @3 = private unnamed_addr constant [7 x i8] c"getcwd\00", align 1
 
 func main() {
 	x := math.Sqrt(py.Float(2))

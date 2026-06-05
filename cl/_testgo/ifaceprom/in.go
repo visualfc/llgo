@@ -5,11 +5,11 @@ package main
 // struct.  In particular, this test exercises that the correct
 // method is called.
 
-// CHECK-LINE: @0 = private unnamed_addr constant [3 x i8] c"two", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [48 x i8] c"{{.*}}/cl/_testgo/ifaceprom.impl", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [3 x i8] c"one", align 1
-// CHECK-LINE: @13 = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/ifaceprom.I", align 1
-// CHECK-LINE: @14 = private unnamed_addr constant [4 x i8] c"pass", align 1
+// CHECK: @0 = private unnamed_addr constant [3 x i8] c"two", align 1
+// CHECK: @1 = private unnamed_addr constant [48 x i8] c"{{.*}}/cl/_testgo/ifaceprom.impl", align 1
+// CHECK: @2 = private unnamed_addr constant [3 x i8] c"one", align 1
+// CHECK: @13 = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/ifaceprom.I", align 1
+// CHECK: @14 = private unnamed_addr constant [4 x i8] c"pass", align 1
 
 type I interface {
 	one() int

@@ -3,22 +3,22 @@ package main
 
 // Tests of interface conversions and type assertions.
 
-// CHECK-LINE: @0 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/ifaceconv.C1", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [1 x i8] c"f", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/ifaceconv.C2", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [1 x i8] c"g", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [21 x i8] c"nil i0.(I0) succeeded", align 1
-// CHECK-LINE: @11 = private unnamed_addr constant [21 x i8] c"nil i1.(I1) succeeded", align 1
-// CHECK-LINE: @14 = private unnamed_addr constant [21 x i8] c"nil i2.(I2) succeeded", align 1
-// CHECK-LINE: @17 = private unnamed_addr constant [17 x i8] c"C1 i1.(I0) failed", align 1
-// CHECK-LINE: @19 = private unnamed_addr constant [17 x i8] c"C1 i1.(I1) failed", align 1
-// CHECK-LINE: @20 = private unnamed_addr constant [20 x i8] c"C1 i1.(I2) succeeded", align 1
-// CHECK-LINE: @22 = private unnamed_addr constant [17 x i8] c"C2 i1.(I0) failed", align 1
-// CHECK-LINE: @23 = private unnamed_addr constant [17 x i8] c"C2 i1.(I1) failed", align 1
-// CHECK-LINE: @24 = private unnamed_addr constant [17 x i8] c"C2 i1.(I2) failed", align 1
-// CHECK-LINE: @25 = private unnamed_addr constant [17 x i8] c"C1 I0(i1) was nil", align 1
-// CHECK-LINE: @26 = private unnamed_addr constant [17 x i8] c"C1 I1(i1) was nil", align 1
-// CHECK-LINE: @27 = private unnamed_addr constant [4 x i8] c"pass", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/ifaceconv.C1", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [1 x i8] c"f", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/ifaceconv.C2", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [1 x i8] c"g", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [21 x i8] c"nil i0.(I0) succeeded", align 1{{$}}
+// CHECK: {{^}}@11 = private unnamed_addr constant [21 x i8] c"nil i1.(I1) succeeded", align 1{{$}}
+// CHECK: {{^}}@14 = private unnamed_addr constant [21 x i8] c"nil i2.(I2) succeeded", align 1{{$}}
+// CHECK: {{^}}@17 = private unnamed_addr constant [17 x i8] c"C1 i1.(I0) failed", align 1{{$}}
+// CHECK: {{^}}@19 = private unnamed_addr constant [17 x i8] c"C1 i1.(I1) failed", align 1{{$}}
+// CHECK: {{^}}@20 = private unnamed_addr constant [20 x i8] c"C1 i1.(I2) succeeded", align 1{{$}}
+// CHECK: {{^}}@22 = private unnamed_addr constant [17 x i8] c"C2 i1.(I0) failed", align 1{{$}}
+// CHECK: {{^}}@23 = private unnamed_addr constant [17 x i8] c"C2 i1.(I1) failed", align 1{{$}}
+// CHECK: {{^}}@24 = private unnamed_addr constant [17 x i8] c"C2 i1.(I2) failed", align 1{{$}}
+// CHECK: {{^}}@25 = private unnamed_addr constant [17 x i8] c"C1 I0(i1) was nil", align 1{{$}}
+// CHECK: {{^}}@26 = private unnamed_addr constant [17 x i8] c"C1 I1(i1) was nil", align 1{{$}}
+// CHECK: {{^}}@27 = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
 
 type I0 interface {
 }

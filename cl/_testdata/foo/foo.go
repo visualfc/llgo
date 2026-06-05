@@ -1,9 +1,9 @@
 // LITTEST
 package foo
 
-// CHECK-LINE: @6 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testdata/foo.Foo", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [2 x i8] c"Pb", align 1
-// CHECK-LINE: @8 = private unnamed_addr constant [4 x i8] c"load", align 1
+// CHECK: {{^}}@6 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testdata/foo.Foo", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [2 x i8] c"Pb", align 1{{$}}
+// CHECK: {{^}}@8 = private unnamed_addr constant [4 x i8] c"load", align 1{{$}}
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/cl/_testdata/foo.Bar"(){{.*}} {
 // CHECK-NEXT: _llgo_0:

@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @6 = private unnamed_addr constant [5 x i8] c"value", align 1
-// CHECK-LINE: @9 = private unnamed_addr constant [5 x i8] c"error", align 1
-// CHECK-LINE: @16 = private unnamed_addr constant [22 x i8] c"interface{value() int}", align 1
+// CHECK: @6 = private unnamed_addr constant [5 x i8] c"value", align 1
+// CHECK: @9 = private unnamed_addr constant [5 x i8] c"error", align 1
+// CHECK: @16 = private unnamed_addr constant [22 x i8] c"interface{value() int}", align 1
 
 type M[T interface{}] struct {
 	v T

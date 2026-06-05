@@ -7,13 +7,13 @@ import (
 	"github.com/goplus/lib/c"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [5 x i8] c"error", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [4 x i8] c"abc\00", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [31 x i8] c"unsafe.String: len out of range", align 1
-// CHECK-LINE: @4 = private unnamed_addr constant [47 x i8] c"unsafe.String: nil pointer with non-zero length", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [3 x i8] c"abc", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [30 x i8] c"unsafe.Slice: len out of range", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [46 x i8] c"unsafe.Slice: nil pointer with non-zero length", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [4 x i8] c"abc\00", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [31 x i8] c"unsafe.String: len out of range", align 1{{$}}
+// CHECK: {{^}}@4 = private unnamed_addr constant [47 x i8] c"unsafe.String: nil pointer with non-zero length", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [3 x i8] c"abc", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [30 x i8] c"unsafe.Slice: len out of range", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [46 x i8] c"unsafe.Slice: nil pointer with non-zero length", align 1{{$}}
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/unsafe.init"(){{.*}} {
 // CHECK-NEXT: _llgo_0:

@@ -7,21 +7,21 @@ import (
 	"github.com/goplus/lib/c"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [3 x i8] c"%c\00", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [4 x i8] c"llgo", align 1
-// CHECK-LINE: @4 = private unnamed_addr constant [10 x i8] c"check bool", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [8 x i8] c"check &^", align 1
-// CHECK-LINE: @21 = private unnamed_addr constant [1 x i8] c"(", align 1
-// CHECK-LINE: @22 = private unnamed_addr constant [2 x i8] c"i)", align 1
-// CHECK-LINE: @23 = private unnamed_addr constant [4 x i8] c"true", align 1
-// CHECK-LINE: @24 = private unnamed_addr constant [5 x i8] c"false", align 1
-// CHECK-LINE: @25 = private unnamed_addr constant [3 x i8] c"NaN", align 1
-// CHECK-LINE: @26 = private unnamed_addr constant [4 x i8] c"+Inf", align 1
-// CHECK-LINE: @27 = private unnamed_addr constant [4 x i8] c"-Inf", align 1
-// CHECK-LINE: @28 = private unnamed_addr constant [16 x i8] c"0123456789abcdef", align 1
-// CHECK-LINE: @29 = private unnamed_addr constant [1 x i8] c"-", align 1
-// CHECK-LINE: @30 = private unnamed_addr constant [1 x i8] c" ", align 1
-// CHECK-LINE: @31 = private unnamed_addr constant [1 x i8] c"\0A", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [3 x i8] c"%c\00", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [4 x i8] c"llgo", align 1{{$}}
+// CHECK: {{^}}@4 = private unnamed_addr constant [10 x i8] c"check bool", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [8 x i8] c"check &^", align 1{{$}}
+// CHECK: {{^}}@21 = private unnamed_addr constant [1 x i8] c"(", align 1{{$}}
+// CHECK: {{^}}@22 = private unnamed_addr constant [2 x i8] c"i)", align 1{{$}}
+// CHECK: {{^}}@23 = private unnamed_addr constant [4 x i8] c"true", align 1{{$}}
+// CHECK: {{^}}@24 = private unnamed_addr constant [5 x i8] c"false", align 1{{$}}
+// CHECK: {{^}}@25 = private unnamed_addr constant [3 x i8] c"NaN", align 1{{$}}
+// CHECK: {{^}}@26 = private unnamed_addr constant [4 x i8] c"+Inf", align 1{{$}}
+// CHECK: {{^}}@27 = private unnamed_addr constant [4 x i8] c"-Inf", align 1{{$}}
+// CHECK: {{^}}@28 = private unnamed_addr constant [16 x i8] c"0123456789abcdef", align 1{{$}}
+// CHECK: {{^}}@29 = private unnamed_addr constant [1 x i8] c"-", align 1{{$}}
+// CHECK: {{^}}@30 = private unnamed_addr constant [1 x i8] c" ", align 1{{$}}
+// CHECK: {{^}}@31 = private unnamed_addr constant [1 x i8] c"\0A", align 1{{$}}
 
 var minhexdigits = 0
 

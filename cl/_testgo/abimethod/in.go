@@ -8,23 +8,23 @@ import (
 	"unsafe"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/abimethod.T", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [5 x i8] c"Demo1", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [3 x i8] c"int", align 1
-// CHECK-LINE: @14 = private unnamed_addr constant [20 x i8] c"testAnonymous1 error", align 1
-// CHECK-LINE: @16 = private unnamed_addr constant [20 x i8] c"testAnonymous2 error", align 1
-// CHECK-LINE: @18 = private unnamed_addr constant [20 x i8] c"testAnonymous3 error", align 1
-// CHECK-LINE: @19 = private unnamed_addr constant [20 x i8] c"testAnonymous4 error", align 1
-// CHECK-LINE: @21 = private unnamed_addr constant [20 x i8] c"testAnonymous5 error", align 1
-// CHECK-LINE: @22 = private unnamed_addr constant [20 x i8] c"testAnonymous6 error", align 1
-// CHECK-LINE: @24 = private unnamed_addr constant [20 x i8] c"testAnonymous7 error", align 1
-// CHECK-LINE: @26 = private unnamed_addr constant [20 x i8] c"testAnonymous8 error", align 1
-// CHECK-LINE: @27 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @96 = private unnamed_addr constant [25 x i8] c"testAnonymousBuffer error", align 1
-// CHECK-LINE: @109 = private unnamed_addr constant [17 x i8] c"testGeneric error", align 1
-// CHECK-LINE: @110 = private unnamed_addr constant [16 x i8] c"testNamed1 error", align 1
-// CHECK-LINE: @111 = private unnamed_addr constant [16 x i8] c"testNamed2 error", align 1
-// CHECK-LINE: @112 = private unnamed_addr constant [16 x i8] c"testNamed4 error", align 1
+// CHECK: @0 = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/abimethod.T", align 1
+// CHECK: @1 = private unnamed_addr constant [5 x i8] c"Demo1", align 1
+// CHECK: @5 = private unnamed_addr constant [3 x i8] c"int", align 1
+// CHECK: @14 = private unnamed_addr constant [20 x i8] c"testAnonymous1 error", align 1
+// CHECK: @16 = private unnamed_addr constant [20 x i8] c"testAnonymous2 error", align 1
+// CHECK: @18 = private unnamed_addr constant [20 x i8] c"testAnonymous3 error", align 1
+// CHECK: @19 = private unnamed_addr constant [20 x i8] c"testAnonymous4 error", align 1
+// CHECK: @21 = private unnamed_addr constant [20 x i8] c"testAnonymous5 error", align 1
+// CHECK: @22 = private unnamed_addr constant [20 x i8] c"testAnonymous6 error", align 1
+// CHECK: @24 = private unnamed_addr constant [20 x i8] c"testAnonymous7 error", align 1
+// CHECK: @26 = private unnamed_addr constant [20 x i8] c"testAnonymous8 error", align 1
+// CHECK: @27 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: @96 = private unnamed_addr constant [25 x i8] c"testAnonymousBuffer error", align 1
+// CHECK: @109 = private unnamed_addr constant [17 x i8] c"testGeneric error", align 1
+// CHECK: @110 = private unnamed_addr constant [16 x i8] c"testNamed1 error", align 1
+// CHECK: @111 = private unnamed_addr constant [16 x i8] c"testNamed2 error", align 1
+// CHECK: @112 = private unnamed_addr constant [16 x i8] c"testNamed4 error", align 1
 
 type T struct {
 	n int
@@ -678,7 +678,7 @@ type I2 interface {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %18 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @96, i64 25 }, ptr %18, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr [[ANON_BUF_ERR]], i64 25 }, ptr %18, align 8
 // CHECK-NEXT:   %19 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %18, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %19)
 // CHECK-NEXT:   unreachable

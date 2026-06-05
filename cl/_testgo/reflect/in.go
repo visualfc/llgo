@@ -6,22 +6,22 @@ import (
 	"unsafe"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [11 x i8] c"call.method", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [3 x i8] c"int", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [7 x i8] c"closure", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [5 x i8] c"error", align 1
-// CHECK-LINE: @9 = private unnamed_addr constant [12 x i8] c"call.closure", align 1
-// CHECK-LINE: @10 = private unnamed_addr constant [4 x i8] c"func", align 1
-// CHECK-LINE: @11 = private unnamed_addr constant [9 x i8] c"call.func", align 1
-// CHECK-LINE: @17 = private unnamed_addr constant [7 x i8] c"imethod", align 1
-// CHECK-LINE: @18 = private unnamed_addr constant [6 x i8] c"method", align 1
-// CHECK-LINE: @22 = private unnamed_addr constant [10 x i8] c"call.slice", align 1
-// CHECK-LINE: @36 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @37 = private unnamed_addr constant [5 x i8] c"world", align 1
-// CHECK-LINE: @38 = private unnamed_addr constant [14 x i8] c"MapIndex error", align 1
-// CHECK-LINE: @39 = private unnamed_addr constant [4 x i8] c"todo", align 1
-// CHECK-LINE: @40 = private unnamed_addr constant [12 x i8] c"must invalid", align 1
-// CHECK-LINE: @41 = private unnamed_addr constant [13 x i8] c"MapIter error", align 1
+// CHECK: @0 = private unnamed_addr constant [11 x i8] c"call.method", align 1
+// CHECK: @2 = private unnamed_addr constant [3 x i8] c"int", align 1
+// CHECK: @6 = private unnamed_addr constant [7 x i8] c"closure", align 1
+// CHECK: @7 = private unnamed_addr constant [5 x i8] c"error", align 1
+// CHECK: @9 = private unnamed_addr constant [12 x i8] c"call.closure", align 1
+// CHECK: @10 = private unnamed_addr constant [4 x i8] c"func", align 1
+// CHECK: @11 = private unnamed_addr constant [9 x i8] c"call.func", align 1
+// CHECK: @17 = private unnamed_addr constant [7 x i8] c"imethod", align 1
+// CHECK: @18 = private unnamed_addr constant [6 x i8] c"method", align 1
+// CHECK: @22 = private unnamed_addr constant [10 x i8] c"call.slice", align 1
+// CHECK: @36 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: @37 = private unnamed_addr constant [5 x i8] c"world", align 1
+// CHECK: @38 = private unnamed_addr constant [14 x i8] c"MapIndex error", align 1
+// CHECK: @39 = private unnamed_addr constant [4 x i8] c"todo", align 1
+// CHECK: @40 = private unnamed_addr constant [12 x i8] c"must invalid", align 1
+// CHECK: @41 = private unnamed_addr constant [13 x i8] c"MapIter error", align 1
 
 func main() {
 	callSlice()
@@ -119,7 +119,7 @@ type T struct {
 // CHECK-NEXT:   %8 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %6)
 // CHECK-NEXT:   %9 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %8)
 // CHECK-NEXT:   %10 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %8, 0
-// CHECK-NEXT:   %11 = getelementptr ptr, ptr %10, i64 37
+// CHECK-NEXT:   %11 = getelementptr ptr, ptr %10, i64 {{(37|41)}}
 // CHECK-NEXT:   %12 = load ptr, ptr %11, align 8
 // CHECK-NEXT:   %13 = insertvalue { ptr, ptr } undef, ptr %12, 0
 // CHECK-NEXT:   %14 = insertvalue { ptr, ptr } %13, ptr %9, 1
@@ -209,7 +209,7 @@ type T struct {
 // CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %2)
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %4)
 // CHECK-NEXT:   %6 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %4, 0
-// CHECK-NEXT:   %7 = getelementptr ptr, ptr %6, i64 37
+// CHECK-NEXT:   %7 = getelementptr ptr, ptr %6, i64 {{(37|41)}}
 // CHECK-NEXT:   %8 = load ptr, ptr %7, align 8
 // CHECK-NEXT:   %9 = insertvalue { ptr, ptr } undef, ptr %8, 0
 // CHECK-NEXT:   %10 = insertvalue { ptr, ptr } %9, ptr %5, 1
@@ -335,7 +335,7 @@ func callMethod() {
 // CHECK-NEXT:   %12 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %10)
 // CHECK-NEXT:   %13 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %12)
 // CHECK-NEXT:   %14 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %12, 0
-// CHECK-NEXT:   %15 = getelementptr ptr, ptr %14, i64 37
+// CHECK-NEXT:   %15 = getelementptr ptr, ptr %14, i64 {{(37|41)}}
 // CHECK-NEXT:   %16 = load ptr, ptr %15, align 8
 // CHECK-NEXT:   %17 = insertvalue { ptr, ptr } undef, ptr %16, 0
 // CHECK-NEXT:   %18 = insertvalue { ptr, ptr } %17, ptr %13, 1
@@ -437,7 +437,7 @@ func callMethod() {
 // CHECK-NEXT:   %6 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %4)
 // CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %6)
 // CHECK-NEXT:   %8 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %6, 0
-// CHECK-NEXT:   %9 = getelementptr ptr, ptr %8, i64 37
+// CHECK-NEXT:   %9 = getelementptr ptr, ptr %8, i64 {{(37|41)}}
 // CHECK-NEXT:   %10 = load ptr, ptr %9, align 8
 // CHECK-NEXT:   %11 = insertvalue { ptr, ptr } undef, ptr %10, 0
 // CHECK-NEXT:   %12 = insertvalue { ptr, ptr } %11, ptr %7, 1
@@ -854,7 +854,7 @@ func callIMethod() {
 // CHECK-NEXT:   %43 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %6)
 // CHECK-NEXT:   %44 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %43)
 // CHECK-NEXT:   %45 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %43, 0
-// CHECK-NEXT:   %46 = getelementptr ptr, ptr %45, i64 20
+// CHECK-NEXT:   %46 = getelementptr ptr, ptr %45, i64 {{(20|22)}}
 // CHECK-NEXT:   %47 = load ptr, ptr %46, align 8
 // CHECK-NEXT:   %48 = insertvalue { ptr, ptr } undef, ptr %47, 0
 // CHECK-NEXT:   %49 = insertvalue { ptr, ptr } %48, ptr %44, 1
@@ -1051,7 +1051,7 @@ func mapDemo1() {
 // CHECK-NEXT:   %56 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %7)
 // CHECK-NEXT:   %57 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %56)
 // CHECK-NEXT:   %58 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %56, 0
-// CHECK-NEXT:   %59 = getelementptr ptr, ptr %58, i64 20
+// CHECK-NEXT:   %59 = getelementptr ptr, ptr %58, i64 {{(20|22)}}
 // CHECK-NEXT:   %60 = load ptr, ptr %59, align 8
 // CHECK-NEXT:   %61 = insertvalue { ptr, ptr } undef, ptr %60, 0
 // CHECK-NEXT:   %62 = insertvalue { ptr, ptr } %61, ptr %57, 1

@@ -1,25 +1,25 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [6 x i8] c"invoke", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [42 x i8] c"{{.*}}/cl/_testgo/invoke.T", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [6 x i8] c"Invoke", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [7 x i8] c"invoke1", align 1
-// CHECK-LINE: @4 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T1", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [7 x i8] c"invoke2", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T2", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [7 x i8] c"invoke3", align 1
-// CHECK-LINE: @8 = private unnamed_addr constant [7 x i8] c"invoke4", align 1
-// CHECK-LINE: @9 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T4", align 1
-// CHECK-LINE: @10 = private unnamed_addr constant [7 x i8] c"invoke5", align 1
-// CHECK-LINE: @11 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T5", align 1
-// CHECK-LINE: @12 = private unnamed_addr constant [7 x i8] c"invoke6", align 1
-// CHECK-LINE: @13 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T6", align 1
-// CHECK-LINE: @14 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @36 = private unnamed_addr constant [5 x i8] c"world", align 1
-// CHECK-LINE: @38 = private unnamed_addr constant [42 x i8] c"{{.*}}/cl/_testgo/invoke.I", align 1
-// CHECK-LINE: @40 = private unnamed_addr constant [3 x i8] c"any", align 1
-// CHECK-LINE: @41 = private unnamed_addr constant [23 x i8] c"interface{Invoke() int}", align 1
+// CHECK: @0 = private unnamed_addr constant [6 x i8] c"invoke", align 1
+// CHECK: @1 = private unnamed_addr constant [42 x i8] c"{{.*}}/cl/_testgo/invoke.T", align 1
+// CHECK: @2 = private unnamed_addr constant [6 x i8] c"Invoke", align 1
+// CHECK: @3 = private unnamed_addr constant [7 x i8] c"invoke1", align 1
+// CHECK: @4 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T1", align 1
+// CHECK: @5 = private unnamed_addr constant [7 x i8] c"invoke2", align 1
+// CHECK: @6 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T2", align 1
+// CHECK: @7 = private unnamed_addr constant [7 x i8] c"invoke3", align 1
+// CHECK: @8 = private unnamed_addr constant [7 x i8] c"invoke4", align 1
+// CHECK: @9 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T4", align 1
+// CHECK: @10 = private unnamed_addr constant [7 x i8] c"invoke5", align 1
+// CHECK: @11 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T5", align 1
+// CHECK: @12 = private unnamed_addr constant [7 x i8] c"invoke6", align 1
+// CHECK: @13 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testgo/invoke.T6", align 1
+// CHECK: @14 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: @36 = private unnamed_addr constant [5 x i8] c"world", align 1
+// CHECK: @38 = private unnamed_addr constant [42 x i8] c"{{.*}}/cl/_testgo/invoke.I", align 1
+// CHECK: @40 = private unnamed_addr constant [3 x i8] c"any", align 1
+// CHECK: @41 = private unnamed_addr constant [23 x i8] c"interface{Invoke() int}", align 1
 
 type T struct {
 	s string
