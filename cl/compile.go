@@ -170,6 +170,7 @@ type context struct {
 	bvals       map[ssa.Value]llssa.Expr    // block values
 	vargs       map[*ssa.Alloc][]llssa.Expr // varargs
 	funcs       map[*ssa.Function]llssa.Function
+	linkOnceFns map[*ssa.Function]none
 	stackDefers map[*ssa.Function]bool
 	anonDefers  map[*ssa.Function]bool
 	paramDIVars map[*types.Var]llssa.DIVar
@@ -272,11 +273,24 @@ func (p *context) compileType(pkg llssa.Package, t *ssa.Type) {
 }
 
 func (p *context) compileMethods(pkg llssa.Package, typ types.Type) {
+	p.compileMethodsIf(pkg, typ, nil)
+}
+
+func (p *context) compileSyntheticMethods(pkg llssa.Package, typ types.Type) {
+	p.compileMethodsIf(pkg, typ, func(m *ssa.Function) bool {
+		return p.needsLinkOnce(m)
+	})
+}
+
+func (p *context) compileMethodsIf(pkg llssa.Package, typ types.Type, keep func(*ssa.Function) bool) {
 	prog := p.goProg
 	mthds := prog.MethodSets.MethodSet(typ)
 	for i, n := 0, mthds.Len(); i < n; i++ {
 		mthd := mthds.At(i)
-		if ssaMthd := prog.MethodValue(mthd); ssaMthd != nil {
+		if ssaMthd := p.methodValue(mthd); ssaMthd != nil {
+			if keep != nil && !keep(ssaMthd) {
+				continue
+			}
 			p.compileFuncDecl(pkg, ssaMthd)
 		}
 	}
@@ -351,20 +365,66 @@ func isCgoFuncPtrVar(name string) bool {
 	return strings.HasPrefix(name, "__cgo_")
 }
 
-// isInstance reports whether f is an instance method or generic instantiation.
-func isInstance(f *ssa.Function) bool {
-	if f.Origin() != nil {
-		return true
+func (p *context) methodValue(sel *types.Selection) *ssa.Function {
+	f := p.goProg.MethodValue(sel)
+	if f != nil && f.Pkg == nil && hasGenericInstantiation(f) {
+		p.markLinkOnce(f)
 	}
-	if recv := f.Type().(*types.Signature).Recv(); recv != nil {
-		if recv.Origin() != recv {
+	return f
+}
+
+func (p *context) markLinkOnce(f *ssa.Function) {
+	if p.linkOnceFns == nil {
+		p.linkOnceFns = make(map[*ssa.Function]none)
+	}
+	p.linkOnceFns[f] = none{}
+}
+
+// needsLinkOnce reports whether f may be synthesized in multiple packages and
+// therefore needs linkonce linkage when emitted on demand.
+func (p *context) needsLinkOnce(f *ssa.Function) bool {
+	for ; f != nil; f = f.Parent() {
+		if _, ok := p.linkOnceFns[f]; ok {
 			return true
 		}
-		if named := recvNamedOk(recv.Type()); named != nil {
-			if hasTypeArgs(named) {
-				return true
-			}
+		if hasGenericInstantiation(f) {
+			return true
 		}
+	}
+	return false
+}
+
+func hasGenericInstantiation(f *ssa.Function) bool {
+	if f.Origin() != nil || len(f.TypeArgs()) != 0 {
+		return true
+	}
+	if sig, ok := f.Type().(*types.Signature); ok && hasInstantiatedRecv(sig.Recv()) {
+		return true
+	}
+	return hasInstantiatedMethodObject(f)
+}
+
+func hasInstantiatedMethodObject(f *ssa.Function) bool {
+	obj, ok := f.Object().(*types.Func)
+	if !ok {
+		return false
+	}
+	if obj.Origin() != obj {
+		return true
+	}
+	sig, ok := obj.Type().(*types.Signature)
+	return ok && hasInstantiatedRecv(sig.Recv())
+}
+
+func hasInstantiatedRecv(recv *types.Var) bool {
+	if recv == nil {
+		return false
+	}
+	if recv.Origin() != recv {
+		return true
+	}
+	if named := recvNamedOk(recv.Type()); named != nil {
+		return hasTypeArgs(named)
 	}
 	return false
 }
@@ -405,7 +465,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		dbgInstrln("==> NewFunc", name, "type:", sig.Recv(), sig, "ftype:", ftype)
 	}
 	if fn == nil {
-		fn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), hasCtx, isInstance(f))
+		fn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), hasCtx, p.needsLinkOnce(f))
 		if disableInline {
 			fn.Inline(llssa.NoInline)
 		}
@@ -1524,16 +1584,17 @@ func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 	}
 
 	ctx := &context{
-		prog:    prog,
-		pkg:     ret,
-		fset:    pkgProg.Fset,
-		goProg:  pkgProg,
-		goTyps:  pkgTypes,
-		goPkg:   pkg,
-		patches: patches,
-		skips:   make(map[string]none),
-		vargs:   make(map[*ssa.Alloc][]llssa.Expr),
-		funcs:   make(map[*ssa.Function]llssa.Function),
+		prog:        prog,
+		pkg:         ret,
+		fset:        pkgProg.Fset,
+		goProg:      pkgProg,
+		goTyps:      pkgTypes,
+		goPkg:       pkg,
+		patches:     patches,
+		skips:       make(map[string]none),
+		vargs:       make(map[*ssa.Alloc][]llssa.Expr),
+		funcs:       make(map[*ssa.Function]llssa.Function),
+		linkOnceFns: make(map[*ssa.Function]none),
 		loaded: map[*types.Package]*pkgInfo{
 			types.Unsafe: {kind: PkgDeclOnly}, // TODO(xsw): PkgNoInit or PkgDeclOnly?
 		},
@@ -1969,20 +2030,22 @@ func (p *context) resolveLinkname(name string) string {
 	return name
 }
 
-// checkCompileMethods ensures that all methods attached to the given type
-// (and to the types it refers to) are compiled and emitted into the
-// current SSA package. Generic named types and struct types are the
-// primary targets; pointer types are followed until a non-pointer is
-// reached. non-generic named have their methods compiled elsewhere.
+// checkCompileMethods ensures that methods referenced from ABI method tables
+// are available to the linker. Generic instances and anonymous structural
+// types are emitted in the current SSA package. Package-level non-generic
+// named types normally have source methods emitted by their defining package,
+// but promoted wrappers can be synthesized only when a use-site asks for a
+// method table, so emit those wrappers on demand.
 func (p *context) checkCompileMethods(pkg llssa.Package, typ types.Type) {
 	nt := typ
 retry:
-	switch t := nt.(type) {
+	switch t := types.Unalias(nt).(type) {
 	case *types.Named:
 		if t.TypeArgs() == nil {
 			obj := t.Obj()
 			// skip package-level type
 			if obj.Parent() == obj.Pkg().Scope() {
+				p.compileSyntheticMethods(pkg, typ)
 				return
 			}
 		}
