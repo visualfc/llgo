@@ -162,7 +162,7 @@ func (b Builder) abiStructFields(t *types.Struct, name string) llvm.Value {
 	g := b.Pkg.VarOf(name)
 	if g == nil {
 		ft := prog.rtType("structfield")
-		typ := prog.rawType(t)
+		typ := prog.Type(t, InGo)
 		fields := make([]llvm.Value, n)
 		for i := 0; i < n; i++ {
 			f := t.Field(i)
