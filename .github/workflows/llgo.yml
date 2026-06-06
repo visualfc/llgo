@@ -17,24 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  download-model:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Download model file
-        run: |
-          mkdir -p ./_demo/c/llama2-c
-          wget -P ./_demo/c/llama2-c https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
-
-      - name: Upload model as artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: llama2-model
-          path: ./_demo/c/llama2-c/stories15M.bin
-          retention-days: 1
-
   llgo:
-    needs: download-model
     continue-on-error: true
     # macOS Intel is much slower than macOS ARM in the "Test demos" step.
     # Observed: macOS ARM about 2m49s vs macOS Intel about 10m26s.
@@ -57,11 +40,6 @@ jobs:
           llvm-version: ${{matrix.llvm}}
       - name: Install embedded dependencies
         uses: ./.github/actions/setup-embed-deps
-      - name: Download model artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: llama2-model
-          path: ./_demo/c/llama2-c/
       - name: Download platform-specific demo libs
         run: |
           if ${{ startsWith(matrix.os, 'macos') }}; then
