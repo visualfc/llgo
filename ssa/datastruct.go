@@ -41,6 +41,7 @@ import (
 func (b Builder) FieldAddr(x Expr, idx int) Expr {
 	dbgInstrf("FieldAddr %v, %d\n", x.impl, idx)
 	prog := b.Prog
+	b.assertStaticNilDeref(x)
 	tstruc := prog.Elem(x.Type)
 	telem := prog.Field(tstruc, idx)
 	pt := prog.Pointer(telem)
@@ -158,6 +159,7 @@ func (b Builder) IndexAddr(x, idx Expr) Expr {
 		ar := t.Elem().Underlying().(*types.Array)
 		max := prog.IntVal(uint64(ar.Len()), prog.Int())
 		idx = b.checkIndex(idx, max)
+		b.assertStaticNilDeref(x)
 	}
 	indices := []llvm.Value{idx.impl}
 	return Expr{llvm.CreateInBoundsGEP(b.impl, telem.ll, x.impl, indices), pt}
