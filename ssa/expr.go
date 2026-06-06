@@ -1087,6 +1087,10 @@ func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 			tmp := castFloatToSignedInt(b, x, b.Prog.Int32(), 32)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
+		if dstSize == 4 {
+			tmp := castFloatToSignedInt(b, x, b.Prog.Int64(), 64)
+			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		}
 		return castFloatToUnsignedInt(b, x, typ, dstSize*8)
 	}
 	if dstSize < 8 {

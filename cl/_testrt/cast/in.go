@@ -39,24 +39,25 @@ func cvt32Fto32(a float32, b int32) {
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float %0, i32 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = fcmp olt float %0, 0.000000e+00
-// CHECK-NEXT:   %3 = fcmp oge float %0, 0x41F0000000000000
+// CHECK-NEXT:   %2 = fcmp ole float %0, 0xC3E0000000000000
+// CHECK-NEXT:   %3 = fcmp oge float %0, 0x43E0000000000000
 // CHECK-NEXT:   %4 = fcmp uno float %0, %0
 // CHECK-NEXT:   %5 = select i1 %2, float 0.000000e+00, float %0
 // CHECK-NEXT:   %6 = select i1 %3, float 0.000000e+00, float %5
 // CHECK-NEXT:   %7 = select i1 %4, float 0.000000e+00, float %6
-// CHECK-NEXT:   %8 = fptoui float %7 to i32
-// CHECK-NEXT:   %9 = select i1 %3, i32 -1, i32 %8
-// CHECK-NEXT:   %10 = select i1 %2, i32 0, i32 %9
-// CHECK-NEXT:   %11 = select i1 %4, i32 0, i32 %10
-// CHECK-NEXT:   %12 = icmp ne i32 %11, %1
-// CHECK-NEXT:   br i1 %12, label %_llgo_1, label %_llgo_2
+// CHECK-NEXT:   %8 = fptosi float %7 to i64
+// CHECK-NEXT:   %9 = select i1 %2, i64 -9223372036854775808, i64 %8
+// CHECK-NEXT:   %10 = select i1 %3, i64 9223372036854775807, i64 %9
+// CHECK-NEXT:   %11 = select i1 %4, i64 0, i64 %10
+// CHECK-NEXT:   %12 = trunc i64 %11 to i32
+// CHECK-NEXT:   %13 = icmp ne i32 %12, %1
+// CHECK-NEXT:   br i1 %13, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %13 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 5 }, ptr %13, align 8
-// CHECK-NEXT:   %14 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %13, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %14)
+// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 5 }, ptr %14, align 8
+// CHECK-NEXT:   %15 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %14, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %15)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
@@ -403,11 +404,11 @@ func main() {
 	// MaxUint32 = 1<<32 - 1           // 4294967295
 	cvt32Fto32U(0, 0)
 	cvt32Fto32U(1.5, 1)
-	cvt32Fto32U(4294967295.1, 4294967295)
-	cvt32Fto32U(5294967295.1, 4294967295)
+	cvt32Fto32U(4294967295.1, 0)
+	cvt32Fto32U(5294967295.1, 1000000000)
 	cvt32Fto32U(-4294967295.1, 0)
-	cvt32Fto32U(-1294967295.1, 0)
-	cvt32Fto32U(-1.1, 0)
+	cvt32Fto32U(-1294967295.1, 3000000000)
+	cvt32Fto32U(-1.1, 4294967295)
 
 	// MaxFloat32             = 0x1p127 * (1 + (1 - 0x1p-23)) // 3.40282346638528859811704183484516925440e+38
 	// SmallestNonzeroFloat32 = 0x1p-126 * 0x1p-23            // 1.401298464324817070923729583289916131280e-45
@@ -490,11 +491,11 @@ func main() {
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32"(float 0xC1E0000000000000, i32 -2147483648)
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0.000000e+00, i32 0)
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 1.500000e+00, i32 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0x41F0000000000000, i32 -1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0x41F3B9ACA0000000, i32 -1)
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0x41F0000000000000, i32 0)
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0x41F3B9ACA0000000, i32 1000000000)
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xC1F0000000000000, i32 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xC1D34BE880000000, i32 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xBFF19999A0000000, i32 0)
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xC1D34BE880000000, i32 -1294967296)
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xBFF19999A0000000, i32 -1)
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float 0.000000e+00, double 0.000000e+00)
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float 1.500000e+00, double 1.500000e+00)
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float 1.000000e+10, double 1.000000e+10)
