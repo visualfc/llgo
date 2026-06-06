@@ -206,6 +206,15 @@ should_ignore() {
   return 1
 }
 
+is_model_demo() {
+  case "$1" in
+    ./_demo/c/llama2-c)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 run_dirs=()
 run_targets=()
 run_labels=()
@@ -224,6 +233,10 @@ if [ "$mode" = "embedded" ]; then
   done
 else
   for d in "${cases[@]}"; do
+    if is_model_demo "$d" && [ "${LLGO_RUN_MODEL_DEMOS:-0}" != "1" ]; then
+      echo "SKIP $d (model demo runs in scheduled Model Demo workflow)"
+      continue
+    fi
     run_dirs+=("$d")
     run_targets+=("")
     run_labels+=("$d")
