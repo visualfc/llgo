@@ -146,7 +146,7 @@ type T struct {
 // CHECK-NEXT:   %27 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %26, 0
 // CHECK-NEXT:   %28 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %26, 1
 // CHECK-NEXT:   %29 = icmp uge i64 0, %28
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %29)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %29, {{.*}})
 // CHECK-NEXT:   %30 = getelementptr inbounds %reflect.Value, ptr %27, i64 0
 // CHECK-NEXT:   %31 = load %reflect.Value, ptr %30, align 8
 // CHECK-NEXT:   %32 = call i64 @reflect.Value.Int(%reflect.Value %31)
@@ -236,7 +236,7 @@ type T struct {
 // CHECK-NEXT:   %23 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %22, 0
 // CHECK-NEXT:   %24 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %22, 1
 // CHECK-NEXT:   %25 = icmp uge i64 0, %24
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %25)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %25, {{.*}})
 // CHECK-NEXT:   %26 = getelementptr inbounds %reflect.Value, ptr %23, i64 0
 // CHECK-NEXT:   %27 = load %reflect.Value, ptr %26, align 8
 // CHECK-NEXT:   %28 = call i64 @reflect.Value.Int(%reflect.Value %27)
@@ -362,7 +362,7 @@ func callMethod() {
 // CHECK-NEXT:   %31 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %30, 0
 // CHECK-NEXT:   %32 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %30, 1
 // CHECK-NEXT:   %33 = icmp uge i64 0, %32
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %33)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %33, {{.*}})
 // CHECK-NEXT:   %34 = getelementptr inbounds %reflect.Value, ptr %31, i64 0
 // CHECK-NEXT:   %35 = load %reflect.Value, ptr %34, align 8
 // CHECK-NEXT:   %36 = call i64 @reflect.Value.Int(%reflect.Value %35)
@@ -400,7 +400,7 @@ func callMethod() {
 // CHECK-NEXT:   %56 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %55, 0
 // CHECK-NEXT:   %57 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %55, 1
 // CHECK-NEXT:   %58 = icmp uge i64 0, %57
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %58)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %58, {{.*}})
 // CHECK-NEXT:   %59 = getelementptr inbounds %reflect.Value, ptr %56, i64 0
 // CHECK-NEXT:   %60 = load %reflect.Value, ptr %59, align 8
 // CHECK-NEXT:   %61 = call i64 @reflect.Value.Int(%reflect.Value %60)
@@ -464,7 +464,7 @@ func callMethod() {
 // CHECK-NEXT:   %25 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %24, 0
 // CHECK-NEXT:   %26 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %24, 1
 // CHECK-NEXT:   %27 = icmp uge i64 0, %26
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %27)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %27, {{.*}})
 // CHECK-NEXT:   %28 = getelementptr inbounds %reflect.Value, ptr %25, i64 0
 // CHECK-NEXT:   %29 = load %reflect.Value, ptr %28, align 8
 // CHECK-NEXT:   %30 = call i64 @reflect.Value.Int(%reflect.Value %29)
@@ -502,7 +502,7 @@ func callMethod() {
 // CHECK-NEXT:   %50 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %49, 0
 // CHECK-NEXT:   %51 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %49, 1
 // CHECK-NEXT:   %52 = icmp uge i64 0, %51
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %52)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %52, {{.*}})
 // CHECK-NEXT:   %53 = getelementptr inbounds %reflect.Value, ptr %50, i64 0
 // CHECK-NEXT:   %54 = load %reflect.Value, ptr %53, align 8
 // CHECK-NEXT:   %55 = call i64 @reflect.Value.Int(%reflect.Value %54)
@@ -581,14 +581,14 @@ func callMethod() {
 // CHECK-NEXT:   %32 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %31, 0
 // CHECK-NEXT:   %33 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %31, 1
 // CHECK-NEXT:   %34 = icmp uge i64 0, %33
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %34)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %34, {{.*}})
 // CHECK-NEXT:   %35 = getelementptr inbounds %reflect.Value, ptr %32, i64 0
 // CHECK-NEXT:   %36 = load %reflect.Value, ptr %35, align 8
 // CHECK-NEXT:   %37 = call i64 @reflect.Value.Int(%reflect.Value %36)
 // CHECK-NEXT:   %38 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %31, 0
 // CHECK-NEXT:   %39 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %31, 1
 // CHECK-NEXT:   %40 = icmp uge i64 1, %39
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %40)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %40, {{.*}})
 // CHECK-NEXT:   %41 = getelementptr inbounds %reflect.Value, ptr %38, i64 1
 // CHECK-NEXT:   %42 = load %reflect.Value, ptr %41, align 8
 // CHECK-NEXT:   %43 = call i64 @reflect.Value.Int(%reflect.Value %42)
@@ -649,14 +649,14 @@ func callMethod() {
 // CHECK-NEXT:   %75 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %74, 0
 // CHECK-NEXT:   %76 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %74, 1
 // CHECK-NEXT:   %77 = icmp uge i64 0, %76
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %77)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %77, {{.*}})
 // CHECK-NEXT:   %78 = getelementptr inbounds %reflect.Value, ptr %75, i64 0
 // CHECK-NEXT:   %79 = load %reflect.Value, ptr %78, align 8
 // CHECK-NEXT:   %80 = call i64 @reflect.Value.Int(%reflect.Value %79)
 // CHECK-NEXT:   %81 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %74, 0
 // CHECK-NEXT:   %82 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %74, 1
 // CHECK-NEXT:   %83 = icmp uge i64 1, %82
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %83)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %83, {{.*}})
 // CHECK-NEXT:   %84 = getelementptr inbounds %reflect.Value, ptr %81, i64 1
 // CHECK-NEXT:   %85 = load %reflect.Value, ptr %84, align 8
 // CHECK-NEXT:   %86 = call i64 @reflect.Value.Int(%reflect.Value %85)
@@ -687,7 +687,7 @@ func callMethod() {
 // CHECK-NEXT:   %17 = icmp slt i64 %13, 0
 // CHECK-NEXT:   %18 = icmp uge i64 %13, %16
 // CHECK-NEXT:   %19 = or i1 %18, %17
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %19)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %19, {{.*}})
 // CHECK-NEXT:   %20 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %15, i64 %13
 // CHECK-NEXT:   %21 = load %"{{.*}}/runtime/internal/runtime.eface", ptr %20, align 8
 // CHECK-NEXT:   %22 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %21, 0

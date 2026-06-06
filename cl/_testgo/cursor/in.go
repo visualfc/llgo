@@ -139,7 +139,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   %58 = icmp slt i64 %57, 0
 // CHECK-NEXT:   %59 = icmp uge i64 %57, %56
 // CHECK-NEXT:   %60 = or i1 %59, %58
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %60)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %60, {{.*}})
 // CHECK-NEXT:   %61 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %55, i64 %57
 // CHECK-NEXT:   %62 = load %"{{.*}}/cl/_testgo/cursor.event", ptr %61, align 8
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.event" %62, ptr %54, align 8
@@ -196,7 +196,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   %91 = icmp slt i64 %90, 0
 // CHECK-NEXT:   %92 = icmp uge i64 %90, %89
 // CHECK-NEXT:   %93 = or i1 %92, %91
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %93)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %93, {{.*}})
 // CHECK-NEXT:   %94 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %88, i64 %90
 // CHECK-NEXT:   %95 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %94, i32 0, i32 1
 // CHECK-NEXT:   %96 = load i64, ptr %95, align 8
@@ -570,7 +570,7 @@ const (
 // CHECK-NEXT:   %14 = icmp slt i64 %13, 0
 // CHECK-NEXT:   %15 = icmp uge i64 %13, %12
 // CHECK-NEXT:   %16 = or i1 %15, %14
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %16)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %16, {{.*}})
 // CHECK-NEXT:   %17 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %11, i64 %13
 // CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %17, i32 0, i32 0
 // CHECK-NEXT:   %19 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %18, align 8
@@ -625,7 +625,7 @@ const (
 // CHECK-NEXT:   %19 = icmp slt i64 %18, 0
 // CHECK-NEXT:   %20 = icmp uge i64 %18, %17
 // CHECK-NEXT:   %21 = or i1 %20, %19
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %21)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %21, {{.*}})
 // CHECK-NEXT:   %22 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %16, i64 %18
 // CHECK-NEXT:   %23 = load %"{{.*}}/cl/_testgo/cursor.event", ptr %22, align 8
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.event" %23, ptr %15, align 8
@@ -659,7 +659,7 @@ const (
 // CHECK-NEXT:   %39 = icmp slt i64 %38, 0
 // CHECK-NEXT:   %40 = icmp uge i64 %38, %37
 // CHECK-NEXT:   %41 = or i1 %40, %39
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %41)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %41, {{.*}})
 // CHECK-NEXT:   %42 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %36, i64 %38
 // CHECK-NEXT:   %43 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %42, i32 0, i32 1
 // CHECK-NEXT:   %44 = load i64, ptr %43, align 8
@@ -725,7 +725,7 @@ const (
 // CHECK-NEXT:   %23 = icmp slt i64 %22, 0
 // CHECK-NEXT:   %24 = icmp uge i64 %22, %21
 // CHECK-NEXT:   %25 = or i1 %24, %23
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %25)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %25, {{.*}})
 // CHECK-NEXT:   %26 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %20, i64 %22
 // CHECK-NEXT:   %27 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %26, i32 0, i32 2
 // CHECK-NEXT:   %28 = load i32, ptr %27, align 4
@@ -830,7 +830,7 @@ const (
 // CHECK-NEXT:   %10 = icmp slt i64 %6, 0
 // CHECK-NEXT:   %11 = icmp uge i64 %6, %9
 // CHECK-NEXT:   %12 = or i1 %11, %10
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %12)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %12, {{.*}})
 // CHECK-NEXT:   %13 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.iface", ptr %8, i64 %6
 // CHECK-NEXT:   %14 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %13, align 8
 // CHECK-NEXT:   %15 = call i64 @"{{.*}}/cl/_testgo/cursor.typeOf"(%"{{.*}}/runtime/internal/runtime.iface" %14)

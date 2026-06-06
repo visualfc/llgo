@@ -212,14 +212,25 @@ func checkRange(idx Expr, max Expr) (checkMin, checkMax bool) {
 	return
 }
 
+func (b Builder) boundsArg(idx Expr) (Expr, bool) {
+	signed := idx.kind == vkSigned
+	typ := b.Prog.Int64()
+	if idx.impl.Type() != typ.ll {
+		idx.impl = castInt(b, idx.impl, idx.Type, typ)
+	}
+	idx.Type = typ
+	return idx, signed
+}
+
 // check index >= 0 && index < max and size to uint
 func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 	prog := b.Prog
 	// check range
 	checkMin, checkMax := checkRange(idx, max)
 	// fit size
+	signed := idx.kind == vkSigned
 	var typ Type
-	if idx.kind == vkSigned {
+	if signed {
 		typ = prog.Int()
 	} else {
 		typ = prog.Uint()
@@ -247,7 +258,8 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 		}
 	}
 	if !check.IsNil() {
-		b.InlineCall(b.Pkg.rtFunc("AssertIndexRange"), check)
+		boundsIdx, _ := b.boundsArg(idx)
+		b.InlineCall(b.Pkg.rtFunc("CheckIndexRange"), check, boundsIdx, prog.BoolVal(signed), max)
 	}
 	return idx
 }
@@ -314,15 +326,26 @@ func (b Builder) Slice(x, low, high, max Expr) (ret Expr) {
 	var nEltSize Expr
 	var base Expr
 	var lowIsNil = low.IsNil()
+	var lowArg Expr
+	var highArg Expr
+	var maxArg Expr
+	var lowSigned = true
+	var highSigned = true
+	var maxSigned = true
+	var upperIsLen bool
 	if lowIsNil {
 		low = prog.IntVal(0, prog.Int())
+		lowArg = prog.IntVal(0, prog.Int64())
 	} else {
+		lowArg, lowSigned = b.boundsArg(low)
 		low = b.FitIntSize(low)
 	}
 	if !high.IsNil() {
+		highArg, highSigned = b.boundsArg(high)
 		high = b.FitIntSize(high)
 	}
 	if !max.IsNil() {
+		maxArg, maxSigned = b.boundsArg(max)
 		max = b.FitIntSize(max)
 	}
 	switch t := x.raw.Type.Underlying().(type) {
@@ -332,15 +355,17 @@ func (b Builder) Slice(x, low, high, max Expr) (ret Expr) {
 		}
 		if high.IsNil() {
 			high = b.StringLen(x)
+			highArg, highSigned = b.boundsArg(high)
 		}
 		ret.Type = x.Type
-		ret.impl = b.InlineCall(b.Pkg.rtFunc("StringSlice"), x, low, high).impl
+		ret.impl = b.InlineCall(b.Pkg.rtFunc("StringSlice2"), x, lowArg, highArg, prog.BoolVal(lowSigned), prog.BoolVal(highSigned)).impl
 		return
 	case *types.Slice:
 		nEltSize = SizeOf(prog, prog.Index(x.Type))
 		nCap = b.SliceCap(x)
 		if high.IsNil() {
 			high = b.SliceLen(x)
+			highArg, highSigned = b.boundsArg(high)
 		}
 		ret.Type = x.Type
 		base = b.SliceData(x)
@@ -352,20 +377,45 @@ func (b Builder) Slice(x, low, high, max Expr) (ret Expr) {
 			ret.Type = prog.Slice(elem)
 			nEltSize = SizeOf(prog, elem)
 			nCap = prog.IntVal(uint64(te.Len()), prog.Int())
+			upperIsLen = true
 			if high.IsNil() {
 				if lowIsNil && max.IsNil() {
 					ret.impl = b.unsafeSlice(x, nCap.impl, nCap.impl).impl
 					return
 				}
 				high = nCap
+				highArg, highSigned = b.boundsArg(high)
 			}
 			base = x
 		}
 	}
 	if max.IsNil() {
-		max = nCap
+		ret.impl = b.InlineCall(
+			b.Pkg.rtFunc("NewSlice2"),
+			base,
+			nEltSize,
+			nCap,
+			lowArg,
+			highArg,
+			prog.BoolVal(lowSigned),
+			prog.BoolVal(highSigned),
+			prog.BoolVal(upperIsLen),
+		).impl
+		return
 	}
-	ret.impl = b.InlineCall(b.Pkg.rtFunc("NewSlice3"), base, nEltSize, nCap, low, high, max).impl
+	ret.impl = b.InlineCall(
+		b.Pkg.rtFunc("NewSlice3Bounds"),
+		base,
+		nEltSize,
+		nCap,
+		lowArg,
+		highArg,
+		maxArg,
+		prog.BoolVal(lowSigned),
+		prog.BoolVal(highSigned),
+		prog.BoolVal(maxSigned),
+		prog.BoolVal(upperIsLen),
+	).impl
 	return
 }
 

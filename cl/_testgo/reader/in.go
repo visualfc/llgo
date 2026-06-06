@@ -206,7 +206,7 @@ func (c nopCloserWriterTo) WriteTo(w Writer) (n int64, err error) {
 // CHECK-LABEL: define { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } @"{{.*}}/cl/_testgo/reader.ReadAll"(%"{{.*}}/runtime/internal/runtime.iface" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 512)
-// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice3"(ptr %1, i64 1, i64 512, i64 0, i64 0, i64 512)
+// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice{{.*}}"({{.*}})
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_6, %_llgo_3, %_llgo_0
@@ -215,7 +215,7 @@ func (c nopCloserWriterTo) WriteTo(w Writer) (n int64, err error) {
 // CHECK-NEXT:   %5 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %3, 2
 // CHECK-NEXT:   %6 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %3, 2
 // CHECK-NEXT:   %7 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %3, 0
-// CHECK-NEXT:   %8 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice3"(ptr %7, i64 1, i64 %6, i64 %4, i64 %5, i64 %6)
+// CHECK-NEXT:   %8 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice{{.*}}"({{.*}})
 // CHECK-NEXT:   %9 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %0)
 // CHECK-NEXT:   %10 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %0, 0
 // CHECK-NEXT:   %11 = getelementptr ptr, ptr %10, i64 3
@@ -231,7 +231,7 @@ func (c nopCloserWriterTo) WriteTo(w Writer) (n int64, err error) {
 // CHECK-NEXT:   %21 = add i64 %20, %18
 // CHECK-NEXT:   %22 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %3, 2
 // CHECK-NEXT:   %23 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %3, 0
-// CHECK-NEXT:   %24 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice3"(ptr %23, i64 1, i64 %22, i64 0, i64 %21, i64 %22)
+// CHECK-NEXT:   %24 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice{{.*}}"({{.*}})
 // CHECK-NEXT:   %25 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %19)
 // CHECK-NEXT:   %26 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %19, 1
 // CHECK-NEXT:   %27 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" undef, ptr %25, 0
@@ -284,7 +284,7 @@ func (c nopCloserWriterTo) WriteTo(w Writer) (n int64, err error) {
 // CHECK-NEXT:   %58 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %24, 1
 // CHECK-NEXT:   %59 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %57, 2
 // CHECK-NEXT:   %60 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %57, 0
-// CHECK-NEXT:   %61 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice3"(ptr %60, i64 1, i64 %59, i64 0, i64 %58, i64 %59)
+// CHECK-NEXT:   %61 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice{{.*}}"({{.*}})
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-NEXT: }
 
@@ -784,7 +784,7 @@ func main() {
 // CHECK-NEXT:   %13 = getelementptr inbounds %"{{.*}}/cl/_testgo/reader.stringReader", ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %14 = load i64, ptr %13, align 8
 // CHECK-NEXT:   %15 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %12, 1
-// CHECK-NEXT:   %16 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice"(%"{{.*}}/runtime/internal/runtime.String" %12, i64 %14, i64 %15)
+// CHECK-NEXT:   %16 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice2"({{.*}})
 // CHECK-NEXT:   %17 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %16, 0
 // CHECK-NEXT:   %18 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %16, 1
 // CHECK-NEXT:   %19 = call i64 @"{{.*}}/runtime/internal/runtime.SliceCopy"(%"{{.*}}/runtime/internal/runtime.Slice" %1, ptr %17, i64 %18, i64 1)
@@ -824,7 +824,7 @@ func main() {
 // CHECK-NEXT:   %12 = getelementptr inbounds %"{{.*}}/cl/_testgo/reader.stringReader", ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %13 = load %"{{.*}}/runtime/internal/runtime.String", ptr %12, align 8
 // CHECK-NEXT:   %14 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %13, 1
-// CHECK-NEXT:   %15 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice"(%"{{.*}}/runtime/internal/runtime.String" %13, i64 %2, i64 %14)
+// CHECK-NEXT:   %15 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice2"({{.*}})
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %15, 0
 // CHECK-NEXT:   %17 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %15, 1
 // CHECK-NEXT:   %18 = call i64 @"{{.*}}/runtime/internal/runtime.SliceCopy"(%"{{.*}}/runtime/internal/runtime.Slice" %1, ptr %16, i64 %17, i64 1)
@@ -870,7 +870,7 @@ func main() {
 // CHECK-NEXT:   %16 = icmp slt i64 %11, 0
 // CHECK-NEXT:   %17 = icmp uge i64 %11, %15
 // CHECK-NEXT:   %18 = or i1 %17, %16
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %18)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %18, {{.*}})
 // CHECK-NEXT:   %19 = getelementptr inbounds i8, ptr %14, i64 %11
 // CHECK-NEXT:   %20 = load i8, ptr %19, align 1
 // CHECK-NEXT:   %21 = getelementptr inbounds %"{{.*}}/cl/_testgo/reader.stringReader", ptr %0, i32 0, i32 1
@@ -914,7 +914,7 @@ func main() {
 // CHECK-NEXT:   %19 = icmp slt i64 %14, 0
 // CHECK-NEXT:   %20 = icmp uge i64 %14, %18
 // CHECK-NEXT:   %21 = or i1 %20, %19
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertIndexRange"(i1 %21)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %21, {{.*}})
 // CHECK-NEXT:   %22 = getelementptr inbounds i8, ptr %17, i64 %14
 // CHECK-NEXT:   %23 = load i8, ptr %22, align 1
 // CHECK-NEXT:   %24 = icmp ult i8 %23, -128
@@ -938,7 +938,7 @@ func main() {
 // CHECK-NEXT:   %35 = getelementptr inbounds %"{{.*}}/cl/_testgo/reader.stringReader", ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %36 = load i64, ptr %35, align 8
 // CHECK-NEXT:   %37 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %34, 1
-// CHECK-NEXT:   %38 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice"(%"{{.*}}/runtime/internal/runtime.String" %34, i64 %36, i64 %37)
+// CHECK-NEXT:   %38 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice2"({{.*}})
 // CHECK-NEXT:   %39 = call { i32, i64 } @"unicode/utf8.DecodeRuneInString"(%"{{.*}}/runtime/internal/runtime.String" %38)
 // CHECK-NEXT:   %40 = extractvalue { i32, i64 } %39, 0
 // CHECK-NEXT:   %41 = extractvalue { i32, i64 } %39, 1
@@ -1089,7 +1089,7 @@ func main() {
 // CHECK-NEXT:   %11 = getelementptr inbounds %"{{.*}}/cl/_testgo/reader.stringReader", ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %12 = load i64, ptr %11, align 8
 // CHECK-NEXT:   %13 = extractvalue %"{{.*}}/runtime/internal/runtime.String" %10, 1
-// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice"(%"{{.*}}/runtime/internal/runtime.String" %10, i64 %12, i64 %13)
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringSlice2"({{.*}})
 // CHECK-NEXT:   %15 = call { i64, %"{{.*}}/runtime/internal/runtime.iface" } @"{{.*}}/cl/_testgo/reader.WriteString"(%"{{.*}}/runtime/internal/runtime.iface" %1, %"{{.*}}/runtime/internal/runtime.String" %14)
 // CHECK-NEXT:   %16 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %15, 0
 // CHECK-NEXT:   %17 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %15, 1
