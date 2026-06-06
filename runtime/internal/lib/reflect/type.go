@@ -306,7 +306,12 @@ func (t *rtype) Method(i int) (m Method) {
 	}
 	mt := FuncOf(in, out, ft.Variadic())
 	m.Type = mt
-	m.Func = Value{&mt.(*rtype).t, p.Tfn_, fl}
+	mtfn := (*funcType)(unsafe.Pointer(&mt.(*rtype).t))
+	fv := &struct {
+		fn  unsafe.Pointer
+		env unsafe.Pointer
+	}{p.Tfn_, nil}
+	m.Func = Value{closureOf(mtfn), unsafe.Pointer(fv), fl | flagIndir}
 	m.Index = i
 	return m
 }
@@ -1271,7 +1276,7 @@ func FuncOf(in, out []Type, variadic bool) Type {
 
 	ft.TFlag = 0
 	ft.Hash = hash
-	ft.Kind_ = uint8(abi.Func)
+	ft.Kind_ = uint8(abi.Func) | abi.KindDirectIface
 	if variadic {
 		ft.TFlag |= abi.TFlagVariadic
 	}
