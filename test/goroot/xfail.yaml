@@ -3224,30 +3224,10 @@ xfails:
     directive: run
     case: convert5.go
     reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: deferprint.go
-    reason: go1.24 goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: deferprint.go
-    reason: go1.25 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/bug273.go
     reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/bug409.go
-    reason: go1.24 goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/bug409.go
-    reason: go1.25 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue12133.go
@@ -3272,16 +3252,6 @@ xfails:
     directive: run
     case: fixedbugs/issue32187.go
     reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue35576.go
-    reason: go1.24 goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue35576.go
-    reason: go1.25 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue38496.go
@@ -3302,16 +3272,6 @@ xfails:
     directive: run
     case: fixedbugs/issue53635.go
     reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue6899.go
-    reason: go1.24 goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue6899.go
-    reason: go1.25 goroot run failure on darwin/arm64
   - version: go1.26
     platform: darwin/arm64
     directive: run
@@ -3330,30 +3290,10 @@ xfails:
     directive: run
     case: fixedbugs/issue8132.go
     reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: ken/cplx0.go
-    reason: go1.24 goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: ken/cplx0.go
-    reason: go1.25 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: nil.go
     reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: print.go
-    reason: go1.24 goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: print.go
-    reason: go1.25 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: typeparam/chans.go
@@ -3370,16 +3310,6 @@ xfails:
     directive: run
     case: typeparam/orderedmap.go
     reason: select over unbuffered channel misses final iteration value on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: typeparam/typeswitch5.go
-    reason: go1.24 println float exponent formatting differs on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: typeparam/typeswitch5.go
-    reason: go1.25 println float exponent formatting differs on darwin/arm64
   - platform: darwin/arm64
     directive: runoutput
     case: index0.go
@@ -3393,30 +3323,10 @@ xfails:
     directive: run
     case: convert5.go
     reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: deferprint.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: deferprint.go
-    reason: go1.25 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/bug273.go
     reason: current main goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/bug409.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/bug409.go
-    reason: go1.25 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue12133.go
@@ -3437,16 +3347,6 @@ xfails:
     directive: run
     case: fixedbugs/issue32187.go
     reason: current main goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue35576.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue35576.go
-    reason: go1.25 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue38496.go
@@ -3467,16 +3367,6 @@ xfails:
     directive: run
     case: fixedbugs/issue53635.go
     reason: current main goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue6899.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue6899.go
-    reason: go1.25 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -3505,16 +3395,6 @@ xfails:
     directive: run
     case: goprint.go
     reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: ken/cplx0.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: ken/cplx0.go
-    reason: go1.25 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: nil.go
@@ -3527,16 +3407,6 @@ xfails:
     directive: run
     case: peano.go
     reason: current main goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: print.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: print.go
-    reason: go1.25 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: typeparam/chans.go
@@ -3559,16 +3429,6 @@ xfails:
     directive: run
     case: typeparam/orderedmap.go
     reason: go1.25.0 select over unbuffered channel misses final iteration value on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: typeparam/typeswitch5.go
-    reason: go1.24 println float exponent formatting differs on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: typeparam/typeswitch5.go
-    reason: go1.25 println float exponent formatting differs on linux/amd64
   - platform: linux/amd64
     directive: runoutput
     case: index0.go
