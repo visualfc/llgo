@@ -150,8 +150,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/ifaceprom.impl", ptr %0, align 1
-// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testgo/ifaceprom.impl.one"(%"{{.*}}/cl/_testgo/ifaceprom.impl" %2)
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testgo/ifaceprom.impl.one"(%"{{.*}}/cl/_testgo/ifaceprom.impl" zeroinitializer)
 // CHECK-NEXT:   ret i64 %3
 // CHECK-NEXT: }
 
@@ -159,8 +160,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/ifaceprom.impl", ptr %0, align 1
-// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/ifaceprom.impl.two"(%"{{.*}}/cl/_testgo/ifaceprom.impl" %2)
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/ifaceprom.impl.two"(%"{{.*}}/cl/_testgo/ifaceprom.impl" zeroinitializer)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %3
 // CHECK-NEXT: }
 

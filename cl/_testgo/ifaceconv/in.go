@@ -111,8 +111,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 46 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 1 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/ifaceconv.C1", ptr %0, align 1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C1.f"(%"{{.*}}/cl/_testgo/ifaceconv.C1" %2)
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C1.f"(%"{{.*}}/cl/_testgo/ifaceconv.C1" zeroinitializer)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -130,8 +131,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 46 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 1 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/ifaceconv.C2", ptr %0, align 1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C2.f"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %2)
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C2.f"(%"{{.*}}/cl/_testgo/ifaceconv.C2" zeroinitializer)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -139,8 +141,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 46 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 1 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/ifaceconv.C2", ptr %0, align 1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C2.g"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %2)
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C2.g"(%"{{.*}}/cl/_testgo/ifaceconv.C2" zeroinitializer)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -478,4 +481,40 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal0"(ptr %1, ptr %2)
 // CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.(*C1).f"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.(*C1).f"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.C1.f"(ptr %0, %"{{.*}}/cl/_testgo/ifaceconv.C1" %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.C1.f"(%"{{.*}}/cl/_testgo/ifaceconv.C1" %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.(*C2).f"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.(*C2).f"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.(*C2).g"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.(*C2).g"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.C2.f"(ptr %0, %"{{.*}}/cl/_testgo/ifaceconv.C2" %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.C2.f"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.C2.g"(ptr %0, %"{{.*}}/cl/_testgo/ifaceconv.C2" %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.C2.g"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %1)
+// CHECK-NEXT:   ret void
 // CHECK-NEXT: }

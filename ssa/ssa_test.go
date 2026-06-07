@@ -862,6 +862,33 @@ func TestMakeInterfaceFromPtrKinds(t *testing.T) {
 	}
 }
 
+func TestZeroSizedLoadEmitsNilDerefGuard(t *testing.T) {
+	prog := NewProgram(nil)
+	prog.sizes = types.SizesFor("gc", runtime.GOARCH)
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkg := prog.NewPackage("bar", "foo/bar")
+
+	emptyStruct := types.NewStruct(nil, nil)
+	params := types.NewTuple(types.NewVar(0, nil, "p", types.NewPointer(emptyStruct)))
+	results := types.NewTuple(types.NewVar(0, nil, "", emptyStruct))
+	sig := types.NewSignatureType(nil, nil, nil, params, results, false)
+	fn := pkg.NewFunc("loadZero", sig, InGo)
+	b := fn.MakeBody(1)
+	b.Return(b.Load(fn.Param(0)))
+	b.EndBuild()
+
+	ir := pkg.Module().String()
+	if !strings.Contains(ir, "AssertNilDeref") {
+		t.Fatalf("zero-sized Load should emit nil-deref guard, got:\n%s", ir)
+	}
+}
+
 func TestTypeAssertSingleElemArrayUsesInsertValue(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.sizes = types.SizesFor("gc", runtime.GOARCH)

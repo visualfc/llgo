@@ -111,14 +111,16 @@ func main() {
 // CHECK-NEXT:   %39 = extractvalue { i64, i1 } %38, 0
 // CHECK-NEXT:   %40 = extractvalue { i64, i1 } %38, 1
 // CHECK-NEXT:   %41 = extractvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %26, 1
-// CHECK-NEXT:   %42 = load {}, ptr %41, align 1
+// CHECK-NEXT:   %42 = icmp eq ptr %41, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %42)
 // CHECK-NEXT:   %43 = extractvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %31, 1
-// CHECK-NEXT:   %44 = load {}, ptr %43, align 1
+// CHECK-NEXT:   %44 = icmp eq ptr %43, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %44)
 // CHECK-NEXT:   call void @llvm.stackrestore(ptr %21)
 // CHECK-NEXT:   %45 = insertvalue { i64, i1, {}, {} } undef, i64 %39, 0
 // CHECK-NEXT:   %46 = insertvalue { i64, i1, {}, {} } %45, i1 %40, 1
-// CHECK-NEXT:   %47 = insertvalue { i64, i1, {}, {} } %46, {} %42, 2
-// CHECK-NEXT:   %48 = insertvalue { i64, i1, {}, {} } %47, {} %44, 3
+// CHECK-NEXT:   %47 = insertvalue { i64, i1, {}, {} } %46, {} zeroinitializer, 2
+// CHECK-NEXT:   %48 = insertvalue { i64, i1, {}, {} } %47, {} zeroinitializer, 3
 // CHECK-NEXT:   %49 = extractvalue { i64, i1, {}, {} } %48, 0
 // CHECK-NEXT:   %50 = icmp eq i64 %49, 0
 // CHECK-NEXT:   br i1 %50, label %_llgo_2, label %_llgo_3
@@ -157,7 +159,8 @@ func main() {
 // CHECK-NEXT:   %5 = alloca {}, align 8
 // CHECK-NEXT:   call void @llvm.memset(ptr %5, i8 0, i64 0, i1 false)
 // CHECK-NEXT:   %6 = call i1 @"{{.*}}/runtime/internal/runtime.ChanRecv"(ptr %3, ptr %5, i64 0)
-// CHECK-NEXT:   %7 = load {}, ptr %5, align 1
+// CHECK-NEXT:   %7 = icmp eq ptr %5, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %7)
 // CHECK-NEXT:   call void @llvm.stackrestore(ptr %4)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
@@ -191,11 +194,12 @@ func main() {
 // CHECK-NEXT:   %30 = extractvalue { i64, i1 } %29, 0
 // CHECK-NEXT:   %31 = extractvalue { i64, i1 } %29, 1
 // CHECK-NEXT:   %32 = extractvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %22, 1
-// CHECK-NEXT:   %33 = load {}, ptr %32, align 1
+// CHECK-NEXT:   %33 = icmp eq ptr %32, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %33)
 // CHECK-NEXT:   call void @llvm.stackrestore(ptr %12)
 // CHECK-NEXT:   %34 = insertvalue { i64, i1, {} } undef, i64 %30, 0
 // CHECK-NEXT:   %35 = insertvalue { i64, i1, {} } %34, i1 %31, 1
-// CHECK-NEXT:   %36 = insertvalue { i64, i1, {} } %35, {} %33, 2
+// CHECK-NEXT:   %36 = insertvalue { i64, i1, {} } %35, {} zeroinitializer, 2
 // CHECK-NEXT:   %37 = extractvalue { i64, i1, {} } %36, 0
 // CHECK-NEXT:   %38 = icmp eq i64 %37, 0
 // CHECK-NEXT:   br i1 %38, label %_llgo_2, label %_llgo_3

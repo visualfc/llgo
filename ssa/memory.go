@@ -357,6 +357,10 @@ func (b Builder) Load(ptr Expr) Expr {
 	}
 	b.assertStaticNilDeref(ptr)
 	telem := b.Prog.Elem(ptr.Type)
+	if b.Prog.SizeOf(telem) == 0 {
+		b.AssertNilDeref(ptr)
+		return b.Prog.Zero(telem)
+	}
 	return Expr{llvm.CreateLoad(b.impl, telem.ll, ptr.impl), telem}
 }
 

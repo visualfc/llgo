@@ -39,8 +39,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 52 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 6 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testrt/closurebound.demo1", ptr %0, align 1
-// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo1.encode"(%"{{.*}}/cl/_testrt/closurebound.demo1" %2)
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo1.encode"(%"{{.*}}/cl/_testrt/closurebound.demo1" zeroinitializer)
 // CHECK-NEXT:   ret i64 %3
 // CHECK-NEXT: }
 
@@ -53,8 +54,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 52 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 6 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testrt/closurebound.demo2", ptr %0, align 1
-// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo2.encode"(%"{{.*}}/cl/_testrt/closurebound.demo2" %2)
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo2.encode"(%"{{.*}}/cl/_testrt/closurebound.demo2" zeroinitializer)
 // CHECK-NEXT:   ret i64 %3
 // CHECK-NEXT: }
 
@@ -101,16 +103,16 @@ func main() {
 
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/closurebound.demo2.encode$bound"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load { %"{{.*}}/cl/_testrt/closurebound.demo2" }, ptr %0, align 1
-// CHECK-NEXT:   %2 = extractvalue { %"{{.*}}/cl/_testrt/closurebound.demo2" } %1, 0
-// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo2.encode"(%"{{.*}}/cl/_testrt/closurebound.demo2" %2)
-// CHECK-NEXT:   ret i64 %3
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %1)
+// CHECK-NEXT:   %2 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo2.encode"(%"{{.*}}/cl/_testrt/closurebound.demo2" zeroinitializer)
+// CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/closurebound.demo1.encode$bound"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load { %"{{.*}}/cl/_testrt/closurebound.demo1" }, ptr %0, align 1
-// CHECK-NEXT:   %2 = extractvalue { %"{{.*}}/cl/_testrt/closurebound.demo1" } %1, 0
-// CHECK-NEXT:   %3 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo1.encode"(%"{{.*}}/cl/_testrt/closurebound.demo1" %2)
-// CHECK-NEXT:   ret i64 %3
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %1)
+// CHECK-NEXT:   %2 = call i64 @"{{.*}}/cl/_testrt/closurebound.demo1.encode"(%"{{.*}}/cl/_testrt/closurebound.demo1" zeroinitializer)
+// CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
