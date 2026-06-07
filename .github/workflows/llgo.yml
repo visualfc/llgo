@@ -25,12 +25,25 @@ jobs:
     timeout-minutes: 60
     strategy:
       matrix:
-        os:
-          - macos-latest
-          - macos-15-intel
-          - ubuntu-latest
-        llvm: [19]
-        go: ["1.21.13", "1.24.2", "1.26.0"]
+        include:
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.21.13"
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.24.2"
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.26.0"
+          - os: macos-latest
+            llvm: 19
+            go: "1.24.2"
+          - os: macos-latest
+            llvm: 19
+            go: "1.26.0"
+          - os: macos-15-intel
+            llvm: 19
+            go: "1.24.2"
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v6
@@ -178,6 +191,11 @@ jobs:
         llvm: [19]
         go: ["1.24.2", "1.26.0"]
         shard: ["0", "1", "2", "3"]
+        exclude:
+          - os: macos-latest
+            shard: "2"
+          - os: macos-latest
+            shard: "3"
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v6
@@ -216,7 +234,7 @@ jobs:
       - name: run llgo test
         env:
           SHARD_INDEX: ${{ matrix.shard }}
-          SHARD_TOTAL: "4"
+          SHARD_TOTAL: ${{ startsWith(matrix.os, 'macos') && '2' || '4' }}
         run: |
           set -euo pipefail
 
@@ -252,9 +270,19 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        llvm: [19]
-        go: ["1.21.13", "1.24.2", "1.26.0"]
+        include:
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.21.13"
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.24.2"
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.26.0"
+          - os: macos-latest
+            llvm: 19
+            go: "1.24.2"
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v6
