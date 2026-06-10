@@ -1082,30 +1082,80 @@ func castInt(b Builder, x llvm.Value, xtyp Type, typ Type) llvm.Value {
 
 func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 	dstSize := b.Prog.td.TypeAllocSize(typ.ll)
-	if dstSize < 8 {
-		i64 := b.Prog.Int64()
-		if typ.kind == vkUnsigned {
-			// note(zzy): for unsigned targets, split negative vs non-negative.
-			// Negative values need signed expansion (FPToSI) before truncation;
-			// non-negative values can use unsigned expansion (FPToUI). This avoids
-			// direct float->narrow-unsigned conversions and preserves wrap/trunc behavior.
-			zero := llvm.ConstNull(x.Type())
-			isNeg := b.impl.CreateFCmp(llvm.FloatOLT, x, zero, "")
-			neg := llvm.CreateFPToSI(b.impl, x, i64.ll)
-			pos := llvm.CreateFPToUI(b.impl, x, i64.ll)
-			tmp := b.impl.CreateSelect(isNeg, neg, pos, "")
+	if typ.kind == vkUnsigned {
+		if dstSize < 4 {
+			tmp := castFloatToSignedInt(b, x, b.Prog.Int32(), 32)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
-		tmp := llvm.CreateFPToSI(b.impl, x, i64.ll)
-		return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		if dstSize == 4 {
+			tmp := castFloatToSignedInt(b, x, b.Prog.Int64(), 64)
+			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		}
+		return castFloatToUnsignedInt(b, x, typ, dstSize*8)
 	}
-	// note(zzy): dst is already 64-bit wide, so no extra widen+trunc roundtrip is needed here;
-	// see LLVM fptoui/fptosi semantics: https://llvm.org/docs/LangRef.html#fptoui-to-instruction
-	// and https://llvm.org/docs/LangRef.html#fptosi-to-instruction
-	if typ.kind == vkUnsigned {
-		return llvm.CreateFPToUI(b.impl, x, typ.ll)
+	if dstSize < 8 {
+		tmp := castFloatToSignedInt(b, x, b.Prog.Int32(), 32)
+		if dstSize < 4 {
+			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		}
+		return tmp
 	}
-	return llvm.CreateFPToSI(b.impl, x, typ.ll)
+	return castFloatToSignedInt(b, x, typ, 64)
+}
+
+func castFloatToSignedInt(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {
+	bound := floatPow2(bits - 1)
+	lower := llvm.ConstFloat(x.Type(), -bound)
+	upper := llvm.ConstFloat(x.Type(), bound)
+	zeroFloat := llvm.ConstNull(x.Type())
+	zeroInt := llvm.ConstInt(typ.ll, 0, false)
+	minInt := llvm.ConstInt(typ.ll, uint64(1)<<(bits-1), false)
+	maxInt := llvm.ConstInt(typ.ll, (uint64(1)<<(bits-1))-1, false)
+
+	tooLow := llvm.CreateFCmp(b.impl, llvm.FloatOLE, x, lower)
+	tooHigh := llvm.CreateFCmp(b.impl, llvm.FloatOGE, x, upper)
+	isNaN := llvm.CreateFCmp(b.impl, llvm.FloatUNO, x, x)
+	safe := llvm.CreateSelect(b.impl, tooLow, zeroFloat, x)
+	safe = llvm.CreateSelect(b.impl, tooHigh, zeroFloat, safe)
+	safe = llvm.CreateSelect(b.impl, isNaN, zeroFloat, safe)
+
+	ret := llvm.CreateFPToSI(b.impl, safe, typ.ll)
+	ret = llvm.CreateSelect(b.impl, tooLow, minInt, ret)
+	ret = llvm.CreateSelect(b.impl, tooHigh, maxInt, ret)
+	return llvm.CreateSelect(b.impl, isNaN, zeroInt, ret)
+}
+
+func castFloatToUnsignedInt(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {
+	upper := llvm.ConstFloat(x.Type(), floatPow2(bits))
+	zeroFloat := llvm.ConstNull(x.Type())
+	zeroInt := llvm.ConstInt(typ.ll, 0, false)
+	maxInt := llvm.ConstInt(typ.ll, intMask(bits), false)
+
+	isNeg := llvm.CreateFCmp(b.impl, llvm.FloatOLT, x, zeroFloat)
+	tooHigh := llvm.CreateFCmp(b.impl, llvm.FloatOGE, x, upper)
+	isNaN := llvm.CreateFCmp(b.impl, llvm.FloatUNO, x, x)
+	safe := llvm.CreateSelect(b.impl, isNeg, zeroFloat, x)
+	safe = llvm.CreateSelect(b.impl, tooHigh, zeroFloat, safe)
+	safe = llvm.CreateSelect(b.impl, isNaN, zeroFloat, safe)
+
+	ret := llvm.CreateFPToUI(b.impl, safe, typ.ll)
+	ret = llvm.CreateSelect(b.impl, tooHigh, maxInt, ret)
+	ret = llvm.CreateSelect(b.impl, isNeg, zeroInt, ret)
+	return llvm.CreateSelect(b.impl, isNaN, zeroInt, ret)
+}
+
+func floatPow2(bits uint64) float64 {
+	if bits == 64 {
+		return 18446744073709551616
+	}
+	return float64(uint64(1) << bits)
+}
+
+func intMask(bits uint64) uint64 {
+	if bits == 64 {
+		return ^uint64(0)
+	}
+	return (uint64(1) << bits) - 1
 }
 
 func castFloat(b Builder, x llvm.Value, typ Type) llvm.Value {
@@ -1381,7 +1431,7 @@ func (b Builder) SliceToArrayPointer(x Expr, typ Type) (ret Expr) {
 	max := b.Prog.IntVal(uint64(typ.RawType().Underlying().(*types.Pointer).Elem().Underlying().(*types.Array).Len()), b.Prog.Int())
 	failed := Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, b.SliceLen(x).impl, max.impl), b.Prog.Bool()}
 	b.IfThen(failed, func() {
-		b.InlineCall(b.Pkg.rtFunc("PanicSliceConvert"), b.SliceLen(x), max)
+		b.InlineCall(b.Pkg.rtFunc("PanicSliceConvert"), max, b.SliceLen(x))
 	})
 	ret.impl = b.SliceData(x).impl
 	return

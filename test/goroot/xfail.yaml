@@ -2534,11 +2534,6 @@ xfails:
     reason: go1.25 goroot run failure on linux/amd64
   - version: go1.25
     platform: linux/amd64
-    directive: runoutput
-    case: convinline.go
-    reason: go1.25 goroot runoutput failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
     directive: run
     case: mallocfin.go
     reason: go1.25 goroot run failure on linux/amd64
@@ -2670,11 +2665,6 @@ xfails:
     reason: go1.24 goroot run failure on linux/amd64
   - version: go1.24
     platform: linux/amd64
-    directive: runoutput
-    case: convinline.go
-    reason: go1.24 goroot runoutput failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
     directive: run
     case: mallocfin.go
     reason: go1.24 goroot run failure on linux/amd64
@@ -2853,26 +2843,6 @@ xfails:
     directive: run
     case: inline_literal.go
     reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: runoutput
-    case: convinline.go
-    reason: go1.26 goroot runoutput failure on linux/amd64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: runoutput
-    case: convinline.go
-    reason: go1.26 goroot runoutput failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: runoutput
-    case: convinline.go
-    reason: go1.25 goroot runoutput failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: runoutput
-    case: convinline.go
-    reason: go1.24 goroot runoutput failure on darwin/arm64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -3095,15 +3065,6 @@ xfails:
     reason: go1.26 goroot run failure on linux/amd64
   - platform: darwin/arm64
     directive: run
-    case: convert4.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: convert5.go
-    reason: go1.26 goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: fixedbugs/bug273.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
@@ -3188,15 +3149,6 @@ xfails:
     directive: runoutput
     case: index0.go
     reason: current main goroot runoutput failure on darwin/arm64
-  - platform: linux/amd64
-    directive: run
-    case: convert4.go
-    reason: current main goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: convert5.go
-    reason: go1.26 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/bug273.go

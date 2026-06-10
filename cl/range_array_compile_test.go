@@ -6,6 +6,7 @@ package cl
 import (
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/ssa"
@@ -44,6 +45,21 @@ func useNonArray(p *int) int {
 	}
 	if skipUnusedArrayDeref(findUnOp(t, ssaPkg.Func("useNonArray"), token.MUL, false)) {
 		t.Fatal("non-array deref should not be skipped")
+	}
+}
+
+func TestZeroLengthSliceToArrayConversionKeepsNilCheck(t *testing.T) {
+	_, m := mustCompileLLPkgFromSrc(t, `
+package foo
+
+func convert(p *[]byte) {
+	_ = [0]byte(*p)
+}
+`)
+
+	ir := mustNamedFunction(t, m, "foo.convert").String()
+	if !strings.Contains(ir, "AssertNilDeref") {
+		t.Fatalf("zero-length slice-to-array conversion should keep operand nil check:\n%s", ir)
 	}
 }
 
