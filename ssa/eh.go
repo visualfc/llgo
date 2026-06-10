@@ -535,8 +535,8 @@ func (b Builder) callDefer(self *aDefer, typ Type, buildCall func(Builder, Expr,
 		for i := 0; i < len(args); i++ {
 			args[i] = b.getField(data, i+offset)
 		}
-		buildCall(b, fn, args...)
 		b.Call(b.Pkg.rtFunc("FreeDeferNode"), ptr)
+		buildCall(b, fn, args...)
 	})
 }
 
