@@ -586,7 +586,11 @@ func (v Value) Elem() Value {
 		tt := (*ptrType)(unsafe.Pointer(v.typ()))
 		typ := tt.Elem
 		fl := v.flag&flagRO | flagIndir | flagAddr
-		fl |= flag(typ.Kind())
+		kind := typ.Kind()
+		if typ.IsClosure() {
+			kind = abi.Func
+		}
+		fl |= flag(kind)
 		return Value{typ, ptr, fl}
 	}
 	panic(&ValueError{"reflect.Value.Elem", v.kind()})
@@ -1987,6 +1991,9 @@ func New(typ Type) Value {
 		panic("reflect: New(nil)")
 	}
 	t := &typ.(*rtype).t
+	if t.Kind() == abi.Func {
+		t = closureOf(t.FuncType())
+	}
 	pt := ptrTo(t)
 	if ifaceIndir(pt) {
 		// This is a pointer to a not-in-heap type.
@@ -2002,6 +2009,9 @@ func New(typ Type) Value {
 func NewAt(typ Type, p unsafe.Pointer) Value {
 	fl := flag(Pointer)
 	t := typ.(*rtype)
+	if t.Kind() == Func {
+		t = toRType(closureOf(t.t.FuncType()))
+	}
 	return Value{t.ptrTo(), p, fl}
 }
 
