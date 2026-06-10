@@ -159,10 +159,28 @@ func (b Builder) IndexAddr(x, idx Expr) Expr {
 		ar := t.Elem().Underlying().(*types.Array)
 		max := prog.IntVal(uint64(ar.Len()), prog.Int())
 		idx = b.checkIndex(idx, max)
-		b.assertStaticNilDeref(x)
+		if !isKnownNonNilArrayBase(x.impl) {
+			b.AssertNilDeref(x)
+		}
 	}
 	indices := []llvm.Value{idx.impl}
 	return Expr{llvm.CreateInBoundsGEP(b.impl, telem.ll, x.impl, indices), pt}
+}
+
+func isKnownNonNilArrayBase(v llvm.Value) bool {
+	if !v.IsAGlobalValue().IsNil() || !v.IsAAllocaInst().IsNil() {
+		return true
+	}
+	if call := v.IsACallInst(); !call.IsNil() {
+		if fn := call.CalledValue().IsAFunction(); !fn.IsNil() {
+			switch fn.Name() {
+			case "github.com/goplus/llgo/runtime/internal/runtime.AllocU",
+				"github.com/goplus/llgo/runtime/internal/runtime.AllocZ":
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isConstantInt(x Expr) (v int64, ok bool) {

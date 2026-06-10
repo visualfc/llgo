@@ -164,6 +164,16 @@ type TypeAssertionError struct {
 
 func (*TypeAssertionError) RuntimeError() {}
 
+func PanicTypeAssert(concrete *_type, asserted string, missingMethod string) {
+	if concrete == nil {
+		panic(errorString("interface conversion: interface is nil, not " + asserted))
+	}
+	if missingMethod != "" {
+		panic(errorString("interface conversion: " + concrete.String() + " is not " + asserted + ": missing method " + missingMethod))
+	}
+	panic(errorString("interface conversion: interface is " + concrete.String() + ", not " + asserted))
+}
+
 func (e *TypeAssertionError) Error() string {
 	inter := "interface"
 	if e._interface != nil {

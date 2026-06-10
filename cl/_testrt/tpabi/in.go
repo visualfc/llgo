@@ -5,9 +5,8 @@ import "github.com/goplus/lib/c"
 
 // CHECK-LINE: @0 = private unnamed_addr constant [1 x i8] c"a", align 1
 // CHECK-LINE: @5 = private unnamed_addr constant [4 x i8] c"Info", align 1
-// CHECK-LINE: @10 = private unnamed_addr constant [83 x i8] c"type assertion any -> {{.*}}/cl/_testrt/tpabi.T[string, int] failed", align 1
+// CHECK-LINE: @10 = private unnamed_addr constant [54 x i8] c"{{.*}}/cl/_testrt/tpabi.T[string, int]", align 1
 // CHECK-LINE: @11 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @13 = private unnamed_addr constant [54 x i8] c"{{.*}}/cl/_testrt/tpabi.T[string, int]", align 1
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpabi.init"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -103,10 +102,7 @@ func (t *K[N]) Advance(n int) *K[N] {
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 83 }, ptr %32, align 8
-// CHECK-NEXT:   %33 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %32, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %33)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %6, %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 54 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -153,9 +149,21 @@ func main() {
 // CHECK-LABEL: define linkonce void @"{{.*}}/cl/_testrt/tpabi.(*T[string,int]).Info"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 54 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 4 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 54 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 4 })
 // CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testrt/tpabi.T[string,int]", ptr %0, align 8
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/tpabi.T[string,int].Info"(%"{{.*}}/cl/_testrt/tpabi.T[string,int]" %2)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testrt/tpabi.(*T[string,int]).Demo"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/tpabi.(*T[string,int]).Demo"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testrt/tpabi.(*T[string,int]).Info"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/tpabi.(*T[string,int]).Info"(ptr %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -163,6 +171,12 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal64"(ptr %1, ptr %2)
 // CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testrt/tpabi.T[string,int].Info"(ptr %0, %"{{.*}}/cl/_testrt/tpabi.T[string,int]" %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/tpabi.T[string,int].Info"(%"{{.*}}/cl/_testrt/tpabi.T[string,int]" %1)
+// CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.interequal"(ptr %0, ptr %1, ptr %2){{.*}} {

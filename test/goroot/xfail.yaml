@@ -1774,10 +1774,6 @@ xfails:
     reason: current main goroot runoutput failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
-    case: recover3.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: switch.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64

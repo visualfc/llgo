@@ -5,12 +5,13 @@ import _ "unsafe" // for go:linkname
 
 import "github.com/goplus/lib/c"
 
-//go:linkname cSqrt C.sqrt
-func cSqrt(x c.Double) c.Double
-
 // CHECK-LINE: @0 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/closureall.S", align 1
 // CHECK-LINE: @1 = private unnamed_addr constant [3 x i8] c"Inc", align 1
-// CHECK-LINE: @9 = private unnamed_addr constant [72 x i8] c"type assertion interface{Add(int) int} -> interface{Add(int) int} failed", align 1
+// CHECK-LINE: @7 = private unnamed_addr constant [3 x i8] c"Add", align 1
+// CHECK-LINE: @9 = private unnamed_addr constant [23 x i8] c"interface{Add(int) int}", align 1
+
+//go:linkname cSqrt C.sqrt
+func cSqrt(x c.Double) c.Double
 
 // llgo:link cAbs C.abs
 func cAbs(x c.Int) c.Int { return 0 }
@@ -172,10 +173,7 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @9, i64 72 }, ptr %32, align 8
-// CHECK-NEXT:   %33 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %32, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %33)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %21, %"{{.*}}/runtime/internal/runtime.String" { ptr @9, i64 23 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 3 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -237,6 +235,24 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal64"(ptr %1, ptr %2)
 // CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.{{.*}}/cl/_testgo/closureall.S.Inc"(ptr %0, %"{{.*}}/cl/_testgo/closureall.S" %1, i64 %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i64 @"{{.*}}/cl/_testgo/closureall.S.Inc"(%"{{.*}}/cl/_testgo/closureall.S" %1, i64 %2)
+// CHECK-NEXT:   ret i64 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.{{.*}}/cl/_testgo/closureall.(*S).Add"(ptr %0, ptr %1, i64 %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i64 @"{{.*}}/cl/_testgo/closureall.(*S).Add"(ptr %1, i64 %2)
+// CHECK-NEXT:   ret i64 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.{{.*}}/cl/_testgo/closureall.(*S).Inc"(ptr %0, ptr %1, i64 %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i64 @"{{.*}}/cl/_testgo/closureall.(*S).Inc"(ptr %1, i64 %2)
+// CHECK-NEXT:   ret i64 %3
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.interequal"(ptr %0, ptr %1, ptr %2){{.*}} {
