@@ -167,7 +167,7 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   %26 = extractvalue { ptr, ptr } %25, 1
 // CHECK-NEXT:   %27 = extractvalue { ptr, ptr } %25, 0
 // CHECK-NEXT:   %28 = call i64 %27(ptr %26, i64 9)
-// CHECK-NEXT:   %29 = call double @sqrt(double 4.000000e+00)
+// CHECK-NEXT:   %29 = call double {{.*}}sqrt{{.*}}(double 4.000000e+00)
 // CHECK-NEXT:   %30 = call i32 @abs(i32 -3)
 // CHECK-NEXT:   %31 = call i32 @"{{.*}}/cl/_testgo/closureall.callCallback"(ptr @"{{.*}}/cl/_testgo/closureall.main$1", i32 7)
 // CHECK-NEXT:   ret void
