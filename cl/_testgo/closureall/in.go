@@ -1,16 +1,17 @@
 // LITTEST
 package main
 
+import _ "unsafe" // for go:linkname
+
 import "github.com/goplus/lib/c"
 
-// llgo:link cSqrt C.sqrt
-
+//go:linkname cSqrt C.sqrt
 // CHECK-LINE: @0 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/closureall.S", align 1
 // CHECK-LINE: @1 = private unnamed_addr constant [3 x i8] c"Inc", align 1
 // CHECK-LINE: @7 = private unnamed_addr constant [3 x i8] c"Add", align 1
 // CHECK-LINE: @9 = private unnamed_addr constant [23 x i8] c"interface{Add(int) int}", align 1
 
-func cSqrt(x c.Double) c.Double { return 0 }
+func cSqrt(x c.Double) c.Double
 
 // llgo:link cAbs C.abs
 func cAbs(x c.Int) c.Int { return 0 }
@@ -104,11 +105,6 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   ret i64 %4
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define double @"{{.*}}/cl/_testgo/closureall.cSqrt"(double %0){{.*}} {
-// CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   ret double 0.000000e+00
-// CHECK-NEXT: }
-
 // CHECK-LABEL: define i32 @"{{.*}}/cl/_testgo/closureall.callCallback"(ptr %0, i32 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = call i32 %0(i32 %1)
@@ -171,7 +167,7 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   %26 = extractvalue { ptr, ptr } %25, 1
 // CHECK-NEXT:   %27 = extractvalue { ptr, ptr } %25, 0
 // CHECK-NEXT:   %28 = call i64 %27(ptr %26, i64 9)
-// CHECK-NEXT:   %29 = call double @"{{.*}}/cl/_testgo/closureall.cSqrt"(double 4.000000e+00)
+// CHECK-NEXT:   %29 = call double {{.*}}sqrt{{.*}}(double 4.000000e+00)
 // CHECK-NEXT:   %30 = call i32 @abs(i32 -3)
 // CHECK-NEXT:   %31 = call i32 @"{{.*}}/cl/_testgo/closureall.callCallback"(ptr @"{{.*}}/cl/_testgo/closureall.main$1", i32 7)
 // CHECK-NEXT:   ret void
