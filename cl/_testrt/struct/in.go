@@ -4,8 +4,8 @@ package main
 import "C"
 import _ "unsafe"
 
-// CHECK-LINE: @0 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testrt/struct.Foo", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [5 x i8] c"Print", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testrt/struct.Foo", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [5 x i8] c"Print", align 1{{$}}
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/struct.Foo.Print"(%"{{.*}}/cl/_testrt/struct.Foo" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:

@@ -5,13 +5,13 @@ import (
 	"unsafe"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [3 x i8] c"def", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [4 x i8] c"ABCD", align 1
-// CHECK-LINE: @4 = private unnamed_addr constant [7 x i8] c"\E4\B8\ADabcd", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [3 x i8] c"abc", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [3 x i8] c"abd", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [2 x i8] c"fn", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [3 x i8] c"def", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [4 x i8] c"ABCD", align 1{{$}}
+// CHECK: {{^}}@4 = private unnamed_addr constant [7 x i8] c"\E4\B8\ADabcd", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [3 x i8] c"abc", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [3 x i8] c"abd", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [2 x i8] c"fn", align 1{{$}}
 
 var a int64 = 1<<63 - 1
 var b int64 = -1 << 63

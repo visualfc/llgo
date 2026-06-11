@@ -1,7 +1,7 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [6 x i8] c"123456", align 1
+// CHECK: @0 = private unnamed_addr constant [6 x i8] c"123456", align 1
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/index.init"(){{.*}} {
 // CHECK-NEXT: _llgo_0:

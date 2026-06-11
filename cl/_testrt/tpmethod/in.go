@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [7 x i8] c"foo.txt", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [3 x i8] c"Get", align 1
-// CHECK-LINE: @16 = private unnamed_addr constant [55 x i8] c"{{.*}}/cl/_testrt/tpmethod.Tuple[error]", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [7 x i8] c"foo.txt", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [3 x i8] c"Get", align 1{{$}}
+// CHECK: {{^}}@16 = private unnamed_addr constant [55 x i8] c"{{.*}}/cl/_testrt/tpmethod.Tuple[error]", align 1{{$}}
 
 type Tuple[T any] struct {
 	v T

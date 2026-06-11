@@ -5,12 +5,12 @@ import (
 	"github.com/goplus/llgo/cl/_testgo/genericembediface/streamlib"
 )
 
-// CHECK-LINE: @2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [7 x i8] c"Context", align 1
-// CHECK-LINE: @10 = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1
-// CHECK-LINE: @19 = private unnamed_addr constant [4 x i8] c"pass", align 1
-// CHECK-LINE: @20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1
-// CHECK-LINE: @21 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1
+// CHECK: @2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1
+// CHECK: @5 = private unnamed_addr constant [7 x i8] c"Context", align 1
+// CHECK: @10 = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1
+// CHECK: @19 = private unnamed_addr constant [4 x i8] c"pass", align 1
+// CHECK: @20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1
+// CHECK: @21 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1
 
 type Request struct{}
 type Response struct{}

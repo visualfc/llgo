@@ -3,7 +3,7 @@ package main
 
 //"github.com/goplus/lib/c"
 
-// CHECK-LINE: @0 = private unnamed_addr constant [5 x i8] c"error", align 1
+// CHECK: @0 = private unnamed_addr constant [5 x i8] c"error", align 1
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32Fto32"(float %0, i32 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:

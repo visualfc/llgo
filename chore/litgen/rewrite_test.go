@@ -170,16 +170,16 @@ _llgo_0:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, `// CHECK-LINE: @0 = private unnamed_addr constant [4 x i8] c"Hi\0A\00", align 1`) {
+	if !strings.Contains(got, `// CHECK: {{^}}@0 = private unnamed_addr constant [4 x i8] c"Hi\0A\00", align 1{{$}}`) {
 		t.Fatalf("missing numeric global @0:\n%s", got)
 	}
-	if !strings.Contains(got, `// CHECK-LINE: @1 = private unnamed_addr constant [3 x i8] c"%s\00", align 1`) {
+	if !strings.Contains(got, `// CHECK: {{^}}@1 = private unnamed_addr constant [3 x i8] c"%s\00", align 1{{$}}`) {
 		t.Fatalf("missing numeric global @1:\n%s", got)
 	}
-	if strings.Contains(got, `// CHECK-LINE: @"{{.*}}/p.named" = global i64 1`) {
+	if strings.Contains(got, `// CHECK: {{^}}@"{{.*}}/p.named" = global i64 1{{$}}`) {
 		t.Fatalf("named globals should not be emitted by default:\n%s", got)
 	}
-	if strings.Index(got, `// CHECK-LINE: @0 = private unnamed_addr constant [4 x i8] c"Hi\0A\00", align 1`) > strings.Index(got, "func main()") {
+	if strings.Index(got, `// CHECK: {{^}}@0 = private unnamed_addr constant [4 x i8] c"Hi\0A\00", align 1{{$}}`) > strings.Index(got, "func main()") {
 		t.Fatalf("global checks should be placed before first declaration:\n%s", got)
 	}
 }

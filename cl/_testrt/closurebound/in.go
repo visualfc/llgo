@@ -1,10 +1,10 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [52 x i8] c"{{.*}}/cl/_testrt/closurebound.demo1", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [6 x i8] c"encode", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [52 x i8] c"{{.*}}/cl/_testrt/closurebound.demo2", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [5 x i8] c"error", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [52 x i8] c"{{.*}}/cl/_testrt/closurebound.demo1", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [6 x i8] c"encode", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [52 x i8] c"{{.*}}/cl/_testrt/closurebound.demo2", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
 
 var my = demo2{}.encode
 

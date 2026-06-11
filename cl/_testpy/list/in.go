@@ -10,14 +10,14 @@ import (
 	"github.com/goplus/lib/py/std"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [5 x i8] c"world", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [3 x i8] c"pi\00", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [14 x i8] c"lens = %d %d\0A\00", align 1
-// CHECK-LINE: @4 = private unnamed_addr constant [14 x i8] c"ptrs = %d %d\0A\00", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [12 x i8] c"pi = %.15g\0A\00", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [4 x i8] c"abs\00", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [6 x i8] c"print\00", align 1
+// CHECK: @0 = private unnamed_addr constant [5 x i8] c"world", align 1
+// CHECK: @1 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: @2 = private unnamed_addr constant [3 x i8] c"pi\00", align 1
+// CHECK: @3 = private unnamed_addr constant [14 x i8] c"lens = %d %d\0A\00", align 1
+// CHECK: @4 = private unnamed_addr constant [14 x i8] c"ptrs = %d %d\0A\00", align 1
+// CHECK: @5 = private unnamed_addr constant [12 x i8] c"pi = %.15g\0A\00", align 1
+// CHECK: @6 = private unnamed_addr constant [4 x i8] c"abs\00", align 1
+// CHECK: @7 = private unnamed_addr constant [6 x i8] c"print\00", align 1
 
 func main() {
 	v := 100

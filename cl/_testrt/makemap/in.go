@@ -1,16 +1,16 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @16 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK-LINE: @17 = private unnamed_addr constant [5 x i8] c"world", align 1
-// CHECK-LINE: @18 = private unnamed_addr constant [4 x i8] c"llgo", align 1
-// CHECK-LINE: @19 = private unnamed_addr constant [1 x i8] c":", align 1
-// CHECK-LINE: @22 = private unnamed_addr constant [2 x i8] c"go", align 1
-// CHECK-LINE: @23 = private unnamed_addr constant [7 x i8] c"bad key", align 1
-// CHECK-LINE: @24 = private unnamed_addr constant [7 x i8] c"bad len", align 1
-// CHECK-LINE: @32 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testrt/makemap.N1", align 1
-// CHECK-LINE: @39 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testrt/makemap.K", align 1
-// CHECK-LINE: @42 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testrt/makemap.K2", align 1
+// CHECK: @16 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: @17 = private unnamed_addr constant [5 x i8] c"world", align 1
+// CHECK: @18 = private unnamed_addr constant [4 x i8] c"llgo", align 1
+// CHECK: @19 = private unnamed_addr constant [1 x i8] c":", align 1
+// CHECK: @22 = private unnamed_addr constant [2 x i8] c"go", align 1
+// CHECK: @23 = private unnamed_addr constant [7 x i8] c"bad key", align 1
+// CHECK: @24 = private unnamed_addr constant [7 x i8] c"bad len", align 1
+// CHECK: @32 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testrt/makemap.N1", align 1
+// CHECK: @39 = private unnamed_addr constant [43 x i8] c"{{.*}}/cl/_testrt/makemap.K", align 1
+// CHECK: @42 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testrt/makemap.K2", align 1
 
 func main() {
 	make1()

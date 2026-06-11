@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [19 x i8] c"will panic in defer", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [3 x i8] c"end", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [13 x i8] c"panic in main", align 1
+// CHECK: @0 = private unnamed_addr constant [19 x i8] c"will panic in defer", align 1
+// CHECK: @1 = private unnamed_addr constant [3 x i8] c"end", align 1
+// CHECK: @2 = private unnamed_addr constant [13 x i8] c"panic in main", align 1
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/recoverthenpanic.End"(){{.*}} {
 // CHECK-NEXT: _llgo_0:

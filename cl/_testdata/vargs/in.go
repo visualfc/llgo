@@ -3,8 +3,8 @@ package main
 
 import "github.com/goplus/lib/c"
 
-// CHECK-LINE: @0 = private unnamed_addr constant [3 x i8] c"int", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1
+// CHECK: @0 = private unnamed_addr constant [3 x i8] c"int", align 1
+// CHECK: @1 = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1
 
 func main() {
 	test(1, 2, 3)

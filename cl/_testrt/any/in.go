@@ -5,10 +5,10 @@ import (
 	"github.com/goplus/lib/c"
 )
 
-// CHECK-LINE: @1 = private unnamed_addr constant [29 x i8] c"*github.com/goplus/lib/c.Char", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [3 x i8] c"int", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [7 x i8] c"%s %d\0A\00", align 1
-// CHECK-LINE: @4 = private unnamed_addr constant [6 x i8] c"Hello\00", align 1
+// CHECK: @1 = private unnamed_addr constant [29 x i8] c"*github.com/goplus/lib/c.Char", align 1
+// CHECK: @2 = private unnamed_addr constant [3 x i8] c"int", align 1
+// CHECK: @3 = private unnamed_addr constant [7 x i8] c"%s %d\0A\00", align 1
+// CHECK: @4 = private unnamed_addr constant [6 x i8] c"Hello\00", align 1
 
 // CHECK-LABEL: define ptr @"{{.*}}/cl/_testrt/any.hi"(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:

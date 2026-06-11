@@ -5,9 +5,9 @@ import (
 	"unsafe"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [30 x i8] c"unsafe.Slice: len out of range", align 1
-// CHECK-LINE: @1 = private unnamed_addr constant [46 x i8] c"unsafe.Slice: nil pointer with non-zero length", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [7 x i8] c"len > 0", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [30 x i8] c"unsafe.Slice: len out of range", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [46 x i8] c"unsafe.Slice: nil pointer with non-zero length", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [7 x i8] c"len > 0", align 1{{$}}
 
 func main() {
 	var s *int

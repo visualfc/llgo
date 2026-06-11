@@ -7,13 +7,13 @@ import (
 	"math"
 )
 
-// CHECK-LINE: @0 = private unnamed_addr constant [36 x i8] c"iterator call did not preserve panic", align 1
-// CHECK-LINE: @2 = private unnamed_addr constant [43 x i8] c"yield function called after range loop exit", align 1
-// CHECK-LINE: @3 = private unnamed_addr constant [47 x i8] c"{{.*}}/cl/_testgo/cursor.Cursor", align 1
-// CHECK-LINE: @4 = private unnamed_addr constant [8 x i8] c"FindNode", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [4 x i8] c"Node", align 1
-// CHECK-LINE: @6 = private unnamed_addr constant [8 x i8] c"Preorder", align 1
-// CHECK-LINE: @7 = private unnamed_addr constant [7 x i8] c"indices", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [36 x i8] c"iterator call did not preserve panic", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [43 x i8] c"yield function called after range loop exit", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [47 x i8] c"{{.*}}/cl/_testgo/cursor.Cursor", align 1{{$}}
+// CHECK: {{^}}@4 = private unnamed_addr constant [8 x i8] c"FindNode", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [4 x i8] c"Node", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [8 x i8] c"Preorder", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [7 x i8] c"indices", align 1{{$}}
 
 func main() {
 	c := &Cursor{in: &Inspector{}}

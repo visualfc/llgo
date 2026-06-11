@@ -1,7 +1,7 @@
 // LITTEST
 package main
 
-// CHECK-LINE: @0 = private unnamed_addr constant [5 x i8] c"error", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
 
 func main() {
 	recursive()

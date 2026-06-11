@@ -5,21 +5,21 @@ import (
 	"unicode/utf8"
 )
 
-// CHECK-LINE: @2 = private unnamed_addr constant [7 x i8] c"WriteTo", align 1
-// CHECK-LINE: @17 = private unnamed_addr constant [5 x i8] c"Close", align 1
-// CHECK-LINE: @28 = private unnamed_addr constant [3 x i8] c"EOF", align 1
-// CHECK-LINE: @29 = private unnamed_addr constant [11 x i8] c"short write", align 1
-// CHECK-LINE: @30 = private unnamed_addr constant [11 x i8] c"hello world", align 1
-// CHECK-LINE: @53 = private unnamed_addr constant [50 x i8] c"{{.*}}/cl/_testgo/reader.nopCloser", align 1
-// CHECK-LINE: @54 = private unnamed_addr constant [49 x i8] c"{{.*}}/cl/_testgo/reader.WriterTo", align 1
-// CHECK-LINE: @55 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/reader.nopCloserWriterTo", align 1
-// CHECK-LINE: @56 = private unnamed_addr constant [37 x i8] c"stringsReader.ReadAt: negative offset", align 1
-// CHECK-LINE: @57 = private unnamed_addr constant [34 x i8] c"stringsReader.Seek: invalid whence", align 1
-// CHECK-LINE: @58 = private unnamed_addr constant [37 x i8] c"stringsReader.Seek: negative position", align 1
-// CHECK-LINE: @59 = private unnamed_addr constant [48 x i8] c"stringsReader.UnreadByte: at beginning of string", align 1
-// CHECK-LINE: @60 = private unnamed_addr constant [49 x i8] c"strings.Reader.UnreadRune: at beginning of string", align 1
-// CHECK-LINE: @61 = private unnamed_addr constant [62 x i8] c"strings.Reader.UnreadRune: previous operation was not ReadRune", align 1
-// CHECK-LINE: @62 = private unnamed_addr constant [48 x i8] c"stringsReader.WriteTo: invalid WriteString count", align 1
+// CHECK: @2 = private unnamed_addr constant [7 x i8] c"WriteTo", align 1
+// CHECK: @17 = private unnamed_addr constant [5 x i8] c"Close", align 1
+// CHECK: @28 = private unnamed_addr constant [3 x i8] c"EOF", align 1
+// CHECK: @29 = private unnamed_addr constant [11 x i8] c"short write", align 1
+// CHECK: @30 = private unnamed_addr constant [11 x i8] c"hello world", align 1
+// CHECK: @53 = private unnamed_addr constant [50 x i8] c"{{.*}}/cl/_testgo/reader.nopCloser", align 1
+// CHECK: @54 = private unnamed_addr constant [49 x i8] c"{{.*}}/cl/_testgo/reader.WriterTo", align 1
+// CHECK: @55 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/reader.nopCloserWriterTo", align 1
+// CHECK: @56 = private unnamed_addr constant [37 x i8] c"stringsReader.ReadAt: negative offset", align 1
+// CHECK: @57 = private unnamed_addr constant [34 x i8] c"stringsReader.Seek: invalid whence", align 1
+// CHECK: @58 = private unnamed_addr constant [37 x i8] c"stringsReader.Seek: negative position", align 1
+// CHECK: @59 = private unnamed_addr constant [48 x i8] c"stringsReader.UnreadByte: at beginning of string", align 1
+// CHECK: @60 = private unnamed_addr constant [49 x i8] c"strings.Reader.UnreadRune: at beginning of string", align 1
+// CHECK: @61 = private unnamed_addr constant [62 x i8] c"strings.Reader.UnreadRune: previous operation was not ReadRune", align 1
+// CHECK: @62 = private unnamed_addr constant [48 x i8] c"stringsReader.WriteTo: invalid WriteString count", align 1
 
 type Reader interface {
 	Read(p []byte) (n int, err error)

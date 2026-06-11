@@ -3,10 +3,10 @@ package main
 
 import "github.com/goplus/lib/c"
 
-// CHECK-LINE: @0 = private unnamed_addr constant [1 x i8] c"a", align 1
-// CHECK-LINE: @5 = private unnamed_addr constant [4 x i8] c"Info", align 1
-// CHECK-LINE: @10 = private unnamed_addr constant [54 x i8] c"{{.*}}/cl/_testrt/tpabi.T[string, int]", align 1
-// CHECK-LINE: @11 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: @0 = private unnamed_addr constant [1 x i8] c"a", align 1
+// CHECK: @5 = private unnamed_addr constant [4 x i8] c"Info", align 1
+// CHECK: @10 = private unnamed_addr constant [54 x i8] c"{{.*}}/cl/_testrt/tpabi.T[string, int]", align 1
+// CHECK: @11 = private unnamed_addr constant [5 x i8] c"hello", align 1
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpabi.init"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
