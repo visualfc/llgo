@@ -904,6 +904,66 @@ func toFuncType(typ *abi.StructType) *abi.FuncType {
 	return tt.(*abi.FuncType)
 }
 
+func toClosureType(typ *abi.FuncType) *abi.StructType {
+	size := unsafe.Sizeof(abi.StructType{})
+	u := typ.Uncommon()
+	if u != nil {
+		size += unsafe.Sizeof(abi.UncommonType{}) + uintptr(u.Mcount)*unsafe.Sizeof(abi.Method{})
+	}
+	ftyp := typ
+	fnstr := funcStr(ftyp)
+	for _, t := range typelist {
+		if t.String() == fnstr {
+			ftyp = t.FuncType()
+			break
+		}
+	}
+	ptr := runtime.AllocU(size)
+	t := (*abi.StructType)(ptr)
+	t.Size_ = ftyp.Size_
+	t.PtrBytes = ftyp.PtrBytes
+	t.Hash = ftyp.Hash
+	t.TFlag = ftyp.TFlag | abi.TFlagNamed | abi.TFlagClosure
+	t.Align_ = ftyp.Align_
+	t.FieldAlign_ = ftyp.FieldAlign_
+	t.Kind_ = uint8(abi.Struct)
+	t.Equal = ftyp.Equal
+	t.GCData = ftyp.GCData
+	t.Str_ = typ.Str_
+	t.Fields = []abi.StructField{
+		abi.StructField{
+			Name_: "$f",
+			Typ:   &ftyp.Type,
+		}, abi.StructField{
+			Name_:  "$data",
+			Typ:    unsafePointerType,
+			Offset: pointerSize,
+		},
+	}
+	t.PkgPath_ = ""
+	if typ.TFlag&abi.TFlagExtraStar != 0 {
+		t.TFlag |= abi.TFlagExtraStar
+	}
+	if u != nil {
+		t.TFlag |= abi.TFlagUncommon
+		tu := t.Uncommon()
+		tu.PkgPath_ = u.PkgPath_
+		tu.Mcount = u.Mcount
+		tu.Xcount = u.Xcount
+		tu.Moff = u.Moff
+		uptr := add(unsafe.Pointer(u), uintptr(u.Moff), "t.mcount > 0")
+		tptr := add(unsafe.Pointer(tu), uintptr(tu.Moff), "t.mcount > 0")
+
+		for i := 0; i < int(u.Mcount); i++ {
+			uelemPtr := add(uptr, uintptr(i)*unsafe.Sizeof(Method{}), "accessing method element")
+			telemPtr := add(tptr, uintptr(i)*unsafe.Sizeof(Method{}), "accessing method element")
+			*(*Method)(telemPtr) = *(*Method)(uelemPtr)
+		}
+	}
+	namedFuncMap.Store(t, typ)
+	return t
+}
+
 // rtypeOf directly extracts the *rtype of the provided value.
 func rtypeOf(i any) *abi.Type {
 	eface := *(*emptyInterface)(unsafe.Pointer(&i))
@@ -2216,6 +2276,7 @@ func closureOf(ftyp *abi.FuncType) *abi.Type {
 		if t != nil {
 			return &t.Type
 		}
+		return &toClosureType(ftyp).Type
 	}
 
 	fields := []abi.StructField{

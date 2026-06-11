@@ -8,6 +8,9 @@ func demo(n int, s string) (bool, int) {
 	return true, n + len(s)
 }
 
+//llgo:type C
+type CFunc func(n int, s string) (bool, int)
+
 type T func(n int, s string) (bool, int)
 
 func (t T) Demo() int {
@@ -54,6 +57,17 @@ func main() {
 	if r[1].Int() != 100+5 {
 		panic("error r[1]")
 	}
+
+	ctyp := reflect.TypeOf((*CFunc)(nil)).Elem()
+	if ctyp.Kind() != reflect.Func {
+		panic("kind error: " + ctyp.Kind().String())
+	}
+	v3 := reflect.New(ctyp).Elem()
+	if v3.Type() != ctyp {
+		panic("bad c named type")
+	}
+	v3.Set(v1)
+	check(v3, "c named")
 }
 
 func check(v reflect.Value, s string) {

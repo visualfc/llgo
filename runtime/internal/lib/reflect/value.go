@@ -1627,7 +1627,6 @@ func (v Value) typeSlow() Type {
 	}
 
 	typ := v.typ()
-
 	if v.flag&flagMethod == 0 {
 		// closure func
 		if v.typ_.IsClosure() {
