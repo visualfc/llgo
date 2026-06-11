@@ -1026,6 +1026,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil && p.prog.SizeOf(t) == 0 {
 					p.assertNilDerefBase(b, v.X)
 				}
+				if isInterfaceCompareDeref(v) {
+					p.assertNilDerefBase(b, v.X)
+					b.AssertNilDeref(x)
+				}
 			}
 			ret = b.UnOp(v.Op, x)
 		}
@@ -1192,6 +1196,22 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	}
 	p.bvals[iv] = ret
 	return ret
+}
+
+func isInterfaceCompareDeref(v *ssa.UnOp) bool {
+	if _, ok := types.Unalias(v.Type()).Underlying().(*types.Interface); !ok {
+		return false
+	}
+	switch v.X.(type) {
+	case *ssa.Alloc, *ssa.Extract, *ssa.FieldAddr, *ssa.FreeVar, *ssa.Global, *ssa.IndexAddr:
+		return false
+	}
+	refs := v.Referrers()
+	if refs == nil || len(*refs) != 1 {
+		return false
+	}
+	bin, ok := (*refs)[0].(*ssa.BinOp)
+	return ok && (bin.Op == token.EQL || bin.Op == token.NEQ)
 }
 
 func (p *context) assertNilDerefBase(b llssa.Builder, addr ssa.Value) {

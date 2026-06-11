@@ -63,6 +63,38 @@ func convert(p *[]byte) {
 	}
 }
 
+func TestIsInterfaceCompareDeref(t *testing.T) {
+	ssaPkg, _, _ := buildGoSSAPkg(t, `
+package foo
+
+func compareInterfacePtr(p *interface{}, q interface{}) bool {
+	return *p == q
+}
+
+func derefOnly(p *interface{}) interface{} {
+	return *p
+}
+`)
+
+	if !isInterfaceCompareDeref(findUnOp(t, ssaPkg.Func("compareInterfacePtr"), token.MUL, false)) {
+		t.Fatal("interface deref used by comparison should be detected")
+	}
+	derefOnly := findUnOp(t, ssaPkg.Func("derefOnly"), token.MUL, false)
+	if isInterfaceCompareDeref(derefOnly) {
+		t.Fatal("interface deref without comparison referrer should not be detected")
+	}
+	refs := derefOnly.Referrers()
+	if refs == nil {
+		t.Fatal("derefOnly has no referrer slice")
+	}
+	oldRefs := *refs
+	*refs = nil
+	defer func() { *refs = oldRefs }()
+	if isInterfaceCompareDeref(derefOnly) {
+		t.Fatal("interface deref without referrers should not be detected")
+	}
+}
+
 func findUnOp(t *testing.T, fn *ssa.Function, op token.Token, wantArray bool) *ssa.UnOp {
 	t.Helper()
 	for _, block := range fn.Blocks {
