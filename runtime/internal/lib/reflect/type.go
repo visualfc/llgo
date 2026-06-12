@@ -871,7 +871,7 @@ func toFuncType(typ *abi.StructType) *abi.FuncType {
 	t := (*abi.FuncType)(ptr)
 	t.Size_ = ftyp.Size_
 	t.PtrBytes = ftyp.PtrBytes
-	t.Hash = ftyp.Hash
+	t.Hash = fnv1(typ.Hash, []byte("-funcType")...)
 	t.TFlag = ftyp.TFlag | abi.TFlagNamed
 	t.Align_ = ftyp.Align_
 	t.FieldAlign_ = ftyp.FieldAlign_
@@ -913,7 +913,7 @@ func toClosureType(typ *abi.FuncType) *abi.StructType {
 	ftyp := typ
 	fnstr := funcStr(ftyp)
 	for _, t := range typelist {
-		if t.String() == fnstr {
+		if t.Kind() == abi.Func && t.String() == fnstr {
 			ftyp = t.FuncType()
 			break
 		}
@@ -922,7 +922,7 @@ func toClosureType(typ *abi.FuncType) *abi.StructType {
 	t := (*abi.StructType)(ptr)
 	t.Size_ = ftyp.Size_
 	t.PtrBytes = ftyp.PtrBytes
-	t.Hash = ftyp.Hash
+	t.Hash = fnv1(typ.Hash, []byte("-structType")...)
 	t.TFlag = ftyp.TFlag | abi.TFlagNamed | abi.TFlagClosure
 	t.Align_ = ftyp.Align_
 	t.FieldAlign_ = ftyp.FieldAlign_
