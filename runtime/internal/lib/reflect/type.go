@@ -882,8 +882,7 @@ func (t *rtype) ptrTo() *abi.Type {
 	}
 
 	// Look in known types.
-	s := "*" + t.String()
-	for _, tt := range typesByString(s) {
+	for _, tt := range typesByString("*" + t.String()) {
 		p := (*ptrType)(unsafe.Pointer(tt))
 		if p.Elem != &t.t {
 			continue
@@ -897,8 +896,13 @@ func (t *rtype) ptrTo() *abi.Type {
 	var iptr any = (*unsafe.Pointer)(nil)
 	prototype := *(**ptrType)(unsafe.Pointer(&iptr))
 	pp := *prototype
-
-	pp.Str_ = s
+	if at.TFlag&abi.TFlagExtraStar != 0 {
+		pp.Str_ = "**" + at.Str_
+		pp.TFlag &= ^abi.TFlagExtraStar
+	} else {
+		pp.Str_ = at.Str_
+		pp.TFlag |= abi.TFlagExtraStar
+	}
 	pp.PtrToThis_ = nil
 
 	// For the type structures linked into the binary, the
