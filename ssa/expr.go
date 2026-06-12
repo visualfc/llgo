@@ -1293,7 +1293,7 @@ func (b Builder) checkReflect(fn Expr, args []Expr) {
 		pkg.NeedAbiInit |= ReflectMapOf
 	case "reflect.PointerTo", "reflect.PtrTo":
 		pkg.NeedAbiInit |= ReflectPointerTo
-	case "reflect.SliceOf":
+	case "reflect.SliceOf", "reflect.Value.Slice":
 		pkg.NeedAbiInit |= ReflectSliceOf
 	case "reflect.StructOf":
 		pkg.NeedAbiInit |= ReflectStructOf
