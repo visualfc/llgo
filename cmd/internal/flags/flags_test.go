@@ -130,15 +130,15 @@ func TestBuildLTOFlagInvalid(t *testing.T) {
 
 func TestBuildGlobalDCEFlags(t *testing.T) {
 	tests := []struct {
-		name      string
-		args      []string
-		want      bool
-		specified bool
+		name        string
+		args        []string
+		wantFlag    *bool
+		wantDisable bool
 	}{
-		{name: "default auto", args: nil, want: false, specified: false},
-		{name: "enabled implicit bool", args: []string{"-globaldce"}, want: true, specified: true},
-		{name: "enabled value", args: []string{"-globaldce=true"}, want: true, specified: true},
-		{name: "disabled value", args: []string{"-globaldce=false"}, want: false, specified: true},
+		{name: "default auto", args: nil, wantFlag: nil, wantDisable: false},
+		{name: "enabled implicit bool", args: []string{"-globaldce"}, wantFlag: boolPtr(true), wantDisable: false},
+		{name: "enabled value", args: []string{"-globaldce=true"}, wantFlag: boolPtr(true), wantDisable: false},
+		{name: "disabled value", args: []string{"-globaldce=false"}, wantFlag: boolPtr(false), wantDisable: true},
 	}
 
 	for _, tt := range tests {
@@ -149,24 +149,29 @@ func TestBuildGlobalDCEFlags(t *testing.T) {
 			if err := fs.Parse(tt.args); err != nil {
 				t.Fatalf("Parse(%v) unexpected error: %v", tt.args, err)
 			}
-			if GoGlobalDCE.Specified != tt.specified {
-				t.Fatalf("GoGlobalDCE.Specified = %v, want %v", GoGlobalDCE.Specified, tt.specified)
-			}
-			if GoGlobalDCE.Enabled != tt.want {
-				t.Fatalf("GoGlobalDCE.Enabled = %v, want %v", GoGlobalDCE.Enabled, tt.want)
+			if !sameBoolPtr(GoGlobalDCE, tt.wantFlag) {
+				t.Fatalf("GoGlobalDCE = %v, want %v", GoGlobalDCE, tt.wantFlag)
 			}
 			conf := &build.Config{LTO: lto.Full}
 			if err := UpdateConfig(conf); err != nil {
 				t.Fatalf("UpdateConfig error: %v", err)
 			}
-			if conf.GoGlobalDCESpecified != tt.specified {
-				t.Fatalf("conf.GoGlobalDCESpecified = %v, want %v", conf.GoGlobalDCESpecified, tt.specified)
-			}
-			if tt.specified && conf.GoGlobalDCE != tt.want {
-				t.Fatalf("conf.GoGlobalDCE = %v, want %v", conf.GoGlobalDCE, tt.want)
+			if conf.DisableGoGlobalDCE != tt.wantDisable {
+				t.Fatalf("conf.DisableGoGlobalDCE = %v, want %v", conf.DisableGoGlobalDCE, tt.wantDisable)
 			}
 		})
 	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func sameBoolPtr(got, want *bool) bool {
+	if got == nil || want == nil {
+		return got == want
+	}
+	return *got == *want
 }
 
 func TestBuildGlobalDCEFlagInvalid(t *testing.T) {
@@ -218,8 +223,8 @@ func TestUpdateConfigAllowsGlobalDCEDisableWithoutFullLTO(t *testing.T) {
 	if conf.LTO != lto.Thin {
 		t.Fatalf("conf.LTO = %v, want %v", conf.LTO, lto.Thin)
 	}
-	if !conf.GoGlobalDCESpecified || conf.GoGlobalDCE {
-		t.Fatalf("globaldce config = (%v,%v), want (true,false)", conf.GoGlobalDCESpecified, conf.GoGlobalDCE)
+	if !conf.DisableGoGlobalDCE {
+		t.Fatal("globaldce=false should set DisableGoGlobalDCE")
 	}
 }
 

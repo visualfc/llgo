@@ -34,6 +34,7 @@ import (
 	"github.com/goplus/llgo/cl/cltest"
 	"github.com/goplus/llgo/internal/build"
 	"github.com/goplus/llgo/internal/llgen"
+	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/ssa/ssatest"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -205,6 +206,12 @@ func runEmbedTargetSuite(t *testing.T, target, relDir string, ignore []string) {
 
 func TestRunAndTestFromTestgo(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testgo", nil)
+}
+
+func TestRunAndTestFromTestlto(t *testing.T) {
+	conf := build.NewDefaultConf(build.ModeRun)
+	conf.LTO = lto.Full
+	cltest.RunAndTestFromDir(t, "", "./_testlto", nil, cltest.WithRunConfig(conf))
 }
 
 func TestFilterEmulatorOutput(t *testing.T) {

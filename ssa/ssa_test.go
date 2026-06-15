@@ -222,8 +222,8 @@ func TestAddTypeMetadata(t *testing.T) {
 	if !strings.Contains(ir, `!"Virtual Function Elim"`) {
 		t.Fatalf("missing Virtual Function Elim module flag:\n%s", ir)
 	}
-	if !strings.Contains(ir, `i32 8, !"Virtual Function Elim", i32 1`) {
-		t.Fatalf("missing min-behavior Virtual Function Elim module flag:\n%s", ir)
+	if !strings.Contains(ir, `i32 1, !"Virtual Function Elim", i32 1`) {
+		t.Fatalf("missing error-behavior Virtual Function Elim module flag:\n%s", ir)
 	}
 }
 
@@ -313,14 +313,14 @@ func TestMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
 	}
 }
 
-func TestReflectPackageDisablesVirtualFunctionElim(t *testing.T) {
+func TestReflectPackageEnablesVirtualFunctionElim(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.EnableGoGlobalDCE(true)
 	pkg := prog.NewPackage("reflect", "reflect")
 
 	ir := pkg.String()
-	if !strings.Contains(ir, `i32 8, !"Virtual Function Elim", i32 0`) {
-		t.Fatalf("missing disabled Virtual Function Elim module flag for reflect:\n%s", ir)
+	if !strings.Contains(ir, `i32 1, !"Virtual Function Elim", i32 1`) {
+		t.Fatalf("missing enabled Virtual Function Elim module flag for reflect:\n%s", ir)
 	}
 }
 
@@ -374,9 +374,11 @@ func TestEmitFakeUsesAtEntry(t *testing.T) {
 	b.EndBuild()
 
 	ir := pkg.String()
-	if !strings.Contains(ir, "call void (...) @llvm.fake.use(ptr @TargetA, ptr @TargetB)") &&
-		!strings.Contains(ir, "call void @llvm.fake.use(ptr @TargetA, ptr @TargetB)") {
-		t.Fatalf("missing aggregated llvm.fake.use call:\n%s", ir)
+	if strings.Count(ir, `call void asm sideeffect "", "X"(ptr @TargetA)`) != 1 {
+		t.Fatalf("missing deduplicated inline asm fake-use for TargetA:\n%s", ir)
+	}
+	if strings.Count(ir, `call void asm sideeffect "", "X"(ptr @TargetB)`) != 1 {
+		t.Fatalf("missing inline asm fake-use for TargetB:\n%s", ir)
 	}
 }
 

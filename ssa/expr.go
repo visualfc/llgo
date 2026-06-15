@@ -1264,7 +1264,7 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	}
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
-	if reflectKind&ReflectMethodMask != 0 {
+	if b.Prog.enableGoGlobalDCE && reflectKind&ReflectMethodMask != 0 {
 		b.Prog.methodCheckedLoad(b.impl, b.Pkg.Module(), b.Extract(ret, 1).impl, "go.method.reflect")
 	}
 	return

@@ -74,34 +74,18 @@ func AddLTOFlag(fs *flag.FlagSet) {
 	fs.Var(&LTO, "lto", "Enable LTO optimization: thin or full (default: off)")
 }
 
-type goGlobalDCEFlag struct {
-	Specified bool
-	Enabled   bool
-}
-
-func (o *goGlobalDCEFlag) String() string {
-	return strconv.FormatBool(o.Enabled)
-}
-
-func (o *goGlobalDCEFlag) Set(v string) error {
-	enabled, err := strconv.ParseBool(v)
-	if err != nil {
-		return err
-	}
-	o.Specified = true
-	o.Enabled = enabled
-	return nil
-}
-
-func (o *goGlobalDCEFlag) IsBoolFlag() bool {
-	return true
-}
-
-var GoGlobalDCE goGlobalDCEFlag
+var GoGlobalDCE *bool
 
 func AddGlobalDCEFlag(fs *flag.FlagSet) {
-	GoGlobalDCE = goGlobalDCEFlag{}
-	fs.Var(&GoGlobalDCE, "globaldce", "Enable Go global DCE with full LTO (default: true when -lto=full)")
+	GoGlobalDCE = nil
+	fs.BoolFunc("globaldce", "Enable Go global DCE with full LTO (default: true when -lto=full)", func(v string) error {
+		enabled, err := strconv.ParseBool(v)
+		if err != nil {
+			return err
+		}
+		GoGlobalDCE = &enabled
+		return nil
+	})
 }
 
 func ResolveLTOMode(defaultValue lto.Mode) lto.Mode {
@@ -288,9 +272,11 @@ func UpdateConfig(conf *build.Config) error {
 	if LTO.Specified {
 		conf.LTO = LTO.Mode
 	}
-	if GoGlobalDCE.Specified {
-		conf.GoGlobalDCE = GoGlobalDCE.Enabled
-		conf.GoGlobalDCESpecified = true
+	if GoGlobalDCE != nil {
+		if *GoGlobalDCE && conf.LTO != lto.Full {
+			return fmt.Errorf("globaldce can only be enabled with full LTO (-lto=full)")
+		}
+		conf.DisableGoGlobalDCE = !*GoGlobalDCE
 	}
 	if SizeReport || SizeFormat != "" || SizeLevel != "" {
 		conf.SizeReport = true
@@ -331,7 +317,7 @@ func UpdateConfig(conf *build.Config) error {
 		conf.GenLL = GenLLFiles
 		conf.ForceEspClang = ForceEspClang
 	}
-	return conf.Validate()
+	return nil
 }
 
 func UpdateBuildConfig(conf *build.Config) error {

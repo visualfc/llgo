@@ -154,10 +154,9 @@ type Config struct {
 	SizeLevel     string // size aggregation level: full,module,package (default module)
 	CompilerHash  string // metadata hash for the running compiler (development builds only)
 
-	// GoGlobalDCE controls Go-specific global DCE metadata emission. When
-	// GoGlobalDCESpecified is false, it defaults to enabled only for full LTO.
-	GoGlobalDCE          bool
-	GoGlobalDCESpecified bool
+	// DisableGoGlobalDCE disables Go-specific global DCE metadata emission
+	// when it would otherwise be enabled by full LTO.
+	DisableGoGlobalDCE bool
 
 	// GlobalRewrites specifies compile-time overrides for global string variables.
 	// Keys are fully qualified package paths (e.g. "main" or "github.com/user/pkg").
@@ -226,27 +225,7 @@ func (c *Config) goGlobalDCEEnabled() bool {
 	if c == nil {
 		return false
 	}
-	if c.GoGlobalDCESpecified {
-		return c.GoGlobalDCE
-	}
-	if c.GoGlobalDCE {
-		return true
-	}
-	return c.ltoMode() == lto.Full
-}
-
-func (c *Config) validateGoGlobalDCE() error {
-	if c.goGlobalDCEEnabled() && c.ltoMode() != lto.Full {
-		return fmt.Errorf("globaldce can only be enabled with full LTO (-lto=full)")
-	}
-	return nil
-}
-
-func (c *Config) Validate() error {
-	if err := c.validateGoGlobalDCE(); err != nil {
-		return err
-	}
-	return nil
+	return c.ltoMode() == lto.Full && !c.DisableGoGlobalDCE
 }
 
 // -----------------------------------------------------------------------------
@@ -281,9 +260,6 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		return nil, err
 	}
 	conf.OptLevel = effectiveOptLevel(conf)
-	if err := conf.Validate(); err != nil {
-		return nil, err
-	}
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
 	export, err := crosscompile.Use(conf.Goos, conf.Goarch, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode())

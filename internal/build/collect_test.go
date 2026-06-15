@@ -170,11 +170,10 @@ func TestCollectFingerprintIncludesGoGlobalDCE(t *testing.T) {
 
 	withoutDCE := pkg()
 	if err := ctx(&Config{
-		Goos:                 "linux",
-		Goarch:               "amd64",
-		LTO:                  lto.Full,
-		GoGlobalDCESpecified: true,
-		GoGlobalDCE:          false,
+		Goos:               "linux",
+		Goarch:             "amd64",
+		LTO:                lto.Full,
+		DisableGoGlobalDCE: true,
 	}).collectFingerprint(withoutDCE); err != nil {
 		t.Fatal(err)
 	}

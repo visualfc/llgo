@@ -8,7 +8,6 @@ import (
 
 const (
 	vcallVisibilityLinkageUnit = 1
-	moduleFlagBehaviorMin      = 8
 )
 
 func methodCapabilitySig(sig *types.Signature) string {
