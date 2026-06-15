@@ -27,6 +27,7 @@ import (
 
 	"github.com/goplus/llgo/runtime/abi"
 	c "github.com/goplus/llgo/runtime/internal/clite"
+	"github.com/goplus/llgo/runtime/internal/clite/bdwgc"
 	"github.com/goplus/llgo/runtime/internal/ffi"
 )
 
@@ -60,6 +61,10 @@ func makeFunc(typ Type, method bool, fn func(args []Value) (results []Value)) Va
 	if err != nil {
 		panic(err)
 	}
+	// Register 'sig' as a GC root to prevent the conservative garbage collector
+	// from reclaiming the ffi_cif structure and its referenced types.
+	bdwgc.AddRoots(unsafe.Pointer(sig), add(unsafe.Pointer(sig), unsafe.Sizeof(*sig), ""))
+
 	closure := ffi.NewClosure()
 
 	switch len(ftyp.Out) {
