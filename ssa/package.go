@@ -476,7 +476,7 @@ func (p Program) NewPackage(name, pkgPath string) Package {
 		llvmUsedSet:    make(map[string]struct{}),
 	}
 	if p.enableGoGlobalDCE {
-		p.addVirtualFunctionElimModuleFlag(mod, true)
+		p.addVirtualFunctionElimModuleFlag(mod)
 	}
 	return ret
 }

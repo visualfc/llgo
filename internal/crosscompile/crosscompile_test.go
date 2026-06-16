@@ -386,6 +386,12 @@ func TestUseLTOFlagsControlledByOption(t *testing.T) {
 	if !slices.Contains(thin.CCFLAGS, "-flto=thin") {
 		t.Fatalf("missing thin LTO ccflag: %v", thin.CCFLAGS)
 	}
+	if slices.Contains(thin.CCFLAGS, "-fvirtual-function-elimination") {
+		t.Fatalf("unexpected virtual function elimination ccflag for thin LTO: %v", thin.CCFLAGS)
+	}
+	if slices.Contains(thin.CCFLAGS, "-fwhole-program-vtables") {
+		t.Fatalf("unexpected whole-program vtables ccflag for thin LTO: %v", thin.CCFLAGS)
+	}
 	if !slices.Contains(thin.LDFLAGS, "-flto=thin") {
 		t.Fatalf("missing thin LTO link driver flag: %v", thin.LDFLAGS)
 	}
@@ -399,6 +405,12 @@ func TestUseLTOFlagsControlledByOption(t *testing.T) {
 	}
 	if !slices.Contains(full.CCFLAGS, "-flto=full") {
 		t.Fatalf("missing full LTO ccflag: %v", full.CCFLAGS)
+	}
+	if !slices.Contains(full.CCFLAGS, "-fvirtual-function-elimination") {
+		t.Fatalf("missing virtual function elimination ccflag for full LTO: %v", full.CCFLAGS)
+	}
+	if !slices.Contains(full.CCFLAGS, "-fwhole-program-vtables") {
+		t.Fatalf("missing whole-program vtables ccflag for full LTO: %v", full.CCFLAGS)
 	}
 	if !slices.Contains(full.LDFLAGS, "-flto=full") {
 		t.Fatalf("missing full LTO link driver flag: %v", full.LDFLAGS)

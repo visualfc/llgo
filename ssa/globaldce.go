@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	vcallVisibilityLinkageUnit = 1
+	vcallVisibilityLinkageUnit  = 1
+	LLVMModuleFlagBehaviorError = 1
 )
 
 func methodCapabilitySig(sig *types.Signature) string {
@@ -136,12 +137,8 @@ func (p Program) addModuleFlag(mod llvm.Module, behavior uint64, name string, va
 	)
 }
 
-func (p Program) addVirtualFunctionElimModuleFlag(mod llvm.Module, enabled bool) {
-	val := uint64(0)
-	if enabled {
-		val = 1
-	}
-	p.addModuleFlag(mod, 1, "Virtual Function Elim", val)
+func (p Program) addVirtualFunctionElimModuleFlag(mod llvm.Module) {
+	p.addModuleFlag(mod, LLVMModuleFlagBehaviorError, "Virtual Function Elim", 1)
 }
 
 func (p Program) addTypeMetadata(global llvm.Value, offset uint64, typeID string) {

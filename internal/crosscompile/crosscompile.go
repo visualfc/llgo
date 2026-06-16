@@ -257,7 +257,10 @@ func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Le
 			"-Wno-unused-command-line-argument",
 		}
 		if ltoMode.Enabled() {
-			export.CCFLAGS = append(export.CCFLAGS, ltoMode.ClangFlag(), "-fvirtual-function-elimination", "-fwhole-program-vtables")
+			export.CCFLAGS = append(export.CCFLAGS, ltoMode.ClangFlag())
+		}
+		if ltoMode == lto.Full {
+			export.CCFLAGS = append(export.CCFLAGS, "-fvirtual-function-elimination", "-fwhole-program-vtables")
 		}
 
 		// Add sysroot for macOS only
