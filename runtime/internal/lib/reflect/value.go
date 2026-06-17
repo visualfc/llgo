@@ -589,6 +589,8 @@ func (v Value) Elem() Value {
 		kind := typ.Kind()
 		if typ.IsClosure() {
 			kind = abi.Func
+		} else if kind == abi.Func {
+			typ = closureOf(typ.FuncType())
 		}
 		fl |= flag(kind)
 		return Value{typ, ptr, fl}

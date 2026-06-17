@@ -136,6 +136,9 @@ func storeMakeFuncResult(ret unsafe.Pointer, v Value, typ *abi.Type) {
 
 func ffiToValue(ptr unsafe.Pointer, typ *abi.Type) (v Value) {
 	kind := typ.Kind()
+	if typ.Kind() == abi.Func {
+		typ = closureOf(typ.FuncType())
+	}
 	v.typ_ = typ
 	v.flag = flag(kind)
 	if typ.IfaceIndir() {
