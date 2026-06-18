@@ -895,9 +895,9 @@ func toFuncType(typ *abi.StructType) *abi.FuncType {
 		tptr := add(unsafe.Pointer(tu), uintptr(tu.Moff), "t.mcount > 0")
 
 		for i := 0; i < int(u.Mcount); i++ {
-			uelemPtr := add(uptr, uintptr(i)*unsafe.Sizeof(Method{}), "accessing method element")
-			telemPtr := add(tptr, uintptr(i)*unsafe.Sizeof(Method{}), "accessing method element")
-			*(*Method)(telemPtr) = *(*Method)(uelemPtr)
+			uelemPtr := add(uptr, uintptr(i)*unsafe.Sizeof(abi.Method{}), "accessing method element")
+			telemPtr := add(tptr, uintptr(i)*unsafe.Sizeof(abi.Method{}), "accessing method element")
+			*(*abi.Method)(telemPtr) = *(*abi.Method)(uelemPtr)
 		}
 	}
 	tt, _ := namedFuncMap.LoadOrStore(typ, t)
@@ -955,9 +955,9 @@ func toClosureType(typ *abi.FuncType) *abi.StructType {
 		tptr := add(unsafe.Pointer(tu), uintptr(tu.Moff), "t.mcount > 0")
 
 		for i := 0; i < int(u.Mcount); i++ {
-			uelemPtr := add(uptr, uintptr(i)*unsafe.Sizeof(Method{}), "accessing method element")
-			telemPtr := add(tptr, uintptr(i)*unsafe.Sizeof(Method{}), "accessing method element")
-			*(*Method)(telemPtr) = *(*Method)(uelemPtr)
+			uelemPtr := add(uptr, uintptr(i)*unsafe.Sizeof(abi.Method{}), "accessing method element")
+			telemPtr := add(tptr, uintptr(i)*unsafe.Sizeof(abi.Method{}), "accessing method element")
+			*(*abi.Method)(telemPtr) = *(*abi.Method)(uelemPtr)
 		}
 	}
 	namedFuncMap.Store(t, typ)
