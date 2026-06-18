@@ -313,6 +313,69 @@ func TestMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
 	}
 }
 
+func TestMethodCapabilityTypeCoversCompositeForms(t *testing.T) {
+	if got := methodCapabilityTuple(nil); got != nil {
+		t.Fatalf("methodCapabilityTuple(nil) = %v, want nil", got)
+	}
+	if got := methodCapabilityTuple(types.NewTuple()); got != nil {
+		t.Fatalf("methodCapabilityTuple(empty) = %v, want nil", got)
+	}
+
+	pkg := types.NewPackage("example.com/p", "p")
+	alias := types.NewAlias(types.NewTypeName(token.NoPos, pkg, "AliasPtr", nil), types.NewPointer(types.Typ[types.String]))
+
+	tp := types.NewTypeParam(types.NewTypeName(token.NoPos, pkg, "T", nil), types.Universe.Lookup("any").Type().Underlying().(*types.Interface))
+	box := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Box", nil), types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "V", tp, false),
+	}, nil), nil)
+	box.SetTypeParams([]*types.TypeParam{tp})
+	boxAlias, err := types.Instantiate(types.NewContext(), box, []types.Type{alias}, false)
+	if err != nil {
+		t.Fatalf("Instantiate(Box[AliasPtr]) failed: %v", err)
+	}
+
+	nestedSig := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "x", alias)),
+		types.NewTuple(types.NewVar(token.NoPos, pkg, "ok", types.Typ[types.Bool])),
+		false)
+	method := types.NewFunc(token.NoPos, pkg, "M", nestedSig)
+	embedded := types.NewInterfaceType(nil, nil).Complete()
+	iface := types.NewInterfaceType([]*types.Func{method}, []types.Type{embedded}).Complete()
+	union := types.NewUnion([]*types.Term{
+		types.NewTerm(false, alias),
+		types.NewTerm(true, types.NewSlice(alias)),
+	})
+
+	composite := []types.Type{
+		types.NewArray(alias, 2),
+		types.NewSlice(alias),
+		types.NewStruct([]*types.Var{types.NewField(token.NoPos, pkg, "F", alias, false)}, []string{`json:"f"`}),
+		types.NewPointer(alias),
+		nestedSig,
+		iface,
+		types.NewMap(alias, types.NewChan(types.SendRecv, alias)),
+		boxAlias,
+		union,
+	}
+	for _, typ := range composite {
+		got := methodCapabilityType(typ)
+		gotString := types.TypeString(got, func(pkg *types.Package) string {
+			if pkg == nil {
+				return ""
+			}
+			return pkg.Path()
+		})
+		if strings.Contains(gotString, "AliasPtr") {
+			t.Fatalf("methodCapabilityType(%T) kept alias in %q", typ, gotString)
+		}
+	}
+
+	gotUnion := methodCapabilityType(union).(*types.Union)
+	if ptr, ok := gotUnion.Term(0).Type().(*types.Pointer); !ok || ptr.Elem() != types.Typ[types.String] {
+		t.Fatalf("union term was not canonicalized through alias: %s", gotUnion.Term(0).Type())
+	}
+}
+
 func TestReflectPackageEnablesVirtualFunctionElim(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.EnableGoGlobalDCE(true)
@@ -355,6 +418,132 @@ func TestFakeUseValueInlineAsm(t *testing.T) {
 	}
 	if !strings.Contains(ir, "ptr @Target") {
 		t.Fatalf("missing inline asm operand:\n%s", ir)
+	}
+}
+
+func TestGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	mod := pkg.Module()
+
+	helpers := []struct {
+		name string
+		get  func() llvm.Value
+	}{
+		{"llvm.type.checked.load", func() llvm.Value { return prog.llvmTypeCheckedLoad(mod) }},
+		{"llvm.assume", func() llvm.Value { return prog.llvmAssume(mod) }},
+		{"llvm.fake.use", func() llvm.Value { return prog.llvmFakeUse(mod) }},
+	}
+	for _, helper := range helpers {
+		first := helper.get()
+		second := helper.get()
+		if first.IsNil() || second.IsNil() {
+			t.Fatalf("%s helper returned nil declaration", helper.name)
+		}
+		if first != second {
+			t.Fatalf("%s helper did not reuse the existing declaration", helper.name)
+		}
+		if first.Name() != helper.name {
+			t.Fatalf("helper declaration name = %q, want %q", first.Name(), helper.name)
+		}
+	}
+
+	ir := pkg.String()
+	for _, want := range []string{"@llvm.type.checked.load", "@llvm.assume", "@llvm.fake.use"} {
+		if strings.Count(ir, want) != 1 {
+			t.Fatalf("expected exactly one %s declaration:\n%s", want, ir)
+		}
+	}
+}
+
+func TestMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	g := pkg.NewVarEx("itab", prog.Pointer(prog.VoidPtr()))
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	fn := pkg.NewFunc("Use", sig, InGo)
+	b := fn.MakeBody(1)
+	loaded := prog.methodCheckedLoad(b.impl, pkg.Module(), g.impl, "go.method.M:func()")
+	prog.fakeUseValueInlineAsm(b.impl, loaded)
+	b.Return()
+
+	ir := pkg.String()
+	for _, want := range []string{
+		"@llvm.type.checked.load",
+		"@llvm.assume",
+		`!"go.method.M:func()"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing %s in method checked load IR:\n%s", want, ir)
+		}
+	}
+}
+
+func TestEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
+	prog := NewProgram(nil)
+	prog.EnableGoGlobalDCE(true)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	targetA := pkg.NewFunc("TargetA", sig, InGo)
+	targetB := pkg.NewFunc("TargetB", sig, InGo)
+	fn := pkg.NewFunc("UseIntrinsic", sig, InGo)
+	b := fn.MakeBody(1)
+
+	pkg.NewFunc("NoFakeUses", sig, InGo).emitFakeUses(b)
+	fn.recordFakeUse(targetA.impl)
+	fn.recordFakeUse(targetB.impl)
+	b.Return()
+	fn.emitFakeUses(b)
+
+	ir := pkg.String()
+	if !strings.Contains(ir, `call void (...) @llvm.fake.use(ptr @TargetA, ptr @TargetB)`) {
+		t.Fatalf("missing llvm.fake.use call at entry:\n%s", ir)
+	}
+	if strings.Index(ir, "@llvm.fake.use") > strings.Index(ir, "ret void") {
+		t.Fatalf("llvm.fake.use should be emitted before the return:\n%s", ir)
+	}
+}
+
+func TestAddMethodTypeMetadataEarlyReturns(t *testing.T) {
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	g := pkg.NewVarEx("g", prog.Pointer(prog.Int()))
+	mset := types.NewMethodSet(types.Typ[types.Int])
+
+	prog.addMethodTypeMetadata(g.impl, prog.Pointer(prog.Int()), mset, 1)
+	prog.EnableGoGlobalDCE(true)
+	prog.addMethodTypeMetadata(g.impl, prog.Pointer(prog.Int()), mset, 0)
+
+	ir := pkg.String()
+	if strings.Contains(ir, "!vcall_visibility") || strings.Contains(ir, "!type !") {
+		t.Fatalf("early-return paths should not attach method metadata:\n%s", ir)
+	}
+}
+
+func TestRecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
+	ctx := llvm.NewContext()
+	wide := llvm.ConstInt(ctx.Int64Type(), 1, false)
+	asPtr := llvm.ConstIntToPtr(wide, llvm.PointerType(ctx.Int8Type(), 0))
+	if got := peelConstOperand0ToType(asPtr, ctx.Int64Type()); got != wide {
+		t.Fatalf("peelConstOperand0ToType did not peel integer-to-pointer constant expression")
+	}
+
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	fn := pkg.NewFunc("UseAbiType", sig, InGo)
+	b := fn.MakeBody(1)
+	g := pkg.NewVarEx("typeinfo", prog.Pointer(prog.Int()))
+
+	b.recordAbiTypeFakeUses(types.Typ[types.Int], g.impl)
+	if len(fn.fakeUses) != 0 {
+		t.Fatalf("recordAbiTypeFakeUses recorded fake uses while global DCE is disabled")
+	}
+	prog.EnableGoGlobalDCE(true)
+	(&aBuilder{Prog: prog, Pkg: pkg}).recordAbiTypeFakeUses(types.Typ[types.Int], g.impl)
+	b.recordAbiTypeFakeUses(types.Typ[types.Int], g.impl)
+	if len(fn.fakeUses) != 0 {
+		t.Fatalf("recordAbiTypeFakeUses recorded fake uses for uninitialized global")
 	}
 }
 

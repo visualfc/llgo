@@ -1446,13 +1446,8 @@ func exportObjectInMemory(ctx *context, pkgPath string, exportFile string, pkg l
 	)
 	switch ltoMode {
 	case lto.Full:
-		if ctx.buildConf.Goos == "darwin" {
-			buf = gllvm.WriteBitcodeToMemoryBuffer(pkg.Module())
-			kind = "in-memory LLVM full LTO bitcode emission for Darwin"
-		} else {
-			buf = gllvm.WriteFullLTOBitcodeToMemoryBuffer(pkg.Module())
-			kind = "in-memory LLVM full LTO bitcode emission"
-		}
+		buf = gllvm.WriteFullLTOBitcodeToMemoryBuffer(pkg.Module(), ctx.buildConf.Goos != "darwin")
+		kind = "in-memory LLVM full LTO bitcode emission"
 	case lto.Thin:
 		buf = gllvm.WriteThinLTOBitcodeToMemoryBuffer(pkg.Module())
 		kind = "in-memory LLVM ThinLTO bitcode emission"
