@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/goplus/llgo/internal/build"
+	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/optlevel"
 )
@@ -129,6 +130,19 @@ func TestBuildLTOFlagInvalid(t *testing.T) {
 }
 
 func TestBuildGlobalDCEFlags(t *testing.T) {
+	if !buildenv.Dev {
+		fs := flag.NewFlagSet("nodev-globaldce", flag.ContinueOnError)
+		fs.SetOutput(new(bytes.Buffer))
+		AddBuildFlags(fs)
+		if flag := fs.Lookup("globaldce"); flag != nil {
+			t.Fatalf("non-dev build registered -globaldce flag: %v", flag)
+		}
+		if err := fs.Parse([]string{"-globaldce"}); err == nil {
+			t.Fatal("non-dev build should reject -globaldce")
+		}
+		return
+	}
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -184,6 +198,10 @@ func TestBuildGlobalDCEFlagInvalid(t *testing.T) {
 }
 
 func TestUpdateConfigRejectsGlobalDCEWithoutFullLTO(t *testing.T) {
+	if !buildenv.Dev {
+		t.Skip("-globaldce is only registered in dev builds")
+	}
+
 	tests := [][]string{
 		{"-globaldce"},
 		{"-globaldce=true"},
@@ -210,6 +228,10 @@ func TestUpdateConfigRejectsGlobalDCEWithoutFullLTO(t *testing.T) {
 }
 
 func TestUpdateConfigAllowsGlobalDCEDisableWithoutFullLTO(t *testing.T) {
+	if !buildenv.Dev {
+		t.Skip("-globaldce is only registered in dev builds")
+	}
+
 	fs := flag.NewFlagSet("globaldce-disabled", flag.ContinueOnError)
 	fs.SetOutput(new(bytes.Buffer))
 	AddBuildFlags(fs)

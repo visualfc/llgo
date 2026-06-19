@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/packages"
@@ -402,7 +403,7 @@ func TestGoGlobalDCEDefaultsToFullLTO(t *testing.T) {
 	}{
 		{name: "lto off", conf: &Config{LTO: lto.Off}, want: false},
 		{name: "thin lto", conf: &Config{LTO: lto.Thin}, want: false},
-		{name: "full lto", conf: &Config{LTO: lto.Full}, want: true},
+		{name: "full lto", conf: &Config{LTO: lto.Full}, want: buildenv.Dev},
 		{name: "full lto disabled", conf: &Config{LTO: lto.Full, DisableGoGlobalDCE: true}, want: false},
 		{name: "disabled without full lto", conf: &Config{LTO: lto.Off, DisableGoGlobalDCE: true}, want: false},
 	}

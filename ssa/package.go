@@ -325,7 +325,7 @@ func (p Program) SetCompileMethods(check func(Package, types.Type)) {
 }
 
 func (p Program) EnableGoGlobalDCE(enable bool) {
-	p.enableGoGlobalDCE = enable
+	p.enableGoGlobalDCE = goGlobalDCEAvailable && enable
 }
 
 // SetRuntime sets the runtime.

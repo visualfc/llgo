@@ -293,17 +293,6 @@ func newFunction(fn llvm.Value, t Type, pkg Package, prog Program, hasFreeVars b
 	}
 }
 
-func (p Function) recordFakeUse(v llvm.Value) {
-	if v.IsNil() {
-		return
-	}
-	if _, ok := p.fakeUseSet[v]; ok {
-		return
-	}
-	p.fakeUseSet[v] = struct{}{}
-	p.fakeUses = append(p.fakeUses, v)
-}
-
 func newParams(fn Type, prog Program) (params []Type, hasVArg bool) {
 	sig := fn.raw.Type.(*types.Signature)
 	in := sig.Params()

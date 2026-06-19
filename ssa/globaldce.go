@@ -1,3 +1,6 @@
+//go:build dev
+// +build dev
+
 package ssa
 
 import (
@@ -7,6 +10,7 @@ import (
 )
 
 const (
+	goGlobalDCEAvailable        = true
 	vcallVisibilityLinkageUnit  = 1
 	LLVMModuleFlagBehaviorError = 1
 )
@@ -206,6 +210,17 @@ func (fn Function) emitFakeUsesInlineAsm(b Builder) {
 	b.blk = curBlk
 }
 
+func (p Function) recordFakeUse(v llvm.Value) {
+	if v.IsNil() {
+		return
+	}
+	if _, ok := p.fakeUseSet[v]; ok {
+		return
+	}
+	p.fakeUseSet[v] = struct{}{}
+	p.fakeUses = append(p.fakeUses, v)
+}
+
 func (p Program) addMethodTypeMetadata(global llvm.Value, fullType Type, mset *types.MethodSet, methodCount int) {
 	if !p.enableGoGlobalDCE {
 		return
@@ -225,6 +240,45 @@ func (p Program) addMethodTypeMetadata(global llvm.Value, fullType Type, mset *t
 		p.addTypeMetadata(global, offset, methodCapabilityKey(sel.Obj().(*types.Func)))
 		if sel.Obj().Exported() {
 			p.addTypeMetadata(global, offset, "go.method.reflect")
+		}
+	}
+}
+
+func peelConstOperand0ToType(v llvm.Value, target llvm.Type) llvm.Value {
+	for v.Type() != target {
+		v = v.Operand(0)
+	}
+	return v
+}
+
+func (b Builder) recordAbiTypeFakeUses(t types.Type, global llvm.Value) {
+	if !b.Prog.enableGoGlobalDCE || b.Func == nil {
+		return
+	}
+	init := global.Initializer()
+	if init.IsNil() {
+		return
+	}
+
+	typeType := b.Prog.Type(b.Prog.rtNamed("Type"), InGo)
+	baseType := peelConstOperand0ToType(init, typeType.ll)
+	equalField := baseType.Operand(7)
+	if !equalField.IsNull() && equalField.OperandsCount() > 0 {
+		equalFn := equalField.Operand(0)
+		if !equalFn.IsNull() {
+			b.Func.recordFakeUse(equalFn)
+		}
+	}
+	if _, ok := types.Unalias(t).(*types.Map); ok {
+		rt := b.Prog.rtNamed(b.Prog.abi.RuntimeName(t))
+		runtimeType := b.Prog.Type(rt, InGo)
+		base := peelConstOperand0ToType(init, runtimeType.ll)
+		hasherField := base.Operand(4)
+		if !hasherField.IsNull() && hasherField.OperandsCount() > 0 {
+			hasherFn := hasherField.Operand(0)
+			if !hasherFn.IsNull() {
+				b.Func.recordFakeUse(hasherFn)
+			}
 		}
 	}
 }

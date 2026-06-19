@@ -38,6 +38,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/goplus/llgo/cl"
+	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/cabi"
 	"github.com/goplus/llgo/internal/clang"
 	"github.com/goplus/llgo/internal/crosscompile"
@@ -225,7 +226,7 @@ func (c *Config) goGlobalDCEEnabled() bool {
 	if c == nil {
 		return false
 	}
-	return c.ltoMode() == lto.Full && !c.DisableGoGlobalDCE
+	return buildenv.Dev && c.ltoMode() == lto.Full && !c.DisableGoGlobalDCE
 }
 
 // -----------------------------------------------------------------------------
@@ -262,7 +263,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	conf.OptLevel = effectiveOptLevel(conf)
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
-	export, err := crosscompile.Use(conf.Goos, conf.Goarch, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode())
+	export, err := crosscompile.Use(conf.Goos, conf.Goarch, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled())
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup crosscompile: %w", err)
 	}

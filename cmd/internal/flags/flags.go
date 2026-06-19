@@ -78,6 +78,9 @@ var GoGlobalDCE *bool
 
 func AddGlobalDCEFlag(fs *flag.FlagSet) {
 	GoGlobalDCE = nil
+	if !buildenv.Dev {
+		return
+	}
 	fs.BoolFunc("globaldce", "Enable Go global DCE with full LTO (default: true when -lto=full)", func(v string) error {
 		enabled, err := strconv.ParseBool(v)
 		if err != nil {

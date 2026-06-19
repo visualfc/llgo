@@ -33,6 +33,7 @@ import (
 	"github.com/goplus/llgo/cl"
 	"github.com/goplus/llgo/cl/cltest"
 	"github.com/goplus/llgo/internal/build"
+	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/llgen"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/ssa/ssatest"
@@ -211,7 +212,18 @@ func TestRunAndTestFromTestgo(t *testing.T) {
 func TestRunAndTestFromTestlto(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeRun)
 	conf.LTO = lto.Full
-	cltest.RunAndTestFromDir(t, "", "./_testlto", nil, cltest.WithRunConfig(conf))
+	var ignore []string
+	if !buildenv.Dev {
+		ignore = []string{
+			"./_testlto/abitype_fakeuse",
+			"./_testlto/anonymous_alias",
+			"./_testlto/interface_matrix",
+			"./_testlto/interface_slots",
+			"./_testlto/reflect_method",
+			"./_testlto/typeid_dce",
+		}
+	}
+	cltest.RunAndTestFromDir(t, "", "./_testlto", ignore, cltest.WithRunConfig(conf))
 }
 
 func TestFilterEmulatorOutput(t *testing.T) {

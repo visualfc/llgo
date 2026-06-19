@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/packages"
@@ -164,8 +165,11 @@ func TestCollectFingerprintIncludesGoGlobalDCE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeManifest: %v", err)
 	}
-	if data.Common == nil || !data.Common.GoGlobalDCE {
+	if buildenv.Dev && (data.Common == nil || !data.Common.GoGlobalDCE) {
 		t.Fatalf("manifest should contain GO_GLOBAL_DCE=true:\n%s", withDCE.Manifest)
+	}
+	if !buildenv.Dev && data.Common != nil && data.Common.GoGlobalDCE {
+		t.Fatalf("non-dev builds should not contain GO_GLOBAL_DCE=true:\n%s", withDCE.Manifest)
 	}
 
 	withoutDCE := pkg()
@@ -177,8 +181,11 @@ func TestCollectFingerprintIncludesGoGlobalDCE(t *testing.T) {
 	}).collectFingerprint(withoutDCE); err != nil {
 		t.Fatal(err)
 	}
-	if withDCE.Fingerprint == withoutDCE.Fingerprint {
+	if buildenv.Dev && withDCE.Fingerprint == withoutDCE.Fingerprint {
 		t.Fatal("globaldce enabled and disabled builds should not share a cache fingerprint")
+	}
+	if !buildenv.Dev && withDCE.Fingerprint != withoutDCE.Fingerprint {
+		t.Fatal("non-dev globaldce settings should not affect cache fingerprint")
 	}
 }
 

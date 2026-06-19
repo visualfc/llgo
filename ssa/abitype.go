@@ -142,45 +142,6 @@ func (b Builder) rtClosure(name string) Expr {
 	return fn
 }
 
-func peelConstOperand0ToType(v llvm.Value, target llvm.Type) llvm.Value {
-	for v.Type() != target {
-		v = v.Operand(0)
-	}
-	return v
-}
-
-func (b Builder) recordAbiTypeFakeUses(t types.Type, global llvm.Value) {
-	if !b.Prog.enableGoGlobalDCE || b.Func == nil {
-		return
-	}
-	init := global.Initializer()
-	if init.IsNil() {
-		return
-	}
-
-	typeType := b.Prog.Type(b.Prog.rtNamed("Type"), InGo)
-	baseType := peelConstOperand0ToType(init, typeType.ll)
-	equalField := baseType.Operand(7)
-	if !equalField.IsNull() && equalField.OperandsCount() > 0 {
-		equalFn := equalField.Operand(0)
-		if !equalFn.IsNull() {
-			b.Func.recordFakeUse(equalFn)
-		}
-	}
-	if _, ok := types.Unalias(t).(*types.Map); ok {
-		rt := b.Prog.rtNamed(b.Prog.abi.RuntimeName(t))
-		runtimeType := b.Prog.Type(rt, InGo)
-		base := peelConstOperand0ToType(init, runtimeType.ll)
-		hasherField := base.Operand(4)
-		if !hasherField.IsNull() && hasherField.OperandsCount() > 0 {
-			hasherFn := hasherField.Operand(0)
-			if !hasherFn.IsNull() {
-				b.Func.recordFakeUse(hasherFn)
-			}
-		}
-	}
-}
-
 /*
 type StructField struct {
 	Name_  string  // name is always non-empty

@@ -198,7 +198,16 @@ func TestNewFuncExLLVMUsed(t *testing.T) {
 	}
 }
 
+func requireGoGlobalDCE(t *testing.T) {
+	t.Helper()
+	if !goGlobalDCEAvailable {
+		t.Skip("Go GlobalDCE is only available in dev builds")
+	}
+}
+
 func TestAddTypeMetadata(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	prog.EnableGoGlobalDCE(true)
 	pkg := prog.NewPackage("main", "main")
@@ -228,6 +237,8 @@ func TestAddTypeMetadata(t *testing.T) {
 }
 
 func TestMethodCapabilitySigIgnoresParameterNames(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	errType := types.Universe.Lookup("error").Type()
 	named := types.NewSignatureType(nil, nil, nil,
 		types.NewTuple(types.NewVar(token.NoPos, nil, "path", types.Typ[types.String])),
@@ -255,6 +266,8 @@ func TestMethodCapabilitySigIgnoresParameterNames(t *testing.T) {
 }
 
 func TestMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	pkg := types.NewPackage("p", "p")
 	tname := types.NewTypeName(token.NoPos, pkg, "T", nil)
 	recvType := types.NewNamed(tname, types.NewStruct(nil, nil), nil)
@@ -279,6 +292,8 @@ func TestMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *testing.T) {
 }
 
 func TestMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	pkg := types.NewPackage("example.com/p", "p")
 	pointStruct := func() *types.Struct {
 		return types.NewStruct([]*types.Var{
@@ -314,6 +329,8 @@ func TestMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
 }
 
 func TestMethodCapabilityTypeCoversCompositeForms(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	if got := methodCapabilityTuple(nil); got != nil {
 		t.Fatalf("methodCapabilityTuple(nil) = %v, want nil", got)
 	}
@@ -377,6 +394,8 @@ func TestMethodCapabilityTypeCoversCompositeForms(t *testing.T) {
 }
 
 func TestReflectPackageEnablesVirtualFunctionElim(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	prog.EnableGoGlobalDCE(true)
 	pkg := prog.NewPackage("reflect", "reflect")
@@ -403,6 +422,8 @@ func TestMarkLLVMUsedDedup(t *testing.T) {
 }
 
 func TestFakeUseValueInlineAsm(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("main", "main")
 	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
@@ -422,6 +443,8 @@ func TestFakeUseValueInlineAsm(t *testing.T) {
 }
 
 func TestGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("main", "main")
 	mod := pkg.Module()
@@ -457,6 +480,8 @@ func TestGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
 }
 
 func TestMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("main", "main")
 	g := pkg.NewVarEx("itab", prog.Pointer(prog.VoidPtr()))
@@ -480,6 +505,8 @@ func TestMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 }
 
 func TestEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	prog.EnableGoGlobalDCE(true)
 	pkg := prog.NewPackage("main", "main")
@@ -505,6 +532,8 @@ func TestEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
 }
 
 func TestAddMethodTypeMetadataEarlyReturns(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("main", "main")
 	g := pkg.NewVarEx("g", prog.Pointer(prog.Int()))
@@ -521,6 +550,8 @@ func TestAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 }
 
 func TestRecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	ctx := llvm.NewContext()
 	wide := llvm.ConstInt(ctx.Int64Type(), 1, false)
 	asPtr := llvm.ConstIntToPtr(wide, llvm.PointerType(ctx.Int8Type(), 0))
@@ -548,6 +579,8 @@ func TestRecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
 }
 
 func TestEmitFakeUsesAtEntry(t *testing.T) {
+	requireGoGlobalDCE(t)
+
 	prog := NewProgram(nil)
 	prog.EnableGoGlobalDCE(true)
 	pkg := prog.NewPackage("main", "main")
