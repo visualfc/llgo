@@ -215,12 +215,12 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 	var ignore []string
 	if !buildenv.Dev {
 		ignore = []string{
-			"./_testlto/abitype_fakeuse",
+			"./_testlto/globaldce_abitype_fakeuse",
+			"./_testlto/globaldce_interface_matrix",
+			"./_testlto/globaldce_interface_slots",
+			"./_testlto/globaldce_reflect_method",
+			"./_testlto/globaldce_typeid_dce",
 			"./_testlto/anonymous_alias",
-			"./_testlto/interface_matrix",
-			"./_testlto/interface_slots",
-			"./_testlto/reflect_method",
-			"./_testlto/typeid_dce",
 		}
 	}
 	cltest.RunAndTestFromDir(t, "", "./_testlto", ignore, cltest.WithRunConfig(conf))

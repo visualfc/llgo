@@ -10,7 +10,7 @@ import (
 	"github.com/xgo-dev/llvm"
 )
 
-func TestTargetArchAndNewTransformerArchSelection(t *testing.T) {
+func TestDevLTOGlobalDCETargetArchAndNewTransformerArchSelection(t *testing.T) {
 	if got := targetArch("riscv64-unknown-linux-gnu"); got != "riscv64" {
 		t.Fatalf("targetArch(triple) = %q, want riscv64", got)
 	}
@@ -58,7 +58,7 @@ func TestTargetArchAndNewTransformerArchSelection(t *testing.T) {
 	}
 }
 
-func TestFuncNoUnwindCreatesNounwindAttribute(t *testing.T) {
+func TestDevLTOGlobalDCEFuncNoUnwindCreatesNounwindAttribute(t *testing.T) {
 	ctx := llvm.NewContext()
 	attr := funcNoUnwind(ctx)
 	if attr.IsNil() {

@@ -363,7 +363,7 @@ func TestOptimizationFlagPlacement(t *testing.T) {
 	}
 }
 
-func TestUseLTOFlagsControlledByOption(t *testing.T) {
+func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 	export, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)

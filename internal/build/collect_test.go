@@ -133,7 +133,7 @@ func TestCollectFingerprintDeterminism(t *testing.T) {
 	}
 }
 
-func TestCollectFingerprintIncludesGoGlobalDCE(t *testing.T) {
+func TestDevLTOGlobalDCECollectFingerprint(t *testing.T) {
 	td := t.TempDir()
 
 	goFile := filepath.Join(td, "main.go")

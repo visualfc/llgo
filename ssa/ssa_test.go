@@ -205,7 +205,7 @@ func requireGoGlobalDCE(t *testing.T) {
 	}
 }
 
-func TestAddTypeMetadata(t *testing.T) {
+func TestDevLTOGlobalDCEAddTypeMetadata(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -236,7 +236,7 @@ func TestAddTypeMetadata(t *testing.T) {
 	}
 }
 
-func TestMethodCapabilitySigIgnoresParameterNames(t *testing.T) {
+func TestDevLTOGlobalDCEMethodCapabilitySigIgnoresParameterNames(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	errType := types.Universe.Lookup("error").Type()
@@ -265,7 +265,7 @@ func TestMethodCapabilitySigIgnoresParameterNames(t *testing.T) {
 	}
 }
 
-func TestMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *testing.T) {
+func TestDevLTOGlobalDCEMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	pkg := types.NewPackage("p", "p")
@@ -291,7 +291,7 @@ func TestMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *testing.T) {
 	}
 }
 
-func TestMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
+func TestDevLTOGlobalDCEMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	pkg := types.NewPackage("example.com/p", "p")
@@ -328,7 +328,7 @@ func TestMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
 	}
 }
 
-func TestMethodCapabilityTypeCoversCompositeForms(t *testing.T) {
+func TestDevLTOGlobalDCEMethodCapabilityTypeCoversCompositeForms(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	if got := methodCapabilityTuple(nil); got != nil {
@@ -393,7 +393,7 @@ func TestMethodCapabilityTypeCoversCompositeForms(t *testing.T) {
 	}
 }
 
-func TestReflectPackageEnablesVirtualFunctionElim(t *testing.T) {
+func TestDevLTOGlobalDCEReflectPackageEnablesVirtualFunctionElim(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -421,7 +421,7 @@ func TestMarkLLVMUsedDedup(t *testing.T) {
 	}
 }
 
-func TestFakeUseValueInlineAsm(t *testing.T) {
+func TestDevLTOGlobalDCEFakeUseValueInlineAsm(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -442,7 +442,7 @@ func TestFakeUseValueInlineAsm(t *testing.T) {
 	}
 }
 
-func TestGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
+func TestDevLTOGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -479,7 +479,7 @@ func TestGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
 	}
 }
 
-func TestMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
+func TestDevLTOGlobalDCEMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -504,7 +504,7 @@ func TestMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 	}
 }
 
-func TestEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
+func TestDevLTOGlobalDCEEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -531,7 +531,7 @@ func TestEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
 	}
 }
 
-func TestAddMethodTypeMetadataEarlyReturns(t *testing.T) {
+func TestDevLTOGlobalDCEAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -549,7 +549,7 @@ func TestAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	}
 }
 
-func TestRecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
+func TestDevLTOGlobalDCERecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	ctx := llvm.NewContext()
@@ -578,7 +578,7 @@ func TestRecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
 	}
 }
 
-func TestEmitFakeUsesAtEntry(t *testing.T) {
+func TestDevLTOGlobalDCEEmitFakeUsesAtEntry(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)

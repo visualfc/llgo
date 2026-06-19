@@ -395,7 +395,7 @@ func TestLTOEnabledExplicitOverride(t *testing.T) {
 	}
 }
 
-func TestGoGlobalDCEDefaultsToFullLTO(t *testing.T) {
+func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 	tests := []struct {
 		name string
 		conf *Config

@@ -89,3 +89,53 @@ jobs:
         uses: codecov/codecov-action@v7
         with:
           token: ${{secrets.CODECOV_TOKEN}}
+
+  dev-lto-globaldce:
+    name: Dev LTO GlobalDCE
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.26.0"
+
+      - name: Set LLGO_ROOT
+        run: echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Build llgo with dev tag
+        run: go install -tags=dev ./cmd/llgo
+
+      - name: Run dev GlobalDCE unit tests with coverage
+        run: |
+          set -euo pipefail
+          go test -tags=dev -timeout 30m -covermode=atomic \
+            -coverprofile=coverage-dev-globaldce-unit.txt \
+            -run '^TestDevLTOGlobalDCE' \
+            ./ssa ./internal/build ./internal/crosscompile ./cmd/internal/flags ./internal/cabi
+          go tool cover -func=coverage-dev-globaldce-unit.txt
+
+      - name: Run dev LTO GlobalDCE cl tests with coverage
+        run: |
+          set -euo pipefail
+          go test -tags=dev -timeout 30m -covermode=atomic \
+            -coverpkg=github.com/goplus/llgo/ssa,github.com/goplus/llgo/internal/build,github.com/goplus/llgo/internal/crosscompile \
+            -coverprofile=coverage-dev-lto-globaldce-cl.txt \
+            -run '^TestRunAndTestFromTestlto/globaldce_' \
+            ./cl
+          go tool cover -func=coverage-dev-lto-globaldce-cl.txt
+
+      - name: Upload dev LTO GlobalDCE coverage reports to Codecov
+        continue-on-error: true
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt
+          flags: dev-lto-globaldce

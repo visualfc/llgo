@@ -129,7 +129,7 @@ func TestBuildLTOFlagInvalid(t *testing.T) {
 	}
 }
 
-func TestBuildGlobalDCEFlags(t *testing.T) {
+func TestDevLTOGlobalDCEBuildFlags(t *testing.T) {
 	if !buildenv.Dev {
 		fs := flag.NewFlagSet("nodev-globaldce", flag.ContinueOnError)
 		fs.SetOutput(new(bytes.Buffer))
@@ -188,7 +188,7 @@ func sameBoolPtr(got, want *bool) bool {
 	return *got == *want
 }
 
-func TestBuildGlobalDCEFlagInvalid(t *testing.T) {
+func TestDevLTOGlobalDCEBuildFlagInvalid(t *testing.T) {
 	fs := flag.NewFlagSet("invalid-globaldce", flag.ContinueOnError)
 	fs.SetOutput(new(bytes.Buffer))
 	AddBuildFlags(fs)
@@ -197,7 +197,7 @@ func TestBuildGlobalDCEFlagInvalid(t *testing.T) {
 	}
 }
 
-func TestUpdateConfigRejectsGlobalDCEWithoutFullLTO(t *testing.T) {
+func TestDevLTOGlobalDCEUpdateConfigRejectsWithoutFullLTO(t *testing.T) {
 	if !buildenv.Dev {
 		t.Skip("-globaldce is only registered in dev builds")
 	}
@@ -227,7 +227,7 @@ func TestUpdateConfigRejectsGlobalDCEWithoutFullLTO(t *testing.T) {
 	}
 }
 
-func TestUpdateConfigAllowsGlobalDCEDisableWithoutFullLTO(t *testing.T) {
+func TestDevLTOGlobalDCEUpdateConfigAllowsDisableWithoutFullLTO(t *testing.T) {
 	if !buildenv.Dev {
 		t.Skip("-globaldce is only registered in dev builds")
 	}
