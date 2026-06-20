@@ -18,6 +18,7 @@ package cl
 
 import (
 	"fmt"
+	"go/ast"
 	"go/constant"
 	"go/token"
 	"go/types"
@@ -755,6 +756,46 @@ func (p *context) isExplicitFieldAddr(field *ssa.FieldAddr) bool {
 		return false
 	}
 	return strings.HasPrefix(line[col:], name)
+}
+
+func (p *context) isAddressOfFieldAddr(field *ssa.FieldAddr) bool {
+	if field == nil || p.addrOfFieldAddrs == nil {
+		return false
+	}
+	_, ok := p.addrOfFieldAddrs[field.Pos()]
+	return ok
+}
+
+func collectAddrOfFieldSelectors(files []*ast.File) map[token.Pos]none {
+	ret := make(map[token.Pos]none)
+	for _, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			unary, ok := n.(*ast.UnaryExpr)
+			if !ok || unary.Op != token.AND {
+				return true
+			}
+			collectFieldSelectorChain(ret, unary.X)
+			return true
+		})
+	}
+	if len(ret) == 0 {
+		return nil
+	}
+	return ret
+}
+
+func collectFieldSelectorChain(ret map[token.Pos]none, expr ast.Expr) {
+	for {
+		switch e := expr.(type) {
+		case *ast.ParenExpr:
+			expr = e.X
+		case *ast.SelectorExpr:
+			ret[e.Sel.Pos()] = none{}
+			expr = e.X
+		default:
+			return
+		}
+	}
 }
 
 func fieldAddrStruct(field *ssa.FieldAddr) (*types.Pointer, *types.Struct, bool) {

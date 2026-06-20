@@ -278,6 +278,58 @@ func Offset(v *outer[int]) uintptr {
 	}
 }
 
+func TestAddressOfFieldAddrDetection(t *testing.T) {
+	src := `package foo
+
+import "unsafe"
+
+type inner struct{ B int }
+type outer struct {
+	A int
+	C int
+	inner
+}
+
+func addr(v *outer) *int {
+	return &v.B
+}
+
+func nestedAddr(v *outer) *int {
+	return &(v.inner.B)
+}
+
+func value(v *outer) int {
+	return v.B
+}
+
+func offset(v *outer) uintptr {
+	return unsafe.Offsetof(v.C)
+}
+`
+	ssaPkg, fset, files := buildPackageWithFiles(t, src)
+	ctx := &context{
+		prog:             newLLSSAProg(t),
+		fset:             fset,
+		addrOfFieldAddrs: collectAddrOfFieldSelectors(files),
+	}
+	if !ctx.isAddressOfFieldAddr(fieldAddrInstr(t, ssaPkg.Func("addr"), "B")) {
+		t.Fatal("address-of field selector was not detected")
+	}
+	nested := fieldAddrInstrs(t, ssaPkg.Func("nestedAddr"))
+	if len(nested) < 2 {
+		t.Fatalf("nestedAddr FieldAddr count = %d, want at least 2", len(nested))
+	}
+	for _, field := range nested {
+		if !ctx.isAddressOfFieldAddr(field) {
+			t.Fatalf("nested address-of field selector was not detected: %s", field)
+		}
+	}
+	if ctx.isAddressOfFieldAddr(fieldAddrInstr(t, ssaPkg.Func("value"), "B")) {
+		t.Fatal("plain field selector should not be treated as address-of")
+	}
+	assertSelectorNotMarked(t, ctx.addrOfFieldAddrs, files, "C")
+}
+
 func TestInstrHelperEdges(t *testing.T) {
 	ctx := &context{prog: newLLSSAProg(t)}
 
@@ -350,6 +402,11 @@ func (v fakeSSAValue) Referrers() *[]gossa.Instruction { return nil }
 func (v fakeSSAValue) Pos() token.Pos                  { return token.NoPos }
 
 func buildOffsetofPackage(t *testing.T, src string) (*gossa.Package, *token.FileSet) {
+	ssaPkg, fset, _ := buildPackageWithFiles(t, src)
+	return ssaPkg, fset
+}
+
+func buildPackageWithFiles(t *testing.T, src string) (*gossa.Package, *token.FileSet, []*ast.File) {
 	t.Helper()
 	dir := t.TempDir()
 	filename := filepath.Join(dir, "foo.go")
@@ -369,7 +426,7 @@ func buildOffsetofPackage(t *testing.T, src string) (*gossa.Package, *token.File
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ssaPkg, fset
+	return ssaPkg, fset, files
 }
 
 func offsetOfArg(t *testing.T, ctx *context, arg gossa.Value) int {
@@ -408,4 +465,54 @@ func offsetofArgs(t *testing.T, fn *gossa.Function, want int) []gossa.Value {
 		t.Fatalf("found %d Offsetof calls in %s, want %d", len(args), fn.Name(), want)
 	}
 	return args
+}
+
+func fieldAddrInstr(t *testing.T, fn *gossa.Function, name string) *gossa.FieldAddr {
+	t.Helper()
+	for _, field := range fieldAddrInstrs(t, fn) {
+		got, ok := fieldAddrName(field)
+		if ok && got == name {
+			return field
+		}
+	}
+	t.Fatalf("missing FieldAddr %q in %s", name, fn.Name())
+	return nil
+}
+
+func fieldAddrInstrs(t *testing.T, fn *gossa.Function) []*gossa.FieldAddr {
+	t.Helper()
+	if fn == nil {
+		t.Fatal("missing function")
+	}
+	var fields []*gossa.FieldAddr
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			field, ok := instr.(*gossa.FieldAddr)
+			if ok {
+				fields = append(fields, field)
+			}
+		}
+	}
+	return fields
+}
+
+func assertSelectorNotMarked(t *testing.T, marked map[token.Pos]none, files []*ast.File, name string) {
+	t.Helper()
+	found := false
+	for _, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			sel, ok := n.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != name {
+				return true
+			}
+			found = true
+			if _, ok := marked[sel.Sel.Pos()]; ok {
+				t.Fatalf("selector %s should not be marked as address-of", name)
+			}
+			return true
+		})
+	}
+	if !found {
+		t.Fatalf("missing selector %s", name)
+	}
 }

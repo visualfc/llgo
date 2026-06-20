@@ -175,9 +175,10 @@ type context struct {
 	anonDefers  map[*ssa.Function]bool
 	paramDIVars map[*types.Var]llssa.DIVar
 
-	patches  Patches
-	blkInfos []blocks.Info
-	srcLines map[string][]string
+	patches          Patches
+	blkInfos         []blocks.Info
+	srcLines         map[string][]string
+	addrOfFieldAddrs map[token.Pos]none
 
 	inits     []func()
 	phis      []func()
@@ -1065,7 +1066,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		ret = b.Convert(p.type_(t, llssa.InGo), x)
 	case *ssa.FieldAddr:
 		x := p.compileValue(b, v.X)
-		if p.isExplicitFieldAddr(v) {
+		if p.isAddressOfFieldAddr(v) {
 			b.AssertNilDeref(x)
 		}
 		ret = b.FieldAddr(x, v.Field)
@@ -1642,17 +1643,18 @@ func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 	}
 
 	ctx := &context{
-		prog:        prog,
-		pkg:         ret,
-		fset:        pkgProg.Fset,
-		goProg:      pkgProg,
-		goTyps:      pkgTypes,
-		goPkg:       pkg,
-		patches:     patches,
-		skips:       make(map[string]none),
-		vargs:       make(map[*ssa.Alloc][]llssa.Expr),
-		funcs:       make(map[*ssa.Function]llssa.Function),
-		linkOnceFns: make(map[*ssa.Function]none),
+		prog:             prog,
+		pkg:              ret,
+		fset:             pkgProg.Fset,
+		goProg:           pkgProg,
+		goTyps:           pkgTypes,
+		goPkg:            pkg,
+		patches:          patches,
+		skips:            make(map[string]none),
+		vargs:            make(map[*ssa.Alloc][]llssa.Expr),
+		funcs:            make(map[*ssa.Function]llssa.Function),
+		linkOnceFns:      make(map[*ssa.Function]none),
+		addrOfFieldAddrs: collectAddrOfFieldSelectors(files),
 		loaded: map[*types.Package]*pkgInfo{
 			types.Unsafe: {kind: PkgDeclOnly}, // TODO(xsw): PkgNoInit or PkgDeclOnly?
 		},
