@@ -1068,6 +1068,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil && p.prog.SizeOf(t) == 0 {
 					p.assertNilDerefBase(b, v.X)
 				}
+				if isInterfaceCompareDeref(v) {
+					p.assertNilDerefBase(b, v.X)
+					b.AssertNilDeref(x)
+				}
 			}
 			ret = b.UnOp(v.Op, x)
 		}
