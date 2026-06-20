@@ -315,6 +315,12 @@ func offset(v *outer) uintptr {
 	if !ctx.isAddressOfFieldAddr(fieldAddrInstr(t, ssaPkg.Func("addr"), "B")) {
 		t.Fatal("address-of field selector was not detected")
 	}
+	if ctx.isAddressOfFieldAddr(nil) {
+		t.Fatal("nil FieldAddr should not be treated as address-of")
+	}
+	if (&context{}).isAddressOfFieldAddr(fieldAddrInstr(t, ssaPkg.Func("addr"), "B")) {
+		t.Fatal("FieldAddr without an address-of map should not be treated as address-of")
+	}
 	nested := fieldAddrInstrs(t, ssaPkg.Func("nestedAddr"))
 	if len(nested) < 2 {
 		t.Fatalf("nestedAddr FieldAddr count = %d, want at least 2", len(nested))
@@ -328,6 +334,21 @@ func offset(v *outer) uintptr {
 		t.Fatal("plain field selector should not be treated as address-of")
 	}
 	assertSelectorNotMarked(t, ctx.addrOfFieldAddrs, files, "C")
+
+	emptyFile, err := parser.ParseFile(token.NewFileSet(), "empty.go", `package foo
+func deref(p *int) int {
+	return *p
+}
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := collectAddrOfFieldSelectors(nil); got != nil {
+		t.Fatalf("collectAddrOfFieldSelectors(nil) = %v, want nil", got)
+	}
+	if got := collectAddrOfFieldSelectors([]*ast.File{emptyFile}); got != nil {
+		t.Fatalf("collectAddrOfFieldSelectors without address-of selectors = %v, want nil", got)
+	}
 }
 
 func TestInstrHelperEdges(t *testing.T) {
