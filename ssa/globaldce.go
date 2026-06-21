@@ -14,6 +14,9 @@ const (
 	abiMapTypeHasherFieldIndex = 4
 	abiMethodIFnFieldIndex     = 2
 	abiMethodTFnFieldIndex     = 3
+
+	reflectValuePtrFieldIndex   = 1
+	reflectMethodFuncFieldIndex = 3
 )
 
 func methodCapabilitySig(sig *types.Signature) string {
@@ -164,6 +167,32 @@ func (p Program) methodCheckedLoad(b llvm.Builder, mod llvm.Module, typedesc llv
 	ok := llvm.CreateExtractValue(b, res, 1)
 	llvm.CreateCall(b, p.llvmAssume(mod).GlobalValueType(), p.llvmAssume(mod), []llvm.Value{ok})
 	return llvm.CreateExtractValue(b, res, 0)
+}
+
+func (b Builder) EmitReflectMethodCheckedLoad(ret Expr, reflectKind int) {
+	if !b.Prog.enableGoGlobalDCE || ret.IsNil() || reflectKind&ReflectMethodMask == 0 {
+		return
+	}
+	mod := b.Pkg.Module()
+	checkedLoadValue := func(v Expr) {
+		b.Prog.methodCheckedLoad(b.impl, mod, b.Extract(v, reflectValuePtrFieldIndex).impl, "go.method.reflect")
+	}
+	if reflectKind&reflectTypeMethodMask == 0 {
+		checkedLoadValue(ret)
+		return
+	}
+	checkedLoadMethod := func(method Expr) {
+		checkedLoadValue(b.Extract(method, reflectMethodFuncFieldIndex))
+	}
+	if reflectKind&ReflectTypeMethodByName != 0 {
+		method := b.Extract(ret, 0)
+		ok := b.Extract(ret, 1)
+		b.IfThen(ok, func() {
+			checkedLoadMethod(method)
+		})
+		return
+	}
+	checkedLoadMethod(ret)
 }
 
 func (p Program) fakeUseValueInlineAsm(b llvm.Builder, v llvm.Value) {

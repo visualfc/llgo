@@ -1286,11 +1286,6 @@ const (
 	reflectTypeMethodMask = ReflectTypeMethodByIndex | ReflectTypeMethodByName
 )
 
-const (
-	reflectValuePtrFieldIndex   = 1
-	reflectMethodFuncFieldIndex = 3
-)
-
 func (b Builder) checkReflect(fn Expr, args []Expr) (reflectKind int) {
 	pkg := b.Pkg
 	switch fn.Name() {
@@ -1350,32 +1345,6 @@ func (p Package) RecordReflectMethodByName(name string) int {
 func (p Package) RecordReflectMethodDynamic() int {
 	p.NeedAbiInit |= ReflectMethodDynamic
 	return ReflectMethodDynamic
-}
-
-func (b Builder) EmitReflectMethodCheckedLoad(ret Expr, reflectKind int) {
-	if !b.Prog.enableGoGlobalDCE || ret.IsNil() || reflectKind&ReflectMethodMask == 0 {
-		return
-	}
-	mod := b.Pkg.Module()
-	checkedLoadValue := func(v Expr) {
-		b.Prog.methodCheckedLoad(b.impl, mod, b.Extract(v, reflectValuePtrFieldIndex).impl, "go.method.reflect")
-	}
-	if reflectKind&reflectTypeMethodMask == 0 {
-		checkedLoadValue(ret)
-		return
-	}
-	checkedLoadMethod := func(method Expr) {
-		checkedLoadValue(b.Extract(method, reflectMethodFuncFieldIndex))
-	}
-	if reflectKind&ReflectTypeMethodByName != 0 {
-		method := b.Extract(ret, 0)
-		ok := b.Extract(ret, 1)
-		b.IfThen(ok, func() {
-			checkedLoadMethod(method)
-		})
-		return
-	}
-	checkedLoadMethod(ret)
 }
 
 func extractConstInt(v llvm.Value) (r int, ok bool) {
