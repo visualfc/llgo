@@ -12,6 +12,8 @@ const (
 
 	abiTypeEqualFieldIndex     = 7
 	abiMapTypeHasherFieldIndex = 4
+	abiMethodIFnFieldIndex     = 2
+	abiMethodTFnFieldIndex     = 3
 )
 
 func methodCapabilitySig(sig *types.Signature) string {
@@ -205,14 +207,16 @@ func (p Program) addMethodTypeMetadata(global llvm.Value, fullType Type, mset *t
 	mt := p.rtNamed("Method")
 	methodArrayOffset := p.OffsetOf(fullType, 2)
 	methodType := p.Type(mt, InGo)
-	ifnOffset := p.OffsetOf(methodType, 2)
+	ifnOffset := p.OffsetOf(methodType, abiMethodIFnFieldIndex)
+	tfnOffset := p.OffsetOf(methodType, abiMethodTFnFieldIndex)
 	methodStride := p.SizeOf(methodType)
 	for i := 0; i < methodCount; i++ {
 		sel := mset.At(i)
-		offset := methodArrayOffset + uint64(i)*methodStride + ifnOffset
-		p.addTypeMetadata(global, offset, methodCapabilityKey(sel.Obj().(*types.Func)))
+		baseOffset := methodArrayOffset + uint64(i)*methodStride
+		p.addTypeMetadata(global, baseOffset+ifnOffset, methodCapabilityKey(sel.Obj().(*types.Func)))
 		if sel.Obj().Exported() {
-			p.addTypeMetadata(global, offset, "go.method.reflect")
+			p.addTypeMetadata(global, baseOffset+ifnOffset, "go.method.reflect")
+			p.addTypeMetadata(global, baseOffset+tfnOffset, "go.method.reflect")
 		}
 	}
 }

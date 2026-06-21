@@ -1264,9 +1264,7 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	}
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
-	if b.Prog.enableGoGlobalDCE && reflectKind&ReflectMethodMask != 0 {
-		b.Prog.methodCheckedLoad(b.impl, b.Pkg.Module(), b.Extract(ret, 1).impl, "go.method.reflect")
-	}
+	b.EmitReflectMethodCheckedLoad(ret, reflectKind)
 	return
 }
 
@@ -1281,7 +1279,16 @@ const (
 	ReflectMethodByIndex
 	ReflectMethodByName
 	ReflectMethodDynamic
-	ReflectMethodMask = ReflectMethodByIndex | ReflectMethodByName | ReflectMethodDynamic
+	ReflectTypeMethodByIndex
+	ReflectTypeMethodByName
+
+	ReflectMethodMask     = ReflectMethodByIndex | ReflectMethodByName | ReflectMethodDynamic
+	reflectTypeMethodMask = ReflectTypeMethodByIndex | ReflectTypeMethodByName
+)
+
+const (
+	reflectValuePtrFieldIndex   = 1
+	reflectMethodFuncFieldIndex = 3
 )
 
 func (b Builder) checkReflect(fn Expr, args []Expr) (reflectKind int) {
@@ -1304,30 +1311,71 @@ func (b Builder) checkReflect(fn Expr, args []Expr) (reflectKind int) {
 	case "reflect.Value.Method":
 		if len(args) == 2 {
 			if v, ok := extractConstInt(args[1].impl); ok {
-				if pkg.MethodByIndex == nil {
-					pkg.MethodByIndex = make(map[int]none)
-				}
-				pkg.MethodByIndex[v] = none{}
-				pkg.NeedAbiInit |= ReflectMethodByIndex
+				reflectKind = pkg.RecordReflectMethodByIndex(v)
 				break
 			}
-			reflectKind = ReflectMethodDynamic
+			reflectKind = pkg.RecordReflectMethodDynamic()
 		}
 	case "reflect.Value.MethodByName":
 		if len(args) == 2 {
 			if v, ok := extractConstString(args[1].impl); ok {
-				if pkg.MethodByName == nil {
-					pkg.MethodByName = make(map[string]none)
-				}
-				pkg.MethodByName[v] = none{}
-				reflectKind = ReflectMethodByName
+				reflectKind = pkg.RecordReflectMethodByName(v)
 				break
 			}
-			reflectKind = ReflectMethodDynamic
+			reflectKind = pkg.RecordReflectMethodDynamic()
 		}
 	}
-	pkg.NeedAbiInit |= reflectKind
+	pkg.NeedAbiInit |= reflectKind &^ reflectTypeMethodMask
 	return
+}
+
+func (p Package) RecordReflectMethodByIndex(index int) int {
+	if p.MethodByIndex == nil {
+		p.MethodByIndex = make(map[int]none)
+	}
+	p.MethodByIndex[index] = none{}
+	p.NeedAbiInit |= ReflectMethodByIndex
+	return ReflectMethodByIndex
+}
+
+func (p Package) RecordReflectMethodByName(name string) int {
+	if p.MethodByName == nil {
+		p.MethodByName = make(map[string]none)
+	}
+	p.MethodByName[name] = none{}
+	p.NeedAbiInit |= ReflectMethodByName
+	return ReflectMethodByName
+}
+
+func (p Package) RecordReflectMethodDynamic() int {
+	p.NeedAbiInit |= ReflectMethodDynamic
+	return ReflectMethodDynamic
+}
+
+func (b Builder) EmitReflectMethodCheckedLoad(ret Expr, reflectKind int) {
+	if !b.Prog.enableGoGlobalDCE || ret.IsNil() || reflectKind&ReflectMethodMask == 0 {
+		return
+	}
+	mod := b.Pkg.Module()
+	checkedLoadValue := func(v Expr) {
+		b.Prog.methodCheckedLoad(b.impl, mod, b.Extract(v, reflectValuePtrFieldIndex).impl, "go.method.reflect")
+	}
+	if reflectKind&reflectTypeMethodMask == 0 {
+		checkedLoadValue(ret)
+		return
+	}
+	checkedLoadMethod := func(method Expr) {
+		checkedLoadValue(b.Extract(method, reflectMethodFuncFieldIndex))
+	}
+	if reflectKind&ReflectTypeMethodByName != 0 {
+		method := b.Extract(ret, 0)
+		ok := b.Extract(ret, 1)
+		b.IfThen(ok, func() {
+			checkedLoadMethod(method)
+		})
+		return
+	}
+	checkedLoadMethod(ret)
 }
 
 func extractConstInt(v llvm.Value) (r int, ok bool) {

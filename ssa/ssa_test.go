@@ -549,6 +549,50 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	}
 }
 
+func TestDevLTOGlobalDCEAddMethodTypeMetadataMarksIFnAndTFnForReflect(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	prog.SetRuntime(func() *types.Package {
+		fset := token.NewFileSet()
+		imp := packages.NewImporter(fset)
+		pkg, _ := imp.Import(PkgRuntime)
+		return pkg
+	})
+	prog.EnableGoGlobalDCE(true)
+	pkg := prog.NewPackage("main", "main")
+	g := pkg.NewVarEx("g", prog.Pointer(prog.Int()))
+
+	goPkg := types.NewPackage("example.com/p", "p")
+	named := types.NewNamed(types.NewTypeName(token.NoPos, goPkg, "S", nil), types.NewStruct(nil, nil), nil)
+	recv := types.NewVar(token.NoPos, goPkg, "", named)
+	method := types.NewFunc(token.NoPos, goPkg, "Keep", types.NewSignatureType(recv, nil, nil, nil, nil, false))
+	named.AddMethod(method)
+	mset := types.NewMethodSet(named)
+
+	methodArray := prog.Type(types.NewArray(prog.rtNamed("Method"), 1), InGo)
+	fullType := prog.Struct(prog.Int(), prog.Int(), methodArray)
+	prog.addMethodTypeMetadata(g.impl, fullType, mset, mset.Len())
+
+	methodType := prog.Type(prog.rtNamed("Method"), InGo)
+	methodArrayOffset := prog.OffsetOf(fullType, 2)
+	ifnOffset := methodArrayOffset + prog.OffsetOf(methodType, abiMethodIFnFieldIndex)
+	tfnOffset := methodArrayOffset + prog.OffsetOf(methodType, abiMethodTFnFieldIndex)
+
+	ir := pkg.String()
+	for _, want := range []string{
+		fmt.Sprintf(`!{i64 %d, !"go.method.reflect"}`, ifnOffset),
+		fmt.Sprintf(`!{i64 %d, !"go.method.reflect"}`, tfnOffset),
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing reflect method metadata %s:\n%s", want, ir)
+		}
+	}
+	if count := strings.Count(ir, `!"go.method.reflect"`); count != 2 {
+		t.Fatalf("reflect method metadata count = %d, want 2:\n%s", count, ir)
+	}
+}
+
 func TestDevLTOGlobalDCERecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
 	requireGoGlobalDCE(t)
 
@@ -593,6 +637,10 @@ func TestDevLTOGlobalDCEAbiTypeFakeUseFieldIndexes(t *testing.T) {
 
 	checkFieldIndex(reflect.TypeOf(rtabi.Type{}), abiTypeEqualFieldIndex, "Equal")
 	checkFieldIndex(reflect.TypeOf(rtabi.MapType{}), abiMapTypeHasherFieldIndex, "Hasher")
+	checkFieldIndex(reflect.TypeOf(rtabi.Method{}), abiMethodIFnFieldIndex, "Ifn_")
+	checkFieldIndex(reflect.TypeOf(rtabi.Method{}), abiMethodTFnFieldIndex, "Tfn_")
+	checkFieldIndex(reflect.TypeOf(reflect.Value{}), reflectValuePtrFieldIndex, "ptr")
+	checkFieldIndex(reflect.TypeOf(reflect.Method{}), reflectMethodFuncFieldIndex, "Func")
 }
 
 func TestDevLTOGlobalDCERecordAbiTypeFakeUsesUsesCache(t *testing.T) {
