@@ -473,7 +473,6 @@ func (p Program) NewPackage(name, pkgPath string) Package {
 		export:         make(map[string]string),
 		preserveSyms:   make(map[string]struct{}),
 		llvmUsedValues: make([]llvm.Value, 0, 4),
-		llvmUsedSet:    make(map[string]struct{}),
 
 		abiTypeFakeUseCache: make(map[llvm.Value][]llvm.Value),
 	}
@@ -749,7 +748,6 @@ type aPackage struct {
 	export         map[string]string   // pkgPath.nameInPkg => exportname
 	preserveSyms   map[string]struct{} // set of exported symbol names
 	llvmUsedValues []llvm.Value
-	llvmUsedSet    map[string]struct{}
 
 	abiTypeFakeUseCache map[llvm.Value][]llvm.Value
 }
@@ -777,12 +775,6 @@ func (p Package) isPreservedName(name string) bool {
 }
 
 func (p Package) markLLVMUsed(v llvm.Value) {
-	if name := v.Name(); name != "" {
-		if _, ok := p.llvmUsedSet[name]; ok {
-			return
-		}
-		p.llvmUsedSet[name] = struct{}{}
-	}
 	elemTyp := p.Prog.VoidPtr().ll
 	p.llvmUsedValues = append(p.llvmUsedValues, llvm.ConstBitCast(v, elemTyp))
 }

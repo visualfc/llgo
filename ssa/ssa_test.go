@@ -405,21 +405,6 @@ func TestDevLTOGlobalDCEReflectPackageEnablesVirtualFunctionElim(t *testing.T) {
 	}
 }
 
-func TestMarkLLVMUsedDedup(t *testing.T) {
-	prog := NewProgram(nil)
-	pkg := prog.NewPackage("main", "main")
-	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
-	fn := pkg.NewFunc("Foo", sig, InGo)
-	pkg.markLLVMUsed(fn.impl)
-	pkg.markLLVMUsed(fn.impl)
-	pkg.MaterializePreserveSyms()
-
-	ir := pkg.String()
-	if !strings.Contains(ir, `@llvm.compiler.used = appending global [1 x ptr] [ptr @Foo], section "llvm.metadata"`) {
-		t.Fatalf("unexpected llvm.compiler.used entry:\n%s", ir)
-	}
-}
-
 func TestDevLTOGlobalDCEFakeUseValueInlineAsm(t *testing.T) {
 	requireGoGlobalDCE(t)
 
@@ -595,32 +580,26 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataMarksIFnAndTFnForReflectContexts(t 
 	}
 }
 
-func TestDevLTOGlobalDCERecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
+func TestDevLTOGlobalDCERecordAbiTypeFakeUsesEarlyReturns(t *testing.T) {
 	requireGoGlobalDCE(t)
-
-	ctx := llvm.NewContext()
-	wide := llvm.ConstInt(ctx.Int64Type(), 1, false)
-	asPtr := llvm.ConstIntToPtr(wide, llvm.PointerType(ctx.Int8Type(), 0))
-	if got := peelConstOperand0ToType(asPtr, ctx.Int64Type()); got != wide {
-		t.Fatalf("peelConstOperand0ToType did not peel integer-to-pointer constant expression")
-	}
 
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("main", "main")
 	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	target := pkg.NewFunc("CachedTarget", sig, InGo)
 	fn := pkg.NewFunc("UseAbiType", sig, InGo)
 	b := fn.MakeBody(1)
 	g := pkg.NewVarEx("typeinfo", prog.Pointer(prog.Int()))
+	pkg.abiTypeFakeUseCache[g.impl] = []llvm.Value{target.impl}
 
-	b.recordAbiTypeFakeUses(types.Typ[types.Int], g.impl)
+	b.recordAbiTypeFakeUses(g.impl)
 	if len(fn.fakeUses) != 0 {
 		t.Fatalf("recordAbiTypeFakeUses recorded fake uses while global DCE is disabled")
 	}
 	prog.EnableGoGlobalDCE(true)
-	(&aBuilder{Prog: prog, Pkg: pkg}).recordAbiTypeFakeUses(types.Typ[types.Int], g.impl)
-	b.recordAbiTypeFakeUses(types.Typ[types.Int], g.impl)
+	(&aBuilder{Prog: prog, Pkg: pkg}).recordAbiTypeFakeUses(g.impl)
 	if len(fn.fakeUses) != 0 {
-		t.Fatalf("recordAbiTypeFakeUses recorded fake uses for uninitialized global")
+		t.Fatalf("recordAbiTypeFakeUses recorded fake uses without a current function")
 	}
 }
 
@@ -637,8 +616,6 @@ func TestDevLTOGlobalDCEAbiTypeFakeUseFieldIndexes(t *testing.T) {
 		}
 	}
 
-	checkFieldIndex(reflect.TypeOf(rtabi.Type{}), abiTypeEqualFieldIndex, "Equal")
-	checkFieldIndex(reflect.TypeOf(rtabi.MapType{}), abiMapTypeHasherFieldIndex, "Hasher")
 	checkFieldIndex(reflect.TypeOf(rtabi.Method{}), abiMethodIFnFieldIndex, "Ifn_")
 	checkFieldIndex(reflect.TypeOf(rtabi.Method{}), abiMethodTFnFieldIndex, "Tfn_")
 	checkFieldIndex(reflect.TypeOf(reflect.Value{}), reflectValuePtrFieldIndex, "ptr")
@@ -656,10 +633,9 @@ func TestDevLTOGlobalDCERecordAbiTypeFakeUsesUsesCache(t *testing.T) {
 	fn := pkg.NewFunc("UseCachedAbiType", sig, InGo)
 	b := fn.MakeBody(1)
 	g := pkg.NewVarEx("typeinfo", prog.Pointer(prog.Int()))
-	typ := types.Typ[types.Int]
 	pkg.abiTypeFakeUseCache[g.impl] = []llvm.Value{target.impl}
 
-	b.recordAbiTypeFakeUses(typ, g.impl)
+	b.recordAbiTypeFakeUses(g.impl)
 	if len(fn.fakeUses) != 1 || fn.fakeUses[0] != target.impl {
 		t.Fatalf("recordAbiTypeFakeUses did not use cached fake uses: %v", fn.fakeUses)
 	}
@@ -671,7 +647,6 @@ func TestDevLTOGlobalDCERecordAbiTypeFakeUsesCacheIsPerGlobal(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.EnableGoGlobalDCE(true)
 	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
-	typ := types.Typ[types.Int]
 
 	pkgA := prog.NewPackage("a", "a")
 	targetA := pkgA.NewFunc("CachedTargetA", sig, InGo)
@@ -682,10 +657,54 @@ func TestDevLTOGlobalDCERecordAbiTypeFakeUsesCacheIsPerGlobal(t *testing.T) {
 	fnB := pkgB.NewFunc("UseCachedAbiTypeB", sig, InGo)
 	b := fnB.MakeBody(1)
 	gB := pkgB.NewVarEx("typeinfo", prog.Pointer(prog.Int()))
-	b.recordAbiTypeFakeUses(typ, gB.impl)
+	b.recordAbiTypeFakeUses(gB.impl)
 	if len(fnB.fakeUses) != 0 {
 		t.Fatalf("recordAbiTypeFakeUses reused fake uses from another global: %v", fnB.fakeUses)
 	}
+}
+
+func TestDevLTOGlobalDCEAbiTypeFakeUsesRecordedDuringAbiTypeBuild(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	prog.EnableGoGlobalDCE(true)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	fn := pkg.NewFunc("UseAbiType", sig, InGo)
+	b := fn.MakeBody(1)
+
+	stringType := types.Typ[types.String]
+	b.abiType(stringType)
+	stringName, _ := prog.abi.TypeName(stringType)
+	stringFakeUses := pkg.abiTypeFakeUseCache[pkg.VarOf(stringName).impl]
+	if !containsLLVMValueNameSuffix(stringFakeUses, ".strequal") {
+		t.Fatalf("string abi type fake uses = %v, want strequal", stringFakeUses)
+	}
+
+	mapType := types.NewMap(types.Typ[types.String], types.Typ[types.Int])
+	b.abiType(mapType)
+	mapName, _ := prog.abi.TypeName(mapType)
+	mapFakeUses := pkg.abiTypeFakeUseCache[pkg.VarOf(mapName).impl]
+	if !containsLLVMValueNameSuffix(mapFakeUses, ".typehash") {
+		t.Fatalf("map abi type fake uses = %v, want typehash", mapFakeUses)
+	}
+}
+
+func containsLLVMValueNameSuffix(values []llvm.Value, suffix string) bool {
+	for _, value := range values {
+		if strings.HasSuffix(value.Name(), suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestDevLTOGlobalDCEEmitFakeUsesAtEntry(t *testing.T) {

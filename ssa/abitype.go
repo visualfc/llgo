@@ -80,7 +80,7 @@ func directIfaceType(t types.Type) bool {
 	return false
 }
 
-func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool) (fields []llvm.Value) {
+func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool, global llvm.Value) (fields []llvm.Value) {
 	prog := b.Prog
 	ab := prog.abi
 	// Size uintptr
@@ -116,10 +116,14 @@ func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool) (f
 		equal = prog.Nil(prog.Type(equalFunc, InGo))
 	case "structequal", "arrayequal":
 		equal = b.Pkg.rtFunc(name)
+		b.Pkg.recordAbiTypeFakeUse(global, equal.impl)
 		env := b.abiType(t)
 		equal = b.aggregateValue(prog.Type(equalFunc, InGo), equal.impl, env.impl)
 	default:
-		equal = b.rtClosure(name)
+		equal = b.Pkg.rtFunc(name)
+		b.Pkg.recordAbiTypeFakeUse(global, equal.impl)
+		typ := b.Prog.Type(equal.raw.Type, InGo)
+		equal = checkExpr(equal, typ.raw.Type, b)
 	}
 	fields = append(fields, equal.impl)
 	// GCData     *byte
@@ -133,13 +137,6 @@ func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool) (f
 		fields = append(fields, b.abiType(types.NewPointer(t)).impl)
 	}
 	return
-}
-
-func (b Builder) rtClosure(name string) Expr {
-	fn := b.Pkg.rtFunc(name)
-	typ := b.Prog.Type(fn.raw.Type, InGo)
-	fn = checkExpr(fn, typ.raw.Type, b)
-	return fn
 }
 
 /*
@@ -267,7 +264,7 @@ func (b Builder) abiTuples(t *types.Tuple, name string) llvm.Value {
 	})
 }
 
-func (b Builder) abiExtendedFields(t types.Type, name string) (fields []llvm.Value) {
+func (b Builder) abiExtendedFields(t types.Type, name string, global llvm.Value) (fields []llvm.Value) {
 	prog := b.Prog
 	pkg := b.Pkg
 	switch t := types.Unalias(t).(type) {
@@ -297,6 +294,7 @@ func (b Builder) abiExtendedFields(t types.Type, name string) (fields []llvm.Val
 		bucket := prog.abi.MapBucket(t)
 		flags := prog.abi.MapFlags(t)
 		hash := b.Pkg.rtFunc("typehash")
+		b.Pkg.recordAbiTypeFakeUse(global, hash.impl)
 		env := b.abiType(t.Key())
 		hasher := b.aggregateValue(prog.Type(hashFunc, InGo), hash.impl, env.impl)
 		fields = []llvm.Value{
@@ -338,7 +336,7 @@ func (b Builder) abiExtendedFields(t types.Type, name string) (fields []llvm.Val
 			b.abiInterfaceImethods(t, name+"$imethods"),
 		}
 	case *types.Named:
-		return b.abiExtendedFields(t.Underlying(), name)
+		return b.abiExtendedFields(t.Underlying(), name, global)
 	}
 	return
 }
@@ -542,11 +540,13 @@ func (b Builder) abiType(t types.Type) Expr {
 			typ = types.NewStruct(structFields, nil)
 		}
 		g = pkg.doNewVar(name, prog.Type(types.NewPointer(typ), InGo))
-		fields := b.abiCommonFields(t, name, hasUncommon)
-		if exts := b.abiExtendedFields(t, name); len(exts) != 0 {
+		commonFields := b.abiCommonFields(t, name, hasUncommon, g.impl)
+		extendedFields := b.abiExtendedFields(t, name, g.impl)
+		fields := commonFields
+		if len(extendedFields) != 0 {
 			fields = append([]llvm.Value{
 				llvm.ConstNamedStruct(prog.AbiType().ll, fields),
-			}, exts...)
+			}, extendedFields...)
 		}
 		if hasUncommon {
 			fields = []llvm.Value{
@@ -568,7 +568,7 @@ func (b Builder) abiType(t types.Type) Expr {
 		llvm.ConstInt(prog.Int32().ll, 0, false),
 	}), prog.AbiTypePtr()}
 	if prog.enableGoGlobalDCE {
-		b.recordAbiTypeFakeUses(t, g.impl)
+		b.recordAbiTypeFakeUses(g.impl)
 	}
 	return ret
 }

@@ -185,6 +185,8 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 			"./_testlto/globaldce_interface_matrix",
 			"./_testlto/globaldce_interface_slots",
 			"./_testlto/globaldce_reflect_method",
+			"./_testlto/globaldce_reflect_type_method",
+			"./_testlto/globaldce_reflect_value_method",
 			"./_testlto/globaldce_typeid_dce",
 			"./_testlto/anonymous_alias",
 		}
