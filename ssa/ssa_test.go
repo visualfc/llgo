@@ -549,7 +549,7 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	}
 }
 
-func TestDevLTOGlobalDCEAddMethodTypeMetadataMarksIFnAndTFnForReflect(t *testing.T) {
+func TestDevLTOGlobalDCEAddMethodTypeMetadataMarksIFnAndTFnForReflectContexts(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -581,15 +581,17 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataMarksIFnAndTFnForReflect(t *testing
 
 	ir := pkg.String()
 	for _, want := range []string{
-		fmt.Sprintf(`!{i64 %d, !"go.method.reflect"}`, ifnOffset),
-		fmt.Sprintf(`!{i64 %d, !"go.method.reflect"}`, tfnOffset),
+		fmt.Sprintf(`!{i64 %d, !"%s"}`, ifnOffset, reflectValueMethodTypeID),
+		fmt.Sprintf(`!{i64 %d, !"%s"}`, tfnOffset, reflectTypeMethodTypeID),
 	} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("missing reflect method metadata %s:\n%s", want, ir)
 		}
 	}
-	if count := strings.Count(ir, `!"go.method.reflect"`); count != 2 {
-		t.Fatalf("reflect method metadata count = %d, want 2:\n%s", count, ir)
+	for _, typeID := range []string{reflectValueMethodTypeID, reflectTypeMethodTypeID} {
+		if count := strings.Count(ir, `!"`+typeID+`"`); count != 1 {
+			t.Fatalf("reflect method metadata count for %s = %d, want 1:\n%s", typeID, count, ir)
+		}
 	}
 }
 

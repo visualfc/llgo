@@ -13,7 +13,8 @@ package main
 // CHECK-DAG: ![[T2A]] = !{i64 {{[0-9]+}}, !"go.method.A:func() int"}
 // CHECK-DAG: ![[T2B]] = !{i64 {{[0-9]+}}, !"go.method.B:func(int) int"}
 // CHECK-DAG: ![[T2C]] = !{i64 {{[0-9]+}}, !"go.method.C:func() string"}
-// CHECK-DAG: !"go.method.reflect"
+// CHECK-DAG: !"go.method.value.reflect"
+// CHECK-DAG: !"go.method.type.reflect"
 
 type Base interface {
 	A() int

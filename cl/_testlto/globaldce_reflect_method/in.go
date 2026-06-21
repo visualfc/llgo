@@ -3,10 +3,12 @@ package main
 
 import "reflect"
 
-// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.reflect")
+// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.value.reflect")
+// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect")
 // CHECK-DAG: !"go.method.Keep:func() string"
 // CHECK-DAG: !"go.method.hidden:func() string"
-// CHECK-DAG: !"go.method.reflect"
+// CHECK-DAG: !"go.method.value.reflect"
+// CHECK-DAG: !"go.method.type.reflect"
 
 type S struct{}
 

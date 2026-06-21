@@ -4,7 +4,8 @@ package main
 // CHECK-DAG: !"Virtual Function Elim"
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.NewPoint:func(float64, float64) *struct{x float64; y float64}")
 // CHECK-DAG: !"go.method.NewPoint:func(float64, float64) *struct{x float64; y float64}"
-// CHECK-DAG: !"go.method.reflect"
+// CHECK-DAG: !"go.method.value.reflect"
+// CHECK-DAG: !"go.method.type.reflect"
 // CHECK-DAG: !vcall_visibility
 
 type MyPoint = struct {

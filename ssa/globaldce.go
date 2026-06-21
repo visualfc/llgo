@@ -17,6 +17,9 @@ const (
 
 	reflectValuePtrFieldIndex   = 1
 	reflectMethodFuncFieldIndex = 3
+
+	reflectValueMethodTypeID = "go.method.value.reflect"
+	reflectTypeMethodTypeID  = "go.method.type.reflect"
 )
 
 func methodCapabilitySig(sig *types.Signature) string {
@@ -174,15 +177,15 @@ func (b Builder) EmitReflectMethodCheckedLoad(ret Expr, reflectKind int) {
 		return
 	}
 	mod := b.Pkg.Module()
-	checkedLoadValue := func(v Expr) {
-		b.Prog.methodCheckedLoad(b.impl, mod, b.Extract(v, reflectValuePtrFieldIndex).impl, "go.method.reflect")
+	checkedLoadValue := func(v Expr, typeID string) {
+		b.Prog.methodCheckedLoad(b.impl, mod, b.Extract(v, reflectValuePtrFieldIndex).impl, typeID)
 	}
 	if reflectKind&reflectTypeMethodMask == 0 {
-		checkedLoadValue(ret)
+		checkedLoadValue(ret, reflectValueMethodTypeID)
 		return
 	}
 	checkedLoadMethod := func(method Expr) {
-		checkedLoadValue(b.Extract(method, reflectMethodFuncFieldIndex))
+		checkedLoadValue(b.Extract(method, reflectMethodFuncFieldIndex), reflectTypeMethodTypeID)
 	}
 	if reflectKind&ReflectTypeMethodByName != 0 {
 		method := b.Extract(ret, 0)
@@ -244,8 +247,8 @@ func (p Program) addMethodTypeMetadata(global llvm.Value, fullType Type, mset *t
 		baseOffset := methodArrayOffset + uint64(i)*methodStride
 		p.addTypeMetadata(global, baseOffset+ifnOffset, methodCapabilityKey(sel.Obj().(*types.Func)))
 		if sel.Obj().Exported() {
-			p.addTypeMetadata(global, baseOffset+ifnOffset, "go.method.reflect")
-			p.addTypeMetadata(global, baseOffset+tfnOffset, "go.method.reflect")
+			p.addTypeMetadata(global, baseOffset+ifnOffset, reflectValueMethodTypeID)
+			p.addTypeMetadata(global, baseOffset+tfnOffset, reflectTypeMethodTypeID)
 		}
 	}
 }

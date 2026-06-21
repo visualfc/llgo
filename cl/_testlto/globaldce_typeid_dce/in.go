@@ -5,7 +5,8 @@ package main
 // CHECK-DAG: !"go.method.Keep:func() int"
 // CHECK-DAG: !"go.method.Drop:func() int"
 // CHECK-DAG: !"go.method.DropWithArg:func(int) int"
-// CHECK-DAG: !"go.method.reflect"
+// CHECK-DAG: !"go.method.value.reflect"
+// CHECK-DAG: !"go.method.type.reflect"
 
 type Keeper interface {
 	Keep() int
