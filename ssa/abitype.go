@@ -558,14 +558,18 @@ func (b Builder) abiType(t types.Type) Expr {
 		g.impl.SetInitializer(llvm.ConstNamedStruct(g.impl.GlobalValueType(), fields))
 		g.impl.SetGlobalConstant(true)
 		g.impl.SetLinkage(llvm.WeakODRLinkage)
-		prog.addMethodTypeMetadata(g.impl, prog.Type(typ, InGo), mset, methodCount)
+		if prog.enableGoGlobalDCE {
+			prog.addMethodTypeMetadata(g.impl, prog.Type(typ, InGo), mset, methodCount)
+		}
 		prog.abiSymbol[name] = &AbiSymbol{Name: name, PkgPath: pkg.Path(), Raw: t, Typ: g.Type, MSet: mset}
 	}
 	ret := Expr{llvm.ConstGEP(g.impl.GlobalValueType(), g.impl, []llvm.Value{
 		llvm.ConstInt(prog.Int32().ll, 0, false),
 		llvm.ConstInt(prog.Int32().ll, 0, false),
 	}), prog.AbiTypePtr()}
-	b.recordAbiTypeFakeUses(t, g.impl)
+	if prog.enableGoGlobalDCE {
+		b.recordAbiTypeFakeUses(t, g.impl)
+	}
 	return ret
 }
 

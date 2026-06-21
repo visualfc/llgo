@@ -26,6 +26,7 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"unsafe"
 
 	"github.com/goplus/gogen/packages"
+	rtabi "github.com/goplus/llgo/runtime/abi"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -200,9 +202,6 @@ func TestNewFuncExLLVMUsed(t *testing.T) {
 
 func requireGoGlobalDCE(t *testing.T) {
 	t.Helper()
-	if !goGlobalDCEAvailable {
-		t.Skip("Go GlobalDCE is only available in dev builds")
-	}
 }
 
 func TestDevLTOGlobalDCEAddTypeMetadata(t *testing.T) {
@@ -455,7 +454,6 @@ func TestDevLTOGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
 	}{
 		{"llvm.type.checked.load", func() llvm.Value { return prog.llvmTypeCheckedLoad(mod) }},
 		{"llvm.assume", func() llvm.Value { return prog.llvmAssume(mod) }},
-		{"llvm.fake.use", func() llvm.Value { return prog.llvmFakeUse(mod) }},
 	}
 	for _, helper := range helpers {
 		first := helper.get()
@@ -472,7 +470,7 @@ func TestDevLTOGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
 	}
 
 	ir := pkg.String()
-	for _, want := range []string{"@llvm.type.checked.load", "@llvm.assume", "@llvm.fake.use"} {
+	for _, want := range []string{"@llvm.type.checked.load", "@llvm.assume"} {
 		if strings.Count(ir, want) != 1 {
 			t.Fatalf("expected exactly one %s declaration:\n%s", want, ir)
 		}
@@ -504,7 +502,7 @@ func TestDevLTOGlobalDCEMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 	}
 }
 
-func TestDevLTOGlobalDCEEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
+func TestDevLTOGlobalDCEEmitFakeUsesInlineAsmAtEntry(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
@@ -516,18 +514,21 @@ func TestDevLTOGlobalDCEEmitFakeUsesIntrinsicAtEntry(t *testing.T) {
 	fn := pkg.NewFunc("UseIntrinsic", sig, InGo)
 	b := fn.MakeBody(1)
 
-	pkg.NewFunc("NoFakeUses", sig, InGo).emitFakeUses(b)
+	pkg.NewFunc("NoFakeUses", sig, InGo).emitFakeUsesInlineAsm(b)
 	fn.recordFakeUse(targetA.impl)
 	fn.recordFakeUse(targetB.impl)
 	b.Return()
-	fn.emitFakeUses(b)
+	fn.emitFakeUsesInlineAsm(b)
 
 	ir := pkg.String()
-	if !strings.Contains(ir, `call void (...) @llvm.fake.use(ptr @TargetA, ptr @TargetB)`) {
-		t.Fatalf("missing llvm.fake.use call at entry:\n%s", ir)
+	if !strings.Contains(ir, `call void asm sideeffect "", "X"(ptr @TargetA)`) {
+		t.Fatalf("missing inline asm fake-use for TargetA:\n%s", ir)
 	}
-	if strings.Index(ir, "@llvm.fake.use") > strings.Index(ir, "ret void") {
-		t.Fatalf("llvm.fake.use should be emitted before the return:\n%s", ir)
+	if !strings.Contains(ir, `call void asm sideeffect "", "X"(ptr @TargetB)`) {
+		t.Fatalf("missing inline asm fake-use for TargetB:\n%s", ir)
+	}
+	if strings.Index(ir, `call void asm sideeffect "", "X"(ptr @TargetA)`) > strings.Index(ir, "ret void") {
+		t.Fatalf("inline asm fake-use should be emitted before the return:\n%s", ir)
 	}
 }
 
@@ -535,12 +536,11 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
+	prog.EnableGoGlobalDCE(true)
 	pkg := prog.NewPackage("main", "main")
 	g := pkg.NewVarEx("g", prog.Pointer(prog.Int()))
 	mset := types.NewMethodSet(types.Typ[types.Int])
 
-	prog.addMethodTypeMetadata(g.impl, prog.Pointer(prog.Int()), mset, 1)
-	prog.EnableGoGlobalDCE(true)
 	prog.addMethodTypeMetadata(g.impl, prog.Pointer(prog.Int()), mset, 0)
 
 	ir := pkg.String()
@@ -575,6 +575,66 @@ func TestDevLTOGlobalDCERecordAbiTypeFakeUsesEarlyReturnsAndPeel(t *testing.T) {
 	b.recordAbiTypeFakeUses(types.Typ[types.Int], g.impl)
 	if len(fn.fakeUses) != 0 {
 		t.Fatalf("recordAbiTypeFakeUses recorded fake uses for uninitialized global")
+	}
+}
+
+func TestDevLTOGlobalDCEAbiTypeFakeUseFieldIndexes(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	checkFieldIndex := func(typ reflect.Type, idx int, want string) {
+		t.Helper()
+		if idx < 0 || idx >= typ.NumField() {
+			t.Fatalf("%s field index %d is out of range", typ, idx)
+		}
+		if got := typ.Field(idx).Name; got != want {
+			t.Fatalf("%s field %d = %q, want %q", typ, idx, got, want)
+		}
+	}
+
+	checkFieldIndex(reflect.TypeOf(rtabi.Type{}), abiTypeEqualFieldIndex, "Equal")
+	checkFieldIndex(reflect.TypeOf(rtabi.MapType{}), abiMapTypeHasherFieldIndex, "Hasher")
+}
+
+func TestDevLTOGlobalDCERecordAbiTypeFakeUsesUsesCache(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	prog.EnableGoGlobalDCE(true)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	target := pkg.NewFunc("CachedTarget", sig, InGo)
+	fn := pkg.NewFunc("UseCachedAbiType", sig, InGo)
+	b := fn.MakeBody(1)
+	g := pkg.NewVarEx("typeinfo", prog.Pointer(prog.Int()))
+	typ := types.Typ[types.Int]
+	pkg.abiTypeFakeUseCache[g.impl] = []llvm.Value{target.impl}
+
+	b.recordAbiTypeFakeUses(typ, g.impl)
+	if len(fn.fakeUses) != 1 || fn.fakeUses[0] != target.impl {
+		t.Fatalf("recordAbiTypeFakeUses did not use cached fake uses: %v", fn.fakeUses)
+	}
+}
+
+func TestDevLTOGlobalDCERecordAbiTypeFakeUsesCacheIsPerGlobal(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	prog.EnableGoGlobalDCE(true)
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	typ := types.Typ[types.Int]
+
+	pkgA := prog.NewPackage("a", "a")
+	targetA := pkgA.NewFunc("CachedTargetA", sig, InGo)
+	gA := pkgA.NewVarEx("typeinfo", prog.Pointer(prog.Int()))
+	pkgA.abiTypeFakeUseCache[gA.impl] = []llvm.Value{targetA.impl}
+
+	pkgB := prog.NewPackage("b", "b")
+	fnB := pkgB.NewFunc("UseCachedAbiTypeB", sig, InGo)
+	b := fnB.MakeBody(1)
+	gB := pkgB.NewVarEx("typeinfo", prog.Pointer(prog.Int()))
+	b.recordAbiTypeFakeUses(typ, gB.impl)
+	if len(fnB.fakeUses) != 0 {
+		t.Fatalf("recordAbiTypeFakeUses reused fake uses from another global: %v", fnB.fakeUses)
 	}
 }
 

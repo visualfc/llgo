@@ -9,6 +9,10 @@ fi
 
 # llgo run subdirectories under _demo that contain *.go files
 jobs="${LLGO_DEMO_JOBS:-1}"
+llgo_run_flags=()
+if [ -n "${LLGO_DEMO_LLGORUN_FLAGS:-}" ]; then
+  read -r -a llgo_run_flags <<< "${LLGO_DEMO_LLGORUN_FLAGS}"
+fi
 if [ "${jobs}" -gt 1 ]; then
   if [ "${BASH_VERSINFO[0]}" -lt 5 ] || { [ "${BASH_VERSINFO[0]}" -eq 5 ] && [ "${BASH_VERSINFO[1]}" -lt 1 ]; }; then
     echo "warning: LLGO_DEMO_JOBS=${jobs} requested but bash ${BASH_VERSION} lacks 'wait -n -p'; running sequentially" >&2
@@ -270,6 +274,7 @@ run_case() {
     echo "Testing $dir"
   fi
   cmd=(llgo run)
+  cmd+=("${llgo_run_flags[@]}")
   if [ -n "$target" ]; then
     cmd+=("-target=$target")
   fi

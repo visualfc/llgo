@@ -1447,6 +1447,8 @@ func exportObjectInMemory(ctx *context, pkgPath string, exportFile string, pkg l
 	)
 	switch ltoMode {
 	case lto.Full:
+		// reference to https: //github.com/espressif/llvm-project/blob/04a1a3482ce3ee00b5bbec1ce852e58410e4b6ad/clang/lib/CodeGen/BackendUtil.cpp#L197
+		// Clang emit SplitLTOUnit for full lto bitcode except on darwin.
 		buf = gllvm.WriteFullLTOBitcodeToMemoryBuffer(pkg.Module(), ctx.buildConf.Goos != "darwin")
 		kind = "in-memory LLVM full LTO bitcode emission"
 	case lto.Thin:

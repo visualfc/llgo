@@ -325,7 +325,7 @@ func (p Program) SetCompileMethods(check func(Package, types.Type)) {
 }
 
 func (p Program) EnableGoGlobalDCE(enable bool) {
-	p.enableGoGlobalDCE = goGlobalDCEAvailable && enable
+	p.enableGoGlobalDCE = enable
 }
 
 // SetRuntime sets the runtime.
@@ -474,6 +474,8 @@ func (p Program) NewPackage(name, pkgPath string) Package {
 		preserveSyms:   make(map[string]struct{}),
 		llvmUsedValues: make([]llvm.Value, 0, 4),
 		llvmUsedSet:    make(map[string]struct{}),
+
+		abiTypeFakeUseCache: make(map[llvm.Value][]llvm.Value),
 	}
 	if p.enableGoGlobalDCE {
 		p.addVirtualFunctionElimModuleFlag(mod)
@@ -748,6 +750,8 @@ type aPackage struct {
 	preserveSyms   map[string]struct{} // set of exported symbol names
 	llvmUsedValues []llvm.Value
 	llvmUsedSet    map[string]struct{}
+
+	abiTypeFakeUseCache map[llvm.Value][]llvm.Value
 }
 
 type none struct{}

@@ -1,6 +1,3 @@
-//go:build dev
-// +build dev
-
 package ssa
 
 import (
@@ -10,9 +7,11 @@ import (
 )
 
 const (
-	goGlobalDCEAvailable        = true
 	vcallVisibilityLinkageUnit  = 1
 	LLVMModuleFlagBehaviorError = 1
+
+	abiTypeEqualFieldIndex     = 7
+	abiMapTypeHasherFieldIndex = 4
 )
 
 func methodCapabilitySig(sig *types.Signature) string {
@@ -122,15 +121,6 @@ func (p Program) llvmAssume(mod llvm.Module) llvm.Value {
 	return llvm.AddFunction(mod, "llvm.assume", fnTy)
 }
 
-func (p Program) llvmFakeUse(mod llvm.Module) llvm.Value {
-	fn := mod.NamedFunction("llvm.fake.use")
-	if !fn.IsNil() {
-		return fn
-	}
-	fnTy := llvm.FunctionType(p.tyVoid(), nil, true)
-	return llvm.AddFunction(mod, "llvm.fake.use", fnTy)
-}
-
 func (p Program) addModuleFlag(mod llvm.Module, behavior uint64, name string, val uint64) {
 	mod.AddNamedMetadataOperand("llvm.module.flags",
 		p.ctx.MDNode([]llvm.Metadata{
@@ -180,20 +170,6 @@ func (p Program) fakeUseValueInlineAsm(b llvm.Builder, v llvm.Value) {
 	llvm.CreateCall(b, fnTy, asm, []llvm.Value{v})
 }
 
-func (fn Function) emitFakeUses(b Builder) {
-	if len(fn.fakeUses) == 0 || len(fn.blks) == 0 {
-		return
-	}
-	curBlk := b.blk
-	curInsert := b.impl.GetInsertBlock()
-	b.SetBlockEx(fn.blks[0], AtStart, false)
-	llvm.CreateCall(b.impl, fn.Prog.llvmFakeUse(fn.Pkg.Module()).GlobalValueType(), fn.Prog.llvmFakeUse(fn.Pkg.Module()), fn.fakeUses)
-	if !curInsert.IsNil() {
-		b.impl.SetInsertPointAtEnd(curInsert)
-	}
-	b.blk = curBlk
-}
-
 func (fn Function) emitFakeUsesInlineAsm(b Builder) {
 	if len(fn.fakeUses) == 0 || len(fn.blks) == 0 {
 		return
@@ -222,9 +198,6 @@ func (p Function) recordFakeUse(v llvm.Value) {
 }
 
 func (p Program) addMethodTypeMetadata(global llvm.Value, fullType Type, mset *types.MethodSet, methodCount int) {
-	if !p.enableGoGlobalDCE {
-		return
-	}
 	if methodCount == 0 {
 		return
 	}
@@ -251,34 +224,70 @@ func peelConstOperand0ToType(v llvm.Value, target llvm.Type) llvm.Value {
 	return v
 }
 
-func (b Builder) recordAbiTypeFakeUses(t types.Type, global llvm.Value) {
-	if !b.Prog.enableGoGlobalDCE || b.Func == nil {
-		return
+func functionValueOfRuntimeFuncField(field llvm.Value) llvm.Value {
+	if field.IsNil() || field.IsNull() || field.OperandsCount() == 0 {
+		return llvm.Value{}
 	}
-	init := global.Initializer()
-	if init.IsNil() {
-		return
+	fn := field.Operand(0)
+	if fn.IsNil() || fn.IsNull() {
+		return llvm.Value{}
+	}
+	return fn
+}
+
+func (p Program) collectAbiTypeFakeUses(t types.Type, init llvm.Value) []llvm.Value {
+	var fakeUses []llvm.Value
+
+	typeRuntime := p.rtNamed("Type")
+	typeType := p.Type(typeRuntime, InGo)
+	baseType := peelConstOperand0ToType(init, typeType.ll)
+	equalFn := functionValueOfRuntimeFuncField(baseType.Operand(abiTypeEqualFieldIndex))
+	if !equalFn.IsNil() {
+		fakeUses = append(fakeUses, equalFn)
 	}
 
-	typeType := b.Prog.Type(b.Prog.rtNamed("Type"), InGo)
-	baseType := peelConstOperand0ToType(init, typeType.ll)
-	equalField := baseType.Operand(7)
-	if !equalField.IsNull() && equalField.OperandsCount() > 0 {
-		equalFn := equalField.Operand(0)
-		if !equalFn.IsNull() {
-			b.Func.recordFakeUse(equalFn)
+	if _, ok := types.Unalias(t).(*types.Map); ok {
+		mapRuntime := p.rtNamed(p.abi.RuntimeName(t))
+		mapType := p.Type(mapRuntime, InGo)
+		baseMapType := peelConstOperand0ToType(init, mapType.ll)
+		hasherFn := functionValueOfRuntimeFuncField(baseMapType.Operand(abiMapTypeHasherFieldIndex))
+		if !hasherFn.IsNil() {
+			fakeUses = append(fakeUses, hasherFn)
 		}
 	}
-	if _, ok := types.Unalias(t).(*types.Map); ok {
-		rt := b.Prog.rtNamed(b.Prog.abi.RuntimeName(t))
-		runtimeType := b.Prog.Type(rt, InGo)
-		base := peelConstOperand0ToType(init, runtimeType.ll)
-		hasherField := base.Operand(4)
-		if !hasherField.IsNull() && hasherField.OperandsCount() > 0 {
-			hasherFn := hasherField.Operand(0)
-			if !hasherFn.IsNull() {
-				b.Func.recordFakeUse(hasherFn)
-			}
-		}
+	return fakeUses
+}
+
+func (p Package) abiTypeFakeUses(t types.Type, global llvm.Value) ([]llvm.Value, bool) {
+	if fakeUses, ok := p.abiTypeFakeUseCache[global]; ok {
+		return fakeUses, true
+	}
+
+	init := global.Initializer()
+	if init.IsNil() {
+		return nil, false
+	}
+
+	collectType := t
+	name, _ := p.Prog.abi.TypeName(t)
+	sym := p.Prog.abiSymbol[name]
+	if sym != nil {
+		collectType = sym.Raw
+	}
+	fakeUses := p.Prog.collectAbiTypeFakeUses(collectType, init)
+	p.abiTypeFakeUseCache[global] = fakeUses
+	return fakeUses, true
+}
+
+func (b Builder) recordAbiTypeFakeUses(t types.Type, global llvm.Value) {
+	if b.Func == nil {
+		return
+	}
+	fakeUses, ok := b.Pkg.abiTypeFakeUses(t, global)
+	if !ok {
+		return
+	}
+	for _, fakeUse := range fakeUses {
+		b.Func.recordFakeUse(fakeUse)
 	}
 }
