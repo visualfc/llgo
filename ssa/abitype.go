@@ -120,7 +120,7 @@ func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool, gl
 		env := b.abiType(t)
 		equal = b.aggregateValue(prog.Type(equalFunc, InGo), equal.impl, env.impl)
 	default:
-		equal = b.Pkg.rtClosure(name)
+		equal = b.rtClosure(name)
 		b.Pkg.recordAbiTypeFakeUse(global, equal.impl)
 	}
 	fields = append(fields, equal.impl)
