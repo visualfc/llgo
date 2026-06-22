@@ -122,8 +122,8 @@ func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool, gl
 	default:
 		equal = b.Pkg.rtFunc(name)
 		b.Pkg.recordAbiTypeFakeUse(global, equal.impl)
-  typ := b.Prog.Type(equal.raw.Type, InGo)  
-  equal = checkExpr(equal, typ.raw.Type, b)
+		typ := b.Prog.Type(equal.raw.Type, InGo)  
+		equal = checkExpr(equal, typ.raw.Type, b)
 	}
 	fields = append(fields, equal.impl)
 	// GCData     *byte
