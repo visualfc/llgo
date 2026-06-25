@@ -127,6 +127,7 @@ ignore_esp32c3_basic=(
   "./_demo/go/mkdirdemo" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/c/asmcall" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/c/asmfullcall" # panic: cannot build SSA for packages (undefined: verify)
+  "./_demo/go/atomicfn" #ld.lld: error: undefined symbol: __atomic_fetch_add_4
   "./_demo/c/cargs" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/c/catomic" # link error: ld.lld undefined symbol __atomic_store
   "./_demo/c/cexec" # link error: ld.lld undefined symbol execlp

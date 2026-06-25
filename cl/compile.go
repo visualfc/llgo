@@ -30,6 +30,7 @@ import (
 	"strings"
 
 	"github.com/goplus/llgo/cl/blocks"
+	"github.com/goplus/llgo/cl/ssawrap"
 	"github.com/goplus/llgo/internal/goembed"
 	"github.com/goplus/llgo/internal/typepatch"
 	"golang.org/x/tools/go/ssa"
@@ -1414,6 +1415,9 @@ func (p *context) compileValue(b llssa.Builder, v ssa.Value) llssa.Expr {
 			}
 		}
 	case *ssa.Function:
+		if _, _, ftype := p.funcName(v); ftype == llgoInstr {
+			v = ssawrap.MakeCallWrapper(p.goProg, v)
+		}
 		aFn, pyFn, _ := p.compileFunction(v)
 		if aFn != nil {
 			return aFn.Expr
