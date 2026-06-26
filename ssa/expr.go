@@ -1258,11 +1258,13 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	default:
 		log.Panicf("unreachable: %d(%T), %v\n", kind, raw, fn.RawType())
 	}
+	var reflectKind int
 	if b.Pkg.Path() != "reflect" {
-		b.checkReflect(fn, args)
+		reflectKind = b.checkReflect(fn, args)
 	}
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
+	b.EmitReflectMethodCheckedLoad(ret, reflectKind)
 	return
 }
 
@@ -1277,51 +1279,72 @@ const (
 	ReflectMethodByIndex
 	ReflectMethodByName
 	ReflectMethodDynamic
-	ReflectMethodMask = ReflectMethodByIndex | ReflectMethodByName | ReflectMethodDynamic
+	ReflectTypeMethodByIndex
+	ReflectTypeMethodByName
+
+	ReflectMethodMask     = ReflectMethodByIndex | ReflectMethodByName | ReflectMethodDynamic
+	reflectTypeMethodMask = ReflectTypeMethodByIndex | ReflectTypeMethodByName
 )
 
-func (b Builder) checkReflect(fn Expr, args []Expr) {
+func (b Builder) checkReflect(fn Expr, args []Expr) (reflectKind int) {
 	pkg := b.Pkg
 	switch fn.Name() {
 	case "reflect.ArrayOf":
-		pkg.NeedAbiInit |= ReflectArrayOf
+		reflectKind = ReflectArrayOf
 	case "reflect.ChanOf":
-		pkg.NeedAbiInit |= ReflectChanOf
+		reflectKind = ReflectChanOf
 	case "reflect.FuncOf":
-		pkg.NeedAbiInit |= ReflectFuncOf
+		reflectKind = ReflectFuncOf
 	case "reflect.MapOf":
-		pkg.NeedAbiInit |= ReflectMapOf
+		reflectKind = ReflectMapOf
 	case "reflect.PointerTo", "reflect.PtrTo":
-		pkg.NeedAbiInit |= ReflectPointerTo
+		reflectKind = ReflectPointerTo
 	case "reflect.SliceOf", "reflect.Value.Slice":
-		pkg.NeedAbiInit |= ReflectSliceOf
+		reflectKind = ReflectSliceOf
 	case "reflect.StructOf":
-		pkg.NeedAbiInit |= ReflectStructOf
+		reflectKind = ReflectStructOf
 	case "reflect.Value.Method":
 		if len(args) == 2 {
 			if v, ok := extractConstInt(args[1].impl); ok {
-				if pkg.MethodByIndex == nil {
-					pkg.MethodByIndex = make(map[int]none)
-				}
-				pkg.MethodByIndex[v] = none{}
-				pkg.NeedAbiInit |= ReflectMethodByIndex
-				return
+				reflectKind = pkg.RecordReflectMethodByIndex(v)
+				break
 			}
-			pkg.NeedAbiInit |= ReflectMethodDynamic
+			reflectKind = pkg.RecordReflectMethodDynamic()
 		}
 	case "reflect.Value.MethodByName":
 		if len(args) == 2 {
 			if v, ok := extractConstString(args[1].impl); ok {
-				if pkg.MethodByName == nil {
-					pkg.MethodByName = make(map[string]none)
-				}
-				pkg.MethodByName[v] = none{}
-				pkg.NeedAbiInit |= ReflectMethodByName
-				return
+				reflectKind = pkg.RecordReflectMethodByName(v)
+				break
 			}
-			pkg.NeedAbiInit |= ReflectMethodDynamic
+			reflectKind = pkg.RecordReflectMethodDynamic()
 		}
 	}
+	pkg.NeedAbiInit |= reflectKind &^ reflectTypeMethodMask
+	return
+}
+
+func (p Package) RecordReflectMethodByIndex(index int) int {
+	if p.MethodByIndex == nil {
+		p.MethodByIndex = make(map[int]none)
+	}
+	p.MethodByIndex[index] = none{}
+	p.NeedAbiInit |= ReflectMethodByIndex
+	return ReflectMethodByIndex
+}
+
+func (p Package) RecordReflectMethodByName(name string) int {
+	if p.MethodByName == nil {
+		p.MethodByName = make(map[string]none)
+	}
+	p.MethodByName[name] = none{}
+	p.NeedAbiInit |= ReflectMethodByName
+	return ReflectMethodByName
+}
+
+func (p Package) RecordReflectMethodDynamic() int {
+	p.NeedAbiInit |= ReflectMethodDynamic
+	return ReflectMethodDynamic
 }
 
 func extractConstInt(v llvm.Value) (r int, ok bool) {

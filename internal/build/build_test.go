@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/packages"
@@ -391,5 +392,27 @@ func TestLTOEnabledExplicitOverride(t *testing.T) {
 	targetOff := &Config{Target: "rp2040", LTO: lto.Off}
 	if targetOff.ltoEnabled() {
 		t.Fatal("expected LTO=off to disable LTO for target build")
+	}
+}
+
+func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want bool
+	}{
+		{name: "lto off", conf: &Config{LTO: lto.Off}, want: false},
+		{name: "thin lto", conf: &Config{LTO: lto.Thin}, want: false},
+		{name: "full lto", conf: &Config{LTO: lto.Full}, want: buildenv.Dev},
+		{name: "full lto disabled", conf: &Config{LTO: lto.Full, DisableGoGlobalDCE: true}, want: false},
+		{name: "disabled without full lto", conf: &Config{LTO: lto.Off, DisableGoGlobalDCE: true}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.conf.goGlobalDCEEnabled(); got != tt.want {
+				t.Fatalf("goGlobalDCEEnabled() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

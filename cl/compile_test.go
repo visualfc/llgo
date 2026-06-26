@@ -27,7 +27,9 @@ import (
 
 	"github.com/goplus/llgo/cl/cltest"
 	"github.com/goplus/llgo/internal/build"
+	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/llgen"
+	"github.com/goplus/llgo/internal/lto"
 )
 
 func testCompile(t *testing.T, src, expected string) {
@@ -171,6 +173,25 @@ func runEmbedTargetSuite(t *testing.T, target, relDir string, ignore []string) {
 
 func TestRunAndTestFromTestgo(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testgo", nil)
+}
+
+func TestRunAndTestFromTestlto(t *testing.T) {
+	conf := build.NewDefaultConf(build.ModeRun)
+	conf.LTO = lto.Full
+	var ignore []string
+	if !buildenv.Dev {
+		ignore = []string{
+			"./_testlto/globaldce_abitype_fakeuse",
+			"./_testlto/globaldce_interface_matrix",
+			"./_testlto/globaldce_interface_slots",
+			"./_testlto/globaldce_reflect_method",
+			"./_testlto/globaldce_reflect_type_method",
+			"./_testlto/globaldce_reflect_value_method",
+			"./_testlto/globaldce_typeid_dce",
+			"./_testlto/anonymous_alias",
+		}
+	}
+	cltest.RunAndTestFromDir(t, "", "./_testlto", ignore, cltest.WithRunConfig(conf))
 }
 
 func TestFilterEmulatorOutput(t *testing.T) {
