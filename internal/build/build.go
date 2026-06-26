@@ -146,6 +146,7 @@ type Config struct {
 	AbiMode       AbiMode
 	GenExpect     bool // only valid for ModeCmpTest
 	Verbose       bool
+	BuildV        bool
 	PrintCommands bool
 	GenLL         bool // generate pkg .ll files
 	CheckLLFiles  bool // check .ll files valid
@@ -478,7 +479,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 
 	allPkgs := append([]*aPackage{}, pkgs...)
 	allPkgs = append(allPkgs, depPkgs...)
-	allPkgs, err = buildAllPkgs(ctx, allPkgs, verbose)
+	allPkgs, err = buildAllPkgs(ctx, allPkgs, verbose, conf.BuildV)
 	if err != nil {
 		return nil, err
 	}
@@ -765,7 +766,7 @@ func normalizeToArchive(ctx *context, aPkg *aPackage, verbose bool) error {
 	return nil
 }
 
-func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, error) {
+func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool, buildV bool) ([]*aPackage, error) {
 	built := ctx.built
 
 	// Split packages into runtime tree vs others so we can defer runtime build.
@@ -805,7 +806,7 @@ func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, er
 						fmt.Fprintf(os.Stderr, "CACHE MISS: %s\n", pkg.PkgPath)
 					}
 				}
-				if err := buildPkg(ctx, aPkg, verbose); err != nil {
+				if err := buildPkg(ctx, aPkg, verbose, buildV); err != nil {
 					return err
 				}
 				if !aPkg.CacheHit {
@@ -837,7 +838,7 @@ func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, er
 					fmt.Fprintf(os.Stderr, "CACHE MISS: %s\n", pkg.PkgPath)
 				}
 			}
-			if err := buildPkg(ctx, aPkg, verbose); err != nil {
+			if err := buildPkg(ctx, aPkg, verbose, buildV); err != nil {
 				return err
 			}
 			aPkg.setNeedRuntimeOrPyInit(aPkg.LPkg.NeedRuntime, aPkg.LPkg.NeedPyInit)
@@ -1408,11 +1409,11 @@ func is32Bits(goarch string) bool {
 	return goarch == "386" || goarch == "arm" || goarch == "mips" || goarch == "wasm"
 }
 
-func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
+func buildPkg(ctx *context, aPkg *aPackage, verbose bool, buildV bool) error {
 	pkg := aPkg.Package
 	pkgPath := pkg.PkgPath
-	if debugBuild || verbose {
-		fmt.Fprintln(os.Stderr, pkgPath)
+	if debugBuild || verbose || (buildV && !aPkg.CacheHit) {
+		fmt.Fprintln(os.Stderr, aPkg.PkgPath)
 	}
 	if llruntime.SkipToBuild(pkgPath) {
 		pkg.ExportFile = ""

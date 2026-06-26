@@ -99,7 +99,7 @@ func buildTestArgs(customArgs []string) []string {
 		}
 	}
 
-	appendBool(flags.Verbose, "-test.v")
+	appendBool(flags.BuildV, "-test.v")
 	appendString(flags.TestRun, "-test.run=")
 	appendString(flags.TestBench, "-test.bench=")
 	appendString(flags.TestList, "-test.list=")

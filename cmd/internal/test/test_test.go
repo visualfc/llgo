@@ -118,7 +118,7 @@ func TestBuildTestArgs(t *testing.T) {
 		{
 			name: "verbose only",
 			setupFlags: func() {
-				flags.Verbose = true
+				flags.BuildV = true
 			},
 			customArgs:  nil,
 			wantContain: []string{"-test.v"},
@@ -134,7 +134,7 @@ func TestBuildTestArgs(t *testing.T) {
 		{
 			name: "multiple flags",
 			setupFlags: func() {
-				flags.Verbose = true
+				flags.BuildV = true
 				flags.TestRun = "TestFoo"
 				flags.TestTimeout = "30s"
 				flags.TestShort = true

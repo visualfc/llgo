@@ -30,6 +30,7 @@ func AddOutputFlags(fs *flag.FlagSet) {
 }
 
 var Verbose bool
+var BuildV bool
 var BuildEnv string
 var BuildMode string
 var Tags string
@@ -166,7 +167,7 @@ func ResolveLTOMode(defaultValue lto.Mode) lto.Mode {
 const DefaultTestTimeout = "10m" // Matches Go's default test timeout
 
 func AddCommonFlags(fs *flag.FlagSet) {
-	fs.BoolVar(&Verbose, "v", false, "Verbose output")
+	fs.BoolVar(&Verbose, "debug", false, "Print debug information")
 }
 
 func AddOptLevelFlags(fs *flag.FlagSet) {
@@ -205,6 +206,7 @@ func AddBuildFlags(fs *flag.FlagSet) {
 	PthreadStackSize = 0
 	fs.BoolVar(&ForceRebuild, "a", false, "Force rebuilding of packages that are already up-to-date")
 	fs.BoolVar(&PrintCommands, "x", false, "Print the commands")
+	fs.BoolVar(&BuildV, "v", false, "print the names of packages as they are compiled.")
 	AddOptLevelFlags(fs)
 	AddLTOFlag(fs)
 	AddGlobalDCEFlag(fs)
@@ -333,6 +335,9 @@ func UpdateConfig(conf *build.Config) error {
 	conf.CompilerHash = compilerhash.Value()
 	conf.Tags = Tags
 	conf.Verbose = Verbose
+	if conf.Mode != build.ModeTest {
+		conf.BuildV = BuildV
+	}
 	conf.PrintCommands = PrintCommands
 	conf.OptLevel = OptLevel
 	conf.Target = Target
