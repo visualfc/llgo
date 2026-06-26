@@ -552,6 +552,54 @@ func TestSaveToCache_MainPackage(t *testing.T) {
 	}
 }
 
+func TestTryLoadFromCache_MainPackage(t *testing.T) {
+	td := t.TempDir()
+	oldFunc := cacheRootFunc
+	cacheRootFunc = func() string { return td }
+	defer func() { cacheRootFunc = oldFunc }()
+
+	ctx := &context{
+		conf: &packages.Config{},
+		buildConf: &Config{
+			Goos:   "darwin",
+			Goarch: "arm64",
+		},
+		crossCompile: crosscompile.Export{
+			LLVMTarget: "arm64-apple-darwin",
+		},
+	}
+
+	pkg := &aPackage{
+		Package: &packages.Package{
+			PkgPath: "main",
+			Name:    "main",
+		},
+		Fingerprint: "abc123",
+	}
+
+	cm := ctx.ensureCacheManager()
+	paths := cm.PackagePaths("arm64-apple-darwin", "main", "abc123")
+	if err := cm.EnsureDir(paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.Archive, []byte("stale main archive"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.Manifest, []byte("metadata: {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if ctx.tryLoadFromCache(pkg) {
+		t.Fatal("main package should not be loaded from cache")
+	}
+	if pkg.CacheHit {
+		t.Fatal("main package cache hit should remain false")
+	}
+	if pkg.ArchiveFile != "" {
+		t.Fatalf("main package ArchiveFile = %q, want empty", pkg.ArchiveFile)
+	}
+}
+
 func TestSaveToCache_Success(t *testing.T) {
 	td := t.TempDir()
 	oldFunc := cacheRootFunc
