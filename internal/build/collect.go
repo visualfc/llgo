@@ -318,6 +318,13 @@ func (c *context) tryLoadFromCache(pkg *aPackage) bool {
 		return false
 	}
 
+	// Main packages are intentionally not written to the build cache because
+	// each executable's entry module is linked against the current main archive.
+	// Do not load stale main archives that may exist from older cache layouts.
+	if pkg.Name == "main" {
+		return false
+	}
+
 	// Skip cache when force rebuild is enabled
 	if c.buildConf.ForceRebuild {
 		return false
