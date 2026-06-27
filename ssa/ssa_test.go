@@ -426,42 +426,6 @@ func TestDevLTOGlobalDCEFakeUseValueInlineAsm(t *testing.T) {
 	}
 }
 
-func TestDevLTOGlobalDCEIntrinsicHelpersReuseDeclarations(t *testing.T) {
-	requireGoGlobalDCE(t)
-
-	prog := NewProgram(nil)
-	pkg := prog.NewPackage("main", "main")
-	mod := pkg.Module()
-
-	helpers := []struct {
-		name string
-		get  func() llvm.Value
-	}{
-		{"llvm.type.checked.load", func() llvm.Value { return prog.llvmTypeCheckedLoad(mod) }},
-		{"llvm.assume", func() llvm.Value { return prog.llvmAssume(mod) }},
-	}
-	for _, helper := range helpers {
-		first := helper.get()
-		second := helper.get()
-		if first.IsNil() || second.IsNil() {
-			t.Fatalf("%s helper returned nil declaration", helper.name)
-		}
-		if first != second {
-			t.Fatalf("%s helper did not reuse the existing declaration", helper.name)
-		}
-		if first.Name() != helper.name {
-			t.Fatalf("helper declaration name = %q, want %q", first.Name(), helper.name)
-		}
-	}
-
-	ir := pkg.String()
-	for _, want := range []string{"@llvm.type.checked.load", "@llvm.assume"} {
-		if strings.Count(ir, want) != 1 {
-			t.Fatalf("expected exactly one %s declaration:\n%s", want, ir)
-		}
-	}
-}
-
 func TestDevLTOGlobalDCEMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 	requireGoGlobalDCE(t)
 
@@ -471,15 +435,21 @@ func TestDevLTOGlobalDCEMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
 	fn := pkg.NewFunc("Use", sig, InGo)
 	b := fn.MakeBody(1)
-	loaded := prog.methodCheckedLoad(b.impl, pkg.Module(), g.impl, "go.method.M:func()")
+	loaded := prog.methodCheckedLoad(b.impl, g.impl, "go.method.M:func()")
+	prog.methodCheckedLoad(b.impl, g.impl, "go.method.N:func()")
 	prog.fakeUseValueInlineAsm(b.impl, loaded)
 	b.Return()
+
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatal(err)
+	}
 
 	ir := pkg.String()
 	for _, want := range []string{
 		"@llvm.type.checked.load",
 		"@llvm.assume",
 		`!"go.method.M:func()"`,
+		`!"go.method.N:func()"`,
 	} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("missing %s in method checked load IR:\n%s", want, ir)

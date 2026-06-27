@@ -369,9 +369,12 @@ func TestInstrHelperEdges(t *testing.T) {
 		t.Fatal("syscallFnSig should be variadic")
 	}
 
-	sig := ctx.syscallFnSigFixed(2)
+	sig := ctx.syscallFnSigFixed([]types.Type{types.Typ[types.Uintptr], types.Typ[types.Float64]})
 	if got := sig.Params().Len(); got != 2 {
 		t.Fatalf("syscallFnSigFixed params = %d, want 2", got)
+	}
+	if got := sig.Params().At(1).Type(); got != types.Typ[types.Float64] {
+		t.Fatalf("syscallFnSigFixed param 1 = %v, want float64", got)
 	}
 	if got := sig.Results().Len(); got != 1 {
 		t.Fatalf("syscallFnSigFixed results = %d, want 1", got)

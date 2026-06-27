@@ -10,6 +10,7 @@ import (
 
 	"github.com/goplus/llgo/ssa"
 	"github.com/goplus/llgo/ssa/ssatest"
+	"github.com/xgo-dev/llvm"
 )
 
 func TestGoClosureStartupUsesGCManagedMemory(t *testing.T) {
@@ -45,5 +46,27 @@ func TestGoClosureStartupUsesGCManagedMemory(t *testing.T) {
 	// visible to the runtime GC until the new goroutine consumes them.
 	if got := strings.Count(ir, `"github.com/goplus/llgo/runtime/internal/runtime.AllocU"`); got < 2 {
 		t.Fatalf("expected closure ctx and goroutine startup data to use AllocU, got %d:\n%s", got, ir)
+	}
+}
+
+func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {
+	prog := ssatest.NewProgram(t, nil)
+	pkg := prog.NewPackage("bar", "foo/bar")
+
+	outer := pkg.NewFunc("outer", ssa.NoArgsNoRet, ssa.InGo)
+	ob := outer.MakeBody(1)
+	ob.Go(ssa.Nil, func(b ssa.Builder, _ ssa.Expr, args ...ssa.Expr) ssa.Expr {
+		b.Panic(args[0])
+		return ssa.Expr{}
+	}, prog.Zero(prog.Any()))
+	ob.Return()
+
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatal(err)
+	}
+
+	ir := pkg.String()
+	if strings.Contains(ir, "unreachable\n  ret ptr null") {
+		t.Fatalf("goroutine wrapper should not return after unreachable:\n%s", ir)
 	}
 }

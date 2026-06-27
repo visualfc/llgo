@@ -259,8 +259,9 @@ func (b Builder) free(ptr Expr) Expr {
 // declare void @llvm.memset.inline.p0.p0i8.i32(ptr <dest>, i8 <val>, i32 <len>, i1 <isvolatile>)
 // declare void @llvm.memset.inline.p0.p0.i64(ptr <dest>, i8 <val>, i64 <len>, i1 <isvolatile>)
 func (b Builder) memset(ptr, val, len, isvolatile Expr) Expr {
-	fn := b.Pkg.cFunc("llvm.memset", b.Prog.tyMemsetInline())
-	b.Call(fn, ptr, val, len, isvolatile)
+	b.impl.CreateIntrinsic(b.Prog.Void().ll, llvm.LookupIntrinsicID("llvm.memset"), []llvm.Value{
+		ptr.impl, val.impl, len.impl, isvolatile.impl,
+	}, "")
 	return ptr
 }
 

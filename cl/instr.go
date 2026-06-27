@@ -425,12 +425,12 @@ func (p *context) syscallFnSig(argc int) *types.Signature {
 	return types.NewSignatureType(nil, nil, nil, types.NewTuple(params...), types.NewTuple(ret), true)
 }
 
-// syscallFnSigFixed returns a non-variadic C signature with argc uintptr
-// parameters and returning a uintptr.
-func (p *context) syscallFnSigFixed(argc int) *types.Signature {
-	params := make([]*types.Var, 0, argc)
-	for i := 0; i < argc; i++ {
-		params = append(params, types.NewParam(token.NoPos, nil, "", types.Typ[types.Uintptr]))
+// syscallFnSigFixed returns a non-variadic C signature with the given parameter
+// types and returning a uintptr.
+func (p *context) syscallFnSigFixed(paramTypes []types.Type) *types.Signature {
+	params := make([]*types.Var, 0, len(paramTypes))
+	for _, typ := range paramTypes {
+		params = append(params, types.NewParam(token.NoPos, nil, "", typ))
 	}
 	ret := types.NewVar(token.NoPos, nil, "", types.Typ[types.Uintptr])
 	return types.NewSignatureType(nil, nil, nil, types.NewTuple(params...), types.NewTuple(ret), false)
@@ -455,8 +455,8 @@ func (p *context) syscallErrno(b llssa.Builder, r1 llssa.Expr) llssa.Expr {
 
 // syscallIntrinsic implements the llgo.syscall intrinsic for libc-based syscalls.
 // The first argument is treated as a function pointer, called with the remaining
-// arguments (as uintptr), and it returns a (r1, r2, errno) tuple. r2 is always 0
-// and errno is set iff r1 == -1.
+// arguments, and it returns a (r1, r2, errno) tuple. r2 is always 0 and errno is
+// set iff r1 == -1.
 func (p *context) syscallIntrinsic(b llssa.Builder, args []ssa.Value, results *types.Tuple) llssa.Expr {
 	if len(args) < 1 {
 		panic("syscall: missing arguments")
@@ -465,7 +465,11 @@ func (p *context) syscallIntrinsic(b llssa.Builder, args []ssa.Value, results *t
 	for _, arg := range args[1:] {
 		callArgs = append(callArgs, p.compileValue(b, arg))
 	}
-	fnSig := p.syscallFnSigFixed(len(callArgs))
+	callArgTypes := make([]types.Type, 0, len(callArgs))
+	for _, arg := range callArgs {
+		callArgTypes = append(callArgTypes, arg.RawType())
+	}
+	fnSig := p.syscallFnSigFixed(callArgTypes)
 	fnArg := p.compileValue(b, args[0])
 	fnType := p.type_(fnSig, llssa.InC)
 	fnPtr := b.PtrCast(fnType, b.Convert(p.type_(types.Typ[types.UnsafePointer], llssa.InGo), fnArg))

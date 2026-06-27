@@ -36,7 +36,7 @@ func (p *Point) Set(x int, y int) {
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.Point.String"(%"{{.*}}/cl/_testgo/reflectmk.Point" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/reflectmk.Point", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %1, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/reflectmk.Point" %0, ptr %1, align 8
 // CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %3 = load i64, ptr %2, align 8
@@ -442,7 +442,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_14
 // CHECK-NEXT:   %220 = alloca %reflect.Method, align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %220, i8 0, i64 80, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %220, i8 0, i64 80, i1 false)
 // CHECK-NEXT:   %221 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
 // CHECK-NEXT:   %222 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %9, 0
 // CHECK-NEXT:   %223 = getelementptr ptr, ptr %222, i64 {{(23|25)}}
@@ -468,7 +468,7 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_16
 // CHECK-NEXT:   %236 = alloca %reflect.Method, align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %236, i8 0, i64 80, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %236, i8 0, i64 80, i1 false)
 // CHECK-NEXT:   %237 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
 // CHECK-NEXT:   %238 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %9, 0
 // CHECK-NEXT:   %239 = getelementptr ptr, ptr %238, i64 {{(24|26)}}
