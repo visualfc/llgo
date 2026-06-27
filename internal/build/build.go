@@ -1196,7 +1196,7 @@ func (c *context) archiver() string {
 	if ar := os.Getenv("LLGO_AR"); ar != "" {
 		return ar
 	}
-	if c.buildConf.Goarch == "wasm" || strings.Contains(c.crossCompile.LLVMTarget, "wasm") {
+	if c.buildConf.ltoEnabled() || c.buildConf.Goarch == "wasm" || strings.Contains(c.crossCompile.LLVMTarget, "wasm") {
 		if llvmAr, err := exec.LookPath("llvm-ar"); err == nil {
 			return llvmAr
 		}

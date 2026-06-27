@@ -395,6 +395,31 @@ func TestLTOEnabledExplicitOverride(t *testing.T) {
 	}
 }
 
+func TestArchiverPrefersLLVMArForLTO(t *testing.T) {
+	td := t.TempDir()
+	llvmAr := filepath.Join(td, "llvm-ar")
+	if err := os.WriteFile(llvmAr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", td)
+	t.Setenv("LLGO_AR", "")
+
+	if got := (&context{buildConf: &Config{LTO: lto.Off}}).archiver(); got != "ar" {
+		t.Fatalf("archiver without lto = %q, want ar", got)
+	}
+	if got := (&context{buildConf: &Config{LTO: lto.Full}}).archiver(); got != llvmAr {
+		t.Fatalf("archiver with full lto = %q, want %q", got, llvmAr)
+	}
+}
+
+func TestArchiverAllowsLLGOAROverrideForLTO(t *testing.T) {
+	t.Setenv("LLGO_AR", "custom-ar")
+
+	if got := (&context{buildConf: &Config{LTO: lto.Full}}).archiver(); got != "custom-ar" {
+		t.Fatalf("archiver with LLGO_AR = %q, want custom-ar", got)
+	}
+}
+
 func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 	tests := []struct {
 		name string
