@@ -12,7 +12,7 @@ require (
 	github.com/mattn/go-tty v0.0.8
 	github.com/qiniu/x v1.18.0
 	github.com/sigurn/crc16 v0.0.0-20240131213347-83fcde1e29d1
-	github.com/xgo-dev/llvm v0.9.2
+	github.com/xgo-dev/llvm v0.9.3
 	github.com/xgo-dev/plan9asm v0.3.0
 	go.bug.st/serial v1.6.4
 	go.yaml.in/yaml/v3 v3.0.4
@@ -29,5 +29,3 @@ require (
 )
 
 replace github.com/goplus/llgo/runtime => ./runtime
-
-replace github.com/xgo-dev/llvm => github.com/zhouguangyuan0718/go-llvm v0.0.0-20260627053858-b1a749c0c32f
