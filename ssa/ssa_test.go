@@ -537,13 +537,20 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataMarksIFnAndTFnForReflectContexts(t 
 	ir := pkg.String()
 	for _, want := range []string{
 		fmt.Sprintf(`!{i64 %d, !"%s"}`, ifnOffset, reflectValueMethodTypeID),
+		fmt.Sprintf(`!{i64 %d, !"%s"}`, ifnOffset, reflectValueMethodNameTypeID("Keep")),
 		fmt.Sprintf(`!{i64 %d, !"%s"}`, tfnOffset, reflectTypeMethodTypeID),
+		fmt.Sprintf(`!{i64 %d, !"%s"}`, tfnOffset, reflectTypeMethodNameTypeID("Keep")),
 	} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("missing reflect method metadata %s:\n%s", want, ir)
 		}
 	}
-	for _, typeID := range []string{reflectValueMethodTypeID, reflectTypeMethodTypeID} {
+	for _, typeID := range []string{
+		reflectValueMethodTypeID,
+		reflectValueMethodNameTypeID("Keep"),
+		reflectTypeMethodTypeID,
+		reflectTypeMethodNameTypeID("Keep"),
+	} {
 		if count := strings.Count(ir, `!"`+typeID+`"`); count != 1 {
 			t.Fatalf("reflect method metadata count for %s = %d, want 1:\n%s", typeID, count, ir)
 		}
