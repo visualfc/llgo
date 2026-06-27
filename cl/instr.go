@@ -425,15 +425,31 @@ func (p *context) syscallFnSig(argc int) *types.Signature {
 	return types.NewSignatureType(nil, nil, nil, types.NewTuple(params...), types.NewTuple(ret), true)
 }
 
-// syscallFnSigFixed returns a non-variadic C signature with argc uintptr
-// parameters and returning a uintptr.
-func (p *context) syscallFnSigFixed(argc int) *types.Signature {
-	params := make([]*types.Var, 0, argc)
-	for i := 0; i < argc; i++ {
-		params = append(params, types.NewParam(token.NoPos, nil, "", types.Typ[types.Uintptr]))
+// syscallFnSigFixed returns a non-variadic C signature with the given parameter
+// types and returning a uintptr.
+func (p *context) syscallFnSigFixed(paramTypes []types.Type) *types.Signature {
+	params := make([]*types.Var, 0, len(paramTypes))
+	for _, typ := range paramTypes {
+		params = append(params, types.NewParam(token.NoPos, nil, "", typ))
 	}
 	ret := types.NewVar(token.NoPos, nil, "", types.Typ[types.Uintptr])
 	return types.NewSignatureType(nil, nil, nil, types.NewTuple(params...), types.NewTuple(ret), false)
+}
+
+func (p *context) syscallArg(b llssa.Builder, arg ssa.Value, uptr llssa.Type) (llssa.Expr, types.Type) {
+	expr := p.compileValue(b, arg)
+	if basic, ok := types.Unalias(arg.Type()).Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Float32:
+			return expr, types.Typ[types.Float32]
+		case types.Float64:
+			return expr, types.Typ[types.Float64]
+		}
+		if basic.Info()&types.IsInteger != 0 && p.prog.SizeOf(expr.Type) == p.prog.SizeOf(uptr) {
+			return b.ChangeType(uptr, expr), types.Typ[types.Uintptr]
+		}
+	}
+	return b.Convert(uptr, expr), types.Typ[types.Uintptr]
 }
 
 var errnoSig = types.NewSignatureType(nil, nil, nil, nil,
@@ -455,22 +471,26 @@ func (p *context) syscallErrno(b llssa.Builder, r1 llssa.Expr) llssa.Expr {
 
 // syscallIntrinsic implements the llgo.syscall intrinsic for libc-based syscalls.
 // The first argument is treated as a function pointer, called with the remaining
-// arguments (as uintptr), and it returns a (r1, r2, errno) tuple. r2 is always 0
+// arguments (integer and pointer arguments as uintptr, float arguments as their
+// original ABI types), and it returns a (r1, r2, errno) tuple. r2 is always 0
 // and errno is set iff r1 == -1.
 func (p *context) syscallIntrinsic(b llssa.Builder, args []ssa.Value, results *types.Tuple) llssa.Expr {
 	if len(args) < 1 {
 		panic("syscall: missing arguments")
 	}
 	callArgs := make([]llssa.Expr, 0, len(args)-1)
+	callArgTypes := make([]types.Type, 0, len(args)-1)
+	uptr := p.type_(types.Typ[types.Uintptr], llssa.InGo)
 	for _, arg := range args[1:] {
-		callArgs = append(callArgs, p.compileValue(b, arg))
+		expr, typ := p.syscallArg(b, arg, uptr)
+		callArgs = append(callArgs, expr)
+		callArgTypes = append(callArgTypes, typ)
 	}
-	fnSig := p.syscallFnSigFixed(len(callArgs))
+	fnSig := p.syscallFnSigFixed(callArgTypes)
 	fnArg := p.compileValue(b, args[0])
 	fnType := p.type_(fnSig, llssa.InC)
 	fnPtr := b.PtrCast(fnType, b.Convert(p.type_(types.Typ[types.UnsafePointer], llssa.InGo), fnArg))
 	r1 := b.Call(fnPtr, callArgs...)
-	uptr := p.type_(types.Typ[types.Uintptr], llssa.InGo)
 	r2 := p.prog.Zero(uptr)
 	err := p.syscallErrno(b, r1)
 	tuple := p.type_(results, llssa.InGo)
