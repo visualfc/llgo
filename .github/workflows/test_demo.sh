@@ -115,6 +115,7 @@ ignore_esp32=(
   "./_demo/go/reflectpointerto" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectpkgpath" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectslice" # panic: internal/bytealg selected .s files require plan9asm translation
+  "./_demo/go/reflectvisiblefields" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/return-1605" # runtime output: fatal error
   "./_demo/go/runtime" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/sync" # panic: internal/bytealg selected .s files require plan9asm translation
@@ -192,6 +193,7 @@ ignore_esp32c3_basic=(
   "./_demo/go/reflectpointerto" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectpkgpath" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectslice" # panic: internal/bytealg selected .s files require plan9asm translation
+  "./_demo/go/reflectvisiblefields" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/runtime" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/sync" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/sysopen-1654" # panic: internal/bytealg selected .s files require plan9asm translation
