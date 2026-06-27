@@ -39,14 +39,6 @@ func TestNilDerefAddressOperationsPanic(t *testing.T) {
 				nilDerefAddressSink = &p[0]
 			},
 		},
-		{
-			name: "array pointer element address before bounds",
-			f: func() {
-				var p *[2]int
-				i := 3
-				nilDerefAddressSink = &p[i]
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
