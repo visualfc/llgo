@@ -102,7 +102,10 @@ func (p Package) routine(t Type, fn Expr, buildCall func(Builder, Expr, ...Expr)
 		args[i] = b.getField(data, i+offset)
 	}
 	buildCall(b, fn, args...)
-	b.Return(prog.Nil(prog.VoidPtr()))
+	lastInst := b.impl.GetInsertBlock().LastInstruction()
+	if lastInst.IsNil() || lastInst.IsAUnreachableInst().IsNil() {
+		b.Return(prog.Nil(prog.VoidPtr()))
+	}
 	return routine.Expr
 }
 

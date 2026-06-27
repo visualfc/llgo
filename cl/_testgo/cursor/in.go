@@ -35,7 +35,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-LABEL: define { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } @"{{.*}}/cl/_testgo/cursor.Cursor.FindNode"(%"{{.*}}/cl/_testgo/cursor.Cursor" %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %2, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %2, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %0, ptr %2, align 8
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.iface" %1, ptr %3, align 8
@@ -132,7 +132,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_10:                                         ; preds = %_llgo_9
 // CHECK-NEXT:   %54 = alloca %"{{.*}}/cl/_testgo/cursor.event", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %54, i8 0, i64 32, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %54, i8 0, i64 32, i1 false)
 // CHECK-NEXT:   %55 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, 0
 // CHECK-NEXT:   %56 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, 1
 // CHECK-NEXT:   %57 = sext i32 %52 to i64
@@ -171,7 +171,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_14:                                         ; preds = %_llgo_16
 // CHECK-NEXT:   %76 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %76, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %76, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   %77 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %76, i32 0, i32 0
 // CHECK-NEXT:   %78 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   %79 = load ptr, ptr %78, align 8
@@ -547,7 +547,7 @@ const (
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.Cursor.Node"(%"{{.*}}/cl/_testgo/cursor.Cursor" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %1, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %0, ptr %1, align 8
 // CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %3 = load i32, ptr %2, align 4
@@ -618,7 +618,7 @@ const (
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1
 // CHECK-NEXT:   %15 = alloca %"{{.*}}/cl/_testgo/cursor.event", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %15, i8 0, i64 32, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %15, i8 0, i64 32, i1 false)
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 0
 // CHECK-NEXT:   %17 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 1
 // CHECK-NEXT:   %18 = sext i32 %13 to i64
@@ -671,7 +671,7 @@ const (
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_4
 // CHECK-NEXT:   %49 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %49, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %49, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   %50 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %49, i32 0, i32 0
 // CHECK-NEXT:   %51 = extractvalue { ptr, ptr } %2, 0
 // CHECK-NEXT:   %52 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %51, i32 0, i32 0
@@ -693,7 +693,7 @@ const (
 // CHECK-LABEL: define { i32, i32 } @"{{.*}}/cl/_testgo/cursor.Cursor.indices"(%"{{.*}}/cl/_testgo/cursor.Cursor" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %1, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %0, ptr %1, align 8
 // CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %3 = load i32, ptr %2, align 4

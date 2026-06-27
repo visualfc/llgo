@@ -88,7 +88,7 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 	if prog.enableGoGlobalDCE {
 		fnType := prog.Elem(pfn.Type)
 		fn = Expr{
-			prog.methodCheckedLoad(b.impl, b.Pkg.Module(), pfn.impl, methodCapabilityKey(method)),
+			prog.methodCheckedLoad(b.impl, pfn.impl, methodCapabilityKey(method)),
 			fnType,
 		}
 	} else {

@@ -28,7 +28,7 @@ type T struct {
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/invoke.T.Invoke"(%"{{.*}}/cl/_testgo/invoke.T" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/invoke.T", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %1, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/invoke.T" %0, ptr %1, align 8
 // CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/invoke.T", ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %3 = load %"{{.*}}/runtime/internal/runtime.String", ptr %2, align 8
@@ -223,7 +223,7 @@ type M interface {
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/invoke.T4.Invoke"([1 x i64] %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = alloca [1 x i64], align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %1, i8 0, i64 8, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 8, i1 false)
 // CHECK-NEXT:   store [1 x i64] %0, ptr %1, align 8
 // CHECK-NEXT:   %2 = getelementptr inbounds i64, ptr %1, i64 0
 // CHECK-NEXT:   %3 = load i64, ptr %2, align 8
@@ -246,7 +246,7 @@ type M interface {
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/invoke.T5.Invoke"(%"{{.*}}/cl/_testgo/invoke.T5" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/invoke.T5", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %1, i8 0, i64 8, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 8, i1 false)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testgo/invoke.T5" %0, ptr %1, align 8
 // CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/invoke.T5", ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %3 = load i64, ptr %2, align 8
@@ -423,7 +423,7 @@ type M interface {
 // CHECK-NEXT:   %72 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %71, ptr %69, 1
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/invoke.invoke"(%"{{.*}}/runtime/internal/runtime.iface" %72)
 // CHECK-NEXT:   %73 = alloca %"{{.*}}/cl/_testgo/invoke.T", align 8
-// CHECK-NEXT:   call void @llvm.memset(ptr %73, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %73, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   %74 = getelementptr inbounds %"{{.*}}/cl/_testgo/invoke.T", ptr %73, i32 0, i32 0
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @36, i64 5 }, ptr %74, align 8
 // CHECK-NEXT:   %75 = load %"{{.*}}/cl/_testgo/invoke.T", ptr %73, align 8

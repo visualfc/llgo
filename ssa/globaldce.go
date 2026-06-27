@@ -107,26 +107,6 @@ func methodCapabilityKey(method *types.Func) string {
 	return "go.method." + method.Name() + ":" + methodCapabilitySig(method.Type().(*types.Signature))
 }
 
-func (p Program) llvmTypeCheckedLoad(mod llvm.Module) llvm.Value {
-	fn := mod.NamedFunction("llvm.type.checked.load")
-	if !fn.IsNil() {
-		return fn
-	}
-	mdTy := p.ctx.MetadataType()
-	retTy := p.ctx.StructType([]llvm.Type{p.tyVoidPtr(), p.tyInt1()}, false)
-	fnTy := llvm.FunctionType(retTy, []llvm.Type{p.tyVoidPtr(), p.Int32().ll, mdTy}, false)
-	return llvm.AddFunction(mod, "llvm.type.checked.load", fnTy)
-}
-
-func (p Program) llvmAssume(mod llvm.Module) llvm.Value {
-	fn := mod.NamedFunction("llvm.assume")
-	if !fn.IsNil() {
-		return fn
-	}
-	fnTy := llvm.FunctionType(p.tyVoid(), []llvm.Type{p.tyInt1()}, false)
-	return llvm.AddFunction(mod, "llvm.assume", fnTy)
-}
-
 func (p Program) addModuleFlag(mod llvm.Module, behavior uint64, name string, val uint64) {
 	mod.AddNamedMetadataOperand("llvm.module.flags",
 		p.ctx.MDNode([]llvm.Metadata{
@@ -158,15 +138,16 @@ func (p Program) setVCallVisibilityMetadata(global llvm.Value, vis uint64) {
 	global.AddMetadata(kind, node)
 }
 
-func (p Program) methodCheckedLoad(b llvm.Builder, mod llvm.Module, typedesc llvm.Value, typeID string) llvm.Value {
+func (p Program) methodCheckedLoad(b llvm.Builder, typedesc llvm.Value, typeID string) llvm.Value {
 	mdVal := p.ctx.MetadataAsValue(p.ctx.MDString(typeID))
-	res := llvm.CreateCall(b, p.llvmTypeCheckedLoad(mod).GlobalValueType(), p.llvmTypeCheckedLoad(mod), []llvm.Value{
+	retTy := p.ctx.StructType([]llvm.Type{p.tyVoidPtr(), p.tyInt1()}, false)
+	res := b.CreateIntrinsic(retTy, llvm.LookupIntrinsicID("llvm.type.checked.load"), []llvm.Value{
 		typedesc,
 		llvm.ConstInt(p.Int32().ll, 0, false),
 		mdVal,
-	})
+	}, "")
 	ok := llvm.CreateExtractValue(b, res, 1)
-	llvm.CreateCall(b, p.llvmAssume(mod).GlobalValueType(), p.llvmAssume(mod), []llvm.Value{ok})
+	b.CreateIntrinsic(p.tyVoid(), llvm.LookupIntrinsicID("llvm.assume"), []llvm.Value{ok}, "")
 	return llvm.CreateExtractValue(b, res, 0)
 }
 
@@ -174,9 +155,8 @@ func (b Builder) EmitReflectMethodCheckedLoad(ret Expr, reflectKind int) {
 	if !b.Prog.enableGoGlobalDCE || ret.IsNil() || reflectKind&ReflectMethodMask == 0 {
 		return
 	}
-	mod := b.Pkg.Module()
 	checkedLoadValue := func(v Expr, typeID string) {
-		b.Prog.methodCheckedLoad(b.impl, mod, b.Extract(v, reflectValuePtrFieldIndex).impl, typeID)
+		b.Prog.methodCheckedLoad(b.impl, b.Extract(v, reflectValuePtrFieldIndex).impl, typeID)
 	}
 	if reflectKind&reflectTypeMethodMask == 0 {
 		checkedLoadValue(ret, reflectValueMethodTypeID)
