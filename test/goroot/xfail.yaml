@@ -1779,14 +1779,6 @@ xfails:
     directive: run
     case: fixedbugs/issue37975.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue63657.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue65417.go
-    reason: current main goroot run failure on darwin/arm64
   - version: go1.26
     platform: darwin/arm64
     directive: run
@@ -1796,21 +1788,6 @@ xfails:
     platform: darwin/arm64
     directive: run
     case: fixedbugs/issue73916b.go
-    reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue75327.go
-    reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue72844.go
-    reason: go1.25 goroot run failure on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue72844.go
     reason: go1.26 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
@@ -2431,11 +2408,6 @@ xfails:
     case: fixedbugs/issue72860.go
     reason: go1.25 goroot run failure on linux/amd64
   - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue72860.go
-    reason: go1.25 goroot run failure on darwin/arm64
-  - version: go1.25
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue54343.go
@@ -2907,11 +2879,6 @@ xfails:
     case: fixedbugs/issue72860.go
     reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue72860.go
-    reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.26
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue5493.go
@@ -3019,6 +2986,10 @@ xfails:
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/bug273.go
+    reason: current main goroot run failure on darwin/arm64
+  - platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue12133.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run

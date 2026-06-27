@@ -176,9 +176,10 @@ type context struct {
 	anonDefers  map[*ssa.Function]bool
 	paramDIVars map[*types.Var]llssa.DIVar
 
-	patches  Patches
-	blkInfos []blocks.Info
-	srcLines map[string][]string
+	patches          Patches
+	blkInfos         []blocks.Info
+	srcLines         map[string][]string
+	addrOfFieldAddrs map[token.Pos]none
 
 	inits     []func()
 	phis      []func()
@@ -753,6 +754,10 @@ func skipUnusedArrayDeref(v *ssa.UnOp) bool {
 	if v.Op != token.MUL {
 		return false
 	}
+	block := v.Block()
+	if block == nil || len(block.Succs) != 1 || !strings.HasPrefix(block.Succs[0].Comment, "rangeindex.") {
+		return false
+	}
 	refs := v.Referrers()
 	if refs == nil || len(*refs) != 0 {
 		return false
@@ -761,6 +766,20 @@ func skipUnusedArrayDeref(v *ssa.UnOp) bool {
 		return false
 	}
 	return true
+}
+
+func shouldAssertDirectNilDeref(v *ssa.UnOp) bool {
+	if v.Op != token.MUL {
+		return false
+	}
+	if _, ok := v.X.(*ssa.Parameter); !ok {
+		return false
+	}
+	switch types.Unalias(v.Type()).Underlying().(type) {
+	case *types.Basic, *types.Pointer, *types.Chan, *types.Map, *types.Slice, *types.Interface:
+		return true
+	}
+	return false
 }
 
 func (p *context) cgoErrnoType() types.Type {
@@ -987,6 +1006,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		ret = b.BinOp(v.Op, x, y)
 	case *ssa.UnOp:
 		if v.Op == token.MUL {
+			if skipUnusedArrayDeref(v) {
+				p.compileValue(b, v.X)
+				return
+			}
 			if refs := v.Referrers(); refs != nil && len(*refs) == 0 {
 				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil {
 					if p.isLargeNonPointerValue(t) {
@@ -995,9 +1018,6 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 						b.AssertNilDeref(x)
 						return
 					}
-				}
-				if skipUnusedArrayDeref(v) {
-					return
 				}
 				if _, ok := types.Unalias(v.Type()).Underlying().(*types.Slice); ok {
 					// Zero-length slice-to-array conversions can leave only
@@ -1033,6 +1053,9 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			}
 		}
 		x := p.compileValue(b, v.X)
+		if shouldAssertDirectNilDeref(v) {
+			b.AssertNilDeref(x)
+		}
 		if v.Op == token.ARROW {
 			ret = b.Recv(x, v.CommaOk)
 		} else {
@@ -1065,6 +1088,9 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		ret = b.Convert(p.type_(t, llssa.InGo), x)
 	case *ssa.FieldAddr:
 		x := p.compileValue(b, v.X)
+		if p.isAddressOfFieldAddr(v) {
+			b.AssertNilDeref(x)
+		}
 		ret = b.FieldAddr(x, v.Field)
 	case *ssa.Alloc:
 		t := v.Type().(*types.Pointer)
@@ -1666,17 +1692,18 @@ func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 	}
 
 	ctx := &context{
-		prog:        prog,
-		pkg:         ret,
-		fset:        pkgProg.Fset,
-		goProg:      pkgProg,
-		goTyps:      pkgTypes,
-		goPkg:       pkg,
-		patches:     patches,
-		skips:       make(map[string]none),
-		vargs:       make(map[*ssa.Alloc][]llssa.Expr),
-		funcs:       make(map[*ssa.Function]llssa.Function),
-		linkOnceFns: make(map[*ssa.Function]none),
+		prog:             prog,
+		pkg:              ret,
+		fset:             pkgProg.Fset,
+		goProg:           pkgProg,
+		goTyps:           pkgTypes,
+		goPkg:            pkg,
+		patches:          patches,
+		skips:            make(map[string]none),
+		vargs:            make(map[*ssa.Alloc][]llssa.Expr),
+		funcs:            make(map[*ssa.Function]llssa.Function),
+		linkOnceFns:      make(map[*ssa.Function]none),
+		addrOfFieldAddrs: collectAddrOfFieldSelectors(files),
 		loaded: map[*types.Package]*pkgInfo{
 			types.Unsafe: {kind: PkgDeclOnly}, // TODO(xsw): PkgNoInit or PkgDeclOnly?
 		},

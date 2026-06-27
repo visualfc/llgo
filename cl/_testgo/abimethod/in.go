@@ -8,23 +8,23 @@ import (
 	"unsafe"
 )
 
-// CHECK: @0 = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/abimethod.T", align 1
-// CHECK: @1 = private unnamed_addr constant [5 x i8] c"Demo1", align 1
-// CHECK: @5 = private unnamed_addr constant [3 x i8] c"int", align 1
-// CHECK: @14 = private unnamed_addr constant [20 x i8] c"testAnonymous1 error", align 1
-// CHECK: @16 = private unnamed_addr constant [20 x i8] c"testAnonymous2 error", align 1
-// CHECK: @18 = private unnamed_addr constant [20 x i8] c"testAnonymous3 error", align 1
-// CHECK: @19 = private unnamed_addr constant [20 x i8] c"testAnonymous4 error", align 1
-// CHECK: @21 = private unnamed_addr constant [20 x i8] c"testAnonymous5 error", align 1
-// CHECK: @22 = private unnamed_addr constant [20 x i8] c"testAnonymous6 error", align 1
-// CHECK: @24 = private unnamed_addr constant [20 x i8] c"testAnonymous7 error", align 1
-// CHECK: @26 = private unnamed_addr constant [20 x i8] c"testAnonymous8 error", align 1
-// CHECK: @27 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK: @96 = private unnamed_addr constant [25 x i8] c"testAnonymousBuffer error", align 1
-// CHECK: @109 = private unnamed_addr constant [17 x i8] c"testGeneric error", align 1
-// CHECK: @110 = private unnamed_addr constant [16 x i8] c"testNamed1 error", align 1
-// CHECK: @111 = private unnamed_addr constant [16 x i8] c"testNamed2 error", align 1
-// CHECK: @112 = private unnamed_addr constant [16 x i8] c"testNamed4 error", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/abimethod.T", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [5 x i8] c"Demo1", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [3 x i8] c"int", align 1{{$}}
+// CHECK: {{^}}@14 = private unnamed_addr constant [20 x i8] c"testAnonymous1 error", align 1{{$}}
+// CHECK: {{^}}@16 = private unnamed_addr constant [20 x i8] c"testAnonymous2 error", align 1{{$}}
+// CHECK: {{^}}@18 = private unnamed_addr constant [20 x i8] c"testAnonymous3 error", align 1{{$}}
+// CHECK: {{^}}@19 = private unnamed_addr constant [20 x i8] c"testAnonymous4 error", align 1{{$}}
+// CHECK: {{^}}@21 = private unnamed_addr constant [20 x i8] c"testAnonymous5 error", align 1{{$}}
+// CHECK: {{^}}@22 = private unnamed_addr constant [20 x i8] c"testAnonymous6 error", align 1{{$}}
+// CHECK: {{^}}@24 = private unnamed_addr constant [20 x i8] c"testAnonymous7 error", align 1{{$}}
+// CHECK: {{^}}@26 = private unnamed_addr constant [20 x i8] c"testAnonymous8 error", align 1{{$}}
+// CHECK: {{^}}@27 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+// CHECK: {{^}}@96 = private unnamed_addr constant [25 x i8] c"testAnonymousBuffer error", align 1{{$}}
+// CHECK: {{^}}@109 = private unnamed_addr constant [17 x i8] c"testGeneric error", align 1{{$}}
+// CHECK: {{^}}@110 = private unnamed_addr constant [16 x i8] c"testNamed1 error", align 1{{$}}
+// CHECK: {{^}}@111 = private unnamed_addr constant [16 x i8] c"testNamed2 error", align 1{{$}}
+// CHECK: {{^}}@112 = private unnamed_addr constant [16 x i8] c"testNamed4 error", align 1{{$}}
 
 type T struct {
 	n int
@@ -2140,15 +2140,19 @@ type I2 interface {
 
 // CHECK-LABEL: define linkonce ptr @"{{.*}}/cl/_testgo/abimethod.(*Pointer[any]).Load"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/abimethod.Pointer[any]", ptr %0, i32 0, i32 1
-// CHECK-NEXT:   %2 = load atomic ptr, ptr %1 seq_cst, align 8
-// CHECK-NEXT:   ret ptr %2
+// CHECK-NEXT:   %1 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %1)
+// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/abimethod.Pointer[any]", ptr %0, i32 0, i32 1
+// CHECK-NEXT:   %3 = load atomic ptr, ptr %2 seq_cst, align 8
+// CHECK-NEXT:   ret ptr %3
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define linkonce void @"{{.*}}/cl/_testgo/abimethod.(*Pointer[any]).Store"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/abimethod.Pointer[any]", ptr %0, i32 0, i32 1
-// CHECK-NEXT:   store atomic ptr %1, ptr %2 seq_cst, align 8
+// CHECK-NEXT:   %2 = icmp eq ptr %0, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
+// CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/cl/_testgo/abimethod.Pointer[any]", ptr %0, i32 0, i32 1
+// CHECK-NEXT:   store atomic ptr %1, ptr %3 seq_cst, align 8
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
