@@ -157,24 +157,25 @@ type pkgInfo struct {
 type none = struct{}
 
 type context struct {
-	prog        llssa.Program
-	pkg         llssa.Package
-	fn          llssa.Function
-	goFn        *ssa.Function
-	fset        *token.FileSet
-	goProg      *ssa.Program
-	goTyps      *types.Package
-	goPkg       *ssa.Package
-	pyMod       string
-	skips       map[string]none
-	loaded      map[*types.Package]*pkgInfo // loaded packages
-	bvals       map[ssa.Value]llssa.Expr    // block values
-	vargs       map[*ssa.Alloc][]llssa.Expr // varargs
-	funcs       map[*ssa.Function]llssa.Function
-	linkOnceFns map[*ssa.Function]none
-	stackDefers map[*ssa.Function]bool
-	anonDefers  map[*ssa.Function]bool
-	paramDIVars map[*types.Var]llssa.DIVar
+	prog                 llssa.Program
+	pkg                  llssa.Package
+	fn                   llssa.Function
+	goFn                 *ssa.Function
+	fset                 *token.FileSet
+	goProg               *ssa.Program
+	goTyps               *types.Package
+	goPkg                *ssa.Package
+	pyMod                string
+	skips                map[string]none
+	loaded               map[*types.Package]*pkgInfo // loaded packages
+	bvals                map[ssa.Value]llssa.Expr    // block values
+	methodNilDerefChecks map[*ssa.UnOp]none
+	vargs                map[*ssa.Alloc][]llssa.Expr // varargs
+	funcs                map[*ssa.Function]llssa.Function
+	linkOnceFns          map[*ssa.Function]none
+	stackDefers          map[*ssa.Function]bool
+	anonDefers           map[*ssa.Function]bool
+	paramDIVars          map[*types.Var]llssa.DIVar
 
 	patches          Patches
 	blkInfos         []blocks.Info
@@ -499,12 +500,12 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		dbgEnabled := enableDbg && (f == nil || f.Origin() == nil)
 		dbgSymsEnabled := enableDbgSyms && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
-			oldFn, oldGoFn := p.fn, p.goFn
+			oldFn, oldGoFn, oldMethodNilDerefChecks := p.fn, p.goFn, p.methodNilDerefChecks
 			p.fn = fn
 			p.goFn = f
 			p.state = state // restore pkgState when compiling funcBody
 			defer func() {
-				p.fn, p.goFn = oldFn, oldGoFn
+				p.fn, p.goFn, p.methodNilDerefChecks = oldFn, oldGoFn, oldMethodNilDerefChecks
 			}()
 			p.phis = nil
 			if dbgSymsEnabled {
@@ -521,6 +522,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 				b.DebugFunction(fn, pos, bodyPos)
 			}
 			p.bvals = make(map[ssa.Value]llssa.Expr)
+			p.methodNilDerefChecks = collectMethodNilDerefChecks(f)
 			off := make([]int, len(f.Blocks))
 			if isCgo {
 				p.cgoArgs = make([]llssa.Expr, len(f.Params))
@@ -1006,9 +1008,8 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		ret = b.BinOp(v.Op, x, y)
 	case *ssa.UnOp:
 		if v.Op == token.MUL {
-			if skipUnusedArrayDeref(v) {
-				p.compileValue(b, v.X)
-				return
+			if _, ok := p.methodNilDerefChecks[v]; ok {
+				return p.compileCheckedDeref(b, v)
 			}
 			if refs := v.Referrers(); refs != nil && len(*refs) == 0 {
 				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil {
@@ -1018,6 +1019,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 						b.AssertNilDeref(x)
 						return
 					}
+				}
+				if skipUnusedArrayDeref(v) {
+					p.compileValue(b, v.X)
+					return
 				}
 				if _, ok := types.Unalias(v.Type()).Underlying().(*types.Slice); ok {
 					// Zero-length slice-to-array conversions can leave only
@@ -1287,9 +1292,22 @@ func (p *context) compileValueAs(b llssa.Builder, v ssa.Value, typ types.Type) l
 }
 
 func (p *context) assertNilDerefBase(b llssa.Builder, addr ssa.Value) {
-	if field, ok := addr.(*ssa.FieldAddr); ok {
-		base := p.compileValue(b, field.X)
-		b.AssertNilDeref(base)
+	switch addr := addr.(type) {
+	case *ssa.UnOp:
+		if addr.Op != token.MUL || isKnownNonNilAddr(addr.X) || isWrapNilCheckCall(addr.X) {
+			return
+		}
+		p.compileCheckedDeref(b, addr)
+	case *ssa.FieldAddr:
+		if isKnownNonNilAddr(addr.X) || isWrapNilCheckCall(addr.X) {
+			return
+		}
+		p.assertNilDerefBase(b, addr.X)
+		base := p.compileValue(b, addr.X)
+		if isPointerGoType(addr.X.Type()) {
+			base = b.NilDerefCheck(base)
+		}
+		p.bvals[addr] = b.FieldAddr(base, addr.Field)
 	}
 }
 
