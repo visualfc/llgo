@@ -5,12 +5,12 @@ import (
 	"github.com/goplus/llgo/cl/_testgo/genericembediface/streamlib"
 )
 
-// CHECK: @2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1
-// CHECK: @5 = private unnamed_addr constant [7 x i8] c"Context", align 1
-// CHECK: @10 = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1
-// CHECK: @19 = private unnamed_addr constant [4 x i8] c"pass", align 1
-// CHECK: @20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1
-// CHECK: @21 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1
+// CHECK: {{^}}@2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [7 x i8] c"Context", align 1{{$}}
+// CHECK: {{^}}@11 = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1{{$}}
+// CHECK: {{^}}@19 = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
+// CHECK: {{^}}@20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1{{$}}
+// CHECK: {{^}}@21 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1{{$}}
 
 type Request struct{}
 type Response struct{}
@@ -48,7 +48,7 @@ type ReflectionServer interface {
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %21
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 68 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @11, i64 68 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
