@@ -189,6 +189,7 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 			"./_testlto/globaldce_reflect_type_method_by_name",
 			"./_testlto/globaldce_reflect_value_method",
 			"./_testlto/globaldce_typeid_dce",
+			"./_testlto/globaldce_unexported_method_identity",
 			"./_testlto/anonymous_alias",
 		}
 	}
@@ -202,6 +203,7 @@ var testltoSymbolChecks = []string{
 	"globaldce_reflect_type_method_by_name",
 	"globaldce_reflect_value_method",
 	"globaldce_typeid_dce",
+	"globaldce_unexported_method_identity",
 }
 
 func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {

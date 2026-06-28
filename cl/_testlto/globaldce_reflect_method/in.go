@@ -10,7 +10,7 @@ import "reflect"
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect.Keep")
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect.Missing")
 // CHECK-DAG: !"go.method.Keep:func() string"
-// CHECK-DAG: !"go.method.hidden:func() string"
+// CHECK-DAG: !"go.method.{{.*}}/globaldce_reflect_method.hidden:func() string"
 // CHECK-DAG: !"go.method.value.reflect"
 // CHECK-DAG: !"go.method.value.reflect.Keep"
 // CHECK-DAG: !"go.method.type.reflect"

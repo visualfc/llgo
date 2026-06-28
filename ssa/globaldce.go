@@ -109,7 +109,18 @@ func methodCapabilityType(t types.Type) types.Type {
 }
 
 func methodCapabilityKey(method *types.Func) string {
-	return "go.method." + method.Name() + ":" + methodCapabilitySig(method.Type().(*types.Signature))
+	return "go.method." + methodCapabilityName(method) + ":" + methodCapabilitySig(method.Type().(*types.Signature))
+}
+
+func methodCapabilityName(method *types.Func) string {
+	name := method.Name()
+	if method.Exported() {
+		return name
+	}
+	if pkg := method.Pkg(); pkg != nil {
+		return types.Id(pkg, name)
+	}
+	return name
 }
 
 func reflectValueMethodNameTypeID(name string) string {

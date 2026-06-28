@@ -290,6 +290,60 @@ func TestDevLTOGlobalDCEMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *t
 	}
 }
 
+func TestDevLTOGlobalDCEMethodCapabilityKeyQualifiesUnexportedNames(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	pkgA := types.NewPackage("example.com/a", "a")
+	pkgB := types.NewPackage("example.com/b", "b")
+	makeMethod := func(pkg *types.Package) *types.Func {
+		recvType := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "T", nil), types.NewStruct(nil, nil), nil)
+		recv := types.NewVar(token.NoPos, pkg, "", recvType)
+		return types.NewFunc(token.NoPos, pkg, "hidden", types.NewSignatureType(recv, nil, nil, nil,
+			types.NewTuple(types.NewVar(token.NoPos, pkg, "", types.Typ[types.Int])),
+			false))
+	}
+
+	gotA := methodCapabilityKey(makeMethod(pkgA))
+	gotB := methodCapabilityKey(makeMethod(pkgB))
+	if gotA == gotB {
+		t.Fatalf("unexported methods from different packages share a key: %q", gotA)
+	}
+	if want := "go.method.example.com/a.hidden:func() int"; gotA != want {
+		t.Fatalf("methodCapabilityKey = %q, want %q", gotA, want)
+	}
+}
+
+func TestDevLTOGlobalDCEMethodCapabilityKeyUsesPromotedMethodPackage(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	pkgA := types.NewPackage("example.com/a", "a")
+	pkgB := types.NewPackage("example.com/b", "b")
+	exported := types.NewNamed(types.NewTypeName(token.NoPos, pkgA, "Exported", nil), types.NewStruct(nil, nil), nil)
+	recv := types.NewVar(token.NoPos, pkgA, "", exported)
+	exported.AddMethod(types.NewFunc(token.NoPos, pkgA, "hidden", types.NewSignatureType(recv, nil, nil, nil, nil, false)))
+
+	field := types.NewField(token.NoPos, pkgB, "Exported", exported, true)
+	wrapper := types.NewNamed(types.NewTypeName(token.NoPos, pkgB, "Wrapper", nil), types.NewStruct([]*types.Var{field}, nil), nil)
+	mset := types.NewMethodSet(wrapper)
+	if mset.Len() != 1 {
+		t.Fatalf("promoted method set length = %d, want 1", mset.Len())
+	}
+	promoted := mset.At(0).Obj().(*types.Func)
+	if got := promoted.Pkg().Path(); got != pkgA.Path() {
+		t.Fatalf("promoted method package = %q, want %q", got, pkgA.Path())
+	}
+
+	ifaceMethod := types.NewFunc(token.NoPos, pkgA, "hidden", types.NewSignatureType(nil, nil, nil, nil, nil, false))
+	got := methodCapabilityKey(promoted)
+	want := methodCapabilityKey(ifaceMethod)
+	if got != want {
+		t.Fatalf("promoted method key = %q, want interface key %q", got, want)
+	}
+	if wantLiteral := "go.method.example.com/a.hidden:func()"; got != wantLiteral {
+		t.Fatalf("promoted method key = %q, want %q", got, wantLiteral)
+	}
+}
+
 func TestDevLTOGlobalDCEMethodCapabilityKeyUnaliasesNestedTypes(t *testing.T) {
 	requireGoGlobalDCE(t)
 
