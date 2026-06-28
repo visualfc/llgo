@@ -72,6 +72,11 @@ func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {
 	}
 
 	ir := pkg.String()
+	freeRoot := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.FreeRoot"`)
+	panicCall := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.Panic"`)
+	if freeRoot < 0 || panicCall < 0 || freeRoot > panicCall {
+		t.Fatalf("goroutine wrapper should free startup data before panic call:\n%s", ir)
+	}
 	if strings.Contains(ir, "unreachable\n  ret ptr null") {
 		t.Fatalf("goroutine wrapper should not return after unreachable:\n%s", ir)
 	}

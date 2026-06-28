@@ -36,9 +36,9 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = load { %"{{.*}}String" }, ptr %0, align 8
 // CHECK-NEXT:   %2 = extractvalue { %"{{.*}}String" } %1, 0
+// CHECK-NEXT:   call void @"{{.*}}FreeRoot"(ptr %0)
 // CHECK-NEXT:   call void @"{{.*}}PrintString"(%"{{.*}}String" %2)
 // CHECK-NEXT:   call void @"{{.*}}PrintByte"(i8 10)
-// CHECK-NEXT:   call void @"{{.*}}FreeRoot"(ptr %0)
 // CHECK-NEXT:   ret ptr null
 
 // CHECK-LABEL: define ptr @"{{.*}}goroutine._llgo_routine$2"(ptr %0){{.*}} {
@@ -46,8 +46,8 @@ func main() {
 // CHECK-NEXT:   %1 = load { { ptr, ptr }, %"{{.*}}String" }, ptr %0, align 8
 // CHECK-NEXT:   %2 = extractvalue { { ptr, ptr }, %"{{.*}}String" } %1, 0
 // CHECK-NEXT:   %3 = extractvalue { { ptr, ptr }, %"{{.*}}String" } %1, 1
+// CHECK-NEXT:   call void @"{{.*}}FreeRoot"(ptr %0)
 // CHECK-NEXT:   %4 = extractvalue { ptr, ptr } %2, 1
 // CHECK-NEXT:   %5 = extractvalue { ptr, ptr } %2, 0
 // CHECK-NEXT:   call void %5(ptr %4, %"{{.*}}String" %3)
-// CHECK-NEXT:   call void @"{{.*}}FreeRoot"(ptr %0)
 // CHECK-NEXT:   ret ptr null
