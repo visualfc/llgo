@@ -241,7 +241,7 @@ func (b *Builder) TFlag(t types.Type) (flag abi.TFlag) {
 	case *types.Basic:
 		flag |= abi.TFlagNamed
 	case *types.Named:
-		return b.TFlag(t.Underlying()) | abi.TFlagNamed
+		return (b.TFlag(t.Underlying()) & ^abi.TFlagExtraStar) | abi.TFlagNamed
 	case *types.Struct:
 		if IsClosure(t) {
 			flag |= abi.TFlagClosure
