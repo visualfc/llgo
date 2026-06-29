@@ -326,6 +326,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
 	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
+	prog.EnableFuncInfoMetadata(conf.Mode != ModeGen && IsFuncInfoEnabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -1058,6 +1059,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		methodByIndex: methodByIndex,
 		methodByName:  methodByName,
 		abiSymbols:    linkedModuleGlobals(linkedOrder),
+		funcInfo:      prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil),
 	})
 	entryObjFile, err := exportObject(ctx, "entry_main", entryPkg.ExportFile, entryPkg.LPkg)
 	if err != nil {
@@ -1143,9 +1145,9 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		if needsLinuxNoPIE(ctx, linkArgs) {
 			buildArgs = append(buildArgs, "-no-pie")
 		}
+		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	// Add common linker arguments based on target OS and architecture
 	if IsDbgSymsEnabled() {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
@@ -1189,6 +1191,20 @@ func needsLinuxNoPIE(ctx *context, linkArgs []string) bool {
 		}
 	}
 	return true
+}
+
+func needsLinuxExportDynamic(ctx *context) bool {
+	return ctx.buildConf.Target == "" && ctx.buildConf.Goos == "linux" && IsFuncInfoEnabled()
+}
+
+func linuxExportDynamicArgs(ctx *context) []string {
+	if !needsLinuxExportDynamic(ctx) {
+		return nil
+	}
+	return []string{
+		"-Wl,--export-dynamic-symbol=main.*",
+		"-Wl,--export-dynamic-symbol=command-line-arguments.*",
+	}
 }
 
 // archiver returns the archiving tool to use for the current context.
@@ -1809,6 +1825,7 @@ var (
 
 const llgoDebug = "LLGO_DEBUG"
 const llgoDbgSyms = "LLGO_DEBUG_SYMBOLS"
+const llgoFuncInfo = "LLGO_FUNCINFO"
 const llgoTrace = "LLGO_TRACE"
 const llgoOptimize = "LLGO_OPTIMIZE"
 const llgoWasmRuntime = "LLGO_WASM_RUNTIME"
@@ -1854,6 +1871,10 @@ func IsStdioNobuf() bool {
 
 func IsDbgEnabled() bool {
 	return isEnvOn(llgoDebug, false) || isEnvOn(llgoDbgSyms, false)
+}
+
+func IsFuncInfoEnabled() bool {
+	return isEnvOn(llgoFuncInfo, true)
 }
 
 func IsDbgSymsEnabled() bool {
