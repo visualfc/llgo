@@ -20,6 +20,11 @@ const (
 	reflectTypeMethodTypeID  = "go.method.type.reflect"
 )
 
+type ReflectMethodCheck struct {
+	Kind int
+	Name string
+}
+
 func methodCapabilitySig(sig *types.Signature) string {
 	canon := types.NewSignatureType(nil, nil, nil, methodCapabilityTuple(sig.Params()), methodCapabilityTuple(sig.Results()), sig.Variadic())
 	return types.TypeString(canon, func(pkg *types.Package) string {
@@ -104,7 +109,26 @@ func methodCapabilityType(t types.Type) types.Type {
 }
 
 func methodCapabilityKey(method *types.Func) string {
-	return "go.method." + method.Name() + ":" + methodCapabilitySig(method.Type().(*types.Signature))
+	return "go.method." + methodCapabilityName(method) + ":" + methodCapabilitySig(method.Type().(*types.Signature))
+}
+
+func methodCapabilityName(method *types.Func) string {
+	name := method.Name()
+	if method.Exported() {
+		return name
+	}
+	if pkg := method.Pkg(); pkg != nil {
+		return types.Id(pkg, name)
+	}
+	return name
+}
+
+func reflectValueMethodNameTypeID(name string) string {
+	return reflectValueMethodTypeID + "." + name
+}
+
+func reflectTypeMethodNameTypeID(name string) string {
+	return reflectTypeMethodTypeID + "." + name
 }
 
 func (p Program) addModuleFlag(mod llvm.Module, behavior uint64, name string, val uint64) {
@@ -151,19 +175,29 @@ func (p Program) methodCheckedLoad(b llvm.Builder, typedesc llvm.Value, typeID s
 	return llvm.CreateExtractValue(b, res, 0)
 }
 
-func (b Builder) EmitReflectMethodCheckedLoad(ret Expr, reflectKind int) {
-	if !b.Prog.enableGoGlobalDCE || ret.IsNil() || reflectKind&ReflectMethodMask == 0 {
+func (b Builder) EmitReflectValueMethodCheckedLoad(ret Expr, check ReflectMethodCheck) {
+	reflectKind := check.Kind
+	if !b.Prog.enableGoGlobalDCE || ret.IsNil() || reflectKind&(ReflectMethodByIndex|ReflectMethodByName|ReflectMethodDynamic) == 0 {
 		return
 	}
-	checkedLoadValue := func(v Expr, typeID string) {
-		b.Prog.methodCheckedLoad(b.impl, b.Extract(v, reflectValuePtrFieldIndex).impl, typeID)
+	typeID := reflectValueMethodTypeID
+	if reflectKind&ReflectMethodByName != 0 && check.Name != "" {
+		typeID = reflectValueMethodNameTypeID(check.Name)
 	}
-	if reflectKind&reflectTypeMethodMask == 0 {
-		checkedLoadValue(ret, reflectValueMethodTypeID)
+	b.Prog.methodCheckedLoad(b.impl, b.Extract(ret, reflectValuePtrFieldIndex).impl, typeID)
+}
+
+func (b Builder) EmitReflectTypeMethodCheckedLoad(ret Expr, check ReflectMethodCheck) {
+	reflectKind := check.Kind
+	if !b.Prog.enableGoGlobalDCE || ret.IsNil() || reflectKind&reflectTypeMethodMask == 0 {
 		return
+	}
+	typeID := reflectTypeMethodTypeID
+	if reflectKind&ReflectTypeMethodByName != 0 && check.Name != "" {
+		typeID = reflectTypeMethodNameTypeID(check.Name)
 	}
 	checkedLoadMethod := func(method Expr) {
-		checkedLoadValue(b.Extract(method, reflectMethodFuncFieldIndex), reflectTypeMethodTypeID)
+		b.Prog.methodCheckedLoad(b.impl, b.Extract(b.Extract(method, reflectMethodFuncFieldIndex), reflectValuePtrFieldIndex).impl, typeID)
 	}
 	if reflectKind&ReflectTypeMethodByName != 0 {
 		method := b.Extract(ret, 0)
@@ -225,8 +259,11 @@ func (p Program) addMethodTypeMetadata(global llvm.Value, fullType Type, mset *t
 		baseOffset := methodArrayOffset + uint64(i)*methodStride
 		p.addTypeMetadata(global, baseOffset+ifnOffset, methodCapabilityKey(sel.Obj().(*types.Func)))
 		if sel.Obj().Exported() {
+			name := sel.Obj().Name()
 			p.addTypeMetadata(global, baseOffset+ifnOffset, reflectValueMethodTypeID)
+			p.addTypeMetadata(global, baseOffset+ifnOffset, reflectValueMethodNameTypeID(name))
 			p.addTypeMetadata(global, baseOffset+tfnOffset, reflectTypeMethodTypeID)
+			p.addTypeMetadata(global, baseOffset+tfnOffset, reflectTypeMethodNameTypeID(name))
 		}
 	}
 }

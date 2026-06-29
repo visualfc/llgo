@@ -3,19 +3,30 @@ package main
 
 import "reflect"
 
-// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.value.reflect")
+// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.value.reflect.Keep")
+// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.Method:func(int) reflect.Method")
+// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.MethodByName:func(string) (reflect.Method, bool)")
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect")
+// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect.Keep")
+// CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect.Missing")
 // CHECK-DAG: !"go.method.Keep:func() string"
-// CHECK-DAG: !"go.method.hidden:func() string"
+// CHECK-DAG: !"go.method.{{.*}}/globaldce_reflect_method.hidden:func() string"
 // CHECK-DAG: !"go.method.value.reflect"
+// CHECK-DAG: !"go.method.value.reflect.Keep"
 // CHECK-DAG: !"go.method.type.reflect"
+// CHECK-DAG: !"go.method.type.reflect.Keep"
+// SYMBOL-NOT: globaldce_reflect_method{{.*}}S{{.*}}hidden
+// SYMBOL-DAG: globaldce_reflect_method{{.*}}S{{.*}}Keep
+// SYMBOL-NOT: globaldce_reflect_method{{.*}}S{{.*}}hidden
 
 type S struct{}
 
+//go:noinline
 func (S) Keep() string {
 	return "keep"
 }
 
+//go:noinline
 func (S) hidden() string {
 	return "hidden"
 }

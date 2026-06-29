@@ -1051,7 +1051,7 @@ func collectMethodNilDerefChecks(fn *ssa.Function) map[*ssa.UnOp]none {
 func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallCommon, ds *explicitDeferStack) (ret llssa.Expr) {
 	cv := call.Value
 	if mthd := call.Method; mthd != nil {
-		reflectKind := p.reflectTypeMethodKind(call, mthd)
+		reflectCheck := p.reflectTypeMethodCheck(call, mthd)
 		o := p.compileValue(b, cv)
 		fn := b.Imethod(o, mthd)
 		hasVArg := fnNormal
@@ -1060,7 +1060,7 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 		}
 		args := p.compileValues(b, call.Args, hasVArg)
 		ret = p.emitDo(b, act, ds, fn, llssa.Builder.Call, args...)
-		b.EmitReflectMethodCheckedLoad(ret, reflectKind)
+		b.EmitReflectTypeMethodCheckedLoad(ret, reflectCheck)
 		return
 	}
 	kind := p.funcKind(cv)
@@ -1220,32 +1220,38 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 	return
 }
 
-func (p *context) reflectTypeMethodKind(call *ssa.CallCommon, method *types.Func) int {
+func (p *context) reflectTypeMethodCheck(call *ssa.CallCommon, method *types.Func) (check llssa.ReflectMethodCheck) {
 	if !isReflectType(call.Value.Type()) {
-		return 0
+		return
 	}
 	if pkg := method.Pkg(); pkg == nil || pkg.Path() != "reflect" {
-		return 0
+		return
 	}
 	switch method.Name() {
 	case "Method":
 		if len(call.Args) != 1 {
-			return 0
+			return
 		}
 		if index, ok := constInt(call.Args[0]); ok {
-			return p.pkg.RecordReflectMethodByIndex(index) | llssa.ReflectTypeMethodByIndex
+			p.pkg.RecordReflectMethodByIndex(index)
+			check.Kind = llssa.ReflectTypeMethodByIndex
+			break
 		}
-		return p.pkg.RecordReflectMethodDynamic() | llssa.ReflectTypeMethodByIndex
+		check.Kind = llssa.ReflectTypeMethodDynamic
 	case "MethodByName":
 		if len(call.Args) != 1 {
-			return 0
+			return
 		}
 		if name, ok := constStr(call.Args[0]); ok {
-			return p.pkg.RecordReflectMethodByName(name) | llssa.ReflectTypeMethodByName
+			p.pkg.RecordReflectMethodByName(name)
+			check.Kind = llssa.ReflectTypeMethodByName
+			check.Name = name
+			break
 		}
-		return p.pkg.RecordReflectMethodDynamic() | llssa.ReflectTypeMethodByName
+		check.Kind = llssa.ReflectTypeMethodDynamic | llssa.ReflectTypeMethodByName
 	}
-	return 0
+	p.pkg.NeedAbiInit |= check.Kind
+	return
 }
 
 func isReflectType(t types.Type) bool {
