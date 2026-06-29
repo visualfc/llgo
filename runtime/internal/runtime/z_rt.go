@@ -52,6 +52,7 @@ func Panic(v any) {
 	if v == nil {
 		v = &PanicNilError{}
 	}
+	SavePanicCallerFrames()
 	ptr := c.Malloc(unsafe.Sizeof(v))
 	*(*any)(ptr) = v
 	excepKey.Set(ptr)
