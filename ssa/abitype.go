@@ -369,7 +369,7 @@ func (b Builder) abiUncommonMethodSet(t types.Type) (mset *types.MethodSet, ok b
 	switch t := types.Unalias(t).(type) {
 	case *types.Named:
 		if _, b := t.Underlying().(*types.Interface); b {
-			return
+			return &types.MethodSet{}, true
 		}
 		mset := types.NewMethodSet(t)
 		if mset.Len() != 0 {
