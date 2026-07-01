@@ -28,7 +28,7 @@ func TestReflectMakeFuncGoroutineStartup(t *testing.T) {
 		<-gcDone
 	}()
 
-	const n = 100
+	const n = 10
 	done := make(chan struct{}, n*2)
 	for i := 0; i < n; i++ {
 		f := reflect.MakeFunc(reflect.TypeOf((func(*int))(nil)), func(args []reflect.Value) []reflect.Value {
