@@ -23,6 +23,7 @@
 package reflect
 
 import (
+	"sync"
 	"unsafe"
 
 	"github.com/goplus/llgo/runtime/abi"
@@ -75,7 +76,9 @@ func makeFunc(typ Type, method bool, fn func(args []Value) (results []Value)) Va
 		panic("libffi error: " + err.Error())
 	}
 	// keep alive for bdw-gc
+	keepMutex.Lock()
 	keepAlive = append(keepAlive, &closure.Fn, sig, userdata)
+	keepMutex.Unlock()
 
 	styp := closureOf(ftyp)
 	fv := &struct {
@@ -86,6 +89,7 @@ func makeFunc(typ Type, method bool, fn func(args []Value) (results []Value)) Va
 }
 
 var (
+	keepMutex sync.Mutex
 	keepAlive []any
 )
 
