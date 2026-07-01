@@ -1054,7 +1054,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	// Use a stable synthetic name to avoid confusing it with the real main package in traces/logs.
 	funcInfo := prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
 	pcLineInfo := collectPCLineInfo(linkedOrder)
-	funcInfoStubs := collectFuncInfoStubIndexes(linkedOrder, funcInfo)
+	funcInfoStubs := collectFuncInfoStubRecords(linkedOrder, funcInfo)
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
 		rtInit:        needRuntime,
 		pyInit:        needPyInit,
@@ -1358,6 +1358,7 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 			return fmt.Errorf("run LLVM passes failed for %v: %v", pkgPath, err)
 		}
 	}
+	emitFuncInfoStubSites(ctx, ret)
 
 	printCmds := ctx.shouldPrintCommands(verbose)
 	cgoLLFiles, cgoLdflags, err := buildCgo(ctx, aPkg, aPkg.Package.Syntax, externs, printCmds)
