@@ -1115,6 +1115,9 @@ func linkedModuleGlobals(pkgs []Package) map[string]none {
 			continue
 		}
 		for g := pkg.LPkg.Module().FirstGlobal(); !g.IsNil(); g = gllvm.NextGlobal(g) {
+			if g.IsDeclaration() {
+				continue
+			}
 			seen[g.Name()] = none{}
 		}
 	}
