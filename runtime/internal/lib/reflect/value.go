@@ -2026,16 +2026,20 @@ func (v Value) assignTo(context string, dst *abi.Type, target unsafe.Pointer) Va
 	if v.flag&flagMethod != 0 {
 		v = makeMethodValue(context, v)
 	}
+	typ := v.typ()
+	if typ.Kind() == abi.Func {
+		typ = closureOf(typ.FuncType())
+	}
 
 	switch {
-	case directlyAssignable(dst, v.typ()):
+	case directlyAssignable(dst, typ):
 		// Overwrite type so that they match.
 		// Same memory layout, so no harm done.
 		fl := v.flag&(flagAddr|flagIndir) | v.flag.ro()
 		fl |= flag(dst.Kind())
 		return Value{dst, v.ptr, fl}
 
-	case implements(dst, v.typ()):
+	case implements(dst, typ):
 		if v.Kind() == Interface && v.IsNil() {
 			// A nil ReadWriter passed to nil Reader is OK,
 			// but using ifaceE2I below will panic.
@@ -3030,6 +3034,10 @@ func convertOp(dst, src *abi.Type) func(Value, Type) Value {
 		if dst.Kind() == abi.Chan && specialChannelAssignability(dst, src) {
 			return cvtDirect
 		}
+	case Func:
+		if dst.Kind() == abi.Func {
+			return cvtFunc
+		}
 	}
 
 	// dst and src have same underlying type.
@@ -3061,46 +3069,40 @@ const is64bit = (1 << (^uintptr(0) >> 63) / 2) == 1
 // where t is a signed or unsigned int type.
 func makeInt(f flag, bits uint64, t Type) Value {
 	typ := t.common()
-	var ptr unsafe.Pointer
+	ptr := unsafe_New(typ)
 	switch typ.Size() {
-	case 1, 2, 4:
-		ptr = unsafe.Pointer(uintptr(bits))
+	case 1:
+		*(*uint8)(ptr) = uint8(bits)
+	case 2:
+		*(*uint16)(ptr) = uint16(bits)
+	case 4:
+		*(*uint32)(ptr) = uint32(bits)
 	case 8:
-		if is64bit {
-			ptr = unsafe.Pointer(uintptr(bits))
-		} else {
-			ptr = unsafe_New(typ)
-			*(*uint64)(ptr) = bits
-			f |= flagIndir
-		}
+		*(*uint64)(ptr) = bits
 	}
-	return Value{typ, ptr, f | flag(typ.Kind())}
+	return Value{typ, ptr, f | flagIndir | flag(typ.Kind())}
 }
 
 // makeFloat returns a Value of type t equal to v (possibly truncated to float32),
 // where t is a float32 or float64 type.
 func makeFloat(f flag, v float64, t Type) Value {
 	typ := t.common()
-	var ptr unsafe.Pointer
+	ptr := unsafe_New(typ)
 	switch typ.Size() {
 	case 4:
-		ptr = unsafe.Pointer(uintptr(bitcast.FromFloat32(float32(v))))
+		*(*float32)(ptr) = float32(v)
 	case 8:
-		if is64bit {
-			ptr = unsafe.Pointer(uintptr(bitcast.FromFloat64(v)))
-		} else {
-			ptr = unsafe_New(typ)
-			*(*float64)(ptr) = v
-			f |= flagIndir
-		}
+		*(*float64)(ptr) = v
 	}
-	return Value{typ, ptr, f | flag(typ.Kind())}
+	return Value{typ, ptr, f | flagIndir | flag(typ.Kind())}
 }
 
 // makeFloat32 returns a Value of type t equal to v, where t is a float32 type.
-func makeFloat32(f flag, ptr unsafe.Pointer, t Type) Value {
+func makeFloat32(f flag, v float32, t Type) Value {
 	typ := t.common()
-	return Value{typ, ptr, f | flag(typ.Kind())}
+	ptr := unsafe_New(typ)
+	*(*float32)(ptr) = v
+	return Value{typ, ptr, f | flagIndir | flag(typ.Kind())}
 }
 
 // makeComplex returns a Value of type t equal to v (possibly truncated to complex64),
@@ -3179,7 +3181,7 @@ func cvtFloat(v Value, t Type) Value {
 		// Don't do any conversion if both types have underlying type float32.
 		// This avoids converting to float64 and back, which will
 		// convert a signaling NaN to a quiet NaN. See issue 36400.
-		return makeFloat32(v.flag.ro(), v.ptr, t)
+		return makeFloat32(v.flag.ro(), *(*float32)(v.ptr), t)
 	}
 	return makeFloat(v.flag.ro(), v.Float(), t)
 }
@@ -3257,6 +3259,24 @@ func cvtSliceArray(v Value, t Type) Value {
 func cvtDirect(v Value, typ Type) Value {
 	f := v.flag
 	t := typ.common()
+	ptr := v.ptr
+	if f&flagAddr != 0 {
+		// indirect, mutable word - make a copy
+		c := unsafe_New(t)
+		typedmemmove(t, c, ptr)
+		ptr = c
+		f &^= flagAddr
+	}
+	return Value{t, ptr, v.flag.ro() | f} // v.flag.ro()|f == f?
+}
+
+// convertOp: func copy
+func cvtFunc(v Value, typ Type) Value {
+	f := v.flag
+	t := typ.common()
+	if t.Kind() == abi.Func {
+		t = closureOf(t.FuncType())
+	}
 	ptr := v.ptr
 	if f&flagAddr != 0 {
 		// indirect, mutable word - make a copy
