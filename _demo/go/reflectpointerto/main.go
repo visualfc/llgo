@@ -9,6 +9,7 @@ func main() {
 	PointerTo()
 	AddrOnPointerField()
 	PointerToDynamic()
+	NamedPointer()
 }
 
 func PointerTo() {
@@ -49,5 +50,23 @@ func PointerToDynamic() {
 	ppppst := reflect.PointerTo(pppst)
 	if ppppst.String() != "****"+s {
 		panic(ppppst.String())
+	}
+}
+
+type Ptr *int
+
+func NamedPointer() {
+	t := reflect.TypeOf(Ptr(nil))
+	s := t.String()
+	if s[0] == '*' {
+		panic(s)
+	}
+	pt := reflect.PointerTo(t)
+	if pt.String() != "*"+s {
+		panic(pt.String())
+	}
+	ppt := reflect.PointerTo(pt)
+	if ppt.String() != "**"+s {
+		panic(ppt.String())
 	}
 }
