@@ -84,7 +84,7 @@ func main() {
 	runs := flag.Int("runs", 11, "process runs per executable")
 	iters := flag.Int("iters", 200000, "inner benchmark iterations")
 	llgoOpt := flag.String("llgo-opt", "2", "LLGo optimization level passed as -O<value>; empty disables the flag")
-	scenarioList := flag.String("scenarios", "hot,deep,multipkg,cold,stdlib", "comma-separated scenarios")
+	scenarioList := flag.String("scenarios", "hot,deep,multipkg,cold,stdlib,plain", "comma-separated scenarios")
 	includeLTO := flag.Bool("include-lto", false, "also build full-LTO variants for LLGo compilers")
 	pkgCount := flag.Int("packages", 12, "generated package count for multipkg")
 	methodCount := flag.Int("methods", 12, "generated functions and methods per generated package")
@@ -244,6 +244,8 @@ func generateScenarios(workDir string, names []string, pkgCount, methodCount int
 				err = generateCold(dir, size.Packages, size.Methods)
 			case "stdlib":
 				err = generateStdlib(dir)
+			case "plain":
+				err = generatePlain(dir)
 			default:
 				return nil, fmt.Errorf("unknown scenario %q", name)
 			}
@@ -532,6 +534,13 @@ func generateStdlib(dir string) error {
 	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(stdlibSource), 0644)
 }
 
+func generatePlain(dir string) error {
+	if err := writeModule(dir, "example.com/llgo-bench/plain"); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(plainSource), 0644)
+}
+
 func buildScenario(outDir string, sc scenario, v variant, llgoOpt string) buildResult {
 	bin := filepath.Join(outDir, "bin", safeName(v.Name)+"_"+sc.Name)
 	if v.LTO {
@@ -621,6 +630,8 @@ func iterationsForScenario(name string, base int) int {
 		div = 4
 	case "multipkg", "cold", "stdlib":
 		div = 20
+	case "plain":
+		div = 2000
 	}
 	n := base / div
 	if n < 1 {
@@ -1313,5 +1324,83 @@ func main() {
 		}
 	}
 	fmt.Println("sink=", sinkInt, sinkString)
+}
+`
+
+// plainSource is the ordinary-code scenario: pure compute with no runtime
+// introspection at all. It exists to measure what the funcinfo machinery
+// costs code that never asks for it (site-asm inline/layout perturbation is
+// the only expected effect; the tables themselves are free until first use).
+const plainSource = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"time"
+)
+
+var sinkInt int
+
+` + commonBenchHelpers + `
+
+//go:noinline
+func fib(n int) int {
+	if n < 2 {
+		return n
+	}
+	return fib(n-1) + fib(n-2)
+}
+
+type item struct {
+	Name  string
+	Value int
+	Tags  []string
+}
+
+func main() {
+	iters := benchIters(5)
+
+	measure("plain.fib30", iters, func() {
+		sinkInt += fib(30)
+	})
+
+	items := make([]item, 2000)
+	for i := range items {
+		items[i] = item{Name: fmt.Sprintf("item-%d", i), Value: i * 7, Tags: []string{"a", "b", "c"}}
+	}
+	measure("plain.json", iters, func() {
+		b, err := json.Marshal(items)
+		if err != nil {
+			panic(err)
+		}
+		var out []item
+		if err := json.Unmarshal(b, &out); err != nil {
+			panic(err)
+		}
+		sinkInt += len(out)
+	})
+
+	measure("plain.sort", iters, func() {
+		data := make([]int, 200000)
+		for i := range data {
+			data[i] = (i*2654435761 + 12345) % 1000003
+		}
+		sort.Ints(data)
+		sinkInt += data[0]
+	})
+
+	measure("plain.map", iters, func() {
+		m := make(map[int]int, 16)
+		for i := 0; i < 200000; i++ {
+			m[(i*2654435761)%100003]++
+		}
+		sinkInt += len(m)
+	})
+
+	if sinkInt == 0 {
+		os.Exit(1)
+	}
 }
 `

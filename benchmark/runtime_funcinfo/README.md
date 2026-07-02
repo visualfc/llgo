@@ -13,6 +13,9 @@ It covers:
 - cold first-use runtime metadata paths, including lazy table initialization.
 - a stdlib-heavy program with `encoding/json`, `text/template`, `regexp`,
   `go/parser`, `go/token`, and `net/netip` imports.
+- ordinary code (`plain`): pure-compute probes (recursive `fib`, JSON
+  round-trip, `sort.Ints`, map churn) with no runtime introspection at all,
+  measuring what the funcinfo machinery costs code that never asks for it.
 
 Generated modules use `example.com/llgo-bench/...` import paths. This is
 intentional: LLGo does not enable caller-frame tracking for stdlib-shaped paths
@@ -46,8 +49,8 @@ run. Output is written to `benchmark/runtime_funcinfo/out` by default:
 Performance cells are `best/trimmed avg` from process-level runs. The trimmed
 average drops one minimum and one maximum when at least three runs are present.
 `-iters` is a base iteration count: `hot` uses the full count, `deep` uses a
-quarter, and `multipkg`/`stdlib` use one twentieth because each operation does
-substantially more work.
+quarter, `multipkg`/`stdlib` use one twentieth, and `plain` uses 1/2000
+because each operation does substantially more work.
 
 `multipkg.FuncForPCMany` and `multipkg.FileLineMany` are batch metrics over all
 generated target functions (`-packages * -methods`, 144 targets with the default
