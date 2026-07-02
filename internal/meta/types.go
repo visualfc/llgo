@@ -16,7 +16,9 @@ type NameRef struct {
 	Len uint32
 }
 
-// Edge kinds used in the Edges section.
+// Edge/demand kinds used by Builder.AddEdge for compatibility with existing
+// emit sites. EdgeOrdinary is written to OrdinaryEdges; the other kinds are
+// written to FuncDemand.
 const (
 	// EdgeOrdinary is a plain symbol reference (call, type use, global var, etc.).
 	EdgeOrdinary uint8 = 0
@@ -29,22 +31,30 @@ const (
 	EdgeUseNamedMethod uint8 = 3
 )
 
+// FuncDemand kinds used in the FuncDemand section.
+const (
+	DemandUseIface      uint32 = uint32(EdgeUseIface)
+	DemandIfaceMethod   uint32 = uint32(EdgeUseIfaceMethod)
+	DemandNamedMethod   uint32 = uint32(EdgeUseNamedMethod)
+	DemandReflectMethod uint32 = 4
+)
+
 // Magic is the 4-byte file signature.
 const Magic = "LLPM"
 
 // Version is the current binary format version.
-const Version = 1
+const Version = 2
 
 // Section index constants for Header.SectionOffsets.
 const (
-	SecStringTable  = 0
-	SecSymbols      = 1
-	SecEdges        = 2
-	SecTypeChildren = 3
-	SecMethodInfo   = 4
-	SecIfaceInfo    = 5
-	SecReflect      = 6
-	numSections     = 7
+	SecStringTable   = 0
+	SecSymbols       = 1
+	SecOrdinaryEdges = 2
+	SecFuncDemand    = 3
+	SecTypeChildren  = 4
+	SecMethodInfo    = 5
+	SecIfaceInfo     = 6
+	numSections      = 7
 )
 
 // headerSize = magic(4) + version(4) + sectionOffsets(numSections×4)

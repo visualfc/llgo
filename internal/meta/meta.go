@@ -18,29 +18,29 @@ type PackageMeta struct {
 	nsyms uint32
 
 	// cached section start offsets (parsed once from header)
-	strOff    uint32
-	symOff    uint32
-	edgeOff   uint32
-	childOff  uint32
-	methodOff uint32
-	ifaceOff  uint32
-	reflOff   uint32
+	strOff      uint32
+	symOff      uint32
+	ordinaryOff uint32
+	demandOff   uint32
+	childOff    uint32
+	methodOff   uint32
+	ifaceOff    uint32
 }
 
-// Edge is a decoded edge record returned by query methods. Its in-memory layout
-// (Target@0, Extra@4, Kind@8, size 12) must match the on-disk wire layout exactly
-// so Edges can reinterpret the mmap bytes as []Edge with no copy.
-type Edge struct {
-	Target uint32 // LocalSymbol or stringTable offset (UseNamedMethod)
+// FuncDemand is a decoded function-demand record. Its in-memory layout
+// (Kind@0, Target@4, Extra@8, size 12) must match the on-disk wire layout exactly
+// so funcDemands can reinterpret the mmap bytes as []FuncDemand with no copy.
+type FuncDemand struct {
+	Kind   uint32
+	Target uint32 // LocalSymbol or stringTable offset (DemandNamedMethod)
 	Extra  uint32
-	Kind   uint8
 }
 
-// Compile-time assertion: Edge must be exactly 12 bytes. If either const goes
-// negative the build fails, pinning the wire/struct layout match.
+// Compile-time assertion: FuncDemand must be exactly 12 bytes. If either const
+// goes negative the build fails, pinning the wire/struct layout match.
 const (
-	_ = uint(unsafe.Sizeof(Edge{}) - 12)
-	_ = uint(12 - unsafe.Sizeof(Edge{}))
+	_ = uint(unsafe.Sizeof(FuncDemand{}) - 12)
+	_ = uint(12 - unsafe.Sizeof(FuncDemand{}))
 )
 
 // MethodSlot is a decoded method slot record. Its layout (NameRef@0..8,
@@ -136,15 +136,28 @@ func (pm *PackageMeta) nameString(ref NameRef) string {
 	return unsafe.String(&pm.raw[pm.strOff+ref.Off], int(ref.Len))
 }
 
-// NEdge returns the number of outgoing edges from sym, or 0 if none.
-func (pm *PackageMeta) nedge(sym LocalSymbol) uint32 {
-	s, e := pm.csrRange(pm.edgeOff, sym)
+// NOrdinaryEdge returns the number of plain reachability edges from sym.
+func (pm *PackageMeta) nordinaryEdge(sym LocalSymbol) uint32 {
+	s, e := pm.csrRange(pm.ordinaryOff, sym)
 	return e - s
 }
 
-// Edges returns all edges from sym as a zero-copy view into the mmap region.
-func (pm *PackageMeta) edges(sym LocalSymbol) []Edge {
-	return csrSlice[Edge](pm, pm.edgeOff, sym, 12)
+// ordinaryEdges returns all plain reachability targets from sym as a zero-copy
+// view into the mmap region.
+func (pm *PackageMeta) ordinaryEdges(sym LocalSymbol) []LocalSymbol {
+	return csrSlice[LocalSymbol](pm, pm.ordinaryOff, sym, 4)
+}
+
+// NFuncDemand returns the number of method/interface/reflection demands from sym.
+func (pm *PackageMeta) nfuncDemand(sym LocalSymbol) uint32 {
+	s, e := pm.csrRange(pm.demandOff, sym)
+	return e - s
+}
+
+// funcDemands returns all method/interface/reflection demands from sym as a
+// zero-copy view into the mmap region.
+func (pm *PackageMeta) funcDemands(sym LocalSymbol) []FuncDemand {
+	return csrSlice[FuncDemand](pm, pm.demandOff, sym, 12)
 }
 
 // NTypeChild returns the number of type children for sym, or 0 if none.
@@ -186,16 +199,22 @@ func (pm *PackageMeta) ifaceMethods(sym LocalSymbol) []MethodSig {
 
 // HasReflect reports whether sym triggers conservative reflection handling.
 func (pm *PackageMeta) hasReflect(sym LocalSymbol) bool {
-	if uint32(sym) >= pm.nsyms {
-		return false
+	for _, d := range pm.funcDemands(sym) {
+		if d.Kind == DemandReflectMethod {
+			return true
+		}
 	}
-	bitmapBase := pm.reflOff + 4
-	return pm.raw[bitmapBase+uint32(sym)/8]&(1<<(sym%8)) != 0
+	return false
 }
 
-// HasEdges reports whether sym has any outgoing edges.
-func (pm *PackageMeta) hasEdges(sym LocalSymbol) bool {
-	return pm.nedge(sym) > 0
+// HasOrdinaryEdges reports whether sym has any plain reachability edges.
+func (pm *PackageMeta) hasOrdinaryEdges(sym LocalSymbol) bool {
+	return pm.nordinaryEdge(sym) > 0
+}
+
+// HasFuncDemand reports whether sym has any method/interface/reflection demand.
+func (pm *PackageMeta) hasFuncDemand(sym LocalSymbol) bool {
+	return pm.nfuncDemand(sym) > 0
 }
 
 // ── internal helpers ──────────────────────────────────────────────────────────
@@ -216,11 +235,11 @@ func newPackageMeta(raw []byte) (*PackageMeta, error) {
 	pm := &PackageMeta{raw: raw}
 	pm.strOff = binary.LittleEndian.Uint32(raw[8+SecStringTable*4:])
 	pm.symOff = binary.LittleEndian.Uint32(raw[8+SecSymbols*4:])
-	pm.edgeOff = binary.LittleEndian.Uint32(raw[8+SecEdges*4:])
+	pm.ordinaryOff = binary.LittleEndian.Uint32(raw[8+SecOrdinaryEdges*4:])
+	pm.demandOff = binary.LittleEndian.Uint32(raw[8+SecFuncDemand*4:])
 	pm.childOff = binary.LittleEndian.Uint32(raw[8+SecTypeChildren*4:])
 	pm.methodOff = binary.LittleEndian.Uint32(raw[8+SecMethodInfo*4:])
 	pm.ifaceOff = binary.LittleEndian.Uint32(raw[8+SecIfaceInfo*4:])
-	pm.reflOff = binary.LittleEndian.Uint32(raw[8+SecReflect*4:])
 
 	// read nsyms from Symbols section header
 	pm.nsyms = binary.LittleEndian.Uint32(raw[pm.symOff:])

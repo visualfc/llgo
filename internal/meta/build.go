@@ -21,11 +21,17 @@ func (b *Builder) Build() (*PackageMeta, error) {
 
 	symSize := 4 + nsyms*12 // nsyms u32 + N×SymbolRecord(12)
 
-	totalEdges := uint32(0)
-	for _, es := range b.edges {
-		totalEdges += uint32(len(es))
+	totalOrdinary := uint32(0)
+	for _, es := range b.ordinaryEdges {
+		totalOrdinary += uint32(len(es))
 	}
-	edgeSize := 4 + (nsyms+1)*4 + totalEdges*12 // nsyms + offsets[N+1] + N×Edge(12)
+	ordinarySize := 4 + (nsyms+1)*4 + totalOrdinary*4 // nsyms + offsets[N+1] + N×LocalSymbol(4)
+
+	totalDemands := uint32(0)
+	for _, ds := range b.funcDemands {
+		totalDemands += uint32(len(ds))
+	}
+	demandSize := 4 + (nsyms+1)*4 + totalDemands*12 // nsyms + offsets[N+1] + N×FuncDemand(12)
 
 	totalChildren := uint32(0)
 	for _, cs := range b.typeChildren {
@@ -45,8 +51,6 @@ func (b *Builder) Build() (*PackageMeta, error) {
 	}
 	ifaceSize := 4 + (nsyms+1)*4 + totalSigs*12 // N×MethodSig(12: NameRef(8)+mtype)
 
-	reflSize := 4 + (nsyms+7)/8 // nsyms u32 + bitmap bytes
-
 	// ── 2. calculate section offsets ─────────────────────────────────────────
 
 	var offsets [numSections]uint32
@@ -55,16 +59,16 @@ func (b *Builder) Build() (*PackageMeta, error) {
 	cur += strSize
 	offsets[SecSymbols] = cur
 	cur += symSize
-	offsets[SecEdges] = cur
-	cur += edgeSize
+	offsets[SecOrdinaryEdges] = cur
+	cur += ordinarySize
+	offsets[SecFuncDemand] = cur
+	cur += demandSize
 	offsets[SecTypeChildren] = cur
 	cur += childSize
 	offsets[SecMethodInfo] = cur
 	cur += methodSize
 	offsets[SecIfaceInfo] = cur
 	cur += ifaceSize
-	offsets[SecReflect] = cur
-	cur += reflSize
 
 	// ── 3. allocate one buffer ────────────────────────────────────────────────
 
@@ -82,11 +86,11 @@ func (b *Builder) Build() (*PackageMeta, error) {
 
 	writeStringTable(raw[offsets[SecStringTable]:], b)
 	writeSymbols(raw[offsets[SecSymbols]:], b, nsyms)
-	writeEdges(raw[offsets[SecEdges]:], b, nsyms)
+	writeOrdinaryEdges(raw[offsets[SecOrdinaryEdges]:], b, nsyms)
+	writeFuncDemand(raw[offsets[SecFuncDemand]:], b, nsyms)
 	writeTypeChildren(raw[offsets[SecTypeChildren]:], b, nsyms)
 	writeMethodInfo(raw[offsets[SecMethodInfo]:], b, nsyms)
 	writeIfaceInfo(raw[offsets[SecIfaceInfo]:], b, nsyms)
-	writeReflect(raw[offsets[SecReflect]:], b, nsyms)
 
 	return newPackageMeta(raw)
 }
@@ -141,25 +145,44 @@ func writeCSROffsets(dst []byte, nsyms uint32, counts []int) []byte {
 	return dst[4+(nsyms+1)*4:]
 }
 
-// writeEdges writes the Edges section.
+// writeOrdinaryEdges writes the OrdinaryEdges section.
 //
 //	nsyms   u32
 //	offsets [nsyms+1] u32
-//	data    [] { target u32, extra u32, kind u8, _ [3]byte }  (12 bytes each)
-func writeEdges(dst []byte, b *Builder, nsyms uint32) {
+//	data    [] u32  (LocalSymbol)
+func writeOrdinaryEdges(dst []byte, b *Builder, nsyms uint32) {
 	counts := make([]int, nsyms)
-	for i := range b.edges {
-		counts[i] = len(b.edges[i])
+	for i := range b.ordinaryEdges {
+		counts[i] = len(b.ordinaryEdges[i])
+	}
+	data := writeCSROffsets(dst, nsyms, counts)
+	pos := 0
+	for _, es := range b.ordinaryEdges {
+		for _, target := range es {
+			binary.LittleEndian.PutUint32(data[pos:], uint32(target))
+			pos += 4
+		}
+	}
+}
+
+// writeFuncDemand writes the FuncDemand section.
+//
+//	nsyms   u32
+//	offsets [nsyms+1] u32
+//	data    [] { kind u32, target u32, extra u32 }  (12 bytes each)
+func writeFuncDemand(dst []byte, b *Builder, nsyms uint32) {
+	counts := make([]int, nsyms)
+	for i := range b.funcDemands {
+		counts[i] = len(b.funcDemands[i])
 	}
 	data := writeCSROffsets(dst, nsyms, counts)
 	const rec = 12
 	pos := 0
-	for _, es := range b.edges {
-		for _, e := range es {
-			binary.LittleEndian.PutUint32(data[pos:], e.target)
-			binary.LittleEndian.PutUint32(data[pos+4:], e.extra)
-			data[pos+8] = e.kind
-			// [pos+9 : pos+12] padding, zero
+	for _, ds := range b.funcDemands {
+		for _, d := range ds {
+			binary.LittleEndian.PutUint32(data[pos:], d.kind)
+			binary.LittleEndian.PutUint32(data[pos+4:], d.target)
+			binary.LittleEndian.PutUint32(data[pos+8:], d.extra)
 			pos += rec
 		}
 	}
@@ -229,20 +252,6 @@ func writeIfaceInfo(dst []byte, b *Builder, nsyms uint32) {
 			binary.LittleEndian.PutUint32(data[pos+4:], sig.name.Len)
 			binary.LittleEndian.PutUint32(data[pos+8:], sig.mtype)
 			pos += rec
-		}
-	}
-}
-
-// writeReflect writes the ReflectBitmap section.
-//
-//	nsyms  u32
-//	bitmap [(nsyms+7)/8] u8
-func writeReflect(dst []byte, b *Builder, nsyms uint32) {
-	binary.LittleEndian.PutUint32(dst, nsyms)
-	bm := dst[4:]
-	for i := LocalSymbol(0); i < LocalSymbol(nsyms); i++ {
-		if b.reflectBits.has(i) {
-			bm[i/8] |= 1 << (i % 8)
 		}
 	}
 }

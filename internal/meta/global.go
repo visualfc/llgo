@@ -9,8 +9,10 @@ package meta
 //     InterfaceMethods are NOT rewritten at merge time — they are translated
 //     lazily on query. Only the strings are interned up front.
 //   - Duplicate symbols (e.g. linkonce type descriptors emitted by several
-//     packages) are first-wins: the first package that owns facts for a symbol
-//     becomes its owner; later duplicates are ignored.
+//     packages) are assigned one owner by fact strength. Function-demand,
+//     MethodInfo, InterfaceInfo and TypeChildren facts outrank ordinary edges,
+//     so descriptor references do not hide the package that carries semantic
+//     method/interface facts.
 type GlobalSummary struct {
 	pkgs []*PackageMeta
 
@@ -19,6 +21,7 @@ type GlobalSummary struct {
 	symStrings []string   // Symbol → text
 	locToGlb   [][]Symbol // [pkgIdx][localSym] → global Symbol
 	owner      []symLoc   // global Symbol → owning (pkg, local); pkg<0 if none
+	ownerRank  []uint8
 
 	// method-name space (distinct from symbols)
 	nameIntern  map[string]Name
@@ -26,7 +29,6 @@ type GlobalSummary struct {
 
 	// per-type flags set at merge time (no translation, just CSR range checks)
 	isInterface []bool // global Symbol → true if has iface methods
-	reflect     map[Symbol]struct{}
 
 	// lazily translated, cached on first access
 	methodInfo    map[Symbol][]GMethodSlot
@@ -85,7 +87,6 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 		locToGlb:      make([][]Symbol, len(pkgs)),
 		methodInfo:    make(map[Symbol][]GMethodSlot),
 		interfaceInfo: make(map[Symbol][]GMethodSig),
-		reflect:       make(map[Symbol]struct{}),
 	}
 
 	// Phase 1: intern symbols, build locToGlb and owner, mark type kinds.
@@ -99,8 +100,10 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 		for li := LocalSymbol(0); li < LocalSymbol(n); li++ {
 			gs := g.internSymbol(pm.symbolName(li))
 			tab[li] = gs
-			if g.owner[gs].pkg < 0 && hasFacts(pm, li) {
+			rank := ownerRank(pm, li)
+			if rank > g.ownerRank[gs] {
 				g.owner[gs] = symLoc{pkg: int32(pi), local: li}
+				g.ownerRank[gs] = rank
 			}
 
 			// mark type kinds (no translation, just CSR range checks)
@@ -108,23 +111,31 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 				g.isInterface[gs] = true
 				g.interfaces = append(g.interfaces, gs)
 			}
-			if pm.hasReflect(li) {
-				g.reflect[gs] = struct{}{}
-			}
 		}
 		g.locToGlb[pi] = tab
 	}
 	return g, nil
 }
 
-// hasFacts reports whether li carries any facts in pm (i.e. is defined here,
-// not merely referenced). Used to pick the owning package for lazy queries.
-func hasFacts(pm *PackageMeta, li LocalSymbol) bool {
-	return pm.hasEdges(li) ||
-		pm.ntypeChild(li) > 0 ||
-		pm.hasReflect(li) ||
-		pm.nmethodSlot(li) > 0 ||
-		pm.nifaceMethod(li) > 0
+// ownerRank reports whether li carries facts in pm and how authoritative those
+// facts are for lazy global queries. Higher rank wins; equal rank keeps the
+// first package, preserving deterministic first-wins behavior for equivalent
+// duplicate ordinary/linkonce facts.
+func ownerRank(pm *PackageMeta, li LocalSymbol) uint8 {
+	switch {
+	case pm.hasFuncDemand(li):
+		return 5
+	case pm.nmethodSlot(li) > 0:
+		return 4
+	case pm.nifaceMethod(li) > 0:
+		return 3
+	case pm.ntypeChild(li) > 0:
+		return 2
+	case pm.hasOrdinaryEdges(li):
+		return 1
+	default:
+		return 0
+	}
 }
 
 func (g *GlobalSummary) internSymbol(s string) Symbol {
@@ -135,6 +146,7 @@ func (g *GlobalSummary) internSymbol(s string) Symbol {
 	g.symIntern[s] = id
 	g.symStrings = append(g.symStrings, s)
 	g.owner = append(g.owner, symLoc{pkg: -1})
+	g.ownerRank = append(g.ownerRank, 0)
 	g.isInterface = append(g.isInterface, false)
 	return id
 }
@@ -250,45 +262,54 @@ func (g *GlobalSummary) InterfaceMethods(iface Symbol) []GMethodSig {
 
 // HasReflectMethod reports whether sym triggers conservative reflection handling.
 func (g *GlobalSummary) HasReflectMethod(sym Symbol) bool {
-	_, ok := g.reflect[sym]
-	return ok
+	_, _, demands := g.ownerDemands(sym)
+	for _, d := range demands {
+		if d.Kind == DemandReflectMethod {
+			return true
+		}
+	}
+	return false
 }
 
 // ── lazy edge queries ─────────────────────────────────────────────────────────
 
-// ownerEdges returns the owning package, its locToGlb table, and the raw local
-// edges for sym, or nil if sym has no owner.
-func (g *GlobalSummary) ownerEdges(sym Symbol) (*PackageMeta, []Symbol, []Edge) {
-	if int(sym) >= len(g.owner) {
+// ownerOrdinary returns the owning package's locToGlb table and raw local
+// ordinary edges for sym, or nil if sym has no owner.
+func (g *GlobalSummary) ownerOrdinary(sym Symbol) ([]Symbol, []LocalSymbol) {
+	pm, tab, li := g.ownerData(sym)
+	if pm == nil {
+		return nil, nil
+	}
+	return tab, pm.ordinaryEdges(li)
+}
+
+// ownerDemands returns the owning package, its locToGlb table, and raw local
+// FuncDemand records for sym, or nil if sym has no owner.
+func (g *GlobalSummary) ownerDemands(sym Symbol) (*PackageMeta, []Symbol, []FuncDemand) {
+	pm, tab, li := g.ownerData(sym)
+	if pm == nil {
 		return nil, nil, nil
 	}
-	loc := g.owner[sym]
-	if loc.pkg < 0 {
-		return nil, nil, nil
-	}
-	pm := g.pkgs[loc.pkg]
-	return pm, g.locToGlb[loc.pkg], pm.edges(loc.local)
+	return pm, tab, pm.funcDemands(li)
 }
 
 // OrdinaryEdges returns plain reachability targets from sym (global Symbols).
 func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
-	_, tab, edges := g.ownerEdges(sym)
+	tab, edges := g.ownerOrdinary(sym)
 	var out []Symbol
-	for _, e := range edges {
-		if e.Kind == EdgeOrdinary {
-			out = append(out, tab[e.Target])
-		}
+	for _, dst := range edges {
+		out = append(out, tab[dst])
 	}
 	return out
 }
 
 // UseIface returns concrete types converted to interfaces by sym.
 func (g *GlobalSummary) UseIface(sym Symbol) []Symbol {
-	_, tab, edges := g.ownerEdges(sym)
+	_, tab, demands := g.ownerDemands(sym)
 	var out []Symbol
-	for _, e := range edges {
-		if e.Kind == EdgeUseIface {
-			out = append(out, tab[e.Target])
+	for _, d := range demands {
+		if d.Kind == DemandUseIface {
+			out = append(out, tab[d.Target])
 		}
 	}
 	return out
@@ -296,16 +317,16 @@ func (g *GlobalSummary) UseIface(sym Symbol) []Symbol {
 
 // UseIfaceMethod returns interface method demands emitted by sym.
 func (g *GlobalSummary) UseIfaceMethod(sym Symbol) []IfaceMethodDemand {
-	_, tab, edges := g.ownerEdges(sym)
+	_, tab, demands := g.ownerDemands(sym)
 	var out []IfaceMethodDemand
-	for _, e := range edges {
-		if e.Kind != EdgeUseIfaceMethod {
+	for _, d := range demands {
+		if d.Kind != DemandIfaceMethod {
 			continue
 		}
-		iface := tab[e.Target]
+		iface := tab[d.Target]
 		sigs := g.InterfaceMethods(iface)
-		if int(e.Extra) < len(sigs) {
-			out = append(out, IfaceMethodDemand{Target: iface, Sig: sigs[e.Extra]})
+		if int(d.Extra) < len(sigs) {
+			out = append(out, IfaceMethodDemand{Target: iface, Sig: sigs[d.Extra]})
 		}
 	}
 	return out
@@ -313,14 +334,14 @@ func (g *GlobalSummary) UseIfaceMethod(sym Symbol) []IfaceMethodDemand {
 
 // UseNamedMethod returns constant MethodByName names referenced by sym.
 func (g *GlobalSummary) UseNamedMethod(sym Symbol) []Name {
-	pm, _, edges := g.ownerEdges(sym)
+	pm, _, demands := g.ownerDemands(sym)
 	if pm == nil {
 		return nil
 	}
 	var out []Name
-	for _, e := range edges {
-		if e.Kind == EdgeUseNamedMethod {
-			name := pm.nameString(NameRef{Off: e.Target, Len: e.Extra})
+	for _, d := range demands {
+		if d.Kind == DemandNamedMethod {
+			name := pm.nameString(NameRef{Off: d.Target, Len: d.Extra})
 			out = append(out, g.internName(name))
 		}
 	}
@@ -329,16 +350,11 @@ func (g *GlobalSummary) UseNamedMethod(sym Symbol) []Name {
 
 // TypeChildren returns child type symbols for typ (global Symbols).
 func (g *GlobalSummary) TypeChildren(typ Symbol) []Symbol {
-	if int(typ) >= len(g.owner) {
+	pm, tab, li := g.ownerData(typ)
+	if pm == nil {
 		return nil
 	}
-	loc := g.owner[typ]
-	if loc.pkg < 0 {
-		return nil
-	}
-	pm := g.pkgs[loc.pkg]
-	tab := g.locToGlb[loc.pkg]
-	local := pm.typeChildren(loc.local)
+	local := pm.typeChildren(li)
 	if len(local) == 0 {
 		return nil
 	}

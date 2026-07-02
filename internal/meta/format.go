@@ -32,26 +32,27 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 
 	for i := LocalSymbol(0); i < LocalSymbol(n); i++ {
 		src := symName(i)
-		for _, e := range pm.edges(i) {
-			switch e.Kind {
-			case EdgeOrdinary:
-				ordinary[src] = append(ordinary[src], symName(LocalSymbol(e.Target)))
-			case EdgeUseIface:
-				useIface[src] = append(useIface[src], symName(LocalSymbol(e.Target)))
-			case EdgeUseIfaceMethod:
-				ifaceSym := LocalSymbol(e.Target)
+		for _, dst := range pm.ordinaryEdges(i) {
+			ordinary[src] = append(ordinary[src], symName(dst))
+		}
+		for _, d := range pm.funcDemands(i) {
+			switch d.Kind {
+			case DemandUseIface:
+				useIface[src] = append(useIface[src], symName(LocalSymbol(d.Target)))
+			case DemandIfaceMethod:
+				ifaceSym := LocalSymbol(d.Target)
 				iface := symName(ifaceSym)
 				sigs := pm.ifaceMethods(ifaceSym)
-				if int(e.Extra) < len(sigs) {
-					s := sigs[e.Extra]
+				if int(d.Extra) < len(sigs) {
+					s := sigs[d.Extra]
 					useIfaceMethod[src] = append(useIfaceMethod[src],
 						fmt.Sprintf("%s %s %s", iface, pm.nameString(s.Name), symName(s.MType)))
 				} else {
 					useIfaceMethod[src] = append(useIfaceMethod[src],
-						fmt.Sprintf("%s[%d]", iface, e.Extra))
+						fmt.Sprintf("%s[%d]", iface, d.Extra))
 				}
-			case EdgeUseNamedMethod:
-				name := pm.nameString(NameRef{Off: e.Target, Len: e.Extra})
+			case DemandNamedMethod:
+				name := pm.nameString(NameRef{Off: d.Target, Len: d.Extra})
 				useNamed[src] = append(useNamed[src], name)
 			}
 		}
@@ -97,8 +98,11 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 	// collect Reflect
 	var reflectSyms []string
 	for i := LocalSymbol(0); i < LocalSymbol(n); i++ {
-		if pm.hasReflect(i) {
-			reflectSyms = append(reflectSyms, symName(i))
+		for _, d := range pm.funcDemands(i) {
+			if d.Kind == DemandReflectMethod {
+				reflectSyms = append(reflectSyms, symName(i))
+				break
+			}
 		}
 	}
 

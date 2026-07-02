@@ -171,3 +171,47 @@ func TestGlobalSummaryLinkonce(t *testing.T) {
 		t.Errorf("TypeChildren(foo) len = %d, want 1", got)
 	}
 }
+
+func TestGlobalSummaryOwnerPrefersInterfaceInfoOverOrdinaryEdges(t *testing.T) {
+	descriptorPkg := func() *meta.PackageMeta {
+		b := meta.NewBuilder()
+		iface := b.Sym("_llgo_io.Reader")
+		dep := b.Sym("runtime.descriptor")
+		b.AddEdge(iface, dep, meta.EdgeOrdinary, 0)
+		pm, err := b.Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pm
+	}()
+	defPkg := func() *meta.PackageMeta {
+		b := meta.NewBuilder()
+		iface := b.Sym("_llgo_io.Reader")
+		readT := b.Sym("_llgo_func$Read")
+		b.AddIfaceMethod(iface, "Read", readT)
+		pm, err := b.Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pm
+	}()
+	defer descriptorPkg.Close()
+	defer defPkg.Close()
+
+	g, err := meta.NewGlobalSummary([]*meta.PackageMeta{descriptorPkg, defPkg})
+	if err != nil {
+		t.Fatalf("NewGlobalSummary: %v", err)
+	}
+
+	iface, ok := g.LookupSymbol("_llgo_io.Reader")
+	if !ok {
+		t.Fatal("LookupSymbol(_llgo_io.Reader) not found")
+	}
+	methods := g.InterfaceMethods(iface)
+	if len(methods) != 1 {
+		t.Fatalf("InterfaceMethods(_llgo_io.Reader) len = %d, want 1", len(methods))
+	}
+	if got := g.Name(methods[0].Name); got != "Read" {
+		t.Fatalf("InterfaceMethods(_llgo_io.Reader)[0].Name = %q, want Read", got)
+	}
+}

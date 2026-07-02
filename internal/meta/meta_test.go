@@ -10,17 +10,17 @@ import (
 // correct total size and field offsets. If these drift, unsafe reinterpretation
 // of mmap bytes would silently corrupt — so we assert them explicitly.
 func TestWireLayout(t *testing.T) {
-	if got := unsafe.Sizeof(Edge{}); got != 12 {
-		t.Errorf("sizeof(Edge) = %d, want 12", got)
+	if got := unsafe.Sizeof(FuncDemand{}); got != 12 {
+		t.Errorf("sizeof(FuncDemand) = %d, want 12", got)
 	}
-	if got := unsafe.Offsetof(Edge{}.Target); got != 0 {
-		t.Errorf("Edge.Target offset = %d, want 0", got)
+	if got := unsafe.Offsetof(FuncDemand{}.Kind); got != 0 {
+		t.Errorf("FuncDemand.Kind offset = %d, want 0", got)
 	}
-	if got := unsafe.Offsetof(Edge{}.Extra); got != 4 {
-		t.Errorf("Edge.Extra offset = %d, want 4", got)
+	if got := unsafe.Offsetof(FuncDemand{}.Target); got != 4 {
+		t.Errorf("FuncDemand.Target offset = %d, want 4", got)
 	}
-	if got := unsafe.Offsetof(Edge{}.Kind); got != 8 {
-		t.Errorf("Edge.Kind offset = %d, want 8", got)
+	if got := unsafe.Offsetof(FuncDemand{}.Extra); got != 8 {
+		t.Errorf("FuncDemand.Extra offset = %d, want 8", got)
 	}
 
 	if got := unsafe.Sizeof(MethodSlot{}); got != 20 {
@@ -134,39 +134,47 @@ func TestRoundTrip(t *testing.T) {
 	checkName(allocZ, "runtime.AllocZ")
 	checkName(myType, "*_llgo_main.MyStruct")
 
-	// ── verify Edges ──────────────────────────────────────────────────────────
+	// ── verify OrdinaryEdges / FuncDemand ─────────────────────────────────────
 
-	mainEdges := pm.edges(main)
-	if len(mainEdges) != 4 {
-		t.Fatalf("Edges(main): got %d edges, want 4", len(mainEdges))
+	mainEdges := pm.ordinaryEdges(main)
+	if len(mainEdges) != 2 {
+		t.Fatalf("OrdinaryEdges(main): got %d edges, want 2", len(mainEdges))
 	}
-	if e := mainEdges[0]; e.Kind != EdgeOrdinary || LocalSymbol(e.Target) != helper {
-		t.Errorf("edge[0] = %+v, want {Target:%d Kind:Ordinary}", e, helper)
+	if mainEdges[0] != helper {
+		t.Errorf("ordinary[0] = %d, want helper=%d", mainEdges[0], helper)
 	}
-	if e := mainEdges[1]; e.Kind != EdgeOrdinary || LocalSymbol(e.Target) != allocZ {
-		t.Errorf("edge[1] = %+v, want {Target:%d Kind:Ordinary}", e, allocZ)
-	}
-	if e := mainEdges[2]; e.Kind != EdgeUseIface || LocalSymbol(e.Target) != myType {
-		t.Errorf("edge[2] = %+v, want {Target:%d Kind:UseIface}", e, myType)
-	}
-	if e := mainEdges[3]; e.Kind != EdgeUseIfaceMethod || LocalSymbol(e.Target) != myIface || e.Extra != 0 {
-		t.Errorf("edge[3] = %+v, want {Target:%d Kind:UseIfaceMethod Extra:0}", e, myIface)
+	if mainEdges[1] != allocZ {
+		t.Errorf("ordinary[1] = %d, want allocZ=%d", mainEdges[1], allocZ)
 	}
 
-	helperEdges := pm.edges(helper)
-	if len(helperEdges) != 1 {
-		t.Fatalf("Edges(helper): got %d, want 1", len(helperEdges))
+	mainDemands := pm.funcDemands(main)
+	if len(mainDemands) != 2 {
+		t.Fatalf("FuncDemand(main): got %d demands, want 2", len(mainDemands))
 	}
-	if e := helperEdges[0]; e.Kind != EdgeUseNamedMethod {
-		t.Errorf("helper edge[0].Kind = %d, want UseNamedMethod", e.Kind)
+	if d := mainDemands[0]; d.Kind != DemandUseIface || LocalSymbol(d.Target) != myType {
+		t.Errorf("demand[0] = %+v, want {Kind:UseIface Target:%d}", d, myType)
+	}
+	if d := mainDemands[1]; d.Kind != DemandIfaceMethod || LocalSymbol(d.Target) != myIface || d.Extra != 0 {
+		t.Errorf("demand[1] = %+v, want {Kind:IfaceMethod Target:%d Extra:0}", d, myIface)
+	}
+
+	helperDemands := pm.funcDemands(helper)
+	if len(helperDemands) != 2 {
+		t.Fatalf("FuncDemand(helper): got %d, want 2", len(helperDemands))
+	}
+	if d := helperDemands[0]; d.Kind != DemandNamedMethod {
+		t.Errorf("helper demand[0].Kind = %d, want NamedMethod", d.Kind)
 	}
 	// For UseNamedMethod, target=NameRef.Off and extra=NameRef.Len.
-	gotName := pm.nameString(NameRef{Off: helperEdges[0].Target, Len: helperEdges[0].Extra})
+	gotName := pm.nameString(NameRef{Off: helperDemands[0].Target, Len: helperDemands[0].Extra})
 	if gotName != "ServeHTTP" {
 		t.Errorf("UseNamedMethod target name = %q, want \"ServeHTTP\"", gotName)
 	}
-	if got := pm.edges(allocZ); len(got) != 0 {
-		t.Errorf("Edges(allocZ): got %d, want 0", len(got))
+	if d := helperDemands[1]; d.Kind != DemandReflectMethod {
+		t.Errorf("helper demand[1].Kind = %d, want ReflectMethod", d.Kind)
+	}
+	if got := pm.ordinaryEdges(allocZ); len(got) != 0 {
+		t.Errorf("OrdinaryEdges(allocZ): got %d, want 0", len(got))
 	}
 
 	// ── verify TypeChildren ───────────────────────────────────────────────────
@@ -218,7 +226,7 @@ func TestRoundTrip(t *testing.T) {
 		t.Errorf("NIfaceMethod(main) > 0, want 0")
 	}
 
-	// ── verify ReflectBitmap ──────────────────────────────────────────────────
+	// ── verify reflect demand ─────────────────────────────────────────────────
 
 	if !pm.hasReflect(helper) {
 		t.Errorf("HasReflect(helper) = false, want true")
@@ -254,8 +262,8 @@ func TestRoundTripFile(t *testing.T) {
 	if got := pm2.symbolName(fn); got != "pkg.Fn" {
 		t.Errorf("SymbolName after file round-trip = %q, want \"pkg.Fn\"", got)
 	}
-	edges := pm2.edges(fn)
-	if len(edges) != 1 || LocalSymbol(edges[0].Target) != dep {
-		t.Errorf("Edges after file round-trip = %v", edges)
+	edges := pm2.ordinaryEdges(fn)
+	if len(edges) != 1 || edges[0] != dep {
+		t.Errorf("OrdinaryEdges after file round-trip = %v", edges)
 	}
 }
