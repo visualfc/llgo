@@ -865,6 +865,10 @@ func uint64Hex(v uint64) string {
 // emitRuntimeFuncInfoSites emits one zero record per used site section so the
 // section always exists and the linker-synthesized boundary symbols resolve
 // even when no package contributed records. Runtime skips zero records.
+// funcInfoMetaRecordMagic marks the entry-section meta record consumed by
+// internal/pclnpost ("LLGOMET1" little-endian).
+const funcInfoMetaRecordMagic = uint64(0x3154454D4F474C4C)
+
 func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, pcSite bool, entrySite bool, stubSite bool) {
 	if !pcSite && !entrySite && !stubSite {
 		return
@@ -888,6 +892,22 @@ func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, pcSi
 	}
 	if entrySite {
 		writeZeroRecord(entrySiteSectionInfo, "funcinfo_entry")
+		// Meta records for the link-phase tool: relocations carrying the
+		// addresses of the symbol-index pointer global and its count global.
+		// Relocations are resolved by the linker regardless of what LTO
+		// internalization does to the symbol table, which is what keeps this
+		// reachable in +LTO binaries. The runtime skips all three rows: the
+		// first has pc==0 and the other two have symbolID==0.
+		idxSym, cntSym := funcInfoSymbolIndexSymbol, funcInfoSymbolIndexCountSymbol
+		if machO {
+			idxSym, cntSym = "_"+idxSym, "_"+cntSym
+		}
+		asm.WriteString(ptrDirective + " 0\n")
+		asm.WriteString(".quad " + uint64Hex(funcInfoMetaRecordMagic) + "\n")
+		asm.WriteString(ptrDirective + " " + idxSym + "\n")
+		asm.WriteString(".quad 0\n")
+		asm.WriteString(ptrDirective + " " + cntSym + "\n")
+		asm.WriteString(".quad 0\n")
 	}
 	if stubSite {
 		writeZeroRecord(stubSiteSectionInfo, "funcinfo_stubsite")

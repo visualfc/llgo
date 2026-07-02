@@ -52,6 +52,7 @@ import (
 	"github.com/goplus/llgo/internal/monitor"
 	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/internal/packages"
+	"github.com/goplus/llgo/internal/pclnpost"
 	"github.com/goplus/llgo/internal/typepatch"
 	"github.com/goplus/llgo/ssa/abi"
 	xenv "github.com/goplus/llgo/xtool/env"
@@ -485,6 +486,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 			if err != nil {
 				return nil, err
 			}
+			rewritePrebuiltFuncTab(ctx, outFmts.Out, verbose)
 			if conf.Mode == ModeBuild && conf.SizeReport {
 				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
@@ -976,6 +978,32 @@ func compileExtraFiles(ctx *context, verbose bool) ([]string, error) {
 	}
 
 	return objFiles, nil
+}
+
+// rewritePrebuiltFuncTab runs the link-phase prebuilt-table rewrite on the
+// linked executable: it deduplicates LTO inline copies of the funcinfo entry
+// records against the symbol table and replaces the entry section with a
+// sorted ftab plus findfunctab that the runtime adopts zero-copy (see
+// internal/pclnpost and doc/design/pclntab-linkphase.md). Any failure leaves
+// the binary fully functional on the first-use construction fallback.
+func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
+	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() || !shouldEmitRuntimeSites(ctx) {
+		return
+	}
+	if ctx.buildConf.BuildMode != BuildModeExe {
+		return
+	}
+	st, err := pclnpost.Rewrite(out)
+	if err != nil {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "llgo: prebuilt functab rewrite skipped: %v\n", err)
+		}
+		return
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "llgo: prebuilt functab: %d entries (%d LTO inline copies removed), %d buckets\n",
+			st.FtabEntries, st.InlineCopies, st.Buckets)
+	}
 }
 
 func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPath string, verbose bool) error {

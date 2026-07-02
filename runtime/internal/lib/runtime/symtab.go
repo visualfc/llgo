@@ -841,21 +841,33 @@ func prebuiltFrameCount() int {
 
 // materializePrebuiltEntries lazily builds the funcIndex -> entry map that
 // only the pcline initializer consumes; FuncForPC lookups never pay for it.
+// Two-phase (busy/done) so concurrent losers wait for the winner's store.
 func materializePrebuiltEntries() {
-	if !latomic.CompareAndSwapUint32(&runtimePrebuiltEntriesOnce, 0, 1) {
-		return
-	}
-	entries := make([]uintptr, runtimeFuncInfoCount+1)
-	for _, e := range runtimePrebuiltFtab[:prebuiltFrameCount()] {
-		if e.funcIndex == 0 || uintptr(e.funcIndex) > runtimeFuncInfoCount {
-			continue
+	for {
+		switch latomic.LoadUint32(&runtimePrebuiltEntriesOnce) {
+		case 2:
+			return
+		case 0:
+			if !latomic.CompareAndSwapUint32(&runtimePrebuiltEntriesOnce, 0, 1) {
+				continue
+			}
+			entries := make([]uintptr, runtimeFuncInfoCount+1)
+			for _, e := range runtimePrebuiltFtab[:prebuiltFrameCount()] {
+				if e.funcIndex == 0 || uintptr(e.funcIndex) > runtimeFuncInfoCount {
+					continue
+				}
+				pc := runtimePrebuiltBase + uintptr(e.entryOff)
+				if entries[e.funcIndex] == 0 || pc < entries[e.funcIndex] {
+					entries[e.funcIndex] = pc
+				}
+			}
+			runtimeFuncPCEntries = entries
+			latomic.StoreUint32(&runtimePrebuiltEntriesOnce, 2)
+			return
+		default:
+			c.Usleep(1)
 		}
-		pc := runtimePrebuiltBase + uintptr(e.entryOff)
-		if entries[e.funcIndex] == 0 || pc < entries[e.funcIndex] {
-			entries[e.funcIndex] = pc
-		}
 	}
-	runtimeFuncPCEntries = entries
 }
 
 func initRuntimeFuncPCFramesOnce() {
@@ -1769,7 +1781,11 @@ func pcLineFrameForPC(pc, entry uintptr) (pcSymbol, bool) {
 		return pcSymbol{}, false
 	}
 	frame := frames[idx]
-	if entry != 0 && frame.entry != 0 && frame.entry != entry {
+	// When the caller knows the function entry, only accept a site from the
+	// same function. A site with an unresolved entry cannot prove it belongs
+	// to the queried function, so it must be rejected too — otherwise a
+	// nearest-below hit from a neighboring function leaks its file/line.
+	if entry != 0 && frame.entry != entry {
 		return pcSymbol{}, false
 	}
 	return pcSymbol{
