@@ -781,6 +781,10 @@ func initRuntimeFuncPCFramesSlow() {
 // and normalizes entries to true symbol starts, so adopting the table also
 // retires first-use sorting and the dlsym/stub fallbacks.
 const runtimePrebuiltMagic = uint64(0x314254464F474C4C) // "LLGOFTB1" little-endian
+// "LLGOFTB2": the entry section holds only a 32-byte redirect whose third
+// word is the runtime address of the real blob, written into the (larger)
+// stub section when the table outgrew the entry section.
+const runtimePrebuiltRedirectMagic = uint64(0x324254464F474C4C)
 const runtimePrebuiltHeaderSize = 8 + 8 + 8 + 4 + 4
 
 type runtimePrebuiltFtabEntry struct {
@@ -839,6 +843,20 @@ func adoptPrebuiltFuncPCTable() bool {
 	end := uintptr(unsafe.Pointer(runtimeFuncInfoEntryEnd))
 	if end < start+runtimePrebuiltHeaderSize {
 		return false
+	}
+	if *(*uint64)(unsafe.Pointer(start)) == runtimePrebuiltRedirectMagic {
+		// Blob spilled into the stub section; the pointer slot is a live
+		// relocation, so it already holds the runtime address.
+		blob := uintptr(*(*uint64)(unsafe.Pointer(start + 16)))
+		if blob == 0 || runtimeFuncInfoStubSiteStart == nil || runtimeFuncInfoStubSiteEnd == nil {
+			return false
+		}
+		stubStart := uintptr(unsafe.Pointer(runtimeFuncInfoStubSiteStart))
+		stubEnd := uintptr(unsafe.Pointer(runtimeFuncInfoStubSiteEnd))
+		if blob != stubStart || stubEnd < stubStart {
+			return false
+		}
+		start, end = blob, stubEnd
 	}
 	if *(*uint64)(unsafe.Pointer(start)) != runtimePrebuiltMagic {
 		return false
@@ -1386,7 +1404,11 @@ func prebuiltFuncPCTablePresent() bool {
 	}
 	start := uintptr(unsafe.Pointer(runtimeFuncInfoEntryStart))
 	end := uintptr(unsafe.Pointer(runtimeFuncInfoEntryEnd))
-	return end >= start+8 && *(*uint64)(unsafe.Pointer(start)) == runtimePrebuiltMagic
+	if end < start+8 {
+		return false
+	}
+	m := *(*uint64)(unsafe.Pointer(start))
+	return m == runtimePrebuiltMagic || m == runtimePrebuiltRedirectMagic
 }
 
 // runtimeFuncInfoWarmSink keeps the warm-up loads observable.
@@ -1407,6 +1429,9 @@ func init() {
 		return
 	}
 	initRuntimeFuncPCFrames() // zero-copy adoption, sub-µs
+	if !runtimeFuncPCFramesPrebuilt {
+		return
+	}
 	touch := func(base unsafe.Pointer, n uintptr) {
 		if base == nil || n == 0 {
 			return
@@ -1420,12 +1445,15 @@ func init() {
 		sink += *(*byte)(unsafe.Pointer(p + n - 1))
 		runtimeFuncInfoWarmSink = sink
 	}
-	start := uintptr(unsafe.Pointer(runtimeFuncInfoEntryStart))
-	count := *(*uint32)(unsafe.Pointer(start + 24))
-	bucketCount := *(*uint32)(unsafe.Pointer(start + 28))
-	need := uintptr(runtimePrebuiltHeaderSize) + uintptr(count)*8 +
-		uintptr(bucketCount)*unsafe.Sizeof(runtimePCFindBucket{})
-	touch(unsafe.Pointer(runtimeFuncInfoEntryStart), need)
+	// The adopted blob may live in the entry section or (spilled) in the
+	// stub section; derive its range from the adopted views.
+	if n := len(runtimePrebuiltFtab); n > 0 {
+		touch(unsafe.Pointer(&runtimePrebuiltFtab[0]), uintptr(n)*8)
+	}
+	if n := len(runtimeFuncPCIndex.buckets); n > 0 {
+		touch(unsafe.Pointer(&runtimeFuncPCIndex.buckets[0]),
+			uintptr(n)*unsafe.Sizeof(runtimePCFindBucket{}))
+	}
 	touch(unsafe.Pointer(runtimeFuncInfoTable),
 		runtimeFuncInfoCount*unsafe.Sizeof(runtimeFuncInfoRecord{}))
 	touch(unsafe.Pointer(runtimeFuncInfoStringOffsets),

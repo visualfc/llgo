@@ -41,9 +41,18 @@ import (
 // on non-PIE ELF the link-time value already equals the runtime address.
 const prebuiltMagic = uint64(0x314254464F474C4C)
 
-// errBlobOverflow reports that the prebuilt blob does not fit the entry
-// section; the caller retries without stub rows before giving up.
-var errBlobOverflow = errors.New("prebuilt blob does not fit entry section")
+// errBlobOverflow reports that the prebuilt blob fits neither the entry
+// section nor the (larger) stub section; the caller retries without stub
+// rows before giving up.
+var errBlobOverflow = errors.New("prebuilt blob does not fit entry or stub section")
+
+// redirectMagic ("LLGOFTB2" little-endian) marks a 32-byte entry-section
+// header whose third word points at the real blob, written into the stub
+// section when the table outgrows the entry section (stub rows can double
+// the count). The pointer slot is a live relocation like the in-place base
+// slot: dyld rebases it on Mach-O, and non-PIE ELF link addresses already
+// equal runtime addresses.
+const redirectMagic = uint64(0x324254464F474C4C)
 
 const (
 	bucketSize    = 4096
@@ -123,12 +132,21 @@ func writeBack(path string, info *binaryInfo, kept []siteRecord) (ftabCount, buc
 
 	need := 32 + count*8 + len(buckets)
 	entrySize := int(info.entryVMSize)
-	if need > entrySize {
+	spill := need > entrySize
+	if spill && need > int(info.stubVMSize) {
 		return 0, 0, errBlobOverflow
 	}
-	blob := make([]byte, entrySize) // zero tail
+	blobSect := int(info.entryVMSize)
+	blobFileOff := info.entryFileOff
+	blobVMAddr := info.entryVMAddr
+	if spill {
+		blobSect = int(info.stubVMSize)
+		blobFileOff = info.stubFileOff
+		blobVMAddr = info.stubVMAddr
+	}
+	blob := make([]byte, blobSect) // zero tail
 	binary.LittleEndian.PutUint64(blob[0:], prebuiltMagic)
-	binary.LittleEndian.PutUint64(blob[8:], info.entryVMAddr)
+	binary.LittleEndian.PutUint64(blob[8:], blobVMAddr)
 	binary.LittleEndian.PutUint64(blob[16:], base)
 	binary.LittleEndian.PutUint32(blob[24:], uint32(count))
 	binary.LittleEndian.PutUint32(blob[28:], uint32(len(buckets)/bucketBytes))
@@ -156,22 +174,37 @@ func writeBack(path string, info *binaryInfo, kept []siteRecord) (ftabCount, buc
 		if info.stubVMSize > 0 {
 			ranges = append(ranges, [2]uint64{info.stubFileOff, info.stubFileOff + info.stubVMSize})
 		}
-		// The header's base slot is spliced back into the chain as a live
-		// rebase node: dyld writes the *slid* text base there at load, so
-		// the runtime reads a ready runtime PC with no slide arithmetic.
-		inserts := []fixupInsert{{fileOff: info.entryFileOff + 16, targetVM: base}}
+		// Pointer slots are spliced back into the chain as live rebase
+		// nodes: dyld writes *slid* addresses at load, so the runtime reads
+		// ready runtime pointers with no slide arithmetic.
+		inserts := []fixupInsert{{fileOff: blobFileOff + 16, targetVM: base}}
+		if spill {
+			inserts = append(inserts, fixupInsert{fileOff: info.entryFileOff + 16, targetVM: info.stubVMAddr})
+		}
 		pending, err = unchainRanges(raw, ranges, inserts)
 		if err != nil {
 			return 0, 0, fmt.Errorf("chained fixups: %w", err)
 		}
 	}
-	copy(raw[info.entryFileOff:], blob)
+	if spill {
+		// Entry section: zero + 32-byte redirect header to the stub-section
+		// blob. Zeroed records keep the runtime's fallback scans empty.
+		zero := raw[info.entryFileOff : info.entryFileOff+info.entryVMSize]
+		for i := range zero {
+			zero[i] = 0
+		}
+		binary.LittleEndian.PutUint64(zero[0:], redirectMagic)
+		binary.LittleEndian.PutUint64(zero[8:], info.entryVMAddr)
+		binary.LittleEndian.PutUint64(zero[16:], info.stubVMAddr)
+	}
+	copy(raw[blobFileOff:], blob)
 	for _, pw := range pending {
 		binary.LittleEndian.PutUint64(raw[pw.fileOff:], pw.val)
 	}
-	// Void the stub section: zero its records so the runtime's fallback scan
-	// finds nothing (stub entries are already merged into the table above).
-	if info.stubVMSize > 0 {
+	// Void the stub section when the blob lives in the entry section: zero
+	// its records so the runtime's fallback scan finds nothing (stub entries
+	// are already merged into the table above).
+	if !spill && info.stubVMSize > 0 {
 		zero := raw[info.stubFileOff : info.stubFileOff+info.stubVMSize]
 		for i := range zero {
 			zero[i] = 0

@@ -46,8 +46,10 @@ func Rewrite(path string) (Stats, error) {
 		return st, err
 	}
 	st.Format = info.format
-	if len(info.entrySec) >= 8 && binary.LittleEndian.Uint64(info.entrySec) == prebuiltMagic {
-		return st, fmt.Errorf("already rewritten")
+	if len(info.entrySec) >= 8 {
+		if m := binary.LittleEndian.Uint64(info.entrySec); m == prebuiltMagic || m == redirectMagic {
+			return st, fmt.Errorf("already rewritten")
+		}
 	}
 	entries := parseRecords(info, info.entrySec)
 	stubs := parseRecords(info, info.stubSec)

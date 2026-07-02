@@ -69,7 +69,7 @@ type binaryInfo struct {
 	bindTargets []uint64
 
 	entryVMAddr, entryVMSize, entryFileOff uint64
-	stubVMSize, stubFileOff                uint64
+	stubVMAddr, stubVMSize, stubFileOff    uint64
 }
 
 // readVM returns n bytes at a link-time virtual address.
@@ -97,7 +97,7 @@ func load(path string) (*binaryInfo, error) {
 		}
 		if s := mf.Section("__llgo_stub"); s != nil {
 			info.stubSec, _ = s.Data()
-			info.stubVMSize, info.stubFileOff = s.Size, uint64(s.Offset)
+			info.stubVMAddr, info.stubVMSize, info.stubFileOff = s.Addr, s.Size, uint64(s.Offset)
 		}
 		if s := mf.Section("__text"); s != nil {
 			info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
@@ -132,7 +132,7 @@ func load(path string) (*binaryInfo, error) {
 	}
 	if s := ef.Section("llgo_funcinfo_stubsite"); s != nil {
 		info.stubSec, _ = s.Data()
-		info.stubVMSize, info.stubFileOff = s.Size, s.Offset
+		info.stubVMAddr, info.stubVMSize, info.stubFileOff = s.Addr, s.Size, s.Offset
 	}
 	if s := ef.Section(".text"); s != nil {
 		info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
