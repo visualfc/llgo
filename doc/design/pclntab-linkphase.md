@@ -92,9 +92,15 @@ change is strictly additive and safe to land incrementally.
   step, wire the runtime fast path. Benchmarks: cold.FirstFuncForPC on both
   platforms; assert `llgo funcinfo: ... entries= prebuilt` via
   LLGO_FUNCINFO_DEBUG.
-- **P3** Remove transitional runtime code (cold budget/scan, first-use sort
-  path stays as fallback but slack matching can go once anchors are exact
-  entries from the symbol table).
+- **P3** (done) Mach-O bind-record resolution: pointer slots naming exported
+  functions — every `__llgo_stub.*` and any exported Go function — are
+  chained-fixup BIND nodes, not rebases; without decoding them through the
+  imports table, all stub records miss the prebuilt ftab and function-value
+  `FuncForPC` silently pays a dladdr per fresh pc (~6µs). Also: the prebuilt
+  header's base slot is spliced back into the fixup chain as a live rebase
+  node, so the runtime reads a dyld-slid runtime PC directly (no slide
+  arithmetic). Transitional cold budget/scan stays as the fallback for
+  non-rewritten binaries.
 - **P4** pcvalue-style line tables keyed by the prebuilt function order
   (replaces the call-site pcline records; gives instruction-level FileLine).
 
@@ -112,6 +118,13 @@ change is strictly additive and safe to land incrementally.
   globals regardless, and `llvm.compiler.used` pins dead functions through
   the records' initializers. This is why records stay body-embedded inline
   asm and dedup happens post-link.
+- Mach-O chained fixups encode anchors to exported symbols as BIND nodes
+  (import ordinal + addend), even when the target is defined in the same
+  image; only local-symbol anchors are rebases. Decode both.
+- Adding fixup nodes does not pre-touch pages at load on modern macOS:
+  dyld uses page-in linking (the kernel applies fixups lazily at first
+  touch), so "sacrificial fixups to warm the table's pages" is not a
+  viable optimization — measured no effect on first-lookup latency.
 - `internal/pclntab` is a faithful port of Go 1.26's findfunctab generation
   and lookup (uint8 deltas, overflow error, forward scan, sentinel); the
   runtime's in-process variant deliberately uses uint16 deltas because LLGo
