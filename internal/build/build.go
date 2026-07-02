@@ -993,6 +993,9 @@ func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
 	if ctx.buildConf.BuildMode != BuildModeExe {
 		return
 	}
+	if os.Getenv("LLGO_PCLNPOST") == "0" { // escape hatch: keep first-use construction
+		return
+	}
 	st, err := pclnpost.Rewrite(out)
 	if err != nil {
 		if verbose {

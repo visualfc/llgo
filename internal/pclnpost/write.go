@@ -30,10 +30,14 @@ import (
 // Prebuilt blob layout — keep in sync with runtime/internal/lib/runtime
 // (runtimePrebuiltMagic and adoptPrebuiltFuncPCTable):
 //
-//	u64 magic "LLGOFTB1"; u64 linkSectAddr; u64 linkBase
+//	u64 magic "LLGOFTB1"; u64 linkSectAddr; u64 base
 //	u32 count (incl sentinel); u32 bucketCount
 //	count × {u32 entryOff, u32 funcIndex}
 //	bucketCount × {u32 idx; 16 × u16 subbuckets}
+//
+// The base slot holds the runtime PC of the first table entry: on Mach-O it
+// is re-linked into the dyld chained-fixup chain (dyld rebases it at load),
+// on non-PIE ELF the link-time value already equals the runtime address.
 const prebuiltMagic = uint64(0x314254464F474C4C)
 
 const (
@@ -136,6 +140,7 @@ func writeBack(path string, info *binaryInfo, kept []siteRecord) (ftabCount, buc
 
 	raw := make([]byte, len(info.raw))
 	copy(raw, info.raw)
+	var pending []pendingWrite
 	if info.format == "macho" {
 		// Remove the rewritten sections' pointer slots from dyld's chained
 		// fixup page chains first: otherwise dyld rebases 8-byte slots
@@ -146,11 +151,19 @@ func writeBack(path string, info *binaryInfo, kept []siteRecord) (ftabCount, buc
 		if info.stubVMSize > 0 {
 			ranges = append(ranges, [2]uint64{info.stubFileOff, info.stubFileOff + info.stubVMSize})
 		}
-		if err := unchainRanges(raw, ranges); err != nil {
+		// The header's base slot is spliced back into the chain as a live
+		// rebase node: dyld writes the *slid* text base there at load, so
+		// the runtime reads a ready runtime PC with no slide arithmetic.
+		inserts := []fixupInsert{{fileOff: info.entryFileOff + 16, targetVM: base}}
+		pending, err = unchainRanges(raw, ranges, inserts)
+		if err != nil {
 			return 0, 0, fmt.Errorf("chained fixups: %w", err)
 		}
 	}
 	copy(raw[info.entryFileOff:], blob)
+	for _, pw := range pending {
+		binary.LittleEndian.PutUint64(raw[pw.fileOff:], pw.val)
+	}
 	// Void the stub section: zero its records so the runtime's fallback scan
 	// finds nothing (stub entries are already merged into the table above).
 	if info.stubVMSize > 0 {

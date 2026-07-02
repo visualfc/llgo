@@ -61,6 +61,11 @@ type binaryInfo struct {
 	imageBase uint64
 	syms      []textSym // sorted by addr, text symbols only
 	secs      []secInfo
+	// Mach-O chained-fixup import targets, ordinal -> resolved vmaddr (0 if
+	// the import name has no local definition). Exported symbols' pointer
+	// slots are emitted as BIND nodes even when they bind to this image, so
+	// record decoding needs the imports table, not just rebase decoding.
+	bindTargets []uint64
 
 	entryVMAddr, entryVMSize, entryFileOff uint64
 	stubVMSize, stubFileOff                uint64
@@ -104,6 +109,7 @@ func load(path string) (*binaryInfo, error) {
 				}
 			}
 		}
+		loadBindTargets(info, mf)
 		finish(info)
 		return info, nil
 	}
@@ -174,13 +180,23 @@ func parseRecords(info *binaryInfo, sec []byte) []siteRecord {
 			continue
 		}
 		// Mach-O pointer slots in the on-disk file hold dyld chained-fixup
-		// encodings (DYLD_CHAINED_PTR_64: target in the low 36 bits, chain
-		// metadata above); dyld rewrites them at load. Decode when the raw
-		// value falls outside the text range but its low 36 bits fall
-		// inside. The P2 write-back avoids the problem entirely by storing
-		// anchor-relative offsets instead of pointers.
+		// encodings; dyld rewrites them at load. Rebase nodes
+		// (DYLD_CHAINED_PTR_64) carry the target in the low 36 bits. Anchors
+		// naming *exported* functions — every `__llgo_stub.*` and any
+		// exported Go function — are emitted as BIND nodes instead (bit 63
+		// set, import ordinal in the low 24 bits, addend above), even though
+		// they bind back into this same image, so those resolve through the
+		// imports table. The P2 write-back avoids the problem entirely by
+		// storing anchor-relative offsets instead of pointers.
 		if info.format == "macho" && (pc < info.textStart || pc >= info.textEnd) {
-			if t := pc & (1<<36 - 1); t >= info.textStart && t < info.textEnd {
+			if pc>>63 != 0 { // DYLD_CHAINED_PTR_64_BIND
+				ordinal := pc & (1<<24 - 1)
+				addend := (pc >> 24) & 0xFF
+				if ordinal >= uint64(len(info.bindTargets)) || info.bindTargets[ordinal] == 0 {
+					continue
+				}
+				pc = info.bindTargets[ordinal] + addend
+			} else if t := pc & (1<<36 - 1); t >= info.textStart && t < info.textEnd {
 				pc = t
 			}
 		}
@@ -219,6 +235,44 @@ func fnv64(name string) uint64 {
 
 const stubPrefix = "__llgo_stub."
 
+// canonicalOwner reports whether owner symbol `name` is the function the
+// record's symbolID names, or that function's `__llgo_stub.` wrapper.
+// Mach-O symbol names carry a C-mangling underscore, and debug/macho's
+// suffix-shared string table can surface one underscore more or less than
+// the source-level name, so try each plausible normalization — matching a
+// specific 64-bit FNV makes a false positive practically impossible.
+func canonicalOwner(info *binaryInfo, name string, symbolID uint64) bool {
+	for {
+		cand := name
+		if len(cand) > len(stubPrefix) {
+			if i := stringIndex(cand, stubPrefix); i >= 0 {
+				cand = cand[i+len(stubPrefix):]
+			}
+		}
+		if fnv64(cand) == symbolID {
+			return true
+		}
+		if info.format == "macho" && len(name) > 1 && name[0] == '_' {
+			name = name[1:]
+			continue
+		}
+		return false
+	}
+}
+
+func stringIndex(s, prefix string) int {
+	// prefix at the start, allowing for leading mangling underscores only
+	for i := 0; i+len(prefix) <= len(s) && i <= 2; i++ {
+		if s[i:i+len(prefix)] == prefix {
+			return i
+		}
+		if s[i] != '_' {
+			break
+		}
+	}
+	return -1
+}
+
 // dedupe keeps exactly the canonical record per emitting function: a record
 // is canonical when the symbol that owns its anchor PC is the function the
 // symbolID names (id == fnv64(owner)) or that function's closure stub
@@ -235,15 +289,7 @@ func dedupe(info *binaryInfo, recs []siteRecord, verbose bool) (kept []siteRecor
 			droppedUnknown++
 			continue
 		}
-		name := sym.name
-		if info.format == "macho" && len(name) > 0 && name[0] == '_' {
-			name = name[1:]
-		}
-		target := name
-		if len(name) > len(stubPrefix) && name[:len(stubPrefix)] == stubPrefix {
-			target = name[len(stubPrefix):]
-		}
-		if fnv64(target) != r.symbolID {
+		if !canonicalOwner(info, sym.name, r.symbolID) {
 			droppedInline++
 			if verbose {
 				fmt.Printf("  inline copy: id=%#x pc=%#x inside %s\n", r.symbolID, r.pc, sym.name)
@@ -280,4 +326,83 @@ func buildFtab(info *binaryInfo, kept []siteRecord) ([]pclntab.FuncTabEntry, uin
 	// Go-style sentinel at end of text.
 	ftab = append(ftab, pclntab.FuncTabEntry{EntryOff: uint32(info.textEnd - base), FuncOff: ^uint32(0)})
 	return ftab, base
+}
+
+// loadBindTargets parses the LC_DYLD_CHAINED_FIXUPS imports table and
+// resolves each import ordinal to the address of its local definition (this
+// is a main executable: every funcinfo bind target is defined in-image).
+func loadBindTargets(info *binaryInfo, mf *macho.File) {
+	raw := info.raw
+	if len(raw) < 32 {
+		return
+	}
+	ncmds := binary.LittleEndian.Uint32(raw[16:])
+	var fixOff, fixSize uint64
+	off := uint64(32)
+	for i := uint32(0); i < ncmds && off+8 <= uint64(len(raw)); i++ {
+		cmd := binary.LittleEndian.Uint32(raw[off:])
+		size := binary.LittleEndian.Uint32(raw[off+4:])
+		if cmd == lcDyldChainedFixups {
+			fixOff = uint64(binary.LittleEndian.Uint32(raw[off+8:]))
+			fixSize = uint64(binary.LittleEndian.Uint32(raw[off+12:]))
+		}
+		off += uint64(size)
+	}
+	if fixOff == 0 || fixOff+28 > uint64(len(raw)) {
+		return
+	}
+	hdr := raw[fixOff : fixOff+fixSize]
+	importsOff := binary.LittleEndian.Uint32(hdr[8:])
+	symbolsOff := binary.LittleEndian.Uint32(hdr[12:])
+	importsCount := binary.LittleEndian.Uint32(hdr[16:])
+	importsFormat := binary.LittleEndian.Uint32(hdr[20:])
+	if importsCount == 0 || importsCount > 1<<24 {
+		return
+	}
+	var stride, nameShift uint32
+	switch importsFormat {
+	case 1: // DYLD_CHAINED_IMPORT: u32 {lib:8, weak:1, name_offset:23}
+		stride, nameShift = 4, 9
+	case 2: // DYLD_CHAINED_IMPORT_ADDEND: {u32, i32 addend}
+		stride, nameShift = 8, 9
+	default: // ADDEND64 or unknown: leave unresolved
+		return
+	}
+	byName := make(map[string]uint64, len(info.syms))
+	if mf.Symtab != nil {
+		for _, sym := range mf.Symtab.Syms {
+			if sym.Value != 0 && sym.Name != "" {
+				byName[sym.Name] = sym.Value
+			}
+		}
+	}
+	cstr := func(b []byte) string {
+		for i, c := range b {
+			if c == 0 {
+				return string(b[:i])
+			}
+		}
+		return string(b)
+	}
+	targets := make([]uint64, importsCount)
+	for i := uint32(0); i < importsCount; i++ {
+		rec := uint64(importsOff) + uint64(i*stride)
+		if rec+4 > uint64(len(hdr)) {
+			break
+		}
+		v := binary.LittleEndian.Uint32(hdr[rec:])
+		nameOff := uint64(symbolsOff) + uint64(v>>nameShift)
+		if nameOff >= uint64(len(hdr)) {
+			continue
+		}
+		name := cstr(hdr[nameOff:])
+		addr, ok := byName[name]
+		if !ok && len(name) > 1 && name[0] == '_' {
+			// debug/macho's Symtab names may carry one less mangling
+			// underscore than the import strings.
+			addr = byName[name[1:]]
+		}
+		targets[i] = addr
+	}
+	info.bindTargets = targets
 }

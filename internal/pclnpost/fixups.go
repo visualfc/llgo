@@ -19,6 +19,7 @@ package pclnpost
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 )
 
 // Mach-O dyld chained fixups surgery.
@@ -47,10 +48,28 @@ const (
 type segRange struct {
 	fileOff uint64
 	fileSz  uint64
+	vmaddr  uint64
 }
 
-// unchainRanges edits raw in place. ranges are file-offset [start, end) pairs.
-func unchainRanges(raw []byte, ranges [][2]uint64) error {
+// fixupInsert asks for a rebase fixup node at fileOff whose loaded value will
+// be targetVM + slide. Slot bytes are returned as pending writes so the
+// caller can apply them after overwriting the section contents.
+type fixupInsert struct {
+	fileOff  uint64
+	targetVM uint64
+}
+
+type pendingWrite struct {
+	fileOff uint64
+	val     uint64
+}
+
+// unchainRanges edits chain metadata in raw in place: every chain node inside
+// `ranges` (file-offset [start,end) pairs) is unlinked, and the requested
+// `inserts` are spliced into the page chains as rebase nodes. Because insert
+// slots usually lie inside a section the caller is about to overwrite, their
+// encoded slot values are returned as pending writes to apply afterwards.
+func unchainRanges(raw []byte, ranges [][2]uint64, inserts []fixupInsert) ([]pendingWrite, error) {
 	inRange := func(off uint64) bool {
 		for _, r := range ranges {
 			if off >= r[0] && off < r[1] {
@@ -62,7 +81,7 @@ func unchainRanges(raw []byte, ranges [][2]uint64) error {
 
 	// Locate LC_DYLD_CHAINED_FIXUPS and the segment table.
 	if len(raw) < 32 || binary.LittleEndian.Uint32(raw) != 0xFEEDFACF {
-		return fmt.Errorf("not a 64-bit little-endian Mach-O")
+		return nil, fmt.Errorf("not a 64-bit little-endian Mach-O")
 	}
 	ncmds := binary.LittleEndian.Uint32(raw[16:])
 	off := uint64(32)
@@ -77,6 +96,7 @@ func unchainRanges(raw []byte, ranges [][2]uint64) error {
 			fixSize = uint64(binary.LittleEndian.Uint32(raw[off+12:]))
 		case lcSegment64:
 			segs = append(segs, segRange{
+				vmaddr:  binary.LittleEndian.Uint64(raw[off+24:]),
 				fileOff: binary.LittleEndian.Uint64(raw[off+40:]),
 				fileSz:  binary.LittleEndian.Uint64(raw[off+48:]),
 			})
@@ -84,9 +104,20 @@ func unchainRanges(raw []byte, ranges [][2]uint64) error {
 		off += uint64(size)
 	}
 	if fixOff == 0 {
-		return nil // no chained fixups (classic dyld info); nothing to do
+		if len(inserts) > 0 {
+			return nil, fmt.Errorf("no chained fixups to splice inserts into")
+		}
+		return nil, nil // no chained fixups (classic dyld info); nothing to do
 	}
 	_ = fixSize
+	imageBase := ^uint64(0)
+	for _, sg := range segs {
+		if sg.vmaddr != 0 && sg.vmaddr < imageBase {
+			imageBase = sg.vmaddr
+		}
+	}
+	var pending []pendingWrite
+	consumed := make(map[uint64]bool, len(inserts))
 
 	hdr := raw[fixOff:]
 	startsOff := fixOff + uint64(binary.LittleEndian.Uint32(hdr[4:]))
@@ -115,63 +146,102 @@ func unchainRanges(raw []byte, ranges [][2]uint64) error {
 			if !touches {
 				continue
 			}
-			return fmt.Errorf("unsupported pointer_format %d", ptrFormat)
+			return nil, fmt.Errorf("unsupported pointer_format %d", ptrFormat)
+		}
+		encode := func(targetVM, next uint64) uint64 {
+			t := targetVM
+			if ptrFormat == chainedPtr64Offset {
+				t = targetVM - imageBase
+			}
+			return (t & (1<<36 - 1)) | (next << 51)
 		}
 		segFileOff := segs[si].fileOff
 		for pi := uint64(0); pi < pageCount; pi++ {
 			psOff := sOff + 22 + pi*2
+			pageFile := segFileOff + pi*pageSize
+			pageEnd := pageFile + pageSize
+			// Inserts requested for this page.
+			var ins []fixupInsert
+			for _, in := range inserts {
+				if in.fileOff >= pageFile && in.fileOff < pageEnd {
+					ins = append(ins, in)
+					consumed[in.fileOff] = true
+				}
+			}
 			pStart := binary.LittleEndian.Uint16(raw[psOff:])
-			if pStart == chainedPtrStartNone {
+			if pStart == chainedPtrStartNone && len(ins) == 0 {
 				continue
 			}
-			if pStart&chainedPtrStartMulti != 0 {
-				return fmt.Errorf("multi-start pages not supported")
+			if pStart != chainedPtrStartNone && pStart&chainedPtrStartMulti != 0 {
+				return nil, fmt.Errorf("multi-start pages not supported")
 			}
-			pageFile := segFileOff + pi*pageSize
-			// Collect the chain.
+			// Collect the existing chain.
 			var nodes []uint64
-			node := pageFile + uint64(pStart)
-			for {
-				nodes = append(nodes, node)
-				val := binary.LittleEndian.Uint64(raw[node:])
-				next := (val >> 51) & 0xFFF
-				if next == 0 {
-					break
+			if pStart != chainedPtrStartNone {
+				node := pageFile + uint64(pStart)
+				for {
+					nodes = append(nodes, node)
+					val := binary.LittleEndian.Uint64(raw[node:])
+					next := (val >> 51) & 0xFFF
+					if next == 0 {
+						break
+					}
+					node += next * 4
 				}
-				node += next * 4
 			}
-			// Rebuild keeping only out-of-range nodes.
-			var kept []uint64
+			// Rebuild: out-of-range survivors plus requested inserts.
+			type finalNode struct {
+				off      uint64
+				insert   bool
+				targetVM uint64
+			}
+			var final []finalNode
 			removed := 0
 			for _, n := range nodes {
 				if inRange(n) {
 					removed++
 				} else {
-					kept = append(kept, n)
+					final = append(final, finalNode{off: n})
 				}
 			}
-			if removed == 0 {
+			for _, in := range ins {
+				final = append(final, finalNode{off: in.fileOff, insert: true, targetVM: in.targetVM})
+			}
+			if removed == 0 && len(ins) == 0 {
 				continue
 			}
-			if len(kept) == 0 {
+			sort.Slice(final, func(i, j int) bool { return final[i].off < final[j].off })
+			if len(final) == 0 {
 				binary.LittleEndian.PutUint16(raw[psOff:], chainedPtrStartNone)
 				continue
 			}
-			binary.LittleEndian.PutUint16(raw[psOff:], uint16(kept[0]-pageFile))
-			for i, n := range kept {
-				val := binary.LittleEndian.Uint64(raw[n:])
+			binary.LittleEndian.PutUint16(raw[psOff:], uint16(final[0].off-pageFile))
+			for i, n := range final {
 				var next uint64
-				if i+1 < len(kept) {
-					delta := kept[i+1] - n
+				if i+1 < len(final) {
+					delta := final[i+1].off - n.off
 					if delta%4 != 0 || delta/4 > 0xFFF {
-						return fmt.Errorf("chain gap %d not encodable", delta)
+						return nil, fmt.Errorf("chain gap %d not encodable", delta)
 					}
 					next = delta / 4
 				}
-				val = (val &^ (uint64(0xFFF) << 51)) | (next << 51)
-				binary.LittleEndian.PutUint64(raw[n:], val)
+				if n.insert {
+					pending = append(pending, pendingWrite{fileOff: n.off, val: encode(n.targetVM, next)})
+				} else {
+					val := binary.LittleEndian.Uint64(raw[n.off:])
+					val = (val &^ (uint64(0xFFF) << 51)) | (next << 51)
+					binary.LittleEndian.PutUint64(raw[n.off:], val)
+				}
 			}
 		}
 	}
-	return nil
+	// An unconsumed insert means its slot never joined a fixup chain; on a
+	// PIE binary the runtime would then read an unslid value. Fail loudly so
+	// the caller falls back to first-use construction instead.
+	for _, in := range inserts {
+		if !consumed[in.fileOff] {
+			return nil, fmt.Errorf("fixup insert at %#x not within any chain page", in.fileOff)
+		}
+	}
+	return pending, nil
 }

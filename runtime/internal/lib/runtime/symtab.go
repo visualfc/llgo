@@ -764,12 +764,18 @@ func initRuntimeFuncPCFramesSlow() {
 // 8-byte aligned at the section start:
 //
 //	u64 magic          "LLGOFTB1"
-//	u64 linkSectAddr   link-time vmaddr of this section (slide anchor)
-//	u64 linkBase       link-time PC of the first table entry
+//	u64 linkSectAddr   link-time vmaddr of this section (informational)
+//	u64 base           runtime PC of the first table entry
 //	u32 count          ftab entries incl. trailing sentinel
 //	u32 bucketCount    findfunctab buckets (runtime uint16 layout)
-//	count × {u32 entryOff /* relative to linkBase */, u32 funcIndex}
+//	count × {u32 entryOff /* relative to base */, u32 funcIndex}
 //	bucketCount × {u32 idx; 16 × u16 subbuckets}
+//
+// The base slot is a live relocation: on Mach-O the rewriter splices it back
+// into the dyld chained-fixup page chain (so dyld both pre-touches the
+// table's pages at load and writes the slid address), and on non-PIE ELF the
+// link-time value already equals the runtime address. Either way the slot
+// holds a runtime PC — no slide arithmetic here.
 //
 // The tool sorts, deduplicates LTO inline copies against the symbol table,
 // and normalizes entries to true symbol starts, so adopting the table also
@@ -805,8 +811,7 @@ func adoptPrebuiltFuncPCTable() bool {
 	if *(*uint64)(unsafe.Pointer(start)) != runtimePrebuiltMagic {
 		return false
 	}
-	linkSectAddr := *(*uint64)(unsafe.Pointer(start + 8))
-	linkBase := *(*uint64)(unsafe.Pointer(start + 16))
+	base := uintptr(*(*uint64)(unsafe.Pointer(start + 16)))
 	count := *(*uint32)(unsafe.Pointer(start + 24))
 	bucketCount := *(*uint32)(unsafe.Pointer(start + 28))
 	need := uintptr(runtimePrebuiltHeaderSize) + uintptr(count)*8 +
@@ -814,8 +819,6 @@ func adoptPrebuiltFuncPCTable() bool {
 	if count < 2 || end < start+need || uintptr(count) > runtimeFuncInfoCount*16+1 {
 		return false
 	}
-	slide := start - uintptr(linkSectAddr)
-	base := uintptr(linkBase) + slide
 	runtimePrebuiltBase = base
 	runtimePrebuiltFtab = unsafe.Slice((*runtimePrebuiltFtabEntry)(unsafe.Pointer(start+runtimePrebuiltHeaderSize)), count)
 	runtimeFuncPCIndex = runtimePCFindIndex{
