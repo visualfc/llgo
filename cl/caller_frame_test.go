@@ -524,6 +524,7 @@ func leaf() {}
 	prog.Target().GOOS = "linux"
 	prog.Target().GOARCH = "amd64"
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	pkg, err := NewPackage(prog, ssapkg, files)
 	if err != nil {
 		t.Fatal(err)
@@ -561,6 +562,7 @@ func top() {
 `)
 	prog := newLLSSAProgForTarget(t, &llssa.Target{GOOS: "linux", GOARCH: "386"})
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	pkg, err := NewPackage(prog, ssapkg, files)
 	if err != nil {
 		t.Fatal(err)
@@ -590,6 +592,7 @@ func top() {
 	prog.Target().GOOS = "linux"
 	prog.Target().GOARCH = "amd64"
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	pkg, err := NewPackage(prog, ssapkg, files)
 	if err != nil {
 		t.Fatal(err)
@@ -618,6 +621,7 @@ func top() {
 `)
 	prog := newLLSSAProgForTarget(t, &llssa.Target{GOOS: "linux", GOARCH: "amd64"})
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	pkg := prog.NewPackage("foo", "example.com/foo")
 	fn := pkg.NewFunc("example.com/foo.top", llssa.NoArgsNoRet, llssa.InGo)
 	ctx := &context{
@@ -664,6 +668,7 @@ func top() {
 	prog.Target().GOOS = "darwin"
 	prog.Target().GOARCH = "arm64"
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	pkg, err := NewPackage(prog, ssapkg, files)
 	if err != nil {
 		t.Fatal(err)
@@ -745,6 +750,7 @@ func f() { _ = runtime.FuncForPC(0) }
 	prog.Target().GOOS = "linux"
 	prog.Target().GOARCH = "amd64"
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	pkg, err = NewPackage(prog, ssapkg, files)
 	if err != nil {
 		t.Fatal(err)

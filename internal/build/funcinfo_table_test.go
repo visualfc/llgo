@@ -29,6 +29,7 @@ import (
 
 func TestFuncInfoTableMaterializesMetadataWithoutFunctionPointers(t *testing.T) {
 	prog := llssa.NewProgram(nil)
+	prog.EnableFuncInfoSites(true)
 	src := prog.NewPackage("example.com/p", "example.com/p")
 	src.EmitFuncInfo("example.com/p.live", "example.com/p.Live", "live.go", 17, 3)
 	src.EmitFuncInfo("example.com/p.live", "example.com/p.LiveDuplicate", "dup.go", 19, 1)
@@ -110,6 +111,7 @@ func TestFuncInfoTableMaterializesEntrySites(t *testing.T) {
 		},
 	}
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	emitFuncInfoEntrySites(ctx, src)
 	srcIR := src.String()
 	for _, want := range []string{
@@ -190,6 +192,7 @@ func TestFuncInfoTableMaterializesClosureStubIndexes(t *testing.T) {
 		},
 	}
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	emitFuncInfoStubSites(ctx, src)
 	srcIR := src.String()
 	for _, want := range []string{
@@ -266,6 +269,7 @@ func TestFuncInfoTableMaterializesClosureStubIndexes(t *testing.T) {
 
 func TestFuncInfoTableMaterializesPCLineMetadata(t *testing.T) {
 	prog := llssa.NewProgram(nil)
+	prog.EnableFuncInfoSites(true)
 	src := prog.NewPackage("example.com/p", "example.com/p")
 	src.EmitFuncInfo("example.com/p.live", "example.com/p.Live", "live.go", 17, 3)
 	src.EmitPCLineInfo(0x1234, "example.com/p.live", "call.go", 23, 5)

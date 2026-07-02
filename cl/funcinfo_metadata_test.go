@@ -52,6 +52,7 @@ func (T) method() {}
 `
 	ir := cltest.CompileIREx(t, src, "foo.go", false, func(prog llssa.Program) {
 		prog.EnableFuncInfoMetadata(true)
+		prog.EnableFuncInfoSites(true)
 	})
 
 	for _, want := range []string{

@@ -37,6 +37,20 @@ func (p Program) FuncInfoMetadataEnabled() bool {
 	return p.enableFuncInfoMetadata
 }
 
+// EnableFuncInfoSites controls emission of the per-function site records
+// (entry/stub/pc-line inline-asm fragments inside function bodies). They are
+// gated separately from the funcinfo metadata tables because the
+// body-embedded anchors shift instruction/scope layout enough to confuse
+// debuggers; debug builds keep the tables (FuncForPC name/FileLine fidelity
+// via the dlsym path) but drop the sites.
+func (p Program) EnableFuncInfoSites(enable bool) {
+	p.enableFuncInfoSites = enable
+}
+
+func (p Program) FuncInfoSitesEnabled() bool {
+	return p.enableFuncInfoSites
+}
+
 // EmitFuncInfo records a function's linker symbol, Go name, and declaration
 // source position as LLVM named metadata. The row layout is:
 //

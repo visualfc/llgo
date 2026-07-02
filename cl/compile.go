@@ -683,7 +683,7 @@ func needsRuntimeStackNoInline(pkg *types.Package, f *ssa.Function) bool {
 }
 
 func (p *context) needsPCLineNoInline(f *ssa.Function) bool {
-	if p == nil || f == nil || !p.prog.FuncInfoMetadataEnabled() || !p.trackCallerFrames || !p.runtimeCallerFuncs[f] {
+	if p == nil || f == nil || !p.prog.FuncInfoSitesEnabled() || !p.trackCallerFrames || !p.runtimeCallerFuncs[f] {
 		return false
 	}
 	if !canEmitPCLineLabelsForTarget(p.prog.Target()) {

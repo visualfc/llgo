@@ -617,8 +617,13 @@ func shouldEmitRuntimeMachOSites(ctx *context) bool {
 // associated sections (honored by --gc-sections). Mach-O uses live_support
 // sections: under ld64/lld -dead_strip a live_support atom survives only if
 // the atom it references (the anchor inside the function body) is live, which
-// is the same records-follow-function semantics.
+// is the same records-follow-function semantics. Sites are additionally
+// gated per Program: debug builds keep the funcinfo tables but drop the
+// body-embedded site records (see Program.EnableFuncInfoSites).
 func shouldEmitRuntimeSites(ctx *context) bool {
+	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() {
+		return false
+	}
 	return shouldEmitRuntimeELFSites(ctx) || shouldEmitRuntimeMachOSites(ctx)
 }
 

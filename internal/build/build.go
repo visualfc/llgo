@@ -326,13 +326,16 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
 	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
-	// Debug builds carry full DWARF, so the funcinfo metadata tables are
-	// redundant there — and the site records' body-embedded anchors shift
-	// instruction/scope layout enough to confuse debuggers (LLDB reported
-	// variables from an inner lexical block as in scope before the block
-	// began). Caller-frame instrumentation is independent of this switch, so
-	// runtime.Caller keeps working in debug builds.
-	prog.EnableFuncInfoMetadata(conf.Mode != ModeGen && IsFuncInfoEnabled() && !IsDbgEnabled())
+	funcInfo := conf.Mode != ModeGen && IsFuncInfoEnabled()
+	prog.EnableFuncInfoMetadata(funcInfo)
+	// Site records are inline-asm fragments inside function bodies; their
+	// anchors shift instruction/scope layout enough to confuse debuggers
+	// (LLDB reported variables from an inner lexical block as in scope before
+	// the block began). Debug builds keep the metadata tables — FuncForPC
+	// name/FileLine fidelity survives via the dlsym path — but drop the
+	// sites. Caller-frame instrumentation is independent of both switches,
+	// so runtime.Caller keeps working in debug builds.
+	prog.EnableFuncInfoSites(funcInfo && !IsDbgEnabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}

@@ -1390,7 +1390,7 @@ func (p *context) recordCallerLocationForCall(b llssa.Builder, call *ssa.CallCom
 }
 
 func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
-	if p == nil || p.pkg == nil || p.fn == nil || !p.prog.FuncInfoMetadataEnabled() || !p.shouldTrackCallerFrames() {
+	if p == nil || p.pkg == nil || p.fn == nil || !p.prog.FuncInfoSitesEnabled() || !p.shouldTrackCallerFrames() {
 		return
 	}
 	target := p.prog.Target()

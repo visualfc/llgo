@@ -237,6 +237,7 @@ type aProgram struct {
 	enableLTOPluginMarker bool
 
 	enableFuncInfoMetadata bool
+	enableFuncInfoSites    bool
 }
 
 type AbiSymbol struct {

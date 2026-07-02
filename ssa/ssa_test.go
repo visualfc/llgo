@@ -252,6 +252,7 @@ func testFuncInfoMetadataDoesNotPreserveFunctions(t *testing.T) {
 		t.Fatal("funcinfo metadata should be disabled by default")
 	}
 	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
 	if !prog.FuncInfoMetadataEnabled() {
 		t.Fatal("funcinfo metadata should be enabled")
 	}
