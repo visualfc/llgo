@@ -89,6 +89,8 @@ func main() {
 	pkgCount := flag.Int("packages", 12, "generated package count for multipkg")
 	methodCount := flag.Int("methods", 12, "generated functions and methods per generated package")
 	scaleList := flag.String("scales", "", "optional comma-separated package x method scales for multipkg/cold, for example 6x6,12x12,24x24")
+	depthList := flag.String("depths", "", "optional comma-separated call depths for the deep scenario, for example 32,128,512")
+	bigList := flag.String("bigsizes", "", "optional comma-separated funcs x statements sizes for the bigfunc scenario, for example 32x200,16x2000")
 	flag.Var(&variants, "variant", "variant definition: name=go or name=llgo,/path/to/llgo,/path/to/root")
 	flag.Parse()
 
@@ -112,6 +114,14 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	depths, err := parseInts(*depthList)
+	if err != nil {
+		fatal(err)
+	}
+	bigSizes, err := parseScalePairs(*bigList)
+	if err != nil {
+		fatal(err)
+	}
 
 	absOut, err := filepath.Abs(*outDir)
 	if err != nil {
@@ -126,7 +136,7 @@ func main() {
 		}
 	}
 
-	scenarios, err := generateScenarios(filepath.Join(absOut, "work"), splitList(*scenarioList), *pkgCount, *methodCount, scales)
+	scenarios, err := generateScenarios(filepath.Join(absOut, "work"), splitList(*scenarioList), *pkgCount, *methodCount, scales, depths, bigSizes)
 	if err != nil {
 		fatal(err)
 	}
@@ -216,17 +226,35 @@ func parseVariants(values []string, includeLTO bool) ([]variant, error) {
 	return out, nil
 }
 
-func generateScenarios(workDir string, names []string, pkgCount, methodCount int, scales []scenarioSize) ([]scenario, error) {
+func generateScenarios(workDir string, names []string, pkgCount, methodCount int, scales []scenarioSize, depths []int, bigSizes []scenarioSize) ([]scenario, error) {
 	var out []scenario
 	for _, name := range names {
 		sizes := []scenarioSize{{Packages: pkgCount, Methods: methodCount}}
 		if len(scales) != 0 && (name == "multipkg" || name == "cold") {
 			sizes = scales
 		}
+		if name == "deep" {
+			sizes = []scenarioSize{{Packages: 32}}
+			if len(depths) != 0 {
+				sizes = sizes[:0]
+				for _, d := range depths {
+					sizes = append(sizes, scenarioSize{Packages: d})
+				}
+			}
+		}
+		if name == "bigfunc" {
+			sizes = []scenarioSize{{Packages: 32, Methods: 200}}
+			if len(bigSizes) != 0 {
+				sizes = bigSizes
+			}
+		}
 		for _, size := range sizes {
 			scenarioName := name
 			if len(sizes) > 1 {
 				scenarioName = fmt.Sprintf("%s_%dx%d", name, size.Packages, size.Methods)
+				if name == "deep" {
+					scenarioName = fmt.Sprintf("%s_%d", name, size.Packages)
+				}
 			}
 			dir := filepath.Join(workDir, scenarioName)
 			if err := os.MkdirAll(dir, 0755); err != nil {
@@ -237,7 +265,7 @@ func generateScenarios(workDir string, names []string, pkgCount, methodCount int
 			case "hot":
 				err = generateHot(dir)
 			case "deep":
-				err = generateDeep(dir)
+				err = generateDeep(dir, size.Packages)
 			case "multipkg":
 				err = generateMultipkg(dir, size.Packages, size.Methods)
 			case "cold":
@@ -246,6 +274,8 @@ func generateScenarios(workDir string, names []string, pkgCount, methodCount int
 				err = generateStdlib(dir)
 			case "plain":
 				err = generatePlain(dir)
+			case "bigfunc":
+				err = generateBigfunc(dir, size.Packages, size.Methods)
 			default:
 				return nil, fmt.Errorf("unknown scenario %q", name)
 			}
@@ -253,7 +283,7 @@ func generateScenarios(workDir string, names []string, pkgCount, methodCount int
 				return nil, err
 			}
 			sc := scenario{Name: scenarioName, Kind: name, Dir: dir}
-			if name == "multipkg" || name == "cold" {
+			if name == "multipkg" || name == "cold" || name == "bigfunc" {
 				sc.PackageCount = size.Packages
 				sc.MethodCount = size.Methods
 				sc.TargetCount = size.Packages * size.Methods
@@ -261,6 +291,37 @@ func generateScenarios(workDir string, names []string, pkgCount, methodCount int
 			}
 			out = append(out, sc)
 		}
+	}
+	return out, nil
+}
+
+func parseInts(list string) ([]int, error) {
+	var out []int
+	for _, tok := range splitList(list) {
+		n, err := strconv.Atoi(tok)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("bad int %q", tok)
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// parseScalePairs parses "AxB,CxD" lists that are not tied to the
+// multipkg/cold flag defaults.
+func parseScalePairs(list string) ([]scenarioSize, error) {
+	var out []scenarioSize
+	for _, tok := range splitList(list) {
+		a, b, ok := strings.Cut(tok, "x")
+		if !ok {
+			return nil, fmt.Errorf("bad size %q", tok)
+		}
+		f, err1 := strconv.Atoi(a)
+		st, err2 := strconv.Atoi(b)
+		if err1 != nil || err2 != nil || f <= 0 || st <= 0 {
+			return nil, fmt.Errorf("bad size %q", tok)
+		}
+		out = append(out, scenarioSize{Packages: f, Methods: st})
 	}
 	return out, nil
 }
@@ -276,18 +337,18 @@ func generateHot(dir string) error {
 	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(hotSource), 0644)
 }
 
-func generateDeep(dir string) error {
+func generateDeep(dir string, depth int) error {
 	if err := writeModule(dir, "example.com/llgo-bench/deep"); err != nil {
 		return err
 	}
 	var b strings.Builder
 	b.WriteString(deepPrefix)
-	for i := 0; i < 32; i++ {
+	for i := 0; i < depth; i++ {
 		fmt.Fprintf(&b, "//go:noinline\nfunc frame%d() { frame%d() }\n\n", i, i+1)
 	}
-	b.WriteString(`//go:noinline
-func frame32() {
-	pc, file, line, ok := runtime.Caller(16)
+	fmt.Fprintf(&b, `//go:noinline
+func frame%d() {
+	pc, file, line, ok := runtime.Caller(%d)
 	if !ok || pc == 0 || file == "" || line == 0 {
 		panic("bad deep caller")
 	}
@@ -296,8 +357,12 @@ func frame32() {
 	sinkInt += line
 }
 
-`)
-	b.WriteString(deepSuffix)
+`, depth, depth/2)
+	suffix := strings.ReplaceAll(deepSuffix, "[64]uintptr", fmt.Sprintf("[%d]uintptr", depth+64))
+	for _, m := range []string{"Direct", "Interface", "Closure"} {
+		suffix = strings.ReplaceAll(suffix, "deep."+m+"32", fmt.Sprintf("deep.%s%d", m, depth))
+	}
+	b.WriteString(suffix)
 	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(b.String()), 0644)
 }
 
@@ -534,6 +599,33 @@ func generateStdlib(dir string) error {
 	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(stdlibSource), 0644)
 }
 
+// generateBigfunc emits `funcs` functions of `stmts` call-site statements
+// each: large bodies stress statement-level pcline density (many sites per
+// findfunctab bucket), mid-function pc symbolization, first-use pcline table
+// construction at scale, and ordinary-code performance of big method bodies.
+func generateBigfunc(dir string, funcs, stmts int) error {
+	if err := writeModule(dir, "example.com/llgo-bench/bigfunc"); err != nil {
+		return err
+	}
+	var b strings.Builder
+	b.WriteString(bigfuncPrefix)
+	for i := 0; i < funcs; i++ {
+		fmt.Fprintf(&b, "//go:noinline\nfunc big%03d(x int) int {\n", i)
+		for j := 0; j < stmts; j++ {
+			b.WriteString("\tx = leaf(x)\n")
+		}
+		b.WriteString("\tif captureBig {\n\t\tpc, _, line, ok := runtime.Caller(0)\n\t\tif !ok || line == 0 {\n\t\t\tpanic(\"bad big caller\")\n\t\t}\n\t\tbigPCs = append(bigPCs, pc)\n\t}\n")
+		b.WriteString("\treturn x\n}\n\n")
+	}
+	b.WriteString("//go:noinline\nfunc runAll(x int) int {\n")
+	for i := 0; i < funcs; i++ {
+		fmt.Fprintf(&b, "\tx = big%03d(x)\n", i)
+	}
+	b.WriteString("\treturn x\n}\n\n")
+	b.WriteString(bigfuncMain)
+	return os.WriteFile(filepath.Join(dir, "main.go"), []byte(b.String()), 0644)
+}
+
 func generatePlain(dir string) error {
 	if err := writeModule(dir, "example.com/llgo-bench/plain"); err != nil {
 		return err
@@ -632,6 +724,8 @@ func iterationsForScenario(name string, base int) int {
 		div = 20
 	case "plain":
 		div = 2000
+	case "bigfunc":
+		div = 100
 	}
 	n := base / div
 	if n < 1 {
@@ -1405,6 +1499,94 @@ func main() {
 			m[(i*2654435761)%100003]++
 		}
 		sinkInt += len(m)
+	})
+
+	if sinkInt == 0 {
+		os.Exit(1)
+	}
+}
+`
+
+const bigfuncPrefix = `package main
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"time"
+)
+
+var sinkInt int
+var captureBig bool
+var bigPCs []uintptr
+
+` + commonBenchHelpers + `
+
+//go:noinline
+func leaf(x int) int { return x + 1 }
+
+`
+
+const bigfuncMain = `func main() {
+	iters := benchIters(100)
+
+	// Capture one tail-of-body pc per big function (a statement-level pc
+	// deep inside a large body, not a function entry).
+	captureBig = true
+	sinkInt += runAll(1)
+	captureBig = false
+	if len(bigPCs) == 0 {
+		panic("no big pcs")
+	}
+
+	// First statement-level FileLine in this process: includes any lazy
+	// line-table work over funcs*stmts call sites.
+	t := time.Now()
+	fn := runtime.FuncForPC(bigPCs[0])
+	if fn == nil {
+		panic("no func")
+	}
+	file, line := fn.FileLine(bigPCs[0])
+	if file == "" || line == 0 {
+		panic("bad first fileline")
+	}
+	fmt.Printf("bigfunc.FirstFileLineMid=%d\n", time.Since(t).Nanoseconds())
+
+	measure("bigfunc.FuncForPCMid", iters*100, func() {
+		for _, pc := range bigPCs {
+			if runtime.FuncForPC(pc) == nil {
+				panic("no func")
+			}
+		}
+	})
+
+	measure("bigfunc.FileLineMid", iters*100, func() {
+		for _, pc := range bigPCs {
+			f := runtime.FuncForPC(pc)
+			if f == nil {
+				panic("no func")
+			}
+			_, l := f.FileLine(pc)
+			sinkInt += l
+		}
+	})
+
+	measure("bigfunc.CallersFramesMid", iters*10, func() {
+		var pcs [16]uintptr
+		n := runtime.Callers(0, pcs[:])
+		frames := runtime.CallersFrames(pcs[:n])
+		for {
+			frame, more := frames.Next()
+			sinkInt += frame.Line
+			if !more {
+				break
+			}
+		}
+	})
+
+	// Ordinary performance of the large bodies themselves.
+	measure("bigfunc.Work", iters, func() {
+		sinkInt += runAll(1)
 	})
 
 	if sinkInt == 0 {
