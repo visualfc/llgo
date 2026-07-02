@@ -20,6 +20,7 @@ import (
 	"debug/elf"
 	"debug/macho"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,6 +40,10 @@ import (
 // is re-linked into the dyld chained-fixup chain (dyld rebases it at load),
 // on non-PIE ELF the link-time value already equals the runtime address.
 const prebuiltMagic = uint64(0x314254464F474C4C)
+
+// errBlobOverflow reports that the prebuilt blob does not fit the entry
+// section; the caller retries without stub rows before giving up.
+var errBlobOverflow = errors.New("prebuilt blob does not fit entry section")
 
 const (
 	bucketSize    = 4096
@@ -119,7 +124,7 @@ func writeBack(path string, info *binaryInfo, kept []siteRecord) (ftabCount, buc
 	need := 32 + count*8 + len(buckets)
 	entrySize := int(info.entryVMSize)
 	if need > entrySize {
-		return 0, 0, fmt.Errorf("prebuilt blob %dB does not fit entry section %dB", need, entrySize)
+		return 0, 0, errBlobOverflow
 	}
 	blob := make([]byte, entrySize) // zero tail
 	binary.LittleEndian.PutUint64(blob[0:], prebuiltMagic)

@@ -37,6 +37,7 @@ import (
 type siteRecord struct {
 	pc       uint64
 	symbolID uint64
+	stub     bool // owner is a __llgo_stub.* wrapper
 }
 
 type textSym struct {
@@ -260,6 +261,10 @@ func canonicalOwner(info *binaryInfo, name string, symbolID uint64) bool {
 	}
 }
 
+func isStubName(name string) bool {
+	return stringIndex(name, stubPrefix) >= 0
+}
+
 func stringIndex(s, prefix string) int {
 	// prefix at the start, allowing for leading mangling underscores only
 	for i := 0; i+len(prefix) <= len(s) && i <= 2; i++ {
@@ -300,7 +305,7 @@ func dedupe(info *binaryInfo, recs []siteRecord, verbose bool) (kept []siteRecor
 			continue
 		}
 		seenOwner[sym.addr] = true
-		kept = append(kept, siteRecord{pc: sym.addr, symbolID: r.symbolID})
+		kept = append(kept, siteRecord{pc: sym.addr, symbolID: r.symbolID, stub: isStubName(sym.name)})
 	}
 	return kept, droppedInline, droppedUnknown
 }

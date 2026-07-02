@@ -796,6 +796,38 @@ var runtimePrebuiltBase uintptr
 var runtimePrebuiltFtab []runtimePrebuiltFtabEntry
 var runtimePrebuiltEntriesOnce uint32
 
+// runtimePrebuiltFuncs caches one *Func per ftab row for exact-entry
+// lookups. The set-associative pc cache in FuncForPC thrashes once the live
+// pc population outgrows it (thousands of distinct functions queried in a
+// loop); this cache is keyed by table row, so batch workloads stay O(search)
+// after the first pass regardless of scale. Same benign-race model as the
+// pc cache: word-sized pointer stores of identical values.
+var runtimePrebuiltFuncs []unsafe.Pointer
+
+func prebuiltFuncCacheLoad(idx int) unsafe.Pointer {
+	if idx < 0 || idx >= len(runtimePrebuiltFuncs) {
+		return nil
+	}
+	return runtimePrebuiltFuncs[idx]
+}
+
+func prebuiltFuncCacheStore(idx int, fn unsafe.Pointer) {
+	if idx < 0 || idx >= len(runtimePrebuiltFuncs) {
+		return
+	}
+	runtimePrebuiltFuncs[idx] = fn
+}
+
+// prebuiltFrameIndexForEntry returns the ftab row whose entry is exactly pc,
+// or -1.
+func prebuiltFrameIndexForEntry(pc uintptr) int {
+	idx := prebuiltFrameIndex(pc)
+	if idx < 0 || prebuiltFrame(idx).entry != pc {
+		return -1
+	}
+	return idx
+}
+
 // adoptPrebuiltFuncPCTable installs a zero-copy view over the prebuilt table
 // if the entry section carries the magic header. Returns false to fall back
 // to first-use construction.
@@ -828,6 +860,7 @@ func adoptPrebuiltFuncPCTable() bool {
 	runtimeFuncPCFramesPrebuilt = true
 	runtimeFuncPCFramesFromSites = true
 	runtimeFuncPCStubsFromSites = true
+	runtimePrebuiltFuncs = make([]unsafe.Pointer, count)
 	return true
 }
 

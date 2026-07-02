@@ -2,7 +2,11 @@
 
 package runtime
 
-import llrt "github.com/goplus/llgo/runtime/internal/runtime"
+import (
+	"unsafe"
+
+	llrt "github.com/goplus/llgo/runtime/internal/runtime"
+)
 
 type StackRecord struct {
 	Stack []uintptr
@@ -145,6 +149,25 @@ func funcForPCSlow(pc uintptr) *Func {
 		// backend prologue, so an exact entry PC may sort before its anchor.
 		// Prefer the section table when it can match within the entry slack;
 		// native symbol lookup is kept only as a fallback.
+		// Exact-entry lookups hit the per-ftab-row cache first: the pc cache
+		// thrashes when the queried function population outgrows it, and
+		// batch workloads (FuncForPC over every function) would otherwise
+		// pay the string-materializing slow path per call, forever.
+		if runtimeFuncPCFramesBuilt() && runtimeFuncPCFramesPrebuilt {
+			if idx := prebuiltFrameIndexForEntry(pc); idx >= 0 {
+				if p := prebuiltFuncCacheLoad(idx); p != nil {
+					fn := (*Func)(p)
+					cacheFuncForPC(pc, fn)
+					return fn
+				}
+				if sym, ok := pcSymbolForFuncInfoIndex(pc, pc, prebuiltFrame(idx).funcIndex); ok {
+					fn := newFuncForPC(pc, sym)
+					prebuiltFuncCacheStore(idx, unsafe.Pointer(fn))
+					cacheFuncForPC(pc, fn)
+					return fn
+				}
+			}
+		}
 		if sym, ok := funcPCFrameForEntryPC(pc); ok {
 			fn := newFuncForPC(pc, sym)
 			cacheFuncForPC(pc, fn)
