@@ -94,6 +94,7 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 		}
 		intfSymName := func() string { n, _ := prog.abi.TypeName(intfSymType); return n }()
 		intfSym := mb.Sym(intfSymName)
+		b.Pkg.recordInterfaceInfo(rawIntf, intfSymName)
 		// Record which interface method is demanded. i is the method's index in rawIntf.
 		mb.AddEdge(mb.Sym(b.Func.Name()), intfSym, meta.EdgeUseIfaceMethod, uint32(i))
 	}

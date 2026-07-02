@@ -242,6 +242,7 @@ var testdropSymbolChecks = []string{
 
 func TestBuildAndCheckSymbolsFromTestdrop(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeBuild)
+	conf.ForceRebuild = true
 	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testdrop", testdropSymbolChecks,
 		cltest.WithRunConfig(conf),
 		cltest.WithOutputCheck(true),
