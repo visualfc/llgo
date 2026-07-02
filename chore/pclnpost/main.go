@@ -46,17 +46,41 @@ type textSym struct {
 	name string
 }
 
+type secInfo struct {
+	vmaddr  uint64
+	size    uint64
+	fileOff uint64
+}
+
 type binaryInfo struct {
 	format    string
+	raw       []byte
 	entrySec  []byte
 	stubSec   []byte
 	textStart uint64
 	textEnd   uint64
+	imageBase uint64
 	syms      []textSym // sorted by addr, text symbols only
+	secs      []secInfo
+
+	entryVMAddr, entryVMSize, entryFileOff uint64
+	stubVMSize, stubFileOff                uint64
+}
+
+// readVM returns n bytes at a link-time virtual address.
+func readVM(info *binaryInfo, addr uint64, n int) []byte {
+	for _, s := range info.secs {
+		if addr >= s.vmaddr && addr+uint64(n) <= s.vmaddr+s.size {
+			off := s.fileOff + (addr - s.vmaddr)
+			return info.raw[off : off+uint64(n)]
+		}
+	}
+	return make([]byte, n)
 }
 
 func main() {
 	verbose := flag.Bool("v", false, "print per-record details for dropped inline copies")
+	write := flag.Bool("write", false, "rewrite the entry section in place with the prebuilt table (P2)")
 	flag.Parse()
 	if flag.NArg() != 1 {
 		fmt.Fprintln(os.Stderr, "usage: pclnpost [-v] <linked-binary>")
@@ -104,20 +128,33 @@ func main() {
 	if bad != 0 {
 		os.Exit(1)
 	}
+	if *write {
+		if err := writeBack(path, info, kept); err != nil {
+			fmt.Fprintln(os.Stderr, "pclnpost: write:", err)
+			os.Exit(1)
+		}
+	}
 }
 
 func load(path string) (*binaryInfo, error) {
 	if mf, err := macho.Open(path); err == nil {
 		defer mf.Close()
 		info := &binaryInfo{format: "macho"}
+		info.raw, _ = os.ReadFile(path)
+		for _, s := range mf.Sections {
+			info.secs = append(info.secs, secInfo{vmaddr: s.Addr, size: s.Size, fileOff: uint64(s.Offset)})
+		}
 		if s := mf.Section("__llgo_fie"); s != nil {
 			info.entrySec, _ = s.Data()
+			info.entryVMAddr, info.entryVMSize, info.entryFileOff = s.Addr, s.Size, uint64(s.Offset)
 		}
 		if s := mf.Section("__llgo_stub"); s != nil {
 			info.stubSec, _ = s.Data()
+			info.stubVMSize, info.stubFileOff = s.Size, uint64(s.Offset)
 		}
 		if s := mf.Section("__text"); s != nil {
 			info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
+			info.imageBase = s.Addr &^ 0xFFFFFFF
 		}
 		if mf.Symtab != nil {
 			for _, sym := range mf.Symtab.Syms {
@@ -135,14 +172,23 @@ func load(path string) (*binaryInfo, error) {
 	}
 	defer ef.Close()
 	info := &binaryInfo{format: "elf"}
+	info.raw, _ = os.ReadFile(path)
+	for _, s := range ef.Sections {
+		if s.Type != elf.SHT_NOBITS && s.Addr != 0 {
+			info.secs = append(info.secs, secInfo{vmaddr: s.Addr, size: s.Size, fileOff: s.Offset})
+		}
+	}
 	if s := ef.Section("llgo_funcinfo_entry"); s != nil {
 		info.entrySec, _ = s.Data()
+		info.entryVMAddr, info.entryVMSize, info.entryFileOff = s.Addr, s.Size, s.Offset
 	}
 	if s := ef.Section("llgo_funcinfo_stubsite"); s != nil {
 		info.stubSec, _ = s.Data()
+		info.stubVMSize, info.stubFileOff = s.Size, s.Offset
 	}
 	if s := ef.Section(".text"); s != nil {
 		info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
+		info.imageBase = s.Addr &^ 0xFFFFFFF
 	}
 	syms, _ := ef.Symbols()
 	for _, sym := range syms {

@@ -715,11 +715,21 @@ func reportRuntimeFuncPCDebug() {
 	if !runtimeFuncInfoDebugEnabled() {
 		return
 	}
-	println("llgo funcinfo: func table frames=", len(runtimeFuncPCFrames),
+	entrySrc := runtimeFuncInfoDebugSource(runtimeFuncPCFramesFromSites)
+	stubSrc := runtimeFuncInfoDebugSource(runtimeFuncPCStubsFromSites)
+	if runtimeFuncPCFramesPrebuilt {
+		entrySrc = "prebuilt"
+		stubSrc = "prebuilt"
+	}
+	frameCount := len(runtimeFuncPCFrames)
+	if runtimeFuncPCFramesPrebuilt {
+		frameCount = prebuiltFrameCount()
+	}
+	println("llgo funcinfo: func table frames=", frameCount,
 		" buckets=", len(runtimeFuncPCIndex.buckets),
 		" index=", runtimeFuncInfoDebugIndex(runtimeFuncPCIndex),
-		" entries=", runtimeFuncInfoDebugSource(runtimeFuncPCFramesFromSites),
-		" stubs=", runtimeFuncInfoDebugSource(runtimeFuncPCStubsFromSites))
+		" entries=", entrySrc,
+		" stubs=", stubSrc)
 }
 
 func reportRuntimePCLineDebug() {
@@ -749,6 +759,105 @@ func initRuntimeFuncPCFramesSlow() {
 	}
 }
 
+// Prebuilt table format written into the entry-site section by the
+// link-phase tool (chore/pclnpost -write). Layout, all little-endian,
+// 8-byte aligned at the section start:
+//
+//	u64 magic          "LLGOFTB1"
+//	u64 linkSectAddr   link-time vmaddr of this section (slide anchor)
+//	u64 linkBase       link-time PC of the first table entry
+//	u32 count          ftab entries incl. trailing sentinel
+//	u32 bucketCount    findfunctab buckets (runtime uint16 layout)
+//	count × {u32 entryOff /* relative to linkBase */, u32 funcIndex}
+//	bucketCount × {u32 idx; 16 × u16 subbuckets}
+//
+// The tool sorts, deduplicates LTO inline copies against the symbol table,
+// and normalizes entries to true symbol starts, so adopting the table also
+// retires first-use sorting and the dlsym/stub fallbacks.
+const runtimePrebuiltMagic = uint64(0x314254464F474C4C) // "LLGOFTB1" little-endian
+const runtimePrebuiltHeaderSize = 8 + 8 + 8 + 4 + 4
+
+type runtimePrebuiltFtabEntry struct {
+	entryOff  uint32
+	funcIndex uint32
+}
+
+var runtimeFuncPCFramesPrebuilt bool
+
+// Zero-copy view of the prebuilt table: lookups binary-search the on-disk
+// ftab directly; nothing is materialized at adoption time.
+var runtimePrebuiltBase uintptr
+var runtimePrebuiltFtab []runtimePrebuiltFtabEntry
+var runtimePrebuiltEntriesOnce uint32
+
+// adoptPrebuiltFuncPCTable installs a zero-copy view over the prebuilt table
+// if the entry section carries the magic header. Returns false to fall back
+// to first-use construction.
+func adoptPrebuiltFuncPCTable() bool {
+	if runtimeFuncInfoEntryStart == nil || runtimeFuncInfoEntryEnd == nil {
+		return false
+	}
+	start := uintptr(unsafe.Pointer(runtimeFuncInfoEntryStart))
+	end := uintptr(unsafe.Pointer(runtimeFuncInfoEntryEnd))
+	if end < start+runtimePrebuiltHeaderSize {
+		return false
+	}
+	if *(*uint64)(unsafe.Pointer(start)) != runtimePrebuiltMagic {
+		return false
+	}
+	linkSectAddr := *(*uint64)(unsafe.Pointer(start + 8))
+	linkBase := *(*uint64)(unsafe.Pointer(start + 16))
+	count := *(*uint32)(unsafe.Pointer(start + 24))
+	bucketCount := *(*uint32)(unsafe.Pointer(start + 28))
+	need := uintptr(runtimePrebuiltHeaderSize) + uintptr(count)*8 +
+		uintptr(bucketCount)*unsafe.Sizeof(runtimePCFindBucket{})
+	if count < 2 || end < start+need || uintptr(count) > runtimeFuncInfoCount*16+1 {
+		return false
+	}
+	slide := start - uintptr(linkSectAddr)
+	base := uintptr(linkBase) + slide
+	runtimePrebuiltBase = base
+	runtimePrebuiltFtab = unsafe.Slice((*runtimePrebuiltFtabEntry)(unsafe.Pointer(start+runtimePrebuiltHeaderSize)), count)
+	runtimeFuncPCIndex = runtimePCFindIndex{
+		base:    base &^ (runtimePCFindBucketSize - 1),
+		buckets: unsafe.Slice((*runtimePCFindBucket)(unsafe.Pointer(start+runtimePrebuiltHeaderSize+uintptr(count)*8)), bucketCount),
+	}
+	runtimeFuncPCFramesPrebuilt = true
+	runtimeFuncPCFramesFromSites = true
+	runtimeFuncPCStubsFromSites = true
+	return true
+}
+
+// prebuiltFrame returns the ftab row as a runtimeFuncPCFrame view.
+func prebuiltFrame(i int) runtimeFuncPCFrame {
+	e := runtimePrebuiltFtab[i]
+	return runtimeFuncPCFrame{entry: runtimePrebuiltBase + uintptr(e.entryOff), funcIndex: e.funcIndex}
+}
+
+// prebuiltFrameCount excludes the trailing sentinel.
+func prebuiltFrameCount() int {
+	return len(runtimePrebuiltFtab) - 1
+}
+
+// materializePrebuiltEntries lazily builds the funcIndex -> entry map that
+// only the pcline initializer consumes; FuncForPC lookups never pay for it.
+func materializePrebuiltEntries() {
+	if !latomic.CompareAndSwapUint32(&runtimePrebuiltEntriesOnce, 0, 1) {
+		return
+	}
+	entries := make([]uintptr, runtimeFuncInfoCount+1)
+	for _, e := range runtimePrebuiltFtab[:prebuiltFrameCount()] {
+		if e.funcIndex == 0 || uintptr(e.funcIndex) > runtimeFuncInfoCount {
+			continue
+		}
+		pc := runtimePrebuiltBase + uintptr(e.entryOff)
+		if entries[e.funcIndex] == 0 || pc < entries[e.funcIndex] {
+			entries[e.funcIndex] = pc
+		}
+	}
+	runtimeFuncPCEntries = entries
+}
+
 func initRuntimeFuncPCFramesOnce() {
 	if runtimeFuncInfoTable == nil ||
 		runtimeFuncInfoCount == 0 ||
@@ -757,6 +866,9 @@ func initRuntimeFuncPCFramesOnce() {
 		return
 	}
 	if runtimeFuncInfoCount > 1<<20 {
+		return
+	}
+	if adoptPrebuiltFuncPCTable() {
 		return
 	}
 	frames := make([]runtimeFuncPCFrame, 0, runtimeFuncInfoCount)
@@ -1075,6 +1187,9 @@ func runtimePCFindRange(index runtimePCFindIndex, n int, pc uintptr) (int, int, 
 // table to jump near the containing function, then scan the sorted frame table
 // inside that narrow range.
 func runtimeFuncPCFrameIndex(pc uintptr) int {
+	if runtimeFuncPCFramesPrebuilt {
+		return prebuiltFrameIndex(pc)
+	}
 	frames := runtimeFuncPCFrames
 	if len(frames) == 0 {
 		return -1
@@ -1114,11 +1229,42 @@ func runtimeFuncPCFrameIndexBinary(frames []runtimeFuncPCFrame, pc uintptr) int 
 	return idx
 }
 
+// prebuiltFrameIndex is runtimeFuncPCFrameIndex over the zero-copy ftab:
+// bucket narrowing via the shared find index, then binary search on
+// entryOff. Returns the index of the last entry with PC <= pc, or -1.
+func prebuiltFrameIndex(pc uintptr) int {
+	n := prebuiltFrameCount()
+	if n <= 0 || pc < runtimePrebuiltBase {
+		return -1
+	}
+	off := uint32(pc - runtimePrebuiltBase)
+	lo, hi := 0, n
+	if l, h, ok := runtimePCFindRange(runtimeFuncPCIndex, n, pc); ok {
+		lo, hi = l, h
+	}
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if runtimePrebuiltFtab[mid].entryOff > off {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	idx := lo - 1
+	if idx < 0 || runtimePrebuiltFtab[idx].entryOff > off {
+		return -1
+	}
+	return idx
+}
+
 func funcEntryForIndex(index uint32) uintptr {
 	if index == 0 {
 		return 0
 	}
 	initRuntimeFuncPCFrames()
+	if runtimeFuncPCFramesPrebuilt {
+		materializePrebuiltEntries()
+	}
 	if uintptr(index) >= uintptr(len(runtimeFuncPCEntries)) {
 		return 0
 	}
@@ -1174,11 +1320,29 @@ func coldFuncInfoScanRange(start, end, size, pc uintptr, bestDelta uintptr) (uin
 var coldFuncPCLookupCount uint32
 
 func coldFuncPCLookupBudget() bool {
+	if prebuiltFuncPCTablePresent() {
+		// The prebuilt table makes first-use initialization cheap; skip the
+		// scan/dladdr path entirely and let the caller fall through to it.
+		return false
+	}
 	return latomic.AddUint32(&coldFuncPCLookupCount, 1) <= 8
 }
 
+// prebuiltFuncPCTablePresent reports whether the entry section carries the
+// link-phase prebuilt table, in which case the cold scan must not interpret
+// its bytes as site records — and does not need to: adopting the prebuilt
+// table is itself cheap.
+func prebuiltFuncPCTablePresent() bool {
+	if runtimeFuncInfoEntryStart == nil || runtimeFuncInfoEntryEnd == nil {
+		return false
+	}
+	start := uintptr(unsafe.Pointer(runtimeFuncInfoEntryStart))
+	end := uintptr(unsafe.Pointer(runtimeFuncInfoEntryEnd))
+	return end >= start+8 && *(*uint64)(unsafe.Pointer(start)) == runtimePrebuiltMagic
+}
+
 func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
-	if pc == 0 {
+	if pc == 0 || prebuiltFuncPCTablePresent() {
 		return pcSymbol{}, false
 	}
 	bestDelta := uintptr(runtimeFuncPCEntrySlack) + 1
@@ -1212,7 +1376,12 @@ func funcPCFrameForPC(pc uintptr) (pcSymbol, bool) {
 	if idx < 0 {
 		return pcSymbol{}, false
 	}
-	frame := runtimeFuncPCFrames[idx]
+	var frame runtimeFuncPCFrame
+	if runtimeFuncPCFramesPrebuilt {
+		frame = prebuiltFrame(idx)
+	} else {
+		frame = runtimeFuncPCFrames[idx]
+	}
 	return pcSymbolForFuncInfoIndex(pc, frame.entry, frame.funcIndex)
 }
 
@@ -1221,6 +1390,19 @@ func funcPCFrameForEntryPC(pc uintptr) (pcSymbol, bool) {
 		return pcSymbol{}, false
 	}
 	initRuntimeFuncPCFrames()
+	if runtimeFuncPCFramesPrebuilt {
+		// Prebuilt entries are true symbol starts (normalized against the
+		// symbol table by the link-phase tool), so no slack is needed.
+		idx := prebuiltFrameIndex(pc)
+		if idx < 0 {
+			return pcSymbol{}, false
+		}
+		frame := prebuiltFrame(idx)
+		if frame.entry != pc {
+			return pcSymbol{}, false
+		}
+		return pcSymbolForFuncInfoIndex(pc, pc, frame.funcIndex)
+	}
 	frames := runtimeFuncPCFrames
 	if len(frames) == 0 {
 		return pcSymbol{}, false
