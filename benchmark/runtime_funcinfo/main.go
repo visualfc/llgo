@@ -1362,8 +1362,16 @@ type item struct {
 func main() {
 	iters := benchIters(5)
 
+	// Read the depth from the environment so full LTO cannot constant-fold
+	// the whole call away.
+	fibN := 30
+	if s := getenv("PLAIN_FIB_N"); s != "" {
+		if n, err := atoi(s); err == nil && n > 0 {
+			fibN = n
+		}
+	}
 	measure("plain.fib30", iters, func() {
-		sinkInt += fib(30)
+		sinkInt += fib(fibN)
 	})
 
 	items := make([]item, 2000)
