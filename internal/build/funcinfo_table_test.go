@@ -176,6 +176,63 @@ func TestFuncInfoTableMaterializesEntrySites(t *testing.T) {
 	}
 }
 
+func TestFuncInfoTableSitesDisabledKeepsTables(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	src := prog.NewPackage("example.com/p", "example.com/p")
+	src.EmitFuncInfo("example.com/p.live", "example.com/p.Live", "live.go", 17, 3)
+	src.EmitPCLineInfo(0x1234, "example.com/p.live", "call.go", 23, 5)
+	liveFn := src.NewFunc("example.com/p.live", llssa.NoArgsNoRet, llssa.InC)
+	liveFn.MakeBody(1).Return()
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "linux",
+			Goarch:    "amd64",
+		},
+	}
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(false)
+
+	emitFuncInfoEntrySites(ctx, src)
+	emitFuncInfoStubSites(ctx, src)
+	srcIR := src.String()
+	for _, bad := range []string{"llgo_funcinfo_entry", "llgo_funcinfo_stubsite", "call void asm sideeffect"} {
+		if strings.Contains(srcIR, bad) {
+			t.Fatalf("sites disabled: package IR should not contain %q:\n%s", bad, srcIR)
+		}
+	}
+
+	records := collectFuncInfo([]Package{{LPkg: src}})
+	pcLines := collectPCLineInfo([]Package{{LPkg: src}})
+	entry := genMainModule(ctx, llssa.PkgRuntime, &packages.Package{
+		PkgPath:    "example.com/main",
+		ExportFile: "main.a",
+	}, &genConfig{funcInfo: records, pcLineInfo: pcLines})
+	ir := entry.LPkg.String()
+	// The metadata tables must still materialize...
+	for _, want := range []string{
+		"@__llgo_funcinfo_table = global ptr",
+		"@__llgo_funcinfo_count = global",
+		"@__llgo_pcline_table = global ptr",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("sites disabled: funcinfo table IR missing %q:\n%s", want, ir)
+		}
+	}
+	// ...while the site sections and their boundary symbols must not.
+	for _, bad := range []string{
+		"@__start_llgo_funcinfo_entry",
+		"@__start_llgo_funcinfo_stubsite",
+		"@__start_llgo_pcline",
+		"module asm \".section llgo_",
+	} {
+		if strings.Contains(ir, bad) {
+			t.Fatalf("sites disabled: funcinfo table IR should not contain %q:\n%s", bad, ir)
+		}
+	}
+}
+
 func TestFuncInfoTableMaterializesClosureStubIndexes(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	src := prog.NewPackage("example.com/p", "example.com/p")

@@ -656,6 +656,36 @@ func top() {
 	}
 }
 
+func TestCompileRuntimeCallerPCLineMetadataSitesDisabled(t *testing.T) {
+	ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
+import "runtime"
+
+func top() {
+	runtime.Caller(0)
+}
+`)
+	prog := newLLSSAProg(t)
+	prog.Target().GOOS = "linux"
+	prog.Target().GOARCH = "amd64"
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(false)
+	pkg, err := NewPackage(prog, ssapkg, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir := pkg.Module().String()
+	// Funcinfo metadata still flows...
+	if !strings.Contains(ir, llssa.FuncInfoMetadataName) {
+		t.Fatalf("sites disabled should keep funcinfo metadata:\n%s", ir)
+	}
+	// ...but no pc-line site labels are emitted.
+	for _, bad := range []string{"__llgo_pcsite_", ".pushsection llgo_pcline", "!llgo.pcline"} {
+		if strings.Contains(ir, bad) {
+			t.Fatalf("sites disabled should not emit pc-line sites, found %q:\n%s", bad, ir)
+		}
+	}
+}
+
 func TestCompileRuntimeCallerPCLineMetadataOnDarwin(t *testing.T) {
 	ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
 import "runtime"

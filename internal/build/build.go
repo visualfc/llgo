@@ -335,7 +335,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	// name/FileLine fidelity survives via the dlsym path — but drop the
 	// sites. Caller-frame instrumentation is independent of both switches,
 	// so runtime.Caller keeps working in debug builds.
-	prog.EnableFuncInfoSites(funcInfo && !IsDbgEnabled())
+	prog.EnableFuncInfoSites(funcInfo && !IsDbgEnabled() && IsFuncInfoSitesEnabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -1845,6 +1845,7 @@ var (
 const llgoDebug = "LLGO_DEBUG"
 const llgoDbgSyms = "LLGO_DEBUG_SYMBOLS"
 const llgoFuncInfo = "LLGO_FUNCINFO"
+const llgoFuncInfoSites = "LLGO_FUNCINFO_SITES"
 const llgoTrace = "LLGO_TRACE"
 const llgoOptimize = "LLGO_OPTIMIZE"
 const llgoWasmRuntime = "LLGO_WASM_RUNTIME"
@@ -1894,6 +1895,14 @@ func IsDbgEnabled() bool {
 
 func IsFuncInfoEnabled() bool {
 	return isEnvOn(llgoFuncInfo, true)
+}
+
+// IsFuncInfoSitesEnabled controls the body-embedded site records
+// independently of the funcinfo tables (LLGO_FUNCINFO_SITES=0 keeps the
+// metadata but drops entry/stub/pc-line inline-asm sites). Useful for
+// isolating codegen perturbation caused by the in-body asm anchors.
+func IsFuncInfoSitesEnabled() bool {
+	return isEnvOn(llgoFuncInfoSites, true)
 }
 
 func IsDbgSymsEnabled() bool {
