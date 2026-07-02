@@ -208,7 +208,12 @@ func frameFuncForPC(pc uintptr, sym pcSymbol, name string) *Func {
 		file:  sym.file,
 		line:  sym.line,
 	}
-	cacheFuncForPC(pc, fn)
+	// FuncForPC's own constructor falls back to entry == pc; keep frames with
+	// an unresolved entry out of the shared cache so a later FuncForPC(pc)
+	// does not observe Entry() == 0.
+	if sym.entry != 0 {
+		cacheFuncForPC(pc, fn)
+	}
 	return fn
 }
 
