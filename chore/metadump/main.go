@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/goplus/llgo/internal/metadata"
+	"github.com/goplus/llgo/internal/meta"
 )
 
 func main() {
@@ -45,17 +45,12 @@ func main() {
 }
 
 func run(input, output string) error {
-	f, err := os.Open(input)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", input, err)
-	}
-	defer f.Close()
-
-	pm, err := metadata.ReadMeta(f)
+	pm, err := meta.ReadMeta(input)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", input, err)
 	}
-	text := metadata.MetaString(pm)
+	defer pm.Close()
+	text := pm.String()
 
 	if output == "" {
 		fmt.Print(text)
