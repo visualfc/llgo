@@ -11,3 +11,4 @@ github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/api.UseInt:
 [InterfaceInfo]
 _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8:
     Value _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
+

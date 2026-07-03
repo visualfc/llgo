@@ -137,3 +137,4 @@ github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[strin
 *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[string]:
     0 Drop _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[string]).Drop __llgo_stub.github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[string]).Drop
     1 Value _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[string]).Value __llgo_stub.github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[string]).Value
+
