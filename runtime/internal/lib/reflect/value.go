@@ -243,11 +243,10 @@ type emptyInterface struct {
 type nonEmptyInterface struct {
 	// see ../runtime/iface.go:/Itab
 	itab *struct {
-		ityp *abi.Type // static interface type
-		typ  *abi.Type // dynamic concrete type
-		hash uint32    // copy of typ.hash
-		_    [4]byte
-		fun  [100000]unsafe.Pointer // method table
+		inter *abi.InterfaceType
+		typ   *abi.Type
+		hash  uint32     // copy of _type.hash. Used for type switches.
+		fun   [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
 	}
 	word unsafe.Pointer
 }
@@ -2313,7 +2312,16 @@ func toFFIArg(v Value, typ *abi.Type) unsafe.Pointer {
 		return unsafe.Pointer(&v.ptr)
 	case abi.Interface:
 		i := v.Interface()
-		return unsafe.Pointer(&i)
+		iface := typ.InterfaceType()
+		if len(iface.Methods) == 0 {
+			return unsafe.Pointer(&i)
+		}
+		itab := runtime.NewItab(iface, v.typ())
+		data := struct {
+			itab *runtime.Itab
+			data unsafe.Pointer
+		}{itab, (*emptyInterface)(unsafe.Pointer(&i)).word}
+		return unsafe.Pointer(&data)
 	case abi.Map:
 		return toFFIWordArg(v)
 	case abi.Pointer:
