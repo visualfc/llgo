@@ -845,3 +845,156 @@ func f() {
 		t.Fatalf("caller location tracking should not emit old TLS instrumentation:\n%s", ir)
 	}
 }
+
+// importerFunc adapts a lookup function to types.Importer.
+type importerFunc func(string) (*types.Package, error)
+
+func (f importerFunc) Import(path string) (*types.Package, error) { return f(path) }
+
+// buildCallerFrameSSAProgram builds dep and root packages with bodies in a
+// single SSA program, so cross-package analysis (runtimeCallerFuncSet
+// criterion 2) can consult the callee package's own base set.
+func buildCallerFrameSSAProgram(t *testing.T, depPath, depSrc, rootPath, rootSrc string) (dep, root *gossa.Package) {
+	t.Helper()
+	fset := token.NewFileSet()
+	parse := func(name, src string) *ast.File {
+		file, err := parser.ParseFile(fset, name, src, parser.ParseComments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	depFile := parse("dep.go", depSrc)
+	rootFile := parse("root.go", rootSrc)
+	base := packages.NewImporter(fset)
+	prog := gossa.NewProgram(fset, gossa.SanityCheckFunctions|gossa.InstantiateGenerics)
+	created := map[*types.Package]bool{}
+	var createDeps func(p *types.Package)
+	createDeps = func(p *types.Package) {
+		if created[p] {
+			return
+		}
+		created[p] = true
+		for _, imp := range p.Imports() {
+			createDeps(imp)
+		}
+		prog.CreatePackage(p, nil, nil, true)
+	}
+	check := func(path string, file *ast.File, imp types.Importer) (*types.Package, *types.Info) {
+		info := &types.Info{
+			Types:      map[ast.Expr]types.TypeAndValue{},
+			Defs:       map[*ast.Ident]types.Object{},
+			Uses:       map[*ast.Ident]types.Object{},
+			Implicits:  map[ast.Node]types.Object{},
+			Scopes:     map[ast.Node]*types.Scope{},
+			Selections: map[*ast.SelectorExpr]*types.Selection{},
+			Instances:  map[*ast.Ident]types.Instance{},
+		}
+		pkg := types.NewPackage(path, file.Name.Name)
+		if err := types.NewChecker(&types.Config{Importer: imp}, fset, pkg, info).Files([]*ast.File{file}); err != nil {
+			t.Fatal(err)
+		}
+		return pkg, info
+	}
+	depPkgT, depInfo := check(depPath, depFile, base)
+	for _, p := range depPkgT.Imports() {
+		createDeps(p)
+	}
+	depSSA := prog.CreatePackage(depPkgT, []*ast.File{depFile}, depInfo, true)
+	created[depPkgT] = true
+	rootImp := importerFunc(func(path string) (*types.Package, error) {
+		if path == depPath {
+			return depPkgT, nil
+		}
+		return base.Import(path)
+	})
+	rootPkgT, rootInfo := check(rootPath, rootFile, rootImp)
+	for _, p := range rootPkgT.Imports() {
+		createDeps(p)
+	}
+	rootSSA := prog.CreatePackage(rootPkgT, []*ast.File{rootFile}, rootInfo, true)
+	prog.Build()
+	return depSSA, rootSSA
+}
+
+// Criterion 2: calling another package's pc-consuming function makes the
+// caller trackable — decided by that package's analysis, not by name.
+func TestRuntimeCallerFuncSetCrossPackage(t *testing.T) {
+	depSSA, rootSSA := buildCallerFrameSSAProgram(t,
+		"example.com/dep", `package dep
+
+import "runtime"
+
+func Where() bool {
+	_, _, _, ok := runtime.Caller(0)
+	return ok
+}
+
+func Quiet() int { return 1 }
+`,
+		"example.com/root", `package root
+
+import "example.com/dep"
+
+func Logs() bool { return dep.Where() }
+
+func Plain() int { return dep.Quiet() }
+`)
+	if !runtimeCallerBaseSet(depSSA)[depSSA.Func("Where")] {
+		t.Fatal("dep.Where must be in its own package's base set")
+	}
+	set := runtimeCallerFuncSet(rootSSA)
+	if !set[rootSSA.Func("Logs")] {
+		t.Fatal("caller of a pc-consuming function must be tracked (criterion 2)")
+	}
+	if set[rootSSA.Func("Plain")] {
+		t.Fatal("caller of a quiet function must not be tracked")
+	}
+}
+
+// Criteria 3 and 4: program-unique frames (main.main, init) and
+// //go:noinline functions are pinned; plain helpers are not.
+func TestRuntimeCallerFuncSetPinnedFrames(t *testing.T) {
+	ssapkg, _ := buildCallerFrameSSAPackage(t, "example.com/cmd", `package main
+
+func main() { helper(); pinned() }
+
+func init() { helper() }
+
+//go:noinline
+func pinned() {}
+
+func helper() {}
+`)
+	set := runtimeCallerFuncSet(ssapkg)
+	for _, name := range []string{"main", "init", "pinned"} {
+		if !set[ssapkg.Func(name)] {
+			t.Fatalf("%s must be pinned in the tracking set", name)
+		}
+	}
+	if set[ssapkg.Func("helper")] {
+		t.Fatal("plain helper must not be tracked")
+	}
+}
+
+// Display names follow gc's reporting conventions regardless of the module
+// path; linker symbols are untouched.
+func TestFuncInfoDisplayName(t *testing.T) {
+	mainPkg := types.NewPackage("example.com/cmd", "main")
+	libPkg := types.NewPackage("example.com/lib", "lib")
+	cases := []struct {
+		pkg      *types.Package
+		in, want string
+	}{
+		{mainPkg, "example.com/cmd.main", "main.main"},
+		{mainPkg, "example.com/cmd.main$2", "main.main.func2"},
+		{mainPkg, "other/path.f", "other/path.f"},
+		{libPkg, "example.com/lib.f$1", "example.com/lib.f.func1"},
+		{nil, "plain.f$x", "plain.f$x"},
+	}
+	for _, c := range cases {
+		if got := funcInfoDisplayName(c.pkg, c.in); got != c.want {
+			t.Fatalf("funcInfoDisplayName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
