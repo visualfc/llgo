@@ -69,12 +69,10 @@ jobs:
       - name: Build
         run: go build -v ./...
 
-      - name: Test
-        if: ${{!startsWith(matrix.os, 'macos')}}
-        run: go test -timeout 30m ./...
-
+      # Both platforms upload coverage: OS-specific paths (ELF vs Mach-O
+      # emission, per-OS runtime shims) are otherwise invisible to
+      # codecov/patch and fail it on lines only the other OS executes.
       - name: Test with coverage
-        if: startsWith(matrix.os, 'macos')
         run: go test -timeout 30m -coverprofile="coverage.txt" -covermode=atomic ./...
 
       - name: Test with embedded emulator env
