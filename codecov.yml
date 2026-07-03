@@ -1,0 +1,5 @@
+# Benchmarks are standalone measurement harnesses, not product code paths;
+# they have no unit tests by design and would otherwise dominate patch
+# coverage whenever they grow.
+ignore:
+  - "benchmark/**"
