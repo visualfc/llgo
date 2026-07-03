@@ -381,8 +381,18 @@ type T struct{}
 func (T) Call() { runtime.Caller(0) }
 var _ = T{}
 `)
-	if runtimeCallerFuncSet(methodOnlyPkg) != nil {
-		t.Fatal("method-only runtime caller use should not mark top-level functions")
+	methodOnlySet := runtimeCallerFuncSet(methodOnlyPkg)
+	if methodOnlySet == nil {
+		t.Fatal("a method calling runtime.Caller must be tracked (slog.(*Logger).Info escaped exactly this way)")
+	}
+	foundMethod := false
+	for fn := range methodOnlySet {
+		if fn.Name() == "Call" {
+			foundMethod = true
+		}
+	}
+	if !foundMethod {
+		t.Fatal("method-only runtime caller set should contain the method itself")
 	}
 }
 
@@ -407,7 +417,7 @@ func TestCallerFrameTrackingEligibility(t *testing.T) {
 		{name: "disabled flag", pkgPath: "example.com/foo", want: false},
 		{name: "named target", pkgPath: "example.com/foo", track: true, targetName: "esp32", want: false},
 		{name: "wasm", pkgPath: "example.com/foo", track: true, goarch: "wasm", want: false},
-		{name: "stdlib", pkgPath: "fmt", track: true, want: false},
+		{name: "stdlib", pkgPath: "fmt", track: true, want: true},
 		{name: "runtime", pkgPath: "runtime", track: true, want: false},
 		{name: "llgo runtime", pkgPath: llssa.PkgRuntime, track: true, want: false},
 		{name: "llgo runtime internal", pkgPath: "github.com/goplus/llgo/runtime/internal/foo", track: true, want: false},
@@ -443,8 +453,14 @@ func f() { runtime.Caller(0) }
 		})
 	}
 
-	if canTrackCallerFramesForPackage("net/http") {
-		t.Fatal("stdlib paths without dots should not track caller frames")
+	// Tracking applies uniformly; only the runtime core is excluded.
+	if !canTrackCallerFramesForPackage("net/http") {
+		t.Fatal("stdlib packages must be trackable like any other code")
+	}
+	if canTrackCallerFramesForPackage("runtime") ||
+		canTrackCallerFramesForPackage(llssa.PkgRuntime) ||
+		canTrackCallerFramesForPackage("github.com/goplus/llgo/runtime/internal/lib") {
+		t.Fatal("runtime core must stay untracked")
 	}
 }
 

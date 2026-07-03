@@ -87,8 +87,10 @@ func (T) method() {}
 	if got := records["foo.leaf"].name; got != "foo.leaf" {
 		t.Fatalf("leaf stack frame name = %q, want foo.leaf", got)
 	}
-	if got := records["foo.top$1"].name; got != "foo.top$1" {
-		t.Fatalf("closure stack frame name = %q, want foo.top$1", got)
+	// The linker symbol keeps the $N form; the display name is normalized
+	// to gc's .funcN convention.
+	if got := records["foo.top$1"].name; got != "foo.top.func1" {
+		t.Fatalf("closure stack frame name = %q, want foo.top.func1", got)
 	}
 	if got := records["foo.top"].name; got != "foo.top" {
 		t.Fatalf("caller stack frame name = %q, want foo.top", got)

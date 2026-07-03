@@ -36,8 +36,11 @@ func Stack(buf []byte, all bool) int {
 		}
 		out = append(out, ':')
 		out = appendInt(out, frame.Line)
-		out = append(out, ' ')
-		out = append(out, "+0x0\n"...)
+		if frame.Entry != 0 && frame.PC >= frame.Entry {
+			out = append(out, " +0x"...)
+			out = appendHexUint(out, uintptr(frame.PC-frame.Entry))
+		}
+		out = append(out, '\n')
 		if !more {
 			break
 		}
@@ -48,6 +51,21 @@ func Stack(buf []byte, all bool) int {
 	}
 	copy(buf, out)
 	return len(out)
+}
+
+func appendHexUint(buf []byte, v uintptr) []byte {
+	const digits = "0123456789abcdef"
+	if v == 0 {
+		return append(buf, '0')
+	}
+	var tmp [16]byte
+	i := len(tmp)
+	for v > 0 {
+		i--
+		tmp[i] = digits[v&0xf]
+		v >>= 4
+	}
+	return append(buf, tmp[i:]...)
 }
 
 func appendInt(out []byte, v int) []byte {

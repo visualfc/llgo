@@ -86,6 +86,14 @@ func TracePanic(v any) {
 	println("\n")
 }
 
+// PanicTraceback, when set by the public runtime package, prints a Go-style
+// stack trace (function + file:line per frame) for an unrecovered panic and
+// reports whether it printed anything. skip counts physical frames above the
+// runtime plumbing frame that invokes the hook, matching clite
+// debug.PrintStack's convention. When unset or when it reports false, the
+// caller falls back to the clite frame dump.
+var PanicTraceback func(skip int) bool
+
 /*
 func stringTracef(fp c.FilePtr, format *c.Char, s String) {
 	cs := c.Alloca(uintptr(s.len) + 1)

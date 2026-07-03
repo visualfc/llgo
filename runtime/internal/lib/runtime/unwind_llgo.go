@@ -2,10 +2,77 @@
 
 package runtime
 
-import "unsafe"
+import (
+	"unsafe"
+
+	rtdebug "github.com/goplus/llgo/runtime/internal/runtime"
+)
 
 //go:linkname c_framepointer C.llgo_framepointer
 func c_framepointer() unsafe.Pointer
+
+func init() {
+	rtdebug.PanicTraceback = panicTraceback
+}
+
+func hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+}
+
+// panicTraceback prints a Go-style stack trace for an unrecovered panic:
+// one "function(...)" line plus an indented file:line per physical frame,
+// matching the shape of runtime.Stack and gc's panic output. Reports false
+// (caller falls back to the clite dladdr dump) when the FP walk or the
+// tables are unavailable.
+func panicTraceback(skip int) bool {
+	if !fpUnwindAvailable() {
+		return false
+	}
+	var pcs [64]uintptr
+	n := fpCallers(skip, pcs[:])
+	if n <= 0 {
+		return false
+	}
+	print("goroutine 1 [running]:\n")
+	frames := CallersFrames(pcs[:n])
+	skippingPlumbing := true
+	for {
+		frame, more := frames.Next()
+		name := frame.Function
+		if name == "" {
+			name = unknownFunctionName(frame.PC)
+		}
+		// The frames between the hook and the panic site are runtime
+		// plumbing (Rethrow, Panic, ...); their depth varies by panic
+		// path, so filter by package rather than a fixed skip.
+		if skippingPlumbing {
+			if hasPrefix(name, "github.com/goplus/llgo/runtime/internal/") {
+				if more {
+					continue
+				}
+				break
+			}
+			skippingPlumbing = false
+		}
+		print(name, "(...)\n\t")
+		if frame.File == "" {
+			print("???")
+		} else {
+			print(frame.File)
+		}
+		print(":", frame.Line)
+		// gc appends the frame pc's offset from the function entry; the
+		// value is codegen-specific, only the format matches.
+		if frame.Entry != 0 && frame.PC >= frame.Entry {
+			print(" +0x", string(appendHexUint(nil, uintptr(frame.PC-frame.Entry))))
+		}
+		print("\n")
+		if !more {
+			break
+		}
+	}
+	return true
+}
 
 // maxFPStride bounds how far up the stack one frame may sit from the next.
 // A slot whose decoded parent is further away than any plausible frame is a

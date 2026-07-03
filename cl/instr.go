@@ -26,6 +26,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -866,15 +867,17 @@ func (p *context) shouldTrackCallerFrames() bool {
 	return canTrackCallerFramesForPackage(p.pkg.Path())
 }
 
+// canTrackCallerFramesForPackage excludes only the runtime core, whose
+// frames are unwinder plumbing rather than user code. Everything else —
+// stdlib, third-party, user packages — goes through the same per-package
+// analysis: functions that (transitively, within the package) reach a
+// runtime.Caller/Callers call must keep physical frames (log.Output,
+// slog's Logger.log, testing's decorate chains qualify exactly this way),
+// and packages that never read caller pcs track nothing and pay nothing.
 func canTrackCallerFramesForPackage(pkgPath string) bool {
 	return pkgPath != llssa.PkgRuntime &&
 		pkgPath != "runtime" &&
-		!isStandardLibraryPackage(pkgPath) &&
 		!strings.HasPrefix(pkgPath, "github.com/goplus/llgo/runtime/internal/")
-}
-
-func isStandardLibraryPackage(pkgPath string) bool {
-	return pkgPath != "command-line-arguments" && !strings.Contains(pkgPath, ".")
 }
 
 func packageUsesRuntimeCaller(pkg *ssa.Package) bool {
@@ -891,10 +894,106 @@ func fnUsesRuntimeCaller(fn *ssa.Function) bool {
 	return runtimeCallerFuncSet(fn.Pkg)[fn]
 }
 
+// runtimeCallerFuncSet is the per-package tracking set: functions that
+// must keep physical frames (noinline, no tail calls) and get statement
+// anchors at their call sites. Two criteria feed it:
+//
+//  1. the function (transitively, within the package) reaches a
+//     runtime.Caller/Callers call — it consumes caller pcs itself;
+//  2. the function statically calls another package's pc-consuming
+//     function (log.Println, slog methods, t.Errorf, ...) — its frame is
+//     what the callee's fixed Caller depth attributes, so inlining it
+//     would both mis-attribute the location and, on ELF, drop the
+//     function symbol its pcline sections are link-ordered to.
+//
+// Criterion 2 tests membership against the callee package's *base* set
+// (criterion 1 alone), so tracking extends exactly one call level past a
+// pc-consuming package and does not cascade through arbitrary wrapper
+// layers; multi-package wrapper chains remain the P4 inline-tree's job.
 func runtimeCallerFuncSet(pkg *ssa.Package) map[*ssa.Function]bool {
 	if pkg == nil {
 		return nil
 	}
+	if v, ok := runtimeCallerExtendedCache.Load(pkg); ok {
+		set, _ := v.(map[*ssa.Function]bool)
+		return set
+	}
+	base := runtimeCallerBaseSet(pkg)
+	out := make(map[*ssa.Function]bool, len(base))
+	for fn := range base {
+		out[fn] = true
+	}
+	_, trackable := collectRuntimeCallerFunctions(pkg)
+	for fn := range trackable {
+		if out[fn] {
+			continue
+		}
+		// Criterion 3: pin program-unique frames. main.main and package
+		// init functions run once, so noinline is free — and they are the
+		// bottom frames of almost every panic traceback, where an
+		// approximate declaration-adjacent line is most visible.
+		if isProgramUniqueFrame(pkg, fn) {
+			out[fn] = true
+			continue
+		}
+		// Criterion 4: //go:noinline functions already keep their frames,
+		// so statement anchors are free of the usual inlining cost — their
+		// panic-traceback lines become exact instead of
+		// declaration-adjacent.
+		if hasNoInlineDirective(fn) {
+			out[fn] = true
+			continue
+		}
+		forEachCall(fn, func(call *ssa.CallCommon) {
+			callee := call.StaticCallee()
+			if callee == nil || callee.Pkg == nil || callee.Pkg == pkg {
+				return
+			}
+			if !canTrackCallerFramesForPackage(callee.Pkg.Pkg.Path()) {
+				return
+			}
+			if runtimeCallerBaseSet(callee.Pkg)[callee] {
+				out[fn] = true
+			}
+		})
+	}
+	if len(out) == 0 {
+		out = nil
+	}
+	runtimeCallerExtendedCache.Store(pkg, out)
+	return out
+}
+
+var (
+	runtimeCallerBaseCache     sync.Map // *ssa.Package -> map[*ssa.Function]bool
+	runtimeCallerExtendedCache sync.Map // *ssa.Package -> map[*ssa.Function]bool
+)
+
+func isProgramUniqueFrame(pkg *ssa.Package, fn *ssa.Function) bool {
+	if fn == nil || fn.Parent() != nil {
+		return false
+	}
+	name := fn.Name()
+	if name == "init" || strings.HasPrefix(name, "init#") {
+		return true
+	}
+	return name == "main" && pkg.Pkg != nil && pkg.Pkg.Name() == "main"
+}
+
+func runtimeCallerBaseSet(pkg *ssa.Package) map[*ssa.Function]bool {
+	if pkg == nil {
+		return nil
+	}
+	if v, ok := runtimeCallerBaseCache.Load(pkg); ok {
+		set, _ := v.(map[*ssa.Function]bool)
+		return set
+	}
+	set := computeRuntimeCallerBaseSet(pkg)
+	runtimeCallerBaseCache.Store(pkg, set)
+	return set
+}
+
+func computeRuntimeCallerBaseSet(pkg *ssa.Package) map[*ssa.Function]bool {
 	funcs, trackable := collectRuntimeCallerFunctions(pkg)
 	analysis := &runtimeCallerAnalysis{
 		pkg:       pkg,
@@ -962,17 +1061,32 @@ func collectRuntimeCallerFunctions(pkg *ssa.Package) (funcs, trackable map[*ssa.
 			add(fn, true)
 		}
 	}
-	if pkg.Prog != nil && pkg.Pkg != nil {
-		for _, typ := range pkg.Prog.RuntimeTypes() {
-			if !typeBelongsToPackage(typ, pkg.Pkg) {
-				continue
-			}
+	if pkg.Prog != nil {
+		// Methods are as trackable as package-level functions: one that
+		// (transitively) calls runtime.Caller needs frames and pcline
+		// labels of its own.
+		addMethods := func(typ types.Type) {
 			methods := pkg.Prog.MethodSets.MethodSet(typ)
 			for i := 0; i < methods.Len(); i++ {
-				// Methods are as trackable as package-level functions: one
-				// that (transitively) calls runtime.Caller needs frames and
-				// pcline labels of its own.
 				add(pkg.Prog.MethodValue(methods.At(i)), true)
+			}
+		}
+		// Named-type methods are not package members and a type used only
+		// concretely never enters RuntimeTypes (slog.(*Logger).Info was
+		// missed exactly this way); collect both receiver forms from the
+		// package's own type declarations.
+		for _, member := range pkg.Members {
+			if t, ok := member.(*ssa.Type); ok {
+				addMethods(t.Type())
+				addMethods(types.NewPointer(t.Type()))
+			}
+		}
+		if pkg.Pkg != nil {
+			for _, typ := range pkg.Prog.RuntimeTypes() {
+				if !typeBelongsToPackage(typ, pkg.Pkg) {
+					continue
+				}
+				addMethods(typ)
 			}
 		}
 	}
