@@ -169,6 +169,48 @@ func TestBuildPthreadStackSizeFlagRejectsNegative(t *testing.T) {
 	}
 }
 
+func TestBuildLTOPassPluginFlags(t *testing.T) {
+	fs := flag.NewFlagSet("lto-pass-plugin", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	args := []string{
+		"-lto=full",
+		"-lto-pass-plugin=/tmp/libLLGOLTOPlugin.so",
+	}
+	if err := fs.Parse(args); err != nil {
+		t.Fatalf("Parse(%v) unexpected error: %v", args, err)
+	}
+
+	conf := &build.Config{}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if conf.LTOPlugin.Path != "/tmp/libLLGOLTOPlugin.so" {
+		t.Fatalf("conf.LTOPlugin.Path = %q", conf.LTOPlugin.Path)
+	}
+}
+
+func TestBuildLTOPassPluginRequiresFullLTO(t *testing.T) {
+	tests := [][]string{
+		{"-lto-pass-plugin=/tmp/libLLGOLTOPlugin.so"},
+		{"-lto=thin", "-lto-pass-plugin=/tmp/libLLGOLTOPlugin.so"},
+	}
+
+	for _, args := range tests {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			fs := flag.NewFlagSet("lto-pass-plugin-requires-fulllto", flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddBuildFlags(fs)
+			if err := fs.Parse(args); err != nil {
+				t.Fatalf("Parse(%v) unexpected error: %v", args, err)
+			}
+			if err := UpdateConfig(&build.Config{}); err == nil {
+				t.Fatal("UpdateConfig expected error")
+			}
+		})
+	}
+}
+
 func TestDevLTOGlobalDCEBuildFlags(t *testing.T) {
 	if !buildenv.Dev {
 		fs := flag.NewFlagSet("nodev-globaldce", flag.ContinueOnError)
