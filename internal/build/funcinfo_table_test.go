@@ -493,3 +493,71 @@ func TestFuncInfoTableIgnoresInvalidMetadata(t *testing.T) {
 		t.Fatalf("readFuncInfo(empty) = %+v, want nil", got)
 	}
 }
+
+// TestFuncInfoTableEmissionMatrix sweeps the OS / pointer-size / content
+// combinations so both the ELF and Mach-O directive branches, the 32-bit
+// pointer directives, and the empty-table initializers stay covered on every
+// platform's test run.
+func TestFuncInfoTableEmissionMatrix(t *testing.T) {
+	cases := []struct {
+		goos, goarch string
+		empty        bool
+	}{
+		{"linux", "amd64", false},
+		{"darwin", "arm64", false},
+		{"linux", "386", false},
+		{"linux", "amd64", true},
+		{"darwin", "arm64", true},
+	}
+	for _, c := range cases {
+		name := c.goos + "/" + c.goarch
+		if c.empty {
+			name += "/empty"
+		}
+		t.Run(name, func(t *testing.T) {
+			prog := llssa.NewProgram(&llssa.Target{GOOS: c.goos, GOARCH: c.goarch})
+			prog.EnableFuncInfoMetadata(true)
+			prog.EnableFuncInfoSites(true)
+			src := prog.NewPackage("example.com/p", "example.com/p")
+			if !c.empty {
+				src.EmitFuncInfo(`example.com/p.we$ird"sym`, "example.com/p.Live", "live.go", 17, 3)
+				src.EmitFuncInfo("example.com/p.other", "example.com/p.Other", "other.go", 5, 1)
+				src.EmitPCLineInfo(0x1234, `example.com/p.we$ird"sym`, "call.go", 23, 5)
+				fn := src.NewFunc(`example.com/p.we$ird"sym`, llssa.NoArgsNoRet, llssa.InGo)
+				fn.MakeBody(1).Return()
+				stub := src.NewFunc(`__llgo_stub.example.com/p.we$ird"sym`, llssa.NoArgsNoRet, llssa.InGo)
+				stub.MakeBody(1).Return()
+			}
+			ctx := &context{
+				prog: prog,
+				buildConf: &Config{
+					BuildMode: BuildModeExe,
+					Goos:      c.goos,
+					Goarch:    c.goarch,
+				},
+			}
+			records := collectFuncInfo([]Package{{LPkg: src}})
+			pcLines := collectPCLineInfo([]Package{{LPkg: src}})
+			stubs := collectFuncInfoStubRecords([]Package{{LPkg: src}}, records)
+			emitFuncInfoTable(ctx, src, records, pcLines, stubs)
+			emitFuncInfoEntrySites(ctx, src)
+			emitFuncInfoStubSites(ctx, src)
+			ir := src.String()
+			if c.empty {
+				if !strings.Contains(ir, "__llgo_funcinfo_count") {
+					t.Fatalf("missing empty table globals:\n%s", ir)
+				}
+				return
+			}
+			if !strings.Contains(ir, "__llgo_funcinfo_table") {
+				t.Fatalf("missing table:\n%s", ir)
+			}
+			if c.goos == "darwin" && !strings.Contains(ir, "live_support") {
+				t.Fatalf("darwin sections must be live_support:\n%s", ir)
+			}
+			if c.goos == "linux" && !strings.Contains(ir, "pushsection llgo_funcinfo_entry") {
+				t.Fatalf("missing elf entry section:\n%s", ir)
+			}
+		})
+	}
+}
