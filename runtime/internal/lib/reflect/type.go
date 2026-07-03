@@ -2492,9 +2492,13 @@ func runtimeStructField(field StructField) (structField, string) {
 	}
 
 	//	resolveReflectType(field.Type.common()) // install in runtime
+	typ := field.Type.common()
+	if typ.Kind() == abi.Func {
+		typ = closureOf(typ.FuncType())
+	}
 	f := structField{
 		Name_:     field.Name,
-		Typ:       field.Type.common(),
+		Typ:       typ,
 		Tag_:      string(field.Tag),
 		Offset:    0,
 		Embedded_: field.Anonymous,
