@@ -217,7 +217,10 @@ func writeBack(path string, info *binaryInfo, kept []siteRecord) (ftabCount, buc
 	if err := os.WriteFile(path, raw, st.Mode()); err != nil {
 		return 0, 0, err
 	}
-	if info.format == "macho" && runtime.GOOS == "darwin" {
+	// Only re-sign binaries that were signed to begin with (lld ad-hoc
+	// signs real executables; unsigned inputs need no signature and
+	// codesign would reject them anyway).
+	if info.format == "macho" && info.hasCodeSignature && runtime.GOOS == "darwin" {
 		if out, err := exec.Command("codesign", "-f", "-s", "-", path).CombinedOutput(); err != nil {
 			return 0, 0, fmt.Errorf("codesign: %v: %s", err, out)
 		}

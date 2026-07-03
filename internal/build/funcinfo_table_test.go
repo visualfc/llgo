@@ -561,3 +561,44 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestAsmQuoteELFSymbol(t *testing.T) {
+	cases := map[string]string{
+		`plain`:      `"plain"`,
+		`we$ird`:     `"we$$ird"`,
+		`q"uote`:     `"q\"uote"`,
+		`back\slash`: `"back\\slash"`,
+	}
+	for in, want := range cases {
+		if got := asmQuoteELFSymbol(in); got != want {
+			t.Fatalf("quote(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Empty encoded tables must materialize null initializers (the ~20-line
+// branch in emitFuncInfoTable that only fires for funcinfo-less programs).
+func TestFuncInfoTableEmptyEncodedInitializers(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	prog.EnableFuncInfoMetadata(true)
+	src := prog.NewPackage("example.com/p", "example.com/p")
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "linux",
+			Goarch:    "amd64",
+		},
+	}
+	emitFuncInfoTable(ctx, src, nil, nil, nil)
+	ir := src.String()
+	for _, want := range []string{
+		"@__llgo_funcinfo_table = global ptr null",
+		"@__llgo_pcline_table = global ptr null",
+		"@__llgo_funcinfo_count = global i64 0",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing %q in:\n%s", want, ir)
+		}
+	}
+}

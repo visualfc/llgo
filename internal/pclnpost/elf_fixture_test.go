@@ -257,3 +257,20 @@ func TestRewriteELFOverflowFallsBack(t *testing.T) {
 		t.Fatal("binary must be untouched on failure")
 	}
 }
+
+func TestRewriteErrorPaths(t *testing.T) {
+	// No entry records at all.
+	empty := func(addrOf func(string) uint64) []byte { return nil }
+	path := buildELF(t, fixtureFns(), empty, empty, 4096, 256)
+	if _, err := Rewrite(path); err == nil {
+		t.Fatal("expected no-entry-records error")
+	}
+	// Records whose anchors have no owning symbol: dropped, nothing survives.
+	orphan := func(addrOf func(string) uint64) []byte {
+		return rec(0xdead0000, 42)
+	}
+	path = buildELF(t, fixtureFns(), orphan, empty, 4096, 256)
+	if _, err := Rewrite(path); err == nil {
+		t.Fatal("expected no-survivors error")
+	}
+}

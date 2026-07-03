@@ -69,6 +69,7 @@ type binaryInfo struct {
 
 	entryVMAddr, entryVMSize, entryFileOff uint64
 	stubVMAddr, stubVMSize, stubFileOff    uint64
+	hasCodeSignature                       bool
 }
 
 // readVM returns n bytes at a link-time virtual address.
@@ -107,6 +108,11 @@ func load(path string) (*binaryInfo, error) {
 				if sym.Value >= info.textStart && sym.Value < info.textEnd && sym.Name != "" {
 					info.syms = append(info.syms, textSym{addr: sym.Value, name: sym.Name})
 				}
+			}
+		}
+		for _, l := range mf.Loads {
+			if b := l.Raw(); len(b) >= 4 && binary.LittleEndian.Uint32(b) == 0x1D { // LC_CODE_SIGNATURE
+				info.hasCodeSignature = true
 			}
 		}
 		loadBindTargets(info, mf)
