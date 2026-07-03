@@ -63,20 +63,13 @@ func Rewrite(path string) (Stats, error) {
 		return st, fmt.Errorf("no records survived dedup")
 	}
 	ftab, buckets, err := writeBack(path, info, kept)
-	if err == errBlobOverflow {
-		// Function-value stubs can double the row count; when the blob does
-		// not fit the entry section, keep real function entries (the common
-		// queries) and let stub pcs fall back to dladdr.
-		funcsOnly := kept[:0]
-		for _, r := range kept {
-			if !r.stub {
-				funcsOnly = append(funcsOnly, r)
-			}
-		}
-		st.Kept = len(funcsOnly)
-		ftab, buckets, err = writeBack(path, info, funcsOnly)
-	}
 	if err != nil {
+		// Includes errBlobOverflow when the blob fits neither the entry nor
+		// the stub section. Never drop stub rows to squeeze in: a table with
+		// gaps attributes pcs inside a gap to the previous function
+		// (nearest-below), which silently returns wrong names on platforms
+		// where dladdr cannot rescue (non-PIE ELF). First-use construction
+		// is slower but correct.
 		return st, err
 	}
 	st.FtabEntries, st.Buckets = ftab, buckets
