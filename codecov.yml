@@ -1,5 +1,9 @@
-# Benchmarks are standalone measurement harnesses, not product code paths;
-# they have no unit tests by design and would otherwise dominate patch
+# Benchmarks, dev tools and test scaffolding are not product code paths:
+# benchmarks are standalone measurement harnesses, chore/ holds developer
+# CLIs, and cl/cltest is the compiler test driver itself. None of them have
+# (or should need) unit tests, and they would otherwise dominate patch
 # coverage whenever they grow.
 ignore:
   - "benchmark/**"
+  - "chore/**"
+  - "cl/cltest/**"
