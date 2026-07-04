@@ -73,6 +73,12 @@ static unw_init_local2_fn p_init_local2; /* preferred: UNW_INIT_SIGNAL_FRAME */
 static unw_step_fn p_step;
 static unw_get_reg_fn p_get_reg;
 static unw_get_proc_name_fn p_get_proc_name;
+/* Whether to call unw_get_proc_name inside the fault handler. Darwin's
+ * implementation is in-memory (compact unwind / dyld tables); nongnu's
+ * reads /proc/self/maps and mmaps ELF .symtab — not async-signal-safe,
+ * so it is off by default on linux (LLGO_DYNUNWIND_NAMES=1 re-enables
+ * for diagnostics; frame pcs and end-fp are still captured). */
+static int dynunw_capture_names;
 
 static int dynunw_reg_ip; /* UNW_REG_IP for the resolved flavor */
 static int dynunw_reg_fp; /* frame-pointer regnum for the resolved flavor */
@@ -169,6 +175,7 @@ static int dynunw_resolve(void)
     if (p_init_local && p_step && p_get_reg) {
         dynunw_use_llvm_regnums();
         dynunw_ctx_is_ucontext = 0;
+        dynunw_capture_names = 1;
         llgo_dynunwind_flavor = "darwin-libsystem";
         return 1;
     }
@@ -206,6 +213,10 @@ static int dynunw_resolve(void)
 #undef RESOLVE
             if (p_init_local && p_step && p_get_reg) {
                 dynunw_ctx_is_ucontext = 1;
+                {
+                    const char *e = getenv("LLGO_DYNUNWIND_NAMES");
+                    dynunw_capture_names = e && e[0] == '1' && !e[1];
+                }
                 llgo_dynunwind_flavor = "linux-nongnu";
                 return 1;
             }
@@ -259,7 +270,7 @@ static int dynunw_run(void *uctx)
         dynunw_pcs[n] = ip;
         dynunw_names[n][0] = 0;
         dynunw_offs[n] = 0;
-        if (p_get_proc_name &&
+        if (dynunw_capture_names && p_get_proc_name &&
             p_get_proc_name(dynunw_cursor, dynunw_names[n], DYNUNW_NAME_LEN,
                             &off) == 0)
             dynunw_offs[n] = off;

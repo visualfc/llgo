@@ -13,8 +13,14 @@
  * panic pc snapshot for hardware faults (nil derefs compiled with
  * null_pointer_is_valid, faults inside C code, integer division on x86)
  * starts from the ucontext's pc/fp instead. */
+#include <errno.h>
 #include <signal.h>
 #include <stdint.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
+static long llgo_pagesz; /* primed at handler install, out of signal context */
+
 #if defined(__APPLE__) || defined(__linux__)
 #include <ucontext.h>
 
@@ -75,7 +81,13 @@ void llgo_install_fault_handler(void (*cb)(uintptr_t, uintptr_t, int))
     struct sigaction sa;
     int sigs[3] = {SIGSEGV, SIGBUS, SIGFPE};
     int i;
+    /* Installation runs at startup, before user code. dlopen probes for
+     * libunwind (and sysconf/sigaction) may set errno; a leaked errno is
+     * visible to the first two-result cgo call ("v, err := C.f()"), which
+     * turns it into a spurious non-nil err. */
+    int saved_errno = errno;
     llgo_fault_go = cb;
+    llgo_pagesz = sysconf(_SC_PAGESIZE);
     llgo_dynunwind_init();
     for (i = 0; i < 3; i++) {
         sa.sa_sigaction = llgo_fault_trampoline;
@@ -89,6 +101,7 @@ void llgo_install_fault_handler(void (*cb)(uintptr_t, uintptr_t, int))
         sa.sa_flags = SA_SIGINFO | SA_NODEFER;
         sigaction(sigs[i], &sa, 0);
     }
+    errno = saved_errno;
 }
 #endif
 
@@ -96,21 +109,15 @@ void llgo_install_fault_handler(void (*cb)(uintptr_t, uintptr_t, int))
  * page returns ENOMEM for unmapped ranges. Used by the fault-context
  * walks — an arithmetic-valid frame pointer can still point into a hole,
  * and faulting inside the fault path recurses. */
-#include <errno.h>
-#include <sys/mman.h>
-#include <unistd.h>
-
 int llgo_mem_readable(void *p)
 {
-    static long pagesz;
+    int saved_errno = errno;
     char *page;
-    if (!pagesz) {
-        pagesz = sysconf(_SC_PAGESIZE);
-        if (pagesz <= 0)
-            pagesz = 4096;
-    }
-    page = (char *)((uintptr_t)p & ~(uintptr_t)(pagesz - 1));
+    long sz = llgo_pagesz;
+    if (sz <= 0)
+        sz = 4096;
+    page = (char *)((uintptr_t)p & ~(uintptr_t)(sz - 1));
     if (msync(page, 1, MS_ASYNC) == 0)
-        return 1;
-    return errno != ENOMEM;
+        { int r = 1; errno = saved_errno; return r; }
+    { int r = errno != ENOMEM; errno = saved_errno; return r; }
 }
