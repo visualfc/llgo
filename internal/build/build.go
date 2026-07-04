@@ -24,6 +24,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -1147,9 +1148,36 @@ func applyDCEOverrides(ctx *context, mainPkg *packages.Package, pkgs []Package, 
 		}
 		fmt.Fprintf(os.Stderr, "[dce] packages=%d roots=%s merge=%v analyze=%v live method slots=%d types=%d\n",
 			len(metas), strings.Join(roots, ","), mergeDur, analyzeDur, liveCount, len(liveSlots))
-		return dcepass.EmitStrongTypeOverridesDebug(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, os.Stderr)
+		err := dcepass.EmitStrongTypeOverridesDebug(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, os.Stderr)
+		printDCEMetaInputs(ctx, pkgs, os.Stderr)
+		return err
 	}
 	return dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots)
+}
+
+func printDCEMetaInputs(ctx *context, pkgs []Package, w io.Writer) {
+	cm := ctx.ensureCacheManager()
+	targetTriple := ctx.targetTriple()
+	fmt.Fprintf(w, "[dce] meta inputs:\n")
+	for _, pkg := range pkgs {
+		if pkg == nil || pkg.Meta == nil {
+			continue
+		}
+		if pkg.Fingerprint == "" || pkg.Name == "main" {
+			fmt.Fprintf(w, "[dce]   %s memory\n", pkg.PkgPath)
+			continue
+		}
+		paths := cm.PackagePaths(targetTriple, pkg.PkgPath, pkg.Fingerprint)
+		state := "miss"
+		if pkg.CacheHit {
+			state = "hit"
+		}
+		exists := "missing"
+		if _, err := os.Stat(paths.Meta); err == nil {
+			exists = "exists"
+		}
+		fmt.Fprintf(w, "[dce]   %s %s %s %s\n", pkg.PkgPath, state, exists, paths.Meta)
+	}
 }
 
 func linkedPackageMetas(pkgs []Package) []*meta.PackageMeta {

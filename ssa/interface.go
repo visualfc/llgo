@@ -67,7 +67,8 @@ func iMethodOf(rawIntf *types.Interface, name string) int {
 func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 	prog := b.Prog
 	intfType := types.Unalias(intf.raw.Type)
-	rawIntf := intfType.Underlying().(*types.Interface)
+	patchedIntfType := prog.patch(intfType)
+	rawIntf := patchedIntfType.Underlying().(*types.Interface)
 	sig := method.Type().(*types.Signature)
 	if sig.Recv() == nil && sig.Params().Len() > 0 {
 		pt := types.Unalias(sig.Params().At(0).Type())
