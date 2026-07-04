@@ -149,7 +149,7 @@ github.com/goplus/llgo/cl/_testmeta/interface_imported.main:
 
 [UseIfaceMethod]
 github.com/goplus/llgo/cl/_testmeta/interface_imported.use:
-    _llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Reader Read _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
+    _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw Read _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
 
 [MethodInfo]
 *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Source:
@@ -160,6 +160,6 @@ _llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Source:
     1 Read _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk github.com/goplus/llgo/cl/_testmeta/interface_imported/api.(*Source).Read __llgo_stub.github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Source.Read
 
 [InterfaceInfo]
-_llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Reader:
+_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw:
     Read _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
 
