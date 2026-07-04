@@ -25,6 +25,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -716,20 +717,47 @@ func (p *context) getFuncBodyPos(f *ssa.Function) token.Position {
 }
 
 func (p *context) funcInfoPosition(f *ssa.Function) token.Position {
-	if f != nil {
-		switch syntax := f.Syntax().(type) {
-		case *ast.FuncDecl:
-			if syntax.Body != nil && len(syntax.Body.List) != 0 {
-				return p.goProg.Fset.Position(syntax.Body.List[0].Pos())
-			}
-		case *ast.FuncLit:
-			if syntax.Body != nil && len(syntax.Body.List) != 0 {
-				return p.goProg.Fset.Position(syntax.Body.List[0].Pos())
-			}
-		}
-		return p.goProg.Fset.Position(f.Pos())
+	if f == nil {
+		return token.Position{}
 	}
-	return token.Position{}
+	pos := f.Pos()
+	switch syntax := f.Syntax().(type) {
+	case *ast.FuncDecl:
+		if syntax.Body != nil && len(syntax.Body.List) != 0 {
+			pos = syntax.Body.List[0].Pos()
+		}
+	case *ast.FuncLit:
+		if syntax.Body != nil && len(syntax.Body.List) != 0 {
+			pos = syntax.Body.List[0].Pos()
+		}
+	}
+	position := p.goProg.Fset.Position(pos)
+	position.Filename = directiveFilename(p.goProg.Fset, pos, position.Filename)
+	return position
+}
+
+// directiveFilename normalizes a //line-directive-adjusted filename to the
+// Go runtime's spelling. The package loader expands a relative directive
+// (`//line relative.go:1`) to an absolute path under the declaring
+// file's directory, but gc reports the directive text verbatim; empty
+// directive filenames print as "??". Positions without a directive pass
+// through untouched.
+func directiveFilename(fset *token.FileSet, pos token.Pos, adjusted string) string {
+	if pos == token.NoPos || fset == nil {
+		return adjusted
+	}
+	original := fset.PositionFor(pos, false).Filename
+	if original == "" || adjusted == original {
+		return adjusted
+	}
+	if adjusted == "" {
+		return "??"
+	}
+	if rel, err := filepath.Rel(filepath.Dir(original), adjusted); err == nil &&
+		rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(rel)
+	}
+	return adjusted
 }
 
 func isGlobal(v *types.Var) bool {

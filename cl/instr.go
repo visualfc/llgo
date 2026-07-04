@@ -1529,6 +1529,9 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 		return
 	}
 	position := p.fset.Position(pos)
+	// Normalize before the emptiness check: an empty //line directive
+	// filename must anchor as "??" (gc's spelling), not lose its anchor.
+	position.Filename = directiveFilename(p.fset, pos, position.Filename)
 	if position.Line <= 0 || position.Filename == "" {
 		return
 	}

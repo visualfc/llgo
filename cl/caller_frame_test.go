@@ -998,3 +998,41 @@ func TestFuncInfoDisplayName(t *testing.T) {
 		}
 	}
 }
+
+// //line directive filenames follow gc's spelling: relative directives
+// stay relative to the declaring file's directory, empty directives report
+// "??", absolute ones and directive-free positions pass through.
+func TestDirectiveFilename(t *testing.T) {
+	fset := token.NewFileSet()
+	src := "package p\nfunc D() {}\n//line /abs/dir/renamed.go:10\nfunc A() {}\n//line rel.go:20\nfunc B() {}\n//line :30\nfunc C() {}\n"
+	file, err := parser.ParseFile(fset, "/work/pkg/orig.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos := func(i int) token.Pos { return file.Decls[i].Pos() }
+	cases := []struct {
+		pos  token.Pos
+		want string
+	}{
+		{pos(0), "/work/pkg/orig.go"},
+		{pos(1), "/abs/dir/renamed.go"},
+		{pos(2), "rel.go"},
+		{pos(3), "??"},
+	}
+	for i, c := range cases {
+		adjusted := fset.Position(c.pos).Filename
+		if c.want == "rel.go" {
+			// The package loader hands cl an absolute expansion; emulate it.
+			adjusted = "/work/pkg/rel.go"
+		}
+		if got := directiveFilename(fset, c.pos, adjusted); got != c.want {
+			t.Fatalf("case %d: directiveFilename(%q) = %q, want %q", i, adjusted, got, c.want)
+		}
+	}
+	if got := directiveFilename(fset, token.NoPos, "x.go"); got != "x.go" {
+		t.Fatal("NoPos must pass through")
+	}
+	if got := directiveFilename(nil, pos(0), "x.go"); got != "x.go" {
+		t.Fatal("nil fset must pass through")
+	}
+}
