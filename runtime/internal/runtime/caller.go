@@ -226,7 +226,100 @@ func Callers(skip int, pcs []uintptr) int {
 	return n
 }
 
+// PanicPCSnapshot, set by the public runtime package at init, captures the
+// physical pc chain at panic time into the per-goroutine snapshot below. gc
+// runs deferred functions on top of the panicked stack, so runtime.Caller,
+// CallersFrames and debug.Stack invoked from a deferred function (before or
+// after recover) see the panic-site frames; LLGo's longjmp unwinding
+// removes them physically, and this snapshot is what caller-info APIs
+// splice back in.
+var PanicPCSnapshot func()
+
 func SavePanicCallerFrames() {
+	// A fault handler stores the fault-site snapshot right before it
+	// panics; the regular capture here must not overwrite it.
+	p := panicPCStoreForG()
+	if p.armed != 0 {
+		p.armed = 0
+		return
+	}
+	if PanicPCSnapshot != nil {
+		PanicPCSnapshot()
+	}
+}
+
+type panicPCStore struct {
+	n      int32
+	armed  int32
+	fault  int32
+	recFP1 uintptr
+	recFP2 uintptr
+	pcs    [64]uintptr
+}
+
+func panicPCStoreForG() *panicPCStore {
+	return &getg().panicPCs
+}
+
+// StorePanicPCs replaces the goroutine's panic snapshot (a new panic
+// supersedes the previous one) and resets the recover marks.
+func StorePanicPCs(pcs []uintptr) {
+	storePanicPCs(pcs, 0)
+}
+
+// StoreFaultPCs is StorePanicPCs for fault handlers: the imminent
+// panic's own capture is suppressed so the fault-site chain survives.
+func StoreFaultPCs(pcs []uintptr) {
+	storePanicPCs(pcs, 1)
+}
+
+func storePanicPCs(pcs []uintptr, armed int32) {
+	p := panicPCStoreForG()
+	n := len(pcs)
+	if n > len(p.pcs) {
+		n = len(p.pcs)
+	}
+	copy(p.pcs[:n], pcs)
+	p.n = int32(n)
+	p.armed = armed
+	p.fault = armed
+	p.recFP1 = 0
+	p.recFP2 = 0
+}
+
+// PanicPCsAreFault reports whether the stored snapshot came from a
+// hardware-fault context (captured without the program-text bound).
+func PanicPCsAreFault() bool {
+	return panicPCStoreForG().fault != 0
+}
+
+// PanicPCs returns the goroutine's captured panic pcs (nil when none).
+func PanicPCs() []uintptr {
+	p := panicPCStoreForG()
+	if p.n == 0 {
+		return nil
+	}
+	return p.pcs[:p.n]
+}
+
+// MarkPanicRecoverFPs records the frames observing the panic at recover
+// time; the snapshot stays spliceable exactly while one of them is live on
+// the physical chain (the deferred function has not returned yet).
+func MarkPanicRecoverFPs(fp1, fp2 uintptr) {
+	p := panicPCStoreForG()
+	p.recFP1 = fp1
+	p.recFP2 = fp2
+}
+
+// PanicRecoverFPs returns the recover-time frame marks.
+func PanicRecoverFPs() (uintptr, uintptr) {
+	p := panicPCStoreForG()
+	return p.recFP1, p.recFP2
+}
+
+// PanicActive reports whether a panic is in flight (not yet recovered).
+func PanicActive() bool {
+	return getg().panic_ != nil
 }
 
 func BindCallerLocation(pc uintptr, rawName string) {
