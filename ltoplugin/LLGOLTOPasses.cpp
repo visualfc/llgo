@@ -140,86 +140,6 @@ bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
   return false;
 }
 
-bool collectStringSetFromValue(Value *V, const DataLayout &DL,
-                               SmallVectorImpl<std::string> &Names,
-                               unsigned Depth = 0);
-
-// Some call sites still pass the Go string as an aggregate value before C ABI
-// lowering has fully split it. Rebuild the pair from constant structs or
-// insertvalue chains and then reuse the same ptr/len analysis.
-bool collectStringSetFromStringParts(Value *V, const DataLayout &DL,
-                                     SmallVectorImpl<std::string> &Names,
-                                     unsigned Depth) {
-  if (Depth > 8)
-    return false;
-
-  Value *Ptr = nullptr;
-  Value *Len = nullptr;
-
-  if (auto *CS = dyn_cast<ConstantStruct>(V)) {
-    if (CS->getNumOperands() < 2)
-      return false;
-    Ptr = CS->getOperand(0);
-    Len = CS->getOperand(1);
-  } else {
-    Value *Cur = V;
-    while (auto *Insert = dyn_cast<InsertValueInst>(Cur)) {
-      if (Insert->getNumIndices() != 1)
-        return false;
-      unsigned Index = Insert->getIndices()[0];
-      if (Index == 0)
-        Ptr = Insert->getInsertedValueOperand();
-      else if (Index == 1)
-        Len = Insert->getInsertedValueOperand();
-      else
-        return false;
-      Cur = Insert->getAggregateOperand();
-    }
-    if (auto *CS = dyn_cast<ConstantStruct>(Cur)) {
-      if (CS->getNumOperands() < 2)
-        return false;
-      if (!Ptr)
-        Ptr = CS->getOperand(0);
-      if (!Len)
-        Len = CS->getOperand(1);
-    }
-  }
-
-  if (!Ptr || !Len)
-    return false;
-  return collectStringSet(Ptr, Len, DL, Names, Depth + 1);
-}
-
-// Handle aggregate-level selects and phis. This mirrors collectStringSet for
-// split strings, but starts from a value that still represents the whole string
-// object.
-bool collectStringSetFromValue(Value *V, const DataLayout &DL,
-                               SmallVectorImpl<std::string> &Names,
-                               unsigned Depth) {
-  if (Depth > 8)
-    return false;
-
-  if (collectStringSetFromStringParts(V, DL, Names, Depth))
-    return true;
-
-  if (auto *Sel = dyn_cast<SelectInst>(V)) {
-    return collectStringSetFromValue(Sel->getTrueValue(), DL, Names,
-                                     Depth + 1) &&
-           collectStringSetFromValue(Sel->getFalseValue(), DL, Names,
-                                     Depth + 1);
-  }
-
-  if (auto *Phi = dyn_cast<PHINode>(V)) {
-    for (Value *Incoming : Phi->incoming_values()) {
-      if (!collectStringSetFromValue(Incoming, DL, Names, Depth + 1))
-        return false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
 std::optional<unsigned> findReflectMethodNameArg(CallBase *ReflectCall) {
   for (unsigned I = 0, E = ReflectCall->arg_size(); I != E; ++I) {
     Attribute Attr = ReflectCall->getParamAttr(I, ReflectMethodByNameArgAttr);
@@ -229,25 +149,23 @@ std::optional<unsigned> findReflectMethodNameArg(CallBase *ReflectCall) {
   return std::nullopt;
 }
 
-// The call-site function attribute tells us whether this is reflect.Value or
-// reflect.Type. The name operand itself is marked separately with a parameter
-// attribute by LLGo, and the C ABI transformer remaps that attribute when it
-// splits an aggregate string into (ptr, len). Therefore the plugin does not have
-// to infer the argument position from the callee signature or from arg_size().
+// The plugin runs during LTO, after LLGo has applied C ABI lowering to every
+// module that participates in the link. At this point a Go string argument is
+// always split into (ptr, len). LLGo marks the string pointer parameter, and the
+// length is the following parameter produced by the same lowering step.
 bool collectStringSetFromCallArgs(CallBase *ReflectCall, const DataLayout &DL,
                                   SmallVectorImpl<std::string> &Names) {
   std::optional<unsigned> NameArg = findReflectMethodNameArg(ReflectCall);
   if (!NameArg)
     return false;
 
-  Value *Arg = ReflectCall->getArgOperand(*NameArg);
-  if (Arg->getType()->isPointerTy() && *NameArg + 1 < ReflectCall->arg_size()) {
-    Value *Ptr = Arg;
-    Value *Len = ReflectCall->getArgOperand(*NameArg + 1);
-    if (Ptr->getType()->isPointerTy() && Len->getType()->isIntegerTy())
-      return collectStringSet(Ptr, Len, DL, Names);
-  }
-  return collectStringSetFromValue(Arg, DL, Names);
+  if (*NameArg + 1 >= ReflectCall->arg_size())
+    return false;
+  Value *Ptr = ReflectCall->getArgOperand(*NameArg);
+  Value *Len = ReflectCall->getArgOperand(*NameArg + 1);
+  if (!Ptr->getType()->isPointerTy() || !Len->getType()->isIntegerTy())
+    return false;
+  return collectStringSet(Ptr, Len, DL, Names);
 }
 
 bool isTypeCheckedLoad(CallBase *CB) {
