@@ -325,6 +325,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
+	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}

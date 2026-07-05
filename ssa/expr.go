@@ -1264,6 +1264,9 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	}
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
+	if reflectCheck.Kind&ReflectMethodByName != 0 && reflectCheck.Name == "" {
+		b.MarkReflectValueMethodByNameCall(ret.impl)
+	}
 	b.EmitReflectValueMethodCheckedLoad(ret, reflectCheck)
 	return
 }
@@ -1322,7 +1325,8 @@ func (b Builder) checkReflect(fn Expr, args []Expr) (check ReflectMethodCheck) {
 				check.Name = v
 				break
 			}
-			reflectKind = ReflectMethodDynamic
+			reflectKind = ReflectMethodDynamic | ReflectMethodByName
+			check.NameArg = args[1]
 		}
 	}
 	pkg.NeedAbiInit |= reflectKind

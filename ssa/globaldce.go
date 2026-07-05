@@ -16,13 +16,17 @@ const (
 	reflectValuePtrFieldIndex   = 1
 	reflectMethodFuncFieldIndex = 3
 
-	reflectValueMethodTypeID = "go.method.value.reflect"
-	reflectTypeMethodTypeID  = "go.method.type.reflect"
+	reflectValueMethodTypeID    = "go.method.value.reflect"
+	reflectTypeMethodTypeID     = "go.method.type.reflect"
+	reflectMethodByNameCallAttr = "llgo.reflect.methodbyname"
+	reflectMethodByNameValue    = "value"
+	reflectMethodByNameType     = "type"
 )
 
 type ReflectMethodCheck struct {
-	Kind int
-	Name string
+	Kind    int
+	Name    string
+	NameArg Expr
 }
 
 func methodCapabilitySig(sig *types.Signature) string {
@@ -173,6 +177,34 @@ func (p Program) methodCheckedLoad(b llvm.Builder, typedesc llvm.Value, typeID s
 	ok := llvm.CreateExtractValue(b, res, 1)
 	b.CreateIntrinsic(p.tyVoid(), llvm.LookupIntrinsicID("llvm.assume"), []llvm.Value{ok}, "")
 	return llvm.CreateExtractValue(b, res, 0)
+}
+
+func (b Builder) MarkReflectMethodByNameCall(call llvm.Value, kind string) {
+	if call.IsNil() {
+		return
+	}
+	if !b.Prog.enableLTOPluginMarker {
+		return
+	}
+	if call.IsACallInst().IsNil() && call.IsAInvokeInst().IsNil() {
+		return
+	}
+	call.AddCallSiteAttribute(-1, b.Prog.ctx.CreateStringAttribute(reflectMethodByNameCallAttr, kind))
+}
+
+func (b Builder) MarkReflectValueMethodByNameCall(call llvm.Value) {
+	b.MarkReflectMethodByNameCall(call, reflectMethodByNameValue)
+}
+
+func (b Builder) MarkReflectTypeMethodByNameCall(call llvm.Value) {
+	b.MarkReflectMethodByNameCall(call, reflectMethodByNameType)
+}
+
+func (b Builder) MarkReflectTypeMethodByNameExpr(call Expr) {
+	if call.IsNil() {
+		return
+	}
+	b.MarkReflectTypeMethodByNameCall(call.impl)
 }
 
 func (b Builder) EmitReflectValueMethodCheckedLoad(ret Expr, check ReflectMethodCheck) {

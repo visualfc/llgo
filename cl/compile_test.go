@@ -178,9 +178,11 @@ func TestRunAndTestFromTestgo(t *testing.T) {
 func TestRunAndTestFromTestlto(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeRun)
 	conf.LTO = lto.Full
-	var ignore []string
+	ignore := []string{
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin",
+	}
 	if !buildenv.Dev {
-		ignore = []string{
+		ignore = append(ignore,
 			"./_testlto/globaldce_abitype_fakeuse",
 			"./_testlto/globaldce_interface_matrix",
 			"./_testlto/globaldce_interface_slots",
@@ -191,7 +193,7 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 			"./_testlto/globaldce_typeid_dce",
 			"./_testlto/globaldce_unexported_method_identity",
 			"./_testlto/anonymous_alias",
-		}
+		)
 	}
 	cltest.RunAndTestFromDir(t, "", "./_testlto", ignore, cltest.WithRunConfig(conf))
 }
@@ -206,6 +208,10 @@ var testltoSymbolChecks = []string{
 	"globaldce_unexported_method_identity",
 }
 
+var testltoLTOPluginTests = []string{
+	"globaldce_reflect_method_by_name_ltoplugin",
+}
+
 func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
 	if !buildenv.Dev {
 		t.Skip("globaldce symbol checks require dev build")
@@ -213,6 +219,36 @@ func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeBuild)
 	conf.LTO = lto.Full
 	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testlto", testltoSymbolChecks, cltest.WithRunConfig(conf))
+}
+
+func testltoLTOPluginConf(t *testing.T, mode build.Mode) *build.Config {
+	t.Helper()
+	if !buildenv.Dev {
+		t.Skip("globaldce plugin tests require dev build")
+	}
+	plugin := os.Getenv("LLGO_LTO_PLUGIN")
+	if plugin == "" {
+		t.Skip("set LLGO_LTO_PLUGIN to the built LLGOLTOPlugin shared library")
+	}
+	conf := build.NewDefaultConf(mode)
+	conf.LTO = lto.Full
+	conf.LTOPlugin = lto.PassPlugin{Path: plugin}
+	return conf
+}
+
+func TestRunAndTestFromTestltoLTOPlugin(t *testing.T) {
+	conf := testltoLTOPluginConf(t, build.ModeRun)
+	cltest.RunAndTestFromDir(t, "ltoplugin", "./_testlto", nil,
+		cltest.WithRunConfig(conf),
+		cltest.WithIRCheck(false),
+	)
+}
+
+func TestBuildAndCheckSymbolsFromTestltoLTOPlugin(t *testing.T) {
+	buildConf := testltoLTOPluginConf(t, build.ModeBuild)
+	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testlto", testltoLTOPluginTests,
+		cltest.WithRunConfig(buildConf),
+	)
 }
 
 func TestFilterEmulatorOutput(t *testing.T) {

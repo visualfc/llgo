@@ -537,6 +537,7 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 		return false
 	}
 	nft, attrs := p.transformFuncType(ctx, &info)
+	reflectMethodByNameAttr := call.GetCallSiteStringAttribute(-1, "llgo.reflect.methodbyname")
 	b := ctx.NewBuilder()
 	b.SetInsertPointBefore(call)
 
@@ -587,6 +588,9 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 	updateCallAttr := func(call llvm.Value) {
 		for i, attr := range attrs {
 			call.AddCallSiteAttribute(i, attr)
+		}
+		if !reflectMethodByNameAttr.IsNil() {
+			call.AddCallSiteAttribute(-1, reflectMethodByNameAttr)
 		}
 	}
 

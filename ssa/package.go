@@ -232,8 +232,9 @@ type aProgram struct {
 
 	is32Bits bool
 
-	enableGoGlobalDCE bool
-	pthreadStackSize  uint64
+	enableGoGlobalDCE     bool
+	pthreadStackSize      uint64
+	enableLTOPluginMarker bool
 }
 
 type AbiSymbol struct {
@@ -331,6 +332,10 @@ func (p Program) EnableGoGlobalDCE(enable bool) {
 
 func (p Program) SetPthreadStackSize(size uint64) {
 	p.pthreadStackSize = size
+}
+
+func (p Program) EnableLTOPluginMarkers(enable bool) {
+	p.enableLTOPluginMarker = enable
 }
 
 // SetRuntime sets the runtime.

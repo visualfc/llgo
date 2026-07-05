@@ -1059,7 +1059,13 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 			hasVArg = fnHasVArg
 		}
 		args := p.compileValues(b, call.Args, hasVArg)
+		if reflectCheck.Kind&llssa.ReflectTypeMethodByName != 0 && reflectCheck.Name == "" && len(args) == 1 {
+			reflectCheck.NameArg = args[0]
+		}
 		ret = p.emitDo(b, act, ds, fn, llssa.Builder.Call, args...)
+		if reflectCheck.Kind&llssa.ReflectTypeMethodByName != 0 && reflectCheck.Name == "" {
+			b.MarkReflectTypeMethodByNameExpr(ret)
+		}
 		b.EmitReflectTypeMethodCheckedLoad(ret, reflectCheck)
 		return
 	}
