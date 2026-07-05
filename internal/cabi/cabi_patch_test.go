@@ -4,6 +4,9 @@
 package cabi
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	llssa "github.com/goplus/llgo/ssa"
@@ -139,5 +142,61 @@ func TestRuntimeHeaderWrapAndTypeInfo(t *testing.T) {
 	}
 	if info.Size == 0 || info.Align == 0 {
 		t.Fatalf("GetTypeInfo size/align should be non-zero, got size=%d align=%d", info.Size, info.Align)
+	}
+}
+
+func TestReflectMethodByNameNameArgAttributeRemapped(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%String = type { ptr, i64 }
+%Value = type { ptr, ptr, i64 }
+
+declare void @callee(%Value, %String)
+
+define void @caller(%Value %v, %String %name) {
+entry:
+  call void @callee(%Value %v, %String "llgo.reflect.methodbyname.name"="1" %name) #0
+  ret void
+}
+
+attributes #0 = { "llgo.reflect.methodbyname"="value" }
+`
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+
+	tmpfile := filepath.Join(t.TempDir(), "reflect_methodbyname_attr.ll")
+	if err := os.WriteFile(tmpfile, []byte(testIR), 0644); err != nil {
+		t.Fatalf("Failed to write test IR: %v", err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(tmpfile)
+	if err != nil {
+		t.Fatalf("Failed to read test IR: %v", err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatalf("Failed to parse test IR: %v", err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(nil)
+	tr := NewTransformer(prog, "", "", ModeAllFunc, true)
+	tr.TransformModule("test", mod)
+
+	caller := mod.NamedFunction("caller")
+	if caller.IsNil() {
+		t.Fatal("caller function not found")
+	}
+	ir := caller.String()
+	if !strings.Contains(mod.String(), `"llgo.reflect.methodbyname"="value"`) {
+		t.Fatalf("reflect MethodByName call marker was not preserved:\n%s", mod.String())
+	}
+	if !strings.Contains(ir, `ptr "llgo.reflect.methodbyname.name"="1"`) {
+		t.Fatalf("reflect MethodByName name marker was not remapped to string data pointer:\n%s", ir)
+	}
+	if strings.Contains(ir, `i64 "llgo.reflect.methodbyname.name"="1"`) {
+		t.Fatalf("reflect MethodByName name marker should not be remapped to string length:\n%s", ir)
 	}
 }
