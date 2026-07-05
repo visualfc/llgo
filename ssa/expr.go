@@ -1326,7 +1326,6 @@ func (b Builder) checkReflect(fn Expr, args []Expr) (check ReflectMethodCheck) {
 				break
 			}
 			reflectKind = ReflectMethodDynamic | ReflectMethodByName
-			check.NameArg = args[1]
 		}
 	}
 	pkg.NeedAbiInit |= reflectKind

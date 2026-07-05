@@ -24,9 +24,8 @@ const (
 )
 
 type ReflectMethodCheck struct {
-	Kind    int
-	Name    string
-	NameArg Expr
+	Kind int
+	Name string
 }
 
 func methodCapabilitySig(sig *types.Signature) string {

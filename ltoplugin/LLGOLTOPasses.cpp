@@ -39,6 +39,10 @@ static constexpr char ReflectTypeMethodTypeIDPrefix[] =
     "go.method.type.reflect.";
 static constexpr unsigned MaxReflectMethodNames = 32;
 
+// Keep the replacement bounded. The pass is only meant to refine cases where
+// optimization has exposed a small finite set of names. If the set grows too
+// large we leave the original generic marker intact, which preserves the old
+// conservative GlobalDCE behavior.
 bool addName(SmallVectorImpl<std::string> &Names, StringRef Name) {
   for (const std::string &Existing : Names) {
     if (Existing == Name)
@@ -50,6 +54,11 @@ bool addName(SmallVectorImpl<std::string> &Names, StringRef Name) {
   return true;
 }
 
+// LLGo strings are lowered as (ptr, len). After LTO optimizations the pointer
+// usually still points into a private global string literal, possibly with a
+// constant GEP offset. Reading through the initializer lets the pass recover
+// names that are no longer visible to the Go SSA builder, for example after
+// inlining and scalar replacement.
 std::optional<std::string> readConstantString(Value *Ptr, Value *Len,
                                               const DataLayout &DL) {
   auto *LenC = dyn_cast<ConstantInt>(Len);
@@ -77,6 +86,12 @@ std::optional<std::string> readConstantString(Value *Ptr, Value *Len,
   return Bytes.substr(Start, Size).str();
 }
 
+// Collect every possible string from a lowered (ptr, len) pair.
+//
+// The pass is intentionally all-or-nothing: it returns false as soon as any
+// incoming value is unknown. That way a partially understood dynamic
+// MethodByName call cannot accidentally lose the generic reflect marker and
+// make GlobalDCE drop a method that may still be reachable at runtime.
 bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
                       SmallVectorImpl<std::string> &Names,
                       unsigned Depth = 0) {
@@ -127,6 +142,9 @@ bool collectStringSetFromValue(Value *V, const DataLayout &DL,
                                SmallVectorImpl<std::string> &Names,
                                unsigned Depth = 0);
 
+// Some call sites still pass the Go string as an aggregate value before C ABI
+// lowering has fully split it. Rebuild the pair from constant structs or
+// insertvalue chains and then reuse the same ptr/len analysis.
 bool collectStringSetFromStringParts(Value *V, const DataLayout &DL,
                                      SmallVectorImpl<std::string> &Names,
                                      unsigned Depth) {
@@ -170,6 +188,9 @@ bool collectStringSetFromStringParts(Value *V, const DataLayout &DL,
   return collectStringSet(Ptr, Len, DL, Names, Depth + 1);
 }
 
+// Handle aggregate-level selects and phis. This mirrors collectStringSet for
+// split strings, but starts from a value that still represents the whole string
+// object.
 bool collectStringSetFromValue(Value *V, const DataLayout &DL,
                                SmallVectorImpl<std::string> &Names,
                                unsigned Depth) {
@@ -197,6 +218,9 @@ bool collectStringSetFromValue(Value *V, const DataLayout &DL,
   return false;
 }
 
+// A marked MethodByName call may appear either before or after LLGo's C ABI
+// lowering. In the lowered form the final two operands are the string pointer
+// and length; otherwise the final operand is the string aggregate.
 bool collectStringSetFromCallArgs(CallBase *ReflectCall, const DataLayout &DL,
                                   SmallVectorImpl<std::string> &Names) {
   if (ReflectCall->arg_size() >= 2) {
@@ -235,6 +259,16 @@ std::optional<StringRef> checkedLoadTypeID(CallBase *CheckedLoad) {
   return TypeID->getString();
 }
 
+// Remove the original broad marker:
+//
+//   %r = call @llvm.type.checked.load(..., !"go.method.*.reflect")
+//   %ok = extractvalue %r, 1
+//   call @llvm.assume(%ok)
+//
+// The pointer result is intentionally unused in LLGo's GlobalDCE markers, so
+// the pass only erases this pattern when all uses match the marker shape. If a
+// future IR change gives the checked-load result a real data dependency, the
+// pass fails loudly instead of silently changing semantics.
 bool eraseGenericCheckedLoad(CallBase *CheckedLoad) {
   SmallVector<Instruction *, 4> ToErase;
   for (User *U : make_early_inc_range(CheckedLoad->users())) {
@@ -270,6 +304,10 @@ bool eraseGenericCheckedLoad(CallBase *CheckedLoad) {
   return true;
 }
 
+// Replace one generic "some method may be reflected" marker with a disjunction
+// of name-specific markers. The name-specific type IDs are emitted on ABI method
+// slots by LLGo, so GlobalDCE can now keep only methods whose names are proven
+// reachable by this call.
 void insertMethodNameChecks(CallBase *GenericLoad,
                             ArrayRef<std::string> Names, StringRef Prefix) {
   IRBuilder<> B(GenericLoad);
@@ -292,6 +330,9 @@ void insertMethodNameChecks(CallBase *GenericLoad,
   B.CreateIntrinsic(Intrinsic::assume, {}, {AnyOK});
 }
 
+// LLGo emits a generic checked-load near a dynamic MethodByName call. For
+// reflect.Value.MethodByName the checked-load usually consumes a value derived
+// from the call result, so walking the use graph is enough to find it.
 bool isReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID) {
   auto TypeID = checkedLoadTypeID(CheckedLoad);
   return TypeID && *TypeID == GenericTypeID;
@@ -322,6 +363,12 @@ void collectReflectMethodCheckedLoads(Value *V, StringRef GenericTypeID,
   }
 }
 
+// reflect.Type.MethodByName returns a pair through the C ABI in some cases. The
+// sret lowering can break the simple use-def chain between the marked call and
+// the generic checked-load. As a fallback, scan a small forward window in the
+// CFG until another marked reflect call is reached. The window keeps the pass
+// local and avoids accidentally rewriting markers that belong to unrelated
+// calls later in the function.
 void addReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID,
                                  SmallPtrSetImpl<CallBase *> &SeenLoads,
                                  SmallVectorImpl<CallBase *> &Loads) {
@@ -397,6 +444,10 @@ public:
       if (!KnownNames || Names.empty())
         continue;
 
+      // First try the precise use-def search. Then add the bounded forward CFG
+      // scan so Type.MethodByName after ABI lowering can still be refined. Both
+      // searches target only the generic type ID selected by the call attribute,
+      // keeping reflect.Value and reflect.Type markers independent.
       SmallPtrSet<Value *, 16> Seen;
       SmallVector<CallBase *, 2> GenericLoads;
       collectReflectMethodCheckedLoads(ReflectCall, GenericTypeID, Seen,
