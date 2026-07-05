@@ -1265,7 +1265,11 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
 	if reflectCheck.Kind&ReflectMethodByName != 0 && reflectCheck.Name == "" {
-		b.MarkReflectValueMethodByNameCall(ret.impl)
+		nameArgIndex := len(args) - 1
+		if !data.IsNil() {
+			nameArgIndex++
+		}
+		b.MarkReflectValueMethodByNameCall(ret.impl, nameArgIndex)
 	}
 	b.EmitReflectValueMethodCheckedLoad(ret, reflectCheck)
 	return

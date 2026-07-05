@@ -19,6 +19,7 @@ const (
 	reflectValueMethodTypeID    = "go.method.value.reflect"
 	reflectTypeMethodTypeID     = "go.method.type.reflect"
 	reflectMethodByNameCallAttr = "llgo.reflect.methodbyname"
+	reflectMethodByNameArgAttr  = "llgo.reflect.methodbyname.name"
 	reflectMethodByNameValue    = "value"
 	reflectMethodByNameType     = "type"
 )
@@ -178,7 +179,7 @@ func (p Program) methodCheckedLoad(b llvm.Builder, typedesc llvm.Value, typeID s
 	return llvm.CreateExtractValue(b, res, 0)
 }
 
-func (b Builder) MarkReflectMethodByNameCall(call llvm.Value, kind string) {
+func (b Builder) MarkReflectMethodByNameCall(call llvm.Value, kind string, nameArgIndex int) {
 	if call.IsNil() {
 		return
 	}
@@ -189,21 +190,22 @@ func (b Builder) MarkReflectMethodByNameCall(call llvm.Value, kind string) {
 		return
 	}
 	call.AddCallSiteAttribute(-1, b.Prog.ctx.CreateStringAttribute(reflectMethodByNameCallAttr, kind))
+	call.AddCallSiteAttribute(nameArgIndex+1, b.Prog.ctx.CreateStringAttribute(reflectMethodByNameArgAttr, "1"))
 }
 
-func (b Builder) MarkReflectValueMethodByNameCall(call llvm.Value) {
-	b.MarkReflectMethodByNameCall(call, reflectMethodByNameValue)
+func (b Builder) MarkReflectValueMethodByNameCall(call llvm.Value, nameArgIndex int) {
+	b.MarkReflectMethodByNameCall(call, reflectMethodByNameValue, nameArgIndex)
 }
 
-func (b Builder) MarkReflectTypeMethodByNameCall(call llvm.Value) {
-	b.MarkReflectMethodByNameCall(call, reflectMethodByNameType)
+func (b Builder) MarkReflectTypeMethodByNameCall(call llvm.Value, nameArgIndex int) {
+	b.MarkReflectMethodByNameCall(call, reflectMethodByNameType, nameArgIndex)
 }
 
-func (b Builder) MarkReflectTypeMethodByNameExpr(call Expr) {
+func (b Builder) MarkReflectTypeMethodByNameExpr(call Expr, nameArgIndex int) {
 	if call.IsNil() {
 		return
 	}
-	b.MarkReflectTypeMethodByNameCall(call.impl)
+	b.MarkReflectTypeMethodByNameCall(call.impl, nameArgIndex)
 }
 
 func (b Builder) EmitReflectValueMethodCheckedLoad(ret Expr, check ReflectMethodCheck) {

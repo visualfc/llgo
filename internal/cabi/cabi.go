@@ -550,10 +550,19 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 	}
 
 	operandCount := len(info.Params)
+	returnArgOffset := 0
+	if info.Return.Kind == AttrPointer {
+		returnArgOffset = 1
+	}
+	remappedReflectMethodByNameArgAttrIndex := -1
 	var nparams []llvm.Value
 	for i := 0; i < operandCount; i++ {
 		param := call.Operand(i)
 		ti := info.Params[i]
+		reflectMethodByNameArgAttr := call.GetCallSiteStringAttribute(i+1, "llgo.reflect.methodbyname.name")
+		if !reflectMethodByNameArgAttr.IsNil() {
+			remappedReflectMethodByNameArgAttrIndex = returnArgOffset + len(nparams) + 1
+		}
 		switch ti.Kind {
 		default:
 			nparams = append(nparams, param)
@@ -591,6 +600,11 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 		}
 		if !reflectMethodByNameAttr.IsNil() {
 			call.AddCallSiteAttribute(-1, reflectMethodByNameAttr)
+		}
+		if remappedReflectMethodByNameArgAttrIndex >= 0 {
+			call.AddCallSiteAttribute(remappedReflectMethodByNameArgAttrIndex, ctx.CreateStringAttribute(
+				"llgo.reflect.methodbyname.name", "1",
+			))
 		}
 	}
 

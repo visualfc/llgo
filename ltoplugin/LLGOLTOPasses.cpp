@@ -29,6 +29,8 @@ namespace {
 static constexpr char LLGOPreGlobalDCEPassName[] = "llgo-lto-pre-globaldce";
 static constexpr char ReflectMethodByNameCallAttr[] =
     "llgo.reflect.methodbyname";
+static constexpr char ReflectMethodByNameArgAttr[] =
+    "llgo.reflect.methodbyname.name";
 static constexpr char ReflectMethodByNameValueKind[] = "value";
 static constexpr char ReflectMethodByNameTypeKind[] = "type";
 static constexpr char ReflectValueMethodTypeID[] = "go.method.value.reflect";
@@ -218,19 +220,34 @@ bool collectStringSetFromValue(Value *V, const DataLayout &DL,
   return false;
 }
 
-// A marked MethodByName call may appear either before or after LLGo's C ABI
-// lowering. In the lowered form the final two operands are the string pointer
-// and length; otherwise the final operand is the string aggregate.
+std::optional<unsigned> findReflectMethodNameArg(CallBase *ReflectCall) {
+  for (unsigned I = 0, E = ReflectCall->arg_size(); I != E; ++I) {
+    Attribute Attr = ReflectCall->getParamAttr(I, ReflectMethodByNameArgAttr);
+    if (Attr.isStringAttribute())
+      return I;
+  }
+  return std::nullopt;
+}
+
+// The call-site function attribute tells us whether this is reflect.Value or
+// reflect.Type. The name operand itself is marked separately with a parameter
+// attribute by LLGo, and the C ABI transformer remaps that attribute when it
+// splits an aggregate string into (ptr, len). Therefore the plugin does not have
+// to infer the argument position from the callee signature or from arg_size().
 bool collectStringSetFromCallArgs(CallBase *ReflectCall, const DataLayout &DL,
                                   SmallVectorImpl<std::string> &Names) {
-  if (ReflectCall->arg_size() >= 2) {
-    Value *Ptr = ReflectCall->getArgOperand(ReflectCall->arg_size() - 2);
-    Value *Len = ReflectCall->getArgOperand(ReflectCall->arg_size() - 1);
+  std::optional<unsigned> NameArg = findReflectMethodNameArg(ReflectCall);
+  if (!NameArg)
+    return false;
+
+  Value *Arg = ReflectCall->getArgOperand(*NameArg);
+  if (Arg->getType()->isPointerTy() && *NameArg + 1 < ReflectCall->arg_size()) {
+    Value *Ptr = Arg;
+    Value *Len = ReflectCall->getArgOperand(*NameArg + 1);
     if (Ptr->getType()->isPointerTy() && Len->getType()->isIntegerTy())
       return collectStringSet(Ptr, Len, DL, Names);
   }
-  return collectStringSetFromValue(
-      ReflectCall->getArgOperand(ReflectCall->arg_size() - 1), DL, Names);
+  return collectStringSetFromValue(Arg, DL, Names);
 }
 
 bool isTypeCheckedLoad(CallBase *CB) {
