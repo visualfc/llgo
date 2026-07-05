@@ -182,7 +182,7 @@ attributes #0 = { "llgo.reflect.methodbyname"="value" }
 	defer mod.Dispose()
 
 	prog := llssa.NewProgram(nil)
-	tr := NewTransformer(prog, "", "", ModeAllFunc, true)
+	tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
 	tr.TransformModule("test", mod)
 
 	caller := mod.NamedFunction("caller")
