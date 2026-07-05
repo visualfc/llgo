@@ -144,21 +144,6 @@ func stringContainsDot(s string) bool {
 	return false
 }
 
-func appendHexUint(buf []byte, v uintptr) []byte {
-	const digits = "0123456789abcdef"
-	if v == 0 {
-		return append(buf, '0')
-	}
-	var tmp [16]byte
-	i := len(tmp)
-	for v > 0 {
-		i--
-		tmp[i] = digits[v&0xf]
-		v >>= 4
-	}
-	return append(buf, tmp[i:]...)
-}
-
 // faultTraceback prints the gc-style traceback for an unrecovered panic
 // that originated in a hardware fault; other panics fall back to the
 // clite dump (reports false).
@@ -169,8 +154,10 @@ func faultTraceback(skip int) bool {
 	initRuntimeFuncPCFrames()
 	print("goroutine 1 [running]:\n")
 	printed := 0
+	printedInText := 0
 	for i := 0; i < int(faultN); i++ {
 		pc := faultPCs[i]
+		inText := prebuiltTextContains(pc)
 		sym := frameSymbol(pc - 1)
 		name := sym.function
 		if faultNameIdx[i] >= 0 {
@@ -188,26 +175,35 @@ func faultTraceback(skip int) bool {
 				}
 			}
 		}
-		if !prebuiltTextContains(pc) && name == "" {
-			// Past the last frame anything can identify (wild slots,
-			// stripped libc tails) — stop.
-			break
+		if !inText {
+			// Frames outside the program's own text: keep leading library
+			// frames (the fault may sit inside libc/libssl), but once the
+			// module's frames have been shown the rest is startup plumbing
+			// below main (__libc_start_main, _start) — cut it. Unnamed
+			// out-of-text slots are unidentifiable either way.
+			if printedInText > 0 || name == "" {
+				break
+			}
 		}
 		if name == "" {
 			name = unknownFunctionName(pc)
 		}
 		print(name, "(...)\n\t")
 		if sym.file == "" {
-			print("???")
+			// No line info (C frame): print the raw pc — resolvable
+			// offline (addr2line/atos) — instead of a ???:0 placeholder.
+			print("pc=0x", string(appendHexUint(nil, pc-1)))
 		} else {
-			print(sym.file)
-		}
-		print(":", sym.line)
-		if sym.entry != 0 && pc >= sym.entry {
-			print(" +0x", string(appendHexUint(nil, pc-sym.entry)))
+			print(sym.file, ":", sym.line)
+			if sym.entry != 0 && pc >= sym.entry {
+				print(" +0x", string(appendHexUint(nil, pc-sym.entry)))
+			}
 		}
 		print("\n")
 		printed++
+		if inText {
+			printedInText++
+		}
 	}
 	return printed > 0
 }
