@@ -3,7 +3,6 @@
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/CFG.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
@@ -270,6 +269,14 @@ bool isReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID) 
   return TypeID && *TypeID == GenericTypeID;
 }
 
+Value *getSRetArg(CallBase *CB) {
+  for (unsigned I = 0, E = CB->arg_size(); I != E; ++I) {
+    if (CB->paramHasAttr(I, Attribute::StructRet))
+      return CB->getArgOperand(I);
+  }
+  return nullptr;
+}
+
 void addReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID,
                                  SmallPtrSetImpl<CallBase *> &SeenLoads,
                                  SmallVectorImpl<CallBase *> &Loads) {
@@ -278,41 +285,48 @@ void addReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID,
     Loads.push_back(CheckedLoad);
 }
 
-// After C ABI lowering both reflect.Value.MethodByName and
-// reflect.Type.MethodByName have the same ordering property: LLGo emits the
-// marked runtime call first and then emits the generic reflect checked-load that
-// protects the returned method value. Value.MethodByName normally places that
-// checked-load in the same block immediately after the call; Type.MethodByName
-// may place it in the success successor because the returned "ok" flag guards
-// the method value. A bounded forward CFG scan covers both shapes.
+// MethodByName returns through an sret slot after C ABI lowering. LLGo then
+// emits the generic reflect checked-load from the method value extracted out of
+// that slot. This use-def walk is intentionally limited to value-preserving IR
+// around that slot: GEPs into the sret object, loads from those fields, and
+// scalar/aggregate extractions from the loaded values. It avoids a broad CFG
+// scan while still covering both lowered shapes:
 //
-// Stop at the next marked MethodByName call. This keeps the search local to the
-// current reflect call even when several MethodByName calls appear in the same
-// function.
-void collectForwardReflectMethodCheckedLoads(
-    BasicBlock *BB, BasicBlock::iterator Start, StringRef GenericTypeID,
-    SmallPtrSetImpl<BasicBlock *> &SeenBlocks,
+//   reflect.Value.MethodByName:
+//     call @reflect.Value.MethodByName(sret %ret, ...)
+//     %raw = load <2 x ptr>, ptr %ret
+//     %fn = extractelement <2 x ptr> %raw, 1
+//     call @llvm.type.checked.load(ptr %fn, ..., !"go.method.value.reflect")
+//
+//   reflect.Type.MethodByName:
+//     call %methodByName(sret %ret, ...)
+//     ... branch on the ok field ...
+//     %raw = load <2 x ptr>, ptr gep(%ret, method.func)
+//     %fn = extractelement <2 x ptr> %raw, 1
+//     call @llvm.type.checked.load(ptr %fn, ..., !"go.method.type.reflect")
+void collectSRetReflectMethodCheckedLoads(
+    Value *V, StringRef GenericTypeID, SmallPtrSetImpl<Value *> &SeenValues,
     SmallPtrSetImpl<CallBase *> &SeenLoads, SmallVectorImpl<CallBase *> &Loads,
     unsigned Depth = 0) {
-  if (!BB || Depth > 4 || !SeenBlocks.insert(BB).second)
+  if (!V || Depth > 16 || !SeenValues.insert(V).second)
     return;
 
-  for (auto It = Start, E = BB->end(); It != E; ++It) {
-    auto *CB = dyn_cast<CallBase>(&*It);
-    if (!CB)
+  for (User *U : V->users()) {
+    if (auto *CB = dyn_cast<CallBase>(U)) {
+      addReflectMethodCheckedLoad(CB, GenericTypeID, SeenLoads, Loads);
       continue;
-    addReflectMethodCheckedLoad(CB, GenericTypeID, SeenLoads, Loads);
-    if (CB->hasFnAttr(ReflectMethodByNameCallAttr))
-      return;
-  }
+    }
 
-  Instruction *Term = BB->getTerminator();
-  if (!Term)
-    return;
-  for (BasicBlock *Succ : successors(Term))
-    collectForwardReflectMethodCheckedLoads(Succ, Succ->begin(), GenericTypeID,
-                                            SeenBlocks, SeenLoads, Loads,
-                                            Depth + 1);
+    auto *I = dyn_cast<Instruction>(U);
+    if (!I)
+      continue;
+    if (isa<GetElementPtrInst>(I) || isa<LoadInst>(I) ||
+        isa<ExtractElementInst>(I) || isa<ExtractValueInst>(I) ||
+        isa<CastInst>(I) || isa<SelectInst>(I) || isa<PHINode>(I)) {
+      collectSRetReflectMethodCheckedLoads(I, GenericTypeID, SeenValues,
+                                           SeenLoads, Loads, Depth + 1);
+    }
+  }
 }
 
 class LLGOLTOPreGlobalDCEPass
@@ -358,10 +372,10 @@ public:
 
       SmallVector<CallBase *, 2> GenericLoads;
       SmallPtrSet<CallBase *, 4> SeenLoads;
-      SmallPtrSet<BasicBlock *, 8> SeenBlocks;
-      collectForwardReflectMethodCheckedLoads(
-          ReflectCall->getParent(), std::next(ReflectCall->getIterator()),
-          GenericTypeID, SeenBlocks, SeenLoads, GenericLoads);
+      SmallPtrSet<Value *, 16> SeenValues;
+      collectSRetReflectMethodCheckedLoads(getSRetArg(ReflectCall),
+                                           GenericTypeID, SeenValues, SeenLoads,
+                                           GenericLoads);
       for (CallBase *GenericLoad : GenericLoads) {
         insertMethodNameChecks(GenericLoad, Names, Prefix);
         if (!eraseGenericCheckedLoad(GenericLoad))
