@@ -265,45 +265,11 @@ void insertMethodNameChecks(CallBase *GenericLoad,
   B.CreateIntrinsic(Intrinsic::assume, {}, {AnyOK});
 }
 
-// LLGo emits a generic checked-load near a dynamic MethodByName call. For
-// reflect.Value.MethodByName the checked-load usually consumes a value derived
-// from the call result, so walking the use graph is enough to find it.
 bool isReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID) {
   auto TypeID = checkedLoadTypeID(CheckedLoad);
   return TypeID && *TypeID == GenericTypeID;
 }
 
-void collectReflectMethodCheckedLoads(Value *V, StringRef GenericTypeID,
-                                      SmallPtrSetImpl<Value *> &Seen,
-                                      SmallVectorImpl<CallBase *> &Loads,
-                                      unsigned Depth = 0) {
-  if (!V || Depth > 12 || !Seen.insert(V).second)
-    return;
-
-  for (User *U : V->users()) {
-    if (auto *CB = dyn_cast<CallBase>(U)) {
-      if (isReflectMethodCheckedLoad(CB, GenericTypeID))
-        Loads.push_back(CB);
-      continue;
-    }
-
-    auto *I = dyn_cast<Instruction>(U);
-    if (!I)
-      continue;
-    if (isa<ExtractValueInst>(I) || isa<InsertValueInst>(I) ||
-        isa<PHINode>(I) || isa<SelectInst>(I) || isa<CastInst>(I)) {
-      collectReflectMethodCheckedLoads(I, GenericTypeID, Seen, Loads,
-                                       Depth + 1);
-    }
-  }
-}
-
-// reflect.Type.MethodByName returns a pair through the C ABI in some cases. The
-// sret lowering can break the simple use-def chain between the marked call and
-// the generic checked-load. As a fallback, scan a small forward window in the
-// CFG until another marked reflect call is reached. The window keeps the pass
-// local and avoids accidentally rewriting markers that belong to unrelated
-// calls later in the function.
 void addReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID,
                                  SmallPtrSetImpl<CallBase *> &SeenLoads,
                                  SmallVectorImpl<CallBase *> &Loads) {
@@ -312,6 +278,17 @@ void addReflectMethodCheckedLoad(CallBase *CheckedLoad, StringRef GenericTypeID,
     Loads.push_back(CheckedLoad);
 }
 
+// After C ABI lowering both reflect.Value.MethodByName and
+// reflect.Type.MethodByName have the same ordering property: LLGo emits the
+// marked runtime call first and then emits the generic reflect checked-load that
+// protects the returned method value. Value.MethodByName normally places that
+// checked-load in the same block immediately after the call; Type.MethodByName
+// may place it in the success successor because the returned "ok" flag guards
+// the method value. A bounded forward CFG scan covers both shapes.
+//
+// Stop at the next marked MethodByName call. This keeps the search local to the
+// current reflect call even when several MethodByName calls appear in the same
+// function.
 void collectForwardReflectMethodCheckedLoads(
     BasicBlock *BB, BasicBlock::iterator Start, StringRef GenericTypeID,
     SmallPtrSetImpl<BasicBlock *> &SeenBlocks,
@@ -379,17 +356,8 @@ public:
       if (!KnownNames || Names.empty())
         continue;
 
-      // First try the precise use-def search. Then add the bounded forward CFG
-      // scan so Type.MethodByName after ABI lowering can still be refined. Both
-      // searches target only the generic type ID selected by the call attribute,
-      // keeping reflect.Value and reflect.Type markers independent.
-      SmallPtrSet<Value *, 16> Seen;
       SmallVector<CallBase *, 2> GenericLoads;
-      collectReflectMethodCheckedLoads(ReflectCall, GenericTypeID, Seen,
-                                       GenericLoads);
       SmallPtrSet<CallBase *, 4> SeenLoads;
-      for (CallBase *GenericLoad : GenericLoads)
-        SeenLoads.insert(GenericLoad);
       SmallPtrSet<BasicBlock *, 8> SeenBlocks;
       collectForwardReflectMethodCheckedLoads(
           ReflectCall->getParent(), std::next(ReflectCall->getIterator()),
