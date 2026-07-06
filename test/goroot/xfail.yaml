@@ -2574,12 +2574,7 @@ xfails:
   - platform: darwin/arm64
     directive: run
     case: typeparam/mdempsky/16.go
-    reason: nil-deref panic value does not implement runtime.Error on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: typeparam/mdempsky/15.go
-    reason: go1.26 go:nointerface methods still satisfy interfaces on darwin/arm64
+    reason: nil-interface assertion panic implements runtime.Error but the message lacks the source interface type and prints the command-line-arguments package path on darwin/arm64
   - version: go1.24
     platform: linux/amd64
     directive: run
@@ -2618,8 +2613,18 @@ xfails:
   - version: go1.24
     platform: linux/amd64
     directive: run
-    case: fixedbugs/issue16130.go
-    reason: go1.24 goroot run failure on linux/amd64
+    case: typeparam/mdempsky/16.go
+    reason: nil-interface assertion panic implements runtime.Error but the message lacks the source interface type and prints the command-line-arguments package path on linux/amd64
+  - version: go1.25
+    platform: linux/amd64
+    directive: run
+    case: typeparam/mdempsky/16.go
+    reason: nil-interface assertion panic implements runtime.Error but the message lacks the source interface type and prints the command-line-arguments package path on linux/amd64
+  - version: go1.26
+    platform: linux/amd64
+    directive: run
+    case: typeparam/mdempsky/16.go
+    reason: nil-interface assertion panic implements runtime.Error but the message lacks the source interface type and prints the command-line-arguments package path on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: run
@@ -2640,11 +2645,6 @@ xfails:
     directive: run
     case: fixedbugs/issue65417.go
     reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: typeparam/mdempsky/16.go
-    reason: go1.24 nil-deref panic value does not implement runtime.Error on linux/amd64
   - version: go1.25
     platform: linux/amd64
     directive: run
@@ -2679,11 +2679,6 @@ xfails:
     platform: linux/amd64
     directive: run
     case: zerodivide.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue16130.go
     reason: go1.25 goroot run failure on linux/amd64
   - version: go1.25
     platform: linux/amd64
@@ -2710,11 +2705,6 @@ xfails:
     directive: run
     case: fixedbugs/issue72844.go
     reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: typeparam/mdempsky/16.go
-    reason: go1.25 nil-deref panic value does not implement runtime.Error on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -2749,11 +2739,6 @@ xfails:
     platform: linux/amd64
     directive: run
     case: zerodivide.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue16130.go
     reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
@@ -2795,16 +2780,6 @@ xfails:
     directive: run
     case: fixedbugs/issue75327.go
     reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: typeparam/mdempsky/16.go
-    reason: go1.26 nil-deref panic value does not implement runtime.Error on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: typeparam/mdempsky/15.go
-    reason: go1.26 go:nointerface methods still satisfy interfaces on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: run
@@ -3570,10 +3545,6 @@ xfails:
     directive: run
     case: typeparam/chans.go
     reason: select over unbuffered channel misses final receive on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
-    case: typeparam/mdempsky/15.go
-    reason: go:nointerface methods still satisfy interfaces on darwin/arm64
   - version: go1.24
     platform: darwin/arm64
     directive: runoutput
@@ -3648,10 +3619,6 @@ xfails:
     directive: run
     case: typeparam/chans.go
     reason: select over unbuffered channel misses final receive on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: typeparam/mdempsky/15.go
-    reason: go:nointerface methods still satisfy interfaces on linux/amd64
   - platform: linux/amd64
     directive: runoutput
     case: index0.go
