@@ -549,12 +549,6 @@ timeouts:
   - version: go1.24
     platform: darwin/arm64
     directive: run
-    case: fixedbugs/issue4066.go
-    timeout: 2m
-    reason: issue4066 run exceeds the default timeout on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
     case: fixedbugs/issue40917.go
     timeout: 2m
     reason: issue40917 run exceeds the default timeout on darwin/arm64
@@ -900,12 +894,6 @@ timeouts:
     case: fixedbugs/issue40367.go
     timeout: 2m
     reason: issue40367 run exceeds the default timeout on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue4066.go
-    timeout: 2m
-    reason: issue4066 run exceeds the default timeout on darwin/arm64
   - version: go1.26
     platform: darwin/arm64
     directive: run
@@ -1385,16 +1373,6 @@ xfails:
     directive: runoutput
     case: rangegen.go
     reason: current main goroot runoutput failure on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue73916.go
-    reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue73916b.go
-    reason: go1.26 goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: typeparam/mdempsky/16.go
@@ -1409,16 +1387,6 @@ xfails:
     directive: run
     case: typeparam/mdempsky/16.go
     reason: nil-interface assertion panic implements runtime.Error but the message lacks the source interface type and prints the command-line-arguments package path on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue73916.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue73916b.go
-    reason: go1.26 goroot run failure on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: runoutput
@@ -1589,16 +1557,6 @@ xfails:
   - version: go1.24
     platform: linux/amd64
     directive: run
-    case: fixedbugs/issue4066.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue4066.go
-    reason: go1.24 goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
     case: fixedbugs/issue4562.go
     reason: panic/fault statement-line granularity in untracked functions (P4b prebuilt pcline)
   - version: go1.24
@@ -1651,16 +1609,6 @@ xfails:
     directive: run
     case: fixedbugs/issue27518b.go
     reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue4066.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue4066.go
-    reason: go1.26 goroot run failure on darwin/arm64
   - version: go1.26
     platform: linux/amd64
     directive: run
