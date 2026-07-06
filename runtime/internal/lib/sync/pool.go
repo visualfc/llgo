@@ -5,6 +5,7 @@
 package sync
 
 import (
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -51,7 +52,6 @@ import (
 type Pool struct {
 	noCopy noCopy
 
-	// local -> *tls.Handle[*poolLocal]
 	local     unsafe.Pointer // local fixed-size per-P pool, actual type is [P]poolLocal
 	localSize uintptr        // size of the local array
 
@@ -61,7 +61,8 @@ type Pool struct {
 	// New optionally specifies a function to generate
 	// a value when Get would otherwise return nil.
 	// It may not be changed concurrently with calls to Get.
-	New func() any
+	New  func() any
+	once sync.Once
 }
 
 // Local per-P Pool appendix.
@@ -105,6 +106,9 @@ func (p *Pool) Get() any {
 	l.private = nil
 	if x == nil {
 		x, _ = l.shared.popHead()
+		if x == nil {
+			x = p.getSlow(0)
+		}
 	}
 	if x == nil && p.New != nil {
 		x = p.New()
@@ -123,37 +127,43 @@ func (p *Pool) pin() (*poolLocal, int) {
 		panic("nil Pool")
 	}
 
-	p.init()
+	if ptr := atomic.LoadPointer(&p.local); ptr != nil {
+		handle := (*tls.Handle[*poolLocal])(ptr)
+		l := handle.Get()
+		if l == nil {
+			l = &poolLocal{}
+			handle.Set(l)
+		}
+		return l, 0
+	}
 
 	return p.pinSlow()
 }
 
-func (p *Pool) init() {
-	if !atomic.CompareAndSwapUintptr(&p.localSize, 0, 1) {
-		return
-	}
-
-	local := tls.Alloc[*poolLocal](func(head **poolLocal) {
-		if head != nil {
-			*head = nil
-		}
-	})
-
-	atomic.StorePointer(&p.local, unsafe.Pointer(&local))
-}
-
 func (p *Pool) pinSlow() (*poolLocal, int) {
+	p.once.Do(func() {
+		handle := tls.Alloc[*poolLocal](func(head **poolLocal) {
+			if head != nil {
+				atomic.StorePointer(&p.victim, unsafe.Pointer(*head))
+			}
+		})
+		atomic.StorePointer(&p.local, unsafe.Pointer(&handle))
+	})
 	handle := (*tls.Handle[*poolLocal])(p.local)
-	h := handle.Get()
-	if h == nil {
-		h = &poolLocal{}
-		handle.Set(h)
-	}
-	return h, 0
+	l := &poolLocal{}
+	handle.Set(l)
+	return l, 0
 }
 
 func (p *Pool) getSlow(pid int) any {
-	panic("sync.Pool: getSlow is unreachable")
+	if ptr := atomic.LoadPointer(&p.victim); ptr != nil {
+		l := (*poolLocal)(ptr)
+		if x, _ := l.shared.popTail(); x != nil {
+			return x
+		}
+		atomic.StorePointer(&p.victim, nil)
+	}
+	return nil
 }
 
 // noCopy may be added to structs which must not be copied
