@@ -18,10 +18,10 @@ func TestApplyDCEOverridesWritesStrongTypeOverride(t *testing.T) {
 	ctx := &context{
 		prog: llssa.NewProgram(nil),
 		buildConf: &Config{
-			BuildMode: BuildModeExe,
-			Goos:      "linux",
-			Goarch:    "amd64",
-			DCE:       true,
+			BuildMode:    BuildModeExe,
+			Goos:         "linux",
+			Goarch:       "amd64",
+			DeadcodeDrop: true,
 		},
 	}
 
@@ -40,8 +40,8 @@ func TestApplyDCEOverridesWritesStrongTypeOverride(t *testing.T) {
 		ExportFile: "pkg.a",
 	}, &genConfig{})
 
-	if err := applyDCEOverrides(ctx, &packages.Package{PkgPath: "pkg"}, []Package{srcAPkg}, entryPkg, false, false); err != nil {
-		t.Fatalf("applyDCEOverrides: %v", err)
+	if err := applyDeadcodeDropOverrides(ctx, &packages.Package{PkgPath: "pkg"}, []Package{srcAPkg}, entryPkg, false, false); err != nil {
+		t.Fatalf("applyDeadcodeDropOverrides: %v", err)
 	}
 
 	out := entryPkg.LPkg.Module().String()

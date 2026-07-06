@@ -233,7 +233,8 @@ type aProgram struct {
 
 	is32Bits bool
 
-	enableGoGlobalDCE bool
+	enableGoGlobalDCE  bool
+	enableDeadcodeDrop bool
 }
 
 type AbiSymbol struct {
@@ -327,6 +328,14 @@ func (p Program) SetCompileMethods(check func(Package, types.Type)) {
 
 func (p Program) EnableGoGlobalDCE(enable bool) {
 	p.enableGoGlobalDCE = enable
+}
+
+func (p Program) EnableDeadcodeDrop(enable bool) {
+	p.enableDeadcodeDrop = enable
+}
+
+func (p Program) DeadcodeDropEnabled() bool {
+	return p.enableDeadcodeDrop
 }
 
 // SetRuntime sets the runtime.

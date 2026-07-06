@@ -524,8 +524,9 @@ func TestSaveToCache_MainPackage(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:   "darwin",
-			Goarch: "arm64",
+			Goos:         "darwin",
+			Goarch:       "arm64",
+			DeadcodeDrop: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -563,8 +564,9 @@ func TestTryLoadFromCache_MainPackage(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:   "darwin",
-			Goarch: "arm64",
+			Goos:         "darwin",
+			Goarch:       "arm64",
+			DeadcodeDrop: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -611,8 +613,9 @@ func TestSaveToCache_Success(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:   "darwin",
-			Goarch: "arm64",
+			Goos:         "darwin",
+			Goarch:       "arm64",
+			DeadcodeDrop: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -693,8 +696,9 @@ func TestTryLoadFromCache_LoadsPackageMeta(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:   "darwin",
-			Goarch: "arm64",
+			Goos:         "darwin",
+			Goarch:       "arm64",
+			DeadcodeDrop: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -767,8 +771,9 @@ func TestTryLoadFromCacheRejectsBadMeta(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:   "darwin",
-			Goarch: "arm64",
+			Goos:         "darwin",
+			Goarch:       "arm64",
+			DeadcodeDrop: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -802,6 +807,57 @@ func TestTryLoadFromCacheRejectsBadMeta(t *testing.T) {
 
 	if ctx.tryLoadFromCache(pkg) {
 		t.Fatal("tryLoadFromCache accepted invalid meta")
+	}
+}
+
+func TestTryLoadFromCacheIgnoresMetaWhenDeadcodeDropDisabled(t *testing.T) {
+	td := t.TempDir()
+	oldFunc := cacheRootFunc
+	cacheRootFunc = func() string { return td }
+	defer func() { cacheRootFunc = oldFunc }()
+
+	ctx := &context{
+		conf: &packages.Config{},
+		buildConf: &Config{
+			Goos:         "darwin",
+			Goarch:       "arm64",
+			DeadcodeDrop: false,
+		},
+		crossCompile: crosscompile.Export{
+			LLVMTarget: "arm64-apple-darwin",
+		},
+	}
+
+	pkg := &aPackage{
+		Package: &packages.Package{
+			PkgPath: "example.com/nometa",
+			Name:    "nometa",
+		},
+		Fingerprint: "nometa123",
+	}
+	cm := ctx.ensureCacheManager()
+	paths := cm.PackagePaths("arm64-apple-darwin", "example.com/nometa", "nometa123")
+	if err := cm.EnsureDir(paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.Archive, []byte("archive"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newManifestBuilder()
+	m.env.Goos = "darwin"
+	m.pkg.PkgPath = "example.com/nometa"
+	if err := writeManifest(paths.Manifest, m.Build()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.Meta, []byte("bad meta"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if !ctx.tryLoadFromCache(pkg) {
+		t.Fatal("tryLoadFromCache rejected cache while deadcode drop is disabled")
+	}
+	if pkg.Meta != nil {
+		t.Fatal("Meta should not be loaded while deadcode drop is disabled")
 	}
 }
 

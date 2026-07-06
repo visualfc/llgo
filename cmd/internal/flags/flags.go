@@ -46,6 +46,7 @@ var SizeFormat string
 var SizeLevel string
 var ForceRebuild bool
 var PrintCommands bool
+var NoDeadcodeDrop bool
 var OptLevel optlevel.Level
 
 type ltoFlag struct {
@@ -137,8 +138,10 @@ func AddOptLevelFlags(fs *flag.FlagSet) {
 }
 
 func AddBuildFlags(fs *flag.FlagSet) {
+	NoDeadcodeDrop = false
 	fs.BoolVar(&ForceRebuild, "a", false, "Force rebuilding of packages that are already up-to-date")
 	fs.BoolVar(&PrintCommands, "x", false, "Print the commands")
+	fs.BoolVar(&NoDeadcodeDrop, "nodeadcodedrop", false, "Disable Go dead code drop")
 	AddOptLevelFlags(fs)
 	AddLTOFlag(fs)
 	AddGlobalDCEFlag(fs)
@@ -267,6 +270,7 @@ func UpdateConfig(conf *build.Config) error {
 	conf.Tags = Tags
 	conf.Verbose = Verbose
 	conf.PrintCommands = PrintCommands
+	conf.DeadcodeDrop = !NoDeadcodeDrop
 	conf.OptLevel = OptLevel
 	conf.Target = Target
 	conf.Port = Port

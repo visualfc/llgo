@@ -129,6 +129,35 @@ func TestBuildLTOFlagInvalid(t *testing.T) {
 	}
 }
 
+func TestDeadcodeDropBuildFlag(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "default enabled", args: nil, want: true},
+		{name: "disabled", args: []string{"-nodeadcodedrop"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := flag.NewFlagSet(tt.name, flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddBuildFlags(fs)
+			if err := fs.Parse(tt.args); err != nil {
+				t.Fatalf("Parse(%v) unexpected error: %v", tt.args, err)
+			}
+			conf := &build.Config{}
+			if err := UpdateConfig(conf); err != nil {
+				t.Fatalf("UpdateConfig error: %v", err)
+			}
+			if conf.DeadcodeDrop != tt.want {
+				t.Fatalf("conf.DeadcodeDrop = %v, want %v", conf.DeadcodeDrop, tt.want)
+			}
+		})
+	}
+}
+
 func TestDevLTOGlobalDCEBuildFlags(t *testing.T) {
 	if !buildenv.Dev {
 		fs := flag.NewFlagSet("nodev-globaldce", flag.ContinueOnError)

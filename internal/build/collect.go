@@ -348,9 +348,12 @@ func (c *context) tryLoadFromCache(pkg *aPackage) bool {
 	if err != nil {
 		return false
 	}
-	pkgMeta, err := readMeta(paths.Meta)
-	if err != nil {
-		return false
+	var pkgMeta *meta.PackageMeta
+	if c.buildConf.DeadcodeDrop {
+		pkgMeta, err = readMeta(paths.Meta)
+		if err != nil {
+			return false
+		}
 	}
 
 	// Parse metadata from manifest [Package] section (INI format)
@@ -472,11 +475,13 @@ func (c *context) saveToCache(pkg *aPackage) error {
 		return nil
 	}
 
-	if pkg.Meta == nil {
-		pkg.Meta, _ = meta.NewBuilder().Build()
-	}
-	if err := writeMeta(paths.Meta, pkg.Meta); err != nil {
-		return err
+	if c.buildConf.DeadcodeDrop {
+		if pkg.Meta == nil {
+			pkg.Meta, _ = meta.NewBuilder().Build()
+		}
+		if err := writeMeta(paths.Meta, pkg.Meta); err != nil {
+			return err
+		}
 	}
 
 	// Append metadata to existing manifest (pkg.Manifest was built in collectFingerprint).

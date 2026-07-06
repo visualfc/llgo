@@ -150,7 +150,7 @@ type Config struct {
 	Verbose       bool
 	PrintCommands bool
 	GenLL         bool // generate pkg .ll files
-	DCE           bool // enable experimental Go-like link-time DCE
+	DeadcodeDrop  bool // enable Go dead code drop
 	CheckLLFiles  bool // check .ll files valid
 	CheckLinkArgs bool // check linkargs valid
 	ForceEspClang bool // force to use esp-clang
@@ -196,13 +196,13 @@ func NewDefaultConf(mode Mode) *Config {
 		goarch = runtime.GOARCH
 	}
 	conf := &Config{
-		Goos:      goos,
-		Goarch:    goarch,
-		BinPath:   bin,
-		Mode:      mode,
-		BuildMode: BuildModeExe,
-		AbiMode:   cabi.ModeAllFunc,
-		DCE:       true,
+		Goos:         goos,
+		Goarch:       goarch,
+		BinPath:      bin,
+		Mode:         mode,
+		BuildMode:    BuildModeExe,
+		AbiMode:      cabi.ModeAllFunc,
+		DeadcodeDrop: true,
 	}
 	return conf
 }
@@ -259,7 +259,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		conf.BuildMode = BuildModeExe
 	}
 	if conf.BuildMode != BuildModeExe {
-		conf.DCE = false
+		conf.DeadcodeDrop = false
 	}
 	if conf.SizeReport && conf.SizeFormat == "" {
 		conf.SizeFormat = "text"
@@ -328,6 +328,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 
 	prog := llssa.NewProgram(target)
 	prog.EnableGoGlobalDCE(conf.goGlobalDCEEnabled())
+	prog.EnableDeadcodeDrop(conf.DeadcodeDrop)
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -1061,8 +1062,8 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		methodByName:  methodByName,
 		abiSymbols:    linkedModuleGlobals(linkedOrder),
 	})
-	if ctx.buildConf.DCE {
-		if err := applyDCEOverrides(ctx, pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
+	if ctx.buildConf.DeadcodeDrop {
+		if err := applyDeadcodeDropOverrides(ctx, pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
 			return err
 		}
 	}
@@ -1121,7 +1122,7 @@ func linkedModuleGlobals(pkgs []Package) map[string]none {
 	return seen
 }
 
-func applyDCEOverrides(ctx *context, mainPkg *packages.Package, pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
+func applyDeadcodeDropOverrides(ctx *context, mainPkg *packages.Package, pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
 	metas := linkedPackageMetas(pkgs)
 	if len(metas) == 0 {
 		return nil
@@ -1146,25 +1147,25 @@ func applyDCEOverrides(ctx *context, mainPkg *packages.Package, pkgs []Package, 
 		for _, slots := range liveSlots {
 			liveCount += len(slots)
 		}
-		fmt.Fprintf(os.Stderr, "[dce] packages=%d roots=%s merge=%v analyze=%v live method slots=%d types=%d\n",
+		fmt.Fprintf(os.Stderr, "[deadcodedrop] packages=%d roots=%s merge=%v analyze=%v live method slots=%d types=%d\n",
 			len(metas), strings.Join(roots, ","), mergeDur, analyzeDur, liveCount, len(liveSlots))
 		err := dcepass.EmitStrongTypeOverridesDebug(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, os.Stderr)
-		printDCEMetaInputs(ctx, pkgs, os.Stderr)
+		printDeadcodeDropMetaInputs(ctx, pkgs, os.Stderr)
 		return err
 	}
 	return dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots)
 }
 
-func printDCEMetaInputs(ctx *context, pkgs []Package, w io.Writer) {
+func printDeadcodeDropMetaInputs(ctx *context, pkgs []Package, w io.Writer) {
 	cm := ctx.ensureCacheManager()
 	targetTriple := ctx.targetTriple()
-	fmt.Fprintf(w, "[dce] meta inputs:\n")
+	fmt.Fprintf(w, "[deadcodedrop] meta inputs:\n")
 	for _, pkg := range pkgs {
 		if pkg == nil || pkg.Meta == nil {
 			continue
 		}
 		if pkg.Fingerprint == "" || pkg.Name == "main" {
-			fmt.Fprintf(w, "[dce]   %s memory\n", pkg.PkgPath)
+			fmt.Fprintf(w, "[deadcodedrop]   %s memory\n", pkg.PkgPath)
 			continue
 		}
 		paths := cm.PackagePaths(targetTriple, pkg.PkgPath, pkg.Fingerprint)
@@ -1176,7 +1177,7 @@ func printDCEMetaInputs(ctx *context, pkgs []Package, w io.Writer) {
 		if _, err := os.Stat(paths.Meta); err == nil {
 			exists = "exists"
 		}
-		fmt.Fprintf(w, "[dce]   %s %s %s %s\n", pkg.PkgPath, state, exists, paths.Meta)
+		fmt.Fprintf(w, "[deadcodedrop]   %s %s %s %s\n", pkg.PkgPath, state, exists, paths.Meta)
 	}
 }
 
@@ -1406,17 +1407,13 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		return fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
 
-	var metaBuilder *meta.Builder
-	if !aPkg.CacheHit {
-		metaBuilder = meta.NewBuilder()
-	}
-	ret, externs, err := cl.NewPackageExWithEmbed(ctx.prog, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, metaBuilder)
+	ret, externs, err := cl.NewPackageExWithEmbed(ctx.prog, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap)
 	check(err)
 
 	aPkg.LPkg = ret
-	if metaBuilder != nil {
-		extractOrdinaryEdges(metaBuilder, ret.Module())
-		pm, err := metaBuilder.Build()
+	if !aPkg.CacheHit && ret.MetaBuilder != nil {
+		extractOrdinaryEdges(ret.MetaBuilder, ret.Module())
+		pm, err := ret.MetaBuilder.Build()
 		if err != nil {
 			return fmt.Errorf("build meta for %s: %w", pkgPath, err)
 		}
