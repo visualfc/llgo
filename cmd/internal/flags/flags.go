@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/goplus/llgo/cmd/internal/compilerhash"
 	"github.com/goplus/llgo/internal/build"
@@ -46,7 +47,68 @@ var SizeFormat string
 var SizeLevel string
 var ForceRebuild bool
 var PrintCommands bool
+var PthreadStackSize byteSizeFlag
 var OptLevel optlevel.Level
+
+type byteSizeFlag int64
+
+func (p *byteSizeFlag) String() string {
+	if p == nil {
+		return "0"
+	}
+	return strconv.FormatInt(int64(*p), 10)
+}
+
+func (p *byteSizeFlag) Set(v string) error {
+	n, err := parseByteSize(v)
+	if err != nil {
+		return err
+	}
+	*p = byteSizeFlag(n)
+	return nil
+}
+
+func parseByteSize(v string) (int64, error) {
+	s := strings.TrimSpace(v)
+	if s == "" {
+		return 0, fmt.Errorf("empty size")
+	}
+	if strings.HasPrefix(s, "-") {
+		return 0, fmt.Errorf("size must be >= 0")
+	}
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		return 0, fmt.Errorf("invalid size %q", v)
+	}
+	n, err := strconv.ParseUint(s[:i], 10, 63)
+	if err != nil {
+		return 0, err
+	}
+	unit := strings.ToUpper(strings.TrimSpace(s[i:]))
+	mul, ok := map[string]uint64{
+		"":    1,
+		"B":   1,
+		"K":   1024,
+		"KB":  1024,
+		"KIB": 1024,
+		"M":   1024 * 1024,
+		"MB":  1024 * 1024,
+		"MIB": 1024 * 1024,
+		"G":   1024 * 1024 * 1024,
+		"GB":  1024 * 1024 * 1024,
+		"GIB": 1024 * 1024 * 1024,
+	}[unit]
+	if !ok {
+		return 0, fmt.Errorf("invalid size unit %q", strings.TrimSpace(s[i:]))
+	}
+	if n > uint64(^uint64(0)>>1)/mul {
+		return 0, fmt.Errorf("size %q overflows int64", v)
+	}
+	return int64(n * mul), nil
+}
 
 type ltoFlag struct {
 	Specified bool
@@ -137,6 +199,7 @@ func AddOptLevelFlags(fs *flag.FlagSet) {
 }
 
 func AddBuildFlags(fs *flag.FlagSet) {
+	PthreadStackSize = 0
 	fs.BoolVar(&ForceRebuild, "a", false, "Force rebuilding of packages that are already up-to-date")
 	fs.BoolVar(&PrintCommands, "x", false, "Print the commands")
 	AddOptLevelFlags(fs)
@@ -144,6 +207,7 @@ func AddBuildFlags(fs *flag.FlagSet) {
 	AddGlobalDCEFlag(fs)
 	fs.StringVar(&Tags, "tags", "", "Build tags")
 	fs.StringVar(&BuildEnv, "buildenv", "", "Build environment")
+	fs.Var(&PthreadStackSize, "pthread-stack-size", "Stack size for pthread-backed goroutines, e.g. 32MB or 1024KB (0 uses the platform default)")
 	if buildenv.Dev {
 		fs.IntVar(&AbiMode, "abi", 2, "ABI mode (default 2). 0 = none, 1 = cfunc, 2 = allfunc.")
 		fs.BoolVar(&CheckLinkArgs, "check-linkargs", false, "check link args valid")
@@ -272,6 +336,7 @@ func UpdateConfig(conf *build.Config) error {
 	conf.Port = Port
 	conf.BaudRate = BaudRate
 	conf.ForceRebuild = ForceRebuild
+	conf.PthreadStackSize = int64(PthreadStackSize)
 	if LTO.Specified {
 		conf.LTO = LTO.Mode
 	}

@@ -75,55 +75,58 @@ func main() {
 // CHECK-NEXT:   %13 = getelementptr inbounds { { ptr, ptr } }, ptr %12, i32 0, i32 0
 // CHECK-NEXT:   store { ptr, ptr } %11, ptr %13, align 8
 // CHECK-NEXT:   %14 = alloca i8, i64 8, align 1
-// CHECK-NEXT:   %15 = call i32 @"{{.*}}/runtime/internal/runtime.CreateThread"(ptr %14, ptr null, ptr @"{{.*}}/cl/_testgo/selects._llgo_routine$1", ptr %12)
-// CHECK-NEXT:   %16 = load ptr, ptr %0, align 8
-// CHECK-NEXT:   %17 = call ptr @llvm.stacksave.p0()
-// CHECK-NEXT:   %18 = alloca {}, align 8
-// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %18, i8 0, i64 0, i1 false)
-// CHECK-NEXT:   store {} zeroinitializer, ptr %18, align 1
-// CHECK-NEXT:   %19 = call i1 @"{{.*}}/runtime/internal/runtime.ChanSend"(ptr %16, ptr %18, i64 0)
-// CHECK-NEXT:   call void @llvm.stackrestore.p0(ptr %17)
+// CHECK-NEXT:   %15 = alloca %"{{.*}}/runtime/internal/clite/pthread.Attr", align 8
+// CHECK-NEXT:   %16 = call i32 @"{{.*}}/runtime/internal/runtime.InitThreadAttr"(ptr %15)
+// CHECK-NEXT:   %17 = call i32 @"{{.*}}/runtime/internal/runtime.CreateThread"(ptr %14, ptr %15, ptr @"{{.*}}/cl/_testgo/selects._llgo_routine$1", ptr %12)
+// CHECK-NEXT:   %18 = call i32 @"{{.*}}/runtime/internal/runtime.DestroyThreadAttr"(ptr %15)
+// CHECK-NEXT:   %19 = load ptr, ptr %0, align 8
+// CHECK-NEXT:   %20 = call ptr @llvm.stacksave.p0()
+// CHECK-NEXT:   %21 = alloca {}, align 8
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %21, i8 0, i64 0, i1 false)
+// CHECK-NEXT:   store {} zeroinitializer, ptr %21, align 1
+// CHECK-NEXT:   %22 = call i1 @"{{.*}}/runtime/internal/runtime.ChanSend"(ptr %19, ptr %21, i64 0)
+// CHECK-NEXT:   call void @llvm.stackrestore.p0(ptr %20)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %20 = load ptr, ptr %2, align 8
-// CHECK-NEXT:   %21 = call ptr @llvm.stacksave.p0()
-// CHECK-NEXT:   %22 = alloca {}, align 8
-// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %22, i8 0, i64 0, i1 false)
-// CHECK-NEXT:   %23 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" undef, ptr %20, 0
-// CHECK-NEXT:   %24 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %23, ptr %22, 1
-// CHECK-NEXT:   %25 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %24, i32 0, 2
-// CHECK-NEXT:   %26 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %25, i1 false, 3
-// CHECK-NEXT:   %27 = alloca {}, align 8
-// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %27, i8 0, i64 0, i1 false)
-// CHECK-NEXT:   %28 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" undef, ptr %6, 0
-// CHECK-NEXT:   %29 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %28, ptr %27, 1
-// CHECK-NEXT:   %30 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %29, i32 0, 2
-// CHECK-NEXT:   %31 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %30, i1 false, 3
-// CHECK-NEXT:   %32 = alloca i8, i64 48, align 1
-// CHECK-NEXT:   %33 = getelementptr %"{{.*}}/runtime/internal/runtime.ChanOp", ptr %32, i64 0
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.ChanOp" %26, ptr %33, align 8
-// CHECK-NEXT:   %34 = getelementptr %"{{.*}}/runtime/internal/runtime.ChanOp", ptr %32, i64 1
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.ChanOp" %31, ptr %34, align 8
-// CHECK-NEXT:   %35 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %32, 0
-// CHECK-NEXT:   %36 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, i64 2, 1
-// CHECK-NEXT:   %37 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %36, i64 2, 2
-// CHECK-NEXT:   %38 = call { i64, i1 } @"{{.*}}/runtime/internal/runtime.Select"(%"{{.*}}/runtime/internal/runtime.Slice" %37)
-// CHECK-NEXT:   %39 = extractvalue { i64, i1 } %38, 0
-// CHECK-NEXT:   %40 = extractvalue { i64, i1 } %38, 1
-// CHECK-NEXT:   %41 = extractvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %26, 1
-// CHECK-NEXT:   %42 = icmp eq ptr %41, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %42)
-// CHECK-NEXT:   %43 = extractvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %31, 1
-// CHECK-NEXT:   %44 = icmp eq ptr %43, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %44)
-// CHECK-NEXT:   call void @llvm.stackrestore.p0(ptr %21)
-// CHECK-NEXT:   %45 = insertvalue { i64, i1, {}, {} } undef, i64 %39, 0
-// CHECK-NEXT:   %46 = insertvalue { i64, i1, {}, {} } %45, i1 %40, 1
-// CHECK-NEXT:   %47 = insertvalue { i64, i1, {}, {} } %46, {} zeroinitializer, 2
-// CHECK-NEXT:   %48 = insertvalue { i64, i1, {}, {} } %47, {} zeroinitializer, 3
-// CHECK-NEXT:   %49 = extractvalue { i64, i1, {}, {} } %48, 0
-// CHECK-NEXT:   %50 = icmp eq i64 %49, 0
-// CHECK-NEXT:   br i1 %50, label %_llgo_2, label %_llgo_3
+// CHECK-NEXT:   %23 = load ptr, ptr %2, align 8
+// CHECK-NEXT:   %24 = call ptr @llvm.stacksave.p0()
+// CHECK-NEXT:   %25 = alloca {}, align 8
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %25, i8 0, i64 0, i1 false)
+// CHECK-NEXT:   %26 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" undef, ptr %23, 0
+// CHECK-NEXT:   %27 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %26, ptr %25, 1
+// CHECK-NEXT:   %28 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %27, i32 0, 2
+// CHECK-NEXT:   %29 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %28, i1 false, 3
+// CHECK-NEXT:   %30 = alloca {}, align 8
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %30, i8 0, i64 0, i1 false)
+// CHECK-NEXT:   %31 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" undef, ptr %6, 0
+// CHECK-NEXT:   %32 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %31, ptr %30, 1
+// CHECK-NEXT:   %33 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %32, i32 0, 2
+// CHECK-NEXT:   %34 = insertvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %33, i1 false, 3
+// CHECK-NEXT:   %35 = alloca i8, i64 48, align 1
+// CHECK-NEXT:   %36 = getelementptr %"{{.*}}/runtime/internal/runtime.ChanOp", ptr %35, i64 0
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.ChanOp" %29, ptr %36, align 8
+// CHECK-NEXT:   %37 = getelementptr %"{{.*}}/runtime/internal/runtime.ChanOp", ptr %35, i64 1
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.ChanOp" %34, ptr %37, align 8
+// CHECK-NEXT:   %38 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %35, 0
+// CHECK-NEXT:   %39 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %38, i64 2, 1
+// CHECK-NEXT:   %40 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %39, i64 2, 2
+// CHECK-NEXT:   %41 = call { i64, i1 } @"{{.*}}/runtime/internal/runtime.Select"(%"{{.*}}/runtime/internal/runtime.Slice" %40)
+// CHECK-NEXT:   %42 = extractvalue { i64, i1 } %41, 0
+// CHECK-NEXT:   %43 = extractvalue { i64, i1 } %41, 1
+// CHECK-NEXT:   %44 = extractvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %29, 1
+// CHECK-NEXT:   %45 = icmp eq ptr %44, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %45)
+// CHECK-NEXT:   %46 = extractvalue %"{{.*}}/runtime/internal/runtime.ChanOp" %34, 1
+// CHECK-NEXT:   %47 = icmp eq ptr %46, null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %47)
+// CHECK-NEXT:   call void @llvm.stackrestore.p0(ptr %24)
+// CHECK-NEXT:   %48 = insertvalue { i64, i1, {}, {} } undef, i64 %42, 0
+// CHECK-NEXT:   %49 = insertvalue { i64, i1, {}, {} } %48, i1 %43, 1
+// CHECK-NEXT:   %50 = insertvalue { i64, i1, {}, {} } %49, {} zeroinitializer, 2
+// CHECK-NEXT:   %51 = insertvalue { i64, i1, {}, {} } %50, {} zeroinitializer, 3
+// CHECK-NEXT:   %52 = extractvalue { i64, i1, {}, {} } %51, 0
+// CHECK-NEXT:   %53 = icmp eq i64 %52, 0
+// CHECK-NEXT:   br i1 %53, label %_llgo_2, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_4, %_llgo_2
 // CHECK-NEXT:   ret void
@@ -134,8 +137,8 @@ func main() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %51 = icmp eq i64 %49, 1
-// CHECK-NEXT:   br i1 %51, label %_llgo_4, label %_llgo_5
+// CHECK-NEXT:   %54 = icmp eq i64 %52, 1
+// CHECK-NEXT:   br i1 %54, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_3
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 4 })
@@ -143,10 +146,10 @@ func main() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_3
-// CHECK-NEXT:   %52 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 31 }, ptr %52, align 8
-// CHECK-NEXT:   %53 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %52, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %53)
+// CHECK-NEXT:   %55 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 31 }, ptr %55, align 8
+// CHECK-NEXT:   %56 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %55, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %56)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

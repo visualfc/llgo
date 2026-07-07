@@ -129,6 +129,46 @@ func TestBuildLTOFlagInvalid(t *testing.T) {
 	}
 }
 
+func TestBuildPthreadStackSizeFlag(t *testing.T) {
+	tests := []struct {
+		arg  string
+		want int64
+	}{
+		{arg: "33554432", want: 33554432},
+		{arg: "32MB", want: 32 * 1024 * 1024},
+		{arg: "1024KB", want: 1024 * 1024},
+		{arg: "1GiB", want: 1024 * 1024 * 1024},
+		{arg: "0", want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.arg, func(t *testing.T) {
+			fs := flag.NewFlagSet("pthread-stack-size", flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddBuildFlags(fs)
+			if err := fs.Parse([]string{"-pthread-stack-size=" + tt.arg}); err != nil {
+				t.Fatalf("Parse unexpected error: %v", err)
+			}
+			conf := &build.Config{}
+			if err := UpdateConfig(conf); err != nil {
+				t.Fatalf("UpdateConfig error: %v", err)
+			}
+			if conf.PthreadStackSize != tt.want {
+				t.Fatalf("conf.PthreadStackSize = %d, want %d", conf.PthreadStackSize, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildPthreadStackSizeFlagRejectsNegative(t *testing.T) {
+	fs := flag.NewFlagSet("pthread-stack-size-negative", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	if err := fs.Parse([]string{"-pthread-stack-size=-1"}); err == nil {
+		t.Fatal("Parse expected error")
+	}
+}
+
 func TestDevLTOGlobalDCEBuildFlags(t *testing.T) {
 	if !buildenv.Dev {
 		fs := flag.NewFlagSet("nodev-globaldce", flag.ContinueOnError)

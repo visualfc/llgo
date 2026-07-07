@@ -73,11 +73,18 @@ func Equal(t1, t2 Thread) c.Int
 // -----------------------------------------------------------------------------
 
 // Attr represents a POSIX thread attributes.
+//
+// pthread_attr_t is opaque and its exact layout varies across libc/OS targets.
+// Keep enough uintptr-aligned storage for the native pthread functions instead
+// of modeling individual fields.
 type Attr struct {
-	Detached byte
-	SsSp     *c.Char
-	SsSize   uintptr
+	_ [16]uintptr
 }
+
+const (
+	CreateJoinable = 0
+	CreateDetached = 1
+)
 
 // llgo:link (*Attr).Init C.pthread_attr_init
 func (attr *Attr) Init() c.Int { return 0 }
