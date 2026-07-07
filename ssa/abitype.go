@@ -238,20 +238,6 @@ func (b Builder) abiInterfaceImethods(t *types.Interface, typeName string) llvm.
 	})
 }
 
-func (p Package) recordInterfaceInfo(t *types.Interface, typeName string) {
-	mb := p.MetaBuilder
-	if mb == nil {
-		return
-	}
-	prog := p.Prog
-	intfSym := mb.Sym(typeName)
-	for i := 0; i < t.NumMethods(); i++ {
-		f := t.Method(i)
-		ftypName, _ := prog.abi.TypeName(funcType(prog, f.Type()))
-		mb.AddIfaceMethod(intfSym, mthName(f), mb.Sym(ftypName))
-	}
-}
-
 func (b Builder) abiTuples(t *types.Tuple, name string) llvm.Value {
 	prog := b.Prog
 	n := t.Len()

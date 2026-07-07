@@ -82,13 +82,7 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 	}
 	tclosure := prog.Type(sig, InGo)
 	i := iMethodOf(rawIntf, method.Name())
-	if mb := b.Pkg.MetaBuilder; mb != nil {
-		intfSymName, _ := prog.abi.TypeName(rawIntf)
-		intfSym := mb.Sym(intfSymName)
-		b.Pkg.recordInterfaceInfo(rawIntf, intfSymName)
-		// Record which interface method is demanded. i is the method's index in rawIntf.
-		mb.AddIfaceMethodUse(mb.Sym(b.Func.Name()), intfSym, uint32(i))
-	}
+	b.recordUseIfaceMethod(rawIntf, i)
 	data := b.InlineCall(b.Pkg.rtFunc("IfacePtrData"), intf)
 	var fn Expr
 	impl := intf.impl
@@ -196,6 +190,29 @@ func (b Builder) recordUseIface(typ Type) {
 			typeName, _ := b.Prog.abi.TypeName(typ.raw.Type)
 			mb.AddIfaceUse(mb.Sym(b.Func.Name()), mb.Sym(typeName))
 		}
+	}
+}
+
+func (b Builder) recordUseIfaceMethod(rawIntf *types.Interface, methodIndex int) {
+	if mb := b.Pkg.MetaBuilder; mb != nil {
+		intfSymName, _ := b.Prog.abi.TypeName(rawIntf)
+		intfSym := mb.Sym(intfSymName)
+		b.recordInterfaceInfo(rawIntf, intfSymName)
+		mb.AddIfaceMethodUse(mb.Sym(b.Func.Name()), intfSym, uint32(methodIndex))
+	}
+}
+
+func (b Builder) recordInterfaceInfo(t *types.Interface, typeName string) {
+	mb := b.Pkg.MetaBuilder
+	if mb == nil {
+		return
+	}
+	prog := b.Prog
+	intfSym := mb.Sym(typeName)
+	for i := 0; i < t.NumMethods(); i++ {
+		f := t.Method(i)
+		ftypName, _ := prog.abi.TypeName(funcType(prog, f.Type()))
+		mb.AddIfaceMethod(intfSym, mthName(f), mb.Sym(ftypName))
 	}
 }
 
