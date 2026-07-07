@@ -84,7 +84,7 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 	tclosure := prog.Type(sig, InGo)
 	i := iMethodOf(rawIntf, method.Name())
 	if mb := b.Pkg.MetaBuilder; mb != nil {
-		intfSymName := func() string { n, _ := prog.abi.TypeName(rawIntf); return n }()
+		intfSymName, _ := prog.abi.TypeName(rawIntf)
 		intfSym := mb.Sym(intfSymName)
 		b.Pkg.recordInterfaceInfo(rawIntf, intfSymName)
 		// Record which interface method is demanded. i is the method's index in rawIntf.
