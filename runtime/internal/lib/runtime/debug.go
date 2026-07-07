@@ -10,3 +10,7 @@ func Breakpoint() {
 
 func Gosched() {
 }
+
+func NumCgoCall() int64 {
+	return 0
+}
