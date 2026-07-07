@@ -100,7 +100,7 @@ func (c *ordinaryEdgeCollector) add(dst string) {
 		return
 	}
 	c.addedDst[dst] = struct{}{}
-	c.builder.AddEdge(c.builder.Sym(c.src), c.builder.Sym(dst), meta.EdgeOrdinary, 0)
+	c.builder.AddOrdinaryEdge(c.builder.Sym(c.src), c.builder.Sym(dst))
 }
 
 func namedModuleSymbol(v llvm.Value) string {

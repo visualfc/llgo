@@ -16,26 +16,28 @@ type NameRef struct {
 	Len uint32
 }
 
-// Edge/demand kinds used by Builder.AddEdge for compatibility with existing
-// emit sites. EdgeOrdinary is written to OrdinaryEdges; the other kinds are
-// written to FuncDemand.
+// Edge/demand kinds used internally by Builder.addEdge to pick which wire
+// section a fact is written to. These are pure wire-format encoding details:
+// callers outside this package never see them — they call the typed Builder
+// methods (AddOrdinaryEdge, AddIfaceUse, AddIfaceMethodUse, AddNamedMethodEdge)
+// instead.
 const (
-	// EdgeOrdinary is a plain symbol reference (call, type use, global var, etc.).
-	EdgeOrdinary uint8 = 0
-	// EdgeUseIface marks that the source converts Target type to an interface.
-	EdgeUseIface uint8 = 1
-	// EdgeUseIfaceMethod marks a call to method Extra of interface Target.
-	EdgeUseIfaceMethod uint8 = 2
-	// EdgeUseNamedMethod marks a constant MethodByName call; Target is a
+	// edgeOrdinary is a plain symbol reference (call, type use, global var, etc.).
+	edgeOrdinary uint8 = 0
+	// edgeUseIface marks that the source converts Target type to an interface.
+	edgeUseIface uint8 = 1
+	// edgeUseIfaceMethod marks a call to method Extra of interface Target.
+	edgeUseIfaceMethod uint8 = 2
+	// edgeUseNamedMethod marks a constant MethodByName call; Target is a
 	// stringTable byte offset (not a LocalSymbol).
-	EdgeUseNamedMethod uint8 = 3
+	edgeUseNamedMethod uint8 = 3
 )
 
 // FuncDemand kinds used in the FuncDemand section.
 const (
-	DemandUseIface      uint32 = uint32(EdgeUseIface)
-	DemandIfaceMethod   uint32 = uint32(EdgeUseIfaceMethod)
-	DemandNamedMethod   uint32 = uint32(EdgeUseNamedMethod)
+	DemandUseIface      uint32 = uint32(edgeUseIface)
+	DemandIfaceMethod   uint32 = uint32(edgeUseIfaceMethod)
+	DemandNamedMethod   uint32 = uint32(edgeUseNamedMethod)
 	DemandReflectMethod uint32 = 4
 )
 

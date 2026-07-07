@@ -715,7 +715,7 @@ func TestTryLoadFromCache_LoadsPackageMeta(t *testing.T) {
 	builder := meta.NewBuilder()
 	main := builder.Sym("pkg.main")
 	helper := builder.Sym("pkg.helper")
-	builder.AddEdge(main, helper, meta.EdgeOrdinary, 0)
+	builder.AddOrdinaryEdge(main, helper)
 
 	pkg := &aPackage{
 		Package: &packages.Package{

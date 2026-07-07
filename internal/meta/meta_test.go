@@ -91,14 +91,14 @@ func TestRoundTrip(t *testing.T) {
 	tfn := b.Sym("(*MyStruct).Read$tfn")
 
 	// ordinary edges
-	b.AddEdge(main, helper, EdgeOrdinary, 0)
-	b.AddEdge(main, allocZ, EdgeOrdinary, 0)
+	b.AddOrdinaryEdge(main, helper)
+	b.AddOrdinaryEdge(main, allocZ)
 
 	// interface conversion
-	b.AddEdge(main, myType, EdgeUseIface, 0)
+	b.AddIfaceUse(main, myType)
 
 	// interface method call: Reader.Read is method index 0
-	b.AddEdge(main, myIface, EdgeUseIfaceMethod, 0)
+	b.AddIfaceMethodUse(main, myIface, 0)
 
 	// named method call
 	b.AddNamedMethodEdge(helper, "ServeHTTP")
@@ -241,7 +241,7 @@ func TestRoundTripFile(t *testing.T) {
 	b := NewBuilder()
 	fn := b.Sym("pkg.Fn")
 	dep := b.Sym("runtime.X")
-	b.AddEdge(fn, dep, EdgeOrdinary, 0)
+	b.AddOrdinaryEdge(fn, dep)
 
 	pm, err := b.Build()
 	if err != nil {

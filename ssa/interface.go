@@ -20,7 +20,6 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/ssa/abi"
 	"github.com/xgo-dev/llvm"
 )
@@ -88,7 +87,7 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 		intfSym := mb.Sym(intfSymName)
 		b.Pkg.recordInterfaceInfo(rawIntf, intfSymName)
 		// Record which interface method is demanded. i is the method's index in rawIntf.
-		mb.AddEdge(mb.Sym(b.Func.Name()), intfSym, meta.EdgeUseIfaceMethod, uint32(i))
+		mb.AddIfaceMethodUse(mb.Sym(b.Func.Name()), intfSym, uint32(i))
 	}
 	data := b.InlineCall(b.Pkg.rtFunc("IfacePtrData"), intf)
 	var fn Expr
@@ -195,7 +194,7 @@ func (b Builder) recordUseIface(typ Type) {
 	if mb := b.Pkg.MetaBuilder; mb != nil {
 		if _, ok := types.Unalias(typ.raw.Type).Underlying().(*types.Interface); !ok {
 			typeName, _ := b.Prog.abi.TypeName(typ.raw.Type)
-			mb.AddEdge(mb.Sym(b.Func.Name()), mb.Sym(typeName), meta.EdgeUseIface, 0)
+			mb.AddIfaceUse(mb.Sym(b.Func.Name()), mb.Sym(typeName))
 		}
 	}
 }

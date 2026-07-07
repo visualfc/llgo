@@ -83,10 +83,10 @@ func buildDCEMeta() *meta.PackageMeta {
 	b.AddIfaceMethod(iface, "M", mtype)
 	b.AddMethodSlot(typ, "M", mtype, b.Sym("pkg.(*T).M"), b.Sym("pkg.T.M"))
 	b.AddMethodSlot(typ, "N", mtype, b.Sym("pkg.(*T).N"), b.Sym("pkg.T.N"))
-	b.AddEdge(main, use, meta.EdgeOrdinary, 0)
-	b.AddEdge(main, typ, meta.EdgeOrdinary, 0)
-	b.AddEdge(main, typ, meta.EdgeUseIface, 0)
-	b.AddEdge(use, iface, meta.EdgeUseIfaceMethod, 0) // M is index 0 in iface
+	b.AddOrdinaryEdge(main, use)
+	b.AddOrdinaryEdge(main, typ)
+	b.AddIfaceUse(main, typ)
+	b.AddIfaceMethodUse(use, iface, 0) // M is index 0 in iface
 	pm, _ := b.Build()
 	return pm
 }

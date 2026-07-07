@@ -19,9 +19,9 @@ func buildPkgMain(t *testing.T) *meta.PackageMeta {
 	readT := b.Sym("_llgo_func$Read")
 
 	// main calls runtime.AllocZ, converts *Stringer to Reader, calls Reader.Read
-	b.AddEdge(main, allocZ, meta.EdgeOrdinary, 0)
-	b.AddEdge(main, myType, meta.EdgeUseIface, 0)
-	b.AddEdge(main, reader, meta.EdgeUseIfaceMethod, 0) // Reader.Read = index 0
+	b.AddOrdinaryEdge(main, allocZ)
+	b.AddIfaceUse(main, myType)
+	b.AddIfaceMethodUse(main, reader, 0) // Reader.Read = index 0
 
 	// Reader interface: { Read }
 	b.AddIfaceMethod(reader, "Read", readT)
@@ -45,7 +45,7 @@ func buildPkgRuntime(t *testing.T) *meta.PackageMeta {
 
 	allocZ := b.Sym("runtime.AllocZ") // defined here, with a body edge
 	mallocgc := b.Sym("runtime.mallocgc")
-	b.AddEdge(allocZ, mallocgc, meta.EdgeOrdinary, 0)
+	b.AddOrdinaryEdge(allocZ, mallocgc)
 
 	pm, err := b.Build()
 	if err != nil {
@@ -177,7 +177,7 @@ func TestGlobalSummaryOwnerPrefersInterfaceInfoOverOrdinaryEdges(t *testing.T) {
 		b := meta.NewBuilder()
 		iface := b.Sym("_llgo_io.Reader")
 		dep := b.Sym("runtime.descriptor")
-		b.AddEdge(iface, dep, meta.EdgeOrdinary, 0)
+		b.AddOrdinaryEdge(iface, dep)
 		pm, err := b.Build()
 		if err != nil {
 			t.Fatal(err)

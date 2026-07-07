@@ -417,7 +417,7 @@ type pkgSlot struct {
 }
 
 // pkgBuilder wraps meta.Builder and tracks iface method order so that
-// addUseIfaceMethod can look up the sig index required by EdgeUseIfaceMethod.
+// addUseIfaceMethod can look up the sig index required by AddIfaceMethodUse.
 type pkgBuilder struct {
 	b          *meta.Builder
 	ifaceOrder map[meta.LocalSymbol][]pkgSig
@@ -433,11 +433,11 @@ func newPkgBuilder() *pkgBuilder {
 func (p *pkgBuilder) sym(name string) meta.LocalSymbol { return p.b.Sym(name) }
 
 func (p *pkgBuilder) addEdge(src, dst meta.LocalSymbol) {
-	p.b.AddEdge(src, dst, meta.EdgeOrdinary, 0)
+	p.b.AddOrdinaryEdge(src, dst)
 }
 
 func (p *pkgBuilder) addUseIface(fn, typ meta.LocalSymbol) {
-	p.b.AddEdge(fn, typ, meta.EdgeUseIface, 0)
+	p.b.AddIfaceUse(fn, typ)
 }
 
 // addUseIfaceMethod records a demand for iface.sig from fn. The sig index is
@@ -446,7 +446,7 @@ func (p *pkgBuilder) addUseIfaceMethod(fn, iface meta.LocalSymbol, sig pkgSig) {
 	sigs := p.ifaceOrder[iface]
 	for i, s := range sigs {
 		if s.name == sig.name && s.mtype == sig.mtype {
-			p.b.AddEdge(fn, iface, meta.EdgeUseIfaceMethod, uint32(i))
+			p.b.AddIfaceMethodUse(fn, iface, uint32(i))
 			return
 		}
 	}
