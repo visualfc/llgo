@@ -180,6 +180,7 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 	conf.LTO = lto.Full
 	ignore := []string{
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_switch",
 	}
 	if !buildenv.Dev {
 		ignore = append(ignore,
@@ -210,6 +211,7 @@ var testltoSymbolChecks = []string{
 
 var testltoLTOPluginTests = []string{
 	"globaldce_reflect_method_by_name_ltoplugin",
+	"globaldce_reflect_method_by_name_ltoplugin_switch",
 }
 
 func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
