@@ -1352,18 +1352,12 @@ func (p Package) RecordReflectMethodByName(funcName, name string) {
 		p.MethodByName = make(map[string]none)
 	}
 	p.MethodByName[name] = none{}
-	if funcName == "" {
-		return
-	}
 	if mb := p.metaBuilder; mb != nil {
 		mb.AddNamedMethodEdge(mb.Sym(funcName), name)
 	}
 }
 
 func (p Package) RecordReflectMethodDynamicDemand(funcName string) {
-	if funcName == "" {
-		return
-	}
 	if mb := p.metaBuilder; mb != nil {
 		mb.MarkReflect(mb.Sym(funcName))
 	}
