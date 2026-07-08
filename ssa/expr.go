@@ -1352,15 +1352,11 @@ func (p Package) RecordReflectMethodByName(funcName, name string) {
 		p.MethodByName = make(map[string]none)
 	}
 	p.MethodByName[name] = none{}
-	p.recordReflectMethodByNameDemand(funcName, name)
-}
-
-func (p Package) recordReflectMethodByNameDemand(funcName, methodName string) {
 	if funcName == "" {
 		return
 	}
 	if mb := p.metaBuilder; mb != nil {
-		mb.AddNamedMethodEdge(mb.Sym(funcName), methodName)
+		mb.AddNamedMethodEdge(mb.Sym(funcName), name)
 	}
 }
 
