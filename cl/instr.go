@@ -72,15 +72,7 @@ func isNamedType(t types.Type, pkgPath, name string) bool {
 	return obj != nil && obj.Name() == name && obj.Pkg() != nil && obj.Pkg().Path() == pkgPath
 }
 
-func staticCallMethod(call *ssa.CallCommon) (recv types.Type, method string, ok bool) {
-	fn := call.StaticCallee()
-	if fn == nil || fn.Signature == nil || fn.Signature.Recv() == nil {
-		return nil, "", false
-	}
-	return fn.Signature.Recv().Type(), fn.Name(), true
-}
-
-func reflectMethodNameArg(call *ssa.CallCommon) (nameArg ssa.Value, ok bool) {
+func reflectTypeMethodNameArg(call *ssa.CallCommon) (nameArg ssa.Value, ok bool) {
 	if method := call.Method; method != nil {
 		if !isNamedType(call.Value.Type(), "reflect", "Type") {
 			return nil, false
@@ -90,22 +82,14 @@ func reflectMethodNameArg(call *ssa.CallCommon) (nameArg ssa.Value, ok bool) {
 		}
 		return call.Args[0], true
 	}
-
-	recv, methodName, ok := staticCallMethod(call)
-	if !ok || !isNamedType(recv, "reflect", "Value") {
-		return nil, false
-	}
-	if methodName != "MethodByName" {
-		return nil, methodName == "Method"
-	}
-	return call.Args[len(call.Args)-1], true
+	return nil, false
 }
 
 func (p *context) markReflectMethodCall(call *ssa.CallCommon) {
 	if p.fn == nil || p.pkg.MetaBuilder == nil {
 		return
 	}
-	nameArg, ok := reflectMethodNameArg(call)
+	nameArg, ok := reflectTypeMethodNameArg(call)
 	if !ok {
 		return
 	}
