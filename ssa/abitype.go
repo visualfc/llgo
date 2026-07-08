@@ -343,7 +343,7 @@ func (b Builder) abiExtendedFields(t types.Type, name string, global llvm.Value)
 }
 
 func (b Builder) recordTypeChildren(parentName string, t types.Type) {
-	mb := b.Pkg.MetaBuilder
+	mb := b.Pkg.metaBuilder
 	if mb == nil {
 		return
 	}
@@ -531,7 +531,7 @@ func (b Builder) abiUncommonMethods(t types.Type, mset *types.MethodSet) llvm.Va
 		values = append(values, ifn)
 		values = append(values, tfn)
 		fields[i] = llvm.ConstNamedStruct(ft.ll, values)
-		if mb := b.Pkg.MetaBuilder; mb != nil {
+		if mb := b.Pkg.metaBuilder; mb != nil {
 			mtypeName, _ := prog.abi.TypeName(ftyp)
 			mb.AddMethodSlot(mb.Sym(typeName), fullName, mb.Sym(mtypeName), mb.Sym(ifn.Name()), mb.Sym(tfn.Name()))
 		}

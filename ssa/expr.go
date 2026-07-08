@@ -1359,7 +1359,7 @@ func (p Package) recordReflectMethodByNameDemand(funcName, methodName string) {
 	if funcName == "" {
 		return
 	}
-	if mb := p.MetaBuilder; mb != nil {
+	if mb := p.metaBuilder; mb != nil {
 		mb.AddNamedMethodEdge(mb.Sym(funcName), methodName)
 	}
 }
@@ -1368,7 +1368,7 @@ func (p Package) RecordReflectMethodDynamicDemand(funcName string) {
 	if funcName == "" {
 		return
 	}
-	if mb := p.MetaBuilder; mb != nil {
+	if mb := p.metaBuilder; mb != nil {
 		mb.MarkReflect(mb.Sym(funcName))
 	}
 }

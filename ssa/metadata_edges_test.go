@@ -1,4 +1,4 @@
-package build
+package ssa
 
 import (
 	"testing"
@@ -93,8 +93,12 @@ func hasOrdinaryEdge(pm *meta.PackageMeta, srcName, dstName string) bool {
 	if !ok {
 		return false
 	}
-	for _, dst := range summary.OrdinaryEdges(src) {
-		if summary.SymbolName(dst) == dstName {
+	dst, ok := summary.LookupSymbol(dstName)
+	if !ok {
+		return false
+	}
+	for _, e := range summary.OrdinaryEdges(src) {
+		if e == dst {
 			return true
 		}
 	}

@@ -34,7 +34,6 @@ import (
 	"unsafe"
 
 	"github.com/goplus/gogen/packages"
-	"github.com/goplus/llgo/internal/meta"
 	rtabi "github.com/goplus/llgo/runtime/abi"
 	"github.com/xgo-dev/llvm"
 )
@@ -1377,7 +1376,7 @@ func TestIfaceMethodClosureCallIR(t *testing.T) {
 	recvMeth := types.NewFunc(0, pkgTypes, "Printf", recvSig)
 
 	pkg := prog.NewPackage("bar", "foo/bar")
-	pkg.MetaBuilder = meta.NewBuilder()
+	pkg.EnableMetaCollection()
 	callerSig := types.NewSignatureType(nil, nil, nil,
 		types.NewTuple(types.NewVar(0, pkgTypes, "i", namedIface)),
 		types.NewTuple(types.NewVar(0, nil, "", types.Typ[types.Int])), false)
@@ -1387,10 +1386,10 @@ func TestIfaceMethodClosureCallIR(t *testing.T) {
 	ret := b.Call(closure, prog.Val(100), prog.Val(200))
 	b.Return(ret)
 
-	pm, err := pkg.MetaBuilder.Build()
-	if err != nil {
+	if err := pkg.FinishMetaCollection(); err != nil {
 		t.Fatal(err)
 	}
+	pm := pkg.Meta
 	defer pm.Close()
 	gotMeta := pm.String()
 	if strings.Contains(gotMeta, "_llgo_foo/bar.IFmt Printf ") {

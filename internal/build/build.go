@@ -1484,17 +1484,13 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		return fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
 
-	ret, externs, err := cl.NewPackageExWithEmbed(ctx.prog, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap)
+	needMeta := !aPkg.CacheHit && ctx.prog.DeadcodeDropEnabled()
+	ret, externs, err := cl.NewPackageExWithEmbedMeta(ctx.prog, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta)
 	check(err)
 
 	aPkg.LPkg = ret
-	if !aPkg.CacheHit && ret.MetaBuilder != nil {
-		extractOrdinaryEdges(ret.MetaBuilder, ret.Module())
-		pm, err := ret.MetaBuilder.Build()
-		if err != nil {
-			return fmt.Errorf("build meta for %s: %w", pkgPath, err)
-		}
-		aPkg.Meta = pm
+	if !aPkg.CacheHit {
+		aPkg.Meta = ret.Meta
 	}
 	if hook := ctx.buildConf.ModuleHook; hook != nil {
 		hook(aPkg)

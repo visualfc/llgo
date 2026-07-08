@@ -770,7 +770,8 @@ type aPackage struct {
 	NeedAbiInit   int // bitmask of Reflect* flags indicating which reflect type-construction operations are used
 	MethodByIndex map[int]none
 	MethodByName  map[string]none
-	MetaBuilder   *meta.Builder
+	Meta          *meta.PackageMeta
+	metaBuilder   *meta.Builder
 
 	export         map[string]string   // pkgPath.nameInPkg => exportname
 	preserveSyms   map[string]struct{} // set of exported symbol names
@@ -785,6 +786,25 @@ type Package = *aPackage
 
 func (p Package) Module() llvm.Module {
 	return p.mod
+}
+
+func (p Package) EnableMetaCollection() {
+	p.Meta = nil
+	p.metaBuilder = meta.NewBuilder()
+}
+
+func (p Package) FinishMetaCollection() error {
+	if p.metaBuilder == nil {
+		return nil
+	}
+	extractOrdinaryEdges(p.metaBuilder, p.mod)
+	pm, err := p.metaBuilder.Build()
+	if err != nil {
+		return err
+	}
+	p.Meta = pm
+	p.metaBuilder = nil
+	return nil
 }
 
 func (p Package) SetExport(name, export string) {

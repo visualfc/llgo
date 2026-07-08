@@ -185,7 +185,7 @@ func (b Builder) MakeInterfaceFromPtr(tinter Type, ptr Expr) (ret Expr) {
 }
 
 func (b Builder) recordUseIface(typ Type) {
-	if mb := b.Pkg.MetaBuilder; mb != nil {
+	if mb := b.Pkg.metaBuilder; mb != nil {
 		if _, ok := types.Unalias(typ.raw.Type).Underlying().(*types.Interface); !ok {
 			typeName, _ := b.Prog.abi.TypeName(typ.raw.Type)
 			mb.AddIfaceUse(mb.Sym(b.Func.Name()), mb.Sym(typeName))
@@ -194,7 +194,7 @@ func (b Builder) recordUseIface(typ Type) {
 }
 
 func (b Builder) recordUseIfaceMethod(rawIntf *types.Interface, methodIndex int) {
-	if mb := b.Pkg.MetaBuilder; mb != nil {
+	if mb := b.Pkg.metaBuilder; mb != nil {
 		intfSymName, _ := b.Prog.abi.TypeName(rawIntf)
 		intfSym := mb.Sym(intfSymName)
 		b.recordInterfaceInfo(rawIntf, intfSymName)
@@ -203,7 +203,7 @@ func (b Builder) recordUseIfaceMethod(rawIntf *types.Interface, methodIndex int)
 }
 
 func (b Builder) recordInterfaceInfo(t *types.Interface, typeName string) {
-	mb := b.Pkg.MetaBuilder
+	mb := b.Pkg.metaBuilder
 	if mb == nil {
 		return
 	}

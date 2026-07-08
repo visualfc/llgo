@@ -33,7 +33,6 @@ import (
 	"github.com/goplus/llgo/cl/blocks"
 	"github.com/goplus/llgo/cl/ssawrap"
 	"github.com/goplus/llgo/internal/goembed"
-	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/internal/typepatch"
 	"golang.org/x/tools/go/ssa"
 
@@ -1894,17 +1893,21 @@ func NewPackage(prog llssa.Program, pkg *ssa.Package, files []*ast.File) (ret ll
 // The rewrites map uses short variable names (without package qualifier) and
 // only affects string-typed globals defined in the current package.
 func NewPackageEx(prog llssa.Program, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File) (ret llssa.Package, externs []string, err error) {
-	return newPackageEx(prog, patches, rewrites, pkg, files, nil)
+	return newPackageEx(prog, patches, rewrites, pkg, files, nil, false)
 }
 
 // NewPackageExWithEmbed compiles a package using pre-loaded go:embed metadata.
 //
 // This avoids re-scanning directives when the caller already loaded them.
 func NewPackageExWithEmbed(prog llssa.Program, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap goembed.VarMap) (ret llssa.Package, externs []string, err error) {
-	return newPackageEx(prog, patches, rewrites, pkg, files, &embedMap)
+	return newPackageEx(prog, patches, rewrites, pkg, files, &embedMap, false)
 }
 
-func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap *goembed.VarMap) (ret llssa.Package, externs []string, err error) {
+func NewPackageExWithEmbedMeta(prog llssa.Program, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap goembed.VarMap, metaCollect bool) (ret llssa.Package, externs []string, err error) {
+	return newPackageEx(prog, patches, rewrites, pkg, files, &embedMap, metaCollect)
+}
+
+func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap *goembed.VarMap, metaCollect bool) (ret llssa.Package, externs []string, err error) {
 	pkgProg := pkg.Prog
 	pkgTypes := pkg.Pkg
 	oldTypes := pkgTypes
@@ -1919,8 +1922,8 @@ func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 		prog.SetRuntime(pkgTypes)
 	}
 	ret = prog.NewPackage(pkgName, pkgPath)
-	if prog.DeadcodeDropEnabled() {
-		ret.MetaBuilder = meta.NewBuilder()
+	if metaCollect {
+		ret.EnableMetaCollection()
 	}
 	if enableDbg {
 		ret.InitDebug(pkgName, pkgPath, pkgProg.Fset)
@@ -1989,6 +1992,11 @@ func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 		fn()
 	}
 	ret.MaterializePreserveSyms()
+	if metaCollect {
+		if err := ret.FinishMetaCollection(); err != nil {
+			return nil, nil, fmt.Errorf("build meta for %s: %w", pkgPath, err)
+		}
+	}
 	externs = ctx.cgoSymbols
 	return
 }
