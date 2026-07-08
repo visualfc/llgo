@@ -504,3 +504,24 @@ func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 		})
 	}
 }
+
+func TestDeadcodeDropDisabledWhenGoGlobalDCEEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want bool
+	}{
+		{name: "default without full lto", conf: &Config{DeadcodeDrop: true, LTO: lto.Off}, want: true},
+		{name: "disabled by flag", conf: &Config{DeadcodeDrop: false, LTO: lto.Off}, want: false},
+		{name: "disabled by go global dce", conf: &Config{DeadcodeDrop: true, LTO: lto.Full}, want: !buildenv.Dev},
+		{name: "enabled when go global dce disabled", conf: &Config{DeadcodeDrop: true, LTO: lto.Full, DisableGoGlobalDCE: true}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.conf.deadcodeDropEnabled(); got != tt.want {
+				t.Fatalf("deadcodeDropEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

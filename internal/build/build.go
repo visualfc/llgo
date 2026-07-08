@@ -242,6 +242,13 @@ func (c *Config) goGlobalDCEEnabled() bool {
 	return buildenv.Dev && c.ltoMode() == lto.Full && !c.DisableGoGlobalDCE
 }
 
+func (c *Config) deadcodeDropEnabled() bool {
+	if c == nil {
+		return false
+	}
+	return c.DeadcodeDrop && !c.goGlobalDCEEnabled()
+}
+
 // -----------------------------------------------------------------------------
 
 const (
@@ -333,7 +340,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 
 	prog := llssa.NewProgram(target)
 	prog.EnableGoGlobalDCE(conf.goGlobalDCEEnabled())
-	prog.EnableDeadcodeDrop(conf.DeadcodeDrop)
+	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
@@ -1117,7 +1124,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		pcLineInfo:    pcLineInfo,
 		funcInfoStubs: funcInfoStubs,
 	})
-	if ctx.buildConf.DeadcodeDrop {
+	if ctx.buildConf.deadcodeDropEnabled() {
 		if err := applyDeadcodeDropOverrides(ctx, pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
 			return err
 		}

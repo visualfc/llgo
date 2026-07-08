@@ -350,7 +350,7 @@ func (c *context) tryLoadFromCache(pkg *aPackage) bool {
 		return false
 	}
 	var pkgMeta *meta.PackageMeta
-	if c.buildConf.DeadcodeDrop {
+	if c.buildConf.deadcodeDropEnabled() {
 		pkgMeta, err = readMeta(paths.Meta)
 		if err != nil {
 			return false
@@ -476,7 +476,7 @@ func (c *context) saveToCache(pkg *aPackage) error {
 		return nil
 	}
 
-	if c.buildConf.DeadcodeDrop {
+	if c.buildConf.deadcodeDropEnabled() {
 		if pkg.Meta == nil {
 			pkg.Meta, _ = meta.NewBuilder().Build()
 		}
