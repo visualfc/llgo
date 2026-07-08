@@ -1312,6 +1312,7 @@ func ChanOf(dir ChanDir, t Type) Type {
 	ch.Str_ = s
 	ch.Hash = fnv1(typ.Hash, 'c', byte(dir))
 	ch.Elem = typ
+	ch.PtrToThis_ = nil
 
 	ti, _ := lookupCache.LoadOrStore(ckey, toRType(&ch.Type))
 	return ti.(Type)
@@ -2492,9 +2493,13 @@ func runtimeStructField(field StructField) (structField, string) {
 	}
 
 	//	resolveReflectType(field.Type.common()) // install in runtime
+	typ := field.Type.common()
+	if typ.Kind() == abi.Func {
+		typ = closureOf(typ.FuncType())
+	}
 	f := structField{
 		Name_:     field.Name,
-		Typ:       field.Type.common(),
+		Typ:       typ,
 		Tag_:      string(field.Tag),
 		Offset:    0,
 		Embedded_: field.Anonymous,

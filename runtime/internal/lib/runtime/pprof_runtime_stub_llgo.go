@@ -87,3 +87,11 @@ func SetCPUProfileRate(hz int) {}
 func FuncForPC(pc uintptr) *Func {
 	return nil
 }
+
+func CPUProfile() []byte {
+	panic("CPUProfile no longer available")
+}
+
+func GoroutineProfile(p []StackRecord) (n int, ok bool) {
+	return
+}

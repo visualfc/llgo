@@ -235,6 +235,7 @@ type aProgram struct {
 
 	enableGoGlobalDCE  bool
 	enableDeadcodeDrop bool
+	pthreadStackSize   uint64
 }
 
 type AbiSymbol struct {
@@ -336,6 +337,10 @@ func (p Program) EnableDeadcodeDrop(enable bool) {
 
 func (p Program) DeadcodeDropEnabled() bool {
 	return p.enableDeadcodeDrop
+}
+
+func (p Program) SetPthreadStackSize(size uint64) {
+	p.pthreadStackSize = size
 }
 
 // SetRuntime sets the runtime.

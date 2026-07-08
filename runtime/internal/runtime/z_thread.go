@@ -23,6 +23,32 @@ import (
 	"github.com/goplus/llgo/runtime/internal/clite/pthread"
 )
 
+func InitThreadAttr(attr *pthread.Attr) c.Int {
+	if ret := attr.Init(); ret != 0 {
+		return ret
+	}
+	if ret := attr.SetDetached(pthread.CreateDetached); ret != 0 {
+		attr.Destroy()
+		return ret
+	}
+	return 0
+}
+
+func InitThreadAttrWithStack(attr *pthread.Attr, stackSize uintptr) c.Int {
+	if ret := InitThreadAttr(attr); ret != 0 {
+		return ret
+	}
+	if ret := attr.SetStackSize(stackSize); ret != 0 {
+		attr.Destroy()
+		return ret
+	}
+	return 0
+}
+
+func DestroyThreadAttr(attr *pthread.Attr) c.Int {
+	return attr.Destroy()
+}
+
 func CreateThread(th *pthread.Thread, attr *pthread.Attr, routine pthread.RoutineFunc, arg c.Pointer) c.Int {
 	return pthread.Create(th, attr, routine, arg)
 }
