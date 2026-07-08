@@ -155,6 +155,10 @@ type Config struct {
 	SizeLevel     string // size aggregation level: full,module,package (default module)
 	CompilerHash  string // metadata hash for the running compiler (development builds only)
 
+	// PthreadStackSize sets a custom stack size, in bytes, for pthread-backed
+	// goroutines. A zero value keeps the platform pthread default.
+	PthreadStackSize int64
+
 	// DisableGoGlobalDCE disables Go-specific global DCE metadata emission
 	// when it would otherwise be enabled by full LTO.
 	DisableGoGlobalDCE bool
@@ -267,7 +271,6 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup crosscompile: %w", err)
 	}
-
 	// Update GOOS/GOARCH from export if target was used
 	if conf.Target != "" && export.GOOS != "" {
 		conf.Goos = export.GOOS
@@ -318,6 +321,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 
 	prog := llssa.NewProgram(target)
 	prog.EnableGoGlobalDCE(conf.goGlobalDCEEnabled())
+	if conf.PthreadStackSize > 0 {
+		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
+	}
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
