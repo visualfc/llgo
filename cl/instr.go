@@ -63,49 +63,6 @@ func constBool(v ssa.Value) (ret bool, ok bool) {
 	return
 }
 
-func isNamedType(t types.Type, pkgPath, name string) bool {
-	named, ok := types.Unalias(t).(*types.Named)
-	if !ok {
-		return false
-	}
-	obj := named.Obj()
-	return obj != nil && obj.Name() == name && obj.Pkg() != nil && obj.Pkg().Path() == pkgPath
-}
-
-func reflectTypeMethodNameArg(call *ssa.CallCommon) (nameArg ssa.Value, ok bool) {
-	if method := call.Method; method != nil {
-		if !isNamedType(call.Value.Type(), "reflect", "Type") {
-			return nil, false
-		}
-		if method.Name() != "MethodByName" {
-			return nil, method.Name() == "Method"
-		}
-		return call.Args[0], true
-	}
-	return nil, false
-}
-
-func (p *context) markReflectMethodCall(call *ssa.CallCommon) {
-	if p.fn == nil || p.pkg.MetaBuilder == nil {
-		return
-	}
-	nameArg, ok := reflectTypeMethodNameArg(call)
-	if !ok {
-		return
-	}
-	mb := p.pkg.MetaBuilder
-	owner := mb.Sym(p.fn.Name())
-	if nameArg == nil {
-		mb.MarkReflect(owner)
-		return
-	}
-	if name, ok := constStr(nameArg); ok {
-		mb.AddNamedMethodEdge(owner, name)
-		return
-	}
-	mb.MarkReflect(owner)
-}
-
 // func pystr(string) *py.Object
 func pystr(b llssa.Builder, args []ssa.Value) (ret llssa.Expr) {
 	if len(args) == 1 {
@@ -1092,7 +1049,6 @@ func collectMethodNilDerefChecks(fn *ssa.Function) map[*ssa.UnOp]none {
 }
 
 func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallCommon, ds *explicitDeferStack) (ret llssa.Expr) {
-	p.markReflectMethodCall(call)
 	cv := call.Value
 	if mthd := call.Method; mthd != nil {
 		reflectCheck := p.reflectTypeMethodCheck(call, mthd)
@@ -1277,21 +1233,23 @@ func (p *context) reflectTypeMethodCheck(call *ssa.CallCommon, method *types.Fun
 			return
 		}
 		if index, ok := constInt(call.Args[0]); ok {
-			p.pkg.RecordReflectMethodByIndex(index)
+			p.pkg.RecordReflectMethodByIndex(p.fn.Name(), index)
 			check.Kind = llssa.ReflectTypeMethodByIndex
 			break
 		}
+		p.pkg.RecordReflectMethodDynamicDemand(p.fn.Name())
 		check.Kind = llssa.ReflectTypeMethodDynamic
 	case "MethodByName":
 		if len(call.Args) != 1 {
 			return
 		}
 		if name, ok := constStr(call.Args[0]); ok {
-			p.pkg.RecordReflectMethodByName(name)
+			p.pkg.RecordReflectMethodByName(p.fn.Name(), name)
 			check.Kind = llssa.ReflectTypeMethodByName
 			check.Name = name
 			break
 		}
+		p.pkg.RecordReflectMethodDynamicDemand(p.fn.Name())
 		check.Kind = llssa.ReflectTypeMethodDynamic | llssa.ReflectTypeMethodByName
 	}
 	p.pkg.NeedAbiInit |= check.Kind
