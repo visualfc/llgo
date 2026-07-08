@@ -129,6 +129,7 @@ type Config struct {
 	Target        string // target name (e.g., "rp2040", "wasi") - takes precedence over Goos/Goarch
 	OptLevel      optlevel.Level
 	LTO           lto.Mode
+	LTOPlugin     lto.PassPlugin
 	BinPath       string
 	AppExt        string  // ".exe" on Windows, empty on Unix
 	OutFile       string  // only valid for ModeBuild when len(pkgs) == 1
@@ -324,6 +325,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
+	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -1127,6 +1129,11 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 
 	buildArgs := []string{"-o", app}
 	buildArgs = append(buildArgs, linkArgs...)
+	ltoPluginFlags, err := ctx.buildConf.LTOPlugin.LinkerFlags(ctx.buildConf.Goos)
+	if err != nil {
+		return err
+	}
+	buildArgs = append(buildArgs, ltoPluginFlags...)
 
 	// Add build mode specific linker arguments
 	switch ctx.buildConf.BuildMode {

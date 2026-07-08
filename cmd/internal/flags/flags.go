@@ -130,10 +130,13 @@ func (o *ltoFlag) Set(v string) error {
 }
 
 var LTO ltoFlag
+var LTOPluginPath string
 
 func AddLTOFlag(fs *flag.FlagSet) {
 	LTO = ltoFlag{Mode: lto.Off}
+	LTOPluginPath = ""
 	fs.Var(&LTO, "lto", "Enable LTO optimization: thin or full (default: off)")
+	fs.StringVar(&LTOPluginPath, "lto-pass-plugin", "", "Load an LLVM LTO pass plugin during full LTO (ELF lld only)")
 }
 
 var GoGlobalDCE *bool
@@ -339,6 +342,12 @@ func UpdateConfig(conf *build.Config) error {
 	conf.PthreadStackSize = int64(PthreadStackSize)
 	if LTO.Specified {
 		conf.LTO = LTO.Mode
+	}
+	if LTOPluginPath != "" {
+		if conf.LTO != lto.Full {
+			return fmt.Errorf("lto pass plugin can only be enabled with full LTO (-lto=full)")
+		}
+		conf.LTOPlugin = lto.PassPlugin{Path: LTOPluginPath}
 	}
 	if GoGlobalDCE != nil {
 		if *GoGlobalDCE && conf.LTO != lto.Full {

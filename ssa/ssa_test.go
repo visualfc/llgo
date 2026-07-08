@@ -511,6 +511,48 @@ func TestDevLTOGlobalDCEMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 	}
 }
 
+func TestDevLTOGlobalDCEReflectMethodByNameCallMarkers(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	fn := pkg.NewFunc("UseReflectMethodByName", NoArgsNoRet, InC)
+	b := fn.MakeBody(1)
+	callTy := llvm.FunctionType(prog.tyVoid(), []llvm.Type{
+		prog.tyVoidPtr(),
+		prog.tyVoidPtr(),
+		prog.tyVoidPtr(),
+		prog.Int64().ll,
+	}, false)
+	callee := llvm.AddFunction(pkg.Module(), "reflect.Value.MethodByName", callTy)
+	call := llvm.CreateCall(b.impl, callTy, callee, []llvm.Value{
+		llvm.ConstPointerNull(prog.tyVoidPtr()),
+		llvm.ConstPointerNull(prog.tyVoidPtr()),
+		llvm.ConstPointerNull(prog.tyVoidPtr()),
+		llvm.ConstInt(prog.Int64().ll, 4, false),
+	})
+
+	b.MarkReflectValueMethodByNameCall(call, 2)
+	if attr := call.GetCallSiteStringAttribute(-1, reflectMethodByNameCallAttr); !attr.IsNil() {
+		t.Fatalf("reflect MethodByName call marker should be disabled by default")
+	}
+	if attr := call.GetCallSiteStringAttribute(3, reflectMethodByNameArgAttr); !attr.IsNil() {
+		t.Fatalf("reflect MethodByName name-arg marker should be disabled by default")
+	}
+
+	prog.EnableLTOPluginMarkers(true)
+	b.MarkReflectValueMethodByNameCall(call, 2)
+	if attr := call.GetCallSiteStringAttribute(-1, reflectMethodByNameCallAttr); attr.IsNil() || attr.GetStringValue() != reflectMethodByNameValue {
+		t.Fatalf("reflect MethodByName call marker = %v, want %q", attr, reflectMethodByNameValue)
+	}
+	if attr := call.GetCallSiteStringAttribute(3, reflectMethodByNameArgAttr); attr.IsNil() || attr.GetStringValue() != "1" {
+		t.Fatalf("reflect MethodByName name-arg marker = %v, want 1", attr)
+	}
+
+	b.MarkReflectTypeMethodByNameCall(llvm.ConstPointerNull(prog.tyVoidPtr()), 0)
+	b.Return()
+}
+
 func TestDevLTOGlobalDCEEmitFakeUsesInlineAsmAtEntry(t *testing.T) {
 	requireGoGlobalDCE(t)
 

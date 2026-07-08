@@ -143,6 +143,19 @@ jobs:
       - name: Build llgo with dev tag
         run: go install -tags=dev ./cmd/llgo
 
+      - name: Build LTO plugin
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+
+          llvm_config="$(command -v llvm-config || command -v llvm-config-19)"
+          cmake -S ltoplugin -B ltoplugin/build \
+            -DLLVM_DIR="$("${llvm_config}" --cmakedir)" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build ltoplugin/build --config Release
+
+          echo "LLGO_LTO_PLUGIN=$GITHUB_WORKSPACE/ltoplugin/build/LLGOLTOPlugin.so" >> "$GITHUB_ENV"
+
       - name: Run dev LTO GlobalDCE tests and demos with coverage
         run: |
           set -euo pipefail
@@ -160,6 +173,20 @@ jobs:
             ./cl
           go tool cover -func=coverage-dev-lto-globaldce-cl.txt
 
+          go test -tags=dev -timeout 30m -covermode=atomic \
+            -coverpkg=github.com/goplus/llgo/ssa,github.com/goplus/llgo/internal/build,github.com/goplus/llgo/internal/crosscompile \
+            -coverprofile=coverage-dev-lto-globaldce-symbols.txt \
+            -run '^TestBuildAndCheckSymbolsFromTestlto/globaldce_' \
+            ./cl
+          go tool cover -func=coverage-dev-lto-globaldce-symbols.txt
+
+          go test -tags=dev -timeout 30m -covermode=atomic \
+            -coverpkg=github.com/goplus/llgo/ssa,github.com/goplus/llgo/internal/build,github.com/goplus/llgo/internal/crosscompile \
+            -coverprofile=coverage-dev-lto-plugin-cl.txt \
+            -run '^(TestRunAndTestFromTestltoLTOPlugin|TestBuildAndCheckSymbolsFromTestltoLTOPlugin)' \
+            ./cl
+          go tool cover -func=coverage-dev-lto-plugin-cl.txt
+
           LLGO_DEMO_LLGORUN_FLAGS="-lto=full -globaldce" \
             bash .github/workflows/test_demo.sh
 
@@ -168,5 +195,5 @@ jobs:
         uses: codecov/codecov-action@v7
         with:
           token: ${{secrets.CODECOV_TOKEN}}
-          files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt
+          files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt,coverage-dev-lto-globaldce-symbols.txt,coverage-dev-lto-plugin-cl.txt
           flags: dev-lto-globaldce
