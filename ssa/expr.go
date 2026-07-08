@@ -1320,7 +1320,7 @@ func (b Builder) checkReflect(fn Expr, args []Expr) (check ReflectMethodCheck) {
 				break
 			}
 			reflectKind = ReflectMethodDynamic
-			pkg.RecordReflectMethodDynamicDemand(b.Func.Name())
+			pkg.MarkReflectMethod(b.Func.Name())
 		}
 	case "reflect.Value.MethodByName":
 		if len(args) == 2 {
@@ -1331,7 +1331,7 @@ func (b Builder) checkReflect(fn Expr, args []Expr) (check ReflectMethodCheck) {
 				break
 			}
 			reflectKind = ReflectMethodDynamic | ReflectMethodByName
-			pkg.RecordReflectMethodDynamicDemand(b.Func.Name())
+			pkg.MarkReflectMethod(b.Func.Name())
 		}
 	}
 	pkg.NeedAbiInit |= reflectKind
@@ -1344,7 +1344,7 @@ func (p Package) RecordReflectMethodByIndex(funcName string, index int) {
 		p.MethodByIndex = make(map[int]none)
 	}
 	p.MethodByIndex[index] = none{}
-	p.RecordReflectMethodDynamicDemand(funcName)
+	p.MarkReflectMethod(funcName)
 }
 
 func (p Package) RecordReflectMethodByName(funcName, name string) {
@@ -1357,7 +1357,7 @@ func (p Package) RecordReflectMethodByName(funcName, name string) {
 	}
 }
 
-func (p Package) RecordReflectMethodDynamicDemand(funcName string) {
+func (p Package) MarkReflectMethod(funcName string) {
 	if mb := p.metaBuilder; mb != nil {
 		mb.MarkReflect(mb.Sym(funcName))
 	}

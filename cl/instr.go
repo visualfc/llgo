@@ -2115,7 +2115,7 @@ func (p *context) reflectTypeMethodCheck(call *ssa.CallCommon, method *types.Fun
 			check.Kind = llssa.ReflectTypeMethodByIndex
 			break
 		}
-		p.pkg.RecordReflectMethodDynamicDemand(p.fn.Name())
+		p.pkg.MarkReflectMethod(p.fn.Name())
 		check.Kind = llssa.ReflectTypeMethodDynamic
 	case "MethodByName":
 		if len(call.Args) != 1 {
@@ -2127,7 +2127,7 @@ func (p *context) reflectTypeMethodCheck(call *ssa.CallCommon, method *types.Fun
 			check.Name = name
 			break
 		}
-		p.pkg.RecordReflectMethodDynamicDemand(p.fn.Name())
+		p.pkg.MarkReflectMethod(p.fn.Name())
 		check.Kind = llssa.ReflectTypeMethodDynamic | llssa.ReflectTypeMethodByName
 	}
 	p.pkg.NeedAbiInit |= check.Kind
