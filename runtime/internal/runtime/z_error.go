@@ -63,6 +63,10 @@ func AssertIndexRange(b bool) {
 	}
 }
 
+func PanicErrorString(msg string) {
+	panic(errorString(msg))
+}
+
 func PanicIndex(x int, y int) {
 	panic(boundsError{x: int64(x), signed: true, y: y, code: boundsIndex})
 }
