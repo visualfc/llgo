@@ -74,3 +74,39 @@ func TestClangFlag(t *testing.T) {
 		t.Fatalf("Thin.ClangFlag() = %q, want -flto=thin", got)
 	}
 }
+
+func TestPassPluginLinkerFlags(t *testing.T) {
+	if got, err := (PassPlugin{}).LinkerFlags("linux"); err != nil || got != nil {
+		t.Fatalf("disabled plugin flags = %v, err = %v; want nil, nil", got, err)
+	}
+
+	if _, err := (PassPlugin{Path: "/tmp/libLLGOLTOPlugin.dylib"}).LinkerFlags("darwin"); err == nil {
+		t.Fatal("darwin plugin flags expected error")
+	}
+
+	if (PassPlugin{}).Enabled() {
+		t.Fatal("empty plugin should be disabled")
+	}
+
+	plugin := PassPlugin{Path: "/tmp/libLLGOLTOPlugin.so"}
+	want := []string{"-Wl,--load-pass-plugin=/tmp/libLLGOLTOPlugin.so"}
+	got, err := plugin.LinkerFlags("linux")
+	if err != nil {
+		t.Fatalf("LinkerFlags() error: %v", err)
+	}
+	if !sameStrings(got, want) {
+		t.Fatalf("LinkerFlags() = %v, want %v", got, want)
+	}
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

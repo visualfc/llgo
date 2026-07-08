@@ -51,3 +51,21 @@ func (m Mode) ClangFlag() string {
 		return ""
 	}
 }
+
+type PassPlugin struct {
+	Path string
+}
+
+func (p PassPlugin) Enabled() bool {
+	return p.Path != ""
+}
+
+func (p PassPlugin) LinkerFlags(goos string) ([]string, error) {
+	if !p.Enabled() {
+		return nil, nil
+	}
+	if goos == "darwin" {
+		return nil, fmt.Errorf("LTO pass plugins are not supported on darwin by LLVM 19 ld64.lld or Apple ld64")
+	}
+	return []string{"-Wl,--load-pass-plugin=" + p.Path}, nil
+}

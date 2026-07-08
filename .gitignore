@@ -24,6 +24,7 @@ _runtime/
 _tinygo/
 _output/
 build.dir/
+ltoplugin/build/
 .vscode/
 .venv/
 

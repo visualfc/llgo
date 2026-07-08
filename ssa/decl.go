@@ -258,6 +258,14 @@ func (p Package) NewFuncEx(name string, sig *types.Signature, bg Background, has
 	fn := llvm.AddFunction(p.mod, name, t.ll)
 	if bg == InGo {
 		fn.AddFunctionAttr(p.nullPointerIsValidAttr)
+		// Keep frame pointers so the runtime can walk real stacks (FP chain)
+		// for Callers/panic tracebacks instead of shadow-stack bookkeeping.
+		// Only where that unwinder exists: on embedded targets the attribute
+		// is pure cost, and the changed stack layout can retain stale slots
+		// under the conservative GC (observed on ESP32-C3).
+		if p.Prog.NeedsFramePointer() {
+			fn.AddFunctionAttr(p.framePointerAttr)
+		}
 	}
 	if instantiated {
 		fn.SetLinkage(llvm.LinkOnceAnyLinkage)
@@ -421,6 +429,11 @@ func (p Function) Inline(inline inlineAttr) {
 	}[inline]
 	inlineAttr := p.Pkg.mod.Context().CreateEnumAttribute(llvm.AttributeKindID(inlineAttrName), 0)
 	p.impl.AddFunctionAttr(inlineAttr)
+}
+
+func (p Function) DisableTailCalls() {
+	attr := p.Pkg.mod.Context().CreateStringAttribute("disable-tail-calls", "true")
+	p.impl.AddFunctionAttr(attr)
 }
 
 // -----------------------------------------------------------------------------

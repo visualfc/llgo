@@ -201,6 +201,150 @@ func TestNewFuncExLLVMUsed(t *testing.T) {
 	}
 }
 
+func TestFuncInfoMetadataDoesNotPreserveFunctions(t *testing.T) {
+	testFuncInfoMetadataDoesNotPreserveFunctions(t)
+}
+
+func TestPCLineMetadataEmission(t *testing.T) {
+	testPCLineMetadataEmission(t)
+}
+
+func testPCLineMetadataEmission(t *testing.T) {
+	t.Helper()
+
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+
+	pkg.EmitPCLineInfo(0, "ignored", "ignored.go", -1, -1)
+	pkg.EmitPCLineInfo(0x1234, "", "ignored.go", -1, -1)
+	if ir := pkg.String(); strings.Contains(ir, PCLineMetadataName) {
+		t.Fatalf("invalid pcline rows should not emit metadata:\n%s", ir)
+	}
+
+	pkg.EmitPCLineInfo(0x1234, "main.live", "call.go", 23, 5)
+	pkg.EmitPCLineInfo(0x5678, "main.negative", "negative.go", -7, -1)
+	ir := pkg.String()
+	for _, want := range []string{
+		`!llgo.pcline = !{!`,
+		`i64 4660`,
+		`!"main.live"`,
+		`!"call.go"`,
+		`i32 23`,
+		`i32 5`,
+		`i64 22136`,
+		`!"main.negative"`,
+		`!"negative.go"`,
+		`i32 0`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing pcline field %s:\n%s", want, ir)
+		}
+	}
+	if strings.Contains(ir, `ptr @main.live`) || strings.Contains(ir, `ptr @"main.live"`) {
+		t.Fatalf("pcline metadata must not contain function pointer operands:\n%s", ir)
+	}
+}
+
+func testFuncInfoMetadataDoesNotPreserveFunctions(t *testing.T) {
+	t.Helper()
+
+	prog := NewProgram(nil)
+	if prog.FuncInfoMetadataEnabled() {
+		t.Fatal("funcinfo metadata should be disabled by default")
+	}
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	if !prog.FuncInfoMetadataEnabled() {
+		t.Fatal("funcinfo metadata should be enabled")
+	}
+
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+
+	pkg.NewFunc("main.unused", sig, InGo)
+	pkg.EmitFuncInfo("", "ignored", "ignored.go", -1, -1)
+	if ir := pkg.String(); strings.Contains(ir, FuncInfoMetadataName) {
+		t.Fatalf("empty symbol should not emit funcinfo metadata:\n%s", ir)
+	}
+
+	pkg.EmitFuncInfo("main.unused", "main.unused", "unused.go", 7, 1)
+	pkg.EmitFuncInfo("main.negative", "main.negative", "negative.go", -7, -1)
+	ir := pkg.String()
+
+	if !strings.Contains(ir, `!llgo.funcinfo = !{!`) {
+		t.Fatalf("missing %s metadata:\n%s", FuncInfoMetadataName, ir)
+	}
+	for _, want := range []string{`!"main.unused"`, `!"unused.go"`, `i32 7`, `!"main.negative"`, `!"negative.go"`, `i32 0`} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing funcinfo field %s:\n%s", want, ir)
+		}
+	}
+	if strings.Contains(ir, "llvm.compiler.used") {
+		t.Fatalf("funcinfo metadata must not preserve symbols with llvm.compiler.used:\n%s", ir)
+	}
+	if strings.Contains(ir, `ptr @"main.unused"`) || strings.Contains(ir, `ptr @main.unused`) {
+		t.Fatalf("funcinfo metadata must not contain function pointer operands:\n%s", ir)
+	}
+}
+
+func TestFuncInfoMetadataDoesNotBlockGlobalDCE(t *testing.T) {
+	testFuncInfoMetadataDoesNotBlockGlobalDCE(t)
+}
+
+func testFuncInfoMetadataDoesNotBlockGlobalDCE(t *testing.T) {
+	t.Helper()
+
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+
+	live := pkg.NewFunc("main.main", sig, InGo)
+	lb := live.MakeBody(1)
+	lb.Return()
+	lb.EndBuild()
+
+	unused := pkg.NewFuncEx("main.unused", sig, InGo, false, true)
+	ub := unused.MakeBody(1)
+	ub.Return()
+	ub.EndBuild()
+	pkg.EmitFuncInfo(unused.Name(), unused.Name(), "unused.go", 7, 1)
+
+	mod := pkg.Module()
+	if mod.NamedFunction("main.unused").IsNil() {
+		t.Fatal("missing main.unused before DCE")
+	}
+	mod.SetDataLayout(prog.DataLayout())
+	mod.SetTarget(prog.Target().Spec().Triple)
+	pbo := llvm.NewPassBuilderOptions()
+	defer pbo.Dispose()
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("verify module before DCE: %v", err)
+	}
+	if err := mod.RunPasses("globaldce", prog.TargetMachine(), pbo); err != nil {
+		t.Fatalf("run globaldce: %v", err)
+	}
+	if !mod.NamedFunction("main.unused").IsNil() {
+		t.Fatalf("funcinfo metadata kept main.unused alive:\n%s", mod.String())
+	}
+	if mod.NamedFunction("main.main").IsNil() {
+		t.Fatalf("globaldce removed externally visible live function:\n%s", mod.String())
+	}
+	if ir := mod.String(); !strings.Contains(ir, `!"main.unused"`) {
+		t.Fatalf("funcinfo metadata should remain available for later materialization:\n%s", ir)
+	}
+}
+
+func TestDevLTOGlobalDCEFuncInfoMetadata(t *testing.T) {
+	requireGoGlobalDCE(t)
+	testFuncInfoMetadataDoesNotPreserveFunctions(t)
+	testFuncInfoMetadataDoesNotBlockGlobalDCE(t)
+}
+
+func TestDevLTOGlobalDCEPCLineMetadata(t *testing.T) {
+	requireGoGlobalDCE(t)
+	testPCLineMetadataEmission(t)
+}
+
 func requireGoGlobalDCE(t *testing.T) {
 	t.Helper()
 }
@@ -510,6 +654,48 @@ func TestDevLTOGlobalDCEMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 			t.Fatalf("missing %s in method checked load IR:\n%s", want, ir)
 		}
 	}
+}
+
+func TestDevLTOGlobalDCEReflectMethodByNameCallMarkers(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	fn := pkg.NewFunc("UseReflectMethodByName", NoArgsNoRet, InC)
+	b := fn.MakeBody(1)
+	callTy := llvm.FunctionType(prog.tyVoid(), []llvm.Type{
+		prog.tyVoidPtr(),
+		prog.tyVoidPtr(),
+		prog.tyVoidPtr(),
+		prog.Int64().ll,
+	}, false)
+	callee := llvm.AddFunction(pkg.Module(), "reflect.Value.MethodByName", callTy)
+	call := llvm.CreateCall(b.impl, callTy, callee, []llvm.Value{
+		llvm.ConstPointerNull(prog.tyVoidPtr()),
+		llvm.ConstPointerNull(prog.tyVoidPtr()),
+		llvm.ConstPointerNull(prog.tyVoidPtr()),
+		llvm.ConstInt(prog.Int64().ll, 4, false),
+	})
+
+	b.MarkReflectValueMethodByNameCall(call, 2)
+	if attr := call.GetCallSiteStringAttribute(-1, reflectMethodByNameCallAttr); !attr.IsNil() {
+		t.Fatalf("reflect MethodByName call marker should be disabled by default")
+	}
+	if attr := call.GetCallSiteStringAttribute(3, reflectMethodByNameArgAttr); !attr.IsNil() {
+		t.Fatalf("reflect MethodByName name-arg marker should be disabled by default")
+	}
+
+	prog.EnableLTOPluginMarkers(true)
+	b.MarkReflectValueMethodByNameCall(call, 2)
+	if attr := call.GetCallSiteStringAttribute(-1, reflectMethodByNameCallAttr); attr.IsNil() || attr.GetStringValue() != reflectMethodByNameValue {
+		t.Fatalf("reflect MethodByName call marker = %v, want %q", attr, reflectMethodByNameValue)
+	}
+	if attr := call.GetCallSiteStringAttribute(3, reflectMethodByNameArgAttr); attr.IsNil() || attr.GetStringValue() != "1" {
+		t.Fatalf("reflect MethodByName name-arg marker = %v, want 1", attr)
+	}
+
+	b.MarkReflectTypeMethodByNameCall(llvm.ConstPointerNull(prog.tyVoidPtr()), 0)
+	b.Return()
 }
 
 func TestDevLTOGlobalDCEEmitFakeUsesInlineAsmAtEntry(t *testing.T) {
@@ -844,7 +1030,7 @@ _llgo_0:
   ret i64 %2
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -910,7 +1096,7 @@ _llgo_0:
 ; Function Attrs: null_pointer_is_valid
 declare ptr @"github.com/goplus/llgo/runtime/internal/runtime.AllocU"(i64) #0
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `, wrapRef, wrapRef)
 	assertPkg(t, pkg, expected)
 }
@@ -1079,7 +1265,7 @@ _llgo_0:
   ret i64 %4
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1136,7 +1322,7 @@ _llgo_0:
 ; Function Attrs: null_pointer_is_valid
 declare ptr @"github.com/goplus/llgo/runtime/internal/runtime.AllocU"(i64) #0
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1240,7 +1426,7 @@ _llgo_0:
 ; Function Attrs: null_pointer_is_valid
 declare ptr @"github.com/goplus/llgo/runtime/internal/runtime.IfacePtrData"(%"github.com/goplus/llgo/runtime/internal/runtime.iface") #0
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1745,7 +1931,7 @@ _llgo_0:
   ret i1 true
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1802,7 +1988,7 @@ source_filename = "foo/bar"
 ; Function Attrs: null_pointer_is_valid
 declare void @fn(i64) #0
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1825,7 +2011,7 @@ _llgo_0:
   ret i64 1
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1848,7 +2034,7 @@ _llgo_0:
   ret i64 %0
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1885,7 +2071,7 @@ _llgo_0:
   ret void
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1915,7 +2101,7 @@ _llgo_0:
   ret { i64, double } %1
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1934,7 +2120,7 @@ _llgo_0:
   br label %_llgo_0
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -1971,7 +2157,7 @@ _llgo_2:                                          ; preds = %_llgo_0
   ret i64 0
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -2012,7 +2198,7 @@ _llgo_0:
   ret i64 %2
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -2043,7 +2229,7 @@ _llgo_0:
   ret i64 %2
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -2102,7 +2288,7 @@ _llgo_0:
   ret i64 %6
 }
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
@@ -2260,7 +2446,7 @@ _llgo_0:
 ; Function Attrs: returns_twice
 declare i32 @setjmp(ptr) #1
 
-attributes #0 = { null_pointer_is_valid }
+attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 attributes #1 = { returns_twice }
 `)
 }

@@ -226,8 +226,11 @@ func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Le
 			"-Wno-unused-command-line-argument",
 			"-Wl,--error-limit=0",
 			"-fuse-ld=lld",
-			// Enable ICF (Identical Code Folding) to reduce binary size
-			"-Wl,--icf=safe",
+			// ICF stays off: Go semantics require distinct functions to
+			// have distinct pcs (FuncForPC names, function-value identity —
+			// goroot fixedbugs/issue58300). lld's safe mode still folds
+			// llgo-emitted same-body functions, and gc never folds.
+			"-Wl,--icf=none",
 		}
 		if ltoMode.Enabled() {
 			export.LDFLAGS = append(export.LDFLAGS, ltoMode.ClangFlag(), "-Wl,--lto"+level.Flag())
@@ -501,8 +504,8 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	envs := buildEnvMap(env.LLGoROOT())
 
 	// Convert LLVMTarget, CPU, Features to CCFLAGS/LDFLAGS
-	// Enable ICF (Identical Code Folding) to reduce binary size
-	ldflags := []string{"-S", "--icf=safe"}
+	// ICF off for Go pc-identity semantics (see the non-cross flags above).
+	ldflags := []string{"-S", "--icf=none"}
 	ccflags := []string{level.Flag()}
 	cflags := []string{"-Wno-override-module", "-Qunused-arguments", "-Wno-unused-command-line-argument"}
 	if config.LLVMTarget != "" {

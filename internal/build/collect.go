@@ -83,6 +83,7 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 	envVars := []string{
 		llgoDebug,
 		llgoDbgSyms,
+		llgoFuncInfo,
 		llgoTrace,
 		llgoOptimize,
 		llgoWasmRuntime,

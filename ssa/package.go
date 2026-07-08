@@ -233,9 +233,13 @@ type aProgram struct {
 
 	is32Bits bool
 
-	enableGoGlobalDCE  bool
-	enableDeadcodeDrop bool
-	pthreadStackSize   uint64
+	enableGoGlobalDCE     bool
+	enableDeadcodeDrop    bool
+	pthreadStackSize      uint64
+	enableLTOPluginMarker bool
+
+	enableFuncInfoMetadata bool
+	enableFuncInfoSites    bool
 }
 
 type AbiSymbol struct {
@@ -341,6 +345,10 @@ func (p Program) DeadcodeDropEnabled() bool {
 
 func (p Program) SetPthreadStackSize(size uint64) {
 	p.pthreadStackSize = size
+}
+
+func (p Program) EnableLTOPluginMarkers(enable bool) {
+	p.enableLTOPluginMarker = enable
 }
 
 // SetRuntime sets the runtime.
@@ -478,11 +486,13 @@ func (p Program) NewPackage(name, pkgPath string) Package {
 	strs := make(map[string]llvm.Value)
 	glbDbgVars := make(map[Expr]bool)
 	nullPointerIsValidAttr := mod.Context().CreateEnumAttribute(llvm.AttributeKindID("null_pointer_is_valid"), 0)
+	framePointerAttr := mod.Context().CreateStringAttribute("frame-pointer", "non-leaf")
 	// Don't need reset p.needPyInit here
 	// p.needPyInit = false
 	ret := &aPackage{
 		mod: mod, path: pkgPath, Prog: p, vars: gbls, fns: fns,
 		nullPointerIsValidAttr: nullPointerIsValidAttr,
+		framePointerAttr:       framePointerAttr,
 		pyobjs:                 pyobjs, pymods: pymods, strs: strs,
 		di: nil, cu: nil, glbDbgVars: glbDbgVars,
 		export:         make(map[string]string),
@@ -739,6 +749,7 @@ type aPackage struct {
 	Prog Program
 
 	nullPointerIsValidAttr llvm.Attribute
+	framePointerAttr       llvm.Attribute
 
 	di         diBuilder
 	cu         CompilationUnit

@@ -19,7 +19,9 @@ func Rethrow(link *Defer) {
 	if ptr := excepKey.Get(); ptr != nil {
 		if link == nil {
 			TracePanic(*(*any)(ptr))
-			debug.PrintStack(2)
+			if PanicTraceback == nil || !PanicTraceback(2) {
+				debug.PrintStack(2)
+			}
 			c.Free(ptr)
 			c.Exit(2)
 		} else {
