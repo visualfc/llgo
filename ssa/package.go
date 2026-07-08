@@ -468,6 +468,10 @@ func (p Program) tyComplex128() llvm.Type {
 
 // NewPackage creates a new package.
 func (p Program) NewPackage(name, pkgPath string) Package {
+	return p.NewPackageEx(name, pkgPath, false)
+}
+
+func (p Program) NewPackageEx(name, pkgPath string, metaCollect bool) Package {
 	mod := p.ctx.NewModule(pkgPath)
 	mod.SetDataLayout(p.DataLayout())
 	mod.SetTarget(p.Target().Spec().Triple)
@@ -500,6 +504,9 @@ func (p Program) NewPackage(name, pkgPath string) Package {
 		llvmUsedValues: make([]llvm.Value, 0, 4),
 
 		abiTypeFakeUseCache: make(map[llvm.Value][]llvm.Value),
+	}
+	if metaCollect {
+		ret.metaBuilder = meta.NewBuilder()
 	}
 	if p.enableGoGlobalDCE {
 		p.addVirtualFunctionElimModuleFlag(mod)
@@ -788,15 +795,7 @@ func (p Package) Module() llvm.Module {
 	return p.mod
 }
 
-func (p Package) EnableMetaCollection() {
-	p.Meta = nil
-	p.metaBuilder = meta.NewBuilder()
-}
-
 func (p Package) FinishMetaCollection() error {
-	if p.metaBuilder == nil {
-		return nil
-	}
 	extractOrdinaryEdges(p.metaBuilder, p.mod)
 	pm, err := p.metaBuilder.Build()
 	if err != nil {

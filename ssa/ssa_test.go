@@ -1375,8 +1375,7 @@ func TestIfaceMethodClosureCallIR(t *testing.T) {
 		types.NewTuple(types.NewVar(0, nil, "", types.Typ[types.Int])), true)
 	recvMeth := types.NewFunc(0, pkgTypes, "Printf", recvSig)
 
-	pkg := prog.NewPackage("bar", "foo/bar")
-	pkg.EnableMetaCollection()
+	pkg := prog.NewPackageEx("bar", "foo/bar", true)
 	callerSig := types.NewSignatureType(nil, nil, nil,
 		types.NewTuple(types.NewVar(0, pkgTypes, "i", namedIface)),
 		types.NewTuple(types.NewVar(0, nil, "", types.Typ[types.Int])), false)

@@ -1921,10 +1921,7 @@ func newPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 	if pkgPath == llssa.PkgRuntime {
 		prog.SetRuntime(pkgTypes)
 	}
-	ret = prog.NewPackage(pkgName, pkgPath)
-	if metaCollect {
-		ret.EnableMetaCollection()
-	}
+	ret = prog.NewPackageEx(pkgName, pkgPath, metaCollect)
 	if enableDbg {
 		ret.InitDebug(pkgName, pkgPath, pkgProg.Fset)
 	}
