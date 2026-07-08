@@ -66,6 +66,48 @@ func Use() string { return VarInit + VarPlain }
 	}
 }
 
+func TestStaticGlobalLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type Names struct {
+	Value [2]string
+	Nested Nested
+}
+
+type Nested struct {
+	Type [2]string
+}
+
+var MethodNames = Names{
+	Value: [2]string{"KeepValue", "KeepValueAlt"},
+	Nested: Nested{
+		Type: [2]string{"KeepType", "KeepTypeAlt"},
+	},
+}
+
+func Use() string {
+	return MethodNames.Value[0] + MethodNames.Nested.Type[1]
+}
+`
+	ir := compileWithRewrites(t, src, nil)
+	if !strings.Contains(ir, "@staticinit.MethodNames = global %staticinit.Names") {
+		t.Fatalf("missing MethodNames global initializer:\n%s", ir)
+	}
+	if strings.Contains(ir, "@staticinit.MethodNames = global %staticinit.Names zeroinitializer") {
+		t.Fatalf("MethodNames still uses a zero initializer:\n%s", ir)
+	}
+	for _, want := range []string{`c"KeepValue"`, `c"KeepValueAlt"`, `c"KeepType"`, `c"KeepTypeAlt"`} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing %s in IR:\n%s", want, ir)
+		}
+	}
+	for _, line := range strings.Split(ir, "\n") {
+		if strings.Contains(line, "store ") && strings.Contains(line, "@staticinit.MethodNames") {
+			t.Fatalf("MethodNames initializer store was not folded: %s\n%s", line, ir)
+		}
+	}
+}
+
 func TestRewriteSkipsNonConstStores(t *testing.T) {
 	const src = `package rewritepkg
 import "strings"
