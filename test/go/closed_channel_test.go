@@ -37,6 +37,24 @@ func TestSendOnClosedChannelPanics(t *testing.T) {
 	})
 }
 
+func TestClosedChannelSendPanicDoesNotKeepChannelLocked(t *testing.T) {
+	ch := make(chan int)
+	close(ch)
+
+	expectChannelPanicContaining(t, "send on closed channel", func() {
+		ch <- 1
+	})
+
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("receive from closed channel returned ok=true")
+		}
+	default:
+		t.Fatal("receive from closed channel did not select")
+	}
+}
+
 func TestSelectSendOnClosedChannelPanics(t *testing.T) {
 	ch := make(chan int)
 	close(ch)

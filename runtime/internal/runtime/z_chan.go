@@ -26,30 +26,114 @@ import (
 
 // -----------------------------------------------------------------------------
 
-const (
-	chanNoSendRecv = 0
-	chanHasRecv    = 1
-)
-
 type Chan struct {
 	mutex sync.Mutex
+
+	qcount   int
+	dataqsiz int
+	buf      unsafe.Pointer
+	elemsize int
+	closed   bool
+	recvx    int
+	sendx    int
+
+	sendq chanWaitq
+	recvq chanWaitq
+}
+
+type chanWaitq struct {
+	first *chanWaiter
+	last  *chanWaiter
+}
+
+type chanWaiter struct {
+	prev *chanWaiter
+	next *chanWaiter
+	all  *chanWaiter
+
+	ch   *Chan
+	elem unsafe.Pointer
+	size int
+	send bool
+
+	queued bool
+	status waitStatus
+
+	mutex sync.Mutex
 	cond  sync.Cond
-	data  unsafe.Pointer
-	getp  int
-	// seq changes when an unbuffered send/recv rendezvous completes. A later
-	// recv on the same channel can set getp back to chanHasRecv before the
-	// previous recv wakes up, so recv waiters must not use getp alone to decide
-	// whether their own rendezvous completed.
-	seq  uint64
-	len  int
-	cap  int
-	sop  *selectOp
-	sops []*selectOp
-	// sends counts goroutines blocked in unbuffered send, including select-send.
-	sends uint16
-	// selsends is the subset of sends originating from select operations.
-	selsends uint16
-	close    bool
+
+	sel       *selectState
+	caseIndex int
+}
+
+type selectState struct {
+	mutex sync.Mutex
+	cond  sync.Cond
+
+	status waitStatus
+	chosen int
+}
+
+type waitStatus uint8
+
+const (
+	waitPending waitStatus = iota
+	waitClaimed
+	waitRecvOK
+	waitRecvClosed
+	waitSendOK
+	waitSendClosed
+)
+
+func (s waitStatus) done() bool {
+	return s >= waitRecvOK
+}
+
+func (s waitStatus) recvOK() bool {
+	return s == waitRecvOK || s == waitSendOK
+}
+
+func (s waitStatus) panicOnWake() bool {
+	return s == waitSendClosed
+}
+
+func (q *chanWaitq) enqueue(w *chanWaiter) {
+	w.prev = q.last
+	w.next = nil
+	w.queued = true
+	if q.last == nil {
+		q.first = w
+	} else {
+		q.last.next = w
+	}
+	q.last = w
+}
+
+func (q *chanWaitq) dequeue() *chanWaiter {
+	w := q.first
+	if w != nil {
+		q.remove(w)
+	}
+	return w
+}
+
+func (q *chanWaitq) remove(w *chanWaiter) {
+	if !w.queued {
+		return
+	}
+	if w.prev == nil {
+		q.first = w.next
+	} else {
+		w.prev.next = w.next
+	}
+	if w.next == nil {
+		q.last = w.prev
+	} else {
+		w.next.prev = w.prev
+	}
+	w.prev = nil
+	w.next = nil
+	w.queued = false
 }
 
 func NewChan(eltSize, cap int) *Chan {
@@ -61,12 +145,12 @@ func NewChan(eltSize, cap int) *Chan {
 		panicMakeChanSize()
 	}
 	ret := new(Chan)
+	ret.elemsize = eltSize
+	ret.dataqsiz = cap
 	if cap > 0 {
-		ret.data = AllocU(mem)
-		ret.cap = cap
+		ret.buf = AllocU(mem)
 	}
 	ret.mutex.Init(nil)
-	ret.cond.Init(nil)
 	return ret
 }
 
@@ -79,7 +163,7 @@ func ChanLen(p *Chan) (n int) {
 		return 0
 	}
 	p.mutex.Lock()
-	n = p.len
+	n = p.qcount
 	p.mutex.Unlock()
 	return
 }
@@ -88,31 +172,7 @@ func ChanCap(p *Chan) int {
 	if p == nil {
 		return 0
 	}
-	return p.cap
-}
-
-func notifyOps(p *Chan) {
-	if p.sop != nil {
-		p.sop.notify()
-	}
-	for _, sop := range p.sops {
-		sop.notify()
-	}
-}
-
-func ChanClose(p *Chan) {
-	if p == nil {
-		panic("close of nil channel")
-	}
-	p.mutex.Lock()
-	if p.close {
-		p.mutex.Unlock()
-		panic("close of closed channel")
-	}
-	p.close = true
-	notifyOps(p)
-	p.mutex.Unlock()
-	p.cond.Broadcast()
+	return p.dataqsiz
 }
 
 func panicSendOnClosedChan() {
@@ -125,39 +185,190 @@ func zeroChanRecv(v unsafe.Pointer, eltSize int) {
 	}
 }
 
+func copyChanElem(dst, src unsafe.Pointer, eltSize int) {
+	if dst != nil && src != nil && eltSize > 0 {
+		c.Memcpy(dst, src, uintptr(eltSize))
+	}
+}
+
+func chanBuf(p *Chan, i int) unsafe.Pointer {
+	return c.Advance(p.buf, i*p.elemsize)
+}
+
+func newChanWaiter(ch *Chan, elem unsafe.Pointer, eltSize int, send bool) *chanWaiter {
+	w := new(chanWaiter)
+	w.ch = ch
+	w.elem = elem
+	w.size = eltSize
+	w.send = send
+	w.mutex.Init(nil)
+	w.cond.Init(nil)
+	w.mutex.Lock()
+	return w
+}
+
+func newSelectState() *selectState {
+	state := (*selectState)(c.Malloc(unsafe.Sizeof(selectState{})))
+	if state == nil {
+		panic("out of memory")
+	}
+	c.Memset(unsafe.Pointer(state), 0, unsafe.Sizeof(selectState{}))
+	state.chosen = -1
+	state.mutex.Init(nil)
+	state.cond.Init(nil)
+	return state
+}
+
+func freeSelectState(state *selectState) {
+	c.Free(unsafe.Pointer(state))
+}
+
+func newSelectWaiter(ch *Chan, elem unsafe.Pointer, eltSize int, send bool, state *selectState, caseIndex int) *chanWaiter {
+	w := (*chanWaiter)(c.Malloc(unsafe.Sizeof(chanWaiter{})))
+	if w == nil {
+		panic("out of memory")
+	}
+	c.Memset(unsafe.Pointer(w), 0, unsafe.Sizeof(chanWaiter{}))
+	w.ch = ch
+	w.elem = elem
+	w.size = eltSize
+	w.send = send
+	w.sel = state
+	w.caseIndex = caseIndex
+	return w
+}
+
+func freeSelectWaiters(w *chanWaiter) {
+	for w != nil {
+		next := w.all
+		c.Free(unsafe.Pointer(w))
+		w = next
+	}
+}
+
+func (w *chanWaiter) wait() {
+	for !w.status.done() {
+		w.cond.Wait(&w.mutex)
+	}
+	w.mutex.Unlock()
+	w.cond.Destroy()
+	w.mutex.Destroy()
+}
+
+func (w *chanWaiter) finish(status waitStatus) {
+	if w.sel != nil {
+		w.sel.mutex.Lock()
+		w.sel.status = status
+		w.sel.mutex.Unlock()
+		w.sel.cond.Signal()
+		return
+	}
+	w.mutex.Lock()
+	w.status = status
+	w.mutex.Unlock()
+	w.cond.Signal()
+}
+
+func claimWaiter(w *chanWaiter) bool {
+	if w.sel != nil {
+		w.sel.mutex.Lock()
+		if w.sel.status != waitPending {
+			w.sel.mutex.Unlock()
+			return false
+		}
+		w.sel.status = waitClaimed
+		w.sel.chosen = w.caseIndex
+		w.sel.mutex.Unlock()
+		return true
+	}
+	return true
+}
+
+func completeRecvWaiter(w *chanWaiter, src unsafe.Pointer, eltSize int, status waitStatus) bool {
+	if !claimWaiter(w) {
+		return false
+	}
+	if status.recvOK() {
+		copyChanElem(w.elem, src, eltSize)
+	} else {
+		zeroChanRecv(w.elem, eltSize)
+	}
+	w.finish(status)
+	return true
+}
+
+func completeSendWaiter(w *chanWaiter, status waitStatus) bool {
+	if !claimWaiter(w) {
+		return false
+	}
+	w.finish(status)
+	return true
+}
+
+func recvFromSendWaiter(dst unsafe.Pointer, w *chanWaiter, eltSize int) bool {
+	if !claimWaiter(w) {
+		return false
+	}
+	copyChanElem(dst, w.elem, eltSize)
+	w.finish(waitSendOK)
+	return true
+}
+
+func dequeueRecvAndComplete(p *Chan, src unsafe.Pointer, eltSize int, status waitStatus) bool {
+	for {
+		w := p.recvq.dequeue()
+		if w == nil {
+			return false
+		}
+		if completeRecvWaiter(w, src, eltSize, status) {
+			return true
+		}
+	}
+}
+
+func dequeueSendAndRecv(p *Chan, dst unsafe.Pointer, eltSize int) bool {
+	for {
+		w := p.sendq.dequeue()
+		if w == nil {
+			return false
+		}
+		if recvFromSendWaiter(dst, w, eltSize) {
+			return true
+		}
+	}
+}
+
+func chanTrySendLocked(p *Chan, v unsafe.Pointer, eltSize int) (tryOK bool, closed bool) {
+	elemSize := p.elemsize
+	if p.closed {
+		return false, true
+	}
+	if dequeueRecvAndComplete(p, v, elemSize, waitRecvOK) {
+		return true, false
+	}
+	if p.qcount < p.dataqsiz {
+		copyChanElem(chanBuf(p, p.sendx), v, elemSize)
+		p.sendx++
+		if p.sendx == p.dataqsiz {
+			p.sendx = 0
+		}
+		p.qcount++
+		return true, false
+	}
+	return false, false
+}
+
 func ChanTrySend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 	if p == nil {
 		return false
 	}
-	n := p.cap
 	p.mutex.Lock()
-	if p.close {
-		p.mutex.Unlock()
+	ok, closed := chanTrySendLocked(p, v, eltSize)
+	p.mutex.Unlock()
+	if closed {
 		panicSendOnClosedChan()
 	}
-	if n == 0 {
-		if p.getp != chanHasRecv {
-			p.mutex.Unlock()
-			return false
-		}
-		if p.data != nil {
-			c.Memcpy(p.data, v, uintptr(eltSize))
-		}
-		p.getp = chanNoSendRecv
-		p.seq++
-	} else {
-		if p.len == n {
-			p.mutex.Unlock()
-			return false
-		}
-		off := (p.getp + p.len) % n
-		c.Memcpy(c.Advance(p.data, off*eltSize), v, uintptr(eltSize))
-		p.len++
-	}
-	notifyOps(p)
-	p.mutex.Unlock()
-	p.cond.Broadcast()
-	return true
+	return ok
 }
 
 func ChanSend(p *Chan, v unsafe.Pointer, eltSize int) bool {
@@ -165,106 +376,74 @@ func ChanSend(p *Chan, v unsafe.Pointer, eltSize int) bool {
 		blockForever()
 		return false
 	}
-	n := p.cap
 	p.mutex.Lock()
-	if n == 0 {
-		for p.getp != chanHasRecv && !p.close {
-			p.sends++
-			// A blocked unbuffered send must wake select-based receivers so they can
-			// retry ChanTryRecv after observing that a sender is now waiting.
-			if p.sends == 1 || p.sends-1 == p.selsends {
-				notifyOps(p)
-			}
-			p.cond.Wait(&p.mutex)
-			p.sends--
-		}
-		if p.close {
-			p.mutex.Unlock()
-			panicSendOnClosedChan()
-		}
-		if p.data != nil {
-			c.Memcpy(p.data, v, uintptr(eltSize))
-		}
-		p.getp = chanNoSendRecv
-		p.seq++
-	} else {
-		for p.len == n && !p.close {
-			p.cond.Wait(&p.mutex)
-		}
-		if p.close {
-			p.mutex.Unlock()
-			panicSendOnClosedChan()
-		}
-		off := (p.getp + p.len) % n
-		c.Memcpy(c.Advance(p.data, off*eltSize), v, uintptr(eltSize))
-		p.len++
+	ok, closed := chanTrySendLocked(p, v, eltSize)
+	if closed {
+		p.mutex.Unlock()
+		panicSendOnClosedChan()
 	}
-	notifyOps(p)
+	if ok {
+		p.mutex.Unlock()
+		return true
+	}
+	w := newChanWaiter(p, v, eltSize, true)
+	p.sendq.enqueue(w)
 	p.mutex.Unlock()
-	p.cond.Broadcast()
+
+	w.wait()
+	if w.status.panicOnWake() {
+		panicSendOnClosedChan()
+	}
 	return true
+}
+
+func chanTryRecvLocked(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool, tryOK bool) {
+	elemSize := p.elemsize
+	if p.dataqsiz == 0 {
+		if dequeueSendAndRecv(p, v, elemSize) {
+			return true, true
+		}
+	} else if p.qcount > 0 {
+		copyChanElem(v, chanBuf(p, p.recvx), elemSize)
+		zeroChanRecv(chanBuf(p, p.recvx), elemSize)
+		p.recvx++
+		if p.recvx == p.dataqsiz {
+			p.recvx = 0
+		}
+		p.qcount--
+		for p.qcount < p.dataqsiz {
+			w := p.sendq.dequeue()
+			if w == nil {
+				break
+			}
+			if !claimWaiter(w) {
+				continue
+			}
+			copyChanElem(chanBuf(p, p.sendx), w.elem, elemSize)
+			p.sendx++
+			if p.sendx == p.dataqsiz {
+				p.sendx = 0
+			}
+			p.qcount++
+			w.finish(waitSendOK)
+			break
+		}
+		return true, true
+	}
+	if p.closed {
+		zeroChanRecv(v, elemSize)
+		return false, true
+	}
+	return false, false
 }
 
 func ChanTryRecv(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool, tryOK bool) {
 	if p == nil {
 		return false, false
 	}
-	return chanTryRecv(p, v, eltSize, true)
-}
-
-func chanTryRecv(p *Chan, v unsafe.Pointer, eltSize int, acceptSelectSend bool) (recvOK bool, tryOK bool) {
-	n := p.cap
 	p.mutex.Lock()
-	if n == 0 {
-		if p.sends == 0 || p.getp == chanHasRecv || p.close {
-			tryOK = p.close
-			if p.close {
-				zeroChanRecv(v, eltSize)
-			}
-			p.mutex.Unlock()
-			return
-		}
-		if !acceptSelectSend && p.sends == p.selsends {
-			p.mutex.Unlock()
-			return
-		}
-		p.getp = chanHasRecv
-		p.data = v
-		seq := p.seq
-		notifyOps(p)
-		p.mutex.Unlock()
-		p.cond.Broadcast()
-
-		p.mutex.Lock()
-		for p.getp == chanHasRecv && p.seq == seq && !p.close {
-			p.cond.Wait(&p.mutex)
-		}
-		recvOK = p.seq != seq || p.getp != chanHasRecv
-		if !recvOK {
-			zeroChanRecv(v, eltSize)
-		}
-		tryOK = true
-		p.mutex.Unlock()
-		return
-	} else {
-		if p.len == 0 {
-			tryOK = p.close
-			if p.close {
-				zeroChanRecv(v, eltSize)
-			}
-			p.mutex.Unlock()
-			return
-		}
-		if v != nil {
-			c.Memcpy(v, c.Advance(p.data, p.getp*eltSize), uintptr(eltSize))
-		}
-		p.getp = (p.getp + 1) % n
-		p.len--
-	}
-	notifyOps(p)
+	recvOK, tryOK = chanTryRecvLocked(p, v, eltSize)
 	p.mutex.Unlock()
-	p.cond.Broadcast()
-	recvOK, tryOK = true, true
 	return
 }
 
@@ -273,54 +452,48 @@ func ChanRecv(p *Chan, v unsafe.Pointer, eltSize int) (recvOK bool) {
 		blockForever()
 		return false
 	}
-	n := p.cap
 	p.mutex.Lock()
-	if n == 0 {
-		for p.getp == chanHasRecv && !p.close {
-			p.cond.Wait(&p.mutex)
-		}
-		if p.close {
-			zeroChanRecv(v, eltSize)
-			p.mutex.Unlock()
-			return false
-		}
-		p.getp = chanHasRecv
-		p.data = v
-		seq := p.seq
-		notifyOps(p)
+	if recvOK, tryOK := chanTryRecvLocked(p, v, eltSize); tryOK {
 		p.mutex.Unlock()
-		p.cond.Broadcast()
-
-		p.mutex.Lock()
-		for p.getp == chanHasRecv && p.seq == seq && !p.close {
-			p.cond.Wait(&p.mutex)
-		}
-		recvOK = p.seq != seq || p.getp != chanHasRecv
-		if !recvOK {
-			zeroChanRecv(v, eltSize)
-		}
-		p.mutex.Unlock()
-		return
-	} else {
-		for p.len == 0 {
-			if p.close {
-				zeroChanRecv(v, eltSize)
-				p.mutex.Unlock()
-				return false
-			}
-			p.cond.Wait(&p.mutex)
-		}
-		if v != nil {
-			c.Memcpy(v, c.Advance(p.data, p.getp*eltSize), uintptr(eltSize))
-		}
-		p.getp = (p.getp + 1) % n
-		p.len--
+		return recvOK
 	}
-	notifyOps(p)
+	w := newChanWaiter(p, v, eltSize, false)
+	p.recvq.enqueue(w)
 	p.mutex.Unlock()
-	p.cond.Broadcast()
-	recvOK = true
-	return
+
+	w.wait()
+	return w.status.recvOK()
+}
+
+func ChanClose(p *Chan) {
+	if p == nil {
+		panic("close of nil channel")
+	}
+	p.mutex.Lock()
+	if p.closed {
+		p.mutex.Unlock()
+		panic("close of closed channel")
+	}
+	p.closed = true
+	for {
+		w := p.recvq.dequeue()
+		if w == nil {
+			break
+		}
+		if completeRecvWaiter(w, nil, p.elemsize, waitRecvClosed) {
+			continue
+		}
+	}
+	for {
+		w := p.sendq.dequeue()
+		if w == nil {
+			break
+		}
+		if completeSendWaiter(w, waitSendClosed) {
+			continue
+		}
+	}
+	p.mutex.Unlock()
 }
 
 func blockForever() {
@@ -336,39 +509,6 @@ func blockForever() {
 
 // -----------------------------------------------------------------------------
 
-type selectOp struct {
-	mutex sync.Mutex
-	cond  sync.Cond
-	sem   bool
-}
-
-func (p *selectOp) init() {
-	p.mutex.Init(nil)
-	p.cond.Init(nil)
-	p.sem = false
-}
-
-func (p *selectOp) end() {
-	p.mutex.Destroy()
-	p.cond.Destroy()
-}
-
-func (p *selectOp) notify() {
-	p.mutex.Lock()
-	p.sem = true
-	p.mutex.Unlock()
-	p.cond.Signal()
-}
-
-func (p *selectOp) wait() {
-	p.mutex.Lock()
-	if !p.sem {
-		p.cond.Wait(&p.mutex)
-	}
-	p.sem = false
-	p.mutex.Unlock()
-}
-
 // ChanOp represents a channel operation.
 type ChanOp struct {
 	C *Chan
@@ -379,22 +519,97 @@ type ChanOp struct {
 	Send bool
 }
 
+const selectInlineChanCount = 8
+
+type selectChanList struct {
+	len    int
+	inline [selectInlineChanCount]*Chan
+	extra  []*Chan
+}
+
+func (l *selectChanList) get(i int) *Chan {
+	if l.extra != nil {
+		return l.extra[i]
+	}
+	return l.inline[i]
+}
+
+func (l *selectChanList) set(i int, ch *Chan) {
+	if l.extra != nil {
+		l.extra[i] = ch
+		return
+	}
+	l.inline[i] = ch
+}
+
+func (l *selectChanList) insert(pos int, ch *Chan) {
+	if l.extra != nil {
+		l.extra = append(l.extra, nil)
+		copy(l.extra[pos+1:], l.extra[pos:])
+		l.extra[pos] = ch
+		l.len++
+		return
+	}
+	if l.len == selectInlineChanCount {
+		extra := make([]*Chan, selectInlineChanCount+1, selectInlineChanCount*2)
+		copy(extra, l.inline[:pos])
+		extra[pos] = ch
+		copy(extra[pos+1:], l.inline[pos:])
+		l.extra = extra
+		l.len++
+		return
+	}
+	l.len++
+	for i := l.len - 1; i > pos; i-- {
+		l.set(i, l.get(i-1))
+	}
+	l.set(pos, ch)
+}
+
+func (l *selectChanList) add(ch *Chan) {
+	addr := uintptr(unsafe.Pointer(ch))
+	pos := 0
+	for pos < l.len {
+		cur := uintptr(unsafe.Pointer(l.get(pos)))
+		if cur == addr {
+			return
+		}
+		if cur > addr {
+			break
+		}
+		pos++
+	}
+	l.insert(pos, ch)
+}
+
 // TrySelect executes a non-blocking select operation.
 func TrySelect(ops ...ChanOp) (isel int, recvOK, tryOK bool) {
-	for isel = range ops {
+	n := len(ops)
+	if n == 0 {
+		return
+	}
+	start := selectStart(n)
+	for i := 0; i < n; i++ {
+		isel = (start + i) % n
 		op := ops[isel]
 		if op.C == nil {
-			// Nil-channel select cases are permanently disabled.
 			continue
 		}
+		op.C.mutex.Lock()
 		if op.Send {
-			if tryOK = ChanTrySend(op.C, op.Val, int(op.Size)); tryOK {
-				return
+			var closed bool
+			tryOK, closed = chanTrySendLocked(op.C, op.Val, int(op.Size))
+			recvOK = true
+			op.C.mutex.Unlock()
+			if closed {
+				panicSendOnClosedChan()
 			}
 		} else {
-			if recvOK, tryOK = ChanTryRecv(op.C, op.Val, int(op.Size)); tryOK {
-				return
-			}
+			recvOK, tryOK = chanTryRecvLocked(op.C, op.Val, int(op.Size))
+			op.C.mutex.Unlock()
+		}
+		if tryOK {
+			return
 		}
 	}
 	return
@@ -402,155 +617,127 @@ func TrySelect(ops ...ChanOp) (isel int, recvOK, tryOK bool) {
 
 // Select executes a blocking select operation.
 func Select(ops ...ChanOp) (isel int, recvOK bool) {
-	selOp := (*selectOp)(c.Alloca(unsafe.Sizeof(selectOp{})))
-	selOp.init()
-	sendFirst := selectSendFirst(ops)
+	if isel, recvOK, ok := TrySelect(ops...); ok {
+		return isel, recvOK
+	}
+
+	var chans selectChanList
 	for _, op := range ops {
+		ch := op.C
+		if ch == nil {
+			continue
+		}
+		chans.add(ch)
+	}
+	if chans.len == 0 {
+		blockForever()
+	}
+	lockSelectChannels(&chans)
+
+	start := selectStart(len(ops))
+	for n := 0; n < len(ops); n++ {
+		i := (start + n) % len(ops)
+		op := ops[i]
 		if op.C == nil {
 			continue
 		}
-		prepareSelect(op.C, selOp, op.Send)
-	}
-	var tryOK bool
-	for {
-		if isel, recvOK, tryOK = trySelect(ops, sendFirst); tryOK {
-			break
+		ch := op.C
+		var ready bool
+		if op.Send {
+			var closed bool
+			ready, closed = chanTrySendLocked(ch, op.Val, int(op.Size))
+			if closed {
+				unlockSelectChannels(&chans)
+				panicSendOnClosedChan()
+			}
+			if ready {
+				unlockSelectChannels(&chans)
+				return i, true
+			}
+		} else {
+			recvOK, ready = chanTryRecvLocked(ch, op.Val, int(op.Size))
+			if ready {
+				unlockSelectChannels(&chans)
+				return i, recvOK
+			}
 		}
-		selOp.wait()
 	}
-	for _, op := range ops {
+
+	state := newSelectState()
+
+	var waiters *chanWaiter
+	var lastWaiter *chanWaiter
+	for n := 0; n < len(ops); n++ {
+		i := (start + n) % len(ops)
+		op := ops[i]
 		if op.C == nil {
 			continue
 		}
-		endSelect(op.C, selOp, op.Send)
+		w := newSelectWaiter(op.C, op.Val, int(op.Size), op.Send, state, i)
+		if op.Send {
+			op.C.sendq.enqueue(w)
+		} else {
+			op.C.recvq.enqueue(w)
+		}
+		if lastWaiter == nil {
+			waiters = w
+		} else {
+			lastWaiter.all = w
+		}
+		lastWaiter = w
 	}
-	selOp.end()
+	unlockSelectChannels(&chans)
+
+	state.mutex.Lock()
+	for !state.status.done() {
+		state.cond.Wait(&state.mutex)
+	}
+	isel = state.chosen
+	status := state.status
+	recvOK = status.recvOK()
+	state.mutex.Unlock()
+
+	for w := waiters; w != nil; w = w.all {
+		cleanupSelectWaiter(w)
+	}
+	state.cond.Destroy()
+	state.mutex.Destroy()
+	freeSelectState(state)
+	freeSelectWaiters(waiters)
+	if status.panicOnWake() {
+		panicSendOnClosedChan()
+	}
 	return
 }
 
-func trySelect(ops []ChanOp, sendFirst bool) (isel int, recvOK, tryOK bool) {
-	// Split probing by direction. If sends are probed first, the recv phase must
-	// not accept select-only senders, because this select's own sends already
-	// failed to commit to a peer. If recvs are probed first, they may accept
-	// select-senders because our own sends have not been attempted yet.
-	if sendFirst {
-		if isel, recvOK, tryOK = trySelectDir(ops, true, false, nil); tryOK {
-			return
-		}
-		return trySelectDir(ops, false, false, ops)
+func lockSelectChannels(chans *selectChanList) {
+	for i := 0; i < chans.len; i++ {
+		ch := chans.get(i)
+		ch.mutex.Lock()
 	}
-	if isel, recvOK, tryOK = trySelectDir(ops, false, true, ops); tryOK {
-		return
-	}
-	return trySelectDir(ops, true, true, nil)
 }
 
-func trySelectDir(ops []ChanOp, send bool, acceptSelectSend bool, allOps []ChanOp) (isel int, recvOK, tryOK bool) {
-	for isel = range ops {
-		op := ops[isel]
-		if op.C == nil || op.Send != send {
-			continue
-		}
-		if op.Send {
-			if tryOK = ChanTrySend(op.C, op.Val, int(op.Size)); tryOK {
-				return
-			}
-			continue
-		}
-		accept := acceptSelectSend
-		if accept && selectHasSend(allOps, op.C) {
-			accept = false
-		}
-		if recvOK, tryOK = chanTryRecv(op.C, op.Val, int(op.Size), accept); tryOK {
-			return
-		}
+func unlockSelectChannels(chans *selectChanList) {
+	for i := chans.len - 1; i >= 0; i-- {
+		chans.get(i).mutex.Unlock()
 	}
-	return
 }
 
-func selectHasSend(ops []ChanOp, ch *Chan) bool {
-	for _, op := range ops {
-		if op.C == ch && op.Send {
-			return true
-		}
-	}
-	return false
-}
-
-func selectSendFirst(ops []ChanOp) bool {
-	const maxUintptr = ^uintptr(0)
-	minRecv := maxUintptr
-	minSend := maxUintptr
-	for _, op := range ops {
-		if op.C == nil {
-			continue
-		}
-		addr := uintptr(unsafe.Pointer(op.C))
-		if op.Send {
-			if addr < minSend {
-				minSend = addr
-			}
-		} else if addr < minRecv {
-			minRecv = addr
-		}
-	}
-	if minSend == maxUintptr {
-		return false
-	}
-	if minRecv == maxUintptr {
-		return true
-	}
-	// Deterministically break mirrored select ties by channel address. Peers
-	// operating on the same channel pair with swapped directions then probe in
-	// opposite orders, allowing at least one side to make progress.
-	return minSend < minRecv
-}
-
-func prepareSelect(c *Chan, selOp *selectOp, isSend bool) {
-	c.mutex.Lock()
-	// Unbuffered channel select support:
-	// ChanTryRecv uses c.sends to decide whether a recv can proceed (without
-	// blocking forever). If both sides use select, ChanTrySend/ChanTryRecv won't
-	// see each other unless select-send contributes to c.sends.
-	//
-	// This is intentionally minimal and targets common stdlib patterns (e.g.
-	// net.Pipe) to avoid deadlocks.
-	if c.cap == 0 && isSend {
-		c.sends++
-		c.selsends++
-	}
-	if c.sop == nil {
-		c.sop = selOp
+func cleanupSelectWaiter(w *chanWaiter) {
+	w.ch.mutex.Lock()
+	if w.send {
+		w.ch.sendq.remove(w)
 	} else {
-		c.sops = append(c.sops, selOp)
+		w.ch.recvq.remove(w)
 	}
-	if c.cap == 0 && isSend {
-		// A newly-registered select-send can make a select-recv runnable.
-		notifyOps(c)
-	}
-	c.mutex.Unlock()
+	w.ch.mutex.Unlock()
 }
 
-func endSelect(c *Chan, selOp *selectOp, isSend bool) {
-	c.mutex.Lock()
-	if c.cap == 0 && isSend {
-		c.sends--
-		c.selsends--
+func selectStart(n int) int {
+	if n <= 1 {
+		return 0
 	}
-	if c.sop == selOp {
-		c.sop = nil
-		c.mutex.Unlock()
-		return
-	}
-	for i, op := range c.sops {
-		if op == selOp {
-			copy(c.sops[i:], c.sops[i+1:])
-			c.sops[len(c.sops)-1] = nil
-			c.sops = c.sops[:len(c.sops)-1]
-			break
-		}
-	}
-	c.mutex.Unlock()
+	return int(fastrand() % uint32(n))
 }
 
 // -----------------------------------------------------------------------------
