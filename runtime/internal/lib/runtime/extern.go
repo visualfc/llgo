@@ -6,19 +6,59 @@ package runtime
 
 import (
 	clitedebug "github.com/goplus/llgo/runtime/internal/clite/debug"
+	rtdebug "github.com/goplus/llgo/runtime/internal/runtime"
 )
 
-func Caller(skip int) (pc uintptr, file string, line int, ok bool) {
-	// llgo currently doesn't have reliable source file/line mapping from PC.
-	// Return a stable placeholder location so stdlib log/testing can proceed.
-	var pcs [1]uintptr
-	if Callers(skip+1, pcs[:]) < 1 {
-		return 0, "", 0, false
+// callerLocation substitutes gc's placeholders for missing position info:
+// "???" for an unknown file and line 1 for an unknown line.
+func callerLocation(file string, line int) (string, int) {
+	if file == "" {
+		file = "???"
 	}
-	return pcs[0], "???", 1, true
+	if line == 0 {
+		line = 1
+	}
+	return file, line
 }
 
+//go:noinline
+func Caller(skip int) (pc uintptr, file string, line int, ok bool) {
+	if fpUnwindAvailable() {
+		var pcs [1]uintptr
+		if fpCallers(skip+1, pcs[:]) >= 1 {
+			// pcs hold return addresses; attribute to the call instruction.
+			sym := frameSymbol(pcs[0] - 1)
+			file, line = callerLocation(sym.file, sym.line)
+			return pcs[0], file, line, true
+		}
+	}
+	if frame, ok := rtdebug.Caller(skip); ok {
+		file, line = callerLocation(frame.File, frame.Line)
+		return frame.PC, file, line, true
+	}
+	var pcs [1]uintptr
+	if Callers(skip+2, pcs[:]) < 1 {
+		return 0, "", 0, false
+	}
+	sym := frameSymbol(pcs[0])
+	file, line = callerLocation(sym.file, sym.line)
+	return pcs[0], file, line, true
+}
+
+//go:noinline
 func Callers(skip int, pc []uintptr) int {
+	if fpUnwindAvailable() {
+		if n := fpCallers(skip, pc); n > 0 {
+			return n
+		}
+	}
+	if n := rtdebug.Callers(skip, pc); n > 0 {
+		return n
+	}
+	return callers(skip+1, pc)
+}
+
+func callers(skip int, pc []uintptr) int {
 	if len(pc) == 0 {
 		return 0
 	}
@@ -28,6 +68,8 @@ func Callers(skip int, pc []uintptr) int {
 			return false
 		}
 		pc[n] = fr.PC
+		recordFrameSymbol(fr.PC, fr.Offset, fr.Name)
+		rtdebug.BindCallerLocation(fr.PC, fr.Name)
 		n++
 		return true
 	})

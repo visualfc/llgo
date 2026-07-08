@@ -52,6 +52,7 @@ import (
 	"github.com/goplus/llgo/internal/monitor"
 	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/internal/packages"
+	"github.com/goplus/llgo/internal/pclnpost"
 	"github.com/goplus/llgo/internal/typepatch"
 	"github.com/goplus/llgo/ssa/abi"
 	xenv "github.com/goplus/llgo/xtool/env"
@@ -326,6 +327,16 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
 	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
+	funcInfo := conf.Mode != ModeGen && IsFuncInfoEnabled()
+	prog.EnableFuncInfoMetadata(funcInfo)
+	// Site records are inline-asm fragments inside function bodies; their
+	// anchors shift instruction/scope layout enough to confuse debuggers
+	// (LLDB reported variables from an inner lexical block as in scope before
+	// the block began). Debug builds keep the metadata tables — FuncForPC
+	// name/FileLine fidelity survives via the dlsym path — but drop the
+	// sites. Caller-frame instrumentation is independent of both switches,
+	// so runtime.Caller keeps working in debug builds.
+	prog.EnableFuncInfoSites(funcInfo && !IsDbgEnabled() && IsFuncInfoSitesEnabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -475,6 +486,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 			if err != nil {
 				return nil, err
 			}
+			rewritePrebuiltFuncTab(ctx, outFmts.Out, verbose)
 			if conf.Mode == ModeBuild && conf.SizeReport {
 				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
@@ -968,6 +980,35 @@ func compileExtraFiles(ctx *context, verbose bool) ([]string, error) {
 	return objFiles, nil
 }
 
+// rewritePrebuiltFuncTab runs the link-phase prebuilt-table rewrite on the
+// linked executable: it deduplicates LTO inline copies of the funcinfo entry
+// records against the symbol table and replaces the entry section with a
+// sorted ftab plus findfunctab that the runtime adopts zero-copy (see
+// internal/pclnpost and doc/design/pclntab-linkphase.md). Any failure leaves
+// the binary fully functional on the first-use construction fallback.
+func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
+	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() || !shouldEmitRuntimeSites(ctx) {
+		return
+	}
+	if ctx.buildConf.BuildMode != BuildModeExe {
+		return
+	}
+	if os.Getenv("LLGO_PCLNPOST") == "0" { // escape hatch: keep first-use construction
+		return
+	}
+	st, err := pclnpost.Rewrite(out)
+	if err != nil {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "llgo: prebuilt functab rewrite skipped: %v\n", err)
+		}
+		return
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "llgo: prebuilt functab: %d entries (%d LTO inline copies removed), %d buckets\n",
+			st.FtabEntries, st.InlineCopies, st.Buckets)
+	}
+}
+
 func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPath string, verbose bool) error {
 	needRuntime := false
 	needPyInit := false
@@ -1051,6 +1092,9 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	// Generate main module file (needed for global variables even in library modes)
 	// This is compiled directly to .o and added to linkInputs (not cached)
 	// Use a stable synthetic name to avoid confusing it with the real main package in traces/logs.
+	funcInfo := prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
+	pcLineInfo := collectPCLineInfo(linkedOrder)
+	funcInfoStubs := collectFuncInfoStubRecords(linkedOrder, funcInfo)
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
 		rtInit:        needRuntime,
 		pyInit:        needPyInit,
@@ -1058,6 +1102,9 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		methodByIndex: methodByIndex,
 		methodByName:  methodByName,
 		abiSymbols:    linkedModuleGlobals(linkedOrder),
+		funcInfo:      funcInfo,
+		pcLineInfo:    pcLineInfo,
+		funcInfoStubs: funcInfoStubs,
 	})
 	entryObjFile, err := exportObject(ctx, "entry_main", entryPkg.ExportFile, entryPkg.LPkg)
 	if err != nil {
@@ -1108,6 +1155,9 @@ func linkedModuleGlobals(pkgs []Package) map[string]none {
 			continue
 		}
 		for g := pkg.LPkg.Module().FirstGlobal(); !g.IsNil(); g = gllvm.NextGlobal(g) {
+			if g.IsDeclaration() {
+				continue
+			}
 			seen[g.Name()] = none{}
 		}
 	}
@@ -1143,9 +1193,9 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		if needsLinuxNoPIE(ctx, linkArgs) {
 			buildArgs = append(buildArgs, "-no-pie")
 		}
+		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	// Add common linker arguments based on target OS and architecture
 	if IsDbgSymsEnabled() {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
@@ -1189,6 +1239,20 @@ func needsLinuxNoPIE(ctx *context, linkArgs []string) bool {
 		}
 	}
 	return true
+}
+
+func needsLinuxExportDynamic(ctx *context) bool {
+	return ctx.buildConf.Target == "" && ctx.buildConf.Goos == "linux" && IsFuncInfoEnabled()
+}
+
+func linuxExportDynamicArgs(ctx *context) []string {
+	if !needsLinuxExportDynamic(ctx) {
+		return nil
+	}
+	return []string{
+		"-Wl,--export-dynamic-symbol=main.*",
+		"-Wl,--export-dynamic-symbol=command-line-arguments.*",
+	}
 }
 
 // archiver returns the archiving tool to use for the current context.
@@ -1337,6 +1401,8 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 			return fmt.Errorf("run LLVM passes failed for %v: %v", pkgPath, err)
 		}
 	}
+	emitFuncInfoEntrySites(ctx, ret)
+	emitFuncInfoStubSites(ctx, ret)
 
 	printCmds := ctx.shouldPrintCommands(verbose)
 	cgoLLFiles, cgoLdflags, err := buildCgo(ctx, aPkg, aPkg.Package.Syntax, externs, printCmds)
@@ -1809,6 +1875,8 @@ var (
 
 const llgoDebug = "LLGO_DEBUG"
 const llgoDbgSyms = "LLGO_DEBUG_SYMBOLS"
+const llgoFuncInfo = "LLGO_FUNCINFO"
+const llgoFuncInfoSites = "LLGO_FUNCINFO_SITES"
 const llgoTrace = "LLGO_TRACE"
 const llgoOptimize = "LLGO_OPTIMIZE"
 const llgoWasmRuntime = "LLGO_WASM_RUNTIME"
@@ -1854,6 +1922,18 @@ func IsStdioNobuf() bool {
 
 func IsDbgEnabled() bool {
 	return isEnvOn(llgoDebug, false) || isEnvOn(llgoDbgSyms, false)
+}
+
+func IsFuncInfoEnabled() bool {
+	return isEnvOn(llgoFuncInfo, true)
+}
+
+// IsFuncInfoSitesEnabled controls the body-embedded site records
+// independently of the funcinfo tables (LLGO_FUNCINFO_SITES=0 keeps the
+// metadata but drops entry/stub/pc-line inline-asm sites). Useful for
+// isolating codegen perturbation caused by the in-body asm anchors.
+func IsFuncInfoSitesEnabled() bool {
+	return isEnvOn(llgoFuncInfoSites, true)
 }
 
 func IsDbgSymsEnabled() bool {

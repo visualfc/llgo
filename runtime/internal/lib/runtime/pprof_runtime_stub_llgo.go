@@ -2,7 +2,11 @@
 
 package runtime
 
-import llrt "github.com/goplus/llgo/runtime/internal/runtime"
+import (
+	"unsafe"
+
+	llrt "github.com/goplus/llgo/runtime/internal/runtime"
+)
 
 type StackRecord struct {
 	Stack []uintptr
@@ -84,8 +88,184 @@ func NumGoroutine() int {
 
 func SetCPUProfileRate(hz int) {}
 
+const funcForPCCacheSets = 1024
+const funcForPCCacheWays = 4
+
+type funcForPCCacheEntry struct {
+	pc uintptr
+	fn *Func
+}
+
+var funcForPCCache [funcForPCCacheSets][funcForPCCacheWays]funcForPCCacheEntry
+var funcForPCCacheNext [funcForPCCacheSets]uint8
+var funcForPCLast funcForPCCacheEntry
+
 func FuncForPC(pc uintptr) *Func {
-	return nil
+	if fn := funcForPCLast.fn; fn != nil && funcForPCLast.pc == pc {
+		return fn
+	}
+	set := &funcForPCCache[funcForPCCacheIndex(pc)]
+	for i := 0; i < funcForPCCacheWays; i++ {
+		if fn := set[i].fn; fn != nil && set[i].pc == pc {
+			funcForPCLast = funcForPCCacheEntry{pc: pc, fn: fn}
+			return fn
+		}
+	}
+	return funcForPCSlow(pc)
+}
+
+func funcForPCSlow(pc uintptr) *Func {
+	// Exact-entry lookup first, regardless of alignment: arm64 functions are
+	// always 4-aligned, but amd64 function and stub entries need not be, and
+	// an unaligned function-value pc must not be mistaken for a shadow-stack
+	// synthetic marker (a synthetic pc simply misses this cheap search).
+	if pc != 0 && runtimeFuncPCFramesBuilt() && runtimeFuncPCFramesPrebuilt {
+		if idx := prebuiltFrameIndexForEntry(pc); idx >= 0 {
+			if p := prebuiltFuncCacheLoad(idx); p != nil {
+				fn := (*Func)(p)
+				cacheFuncForPC(pc, fn)
+				return fn
+			}
+			if sym, ok := pcSymbolForFuncInfoIndex(pc, pc, prebuiltFrame(idx).funcIndex); ok {
+				// amd64 entries are byte-dense: a ret-1 style query can
+				// coincide with another symbol's entry; statement records
+				// win via the shared refinement rule (entry queries are
+				// unaffected — sites never precede their function's entry).
+				sym = refinePCSymbolLine(sym, pc)
+				fn := newFuncForPC(pc, sym)
+				prebuiltFuncCacheStore(idx, unsafe.Pointer(fn))
+				cacheFuncForPC(pc, fn)
+				return fn
+			}
+		}
+	}
+	if pc&3 != 0 {
+		if sym := frameSymbol(pc); sym.ok {
+			fn := newFuncForPC(pc, sym)
+			cacheFuncForPC(pc, fn)
+			return fn
+		}
+	} else if pc != 0 {
+		// Cold fast path: before the entry frame table has been built, resolve
+		// an exact function-entry PC without paying first-use table
+		// construction. First a bounded linear scan of the raw entry-site
+		// section (compile-time data, no dynamic-loader query), then one
+		// dladdr as fallback. Requiring an exact entry match means a
+		// stripped-local misattribution (dladdr returning the nearest
+		// exported symbol) can never be accepted, so this path only ever
+		// answers true function-value PCs. The path is intentionally capped:
+		// each cold lookup costs microseconds, so after a handful of them the
+		// sorted table is the cheaper answer and we fall through to build it.
+		if !runtimeFuncPCFramesBuilt() && coldFuncPCLookupBudget() {
+			if sym, ok := coldFuncInfoEntryLookup(pc); ok {
+				fn := newFuncForPC(pc, sym)
+				cacheFuncForPC(pc, fn)
+				return fn
+			}
+			if sym := addrInfoSymbol(pc); sym.ok && sym.entry == pc && sym.function != "" {
+				fn := newFuncForPC(pc, sym)
+				cacheFuncForPC(pc, fn)
+				return fn
+			}
+		}
+		// Function-value PCs point at the real function entry. ELF funcinfo
+		// entry-site anchors are emitted from LLVM IR and can land after the
+		// backend prologue, so an exact entry PC may sort before its anchor.
+		// Prefer the section table when it can match within the entry slack;
+		// native symbol lookup is kept only as a fallback.
+		if sym, ok := funcPCFrameForEntryPC(pc); ok {
+			fn := newFuncForPC(pc, sym)
+			cacheFuncForPC(pc, fn)
+			return fn
+		}
+		if sym := addrInfoSymbol(pc); sym.ok && sym.entry == pc && sym.function != "" {
+			fn := newFuncForPC(pc, sym)
+			cacheFuncForPC(pc, fn)
+			return fn
+		}
+	}
+	if sym, ok := funcPCFrameForPC(pc); ok {
+		// Mid-function pcs deserve statement lines, not the declaration
+		// line (amd64 return addresses can be 4-aligned and land here).
+		sym = refinePCSymbolLine(sym, pc)
+		fn := newFuncForPC(pc, sym)
+		cacheFuncForPC(pc, fn)
+		return fn
+	}
+	sym := frameSymbol(pc)
+	fn := newFuncForPC(pc, sym)
+	cacheFuncForPC(pc, fn)
+	return fn
+}
+
+func newFuncForPC(pc uintptr, sym pcSymbol) *Func {
+	if !sym.ok && sym.function == "" {
+		return &Func{entry: pc, name: unknownFunctionName(pc), pc: pc}
+	}
+	name := sym.function
+	if name == "" {
+		name = unknownFunctionName(pc)
+	}
+	entry := sym.entry
+	if entry == 0 {
+		entry = pc
+	}
+	return &Func{
+		entry: entry,
+		name:  name,
+		pc:    pc,
+		file:  sym.file,
+		line:  sym.line,
+	}
+}
+
+// frameFuncForPC returns the *Func for a frame PC that Frames.Next already
+// symbolized, going through the FuncForPC cache so repeated CallersFrames
+// walks over the same PCs stop allocating a Func per frame.
+func frameFuncForPC(pc uintptr, sym pcSymbol, name string) *Func {
+	if fn := funcForPCLast.fn; fn != nil && funcForPCLast.pc == pc {
+		return fn
+	}
+	set := &funcForPCCache[funcForPCCacheIndex(pc)]
+	for i := 0; i < funcForPCCacheWays; i++ {
+		if fn := set[i].fn; fn != nil && set[i].pc == pc {
+			return fn
+		}
+	}
+	fn := &Func{
+		entry: sym.entry,
+		name:  name,
+		pc:    pc,
+		file:  sym.file,
+		line:  sym.line,
+	}
+	// FuncForPC's own constructor falls back to entry == pc; keep frames with
+	// an unresolved entry out of the shared cache so a later FuncForPC(pc)
+	// does not observe Entry() == 0.
+	if sym.entry != 0 {
+		cacheFuncForPC(pc, fn)
+	}
+	return fn
+}
+
+func cacheFuncForPC(pc uintptr, fn *Func) {
+	setIndex := funcForPCCacheIndex(pc)
+	set := &funcForPCCache[setIndex]
+	for i := 0; i < funcForPCCacheWays; i++ {
+		if set[i].fn == nil || set[i].pc == pc {
+			set[i] = funcForPCCacheEntry{pc: pc, fn: fn}
+			funcForPCLast = set[i]
+			return
+		}
+	}
+	way := funcForPCCacheNext[setIndex] & (funcForPCCacheWays - 1)
+	funcForPCCacheNext[setIndex] = way + 1
+	set[way] = funcForPCCacheEntry{pc: pc, fn: fn}
+	funcForPCLast = set[way]
+}
+
+func funcForPCCacheIndex(pc uintptr) uintptr {
+	return (pc >> 4) & (funcForPCCacheSets - 1)
 }
 
 func CPUProfile() []byte {
