@@ -8,12 +8,9 @@ import (
 )
 
 func extractOrdinaryEdges(builder *meta.Builder, mod llvm.Module) {
-	if builder == nil {
-		return
-	}
 	for fn := mod.FirstFunction(); !fn.IsNil(); fn = llvm.NextFunction(fn) {
 		src := fn.Name()
-		if src == "" || fn.IsDeclaration() {
+		if fn.IsDeclaration() {
 			continue
 		}
 		collector := ordinaryEdgeCollector{builder: builder, src: src}
@@ -25,9 +22,6 @@ func extractOrdinaryEdges(builder *meta.Builder, mod llvm.Module) {
 	}
 	for global := mod.FirstGlobal(); !global.IsNil(); global = llvm.NextGlobal(global) {
 		src := global.Name()
-		if src == "" {
-			continue
-		}
 		init := global.Initializer()
 		if init.IsNil() {
 			continue
