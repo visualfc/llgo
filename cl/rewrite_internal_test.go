@@ -5,6 +5,7 @@ package cl
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -44,6 +45,25 @@ func compileWithRewrites(t *testing.T, src string, rewrites map[string]string) s
 		t.Fatalf("NewPackageEx failed: %v", err)
 	}
 	return ret.String()
+}
+
+func assertNoStoreToGlobal(t *testing.T, ir, global string) {
+	t.Helper()
+	for _, line := range strings.Split(ir, "\n") {
+		if strings.Contains(line, "store ") && strings.Contains(line, global) {
+			t.Fatalf("%s initializer store was not folded: %s\n%s", global, line, ir)
+		}
+	}
+}
+
+func assertStoreToGlobal(t *testing.T, ir, global string) {
+	t.Helper()
+	for _, line := range strings.Split(ir, "\n") {
+		if strings.Contains(line, "store ") && strings.Contains(line, global) {
+			return
+		}
+	}
+	t.Fatalf("expected store to %s in IR:\n%s", global, ir)
 }
 
 func TestRewriteGlobalStrings(t *testing.T) {
@@ -101,10 +121,132 @@ func Use() string {
 			t.Fatalf("missing %s in IR:\n%s", want, ir)
 		}
 	}
-	for _, line := range strings.Split(ir, "\n") {
-		if strings.Contains(line, "store ") && strings.Contains(line, "@staticinit.MethodNames") {
-			t.Fatalf("MethodNames initializer store was not folded: %s\n%s", line, ir)
+	assertNoStoreToGlobal(t, ir, "@staticinit.MethodNames")
+}
+
+func TestStaticGlobalScalarAndSparseArrayInit(t *testing.T) {
+	const src = `package staticinit
+
+var StaticBool = true
+var StaticInt int8 = -7
+var StaticUint uint16 = 42
+var StaticFloat = 1.5
+var StaticComplex = complex(2, -3)
+var StaticSparse = [4]int{1: 7, 3: 9}
+
+func Use() (bool, int8, uint16, float64, complex128, int) {
+	return StaticBool, StaticInt, StaticUint, StaticFloat, StaticComplex, StaticSparse[3]
+}
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		"@staticinit.StaticBool = global i1 true",
+		"@staticinit.StaticInt = global i8 -7",
+		"@staticinit.StaticUint = global i16 42",
+		"@staticinit.StaticFloat = global double 1.500000e+00",
+		"@staticinit.StaticComplex = global { double, double } { double 2.000000e+00, double -3.000000e+00 }",
+		"@staticinit.StaticSparse = global [4 x i64] [i64 0, i64 7, i64 0, i64 9]",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static initializer %q in IR:\n%s", want, ir)
 		}
+	}
+	for _, global := range []string{
+		"@staticinit.StaticBool",
+		"@staticinit.StaticInt",
+		"@staticinit.StaticUint",
+		"@staticinit.StaticFloat",
+		"@staticinit.StaticComplex",
+		"@staticinit.StaticSparse",
+	} {
+		assertNoStoreToGlobal(t, ir, global)
+	}
+}
+
+func TestStaticGlobalInitSkipsDynamicGlobal(t *testing.T) {
+	const src = `package staticinit
+
+func value() int { return 3 }
+
+var Dynamic = [2]int{value(), 9}
+
+func Use() int { return Dynamic[0] + Dynamic[1] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	if !strings.Contains(ir, "@staticinit.Dynamic = global [2 x i64] zeroinitializer") {
+		t.Fatalf("dynamic global should keep zero initializer:\n%s", ir)
+	}
+	assertStoreToGlobal(t, ir, "@staticinit.Dynamic")
+}
+
+func TestStaticInitHelperRejectsUnsupportedPaths(t *testing.T) {
+	if _, ok := staticInitConstIndex(nil); ok {
+		t.Fatal("nil index should not be accepted")
+	}
+	if _, ok := staticInitConstIndex(ssa.NewConst(constant.MakeInt64(-1), types.Typ[types.Int])); ok {
+		t.Fatal("negative index should not be accepted")
+	}
+	if _, ok := staticInitStorePath(ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])); ok {
+		t.Fatal("non-address value should not produce a static init path")
+	}
+	if global := staticInitRootGlobal(ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])); global != nil {
+		t.Fatalf("non-address value should not have root global: %v", global)
+	}
+
+	ssapkg := buildSSAPackage(t, `package foo
+var Array [2]int
+`)
+	arrayGlobal, ok := ssapkg.Members["Array"].(*ssa.Global)
+	if !ok {
+		t.Fatalf("missing Array global: %T", ssapkg.Members["Array"])
+	}
+	if _, ok := staticInitStorePath(&ssa.IndexAddr{X: arrayGlobal, Index: arrayGlobal}); ok {
+		t.Fatal("dynamic index should not produce a static init path")
+	}
+
+	c := ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int])
+	root := new(staticInitNode)
+	if !root.add(nil, c) {
+		t.Fatal("first root value should be accepted")
+	}
+	if root.add([]staticInitPathElem{{index: 0}}, c) {
+		t.Fatal("child path under scalar value should be rejected")
+	}
+
+	parent := new(staticInitNode)
+	if !parent.add([]staticInitPathElem{{index: 0}}, c) {
+		t.Fatal("first child value should be accepted")
+	}
+	if parent.add(nil, c) {
+		t.Fatal("root value after child path should be rejected")
+	}
+}
+
+func TestStaticInitHelperBuildFailuresAndZeroes(t *testing.T) {
+	prog := ssatest.NewProgram(t, nil)
+	pkg := prog.NewPackage("staticinit", "staticinit")
+	ctx := &context{prog: prog, pkg: pkg}
+
+	if _, ok := ctx.buildStaticInitExpr(types.Typ[types.Int], nil); !ok {
+		t.Fatal("nil node should build a zero initializer")
+	}
+	if _, ok := ctx.staticConstExpr(ssa.NewConst(nil, types.Typ[types.Int]), prog.Int()); !ok {
+		t.Fatal("nil const should build a zero initializer")
+	}
+
+	c := ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int])
+	scalarWithChild := &staticInitNode{children: map[int]*staticInitNode{
+		0: {value: c},
+	}}
+	if _, ok := ctx.buildStaticInitExpr(types.Typ[types.Int], scalarWithChild); ok {
+		t.Fatal("scalar initializer with children should be rejected")
+	}
+
+	arrayWithOutOfRangeChild := &staticInitNode{children: map[int]*staticInitNode{
+		1: {value: c},
+	}}
+	if _, ok := ctx.buildStaticInitExpr(types.NewArray(types.Typ[types.Int], 1), arrayWithOutOfRangeChild); ok {
+		t.Fatal("array initializer with out-of-range child should be rejected")
 	}
 }
 
