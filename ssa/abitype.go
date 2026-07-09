@@ -330,6 +330,7 @@ func (b Builder) abiExtendedFields(t types.Type, name string, global llvm.Value)
 			b.abiStructFields(t, name+"$fields"),
 		}
 	case *types.Interface:
+		name, _ = prog.abi.TypeName(t)
 		fields = []llvm.Value{
 			b.Str(pkg.Path()).impl,
 			b.abiInterfaceImethods(t, name+"$imethods"),
