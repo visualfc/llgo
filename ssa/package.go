@@ -231,6 +231,7 @@ type aProgram struct {
 	abi abi.Builder
 
 	is32Bits bool
+	disposed bool
 
 	enableGoGlobalDCE     bool
 	pthreadStackSize      uint64
@@ -265,6 +266,23 @@ func is32Bits(arch string) bool {
 		return v
 	}
 	return false
+}
+
+// Dispose releases the LLVM resources owned by the program: the context
+// (and with it every module built in it), the target machine and the
+// target data. The Program and everything created from it must not be
+// used afterwards. In-process drivers that compile many packages
+// sequentially (llgen goldens, the cltest run harness) call this between
+// compiles; without it each compile's C++-side memory lives until the
+// process exits.
+func (p Program) Dispose() {
+	if p == nil || p.disposed {
+		return
+	}
+	p.disposed = true
+	p.tm.Dispose()
+	p.td.Dispose()
+	p.ctx.Dispose()
 }
 
 // NewProgram creates a new program.

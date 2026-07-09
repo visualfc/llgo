@@ -322,6 +322,19 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	prog := llssa.NewProgram(target)
+	// The caller-tracking memoization pins each compiled package's
+	// front-end graphs (go/types, go/ssa) via *ssa.Package/*ssa.Function
+	// keys; release them with the compile.
+	defer cl.ClearRuntimeCallerCaches()
+	if conf.Mode != ModeGen {
+		// ModeGen callers (llgen and the golden suites) read LPkg.String()
+		// after Do returns and dispose the program themselves; every other
+		// mode's outputs are files or a spawned process, so the compile's
+		// LLVM context can be released when Do finishes. In-process
+		// drivers that build many packages per process (the cltest run
+		// harness) otherwise accumulate every compile's C++-side memory.
+		defer prog.Dispose()
+	}
 	prog.EnableGoGlobalDCE(conf.goGlobalDCEEnabled())
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))

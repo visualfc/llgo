@@ -969,6 +969,16 @@ var (
 	runtimeCallerExtendedCache sync.Map // *ssa.Package -> map[*ssa.Function]bool
 )
 
+// ClearRuntimeCallerCaches drops the caller-tracking memoization. The maps
+// are keyed by *ssa.Package pointers and their values hold *ssa.Function,
+// which pins every compiled package's go/types and go/ssa graphs for the
+// life of the process; in-process drivers that compile many packages
+// sequentially (the golden test harness) call this between compiles.
+func ClearRuntimeCallerCaches() {
+	runtimeCallerBaseCache.Clear()
+	runtimeCallerExtendedCache.Clear()
+}
+
 func isProgramUniqueFrame(pkg *ssa.Package, fn *ssa.Function) bool {
 	if fn == nil || fn.Parent() != nil {
 		return false
