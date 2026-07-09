@@ -28,7 +28,12 @@ import (
 func GenFrom(fileOrPkg string) string {
 	pkg, err := genFrom(fileOrPkg, 0)
 	check(err)
-	return pkg.LPkg.String()
+	out := pkg.LPkg.String()
+	// Release the compile's LLVM context: golden suites call GenFrom for
+	// every test dir inside one process, and undisposed contexts
+	// accumulate C++-side memory for the whole run.
+	pkg.LPkg.Prog.Dispose()
+	return out
 }
 
 func genFrom(pkgPath string, abiMode build.AbiMode) (build.Package, error) {

@@ -196,25 +196,26 @@ func callWorker(w workerIface) { w.Work() }
 func workerHot() { var w workerIface = workerImpl{}; callWorker(w) }
 func plain() {}
 `)
-	if !packageUsesRuntimeCaller(ssapkg) {
+	callerCaches := NewCallerTracking()
+	if !packageUsesRuntimeCaller(callerCaches, ssapkg) {
 		t.Fatal("package should report runtime caller usage")
 	}
-	if !fnUsesRuntimeCaller(ssapkg.Func("direct")) {
+	if !fnUsesRuntimeCaller(callerCaches, ssapkg.Func("direct")) {
 		t.Fatal("direct runtime.Caller use should be detected")
 	}
-	if !fnUsesRuntimeCaller(ssapkg.Func("indirect")) {
+	if !fnUsesRuntimeCaller(callerCaches, ssapkg.Func("indirect")) {
 		t.Fatal("transitive runtime.Caller use should be detected")
 	}
-	if !fnUsesRuntimeCaller(ssapkg.Func("stack")) {
+	if !fnUsesRuntimeCaller(callerCaches, ssapkg.Func("stack")) {
 		t.Fatal("runtime/debug.Stack use should be detected")
 	}
-	if !fnUsesRuntimeCaller(ssapkg.Func("anonOnly")) {
+	if !fnUsesRuntimeCaller(callerCaches, ssapkg.Func("anonOnly")) {
 		t.Fatal("runtime caller use in anonymous functions should be detected")
 	}
-	if fnUsesRuntimeCaller(ssapkg.Func("plain")) {
+	if fnUsesRuntimeCaller(callerCaches, ssapkg.Func("plain")) {
 		t.Fatal("plain function should not report runtime caller usage")
 	}
-	runtimeCallerFuncs := runtimeCallerFuncSet(ssapkg)
+	runtimeCallerFuncs := runtimeCallerFuncSet(callerCaches, ssapkg)
 	for _, name := range []string{"dynamic", "dynamicCaller", "interfaceDispatch", "interfaceCaller", "closureLayer", "closureCaller"} {
 		if !runtimeCallerFuncs[ssapkg.Func(name)] {
 			t.Fatalf("%s should be tracked because dynamic calls may reach runtime stack APIs", name)
@@ -266,13 +267,14 @@ func FuncForPC(pc uintptr) uintptr { return 0 }
 }
 
 func TestRuntimeCallerAnalysisEdgeCases(t *testing.T) {
-	if fnUsesRuntimeCaller(nil) {
+	callerCaches := NewCallerTracking()
+	if fnUsesRuntimeCaller(callerCaches, nil) {
 		t.Fatal("nil function should not use runtime caller metadata")
 	}
-	if fnUsesRuntimeCaller(&gossa.Function{}) {
+	if fnUsesRuntimeCaller(callerCaches, &gossa.Function{}) {
 		t.Fatal("function without a package should not use runtime caller metadata")
 	}
-	if runtimeCallerFuncSet(nil) != nil {
+	if runtimeCallerFuncSet(callerCaches, nil) != nil {
 		t.Fatal("nil package should have no runtime caller set")
 	}
 	if fnHasDirectRuntimeCaller(nil) {
@@ -381,7 +383,7 @@ type T struct{}
 func (T) Call() { runtime.Caller(0) }
 var _ = T{}
 `)
-	methodOnlySet := runtimeCallerFuncSet(methodOnlyPkg)
+	methodOnlySet := runtimeCallerFuncSet(NewCallerTracking(), methodOnlyPkg)
 	if methodOnlySet == nil {
 		t.Fatal("a method calling runtime.Caller must be tracked (slog.(*Logger).Info escaped exactly this way)")
 	}
@@ -445,7 +447,7 @@ func f() { runtime.Caller(0) }
 				fn:                 fn,
 				goFn:               goFn,
 				trackCallerFrames:  tt.track,
-				runtimeCallerFuncs: runtimeCallerFuncSet(ssapkg),
+				runtimeCallerFuncs: runtimeCallerFuncSet(NewCallerTracking(), ssapkg),
 			}
 			if got := ctx.shouldTrackCallerFrames(); got != tt.want {
 				t.Fatalf("shouldTrackCallerFrames() = %v, want %v", got, tt.want)
@@ -650,7 +652,7 @@ func top() {
 		goFn:               ssapkg.Func("top"),
 		fset:               token.NewFileSet(),
 		trackCallerFrames:  true,
-		runtimeCallerFuncs: runtimeCallerFuncSet(ssapkg),
+		runtimeCallerFuncs: runtimeCallerFuncSet(NewCallerTracking(), ssapkg),
 	}
 	var b llssa.Builder
 	ctx.pushCallerLocationFrame(b, nil)
@@ -940,10 +942,11 @@ func Logs() bool { return dep.Where() }
 
 func Plain() int { return dep.Quiet() }
 `)
-	if !runtimeCallerBaseSet(depSSA)[depSSA.Func("Where")] {
+	crossCaches := NewCallerTracking()
+	if !runtimeCallerBaseSet(crossCaches, depSSA)[depSSA.Func("Where")] {
 		t.Fatal("dep.Where must be in its own package's base set")
 	}
-	set := runtimeCallerFuncSet(rootSSA)
+	set := runtimeCallerFuncSet(crossCaches, rootSSA)
 	if !set[rootSSA.Func("Logs")] {
 		t.Fatal("caller of a pc-consuming function must be tracked (criterion 2)")
 	}
@@ -966,7 +969,7 @@ func pinned() {}
 
 func helper() {}
 `)
-	set := runtimeCallerFuncSet(ssapkg)
+	set := runtimeCallerFuncSet(NewCallerTracking(), ssapkg)
 	for _, name := range []string{"main", "init", "pinned"} {
 		if !set[ssapkg.Func(name)] {
 			t.Fatalf("%s must be pinned in the tracking set", name)

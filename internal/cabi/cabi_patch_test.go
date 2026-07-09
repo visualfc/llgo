@@ -26,6 +26,7 @@ func TestDevLTOGlobalDCETargetArchAndNewTransformerArchSelection(t *testing.T) {
 	llvm.InitializeAllTargetInfos()
 
 	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
 	tests := []struct {
 		target string
 		abi    string
@@ -126,6 +127,7 @@ func TestRuntimeHeaderWrapAndTypeInfo(t *testing.T) {
 	llvm.InitializeAllTargetInfos()
 
 	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
 	tr := NewTransformer(prog, "", "", ModeAllFunc, false)
 
 	ctx := llvm.NewContext()
@@ -182,6 +184,7 @@ attributes #0 = { "llgo.reflect.methodbyname"="value" }
 	defer mod.Dispose()
 
 	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
 	tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
 	tr.TransformModule("test", mod)
 

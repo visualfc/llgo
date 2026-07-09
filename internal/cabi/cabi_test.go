@@ -75,10 +75,11 @@ func TestBuild(t *testing.T) {
 	for _, mode := range modes {
 		for _, arch := range archs {
 			conf, _ := buildConf(mode, arch)
-			_, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
+			pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
 			if err != nil {
 				t.Fatalf("build error: %v-%v %v", arch, mode, err)
 			}
+			pkgs[0].LPkg.Prog.Dispose()
 		}
 	}
 }
@@ -130,6 +131,9 @@ func testArch(t *testing.T, arch string, archDir string, files []string) {
 			tr.TransformModule(file, pkg.Module())
 		}
 		testModule(t, context{arch: arch, file: file}, pkg.Prog.TargetData(), pkg.Module(), m)
+		m.Dispose()
+		ctx.Dispose()
+		pkg.Prog.Dispose()
 	}
 }
 
@@ -353,6 +357,7 @@ entry:
 	}
 
 	prog := pkgs[0].LPkg.Prog
+	defer prog.Dispose()
 
 	// Apply CABI transformation with optimize=true
 	// This tests the code path that previously had the memcpy bug
@@ -426,6 +431,7 @@ entry:
 	if err != nil {
 		t.Fatalf("Failed to build demo: %v", err)
 	}
+	defer pkgs[0].LPkg.Prog.Dispose()
 	tr := cabi.NewTransformer(pkgs[0].LPkg.Prog, "", "", cabi.ModeAllFunc, true)
 	tr.TransformModule("test", mod)
 
@@ -492,6 +498,7 @@ entry:
 		t.Fatalf("Failed to build demo: %v", err)
 	}
 	prog := pkgs[0].LPkg.Prog
+	defer prog.Dispose()
 
 	tr := cabi.NewTransformer(prog, "", "", cabi.ModeCFunc, true)
 	tr.TransformModule("test", mod)
@@ -550,6 +557,7 @@ entry:
 		t.Fatalf("Failed to build demo: %v", err)
 	}
 	prog := pkgs[0].LPkg.Prog
+	defer prog.Dispose()
 
 	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
 	tr.SetSkipFuncs([]string{"pkg.asm"})
@@ -620,6 +628,7 @@ entry:
 		t.Fatalf("Failed to build demo: %v", err)
 	}
 	prog := pkgs[0].LPkg.Prog
+	defer prog.Dispose()
 
 	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
 	tr.SetSkipFuncs([]string{"github.com/goplus/llgo/runtime/internal/runtime.Typedslicecopy"})
@@ -685,6 +694,7 @@ entry:
 		t.Fatalf("Failed to build demo: %v", err)
 	}
 	prog := pkgs[0].LPkg.Prog
+	defer prog.Dispose()
 
 	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
 	tr.TransformModule("test", mod)
@@ -750,6 +760,7 @@ entry:
 		t.Fatalf("Failed to build demo: %v", err)
 	}
 	prog := pkgs[0].LPkg.Prog
+	defer prog.Dispose()
 
 	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
 	tr.TransformModule("test", mod)

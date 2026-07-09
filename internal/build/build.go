@@ -339,6 +339,15 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	prog := llssa.NewProgram(target)
+	if conf.Mode != ModeGen {
+		// ModeGen callers (llgen and the golden suites) read LPkg.String()
+		// after Do returns and dispose the program themselves; every other
+		// mode's outputs are files or a spawned process, so the compile's
+		// LLVM context can be released when Do finishes. In-process
+		// drivers that build many packages per process (the cltest run
+		// harness) otherwise accumulate every compile's C++-side memory.
+		defer prog.Dispose()
+	}
 	prog.EnableGoGlobalDCE(conf.goGlobalDCEEnabled())
 	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	if conf.PthreadStackSize > 0 {
@@ -450,7 +459,8 @@ func Do(args []string, conf *Config) ([]Package, error) {
 
 	output := conf.OutFile != ""
 	ctx := &context{env: env, conf: cfg, progSSA: progSSA, prog: prog, dedup: dedup,
-		patches: patches, built: make(map[string]none), initial: initial, mode: mode,
+		patches: patches, callerTracking: cl.NewCallerTracking(),
+		built: make(map[string]none), initial: initial, mode: mode,
 		fingerprinting: make(map[string]bool),
 		pkgs:           map[*packages.Package]Package{},
 		pkgByID:        map[string]Package{},
@@ -627,6 +637,7 @@ type context struct {
 	prog           llssa.Program
 	dedup          packages.Deduper
 	patches        cl.Patches
+	callerTracking *cl.CallerTracking
 	built          map[string]none
 	fingerprinting map[string]bool
 	initial        []*packages.Package
@@ -1492,7 +1503,7 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 	}
 
 	needMeta := !aPkg.CacheHit && ctx.prog.DeadcodeDropEnabled()
-	ret, externs, err := cl.NewPackageExWithEmbedMeta(ctx.prog, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta)
+	ret, externs, err := cl.NewPackageExWithEmbedMeta(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta)
 	check(err)
 
 	aPkg.LPkg = ret
