@@ -26,7 +26,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -880,18 +879,18 @@ func canTrackCallerFramesForPackage(pkgPath string) bool {
 		!strings.HasPrefix(pkgPath, "github.com/goplus/llgo/runtime/internal/")
 }
 
-func packageUsesRuntimeCaller(pkg *ssa.Package) bool {
-	return len(runtimeCallerFuncSet(pkg)) != 0
+func packageUsesRuntimeCaller(c *CallerTracking, pkg *ssa.Package) bool {
+	return len(runtimeCallerFuncSet(c, pkg)) != 0
 }
 
-func fnUsesRuntimeCaller(fn *ssa.Function) bool {
+func fnUsesRuntimeCaller(c *CallerTracking, fn *ssa.Function) bool {
 	if fn == nil {
 		return false
 	}
 	if fn.Pkg == nil {
 		return fnHasDirectRuntimeCaller(fn)
 	}
-	return runtimeCallerFuncSet(fn.Pkg)[fn]
+	return runtimeCallerFuncSet(c, fn.Pkg)[fn]
 }
 
 // runtimeCallerFuncSet is the per-package tracking set: functions that
@@ -910,15 +909,14 @@ func fnUsesRuntimeCaller(fn *ssa.Function) bool {
 // (criterion 1 alone), so tracking extends exactly one call level past a
 // pc-consuming package and does not cascade through arbitrary wrapper
 // layers; multi-package wrapper chains remain the P4 inline-tree's job.
-func runtimeCallerFuncSet(pkg *ssa.Package) map[*ssa.Function]bool {
+func runtimeCallerFuncSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function]bool {
 	if pkg == nil {
 		return nil
 	}
-	if v, ok := runtimeCallerExtendedCache.Load(pkg); ok {
-		set, _ := v.(map[*ssa.Function]bool)
+	if set, ok := c.extended[pkg]; ok {
 		return set
 	}
-	base := runtimeCallerBaseSet(pkg)
+	base := runtimeCallerBaseSet(c, pkg)
 	out := make(map[*ssa.Function]bool, len(base))
 	for fn := range base {
 		out[fn] = true
@@ -952,7 +950,7 @@ func runtimeCallerFuncSet(pkg *ssa.Package) map[*ssa.Function]bool {
 			if !canTrackCallerFramesForPackage(callee.Pkg.Pkg.Path()) {
 				return
 			}
-			if runtimeCallerBaseSet(callee.Pkg)[callee] {
+			if runtimeCallerBaseSet(c, callee.Pkg)[callee] {
 				out[fn] = true
 			}
 		})
@@ -960,23 +958,32 @@ func runtimeCallerFuncSet(pkg *ssa.Package) map[*ssa.Function]bool {
 	if len(out) == 0 {
 		out = nil
 	}
-	runtimeCallerExtendedCache.Store(pkg, out)
+	c.extended[pkg] = out
 	return out
 }
 
-var (
-	runtimeCallerBaseCache     sync.Map // *ssa.Package -> map[*ssa.Function]bool
-	runtimeCallerExtendedCache sync.Map // *ssa.Package -> map[*ssa.Function]bool
-)
+// CallerTracking memoizes the per-package caller-tracking sets for one
+// compilation. Like Patches, it is compilation-scoped state owned by the
+// driver: create one per compilation and pass it to every
+// NewPackageExWithEmbed call of that compilation, so cross-package
+// queries (criterion 2 below) hit the memoization. It must not outlive
+// the compilation — the maps are keyed by *ssa.Package with
+// *ssa.Function values, so anything longer-lived would pin every
+// compiled package's go/types and go/ssa graphs. Plain maps are enough:
+// packages of one compilation are compiled sequentially (the LLVM
+// context is not thread-safe).
+type CallerTracking struct {
+	base     map[*ssa.Package]map[*ssa.Function]bool
+	extended map[*ssa.Package]map[*ssa.Function]bool
+}
 
-// ClearRuntimeCallerCaches drops the caller-tracking memoization. The maps
-// are keyed by *ssa.Package pointers and their values hold *ssa.Function,
-// which pins every compiled package's go/types and go/ssa graphs for the
-// life of the process; in-process drivers that compile many packages
-// sequentially (the golden test harness) call this between compiles.
-func ClearRuntimeCallerCaches() {
-	runtimeCallerBaseCache.Clear()
-	runtimeCallerExtendedCache.Clear()
+// NewCallerTracking creates the caller-tracking memoization for one
+// compilation.
+func NewCallerTracking() *CallerTracking {
+	return &CallerTracking{
+		base:     make(map[*ssa.Package]map[*ssa.Function]bool),
+		extended: make(map[*ssa.Package]map[*ssa.Function]bool),
+	}
 }
 
 func isProgramUniqueFrame(pkg *ssa.Package, fn *ssa.Function) bool {
@@ -990,16 +997,15 @@ func isProgramUniqueFrame(pkg *ssa.Package, fn *ssa.Function) bool {
 	return name == "main" && pkg.Pkg != nil && pkg.Pkg.Name() == "main"
 }
 
-func runtimeCallerBaseSet(pkg *ssa.Package) map[*ssa.Function]bool {
+func runtimeCallerBaseSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function]bool {
 	if pkg == nil {
 		return nil
 	}
-	if v, ok := runtimeCallerBaseCache.Load(pkg); ok {
-		set, _ := v.(map[*ssa.Function]bool)
+	if set, ok := c.base[pkg]; ok {
 		return set
 	}
 	set := computeRuntimeCallerBaseSet(pkg)
-	runtimeCallerBaseCache.Store(pkg, set)
+	c.base[pkg] = set
 	return set
 }
 

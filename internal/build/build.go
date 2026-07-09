@@ -322,10 +322,6 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	prog := llssa.NewProgram(target)
-	// The caller-tracking memoization pins each compiled package's
-	// front-end graphs (go/types, go/ssa) via *ssa.Package/*ssa.Function
-	// keys; release them with the compile.
-	defer cl.ClearRuntimeCallerCaches()
 	if conf.Mode != ModeGen {
 		// ModeGen callers (llgen and the golden suites) read LPkg.String()
 		// after Do returns and dispose the program themselves; every other
@@ -445,7 +441,8 @@ func Do(args []string, conf *Config) ([]Package, error) {
 
 	output := conf.OutFile != ""
 	ctx := &context{env: env, conf: cfg, progSSA: progSSA, prog: prog, dedup: dedup,
-		patches: patches, built: make(map[string]none), initial: initial, mode: mode,
+		patches: patches, callerTracking: cl.NewCallerTracking(),
+		built: make(map[string]none), initial: initial, mode: mode,
 		fingerprinting: make(map[string]bool),
 		pkgs:           map[*packages.Package]Package{},
 		pkgByID:        map[string]Package{},
@@ -622,6 +619,7 @@ type context struct {
 	prog           llssa.Program
 	dedup          packages.Deduper
 	patches        cl.Patches
+	callerTracking *cl.CallerTracking
 	built          map[string]none
 	fingerprinting map[string]bool
 	initial        []*packages.Package
@@ -1383,7 +1381,7 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		return fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
 
-	ret, externs, err := cl.NewPackageExWithEmbed(ctx.prog, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap)
+	ret, externs, err := cl.NewPackageExWithEmbed(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap)
 	check(err)
 
 	aPkg.LPkg = ret
