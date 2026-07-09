@@ -205,7 +205,6 @@ func (b Builder) abiInterfaceImethods(t *types.Interface, name string) llvm.Valu
 	if n == 0 {
 		return prog.Nil(prog.rtType("Slice")).impl
 	}
-
 	g := b.Pkg.VarOf(name)
 	if g == nil {
 		ft := prog.rtType("Imethod")
@@ -331,7 +330,6 @@ func (b Builder) abiExtendedFields(t types.Type, name string, global llvm.Value)
 			b.abiStructFields(t, name+"$fields"),
 		}
 	case *types.Interface:
-		name, _ = prog.abi.TypeName(t)
 		fields = []llvm.Value{
 			b.Str(pkg.Path()).impl,
 			b.abiInterfaceImethods(t, name+"$imethods"),
@@ -506,11 +504,12 @@ func (b Builder) abiUncommonMethods(t types.Type, mset *types.MethodSet) llvm.Va
 	}
 	for i := 0; i < n; i++ {
 		m := mset.At(i)
-		obj := m.Obj().(*types.Func)
+		obj := m.Obj()
 		mName := obj.Name()
-		fullName := mthName(obj)
+		fullName := mName
 		name := b.Str(mName).impl
 		if !token.IsExported(mName) {
+			fullName = abi.FullName(obj.Pkg(), mName)
 			name = b.Str(fullName).impl
 		}
 		mSig := m.Type().(*types.Signature)
