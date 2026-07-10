@@ -9,7 +9,7 @@ import (
 
 type ifaceMethodKey struct {
 	iface meta.Symbol
-	sig   meta.GMethodSig
+	sig   meta.MethodSig
 }
 
 type ifaceMethodName struct {
@@ -25,15 +25,15 @@ type methodID struct {
 type methodRef struct {
 	owner    meta.Symbol
 	slot     int
-	slotInfo meta.GMethodSlot
+	slotInfo meta.MethodSlot
 }
 
 type pass struct {
 	info *meta.GlobalSummary
 
 	methodImplKeys    map[methodID][]ifaceMethodKey
-	methodRefs        map[meta.GMethodSig][]meta.Symbol // sig → []iface (built eagerly)
-	ifaceMethodCounts map[meta.Symbol]int               // iface → unique method name count
+	methodRefs        map[meta.MethodSig][]meta.Symbol // sig → []iface (built eagerly)
+	ifaceMethodCounts map[meta.Symbol]int              // iface → unique method name count
 	typeSymbols       map[meta.Symbol]struct{}
 
 	reachable        map[meta.Symbol]struct{}
@@ -74,7 +74,7 @@ func deadcode(info *meta.GlobalSummary, roots []meta.Symbol) map[meta.Symbol][]i
 	d := &pass{
 		info:               info,
 		methodImplKeys:     make(map[methodID][]ifaceMethodKey),
-		methodRefs:         make(map[meta.GMethodSig][]meta.Symbol),
+		methodRefs:         make(map[meta.MethodSig][]meta.Symbol),
 		ifaceMethodCounts:  make(map[meta.Symbol]int),
 		typeSymbols:        make(map[meta.Symbol]struct{}),
 		reachable:          make(map[meta.Symbol]struct{}),
@@ -123,7 +123,7 @@ func (d *pass) buildMethodRefs() {
 
 // computeMethodImplKeys lazily builds methodImplKeys for a single concrete type
 // that has entered usedInIface. Called at most once per type.
-func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.GMethodSlot) {
+func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.MethodSlot) {
 	if _, done := d.methodImplKeys[methodID{owner: typ, slot: 0}]; done {
 		// Already computed — check skip by looking at slot 0. If slot 0 has
 		// an entry, the whole type was processed (we always process all slots
@@ -138,7 +138,7 @@ func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.GMethodSlot) 
 	seen := make(map[ifaceMethodName]struct{})
 
 	for _, slot := range slots {
-		sig := meta.GMethodSig{Name: slot.Name, MType: slot.MType}
+		sig := meta.MethodSig{Name: slot.Name, MType: slot.MType}
 		for _, iface := range d.methodRefs[sig] {
 			key := ifaceMethodName{iface: iface, name: slot.Name}
 			if _, ok := seen[key]; ok {
@@ -151,7 +151,7 @@ func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.GMethodSlot) 
 
 	for slotIndex, slot := range slots {
 		id := methodID{owner: typ, slot: slotIndex}
-		sig := meta.GMethodSig{Name: slot.Name, MType: slot.MType}
+		sig := meta.MethodSig{Name: slot.Name, MType: slot.MType}
 		for _, iface := range d.methodRefs[sig] {
 			if impls[iface] == d.ifaceMethodCounts[iface] {
 				key := ifaceMethodKey{iface: iface, sig: sig}

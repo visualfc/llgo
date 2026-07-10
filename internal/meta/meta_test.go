@@ -23,21 +23,21 @@ func TestWireLayout(t *testing.T) {
 		t.Errorf("localFuncDemand.Extra offset = %d, want 8", got)
 	}
 
-	if got := unsafe.Sizeof(MethodSlot{}); got != 20 {
-		t.Errorf("sizeof(MethodSlot) = %d, want 20", got)
+	if got := unsafe.Sizeof(localMethodSlot{}); got != 20 {
+		t.Errorf("sizeof(localMethodSlot) = %d, want 20", got)
 	}
-	if got := unsafe.Offsetof(MethodSlot{}.MType); got != 8 {
-		t.Errorf("MethodSlot.MType offset = %d, want 8", got)
+	if got := unsafe.Offsetof(localMethodSlot{}.MType); got != 8 {
+		t.Errorf("localMethodSlot.MType offset = %d, want 8", got)
 	}
-	if got := unsafe.Offsetof(MethodSlot{}.TFn); got != 16 {
-		t.Errorf("MethodSlot.TFn offset = %d, want 16", got)
+	if got := unsafe.Offsetof(localMethodSlot{}.TFn); got != 16 {
+		t.Errorf("localMethodSlot.TFn offset = %d, want 16", got)
 	}
 
-	if got := unsafe.Sizeof(MethodSig{}); got != 12 {
-		t.Errorf("sizeof(MethodSig) = %d, want 12", got)
+	if got := unsafe.Sizeof(localMethodSig{}); got != 12 {
+		t.Errorf("sizeof(localMethodSig) = %d, want 12", got)
 	}
-	if got := unsafe.Offsetof(MethodSig{}.MType); got != 8 {
-		t.Errorf("MethodSig.MType offset = %d, want 8", got)
+	if got := unsafe.Offsetof(localMethodSig{}.MType); got != 8 {
+		t.Errorf("localMethodSig.MType offset = %d, want 8", got)
 	}
 }
 
@@ -165,8 +165,8 @@ func TestRoundTrip(t *testing.T) {
 	if d := helperDemands[0]; d.Kind != DemandNamedMethod {
 		t.Errorf("helper demand[0].Kind = %d, want NamedMethod", d.Kind)
 	}
-	// For UseNamedMethod, target=NameRef.Off and extra=NameRef.Len.
-	gotName := pm.nameString(NameRef{Off: helperDemands[0].Target, Len: helperDemands[0].Extra})
+	// For UseNamedMethod, target=nameRef.Off and extra=nameRef.Len.
+	gotName := pm.nameString(nameRef{Off: helperDemands[0].Target, Len: helperDemands[0].Extra})
 	if gotName != "ServeHTTP" {
 		t.Errorf("UseNamedMethod target name = %q, want \"ServeHTTP\"", gotName)
 	}
@@ -236,7 +236,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// TestRoundTripFile writes the meta to disk and reads it back via ReadMeta.
+// TestRoundTripFile writes the meta to disk and reads it back via Open.
 func TestRoundTripFile(t *testing.T) {
 	b := NewBuilder()
 	fn := b.Sym("pkg.Fn")
@@ -249,13 +249,21 @@ func TestRoundTripFile(t *testing.T) {
 	}
 
 	path := t.TempDir() + "/test.meta"
-	if err := os.WriteFile(path, pm.Bytes(), 0644); err != nil {
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := pm.WriteTo(f); err != nil {
+		f.Close()
 		t.Fatalf("write: %v", err)
 	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
 
-	pm2, err := ReadMeta(path)
+	pm2, err := Open(path)
 	if err != nil {
-		t.Fatalf("ReadMeta: %v", err)
+		t.Fatalf("Open: %v", err)
 	}
 	defer pm2.Close()
 

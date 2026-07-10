@@ -52,7 +52,7 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 						fmt.Sprintf("%s[%d]", iface, d.Extra))
 				}
 			case DemandNamedMethod:
-				name := pm.nameString(NameRef{Off: d.Target, Len: d.Extra})
+				name := pm.nameString(nameRef{Off: d.Target, Len: d.Extra})
 				useNamed[src] = append(useNamed[src], name)
 			}
 		}

@@ -98,7 +98,7 @@ func TestGlobalSummaryMerge(t *testing.T) {
 	if len(demands) != 4 {
 		t.Fatalf("FuncDemands(main): got %d, want 4", len(demands))
 	}
-	var ifaceMethod meta.GFuncDemand
+	var ifaceMethod meta.FuncDemand
 	seenUseIface, seenIfaceMethod, seenNamed, seenReflect := false, false, false, false
 	for _, demand := range demands {
 		switch demand.Kind {

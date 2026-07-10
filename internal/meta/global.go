@@ -13,6 +13,9 @@ package meta
 //     MethodInfo, InterfaceInfo and TypeChildren facts outrank ordinary edges,
 //     so descriptor references do not hide the package that carries semantic
 //     method/interface facts.
+//
+// GlobalSummary borrows its input PackageMetas. They must remain open and
+// unchanged for the lifetime of the summary.
 type GlobalSummary struct {
 	pkgs []*PackageMeta
 
@@ -31,9 +34,9 @@ type GlobalSummary struct {
 	isInterface []bool // global Symbol → true if has iface methods
 
 	// lazily translated, cached on first access
-	methodInfo     map[Symbol][]GMethodSlot
-	interfaceInfo  map[Symbol][]GMethodSig
-	funcDemandInfo map[Symbol][]GFuncDemand
+	methodInfo     map[Symbol][]MethodSlot
+	interfaceInfo  map[Symbol][]MethodSig
+	funcDemandInfo map[Symbol][]FuncDemand
 
 	interfaces []Symbol
 }
@@ -44,31 +47,31 @@ type Symbol uint32
 // Name is a whole-program method-name ID, in a namespace distinct from Symbol.
 type Name uint32
 
-// GMethodSlot is a method slot in the global namespace.
-type GMethodSlot struct {
+// MethodSlot is a method slot in the global namespace.
+type MethodSlot struct {
 	Name  Name
 	MType Symbol
 	IFn   Symbol
 	TFn   Symbol
 }
 
-// GMethodSig is an interface method signature in the global namespace.
-type GMethodSig struct {
+// MethodSig is an interface method signature in the global namespace.
+type MethodSig struct {
 	Name  Name
 	MType Symbol
 }
 
-// GFuncDemand is a function-level method/interface/reflection demand in the
+// FuncDemand is a function-level method/interface/reflection demand in the
 // global namespace. Valid fields depend on Kind:
 //
 //   - DemandUseIface: Target is the concrete type converted to an interface.
 //   - DemandIfaceMethod: Target is the interface and Sig is the demanded method.
 //   - DemandNamedMethod: MethodName is the constant MethodByName argument.
 //   - DemandReflectMethod: no additional fields are set.
-type GFuncDemand struct {
-	Kind       uint32
+type FuncDemand struct {
+	Kind       DemandKind
 	Target     Symbol
-	Sig        GMethodSig
+	Sig        MethodSig
 	MethodName Name
 }
 
@@ -93,9 +96,9 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 		symIntern:      make(map[string]Symbol),
 		nameIntern:     make(map[string]Name),
 		locToGlb:       make([][]Symbol, len(pkgs)),
-		methodInfo:     make(map[Symbol][]GMethodSlot),
-		interfaceInfo:  make(map[Symbol][]GMethodSig),
-		funcDemandInfo: make(map[Symbol][]GFuncDemand),
+		methodInfo:     make(map[Symbol][]MethodSlot),
+		interfaceInfo:  make(map[Symbol][]MethodSig),
+		funcDemandInfo: make(map[Symbol][]FuncDemand),
 	}
 
 	// Phase 1: intern symbols, build locToGlb and owner, mark type kinds.
@@ -182,11 +185,11 @@ func (g *GlobalSummary) ownerData(sym Symbol) (*PackageMeta, []Symbol, LocalSymb
 	return g.pkgs[loc.pkg], g.locToGlb[loc.pkg], loc.local
 }
 
-func (g *GlobalSummary) translateSlots(tab []Symbol, pm *PackageMeta, li LocalSymbol) []GMethodSlot {
+func (g *GlobalSummary) translateSlots(tab []Symbol, pm *PackageMeta, li LocalSymbol) []MethodSlot {
 	local := pm.methodSlots(li)
-	out := make([]GMethodSlot, len(local))
+	out := make([]MethodSlot, len(local))
 	for i, s := range local {
-		out[i] = GMethodSlot{
+		out[i] = MethodSlot{
 			Name:  g.internName(pm.nameString(s.Name)),
 			MType: tab[s.MType],
 			IFn:   tab[s.IFn],
@@ -196,11 +199,11 @@ func (g *GlobalSummary) translateSlots(tab []Symbol, pm *PackageMeta, li LocalSy
 	return out
 }
 
-func (g *GlobalSummary) translateSigs(tab []Symbol, pm *PackageMeta, li LocalSymbol) []GMethodSig {
+func (g *GlobalSummary) translateSigs(tab []Symbol, pm *PackageMeta, li LocalSymbol) []MethodSig {
 	local := pm.ifaceMethods(li)
-	out := make([]GMethodSig, len(local))
+	out := make([]MethodSig, len(local))
 	for i, s := range local {
-		out[i] = GMethodSig{
+		out[i] = MethodSig{
 			Name:  g.internName(pm.nameString(s.Name)),
 			MType: tab[s.MType],
 		}
@@ -208,24 +211,24 @@ func (g *GlobalSummary) translateSigs(tab []Symbol, pm *PackageMeta, li LocalSym
 	return out
 }
 
-func (g *GlobalSummary) translateFuncDemands(tab []Symbol, pm *PackageMeta, li LocalSymbol) []GFuncDemand {
+func (g *GlobalSummary) translateFuncDemands(tab []Symbol, pm *PackageMeta, li LocalSymbol) []FuncDemand {
 	local := pm.funcDemands(li)
-	var out []GFuncDemand
+	var out []FuncDemand
 	for _, d := range local {
 		switch d.Kind {
 		case DemandUseIface:
-			out = append(out, GFuncDemand{Kind: d.Kind, Target: tab[d.Target]})
+			out = append(out, FuncDemand{Kind: d.Kind, Target: tab[d.Target]})
 		case DemandIfaceMethod:
 			iface := tab[d.Target]
 			sigs := g.InterfaceMethods(iface)
 			if int(d.Extra) < len(sigs) {
-				out = append(out, GFuncDemand{Kind: d.Kind, Target: iface, Sig: sigs[d.Extra]})
+				out = append(out, FuncDemand{Kind: d.Kind, Target: iface, Sig: sigs[d.Extra]})
 			}
 		case DemandNamedMethod:
-			name := pm.nameString(NameRef{Off: d.Target, Len: d.Extra})
-			out = append(out, GFuncDemand{Kind: d.Kind, MethodName: g.internName(name)})
+			name := pm.nameString(nameRef{Off: d.Target, Len: d.Extra})
+			out = append(out, FuncDemand{Kind: d.Kind, MethodName: g.internName(name)})
 		case DemandReflectMethod:
-			out = append(out, GFuncDemand{Kind: d.Kind})
+			out = append(out, FuncDemand{Kind: d.Kind})
 		}
 	}
 	return out
@@ -257,14 +260,15 @@ func (g *GlobalSummary) Name(n Name) string {
 
 // ── enumeration ───────────────────────────────────────────────────────────────
 
-// Interfaces returns all interface type symbols.
+// Interfaces returns all interface type symbols with method information.
+// The returned slice is owned by GlobalSummary and must not be modified.
 func (g *GlobalSummary) Interfaces() []Symbol { return g.interfaces }
 
 // ── lazy per-type queries ─────────────────────────────────────────────────────
 
 // MethodSlots returns the ABI method slots for concrete type typ.
 // Translated lazily on first access, cached thereafter.
-func (g *GlobalSummary) MethodSlots(typ Symbol) []GMethodSlot {
+func (g *GlobalSummary) MethodSlots(typ Symbol) []MethodSlot {
 	if slots, ok := g.methodInfo[typ]; ok {
 		return slots
 	}
@@ -279,7 +283,7 @@ func (g *GlobalSummary) MethodSlots(typ Symbol) []GMethodSlot {
 
 // InterfaceMethods returns the method set for interface iface.
 // Translated lazily on first access, cached thereafter.
-func (g *GlobalSummary) InterfaceMethods(iface Symbol) []GMethodSig {
+func (g *GlobalSummary) InterfaceMethods(iface Symbol) []MethodSig {
 	if sigs, ok := g.interfaceInfo[iface]; ok {
 		return sigs
 	}
@@ -316,7 +320,7 @@ func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
 
 // FuncDemands returns the method/interface/reflection demands emitted by sym.
 // Records are translated to the global symbol and name spaces lazily and cached.
-func (g *GlobalSummary) FuncDemands(sym Symbol) []GFuncDemand {
+func (g *GlobalSummary) FuncDemands(sym Symbol) []FuncDemand {
 	if demands, ok := g.funcDemandInfo[sym]; ok {
 		return demands
 	}

@@ -8,10 +8,10 @@ package meta
 // references.
 type LocalSymbol uint32
 
-// NameRef references a name string by its byte range in the string table.
+// nameRef references a name string by its byte range in the string table.
 // It is used for method short names, which are matched by value across packages
 // — names are not module-level symbols and live in their own namespace.
-type NameRef struct {
+type nameRef struct {
 	Off uint32
 	Len uint32
 }
@@ -33,29 +33,32 @@ const (
 	edgeUseNamedMethod uint8 = 3
 )
 
-// FuncDemand kinds used in the FuncDemand section.
+// DemandKind identifies a function-level method/interface/reflection demand.
+type DemandKind uint32
+
+// FuncDemand kinds used in the FuncDemand section and global analysis API.
 const (
-	DemandUseIface      uint32 = uint32(edgeUseIface)
-	DemandIfaceMethod   uint32 = uint32(edgeUseIfaceMethod)
-	DemandNamedMethod   uint32 = uint32(edgeUseNamedMethod)
-	DemandReflectMethod uint32 = 4
+	DemandUseIface      DemandKind = 1
+	DemandIfaceMethod   DemandKind = 2
+	DemandNamedMethod   DemandKind = 3
+	DemandReflectMethod DemandKind = 4
 )
 
-// Magic is the 4-byte file signature.
-const Magic = "LLPM"
+// magic is the 4-byte file signature.
+const magic = "LLPM"
 
-// Version is the current binary format version.
-const Version = 2
+// version is the current binary format version.
+const version = 2
 
-// Section index constants for Header.SectionOffsets.
+// Section index constants for the wire-format header.
 const (
-	SecStringTable   = 0
-	SecSymbols       = 1
-	SecOrdinaryEdges = 2
-	SecFuncDemand    = 3
-	SecTypeChildren  = 4
-	SecMethodInfo    = 5
-	SecIfaceInfo     = 6
+	secStringTable   = 0
+	secSymbols       = 1
+	secOrdinaryEdges = 2
+	secFuncDemand    = 3
+	secTypeChildren  = 4
+	secMethodInfo    = 5
+	secIfaceInfo     = 6
 	numSections      = 7
 )
 

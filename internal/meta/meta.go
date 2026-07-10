@@ -3,6 +3,7 @@ package meta
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"syscall"
 	"unsafe"
@@ -31,7 +32,7 @@ type PackageMeta struct {
 // (Kind@0, Target@4, Extra@8, size 12) must match the on-disk wire layout exactly
 // so funcDemands can reinterpret the mmap bytes with no copy.
 type localFuncDemand struct {
-	Kind   uint32
+	Kind   DemandKind
 	Target uint32 // LocalSymbol or stringTable offset (DemandNamedMethod)
 	Extra  uint32
 }
@@ -43,20 +44,20 @@ const (
 	_ = uint(12 - unsafe.Sizeof(localFuncDemand{}))
 )
 
-// MethodSlot is a decoded method slot record. Its layout (NameRef@0..8,
+// localMethodSlot is a decoded method slot record. Its layout (nameRef@0..8,
 // MType@8, IFn@12, TFn@16, size 20) must match the on-disk wire layout for
 // zero-copy reads.
-type MethodSlot struct {
-	Name  NameRef // canonical method name; unexported names include package path
+type localMethodSlot struct {
+	Name  nameRef // canonical method name; unexported names include package path
 	MType LocalSymbol
 	IFn   LocalSymbol
 	TFn   LocalSymbol
 }
 
-// MethodSig is a decoded interface method signature. Layout: NameRef@0..8,
+// localMethodSig is a decoded interface method signature. Layout: nameRef@0..8,
 // MType@8, size 12 — must match the on-disk wire layout for zero-copy reads.
-type MethodSig struct {
-	Name  NameRef // canonical method name; unexported names include package path
+type localMethodSig struct {
+	Name  nameRef // canonical method name; unexported names include package path
 	MType LocalSymbol
 }
 
@@ -64,15 +65,15 @@ type MethodSig struct {
 // If a struct's size drifts, one of these uint consts goes negative and the
 // build fails.
 const (
-	_ = uint(unsafe.Sizeof(MethodSlot{}) - 20)
-	_ = uint(20 - unsafe.Sizeof(MethodSlot{}))
-	_ = uint(unsafe.Sizeof(MethodSig{}) - 12)
-	_ = uint(12 - unsafe.Sizeof(MethodSig{}))
+	_ = uint(unsafe.Sizeof(localMethodSlot{}) - 20)
+	_ = uint(20 - unsafe.Sizeof(localMethodSlot{}))
+	_ = uint(unsafe.Sizeof(localMethodSig{}) - 12)
+	_ = uint(12 - unsafe.Sizeof(localMethodSig{}))
 )
 
-// ReadMeta opens path, mmaps it, and returns a PackageMeta view.
+// Open opens path, mmaps it, and returns a PackageMeta view.
 // Call Close when done to release the mapping.
-func ReadMeta(path string) (*PackageMeta, error) {
+func Open(path string) (*PackageMeta, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -102,8 +103,14 @@ func ReadMeta(path string) (*PackageMeta, error) {
 	return pm, nil
 }
 
-// Bytes returns the underlying raw byte slice (for writing to disk).
-func (pm *PackageMeta) Bytes() []byte { return pm.raw }
+// WriteTo writes the package metadata in its binary wire format.
+func (pm *PackageMeta) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write(pm.raw)
+	if err == nil && n != len(pm.raw) {
+		err = io.ErrShortWrite
+	}
+	return int64(n), err
+}
 
 // Close releases the mmap mapping if one was used.
 func (pm *PackageMeta) Close() error {
@@ -129,10 +136,10 @@ func (pm *PackageMeta) symbolName(sym LocalSymbol) string {
 	return unsafe.String(&pm.raw[pm.strOff+nameOff], int(nameLen))
 }
 
-// NameString returns the string referenced by a NameRef as a zero-copy view
+// nameString returns the string referenced by a nameRef as a zero-copy view
 // into the string table. The returned string points directly into the mmap
 // region and is only valid for the lifetime of pm — do not retain it after Close.
-func (pm *PackageMeta) nameString(ref NameRef) string {
+func (pm *PackageMeta) nameString(ref nameRef) string {
 	return unsafe.String(&pm.raw[pm.strOff+ref.Off], int(ref.Len))
 }
 
@@ -180,8 +187,8 @@ func (pm *PackageMeta) nmethodSlot(sym LocalSymbol) uint32 {
 
 // MethodSlots returns the ABI method slots for concrete type sym as a zero-copy
 // view into the mmap region.
-func (pm *PackageMeta) methodSlots(sym LocalSymbol) []MethodSlot {
-	return csrSlice[MethodSlot](pm, pm.methodOff, sym, 20)
+func (pm *PackageMeta) methodSlots(sym LocalSymbol) []localMethodSlot {
+	return csrSlice[localMethodSlot](pm, pm.methodOff, sym, 20)
 }
 
 // NIfaceMethod returns the number of methods in an interface, or 0 if sym is
@@ -193,8 +200,8 @@ func (pm *PackageMeta) nifaceMethod(sym LocalSymbol) uint32 {
 
 // IfaceMethods returns the method signatures for interface sym as a zero-copy
 // view into the mmap region.
-func (pm *PackageMeta) ifaceMethods(sym LocalSymbol) []MethodSig {
-	return csrSlice[MethodSig](pm, pm.ifaceOff, sym, 12)
+func (pm *PackageMeta) ifaceMethods(sym LocalSymbol) []localMethodSig {
+	return csrSlice[localMethodSig](pm, pm.ifaceOff, sym, 12)
 }
 
 // HasReflect reports whether sym triggers conservative reflection handling.
@@ -224,22 +231,22 @@ func newPackageMeta(raw []byte) (*PackageMeta, error) {
 	if len(raw) < headerSize {
 		return nil, fmt.Errorf("meta: raw too small (%d bytes)", len(raw))
 	}
-	if string(raw[0:4]) != Magic {
+	if string(raw[0:4]) != magic {
 		return nil, fmt.Errorf("meta: bad magic %q", raw[0:4])
 	}
 	ver := binary.LittleEndian.Uint32(raw[4:8])
-	if ver != Version {
+	if ver != version {
 		return nil, fmt.Errorf("meta: unsupported version %d", ver)
 	}
 
 	pm := &PackageMeta{raw: raw}
-	pm.strOff = binary.LittleEndian.Uint32(raw[8+SecStringTable*4:])
-	pm.symOff = binary.LittleEndian.Uint32(raw[8+SecSymbols*4:])
-	pm.ordinaryOff = binary.LittleEndian.Uint32(raw[8+SecOrdinaryEdges*4:])
-	pm.demandOff = binary.LittleEndian.Uint32(raw[8+SecFuncDemand*4:])
-	pm.childOff = binary.LittleEndian.Uint32(raw[8+SecTypeChildren*4:])
-	pm.methodOff = binary.LittleEndian.Uint32(raw[8+SecMethodInfo*4:])
-	pm.ifaceOff = binary.LittleEndian.Uint32(raw[8+SecIfaceInfo*4:])
+	pm.strOff = binary.LittleEndian.Uint32(raw[8+secStringTable*4:])
+	pm.symOff = binary.LittleEndian.Uint32(raw[8+secSymbols*4:])
+	pm.ordinaryOff = binary.LittleEndian.Uint32(raw[8+secOrdinaryEdges*4:])
+	pm.demandOff = binary.LittleEndian.Uint32(raw[8+secFuncDemand*4:])
+	pm.childOff = binary.LittleEndian.Uint32(raw[8+secTypeChildren*4:])
+	pm.methodOff = binary.LittleEndian.Uint32(raw[8+secMethodInfo*4:])
+	pm.ifaceOff = binary.LittleEndian.Uint32(raw[8+secIfaceInfo*4:])
 
 	// read nsyms from Symbols section header
 	pm.nsyms = binary.LittleEndian.Uint32(raw[pm.symOff:])

@@ -676,14 +676,11 @@ func TestSaveToCache_Success(t *testing.T) {
 		t.Errorf("archive should exist: %v", err)
 	}
 
-	metaFile, err := os.Open(paths.Meta)
+	pm, err := meta.Open(paths.Meta)
 	if err != nil {
 		t.Errorf("meta should exist: %v", err)
 	} else {
-		defer metaFile.Close()
-		if _, err := meta.ReadMeta(metaFile.Name()); err != nil {
-			t.Errorf("meta should be readable: %v", err)
-		}
+		defer pm.Close()
 	}
 }
 

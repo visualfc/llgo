@@ -45,7 +45,7 @@ func main() {
 }
 
 func run(input, output string) error {
-	pm, err := meta.ReadMeta(input)
+	pm, err := meta.Open(input)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", input, err)
 	}

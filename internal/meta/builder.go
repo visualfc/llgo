@@ -42,20 +42,20 @@ type symEntry struct {
 }
 
 type bFuncDemand struct {
-	kind   uint32
+	kind   DemandKind
 	target uint32 // LocalSymbol or stringTable offset (DemandNamedMethod)
 	extra  uint32
 }
 
 type bMethodSlot struct {
-	name  NameRef // method short name
+	name  nameRef // method short name
 	mtype uint32  // LocalSymbol
 	ifn   uint32  // LocalSymbol
 	tfn   uint32  // LocalSymbol
 }
 
 type bMethodSig struct {
-	name  NameRef // method short name
+	name  nameRef // method short name
 	mtype uint32  // LocalSymbol
 }
 
@@ -79,9 +79,9 @@ func (b *Builder) internStr(s string) uint32 {
 	return off
 }
 
-// internName registers a name string and returns a NameRef.
-func (b *Builder) internName(s string) NameRef {
-	return NameRef{Off: b.internStr(s), Len: uint32(len(s))}
+// internName registers a name string and returns a nameRef.
+func (b *Builder) internName(s string) nameRef {
+	return nameRef{Off: b.internStr(s), Len: uint32(len(s))}
 }
 
 // Sym registers a symbol by name and returns its LocalSymbol.
@@ -164,7 +164,7 @@ func (b *Builder) AddIfaceMethodUse(src, iface LocalSymbol, methodIndex uint32) 
 // AddNamedMethodEdge records that src does a constant MethodByName(methodName)
 // call. Unlike the other typed Add*Use methods, the target here is a method
 // name string rather than a LocalSymbol: its byte offset and length in the
-// string table are stored together as a NameRef.
+// string table are stored together as a nameRef.
 func (b *Builder) AddNamedMethodEdge(src LocalSymbol, methodName string) {
 	ref := b.internName(methodName)
 	b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{

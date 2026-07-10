@@ -43,31 +43,31 @@ func (b *Builder) Build() (*PackageMeta, error) {
 	for _, ms := range b.methodInfo {
 		totalSlots += uint32(len(ms))
 	}
-	methodSize := 4 + (nsyms+1)*4 + totalSlots*20 // N×MethodSlot(20: NameRef(8)+mtype+ifn+tfn)
+	methodSize := 4 + (nsyms+1)*4 + totalSlots*20 // N×localMethodSlot(20: nameRef(8)+mtype+ifn+tfn)
 
 	totalSigs := uint32(0)
 	for _, ss := range b.ifaceInfo {
 		totalSigs += uint32(len(ss))
 	}
-	ifaceSize := 4 + (nsyms+1)*4 + totalSigs*12 // N×MethodSig(12: NameRef(8)+mtype)
+	ifaceSize := 4 + (nsyms+1)*4 + totalSigs*12 // N×localMethodSig(12: nameRef(8)+mtype)
 
 	// ── 2. calculate section offsets ─────────────────────────────────────────
 
 	var offsets [numSections]uint32
 	cur := uint32(headerSize)
-	offsets[SecStringTable] = cur
+	offsets[secStringTable] = cur
 	cur += strSize
-	offsets[SecSymbols] = cur
+	offsets[secSymbols] = cur
 	cur += symSize
-	offsets[SecOrdinaryEdges] = cur
+	offsets[secOrdinaryEdges] = cur
 	cur += ordinarySize
-	offsets[SecFuncDemand] = cur
+	offsets[secFuncDemand] = cur
 	cur += demandSize
-	offsets[SecTypeChildren] = cur
+	offsets[secTypeChildren] = cur
 	cur += childSize
-	offsets[SecMethodInfo] = cur
+	offsets[secMethodInfo] = cur
 	cur += methodSize
-	offsets[SecIfaceInfo] = cur
+	offsets[secIfaceInfo] = cur
 	cur += ifaceSize
 
 	// ── 3. allocate one buffer ────────────────────────────────────────────────
@@ -76,21 +76,21 @@ func (b *Builder) Build() (*PackageMeta, error) {
 
 	// ── 4. write header ───────────────────────────────────────────────────────
 
-	copy(raw[0:4], Magic)
-	binary.LittleEndian.PutUint32(raw[4:8], Version)
+	copy(raw[0:4], magic)
+	binary.LittleEndian.PutUint32(raw[4:8], version)
 	for i, off := range offsets {
 		binary.LittleEndian.PutUint32(raw[8+i*4:], off)
 	}
 
 	// ── 5. write each section directly into raw ───────────────────────────────
 
-	writeStringTable(raw[offsets[SecStringTable]:], b)
-	writeSymbols(raw[offsets[SecSymbols]:], b, nsyms)
-	writeOrdinaryEdges(raw[offsets[SecOrdinaryEdges]:], b, nsyms)
-	writeFuncDemand(raw[offsets[SecFuncDemand]:], b, nsyms)
-	writeTypeChildren(raw[offsets[SecTypeChildren]:], b, nsyms)
-	writeMethodInfo(raw[offsets[SecMethodInfo]:], b, nsyms)
-	writeIfaceInfo(raw[offsets[SecIfaceInfo]:], b, nsyms)
+	writeStringTable(raw[offsets[secStringTable]:], b)
+	writeSymbols(raw[offsets[secSymbols]:], b, nsyms)
+	writeOrdinaryEdges(raw[offsets[secOrdinaryEdges]:], b, nsyms)
+	writeFuncDemand(raw[offsets[secFuncDemand]:], b, nsyms)
+	writeTypeChildren(raw[offsets[secTypeChildren]:], b, nsyms)
+	writeMethodInfo(raw[offsets[secMethodInfo]:], b, nsyms)
+	writeIfaceInfo(raw[offsets[secIfaceInfo]:], b, nsyms)
 
 	return newPackageMeta(raw)
 }
@@ -180,7 +180,7 @@ func writeFuncDemand(dst []byte, b *Builder, nsyms uint32) {
 	pos := 0
 	for _, ds := range b.funcDemands {
 		for _, d := range ds {
-			binary.LittleEndian.PutUint32(data[pos:], d.kind)
+			binary.LittleEndian.PutUint32(data[pos:], uint32(d.kind))
 			binary.LittleEndian.PutUint32(data[pos+4:], d.target)
 			binary.LittleEndian.PutUint32(data[pos+8:], d.extra)
 			pos += rec

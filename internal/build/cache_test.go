@@ -210,8 +210,8 @@ func writeTestMetaFile(t *testing.T, path string) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if err := os.WriteFile(path, pm.Bytes(), 0o644); err != nil {
-		t.Fatalf("WriteFile %s: %v", path, err)
+	if err := writeMeta(path, pm); err != nil {
+		t.Fatalf("writeMeta %s: %v", path, err)
 	}
 }
 

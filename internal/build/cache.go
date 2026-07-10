@@ -196,7 +196,7 @@ func writeMeta(path string, pm *meta.PackageMeta) error {
 		}
 	}()
 
-	if _, err := tmp.Write(pm.Bytes()); err != nil {
+	if _, err := pm.WriteTo(tmp); err != nil {
 		return fmt.Errorf("write meta: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
@@ -212,7 +212,7 @@ func writeMeta(path string, pm *meta.PackageMeta) error {
 
 // readMeta reads package summary metadata from a file.
 func readMeta(path string) (*meta.PackageMeta, error) {
-	return meta.ReadMeta(path)
+	return meta.Open(path)
 }
 
 // cacheExists checks if a valid cache entry exists
@@ -224,10 +224,11 @@ func (cm *cacheManager) cacheExists(paths cachePaths) bool {
 	if _, err := os.Stat(paths.Manifest); err != nil {
 		return false
 	}
-	if _, err := readMeta(paths.Meta); err != nil {
+	pm, err := readMeta(paths.Meta)
+	if err != nil {
 		return false
 	}
-	return true
+	return pm.Close() == nil
 }
 
 // cleanPackageCache removes all cache entries for a package
