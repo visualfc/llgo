@@ -19,11 +19,16 @@ package cl
 import (
 	"go/constant"
 	"go/types"
+	"sort"
 	"strings"
 
 	llssa "github.com/goplus/llgo/ssa"
 	"golang.org/x/tools/go/ssa"
 )
+
+// Static folding is an optimization. Keep sparse large arrays in the package
+// initializer instead of materializing every zero element as an LLVM constant.
+const maxStaticInitArrayElements = 1 << 16
 
 type staticInitPathElem struct {
 	index int
@@ -60,7 +65,14 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 			continue
 		}
 		if global, ok := member.(*ssa.Global); ok {
-			if _, rewritten := p.rewriteValue(p.globalFullName(global)); rewritten {
+			if isCgoFuncPtrVar(global.Name()) {
+				continue
+			}
+			globalName, vtype, define := p.varName(global.Pkg.Pkg, global)
+			if !define || vtype != goVar {
+				continue
+			}
+			if _, rewritten := p.rewriteValue(globalName); rewritten {
 				continue
 			}
 			globals[global] = none{}
@@ -109,7 +121,16 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 		}
 	}
 
-	for global, candidate := range candidates {
+	orderedGlobals := make([]*ssa.Global, 0, len(candidates))
+	for global := range candidates {
+		orderedGlobals = append(orderedGlobals, global)
+	}
+	sort.Slice(orderedGlobals, func(i, j int) bool {
+		return p.globalFullName(orderedGlobals[i]) < p.globalFullName(orderedGlobals[j])
+	})
+
+	for _, global := range orderedGlobals {
+		candidate := candidates[global]
 		if candidate.invalid || len(candidate.stores) == 0 {
 			continue
 		}
@@ -241,6 +262,9 @@ func (p *context) buildStaticInitExpr(typ types.Type, node *staticInitNode) (lls
 		}
 		return p.prog.ConstStruct(lltyp, values), true
 	case *types.Array:
+		if u.Len() > maxStaticInitArrayElements {
+			return llssa.Expr{}, false
+		}
 		n := int(u.Len())
 		values := make([]llssa.Expr, n)
 		for i := range values {

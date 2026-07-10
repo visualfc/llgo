@@ -4,6 +4,7 @@
 package cl
 
 import (
+	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/parser"
@@ -27,7 +28,7 @@ func init() {
 func compileWithRewrites(t *testing.T, src string, rewrites map[string]string) string {
 	t.Helper()
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "rewrite.go", src, 0)
+	file, err := parser.ParseFile(fset, "rewrite.go", src, parser.ParseComments)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -179,6 +180,58 @@ func Use() int { return Dynamic[0] + Dynamic[1] }
 	assertStoreToGlobal(t, ir, "@staticinit.Dynamic")
 }
 
+func TestStaticGlobalInitSkipsExternalGlobal(t *testing.T) {
+	const src = `package staticinit
+
+import _ "unsafe"
+
+//go:linkname External C.external
+var External = 7
+
+func Use() int { return External }
+`
+	ir := compileWithRewrites(t, src, nil)
+	if !strings.Contains(ir, "@C.external = external global i64") {
+		t.Fatalf("linknamed global should remain an external declaration:\n%s", ir)
+	}
+	assertStoreToGlobal(t, ir, "@C.external")
+}
+
+func TestStaticGlobalInitDeterministicOrder(t *testing.T) {
+	const src = `package staticinit
+
+var Zulu = "zulu-static-init"
+var Alpha = "alpha-static-init"
+
+func Use() string { return Zulu + Alpha }
+`
+	ir := compileWithRewrites(t, src, nil)
+	alpha := strings.Index(ir, `c"alpha-static-init"`)
+	zulu := strings.Index(ir, `c"zulu-static-init"`)
+	if alpha < 0 || zulu < 0 {
+		t.Fatalf("missing static string data:\n%s", ir)
+	}
+	if alpha > zulu {
+		t.Fatalf("static initializers were not built in global-name order:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalInitSkipsLargeArray(t *testing.T) {
+	length := maxStaticInitArrayElements + 1
+	src := fmt.Sprintf(`package staticinit
+
+var Large = [%d]byte{%d: 1}
+
+func Use() byte { return Large[%d] }
+`, length, length-1, length-1)
+	ir := compileWithRewrites(t, src, nil)
+	want := fmt.Sprintf("@staticinit.Large = global [%d x i8] zeroinitializer", length)
+	if !strings.Contains(ir, want) {
+		t.Fatalf("large array should keep a zero initializer:\n%s", ir)
+	}
+	assertStoreToGlobal(t, ir, "@staticinit.Large")
+}
+
 func TestStaticInitHelperRejectsUnsupportedPaths(t *testing.T) {
 	if _, ok := staticInitConstIndex(nil); ok {
 		t.Fatal("nil index should not be accepted")
@@ -247,6 +300,140 @@ func TestStaticInitHelperBuildFailuresAndZeroes(t *testing.T) {
 	}}
 	if _, ok := ctx.buildStaticInitExpr(types.NewArray(types.Typ[types.Int], 1), arrayWithOutOfRangeChild); ok {
 		t.Fatal("array initializer with out-of-range child should be rejected")
+	}
+}
+
+func TestStaticInitCollectEarlyExitsAndFilters(t *testing.T) {
+	noInit := buildSSAPackage(t, `package foo
+const A = 1
+`)
+	if initFn := noInit.Func("init"); initFn != nil {
+		initFn.Synthetic = ""
+	}
+	(&context{}).collectStaticGlobalInits(noInit)
+
+	skipped := buildSSAPackage(t, `package foo
+var Skip = 1
+func Use() int { return Skip }
+`)
+	ctx := &context{skips: map[string]none{"Skip": {}}}
+	ctx.collectStaticGlobalInits(skipped)
+	if ctx.staticGlobalInits != nil {
+		t.Fatalf("skipped global should not produce static initializers: %+v", ctx.staticGlobalInits)
+	}
+
+	cgoFuncPtr := buildSSAPackage(t, `package foo
+var __cgo_callback = 1
+func Use() int { return __cgo_callback }
+`)
+	ctx = &context{}
+	ctx.collectStaticGlobalInits(cgoFuncPtr)
+	if ctx.staticGlobalInits != nil {
+		t.Fatalf("__cgo function pointer globals should be ignored: %+v", ctx.staticGlobalInits)
+	}
+
+	nonGlobalStore := buildSSAPackage(t, `package foo
+var G int
+`)
+	initFn := nonGlobalStore.Func("init")
+	if initFn == nil || len(initFn.Blocks) == 0 {
+		t.Fatal("expected package initializer for nonGlobalStore")
+	}
+	initFn.Blocks[0].Instrs = append([]ssa.Instruction{
+		&ssa.Store{
+			Addr: ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
+			Val:  ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]),
+		},
+	}, initFn.Blocks[0].Instrs...)
+	ctx = &context{prog: ssatest.NewProgram(t, nil)}
+	ctx.collectStaticGlobalInits(nonGlobalStore)
+}
+
+func TestStaticInitHelperRejectsNestedUnsupportedPaths(t *testing.T) {
+	badBase := ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])
+	if _, ok := staticInitStorePath(&ssa.FieldAddr{X: badBase, Field: 0}); ok {
+		t.Fatal("field path with unsupported base should be rejected")
+	}
+	if _, ok := staticInitStorePath(&ssa.IndexAddr{
+		X:     badBase,
+		Index: ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
+	}); ok {
+		t.Fatal("index path with unsupported base should be rejected")
+	}
+}
+
+func TestStaticInitHelperBuildAdditionalFailures(t *testing.T) {
+	prog := ssatest.NewProgram(t, nil)
+	pkg := prog.NewPackage("staticinit", "staticinit")
+	ctx := &context{prog: prog, pkg: pkg}
+	c := ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int])
+
+	if _, ok := ctx.buildStaticGlobalInit(&ssa.Global{}, []staticInitStore{{value: c}}); ok {
+		t.Fatal("global with non-pointer type should be rejected")
+	}
+
+	ssapkg := buildSSAPackage(t, `package foo
+var G int
+`)
+	global, ok := ssapkg.Members["G"].(*ssa.Global)
+	if !ok {
+		t.Fatalf("missing G global: %T", ssapkg.Members["G"])
+	}
+	if _, ok := ctx.buildStaticGlobalInit(global, []staticInitStore{
+		{value: c},
+		{value: c},
+	}); ok {
+		t.Fatal("conflicting root stores should be rejected")
+	}
+
+	scalarWithChild := &staticInitNode{children: map[int]*staticInitNode{
+		0: {value: c},
+	}}
+	structType := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, nil, "A", types.Typ[types.Int], false),
+	}, nil)
+	if _, ok := ctx.buildStaticInitExpr(structType, &staticInitNode{
+		children: map[int]*staticInitNode{0: scalarWithChild},
+	}); ok {
+		t.Fatal("struct initializer with invalid field child should be rejected")
+	}
+	if _, ok := ctx.buildStaticInitExpr(structType, &staticInitNode{
+		children: map[int]*staticInitNode{1: {value: c}},
+	}); ok {
+		t.Fatal("struct initializer with out-of-range child should be rejected")
+	}
+	if _, ok := ctx.buildStaticInitExpr(types.NewArray(types.Typ[types.Int], 1), &staticInitNode{
+		children: map[int]*staticInitNode{0: scalarWithChild},
+	}); ok {
+		t.Fatal("array initializer with invalid element child should be rejected")
+	}
+	if _, ok := ctx.buildStaticInitExpr(types.NewPointer(types.Typ[types.Int]), new(staticInitNode)); !ok {
+		t.Fatal("empty unsupported scalar node should build a zero initializer")
+	}
+}
+
+func TestStaticConstExprRejectsUnsupportedConstants(t *testing.T) {
+	prog := ssatest.NewProgram(t, nil)
+	pkg := prog.NewPackage("staticinit", "staticinit")
+	ctx := &context{prog: prog, pkg: pkg}
+
+	if _, ok := ctx.staticConstExpr(&ssa.Const{}, prog.Int()); !ok {
+		t.Fatal("zero ssa.Const should build a zero initializer")
+	}
+	if _, ok := ctx.staticConstExpr(ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]), prog.Pointer(prog.Int())); ok {
+		t.Fatal("const for non-basic LLVM type should be rejected")
+	}
+	if _, ok := ctx.staticConstExpr(ssa.NewConst(constant.MakeFloat64(1.25), types.Typ[types.Float64]), prog.Int()); ok {
+		t.Fatal("inexact signed integer constant should be rejected")
+	}
+	if _, ok := ctx.staticConstExpr(ssa.NewConst(constant.MakeInt64(-1), types.Typ[types.Int]), prog.Uint()); ok {
+		t.Fatal("negative unsigned integer constant should be rejected")
+	}
+	if _, ok := ctx.staticConstExpr(
+		ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
+		ctx.type_(types.Typ[types.UnsafePointer], llssa.InGo),
+	); ok {
+		t.Fatal("unsupported unsafe.Pointer constants should be rejected")
 	}
 }
 
