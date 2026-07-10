@@ -616,7 +616,9 @@ func (v Value) Field(i int) Value {
 
 	// Check closure to func
 	kind := typ.Kind()
-	if typ.IsClosure() {
+	if kind == abi.Func {
+		typ = closureOf(typ.FuncType())
+	} else if typ.IsClosure() {
 		kind = abi.Func
 	}
 	// Inherit permission bits from v, but clear flagEmbedRO.
@@ -2370,6 +2372,9 @@ func toFFIType(typ *abi.Type) *ffi.Type {
 	case abi.String:
 		return ffi.TypeString
 	case abi.Struct:
+		if typ.IsClosure() {
+			return ffiTypeClosure
+		}
 		return toFFIStructType(typ)
 	case abi.UnsafePointer:
 		return ffi.TypePointer
@@ -2565,6 +2570,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		args = append(args, toFFIArg(arg, typ))
 	}
 
+	tout = toRuntimeTypes(tout)
 	sig, err := ffi.NewSignature(toFFIRetType(tout), ffiArgs...)
 	if err != nil {
 		panic(err)
@@ -2592,6 +2598,29 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		}
 	}
 	return
+}
+
+func toRuntimeTypes(typs []*abi.Type) []*abi.Type {
+	switch n := len(typs); n {
+	case 0:
+		return nil
+	case 1:
+		return []*abi.Type{toRuntimeType(typs[0])}
+	default:
+		rets := make([]*abi.Type, n)
+		for i, typ := range typs {
+			rets[i] = toRuntimeType(typ)
+		}
+		return rets
+	}
+}
+
+func toRuntimeType(typ *abi.Type) *abi.Type {
+	switch typ.Kind() {
+	case abi.Func:
+		return closureOf((*abi.FuncType)(unsafe.Pointer(typ)))
+	}
+	return typ
 }
 
 // resolveIndirectValue converts Value's indirect reference to direct based on abi.Type, clears flagIndir
