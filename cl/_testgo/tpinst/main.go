@@ -1,9 +1,11 @@
 // LITTEST
 package main
 
-// CHECK: @6 = private unnamed_addr constant [5 x i8] c"value", align 1
-// CHECK: @9 = private unnamed_addr constant [5 x i8] c"error", align 1
-// CHECK: @16 = private unnamed_addr constant [22 x i8] c"interface{value() int}", align 1
+// CHECK-NOT: @6 = private unnamed_addr constant [5 x i8] c"value", align 1
+// CHECK: @6 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/tpinst.value", align 1
+// CHECK: {{^}}@8 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
+// CHECK: {{^}}@15 = private unnamed_addr constant [22 x i8] c"interface{value() int}", align 1{{$}}
+// CHECK: {{^}}@16 = private unnamed_addr constant [5 x i8] c"value", align 1{{$}}
 
 type M[T interface{}] struct {
 	v T
@@ -35,7 +37,7 @@ type I[T interface{}] interface {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %15 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @9, i64 5 }, ptr %15, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @8, i64 5 }, ptr %15, align 8
 // CHECK-NEXT:   %16 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %15, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %16)
 // CHECK-NEXT:   unreachable
@@ -61,7 +63,7 @@ type I[T interface{}] interface {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @9, i64 5 }, ptr %32, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @8, i64 5 }, ptr %32, align 8
 // CHECK-NEXT:   %33 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %32, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %33)
 // CHECK-NEXT:   unreachable
@@ -73,7 +75,7 @@ type I[T interface{}] interface {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_7
 // CHECK-NEXT:   %36 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @9, i64 5 }, ptr %36, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @8, i64 5 }, ptr %36, align 8
 // CHECK-NEXT:   %37 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %36, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %37)
 // CHECK-NEXT:   unreachable
@@ -99,7 +101,7 @@ type I[T interface{}] interface {
 // CHECK-NEXT:   br i1 %51, label %_llgo_5, label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_4
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %34, %"{{.*}}/runtime/internal/runtime.String" { ptr @16, i64 22 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %34, %"{{.*}}/runtime/internal/runtime.String" { ptr @15, i64 22 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @16, i64 5 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
