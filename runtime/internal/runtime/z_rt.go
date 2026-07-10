@@ -86,13 +86,21 @@ func TracePanic(v any) {
 	println("\n")
 }
 
-// PanicTraceback, when set by the public runtime package, prints a Go-style
-// stack trace (function + file:line per frame) for an unrecovered panic and
-// reports whether it printed anything. skip counts physical frames above the
-// runtime plumbing frame that invokes the hook, matching clite
-// debug.PrintStack's convention. When unset or when it reports false, the
-// caller falls back to the clite frame dump.
+// PanicTraceback, when set by the public runtime package, prints a
+// Go-style stack trace for an unrecovered panic and reports whether it
+// printed anything; the clite frame dump remains the fallback.
 var PanicTraceback func(skip int) bool
+
+// PanicSignal converts a hardware signal into the same Go panic the
+// legacy signal handler raised.
+func PanicSignal(sig int) {
+	switch sig {
+	case 8: // SIGFPE
+		panic(errorString("integer divide by zero"))
+	default: // SIGSEGV, SIGBUS
+		panic(errorString("invalid memory address or nil pointer dereference"))
+	}
+}
 
 /*
 func stringTracef(fp c.FilePtr, format *c.Char, s String) {
