@@ -2527,7 +2527,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		}
 	}
 	for i := 0; i < n; i++ {
-		if xt, targ := in[i].Type(), ft.In[i]; !xt.AssignableTo(toRType(targ)) {
+		if xt, targ := in[i].Type(), ft.In[i]; !xt.AssignableTo(toPublicType(targ)) {
 			panic("reflect: " + op + " using " + xt.String() + " as type " + stringFor(targ))
 		}
 	}
@@ -2535,7 +2535,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		// prepare slice for remaining values
 		m := len(in) - n
 		slice := MakeSlice(toRType(ft.In[n]), m, m)
-		elem := toRType(ft.In[n].Elem()) // FIXME cast to slice type and Elem()
+		elem := toPublicType(ft.In[n].Elem()) // FIXME cast to slice type and Elem()
 		for i := 0; i < m; i++ {
 			x := in[n+i]
 			if xt := x.Type(); !xt.AssignableTo(elem) {
