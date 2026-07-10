@@ -47,7 +47,7 @@ const (
 // MType@8, IFn@12, TFn@16, size 20) must match the on-disk wire layout for
 // zero-copy reads.
 type MethodSlot struct {
-	Name  NameRef // method short name
+	Name  NameRef // canonical method name; unexported names include package path
 	MType LocalSymbol
 	IFn   LocalSymbol
 	TFn   LocalSymbol
@@ -56,7 +56,7 @@ type MethodSlot struct {
 // MethodSig is a decoded interface method signature. Layout: NameRef@0..8,
 // MType@8, size 12 — must match the on-disk wire layout for zero-copy reads.
 type MethodSig struct {
-	Name  NameRef // method short name
+	Name  NameRef // canonical method name; unexported names include package path
 	MType LocalSymbol
 }
 

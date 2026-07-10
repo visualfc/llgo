@@ -212,7 +212,7 @@ func (b Builder) recordInterfaceInfo(t *types.Interface, typeName string) {
 	for i := 0; i < t.NumMethods(); i++ {
 		f := t.Method(i)
 		ftypName, _ := prog.abi.TypeName(funcType(prog, f.Type()))
-		mb.AddIfaceMethod(intfSym, mthName(f), mb.Sym(ftypName))
+		mb.AddIfaceMethod(intfSym, abiMethodName(f), mb.Sym(ftypName))
 	}
 }
 

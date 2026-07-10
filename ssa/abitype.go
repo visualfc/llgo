@@ -507,12 +507,8 @@ func (b Builder) abiUncommonMethods(t types.Type, mset *types.MethodSet) llvm.Va
 		m := mset.At(i)
 		obj := m.Obj()
 		mName := obj.Name()
-		fullName := mName
-		name := b.Str(mName).impl
-		if !token.IsExported(mName) {
-			fullName = abi.FullName(obj.Pkg(), mName)
-			name = b.Str(fullName).impl
-		}
+		fullName := abiMethodName(obj)
+		name := b.Str(fullName).impl
 		mSig := m.Type().(*types.Signature)
 		var tfn, ifn llvm.Value
 		tfnFn := b.abiMethodFunc(anonymous, pkg, mName, mSig)
@@ -545,12 +541,12 @@ func funcType(prog Program, typ types.Type) types.Type {
 	return ftyp.raw.Type.(*types.Struct).Field(0).Type()
 }
 
-func mthName(method *types.Func) string {
-	name := method.Name()
+func abiMethodName(obj types.Object) string {
+	name := obj.Name()
 	if token.IsExported(name) {
 		return name
 	}
-	return abi.FullName(method.Pkg(), name)
+	return abi.FullName(obj.Pkg(), name)
 }
 
 func methodExprSignature(sig *types.Signature) *types.Signature {
