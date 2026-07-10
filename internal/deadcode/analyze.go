@@ -165,10 +165,6 @@ func (d *pass) flood() {
 	for len(d.workQueue) > 0 {
 		sym := d.popWork()
 
-		if d.info.HasReflectMethod(sym) {
-			d.reflectSeen = true
-		}
-
 		_, usedInIface := d.usedInIface[sym]
 		for _, dst := range d.info.OrdinaryEdges(sym) {
 			if usedInIface {
@@ -177,17 +173,18 @@ func (d *pass) flood() {
 			d.markReachable(dst)
 		}
 
-		for _, typ := range d.info.UseIface(sym) {
-			d.markUsedInIface(typ)
-		}
-
-		for _, demand := range d.info.UseIfaceMethod(sym) {
-			key := ifaceMethodKey{iface: demand.Target, sig: demand.Sig}
-			d.ifaceMethod[key] = struct{}{}
-		}
-
-		for _, name := range d.info.UseNamedMethod(sym) {
-			d.genericIfaceMethod[name] = struct{}{}
+		for _, demand := range d.info.FuncDemands(sym) {
+			switch demand.Kind {
+			case meta.DemandReflectMethod:
+				d.reflectSeen = true
+			case meta.DemandUseIface:
+				d.markUsedInIface(demand.Target)
+			case meta.DemandIfaceMethod:
+				key := ifaceMethodKey{iface: demand.Target, sig: demand.Sig}
+				d.ifaceMethod[key] = struct{}{}
+			case meta.DemandNamedMethod:
+				d.genericIfaceMethod[demand.MethodName] = struct{}{}
+			}
 		}
 
 		if _, used := d.usedInIface[sym]; used {

@@ -5,9 +5,9 @@ package meta
 //
 // Merge strategy:
 //   - Symbols are interned into a global Symbol space; each package's local
-//     symbols are mapped via locToGlb. Edges, TypeChildren, MethodSlots and
-//     InterfaceMethods are NOT rewritten at merge time — they are translated
-//     lazily on query. Only the strings are interned up front.
+//     symbols are mapped via locToGlb. Edges, FuncDemands, TypeChildren,
+//     MethodSlots and InterfaceMethods are NOT rewritten at merge time — they
+//     are translated lazily on query. Only the strings are interned up front.
 //   - Duplicate symbols (e.g. linkonce type descriptors emitted by several
 //     packages) are assigned one owner by fact strength. Function-demand,
 //     MethodInfo, InterfaceInfo and TypeChildren facts outrank ordinary edges,
@@ -31,8 +31,9 @@ type GlobalSummary struct {
 	isInterface []bool // global Symbol → true if has iface methods
 
 	// lazily translated, cached on first access
-	methodInfo    map[Symbol][]GMethodSlot
-	interfaceInfo map[Symbol][]GMethodSig
+	methodInfo     map[Symbol][]GMethodSlot
+	interfaceInfo  map[Symbol][]GMethodSig
+	funcDemandInfo map[Symbol][]GFuncDemand
 
 	interfaces []Symbol
 }
@@ -57,11 +58,18 @@ type GMethodSig struct {
 	MType Symbol
 }
 
-// IfaceMethodDemand is a reachable interface method call: a demand that some
-// type's method matching Sig on interface Target be kept.
-type IfaceMethodDemand struct {
-	Target Symbol
-	Sig    GMethodSig
+// GFuncDemand is a function-level method/interface/reflection demand in the
+// global namespace. Valid fields depend on Kind:
+//
+//   - DemandUseIface: Target is the concrete type converted to an interface.
+//   - DemandIfaceMethod: Target is the interface and Sig is the demanded method.
+//   - DemandNamedMethod: MethodName is the constant MethodByName argument.
+//   - DemandReflectMethod: no additional fields are set.
+type GFuncDemand struct {
+	Kind       uint32
+	Target     Symbol
+	Sig        GMethodSig
+	MethodName Name
 }
 
 // symLoc identifies a (package, local symbol) pair. pkg < 0 means "no owner".
@@ -76,17 +84,18 @@ type symLoc struct {
 // indices, and type-kind flags. No per-symbol data is translated — only
 // string interning and CSR range checks happen here.
 //
-// MethodSlots / InterfaceMethods / reflect are translated lazily on first
+// MethodSlots / InterfaceMethods / FuncDemands are translated lazily on first
 // access and cached. This avoids translating thousands of unused slots in
 // the common case where DCE only reaches a fraction of all types.
 func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 	g := &GlobalSummary{
-		pkgs:          pkgs,
-		symIntern:     make(map[string]Symbol),
-		nameIntern:    make(map[string]Name),
-		locToGlb:      make([][]Symbol, len(pkgs)),
-		methodInfo:    make(map[Symbol][]GMethodSlot),
-		interfaceInfo: make(map[Symbol][]GMethodSig),
+		pkgs:           pkgs,
+		symIntern:      make(map[string]Symbol),
+		nameIntern:     make(map[string]Name),
+		locToGlb:       make([][]Symbol, len(pkgs)),
+		methodInfo:     make(map[Symbol][]GMethodSlot),
+		interfaceInfo:  make(map[Symbol][]GMethodSig),
+		funcDemandInfo: make(map[Symbol][]GFuncDemand),
 	}
 
 	// Phase 1: intern symbols, build locToGlb and owner, mark type kinds.
@@ -199,6 +208,29 @@ func (g *GlobalSummary) translateSigs(tab []Symbol, pm *PackageMeta, li LocalSym
 	return out
 }
 
+func (g *GlobalSummary) translateFuncDemands(tab []Symbol, pm *PackageMeta, li LocalSymbol) []GFuncDemand {
+	local := pm.funcDemands(li)
+	var out []GFuncDemand
+	for _, d := range local {
+		switch d.Kind {
+		case DemandUseIface:
+			out = append(out, GFuncDemand{Kind: d.Kind, Target: tab[d.Target]})
+		case DemandIfaceMethod:
+			iface := tab[d.Target]
+			sigs := g.InterfaceMethods(iface)
+			if int(d.Extra) < len(sigs) {
+				out = append(out, GFuncDemand{Kind: d.Kind, Target: iface, Sig: sigs[d.Extra]})
+			}
+		case DemandNamedMethod:
+			name := pm.nameString(NameRef{Off: d.Target, Len: d.Extra})
+			out = append(out, GFuncDemand{Kind: d.Kind, MethodName: g.internName(name)})
+		case DemandReflectMethod:
+			out = append(out, GFuncDemand{Kind: d.Kind})
+		}
+	}
+	return out
+}
+
 // ── symbol / name identity ────────────────────────────────────────────────────
 
 // LookupSymbol returns the global Symbol for a module-level symbol name.
@@ -260,17 +292,6 @@ func (g *GlobalSummary) InterfaceMethods(iface Symbol) []GMethodSig {
 	return sigs
 }
 
-// HasReflectMethod reports whether sym triggers conservative reflection handling.
-func (g *GlobalSummary) HasReflectMethod(sym Symbol) bool {
-	_, _, demands := g.ownerDemands(sym)
-	for _, d := range demands {
-		if d.Kind == DemandReflectMethod {
-			return true
-		}
-	}
-	return false
-}
-
 // ── lazy edge queries ─────────────────────────────────────────────────────────
 
 // ownerOrdinary returns the owning package's locToGlb table and raw local
@@ -283,16 +304,6 @@ func (g *GlobalSummary) ownerOrdinary(sym Symbol) ([]Symbol, []LocalSymbol) {
 	return tab, pm.ordinaryEdges(li)
 }
 
-// ownerDemands returns the owning package, its locToGlb table, and raw local
-// FuncDemand records for sym, or nil if sym has no owner.
-func (g *GlobalSummary) ownerDemands(sym Symbol) (*PackageMeta, []Symbol, []FuncDemand) {
-	pm, tab, li := g.ownerData(sym)
-	if pm == nil {
-		return nil, nil, nil
-	}
-	return pm, tab, pm.funcDemands(li)
-}
-
 // OrdinaryEdges returns plain reachability targets from sym (global Symbols).
 func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
 	tab, edges := g.ownerOrdinary(sym)
@@ -303,49 +314,19 @@ func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
 	return out
 }
 
-// UseIface returns concrete types converted to interfaces by sym.
-func (g *GlobalSummary) UseIface(sym Symbol) []Symbol {
-	_, tab, demands := g.ownerDemands(sym)
-	var out []Symbol
-	for _, d := range demands {
-		if d.Kind == DemandUseIface {
-			out = append(out, tab[d.Target])
-		}
+// FuncDemands returns the method/interface/reflection demands emitted by sym.
+// Records are translated to the global symbol and name spaces lazily and cached.
+func (g *GlobalSummary) FuncDemands(sym Symbol) []GFuncDemand {
+	if demands, ok := g.funcDemandInfo[sym]; ok {
+		return demands
 	}
-	return out
-}
-
-// UseIfaceMethod returns interface method demands emitted by sym.
-func (g *GlobalSummary) UseIfaceMethod(sym Symbol) []IfaceMethodDemand {
-	_, tab, demands := g.ownerDemands(sym)
-	var out []IfaceMethodDemand
-	for _, d := range demands {
-		if d.Kind != DemandIfaceMethod {
-			continue
-		}
-		iface := tab[d.Target]
-		sigs := g.InterfaceMethods(iface)
-		if int(d.Extra) < len(sigs) {
-			out = append(out, IfaceMethodDemand{Target: iface, Sig: sigs[d.Extra]})
-		}
-	}
-	return out
-}
-
-// UseNamedMethod returns constant MethodByName names referenced by sym.
-func (g *GlobalSummary) UseNamedMethod(sym Symbol) []Name {
-	pm, _, demands := g.ownerDemands(sym)
+	pm, tab, li := g.ownerData(sym)
 	if pm == nil {
 		return nil
 	}
-	var out []Name
-	for _, d := range demands {
-		if d.Kind == DemandNamedMethod {
-			name := pm.nameString(NameRef{Off: d.Target, Len: d.Extra})
-			out = append(out, g.internName(name))
-		}
-	}
-	return out
+	demands := g.translateFuncDemands(tab, pm, li)
+	g.funcDemandInfo[sym] = demands
+	return demands
 }
 
 // TypeChildren returns child type symbols for typ (global Symbols).

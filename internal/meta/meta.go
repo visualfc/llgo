@@ -27,20 +27,20 @@ type PackageMeta struct {
 	ifaceOff    uint32
 }
 
-// FuncDemand is a decoded function-demand record. Its in-memory layout
+// localFuncDemand is a decoded local function-demand record. Its in-memory layout
 // (Kind@0, Target@4, Extra@8, size 12) must match the on-disk wire layout exactly
-// so funcDemands can reinterpret the mmap bytes as []FuncDemand with no copy.
-type FuncDemand struct {
+// so funcDemands can reinterpret the mmap bytes with no copy.
+type localFuncDemand struct {
 	Kind   uint32
 	Target uint32 // LocalSymbol or stringTable offset (DemandNamedMethod)
 	Extra  uint32
 }
 
-// Compile-time assertion: FuncDemand must be exactly 12 bytes. If either const
+// Compile-time assertion: localFuncDemand must be exactly 12 bytes. If either const
 // goes negative the build fails, pinning the wire/struct layout match.
 const (
-	_ = uint(unsafe.Sizeof(FuncDemand{}) - 12)
-	_ = uint(12 - unsafe.Sizeof(FuncDemand{}))
+	_ = uint(unsafe.Sizeof(localFuncDemand{}) - 12)
+	_ = uint(12 - unsafe.Sizeof(localFuncDemand{}))
 )
 
 // MethodSlot is a decoded method slot record. Its layout (NameRef@0..8,
@@ -156,8 +156,8 @@ func (pm *PackageMeta) nfuncDemand(sym LocalSymbol) uint32 {
 
 // funcDemands returns all method/interface/reflection demands from sym as a
 // zero-copy view into the mmap region.
-func (pm *PackageMeta) funcDemands(sym LocalSymbol) []FuncDemand {
-	return csrSlice[FuncDemand](pm, pm.demandOff, sym, 12)
+func (pm *PackageMeta) funcDemands(sym LocalSymbol) []localFuncDemand {
+	return csrSlice[localFuncDemand](pm, pm.demandOff, sym, 12)
 }
 
 // NTypeChild returns the number of type children for sym, or 0 if none.

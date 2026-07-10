@@ -10,17 +10,17 @@ import (
 // correct total size and field offsets. If these drift, unsafe reinterpretation
 // of mmap bytes would silently corrupt — so we assert them explicitly.
 func TestWireLayout(t *testing.T) {
-	if got := unsafe.Sizeof(FuncDemand{}); got != 12 {
-		t.Errorf("sizeof(FuncDemand) = %d, want 12", got)
+	if got := unsafe.Sizeof(localFuncDemand{}); got != 12 {
+		t.Errorf("sizeof(localFuncDemand) = %d, want 12", got)
 	}
-	if got := unsafe.Offsetof(FuncDemand{}.Kind); got != 0 {
-		t.Errorf("FuncDemand.Kind offset = %d, want 0", got)
+	if got := unsafe.Offsetof(localFuncDemand{}.Kind); got != 0 {
+		t.Errorf("localFuncDemand.Kind offset = %d, want 0", got)
 	}
-	if got := unsafe.Offsetof(FuncDemand{}.Target); got != 4 {
-		t.Errorf("FuncDemand.Target offset = %d, want 4", got)
+	if got := unsafe.Offsetof(localFuncDemand{}.Target); got != 4 {
+		t.Errorf("localFuncDemand.Target offset = %d, want 4", got)
 	}
-	if got := unsafe.Offsetof(FuncDemand{}.Extra); got != 8 {
-		t.Errorf("FuncDemand.Extra offset = %d, want 8", got)
+	if got := unsafe.Offsetof(localFuncDemand{}.Extra); got != 8 {
+		t.Errorf("localFuncDemand.Extra offset = %d, want 8", got)
 	}
 
 	if got := unsafe.Sizeof(MethodSlot{}); got != 20 {

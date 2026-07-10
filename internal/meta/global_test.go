@@ -22,6 +22,8 @@ func buildPkgMain(t *testing.T) *meta.PackageMeta {
 	b.AddOrdinaryEdge(main, allocZ)
 	b.AddIfaceUse(main, myType)
 	b.AddIfaceMethodUse(main, reader, 0) // Reader.Read = index 0
+	b.AddNamedMethodEdge(main, "Close")
+	b.MarkReflect(main)
 
 	// Reader interface: { Read }
 	b.AddIfaceMethod(reader, "Read", readT)
@@ -91,22 +93,42 @@ func TestGlobalSummaryMerge(t *testing.T) {
 		t.Errorf("OrdinaryEdges(allocZ) = %v, want [runtime.mallocgc=%d]", azEdges, mallocgc)
 	}
 
-	// ── UseIface: main converts *Stringer ──────────────────────────────────────
-	ui := g.UseIface(main)
-	if len(ui) != 1 || ui[0] != myType {
-		t.Errorf("UseIface(main) = %v, want [*main.Stringer=%d]", ui, myType)
+	// ── FuncDemands: all function-level facts share one globalized query ────────
+	demands := g.FuncDemands(main)
+	if len(demands) != 4 {
+		t.Fatalf("FuncDemands(main): got %d, want 4", len(demands))
 	}
-
-	// ── UseIfaceMethod: main demands Reader.Read ───────────────────────────────
-	demands := g.UseIfaceMethod(main)
-	if len(demands) != 1 {
-		t.Fatalf("UseIfaceMethod(main): got %d, want 1", len(demands))
+	var ifaceMethod meta.GFuncDemand
+	seenUseIface, seenIfaceMethod, seenNamed, seenReflect := false, false, false, false
+	for _, demand := range demands {
+		switch demand.Kind {
+		case meta.DemandUseIface:
+			if demand.Target != myType {
+				t.Errorf("UseIface target = %d, want *Stringer=%d", demand.Target, myType)
+			}
+			seenUseIface = true
+		case meta.DemandIfaceMethod:
+			if demand.Target != reader {
+				t.Errorf("IfaceMethod target = %d, want reader=%d", demand.Target, reader)
+			}
+			if g.Name(demand.Sig.Name) != "Read" {
+				t.Errorf("IfaceMethod signature name = %q, want Read", g.Name(demand.Sig.Name))
+			}
+			ifaceMethod = demand
+			seenIfaceMethod = true
+		case meta.DemandNamedMethod:
+			if got := g.Name(demand.MethodName); got != "Close" {
+				t.Errorf("NamedMethod name = %q, want Close", got)
+			}
+			seenNamed = true
+		case meta.DemandReflectMethod:
+			seenReflect = true
+		default:
+			t.Errorf("unexpected demand kind %d", demand.Kind)
+		}
 	}
-	if demands[0].Target != reader {
-		t.Errorf("demand.Target = %d, want reader=%d", demands[0].Target, reader)
-	}
-	if g.Name(demands[0].Sig.Name) != "Read" {
-		t.Errorf("demand.Sig.Name = %q, want \"Read\"", g.Name(demands[0].Sig.Name))
+	if !seenUseIface || !seenIfaceMethod || !seenNamed || !seenReflect {
+		t.Errorf("FuncDemands missing kind: useIface=%t ifaceMethod=%t named=%t reflect=%t", seenUseIface, seenIfaceMethod, seenNamed, seenReflect)
 	}
 
 	// ── MethodSlots: *Stringer has Read, name interned globally ────────────────
@@ -119,8 +141,8 @@ func TestGlobalSummaryMerge(t *testing.T) {
 	}
 	// the method name "Read" must intern to the SAME global Name in both the
 	// interface sig and the concrete slot, so DCE can match them.
-	if slots[0].Name != demands[0].Sig.Name {
-		t.Errorf("method name not unified: slot=%d demand=%d", slots[0].Name, demands[0].Sig.Name)
+	if slots[0].Name != ifaceMethod.Sig.Name {
+		t.Errorf("method name not unified: slot=%d demand=%d", slots[0].Name, ifaceMethod.Sig.Name)
 	}
 
 	// ── enumeration ────────────────────────────────────────────────────────────
