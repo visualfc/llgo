@@ -102,6 +102,7 @@ ignore_esp32=(
   "./_demo/go/randcrypt" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/randdemo" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/readdir" # panic: internal/bytealg selected .s files require plan9asm translation
+  "./_demo/go/reflectcallfn" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectchanof" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectconv" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectcopy" # panic: internal/bytealg selected .s files require plan9asm translation
@@ -185,6 +186,7 @@ ignore_esp32c3_basic=(
   "./_demo/go/randcrypt" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/randdemo" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/readdir" # panic: internal/bytealg selected .s files require plan9asm translation
+  "./_demo/go/reflectcallfn" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectchanof" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectconv" # panic: internal/bytealg selected .s files require plan9asm translation
   "./_demo/go/reflectfunc" # panic: internal/bytealg selected .s files require plan9asm translation

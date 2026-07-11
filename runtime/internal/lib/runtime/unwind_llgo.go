@@ -25,6 +25,12 @@ func hasPrefix(s, prefix string) bool {
 // (caller falls back to the clite dladdr dump) when the FP walk or the
 // tables are unavailable.
 func panicTraceback(skip int) bool {
+	// Hardware-fault panics carry a fault-site pc snapshot; print that
+	// chain (fault pc through the Go callers) instead of walking the
+	// live stack, whose walk would start inside the fault plumbing.
+	if faultTraceback(skip) {
+		return true
+	}
 	if !fpUnwindAvailable() {
 		return false
 	}

@@ -61,6 +61,7 @@ var altPkgs = map[string]altPkgSpec{
 	"reflect":                 {mode: altPkgReplace},
 	"runtime":                 {mode: altPkgReplace},
 	"sync/atomic":             {mode: altPkgReplace},
+	"sync":                    {mode: altPkgReplace},
 	"syscall/js":              {mode: altPkgReplace},
 	"syscall":                 {mode: altPkgReplace},
 	"unique":                  {mode: altPkgReplace},

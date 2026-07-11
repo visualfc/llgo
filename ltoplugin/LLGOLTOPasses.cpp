@@ -39,6 +39,7 @@ static constexpr char ReflectValueMethodTypeIDPrefix[] =
 static constexpr char ReflectTypeMethodTypeIDPrefix[] =
     "go.method.type.reflect.";
 static constexpr unsigned MaxReflectMethodNames = 32;
+static constexpr unsigned MaxStringAnalysisDepth = 12;
 
 // Keep the replacement bounded. The pass is only meant to refine cases where
 // optimization has exposed a small finite set of names. If the set grows too
@@ -87,6 +88,100 @@ std::optional<std::string> readConstantString(Value *Ptr, Value *Len,
   return Bytes.substr(Start, Size).str();
 }
 
+bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
+                      SmallVectorImpl<std::string> &Names,
+                      unsigned Depth = 0);
+
+bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
+                                     SmallVectorImpl<std::string> &Names,
+                                     unsigned Depth = 0);
+
+std::optional<unsigned> singleExtractValueIndex(ExtractValueInst *Extract) {
+  if (!Extract || Extract->getNumIndices() != 1)
+    return std::nullopt;
+  return Extract->getIndices()[0];
+}
+
+std::optional<unsigned> singleInsertValueIndex(InsertValueInst *Insert) {
+  if (!Insert || Insert->getNumIndices() != 1)
+    return std::nullopt;
+  return Insert->getIndices()[0];
+}
+
+Value *findInsertedValue(Value *Aggregate, unsigned Index) {
+  for (Value *Cur = Aggregate;;) {
+    auto *Insert = dyn_cast<InsertValueInst>(Cur);
+    if (!Insert)
+      return nullptr;
+    auto InsertIndex = singleInsertValueIndex(Insert);
+    if (InsertIndex && *InsertIndex == Index)
+      return Insert->getInsertedValueOperand();
+    Cur = Insert->getAggregateOperand();
+  }
+}
+
+bool collectStringSetFromStringConstant(Constant *C, const DataLayout &DL,
+                                        SmallVectorImpl<std::string> &Names,
+                                        unsigned Depth) {
+  if (isa<ConstantAggregateZero>(C))
+    return addName(Names, "");
+
+  Constant *Ptr = C->getAggregateElement(0U);
+  Constant *Len = C->getAggregateElement(1U);
+  if (!Ptr || !Len)
+    return false;
+  return collectStringSet(Ptr, Len, DL, Names, Depth + 1);
+}
+
+bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
+                                     SmallVectorImpl<std::string> &Names,
+                                     unsigned Depth) {
+  if (Depth > MaxStringAnalysisDepth)
+    return false;
+
+  if (auto *C = dyn_cast<Constant>(StringValue))
+    return collectStringSetFromStringConstant(C, DL, Names, Depth);
+
+  if (auto *Insert = dyn_cast<InsertValueInst>(StringValue)) {
+    Value *Ptr = findInsertedValue(Insert, 0);
+    Value *Len = findInsertedValue(Insert, 1);
+    if (!Ptr || !Len)
+      return false;
+    return collectStringSet(Ptr, Len, DL, Names, Depth + 1);
+  }
+
+  if (auto *Sel = dyn_cast<SelectInst>(StringValue)) {
+    return collectStringSetFromStringValue(Sel->getTrueValue(), DL, Names,
+                                           Depth + 1) &&
+           collectStringSetFromStringValue(Sel->getFalseValue(), DL, Names,
+                                           Depth + 1);
+  }
+
+  if (auto *Phi = dyn_cast<PHINode>(StringValue)) {
+    for (Value *Incoming : Phi->incoming_values()) {
+      if (!collectStringSetFromStringValue(Incoming, DL, Names, Depth + 1))
+        return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+bool collectExtractedStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
+                               SmallVectorImpl<std::string> &Names,
+                               unsigned Depth) {
+  auto *PtrExtract = dyn_cast<ExtractValueInst>(Ptr);
+  auto *LenExtract = dyn_cast<ExtractValueInst>(Len);
+  auto PtrIndex = singleExtractValueIndex(PtrExtract);
+  auto LenIndex = singleExtractValueIndex(LenExtract);
+  if (!PtrIndex || !LenIndex || *PtrIndex != 0 || *LenIndex != 1 ||
+      PtrExtract->getAggregateOperand() != LenExtract->getAggregateOperand())
+    return false;
+  return collectStringSetFromStringValue(PtrExtract->getAggregateOperand(), DL,
+                                         Names, Depth + 1);
+}
+
 // Collect every possible string from a lowered (ptr, len) pair.
 //
 // The pass is intentionally all-or-nothing: it returns false as soon as any
@@ -95,14 +190,20 @@ std::optional<std::string> readConstantString(Value *Ptr, Value *Len,
 // make GlobalDCE drop a method that may still be reachable at runtime.
 bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
                       SmallVectorImpl<std::string> &Names,
-                      unsigned Depth = 0) {
-  if (Depth > 8)
+                      unsigned Depth) {
+  if (Depth > MaxStringAnalysisDepth)
     return false;
 
   Ptr = Ptr->stripPointerCasts();
 
+  if (auto *LenC = dyn_cast<ConstantInt>(Len); LenC && LenC->isZero())
+    return addName(Names, "");
+
   if (auto Name = readConstantString(Ptr, Len, DL))
     return addName(Names, *Name);
+
+  if (collectExtractedStringSet(Ptr, Len, DL, Names, Depth))
+    return true;
 
   auto *PtrSel = dyn_cast<SelectInst>(Ptr);
   auto *LenSel = dyn_cast<SelectInst>(Len);
