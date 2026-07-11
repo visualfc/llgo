@@ -171,9 +171,6 @@ func Open(path string) (*PackageMeta, error) {
 		return nil, err
 	}
 	size := int(fi.Size())
-	if size < headerSize {
-		return nil, fmt.Errorf("meta: file too small: %s", path)
-	}
 
 	raw, err := syscall.Mmap(int(f.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
@@ -210,12 +207,9 @@ func (pm *PackageMeta) Close() error {
 }
 
 // symbolName returns the name of package-local sym as a string that aliases the
-// backing bytes, or "" if sym is out of range. For a PackageMeta returned from
-// Open, the string must not be used after Close.
+// backing bytes. For a PackageMeta returned from Open, the string must not be
+// used after Close.
 func (pm *PackageMeta) symbolName(sym Symbol) string {
-	if uint32(sym) >= pm.nsyms {
-		return ""
-	}
 	const recSize = 12
 	base := pm.symOff + 4 + uint32(sym)*recSize
 	nameOff := binary.LittleEndian.Uint32(pm.raw[base+0:])
@@ -303,12 +297,9 @@ func (pm *PackageMeta) hasFuncDemand(sym Symbol) bool {
 
 // ── internal helpers ──────────────────────────────────────────────────────────
 
-// newPackageMeta checks the minimum size, magic, and version, then decodes the
-// section offsets from the fixed header.
+// newPackageMeta checks the magic and version, then decodes the section offsets
+// from the fixed header.
 func newPackageMeta(raw []byte) (*PackageMeta, error) {
-	if len(raw) < headerSize {
-		return nil, fmt.Errorf("meta: raw too small (%d bytes)", len(raw))
-	}
 	if string(raw[0:4]) != magic {
 		return nil, fmt.Errorf("meta: bad magic %q", raw[0:4])
 	}
@@ -332,12 +323,9 @@ func newPackageMeta(raw []byte) (*PackageMeta, error) {
 }
 
 // csrSlice returns the records for package-local sym from a CSR section, or nil
-// if sym is out of range or has no records. The returned slice aliases pm.raw.
-// recSize must match unsafe.Sizeof(T).
+// if it has no records. The returned slice aliases pm.raw. recSize must match
+// unsafe.Sizeof(T).
 func csrSlice[T any](pm *PackageMeta, sectionOff uint32, sym Symbol, recSize uintptr) []T {
-	if uint32(sym) >= pm.nsyms {
-		return nil
-	}
 	start, end := pm.csrRange(sectionOff, sym)
 	if start == end {
 		return nil

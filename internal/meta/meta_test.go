@@ -1,7 +1,10 @@
 package meta
 
 import (
+	"encoding/binary"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"unsafe"
 )
@@ -265,5 +268,60 @@ func TestRoundTripFile(t *testing.T) {
 	edges := pm2.ordinaryEdges(fn)
 	if len(edges) != 1 || edges[0] != dep {
 		t.Errorf("OrdinaryEdges after file round-trip = %v", edges)
+	}
+}
+
+func TestOpenErrors(t *testing.T) {
+	t.Run("open", func(t *testing.T) {
+		if _, err := Open(filepath.Join(t.TempDir(), "missing.meta")); err == nil {
+			t.Fatal("Open succeeded for a missing file")
+		}
+	})
+
+	t.Run("mmap", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "empty.meta")
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Open(path); err == nil || !strings.Contains(err.Error(), "meta: mmap") {
+			t.Fatalf("Open error = %v, want mmap error", err)
+		}
+	})
+
+	tests := []struct {
+		name string
+		raw  func() []byte
+		want string
+	}{
+		{
+			name: "magic",
+			raw: func() []byte {
+				raw := make([]byte, headerSize)
+				copy(raw, "NOPE")
+				return raw
+			},
+			want: "meta: bad magic",
+		},
+		{
+			name: "version",
+			raw: func() []byte {
+				raw := make([]byte, headerSize)
+				copy(raw, magic)
+				binary.LittleEndian.PutUint32(raw[4:8], version+1)
+				return raw
+			},
+			want: "meta: unsupported version 2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tt.name+".meta")
+			if err := os.WriteFile(path, tt.raw(), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Open(path); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Open error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }

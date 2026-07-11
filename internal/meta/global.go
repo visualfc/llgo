@@ -160,13 +160,7 @@ func (g *GlobalSummary) internName(s string) Name {
 
 // ownerData returns the owning package and locToGlb table for sym.
 func (g *GlobalSummary) ownerData(sym Symbol) (*PackageMeta, []Symbol, Symbol) {
-	if int(sym) >= len(g.owner) {
-		return nil, nil, 0
-	}
 	loc := g.owner[sym]
-	if loc.pkg < 0 {
-		return nil, nil, 0
-	}
 	return g.pkgs[loc.pkg], g.locToGlb[loc.pkg], loc.local
 }
 
@@ -229,18 +223,12 @@ func (g *GlobalSummary) LookupSymbol(name string) (Symbol, bool) {
 
 // SymbolName returns the text of a global Symbol.
 func (g *GlobalSummary) SymbolName(sym Symbol) string {
-	if int(sym) < len(g.symStrings) {
-		return g.symStrings[sym]
-	}
-	return ""
+	return g.symStrings[sym]
 }
 
 // Name returns the text of a global Name.
 func (g *GlobalSummary) Name(n Name) string {
-	if int(n) < len(g.nameStrings) {
-		return g.nameStrings[n]
-	}
-	return ""
+	return g.nameStrings[n]
 }
 
 // ── enumeration ───────────────────────────────────────────────────────────────
@@ -254,18 +242,12 @@ func (g *GlobalSummary) Interfaces() []Symbol { return g.interfaces }
 // MethodSlots returns the ABI method slots for concrete type typ.
 func (g *GlobalSummary) MethodSlots(typ Symbol) []MethodSlot {
 	pm, tab, li := g.ownerData(typ)
-	if pm == nil {
-		return nil
-	}
 	return g.translateSlots(tab, pm, li)
 }
 
 // InterfaceMethods returns the method set for interface iface.
 func (g *GlobalSummary) InterfaceMethods(iface Symbol) []MethodSig {
 	pm, tab, li := g.ownerData(iface)
-	if pm == nil {
-		return nil
-	}
 	return g.translateSigs(tab, pm, li)
 }
 
@@ -274,9 +256,6 @@ func (g *GlobalSummary) InterfaceMethods(iface Symbol) []MethodSig {
 // OrdinaryEdges returns plain reachability targets from sym (global Symbols).
 func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
 	pm, tab, li := g.ownerData(sym)
-	if pm == nil {
-		return nil
-	}
 	edges := pm.ordinaryEdges(li)
 	var out []Symbol
 	for _, dst := range edges {
@@ -289,18 +268,12 @@ func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
 // Records are translated to the global symbol and name spaces on demand.
 func (g *GlobalSummary) FuncDemands(sym Symbol) []FuncDemand {
 	pm, tab, li := g.ownerData(sym)
-	if pm == nil {
-		return nil
-	}
 	return g.translateFuncDemands(tab, pm, li)
 }
 
 // TypeChildren returns child type symbols for typ (global Symbols).
 func (g *GlobalSummary) TypeChildren(typ Symbol) []Symbol {
 	pm, tab, li := g.ownerData(typ)
-	if pm == nil {
-		return nil
-	}
 	local := pm.typeChildren(li)
 	if len(local) == 0 {
 		return nil

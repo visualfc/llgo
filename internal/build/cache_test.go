@@ -220,6 +220,54 @@ func writeTestMetaFile(t *testing.T, path string) {
 	}
 }
 
+func TestWriteMetaErrors(t *testing.T) {
+	pm, err := meta.NewBuilder().Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("create directory", func(t *testing.T) {
+		blocker := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := writeMeta(filepath.Join(blocker, "test.meta"), pm)
+		if err == nil || !strings.Contains(err.Error(), "create meta dir") {
+			t.Fatalf("writeMeta error = %v, want create meta dir error", err)
+		}
+	})
+
+	t.Run("create temporary file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), strings.Repeat("x", 256))
+		err := writeMeta(path, pm)
+		if err == nil || !strings.Contains(err.Error(), "create temp meta") {
+			t.Fatalf("writeMeta error = %v, want create temp meta error", err)
+		}
+	})
+
+	t.Run("publish", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.meta")
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "keep"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := writeMeta(path, pm)
+		if err == nil || !strings.Contains(err.Error(), "publish meta") {
+			t.Fatalf("writeMeta error = %v, want publish meta error", err)
+		}
+		matches, err := filepath.Glob(path + ".tmp-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(matches) != 0 {
+			t.Fatalf("temporary metadata files were not removed: %v", matches)
+		}
+	})
+}
+
 func TestTargetTriple(t *testing.T) {
 	tests := []struct {
 		goos, goarch, llvmTarget, abi string

@@ -80,6 +80,9 @@ func TestGlobalSummaryMerge(t *testing.T) {
 	mallocgc := sym("runtime.mallocgc")
 	myType := sym("*main.Stringer")
 	reader := sym("main.Reader")
+	if got := g.SymbolName(main); got != "main.main" {
+		t.Fatalf("SymbolName(main) = %q, want main.main", got)
+	}
 
 	// ── lazy OrdinaryEdges: main → runtime.AllocZ (cross-package) ──────────────
 	mainEdges := g.OrdinaryEdges(main)
