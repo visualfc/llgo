@@ -24,14 +24,10 @@ type GlobalSummary struct {
 	symStrings []string   // Symbol → text
 	locToGlb   [][]Symbol // [pkgIdx][localSym] → global Symbol
 	owner      []symLoc   // global Symbol → owning (pkg, local); pkg<0 if none
-	ownerRank  []uint8
 
 	// method-name space (distinct from symbols)
 	nameIntern  map[string]Name
 	nameStrings []string // Name → text
-
-	// per-type flags set at merge time (no translation, just CSR range checks)
-	isInterface []bool // global Symbol → true if has iface methods
 
 	// lazily translated, cached on first access
 	methodInfo     map[Symbol][]MethodSlot
@@ -45,6 +41,21 @@ type GlobalSummary struct {
 type symLoc struct {
 	pkg   int32
 	local Symbol
+}
+
+type ownerKind uint8
+
+const (
+	ownerNone ownerKind = iota
+	ownerOrdinary
+	ownerType
+	ownerInterface
+	ownerFunction
+)
+
+// ownerState exists only while NewGlobalSummary selects owners.
+type ownerState struct {
+	kind ownerKind
 }
 
 // NewGlobalSummary merges package-local metadata into a whole-program view.
@@ -66,27 +77,26 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 		interfaceInfo:  make(map[Symbol][]MethodSig),
 		funcDemandInfo: make(map[Symbol][]FuncDemand),
 	}
+	var ownerStates []ownerState
+	var interfaceSeen []bool
 
 	// Phase 1: intern symbols, build locToGlb and owner, mark type kinds.
 	// Touches no edges, translates no slot/sig data.
 	for pi, pm := range pkgs {
-		if pm == nil {
-			continue
-		}
 		n := pm.nsyms
 		tab := make([]Symbol, n)
 		for li := Symbol(0); li < Symbol(n); li++ {
-			gs := g.internSymbol(pm.symbolName(li))
-			tab[li] = gs
-			rank := ownerRank(pm, li)
-			if rank > g.ownerRank[gs] {
-				g.owner[gs] = symLoc{pkg: int32(pi), local: li}
-				g.ownerRank[gs] = rank
+			gs, added := g.internSymbol(pm.symbolName(li))
+			if added {
+				ownerStates = append(ownerStates, ownerState{})
+				interfaceSeen = append(interfaceSeen, false)
 			}
+			tab[li] = gs
+			kind := g.considerOwner(gs, symLoc{pkg: int32(pi), local: li}, pm, li, &ownerStates[gs])
 
-			// mark type kinds (no translation, just CSR range checks)
-			if pm.nifaceMethod(li) > 0 && !g.isInterface[gs] {
-				g.isInterface[gs] = true
+			// Collect each interface with method information once.
+			if kind == ownerInterface && !interfaceSeen[gs] {
+				interfaceSeen[gs] = true
 				g.interfaces = append(g.interfaces, gs)
 			}
 		}
@@ -95,38 +105,56 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 	return g, nil
 }
 
-// ownerRank reports whether li carries facts in pm and how authoritative those
-// facts are for lazy global queries. Higher rank wins; equal rank keeps the
-// first package, preserving deterministic first-wins behavior for equivalent
-// duplicate ordinary/linkonce facts.
-func ownerRank(pm *PackageMeta, li Symbol) uint8 {
+func packageOwnerKind(pm *PackageMeta, local Symbol) ownerKind {
 	switch {
-	case pm.hasFuncDemand(li):
-		return 5
-	case pm.nmethodSlot(li) > 0:
-		return 4
-	case pm.nifaceMethod(li) > 0:
-		return 3
-	case pm.ntypeChild(li) > 0:
-		return 2
-	case pm.hasOrdinaryEdges(li):
-		return 1
+	case pm.hasFuncDemand(local):
+		return ownerFunction
+	case pm.nifaceMethod(local) > 0:
+		return ownerInterface
+	case pm.nmethodSlot(local) > 0 || pm.ntypeChild(local) > 0:
+		return ownerType
+	case pm.hasOrdinaryEdges(local):
+		return ownerOrdinary
 	default:
-		return 0
+		return ownerNone
 	}
 }
 
-func (g *GlobalSummary) internSymbol(s string) Symbol {
+// considerOwner merges one package-local owner candidate into the global view
+// and returns the selected owner's semantic kind.
+func (g *GlobalSummary) considerOwner(global Symbol, candidate symLoc, pm *PackageMeta, local Symbol, state *ownerState) ownerKind {
+	if state.kind == ownerFunction {
+		return state.kind
+	}
+
+	candidateKind := packageOwnerKind(pm, local)
+	switch candidateKind {
+	case ownerFunction:
+		g.owner[global] = candidate
+		state.kind = ownerFunction
+	case ownerType, ownerInterface:
+		if state.kind == ownerNone || state.kind == ownerOrdinary {
+			g.owner[global] = candidate
+			state.kind = candidateKind
+		}
+	case ownerOrdinary:
+		if state.kind == ownerNone {
+			g.owner[global] = candidate
+			state.kind = ownerOrdinary
+		}
+	}
+	return state.kind
+}
+
+func (g *GlobalSummary) internSymbol(s string) (Symbol, bool) {
 	if id, ok := g.symIntern[s]; ok {
-		return id
+		return id, false
 	}
 	id := Symbol(len(g.symStrings))
 	g.symIntern[s] = id
 	g.symStrings = append(g.symStrings, s)
 	g.owner = append(g.owner, symLoc{pkg: -1})
-	g.ownerRank = append(g.ownerRank, 0)
-	g.isInterface = append(g.isInterface, false)
-	return id
+	return id, true
 }
 
 func (g *GlobalSummary) internName(s string) Name {
@@ -264,19 +292,13 @@ func (g *GlobalSummary) InterfaceMethods(iface Symbol) []MethodSig {
 
 // ── lazy edge queries ─────────────────────────────────────────────────────────
 
-// ownerOrdinary returns the owning package's locToGlb table and raw local
-// ordinary edges for sym, or nil if sym has no owner.
-func (g *GlobalSummary) ownerOrdinary(sym Symbol) ([]Symbol, []Symbol) {
-	pm, tab, li := g.ownerData(sym)
-	if pm == nil {
-		return nil, nil
-	}
-	return tab, pm.ordinaryEdges(li)
-}
-
 // OrdinaryEdges returns plain reachability targets from sym (global Symbols).
 func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
-	tab, edges := g.ownerOrdinary(sym)
+	pm, tab, li := g.ownerData(sym)
+	if pm == nil {
+		return nil
+	}
+	edges := pm.ordinaryEdges(li)
 	var out []Symbol
 	for _, dst := range edges {
 		out = append(out, tab[dst])

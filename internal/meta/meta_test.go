@@ -226,14 +226,6 @@ func TestRoundTrip(t *testing.T) {
 		t.Errorf("NIfaceMethod(main) > 0, want 0")
 	}
 
-	// ── verify reflect demand ─────────────────────────────────────────────────
-
-	if !pm.hasReflect(helper) {
-		t.Errorf("HasReflect(helper) = false, want true")
-	}
-	if pm.hasReflect(main) {
-		t.Errorf("HasReflect(main) = true, want false")
-	}
 }
 
 // TestRoundTripFile writes the meta to disk and reads it back via Open.

@@ -237,3 +237,46 @@ func TestGlobalSummaryOwnerPrefersInterfaceInfoOverOrdinaryEdges(t *testing.T) {
 		t.Fatalf("InterfaceMethods(_llgo_io.Reader)[0].Name = %q, want Read", got)
 	}
 }
+
+func TestGlobalSummaryOwnerPrefersFuncDemandOverOrdinaryEdges(t *testing.T) {
+	refPkg := func() *meta.PackageMeta {
+		b := meta.NewBuilder()
+		fn := b.Sym("pkg.use")
+		b.AddOrdinaryEdge(fn, b.Sym("pkg.stale"))
+		pm, err := b.Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pm
+	}()
+	defPkg := func() *meta.PackageMeta {
+		b := meta.NewBuilder()
+		fn := b.Sym("pkg.use")
+		b.AddOrdinaryEdge(fn, b.Sym("pkg.live"))
+		b.AddIfaceUse(fn, b.Sym("pkg.T"))
+		pm, err := b.Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pm
+	}()
+	defer refPkg.Close()
+	defer defPkg.Close()
+
+	g, err := meta.NewGlobalSummary([]*meta.PackageMeta{refPkg, defPkg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, _ := g.LookupSymbol("pkg.use")
+	live, _ := g.LookupSymbol("pkg.live")
+	typ, _ := g.LookupSymbol("pkg.T")
+
+	edges := g.OrdinaryEdges(fn)
+	if len(edges) != 1 || edges[0] != live {
+		t.Fatalf("OrdinaryEdges(pkg.use) = %v, want [%d]", edges, live)
+	}
+	demands := g.FuncDemands(fn)
+	if len(demands) != 1 || demands[0].Kind != meta.DemandUseIface || demands[0].Target != typ {
+		t.Fatalf("FuncDemands(pkg.use) = %+v, want UseIface(%d)", demands, typ)
+	}
+}

@@ -229,16 +229,6 @@ func (pm *PackageMeta) ifaceMethods(sym Symbol) []localMethodSig {
 	return csrSlice[localMethodSig](pm, pm.ifaceOff, sym, 12)
 }
 
-// HasReflect reports whether sym triggers conservative reflection handling.
-func (pm *PackageMeta) hasReflect(sym Symbol) bool {
-	for _, d := range pm.funcDemands(sym) {
-		if d.Kind == DemandReflectMethod {
-			return true
-		}
-	}
-	return false
-}
-
 // HasOrdinaryEdges reports whether sym has any plain reachability edges.
 func (pm *PackageMeta) hasOrdinaryEdges(sym Symbol) bool {
 	return pm.nordinaryEdge(sym) > 0
