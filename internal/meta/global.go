@@ -50,7 +50,23 @@ const (
 
 // ownerState exists only while NewGlobalSummary selects owners.
 type ownerState struct {
-	kind ownerKind
+	priority ownerPriority
+}
+
+type ownerPriority uint8
+
+const (
+	ownerPriorityNone ownerPriority = iota
+	ownerPriorityOrdinary
+	ownerPriorityTypeChildren
+	ownerPriorityInterface
+	ownerPriorityMethod
+	ownerPriorityFunction
+)
+
+type ownerCandidate struct {
+	kind     ownerKind
+	priority ownerPriority
 }
 
 // NewGlobalSummary merges package-local metadata into a whole-program view.
@@ -96,45 +112,33 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 	return g, nil
 }
 
-func packageOwnerKind(pm *PackageMeta, local Symbol) ownerKind {
+func packageOwnerCandidate(pm *PackageMeta, local Symbol) ownerCandidate {
 	switch {
 	case pm.hasFuncDemand(local):
-		return ownerFunction
+		return ownerCandidate{ownerFunction, ownerPriorityFunction}
+	case pm.nmethodSlot(local) > 0:
+		return ownerCandidate{ownerType, ownerPriorityMethod}
 	case pm.nifaceMethod(local) > 0:
-		return ownerInterface
-	case pm.nmethodSlot(local) > 0 || pm.ntypeChild(local) > 0:
-		return ownerType
+		return ownerCandidate{ownerInterface, ownerPriorityInterface}
+	case pm.ntypeChild(local) > 0:
+		return ownerCandidate{ownerType, ownerPriorityTypeChildren}
 	case pm.hasOrdinaryEdges(local):
-		return ownerOrdinary
+		return ownerCandidate{ownerOrdinary, ownerPriorityOrdinary}
 	default:
-		return ownerNone
+		return ownerCandidate{ownerNone, ownerPriorityNone}
 	}
 }
 
 // considerOwner merges one package-local owner candidate into the global view
-// and returns the selected owner's semantic kind.
+// and returns the candidate's semantic kind. The caller uses that kind to
+// enumerate interfaces independently of which package ultimately owns a symbol.
 func (g *GlobalSummary) considerOwner(global Symbol, candidate symLoc, pm *PackageMeta, local Symbol, state *ownerState) ownerKind {
-	if state.kind == ownerFunction {
-		return state.kind
-	}
-
-	candidateKind := packageOwnerKind(pm, local)
-	switch candidateKind {
-	case ownerFunction:
+	facts := packageOwnerCandidate(pm, local)
+	if facts.priority > state.priority {
 		g.owner[global] = candidate
-		state.kind = ownerFunction
-	case ownerType, ownerInterface:
-		if state.kind == ownerNone || state.kind == ownerOrdinary {
-			g.owner[global] = candidate
-			state.kind = candidateKind
-		}
-	case ownerOrdinary:
-		if state.kind == ownerNone {
-			g.owner[global] = candidate
-			state.kind = ownerOrdinary
-		}
+		state.priority = facts.priority
 	}
-	return state.kind
+	return facts.kind
 }
 
 func (g *GlobalSummary) internSymbol(s string) (Symbol, bool) {
