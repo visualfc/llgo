@@ -9,6 +9,31 @@ import (
 	"unsafe"
 )
 
+// nameRef references a name string by its byte range in the string table.
+type nameRef struct {
+	Off uint32
+	Len uint32
+}
+
+const (
+	magic   = "LLPM"
+	version = 2
+)
+
+const (
+	secStringTable = iota
+	secSymbols
+	secOrdinaryEdges
+	secFuncDemand
+	secTypeChildren
+	secMethodInfo
+	secIfaceInfo
+	numSections
+)
+
+// headerSize = magic(4) + version(4) + sectionOffsets(numSections*4)
+const headerSize = 4 + 4 + numSections*4
+
 // PackageMeta is a zero-copy view over a .meta file byte slice.
 // The underlying bytes may come from an mmap'd file or from Builder.Build().
 // All query methods read directly from the byte slice with no allocation.

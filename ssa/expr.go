@@ -1353,7 +1353,7 @@ func (p Package) RecordReflectMethodByName(funcName, name string) {
 	}
 	p.MethodByName[name] = none{}
 	if mb := p.metaBuilder; mb != nil {
-		mb.AddNamedMethodEdge(mb.Sym(funcName), name)
+		mb.AddNamedMethodUse(mb.Sym(funcName), name)
 	}
 }
 

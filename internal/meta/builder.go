@@ -109,63 +109,33 @@ func (b *Builder) sym(name string) LocalSymbol {
 	return id
 }
 
-// addEdge records a directed edge from src to dst with the given kind and
-// extra. This is a private dispatch helper — external callers (and even most
-// callers within this package) should use one of the typed methods below
-// (AddOrdinaryEdge, AddIfaceUse, AddIfaceMethodUse, AddNamedMethodEdge)
-// instead, so they never need to know about the wire-format kind tags.
-//
-//   - edgeOrdinary:       dst is a LocalSymbol; extra = 0
-//   - edgeUseIface:       dst is a LocalSymbol (type); extra = 0
-//   - edgeUseIfaceMethod: dst is a LocalSymbol (interface); extra = method index
-//   - edgeUseNamedMethod: dst is a string-table offset; extra = string length
-func (b *Builder) addEdge(src, dst LocalSymbol, kind uint8, extra uint32) {
-	switch kind {
-	case edgeOrdinary:
-		b.ordinaryEdges[src] = append(b.ordinaryEdges[src], dst)
-	case edgeUseIface:
-		b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
-			kind:   DemandUseIface,
-			target: uint32(dst),
-			extra:  extra,
-		})
-	case edgeUseIfaceMethod:
-		b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
-			kind:   DemandIfaceMethod,
-			target: uint32(dst),
-			extra:  extra,
-		})
-	case edgeUseNamedMethod:
-		b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
-			kind:   DemandNamedMethod,
-			target: uint32(dst),
-			extra:  extra,
-		})
-	}
-}
-
 // AddOrdinaryEdge records a plain symbol-to-symbol reference from src to dst
 // (call, type use, global var reference, etc.).
 func (b *Builder) AddOrdinaryEdge(src, dst LocalSymbol) {
-	b.addEdge(src, dst, edgeOrdinary, 0)
+	b.ordinaryEdges[src] = append(b.ordinaryEdges[src], dst)
 }
 
 // AddIfaceUse records that src converts a value of type typ to an interface.
 func (b *Builder) AddIfaceUse(src, typ LocalSymbol) {
-	b.addEdge(src, typ, edgeUseIface, 0)
+	b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
+		kind:   DemandUseIface,
+		target: uint32(typ),
+	})
 }
 
 // AddIfaceMethodUse records that src calls the methodIndex-th method (in
 // declaration order) of interface iface.
 func (b *Builder) AddIfaceMethodUse(src, iface LocalSymbol, methodIndex uint32) {
-	b.addEdge(src, iface, edgeUseIfaceMethod, methodIndex)
+	b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
+		kind:   DemandIfaceMethod,
+		target: uint32(iface),
+		extra:  methodIndex,
+	})
 }
 
-// AddNamedMethodEdge records that src does a constant MethodByName(methodName)
-// call. Unlike the other typed Add*Use methods, the target here is a method
-// name string rather than a LocalSymbol: its byte offset and length in the
-// string table are stored together as a nameRef.
-func (b *Builder) AddNamedMethodEdge(src LocalSymbol, methodName string) {
+// AddNamedMethodUse records that src does a constant MethodByName(methodName)
+// call. The method name is stored as a string-table reference.
+func (b *Builder) AddNamedMethodUse(src LocalSymbol, methodName string) {
 	ref := b.internName(methodName)
 	b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
 		kind:   DemandNamedMethod,

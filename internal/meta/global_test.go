@@ -22,7 +22,7 @@ func buildPkgMain(t *testing.T) *meta.PackageMeta {
 	b.AddOrdinaryEdge(main, allocZ)
 	b.AddIfaceUse(main, myType)
 	b.AddIfaceMethodUse(main, reader, 0) // Reader.Read = index 0
-	b.AddNamedMethodEdge(main, "Close")
+	b.AddNamedMethodUse(main, "Close")
 	b.MarkReflect(main)
 
 	// Reader interface: { Read }

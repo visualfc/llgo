@@ -41,40 +41,6 @@ type GlobalSummary struct {
 	interfaces []Symbol
 }
 
-// Symbol is a whole-program symbol ID in GlobalSummary's unified namespace.
-type Symbol uint32
-
-// Name is a whole-program method-name ID, in a namespace distinct from Symbol.
-type Name uint32
-
-// MethodSlot is a method slot in the global namespace.
-type MethodSlot struct {
-	Name  Name
-	MType Symbol
-	IFn   Symbol
-	TFn   Symbol
-}
-
-// MethodSig is an interface method signature in the global namespace.
-type MethodSig struct {
-	Name  Name
-	MType Symbol
-}
-
-// FuncDemand is a function-level method/interface/reflection demand in the
-// global namespace. Valid fields depend on Kind:
-//
-//   - DemandUseIface: Target is the concrete type converted to an interface.
-//   - DemandIfaceMethod: Target is the interface and Sig is the demanded method.
-//   - DemandNamedMethod: MethodName is the constant MethodByName argument.
-//   - DemandReflectMethod: no additional fields are set.
-type FuncDemand struct {
-	Kind       DemandKind
-	Target     Symbol
-	Sig        MethodSig
-	MethodName Name
-}
-
 // symLoc identifies a (package, local symbol) pair. pkg < 0 means "no owner".
 type symLoc struct {
 	pkg   int32

@@ -101,7 +101,7 @@ func TestRoundTrip(t *testing.T) {
 	b.AddIfaceMethodUse(main, myIface, 0)
 
 	// named method call
-	b.AddNamedMethodEdge(helper, "ServeHTTP")
+	b.AddNamedMethodUse(helper, "ServeHTTP")
 
 	// TypeChildren: *MyStruct contains Inner
 	b.AddTypeChild(myType, myField)

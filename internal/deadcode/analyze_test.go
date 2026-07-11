@@ -221,7 +221,7 @@ func TestAnalyze(t *testing.T) {
 				b.addEdge(main, use)
 				b.addEdge(main, typ)
 				b.addUseIface(main, typ)
-				b.b.AddNamedMethodEdge(use, mSig.name)
+				b.b.AddNamedMethodUse(use, mSig.name)
 			}),
 			want: map[string][]int{"_llgo_pkg.T": {0}},
 		},
@@ -386,7 +386,7 @@ func TestAnalyze(t *testing.T) {
 				b.addEdge(main, typ)
 				b.addUseIface(unreachable, typ)
 				b.addUseIfaceMethod(unreachable, iface, mSig)
-				b.b.AddNamedMethodEdge(unreachable, mSig.name)
+				b.b.AddNamedMethodUse(unreachable, mSig.name)
 				b.b.MarkReflect(unreachable)
 			}),
 			want: map[string][]int{},
