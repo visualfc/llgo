@@ -1,8 +1,6 @@
 coverage:
   ignore:
     - "chore"
-    - "cmd"
-    - "cmd/internal"
     - "cmd/internal/base"
     - "cmd/internal/build"
     - "cmd/internal/clean"
@@ -27,9 +25,7 @@ coverage:
     - "internal/monitor"
     - "runtime/_patch"
     - "runtime/build.go"
-    - "test"
     - "test/go"
-    - "xtool"
     - "xtool/ar"
     - "xtool/clang"
     - "xtool/env"
