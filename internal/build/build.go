@@ -24,7 +24,6 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -35,7 +34,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -44,8 +42,6 @@ import (
 	"github.com/goplus/llgo/internal/cabi"
 	"github.com/goplus/llgo/internal/clang"
 	"github.com/goplus/llgo/internal/crosscompile"
-	"github.com/goplus/llgo/internal/dcepass"
-	"github.com/goplus/llgo/internal/deadcode"
 	"github.com/goplus/llgo/internal/env"
 	"github.com/goplus/llgo/internal/firmware"
 	"github.com/goplus/llgo/internal/flash"
@@ -1132,11 +1128,6 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		pcLineInfo:    pcLineInfo,
 		funcInfoStubs: funcInfoStubs,
 	})
-	if ctx.buildConf.deadcodeDropEnabled() {
-		if err := applyDeadcodeDropOverrides(ctx, pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
-			return err
-		}
-	}
 	entryObjFile, err := exportObject(ctx, "entry_main", entryPkg.ExportFile, entryPkg.LPkg)
 	if err != nil {
 		return err
@@ -1193,104 +1184,6 @@ func linkedModuleGlobals(pkgs []Package) map[string]none {
 		}
 	}
 	return seen
-}
-
-func applyDeadcodeDropOverrides(ctx *context, mainPkg *packages.Package, pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
-	metas := linkedPackageMetas(pkgs)
-	if len(metas) == 0 {
-		return nil
-	}
-	mergeStart := time.Now()
-	summary, err := meta.NewGlobalSummary(metas)
-	if err != nil {
-		return err
-	}
-	mergeDur := time.Since(mergeStart)
-
-	roots := dceEntryRootCandidates(mainPkg, needRuntime)
-	analyzeStart := time.Now()
-	liveSlots := deadcode.Analyze(summary, roots)
-	analyzeDur := time.Since(analyzeStart)
-
-	if len(liveSlots) == 0 {
-		return nil
-	}
-	if verbose {
-		liveCount := 0
-		for _, slots := range liveSlots {
-			liveCount += len(slots)
-		}
-		fmt.Fprintf(os.Stderr, "[deadcodedrop] packages=%d roots=%s merge=%v analyze=%v live method slots=%d types=%d\n",
-			len(metas), strings.Join(roots, ","), mergeDur, analyzeDur, liveCount, len(liveSlots))
-		err := dcepass.EmitStrongTypeOverridesDebug(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, os.Stderr)
-		printDeadcodeDropMetaInputs(ctx, pkgs, os.Stderr)
-		return err
-	}
-	return dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots)
-}
-
-func printDeadcodeDropMetaInputs(ctx *context, pkgs []Package, w io.Writer) {
-	cm := ctx.ensureCacheManager()
-	targetTriple := ctx.targetTriple()
-	fmt.Fprintf(w, "[deadcodedrop] meta inputs:\n")
-	for _, pkg := range pkgs {
-		if pkg == nil || pkg.Meta == nil {
-			continue
-		}
-		if pkg.Fingerprint == "" || pkg.Name == "main" {
-			fmt.Fprintf(w, "[deadcodedrop]   %s memory\n", pkg.PkgPath)
-			continue
-		}
-		paths := cm.PackagePaths(targetTriple, pkg.PkgPath, pkg.Fingerprint)
-		state := "miss"
-		if pkg.CacheHit {
-			state = "hit"
-		}
-		exists := "missing"
-		if _, err := os.Stat(paths.Meta); err == nil {
-			exists = "exists"
-		}
-		fmt.Fprintf(w, "[deadcodedrop]   %s %s %s %s\n", pkg.PkgPath, state, exists, paths.Meta)
-	}
-}
-
-func linkedPackageMetas(pkgs []Package) []*meta.PackageMeta {
-	metas := make([]*meta.PackageMeta, 0, len(pkgs))
-	for _, pkg := range pkgs {
-		if pkg == nil || pkg.Meta == nil {
-			continue
-		}
-		metas = append(metas, pkg.Meta)
-	}
-	return metas
-}
-
-func dceSourceModules(pkgs []Package) []gllvm.Module {
-	mods := make([]gllvm.Module, 0, len(pkgs))
-	seen := make(map[gllvm.Module]bool)
-	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
-			continue
-		}
-		mod := pkg.LPkg.Module()
-		if mod.IsNil() || seen[mod] {
-			continue
-		}
-		seen[mod] = true
-		mods = append(mods, mod)
-	}
-	return mods
-}
-
-func dceEntryRootCandidates(pkg *packages.Package, needRuntime bool) []string {
-	if pkg == nil || pkg.PkgPath == "" {
-		return nil
-	}
-	roots := []string{pkg.PkgPath + ".init", pkg.PkgPath + ".main"}
-	if needRuntime {
-		roots = append(roots, llssa.PkgRuntime+".init")
-	}
-	return roots
 }
 
 // isRuntimePkg reports whether the package path belongs to the llgo runtime tree.
