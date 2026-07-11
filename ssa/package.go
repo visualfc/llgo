@@ -525,6 +525,7 @@ func (p Program) NewPackageEx(name, pkgPath string, metaCollect bool) Package {
 	}
 	if metaCollect {
 		ret.metaBuilder = meta.NewBuilder()
+		ret.abiTypeWithUncommon = make(map[llvm.Value]struct{})
 	}
 	if p.enableGoGlobalDCE {
 		p.addVirtualFunctionElimModuleFlag(mod)
@@ -790,13 +791,14 @@ type aPackage struct {
 
 	iRoutine int
 
-	NeedRuntime   bool
-	NeedPyInit    bool
-	NeedAbiInit   int // bitmask of Reflect* flags indicating which reflect type-construction operations are used
-	MethodByIndex map[int]none
-	MethodByName  map[string]none
-	Meta          *meta.PackageMeta
-	metaBuilder   *meta.Builder
+	NeedRuntime         bool
+	NeedPyInit          bool
+	NeedAbiInit         int // bitmask of Reflect* flags indicating which reflect type-construction operations are used
+	MethodByIndex       map[int]none
+	MethodByName        map[string]none
+	Meta                *meta.PackageMeta
+	metaBuilder         *meta.Builder
+	abiTypeWithUncommon map[llvm.Value]struct{}
 
 	export         map[string]string   // pkgPath.nameInPkg => exportname
 	preserveSyms   map[string]struct{} // set of exported symbol names
@@ -814,7 +816,7 @@ func (p Package) Module() llvm.Module {
 }
 
 func (p Package) FinishMetaCollection() error {
-	extractOrdinaryEdges(p.metaBuilder, p.mod)
+	extractOrdinaryEdges(p.metaBuilder, p.mod, p.abiTypeWithUncommon)
 	pm, err := p.metaBuilder.Build()
 	if err != nil {
 		return err

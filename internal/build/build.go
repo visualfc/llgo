@@ -243,9 +243,6 @@ func (c *Config) goGlobalDCEEnabled() bool {
 }
 
 func (c *Config) deadcodeDropEnabled() bool {
-	if c == nil {
-		return false
-	}
 	return c.DeadcodeDrop && !c.goGlobalDCEEnabled()
 }
 

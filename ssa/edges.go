@@ -1,13 +1,13 @@
 package ssa
 
 import (
-	"strings"
-
 	"github.com/goplus/llgo/internal/meta"
 	"github.com/xgo-dev/llvm"
 )
 
-func extractOrdinaryEdges(builder *meta.Builder, mod llvm.Module) {
+const abiTypeMethodTableOperand = 2
+
+func extractOrdinaryEdges(builder *meta.Builder, mod llvm.Module, abiTypeWithUncommon map[llvm.Value]struct{}) {
 	for fn := mod.FirstFunction(); !fn.IsNil(); fn = llvm.NextFunction(fn) {
 		src := fn.Name()
 		if fn.IsDeclaration() {
@@ -27,7 +27,15 @@ func extractOrdinaryEdges(builder *meta.Builder, mod llvm.Module) {
 			continue
 		}
 		collector := ordinaryEdgeCollector{builder: builder, src: src}
-		collector.scanGlobalInitializer(init)
+		if _, ok := abiTypeWithUncommon[global]; ok {
+			for i, n := 0, init.OperandsCount(); i < n; i++ {
+				if i != abiTypeMethodTableOperand {
+					collector.scan(init.Operand(i))
+				}
+			}
+		} else {
+			collector.scan(init)
+		}
 	}
 }
 
@@ -38,19 +46,6 @@ type ordinaryEdgeCollector struct {
 	addedDst map[string]struct{} // dedup (src, dst) pairs
 }
 
-func (c *ordinaryEdgeCollector) scanGlobalInitializer(v llvm.Value) {
-	if isUncommonTypeInitializer(v) {
-		for i, n := 0, v.OperandsCount(); i < n; i++ {
-			if i == 2 {
-				continue
-			}
-			c.scan(v.Operand(i))
-		}
-		return
-	}
-	c.scan(v)
-}
-
 func (c *ordinaryEdgeCollector) scanOperands(v llvm.Value) {
 	for i, n := 0, v.OperandsCount(); i < n; i++ {
 		c.scan(v.Operand(i))
@@ -58,12 +53,6 @@ func (c *ordinaryEdgeCollector) scanOperands(v llvm.Value) {
 }
 
 func (c *ordinaryEdgeCollector) scan(v llvm.Value) {
-	if v.IsNil() {
-		return
-	}
-	if isMethodTable(v) {
-		return
-	}
 	if name := namedModuleSymbol(v); name != "" {
 		c.add(name)
 		return
@@ -84,7 +73,7 @@ func (c *ordinaryEdgeCollector) scan(v llvm.Value) {
 }
 
 func (c *ordinaryEdgeCollector) add(dst string) {
-	if dst == "" || dst == c.src {
+	if dst == c.src {
 		return
 	}
 	if c.addedDst == nil {
@@ -102,34 +91,4 @@ func namedModuleSymbol(v llvm.Value) string {
 		return v.Name()
 	}
 	return ""
-}
-
-func isUncommonTypeInitializer(v llvm.Value) bool {
-	if v.IsAConstantStruct().IsNil() || v.OperandsCount() != 3 {
-		return false
-	}
-	return isMethodTable(v.Operand(2))
-}
-
-func isMethodTable(v llvm.Value) bool {
-	if v.IsNil() || v.IsAConstantArray().IsNil() || v.OperandsCount() == 0 {
-		return false
-	}
-	methodTy := v.Type().ElementType()
-	if methodTy.TypeKind() != llvm.StructTypeKind {
-		return false
-	}
-	if strings.HasSuffix(methodTy.StructName(), ".Method") {
-		return true
-	}
-	for i, n := 0, v.OperandsCount(); i < n; i++ {
-		method := v.Operand(i)
-		if method.IsAConstantStruct().IsNil() || method.OperandsCount() != 4 {
-			return false
-		}
-		if namedModuleSymbol(method.Operand(2)) == "" || namedModuleSymbol(method.Operand(3)) == "" {
-			return false
-		}
-	}
-	return true
 }

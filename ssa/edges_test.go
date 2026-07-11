@@ -29,7 +29,7 @@ func TestExtractOrdinaryEdgesFromFunctionAndGlobal(t *testing.T) {
 	global.SetInitializer(helperFn)
 
 	mb := meta.NewBuilder()
-	extractOrdinaryEdges(mb, mod)
+	extractOrdinaryEdges(mb, mod, nil)
 	pm, _ := mb.Build()
 
 	if !hasOrdinaryEdge(pm, "pkg.main", "pkg.helper") {
@@ -40,7 +40,7 @@ func TestExtractOrdinaryEdgesFromFunctionAndGlobal(t *testing.T) {
 	}
 }
 
-func TestExtractOrdinaryEdgesSkipsUncommonMethodTable(t *testing.T) {
+func TestExtractOrdinaryEdgesUsesABITypeMarkers(t *testing.T) {
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()
 	mod := ctx.NewModule("ordinary")
@@ -71,9 +71,11 @@ func TestExtractOrdinaryEdgesSkipsUncommonMethodTable(t *testing.T) {
 		llvm.ConstNull(i8ptrTy),
 		methods,
 	}))
+	unmarkedTypeDesc := llvm.AddGlobal(mod, typeTy, "_llgo_pkg.Unmarked")
+	unmarkedTypeDesc.SetInitializer(typeDesc.Initializer())
 
 	mb := meta.NewBuilder()
-	extractOrdinaryEdges(mb, mod)
+	extractOrdinaryEdges(mb, mod, map[llvm.Value]struct{}{typeDesc: {}})
 	pm, _ := mb.Build()
 
 	if hasOrdinaryEdge(pm, "_llgo_pkg.T", "pkg.(*T).M") {
@@ -81,6 +83,12 @@ func TestExtractOrdinaryEdgesSkipsUncommonMethodTable(t *testing.T) {
 	}
 	if hasOrdinaryEdge(pm, "_llgo_pkg.T", "pkg.T.M") {
 		t.Fatalf("method table TFn was recorded as an ordinary edge")
+	}
+	if !hasOrdinaryEdge(pm, "_llgo_pkg.Unmarked", "pkg.(*T).M") {
+		t.Fatalf("unmarked global method-shaped IFn edge was skipped")
+	}
+	if !hasOrdinaryEdge(pm, "_llgo_pkg.Unmarked", "pkg.T.M") {
+		t.Fatalf("unmarked global method-shaped TFn edge was skipped")
 	}
 }
 

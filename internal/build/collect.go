@@ -477,9 +477,6 @@ func (c *context) saveToCache(pkg *aPackage) error {
 	}
 
 	if c.buildConf.deadcodeDropEnabled() {
-		if pkg.Meta == nil {
-			pkg.Meta, _ = meta.NewBuilder().Build()
-		}
 		if err := writeMeta(paths.Meta, pkg.Meta); err != nil {
 			return err
 		}

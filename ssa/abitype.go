@@ -622,6 +622,9 @@ func (b Builder) abiType(t types.Type) Expr {
 				b.abiUncommonType(t, mset),
 				b.abiUncommonMethods(t, mset),
 			}
+			if pkg.metaBuilder != nil {
+				pkg.abiTypeWithUncommon[g.impl] = struct{}{}
+			}
 		}
 		g.impl.SetInitializer(llvm.ConstNamedStruct(g.impl.GlobalValueType(), fields))
 		g.impl.SetGlobalConstant(true)

@@ -166,7 +166,7 @@ func TestCacheManager_CacheExists(t *testing.T) {
 	paths := cm.PackagePaths("arm64-darwin", "test/pkg", "fp123")
 
 	// Initially should not exist
-	if cm.cacheExists(paths) {
+	if cm.cacheExists(paths, false) {
 		t.Error("cache should not exist initially")
 	}
 
@@ -177,21 +177,26 @@ func TestCacheManager_CacheExists(t *testing.T) {
 	os.WriteFile(paths.Archive, []byte("archive"), 0644)
 
 	// Still should not exist (manifest missing)
-	if cm.cacheExists(paths) {
+	if cm.cacheExists(paths, false) {
 		t.Error("cache should not exist without manifest")
 	}
 
 	// Create manifest
 	os.WriteFile(paths.Manifest, []byte("manifest"), 0644)
 
-	// Still should not exist (meta missing)
-	if cm.cacheExists(paths) {
+	if !cm.cacheExists(paths, false) {
+		t.Error("cache should exist without meta when meta is not required")
+	}
+	if cm.cacheExists(paths, true) {
 		t.Error("cache should not exist without meta")
 	}
 
 	// Create invalid meta
 	os.WriteFile(paths.Meta, []byte("bad meta"), 0644)
-	if cm.cacheExists(paths) {
+	if !cm.cacheExists(paths, false) {
+		t.Error("cache should ignore invalid meta when meta is not required")
+	}
+	if cm.cacheExists(paths, true) {
 		t.Error("cache should not exist with invalid meta")
 	}
 
@@ -199,7 +204,7 @@ func TestCacheManager_CacheExists(t *testing.T) {
 	writeTestMetaFile(t, paths.Meta)
 
 	// Now should exist
-	if !cm.cacheExists(paths) {
+	if !cm.cacheExists(paths, true) {
 		t.Error("cache should exist with archive, manifest, and valid meta")
 	}
 }
@@ -256,7 +261,7 @@ func TestCacheManager_CleanPackageCache(t *testing.T) {
 	}
 
 	// Should not exist
-	if cm.cacheExists(paths) {
+	if cm.cacheExists(paths, false) {
 		t.Error("cache should be cleaned")
 	}
 }
