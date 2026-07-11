@@ -364,14 +364,11 @@ func (b Builder) directTypeChildren(t types.Type) []types.Type {
 	case *types.Slice:
 		return []types.Type{abi.PublicType(t.Elem())}
 	case *types.Array:
-		elem := abi.PublicType(t.Elem())
-		return []types.Type{elem, types.NewSlice(elem)}
+		return []types.Type{abi.PublicType(t.Elem())}
 	case *types.Map:
 		return []types.Type{
 			abi.PublicType(t.Key()),
 			abi.PublicType(t.Elem()),
-			// Map type descriptors reference their runtime bucket type too.
-			b.Prog.abi.MapBucket(t),
 		}
 	case *types.Signature:
 		var children []types.Type
