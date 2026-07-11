@@ -29,11 +29,6 @@ type GlobalSummary struct {
 	nameIntern  map[string]Name
 	nameStrings []string // Name → text
 
-	// lazily translated, cached on first access
-	methodInfo     map[Symbol][]MethodSlot
-	interfaceInfo  map[Symbol][]MethodSig
-	funcDemandInfo map[Symbol][]FuncDemand
-
 	interfaces []Symbol
 }
 
@@ -64,18 +59,14 @@ type ownerState struct {
 // indices, and type-kind flags. No per-symbol data is translated — only
 // string interning and CSR range checks happen here.
 //
-// MethodSlots / InterfaceMethods / FuncDemands are translated lazily on first
-// access and cached. This avoids translating thousands of unused slots in
-// the common case where DCE only reaches a fraction of all types.
+// MethodSlots / InterfaceMethods / FuncDemands are translated lazily on each
+// query. This avoids translating metadata that DCE never reaches.
 func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 	g := &GlobalSummary{
-		pkgs:           pkgs,
-		symIntern:      make(map[string]Symbol),
-		nameIntern:     make(map[string]Name),
-		locToGlb:       make([][]Symbol, len(pkgs)),
-		methodInfo:     make(map[Symbol][]MethodSlot),
-		interfaceInfo:  make(map[Symbol][]MethodSig),
-		funcDemandInfo: make(map[Symbol][]FuncDemand),
+		pkgs:       pkgs,
+		symIntern:  make(map[string]Symbol),
+		nameIntern: make(map[string]Name),
+		locToGlb:   make([][]Symbol, len(pkgs)),
 	}
 	var ownerStates []ownerState
 	var interfaceSeen []bool
@@ -261,33 +252,21 @@ func (g *GlobalSummary) Interfaces() []Symbol { return g.interfaces }
 // ── lazy per-type queries ─────────────────────────────────────────────────────
 
 // MethodSlots returns the ABI method slots for concrete type typ.
-// Translated lazily on first access, cached thereafter.
 func (g *GlobalSummary) MethodSlots(typ Symbol) []MethodSlot {
-	if slots, ok := g.methodInfo[typ]; ok {
-		return slots
-	}
 	pm, tab, li := g.ownerData(typ)
 	if pm == nil {
 		return nil
 	}
-	slots := g.translateSlots(tab, pm, li)
-	g.methodInfo[typ] = slots
-	return slots
+	return g.translateSlots(tab, pm, li)
 }
 
 // InterfaceMethods returns the method set for interface iface.
-// Translated lazily on first access, cached thereafter.
 func (g *GlobalSummary) InterfaceMethods(iface Symbol) []MethodSig {
-	if sigs, ok := g.interfaceInfo[iface]; ok {
-		return sigs
-	}
 	pm, tab, li := g.ownerData(iface)
 	if pm == nil {
 		return nil
 	}
-	sigs := g.translateSigs(tab, pm, li)
-	g.interfaceInfo[iface] = sigs
-	return sigs
+	return g.translateSigs(tab, pm, li)
 }
 
 // ── lazy edge queries ─────────────────────────────────────────────────────────
@@ -307,18 +286,13 @@ func (g *GlobalSummary) OrdinaryEdges(sym Symbol) []Symbol {
 }
 
 // FuncDemands returns the method/interface/reflection demands emitted by sym.
-// Records are translated to the global symbol and name spaces lazily and cached.
+// Records are translated to the global symbol and name spaces on demand.
 func (g *GlobalSummary) FuncDemands(sym Symbol) []FuncDemand {
-	if demands, ok := g.funcDemandInfo[sym]; ok {
-		return demands
-	}
 	pm, tab, li := g.ownerData(sym)
 	if pm == nil {
 		return nil
 	}
-	demands := g.translateFuncDemands(tab, pm, li)
-	g.funcDemandInfo[sym] = demands
-	return demands
+	return g.translateFuncDemands(tab, pm, li)
 }
 
 // TypeChildren returns child type symbols for typ (global Symbols).
