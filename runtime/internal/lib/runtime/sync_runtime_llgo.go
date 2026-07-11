@@ -3,6 +3,7 @@
 package runtime
 
 import (
+	_ "sync/atomic"
 	_ "unsafe"
 
 	psync "github.com/goplus/llgo/runtime/internal/clite/pthread/sync"
