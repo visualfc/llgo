@@ -1,8 +1,9 @@
+#include "LLGOLTOPasses.h"
+
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
@@ -14,9 +15,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Passes/PassBuilder.h"
-#include "llvm/Passes/PassPlugin.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
@@ -27,7 +25,6 @@ using namespace llvm;
 
 namespace {
 
-static constexpr char LLGOPreGlobalDCEPassName[] = "llgo-lto-pre-globaldce";
 static constexpr char ReflectMethodByNameCallAttr[] =
     "llgo.reflect.methodbyname";
 static constexpr char ReflectMethodByNameArgAttr[] =
@@ -832,25 +829,10 @@ public:
 
 } // namespace
 
-PassPluginLibraryInfo getLLGOLTOPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "llgo-lto-plugin", LLVM_VERSION_STRING,
-          [](PassBuilder &PB) {
-            PB.registerPipelineParsingCallback(
-                [](StringRef Name, ModulePassManager &MPM,
-                   ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name != LLGOPreGlobalDCEPassName)
-                    return false;
-                  MPM.addPass(LLGOLTOPreGlobalDCEPass());
-                  return true;
-                });
+namespace llgo {
 
-            PB.registerFullLinkTimeOptimizationEarlyEPCallback(
-                [](ModulePassManager &MPM, OptimizationLevel) {
-                  MPM.addPass(LLGOLTOPreGlobalDCEPass());
-                });
-          }};
+void addLLGOReflectMethodByNamePass(ModulePassManager &MPM) {
+  MPM.addPass(LLGOLTOPreGlobalDCEPass());
 }
 
-extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo llvmGetPassPluginInfo() {
-  return getLLGOLTOPluginInfo();
-}
+} // namespace llgo
