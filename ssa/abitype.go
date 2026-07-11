@@ -384,12 +384,6 @@ func (b Builder) directTypeChildren(t types.Type) []types.Type {
 			children = append(children, abi.PublicType(t.Field(i).Type()))
 		}
 		return children
-	case *types.Interface:
-		children := make([]types.Type, 0, t.NumMethods())
-		for i := 0; i < t.NumMethods(); i++ {
-			children = append(children, funcType(b.Prog, t.Method(i).Type()))
-		}
-		return children
 	case *types.Named:
 		return b.directTypeChildren(t.Underlying())
 	}
