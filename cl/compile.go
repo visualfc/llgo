@@ -205,6 +205,9 @@ type context struct {
 
 	trackCallerFrames bool
 	callerFrameMark   llssa.Expr
+
+	staticGlobalInits map[*ssa.Global]llssa.Expr
+	staticInitStores  map[*ssa.Store]none
 }
 
 func (p *context) rewriteValue(name string) (string, bool) {
@@ -399,6 +402,8 @@ func (p *context) compileGlobal(pkg llssa.Package, gbl *ssa.Global) {
 				g.InitNil()
 			}
 		}
+	} else if init, ok := p.staticGlobalInits[gbl]; ok {
+		g.Init(init)
 	} else if define {
 		g.InitNil()
 	}
@@ -1548,6 +1553,9 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 	}
 	switch v := instr.(type) {
 	case *ssa.Store:
+		if _, ok := p.staticInitStores[v]; ok {
+			return
+		}
 		va := v.Addr
 		if va, ok := va.(*ssa.IndexAddr); ok {
 			if args, ok := p.isVArgs(va.X); ok { // varargs: this is a varargs store
@@ -2009,6 +2017,8 @@ func processPkg(ctx *context, ret llssa.Package, pkg *ssa.Package) {
 		name string
 		val  ssa.Member
 	}
+
+	ctx.collectStaticGlobalInits(pkg)
 
 	members := make([]*namedMember, 0, len(pkg.Members))
 	skips := ctx.skips
