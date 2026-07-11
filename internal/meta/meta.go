@@ -9,17 +9,20 @@ import (
 	"unsafe"
 )
 
-// nameRef references a name string by its byte range in the string table.
+// nameRef identifies a byte range in the package-local string table.
 type nameRef struct {
 	Off uint32
 	Len uint32
 }
 
+// version is the compatibility boundary for the on-disk layout.
 const (
 	magic   = "LLPM"
-	version = 2
+	version = 1
 )
 
+// Section IDs are also indexes into the header's section-offset array.
+// Reordering or changing their wire representation is a format change.
 const (
 	secStringTable = iota
 	secSymbols
@@ -34,12 +37,64 @@ const (
 // headerSize = magic(4) + version(4) + sectionOffsets(numSections*4)
 const headerSize = 4 + 4 + numSections*4
 
-// PackageMeta is a zero-copy view over a .meta file byte slice.
-// The underlying bytes may come from an mmap'd file or from Builder.Build().
-// All query methods read directly from the byte slice with no allocation.
+// PackageMeta is a read-only, zero-copy view of one package's metadata.
+// Its backing bytes are either owned Go memory from Builder.Build or a
+// read-only mapping created by Open. Package-local lookup helpers return
+// strings and slices that alias those bytes.
+//
+// The version-1 wire format is below. All integers are little-endian uint32
+// values. Header offsets are absolute byte offsets from the beginning of the
+// file. Symbol values are indexes in this package's Symbols section.
+//
+//	Header (36 bytes)
+//	  [0:4]   magic: "LLPM"
+//	  [4:8]   version: 1
+//	  [8:36]  section offsets, in this exact order:
+//	            StringTable, Symbols, OrdinaryEdges, FuncDemand,
+//	            TypeChildren, MethodInfo, InterfaceInfo
+//
+//	StringTable
+//	  starts at byte 36
+//	  concatenated string bytes, followed by zero padding to a 4-byte boundary
+//
+//	Symbols
+//	  nsyms
+//	  records[nsyms]: {nameOff, nameLen, reserved}                    // 12 bytes
+//
+//	OrdinaryEdges: CSR<Symbol>
+//	  nsyms
+//	  offsets[nsyms+1]
+//	  data[]: Symbol                                                  // 4 bytes
+//
+//	FuncDemand: CSR<localFuncDemand>
+//	  nsyms
+//	  offsets[nsyms+1]
+//	  data[]: {kind, target, extra}                                  // 12 bytes
+//
+//	TypeChildren: CSR<Symbol>
+//	  nsyms
+//	  offsets[nsyms+1]
+//	  data[]: Symbol                                                  // 4 bytes
+//
+//	MethodInfo: CSR<localMethodSlot>
+//	  nsyms
+//	  offsets[nsyms+1]
+//	  data[]: {nameOff, nameLen, mtype, ifn, tfn}                    // 20 bytes
+//
+//	InterfaceInfo: CSR<localMethodSig>
+//	  nsyms
+//	  offsets[nsyms+1]
+//	  data[]: {nameOff, nameLen, mtype}                              // 12 bytes
+//
+// Every CSR offsets entry is a record index into that section's data array,
+// not a byte offset. Each CSR nsyms must equal Symbols.nsyms. Every nameOff is
+// relative to the start of StringTable; nameLen excludes alignment padding.
+// The Symbols reserved field is written as zero and ignored when reading.
+// Section sizes are derived from adjacent header offsets, and InterfaceInfo
+// extends to the end of the file. Every section starts on a 4-byte boundary.
 type PackageMeta struct {
 	raw  []byte
-	mmap bool // true → must Munmap on Close
+	mmap bool // whether Close must unmap raw
 
 	nsyms uint32
 
@@ -53,13 +108,17 @@ type PackageMeta struct {
 	ifaceOff    uint32
 }
 
-// localFuncDemand is a decoded local function-demand record. Its in-memory layout
-// (Kind@0, Target@4, Extra@8, size 12) must match the on-disk wire layout exactly
-// so funcDemands can reinterpret the mmap bytes with no copy.
+// localFuncDemand is the package-local wire representation of a function
+// demand. Its layout (Kind@0, Target@4, Extra@8, size 12) must match the file
+// format so funcDemands can return a zero-copy view of the backing bytes.
 type localFuncDemand struct {
-	Kind   DemandKind
-	Target uint32 // Symbol or stringTable offset (DemandNamedMethod)
-	Extra  uint32
+	Kind DemandKind
+	// Target is a Symbol for DemandUseIface and DemandIfaceMethod, a string-table
+	// offset for DemandNamedMethod, and zero for DemandReflectMethod.
+	Target uint32
+	// Extra is an interface-method index for DemandIfaceMethod, a string length
+	// for DemandNamedMethod, and zero for the other kinds.
+	Extra uint32
 }
 
 // Compile-time assertion: localFuncDemand must be exactly 12 bytes. If either const
@@ -69,20 +128,21 @@ const (
 	_ = uint(12 - unsafe.Sizeof(localFuncDemand{}))
 )
 
-// localMethodSlot is a decoded method slot record. Its layout (nameRef@0..8,
-// MType@8, IFn@12, TFn@16, size 20) must match the on-disk wire layout for
-// zero-copy reads.
+// localMethodSlot is the package-local wire representation of an ABI method
+// slot. Its layout (nameRef@0..8, MType@8, IFn@12, TFn@16, size 20) must match
+// the file format for zero-copy reads.
 type localMethodSlot struct {
-	Name  nameRef // canonical method name; unexported names include package path
+	Name  nameRef // bare if exported; package-qualified if unexported
 	MType Symbol
 	IFn   Symbol
 	TFn   Symbol
 }
 
-// localMethodSig is a decoded interface method signature. Layout: nameRef@0..8,
-// MType@8, size 12 — must match the on-disk wire layout for zero-copy reads.
+// localMethodSig is the package-local wire representation of an interface
+// method signature. Its layout (nameRef@0..8, MType@8, size 12) must match the
+// file format for zero-copy reads.
 type localMethodSig struct {
-	Name  nameRef // canonical method name; unexported names include package path
+	Name  nameRef // bare if exported; package-qualified if unexported
 	MType Symbol
 }
 
@@ -96,8 +156,9 @@ const (
 	_ = uint(12 - unsafe.Sizeof(localMethodSig{}))
 )
 
-// Open opens path, mmaps it, and returns a PackageMeta view.
-// Call Close when done to release the mapping.
+// Open maps path read-only and returns a PackageMeta backed by that mapping.
+// The caller must call Close. Values returned by package-local lookup helpers
+// must not be used after Close.
 func Open(path string) (*PackageMeta, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -128,7 +189,7 @@ func Open(path string) (*PackageMeta, error) {
 	return pm, nil
 }
 
-// WriteTo writes the package metadata in its binary wire format.
+// WriteTo writes the complete metadata file in its binary wire format.
 func (pm *PackageMeta) WriteTo(w io.Writer) (int64, error) {
 	n, err := w.Write(pm.raw)
 	if err == nil && n != len(pm.raw) {
@@ -137,7 +198,8 @@ func (pm *PackageMeta) WriteTo(w io.Writer) (int64, error) {
 	return int64(n), err
 }
 
-// Close releases the mmap mapping if one was used.
+// Close releases the mapping owned by a PackageMeta returned from Open.
+// It is a no-op for PackageMeta values returned from Builder.Build.
 func (pm *PackageMeta) Close() error {
 	if pm.mmap && pm.raw != nil {
 		err := syscall.Munmap(pm.raw)
@@ -147,9 +209,9 @@ func (pm *PackageMeta) Close() error {
 	return nil
 }
 
-// symbolName returns the name of sym as a zero-copy view into the string table.
-// The returned string points directly into the mmap region and is only valid for
-// the lifetime of pm — do not retain it after Close.
+// symbolName returns the name of package-local sym as a string that aliases the
+// backing bytes, or "" if sym is out of range. For a PackageMeta returned from
+// Open, the string must not be used after Close.
 func (pm *PackageMeta) symbolName(sym Symbol) string {
 	if uint32(sym) >= pm.nsyms {
 		return ""
@@ -161,87 +223,88 @@ func (pm *PackageMeta) symbolName(sym Symbol) string {
 	return unsafe.String(&pm.raw[pm.strOff+nameOff], int(nameLen))
 }
 
-// nameString returns the string referenced by a nameRef as a zero-copy view
-// into the string table. The returned string points directly into the mmap
-// region and is only valid for the lifetime of pm — do not retain it after Close.
+// nameString returns the string referenced by a valid package-local ref. The
+// string aliases the backing bytes and, for a PackageMeta returned from Open,
+// must not be used after Close.
 func (pm *PackageMeta) nameString(ref nameRef) string {
 	return unsafe.String(&pm.raw[pm.strOff+ref.Off], int(ref.Len))
 }
 
-// NOrdinaryEdge returns the number of plain reachability edges from sym.
+// nordinaryEdge returns the number of ordinary reachability edges from sym.
 func (pm *PackageMeta) nordinaryEdge(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.ordinaryOff, sym)
 	return e - s
 }
 
-// ordinaryEdges returns all plain reachability targets from sym as a zero-copy
-// view into the mmap region.
+// ordinaryEdges returns the package-local ordinary-edge targets from sym. The
+// returned slice aliases the backing bytes.
 func (pm *PackageMeta) ordinaryEdges(sym Symbol) []Symbol {
 	return csrSlice[Symbol](pm, pm.ordinaryOff, sym, 4)
 }
 
-// NFuncDemand returns the number of method/interface/reflection demands from sym.
+// nfuncDemand returns the number of function demands owned by sym.
 func (pm *PackageMeta) nfuncDemand(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.demandOff, sym)
 	return e - s
 }
 
-// funcDemands returns all method/interface/reflection demands from sym as a
-// zero-copy view into the mmap region.
+// funcDemands returns the package-local function-demand records owned by sym.
+// The returned slice aliases the backing bytes.
 func (pm *PackageMeta) funcDemands(sym Symbol) []localFuncDemand {
 	return csrSlice[localFuncDemand](pm, pm.demandOff, sym, 12)
 }
 
-// NTypeChild returns the number of type children for sym, or 0 if none.
+// ntypeChild returns the number of type children recorded for sym.
 func (pm *PackageMeta) ntypeChild(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.childOff, sym)
 	return e - s
 }
 
-// typeChildren returns package-local child type Symbols for sym as a zero-copy
-// view into the mmap region.
+// typeChildren returns the package-local child type Symbols recorded for sym.
+// The returned slice aliases the backing bytes.
 func (pm *PackageMeta) typeChildren(sym Symbol) []Symbol {
 	return csrSlice[Symbol](pm, pm.childOff, sym, 4)
 }
 
-// NMethodSlot returns the number of ABI method slots for sym, or 0 if none.
+// nmethodSlot returns the number of ABI method slots recorded for sym.
 func (pm *PackageMeta) nmethodSlot(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.methodOff, sym)
 	return e - s
 }
 
-// MethodSlots returns the ABI method slots for concrete type sym as a zero-copy
-// view into the mmap region.
+// methodSlots returns the package-local ABI method slots recorded for sym. The
+// returned slice aliases the backing bytes.
 func (pm *PackageMeta) methodSlots(sym Symbol) []localMethodSlot {
 	return csrSlice[localMethodSlot](pm, pm.methodOff, sym, 20)
 }
 
-// NIfaceMethod returns the number of methods in an interface, or 0 if sym is
-// not an interface.
+// nifaceMethod returns the number of interface method signatures recorded for
+// sym.
 func (pm *PackageMeta) nifaceMethod(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.ifaceOff, sym)
 	return e - s
 }
 
-// IfaceMethods returns the method signatures for interface sym as a zero-copy
-// view into the mmap region.
+// ifaceMethods returns the package-local interface method signatures recorded
+// for sym. The returned slice aliases the backing bytes.
 func (pm *PackageMeta) ifaceMethods(sym Symbol) []localMethodSig {
 	return csrSlice[localMethodSig](pm, pm.ifaceOff, sym, 12)
 }
 
-// HasOrdinaryEdges reports whether sym has any plain reachability edges.
+// hasOrdinaryEdges reports whether sym owns any ordinary reachability edges.
 func (pm *PackageMeta) hasOrdinaryEdges(sym Symbol) bool {
 	return pm.nordinaryEdge(sym) > 0
 }
 
-// HasFuncDemand reports whether sym has any method/interface/reflection demand.
+// hasFuncDemand reports whether sym owns any function demand.
 func (pm *PackageMeta) hasFuncDemand(sym Symbol) bool {
 	return pm.nfuncDemand(sym) > 0
 }
 
 // ── internal helpers ──────────────────────────────────────────────────────────
 
-// newPackageMeta parses the header of raw and returns a PackageMeta.
+// newPackageMeta checks the minimum size, magic, and version, then decodes the
+// section offsets from the fixed header.
 func newPackageMeta(raw []byte) (*PackageMeta, error) {
 	if len(raw) < headerSize {
 		return nil, fmt.Errorf("meta: raw too small (%d bytes)", len(raw))
@@ -268,8 +331,9 @@ func newPackageMeta(raw []byte) (*PackageMeta, error) {
 	return pm, nil
 }
 
-// csrSlice returns a zero-copy []T view into a CSR section. recSize is the
-// on-disk size of one record (must match unsafe.Sizeof(T)).
+// csrSlice returns the records for package-local sym from a CSR section, or nil
+// if sym is out of range or has no records. The returned slice aliases pm.raw.
+// recSize must match unsafe.Sizeof(T).
 func csrSlice[T any](pm *PackageMeta, sectionOff uint32, sym Symbol, recSize uintptr) []T {
 	if uint32(sym) >= pm.nsyms {
 		return nil
@@ -283,6 +347,8 @@ func csrSlice[T any](pm *PackageMeta, sectionOff uint32, sym Symbol, recSize uin
 	return unsafe.Slice(p, end-start)
 }
 
+// csrRange returns the half-open data-record range for package-local sym.
+// Callers must pass an in-range sym and a section offset decoded from pm.
 func (pm *PackageMeta) csrRange(sectionOff uint32, sym Symbol) (start, end uint32) {
 	offsetsBase := sectionOff + 4 // skip nsyms u32
 	start = binary.LittleEndian.Uint32(pm.raw[offsetsBase+uint32(sym)*4:])
