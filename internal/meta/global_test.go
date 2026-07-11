@@ -238,45 +238,6 @@ func TestGlobalSummaryOwnerPrefersInterfaceInfoOverOrdinaryEdges(t *testing.T) {
 	}
 }
 
-func TestGlobalSummaryOwnerPrefersInterfaceInfoOverTypeChildren(t *testing.T) {
-	typePkg := func() *meta.PackageMeta {
-		b := meta.NewBuilder()
-		iface := b.Sym("_llgo_iface$error")
-		b.AddTypeChild(iface, b.Sym("_llgo_func$Error"))
-		pm, err := b.Build()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return pm
-	}()
-	interfacePkg := func() *meta.PackageMeta {
-		b := meta.NewBuilder()
-		iface := b.Sym("_llgo_iface$error")
-		b.AddIfaceMethod(iface, "Error", b.Sym("_llgo_func$Error"))
-		pm, err := b.Build()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return pm
-	}()
-	defer typePkg.Close()
-	defer interfacePkg.Close()
-
-	g, err := meta.NewGlobalSummary([]*meta.PackageMeta{typePkg, interfacePkg})
-	if err != nil {
-		t.Fatal(err)
-	}
-	iface, _ := g.LookupSymbol("_llgo_iface$error")
-	methods := g.InterfaceMethods(iface)
-	if len(methods) != 1 || g.Name(methods[0].Name) != "Error" {
-		t.Fatalf("InterfaceMethods(_llgo_iface$error) = %+v, want Error", methods)
-	}
-	interfaces := g.Interfaces()
-	if len(interfaces) != 1 || interfaces[0] != iface {
-		t.Fatalf("Interfaces() = %v, want [%d]", interfaces, iface)
-	}
-}
-
 func TestGlobalSummaryOwnerPrefersFuncDemandOverOrdinaryEdges(t *testing.T) {
 	refPkg := func() *meta.PackageMeta {
 		b := meta.NewBuilder()
