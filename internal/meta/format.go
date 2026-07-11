@@ -43,14 +43,9 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 				ifaceSym := Symbol(d.Target)
 				iface := symName(ifaceSym)
 				sigs := pm.ifaceMethods(ifaceSym)
-				if int(d.Extra) < len(sigs) {
-					s := sigs[d.Extra]
-					useIfaceMethod[src] = append(useIfaceMethod[src],
-						fmt.Sprintf("%s %s %s", iface, pm.nameString(s.Name), symName(s.MType)))
-				} else {
-					useIfaceMethod[src] = append(useIfaceMethod[src],
-						fmt.Sprintf("%s[%d]", iface, d.Extra))
-				}
+				s := sigs[d.Extra]
+				useIfaceMethod[src] = append(useIfaceMethod[src],
+					fmt.Sprintf("%s %s %s", iface, pm.nameString(s.Name), symName(s.MType)))
 			case DemandNamedMethod:
 				name := pm.nameString(nameRef{Off: d.Target, Len: d.Extra})
 				useNamed[src] = append(useNamed[src], name)

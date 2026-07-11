@@ -976,6 +976,65 @@ _llgo_example.com/pkg.T:
 	}
 }
 
+func TestRecordReflectMethodDemands(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	pkg := prog.NewPackageEx("pkg", "pkg", true)
+	pkg.RecordReflectMethodByName("pkg.named", "Keep")
+	pkg.MarkReflectMethod("pkg.dynamic")
+
+	pm, err := pkg.metaBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pm.Close()
+
+	const want = `[UseNamedMethod]
+pkg.named:
+    Keep
+
+[Reflect]
+    pkg.dynamic
+
+`
+	if got := pm.String(); got != want {
+		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRecordUseIface(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkg := prog.NewPackageEx("pkg", "pkg", true)
+	fn := pkg.NewFunc("caller", types.NewSignatureType(nil, nil, nil, nil, nil, false), InGo)
+	b := fn.MakeBody(1)
+	b.recordUseIface(prog.Int())
+	b.recordUseIface(prog.Any())
+	b.Return()
+
+	pm, err := pkg.metaBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pm.Close()
+
+	const want = `[UseIface]
+caller:
+    _llgo_int
+
+`
+	if got := pm.String(); got != want {
+		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestDevLTOGlobalDCERecordAbiTypeFakeUsesUsesCache(t *testing.T) {
 	requireGoGlobalDCE(t)
 
