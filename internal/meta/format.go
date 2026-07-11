@@ -21,7 +21,7 @@ func (pm *PackageMeta) String() string {
 // to match the original metadata format used by golden file tests.
 func formatMeta(w *strings.Builder, pm *PackageMeta) {
 	n := pm.nsyms
-	symName := func(sym LocalSymbol) string { return pm.symbolName(sym) }
+	symName := func(sym Symbol) string { return pm.symbolName(sym) }
 
 	// collect per-sym edge lists by kind
 	type kindMap = map[string][]string // src → []dst (sorted)
@@ -30,7 +30,7 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 	useIfaceMethod := make(map[string][]string) // src → ["iface[idx]", ...]
 	useNamed := make(map[string][]string)
 
-	for i := LocalSymbol(0); i < LocalSymbol(n); i++ {
+	for i := Symbol(0); i < Symbol(n); i++ {
 		src := symName(i)
 		for _, dst := range pm.ordinaryEdges(i) {
 			ordinary[src] = append(ordinary[src], symName(dst))
@@ -38,9 +38,9 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 		for _, d := range pm.funcDemands(i) {
 			switch d.Kind {
 			case DemandUseIface:
-				useIface[src] = append(useIface[src], symName(LocalSymbol(d.Target)))
+				useIface[src] = append(useIface[src], symName(Symbol(d.Target)))
 			case DemandIfaceMethod:
-				ifaceSym := LocalSymbol(d.Target)
+				ifaceSym := Symbol(d.Target)
 				iface := symName(ifaceSym)
 				sigs := pm.ifaceMethods(ifaceSym)
 				if int(d.Extra) < len(sigs) {
@@ -60,7 +60,7 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 
 	// collect TypeChildren
 	typeChildren := make(map[string][]string)
-	for i := LocalSymbol(0); i < LocalSymbol(n); i++ {
+	for i := Symbol(0); i < Symbol(n); i++ {
 		parent := symName(i)
 		for _, c := range pm.typeChildren(i) {
 			typeChildren[parent] = append(typeChildren[parent], symName(c))
@@ -70,7 +70,7 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 	// collect MethodInfo
 	type slotInfo struct{ name, mtype, ifn, tfn string }
 	methodInfo := make(map[string][]slotInfo)
-	for i := LocalSymbol(0); i < LocalSymbol(n); i++ {
+	for i := Symbol(0); i < Symbol(n); i++ {
 		typ := symName(i)
 		for _, s := range pm.methodSlots(i) {
 			methodInfo[typ] = append(methodInfo[typ], slotInfo{
@@ -85,7 +85,7 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 	// collect InterfaceInfo
 	type sigInfo struct{ name, mtype string }
 	ifaceInfo := make(map[string][]sigInfo)
-	for i := LocalSymbol(0); i < LocalSymbol(n); i++ {
+	for i := Symbol(0); i < Symbol(n); i++ {
 		iface := symName(i)
 		for _, s := range pm.ifaceMethods(i) {
 			ifaceInfo[iface] = append(ifaceInfo[iface], sigInfo{
@@ -97,7 +97,7 @@ func formatMeta(w *strings.Builder, pm *PackageMeta) {
 
 	// collect Reflect
 	var reflectSyms []string
-	for i := LocalSymbol(0); i < LocalSymbol(n); i++ {
+	for i := Symbol(0); i < Symbol(n); i++ {
 		for _, d := range pm.funcDemands(i) {
 			if d.Kind == DemandReflectMethod {
 				reflectSyms = append(reflectSyms, symName(i))

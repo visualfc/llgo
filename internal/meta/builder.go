@@ -16,18 +16,18 @@ type Builder struct {
 	strMap  map[string]uint32 // string → offset in strData
 
 	// symbol table
-	symNames []symEntry             // indexed by LocalSymbol
-	symMap   map[string]LocalSymbol // name → LocalSymbol
+	symNames []symEntry        // indexed by Symbol
+	symMap   map[string]Symbol // name → Symbol
 
-	// per-symbol ordinary edge lists (source LocalSymbol → target LocalSymbols)
-	ordinaryEdges [][]LocalSymbol
+	// per-symbol ordinary edge lists (source Symbol → target package-local Symbols)
+	ordinaryEdges [][]Symbol
 
-	// per-symbol function demand lists (source LocalSymbol → demand facts)
+	// per-symbol function demand lists (source Symbol → demand facts)
 	funcDemands [][]bFuncDemand
 
 	// per-symbol TypeChildren lists
-	typeChildren    [][]LocalSymbol
-	typeChildrenSet map[[2]LocalSymbol]struct{} // dedup (parent, child) pairs
+	typeChildren    [][]Symbol
+	typeChildrenSet map[[2]Symbol]struct{} // dedup (parent, child) pairs
 
 	// per-symbol MethodInfo (only concrete types)
 	methodInfo [][]bMethodSlot
@@ -43,28 +43,28 @@ type symEntry struct {
 
 type bFuncDemand struct {
 	kind   DemandKind
-	target uint32 // LocalSymbol or stringTable offset (DemandNamedMethod)
+	target uint32 // Symbol or stringTable offset (DemandNamedMethod)
 	extra  uint32
 }
 
 type bMethodSlot struct {
 	name  nameRef // method short name
-	mtype uint32  // LocalSymbol
-	ifn   uint32  // LocalSymbol
-	tfn   uint32  // LocalSymbol
+	mtype uint32  // Symbol
+	ifn   uint32  // Symbol
+	tfn   uint32  // Symbol
 }
 
 type bMethodSig struct {
 	name  nameRef // method short name
-	mtype uint32  // LocalSymbol
+	mtype uint32  // Symbol
 }
 
 // NewBuilder creates an empty Builder.
 func NewBuilder() *Builder {
 	return &Builder{
 		strMap:          make(map[string]uint32),
-		symMap:          make(map[string]LocalSymbol),
-		typeChildrenSet: make(map[[2]LocalSymbol]struct{}),
+		symMap:          make(map[string]Symbol),
+		typeChildrenSet: make(map[[2]Symbol]struct{}),
 	}
 }
 
@@ -84,19 +84,19 @@ func (b *Builder) internName(s string) nameRef {
 	return nameRef{Off: b.internStr(s), Len: uint32(len(s))}
 }
 
-// Sym registers a symbol by name and returns its LocalSymbol.
-// Calling Sym with the same name twice returns the same LocalSymbol.
+// Sym registers a symbol by name and returns its Symbol.
+// Calling Sym with the same name twice returns the same Symbol.
 // Whether the symbol is defined in this package or referenced from another
 // makes no difference to the metadata format.
-func (b *Builder) Sym(name string) LocalSymbol {
+func (b *Builder) Sym(name string) Symbol {
 	return b.sym(name)
 }
 
-func (b *Builder) sym(name string) LocalSymbol {
+func (b *Builder) sym(name string) Symbol {
 	if id, ok := b.symMap[name]; ok {
 		return id
 	}
-	id := LocalSymbol(len(b.symNames))
+	id := Symbol(len(b.symNames))
 	off := b.internStr(name)
 	b.symNames = append(b.symNames, symEntry{nameOff: off, nameLen: uint32(len(name))})
 	b.symMap[name] = id
@@ -111,12 +111,12 @@ func (b *Builder) sym(name string) LocalSymbol {
 
 // AddOrdinaryEdge records a plain symbol-to-symbol reference from src to dst
 // (call, type use, global var reference, etc.).
-func (b *Builder) AddOrdinaryEdge(src, dst LocalSymbol) {
+func (b *Builder) AddOrdinaryEdge(src, dst Symbol) {
 	b.ordinaryEdges[src] = append(b.ordinaryEdges[src], dst)
 }
 
 // AddIfaceUse records that src converts a value of type typ to an interface.
-func (b *Builder) AddIfaceUse(src, typ LocalSymbol) {
+func (b *Builder) AddIfaceUse(src, typ Symbol) {
 	b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
 		kind:   DemandUseIface,
 		target: uint32(typ),
@@ -125,7 +125,7 @@ func (b *Builder) AddIfaceUse(src, typ LocalSymbol) {
 
 // AddIfaceMethodUse records that src calls the methodIndex-th method (in
 // declaration order) of interface iface.
-func (b *Builder) AddIfaceMethodUse(src, iface LocalSymbol, methodIndex uint32) {
+func (b *Builder) AddIfaceMethodUse(src, iface Symbol, methodIndex uint32) {
 	b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
 		kind:   DemandIfaceMethod,
 		target: uint32(iface),
@@ -135,7 +135,7 @@ func (b *Builder) AddIfaceMethodUse(src, iface LocalSymbol, methodIndex uint32) 
 
 // AddNamedMethodUse records that src does a constant MethodByName(methodName)
 // call. The method name is stored as a string-table reference.
-func (b *Builder) AddNamedMethodUse(src LocalSymbol, methodName string) {
+func (b *Builder) AddNamedMethodUse(src Symbol, methodName string) {
 	ref := b.internName(methodName)
 	b.funcDemands[src] = append(b.funcDemands[src], bFuncDemand{
 		kind:   DemandNamedMethod,
@@ -146,8 +146,8 @@ func (b *Builder) AddNamedMethodUse(src LocalSymbol, methodName string) {
 
 // AddTypeChild records that parent type structurally contains child type.
 // Idempotent: duplicate (parent, child) pairs are silently ignored.
-func (b *Builder) AddTypeChild(parent, child LocalSymbol) {
-	key := [2]LocalSymbol{parent, child}
+func (b *Builder) AddTypeChild(parent, child Symbol) {
+	key := [2]Symbol{parent, child}
 	if _, ok := b.typeChildrenSet[key]; ok {
 		return
 	}
@@ -157,7 +157,7 @@ func (b *Builder) AddTypeChild(parent, child LocalSymbol) {
 
 // AddMethodSlot records one ABI method slot for a concrete type.
 // Slots must be appended in abi.Method table order.
-func (b *Builder) AddMethodSlot(typ LocalSymbol, methodName string, mtype, ifn, tfn LocalSymbol) {
+func (b *Builder) AddMethodSlot(typ Symbol, methodName string, mtype, ifn, tfn Symbol) {
 	b.methodInfo[typ] = append(b.methodInfo[typ], bMethodSlot{
 		name:  b.internName(methodName),
 		mtype: uint32(mtype),
@@ -169,7 +169,7 @@ func (b *Builder) AddMethodSlot(typ LocalSymbol, methodName string, mtype, ifn, 
 // AddIfaceMethod records one method in an interface's method set.
 // Idempotent: if the same (name, mtype) pair is already registered for iface,
 // this call is a no-op — the Builder deduplicates internally.
-func (b *Builder) AddIfaceMethod(iface LocalSymbol, methodName string, mtype LocalSymbol) {
+func (b *Builder) AddIfaceMethod(iface Symbol, methodName string, mtype Symbol) {
 	ref := b.internName(methodName)
 	mt := uint32(mtype)
 	for _, s := range b.ifaceInfo[iface] {
@@ -184,7 +184,7 @@ func (b *Builder) AddIfaceMethod(iface LocalSymbol, methodName string, mtype Loc
 }
 
 // MarkReflect marks sym as triggering conservative reflection handling.
-func (b *Builder) MarkReflect(sym LocalSymbol) {
+func (b *Builder) MarkReflect(sym Symbol) {
 	b.funcDemands[sym] = append(b.funcDemands[sym], bFuncDemand{
 		kind: DemandReflectMethod,
 	})

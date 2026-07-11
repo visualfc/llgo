@@ -62,7 +62,7 @@ func TestTypeChildrenAlignment(t *testing.T) {
 			t.Fatalf("pad=%q build: %v", pad, err)
 		}
 		got := pm.typeChildren(parent)
-		want := []LocalSymbol{c0, c1, c2}
+		want := []Symbol{c0, c1, c2}
 		if len(got) != len(want) {
 			t.Fatalf("pad=%q TypeChildren len = %d, want %d", pad, len(got), len(want))
 		}
@@ -123,7 +123,7 @@ func TestRoundTrip(t *testing.T) {
 
 	// ── verify Symbols ────────────────────────────────────────────────────────
 
-	checkName := func(sym LocalSymbol, want string) {
+	checkName := func(sym Symbol, want string) {
 		t.Helper()
 		if got := pm.symbolName(sym); got != want {
 			t.Errorf("SymbolName(%d) = %q, want %q", sym, got, want)
@@ -151,10 +151,10 @@ func TestRoundTrip(t *testing.T) {
 	if len(mainDemands) != 2 {
 		t.Fatalf("FuncDemand(main): got %d demands, want 2", len(mainDemands))
 	}
-	if d := mainDemands[0]; d.Kind != DemandUseIface || LocalSymbol(d.Target) != myType {
+	if d := mainDemands[0]; d.Kind != DemandUseIface || Symbol(d.Target) != myType {
 		t.Errorf("demand[0] = %+v, want {Kind:UseIface Target:%d}", d, myType)
 	}
-	if d := mainDemands[1]; d.Kind != DemandIfaceMethod || LocalSymbol(d.Target) != myIface || d.Extra != 0 {
+	if d := mainDemands[1]; d.Kind != DemandIfaceMethod || Symbol(d.Target) != myIface || d.Extra != 0 {
 		t.Errorf("demand[1] = %+v, want {Kind:IfaceMethod Target:%d Extra:0}", d, myIface)
 	}
 

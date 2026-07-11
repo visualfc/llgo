@@ -3,12 +3,9 @@
 // mmap: the file layout is the memory layout.
 package meta
 
-// LocalSymbol is a package-local symbol ID, equal to its index in the Symbols
-// section. Valid within one PackageMeta only; use GlobalSummary for cross-package
-// references.
-type LocalSymbol uint32
-
-// Symbol is a whole-program symbol ID in GlobalSummary's unified namespace.
+// Symbol is a symbol ID whose namespace is determined by the Builder,
+// PackageMeta, or GlobalSummary that owns it. Builder and PackageMeta symbols
+// are package-local; GlobalSummary symbols belong to its unified namespace.
 type Symbol uint32
 
 // Name is a whole-program method-name ID, in a namespace distinct from Symbol.

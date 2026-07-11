@@ -407,42 +407,42 @@ func TestAnalyze(t *testing.T) {
 
 type pkgSig struct {
 	name  string
-	mtype meta.LocalSymbol
+	mtype meta.Symbol
 }
 
 type pkgSlot struct {
 	sig pkgSig
-	ifn meta.LocalSymbol
-	tfn meta.LocalSymbol
+	ifn meta.Symbol
+	tfn meta.Symbol
 }
 
 // pkgBuilder wraps meta.Builder and tracks iface method order so that
 // addUseIfaceMethod can look up the sig index required by AddIfaceMethodUse.
 type pkgBuilder struct {
 	b          *meta.Builder
-	ifaceOrder map[meta.LocalSymbol][]pkgSig
+	ifaceOrder map[meta.Symbol][]pkgSig
 }
 
 func newPkgBuilder() *pkgBuilder {
 	return &pkgBuilder{
 		b:          meta.NewBuilder(),
-		ifaceOrder: make(map[meta.LocalSymbol][]pkgSig),
+		ifaceOrder: make(map[meta.Symbol][]pkgSig),
 	}
 }
 
-func (p *pkgBuilder) sym(name string) meta.LocalSymbol { return p.b.Sym(name) }
+func (p *pkgBuilder) sym(name string) meta.Symbol { return p.b.Sym(name) }
 
-func (p *pkgBuilder) addEdge(src, dst meta.LocalSymbol) {
+func (p *pkgBuilder) addEdge(src, dst meta.Symbol) {
 	p.b.AddOrdinaryEdge(src, dst)
 }
 
-func (p *pkgBuilder) addUseIface(fn, typ meta.LocalSymbol) {
+func (p *pkgBuilder) addUseIface(fn, typ meta.Symbol) {
 	p.b.AddIfaceUse(fn, typ)
 }
 
 // addUseIfaceMethod records a demand for iface.sig from fn. The sig index is
 // determined by the order in which sigs were registered via addIfaceEntry.
-func (p *pkgBuilder) addUseIfaceMethod(fn, iface meta.LocalSymbol, sig pkgSig) {
+func (p *pkgBuilder) addUseIfaceMethod(fn, iface meta.Symbol, sig pkgSig) {
 	sigs := p.ifaceOrder[iface]
 	for i, s := range sigs {
 		if s.name == sig.name && s.mtype == sig.mtype {
@@ -453,14 +453,14 @@ func (p *pkgBuilder) addUseIfaceMethod(fn, iface meta.LocalSymbol, sig pkgSig) {
 	panic("addUseIfaceMethod: sig not found in iface — call addIfaceEntry first")
 }
 
-func (p *pkgBuilder) addIfaceEntry(iface meta.LocalSymbol, sigs []pkgSig) {
+func (p *pkgBuilder) addIfaceEntry(iface meta.Symbol, sigs []pkgSig) {
 	p.ifaceOrder[iface] = sigs
 	for _, sig := range sigs {
 		p.b.AddIfaceMethod(iface, sig.name, sig.mtype)
 	}
 }
 
-func (p *pkgBuilder) addMethodInfo(typ meta.LocalSymbol, slots []pkgSlot) {
+func (p *pkgBuilder) addMethodInfo(typ meta.Symbol, slots []pkgSlot) {
 	for _, slot := range slots {
 		p.b.AddMethodSlot(typ, slot.sig.name, slot.sig.mtype, slot.ifn, slot.tfn)
 	}

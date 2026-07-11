@@ -58,7 +58,7 @@ type PackageMeta struct {
 // so funcDemands can reinterpret the mmap bytes with no copy.
 type localFuncDemand struct {
 	Kind   DemandKind
-	Target uint32 // LocalSymbol or stringTable offset (DemandNamedMethod)
+	Target uint32 // Symbol or stringTable offset (DemandNamedMethod)
 	Extra  uint32
 }
 
@@ -74,16 +74,16 @@ const (
 // zero-copy reads.
 type localMethodSlot struct {
 	Name  nameRef // canonical method name; unexported names include package path
-	MType LocalSymbol
-	IFn   LocalSymbol
-	TFn   LocalSymbol
+	MType Symbol
+	IFn   Symbol
+	TFn   Symbol
 }
 
 // localMethodSig is a decoded interface method signature. Layout: nameRef@0..8,
 // MType@8, size 12 — must match the on-disk wire layout for zero-copy reads.
 type localMethodSig struct {
 	Name  nameRef // canonical method name; unexported names include package path
-	MType LocalSymbol
+	MType Symbol
 }
 
 // Compile-time assertions pinning the wire/struct layout for zero-copy reads.
@@ -150,7 +150,7 @@ func (pm *PackageMeta) Close() error {
 // symbolName returns the name of sym as a zero-copy view into the string table.
 // The returned string points directly into the mmap region and is only valid for
 // the lifetime of pm — do not retain it after Close.
-func (pm *PackageMeta) symbolName(sym LocalSymbol) string {
+func (pm *PackageMeta) symbolName(sym Symbol) string {
 	if uint32(sym) >= pm.nsyms {
 		return ""
 	}
@@ -169,68 +169,68 @@ func (pm *PackageMeta) nameString(ref nameRef) string {
 }
 
 // NOrdinaryEdge returns the number of plain reachability edges from sym.
-func (pm *PackageMeta) nordinaryEdge(sym LocalSymbol) uint32 {
+func (pm *PackageMeta) nordinaryEdge(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.ordinaryOff, sym)
 	return e - s
 }
 
 // ordinaryEdges returns all plain reachability targets from sym as a zero-copy
 // view into the mmap region.
-func (pm *PackageMeta) ordinaryEdges(sym LocalSymbol) []LocalSymbol {
-	return csrSlice[LocalSymbol](pm, pm.ordinaryOff, sym, 4)
+func (pm *PackageMeta) ordinaryEdges(sym Symbol) []Symbol {
+	return csrSlice[Symbol](pm, pm.ordinaryOff, sym, 4)
 }
 
 // NFuncDemand returns the number of method/interface/reflection demands from sym.
-func (pm *PackageMeta) nfuncDemand(sym LocalSymbol) uint32 {
+func (pm *PackageMeta) nfuncDemand(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.demandOff, sym)
 	return e - s
 }
 
 // funcDemands returns all method/interface/reflection demands from sym as a
 // zero-copy view into the mmap region.
-func (pm *PackageMeta) funcDemands(sym LocalSymbol) []localFuncDemand {
+func (pm *PackageMeta) funcDemands(sym Symbol) []localFuncDemand {
 	return csrSlice[localFuncDemand](pm, pm.demandOff, sym, 12)
 }
 
 // NTypeChild returns the number of type children for sym, or 0 if none.
-func (pm *PackageMeta) ntypeChild(sym LocalSymbol) uint32 {
+func (pm *PackageMeta) ntypeChild(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.childOff, sym)
 	return e - s
 }
 
-// TypeChildren returns the child type LocalSymbols for sym as a zero-copy view
-// into the mmap region.
-func (pm *PackageMeta) typeChildren(sym LocalSymbol) []LocalSymbol {
-	return csrSlice[LocalSymbol](pm, pm.childOff, sym, 4)
+// typeChildren returns package-local child type Symbols for sym as a zero-copy
+// view into the mmap region.
+func (pm *PackageMeta) typeChildren(sym Symbol) []Symbol {
+	return csrSlice[Symbol](pm, pm.childOff, sym, 4)
 }
 
 // NMethodSlot returns the number of ABI method slots for sym, or 0 if none.
-func (pm *PackageMeta) nmethodSlot(sym LocalSymbol) uint32 {
+func (pm *PackageMeta) nmethodSlot(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.methodOff, sym)
 	return e - s
 }
 
 // MethodSlots returns the ABI method slots for concrete type sym as a zero-copy
 // view into the mmap region.
-func (pm *PackageMeta) methodSlots(sym LocalSymbol) []localMethodSlot {
+func (pm *PackageMeta) methodSlots(sym Symbol) []localMethodSlot {
 	return csrSlice[localMethodSlot](pm, pm.methodOff, sym, 20)
 }
 
 // NIfaceMethod returns the number of methods in an interface, or 0 if sym is
 // not an interface.
-func (pm *PackageMeta) nifaceMethod(sym LocalSymbol) uint32 {
+func (pm *PackageMeta) nifaceMethod(sym Symbol) uint32 {
 	s, e := pm.csrRange(pm.ifaceOff, sym)
 	return e - s
 }
 
 // IfaceMethods returns the method signatures for interface sym as a zero-copy
 // view into the mmap region.
-func (pm *PackageMeta) ifaceMethods(sym LocalSymbol) []localMethodSig {
+func (pm *PackageMeta) ifaceMethods(sym Symbol) []localMethodSig {
 	return csrSlice[localMethodSig](pm, pm.ifaceOff, sym, 12)
 }
 
 // HasReflect reports whether sym triggers conservative reflection handling.
-func (pm *PackageMeta) hasReflect(sym LocalSymbol) bool {
+func (pm *PackageMeta) hasReflect(sym Symbol) bool {
 	for _, d := range pm.funcDemands(sym) {
 		if d.Kind == DemandReflectMethod {
 			return true
@@ -240,12 +240,12 @@ func (pm *PackageMeta) hasReflect(sym LocalSymbol) bool {
 }
 
 // HasOrdinaryEdges reports whether sym has any plain reachability edges.
-func (pm *PackageMeta) hasOrdinaryEdges(sym LocalSymbol) bool {
+func (pm *PackageMeta) hasOrdinaryEdges(sym Symbol) bool {
 	return pm.nordinaryEdge(sym) > 0
 }
 
 // HasFuncDemand reports whether sym has any method/interface/reflection demand.
-func (pm *PackageMeta) hasFuncDemand(sym LocalSymbol) bool {
+func (pm *PackageMeta) hasFuncDemand(sym Symbol) bool {
 	return pm.nfuncDemand(sym) > 0
 }
 
@@ -280,7 +280,7 @@ func newPackageMeta(raw []byte) (*PackageMeta, error) {
 
 // csrSlice returns a zero-copy []T view into a CSR section. recSize is the
 // on-disk size of one record (must match unsafe.Sizeof(T)).
-func csrSlice[T any](pm *PackageMeta, sectionOff uint32, sym LocalSymbol, recSize uintptr) []T {
+func csrSlice[T any](pm *PackageMeta, sectionOff uint32, sym Symbol, recSize uintptr) []T {
 	if uint32(sym) >= pm.nsyms {
 		return nil
 	}
@@ -293,7 +293,7 @@ func csrSlice[T any](pm *PackageMeta, sectionOff uint32, sym LocalSymbol, recSiz
 	return unsafe.Slice(p, end-start)
 }
 
-func (pm *PackageMeta) csrRange(sectionOff uint32, sym LocalSymbol) (start, end uint32) {
+func (pm *PackageMeta) csrRange(sectionOff uint32, sym Symbol) (start, end uint32) {
 	offsetsBase := sectionOff + 4 // skip nsyms u32
 	start = binary.LittleEndian.Uint32(pm.raw[offsetsBase+uint32(sym)*4:])
 	end = binary.LittleEndian.Uint32(pm.raw[offsetsBase+(uint32(sym)+1)*4:])

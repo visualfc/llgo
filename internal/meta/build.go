@@ -25,7 +25,7 @@ func (b *Builder) Build() (*PackageMeta, error) {
 	for _, es := range b.ordinaryEdges {
 		totalOrdinary += uint32(len(es))
 	}
-	ordinarySize := 4 + (nsyms+1)*4 + totalOrdinary*4 // nsyms + offsets[N+1] + N×LocalSymbol(4)
+	ordinarySize := 4 + (nsyms+1)*4 + totalOrdinary*4 // nsyms + offsets[N+1] + N×Symbol(4)
 
 	totalDemands := uint32(0)
 	for _, ds := range b.funcDemands {
@@ -149,7 +149,7 @@ func writeCSROffsets(dst []byte, nsyms uint32, counts []int) []byte {
 //
 //	nsyms   u32
 //	offsets [nsyms+1] u32
-//	data    [] u32  (LocalSymbol)
+//	data    [] u32  (Symbol)
 func writeOrdinaryEdges(dst []byte, b *Builder, nsyms uint32) {
 	counts := make([]int, nsyms)
 	for i := range b.ordinaryEdges {
@@ -192,7 +192,7 @@ func writeFuncDemand(dst []byte, b *Builder, nsyms uint32) {
 //
 //	nsyms   u32
 //	offsets [nsyms+1] u32
-//	data    [] u32  (LocalSymbol)
+//	data    [] u32  (Symbol)
 func writeTypeChildren(dst []byte, b *Builder, nsyms uint32) {
 	counts := make([]int, nsyms)
 	for i := range b.typeChildren {

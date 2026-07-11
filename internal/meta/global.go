@@ -44,7 +44,7 @@ type GlobalSummary struct {
 // symLoc identifies a (package, local symbol) pair. pkg < 0 means "no owner".
 type symLoc struct {
 	pkg   int32
-	local LocalSymbol
+	local Symbol
 }
 
 // NewGlobalSummary merges package-local metadata into a whole-program view.
@@ -75,7 +75,7 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 		}
 		n := pm.nsyms
 		tab := make([]Symbol, n)
-		for li := LocalSymbol(0); li < LocalSymbol(n); li++ {
+		for li := Symbol(0); li < Symbol(n); li++ {
 			gs := g.internSymbol(pm.symbolName(li))
 			tab[li] = gs
 			rank := ownerRank(pm, li)
@@ -99,7 +99,7 @@ func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 // facts are for lazy global queries. Higher rank wins; equal rank keeps the
 // first package, preserving deterministic first-wins behavior for equivalent
 // duplicate ordinary/linkonce facts.
-func ownerRank(pm *PackageMeta, li LocalSymbol) uint8 {
+func ownerRank(pm *PackageMeta, li Symbol) uint8 {
 	switch {
 	case pm.hasFuncDemand(li):
 		return 5
@@ -140,7 +140,7 @@ func (g *GlobalSummary) internName(s string) Name {
 }
 
 // ownerData returns the owning package and locToGlb table for sym.
-func (g *GlobalSummary) ownerData(sym Symbol) (*PackageMeta, []Symbol, LocalSymbol) {
+func (g *GlobalSummary) ownerData(sym Symbol) (*PackageMeta, []Symbol, Symbol) {
 	if int(sym) >= len(g.owner) {
 		return nil, nil, 0
 	}
@@ -151,7 +151,7 @@ func (g *GlobalSummary) ownerData(sym Symbol) (*PackageMeta, []Symbol, LocalSymb
 	return g.pkgs[loc.pkg], g.locToGlb[loc.pkg], loc.local
 }
 
-func (g *GlobalSummary) translateSlots(tab []Symbol, pm *PackageMeta, li LocalSymbol) []MethodSlot {
+func (g *GlobalSummary) translateSlots(tab []Symbol, pm *PackageMeta, li Symbol) []MethodSlot {
 	local := pm.methodSlots(li)
 	out := make([]MethodSlot, len(local))
 	for i, s := range local {
@@ -165,7 +165,7 @@ func (g *GlobalSummary) translateSlots(tab []Symbol, pm *PackageMeta, li LocalSy
 	return out
 }
 
-func (g *GlobalSummary) translateSigs(tab []Symbol, pm *PackageMeta, li LocalSymbol) []MethodSig {
+func (g *GlobalSummary) translateSigs(tab []Symbol, pm *PackageMeta, li Symbol) []MethodSig {
 	local := pm.ifaceMethods(li)
 	out := make([]MethodSig, len(local))
 	for i, s := range local {
@@ -177,7 +177,7 @@ func (g *GlobalSummary) translateSigs(tab []Symbol, pm *PackageMeta, li LocalSym
 	return out
 }
 
-func (g *GlobalSummary) translateFuncDemands(tab []Symbol, pm *PackageMeta, li LocalSymbol) []FuncDemand {
+func (g *GlobalSummary) translateFuncDemands(tab []Symbol, pm *PackageMeta, li Symbol) []FuncDemand {
 	local := pm.funcDemands(li)
 	var out []FuncDemand
 	for _, d := range local {
@@ -266,7 +266,7 @@ func (g *GlobalSummary) InterfaceMethods(iface Symbol) []MethodSig {
 
 // ownerOrdinary returns the owning package's locToGlb table and raw local
 // ordinary edges for sym, or nil if sym has no owner.
-func (g *GlobalSummary) ownerOrdinary(sym Symbol) ([]Symbol, []LocalSymbol) {
+func (g *GlobalSummary) ownerOrdinary(sym Symbol) ([]Symbol, []Symbol) {
 	pm, tab, li := g.ownerData(sym)
 	if pm == nil {
 		return nil, nil
