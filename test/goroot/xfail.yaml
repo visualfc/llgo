@@ -1936,10 +1936,6 @@ xfails:
     reason: llgo scanner uses different unterminated-literal diagnostics and emits recovery noise
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/issue5089.go
-    reason: llgo does not emit the expected non-local method redefinition diagnostic
-  - version: go1.26
-    directive: errorcheck
     case: syntax/semi5.go
     reason: llgo parser recovery emits additional semicolon and end-of-file diagnostics
   - version: go1.26
@@ -2336,10 +2332,6 @@ xfails:
     reason: llgo parser emits an additional malformed-parameter diagnostic
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/bug299.go
-    reason: llgo parser does not emit the expected parenthesized top-level expression diagnostics
-  - version: go1.26
-    directive: errorcheck
     case: syntax/chan1.go
     reason: llgo parser recovery emits additional malformed-channel diagnostics
   - version: go1.26
@@ -2522,11 +2514,23 @@ xfails:
     directive: compile
     case: fixedbugs/issue69825.go
     reason: gc-specific -d=libfuzzer backend option is not implemented by llgo
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: init1.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: init1.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: finprofiled.go
+    reason: LLGo finalizer profiling run hangs beyond the 1m timeout on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: finprofiled.go
     reason: LLGo finalizer profiling run hangs beyond the 1m timeout on darwin/arm64
@@ -2535,7 +2539,13 @@ xfails:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: LLGo makes no progress starting reflect-generated goroutines while a single-P runtime continuously collects
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: gcstring.go
+    reason: GC frees a string-backed pointer before its finalizer check on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: gcstring.go
     reason: GC frees a string-backed pointer before its finalizer check on darwin/arm64
@@ -2563,15 +2573,33 @@ xfails:
     directive: run
     case: fixedbugs/issue72844.go
     reason: dereferencing a nil array pointer for len or range does not panic when required on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue8047b.go
     reason: recover interaction panics with value 1 on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue8047b.go
+    reason: recover interaction panics with value 1 on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: typeparam/orderedmap.go
     reason: generic ordered-map iterator dereferences a nil entry on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: typeparam/orderedmap.go
+    reason: generic ordered-map iterator dereferences a nil entry on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: uintptrescapes3.go
+    reason: uintptr escape round trip dereferences a nil pointer on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: uintptrescapes3.go
     reason: uintptr escape round trip dereferences a nil pointer on darwin/arm64
@@ -2584,7 +2612,13 @@ xfails:
     directive: run
     case: noinit.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: recover2.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: recover2.go
     reason: current main goroot run failure on darwin/arm64
@@ -2592,19 +2626,43 @@ xfails:
     directive: runoutput
     case: rangegen.go
     reason: current main goroot runoutput failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: zerodivide.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: zerodivide.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue16130.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue16130.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue19040.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue19040.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue37975.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue37975.go
     reason: current main goroot run failure on darwin/arm64
@@ -2882,7 +2940,13 @@ xfails:
     directive: runoutput
     case: rangegen.go
     reason: go1.26 goroot ci-mode runoutput failure on linux/amd64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: deferfin.go
+    reason: latest main goroot run failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: deferfin.go
     reason: latest main goroot run failure on darwin/arm64
@@ -2954,7 +3018,13 @@ xfails:
     directive: run
     case: fixedbugs/issue33724.go
     reason: latest main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue45045.go
+    reason: latest main goroot run failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue45045.go
     reason: latest main goroot run failure on darwin/arm64
@@ -2970,7 +3040,13 @@ xfails:
     directive: run
     case: fixedbugs/issue54343.go
     reason: latest main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue5493.go
+    reason: latest main goroot run failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue5493.go
     reason: latest main goroot run failure on darwin/arm64
@@ -3487,19 +3563,43 @@ xfails:
     directive: run
     case: fixedbugs/issue5963.go
     reason: go1.26 goroot run failure on linux/amd64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/bug273.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/bug273.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue12133.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue12133.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue13169.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue13169.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue19246.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue19246.go
     reason: current main goroot run failure on darwin/arm64
@@ -3507,7 +3607,13 @@ xfails:
     directive: run
     case: fixedbugs/issue26094.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue43835.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue43835.go
     reason: current main goroot run failure on darwin/arm64
@@ -3529,19 +3635,43 @@ xfails:
     directive: run
     case: fixedbugs/issue73920.go
     reason: go1.26 goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue8048.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue8048.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue8132.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue8132.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: nil.go
     reason: current main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: nil.go
+    reason: current main goroot run failure on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: run
+    case: typeparam/chans.go
+    reason: select over unbuffered channel misses final receive on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: run
     case: typeparam/chans.go
     reason: select over unbuffered channel misses final receive on darwin/arm64
@@ -3549,7 +3679,13 @@ xfails:
     directive: run
     case: typeparam/mdempsky/15.go
     reason: go:nointerface methods still satisfy interfaces on darwin/arm64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
+    directive: runoutput
+    case: index0.go
+    reason: current main goroot runoutput failure on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
     directive: runoutput
     case: index0.go
     reason: current main goroot runoutput failure on darwin/arm64
@@ -3672,3 +3808,23 @@ xfails:
     directive: rundir
     case: fixedbugs/issue24693.go
     reason: llgo constructs cross-package itabs incorrectly for unexported interface methods
+  - version: go1.26
+    directive: runindir
+    case: fixedbugs/issue11656.go
+    reason: llgo traceback metadata cannot resolve the recursive caller after a bad-PC fault
+  - version: go1.26
+    directive: rundir
+    case: fixedbugs/issue18911.go
+    reason: llgo interface-conversion diagnostics omit the same-looking types from different packages detail
+  - version: go1.26
+    directive: runindir
+    case: fixedbugs/issue30862.go
+    reason: llgo does not implement the fieldtrack experiment metadata used by this test
+  - version: go1.26
+    directive: rundir
+    case: interface/embed3.go
+    reason: llgo interface-conversion diagnostics report the import path instead of the package name
+  - version: go1.26
+    directive: run
+    case: fixedbugs/issue52072.go
+    reason: llgo loses the named return value when a deferred nil-receiver method panic is recovered
