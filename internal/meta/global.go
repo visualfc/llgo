@@ -6,7 +6,7 @@ package meta
 // Merge strategy:
 //   - Symbols are interned into a global Symbol space; each package's local
 //     symbols are mapped via locToGlb. Edges, FuncDemands, TypeChildren,
-//     MethodSlots and InterfaceMethods are NOT rewritten at merge time — they
+//     MethodSlots and IfaceMethods are NOT rewritten at merge time — they
 //     are translated lazily on query. Only the strings are interned up front.
 //   - Duplicate symbols (e.g. linkonce type descriptors emitted by several
 //     packages) are assigned one owner by fact strength. Function-demand,
@@ -59,7 +59,7 @@ type ownerState struct {
 // indices, and type-kind flags. No per-symbol data is translated — only
 // string interning and CSR range checks happen here.
 //
-// MethodSlots / InterfaceMethods / FuncDemands are translated lazily on each
+// MethodSlots / IfaceMethods / FuncDemands are translated lazily on each
 // query. This avoids translating metadata that DCE never reaches.
 func NewGlobalSummary(pkgs []*PackageMeta) (*GlobalSummary, error) {
 	g := &GlobalSummary{
@@ -199,7 +199,7 @@ func (g *GlobalSummary) translateFuncDemands(tab []Symbol, pm *PackageMeta, li S
 			out = append(out, FuncDemand{Kind: d.Kind, Target: tab[d.Target]})
 		case DemandIfaceMethod:
 			iface := tab[d.Target]
-			sigs := g.InterfaceMethods(iface)
+			sigs := g.IfaceMethods(iface)
 			if int(d.Extra) < len(sigs) {
 				out = append(out, FuncDemand{Kind: d.Kind, Target: iface, Sig: sigs[d.Extra]})
 			}
@@ -233,9 +233,9 @@ func (g *GlobalSummary) Name(n Name) string {
 
 // ── enumeration ───────────────────────────────────────────────────────────────
 
-// Interfaces returns all interface type symbols with method information.
+// Ifaces returns all interface type symbols with method information.
 // The returned slice is owned by GlobalSummary and must not be modified.
-func (g *GlobalSummary) Interfaces() []Symbol { return g.interfaces }
+func (g *GlobalSummary) Ifaces() []Symbol { return g.interfaces }
 
 // ── lazy per-type queries ─────────────────────────────────────────────────────
 
@@ -245,8 +245,8 @@ func (g *GlobalSummary) MethodSlots(typ Symbol) []MethodSlot {
 	return g.translateSlots(tab, pm, li)
 }
 
-// InterfaceMethods returns the method set for interface iface.
-func (g *GlobalSummary) InterfaceMethods(iface Symbol) []MethodSig {
+// IfaceMethods returns the method set for interface iface.
+func (g *GlobalSummary) IfaceMethods(iface Symbol) []MethodSig {
 	pm, tab, li := g.ownerData(iface)
 	return g.translateSigs(tab, pm, li)
 }

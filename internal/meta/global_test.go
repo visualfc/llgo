@@ -149,8 +149,8 @@ func TestGlobalSummaryMerge(t *testing.T) {
 	}
 
 	// ── enumeration ────────────────────────────────────────────────────────────
-	if len(g.Interfaces()) != 1 || g.Interfaces()[0] != reader {
-		t.Errorf("Interfaces() = %v, want [reader=%d]", g.Interfaces(), reader)
+	if len(g.Ifaces()) != 1 || g.Ifaces()[0] != reader {
+		t.Errorf("Ifaces() = %v, want [reader=%d]", g.Ifaces(), reader)
 	}
 	if len(g.MethodSlots(myType)) == 0 {
 		t.Errorf("MethodSlots(myType) = empty, want non-empty")
@@ -232,12 +232,12 @@ func TestGlobalSummaryOwnerPrefersInterfaceInfoOverOrdinaryEdges(t *testing.T) {
 	if !ok {
 		t.Fatal("LookupSymbol(_llgo_io.Reader) not found")
 	}
-	methods := g.InterfaceMethods(iface)
+	methods := g.IfaceMethods(iface)
 	if len(methods) != 1 {
-		t.Fatalf("InterfaceMethods(_llgo_io.Reader) len = %d, want 1", len(methods))
+		t.Fatalf("IfaceMethods(_llgo_io.Reader) len = %d, want 1", len(methods))
 	}
 	if got := g.Name(methods[0].Name); got != "Read" {
-		t.Fatalf("InterfaceMethods(_llgo_io.Reader)[0].Name = %q, want Read", got)
+		t.Fatalf("IfaceMethods(_llgo_io.Reader)[0].Name = %q, want Read", got)
 	}
 }
 
