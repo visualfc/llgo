@@ -37,6 +37,8 @@ func (S) Drop() string {
 	panic("Drop should be unreachable")
 }
 
+var typeNames = [2]string{"KeepParamTypeA", "KeepParamTypeB"}
+
 //go:noinline
 func callValueByName(name string) string {
 	out := reflect.ValueOf(S{}).MethodByName(name).Call(nil)
@@ -66,6 +68,8 @@ func forwardTypeName(name string) string {
 func main() {
 	println(forwardValueSuffix("__ParamValueA__"[2:13]))
 	println(forwardValueSuffix("__ParamValueB__"[2:13]))
-	println(forwardTypeName("KeepParamTypeA"))
-	println(forwardTypeName("KeepParamTypeB"))
+
+	for i := range typeNames {
+		println(forwardTypeName(typeNames[i]))
+	}
 }
