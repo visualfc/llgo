@@ -27,6 +27,7 @@ func TestExtractOrdinaryEdgesFromFunctionAndGlobal(t *testing.T) {
 
 	global := llvm.AddGlobal(mod, llvm.PointerType(fnTy, 0), "pkg.global")
 	global.SetInitializer(helperFn)
+	llvm.AddGlobal(mod, llvm.PointerType(fnTy, 0), "pkg.external")
 
 	mb := meta.NewBuilder()
 	extractOrdinaryEdges(mb, mod, nil)
@@ -37,6 +38,13 @@ func TestExtractOrdinaryEdgesFromFunctionAndGlobal(t *testing.T) {
 	}
 	if !hasOrdinaryEdge(pm, "pkg.global", "pkg.helper") {
 		t.Fatalf("missing ordinary edge pkg.global -> pkg.helper")
+	}
+	summary, err := meta.NewGlobalSummary([]*meta.PackageMeta{pm})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := summary.LookupSymbol("pkg.external"); ok {
+		t.Fatal("external global declaration was recorded in metadata")
 	}
 }
 
@@ -89,6 +97,42 @@ func TestExtractOrdinaryEdgesUsesABITypeMarkers(t *testing.T) {
 	}
 	if !hasOrdinaryEdge(pm, "_llgo_pkg.Unmarked", "pkg.T.M") {
 		t.Fatalf("unmarked global method-shaped TFn edge was skipped")
+	}
+}
+
+func TestFinishMetaCollectionDeduplicatesFunctionEdges(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	pkg := prog.NewPackageEx("pkg", "pkg", true)
+
+	callee := pkg.NewFunc("pkg.callee", NoArgsNoRet, InGo)
+	callee.MakeBody(1).Return()
+	caller := pkg.NewFunc("pkg.caller", NoArgsNoRet, InGo)
+	b := caller.MakeBody(1)
+	b.Call(caller.Expr)
+	b.Call(callee.Expr)
+	b.Call(callee.Expr)
+	b.Return()
+
+	if err := pkg.FinishMetaCollection(); err != nil {
+		t.Fatal(err)
+	}
+	defer pkg.Meta.Close()
+	summary, err := meta.NewGlobalSummary([]*meta.PackageMeta{pkg.Meta})
+	if err != nil {
+		t.Fatal(err)
+	}
+	callerSym, ok := summary.LookupSymbol("pkg.caller")
+	if !ok {
+		t.Fatal("pkg.caller is missing from metadata")
+	}
+	calleeSym, ok := summary.LookupSymbol("pkg.callee")
+	if !ok {
+		t.Fatal("pkg.callee is missing from metadata")
+	}
+	edges := summary.OrdinaryEdges(callerSym)
+	if len(edges) != 1 || edges[0] != calleeSym {
+		t.Fatalf("OrdinaryEdges(pkg.caller) = %v, want [%d]", edges, calleeSym)
 	}
 }
 

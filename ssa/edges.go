@@ -22,10 +22,10 @@ func extractOrdinaryEdges(builder *meta.Builder, mod llvm.Module, abiTypeWithUnc
 	}
 	for global := mod.FirstGlobal(); !global.IsNil(); global = llvm.NextGlobal(global) {
 		src := global.Name()
-		init := global.Initializer()
-		if init.IsNil() {
+		if global.IsDeclaration() {
 			continue
 		}
+		init := global.Initializer()
 		collector := ordinaryEdgeCollector{builder: builder, src: src}
 		if _, ok := abiTypeWithUncommon[global]; ok {
 			for i, n := 0, init.OperandsCount(); i < n; i++ {
