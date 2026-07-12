@@ -924,6 +924,9 @@ finished:
 	}
 	elapsed := time.Since(start)
 	if terminationErr != nil {
+		if exitCode == 0 {
+			exitCode = -1
+		}
 		return stdout.Bytes(), stderr.Bytes(), exitCode, elapsed, terminationErr
 	}
 	return stdout.Bytes(), stderr.Bytes(), exitCode, elapsed, nil

@@ -200,6 +200,7 @@ func TestRunProgramTimeout(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 		return
 	}
+	disableSystemMemoryLimits(t)
 
 	stdout, stderr, exitCode, elapsed, err := runProgram(
 		t.TempDir(),
@@ -241,6 +242,7 @@ func TestRunProgramRSSLimit(t *testing.T) {
 		runtime.KeepAlive(memory)
 		return
 	}
+	disableSystemMemoryLimits(t)
 
 	oldLimit := *flagMaxRSSMiB
 	oldPoll := *flagRSSPoll
@@ -291,6 +293,7 @@ func TestValidateSystemMemoryState(t *testing.T) {
 }
 
 func TestRunGeneratedProgramUsesProvidedTimeout(t *testing.T) {
+	disableSystemMemoryLimits(t)
 	dir := t.TempDir()
 	tool := filepath.Join(dir, "fake-tool.sh")
 	script := `#!/bin/sh
@@ -592,6 +595,7 @@ func TestEnsureModuleWorkspace(t *testing.T) {
 }
 
 func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
+	disableSystemMemoryLimits(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("fake tool scripts use /bin/sh")
 	}
@@ -646,6 +650,18 @@ func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
 	if !strings.Contains(log, goTool+" build -o") || !strings.Contains(log, llgoTool+" build -o") {
 		t.Fatalf("generated source was not built by both tools; log:\n%s", log)
 	}
+}
+
+func disableSystemMemoryLimits(t *testing.T) {
+	t.Helper()
+	oldMemory := *flagMinMemPct
+	oldSwap := *flagMinSwapMiB
+	*flagMinMemPct = 0
+	*flagMinSwapMiB = 0
+	t.Cleanup(func() {
+		*flagMinMemPct = oldMemory
+		*flagMinSwapMiB = oldSwap
+	})
 }
 
 func writeRunOutputFakeTool(t *testing.T, path, logPath string, allowRun bool) {
