@@ -1,24 +1,54 @@
 host_skips:
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: ddd.go
-    reason: host-unsafe concurrency case can destabilize the host
-  - platform: darwin/arm64
+    reason: go1.24 goroot run is host-sensitive on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: ddd.go
+    reason: go1.25 goroot run is host-sensitive on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: gcgort.go
-    reason: host-unsafe concurrency case can destabilize the host
-  - platform: darwin/arm64
+    reason: go1.24 goroot run is host-sensitive on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: gcgort.go
+    reason: go1.25 goroot run is host-sensitive on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue25897b.go
-    reason: host-unsafe concurrency case can destabilize the host
-  - platform: darwin/arm64
+    reason: go1.24 goroot run is host-sensitive on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue25897b.go
+    reason: go1.25 goroot run is host-sensitive on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue27695.go
-    reason: host-unsafe concurrency case can destabilize the host
-  - platform: darwin/arm64
+    reason: go1.24 goroot run is host-sensitive on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue27695.go
+    reason: go1.25 goroot run is host-sensitive on darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue39541.go
-    reason: host-unsafe concurrency case can destabilize the host
+    reason: go1.24 goroot run is host-sensitive on darwin/arm64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue39541.go
+    reason: go1.25 goroot run is host-sensitive on darwin/arm64
   - version: go1.24
     platform: linux/amd64
     directive: run
@@ -44,11 +74,6 @@ host_skips:
     directive: run
     case: fixedbugs/issue39541.go
     reason: go1.25 goroot run is host-sensitive on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue39541.go
-    reason: go1.26 goroot run is host-sensitive on linux/amd64
   - version: go1.24
     platform: darwin/arm64
     directive: run
@@ -69,16 +94,6 @@ host_skips:
     directive: run
     case: chan/goroutines.go
     reason: go1.25 goroot run is host-sensitive on linux/amd64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: chan/goroutines.go
-    reason: go1.26 goroot run is host-sensitive on darwin/arm64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: chan/goroutines.go
-    reason: go1.26 goroot run is host-sensitive on linux/amd64
   - version: go1.24
     platform: darwin/arm64
     directive: run
@@ -89,11 +104,6 @@ host_skips:
     directive: run
     case: chanlinear.go
     reason: go1.25 goroot run is host-sensitive on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: chanlinear.go
-    reason: go1.26 goroot run is host-sensitive on darwin/arm64
 timeouts:
   - version: go1.26
     platform: darwin/arm64
@@ -1625,6 +1635,11 @@ flakes:
     directive: run
     case: fixedbugs/issue79186.go
     reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
+  - version: go1.26
+    platform: darwin/arm64
+    directive: run
+    case: chanlinear.go
+    reason: the timing-based linearity check can pass or report chanSelect as too slow on darwin/arm64
   - version: go1.25
     platform: linux/amd64
     directive: run
