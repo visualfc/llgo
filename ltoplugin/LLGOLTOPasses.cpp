@@ -40,6 +40,8 @@ static constexpr char ReflectValueMethodTypeIDPrefix[] =
     "go.method.value.reflect.";
 static constexpr char ReflectTypeMethodTypeIDPrefix[] =
     "go.method.type.reflect.";
+static constexpr char RuntimeStringCatSuffix[] =
+    "runtime/internal/runtime.StringCat";
 static constexpr unsigned MaxReflectMethodNames = 32;
 static constexpr unsigned MaxStringAnalysisDepth = 12;
 static constexpr unsigned MaxConstantGEPChoices = 32;
@@ -134,6 +136,43 @@ bool collectStringSetFromStringConstant(Constant *C, const DataLayout &DL,
   if (!Ptr || !Len)
     return false;
   return collectStringSet(Ptr, Len, DL, Names, Depth + 1);
+}
+
+bool addConcatenatedNames(SmallVectorImpl<std::string> &Names,
+                          ArrayRef<std::string> Prefixes,
+                          ArrayRef<std::string> Suffixes) {
+  for (const std::string &Prefix : Prefixes) {
+    for (const std::string &Suffix : Suffixes) {
+      if (!addName(Names, Prefix + Suffix))
+        return false;
+    }
+  }
+  return true;
+}
+
+bool isRuntimeStringCat(CallBase *CB) {
+  if (!CB)
+    return false;
+  Function *Callee = CB->getCalledFunction();
+  return Callee && Callee->getName().ends_with(RuntimeStringCatSuffix);
+}
+
+bool collectStringSetFromStringCat(CallBase *CB, const DataLayout &DL,
+                                   SmallVectorImpl<std::string> &Names,
+                                   unsigned Depth) {
+  if (!isRuntimeStringCat(CB))
+    return false;
+  if (CB->arg_size() != 4)
+    return false;
+
+  SmallVector<std::string, 4> Prefixes;
+  SmallVector<std::string, 4> Suffixes;
+  if (!collectStringSet(CB->getArgOperand(0), CB->getArgOperand(1), DL,
+                        Prefixes, Depth + 1) ||
+      !collectStringSet(CB->getArgOperand(2), CB->getArgOperand(3), DL,
+                        Suffixes, Depth + 1))
+    return false;
+  return addConcatenatedNames(Names, Prefixes, Suffixes);
 }
 
 bool hasOnlyReadUses(User *U, SmallPtrSetImpl<User *> &Seen) {
@@ -404,6 +443,11 @@ bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
 
   if (auto *C = dyn_cast<Constant>(StringValue))
     return collectStringSetFromStringConstant(C, DL, Names, Depth);
+
+  if (auto *CB = dyn_cast<CallBase>(StringValue)) {
+    if (collectStringSetFromStringCat(CB, DL, Names, Depth))
+      return true;
+  }
 
   if (auto *Load = dyn_cast<LoadInst>(StringValue)) {
     if (Constant *Folded = foldConstantLoad(Load, DL))
