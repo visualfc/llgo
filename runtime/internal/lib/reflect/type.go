@@ -477,7 +477,7 @@ func (t *rtype) In(i int) Type {
 		panic("reflect: In of non-func type " + t.String())
 	}
 	tt := (*abi.FuncType)(unsafe.Pointer(t))
-	return toType(tt.In[i])
+	return toPublicType(tt.In[i])
 }
 
 func (t *rtype) NumIn() int {
@@ -501,7 +501,14 @@ func (t *rtype) Out(i int) Type {
 		panic("reflect: Out of non-func type " + t.String())
 	}
 	tt := (*abi.FuncType)(unsafe.Pointer(t))
-	return toType(tt.Out[i])
+	return toPublicType(tt.Out[i])
+}
+
+func toPublicType(typ *abi.Type) Type {
+	if typ.IsClosure() {
+		typ = &toFuncType((*abi.StructType)(unsafe.Pointer(typ))).Type
+	}
+	return toType(typ)
 }
 
 func (t *rtype) IsVariadic() bool {
@@ -662,7 +669,7 @@ func (t *structType) Field(i int) (f StructField) {
 		panic("reflect: Field index out of bounds")
 	}
 	p := &t.Fields[i]
-	f.Type = toType(p.Typ)
+	f.Type = toPublicType(p.Typ)
 	f.Name = p.Name_
 	f.Anonymous = p.Embedded()
 	if !abi.IsExported(p.Name_) {
