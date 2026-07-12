@@ -585,6 +585,7 @@ func TestFormatPackageError(t *testing.T) {
 	}{
 		{name: "keep columns", err: packages.Error{Pos: "case.go:2:3", Msg: "bad"}, want: "case.go:2:3: bad"},
 		{name: "remove column", err: packages.Error{Pos: "case.go:2:3", Msg: "bad"}, noColumn: true, want: "case.go:2: bad"},
+		{name: "driver diagnostic", err: packages.Error{Pos: "-", Msg: "# command-line-arguments\ndriver detail\ncase.go:2:3: bad"}, noColumn: true, want: "-: # command-line-arguments\ndriver detail\ncase.go:2: bad"},
 		{name: "empty position", err: packages.Error{Msg: "bad"}, noColumn: true, want: "-: bad"},
 		{name: "dash position", err: packages.Error{Pos: "-", Msg: "bad"}, noColumn: true, want: "-: bad"},
 		{name: "missing separators", err: packages.Error{Pos: "case.go", Msg: "bad"}, noColumn: true, want: "case.go: bad"},

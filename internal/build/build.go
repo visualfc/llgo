@@ -1808,26 +1808,51 @@ func buildSSAPkgs(ctx *context, initial []*packages.Package, verbose bool) ([]*a
 }
 
 func formatPackageError(err packages.Error, noColumn bool) string {
-	if !noColumn || err.Pos == "" || err.Pos == "-" {
-		return err.Error()
+	formatted := err.Error()
+	if !noColumn {
+		return formatted
 	}
-	pos := err.Pos
+	if pos, ok := positionWithoutColumn(err.Pos); ok {
+		return pos + ": " + err.Msg
+	}
+	lines := strings.Split(formatted, "\n")
+	for i, line := range lines {
+		if line, ok := diagnosticWithoutColumn(line); ok {
+			lines[i] = line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func positionWithoutColumn(pos string) (string, bool) {
 	lastColon := strings.LastIndexByte(pos, ':')
 	if lastColon < 0 {
-		return err.Error()
+		return "", false
 	}
 	if _, parseErr := strconv.Atoi(pos[lastColon+1:]); parseErr != nil {
-		return err.Error()
+		return "", false
 	}
 	linePos := pos[:lastColon]
 	lineColon := strings.LastIndexByte(linePos, ':')
 	if lineColon < 0 {
-		return err.Error()
+		return "", false
 	}
 	if _, parseErr := strconv.Atoi(linePos[lineColon+1:]); parseErr != nil {
-		return err.Error()
+		return "", false
 	}
-	return linePos + ": " + err.Msg
+	return linePos, true
+}
+
+func diagnosticWithoutColumn(line string) (string, bool) {
+	separator := strings.Index(line, ": ")
+	if separator < 0 {
+		return "", false
+	}
+	pos, ok := positionWithoutColumn(line[:separator])
+	if !ok {
+		return "", false
+	}
+	return pos + line[separator:], true
 }
 
 func collectRewriteVars(ctx *context, pkgPath string) map[string]string {
