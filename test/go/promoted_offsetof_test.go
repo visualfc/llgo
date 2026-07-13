@@ -17,6 +17,7 @@
 package gotest
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 )
@@ -38,5 +39,26 @@ func TestUnsafeOffsetofGenericPromotedFieldIssue53137(t *testing.T) {
 	got, want := promotedOffsets(new(promotedGenericOuter[int]))
 	if got != want {
 		t.Fatalf("unsafe.Offsetof(v.B) = %d, want embedded field offset %d", got, want)
+	}
+}
+
+func offsetofGenericCompositeField[T int](v T) uintptr {
+	return unsafe.Offsetof(struct {
+		Prefix byte
+		Value  T
+	}{0, func(T) T { return v }(v)}.Value)
+}
+
+func TestUnsafeOffsetofGenericCompositeFieldMatchesGoLayout(t *testing.T) {
+	typ := reflect.TypeOf(struct {
+		Prefix byte
+		Value  int
+	}{})
+	field, ok := typ.FieldByName("Value")
+	if !ok {
+		t.Fatal("reflect.Type.FieldByName(Value) failed")
+	}
+	if got, want := offsetofGenericCompositeField(1), field.Offset; got != want {
+		t.Fatalf("unsafe.Offsetof(composite.Value) = %d, want Go layout offset %d", got, want)
 	}
 }
