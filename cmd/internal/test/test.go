@@ -22,6 +22,7 @@ var Cmd = &base.Command{
 func init() {
 	Cmd.Run = runCmd
 	flags.AddCommonFlags(&Cmd.Flag)
+	flags.AddCompilerVerboseFlag(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
 	flags.AddTestFlags(&Cmd.Flag)
 	flags.AddTestBinaryFlags(&Cmd.Flag)

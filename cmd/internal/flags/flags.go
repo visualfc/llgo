@@ -30,6 +30,7 @@ func AddOutputFlags(fs *flag.FlagSet) {
 }
 
 var Verbose bool
+var CompilerVerbose bool
 var BuildEnv string
 var BuildMode string
 var Tags string
@@ -167,6 +168,10 @@ const DefaultTestTimeout = "10m" // Matches Go's default test timeout
 
 func AddCommonFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&Verbose, "v", false, "Verbose output")
+}
+
+func AddCompilerVerboseFlag(fs *flag.FlagSet) {
+	fs.BoolVar(&CompilerVerbose, "verbose", false, "Print verbose compiler debug output")
 }
 
 func AddOptLevelFlags(fs *flag.FlagSet) {
@@ -333,6 +338,18 @@ func UpdateConfig(conf *build.Config) error {
 	conf.CompilerHash = compilerhash.Value()
 	conf.Tags = Tags
 	conf.Verbose = Verbose
+	conf.PrintPackages = false
+	switch conf.Mode {
+	case build.ModeBuild:
+		// Match go build -v: print package names as they are compiled. The
+		// legacy LLGo debug output is available separately through -verbose.
+		conf.Verbose = CompilerVerbose
+		conf.PrintPackages = Verbose
+	case build.ModeTest:
+		// For go test, -v controls the test binary only. buildTestArgs forwards
+		// it as -test.v.
+		conf.Verbose = CompilerVerbose
+	}
 	conf.PrintCommands = PrintCommands
 	conf.OptLevel = OptLevel
 	conf.Target = Target
