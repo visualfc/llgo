@@ -393,16 +393,20 @@ func TestUpdateConfigVerboseCompatibility(t *testing.T) {
 
 func TestCompilerVerboseFlag(t *testing.T) {
 	oldCompilerVerbose := CompilerVerbose
-	CompilerVerbose = false
 	t.Cleanup(func() { CompilerVerbose = oldCompilerVerbose })
 
-	fs := flag.NewFlagSet("compiler-verbose", flag.ContinueOnError)
-	fs.SetOutput(new(bytes.Buffer))
-	AddCompilerVerboseFlag(fs)
-	if err := fs.Parse([]string{"-verbose"}); err != nil {
-		t.Fatalf("Parse(-verbose) error = %v", err)
-	}
-	if !CompilerVerbose {
-		t.Fatal("-verbose did not enable compiler verbose output")
+	for _, arg := range []string{"-compiler-verbose", "-cv"} {
+		t.Run(arg, func(t *testing.T) {
+			CompilerVerbose = false
+			fs := flag.NewFlagSet("compiler-verbose", flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddCompilerVerboseFlag(fs)
+			if err := fs.Parse([]string{arg}); err != nil {
+				t.Fatalf("Parse(%s) error = %v", arg, err)
+			}
+			if !CompilerVerbose {
+				t.Fatalf("%s did not enable compiler verbose output", arg)
+			}
+		})
 	}
 }

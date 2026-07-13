@@ -171,7 +171,8 @@ func AddCommonFlags(fs *flag.FlagSet) {
 }
 
 func AddCompilerVerboseFlag(fs *flag.FlagSet) {
-	fs.BoolVar(&CompilerVerbose, "verbose", false, "Print verbose compiler debug output")
+	fs.BoolVar(&CompilerVerbose, "compiler-verbose", false, "Print verbose compiler output")
+	fs.BoolVar(&CompilerVerbose, "cv", false, "Print verbose compiler output (shorthand for -compiler-verbose)")
 }
 
 func AddOptLevelFlags(fs *flag.FlagSet) {
@@ -342,7 +343,7 @@ func UpdateConfig(conf *build.Config) error {
 	switch conf.Mode {
 	case build.ModeBuild:
 		// Match go build -v: print package names as they are compiled. The
-		// legacy LLGo debug output is available separately through -verbose.
+		// legacy LLGo compiler output is available through -compiler-verbose.
 		conf.Verbose = CompilerVerbose
 		conf.PrintPackages = Verbose
 	case build.ModeTest:
