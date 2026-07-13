@@ -39,6 +39,8 @@ static constexpr char ReflectTypeMethodTypeIDPrefix[] =
     "go.method.type.reflect.";
 static constexpr char RuntimeStringCatSuffix[] =
     "runtime/internal/runtime.StringCat";
+static constexpr char RuntimeStringSlice2Suffix[] =
+    "runtime/internal/runtime.StringSlice2";
 static constexpr unsigned MaxReflectMethodNames = 32;
 static constexpr unsigned MaxStringAnalysisDepth = 12;
 static constexpr unsigned MaxConstantGEPChoices = 32;
@@ -97,6 +99,9 @@ bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
 bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
                                      SmallVectorImpl<std::string> &Names,
                                      unsigned Depth = 0);
+
+bool collectIntegerChoices(Value *V, SmallVectorImpl<uint64_t> &Choices,
+                           unsigned Depth = 0);
 
 bool collectStringSetFromFunctionStringArg(Value *Ptr, Value *Len,
                                            const DataLayout &DL,
@@ -159,6 +164,13 @@ bool isRuntimeStringCat(CallBase *CB) {
   return Callee && Callee->getName().ends_with(RuntimeStringCatSuffix);
 }
 
+bool isRuntimeStringSlice2(CallBase *CB) {
+  if (!CB)
+    return false;
+  Function *Callee = CB->getCalledFunction();
+  return Callee && Callee->getName().ends_with(RuntimeStringSlice2Suffix);
+}
+
 bool collectStringSetFromStringCat(CallBase *CB, const DataLayout &DL,
                                    SmallVectorImpl<std::string> &Names,
                                    unsigned Depth) {
@@ -175,6 +187,38 @@ bool collectStringSetFromStringCat(CallBase *CB, const DataLayout &DL,
                         Suffixes, Depth + 1))
     return false;
   return addConcatenatedNames(Names, Prefixes, Suffixes);
+}
+
+bool collectStringSetFromStringSlice2(CallBase *CB, const DataLayout &DL,
+                                      SmallVectorImpl<std::string> &Names,
+                                      unsigned Depth) {
+  if (!isRuntimeStringSlice2(CB))
+    return false;
+  if (CB->arg_size() != 6)
+    return false;
+
+  SmallVector<std::string, 4> Bases;
+  if (!collectStringSet(CB->getArgOperand(0), CB->getArgOperand(1), DL, Bases,
+                        Depth + 1))
+    return false;
+
+  SmallVector<uint64_t, 4> Lows;
+  SmallVector<uint64_t, 4> Highs;
+  if (!collectIntegerChoices(CB->getArgOperand(2), Lows, Depth + 1) ||
+      !collectIntegerChoices(CB->getArgOperand(3), Highs, Depth + 1))
+    return false;
+
+  for (const std::string &Base : Bases) {
+    for (uint64_t I : Lows) {
+      for (uint64_t J : Highs) {
+        if (I > J || J > Base.size())
+          return false;
+        if (!addName(Names, StringRef(Base).substr(I, J - I)))
+          return false;
+      }
+    }
+  }
+  return true;
 }
 
 bool hasOnlyReadUses(User *U, SmallPtrSetImpl<User *> &Seen) {
@@ -299,7 +343,7 @@ bool addIntegerChoice(SmallVectorImpl<uint64_t> &Choices, uint64_t Value) {
 }
 
 bool collectIntegerChoices(Value *V, SmallVectorImpl<uint64_t> &Choices,
-                           unsigned Depth = 0) {
+                           unsigned Depth) {
   if (Depth > MaxStringAnalysisDepth)
     return false;
 
@@ -489,6 +533,8 @@ bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
     return collectStringSetFromStringConstant(C, DL, Names, Depth);
 
   if (auto *CB = dyn_cast<CallBase>(StringValue)) {
+    if (collectStringSetFromStringSlice2(CB, DL, Names, Depth))
+      return true;
     if (collectStringSetFromStringCat(CB, DL, Names, Depth))
       return true;
   }
