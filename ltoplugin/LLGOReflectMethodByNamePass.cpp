@@ -1,8 +1,9 @@
+#include "LLGOLTOPasses.h"
+
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRBuilder.h"
@@ -14,9 +15,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PassManager.h"
-#include "llvm/Passes/PassBuilder.h"
-#include "llvm/Passes/PassPlugin.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdlib>
@@ -27,7 +25,6 @@ using namespace llvm;
 
 namespace {
 
-static constexpr char LLGOPreGlobalDCEPassName[] = "llgo-lto-pre-globaldce";
 static constexpr char ReflectMethodByNameCallAttr[] =
     "llgo.reflect.methodbyname";
 static constexpr char ReflectMethodByNameArgAttr[] =
@@ -100,6 +97,11 @@ bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
 bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
                                      SmallVectorImpl<std::string> &Names,
                                      unsigned Depth = 0);
+
+bool collectStringSetFromFunctionStringArg(Value *Ptr, Value *Len,
+                                           const DataLayout &DL,
+                                           SmallVectorImpl<std::string> &Names,
+                                           unsigned Depth);
 
 std::optional<unsigned> singleExtractValueIndex(ExtractValueInst *Extract) {
   if (!Extract || Extract->getNumIndices() != 1)
@@ -435,6 +437,48 @@ bool collectStringSetFromConstantSlots(
   return true;
 }
 
+bool collectStringSetFromFunctionStringArg(Value *Ptr, Value *Len,
+                                           const DataLayout &DL,
+                                           SmallVectorImpl<std::string> &Names,
+                                           unsigned Depth) {
+  auto *PtrArg = dyn_cast<Argument>(Ptr);
+  auto *LenArg = dyn_cast<Argument>(Len);
+  if (!PtrArg || !LenArg)
+    return false;
+
+  Function *F = PtrArg->getParent();
+  if (!F || F != LenArg->getParent())
+    return false;
+
+  unsigned PtrArgNo = PtrArg->getArgNo();
+  unsigned LenArgNo = LenArg->getArgNo();
+  if (LenArgNo != PtrArgNo + 1 || !PtrArg->getType()->isPointerTy() ||
+      !LenArg->getType()->isIntegerTy())
+    return false;
+
+  SmallVector<CallBase *, 8> Callers;
+  for (User *U : F->users()) {
+    auto *CB = dyn_cast<CallBase>(U);
+    if (!CB || CB->getCalledFunction() != F)
+      return false;
+    Callers.push_back(CB);
+  }
+  if (Callers.empty())
+    return false;
+
+  for (CallBase *CB : Callers) {
+    if (LenArgNo >= CB->arg_size())
+      return false;
+    Value *CallPtr = CB->getArgOperand(PtrArgNo);
+    Value *CallLen = CB->getArgOperand(LenArgNo);
+    if (!CallPtr->getType()->isPointerTy() || !CallLen->getType()->isIntegerTy())
+      return false;
+    if (!collectStringSet(CallPtr, CallLen, DL, Names, Depth + 1))
+      return false;
+  }
+  return true;
+}
+
 bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
                                      SmallVectorImpl<std::string> &Names,
                                      unsigned Depth) {
@@ -523,6 +567,9 @@ bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
   }
   if (FoldedLoad)
     return collectStringSet(Ptr, Len, DL, Names, Depth + 1);
+
+  if (collectStringSetFromFunctionStringArg(Ptr, Len, DL, Names, Depth))
+    return true;
 
   if (collectStringSetFromConstantSlots(dyn_cast<LoadInst>(Ptr),
                                         dyn_cast<LoadInst>(Len), DL, Names,
@@ -832,25 +879,10 @@ public:
 
 } // namespace
 
-PassPluginLibraryInfo getLLGOLTOPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "llgo-lto-plugin", LLVM_VERSION_STRING,
-          [](PassBuilder &PB) {
-            PB.registerPipelineParsingCallback(
-                [](StringRef Name, ModulePassManager &MPM,
-                   ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name != LLGOPreGlobalDCEPassName)
-                    return false;
-                  MPM.addPass(LLGOLTOPreGlobalDCEPass());
-                  return true;
-                });
+namespace llgo {
 
-            PB.registerFullLinkTimeOptimizationEarlyEPCallback(
-                [](ModulePassManager &MPM, OptimizationLevel) {
-                  MPM.addPass(LLGOLTOPreGlobalDCEPass());
-                });
-          }};
+void addLLGOReflectMethodByNamePass(ModulePassManager &MPM) {
+  MPM.addPass(LLGOLTOPreGlobalDCEPass());
 }
 
-extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo llvmGetPassPluginInfo() {
-  return getLLGOLTOPluginInfo();
-}
+} // namespace llgo
