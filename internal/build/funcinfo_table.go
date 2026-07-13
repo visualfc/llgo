@@ -346,6 +346,11 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 	symbolIndexPtr := llvm.AddGlobal(mod, llvm.PointerType(symbolIndexRecordType, 0), funcInfoSymbolIndexSymbol)
 	count := llvm.AddGlobal(mod, countType, funcInfoCountSymbol)
 	symbolIndexCount := llvm.AddGlobal(mod, countType, funcInfoSymbolIndexCountSymbol)
+	// ELF metadata records contain absolute addresses for these two globals.
+	// Keep them non-preemptible so shared-library links can lower the pointers
+	// to relative dynamic relocations in the writable metadata section.
+	symbolIndexPtr.SetVisibility(llvm.HiddenVisibility)
+	symbolIndexCount.SetVisibility(llvm.HiddenVisibility)
 	stubIndexesPtr := llvm.AddGlobal(mod, llvm.PointerType(i32Type, 0), funcInfoStubIndexesSymbol)
 	stubCount := llvm.AddGlobal(mod, countType, funcInfoStubCountSymbol)
 	pcLineCount := llvm.AddGlobal(mod, countType, pcLineCountSymbol)
@@ -624,12 +629,14 @@ func shouldEmitRuntimeMachOSites(ctx *context) bool {
 
 // shouldEmitRuntimeSites reports whether the target object format has a
 // DCE-safe section story for metadata site records. ELF uses SHF_LINK_ORDER
-// associated sections (honored by --gc-sections). Mach-O uses live_support
-// sections: under ld64/lld -dead_strip a live_support atom survives only if
-// the atom it references (the anchor inside the function body) is live, which
-// is the same records-follow-function semantics. Sites are additionally
-// gated per Program: debug builds keep the funcinfo tables but drop the
-// body-embedded site records (see Program.EnableFuncInfoSites).
+// associated sections (honored by --gc-sections). The ELF sections are also
+// writable because shared libraries need dynamic relative relocations for the
+// absolute pointers stored in each record. Mach-O uses live_support sections:
+// under ld64/lld -dead_strip a live_support atom survives only if the atom it
+// references (the anchor inside the function body) is live, which is the same
+// records-follow-function semantics. Sites are additionally gated per Program:
+// debug builds keep the funcinfo tables but drop the body-embedded site records
+// (see Program.EnableFuncInfoSites).
 func shouldEmitRuntimeSites(ctx *context) bool {
 	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() {
 		return false
@@ -662,7 +669,7 @@ func (s siteSectionInfo) push(machO bool, anchor string) string {
 	if machO {
 		return ".pushsection " + s.machO + ",regular,live_support"
 	}
-	return ".pushsection " + s.elf + ",\"ao\",@progbits," + anchor
+	return ".pushsection " + s.elf + ",\"awo\",@progbits," + anchor
 }
 
 // recordSymbol returns the extra label line each Mach-O record needs: the
@@ -680,7 +687,7 @@ func (s siteSectionInfo) retain(machO bool) string {
 	if machO {
 		return ".section " + s.machO + ",regular,live_support"
 	}
-	return ".section " + s.elf + ",\"aR\",@progbits"
+	return ".section " + s.elf + ",\"awR\",@progbits"
 }
 
 // retainSymbol returns the label lines that pin the zero record under

@@ -64,9 +64,9 @@ func TestFuncInfoTableMaterializesMetadataWithoutFunctionPointers(t *testing.T) 
 		"@__llgo_funcinfo_string_offsets = global ptr",
 		"@__llgo_funcinfo_string_count = global i64 5",
 		"@__llgo_funcinfo_hash = global ptr",
-		"@__llgo_funcinfo_symbol_index = global ptr",
+		"@__llgo_funcinfo_symbol_index = hidden global ptr",
 		"@__llgo_funcinfo_count = global i64 1",
-		"@__llgo_funcinfo_symbol_index_count = global i64 1",
+		"@__llgo_funcinfo_symbol_index_count = hidden global i64 1",
 		"@__llgo_funcinfo_entry_start = global ptr @__start_llgo_funcinfo_entry",
 		"@__llgo_funcinfo_entry_end = global ptr @__stop_llgo_funcinfo_entry",
 		"@__llgo_funcinfo_stub_indexes = global ptr null",
@@ -282,8 +282,8 @@ func TestFuncInfoTableMaterializesClosureStubIndexes(t *testing.T) {
 	for _, want := range []string{
 		"@__llgo_funcinfo_stub_indexes = global ptr",
 		"@__llgo_funcinfo_stub_count = global i64 1",
-		"@__llgo_funcinfo_symbol_index = global ptr",
-		"@__llgo_funcinfo_symbol_index_count = global i64 2",
+		"@__llgo_funcinfo_symbol_index = hidden global ptr",
+		"@__llgo_funcinfo_symbol_index_count = hidden global i64 2",
 		"@__llgo_funcinfo_stubsite_start = global ptr @__start_llgo_funcinfo_stubsite",
 		"@__llgo_funcinfo_stubsite_end = global ptr @__stop_llgo_funcinfo_stubsite",
 		`@"__llgo_funcinfo_stub_indexes$data" = private unnamed_addr constant [1 x i32]`,
@@ -445,9 +445,9 @@ func TestFuncInfoTableEmptyDefinitions(t *testing.T) {
 		"@__llgo_funcinfo_string_offsets = global ptr null",
 		"@__llgo_funcinfo_string_count = global i64 0",
 		"@__llgo_funcinfo_hash = global ptr null",
-		"@__llgo_funcinfo_symbol_index = global ptr null",
+		"@__llgo_funcinfo_symbol_index = hidden global ptr null",
 		"@__llgo_funcinfo_count = global i64 0",
-		"@__llgo_funcinfo_symbol_index_count = global i64 0",
+		"@__llgo_funcinfo_symbol_index_count = hidden global i64 0",
 		"@__llgo_funcinfo_entry_start = global ptr null",
 		"@__llgo_funcinfo_entry_end = global ptr null",
 		"@__llgo_funcinfo_stub_indexes = global ptr null",
@@ -573,6 +573,15 @@ func TestAsmQuoteELFSymbol(t *testing.T) {
 		if got := asmQuoteELFSymbol(in); got != want {
 			t.Fatalf("quote(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestELFFuncInfoSiteSectionsAllowSharedLibraryRelocations(t *testing.T) {
+	if got, want := entrySiteSectionInfo.push(false, "anchor"), `.pushsection llgo_funcinfo_entry,"awo",@progbits,anchor`; got != want {
+		t.Fatalf("ELF site section = %q, want %q", got, want)
+	}
+	if got, want := entrySiteSectionInfo.retain(false), `.section llgo_funcinfo_entry,"awR",@progbits`; got != want {
+		t.Fatalf("ELF retained section = %q, want %q", got, want)
 	}
 }
 
