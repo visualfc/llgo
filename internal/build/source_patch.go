@@ -150,6 +150,28 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 		}
 	}
 
+	if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, ctx.goarch) {
+		for _, entry := range srcEntries {
+			if entry.IsDir() {
+				continue
+			}
+			name := entry.Name()
+			if !strings.HasSuffix(name, ".s") || strings.HasSuffix(name, "_test.s") {
+				continue
+			}
+			match, err := buildCtx.MatchFile(srcDir, name)
+			if err != nil {
+				return false, nil, fmt.Errorf("match stdlib assembly file %s: %w", filepath.Join(srcDir, name), err)
+			}
+			if !match {
+				continue
+			}
+			ensureOverlay()
+			out[filepath.Join(srcDir, name)] = []byte("// replaced by LLGo source patch\n")
+			changed = true
+		}
+	}
+
 	if skipAll {
 		for _, entry := range srcEntries {
 			if entry.IsDir() {
