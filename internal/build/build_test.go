@@ -20,6 +20,7 @@ import (
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/mockable"
+	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/internal/packages"
 	llssa "github.com/goplus/llgo/ssa"
 	"github.com/xgo-dev/llvm"
@@ -500,6 +501,102 @@ func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.conf.goGlobalDCEEnabled(); got != tt.want {
 				t.Fatalf("goGlobalDCEEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyFrontendGCFlags(t *testing.T) {
+	conf := &Config{GoBuildFlags: []string{
+		"-tags=integration",
+		"-gcflags=",
+		"-gcflags=-l",
+		"-gcflags=all=-lang=go1.17 -N -l=4",
+	}}
+	applyFrontendGCFlags(conf)
+	if conf.GoVersion != "go1.17" {
+		t.Fatalf("GoVersion=%q, want go1.17", conf.GoVersion)
+	}
+	if conf.OptLevel != optlevel.O0 {
+		t.Fatalf("OptLevel=%v, want O0", conf.OptLevel)
+	}
+}
+
+func TestAllowMissingFunctionBodies(t *testing.T) {
+	pkg := &packages.Package{
+		Errors: []packages.Error{
+			{Msg: "# command-line-arguments"},
+			{Msg: "missing function body"},
+		},
+		IllTyped: true,
+	}
+	allowMissingFunctionBodies([]*packages.Package{pkg})
+	if pkg.IllTyped || len(pkg.Errors) != 0 || len(pkg.TypeErrors) != 0 {
+		t.Fatalf("package remains ill-typed: %+v", pkg.Errors)
+	}
+
+	pkg = &packages.Package{
+		Errors: []packages.Error{
+			{Msg: "missing function body"},
+			{Msg: "undefined: missing"},
+		},
+		IllTyped: true,
+	}
+	allowMissingFunctionBodies([]*packages.Package{pkg})
+	if !pkg.IllTyped || len(pkg.Errors) != 2 {
+		t.Fatalf("mixed errors were incorrectly suppressed: %+v", pkg.Errors)
+	}
+
+	unchanged := &packages.Package{Errors: []packages.Error{{Msg: "# command-line-arguments"}}, IllTyped: true}
+	allowMissingFunctionBodies([]*packages.Package{unchanged})
+	if !unchanged.IllTyped || len(unchanged.Errors) != 1 {
+		t.Fatalf("package without a missing-body diagnostic was changed: %+v", unchanged)
+	}
+}
+
+func TestDoAllowsMissingFunctionBodies(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "nobody.go")
+	if err := os.WriteFile(file, []byte(`package nobody
+
+func External()
+
+func F() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf := NewDefaultConf(ModeGen)
+	conf.AllowNoBody = true
+	pkgs, err := Do([]string{file}, conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 1 || pkgs[0].LPkg == nil {
+		t.Fatalf("Do returned packages = %+v, want one compiled package", pkgs)
+	}
+	pkgs[0].LPkg.Prog.Dispose()
+}
+
+func TestFormatPackageError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      packages.Error
+		noColumn bool
+		want     string
+	}{
+		{name: "keep columns", err: packages.Error{Pos: "case.go:2:3", Msg: "bad"}, want: "case.go:2:3: bad"},
+		{name: "remove column", err: packages.Error{Pos: "case.go:2:3", Msg: "bad"}, noColumn: true, want: "case.go:2: bad"},
+		{name: "driver diagnostic", err: packages.Error{Pos: "-", Msg: "# command-line-arguments\ndriver detail\ncase.go:2:3: bad"}, noColumn: true, want: "-: # command-line-arguments\ndriver detail\ncase.go:2: bad"},
+		{name: "empty position", err: packages.Error{Msg: "bad"}, noColumn: true, want: "-: bad"},
+		{name: "dash position", err: packages.Error{Pos: "-", Msg: "bad"}, noColumn: true, want: "-: bad"},
+		{name: "missing separators", err: packages.Error{Pos: "case.go", Msg: "bad"}, noColumn: true, want: "case.go: bad"},
+		{name: "invalid column", err: packages.Error{Pos: "case.go:2:x", Msg: "bad"}, noColumn: true, want: "case.go:2:x: bad"},
+		{name: "missing line separator", err: packages.Error{Pos: "2:3", Msg: "bad"}, noColumn: true, want: "2:3: bad"},
+		{name: "invalid line", err: packages.Error{Pos: "case.go:x:3", Msg: "bad"}, noColumn: true, want: "case.go:x:3: bad"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatPackageError(tt.err, tt.noColumn); got != tt.want {
+				t.Fatalf("formatPackageError() = %q, want %q", got, tt.want)
 			}
 		})
 	}

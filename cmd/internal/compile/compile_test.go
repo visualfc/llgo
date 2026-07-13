@@ -1,0 +1,203 @@
+package compile
+
+import (
+	"os"
+	"reflect"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/goplus/llgo/internal/mockable"
+)
+
+func TestGoCompilerFlagNamesAndTypes(t *testing.T) {
+	opts := new(options)
+	fs := newFlagSet(opts)
+	err := fs.Parse([]string{
+		"-c=2",
+		"-C",
+		"-e",
+		"-l=4",
+		"-lang=go1.17",
+		"-d=panic,ssa/check/on",
+		"-p=p",
+		"-importcfg=importcfg",
+		"case.go",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.concurrency != 2 || opts.noColumns.value != 1 || opts.allErrors.value != 1 || opts.noInline.value != 4 {
+		t.Fatalf("parsed flags: %+v", opts)
+	}
+	if opts.lang != "go1.17" || opts.pkgPath != "p" || opts.importCfg != "importcfg" {
+		t.Fatalf("parsed flags: %+v", opts)
+	}
+	if !reflect.DeepEqual(fs.Args(), []string{"case.go"}) {
+		t.Fatalf("files=%v", fs.Args())
+	}
+	if unsupported := opts.unsupported(); len(unsupported) != 0 {
+		t.Fatalf("unsupported=%v, want none", unsupported)
+	}
+}
+
+func TestGoCompilerSpecificFlagIsExplicitlyUnsupported(t *testing.T) {
+	opts := new(options)
+	fs := newFlagSet(opts)
+	if err := fs.Parse([]string{"-d=libfuzzer", "case.go"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := opts.unsupported(); !reflect.DeepEqual(got, []string{"-d=libfuzzer"}) {
+		t.Fatalf("unsupported=%v", got)
+	}
+}
+
+func TestCountAndListFlags(t *testing.T) {
+	var count countFlag
+	if !count.IsBoolFlag() {
+		t.Fatal("countFlag should accept the bool flag form")
+	}
+	for _, value := range []string{"true", "true", "false", "4"} {
+		if err := count.Set(value); err != nil {
+			t.Fatalf("Set(%q): %v", value, err)
+		}
+	}
+	if got := count.String(); got != "4" || !count.set {
+		t.Fatalf("count flag = %q, set=%v; want 4, true", got, count.set)
+	}
+	if err := count.Set("invalid"); err == nil {
+		t.Fatal("invalid count value was accepted")
+	}
+
+	var list stringListFlag
+	if err := list.Set("one"); err != nil {
+		t.Fatal(err)
+	}
+	if err := list.Set("two"); err != nil {
+		t.Fatal(err)
+	}
+	if got := list.String(); got != "one,two" {
+		t.Fatalf("list flag = %q, want one,two", got)
+	}
+}
+
+func TestUnsupportedCompilerFlags(t *testing.T) {
+	opts := &options{
+		noBounds:    countFlag{value: 1},
+		dynlink:     true,
+		showOpt:     countFlag{value: 1},
+		live:        true,
+		race:        true,
+		smallFrames: true,
+		standard:    true,
+		runtimePkg:  true,
+		writeBar:    countFlag{set: true},
+		debug:       stringListFlag{"panic,libfuzzer", "ssa/check/on,wb"},
+	}
+	want := []string{"-B", "-dynlink", "-m", "-live", "-race", "-smallframes", "-std", "-+", "-wb", "-d=libfuzzer", "-d=wb"}
+	if got := opts.unsupported(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("unsupported=%v, want %v", got, want)
+	}
+}
+
+func TestRunCmdValidationAndVersion(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantCode   int
+		wantOutput string
+	}{
+		{name: "bad flag", args: []string{"-unknown"}, wantCode: 2, wantOutput: "flag provided but not defined"},
+		{name: "no files", wantCode: 2, wantOutput: "no Go source files"},
+		{name: "unsupported", args: []string{"-B", "case.go"}, wantCode: 2, wantOutput: "unsupported llgo compiler option(s): -B"},
+		{name: "negative concurrency", args: []string{"-c=-1", "case.go"}, wantCode: 2, wantOutput: "-c must be non-negative"},
+		{name: "invalid language", args: []string{"-lang=1.22", "case.go"}, wantCode: 2, wantOutput: "invalid value"},
+		{name: "version", args: []string{"-V"}, wantOutput: "compile version llgo"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, code := runCompileCommand(t, tt.args)
+			if code != tt.wantCode {
+				t.Fatalf("exit code = %d, want %d; stdout=%q stderr=%q", code, tt.wantCode, stdout, stderr)
+			}
+			if output := stdout + stderr; !strings.Contains(output, tt.wantOutput) {
+				t.Fatalf("output %q does not contain %q", output, tt.wantOutput)
+			}
+		})
+	}
+}
+
+func TestRunCmdBuildsAndReportsErrors(t *testing.T) {
+	dir := t.TempDir()
+	valid := dir + "/valid.go"
+	if err := os.WriteFile(valid, []byte("package compilecase\nfunc F() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	previousProcs := runtime.GOMAXPROCS(0)
+	stdout, stderr, code := runCompileCommand(t, []string{
+		"-c=1", "-C", "-e", "-lang=go1.22", "-N", "-l", "-complete", valid,
+	})
+	if code != 0 {
+		t.Fatalf("valid compile exit code = %d; stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if got := runtime.GOMAXPROCS(0); got != previousProcs {
+		t.Fatalf("GOMAXPROCS = %d after compile, want restored value %d", got, previousProcs)
+	}
+
+	invalid := dir + "/invalid.go"
+	if err := os.WriteFile(invalid, []byte("package compilecase\nvar _ = missing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, code = runCompileCommand(t, []string{invalid})
+	if code != 1 || !strings.Contains(stderr, "missing") {
+		t.Fatalf("invalid compile exit code = %d, stderr=%q; want code 1 and diagnostic", code, stderr)
+	}
+}
+
+func runCompileCommand(t *testing.T, args []string) (stdout, stderr string, exitCode int) {
+	t.Helper()
+	outFile, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errFile, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStdout, oldStderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outFile, errFile
+	mockable.EnableMock()
+	exited := false
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if recovered == "exit" {
+					exited = true
+					return
+				}
+				panic(recovered)
+			}
+		}()
+		runCmd(Cmd, args)
+	}()
+	mockable.DisableMock()
+	os.Stdout, os.Stderr = oldStdout, oldStderr
+	if exited {
+		exitCode = mockable.ExitCode()
+	}
+	if err := outFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := errFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	outData, err := os.ReadFile(outFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	errData, err := os.ReadFile(errFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(outData), string(errData), exitCode
+}
