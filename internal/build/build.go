@@ -336,7 +336,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 
 	verbose := conf.Verbose
 	patterns := args
-	tags := "llgo,math_big_pure_go,purego"
+	tags := defaultBuildTags(conf.Goarch, conf.Target)
 	if conf.PCLNMode == PCLNExternal {
 		// Select the optional runtime loader as part of the normal package
 		// cache key. Embedded and none builds do not compile any loader or
@@ -668,6 +668,18 @@ func applyBuildModeCompileFlags(mode BuildMode, export *crosscompile.Export) {
 	if mode == BuildModeCShared && export != nil && !slices.Contains(export.CCFLAGS, "-fPIC") {
 		export.CCFLAGS = append(export.CCFLAGS, "-fPIC")
 	}
+}
+
+func defaultBuildTags(goarch, target string) string {
+	tags := "llgo,math_big_pure_go,purego"
+	// Raw GOOS/GOARCH wasm builds do not have a target configuration that
+	// selects a collector. BDWGC is not available in either wasm host, so use
+	// the supported collector-free runtime unless a named target supplies its
+	// own runtime configuration.
+	if goarch == "wasm" && target == "" {
+		tags += ",nogc"
+	}
+	return tags
 }
 
 func allowMissingFunctionBodies(initial []*packages.Package) {

@@ -8,6 +8,7 @@ import (
 	"debug/macho"
 	"fmt"
 	"go/ast"
+	gobuild "go/build"
 	"go/parser"
 	"go/token"
 	"io"
@@ -16,11 +17,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/crosscompile"
+	"github.com/goplus/llgo/internal/env"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/internal/mockable"
@@ -91,6 +94,74 @@ func TestNeedsLinuxNoPIE(t *testing.T) {
 	ctx.buildConf.Target = "wasi"
 	if needsLinuxNoPIE(ctx, nil) {
 		t.Fatal("named targets should not force host linux -no-pie")
+	}
+}
+
+func TestDefaultBuildTags(t *testing.T) {
+	const base = "llgo,math_big_pure_go,purego"
+	for _, test := range []struct {
+		name   string
+		goarch string
+		target string
+		want   string
+	}{
+		{name: "native", goarch: "arm64", want: base},
+		{name: "raw wasm", goarch: "wasm", want: base + ",nogc"},
+		{name: "configured wasm target", goarch: "wasm", target: "wasip1", want: base},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := defaultBuildTags(test.goarch, test.target); got != test.want {
+				t.Fatalf("defaultBuildTags(%q, %q) = %q, want %q", test.goarch, test.target, got, test.want)
+			}
+		})
+	}
+}
+
+func TestWasmRuntimeAvoidsNativeHostDependencies(t *testing.T) {
+	runtimeDir := filepath.Join(env.LLGoRuntimeDir(), "internal", "lib", "runtime")
+	for _, goos := range []string{"js", "wasip1"} {
+		t.Run(goos, func(t *testing.T) {
+			ctx := gobuild.Default
+			ctx.GOOS = goos
+			ctx.GOARCH = "wasm"
+			ctx.BuildTags = []string{"llgo", "nogc"}
+			pkg, err := ctx.ImportDir(runtimeDir, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			selected := make(map[string]bool)
+			for _, name := range append(pkg.GoFiles, pkg.CgoFiles...) {
+				selected[name] = true
+				file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(runtimeDir, name), nil, parser.ImportsOnly)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, spec := range file.Imports {
+					path, err := strconv.Unquote(spec.Path.Value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					switch path {
+					case "github.com/goplus/llgo/runtime/internal/clite/libuv",
+						"github.com/goplus/llgo/runtime/internal/clite/bdwgc":
+						t.Fatalf("wasm selected %s, which imports native host dependency %s", name, path)
+					}
+				}
+			}
+
+			for _, name := range []string{
+				"mfinal_nogc.go",
+				"runtime_baremetal.go",
+				"signal_baremetal_llgo.go",
+				"time_wasm_llgo.go",
+				"unwind_wasm_llgo.go",
+			} {
+				if !selected[name] {
+					t.Errorf("wasm runtime did not select %s", name)
+				}
+			}
+		})
 	}
 }
 

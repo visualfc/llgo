@@ -1,5 +1,5 @@
-//go:build !go1.23 && !baremetal
-// +build !go1.23,!baremetal
+//go:build !go1.23 && !baremetal && !wasm
+// +build !go1.23,!baremetal,!wasm
 
 package runtime
 
