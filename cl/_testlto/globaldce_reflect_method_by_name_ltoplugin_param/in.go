@@ -64,8 +64,8 @@ func forwardTypeName(name string) string {
 }
 
 func main() {
-	println(forwardValueSuffix("ParamValueA"))
-	println(forwardValueSuffix("ParamValueB"))
+	println(forwardValueSuffix("__ParamValueA__"[2:13]))
+	println(forwardValueSuffix("__ParamValueB__"[2:13]))
 	println(forwardTypeName("KeepParamTypeA"))
 	println(forwardTypeName("KeepParamTypeB"))
 }
