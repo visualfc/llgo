@@ -181,6 +181,36 @@ func values() (int, *int, int, *int) {
 	}
 }
 
+func TestLocalityDebugInfoOnlyUsesFixedGlobals(t *testing.T) {
+	EnableDebug(true)
+	EnableDbgSyms(true)
+	defer EnableDebug(false)
+	defer EnableDbgSyms(false)
+	_, ir := compileLocalitySource(t, `package locality
+
+//llgo:tls
+var Direct int
+
+//llgo:gls
+var Pointer *int
+
+func values() (int, *int) { return Direct, Pointer }
+`)
+
+	direct := `@"example.com/locality.Direct" = thread_local global i64`
+	start := strings.Index(ir, direct)
+	if start < 0 {
+		t.Fatalf("native TLS global not found:\n%s", ir)
+	}
+	end := strings.IndexByte(ir[start:], '\n')
+	if end < 0 || !strings.Contains(ir[start:start+end], "!dbg") {
+		t.Fatalf("native TLS global has no debug metadata:\n%s", ir[start:])
+	}
+	if strings.Contains(ir, `@"example.com/locality.Pointer" =`) {
+		t.Fatalf("package-local pointer was emitted as a fixed debug global:\n%s", ir)
+	}
+}
+
 func TestLocalityInitializersPreserveGoOrderPerKind(t *testing.T) {
 	_, ir := compileLocalitySource(t, `package locality
 
