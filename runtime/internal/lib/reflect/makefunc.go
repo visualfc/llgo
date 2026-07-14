@@ -33,6 +33,7 @@ import (
 
 type funcData struct {
 	ftyp *funcType
+	tout []*abi.Type
 	fn   func(args []Value) (results []Value)
 	nin  int
 	off  int
@@ -57,12 +58,13 @@ func makeFunc(typ Type, method bool, fn func(args []Value) (results []Value)) Va
 		ins = append([]*abi.Type{unsafePointerType}, ftyp.In...)
 		off = 1
 	}
-	sig, err := toFFISig(ins, ftyp.Out)
+	outs := toRuntimeTypes(ftyp.Out)
+	sig, err := toFFISig(ins, outs)
 	if err != nil {
 		panic(err)
 	}
 	closure := ffi.NewClosure()
-	userdata := &funcData{ftyp: ftyp, fn: fn, nin: len(ftyp.In), off: off}
+	userdata := &funcData{ftyp: ftyp, fn: fn, nin: len(ftyp.In), off: off, tout: outs}
 
 	switch len(ftyp.Out) {
 	case 0:
@@ -99,7 +101,7 @@ func bind0(cif *ffi.Signature, ret unsafe.Pointer, args *unsafe.Pointer, userdat
 	for i := 0; i < fd.nin; i++ {
 		ins[i] = ffiToValue(ffi.Index(args, uintptr(i+fd.off)), fd.ftyp.In[i])
 	}
-	validateMakeFuncResults(fd.fn(ins), fd.ftyp)
+	fd.fn(ins)
 }
 
 func bind1(cif *ffi.Signature, ret unsafe.Pointer, args *unsafe.Pointer, userdata unsafe.Pointer) {
@@ -108,8 +110,8 @@ func bind1(cif *ffi.Signature, ret unsafe.Pointer, args *unsafe.Pointer, userdat
 	for i := 0; i < fd.nin; i++ {
 		ins[i] = ffiToValue(ffi.Index(args, uintptr(i+fd.off)), fd.ftyp.In[i])
 	}
-	out := validateMakeFuncResults(fd.fn(ins), fd.ftyp)
-	storeMakeFuncResult(ret, out[0], fd.ftyp.Out[0])
+	out := validateMakeFuncResults(fd.fn(ins), fd.ftyp, fd.tout)
+	storeMakeFuncResult(ret, out[0], fd.tout[0])
 }
 
 func bindn(cif *ffi.Signature, ret unsafe.Pointer, args *unsafe.Pointer, userdata unsafe.Pointer) {
@@ -118,21 +120,21 @@ func bindn(cif *ffi.Signature, ret unsafe.Pointer, args *unsafe.Pointer, userdat
 	for i := 0; i < fd.nin; i++ {
 		ins[i] = ffiToValue(ffi.Index(args, uintptr(i+fd.off)), fd.ftyp.In[i])
 	}
-	outs := validateMakeFuncResults(fd.fn(ins), fd.ftyp)
+	outs := validateMakeFuncResults(fd.fn(ins), fd.ftyp, fd.tout)
 	var offset uintptr = 0
 	alignment := uintptr(cif.RType.Alignment)
 	for i, out := range outs {
-		typ := fd.ftyp.Out[i]
+		typ := fd.tout[i]
 		storeMakeFuncResult(add(ret, offset, ""), out, typ)
 		offset += (typ.Size_ + alignment - 1) &^ (alignment - 1)
 	}
 }
 
-func validateMakeFuncResults(out []Value, ftyp *funcType) []Value {
-	if len(out) != len(ftyp.Out) {
+func validateMakeFuncResults(out []Value, ftyp *abi.FuncType, touts []*abi.Type) []Value {
+	if len(out) != len(touts) {
 		panic("reflect: wrong return count from function created by MakeFunc")
 	}
-	for i, typ := range ftyp.Out {
+	for i, typ := range touts {
 		v := out[i]
 		if v.typ() == nil {
 			panic("reflect: function created by MakeFunc returned zero Value")
@@ -161,7 +163,15 @@ func ffiToValue(ptr unsafe.Pointer, typ *abi.Type) (v Value) {
 	v.flag = flag(kind)
 	if typ.IfaceIndir() {
 		v.flag |= flagIndir
-		v.ptr = ptr
+		if typ.IsClosure() {
+			c := (*closure)(ptr)
+			v.ptr = unsafe.Pointer(&closure{
+				fn:  c.fn,
+				env: c.env,
+			})
+		} else {
+			v.ptr = ptr
+		}
 	} else {
 		v.ptr = *(*unsafe.Pointer)(ptr)
 	}
