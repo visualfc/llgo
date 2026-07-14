@@ -53,6 +53,29 @@ func TestGoClosureStartupUsesGCManagedMemory(t *testing.T) {
 	if got := strings.Count(ir, `"github.com/goplus/llgo/runtime/internal/runtime.AllocU"`); got < 1 {
 		t.Fatalf("expected closure ctx to use AllocU, got %d:\n%s", got, ir)
 	}
+	if strings.Contains(ir, "EnterLocalContext") {
+		t.Fatalf("program without context-backed locals paid locality entry cost:\n%s", ir)
+	}
+}
+
+func TestGoInstallsContextForContextBackedLocals(t *testing.T) {
+	prog := ssatest.NewProgram(t, nil)
+	prog.SetLocalityInfo("example.com/state.Value", ssa.LocalityInfo{Locality: ssa.GoroutineLocal})
+	prog.SetLocalStorage("example.com/state.Value", ssa.LocalStoragePackage)
+	pkg := prog.NewPackage("bar", "foo/bar")
+	outer := pkg.NewFunc("outer", ssa.NoArgsNoRet, ssa.InGo)
+	b := outer.MakeBody(1)
+	b.Go(ssa.Nil, func(b ssa.Builder, _ ssa.Expr, args ...ssa.Expr) ssa.Expr {
+		return ssa.Expr{}
+	})
+	b.Return()
+
+	ir := pkg.String()
+	for _, want := range []string{"LocalContext", "EnterLocalContext", "LeaveLocalContext"} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("goroutine wrapper missing %q:\n%s", want, ir)
+		}
+	}
 }
 
 func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {

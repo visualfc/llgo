@@ -85,6 +85,11 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 			if _, rewritten := p.rewriteValue(globalName); rewritten {
 				continue
 			}
+			if info, ok := p.resolveLocality(llssa.FullName(global.Pkg.Pkg, global.Name())); ok && info.Locality != llssa.LocalityNone {
+				// Local initializers must remain executable so they can populate the
+				// current context rather than a process-wide LLVM initializer.
+				continue
+			}
 			globals[global] = none{}
 		}
 	}

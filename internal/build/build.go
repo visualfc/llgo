@@ -416,11 +416,27 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		return prog.TypeSizes(sizes)
 	}
 	dedup := packages.NewDeduper()
+	var syntaxErr error
+	var syntaxErrMu sync.Mutex
+	recordSyntaxErr := func(err error) {
+		syntaxErrMu.Lock()
+		defer syntaxErrMu.Unlock()
+		if syntaxErr == nil {
+			syntaxErr = err
+		}
+	}
+	loadSyntaxErr := func() error {
+		syntaxErrMu.Lock()
+		defer syntaxErrMu.Unlock()
+		return syntaxErr
+	}
 	dedup.SetPreload(func(pkg *types.Package, files []*ast.File) {
 		if llruntime.SkipToBuild(pkg.Path()) {
 			return
 		}
-		cl.ParsePkgSyntax(prog, pkg, files)
+		if err := cl.ParsePkgSyntax(prog, cfg.Fset, pkg, files); err != nil {
+			recordSyntaxErr(err)
+		}
 	})
 
 	if patterns == nil {
@@ -441,6 +457,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 	initial, err := packages.LoadExWithGoVersion(dedup, sizes, cfg, conf.GoVersion, patterns...)
 	if err != nil {
+		return nil, err
+	}
+	if err := loadSyntaxErr(); err != nil {
 		return nil, err
 	}
 	if conf.AllowNoBody {
@@ -477,6 +496,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := loadSyntaxErr(); err != nil {
+		return nil, err
+	}
 
 	prog.SetRuntime(func() *types.Package {
 		return altPkgs[0].Types
@@ -484,7 +506,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	prog.SetPython(func() *types.Package {
 		return dedup.Check(llssa.PkgPython).Types
 	})
-	preCollectRuntimeLinknames(prog, altPkgs)
+	if err := prepareLocalVariables(prog, initial, altPkgs); err != nil {
+		return nil, err
+	}
 
 	buildMode := ssaBuildMode
 	cabiOptimize := true
@@ -1932,13 +1956,22 @@ func altPkgs(initial []*packages.Package, conf *Config, alts ...string) []string
 	return alts
 }
 
-func preCollectRuntimeLinknames(prog llssa.Program, pkgs []*packages.Package) {
-	for _, pkg := range pkgs {
-		if pkg != nil && pkg.PkgPath == llssa.PkgRuntime && len(pkg.Syntax) != 0 {
-			cl.PreCollectLinknames(prog, pkg.PkgPath, pkg.Syntax)
-			return
+func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) error {
+	seen := make(map[*types.Package]bool)
+	var firstErr error
+	for _, roots := range groups {
+		packages.Visit(roots, nil, func(p *packages.Package) {
+			if firstErr != nil || p.Types == nil || p.IllTyped || seen[p.Types] {
+				return
+			}
+			seen[p.Types] = true
+			firstErr = cl.PrepareLocalVariables(prog, p.Fset, p.Types, p.TypesInfo, p.Syntax)
+		})
+		if firstErr != nil {
+			return firstErr
 		}
 	}
+	return nil
 }
 
 func altSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.Package, conf *Config, verbose bool) {

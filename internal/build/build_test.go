@@ -11,6 +11,7 @@ import (
 	gobuild "go/build"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io"
 	"os"
 	"os/exec"
@@ -21,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/cl"
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/env"
@@ -638,7 +640,7 @@ func TestCmpTestNonexistentPatternReturnsError(t *testing.T) {
 	}
 }
 
-func TestPreCollectRuntimeLinknames(t *testing.T) {
+func TestParsePkgSyntaxCollectsRuntimeLinknames(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "runtime.go", `package runtime
@@ -649,13 +651,66 @@ func Sigsetjmp()
 	if err != nil {
 		t.Fatalf("ParseFile failed: %v", err)
 	}
-	preCollectRuntimeLinknames(prog, []*packages.Package{{
-		PkgPath: llssa.PkgRuntime,
-		Syntax:  []*ast.File{file},
-	}})
+	pkg := types.NewPackage(llssa.PkgRuntime, "runtime")
+	if err := cl.ParsePkgSyntax(prog, fset, pkg, []*ast.File{file}); err != nil {
+		t.Fatal(err)
+	}
 	if got, ok := prog.Linkname(llssa.PkgRuntime + ".Sigsetjmp"); !ok || got != "C.sigsetjmp" {
 		t.Fatalf("pre-collected runtime linkname = (%q,%v), want (%q,%v)", got, ok, "C.sigsetjmp", true)
 	}
+}
+
+func TestPrepareLocalVariables(t *testing.T) {
+	newLocalPackage := func(path string, withSyntax bool) (*packages.Package, *ast.File) {
+		pkg := types.NewPackage(path, "local")
+		value := types.NewVar(token.NoPos, pkg, "value", types.Typ[types.Int])
+		pkg.Scope().Insert(value)
+		info := &types.Info{
+			Defs:      make(map[*ast.Ident]types.Object),
+			Uses:      make(map[*ast.Ident]types.Object),
+			InitOrder: []*types.Initializer{{Lhs: []*types.Var{value}, Rhs: ast.NewIdent("rhs")}},
+		}
+		loaded := &packages.Package{Types: pkg, TypesInfo: info}
+		var file *ast.File
+		if withSyntax {
+			file = &ast.File{Name: ast.NewIdent("local")}
+			loaded.Syntax = []*ast.File{file}
+		}
+		return loaded, file
+	}
+
+	t.Run("filters and deduplicates packages", func(t *testing.T) {
+		prog := llssa.NewProgram(nil)
+		loaded, file := newLocalPackage("example.com/local", true)
+		prog.SetLocalityInfo("example.com/local.value", llssa.LocalityInfo{Locality: llssa.ThreadLocal, HasInitializer: true})
+		duplicate := *loaded
+
+		err := prepareLocalVariables(prog,
+			[]*packages.Package{{}, {Types: types.NewPackage("example.com/bad", "bad"), IllTyped: true}, loaded},
+			[]*packages.Package{&duplicate},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := len(file.Decls); got != 1 {
+			t.Fatalf("generated initializer declarations = %d, want 1", got)
+		}
+	})
+
+	t.Run("returns dependency error", func(t *testing.T) {
+		prog := llssa.NewProgram(nil)
+		dependency, _ := newLocalPackage("example.com/dependency", false)
+		prog.SetLocalityInfo("example.com/dependency.value", llssa.LocalityInfo{Locality: llssa.GoroutineLocal, HasInitializer: true})
+		root := &packages.Package{
+			Types:   types.NewPackage("example.com/root", "root"),
+			Imports: map[string]*packages.Package{"example.com/dependency": dependency},
+		}
+
+		err := prepareLocalVariables(prog, []*packages.Package{root})
+		if err == nil || !strings.Contains(err.Error(), "without syntax files") {
+			t.Fatalf("prepareLocalVariables error = %v", err)
+		}
+	})
 }
 
 func TestLTOEnabledDefault(t *testing.T) {
@@ -1045,6 +1100,70 @@ func F() {}
 		t.Fatalf("Do returned packages = %+v, want one compiled package", pkgs)
 	}
 	pkgs[0].LPkg.Prog.Dispose()
+}
+
+func TestDoReportsLocalityDirectiveError(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "invalid_locality.go")
+	if err := os.WriteFile(file, []byte(`package invalidlocality
+
+//llgo:tls
+func Invalid() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf := NewDefaultConf(ModeGen)
+	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "applies only to package-level var declarations") {
+		t.Fatalf("Do error = %v, want locality directive diagnostic", err)
+	}
+}
+
+func TestDoReportsLocalityAliasInitializer(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "invalid_locality_alias.go")
+	if err := os.WriteFile(file, []byte(`package invalidlocalityalias
+
+import _ "unsafe"
+
+//llgo:tls
+var Target int
+
+//go:linkname Alias example.com/target.Value
+//llgo:tls
+var Alias = 1
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf := NewDefaultConf(ModeGen)
+	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "linkname alias") {
+		t.Fatalf("Do error = %v, want locality alias initializer diagnostic", err)
+	}
+}
+
+func TestDoReportsAltPackageLocalityDirectiveError(t *testing.T) {
+	root := t.TempDir()
+	runtimeDir := filepath.Join(root, "runtime")
+	runtimePkgDir := filepath.Join(runtimeDir, "internal", "runtime")
+	if err := os.MkdirAll(runtimePkgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimeDir, "go.mod"), []byte("module github.com/goplus/llgo/runtime\n\ngo 1.24.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimePkgDir, "runtime.go"), []byte(`package runtime
+
+//llgo:gls
+func Invalid() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "main.go")
+	if err := os.WriteFile(file, []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_ROOT", root)
+	conf := NewDefaultConf(ModeGen)
+	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "applies only to package-level var declarations") {
+		t.Fatalf("Do error = %v, want alternate-package locality directive diagnostic", err)
+	}
 }
 
 func TestFormatPackageError(t *testing.T) {

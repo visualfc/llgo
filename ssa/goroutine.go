@@ -85,6 +85,11 @@ func (p Package) routine(t Type, fn Expr, buildCall func(Builder, Expr, ...Expr)
 	prog := p.Prog
 	routine := p.NewFunc(p.routineName(), prog.tyRoutine(), InC)
 	b := routine.MakeBody(1)
+	var localCtx, previousLocalCtx Expr
+	hasLocalContext := prog.NeedsLocalContext()
+	if hasLocalContext {
+		localCtx, previousLocalCtx = b.EnterLocalContext()
+	}
 	param := routine.Param(0)
 	data := Expr{llvm.CreateLoad(b.impl, t.ll, param.impl), t}
 	args := make([]Expr, n)
@@ -100,6 +105,9 @@ func (p Package) routine(t Type, fn Expr, buildCall func(Builder, Expr, ...Expr)
 	buildCall(b, fn, args...)
 	lastInst := b.impl.GetInsertBlock().LastInstruction()
 	if lastInst.IsNil() || lastInst.IsAUnreachableInst().IsNil() {
+		if hasLocalContext {
+			b.LeaveLocalContext(localCtx, previousLocalCtx)
+		}
 		b.Return(prog.Nil(prog.VoidPtr()))
 	}
 	return routine.Expr
