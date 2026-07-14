@@ -83,6 +83,17 @@ func releaseLocalBlocks(ctx *LocalContext) {
 // head fast path; other accesses move the matching block to the front.
 func LocalPackage(key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
 	ctx := (*LocalContext)(unsafe.Pointer(currentLocalContext))
+	if ctx != nil {
+		first := ctx.blocks
+		if first != nil && first.key == key && align != 0 && align&(align-1) == 0 {
+			return localBlockData(first, align)
+		}
+	}
+	return localPackageSlow(ctx, key, size, align)
+}
+
+//go:noinline
+func localPackageSlow(ctx *LocalContext, key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
 	if ctx == nil {
 		panic("runtime: local variable accessed outside a Go entry context")
 	}
@@ -93,9 +104,6 @@ func LocalPackage(key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
 		panic("runtime: invalid local package alignment")
 	}
 	first := ctx.blocks
-	if first != nil && first.key == key {
-		return localBlockData(first, align)
-	}
 	var previous *localBlock
 	for block := first; block != nil; block = block.next {
 		if block.key == key {
