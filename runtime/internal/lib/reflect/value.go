@@ -2570,7 +2570,6 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		args = append(args, toFFIArg(arg, typ))
 	}
 
-	tout = toRuntimeTypes(tout)
 	sig, err := ffi.NewSignature(toFFIRetType(tout), ffiArgs...)
 	if err != nil {
 		panic(err)
@@ -2581,6 +2580,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	}
 
 	ffi.Call(sig, fn, ret, args...)
+	tout = toRuntimeTypes(tout)
 	switch n := len(tout); n {
 	case 0:
 	case 1:
