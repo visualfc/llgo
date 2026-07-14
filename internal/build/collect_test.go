@@ -31,6 +31,7 @@ import (
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/internal/packages"
+	llssa "github.com/goplus/llgo/ssa"
 	gopackages "golang.org/x/tools/go/packages"
 )
 
@@ -357,6 +358,78 @@ func TestCollectFingerprintCanonicalizesPCLNEnvironment(t *testing.T) {
 	}
 	if _, ok := externalLegacyOffData.Env.Vars[llgoFuncInfo]; ok {
 		t.Fatalf("external manifest redundantly contains %s: %+v", llgoFuncInfo, externalLegacyOffData.Env.Vars)
+	}
+}
+
+func TestCollectFingerprintLocalContextMode(t *testing.T) {
+	td := t.TempDir()
+	goFile := filepath.Join(td, "state.go")
+	if err := os.WriteFile(goFile, []byte("package state"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	newPackage := func() *aPackage {
+		return &aPackage{Package: &packages.Package{
+			ID:      "example.com/state",
+			PkgPath: "example.com/state",
+			GoFiles: []string{goFile},
+		}}
+	}
+	newContext := func(prog llssa.Program) *context {
+		return &context{
+			conf:         &packages.Config{},
+			prog:         prog,
+			buildConf:    &Config{Goos: "linux", Goarch: "amd64"},
+			crossCompile: crosscompile.Export{LLVMTarget: "x86_64-unknown-linux"},
+		}
+	}
+	fingerprint := func(prog llssa.Program) (*aPackage, manifestData) {
+		pkg := newPackage()
+		if err := newContext(prog).collectFingerprint(pkg); err != nil {
+			t.Fatal(err)
+		}
+		data, err := decodeManifest(pkg.Manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg, data
+	}
+
+	plain, plainManifest := fingerprint(llssa.NewProgram(nil))
+	nativeProg := llssa.NewProgram(nil)
+	nativeProg.SetLocalityInfo("example.com/state.value", llssa.LocalityInfo{Locality: llssa.ThreadLocal})
+	nativeProg.SetLocalStorage("example.com/state.value", llssa.LocalStorageNativeTLS)
+	native, nativeManifest := fingerprint(nativeProg)
+	contextProg := llssa.NewProgram(nil)
+	contextProg.SetLocalityInfo("example.com/state.value", llssa.LocalityInfo{Locality: llssa.GoroutineLocal})
+	contextProg.SetLocalStorage("example.com/state.value", llssa.LocalStoragePackage)
+	withContext, contextManifest := fingerprint(contextProg)
+	initializedProg := llssa.NewProgram(nil)
+	initializedProg.SetLocalityInfo("example.com/state.value", llssa.LocalityInfo{
+		Locality:       llssa.ThreadLocal,
+		HasInitializer: true,
+		InitFunc:       "example.com/state.__llgo_local_init_0",
+		InitOrder:      1,
+	})
+	initializedProg.SetLocalStorage("example.com/state.value", llssa.LocalStorageNativeTLS)
+	initialized, initializedManifest := fingerprint(initializedProg)
+
+	if plain.Fingerprint != native.Fingerprint {
+		t.Fatal("native TLS changed the package cache fingerprint")
+	}
+	if withContext.Fingerprint == plain.Fingerprint {
+		t.Fatal("local-context and plain builds shared a package cache fingerprint")
+	}
+	if initialized.Fingerprint == plain.Fingerprint {
+		t.Fatal("initialized native TLS and plain builds shared a package cache fingerprint")
+	}
+	if plainManifest.Common.LocalContext || nativeManifest.Common.LocalContext {
+		t.Fatal("plain or native-TLS manifest enabled the local context")
+	}
+	if !contextManifest.Common.LocalContext {
+		t.Fatal("context-backed locality was not recorded in the manifest")
+	}
+	if !initializedManifest.Common.LocalContext {
+		t.Fatal("native TLS initializer failure storage was not recorded in the manifest")
 	}
 }
 
