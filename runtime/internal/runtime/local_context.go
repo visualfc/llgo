@@ -24,11 +24,15 @@ import "unsafe"
 // one-thread-per-goroutine backend maps both logical locality kinds to this one
 // physical package store.
 type LocalContext struct {
-	blocks *localBlock
+	// blocks points at the payload of the most recently used package block.
+	// Keeping the aligned payload at the head makes the common lookup return it
+	// directly; the block header is stored immediately before the payload.
+	blocks unsafe.Pointer
 }
 
 type localBlock struct {
-	next *localBlock
+	// next points at the next block's payload, not its header.
+	next unsafe.Pointer
 	key  unsafe.Pointer
 }
 
@@ -67,14 +71,15 @@ func leaveCurrentLocalContext() {
 }
 
 func releaseLocalBlocks(ctx *LocalContext) {
-	block := ctx.blocks
+	data := ctx.blocks
 	ctx.blocks = nil
-	for block != nil {
+	for data != nil {
+		block := localBlockHeader(data)
 		next := block.next
 		// Do not free block here: an address of a local variable may outlive its
 		// owner. Breaking the links lets the GC retain only escaped blocks.
 		block.next = nil
-		block = next
+		data = next
 	}
 }
 
@@ -84,9 +89,9 @@ func releaseLocalBlocks(ctx *LocalContext) {
 func LocalPackage(key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
 	ctx := (*LocalContext)(unsafe.Pointer(currentLocalContext))
 	if ctx != nil {
-		first := ctx.blocks
-		if first != nil && first.key == key && align != 0 && align&(align-1) == 0 {
-			return localBlockData(first, align)
+		firstData := ctx.blocks
+		if firstData != nil && localBlockHeader(firstData).key == key {
+			return firstData
 		}
 	}
 	return localPackageSlow(ctx, key, size, align)
@@ -103,24 +108,27 @@ func localPackageSlow(ctx *LocalContext, key unsafe.Pointer, size, align uintptr
 	if align == 0 || align&(align-1) != 0 {
 		panic("runtime: invalid local package alignment")
 	}
-	first := ctx.blocks
+	firstData := ctx.blocks
 	var previous *localBlock
-	for block := first; block != nil; block = block.next {
+	for data := firstData; data != nil; {
+		block := localBlockHeader(data)
+		next := block.next
 		if block.key == key {
-			previous.next = block.next
-			block.next = first
-			ctx.blocks = block
-			return localBlockData(block, align)
+			previous.next = next
+			block.next = firstData
+			ctx.blocks = data
+			return data
 		}
 		previous = block
+		data = next
 	}
-	block := newLocalBlock(key, size, align)
-	block.next = first
-	ctx.blocks = block
-	return localBlockData(block, align)
+	data := newLocalBlock(key, size, align)
+	localBlockHeader(data).next = firstData
+	ctx.blocks = data
+	return data
 }
 
-func newLocalBlock(key unsafe.Pointer, size, align uintptr) *localBlock {
+func newLocalBlock(key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
 	header := unsafe.Sizeof(localBlock{})
 	padding := align - 1
 	if size == 0 {
@@ -129,16 +137,16 @@ func newLocalBlock(key unsafe.Pointer, size, align uintptr) *localBlock {
 	if header > ^uintptr(0)-padding || header+padding > ^uintptr(0)-size {
 		panic("runtime: local package size overflow")
 	}
-	block := (*localBlock)(AllocZ(header + padding + size))
-	if block == nil {
+	allocation := AllocZ(header + padding + size)
+	if allocation == nil {
 		panic("runtime: failed to allocate local package")
 	}
+	data := unsafe.Pointer((uintptr(allocation) + header + padding) &^ padding)
+	block := localBlockHeader(data)
 	block.key = key
-	return block
+	return data
 }
 
-func localBlockData(block *localBlock, align uintptr) unsafe.Pointer {
-	padding := align - 1
-	data := (uintptr(unsafe.Pointer(block)) + unsafe.Sizeof(localBlock{}) + padding) &^ padding
-	return unsafe.Pointer(data)
+func localBlockHeader(data unsafe.Pointer) *localBlock {
+	return (*localBlock)(unsafe.Pointer(uintptr(data) - unsafe.Sizeof(localBlock{})))
 }

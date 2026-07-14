@@ -105,6 +105,24 @@ func TestTLSAndGLSIsolation(t *testing.T) {
 	}
 }
 
+func TestLocalPackageMoveToFront(t *testing.T) {
+	type result struct {
+		local    int
+		imported int
+	}
+	done := make(chan result)
+	go func() {
+		glsCounter = 41
+		localityscope.First = 51
+		glsCounter++
+		localityscope.First++
+		done <- result{local: glsCounter, imported: localityscope.First}
+	}()
+	if got := <-done; got != (result{local: 42, imported: 52}) {
+		t.Fatalf("local package values after move-to-front = %+v", got)
+	}
+}
+
 func TestPanickingInitializerIsSticky(t *testing.T) {
 	for attempt := 0; attempt < 2; attempt++ {
 		var recovered any
