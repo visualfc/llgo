@@ -62,6 +62,9 @@ func TestGenCHeaderExport(t *testing.T) {
 	mainPkg.SetExport("HelloWorld", "HelloWorld")
 	mainPkg.SetExport("UseFooPtr", "UseFooPtr")
 	mainPkg.SetExport("UseFoo", "UseFoo")
+	// Imported export metadata must not be treated as a declaration owned by
+	// the main package. There is intentionally no such function in mainPkg.
+	mainPkg.SetExport("runtime.llgo_runtime_signalCallback", "llgo_runtime_signalCallback")
 
 	// Create package C
 	cPkgPath := "github.com/goplus/llgo/test_buildmode/bar"

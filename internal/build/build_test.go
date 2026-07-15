@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/goplus/llgo/internal/buildenv"
+	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/packages"
@@ -634,6 +635,66 @@ func TestCSharedExportArgs(t *testing.T) {
 	ctx.buildConf.BuildMode = BuildModeExe
 	if got := cSharedExportArgs(ctx, pkgs); got != nil {
 		t.Fatalf("executable cSharedExportArgs = %v, want nil", got)
+	}
+}
+
+func TestApplyBuildModeCompileFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		mode BuildMode
+		in   []string
+		want string
+	}{
+		{name: "shared adds PIC", mode: BuildModeCShared, want: "-fPIC"},
+		{name: "shared preserves flags", mode: BuildModeCShared, in: []string{"-O2"}, want: "-O2 -fPIC"},
+		{name: "shared does not duplicate PIC", mode: BuildModeCShared, in: []string{"-fPIC"}, want: "-fPIC"},
+		{name: "archive remains unchanged", mode: BuildModeCArchive, in: []string{"-O2"}, want: "-O2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			export := crosscompile.Export{CCFLAGS: slices.Clone(tt.in)}
+			applyBuildModeCompileFlags(tt.mode, &export)
+			if got := strings.Join(export.CCFLAGS, " "); got != tt.want {
+				t.Fatalf("CCFLAGS = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	applyBuildModeCompileFlags(BuildModeCShared, nil)
+}
+
+func TestCHeaderPackagesExcludesStandardRuntime(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	userLPkg := prog.NewPackage("example.com/p", "example.com/p")
+	userLPkg.SetExport("example.com/p.Export", "Export")
+	runtimeLPkg := prog.NewPackage("runtime", "runtime")
+	llgoRuntimeLPkg := prog.NewPackage("github.com/goplus/llgo/runtime/internal/lib/runtime", "github.com/goplus/llgo/runtime/internal/lib/runtime")
+	dependencyLPkg := prog.NewPackage("example.com/dep", "example.com/dep")
+	pkgs := []*aPackage{
+		{Package: &packages.Package{PkgPath: "example.com/p"}, LPkg: userLPkg},
+		{Package: &packages.Package{PkgPath: "runtime"}, LPkg: runtimeLPkg},
+		{Package: &packages.Package{PkgPath: "github.com/goplus/llgo/runtime/internal/lib/runtime"}, LPkg: llgoRuntimeLPkg},
+		{Package: &packages.Package{PkgPath: "example.com/dep"}, LPkg: dependencyLPkg},
+		nil,
+	}
+	got := cHeaderPackages(pkgs)
+	if len(got) != 1 || got[0] != userLPkg {
+		t.Fatalf("cHeaderPackages = %v, want only user package", got)
+	}
+
+	if hasLocalCExports(nil) {
+		t.Fatal("hasLocalCExports(nil) = true, want false")
+	}
+	unqualifiedLPkg := prog.NewPackage("example.com/unqualified", "example.com/unqualified")
+	unqualifiedLPkg.SetExport("Export", "Export")
+	if !hasLocalCExports(unqualifiedLPkg) {
+		t.Fatal("hasLocalCExports(unqualified) = false, want true")
+	}
+	foreignOnlyLPkg := prog.NewPackage("example.com/foreign", "example.com/foreign")
+	foreignOnlyLPkg.SetExport("runtime.Export", "Export")
+	if hasLocalCExports(foreignOnlyLPkg) {
+		t.Fatal("hasLocalCExports(foreign only) = true, want false")
 	}
 }
 

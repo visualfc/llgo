@@ -285,6 +285,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup crosscompile: %w", err)
 	}
+	applyBuildModeCompileFlags(conf.BuildMode, &export)
 	// Update GOOS/GOARCH from export if target was used
 	if conf.Target != "" && export.GOOS != "" {
 		conf.Goos = export.GOOS
@@ -528,12 +529,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 			if ctx.buildConf.BuildMode == BuildModeCArchive || ctx.buildConf.BuildMode == BuildModeCShared {
 				libname := strings.TrimSuffix(filepath.Base(outFmts.Out), conf.AppExt)
 				headerPath := filepath.Join(filepath.Dir(outFmts.Out), libname) + ".h"
-				pkgs := make([]llssa.Package, 0, len(allPkgs))
-				for _, p := range allPkgs {
-					if p.LPkg != nil {
-						pkgs = append(pkgs, p.LPkg)
-					}
-				}
+				pkgs := cHeaderPackages(allPkgs)
 				headerErr := header.GenHeaderFile(prog, pkgs, libname, headerPath, verbose)
 				if headerErr != nil {
 					return nil, headerErr
@@ -596,6 +592,41 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	return allPkgs, nil
+}
+
+// cHeaderPackages excludes the patched standard runtime implementation. Its
+// //export callbacks are linker implementation details and may use internal C
+// types that are deliberately not representable in a public generated header.
+func cHeaderPackages(allPkgs []*aPackage) []llssa.Package {
+	pkgs := make([]llssa.Package, 0, len(allPkgs))
+	for _, pkg := range allPkgs {
+		if pkg == nil || pkg.LPkg == nil || pkg.Package == nil || pkg.PkgPath == "runtime" || isRuntimePkg(pkg.PkgPath) || !hasLocalCExports(pkg.LPkg) {
+			continue
+		}
+		pkgs = append(pkgs, pkg.LPkg)
+	}
+	return pkgs
+}
+
+func hasLocalCExports(pkg llssa.Package) bool {
+	if pkg == nil {
+		return false
+	}
+	for name := range pkg.ExportFuncs() {
+		if !strings.Contains(name, ".") || strings.HasPrefix(name, pkg.Path()+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// applyBuildModeCompileFlags adds code-generation flags that must be present
+// while package C/C++ sources are compiled. Passing -fPIC only to the final
+// shared-library link is too late for objects containing global references.
+func applyBuildModeCompileFlags(mode BuildMode, export *crosscompile.Export) {
+	if mode == BuildModeCShared && export != nil && !slices.Contains(export.CCFLAGS, "-fPIC") {
+		export.CCFLAGS = append(export.CCFLAGS, "-fPIC")
+	}
 }
 
 func allowMissingFunctionBodies(initial []*packages.Package) {

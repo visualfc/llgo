@@ -648,6 +648,13 @@ func genHeader(p ssa.Program, pkgs []ssa.Package, w io.Writer) error {
 		// Sort functions for testing
 		exportNames := make([]string, 0, len(exports))
 		for name := range exports {
+			// Imported //export metadata may be recorded on the importing
+			// package as well. Only declarations owned by this package belong
+			// in its public header; otherwise internal runtime callbacks can
+			// leak into user headers or fail type generation entirely.
+			if !exportBelongsToPackage(pkg.Path(), name) {
+				continue
+			}
 			exportNames = append(exportNames, name)
 		}
 		sort.Strings(exportNames)
@@ -656,7 +663,7 @@ func genHeader(p ssa.Program, pkgs []ssa.Package, w io.Writer) error {
 			link := exports[name] // link is cName
 			fn := pkg.FuncOf(link)
 			if fn == nil {
-				return fmt.Errorf("function %s not found", link)
+				return fmt.Errorf("function %s not found in package %s", link, pkg.Path())
 			}
 
 			// Write function declaration with proper C types
@@ -678,6 +685,15 @@ func genHeader(p ssa.Program, pkgs []ssa.Package, w io.Writer) error {
 
 	// Write all content to output in the correct order
 	return hw.writeTo(w)
+}
+
+func exportBelongsToPackage(pkgPath, name string) bool {
+	if !strings.Contains(name, ".") {
+		// Preserve support for callers that register the historical
+		// unqualified form via ssa.Package.SetExport.
+		return true
+	}
+	return strings.HasPrefix(name, pkgPath+".")
 }
 
 func GenHeaderFile(p ssa.Program, pkgs []ssa.Package, libName, headerPath string, verbose bool) error {
