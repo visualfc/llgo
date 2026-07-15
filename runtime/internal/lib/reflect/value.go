@@ -2456,7 +2456,6 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	var (
 		ft   *abi.FuncType
 		tin  []*abi.Type
-		tout []*abi.Type
 		args []unsafe.Pointer
 		fn   unsafe.Pointer
 		ret  unsafe.Pointer
@@ -2465,7 +2464,6 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	if v.typ_.IsClosure() && v.flag&flagMethod == 0 {
 		ft = v.typ_.StructType().Fields[0].Typ.FuncType()
 		tin = append([]*abi.Type{rtypeOf(unsafe.Pointer(nil))}, ft.In...)
-		tout = ft.Out
 		c := (*struct {
 			fn  unsafe.Pointer
 			env unsafe.Pointer
@@ -2480,7 +2478,6 @@ func (v Value) call(op string, in []Value) (out []Value) {
 			)
 			rcvrtype, ft, fn = methodReceiver(op, v, int(v.flag)>>flagMethodShift)
 			tin = append([]*abi.Type{rcvrtype}, ft.In...)
-			tout = ft.Out
 			ioff = 1
 			var ptr unsafe.Pointer
 			storeRcvr(v, unsafe.Pointer(&ptr))
@@ -2493,8 +2490,11 @@ func (v Value) call(op string, in []Value) (out []Value) {
 			}
 			ft = v.typ_.FuncType()
 			tin = ft.In
-			tout = ft.Out
 		}
+	}
+
+	if fn == nil {
+		panic("reflect.Value.Call: call of nil function")
 	}
 
 	isSlice := op == "CallSlice"
@@ -2570,8 +2570,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		args = append(args, toFFIArg(arg, typ))
 	}
 
-	tout = toRuntimeTypes(tout)
-	sig, err := ffi.NewSignature(toFFIRetType(tout), ffiArgs...)
+	sig, err := ffi.NewSignature(toFFIRetType(ft.Out), ffiArgs...)
 	if err != nil {
 		panic(err)
 	}
@@ -2581,6 +2580,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	}
 
 	ffi.Call(sig, fn, ret, args...)
+	tout := toRuntimeTypes(ft.Out)
 	switch n := len(tout); n {
 	case 0:
 	case 1:

@@ -58,11 +58,11 @@ func makeFunc(typ Type, method bool, fn func(args []Value) (results []Value)) Va
 		ins = append([]*abi.Type{unsafePointerType}, ftyp.In...)
 		off = 1
 	}
-	outs := toRuntimeTypes(ftyp.Out)
-	sig, err := toFFISig(ins, outs)
+	sig, err := toFFISig(ins, ftyp.Out)
 	if err != nil {
 		panic(err)
 	}
+	outs := toRuntimeTypes(ftyp.Out)
 	closure := ffi.NewClosure()
 	userdata := &funcData{ftyp: ftyp, fn: fn, nin: len(ftyp.In), off: off, tout: outs}
 
