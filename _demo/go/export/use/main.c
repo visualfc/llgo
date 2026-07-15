@@ -18,9 +18,13 @@ int main() {
 
     // Test small struct
     main_SmallStruct small = CreateSmallStruct(5, 1);  // 1 for true
+    assert(small.ID == 5);
+    assert(small.Flag == 1);
     printf("Small struct: %d %d\n", small.ID, small.Flag);
 
     main_SmallStruct processed = ProcessSmallStruct(small);
+    assert(processed.ID == 6);
+    assert(processed.Flag == 0);
     printf("Processed small: %d %d\n", processed.ID, processed.Flag);
 
     main_SmallStruct* ptrSmall = ProcessSmallStructPtr(&small);
@@ -31,6 +35,7 @@ int main() {
     // Test large struct - create GoString for name parameter
     GoString name = {"test_large", 10};  // name and length
     main_LargeStruct large = CreateLargeStruct(12345, name);
+    assert(large.ID == 12345);
     printf("Large struct ID: %" PRId64 "\n", large.ID);
 
     int64_t total = ProcessLargeStruct(large);
@@ -208,6 +213,7 @@ int main() {
     printf("About to call CreateMatrix1D()...\n");
     fflush(stdout);
     Array_int32_t_4 matrix1d = CreateMatrix1D();
+    assert(matrix1d.data[0] == 1);
     printf("CreateMatrix1D() call completed\n");
     printf("CreateMatrix1D() returned struct, first element: %d\n", matrix1d.data[0]);
     
@@ -215,15 +221,18 @@ int main() {
     printf("About to call CreateMatrix2D()...\n");
     fflush(stdout);
     Array_int32_t_3_4 matrix2d = CreateMatrix2D();
+    assert(matrix2d.data[0][0] == 1);
     printf("CreateMatrix2D() call completed\n");
     printf("CreateMatrix2D() returned struct, first element: %d\n", matrix2d.data[0][0]);
     
     // Test CreateMatrix3D() which returns Array_uint8_t_2_3_4
     Array_uint8_t_2_3_4 cube = CreateMatrix3D();
+    assert(cube.data[0][0][0] == 1);
     printf("CreateMatrix3D() returned struct, first element: %u\n", cube.data[0][0][0]);
     
     // Test CreateGrid5x4() which returns Array_double_5_4
     Array_double_5_4 grid = CreateGrid5x4();
+    assert(grid.data[0][0] == 1.0);
     printf("CreateGrid5x4() returned struct, first element: %f\n", grid.data[0][0]);
 
     // Test NoReturn function

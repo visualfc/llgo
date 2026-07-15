@@ -144,10 +144,12 @@ if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
             if LINK_TYPE=shared make run; then
                 print_status "C demo execution succeeded with shared library"
             else
-                print_warning "C demo execution failed with shared library"
+                print_error "C demo execution failed with shared library"
+                build_failures=$((build_failures + 1))
             fi
         else
-            print_warning "C demo build failed with shared library"
+            print_error "C demo build failed with shared library"
+            build_failures=$((build_failures + 1))
         fi
         cd ..
     else
@@ -183,10 +185,12 @@ if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
             if make run; then
                 print_status "C demo execution succeeded with static library"
             else
-                print_warning "C demo execution failed with static library"
+                print_error "C demo execution failed with static library"
+                build_failures=$((build_failures + 1))
             fi
         else
-            print_warning "C demo build failed with static library"
+            print_error "C demo build failed with static library"
+            build_failures=$((build_failures + 1))
         fi
         cd ..
     else
@@ -271,7 +275,7 @@ elif [[ "$build_failures" -eq 0 ]] && [[ -f "libexport.a" ]] && [[ -f "libexport
     print_status "All required build-mode tests completed successfully:"
     print_status "  ✅ Go export demo execution with assertions"
     print_status "  ✅ C header generation (c-archive and c-shared modes)"
-    print_status "  ℹ️  C consumer compilation and execution checks remain non-gating"
+    print_status "  ✅ C consumer compilation and execution with shared and static libraries"
     print_status "  ✅ Cross-platform symbol renaming"
     print_status "  ✅ Init function export and calling"
     print_status "  ✅ Function callback types with proper typedef syntax"
