@@ -224,6 +224,7 @@ func TestRuntimeLineInfoAndStack(t *testing.T) {
 const runtimeFuncInfoConcurrentFirstUseProbe = `package main
 
 import (
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -232,16 +233,33 @@ import (
 
 func main() {
 	const n = 32
+	const rounds = 1000
 	start := make(chan struct{})
 	errc := make(chan string, n)
 	var wg sync.WaitGroup
 	for i := 0; i < n; i++ {
+		target := concurrentTargets[i%len(concurrentTargets)]
+		pc := reflect.ValueOf(target.fn).Pointer()
 		wg.Add(1)
-		go func() {
+		go func(target concurrentTarget, pc uintptr) {
 			defer wg.Done()
 			<-start
-			errc <- checkRuntimeInfo()
-		}()
+			for j := 0; j < rounds; j++ {
+				fn := runtime.FuncForPC(pc)
+				if fn == nil || fn.Name() != target.name {
+					name := "<nil>"
+					if fn != nil {
+						name = fn.Name()
+					}
+					errc <- "bad target func: " + name
+					return
+				}
+				if err := checkRuntimeInfo(); err != "" {
+					errc <- err
+					return
+				}
+			}
+		}(target, pc)
 	}
 	close(start)
 	wg.Wait()
@@ -252,6 +270,30 @@ func main() {
 		}
 	}
 }
+
+type concurrentTarget struct {
+	fn   func()
+	name string
+}
+
+var concurrentTargets = []concurrentTarget{
+	{concurrentTarget0, "main.concurrentTarget0"},
+	{concurrentTarget1, "main.concurrentTarget1"},
+	{concurrentTarget2, "main.concurrentTarget2"},
+	{concurrentTarget3, "main.concurrentTarget3"},
+}
+
+//go:noinline
+func concurrentTarget0() {}
+
+//go:noinline
+func concurrentTarget1() {}
+
+//go:noinline
+func concurrentTarget2() {}
+
+//go:noinline
+func concurrentTarget3() {}
 
 //go:noinline
 func checkRuntimeInfo() string {
