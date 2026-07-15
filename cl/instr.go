@@ -1581,7 +1581,7 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 	// SHF_LINK_ORDER (honored by --gc-sections); Mach-O uses a live_support
 	// section plus one linker-private atom symbol per record so -dead_strip
 	// keeps a record exactly when the function containing its label is live.
-	pushSection := ".pushsection llgo_pcline,\"ao\",@progbits," + asmQuoteSymbol(p.fn.Name())
+	pushSection := ".pushsection llgo_pcline,\"awo\",@progbits," + asmQuoteSymbol(p.fn.Name())
 	recordSymbol := ""
 	if target.GOOS == "darwin" {
 		pushSection = ".pushsection __DATA,__llgo_pcl,regular,live_support"

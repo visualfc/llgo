@@ -1190,6 +1190,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 			}
 		}
 	}
+	linkArgs = append(linkArgs, cSharedExportArgs(ctx, linkedOrder)...)
 
 	err = linkObjFiles(ctx, outputPath, linkInputs, linkArgs, verbose)
 	if err != nil {
@@ -1228,7 +1229,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	printCmds := ctx.shouldPrintCommands(verbose)
 	// Handle c-archive mode differently - use ar tool instead of linker
 	if ctx.buildConf.BuildMode == BuildModeCArchive {
-		return ctx.createArchiveFile(app, objFiles, printCmds)
+		return ctx.createMergedArchiveFile(app, objFiles, printCmds)
 	}
 
 	buildArgs := []string{"-o", app}
@@ -1280,6 +1281,40 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	cmd := ctx.linker()
 	cmd.Verbose = printCmds
 	return cmd.Link(buildArgs...)
+}
+
+// cSharedExportArgs keeps //export functions as shared-library link roots. The
+// functions live in package archives and otherwise remain unreferenced, so the
+// linker can omit both their object files and dynamic symbols.
+func cSharedExportArgs(ctx *context, pkgs []*aPackage) []string {
+	if ctx == nil || ctx.buildConf == nil || ctx.buildConf.BuildMode != BuildModeCShared {
+		return nil
+	}
+	exports := make(map[string]none)
+	for _, pkg := range pkgs {
+		if pkg == nil || pkg.LPkg == nil {
+			continue
+		}
+		for _, name := range pkg.LPkg.ExportFuncs() {
+			if name != "" {
+				exports[name] = none{}
+			}
+		}
+	}
+	names := make([]string, 0, len(exports))
+	for name := range exports {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	args := make([]string, 0, len(names))
+	for _, name := range names {
+		if ctx.buildConf.Goos == "darwin" {
+			args = append(args, "-Wl,-u,_"+name)
+		} else {
+			args = append(args, "-Wl,--undefined="+name)
+		}
+	}
+	return args
 }
 
 func needsLinuxNoPIE(ctx *context, linkArgs []string) bool {
@@ -1334,6 +1369,78 @@ func (c *context) archiver() string {
 		}
 	}
 	return "ar"
+}
+
+// archiveMerger returns an archiver with MRI support, which is required to
+// flatten package archives into the final c-archive instead of nesting .a
+// files as members. LLVM is already a required LLGo toolchain dependency.
+func (c *context) archiveMerger() (string, error) {
+	if ar := os.Getenv("LLGO_AR"); ar != "" {
+		return ar, nil
+	}
+	if c.crossCompile.CC != "" {
+		llvmAr := filepath.Join(filepath.Dir(c.crossCompile.CC), "llvm-ar")
+		if _, err := os.Stat(llvmAr); err == nil {
+			return llvmAr, nil
+		}
+	}
+	if llvmAr, err := exec.LookPath("llvm-ar"); err == nil {
+		return llvmAr, nil
+	}
+	return "", errors.New("llvm-ar is required to create a flat c-archive")
+}
+
+// createMergedArchiveFile combines object files and package archives into one
+// flat archive. A regular `ar rcs output.a input.a` stores input.a as a nested
+// member, which C linkers cannot search or load.
+func (c *context) createMergedArchiveFile(archivePath string, inputs []string, verbose ...bool) error {
+	if len(inputs) == 0 {
+		return fmt.Errorf("no inputs provided for archive %s", archivePath)
+	}
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(archivePath), filepath.Base(archivePath)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	_ = os.Remove(tmpName)
+
+	var script strings.Builder
+	fmt.Fprintf(&script, "CREATE %s\n", strconv.Quote(tmpName))
+	for _, input := range inputs {
+		command := "ADDMOD"
+		if strings.HasSuffix(strings.ToLower(input), ".a") {
+			command = "ADDLIB"
+		}
+		fmt.Fprintf(&script, "%s %s\n", command, strconv.Quote(input))
+	}
+	script.WriteString("SAVE\nEND\n")
+
+	arCmd, err := c.archiveMerger()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(arCmd, "-M")
+	cmd.Stdin = strings.NewReader(script.String())
+	printCmds := c.shouldPrintCommands(len(verbose) > 0 && verbose[0])
+	if printCmds {
+		fmt.Fprintf(os.Stderr, "%s -M\n%s", filepath.Base(arCmd), script.String())
+	}
+	if output, err := cmd.CombinedOutput(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("merge archive %s: %w\n%s", archivePath, err, output)
+	}
+	if err := os.Rename(tmpName, archivePath); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("publish archive %s: %w", archivePath, err)
+	}
+	return nil
 }
 
 // createArchiveFile builds an archive at archivePath atomically to avoid races when
