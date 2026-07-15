@@ -94,9 +94,10 @@ print_status "Starting C header generation tests..."
 print_status "Working directory: $SCRIPT_DIR"
 
 echo ""
+build_failures=0
 
 # Test 1: c-shared mode
-print_status "=== Test 2: Building with -buildmode c-shared ==="
+print_status "=== Test 1: Building with -buildmode c-shared ==="
 if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
     print_status "Build succeeded"
 
@@ -140,10 +141,11 @@ if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
     cleanup "$SHARED_LIB" "libexport.h"
 else
     print_error "Build failed for c-shared mode"
+    build_failures=$((build_failures + 1))
 fi
 
 # Test 2: c-archive mode
-print_status "=== Test 1: Building with -buildmode c-archive ==="
+print_status "=== Test 2: Building with -buildmode c-archive ==="
 if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
     print_status "Build succeeded"
 
@@ -178,6 +180,7 @@ if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
     # cleanup "libexport.a" "libexport.h"
 else
     print_error "Build failed for c-archive mode"
+    build_failures=$((build_failures + 1))
 fi
 
 echo ""
@@ -243,11 +246,11 @@ echo ""
 
 # Final summary
 print_status "=== Test Summary ==="
-if [[ -f "libexport.a" ]] && [[ -f "libexport.h" ]]; then
-    print_status "All tests completed successfully:"
+if [[ "$build_failures" -eq 0 ]] && [[ -f "libexport.a" ]] && [[ -f "libexport.h" ]]; then
+    print_status "All required build-mode tests completed successfully:"
     print_status "  ✅ Go export demo execution with assertions"
     print_status "  ✅ C header generation (c-archive and c-shared modes)"
-    print_status "  ✅ C demo compilation and execution"
+    print_status "  ℹ️  C consumer compilation and execution checks remain non-gating"
     print_status "  ✅ Cross-platform symbol renaming"
     print_status "  ✅ Init function export and calling"
     print_status "  ✅ Function callback types with proper typedef syntax"
@@ -256,7 +259,9 @@ if [[ -f "libexport.a" ]] && [[ -f "libexport.h" ]]; then
     print_status "Final files available:"
     print_status "  - libexport.a (static library)"
     print_status "  - libexport.h (C header file)"
-    print_status "  - use/main.out (C demo executable)"
+    if [[ -f "use/main.out" ]]; then
+        print_status "  - use/main.out (C demo executable)"
+    fi
 
     echo ""
     echo "==================="
@@ -273,6 +278,11 @@ fi
 if [[ -f "libexport.h" ]]; then
     LINES=$(wc -l < libexport.h)
     print_status "Header file lines: $LINES"
+fi
+
+if [[ "$build_failures" -ne 0 ]]; then
+    print_error "$build_failures build-mode test(s) failed"
+    exit 1
 fi
 
 print_status "C header generation and demo tests completed!"

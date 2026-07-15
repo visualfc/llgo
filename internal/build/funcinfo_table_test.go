@@ -17,6 +17,11 @@
 package build
 
 import (
+	"debug/elf"
+	"encoding/binary"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -582,6 +587,130 @@ func TestELFFuncInfoSiteSectionsAllowSharedLibraryRelocations(t *testing.T) {
 	}
 	if got, want := entrySiteSectionInfo.retain(false), `.section llgo_funcinfo_entry,"awR",@progbits`; got != want {
 		t.Fatalf("ELF retained section = %q, want %q", got, want)
+	}
+}
+
+func TestELFFuncInfoMetadataLinksIntoSharedLibrary(t *testing.T) {
+	linker, err := exec.LookPath("ld.lld")
+	if err != nil {
+		t.Skip("ld.lld is required for the ELF shared-library regression test")
+	}
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+	defer prog.Dispose()
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeCShared,
+			Goos:      "linux",
+			Goarch:    "amd64",
+		},
+	}
+
+	src := prog.NewPackage("example.com/p", "example.com/p")
+	src.EmitFuncInfo("example.com/p.live", "example.com/p.Live", "live.go", 17, 3)
+	fn := src.NewFunc("example.com/p.live", llssa.NoArgsNoRet, llssa.InGo)
+	fn.MakeBody(1).Return()
+	records := collectFuncInfo([]Package{{LPkg: src}})
+	emitFuncInfoEntrySites(ctx, src)
+
+	metadata := prog.NewPackage("example.com/runtime", "example.com/runtime")
+	emitFuncInfoTable(ctx, metadata, records, nil, nil)
+
+	dir := t.TempDir()
+	writeObject := func(name string, mod llvm.Module) string {
+		t.Helper()
+		buf, err := prog.TargetMachine().EmitToMemoryBuffer(mod, llvm.ObjectFile)
+		if err != nil {
+			t.Fatalf("emit %s: %v", name, err)
+		}
+		defer buf.Dispose()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		return path
+	}
+	srcObj := writeObject("src.o", src.Module())
+	metadataObj := writeObject("metadata.o", metadata.Module())
+	shared := filepath.Join(dir, "libfuncinfo.so")
+	cmd := exec.Command(linker, "-shared", "-z", "text", "--gc-sections", "-o", shared, srcObj, metadataObj)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("link ELF shared library: %v\n%s", err, out)
+	}
+
+	ef, err := elf.Open(shared)
+	if err != nil {
+		t.Fatalf("open linked ELF: %v", err)
+	}
+	defer ef.Close()
+	entry := ef.Section(entrySiteSectionInfo.elf)
+	if entry == nil {
+		t.Fatalf("linked ELF is missing %s", entrySiteSectionInfo.elf)
+	}
+	const shfGNURetain elf.SectionFlag = 0x200000
+	wantFlags := elf.SHF_WRITE | elf.SHF_ALLOC | elf.SHF_LINK_ORDER | shfGNURetain
+	if got := entry.Flags & wantFlags; got != wantFlags {
+		t.Fatalf("%s flags = %v, want at least %v", entry.Name, entry.Flags, wantFlags)
+	}
+	if entry.Flags&elf.SHF_EXECINSTR != 0 {
+		t.Fatalf("%s must not be executable: flags=%v", entry.Name, entry.Flags)
+	}
+
+	rela := ef.Section(".rela.dyn")
+	if rela == nil {
+		t.Fatal("linked ELF is missing .rela.dyn")
+	}
+	relaData, err := rela.Data()
+	if err != nil {
+		t.Fatalf("read .rela.dyn: %v", err)
+	}
+	const rela64Size = 24
+	relative := 0
+	for off := 0; off+rela64Size <= len(relaData); off += rela64Size {
+		relocOff := binary.LittleEndian.Uint64(relaData[off:])
+		if relocOff < entry.Addr || relocOff >= entry.Addr+entry.Size {
+			continue
+		}
+		info := binary.LittleEndian.Uint64(relaData[off+8:])
+		if typ := elf.R_X86_64(uint32(info)); typ != elf.R_X86_64_RELATIVE {
+			t.Fatalf("%s relocation at %#x has type %v, want R_X86_64_RELATIVE", entry.Name, relocOff, typ)
+		}
+		relative++
+	}
+	if relative != 3 {
+		t.Fatalf("%s has %d relative relocations, want 3", entry.Name, relative)
+	}
+
+	symbols, err := ef.Symbols()
+	if err != nil {
+		t.Fatalf("read ELF symbols: %v", err)
+	}
+	for _, name := range []string{funcInfoSymbolIndexSymbol, funcInfoSymbolIndexCountSymbol} {
+		found := false
+		for _, sym := range symbols {
+			if sym.Name != name {
+				continue
+			}
+			found = true
+			if vis := elf.ST_VISIBILITY(sym.Other); vis != elf.STV_HIDDEN {
+				t.Fatalf("%s visibility = %v, want hidden", name, vis)
+			}
+		}
+		if !found {
+			t.Fatalf("linked ELF is missing %s", name)
+		}
+	}
+	dynamicSymbols, err := ef.DynamicSymbols()
+	if err != nil {
+		t.Fatalf("read ELF dynamic symbols: %v", err)
+	}
+	for _, sym := range dynamicSymbols {
+		if sym.Name == funcInfoSymbolIndexSymbol || sym.Name == funcInfoSymbolIndexCountSymbol {
+			t.Fatalf("internal funcinfo symbol %s must not be dynamically exported", sym.Name)
+		}
 	}
 }
 
