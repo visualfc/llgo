@@ -1117,24 +1117,24 @@ func Invalid() {}
 	}
 }
 
-func TestDoReportsLocalityAliasInitializer(t *testing.T) {
+func TestDoRejectsLocalityLinkname(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "invalid_locality_alias.go")
 	if err := os.WriteFile(file, []byte(`package invalidlocalityalias
 
 import _ "unsafe"
 
 //llgo:tls
-var Target int
+var target int
 
-//go:linkname Alias example.com/target.Value
+//go:linkname alias example.com/target.value
 //llgo:tls
-var Alias = 1
+var alias = 1
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	conf := NewDefaultConf(ModeGen)
-	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "linkname alias") {
-		t.Fatalf("Do error = %v, want locality alias initializer diagnostic", err)
+	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "cannot apply to a //go:linkname variable") {
+		t.Fatalf("Do error = %v, want locality linkname diagnostic", err)
 	}
 }
 

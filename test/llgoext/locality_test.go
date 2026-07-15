@@ -105,7 +105,7 @@ func TestTLSAndGLSIsolation(t *testing.T) {
 	}
 }
 
-func TestLocalPackageMoveToFront(t *testing.T) {
+func TestLocalPackageDirectCaches(t *testing.T) {
 	type result struct {
 		local    int
 		imported int
@@ -113,13 +113,13 @@ func TestLocalPackageMoveToFront(t *testing.T) {
 	done := make(chan result)
 	go func() {
 		glsCounter = 41
-		localityscope.First = 51
+		localityscope.SetFirst(51)
 		glsCounter++
-		localityscope.First++
-		done <- result{local: glsCounter, imported: localityscope.First}
+		imported := localityscope.IncrementFirst()
+		done <- result{local: glsCounter, imported: imported}
 	}()
 	if got := <-done; got != (result{local: 42, imported: 52}) {
-		t.Fatalf("local package values after move-to-front = %+v", got)
+		t.Fatalf("local package values through direct caches = %+v", got)
 	}
 }
 
@@ -375,12 +375,12 @@ func TestInitializerScopeRunsOncePerPackageKind(t *testing.T) {
 	}
 	done := make(chan result)
 	go func() {
-		firstValue := localityscope.First
+		firstValue := localityscope.First()
 		firstCalls := localityscope.FirstCalls()
 		secondCalls := localityscope.SecondCalls()
-		_ = localityscope.First
+		_ = localityscope.First()
 		firstCallsAgain := localityscope.FirstCalls()
-		secondValue := localityscope.Second
+		secondValue := localityscope.Second()
 		done <- result{
 			firstValue:       firstValue,
 			firstCalls:       firstCalls,
@@ -411,9 +411,9 @@ func TestMultiValueInitializerUsesOneGroup(t *testing.T) {
 	}
 	done := make(chan result)
 	go func() {
-		first := localityscope.PairFirst
+		first := localityscope.PairFirst()
 		afterFirst := localityscope.PairCalls()
-		second := localityscope.PairSecond
+		second := localityscope.PairSecond()
 		done <- result{first, second, afterFirst, localityscope.PairCalls()}
 	}()
 	got := <-done
@@ -432,12 +432,12 @@ func TestCrossPackageMixedInitializerGroup(t *testing.T) {
 	}
 	done := make(chan result)
 	go func() {
-		scalar := localityscope.MixedScalar
-		address := &localityscope.MixedScalar
+		scalar := localityscope.MixedScalar()
+		address := localityscope.MixedScalarAddress()
 		done <- result{
 			scalar:        scalar,
-			pointer:       localityscope.MixedPointer,
-			addressStable: address == &localityscope.MixedScalar,
+			pointer:       localityscope.MixedPointer(),
+			addressStable: address == localityscope.MixedScalarAddress(),
 			calls:         localityscope.MixedCalls(),
 		}
 	}()
@@ -497,6 +497,11 @@ func bumpTLSPackageBlock() int {
 func bumpGLSPackageBlock() int {
 	benchmarkGLSPackage.value++
 	return benchmarkGLSPackage.value
+}
+
+//go:noinline
+func readGLSPackageBlock() uintptr {
+	return uintptr(benchmarkGLSPackage.value)
 }
 
 func BenchmarkOrdinaryGlobal(b *testing.B) {
@@ -578,6 +583,19 @@ func BenchmarkComparableGLSPackageRead(b *testing.B) {
 	b.ResetTimer()
 	var value uintptr
 	for i := 0; i < b.N; i++ {
+		value += localitybench.ReadGLSPackage()
+	}
+	benchmarkReadSink = value
+}
+
+func BenchmarkAlternatingGLSPackageRead(b *testing.B) {
+	localitybench.PrepareReads()
+	benchmarkGLSPackage.pointer = &benchmarkSink
+	benchmarkGLSPackage.value = 1
+	b.ResetTimer()
+	var value uintptr
+	for i := 0; i < b.N; i++ {
+		value += readGLSPackageBlock()
 		value += localitybench.ReadGLSPackage()
 	}
 	benchmarkReadSink = value

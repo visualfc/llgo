@@ -62,9 +62,15 @@ func ScanPackageVar(fset *token.FileSet, decl *ast.GenDecl) ([]Variable, error) 
 		if hasDirective(decl.Doc, "go:embed") || hasDirective(spec.Doc, "go:embed") {
 			return nil, errorAt(fset, spec.Pos(), "%s and //go:embed cannot apply to the same variable declaration", Directive(kind))
 		}
+		if hasDirective(decl.Doc, "go:linkname") || hasDirective(spec.Doc, "go:linkname") {
+			return nil, errorAt(fset, spec.Pos(), "%s cannot apply to a //go:linkname variable", Directive(kind))
+		}
 		for _, ident := range spec.Names {
 			if ident.Name == "_" {
 				return nil, errorAt(fset, ident.Pos(), "locality directive cannot apply to the blank identifier")
+			}
+			if ast.IsExported(ident.Name) {
+				return nil, errorAt(fset, ident.Pos(), "%s requires an unexported package variable", Directive(kind))
 			}
 			ret = append(ret, Variable{
 				Name: ident.Name,

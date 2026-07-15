@@ -86,8 +86,8 @@ func (p Program) VariableLocality(name string) (VariableLocality, bool) {
 	return info, ok
 }
 
-// ResolveLocality follows linkname aliases and returns the canonical declaration
-// name together with its merged locality metadata.
+// ResolveLocality returns locality metadata for one declaration. Locality
+// variables cannot participate in go:linkname alias chains.
 func (p Program) ResolveLocality(name string) (string, VariableLocality, bool, error) {
 	lookup := func(name string) (VariableLocality, bool) {
 		p.localities.mu.RLock()
@@ -112,27 +112,17 @@ func resolveLocality(lookup func(string) (VariableLocality, bool), linkname func
 		seen[current] = true
 		target, hasLink := linkname(current)
 		target = strings.TrimPrefix(target, "go:")
-		if !hasLink || target == "" || target == current {
+		if !hasLink || target == "" {
 			return current, result, ok, nil
 		}
-		targetInfo, exists := lookup(target)
-		if exists && targetInfo.Locality != locality.None {
-			switch {
-			case result.Locality == locality.None:
-				result = targetInfo
-				ok = true
-			case result.Locality != targetInfo.Locality:
-				return "", VariableLocality{}, false, fmt.Errorf("linkname alias %s uses %s but target %s uses %s", name, locality.Directive(result.Locality), target, locality.Directive(targetInfo.Locality))
-			case hasInitialization(result.Info) && hasInitialization(targetInfo.Info) && result.Info != targetInfo.Info:
-				return "", VariableLocality{}, false, fmt.Errorf("linkname alias %s and target %s have incompatible local initializers", name, target)
-			case !hasInitialization(result.Info):
-				result.Info = targetInfo.Info
-			}
-			if result.LocalStorage == LocalStorageUnknown {
-				result.LocalStorage = targetInfo.LocalStorage
-			} else if targetInfo.LocalStorage != LocalStorageUnknown && result.LocalStorage != targetInfo.LocalStorage {
-				return "", VariableLocality{}, false, fmt.Errorf("linkname alias %s and target %s have incompatible local storage", name, target)
-			}
+		if currentInfo, exists := lookup(current); exists && currentInfo.Locality != locality.None {
+			return "", VariableLocality{}, false, fmt.Errorf("local variable %s cannot use go:linkname", current)
+		}
+		if targetInfo, exists := lookup(target); exists && targetInfo.Locality != locality.None {
+			return "", VariableLocality{}, false, fmt.Errorf("go:linkname alias %s cannot reference local variable %s", name, target)
+		}
+		if target == current {
+			return current, result, ok, nil
 		}
 		current = target
 	}
@@ -145,13 +135,32 @@ func hasInitialization(info locality.Info) bool {
 func (p Program) ValidateLocalities(pkgPath string) error {
 	prefix := pkgPath + "."
 	p.localities.mu.RLock()
-	names := make([]string, 0)
-	for name := range p.localities.entries {
+	nameSet := make(map[string]bool)
+	localNames := make(map[string]bool)
+	for name, info := range p.localities.entries {
+		if info.Locality != locality.None {
+			localNames[name] = true
+		}
 		if strings.HasPrefix(name, prefix) {
-			names = append(names, name)
+			nameSet[name] = true
 		}
 	}
 	p.localities.mu.RUnlock()
+	p.linknameMu.RLock()
+	links := make(map[string]string, len(p.linkname))
+	for name, target := range p.linkname {
+		links[name] = strings.TrimPrefix(target, "go:")
+	}
+	p.linknameMu.RUnlock()
+	for name := range links {
+		if strings.HasPrefix(name, prefix) && linknameReachesLocal(name, links, localNames) {
+			nameSet[name] = true
+		}
+	}
+	names := make([]string, 0, len(nameSet))
+	for name := range nameSet {
+		names = append(names, name)
+	}
 	sort.Strings(names)
 	for _, name := range names {
 		if _, _, _, err := p.ResolveLocality(name); err != nil {
@@ -159,6 +168,18 @@ func (p Program) ValidateLocalities(pkgPath string) error {
 		}
 	}
 	return nil
+}
+
+func linknameReachesLocal(name string, links map[string]string, localNames map[string]bool) bool {
+	seen := make(map[string]bool)
+	for name != "" && !seen[name] {
+		if localNames[name] {
+			return true
+		}
+		seen[name] = true
+		name = links[name]
+	}
+	return false
 }
 
 func (p Program) PackageSyntaxParsed(pkg *types.Package) bool {

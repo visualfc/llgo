@@ -86,74 +86,50 @@ func TestNeedsLocalContext(t *testing.T) {
 	}
 }
 
-func TestResolveLinknameLocality(t *testing.T) {
+func TestRejectsLinknameLocality(t *testing.T) {
 	prog := NewProgram(nil)
-	target := "example.com/target.Value"
-	alias := "example.com/alias.Value"
+	target := "example.com/target.value"
+	alias := "example.com/alias.value"
 	prog.SetLocalityInfo(target, LocalityInfo{Locality: ThreadLocal, HasInitializer: true, InitFunc: "example.com/target.initValue", InitOrder: 1})
 	prog.SetLocalStorage(target, LocalStoragePackage)
+	if canonical, got, ok, err := prog.ResolveLocality(target); err != nil || canonical != target || !ok || got.LocalStorage != LocalStoragePackage {
+		t.Fatalf("direct ResolveLocality(%q) = %q, %+v, %v, %v", target, canonical, got, ok, err)
+	}
+
 	prog.SetLinkname(alias, target)
-
-	_, got, ok, err := prog.ResolveLocality(alias)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok || got.Locality != ThreadLocal || got.LocalStorage != LocalStoragePackage || got.InitFunc != "example.com/target.initValue" || got.InitOrder != 1 {
-		t.Fatalf("ResolveLocality(%q) = %+v, %v", alias, got, ok)
-	}
-	if err := prog.ValidateLocalities("example.com/alias"); err != nil {
-		t.Fatal(err)
-	}
-	sameKind := "example.com/alias.SameKind"
-	prog.SetLinkname(sameKind, target)
-	prog.SetLocalityInfo(sameKind, LocalityInfo{Locality: ThreadLocal})
-	if _, got, ok, err := prog.ResolveLocality(sameKind); err != nil || !ok || got.InitFunc != "example.com/target.initValue" {
-		t.Fatalf("same-kind ResolveLocality(%q) = %+v, %v", sameKind, got, ok)
+	if err := prog.ValidateLocalities("example.com/alias"); err == nil || !strings.Contains(err.Error(), "cannot reference local variable") {
+		t.Fatalf("alias-to-local error = %v", err)
 	}
 
-	incompatible := "example.com/alias.Incompatible"
-	prog.SetLinkname(incompatible, target)
-	prog.SetLocalityInfo(incompatible, LocalityInfo{Locality: ThreadLocal, HasInitializer: true, InitFunc: "example.com/alias.initValue", InitOrder: 1})
-	if err := prog.ValidateLocalities("example.com/alias"); err == nil || !strings.Contains(err.Error(), "incompatible local initializers") {
-		t.Fatalf("initializer mismatch error = %v", err)
-	}
-	targetDecl, _ := prog.VariableLocality(target)
-	prog.SetLocalityInfo(incompatible, targetDecl.Info)
-
-	storageMismatch := "example.com/alias.StorageMismatch"
-	prog.SetLinkname(storageMismatch, target)
-	prog.SetLocalityInfo(storageMismatch, LocalityInfo{Locality: ThreadLocal})
-	prog.SetLocalStorage(storageMismatch, LocalStorageNativeTLS)
-	if err := prog.ValidateLocalities("example.com/alias"); err == nil || !strings.Contains(err.Error(), "incompatible local storage") {
-		t.Fatalf("storage mismatch error = %v", err)
-	}
-	prog.SetLocalStorage(storageMismatch, LocalStoragePackage)
-
-	prog.SetLocalityInfo(alias, LocalityInfo{Locality: GoroutineLocal})
-	if err := prog.ValidateLocalities("example.com/alias"); err == nil || !strings.Contains(err.Error(), "uses //llgo:gls") {
-		t.Fatalf("locality mismatch error = %v", err)
+	localAlias := "example.com/alias.local"
+	prog.SetLocalityInfo(localAlias, LocalityInfo{Locality: GoroutineLocal})
+	prog.SetLinkname(localAlias, "example.com/target.ordinary")
+	if err := prog.ValidateLocalities("example.com/alias"); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
+		t.Fatalf("local-alias error = %v", err)
 	}
 }
 
-func TestValidateLocalityLinknameCycle(t *testing.T) {
+func TestValidateLocalitiesIgnoresOrdinaryLinknameCycle(t *testing.T) {
 	prog := NewProgram(nil)
-	prog.SetLinkname("example.com/p.First", "example.com/p.Second")
-	prog.SetLinkname("example.com/p.Second", "example.com/p.First")
-	prog.SetLocalityInfo("example.com/p.First", LocalityInfo{Locality: ThreadLocal})
-	if err := prog.ValidateLocalities("example.com/p"); err == nil || !strings.Contains(err.Error(), "linkname cycle") {
-		t.Fatalf("linkname cycle error = %v", err)
+	prog.SetLinkname("example.com/p.first", "example.com/p.second")
+	prog.SetLinkname("example.com/p.second", "example.com/p.first")
+	if err := prog.ValidateLocalities("example.com/p"); err != nil {
+		t.Fatalf("ordinary linkname cycle affected locality validation: %v", err)
 	}
 }
 
-func TestValidateLocalityAllowsSelfLinkname(t *testing.T) {
+func TestValidateLocalitySelfLinkname(t *testing.T) {
 	prog := NewProgram(nil)
-	name := "example.com/p.Value"
+	name := "example.com/p.value"
 	prog.SetLinkname(name, name)
-	prog.SetLocalityInfo(name, LocalityInfo{Locality: ThreadLocal})
 	if err := prog.ValidateLocalities("example.com/p"); err != nil {
 		t.Fatal(err)
 	}
-	if _, got, ok, err := prog.ResolveLocality(name); err != nil || !ok || got.Locality != ThreadLocal {
-		t.Fatalf("ResolveLocality(%q) = %+v, %v", name, got, ok)
+	if canonical, _, ok, err := prog.ResolveLocality(name); err != nil || canonical != name || ok {
+		t.Fatalf("ordinary self-link ResolveLocality(%q) = %q, %v, %v", name, canonical, ok, err)
+	}
+	prog.SetLocalityInfo(name, LocalityInfo{Locality: ThreadLocal})
+	if err := prog.ValidateLocalities("example.com/p"); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
+		t.Fatalf("local self-linkname error = %v", err)
 	}
 }

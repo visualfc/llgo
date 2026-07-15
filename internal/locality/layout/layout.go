@@ -184,8 +184,8 @@ func (p Package) Initializers(kind locality.Kind) []Initializer {
 // BlockName returns the shared package-block accessor symbol.
 func BlockName(path string) string { return qualify(path, "__llgo_local_block") }
 
-// BlockKeyName returns the shared package-block descriptor symbol.
-func BlockKeyName(path string) string { return qualify(path, "__llgo_local_key") }
+// BlockCacheName returns the package block's owner-local direct-cache symbol.
+func BlockCacheName(path string) string { return qualify(path, "__llgo_local_cache") }
 
 // InitName returns the package/kind initializer dispatcher symbol.
 func InitName(path string, kind locality.Kind) string {
@@ -198,8 +198,10 @@ func EnsureName(path string, kind locality.Kind) string { return InitName(path, 
 // GuardName returns the package/kind native TLS state symbol.
 func GuardName(path string, kind locality.Kind) string { return InitName(path, kind) + "$guard" }
 
-// FailureKeyName returns the package/kind initializer failure key symbol.
-func FailureKeyName(path string, kind locality.Kind) string { return InitName(path, kind) + "$failure" }
+// FailureCacheName returns the package/kind initializer failure-cache symbol.
+func FailureCacheName(path string, kind locality.Kind) string {
+	return InitName(path, kind) + "$failure_cache"
+}
 
 func qualify(path, name string) string {
 	if path == "" {

@@ -44,10 +44,10 @@ type localPackage struct {
 }
 
 type localInitializer struct {
-	guard      llssa.Global
-	failureKey llssa.Global
-	dispatch   llssa.Function
-	ensure     llssa.Function
+	guard        llssa.Global
+	failureCache llssa.Global
+	dispatch     llssa.Function
+	ensure       llssa.Function
 }
 
 type localBaseCacheKey struct {
@@ -131,9 +131,9 @@ func (p *context) prepareLocalVariables(pkg llssa.Package, globals []*ssa.Global
 	}
 }
 
-// localVariableFor resolves one Go SSA global to the canonical package plan.
-// Both local definitions and imported references use this path so linkname and
-// layout validation cannot diverge between the two lowering cases.
+// localVariableFor validates one Go SSA global and finds its declaring package
+// plan. Both definitions and references use this path so forbidden linkname
+// aliases and layout validation cannot diverge between lowering cases.
 func (p *context) localVariableFor(pkg llssa.Package, global *ssa.Global, defineCurrent bool) (*localVariable, bool, error) {
 	fullName := llssa.FullName(global.Pkg.Pkg, global.Name())
 	canonical, info, ok, err := p.prog.ResolveLocality(fullName)
@@ -253,16 +253,16 @@ func (p *context) buildLocalPackage(pkg llssa.Package, owner *localPackage, defi
 		}
 		structType := types.NewStruct(fields, nil)
 		owner.typ = p.prog.Type(structType, llssa.InGo)
-		key := pkg.NewVar(localitylayout.BlockKeyName(owner.plan.Path), types.NewPointer(types.Typ[types.Uint8]), llssa.InGo)
+		cache := pkg.NewThreadLocalVar(localitylayout.BlockCacheName(owner.plan.Path), types.NewPointer(types.Typ[types.Uintptr]), llssa.InGo)
 		if define {
-			key.InitNil()
+			cache.InitNil()
 		}
 		result := types.NewPointer(structType)
 		owner.blockFunc = pkg.NewFunc(localitylayout.BlockName(owner.plan.Path), noArgResultSignature(result), llssa.InGo)
 		owner.blockFunc.Inline(llssa.AlwaysInline)
 		if define && !owner.blockFunc.HasBody() {
 			owner.blockFunc.BuildLocalPackageAccessor(
-				key.Expr,
+				cache.Expr,
 				p.prog.IntVal(p.prog.SizeOf(owner.typ), p.prog.Uintptr()),
 				p.prog.IntVal(p.prog.AlignOf(owner.typ), p.prog.Uintptr()),
 			)
@@ -280,7 +280,7 @@ func (p *context) buildLocalPackage(pkg llssa.Package, owner *localPackage, defi
 func (p *context) buildLocalInitializer(pkg llssa.Package, owner *localPackage, kind locality.Kind, initializers []localitylayout.Initializer, define bool) *localInitializer {
 	ret := &localInitializer{}
 	ret.guard = pkg.NewThreadLocalVar(localitylayout.GuardName(owner.plan.Path, kind), types.NewPointer(types.Typ[types.Uint8]), llssa.InGo)
-	ret.failureKey = pkg.NewVar(localitylayout.FailureKeyName(owner.plan.Path, kind), types.NewPointer(types.Typ[types.Uint8]), llssa.InGo)
+	ret.failureCache = pkg.NewThreadLocalVar(localitylayout.FailureCacheName(owner.plan.Path, kind), types.NewPointer(types.Typ[types.Uintptr]), llssa.InGo)
 	ret.dispatch = pkg.NewFunc(localitylayout.InitName(owner.plan.Path, kind), llssa.NoArgsNoRet, llssa.InGo)
 	ret.ensure = pkg.NewFunc(localitylayout.EnsureName(owner.plan.Path, kind), llssa.NoArgsNoRet, llssa.InGo)
 	ret.ensure.Inline(llssa.AlwaysInline)
@@ -288,7 +288,7 @@ func (p *context) buildLocalInitializer(pkg llssa.Package, owner *localPackage, 
 		return ret
 	}
 	ret.guard.InitNil()
-	ret.failureKey.InitNil()
+	ret.failureCache.InitNil()
 	if !ret.dispatch.HasBody() {
 		b := ret.dispatch.MakeBody(1)
 		for _, initializer := range initializers {
@@ -307,7 +307,7 @@ func (p *context) buildLocalInitializer(pkg llssa.Package, owner *localPackage, 
 		b.Call(
 			pkg.RuntimeFunc("EnsureLocalInitializer"),
 			ret.guard.Expr,
-			b.Convert(p.prog.VoidPtr(), ret.failureKey.Expr),
+			ret.failureCache.Expr,
 			closure,
 		)
 		b.Jump(ret.ensure.Block(2))

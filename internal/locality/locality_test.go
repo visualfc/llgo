@@ -121,6 +121,16 @@ func TestScanPackageVarBranches(t *testing.T) {
 			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgo:tls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("_")}}}},
 			want: "blank identifier",
 		},
+		{
+			name: "exported name",
+			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgo:gls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("Value")}}}},
+			want: "requires an unexported package variable",
+		},
+		{
+			name: "linkname",
+			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//go:linkname value example.com/p.value\n//llgo:tls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("value")}}}},
+			want: "cannot apply to a //go:linkname variable",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -285,7 +295,7 @@ func TestPrepareIsIdempotentAcrossPrograms(t *testing.T) {
 	fset, file := parseFile(t, `package p
 func makeValue() *int { value := 42; return &value }
 //llgo:tls
-var Value = makeValue()
+var value = makeValue()
 `)
 	files := []*ast.File{file}
 	info := newTypeInfo()
@@ -308,9 +318,9 @@ var Value = makeValue()
 	}
 	declCount := len(file.Decls)
 	scopeCount := len(pkg.Scope().Names())
-	initName := prepared["Value"].InitFunc
-	if initName != "example.com/p.__llgo_local_init_0" || prepared["Value"].InitOrder != 1 {
-		t.Fatalf("prepared metadata = %+v", prepared["Value"])
+	initName := prepared["value"].InitFunc
+	if initName != "example.com/p.__llgo_local_init_0" || prepared["value"].InitOrder != 1 {
+		t.Fatalf("prepared metadata = %+v", prepared["value"])
 	}
 
 	again, err := Prepare(fset, pkg.Path(), pkg, info, files, prepared)
@@ -324,8 +334,8 @@ var Value = makeValue()
 	if len(file.Decls) != declCount || len(pkg.Scope().Names()) != scopeCount {
 		t.Fatalf("repeated Prepare changed syntax/scope: decls=%d/%d scope=%d/%d", len(file.Decls), declCount, len(pkg.Scope().Names()), scopeCount)
 	}
-	if again["Value"] != prepared["Value"] || reused["Value"] != prepared["Value"] {
-		t.Fatalf("repeated metadata = %+v, reused = %+v, want %+v", again["Value"], reused["Value"], prepared["Value"])
+	if again["value"] != prepared["value"] || reused["value"] != prepared["value"] {
+		t.Fatalf("repeated metadata = %+v, reused = %+v, want %+v", again["value"], reused["value"], prepared["value"])
 	}
 }
 

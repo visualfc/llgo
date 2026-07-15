@@ -16,10 +16,6 @@ import (
 )
 
 func compileLocalitySource(t *testing.T, src string) (llssa.Program, string) {
-	return compileLocalitySourceWithNativeAnchor(t, src, true)
-}
-
-func compileLocalitySourceWithNativeAnchor(t *testing.T, src string, nativeAnchor bool) (llssa.Program, string) {
 	t.Helper()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", src, parser.ParseComments)
@@ -36,11 +32,6 @@ func compileLocalitySourceWithNativeAnchor(t *testing.T, src string, nativeAncho
 	prog := ssatest.NewProgramEx(t, nil, imp)
 	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
 	prog.SetRuntime(localityRuntimePackage())
-	if nativeAnchor {
-		anchor := llssa.PkgRuntime + ".currentLocalContext"
-		prog.SetLocalityInfo(anchor, llssa.LocalityInfo{Locality: llssa.ThreadLocal})
-		prog.SetLocalStorage(anchor, llssa.LocalStorageNativeTLS)
-	}
 	if err := ParsePkgSyntax(prog, fset, pkg, files); err != nil {
 		t.Fatal(err)
 	}
@@ -76,15 +67,9 @@ func localityRuntimePackage() *types.Package {
 	localContextName := types.NewTypeName(token.NoPos, pkg, "LocalContext", nil)
 	localContext := types.NewNamed(localContextName, types.NewStruct([]*types.Var{blocks}, nil), nil)
 	pkg.Scope().Insert(localContextName)
-	next := types.NewField(token.NoPos, pkg, "next", unsafePointer, false)
-	key := types.NewField(token.NoPos, pkg, "key", unsafePointer, false)
-	localBlockName := types.NewTypeName(token.NoPos, pkg, "localBlock", nil)
-	types.NewNamed(localBlockName, types.NewStruct([]*types.Var{next, key}, nil), nil)
-	pkg.Scope().Insert(localBlockName)
-	pkg.Scope().Insert(types.NewVar(token.NoPos, pkg, "currentLocalContext", types.Typ[types.Uintptr]))
 
 	localPackageParams := types.NewTuple(
-		types.NewParam(token.NoPos, pkg, "key", types.Typ[types.UnsafePointer]),
+		types.NewParam(token.NoPos, pkg, "cache", types.NewPointer(types.Typ[types.Uintptr])),
 		types.NewParam(token.NoPos, pkg, "size", types.Typ[types.Uintptr]),
 		types.NewParam(token.NoPos, pkg, "align", types.Typ[types.Uintptr]),
 	)
@@ -94,7 +79,7 @@ func localityRuntimePackage() *types.Package {
 	callback := types.NewSignatureType(nil, nil, nil, nil, nil, false)
 	ensureParams := types.NewTuple(
 		types.NewParam(token.NoPos, pkg, "state", types.NewPointer(types.Typ[types.Uint8])),
-		types.NewParam(token.NoPos, pkg, "failureKey", types.Typ[types.UnsafePointer]),
+		types.NewParam(token.NoPos, pkg, "failureCache", types.NewPointer(types.Typ[types.Uintptr])),
 		types.NewParam(token.NoPos, pkg, "initialize", callback),
 	)
 	pkg.Scope().Insert(types.NewFunc(token.NoPos, pkg, "EnsureLocalInitializer", types.NewSignatureType(nil, nil, nil, ensureParams, nil, false)))
@@ -111,38 +96,29 @@ func localityRuntimePackage() *types.Package {
 	return pkg
 }
 
-func TestLocalPackageAccessorUsesRuntimeAnchorStorage(t *testing.T) {
+func TestLocalPackageAccessorUsesDirectTLSCache(t *testing.T) {
 	const src = `package locality
 
 //llgo:gls
-var Pointer *int
+var pointer *int
 
-func value() *int { return Pointer }
+func value() *int { return pointer }
 `
-	for _, test := range []struct {
-		name         string
-		nativeAnchor bool
-		declaration  string
-	}{
-		{"native TLS", true, "external thread_local global i64"},
-		{"ordinary global", false, "external global i64"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			_, ir := compileLocalitySourceWithNativeAnchor(t, src, test.nativeAnchor)
-			anchor := `@"` + llssa.PkgRuntime + `.currentLocalContext" = ` + test.declaration
-			if !strings.Contains(ir, anchor) {
-				t.Fatalf("runtime context anchor declaration not found: %s\n%s", anchor, ir)
-			}
-			accessor := llvmFunction(t, ir, "example.com/locality.__llgo_local_block")
-			load := `load i64, ptr @"` + llssa.PkgRuntime + `.currentLocalContext"`
-			slow := `call ptr @"` + llssa.PkgRuntime + `.LocalPackage"`
-			if loadAt, slowAt := strings.Index(accessor, load), strings.Index(accessor, slow); loadAt < 0 || slowAt < 0 || loadAt >= slowAt {
-				t.Fatalf("accessor does not load the runtime anchor before its slow path:\n%s", accessor)
-			}
-			if got := strings.Count(accessor, "icmp "); got != 3 {
-				t.Fatalf("accessor comparisons = %d, want context/head/key checks:\n%s", got, accessor)
-			}
-		})
+	_, ir := compileLocalitySource(t, src)
+	if !strings.Contains(ir, `@"example.com/locality.__llgo_local_cache" = thread_local global i64 0`) {
+		t.Fatalf("package direct cache not found:\n%s", ir)
+	}
+	accessor := llvmFunction(t, ir, "example.com/locality.__llgo_local_block")
+	cacheLoad := `load i64, ptr @"example.com/locality.__llgo_local_cache"`
+	slow := `call ptr @"` + llssa.PkgRuntime + `.LocalPackage"(ptr @"example.com/locality.__llgo_local_cache"`
+	if loadAt, slowAt := strings.Index(accessor, cacheLoad), strings.Index(accessor, slow); loadAt < 0 || slowAt < 0 || loadAt >= slowAt {
+		t.Fatalf("accessor does not load its direct cache before the cold path:\n%s", accessor)
+	}
+	if got := strings.Count(accessor, "icmp "); got != 1 {
+		t.Fatalf("accessor comparisons = %d, want one cache check:\n%s", got, accessor)
+	}
+	if strings.Contains(accessor, "currentLocalContext") {
+		t.Fatalf("accessor still depends on runtime context layout:\n%s", accessor)
 	}
 }
 
@@ -174,16 +150,16 @@ func scalar() int { return 42 }
 func pointer() *int { return &backing }
 
 //llgo:tls
-var TLSScalar = scalar()
+var tlsScalar = scalar()
 //llgo:tls
-var TLSPointer = pointer()
+var tlsPointer = pointer()
 //llgo:gls
-var GLSScalar = scalar()
+var glsScalar = scalar()
 //llgo:gls
-var GLSPointer = pointer()
+var glsPointer = pointer()
 
 func values() (int, *int, int, *int) {
-	return TLSScalar, TLSPointer, GLSScalar, GLSPointer
+	return tlsScalar, tlsPointer, glsScalar, glsPointer
 }
 `)
 
@@ -191,10 +167,10 @@ func values() (int, *int, int, *int) {
 		kind    llssa.Locality
 		storage llssa.LocalStorage
 	}{
-		"TLSScalar":  {llssa.ThreadLocal, llssa.LocalStorageNativeTLS},
-		"TLSPointer": {llssa.ThreadLocal, llssa.LocalStoragePackage},
-		"GLSScalar":  {llssa.GoroutineLocal, llssa.LocalStorageNativeTLS},
-		"GLSPointer": {llssa.GoroutineLocal, llssa.LocalStoragePackage},
+		"tlsScalar":  {llssa.ThreadLocal, llssa.LocalStorageNativeTLS},
+		"tlsPointer": {llssa.ThreadLocal, llssa.LocalStoragePackage},
+		"glsScalar":  {llssa.GoroutineLocal, llssa.LocalStorageNativeTLS},
+		"glsPointer": {llssa.GoroutineLocal, llssa.LocalStoragePackage},
 	}
 	for name, want := range checks {
 		got, ok := prog.VariableLocality("example.com/locality." + name)
@@ -202,18 +178,18 @@ func values() (int, *int, int, *int) {
 			t.Fatalf("%s metadata = %+v, %v", name, got, ok)
 		}
 	}
-	for _, name := range []string{"TLSScalar", "GLSScalar"} {
+	for _, name := range []string{"tlsScalar", "glsScalar"} {
 		if !strings.Contains(ir, `@"example.com/locality.`+name+`" = thread_local global i64`) {
 			t.Fatalf("%s is not native TLS:\n%s", name, ir)
 		}
 	}
-	for _, name := range []string{"TLSPointer", "GLSPointer"} {
+	for _, name := range []string{"tlsPointer", "glsPointer"} {
 		if strings.Contains(ir, `@"example.com/locality.`+name+`" = thread_local`) {
 			t.Fatalf("%s retained a pointer-bearing TLS global:\n%s", name, ir)
 		}
 	}
-	if got := strings.Count(ir, `@"example.com/locality.__llgo_local_key" =`); got != 1 {
-		t.Fatalf("package block keys = %d, want 1:\n%s", got, ir)
+	if got := strings.Count(ir, `@"example.com/locality.__llgo_local_cache" = thread_local global i64 0`); got != 1 {
+		t.Fatalf("package block caches = %d, want 1:\n%s", got, ir)
 	}
 	if got := strings.Count(ir, `call ptr @"github.com/goplus/llgo/runtime/internal/runtime.LocalPackage"`); got != 1 {
 		t.Fatalf("LocalPackage calls = %d, want one accessor definition:\n%s", got, ir)
@@ -241,15 +217,15 @@ func TestLocalityDebugInfoOnlyUsesFixedGlobals(t *testing.T) {
 	_, ir := compileLocalitySource(t, `package locality
 
 //llgo:tls
-var Direct int
+var direct int
 
 //llgo:gls
-var Pointer *int
+var pointer *int
 
-func values() (int, *int) { return Direct, Pointer }
+func values() (int, *int) { return direct, pointer }
 `)
 
-	direct := `@"example.com/locality.Direct" = thread_local global i64`
+	direct := `@"example.com/locality.direct" = thread_local global i64`
 	start := strings.Index(ir, direct)
 	if start < 0 {
 		t.Fatalf("native TLS global not found:\n%s", ir)
@@ -258,7 +234,7 @@ func values() (int, *int) { return Direct, Pointer }
 	if end < 0 || !strings.Contains(ir[start:start+end], "!dbg") {
 		t.Fatalf("native TLS global has no debug metadata:\n%s", ir[start:])
 	}
-	if strings.Contains(ir, `@"example.com/locality.Pointer" =`) {
+	if strings.Contains(ir, `@"example.com/locality.pointer" =`) {
 		t.Fatalf("package-local pointer was emitted as a fixed debug global:\n%s", ir)
 	}
 }
@@ -268,12 +244,12 @@ func TestLocalityInitializersPreserveGoOrderPerKind(t *testing.T) {
 
 func mark(value int) int { return value }
 //llgo:tls
-var T0 = mark(0)
+var t0 = mark(0)
 //llgo:gls
-var G0 = mark(1)
+var g0 = mark(1)
 //llgo:tls
-var T1 = mark(2)
-func values() (int, int, int) { return T0, T1, G0 }
+var t1 = mark(2)
+func values() (int, int, int) { return t0, t1, g0 }
 `)
 	tls := llvmFunction(t, ir, "example.com/locality.__llgo_tls_init")
 	gls := llvmFunction(t, ir, "example.com/locality.__llgo_gls_init")
@@ -297,8 +273,8 @@ func TestDirectInitializerStillRequiresFailureContext(t *testing.T) {
 	prog, ir := compileLocalitySource(t, `package locality
 func value() int { return 1 }
 //llgo:tls
-var Value = value()
-func get() int { return Value }
+var localValue = value()
+func get() int { return localValue }
 `)
 	if !prog.NeedsLocalContext() {
 		t.Fatal("initializer failure storage did not enable a local context")
@@ -306,7 +282,7 @@ func get() int { return Value }
 	if strings.Contains(ir, `__llgo_local_block`) {
 		t.Fatalf("pointer-free package unexpectedly has a value block:\n%s", ir)
 	}
-	if !strings.Contains(ir, `@"example.com/locality.Value" = thread_local global i64`) || !strings.Contains(ir, `EnsureLocalInitializer`) {
+	if !strings.Contains(ir, `@"example.com/locality.localValue" = thread_local global i64`) || !strings.Contains(ir, `EnsureLocalInitializer`) {
 		t.Fatalf("direct initializer lowering is incomplete:\n%s", ir)
 	}
 }
@@ -314,10 +290,10 @@ func get() int { return Value }
 func TestZeroValueDirectLocalsNeedNoContext(t *testing.T) {
 	prog, ir := compileLocalitySource(t, `package locality
 //llgo:tls
-var T int
+var threadValue int
 //llgo:gls
-var G uintptr
-func values() (int, uintptr) { return T, G }
+var goroutineValue uintptr
+func values() (int, uintptr) { return threadValue, goroutineValue }
 `)
 	if prog.NeedsLocalContext() {
 		t.Fatal("pointer-free zero-value locals enabled a local context")
@@ -330,10 +306,10 @@ func values() (int, uintptr) { return T, G }
 func TestExportedFunctionInstallsLocalContext(t *testing.T) {
 	_, ir := compileLocalitySource(t, `package locality
 //llgo:gls
-var Pointer *int
+var pointer *int
 //export Exported
 func Exported(useLocal bool) *int {
-	if useLocal { return Pointer }
+	if useLocal { return pointer }
 	return nil
 }
 `)
@@ -355,9 +331,9 @@ func Exported(useLocal bool) *int {
 func TestExportedNativeTLSNeedsNoLocalContext(t *testing.T) {
 	prog, ir := compileLocalitySource(t, `package locality
 //llgo:tls
-var Scalar int
+var scalar int
 //export Exported
-func Exported() int { return Scalar }
+func Exported() int { return scalar }
 `)
 	if prog.NeedsLocalContext() {
 		t.Fatal("zero-value native TLS enabled a local context")
@@ -380,44 +356,32 @@ func assertTextOrder(t *testing.T, text string, wants ...string) {
 	}
 }
 
-func TestLocalityLinknameAliasesReuseCanonicalStorage(t *testing.T) {
-	prog, ir := compileLocalitySource(t, `package locality
-
+func TestLocalityRejectsLinknameAlias(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "locality.go", `package locality
 //llgo:gls
-var Pointer *int
-//go:linkname PointerAlias example.com/locality.Pointer
-//llgo:gls
-var PointerAlias *int
-
-//llgo:tls
-var Scalar int
-//go:linkname ScalarAlias example.com/locality.Scalar
-//llgo:tls
-var ScalarAlias int
-
-func values() (*int, *int, int, int) { return Pointer, PointerAlias, Scalar, ScalarAlias }
-`)
-	if strings.Contains(ir, "PointerAlias") || strings.Contains(ir, "ScalarAlias") {
-		t.Fatalf("linkname aliases received independent LLVM storage:\n%s", ir)
+var target *int
+//go:linkname alias example.com/locality.target
+var alias *int
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := strings.Count(ir, `@"example.com/locality.Scalar" = thread_local global i64`); got != 1 {
-		t.Fatalf("canonical scalar globals = %d, want 1:\n%s", got, ir)
+	info := newLocalityTypeInfo()
+	pkg, err := (&types.Config{}).Check("example.com/locality", fset, []*ast.File{file}, info)
+	if err != nil {
+		t.Fatal(err)
 	}
-	values := llvmFunction(t, ir, "example.com/locality.values")
-	if got := strings.Count(values, `call ptr @"example.com/locality.__llgo_local_block"()`); got != 1 {
-		t.Fatalf("alias package-base calls = %d, want 1:\n%s", got, values)
+	prog := ssatest.NewProgram(t, nil)
+	if err := ParsePkgSyntax(prog, fset, pkg, []*ast.File{file}); err != nil {
+		t.Fatal(err)
 	}
-	for name, want := range map[string]llssa.LocalStorage{
-		"example.com/locality.PointerAlias": llssa.LocalStoragePackage,
-		"example.com/locality.ScalarAlias":  llssa.LocalStorageNativeTLS,
-	} {
-		if got, ok := prog.VariableLocality(name); !ok || got.LocalStorage != want {
-			t.Fatalf("alias metadata %s = %+v, %v; want storage %v", name, got, ok, want)
-		}
+	if err := prog.ValidateLocalities(pkg.Path()); err == nil || !strings.Contains(err.Error(), "cannot reference local variable") {
+		t.Fatalf("ValidateLocalities error = %v", err)
 	}
 }
 
-func TestLocalityCrossPackageAccessUsesDependencyStorage(t *testing.T) {
+func TestLocalityCrossPackageAccessUsesFunctions(t *testing.T) {
 	fset := token.NewFileSet()
 	parse := func(name, source string) *ast.File {
 		file, err := parser.ParseFile(fset, name, source, parser.ParseComments)
@@ -429,13 +393,14 @@ func TestLocalityCrossPackageAccessUsesDependencyStorage(t *testing.T) {
 	depFile := parse("dep.go", `package dep
 func initialScalar() int { return 1 }
 //llgo:tls
-var Scalar = initialScalar()
+var scalar = initialScalar()
 //llgo:gls
-var Pointer *int
+var pointer *int
+func Values() (int, *int) { return scalar, pointer }
 `)
 	rootFile := parse("root.go", `package root
 import "example.com/dep"
-func Values() (int, *int) { return dep.Scalar, dep.Pointer }
+func Values() (int, *int) { return dep.Values() }
 `)
 	check := func(path string, files []*ast.File, imp types.Importer) (*types.Package, *types.Info) {
 		info := newLocalityTypeInfo()
@@ -484,44 +449,36 @@ func Values() (int, *int) { return dep.Scalar, dep.Pointer }
 		t.Fatal(err)
 	}
 	ir := root.String()
-	if !strings.Contains(ir, `@"example.com/dep.Scalar" = external thread_local global i64`) {
-		t.Fatalf("root package did not reference dependency TLS storage:\n%s", ir)
+	if !strings.Contains(ir, `@"example.com/dep.Values"`) {
+		t.Fatalf("root package did not call the dependency function:\n%s", ir)
 	}
-	if !strings.Contains(ir, `declare ptr @"example.com/dep.__llgo_local_block"()`) {
-		t.Fatalf("root package did not reference dependency block accessor:\n%s", ir)
-	}
-	if !strings.Contains(ir, `declare void @"example.com/dep.__llgo_tls_init$ensure"()`) {
-		t.Fatalf("root package did not reference dependency initializer guard:\n%s", ir)
-	}
-	if strings.Contains(ir, `define ptr @"example.com/dep.__llgo_local_block"()`) {
-		t.Fatalf("root package redefined dependency block accessor:\n%s", ir)
+	for _, symbol := range []string{"example.com/dep.scalar", "example.com/dep.pointer", "example.com/dep.__llgo_"} {
+		if strings.Contains(ir, symbol) {
+			t.Fatalf("root package referenced dependency locality storage %q:\n%s", symbol, ir)
+		}
 	}
 }
 
-func TestPrepareRejectsLocalAliasInitializer(t *testing.T) {
+func TestParseRejectsLocalAliasInitializer(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", `package locality
 //llgo:tls
-var Target int
-//go:linkname Alias example.com/locality.Target
+var target int
+//go:linkname alias example.com/locality.target
 //llgo:tls
-var Alias = 1
+var alias = 1
 `, parser.ParseComments)
 	if err != nil {
 		t.Fatal(err)
 	}
 	files := []*ast.File{file}
-	info := newLocalityTypeInfo()
-	pkg, err := (&types.Config{}).Check("example.com/locality", fset, files, info)
+	pkg, err := (&types.Config{}).Check("example.com/locality", fset, files, newLocalityTypeInfo())
 	if err != nil {
 		t.Fatal(err)
 	}
 	prog := llssa.NewProgram(nil)
-	if err := ParsePkgSyntax(prog, fset, pkg, files); err != nil {
-		t.Fatal(err)
-	}
-	if err := PrepareLocalVariables(prog, fset, pkg, info, files); err == nil || !strings.Contains(err.Error(), "linkname alias") {
-		t.Fatalf("PrepareLocalVariables error = %v", err)
+	if err := ParsePkgSyntax(prog, fset, pkg, files); err == nil || !strings.Contains(err.Error(), "cannot apply to a //go:linkname variable") {
+		t.Fatalf("ParsePkgSyntax error = %v", err)
 	}
 }
 
@@ -565,15 +522,15 @@ var value = initialValue()
 			wantError:   "inconsistent initializer metadata",
 		},
 		{
-			name: "linkname locality mismatch",
+			name: "linkname locality",
 			src: `package locality
 //llgo:tls
-var Target int
-//go:linkname Alias example.com/locality.Target
+var target int
+//go:linkname alias example.com/locality.target
 //llgo:gls
-var Alias int
+var alias int
 `,
-			wantError: "uses //llgo:gls",
+			wantError: "cannot apply to a //go:linkname variable",
 		},
 	}
 
@@ -606,10 +563,9 @@ var Alias int
 	}
 }
 
-func TestPrepareRejectsLocalAliasWithoutLocalTarget(t *testing.T) {
+func TestParseRejectsExportedLocalVariable(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", `package locality
-//go:linkname Value C.value
 //llgo:tls
 var Value int
 `, parser.ParseComments)
@@ -617,17 +573,13 @@ var Value int
 		t.Fatal(err)
 	}
 	files := []*ast.File{file}
-	info := newLocalityTypeInfo()
-	pkg, err := (&types.Config{}).Check("example.com/locality", fset, files, info)
+	pkg, err := (&types.Config{}).Check("example.com/locality", fset, files, newLocalityTypeInfo())
 	if err != nil {
 		t.Fatal(err)
 	}
 	prog := ssatest.NewProgram(t, nil)
-	if err := ParsePkgSyntax(prog, fset, pkg, files); err != nil {
-		t.Fatal(err)
-	}
-	if err := PrepareLocalVariables(prog, fset, pkg, info, files); err == nil || !strings.Contains(err.Error(), "is not a local variable") {
-		t.Fatalf("PrepareLocalVariables error = %v", err)
+	if err := ParsePkgSyntax(prog, fset, pkg, files); err == nil || !strings.Contains(err.Error(), "requires an unexported package variable") {
+		t.Fatalf("ParsePkgSyntax error = %v", err)
 	}
 }
 
@@ -663,7 +615,7 @@ func TestPrepareLocalVariablesRejectsInvalidMetadata(t *testing.T) {
 			t.Fatalf("PrepareLocalVariables error = %v", err)
 		}
 	})
-	t.Run("linkname cycle", func(t *testing.T) {
+	t.Run("local linkname", func(t *testing.T) {
 		prog := ssatest.NewProgram(t, nil)
 		pkg := types.NewPackage("example.com/cycle", "cycle")
 		first := llssa.FullName(pkg, "First")
@@ -672,7 +624,7 @@ func TestPrepareLocalVariablesRejectsInvalidMetadata(t *testing.T) {
 		prog.SetLocalityInfo(first, llssa.LocalityInfo{Locality: llssa.ThreadLocal})
 		prog.SetLinkname(first, second)
 		prog.SetLinkname(second, first)
-		if err := PrepareLocalVariables(prog, nil, pkg, &types.Info{}, nil); err == nil || !strings.Contains(err.Error(), "linkname cycle") {
+		if err := PrepareLocalVariables(prog, nil, pkg, &types.Info{}, nil); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
 			t.Fatalf("PrepareLocalVariables error = %v", err)
 		}
 	})
@@ -716,10 +668,10 @@ func TestNamedPointerLocalUsesPackageStorage(t *testing.T) {
 type Handle struct { Pointer *int }
 func makeHandle() Handle { return Handle{} }
 //llgo:tls
-var Value = makeHandle()
-func get() Handle { return Value }
+var value = makeHandle()
+func get() Handle { return value }
 `)
-	info, ok := prog.VariableLocality("example.com/locality.Value")
+	info, ok := prog.VariableLocality("example.com/locality.value")
 	if !ok || info.LocalStorage != llssa.LocalStoragePackage {
 		t.Fatalf("named pointer metadata = %+v, %v", info, ok)
 	}

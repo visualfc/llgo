@@ -101,7 +101,7 @@ func TestNames(t *testing.T) {
 	if got := BlockName("example.com/p"); got != "example.com/p.__llgo_local_block" {
 		t.Fatal(got)
 	}
-	if got := BlockKeyName("example.com/p"); got != "example.com/p.__llgo_local_key" {
+	if got := BlockCacheName("example.com/p"); got != "example.com/p.__llgo_local_cache" {
 		t.Fatal(got)
 	}
 	if got := InitName("example.com/p", locality.Thread); got != "example.com/p.__llgo_tls_init" {
@@ -113,7 +113,7 @@ func TestNames(t *testing.T) {
 	if got := GuardName("", locality.Thread); got != "__llgo_tls_init$guard" {
 		t.Fatal(got)
 	}
-	if got := FailureKeyName("", locality.Goroutine); got != "__llgo_gls_init$failure" {
+	if got := FailureCacheName("", locality.Goroutine); got != "__llgo_gls_init$failure_cache" {
 		t.Fatal(got)
 	}
 }

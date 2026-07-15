@@ -21,11 +21,7 @@ import (
 	"go/types"
 )
 
-const (
-	runtimeCurrentLocalContext = "currentLocalContext"
-	runtimeLocalContext        = "LocalContext"
-	runtimeLocalBlock          = "localBlock"
-)
+const runtimeLocalContext = "LocalContext"
 
 // EnterLocalContext creates the stack root used by TLS/GLS locality blocks and
 // installs it for the current outermost Go entry. previous is nonzero only for
@@ -46,64 +42,23 @@ func (b Builder) LeaveLocalContext(ctx, previous Expr) {
 	b.Call(b.Pkg.rtFunc("LeaveLocalContext"), ctx, previous)
 }
 
-// BuildLocalPackageAccessor builds an always-hot package block lookup around
-// LocalPackage. Runtime Go types and locality metadata are the ABI: they supply
-// the context/header layouts and whether the context anchor is native TLS or an
-// ordinary global. The generated code therefore does not duplicate target
-// selection or byte offsets.
-func (p Function) BuildLocalPackageAccessor(key, size, align Expr) {
+// BuildLocalPackageAccessor builds an always-hot package block lookup around a
+// generated owner-local cache slot. The runtime owns allocation and rooting;
+// the compiler needs no LocalContext or block-header layout knowledge.
+func (p Function) BuildLocalPackageAccessor(cache, size, align Expr) {
 	prog := p.Prog
-	runtimePkg := prog.runtime()
-	contextType := runtimePkg.Scope().Lookup(runtimeLocalContext).Type()
-	blockType := runtimePkg.Scope().Lookup(runtimeLocalBlock).Type()
-	_, contextBlocks, _ := types.LookupFieldOrMethod(contextType, true, runtimePkg, "blocks")
-	_, blockKey, _ := types.LookupFieldOrMethod(blockType, true, runtimePkg, "key")
-
-	b := p.MakeBody(5)
-	checkHead := p.Block(1)
-	checkKey := p.Block(2)
-	hit := p.Block(3)
-	slow := p.Block(4)
-	key = b.Convert(prog.VoidPtr(), key)
-
-	current := b.Load(p.Pkg.runtimeGlobal(runtimeCurrentLocalContext).Expr)
-	hasContext := b.BinOp(token.NEQ, current, prog.IntVal(0, prog.Uintptr()))
-	b.If(hasContext, checkHead, slow)
-
-	b.SetBlock(checkHead)
-	context := b.Convert(prog.Pointer(prog.Type(contextType, InGo)), current)
-	head := b.Load(b.FieldAddr(context, contextBlocks[0]))
-	hasHead := b.BinOp(token.NEQ, head, prog.Nil(head.Type))
-	b.If(hasHead, checkKey, slow)
-
-	b.SetBlock(checkKey)
-	headerAddress := b.BinOp(
-		token.SUB,
-		b.Convert(prog.Uintptr(), head),
-		prog.IntVal(prog.SizeOf(prog.Type(blockType, InGo)), prog.Uintptr()),
-	)
-	header := b.Convert(prog.Pointer(prog.Type(blockType, InGo)), headerAddress)
-	foundKey := b.Load(b.FieldAddr(header, blockKey[0]))
-	b.If(b.BinOp(token.EQL, foundKey, key), hit, slow)
+	b := p.MakeBody(3)
+	hit := p.Block(1)
+	slow := p.Block(2)
+	cached := b.Load(cache)
+	b.If(b.BinOp(token.NEQ, cached, prog.IntVal(0, prog.Uintptr())), hit, slow)
 
 	b.SetBlock(hit)
 	result := p.raw.Type.(*types.Signature).Results().At(0).Type()
-	b.Return(b.Convert(prog.rawType(result), head))
+	b.Return(b.Convert(prog.rawType(result), cached))
 
 	b.SetBlock(slow)
-	raw := b.Call(p.Pkg.rtFunc("LocalPackage"), key, size, align)
+	raw := b.Call(p.Pkg.rtFunc("LocalPackage"), cache, size, align)
 	b.Return(b.Convert(prog.rawType(result), raw))
 	b.EndBuild()
-}
-
-func (p Package) runtimeGlobal(name string) Global {
-	p.NeedRuntime = true
-	runtimePkg := p.Prog.runtime()
-	variable := runtimePkg.Scope().Lookup(name).(*types.Var)
-	fullName := FullName(runtimePkg, name)
-	typ := types.NewPointer(variable.Type())
-	if locality, ok := p.Prog.VariableLocality(fullName); ok && locality.LocalStorage == LocalStorageNativeTLS {
-		return p.NewThreadLocalVar(fullName, typ, InGo)
-	}
-	return p.NewVar(fullName, typ, InGo)
 }

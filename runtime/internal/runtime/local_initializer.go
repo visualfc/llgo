@@ -28,14 +28,14 @@ const (
 // EnsureLocalInitializer executes one package/locality dispatcher at most once
 // in the current owner. Recursive access observes partial initialization; a
 // recovered failure remains failed and re-panics on every later access.
-func EnsureLocalInitializer(state *uint8, failureKey unsafe.Pointer, initialize func()) {
+func EnsureLocalInitializer(state *uint8, failureCache *uintptr, initialize func()) {
 	switch *state {
 	case localInitReady:
 		return
 	case localInitInitializing:
 		return
 	case localInitFailed:
-		panic(*localInitializerFailure(failureKey))
+		panic(*localInitializerFailure(failureCache))
 	case localInitUninitialized:
 	default:
 		panic("runtime: invalid local initializer state")
@@ -47,7 +47,7 @@ func EnsureLocalInitializer(state *uint8, failureKey unsafe.Pointer, initialize 
 			return
 		}
 		value := recover()
-		*localInitializerFailure(failureKey) = value
+		*localInitializerFailure(failureCache) = value
 		*state = localInitFailed
 		panic(value)
 	}()
@@ -56,7 +56,7 @@ func EnsureLocalInitializer(state *uint8, failureKey unsafe.Pointer, initialize 
 	*state = localInitReady
 }
 
-func localInitializerFailure(key unsafe.Pointer) *any {
+func localInitializerFailure(cache *uintptr) *any {
 	var value any
-	return (*any)(LocalPackage(key, unsafe.Sizeof(value), unsafe.Alignof(value)))
+	return (*any)(LocalPackage(cache, unsafe.Sizeof(value), unsafe.Alignof(value)))
 }

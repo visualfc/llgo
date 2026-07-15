@@ -24,16 +24,15 @@ import "unsafe"
 // one-thread-per-goroutine backend maps both logical locality kinds to this one
 // physical package store.
 type LocalContext struct {
-	// blocks points at the payload of the most recently used package block.
-	// Keeping the aligned payload at the head makes the common lookup return it
-	// directly; the block header is stored immediately before the payload.
+	// blocks points at the payload of the most recently allocated local block.
+	// The list keeps every block reachable from the outer Go entry stack frame.
 	blocks unsafe.Pointer
 }
 
 type localBlock struct {
 	// next points at the next block's payload, not its header.
-	next unsafe.Pointer
-	key  unsafe.Pointer
+	next      unsafe.Pointer
+	cacheSlot *uintptr
 }
 
 func EnterLocalContext(ctx *LocalContext) uintptr {
@@ -78,57 +77,40 @@ func releaseLocalBlocks(ctx *LocalContext) {
 		next := block.next
 		// Do not free block here: an address of a local variable may outlive its
 		// owner. Breaking the links lets the GC retain only escaped blocks.
+		*block.cacheSlot = 0
 		block.next = nil
+		block.cacheSlot = nil
 		data = next
 	}
 }
 
-// LocalPackage returns stable, zeroed storage for one package in the current
-// physical owner. Repeated access to the most recently used package takes the
-// head fast path; other accesses move the matching block to the front.
-func LocalPackage(key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
-	ctx := (*LocalContext)(unsafe.Pointer(currentLocalContext))
-	if ctx != nil {
-		firstData := ctx.blocks
-		if firstData != nil && localBlockHeader(firstData).key == key {
-			return firstData
-		}
-	}
-	return localPackageSlow(ctx, key, size, align)
-}
-
+// LocalPackage creates stable, zeroed storage for one generated cache slot in
+// the current physical owner. Generated accessors load the slot directly after
+// first touch; the block list is retained only as a GC root and teardown list.
+//
 //go:noinline
-func localPackageSlow(ctx *LocalContext, key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
+func LocalPackage(cacheSlot *uintptr, size, align uintptr) unsafe.Pointer {
+	ctx := (*LocalContext)(unsafe.Pointer(currentLocalContext))
 	if ctx == nil {
 		panic("runtime: local variable accessed outside a Go entry context")
 	}
-	if key == nil {
-		panic("runtime: nil local package key")
+	if cacheSlot == nil {
+		panic("runtime: nil local cache slot")
+	}
+	if data := unsafe.Pointer(*cacheSlot); data != nil {
+		return data
 	}
 	if align == 0 || align&(align-1) != 0 {
 		panic("runtime: invalid local package alignment")
 	}
-	firstData := ctx.blocks
-	var previous *localBlock
-	for data := firstData; data != nil; {
-		block := localBlockHeader(data)
-		next := block.next
-		if block.key == key {
-			previous.next = next
-			block.next = firstData
-			ctx.blocks = data
-			return data
-		}
-		previous = block
-		data = next
-	}
-	data := newLocalBlock(key, size, align)
-	localBlockHeader(data).next = firstData
+	data := newLocalBlock(cacheSlot, size, align)
+	localBlockHeader(data).next = ctx.blocks
 	ctx.blocks = data
+	*cacheSlot = uintptr(data)
 	return data
 }
 
-func newLocalBlock(key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
+func newLocalBlock(cacheSlot *uintptr, size, align uintptr) unsafe.Pointer {
 	header := unsafe.Sizeof(localBlock{})
 	padding := align - 1
 	if size == 0 {
@@ -143,7 +125,7 @@ func newLocalBlock(key unsafe.Pointer, size, align uintptr) unsafe.Pointer {
 	}
 	data := unsafe.Pointer((uintptr(allocation) + header + padding) &^ padding)
 	block := localBlockHeader(data)
-	block.key = key
+	block.cacheSlot = cacheSlot
 	return data
 }
 

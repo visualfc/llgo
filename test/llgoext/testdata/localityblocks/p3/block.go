@@ -1,4 +1,4 @@
-//go:build !llgo
+//go:build llgo
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -16,27 +16,16 @@
  * limitations under the License.
  */
 
-package runtime
+package p3
 
 import "unsafe"
 
-type LocalContext struct{}
+var backing int
 
-func EnterLocalContext(ctx *LocalContext) uintptr {
-	return 0
-}
+//llgo:gls
+var pointer *int
 
-func LeaveLocalContext(ctx *LocalContext, previous uintptr) {}
+func Prepare() { pointer = &backing }
 
-func leaveCurrentLocalContext() {}
-
-func LocalPackage(cacheSlot *uintptr, size, align uintptr) unsafe.Pointer {
-	if cacheSlot != nil && *cacheSlot != 0 {
-		return unsafe.Pointer(*cacheSlot)
-	}
-	data := AllocZ(size)
-	if cacheSlot != nil {
-		*cacheSlot = uintptr(data)
-	}
-	return data
-}
+//go:noinline
+func Read() uintptr { return uintptr(unsafe.Pointer(pointer)) }

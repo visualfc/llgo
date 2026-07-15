@@ -32,13 +32,22 @@ func initSecond() int {
 }
 
 //llgo:gls
-var First = initFirst()
+var first = initFirst()
 
 //llgo:gls
-var Second = initSecond()
+var second = initSecond()
 
 func FirstCalls() int  { return firstCalls }
 func SecondCalls() int { return secondCalls }
+func First() int       { return first }
+func Second() int      { return second }
+
+func SetFirst(value int) { first = value }
+
+func IncrementFirst() int {
+	first++
+	return first
+}
 
 var pairCalls int
 
@@ -48,9 +57,12 @@ func initPair() (int, int) {
 }
 
 //llgo:gls
-var PairFirst, PairSecond = initPair()
+var pairFirst, pairSecond = initPair()
 
 func PairCalls() int { return pairCalls }
+
+func PairFirst() int  { return pairFirst }
+func PairSecond() int { return pairSecond }
 
 var mixedCalls int
 var mixedBacking = 500
@@ -61,6 +73,11 @@ func initMixed() (int, *int) {
 }
 
 //llgo:tls
-var MixedScalar, MixedPointer = initMixed()
+var mixedScalar, mixedPointer = initMixed()
 
 func MixedCalls() int { return mixedCalls }
+
+func MixedScalar() int   { return mixedScalar }
+func MixedPointer() *int { return mixedPointer }
+
+func MixedScalarAddress() *int { return &mixedScalar }

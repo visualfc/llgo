@@ -124,13 +124,13 @@ func TestLocalityLoweringDiagnostics(t *testing.T) {
 		}
 	})
 
-	t.Run("linkname cycle", func(t *testing.T) {
+	t.Run("local linkname", func(t *testing.T) {
 		prog := newProgram()
 		other := typesPkg.Path() + ".Other"
 		prog.SetLinkname(name, other)
 		prog.SetLinkname(other, name)
 		ctx := &context{prog: prog, goTyps: typesPkg}
-		if _, _, err := ctx.localVariableFor(nil, global, false); err == nil || !strings.Contains(err.Error(), "linkname cycle") {
+		if _, _, err := ctx.localVariableFor(nil, global, false); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
 			t.Fatalf("localVariableFor error = %v", err)
 		}
 		assertLocalityPanic(t, "resolveLocality", func() { ctx.resolveLocality(name) })

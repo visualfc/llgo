@@ -24,50 +24,32 @@ import (
 )
 
 func TestBuildLocalPackageAccessor(t *testing.T) {
-	for _, test := range []struct {
-		name         string
-		nativeAnchor bool
-		declaration  string
-	}{
-		{"native TLS anchor", true, "external thread_local global i64"},
-		{"ordinary anchor", false, "external global i64"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			prog := NewProgram(nil)
-			prog.SetRuntime(localContextTestRuntime())
-			anchorName := PkgRuntime + "." + runtimeCurrentLocalContext
-			if test.nativeAnchor {
-				prog.SetLocalityInfo(anchorName, LocalityInfo{Locality: ThreadLocal})
-				prog.SetLocalStorage(anchorName, LocalStorageNativeTLS)
-			}
+	prog := NewProgram(nil)
+	prog.SetRuntime(localContextTestRuntime())
+	pkg := prog.NewPackage("accessor", "example.com/accessor")
+	cache := pkg.NewThreadLocalVar("example.com/accessor.cache", types.NewPointer(types.Typ[types.Uintptr]), InGo)
+	cache.InitNil()
+	field := types.NewField(token.NoPos, nil, "pointer", types.NewPointer(types.Typ[types.Int]), false)
+	block := types.NewStruct([]*types.Var{field}, nil)
+	blockType := prog.Type(block, InGo)
+	result := types.NewPointer(block)
+	results := types.NewTuple(types.NewVar(token.NoPos, nil, "", result))
+	accessor := pkg.NewFunc("example.com/accessor.block", types.NewSignatureType(nil, nil, nil, nil, results, false), InGo)
+	accessor.BuildLocalPackageAccessor(
+		cache.Expr,
+		prog.IntVal(prog.SizeOf(blockType), prog.Uintptr()),
+		prog.IntVal(prog.AlignOf(blockType), prog.Uintptr()),
+	)
 
-			pkg := prog.NewPackage("accessor", "example.com/accessor")
-			key := pkg.NewVar("example.com/accessor.key", types.NewPointer(types.Typ[types.Uint8]), InGo)
-			key.InitNil()
-			field := types.NewField(token.NoPos, nil, "pointer", types.NewPointer(types.Typ[types.Int]), false)
-			block := types.NewStruct([]*types.Var{field}, nil)
-			blockType := prog.Type(block, InGo)
-			result := types.NewPointer(block)
-			results := types.NewTuple(types.NewVar(token.NoPos, nil, "", result))
-			accessor := pkg.NewFunc("example.com/accessor.block", types.NewSignatureType(nil, nil, nil, nil, results, false), InGo)
-			accessor.BuildLocalPackageAccessor(
-				key.Expr,
-				prog.IntVal(prog.SizeOf(blockType), prog.Uintptr()),
-				prog.IntVal(prog.AlignOf(blockType), prog.Uintptr()),
-			)
-
-			ir := pkg.String()
-			anchor := `@"` + anchorName + `" = ` + test.declaration
-			if !strings.Contains(ir, anchor) {
-				t.Fatalf("context anchor declaration not found: %s\n%s", anchor, ir)
-			}
-			if got := strings.Count(ir, "icmp "); got != 3 {
-				t.Fatalf("accessor comparisons = %d, want context/head/key checks:\n%s", got, ir)
-			}
-			if !strings.Contains(ir, `call ptr @"`+PkgRuntime+`.LocalPackage"`) {
-				t.Fatalf("accessor has no LocalPackage slow path:\n%s", ir)
-			}
-		})
+	ir := pkg.String()
+	if !strings.Contains(ir, `@"example.com/accessor.cache" = thread_local global i64 0`) {
+		t.Fatalf("direct cache definition not found:\n%s", ir)
+	}
+	if got := strings.Count(ir, "icmp "); got != 1 {
+		t.Fatalf("accessor comparisons = %d, want one cache check:\n%s", got, ir)
+	}
+	if !strings.Contains(ir, `call ptr @"`+PkgRuntime+`.LocalPackage"(ptr @"example.com/accessor.cache"`) {
+		t.Fatalf("accessor has no cache-backed LocalPackage slow path:\n%s", ir)
 	}
 }
 
@@ -75,22 +57,8 @@ func localContextTestRuntime() *types.Package {
 	pkg := types.NewPackage(PkgRuntime, "runtime")
 	unsafePointer := types.Typ[types.UnsafePointer]
 
-	contextName := types.NewTypeName(token.NoPos, pkg, runtimeLocalContext, nil)
-	contextFields := []*types.Var{types.NewField(token.NoPos, pkg, "blocks", unsafePointer, false)}
-	types.NewNamed(contextName, types.NewStruct(contextFields, nil), nil)
-	pkg.Scope().Insert(contextName)
-
-	blockName := types.NewTypeName(token.NoPos, pkg, runtimeLocalBlock, nil)
-	blockFields := []*types.Var{
-		types.NewField(token.NoPos, pkg, "next", unsafePointer, false),
-		types.NewField(token.NoPos, pkg, "key", unsafePointer, false),
-	}
-	types.NewNamed(blockName, types.NewStruct(blockFields, nil), nil)
-	pkg.Scope().Insert(blockName)
-	pkg.Scope().Insert(types.NewVar(token.NoPos, pkg, runtimeCurrentLocalContext, types.Typ[types.Uintptr]))
-
 	params := types.NewTuple(
-		types.NewVar(token.NoPos, pkg, "key", unsafePointer),
+		types.NewVar(token.NoPos, pkg, "cache", types.NewPointer(types.Typ[types.Uintptr])),
 		types.NewVar(token.NoPos, pkg, "size", types.Typ[types.Uintptr]),
 		types.NewVar(token.NoPos, pkg, "align", types.Typ[types.Uintptr]),
 	)
