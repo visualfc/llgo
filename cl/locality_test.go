@@ -16,6 +16,10 @@ import (
 )
 
 func compileLocalitySource(t *testing.T, src string) (llssa.Program, string) {
+	return compileLocalitySourceWithNativeAnchor(t, src, true)
+}
+
+func compileLocalitySourceWithNativeAnchor(t *testing.T, src string, nativeAnchor bool) (llssa.Program, string) {
 	t.Helper()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", src, parser.ParseComments)
@@ -32,6 +36,11 @@ func compileLocalitySource(t *testing.T, src string) (llssa.Program, string) {
 	prog := ssatest.NewProgramEx(t, nil, imp)
 	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
 	prog.SetRuntime(localityRuntimePackage())
+	if nativeAnchor {
+		anchor := llssa.PkgRuntime + ".currentLocalContext"
+		prog.SetLocalityInfo(anchor, llssa.LocalityInfo{Locality: llssa.ThreadLocal})
+		prog.SetLocalStorage(anchor, llssa.LocalStorageNativeTLS)
+	}
 	if err := ParsePkgSyntax(prog, fset, pkg, files); err != nil {
 		t.Fatal(err)
 	}
@@ -62,9 +71,17 @@ func newLocalityTypeInfo() *types.Info {
 
 func localityRuntimePackage() *types.Package {
 	pkg := types.NewPackage(llssa.PkgRuntime, "runtime")
+	unsafePointer := types.Typ[types.UnsafePointer]
+	blocks := types.NewField(token.NoPos, pkg, "blocks", unsafePointer, false)
 	localContextName := types.NewTypeName(token.NoPos, pkg, "LocalContext", nil)
-	localContext := types.NewNamed(localContextName, types.NewStruct(nil, nil), nil)
+	localContext := types.NewNamed(localContextName, types.NewStruct([]*types.Var{blocks}, nil), nil)
 	pkg.Scope().Insert(localContextName)
+	next := types.NewField(token.NoPos, pkg, "next", unsafePointer, false)
+	key := types.NewField(token.NoPos, pkg, "key", unsafePointer, false)
+	localBlockName := types.NewTypeName(token.NoPos, pkg, "localBlock", nil)
+	types.NewNamed(localBlockName, types.NewStruct([]*types.Var{next, key}, nil), nil)
+	pkg.Scope().Insert(localBlockName)
+	pkg.Scope().Insert(types.NewVar(token.NoPos, pkg, "currentLocalContext", types.Typ[types.Uintptr]))
 
 	localPackageParams := types.NewTuple(
 		types.NewParam(token.NoPos, pkg, "key", types.Typ[types.UnsafePointer]),
@@ -92,6 +109,41 @@ func localityRuntimePackage() *types.Package {
 	)
 	pkg.Scope().Insert(types.NewFunc(token.NoPos, pkg, "LeaveLocalContext", types.NewSignatureType(nil, nil, nil, leaveParams, nil, false)))
 	return pkg
+}
+
+func TestLocalPackageAccessorUsesRuntimeAnchorStorage(t *testing.T) {
+	const src = `package locality
+
+//llgo:gls
+var Pointer *int
+
+func value() *int { return Pointer }
+`
+	for _, test := range []struct {
+		name         string
+		nativeAnchor bool
+		declaration  string
+	}{
+		{"native TLS", true, "external thread_local global i64"},
+		{"ordinary global", false, "external global i64"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, ir := compileLocalitySourceWithNativeAnchor(t, src, test.nativeAnchor)
+			anchor := `@"` + llssa.PkgRuntime + `.currentLocalContext" = ` + test.declaration
+			if !strings.Contains(ir, anchor) {
+				t.Fatalf("runtime context anchor declaration not found: %s\n%s", anchor, ir)
+			}
+			accessor := llvmFunction(t, ir, "example.com/locality.__llgo_local_block")
+			load := `load i64, ptr @"` + llssa.PkgRuntime + `.currentLocalContext"`
+			slow := `call ptr @"` + llssa.PkgRuntime + `.LocalPackage"`
+			if loadAt, slowAt := strings.Index(accessor, load), strings.Index(accessor, slow); loadAt < 0 || slowAt < 0 || loadAt >= slowAt {
+				t.Fatalf("accessor does not load the runtime anchor before its slow path:\n%s", accessor)
+			}
+			if got := strings.Count(accessor, "icmp "); got != 3 {
+				t.Fatalf("accessor comparisons = %d, want context/head/key checks:\n%s", got, accessor)
+			}
+		})
+	}
 }
 
 func llvmFunction(t *testing.T, ir, name string) string {

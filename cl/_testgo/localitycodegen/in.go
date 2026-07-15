@@ -5,11 +5,20 @@ package main
 // CHECK-DAG: @"{{.*}}localitycodegen.__llgo_local_key" = global i8 0
 // CHECK-DAG: @"{{.*}}localitycodegen.__llgo_tls_init$guard" = thread_local global i8 0
 // CHECK-DAG: @"{{.*}}localitycodegen.__llgo_tls_init$failure" = global i8 0
+// CHECK-DAG: @"{{.*}}runtime.currentLocalContext" = external thread_local global i64
 // CHECK-NOT: RegisterLocalRoot
 // CHECK-NOT: localitycodegen.Pointer" = thread_local
 // CHECK-NOT: localitycodegen.Initialized" = thread_local
 
 // CHECK-LABEL: define ptr @"{{.*}}localitycodegen.__llgo_local_block"()
+// CHECK: load i64, ptr @"{{.*}}runtime.currentLocalContext"
+// CHECK: icmp ne i64
+// CHECK: load ptr, ptr
+// CHECK: icmp ne ptr
+// CHECK: sub i64
+// CHECK: load ptr, ptr
+// CHECK: icmp eq ptr
+// CHECK: ret ptr
 // CHECK: call ptr @"{{.*}}runtime.LocalPackage"(ptr @"{{.*}}localitycodegen.__llgo_local_key", i64 16, i64 8)
 // CHECK: ret ptr
 

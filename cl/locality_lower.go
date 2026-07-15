@@ -261,15 +261,11 @@ func (p *context) buildLocalPackage(pkg llssa.Package, owner *localPackage, defi
 		owner.blockFunc = pkg.NewFunc(localitylayout.BlockName(owner.plan.Path), noArgResultSignature(result), llssa.InGo)
 		owner.blockFunc.Inline(llssa.AlwaysInline)
 		if define && !owner.blockFunc.HasBody() {
-			b := owner.blockFunc.MakeBody(1)
-			raw := b.Call(
-				pkg.RuntimeFunc("LocalPackage"),
-				b.Convert(p.prog.VoidPtr(), key.Expr),
+			owner.blockFunc.BuildLocalPackageAccessor(
+				key.Expr,
 				p.prog.IntVal(p.prog.SizeOf(owner.typ), p.prog.Uintptr()),
 				p.prog.IntVal(p.prog.AlignOf(owner.typ), p.prog.Uintptr()),
 			)
-			b.Return(b.Convert(p.prog.Pointer(owner.typ), raw))
-			b.EndBuild()
 		}
 	}
 	for _, kind := range []locality.Kind{locality.Thread, locality.Goroutine} {

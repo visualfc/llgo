@@ -18,7 +18,14 @@
 
 package localitybench
 
+import "unsafe"
+
 var backing int
+
+var ordinaryPointer *int
+
+//llgo:tls
+var nativePointerBits uintptr
 
 //llgo:gls
 var pointer *int
@@ -26,4 +33,25 @@ var pointer *int
 //go:noinline
 func Touch() {
 	pointer = &backing
+}
+
+func PrepareReads() {
+	ordinaryPointer = &backing
+	nativePointerBits = uintptr(unsafe.Pointer(&backing))
+	pointer = &backing
+}
+
+//go:noinline
+func ReadOrdinaryGlobal() uintptr {
+	return uintptr(unsafe.Pointer(ordinaryPointer))
+}
+
+//go:noinline
+func ReadNativeTLS() uintptr {
+	return nativePointerBits
+}
+
+//go:noinline
+func ReadGLSPackage() uintptr {
+	return uintptr(unsafe.Pointer(pointer))
 }

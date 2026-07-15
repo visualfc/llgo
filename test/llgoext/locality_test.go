@@ -456,6 +456,7 @@ var benchmarkTLS int
 var benchmarkGLS int
 
 var benchmarkSink int
+var benchmarkReadSink uintptr
 
 //go:noinline
 func bumpOrdinaryGlobal() int {
@@ -540,6 +541,46 @@ func BenchmarkGLSPackageBlock(b *testing.B) {
 		value += bumpGLSPackageBlock()
 	}
 	benchmarkSink = value
+}
+
+func TestComparableLocalityReads(t *testing.T) {
+	localitybench.PrepareReads()
+	ordinary := localitybench.ReadOrdinaryGlobal()
+	native := localitybench.ReadNativeTLS()
+	local := localitybench.ReadGLSPackage()
+	if ordinary == 0 || native != ordinary || local != ordinary {
+		t.Fatalf("comparable locality reads = ordinary:%#x native:%#x GLS:%#x", ordinary, native, local)
+	}
+}
+
+func BenchmarkComparableOrdinaryGlobalRead(b *testing.B) {
+	localitybench.PrepareReads()
+	b.ResetTimer()
+	var value uintptr
+	for i := 0; i < b.N; i++ {
+		value += localitybench.ReadOrdinaryGlobal()
+	}
+	benchmarkReadSink = value
+}
+
+func BenchmarkComparableNativeTLSRead(b *testing.B) {
+	localitybench.PrepareReads()
+	b.ResetTimer()
+	var value uintptr
+	for i := 0; i < b.N; i++ {
+		value += localitybench.ReadNativeTLS()
+	}
+	benchmarkReadSink = value
+}
+
+func BenchmarkComparableGLSPackageRead(b *testing.B) {
+	localitybench.PrepareReads()
+	b.ResetTimer()
+	var value uintptr
+	for i := 0; i < b.N; i++ {
+		value += localitybench.ReadGLSPackage()
+	}
+	benchmarkReadSink = value
 }
 
 func BenchmarkGoroutineEntry(b *testing.B) {
