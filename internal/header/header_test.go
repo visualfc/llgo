@@ -115,6 +115,18 @@ func TestGenCHeaderExport(t *testing.T) {
 	}
 }
 
+func TestGenHeaderMissingExport(t *testing.T) {
+	prog := ssa.NewProgram(nil)
+	pkgPath := "github.com/goplus/llgo/test_buildmode/missing"
+	pkg := prog.NewPackage("missing", pkgPath)
+	pkg.SetExport("Missing", "Missing")
+
+	err := genHeader(prog, []ssa.Package{pkg}, &bytes.Buffer{})
+	if err == nil || err.Error() != "function Missing not found in package "+pkgPath {
+		t.Fatalf("genHeader() error = %v", err)
+	}
+}
+
 func TestCheaderWriterTypes(t *testing.T) {
 	prog := ssa.NewProgram(nil)
 	hw := newCHeaderWriter(prog)
