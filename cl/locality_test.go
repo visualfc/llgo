@@ -563,6 +563,33 @@ var alias int
 	}
 }
 
+func TestNewPackageValidatesPreloadedLocalityMetadata(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "locality.go", `package locality
+var value int
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []*ast.File{file}
+	info := newLocalityTypeInfo()
+	pkg, err := (&types.Config{}).Check("example.com/locality", fset, files, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	goProg := ssa.NewProgram(fset, ssa.SanityCheckFunctions)
+	ssaPkg := goProg.CreatePackage(pkg, files, info, true)
+	ssaPkg.Build()
+
+	prog := ssatest.NewProgram(t, nil)
+	name := llssa.FullName(pkg, "value")
+	prog.SetLocalityInfo(name, llssa.LocalityInfo{Locality: llssa.ThreadLocal})
+	prog.SetLinkname(name, name+"Alias")
+	if _, err := NewPackage(prog, ssaPkg, files); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
+		t.Fatalf("NewPackage locality validation error = %v", err)
+	}
+}
+
 func TestParseRejectsExportedLocalVariable(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", `package locality

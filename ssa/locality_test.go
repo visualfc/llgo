@@ -111,10 +111,15 @@ func TestRejectsLinknameLocality(t *testing.T) {
 
 func TestValidateLocalitiesIgnoresOrdinaryLinknameCycle(t *testing.T) {
 	prog := NewProgram(nil)
-	prog.SetLinkname("example.com/p.first", "example.com/p.second")
-	prog.SetLinkname("example.com/p.second", "example.com/p.first")
+	first := "example.com/p.first"
+	second := "example.com/p.second"
+	prog.SetLinkname(first, second)
+	prog.SetLinkname(second, first)
 	if err := prog.ValidateLocalities("example.com/p"); err != nil {
 		t.Fatalf("ordinary linkname cycle affected locality validation: %v", err)
+	}
+	if _, _, _, err := prog.ResolveLocality(first); err == nil || !strings.Contains(err.Error(), "linkname cycle") {
+		t.Fatalf("ResolveLocality cycle error = %v", err)
 	}
 }
 

@@ -73,6 +73,9 @@ func TestLocalityLoweringResolution(t *testing.T) {
 	if got := ctx.localTypesPackage("example.com/loaded.Value"); got != loaded {
 		t.Fatalf("loaded localTypesPackage = %v, want %v", got, loaded)
 	}
+	if got := (&context{goProg: global.Pkg.Prog}).localTypesPackage(name); got != typesPkg {
+		t.Fatalf("SSA-program localTypesPackage = %v, want %v", got, typesPkg)
+	}
 	if got := (&context{}).localTypesPackage("example.com/missing.Value"); got != nil {
 		t.Fatalf("missing localTypesPackage = %v", got)
 	}
@@ -82,6 +85,34 @@ func TestLocalityLoweringResolution(t *testing.T) {
 	empty := types.NewPackage("example.com/empty", "empty")
 	if owner, err := ctx.localPackageFor(empty, llvmPkg, false); err != nil || owner != nil {
 		t.Fatalf("empty localPackageFor = %v, %v", owner, err)
+	}
+}
+
+func TestLocalityLoweringDeclarationOnlyState(t *testing.T) {
+	typesPkg, global := localitySSAGlobal(t, "example.com/declaration")
+	name := llssa.FullName(typesPkg, global.Name())
+	prog := ssatest.NewProgram(t, nil)
+	prog.SetLocalityInfo(name, llssa.LocalityInfo{Locality: llssa.ThreadLocal})
+	prog.SetLocalStorage(name, llssa.LocalStorageNativeTLS)
+	llvmPkg := prog.NewPackage(typesPkg.Name(), typesPkg.Path())
+	ctx := &context{
+		prog:   prog,
+		pkg:    llvmPkg,
+		goTyps: typesPkg,
+		locality: localityLowering{
+			variables: make(map[*ssa.Global]*localVariable),
+		},
+	}
+
+	addr := ctx.localVariableAddr(nil, global, llssa.VariableLocality{Info: llssa.LocalityInfo{Locality: llssa.ThreadLocal}}, name)
+	if addr != ctx.locality.variables[global].owner.direct[name].Expr {
+		t.Fatal("localVariableAddr did not return declaration-only TLS storage")
+	}
+
+	owner := &localPackage{plan: localitylayout.Package{Path: typesPkg.Path()}}
+	initializer := ctx.buildLocalInitializer(llvmPkg, owner, locality.Thread, []localitylayout.Initializer{{Name: typesPkg.Path() + ".initLocal", Order: 1}}, false)
+	if initializer.dispatch.HasBody() || initializer.ensure.HasBody() {
+		t.Fatal("declaration-only initializer unexpectedly defined a body")
 	}
 }
 

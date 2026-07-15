@@ -43,18 +43,15 @@ func PrepareLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.P
 	for name, local := range prepared {
 		prog.SetLocalityInfo(llssa.FullName(pkg, name), local)
 	}
-	for fullName, local := range prog.PackageLocalities(path) {
+	for fullName := range prog.PackageLocalities(path) {
 		name := strings.TrimPrefix(fullName, path+".")
 		object, _ := pkg.Scope().Lookup(name).(*types.Var)
 		if object == nil {
 			return fmt.Errorf("locality layout: package %s has no variable %s", path, name)
 		}
-		canonical, _, _, err := prog.ResolveLocality(fullName)
+		_, _, _, err := prog.ResolveLocality(fullName)
 		if err != nil {
 			return err
-		}
-		if canonical != fullName && local.HasInitializer {
-			return fmt.Errorf("locality layout: linkname alias %s cannot have an initializer", fullName)
 		}
 		prog.SetLocalStorage(fullName, localitylayout.StorageForType(object.Type()))
 	}
@@ -84,16 +81,9 @@ func planLocalPackage(prog llssa.Program, pkg *types.Package) (localitylayout.Pa
 	decls := prog.PackageLocalities(path)
 	input := make([]localitylayout.Declaration, 0, len(decls))
 	for fullName := range decls {
-		canonical, info, _, err := prog.ResolveLocality(fullName)
+		_, info, _, err := prog.ResolveLocality(fullName)
 		if err != nil {
 			return localitylayout.Package{}, err
-		}
-		if canonical != fullName {
-			target, targetOK := prog.VariableLocality(canonical)
-			if !targetOK || target.Locality == locality.None {
-				return localitylayout.Package{}, fmt.Errorf("locality layout: linkname target %s for %s is not a local variable", canonical, fullName)
-			}
-			continue
 		}
 		name := strings.TrimPrefix(fullName, prefix)
 		object, _ := pkg.Scope().Lookup(name).(*types.Var)
