@@ -2493,6 +2493,10 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		}
 	}
 
+	if fn == nil {
+		panic("reflect.Value.Call: call of nil function")
+	}
+
 	isSlice := op == "CallSlice"
 	n := len(ft.In)
 	isVariadic := ft.Variadic()
