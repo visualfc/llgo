@@ -384,61 +384,17 @@ func (hw *cheaderWriter) generateParameterDeclaration(paramType types.Type, para
 
 	switch typ := paramType.(type) {
 	case *types.Array:
-		// Handle multidimensional arrays by collecting all dimensions
-		var dimensions []int64
-		baseType := types.Type(typ)
-
-		// Traverse all array dimensions
-		for {
-			if arr, ok := baseType.(*types.Array); ok {
-				dimensions = append(dimensions, arr.Len())
-				baseType = arr.Elem()
-			} else {
-				break
-			}
-		}
-
-		// Get base element type
-		elemType := hw.goCTypeName(baseType)
-
-		// For parameters, preserve all array dimensions
-		// In C, array parameters need special handling for syntax
-		cType = elemType
-
-		// Store dimensions for later use with parameter name
-		var dimStr strings.Builder
-		for _, dim := range dimensions {
-			dimStr.WriteString(fmt.Sprintf("[%d]", dim))
-		}
-
-		// For single dimension, we can use pointer syntax
-		if len(dimensions) == 1 {
-			cType = elemType + "*"
-		} else {
-			// For multi-dimensional, we need to handle it when adding parameter name
-			// Store the dimension info in a special way
-			cType = elemType + "ARRAY_DIMS" + dimStr.String()
-		}
+		// C array parameters decay to pointers and therefore do not preserve
+		// Go's by-value array ABI on architectures such as amd64. Use the same
+		// generated wrapper struct as array return values so C passes the whole
+		// value with the platform aggregate ABI.
+		cType = hw.ensureArrayStruct(typ)
 	case *types.Pointer:
 		pointeeType := hw.goCTypeName(typ.Elem())
 		cType = pointeeType + "*"
 	default:
 		// Regular types
 		cType = hw.goCTypeName(paramType)
-	}
-
-	// Handle special array dimension syntax
-	if strings.Contains(cType, "ARRAY_DIMS") {
-		parts := strings.Split(cType, "ARRAY_DIMS")
-		elemType := parts[0]
-		dimStr := parts[1]
-
-		if paramName == "" {
-			// For unnamed parameters, keep dimension info: type[dim1][dim2]
-			return elemType + dimStr
-		}
-		// For named parameters, use proper array syntax: type name[dim1][dim2]
-		return elemType + " " + paramName + dimStr
 	}
 
 	if paramName == "" {

@@ -113,8 +113,10 @@ int main() {
     printf("MyInt: %ld\n", (long)myInt);
 
     // Test arrays
-    intptr_t arr[5] = {1, 2, 3, 4, 5};
-    printf("Array sum: %ld\n", ProcessIntArray(arr));
+    Array_intptr_t_5 arr = {.data = {1, 2, 3, 4, 5}};
+    intptr_t arr_sum = ProcessIntArray(arr);
+    assert(arr_sum == 15);
+    printf("Array sum: %ld\n", (long)arr_sum);
 
     // Test complex data with multidimensional arrays
     main_ComplexData complex = CreateComplexData();
@@ -170,22 +172,22 @@ int main() {
     printf("Testing 2D matrix functions...\n");
     
     // Create a test 2D matrix [3][4]int32
-    int32_t test_matrix[3][4] = {
+    Array_int32_t_3_4 test_matrix = {.data = {
         {1, 2, 3, 4},
-        {5, 6, 7, 8}, 
+        {5, 6, 7, 8},
         {9, 10, 11, 12}
-    };
+    }};
     int32_t matrix_sum = ProcessMatrix2D(test_matrix);
     assert(matrix_sum == 78);  // Sum of 1+2+3+...+12 = 78
     printf("Matrix2D sum: %d\n", matrix_sum);
     
     // Create a test 3D cube [2][3][4]uint8
-    uint8_t test_cube[2][3][4];
+    Array_uint8_t_2_3_4 test_cube;
     uint8_t val = 1;
     for (int i = 0; i < 2; i++) {
         for (int j = 0; j < 3; j++) {
             for (int k = 0; k < 4; k++) {
-                test_cube[i][j][k] = val++;
+                test_cube.data[i][j][k] = val++;
             }
         }
     }
@@ -194,11 +196,11 @@ int main() {
     printf("Matrix3D (cube) sum: %u\n", cube_sum);
     
     // Create a test 5x4 grid [5][4]double
-    double test_grid[5][4];
+    Array_double_5_4 test_grid;
     double grid_val = 1.0;
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 4; j++) {
-            test_grid[i][j] = grid_val;
+            test_grid.data[i][j] = grid_val;
             grid_val += 0.5;
         }
     }
