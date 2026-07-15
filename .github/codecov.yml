@@ -1,4 +1,5 @@
 ignore:
+  - "benchmark"
   - "chore"
   - "cmd"
   - "cl/cltest"
