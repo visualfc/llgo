@@ -80,7 +80,8 @@ jobs:
           # for every other package, and disable vet only for that package.
           go list ./... \
             | grep -v '^github.com/goplus/llgo/test/go$' \
-            | xargs go test -timeout 45m -coverprofile="coverage-main.txt" -covermode=atomic
+            | xargs go test -timeout 45m -coverprofile="coverage-main.txt" -covermode=atomic \
+                -bench '^BenchmarkGo126' -benchtime=1x
           go test -timeout 45m -vet=off -coverprofile="coverage-test-go.txt" -covermode=atomic ./test/go
 
           head -n 1 coverage-main.txt > coverage.txt

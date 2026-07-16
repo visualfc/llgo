@@ -3,10 +3,35 @@
 package rsa_test
 
 import (
+	"bytes"
+	"crypto"
+	"crypto/rand"
 	"crypto/rsa"
+	_ "crypto/sha1"
+	_ "crypto/sha256"
 	"testing"
 )
 
-func TestGo126Symbols(t *testing.T) {
-	_ = rsa.EncryptOAEPWithOptions
+func TestEncryptOAEPWithOptions(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := &rsa.OAEPOptions{
+		Hash:    crypto.SHA256,
+		MGFHash: crypto.SHA1,
+		Label:   []byte("llgo"),
+	}
+	message := []byte("go1.26 OAEP options")
+	ciphertext, err := rsa.EncryptOAEPWithOptions(rand.Reader, &key.PublicKey, message, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plaintext, err := key.Decrypt(nil, ciphertext, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(plaintext, message) {
+		t.Fatalf("decrypted plaintext = %q, want %q", plaintext, message)
+	}
 }

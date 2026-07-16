@@ -4,10 +4,24 @@ package sync_test
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
-func TestGo126Symbols(t *testing.T) {
+func TestWaitGroupGo(t *testing.T) {
 	var group sync.WaitGroup
-	_ = group.Go
+	var count atomic.Int32
+	group.Go(func() {
+		count.Add(1)
+		group.Go(func() {
+			count.Add(1)
+		})
+	})
+	group.Go(func() {
+		count.Add(1)
+	})
+	group.Wait()
+	if got := count.Load(); got != 3 {
+		t.Fatalf("completed tasks = %d, want 3", got)
+	}
 }

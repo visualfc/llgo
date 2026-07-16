@@ -7,9 +7,24 @@ import (
 	"testing"
 )
 
-func TestGo126Symbols(t *testing.T) {
-	var file token.File
-	var fileSet token.FileSet
-	_ = file.End
-	_ = fileSet.AddExistingFiles
+func TestAddExistingFiles(t *testing.T) {
+	var source token.FileSet
+	file := source.AddFile("source.go", -1, 10)
+	if got, want := file.End(), token.Pos(file.Base()+file.Size()); got != want {
+		t.Fatalf("File.End = %d, want %d", got, want)
+	}
+
+	var destination token.FileSet
+	destination.AddExistingFiles(file)
+	if got := destination.File(file.Pos(5)); got != file {
+		t.Fatalf("FileSet.File returned %p, want %p", got, file)
+	}
+	count := 0
+	destination.Iterate(func(got *token.File) bool {
+		count++
+		return got == file
+	})
+	if count != 1 {
+		t.Fatalf("FileSet contains %d files, want 1", count)
+	}
 }

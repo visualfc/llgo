@@ -7,10 +7,15 @@ import (
 	"testing"
 )
 
-func TestGo126Symbols(t *testing.T) {
-	var extendedKeyUsage x509.ExtKeyUsage
-	var keyUsage x509.KeyUsage
-	_ = extendedKeyUsage.OID
-	_ = extendedKeyUsage.String
-	_ = keyUsage.String
+func TestUsageFormatting(t *testing.T) {
+	usage := x509.ExtKeyUsageServerAuth
+	if got := usage.OID().String(); got != "1.3.6.1.5.5.7.3.1" {
+		t.Fatalf("ExtKeyUsageServerAuth.OID = %q", got)
+	}
+	if got := usage.String(); got != "serverAuth" {
+		t.Fatalf("ExtKeyUsageServerAuth.String = %q", got)
+	}
+	if got := x509.KeyUsageDigitalSignature.String(); got != "digitalSignature" {
+		t.Fatalf("KeyUsageDigitalSignature.String = %q", got)
+	}
 }
