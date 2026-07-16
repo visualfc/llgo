@@ -19,8 +19,11 @@ var Cmd = &base.Command{
 	Short:     "Compile and run Go test",
 }
 
+var goBuildFlags *base.PassArgs
+
 func init() {
 	Cmd.Run = runCmd
+	goBuildFlags = base.PassBuildFlags(Cmd)
 	flags.AddCommonFlags(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
 	flags.AddTestFlags(&Cmd.Flag)
@@ -43,6 +46,7 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
+	passGoBuildFlags(conf, goBuildFlags)
 
 	// Match `go test` behavior: set testing.Testing() to true by forcing the
 	// stdlib testing package's testBinary marker to "1" in test binaries.
@@ -63,6 +67,10 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
+}
+
+func passGoBuildFlags(conf *build.Config, goBuildFlags *base.PassArgs) {
+	conf.GoBuildFlags = append(conf.GoBuildFlags, goBuildFlags.Args...)
 }
 
 // splitArgsAt splits args at the separator flag (e.g., "-args")

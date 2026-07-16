@@ -133,6 +133,47 @@ func TestCollectFingerprintDeterminism(t *testing.T) {
 	}
 }
 
+func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
+	td := t.TempDir()
+	goFile := filepath.Join(td, "main.go")
+	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	newPkg := func() *aPackage {
+		return &aPackage{Package: &packages.Package{
+			PkgPath: "test/pkg",
+			GoFiles: []string{goFile},
+		}}
+	}
+	newContext := func(opts linkFlagOptions) *context {
+		return &context{
+			conf:         &packages.Config{},
+			buildConf:    &Config{Goos: "linux", Goarch: "amd64", BuildMode: BuildModeExe},
+			linkFlags:    opts,
+			crossCompile: crosscompile.Export{},
+		}
+	}
+
+	withDWARF := newPkg()
+	if err := newContext(linkFlagOptions{}).collectFingerprint(withDWARF); err != nil {
+		t.Fatal(err)
+	}
+	withoutDWARF := newPkg()
+	if err := newContext(linkFlagOptions{omitDWARF: optionalBool{set: true, value: true}}).collectFingerprint(withoutDWARF); err != nil {
+		t.Fatal(err)
+	}
+	if withDWARF.Fingerprint == withoutDWARF.Fingerprint {
+		t.Fatal("-w did not change the package fingerprint")
+	}
+	data, err := decodeManifest(withoutDWARF.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Common == nil || !data.Common.OmitDWARF {
+		t.Fatalf("manifest does not contain OMIT_DWARF=true:\n%s", withoutDWARF.Manifest)
+	}
+}
+
 func TestDevLTOGlobalDCECollectFingerprint(t *testing.T) {
 	td := t.TempDir()
 

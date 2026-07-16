@@ -33,8 +33,11 @@ var Cmd = &base.Command{
 	Short:     "Compile and install packages and dependencies",
 }
 
+var goBuildFlags *base.PassArgs
+
 func init() {
 	Cmd.Run = runCmd
+	goBuildFlags = base.PassBuildFlags(Cmd)
 	flags.AddCommonFlags(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
 	flags.AddEmbeddedFlags(&Cmd.Flag)
@@ -51,6 +54,7 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
+	passGoBuildFlags(conf, goBuildFlags)
 
 	args = cmd.Flag.Args()
 	_, err := build.Do(args, conf)
@@ -58,4 +62,8 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
+}
+
+func passGoBuildFlags(conf *build.Config, goBuildFlags *base.PassArgs) {
+	conf.GoBuildFlags = append(conf.GoBuildFlags, goBuildFlags.Args...)
 }

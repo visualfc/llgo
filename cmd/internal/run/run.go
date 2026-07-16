@@ -44,16 +44,21 @@ var CmpTestCmd = &base.Command{
 	Short:     "Compile and run with llgo, compare result (stdout/stderr/exitcode) with go or llgo.expect; generate llgo.expect file if -gen is specified",
 }
 
+var (
+	runGoBuildFlags     *base.PassArgs
+	cmpTestGoBuildFlags *base.PassArgs
+)
+
 func init() {
 	Cmd.Run = runCmd
 	CmpTestCmd.Run = runCmpTest
-	base.PassBuildFlags(Cmd)
+	runGoBuildFlags = base.PassBuildFlags(Cmd)
 	flags.AddCommonFlags(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
 	flags.AddEmulatorFlags(&Cmd.Flag)
 	flags.AddEmbeddedFlags(&Cmd.Flag) // for -target support
 
-	base.PassBuildFlags(CmpTestCmd)
+	cmpTestGoBuildFlags = base.PassBuildFlags(CmpTestCmd)
 	flags.AddCommonFlags(&CmpTestCmd.Flag)
 	flags.AddBuildFlags(&CmpTestCmd.Flag)
 	flags.AddEmulatorFlags(&CmpTestCmd.Flag)
@@ -62,14 +67,14 @@ func init() {
 }
 
 func runCmd(cmd *base.Command, args []string) {
-	runCmdEx(cmd, args, build.ModeRun) // support target
+	runCmdEx(cmd, args, build.ModeRun, runGoBuildFlags) // support target
 }
 
 func runCmpTest(cmd *base.Command, args []string) {
-	runCmdEx(cmd, args, build.ModeCmpTest) // no target support
+	runCmdEx(cmd, args, build.ModeCmpTest, cmpTestGoBuildFlags) // no target support
 }
 
-func runCmdEx(cmd *base.Command, args []string, mode build.Mode) {
+func runCmdEx(cmd *base.Command, args []string, mode build.Mode, goBuildFlags *base.PassArgs) {
 
 	if err := cmd.Flag.Parse(args); err != nil {
 		return
@@ -80,6 +85,7 @@ func runCmdEx(cmd *base.Command, args []string, mode build.Mode) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
+	passGoBuildFlags(conf, goBuildFlags)
 
 	args = cmd.Flag.Args()
 	args, runArgs, err := parseRunArgs(args)
@@ -90,6 +96,10 @@ func runCmdEx(cmd *base.Command, args []string, mode build.Mode) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
+}
+
+func passGoBuildFlags(conf *build.Config, goBuildFlags *base.PassArgs) {
+	conf.GoBuildFlags = append(conf.GoBuildFlags, goBuildFlags.Args...)
 }
 
 func parseRunArgs(args []string) ([]string, []string, error) {

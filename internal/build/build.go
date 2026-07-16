@@ -271,6 +271,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err := ensureSizeReporting(conf); err != nil {
 		return nil, err
 	}
+	linkFlags, err := parseGoLinkFlags(conf.GoBuildFlags)
+	if err != nil {
+		return nil, err
+	}
 	applyFrontendGCFlags(conf)
 	conf.OptLevel = effectiveOptLevel(conf)
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
@@ -285,6 +289,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
+	}
+	if err := validateDwarfStripSupport(conf, linkFlags); err != nil {
+		return nil, err
 	}
 
 	// Enable different export names for TinyGo compatibility when using -target
@@ -317,8 +324,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 
-	cl.EnableDebug(IsDbgEnabled())
-	cl.EnableDbgSyms(IsDbgSymsEnabled())
+	omitDWARF := linkFlags.EffectiveOmitDWARF()
+	emitDebugInfo := IsDbgEnabled() && !omitDWARF
+	cl.EnableDebug(emitDebugInfo)
+	cl.EnableDbgSyms(IsDbgSymsEnabled() && !omitDWARF)
 	cl.EnableTrace(IsTraceEnabled())
 	llssa.Initialize(llssa.InitAll)
 
@@ -349,11 +358,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	// Site records are inline-asm fragments inside function bodies; their
 	// anchors shift instruction/scope layout enough to confuse debuggers
 	// (LLDB reported variables from an inner lexical block as in scope before
-	// the block began). Debug builds keep the metadata tables — FuncForPC
-	// name/FileLine fidelity survives via the dlsym path — but drop the
-	// sites. Caller-frame instrumentation is independent of both switches,
-	// so runtime.Caller keeps working in debug builds.
-	prog.EnableFuncInfoSites(funcInfo && !IsDbgEnabled() && IsFuncInfoSitesEnabled())
+	// the block began). Builds that emit DWARF keep the metadata tables —
+	// FuncForPC name/FileLine fidelity survives via the dlsym path — but drop
+	// the sites. Caller-frame instrumentation is independent of both switches.
+	prog.EnableFuncInfoSites(funcInfo && !emitDebugInfo && IsFuncInfoSitesEnabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -461,6 +469,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		output:         output,
 		passOpt:        passOpt,
 		buildConf:      conf,
+		linkFlags:      linkFlags,
 		crossCompile:   export,
 		cTransformer:   cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, conf.AbiMode, cabiOptimize),
 	}
@@ -509,6 +518,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 				return nil, err
 			}
 			rewritePrebuiltFuncTab(ctx, outFmts.Out, verbose)
+			if err := stripLinkedDWARF(ctx, outFmts.Out, verbose); err != nil {
+				return nil, err
+			}
 			if conf.Mode == ModeBuild && conf.SizeReport {
 				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
@@ -688,6 +700,7 @@ type context struct {
 	passOpt        bool
 
 	buildConf    *Config
+	linkFlags    linkFlagOptions
 	crossCompile crosscompile.Export
 
 	cTransformer *cabi.Transformer
@@ -1264,7 +1277,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	if IsDbgSymsEnabled() {
+	if IsDbgSymsEnabled() && !ctx.linkFlags.EffectiveOmitDWARF() {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
 

@@ -256,6 +256,42 @@ func TestLdFlagsRewriteVarsMainAlias(t *testing.T) {
 	buildRewriteBinary(t, true, "alias-main", "alias-pkg")
 }
 
+func TestLdFlagsStripDWARFPreservesPclntab(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("initial -s/-w backend coverage is limited to native Mach-O and ELF")
+	}
+	t.Setenv(llgoDebug, "")
+	t.Setenv(llgoDbgSyms, "")
+	t.Setenv(llgoFuncInfo, "1")
+
+	for _, linkFlags := range []string{"-w", "-s", "-s -w=false"} {
+		t.Run(strings.ReplaceAll(linkFlags, " ", "_"), func(t *testing.T) {
+			binPath := filepath.Join(t.TempDir(), "ldflagsstrip")
+			cfg := &Config{
+				Mode:         ModeBuild,
+				OutFile:      binPath,
+				GoBuildFlags: []string{"-ldflags=" + linkFlags},
+			}
+			if _, err := Do([]string{"./testdata/ldflagsstrip"}, cfg); err != nil {
+				t.Fatalf("ModeBuild with -ldflags=%q failed: %v", linkFlags, err)
+			}
+			if got, want := runBinary(t, binPath), "main.caller main.go true\n"; got != want {
+				t.Fatalf("runtime symbolization after -ldflags=%q:\nwant %q\ngot  %q", linkFlags, want, got)
+			}
+			if runtime.GOOS == "darwin" {
+				if out, err := exec.Command("codesign", "--verify", "--verbose=4", binPath).CombinedOutput(); err != nil {
+					t.Fatalf("codesign verification after -ldflags=%q: %v\n%s", linkFlags, err, out)
+				}
+				if out, err := exec.Command("codesign", "-d", "--verbose=4", binPath).CombinedOutput(); err != nil {
+					t.Fatalf("read codesign metadata after -ldflags=%q: %v\n%s", linkFlags, err, out)
+				} else if strings.Contains(string(out), ".strip-") {
+					t.Fatalf("temporary strip path leaked into code signature after -ldflags=%q:\n%s", linkFlags, out)
+				}
+			}
+		})
+	}
+}
+
 func buildRewriteBinary(t *testing.T, useMainAlias bool, mainVal, depVal string) {
 	t.Helper()
 	binPath := filepath.Join(t.TempDir(), "rewrite")
