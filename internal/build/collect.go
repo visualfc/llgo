@@ -113,6 +113,7 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	m.common.EnableLTOPlugin = c.buildConf.LTOPlugin.Enabled()
 	m.common.EmitDWARF = shouldEmitDebugInfo(c.buildConf, &c.crossCompile)
 	m.common.PCLNMode = effectivePCLNMode(c.buildConf).String()
+	m.common.DisableBoundsChecks = c.buildConf.DisableBoundsChecks
 
 	// Compiler configuration
 	if c.crossCompile.CC != "" {
