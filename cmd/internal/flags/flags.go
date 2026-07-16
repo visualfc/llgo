@@ -409,3 +409,10 @@ func UpdateBuildConfig(conf *build.Config) error {
 
 	return nil
 }
+
+// ApplyGoBuildFlags appends Go-compatible build flags captured by the command
+// layer to the backend configuration. The caller passes the captured argument
+// slice so this package does not need to own command state.
+func ApplyGoBuildFlags(conf *build.Config, args []string) {
+	conf.GoBuildFlags = append(conf.GoBuildFlags, args...)
+}

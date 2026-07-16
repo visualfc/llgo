@@ -54,7 +54,7 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-	passGoBuildFlags(conf, goBuildFlags)
+	flags.ApplyGoBuildFlags(conf, goBuildFlags.Args)
 
 	args = cmd.Flag.Args()
 	_, err := build.Do(args, conf)
@@ -62,8 +62,4 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-}
-
-func passGoBuildFlags(conf *build.Config, goBuildFlags *base.PassArgs) {
-	conf.GoBuildFlags = append(conf.GoBuildFlags, goBuildFlags.Args...)
 }

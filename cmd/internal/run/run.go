@@ -85,7 +85,7 @@ func runCmdEx(cmd *base.Command, args []string, mode build.Mode, goBuildFlags *b
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-	passGoBuildFlags(conf, goBuildFlags)
+	flags.ApplyGoBuildFlags(conf, goBuildFlags.Args)
 
 	args = cmd.Flag.Args()
 	args, runArgs, err := parseRunArgs(args)
@@ -96,10 +96,6 @@ func runCmdEx(cmd *base.Command, args []string, mode build.Mode, goBuildFlags *b
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-}
-
-func passGoBuildFlags(conf *build.Config, goBuildFlags *base.PassArgs) {
-	conf.GoBuildFlags = append(conf.GoBuildFlags, goBuildFlags.Args...)
 }
 
 func parseRunArgs(args []string) ([]string, []string, error) {

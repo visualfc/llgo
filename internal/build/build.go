@@ -159,8 +159,11 @@ type Config struct {
 	CompilerHash  string // metadata hash for the running compiler (development builds only)
 	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
 	NoErrorColumn bool   // omit source columns from frontend diagnostics
-	GoBuildFlags  []string
-	AllowNoBody   bool // allow declarations without bodies, as go tool compile does
+	// GoBuildFlags contains normalized raw Go build flags captured by command
+	// entry points or supplied by programmatic callers. Do forwards them to
+	// go/packages and interprets the supported compiler/linker subsets.
+	GoBuildFlags []string
+	AllowNoBody  bool // allow declarations without bodies, as go tool compile does
 
 	// PthreadStackSize sets a custom stack size, in bytes, for pthread-backed
 	// goroutines. A zero value keeps the platform pthread default.

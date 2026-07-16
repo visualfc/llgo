@@ -3,14 +3,31 @@ package flags
 import (
 	"bytes"
 	"flag"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/cmd/internal/base"
 	"github.com/goplus/llgo/internal/build"
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/optlevel"
 )
+
+func TestApplyGoBuildFlags(t *testing.T) {
+	cmd := new(base.Command)
+	captured := base.PassBuildFlags(cmd)
+	if err := cmd.Flag.Parse([]string{"-ldflags=-s -w", "-gcflags=all=-N", "."}); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
+	ApplyGoBuildFlags(conf, captured.Args)
+	want := []string{"-tags=existing", "-ldflags=-s -w", "-gcflags=all=-N"}
+	if !reflect.DeepEqual(conf.GoBuildFlags, want) {
+		t.Fatalf("GoBuildFlags = %v, want %v", conf.GoBuildFlags, want)
+	}
+}
 
 func TestBuildOptimizationFlags(t *testing.T) {
 	tests := []struct {

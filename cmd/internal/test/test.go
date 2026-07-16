@@ -46,7 +46,7 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-	passGoBuildFlags(conf, goBuildFlags)
+	flags.ApplyGoBuildFlags(conf, goBuildFlags.Args)
 
 	// Match `go test` behavior: set testing.Testing() to true by forcing the
 	// stdlib testing package's testBinary marker to "1" in test binaries.
@@ -67,10 +67,6 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-}
-
-func passGoBuildFlags(conf *build.Config, goBuildFlags *base.PassArgs) {
-	conf.GoBuildFlags = append(conf.GoBuildFlags, goBuildFlags.Args...)
 }
 
 // splitArgsAt splits args at the separator flag (e.g., "-args")

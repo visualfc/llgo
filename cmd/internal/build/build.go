@@ -58,7 +58,7 @@ func runCmd(cmd *base.Command, args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-	conf.GoBuildFlags = append(conf.GoBuildFlags, goBuildFlags.Args...)
+	flags.ApplyGoBuildFlags(conf, goBuildFlags.Args)
 
 	args = cmd.Flag.Args()
 
