@@ -20,13 +20,14 @@ jobs:
   llgo:
     name: llgo (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
     continue-on-error: ${{ matrix.lane == 'compatibility' }}
-    # macOS Intel is much slower than macOS ARM in the "Test demos" step.
-    # Observed: macOS ARM about 2m49s vs macOS Intel about 10m26s.
-    # Keep a larger budget to avoid timeout-related cancellations.
     timeout-minutes: 60
     strategy:
       matrix:
         # Compatibility results are tied to these exact patch releases.
+        # Keep the supported Go 1.24 and 1.26 endpoints on macOS so user
+        # projects exercise both runtime generations there. macOS Intel is
+        # covered by the release artifact smoke test, avoiding a duplicate
+        # 35-minute demo job.
         include:
           - os: ubuntu-latest
             llvm: 19
@@ -41,10 +42,6 @@ jobs:
             go: "1.24.2"
             lane: compatibility
           - os: macos-latest
-            llvm: 19
-            go: "1.26.5"
-            lane: primary
-          - os: macos-15-intel
             llvm: 19
             go: "1.26.5"
             lane: primary
@@ -195,6 +192,11 @@ jobs:
           - go: "1.26.5"
             lane: primary
         exclude:
+          # The full demo lane above exercises Go 1.24 user-project/runtime
+          # compatibility on macOS. Keep the much larger per-package
+          # compatibility matrix on Ubuntu to avoid two redundant Mac shards.
+          - os: macos-latest
+            go: "1.24.2"
           - os: macos-latest
             shard: "2"
           - os: macos-latest
@@ -275,6 +277,8 @@ jobs:
             llvm: 19
             go: "1.26.5"
             lane: primary
+          # Keep the Go 1.26 user-module compatibility matrix on both host
+          # platforms; release artifact smoke tests alone only cover go 1.26.
           - os: macos-latest
             llvm: 19
             go: "1.26.5"
@@ -328,11 +332,21 @@ jobs:
           go-version: ${{matrix.go}}
           mod-version: "1.24"
 
+      - name: Test Hello World with go.mod 1.26
+        if: startsWith(matrix.go, '1.26')
+        uses: ./.github/actions/test-helloworld
+        with:
+          go-version: ${{matrix.go}}
+          mod-version: "1.26"
+
   cross-compile:
     timeout-minutes: 30
     strategy:
       matrix:
-        os: [macos-latest]
+        # WASI output is host-independent; keep this expensive WAMR build on
+        # Ubuntu. Native Darwin coverage remains in the primary LLGo lanes and
+        # release artifact smoke tests.
+        os: [ubuntu-latest]
         llvm: [19]
     runs-on: ${{matrix.os}}
     steps:
@@ -348,8 +362,8 @@ jobs:
       - name: Install wamr
         run: |
           git clone --branch WAMR-2.4.4 --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git
-          mkdir wasm-micro-runtime/product-mini/platforms/darwin/build
-          cd wasm-micro-runtime/product-mini/platforms/darwin/build
+          mkdir wasm-micro-runtime/product-mini/platforms/linux/build
+          cd wasm-micro-runtime/product-mini/platforms/linux/build
           cmake -D WAMR_BUILD_EXCE_HANDLING=1 -D WAMR_BUILD_FAST_INTERP=0 -DWAMR_BUILD_SHARED_MEMORY=1 -DWAMR_BUILD_LIB_WASI_THREADS=1 -DWAMR_BUILD_LIB_PTHREAD=1 -DCMAKE_BUILD_TYPE=Debug -DWAMR_BUILD_DEBUG_INTERP=1 ..
           make -j8
           echo "$PWD" >> $GITHUB_PATH
