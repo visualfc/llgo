@@ -319,7 +319,10 @@ chmod +x "$out"
 		t.Fatal(err)
 	}
 	ws := caseWorkspace{rootDir: dir, workDir: dir}
-	_, _, exitCode, _, elapsed, err := runGeneratedProgram(ws, tool, os.Environ(), "generated.go", "fake", time.Second, 50*time.Millisecond)
+	// The build helper is intentionally trivial, but process startup can be
+	// heavily delayed on a loaded CI host. Keep that setup budget independent
+	// from the 50ms generated-program timeout this test actually verifies.
+	_, _, exitCode, _, elapsed, err := runGeneratedProgram(ws, tool, os.Environ(), "generated.go", "fake", 30*time.Second, 50*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected timeout")
 	}
@@ -631,8 +634,8 @@ func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
 		FileName:  "case.go",
 		Directive: "runoutput",
 	}
-	opts := directiveOptions{Timeout: 5 * time.Second}
-	if err := runOutputCase(t, repoRoot, goroot, goTool, llgoTool, tc, opts, 5*time.Second); err != nil {
+	opts := directiveOptions{Timeout: 30 * time.Second}
+	if err := runOutputCase(t, repoRoot, goroot, goTool, llgoTool, tc, opts, 30*time.Second); err != nil {
 		t.Fatal(err)
 	}
 

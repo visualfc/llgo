@@ -1210,6 +1210,11 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			if _, ok := p.methodNilDerefChecks[v]; ok {
 				return p.compileCheckedDeref(b, v)
 			}
+			if isEffectfulArrayPointerDeref(v) {
+				x := p.compileValue(b, v.X)
+				p.recordPanicLocation(b, v.Pos())
+				b.AssertNilDeref(x)
+			}
 			if refs := v.Referrers(); refs != nil && len(*refs) == 0 {
 				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil {
 					if p.isLargeNonPointerValue(t) {
@@ -1463,6 +1468,70 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	}
 	p.bvals[iv] = ret
 	return ret
+}
+
+// isEffectfulArrayPointerDeref reports whether v is an array dereference that
+// must be evaluated even though range, len, or cap only needs the static array
+// length. The language specification requires evaluation when the operand
+// contains a function call or channel receive. See Go issue 72844.
+func isEffectfulArrayPointerDeref(v *ssa.UnOp) bool {
+	if v == nil || v.Op != token.MUL {
+		return false
+	}
+	if _, ok := types.Unalias(v.Type()).Underlying().(*types.Array); !ok {
+		return false
+	}
+	if !arrayPointerOperandHasEffectAfter(v.X, v.Pos(), nil) {
+		return false
+	}
+	refs := v.Referrers()
+	if refs == nil || len(*refs) == 0 {
+		return refs != nil
+	}
+	if len(*refs) != 1 {
+		return false
+	}
+	call, ok := (*refs)[0].(*ssa.Call)
+	if !ok {
+		return false
+	}
+	builtin, ok := call.Common().Value.(*ssa.Builtin)
+	return ok && (builtin.Name() == "len" || builtin.Name() == "cap")
+}
+
+func arrayPointerOperandHasEffectAfter(v ssa.Value, after token.Pos, seen map[ssa.Value]bool) bool {
+	if v == nil || seen[v] {
+		return false
+	}
+	if seen == nil {
+		seen = make(map[ssa.Value]bool)
+	}
+	seen[v] = true
+
+	instr, ok := v.(ssa.Instruction)
+	if !ok {
+		return false
+	}
+	if pos := instr.Pos(); after.IsValid() && pos.IsValid() && pos <= after {
+		// SSA eliminates local assignments. Do not mistake a call that produced
+		// the assigned value for a call contained in the len, cap, or range
+		// expression itself.
+		return false
+	}
+	switch v := v.(type) {
+	case *ssa.Call:
+		return true
+	case *ssa.UnOp:
+		if v.Op == token.ARROW {
+			return true
+		}
+	}
+	for _, operand := range instr.Operands(nil) {
+		if operand != nil && arrayPointerOperandHasEffectAfter(*operand, after, seen) {
+			return true
+		}
+	}
+	return false
 }
 
 func isInterfaceCompareDeref(v *ssa.UnOp) bool {

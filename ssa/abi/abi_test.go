@@ -249,6 +249,10 @@ func testValue(t *testing.T, b *abi.Builder, typ types.Type, i any) {
 	}
 	tflag := uint8(b.TFlag(typ) &^ (rabi.TFlagExtraStar | rabi.TFlagUncommon))
 	vflag := uint8(toValue(v).typ_.TFlag) &^ uint8(rabi.TFlagExtraStar|rabi.TFlagUncommon)
+	// Go 1.26 moved the direct-interface marker from Kind to TFlag. LLGo's
+	// runtime ABI computes direct storage independently and uses this bit for
+	// TFlagClosure, so it is not part of the common flag subset compared here.
+	vflag &^= 1 << 5
 	if tflag != vflag {
 		t.Fatalf("TFlag error: %v got %v, want %v", typ, tflag, vflag)
 	}

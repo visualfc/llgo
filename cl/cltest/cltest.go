@@ -25,6 +25,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	goversion "go/version"
 	"io"
 	"os"
 	"os/exec"
@@ -488,6 +489,15 @@ func assertExpectedOutput(t *testing.T, pkgDir string, expectedOutput, output []
 }
 
 func readGolden(file string) ([]byte, bool, error) {
+	if versioned, ok := goldenForGoVersion(file, runtime.Version()); ok {
+		data, err := os.ReadFile(versioned)
+		if err == nil {
+			return data, !bytes.Equal(data, []byte{';'}), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, false, err
+		}
+	}
 	data, err := os.ReadFile(file)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -499,6 +509,15 @@ func readGolden(file string) ([]byte, bool, error) {
 		return data, false, nil
 	}
 	return data, true, nil
+}
+
+func goldenForGoVersion(file, goVersion string) (string, bool) {
+	lang := goversion.Lang(goVersion)
+	if lang == "" {
+		return "", false
+	}
+	base := strings.TrimSuffix(file, filepath.Ext(file))
+	return base + "_" + lang + filepath.Ext(file), true
 }
 
 func assertExpectedSymbols(t *testing.T, bin, spec string) {
