@@ -41,9 +41,27 @@ type Export struct {
 	BinaryFormat string // Binary format (e.g., "elf", "esp", "uf2")
 	FormatDetail string // For uf2, it's uf2FamilyID
 	Emulator     string // Emulator command template (e.g., "qemu-system-arm -M {} -kernel {}")
+	DebugInfo    DebugInfoPolicy
 
 	// Flashing/Debugging configuration
 	Device flash.Device // Device configuration for flashing/debugging
+}
+
+// DebugInfoPolicy describes how a selected linker handles debug information.
+// Build orchestration consumes this typed capability instead of inferring it
+// from a target name or linker executable.
+type DebugInfoPolicy struct {
+	AlwaysOmit    bool
+	OmitLinkFlags []string
+}
+
+func nativeDebugInfoPolicy(goos string) DebugInfoPolicy {
+	switch goos {
+	case "darwin", "linux":
+		return DebugInfoPolicy{OmitLinkFlags: []string{"-Wl,-S"}}
+	default:
+		return DebugInfoPolicy{}
+	}
 }
 
 // URLs and configuration that can be overridden for testing
@@ -218,6 +236,7 @@ func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Le
 	}
 
 	if runtime.GOOS == goos && runtime.GOARCH == goarch {
+		export.DebugInfo = nativeDebugInfoPolicy(goos)
 		// not cross compile
 		// Set up basic flags for non-cross-compile
 		export.LDFLAGS = []string{
@@ -309,6 +328,7 @@ func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Le
 	if goarch != "wasm" {
 		return
 	}
+	export.DebugInfo.OmitLinkFlags = []string{"-Wl,-S"}
 
 	// Configure based on GOOS
 	switch goos {
@@ -479,6 +499,7 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	export.BinaryFormat = config.BinaryFormat
 	export.FormatDetail = config.FormatDetail()
 	export.Emulator = config.Emulator
+	export.DebugInfo.AlwaysOmit = true
 
 	// Set flashing/debugging configuration
 	export.Device = flash.Device{

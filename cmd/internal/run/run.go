@@ -52,13 +52,13 @@ var (
 func init() {
 	Cmd.Run = runCmd
 	CmpTestCmd.Run = runCmpTest
-	runGoBuildFlags = base.PassBuildFlags(Cmd)
+	runGoBuildFlags = flags.CaptureGoBuildFlags(Cmd)
 	flags.AddCommonFlags(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
 	flags.AddEmulatorFlags(&Cmd.Flag)
 	flags.AddEmbeddedFlags(&Cmd.Flag) // for -target support
 
-	cmpTestGoBuildFlags = base.PassBuildFlags(CmpTestCmd)
+	cmpTestGoBuildFlags = flags.CaptureGoBuildFlags(CmpTestCmd)
 	flags.AddCommonFlags(&CmpTestCmd.Flag)
 	flags.AddBuildFlags(&CmpTestCmd.Flag)
 	flags.AddEmulatorFlags(&CmpTestCmd.Flag)
@@ -85,7 +85,10 @@ func runCmdEx(cmd *base.Command, args []string, mode build.Mode, goBuildFlags *b
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
-	flags.ApplyGoBuildFlags(conf, goBuildFlags.Args)
+	if err := flags.ApplyGoBuildFlags(conf, goBuildFlags.Args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		mockable.Exit(1)
+	}
 
 	args = cmd.Flag.Args()
 	args, runArgs, err := parseRunArgs(args)

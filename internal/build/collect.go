@@ -106,7 +106,7 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	m.common.Target = c.buildConf.Target
 	m.common.TargetABI = c.crossCompile.TargetABI
 	m.common.GoGlobalDCE = c.buildConf.goGlobalDCEEnabled()
-	m.common.OmitDWARF = c.linkFlags.EffectiveOmitDWARF()
+	m.common.OmitDWARF = effectiveOmitDWARF(c.buildConf, &c.crossCompile)
 
 	// Compiler configuration
 	if c.crossCompile.CC != "" {

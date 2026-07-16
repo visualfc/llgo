@@ -5,6 +5,7 @@ package build
 
 import (
 	"bytes"
+	"debug/macho"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -20,7 +21,6 @@ import (
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/mockable"
-	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/internal/packages"
 	llssa "github.com/goplus/llgo/ssa"
 	"github.com/xgo-dev/llvm"
@@ -256,7 +256,7 @@ func TestLdFlagsRewriteVarsMainAlias(t *testing.T) {
 	buildRewriteBinary(t, true, "alias-main", "alias-pkg")
 }
 
-func TestLdFlagsStripDWARFPreservesPclntab(t *testing.T) {
+func TestLinkOptionsOmitDWARFPreservesPclntab(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("initial -s/-w backend coverage is limited to native Mach-O and ELF")
 	}
@@ -264,31 +264,123 @@ func TestLdFlagsStripDWARFPreservesPclntab(t *testing.T) {
 	t.Setenv(llgoDbgSyms, "")
 	t.Setenv(llgoFuncInfo, "1")
 
-	for _, linkFlags := range []string{"-w", "-s", "-s -w=false"} {
-		t.Run(strings.ReplaceAll(linkFlags, " ", "_"), func(t *testing.T) {
+	tests := []struct {
+		name    string
+		options LinkOptions
+	}{
+		{name: "w", options: LinkOptions{DWARF: DWARFOmit}},
+		{name: "s", options: LinkOptions{OmitSymbolTable: true}},
+		{name: "s_w_false", options: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			binPath := filepath.Join(t.TempDir(), "ldflagsstrip")
 			cfg := &Config{
-				Mode:         ModeBuild,
-				OutFile:      binPath,
-				GoBuildFlags: []string{"-ldflags=" + linkFlags},
+				Mode:        ModeBuild,
+				OutFile:     binPath,
+				LinkOptions: tt.options,
 			}
 			if _, err := Do([]string{"./testdata/ldflagsstrip"}, cfg); err != nil {
-				t.Fatalf("ModeBuild with -ldflags=%q failed: %v", linkFlags, err)
+				t.Fatalf("ModeBuild with LinkOptions %+v failed: %v", tt.options, err)
 			}
 			if got, want := runBinary(t, binPath), "main.caller main.go true\n"; got != want {
-				t.Fatalf("runtime symbolization after -ldflags=%q:\nwant %q\ngot  %q", linkFlags, want, got)
+				t.Fatalf("runtime symbolization with LinkOptions %+v:\nwant %q\ngot  %q", tt.options, want, got)
 			}
 			if runtime.GOOS == "darwin" {
 				if out, err := exec.Command("codesign", "--verify", "--verbose=4", binPath).CombinedOutput(); err != nil {
-					t.Fatalf("codesign verification after -ldflags=%q: %v\n%s", linkFlags, err, out)
-				}
-				if out, err := exec.Command("codesign", "-d", "--verbose=4", binPath).CombinedOutput(); err != nil {
-					t.Fatalf("read codesign metadata after -ldflags=%q: %v\n%s", linkFlags, err, out)
-				} else if strings.Contains(string(out), ".strip-") {
-					t.Fatalf("temporary strip path leaked into code signature after -ldflags=%q:\n%s", linkFlags, out)
+					t.Fatalf("codesign verification with LinkOptions %+v: %v\n%s", tt.options, err, out)
 				}
 			}
 		})
+	}
+}
+
+func TestLinkOptionsControlELFDWARF(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("ELF DWARF integration test")
+	}
+	t.Setenv(llgoDebug, "")
+	t.Setenv(llgoDbgSyms, "1")
+
+	tests := []struct {
+		name      string
+		options   LinkOptions
+		wantDWARF bool
+	}{
+		{name: "omit", options: LinkOptions{DWARF: DWARFOmit}},
+		{name: "preserve", options: LinkOptions{DWARF: DWARFPreserve}, wantDWARF: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			binPath := filepath.Join(t.TempDir(), "ldflagsstrip")
+			cfg := &Config{Mode: ModeBuild, OutFile: binPath, LinkOptions: tt.options}
+			if _, err := Do([]string{"./testdata/ldflagsstrip"}, cfg); err != nil {
+				t.Fatalf("ModeBuild with LinkOptions %+v failed: %v", tt.options, err)
+			}
+			if got := elfHasDebugInfo(t, binPath); got != tt.wantDWARF {
+				t.Fatalf("ELF DWARF with LinkOptions %+v = %v, want %v", tt.options, got, tt.wantDWARF)
+			}
+			_ = runBinary(t, binPath)
+		})
+	}
+}
+
+func TestLinkOptionsControlDarwinDebugSymbols(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Mach-O debug-symbol integration test")
+	}
+	t.Setenv(llgoDebug, "")
+	t.Setenv(llgoDbgSyms, "1")
+
+	tests := []struct {
+		name      string
+		options   LinkOptions
+		wantSTABS bool
+	}{
+		{name: "omit", options: LinkOptions{DWARF: DWARFOmit}},
+		{name: "preserve", options: LinkOptions{DWARF: DWARFPreserve}, wantSTABS: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			binPath := filepath.Join(t.TempDir(), "ldflagsstrip")
+			cfg := &Config{Mode: ModeBuild, OutFile: binPath, LinkOptions: tt.options}
+			if _, err := Do([]string{"./testdata/ldflagsstrip"}, cfg); err != nil {
+				t.Fatalf("ModeBuild with LinkOptions %+v failed: %v", tt.options, err)
+			}
+			if got := machoHasStabs(t, binPath); got != tt.wantSTABS {
+				t.Fatalf("Mach-O STABS with LinkOptions %+v = %v, want %v", tt.options, got, tt.wantSTABS)
+			}
+			_ = runBinary(t, binPath)
+			if out, err := exec.Command("codesign", "--verify", "--verbose=4", binPath).CombinedOutput(); err != nil {
+				t.Fatalf("codesign verification with LinkOptions %+v: %v\n%s", tt.options, err, out)
+			}
+		})
+	}
+}
+
+func machoHasStabs(t *testing.T, path string) bool {
+	t.Helper()
+	f, err := macho.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if f.Symtab == nil {
+		return false
+	}
+	const nStab = 0xe0
+	for _, symbol := range f.Symtab.Syms {
+		if symbol.Type&nStab != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDoRejectsInvalidLinkOptions(t *testing.T) {
+	_, err := Do(nil, &Config{LinkOptions: LinkOptions{DWARF: DWARFMode(255)}})
+	if err == nil || !strings.Contains(err.Error(), "invalid DWARF mode 255") {
+		t.Fatalf("Do() error = %v, want invalid DWARF mode", err)
 	}
 }
 
@@ -539,22 +631,6 @@ func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 				t.Fatalf("goGlobalDCEEnabled() = %v, want %v", got, tt.want)
 			}
 		})
-	}
-}
-
-func TestApplyFrontendGCFlags(t *testing.T) {
-	conf := &Config{GoBuildFlags: []string{
-		"-tags=integration",
-		"-gcflags=",
-		"-gcflags=-l",
-		"-gcflags=all=-lang=go1.17 -N -l=4",
-	}}
-	applyFrontendGCFlags(conf)
-	if conf.GoVersion != "go1.17" {
-		t.Fatalf("GoVersion=%q, want go1.17", conf.GoVersion)
-	}
-	if conf.OptLevel != optlevel.O0 {
-		t.Fatalf("OptLevel=%v, want O0", conf.OptLevel)
 	}
 }
 

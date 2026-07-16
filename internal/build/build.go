@@ -159,10 +159,11 @@ type Config struct {
 	CompilerHash  string // metadata hash for the running compiler (development builds only)
 	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
 	NoErrorColumn bool   // omit source columns from frontend diagnostics
-	// GoBuildFlags contains normalized raw Go build flags captured by command
-	// entry points or supplied by programmatic callers. Do forwards them to
-	// go/packages and interprets the supported compiler/linker subsets.
+	// GoBuildFlags contains normalized raw Go build flags forwarded to
+	// go/packages. Command entry points parse supported compiler and linker
+	// semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
+	LinkOptions  LinkOptions
 	AllowNoBody  bool // allow declarations without bodies, as go tool compile does
 
 	// PthreadStackSize sets a custom stack size, in bytes, for pthread-backed
@@ -274,11 +275,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err := ensureSizeReporting(conf); err != nil {
 		return nil, err
 	}
-	linkFlags, err := parseGoLinkFlags(conf.GoBuildFlags)
-	if err != nil {
+	if err := conf.LinkOptions.validate(); err != nil {
 		return nil, err
 	}
-	applyFrontendGCFlags(conf)
 	conf.OptLevel = effectiveOptLevel(conf)
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
@@ -293,10 +292,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
 	}
-	if err := validateDwarfStripSupport(conf, linkFlags); err != nil {
+	if err := validateLinkOptions(conf, &export); err != nil {
 		return nil, err
 	}
-
 	// Enable different export names for TinyGo compatibility when using -target
 	if conf.Target != "" {
 		cl.EnableExportRename(true)
@@ -327,7 +325,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 
-	omitDWARF := linkFlags.EffectiveOmitDWARF()
+	omitDWARF := effectiveOmitDWARF(conf, &export)
 	emitDebugInfo := IsDbgEnabled() && !omitDWARF
 	cl.EnableDebug(emitDebugInfo)
 	cl.EnableDbgSyms(IsDbgSymsEnabled() && !omitDWARF)
@@ -445,10 +443,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	buildMode := ssaBuildMode
 	cabiOptimize := true
 	passOpt := true
-	if IsDbgEnabled() || mode == ModeGen {
+	if emitDebugInfo || mode == ModeGen {
 		passOpt = false
 	}
-	if IsDbgEnabled() {
+	if emitDebugInfo {
 		buildMode |= ssa.GlobalDebug
 		cabiOptimize = false
 	}
@@ -472,7 +470,6 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		output:         output,
 		passOpt:        passOpt,
 		buildConf:      conf,
-		linkFlags:      linkFlags,
 		crossCompile:   export,
 		cTransformer:   cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, conf.AbiMode, cabiOptimize),
 	}
@@ -521,9 +518,6 @@ func Do(args []string, conf *Config) ([]Package, error) {
 				return nil, err
 			}
 			rewritePrebuiltFuncTab(ctx, outFmts.Out, verbose)
-			if err := stripLinkedDWARF(ctx, outFmts.Out, verbose); err != nil {
-				return nil, err
-			}
 			if conf.Mode == ModeBuild && conf.SizeReport {
 				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
@@ -604,29 +598,6 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	return allPkgs, nil
 }
 
-func applyFrontendGCFlags(conf *Config) {
-	for _, buildFlag := range conf.GoBuildFlags {
-		value, ok := strings.CutPrefix(buildFlag, "-gcflags=")
-		if !ok {
-			continue
-		}
-		fields := strings.Fields(value)
-		if len(fields) != 0 {
-			if _, compilerFlags, hasPattern := strings.Cut(fields[0], "="); hasPattern {
-				fields[0] = compilerFlags
-			}
-		}
-		for _, compilerFlag := range fields {
-			switch {
-			case strings.HasPrefix(compilerFlag, "-lang="):
-				conf.GoVersion = strings.TrimPrefix(compilerFlag, "-lang=")
-			case compilerFlag == "-N", compilerFlag == "-l", strings.HasPrefix(compilerFlag, "-l="):
-				conf.OptLevel = optlevel.O0
-			}
-		}
-	}
-}
-
 func allowMissingFunctionBodies(initial []*packages.Package) {
 	for _, pkg := range initial {
 		hasMissingBody := false
@@ -703,7 +674,6 @@ type context struct {
 	passOpt        bool
 
 	buildConf    *Config
-	linkFlags    linkFlagOptions
 	crossCompile crosscompile.Export
 
 	cTransformer *cabi.Transformer
@@ -1263,6 +1233,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 
 	buildArgs := []string{"-o", app}
 	buildArgs = append(buildArgs, linkArgs...)
+	buildArgs = append(buildArgs, dwarfLinkerArgs(ctx.buildConf, &ctx.crossCompile)...)
 	ltoPluginFlags, err := ctx.buildConf.LTOPlugin.LinkerFlags(ctx.buildConf.Goos)
 	if err != nil {
 		return err
@@ -1280,7 +1251,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	if IsDbgSymsEnabled() && !ctx.linkFlags.EffectiveOmitDWARF() {
+	if IsDbgSymsEnabled() && !effectiveOmitDWARF(ctx.buildConf, &ctx.crossCompile) {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
 

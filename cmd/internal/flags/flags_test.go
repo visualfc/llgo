@@ -16,16 +16,56 @@ import (
 
 func TestApplyGoBuildFlags(t *testing.T) {
 	cmd := new(base.Command)
-	captured := base.PassBuildFlags(cmd)
+	captured := CaptureGoBuildFlags(cmd)
 	if err := cmd.Flag.Parse([]string{"-ldflags=-s -w", "-gcflags=all=-N", "."}); err != nil {
 		t.Fatal(err)
 	}
 
 	conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
-	ApplyGoBuildFlags(conf, captured.Args)
+	if err := ApplyGoBuildFlags(conf, captured.Args); err != nil {
+		t.Fatal(err)
+	}
 	want := []string{"-tags=existing", "-ldflags=-s -w", "-gcflags=all=-N"}
 	if !reflect.DeepEqual(conf.GoBuildFlags, want) {
 		t.Fatalf("GoBuildFlags = %v, want %v", conf.GoBuildFlags, want)
+	}
+	if !conf.LinkOptions.OmitSymbolTable || !conf.LinkOptions.EffectiveOmitDWARF() {
+		t.Fatalf("LinkOptions = %+v, want -s with effective -w", conf.LinkOptions)
+	}
+}
+
+func TestApplyGoBuildFlagsIsAtomicOnParseError(t *testing.T) {
+	conf := &build.Config{
+		GoBuildFlags: []string{"-tags=existing"},
+		LinkOptions:  build.LinkOptions{OmitSymbolTable: true},
+		GoVersion:    "go1.22",
+		OptLevel:     optlevel.O2,
+	}
+	want := *conf
+	want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
+	if err := ApplyGoBuildFlags(conf, []string{"-gcflags=all=-lang=go1.17 -N", "-ldflags=-w=invalid"}); err == nil {
+		t.Fatal("ApplyGoBuildFlags succeeded, want error")
+	}
+	if !reflect.DeepEqual(*conf, want) {
+		t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+	}
+}
+
+func TestApplyGoBuildFlagsMapsFrontendGCFlags(t *testing.T) {
+	conf := &build.Config{GoBuildFlags: []string{
+		"-tags=integration",
+		"-gcflags=",
+		"-gcflags=-l",
+		"-gcflags=all=-lang=go1.17 -N -l=4",
+	}}
+	if err := ApplyGoBuildFlags(conf, nil); err != nil {
+		t.Fatal(err)
+	}
+	if conf.GoVersion != "go1.17" {
+		t.Fatalf("GoVersion=%q, want go1.17", conf.GoVersion)
+	}
+	if conf.OptLevel != optlevel.O0 {
+		t.Fatalf("OptLevel=%v, want O0", conf.OptLevel)
 	}
 }
 

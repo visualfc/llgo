@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-package build
+package flags
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/goplus/llgo/internal/build"
 )
 
 func TestParseGoLinkFlagsOrder(t *testing.T) {
@@ -30,13 +32,13 @@ func TestParseGoLinkFlagsOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.stripSymbols {
-		t.Fatal("stripSymbols = false, want true")
+	if !opts.present || !opts.options.OmitSymbolTable {
+		t.Fatalf("options = %+v, want present OmitSymbolTable", opts)
 	}
-	if !opts.omitDWARF.set || opts.omitDWARF.value {
-		t.Fatalf("omitDWARF = %+v, want explicitly false", opts.omitDWARF)
+	if opts.options.DWARF != build.DWARFPreserve {
+		t.Fatalf("DWARF = %v, want enabled", opts.options.DWARF)
 	}
-	if opts.EffectiveOmitDWARF() {
+	if opts.options.EffectiveOmitDWARF() {
 		t.Fatal("EffectiveOmitDWARF() = true, want false")
 	}
 }
@@ -49,14 +51,11 @@ func TestParseGoLinkFlagsLastArgumentListWins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.stripSymbols {
-		t.Fatal("stripSymbols = true, want the final -ldflags list to replace -s")
+	if opts.options.OmitSymbolTable {
+		t.Fatal("OmitSymbolTable = true, want the final -ldflags list to replace -s")
 	}
-	if !opts.omitDWARF.set || opts.omitDWARF.value {
-		t.Fatalf("omitDWARF = %+v, want explicitly false", opts.omitDWARF)
-	}
-	if opts.EffectiveOmitDWARF() {
-		t.Fatal("EffectiveOmitDWARF() = true, want false")
+	if opts.options.DWARF != build.DWARFPreserve || opts.options.EffectiveOmitDWARF() {
+		t.Fatalf("options = %+v, want explicitly enabled DWARF", opts.options)
 	}
 }
 
@@ -65,14 +64,8 @@ func TestParseGoLinkFlagsExplicitFalse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.stripSymbols {
-		t.Fatal("stripSymbols = true, want false")
-	}
-	if !opts.omitDWARF.set || opts.omitDWARF.value {
-		t.Fatalf("omitDWARF = %+v, want explicitly false", opts.omitDWARF)
-	}
-	if opts.EffectiveOmitDWARF() {
-		t.Fatal("EffectiveOmitDWARF() = true, want false")
+	if opts.options.OmitSymbolTable || opts.options.DWARF != build.DWARFPreserve || opts.options.EffectiveOmitDWARF() {
+		t.Fatalf("options = %+v, want no symbol stripping and enabled DWARF", opts.options)
 	}
 }
 
@@ -81,8 +74,8 @@ func TestParseGoLinkFlagsDoubleDash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.stripSymbols || opts.EffectiveOmitDWARF() {
-		t.Fatalf("options = %+v, want --s with explicit --w=false", opts)
+	if !opts.options.OmitSymbolTable || opts.options.EffectiveOmitDWARF() {
+		t.Fatalf("options = %+v, want --s with explicit --w=false", opts.options)
 	}
 }
 
@@ -91,18 +84,15 @@ func TestParseGoLinkFlagsSWithExplicitWFalse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.stripSymbols {
-		t.Fatal("stripSymbols = false, want true")
-	}
-	if opts.EffectiveOmitDWARF() {
-		t.Fatal("EffectiveOmitDWARF() = true, want false")
+	if !opts.options.OmitSymbolTable || opts.options.EffectiveOmitDWARF() {
+		t.Fatalf("options = %+v, want -s with enabled DWARF", opts.options)
 	}
 
 	opts, err = parseGoLinkFlags([]string{"-ldflags=-s"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.EffectiveOmitDWARF() {
+	if !opts.options.EffectiveOmitDWARF() {
 		t.Fatal("EffectiveOmitDWARF() = false, want -s to imply -w")
 	}
 }
@@ -114,8 +104,8 @@ func TestParseGoLinkFlagsQuotesPatternAndIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !opts.stripSymbols || !opts.EffectiveOmitDWARF() {
-		t.Fatalf("options = %+v, want -s and effective -w", opts)
+	if !opts.options.OmitSymbolTable || !opts.options.EffectiveOmitDWARF() {
+		t.Fatalf("options = %+v, want -s and effective -w", opts.options)
 	}
 	wantIgnored := []string{"-extldflags=-static -pthread", "-unknown"}
 	if !reflect.DeepEqual(opts.ignored, wantIgnored) {
@@ -131,7 +121,7 @@ func TestParseGoLinkFlagsBoolSpellings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !opts.EffectiveOmitDWARF() {
+			if !opts.options.EffectiveOmitDWARF() {
 				t.Fatalf("-w=%s parsed as false", value)
 			}
 		})
@@ -144,7 +134,7 @@ func TestParseGoLinkFlagsBoolSpellings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if opts.EffectiveOmitDWARF() {
+			if opts.options.EffectiveOmitDWARF() {
 				t.Fatalf("-w=%s parsed as true", value)
 			}
 		})

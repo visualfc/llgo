@@ -14,79 +14,67 @@
  * limitations under the License.
  */
 
-package build
+package flags
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/goplus/llgo/internal/build"
 )
 
-// optionalBool records both a boolean value and whether it was explicitly set.
-type optionalBool struct {
-	value bool
-	set   bool
+// parsedLinkFlags contains the Go linker options that LLGo currently handles.
+// ignored retains the remaining linker arguments so their order is available
+// as support is added incrementally.
+type parsedLinkFlags struct {
+	options build.LinkOptions
+	ignored []string
+	present bool
 }
 
-// linkFlagOptions contains the Go linker options that LLGo currently handles.
-// ignored retains the remaining linker arguments so that parsing them can be
-// added incrementally without silently losing their order.
-type linkFlagOptions struct {
-	stripSymbols bool
-	omitDWARF    optionalBool
-	ignored      []string
-}
-
-// EffectiveOmitDWARF reports the effective -w setting. As in cmd/link, an
-// explicit -w value takes precedence; otherwise -s implies -w.
-func (o linkFlagOptions) EffectiveOmitDWARF() bool {
-	if o.omitDWARF.set {
-		return o.omitDWARF.value
-	}
-	return o.stripSymbols
-}
-
-// parseGoLinkFlags extracts the currently supported flags from Go build flags.
-// Repeated linker flags are evaluated in command-line order. Each supported
-// -ldflags value replaces the previous complete argument list, matching Go's
-// last-match-wins behavior for a command-line package. Package-specific
-// patterns are rejected until LLGo can select flags separately for each root;
-// an unpatterned value and the universal all= pattern are supported.
-func parseGoLinkFlags(buildFlags []string) (linkFlagOptions, error) {
-	var opts linkFlagOptions
+// parseGoLinkFlags extracts the currently supported flags from normalized Go
+// build flags. Repeated -ldflags values are evaluated in command-line order;
+// each applicable value replaces the previous complete argument list.
+func parseGoLinkFlags(buildFlags []string) (parsedLinkFlags, error) {
+	var opts parsedLinkFlags
 	for _, buildFlag := range buildFlags {
 		if buildFlag == "-ldflags" {
-			return linkFlagOptions{}, fmt.Errorf("-ldflags requires a value")
+			return parsedLinkFlags{}, fmt.Errorf("-ldflags requires a value")
 		}
 
 		value, ok := strings.CutPrefix(buildFlag, "-ldflags=")
 		if !ok {
 			continue
 		}
-		opts = linkFlagOptions{}
+		opts = parsedLinkFlags{present: true}
 
 		linkFlags, err := splitPerPackageLinkFlags(value)
 		if err != nil {
-			return linkFlagOptions{}, fmt.Errorf("invalid -ldflags value %q: %w", value, err)
+			return parsedLinkFlags{}, fmt.Errorf("invalid -ldflags value %q: %w", value, err)
 		}
 		for _, linkFlag := range linkFlags {
 			switch {
 			case linkFlag == "-s" || linkFlag == "--s":
-				opts.stripSymbols = true
+				opts.options.OmitSymbolTable = true
 			case hasLinkFlagBoolValue(linkFlag, "s"):
 				v, err := parseLinkFlagBool("-s", linkFlagBoolValue(linkFlag, "s"))
 				if err != nil {
-					return linkFlagOptions{}, err
+					return parsedLinkFlags{}, err
 				}
-				opts.stripSymbols = v
+				opts.options.OmitSymbolTable = v
 			case linkFlag == "-w" || linkFlag == "--w":
-				opts.omitDWARF = optionalBool{value: true, set: true}
+				opts.options.DWARF = build.DWARFOmit
 			case hasLinkFlagBoolValue(linkFlag, "w"):
 				v, err := parseLinkFlagBool("-w", linkFlagBoolValue(linkFlag, "w"))
 				if err != nil {
-					return linkFlagOptions{}, err
+					return parsedLinkFlags{}, err
 				}
-				opts.omitDWARF = optionalBool{value: v, set: true}
+				if v {
+					opts.options.DWARF = build.DWARFOmit
+				} else {
+					opts.options.DWARF = build.DWARFPreserve
+				}
 			default:
 				opts.ignored = append(opts.ignored, linkFlag)
 			}
