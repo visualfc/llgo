@@ -20,10 +20,15 @@ import (
 	"fmt"
 	"go/ast"
 	"go/scanner"
+	"go/token"
 	"go/types"
+	"go/version"
 	"log"
 	"os"
+	pathpkg "path"
+	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
@@ -338,6 +343,7 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 	}
 
 	lpkg.Syntax = files
+	normalizeEmbedDriverDiagnostics(lpkg.Errors, ld.Fset, files, packageGoVersion(ld, lpkg))
 	if ld.Config.Mode&NeedTypes == 0 {
 		return
 	}
@@ -364,6 +370,12 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 	importer := importerFunc(func(path string) (*types.Package, error) {
 		if path == "unsafe" {
 			return types.Unsafe, nil
+		}
+		// go/packages does not create import metadata for an absolute path.
+		// Report the validation error that cmd/compile would have returned
+		// instead of leaking the loader's "no metadata" implementation detail.
+		if pathpkg.IsAbs(path) {
+			return nil, fmt.Errorf("import path cannot be absolute path")
 		}
 
 		// The imports map is keyed by import path.
@@ -402,11 +414,7 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 		Error: appendError,
 		Sizes: ld.sizes, // may be nil
 	}
-	if goVersion, ok := loadGoVersions.Load(ld); ok && lpkg.initial {
-		tc.GoVersion = goVersion.(string)
-	} else if lpkg.Module != nil && lpkg.Module.GoVersion != "" {
-		tc.GoVersion = "go" + lpkg.Module.GoVersion
-	}
+	tc.GoVersion = packageGoVersion(ld, lpkg)
 	if (ld.Mode & typecheckCgo) != 0 {
 		if !typesinternalSetUsesCgo(tc) {
 			appendError(packages.Error{
@@ -472,6 +480,167 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 		}
 	}
 	lpkg.IllTyped = illTyped
+}
+
+func packageGoVersion(ld *loader, lpkg *loaderPackage) string {
+	if goVersion, ok := loadGoVersions.Load(ld); ok && lpkg.initial {
+		return goVersion.(string)
+	}
+	if lpkg.Module != nil && lpkg.Module.GoVersion != "" {
+		return "go" + lpkg.Module.GoVersion
+	}
+	return ""
+}
+
+const embedPatternDriverDiagnostic = "pattern //: invalid pattern syntax"
+
+// normalizeEmbedDriverDiagnostics handles the two semantic checks that
+// cmd/compile performs before parsing embed patterns. go list instead treats a
+// trailing // token as a pattern and reports the driver error above. Keep that
+// error for every other context; replacing it unconditionally would hide real
+// unmatched-pattern diagnostics from compiler clients.
+func normalizeEmbedDriverDiagnostics(errs []packages.Error, fset *token.FileSet, files []*ast.File, goVersion string) {
+	for i := range errs {
+		if errs[i].Msg != embedPatternDriverDiagnostic {
+			continue
+		}
+		for _, file := range files {
+			context := embedDirectiveContextAt(fset, file, errs[i].Pos)
+			switch {
+			case context == embedDirectiveLocalVar:
+				errs[i].Msg = "go:embed cannot apply to var inside func"
+			case context == embedDirectivePackageVar && version.IsValid(goVersion) && version.Compare(goVersion, "go1.16") < 0:
+				errs[i].Msg = fmt.Sprintf("go:embed requires go1.16 or later (-lang was set to %s; check go.mod)", goVersion)
+			}
+			if errs[i].Msg != embedPatternDriverDiagnostic {
+				break
+			}
+		}
+	}
+}
+
+type embedDirectiveContext uint8
+
+const (
+	embedDirectiveUnknown embedDirectiveContext = iota
+	embedDirectivePackageVar
+	embedDirectiveLocalVar
+)
+
+func embedDirectiveContextAt(fset *token.FileSet, file *ast.File, errorPos string) embedDirectiveContext {
+	if fset == nil || file == nil {
+		return embedDirectiveUnknown
+	}
+	for _, group := range file.Comments {
+		for _, comment := range group.List {
+			if !isEmbedDirectiveComment(comment) || !sameDiagnosticLine(errorPos, fset.Position(comment.Pos())) {
+				continue
+			}
+			if localVarHasDocComment(file, comment) {
+				return embedDirectiveLocalVar
+			}
+			for _, decl := range file.Decls {
+				gen, ok := decl.(*ast.GenDecl)
+				if ok && gen.Tok == token.VAR && genDeclHasDocComment(gen, comment) {
+					return embedDirectivePackageVar
+				}
+			}
+		}
+	}
+	return embedDirectiveUnknown
+}
+
+func isEmbedDirectiveComment(comment *ast.Comment) bool {
+	if comment == nil || !strings.HasPrefix(comment.Text, "//") {
+		return false
+	}
+	text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
+	if text == "go:embed" {
+		return true
+	}
+	if !strings.HasPrefix(text, "go:embed") || len(text) == len("go:embed") {
+		return false
+	}
+	next := text[len("go:embed")]
+	return next == ' ' || next == '\t'
+}
+
+func sameDiagnosticLine(errorPos string, commentPos token.Position) bool {
+	if errorPos == "" || commentPos.Filename == "" || commentPos.Line == 0 {
+		return false
+	}
+	errorFile, errorLine, ok := diagnosticFileLine(errorPos)
+	if !ok || errorLine != commentPos.Line {
+		return false
+	}
+	errorFile = filepath.Clean(errorFile)
+	commentFile := filepath.Clean(commentPos.Filename)
+	if errorFile == commentFile {
+		return true
+	}
+	return !filepath.IsAbs(errorFile) &&
+		(commentFile == errorFile || strings.HasSuffix(commentFile, string(filepath.Separator)+errorFile))
+}
+
+func diagnosticFileLine(pos string) (file string, line int, ok bool) {
+	lastColon := strings.LastIndexByte(pos, ':')
+	if lastColon < 0 {
+		return "", 0, false
+	}
+	last, err := strconv.Atoi(pos[lastColon+1:])
+	if err != nil {
+		return "", 0, false
+	}
+	prefix := pos[:lastColon]
+	if lineColon := strings.LastIndexByte(prefix, ':'); lineColon >= 0 {
+		if parsedLine, err := strconv.Atoi(prefix[lineColon+1:]); err == nil {
+			return prefix[:lineColon], parsedLine, true
+		}
+	}
+	return prefix, last, true
+}
+
+func localVarHasDocComment(file *ast.File, comment *ast.Comment) bool {
+	found := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		if found {
+			return false
+		}
+		stmt, ok := node.(*ast.DeclStmt)
+		if !ok {
+			return true
+		}
+		gen, ok := stmt.Decl.(*ast.GenDecl)
+		if ok && gen.Tok == token.VAR && genDeclHasDocComment(gen, comment) {
+			found = true
+		}
+		return false
+	})
+	return found
+}
+
+func genDeclHasDocComment(gen *ast.GenDecl, comment *ast.Comment) bool {
+	if commentGroupContains(gen.Doc, comment) {
+		return true
+	}
+	for _, spec := range gen.Specs {
+		if value, ok := spec.(*ast.ValueSpec); ok && commentGroupContains(value.Doc, comment) {
+			return true
+		}
+	}
+	return false
+}
+
+func commentGroupContains(group *ast.CommentGroup, comment *ast.Comment) bool {
+	if group == nil {
+		return false
+	}
+	for _, candidate := range group.List {
+		if candidate == comment {
+			return true
+		}
+	}
+	return false
 }
 
 func loadRecursiveEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {

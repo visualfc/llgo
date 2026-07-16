@@ -1787,10 +1787,6 @@ xfails:
     reason: gc-specific nil-check elimination diagnostics are not implemented by llgo
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/issue11362.go
-    reason: llgo uses different non-canonical import-path diagnostic punctuation
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue23664.go
     reason: llgo parser recovery emits additional malformed-declaration diagnostics
   - version: go1.26
@@ -1845,10 +1841,6 @@ xfails:
     directive: errorcheck
     case: syntax/semi7.go
     reason: llgo parser recovery emits additional semicolon and else diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue31053.dir/main.go
-    reason: llgo resolves the companion package but uses different unexported-field diagnostic wording
   - version: go1.26
     directive: errorcheck
     case: escape4.go
@@ -1947,10 +1939,6 @@ xfails:
     reason: gc-specific -m optimization diagnostics are not implemented by llgo
   - version: go1.26
     directive: errorcheck
-    case: import6.go
-    reason: llgo loader does not emit the expected absolute-import-path diagnostic
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue13274.go
     reason: llgo parser emits an additional end-of-file diagnostic
   - version: go1.26
@@ -1983,10 +1971,6 @@ xfails:
     reason: gc runtime write-barrier and notinheap diagnostics are not implemented by llgo
   - version: go1.26
     directive: errorcheck
-    case: embedvers.go
-    reason: llgo loader reports an embed-pattern error before the expected language-version diagnostic
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue13273.go
     reason: llgo parser and type checker emit additional channel-direction diagnostics
   - version: go1.26
@@ -2001,10 +1985,6 @@ xfails:
     directive: errorcheck
     case: fixedbugs/notinheap2.go
     reason: gc-specific notinheap allocation diagnostics are not implemented by llgo
-  - version: go1.26
-    directive: errorcheck
-    case: embedfunc.go
-    reason: llgo loader reports an embed-pattern error instead of the expected local-variable directive error
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue13266.go

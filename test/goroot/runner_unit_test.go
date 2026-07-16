@@ -744,6 +744,31 @@ func TestNormalizeCompilerDiagnosticMessage(t *testing.T) {
 		{name: "break", in: "break not in for, switch, or select statement", want: "break is not in a loop, switch, or select"},
 		{name: "range count", in: "expected at most 2 expressions", want: "range clause permits at most two iteration variables"},
 		{name: "type switch", in: "invalid syntax tree: incorrect form of type switch guard", want: "invalid variable name in type switch guard"},
+		{
+			name: "non-canonical import",
+			in:   `non-canonical import path "unicode//utf8": should be "unicode/utf8"`,
+			want: `non-canonical import path "unicode//utf8" (should be "unicode/utf8")`,
+		},
+		{
+			name: "unexported struct field",
+			in:   "cannot refer to unexported field doneChan in struct literal of type f1.Foo",
+			want: "cannot refer to unexported field 'doneChan' in struct literal of type f1.Foo",
+		},
+		{
+			name: "unknown struct field",
+			in:   "unknown field DoneChan in struct literal of type f1.Foo, but does have unexported doneChan",
+			want: "unknown field 'DoneChan' in struct literal of type f1.Foo (but does have unexported doneChan)",
+		},
+		{
+			name: "unexported selector",
+			in:   "f.doneChan undefined (cannot refer to unexported field doneChan)",
+			want: "f.doneChan undefined (cannot refer to unexported field or method doneChan)",
+		},
+		{
+			name: "nearby selector",
+			in:   "f.name undefined (type f1.Foo has no field or method name, but does have field Name)",
+			want: "f.name undefined (type f1.Foo has no field or method name, but does have Name)",
+		},
 		{name: "initialization", in: "initialization cycle for a", want: "initialization cycle for a"},
 		{name: "goto position", in: "goto L jumps over variable declaration at line 43", want: "goto jumps over declaration"},
 		{name: "unused label", in: "label L declared and not used", want: "label L defined and not used"},
@@ -757,6 +782,8 @@ func TestNormalizeCompilerDiagnosticMessage(t *testing.T) {
 		{name: "different range count", in: "expected at most 3 expressions", want: "expected at most 3 expressions"},
 		{name: "goto without position", in: "goto L jumps over variable declaration", want: "goto L jumps over variable declaration"},
 		{name: "non-declaration assignment", in: "cannot use x as int value in argument", want: "cannot use x as int value in argument"},
+		{name: "invalid import quote", in: `non-canonical import path "\x": should be "good"`, want: `non-canonical import path "\x": should be "good"`},
+		{name: "non-struct field", in: "unknown field value in map literal", want: "unknown field value in map literal"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
