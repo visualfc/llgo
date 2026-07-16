@@ -46,3 +46,18 @@ func TestGoldenForGoVersionRejectsUnversionedToolchain(t *testing.T) {
 		t.Fatalf("goldenForGoVersion() = %q, %v, want no versioned golden", got, ok)
 	}
 }
+
+func TestReadGoldenReturnsVersionedReadError(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "expect.txt")
+	versioned, ok := goldenForGoVersion(file, runtime.Version())
+	if !ok {
+		t.Fatalf("runtime version %q is not a valid Go version", runtime.Version())
+	}
+	if err := os.Mkdir(versioned, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := readGolden(file); err == nil {
+		t.Fatal("readGolden() succeeded for a versioned golden directory")
+	}
+}
