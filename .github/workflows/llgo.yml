@@ -254,9 +254,9 @@ jobs:
 
           # Run per-package and print elapsed time to keep logs readable.
           for pkg in "${selected[@]}"; do
-            echo "==> llgo test -timeout=20m ${pkg}"
+            echo "==> llgo test -timeout=20m -bench=^BenchmarkGo126 -benchtime=1x ${pkg}"
             SECONDS=0
-            llgo test -timeout=20m "${pkg}"
+            llgo test -timeout=20m -bench='^BenchmarkGo126' -benchtime=1x "${pkg}"
             echo "==> done ${pkg} (${SECONDS}s)"
           done
 
