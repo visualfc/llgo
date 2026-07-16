@@ -2664,12 +2664,22 @@ func storeRcvr(v Value, p unsafe.Pointer) {
 		// the interface data word becomes the receiver word
 		iface := (*nonEmptyInterface)(v.ptr)
 		*(*unsafe.Pointer)(p) = ifacePtrData(iface)
-	} else if v.flag&flagIndir != 0 && !ifaceIndir(t) {
-		*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(v.ptr)
-	} else if v.flag&flagIndir == 0 && runtime.DirectIfaceData(t) {
-		*(*unsafe.Pointer)(p) = unsafe.Pointer(&v.ptr)
+	} else if v.flag&flagIndir != 0 {
+		if ifaceIndir(t) {
+			*(*unsafe.Pointer)(p) = v.ptr
+		} else if runtime.DirectIfaceData(t) {
+			*(*unsafe.Pointer)(p) = v.ptr
+		} else {
+			*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(v.ptr)
+		}
 	} else {
-		*(*unsafe.Pointer)(p) = v.ptr
+		if ifaceIndir(t) {
+			*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(v.ptr)
+		} else if runtime.DirectIfaceData(t) {
+			*(*unsafe.Pointer)(p) = unsafe.Pointer(&v.ptr)
+		} else {
+			*(*unsafe.Pointer)(p) = v.ptr
+		}
 	}
 }
 
