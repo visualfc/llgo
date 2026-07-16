@@ -52,6 +52,17 @@ func TestGoCompilerSpecificFlagIsExplicitlyUnsupported(t *testing.T) {
 	}
 }
 
+func TestSSACheckSeedDebugSettingsAreCompatible(t *testing.T) {
+	opts := &options{debug: stringListFlag{
+		"ssa/check/seed,ssa/check/seed=1",
+		"ssa/check/seeded=1",
+	}}
+	want := []string{"-d=ssa/check/seeded=1"}
+	if got := opts.unsupported(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("unsupported=%v, want %v", got, want)
+	}
+}
+
 func TestCountAndListFlags(t *testing.T) {
 	var count countFlag
 	if !count.IsBoolFlag() {
@@ -92,7 +103,7 @@ func TestUnsupportedCompilerFlags(t *testing.T) {
 		standard:    true,
 		runtimePkg:  true,
 		writeBar:    countFlag{set: true},
-		debug:       stringListFlag{"panic,libfuzzer", "ssa/check/on,wb"},
+		debug:       stringListFlag{"panic,libfuzzer", "ssa/check/on,ssa/check/seed=1,wb"},
 	}
 	want := []string{"-B", "-dynlink", "-m", "-live", "-race", "-smallframes", "-std", "-+", "-wb", "-d=libfuzzer", "-d=wb"}
 	if got := opts.unsupported(); !reflect.DeepEqual(got, want) {

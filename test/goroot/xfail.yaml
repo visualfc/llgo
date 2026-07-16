@@ -2515,14 +2515,6 @@ xfails:
     reason: gc-specific -d=checkptr backend option is not implemented by llgo
   - version: go1.26
     directive: compile
-    case: fixedbugs/issue44465.go
-    reason: gc-specific -d=ssa/check/seed option is not implemented by llgo
-  - version: go1.26
-    directive: compile
-    case: fixedbugs/issue58161.go
-    reason: gc-specific -d=ssa/check/seed option is not implemented by llgo
-  - version: go1.26
-    directive: compile
     case: fixedbugs/issue58826.go
     reason: gc-specific -dynlink backend mode is not implemented by llgo
   - version: go1.26

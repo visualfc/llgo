@@ -43,6 +43,23 @@ func Identity[T any](v T) T { return v }
 		compareToolCompileResult(t, dir, args, true, "")
 	})
 
+	t.Run("SSA check seed", func(t *testing.T) {
+		tests := []struct {
+			name string
+			flag string
+		}{
+			{name: "default", flag: "-d=ssa/check/seed"},
+			{name: "explicit", flag: "-d=ssa/check/seed=1"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				dir := t.TempDir()
+				writeToolCompileSource(t, dir, "valid.go", "package compat\n\nfunc F() {}\n")
+				compareToolCompileResult(t, dir, []string{tt.flag, "-o=compat.o", "valid.go"}, true, "")
+			})
+		}
+	})
+
 	t.Run("language version", func(t *testing.T) {
 		dir := t.TempDir()
 		writeToolCompileSource(t, dir, "generic.go", `package compat
