@@ -1795,10 +1795,6 @@ xfails:
     reason: llgo uses different non-canonical import-path diagnostic punctuation
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/issue15611.go
-    reason: llgo scanner recovery emits additional malformed-rune diagnostics
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue23664.go
     reason: llgo parser recovery emits additional malformed-declaration diagnostics
   - version: go1.26
@@ -1847,16 +1843,8 @@ xfails:
     reason: gc-specific type-assertion optimization diagnostics are not implemented by llgo
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/bug014.go
-    reason: llgo scanner emits additional malformed-character-constant diagnostics
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/bug349.go
     reason: llgo parser recovery emits additional return-value diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue11359.go
-    reason: llgo scanner emits additional illegal-character diagnostics
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue23587.go
@@ -1885,10 +1873,6 @@ xfails:
     directive: errorcheck
     case: fixedbugs/issue27732a.go
     reason: gc-specific small-frame and optimization diagnostics are not implemented by llgo
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/bug169.go
-    reason: llgo scanner emits an additional malformed-character-constant diagnostic
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/bug274.go
@@ -1947,10 +1931,6 @@ xfails:
     reason: llgo parser recovery emits additional malformed-call diagnostics
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/issue32133.go
-    reason: llgo scanner uses different unterminated-literal diagnostics and emits recovery noise
-  - version: go1.26
-    directive: errorcheck
     case: syntax/semi5.go
     reason: llgo parser recovery emits additional semicolon and end-of-file diagnostics
   - version: go1.26
@@ -1985,10 +1965,6 @@ xfails:
     directive: errorcheck
     case: import6.go
     reason: llgo loader does not emit the expected absolute-import-path diagnostic
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/bug163.go
-    reason: llgo scanner emits additional illegal-character diagnostics
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue13274.go
@@ -2087,10 +2063,6 @@ xfails:
     reason: llgo reports goto diagnostics at different source positions
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/bug068.go
-    reason: llgo scanner emits an additional malformed-character-constant diagnostic
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/bug195.go
     reason: llgo reports an additional recursive-interface diagnostic
   - version: go1.26
@@ -2135,10 +2107,6 @@ xfails:
     reason: gc-specific bounds-check elimination diagnostics are not implemented by llgo
   - version: go1.26
     directive: errorcheck
-    case: char_lit1.go
-    reason: llgo scanner emits additional malformed-character-constant diagnostics
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue20789.go
     reason: llgo parser does not emit the expected malformed-name diagnostic
   - version: go1.26
@@ -2165,10 +2133,6 @@ xfails:
     directive: errorcheck
     case: fixedbugs/issue20780.go
     reason: gc-specific stack-frame size diagnostics are not implemented by llgo
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue30722.go
-    reason: llgo scanner emits additional malformed-constant diagnostics
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue7538a.go

@@ -554,6 +554,96 @@ var _ = missing // ERROR "undefined: missing"
 	}
 }
 
+func TestCheckExpectedErrorsNormalizesLexicalDiagnostics(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "case.go")
+	src := `package p
+var _ = 0 // ERROR "newline in string"
+var _ = 0 // ERROR "newline in rune literal"
+var _ = 0 // ERROR "string not terminated"
+var _ = 0 // ERROR "invalid character .* in identifier"
+var _ = 0 // ERROR "identifier cannot begin with digit"
+var _ = 0 // ERROR "oct|char"
+var _ = 0 // ERROR "hexadecimal literal has no digits"
+var _ = 0 // ERROR "empty rune literal"
+var _ = 0 // ERROR "mantissa requires a 'p' exponent"
+`
+	if err := os.WriteFile(file, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := strings.Join([]string{
+		file + ":2: string literal not terminated",
+		file + ":2: invalid import path (invalid syntax)",
+		file + ":2: malformed constant: \"",
+		file + ":3: rune literal not terminated",
+		file + ":3: malformed constant: '",
+		file + ":4: raw string literal not terminated",
+		file + ":4: expected '}', found 'EOF'",
+		file + ":4: malformed constant: `",
+		file + ":5: invalid character U+229B '⊛' in identifier",
+		file + ":5: expected type, found 'ILLEGAL'",
+		file + ":5: illegal character U+229B '⊛'",
+		file + ":6: identifier cannot begin with digit U+06F6 '۶'",
+		file + ":6: expected 'IDENT', found 'ILLEGAL'",
+		file + ":6: illegal character U+06F6 '۶'",
+		file + ":7: invalid character '\\'' in octal escape",
+		file + ":7: malformed constant: '\\0'",
+		file + ":8: hexadecimal literal has no digits",
+		file + ":8: malformed constant: 0x",
+		file + ":9: empty rune literal or unescaped '",
+		file + ":9: syntax error: unexpected literal after top level declaration",
+		file + ":9: illegal rune literal",
+		file + ":10: hexadecimal mantissa requires a 'p' exponent",
+		file + ":10: 0x1.0 (untyped float constant 1) is not used",
+	}, "\n")
+	if err := checkExpectedErrors(output, file, "case.go"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCheckExpectedErrorsKeepsUnrelatedDiagnostics(t *testing.T) {
+	tests := []struct {
+		name   string
+		src    string
+		output func(string) string
+	}{
+		{
+			name: "same line non-recovery",
+			src:  "package p\nvar _ = 0 // ERROR \"unknown escape\"\n",
+			output: func(file string) string {
+				return file + ":2: unknown escape\n" + file + ":2: undefined: still_reported\n"
+			},
+		},
+		{
+			name: "different line recovery",
+			src:  "package p\nvar _ = 0 // ERROR \"unknown escape\"\nvar _ = 0\n",
+			output: func(file string) string {
+				return file + ":2: unknown escape\n" + file + ":3: malformed constant: 0x\n"
+			},
+		},
+		{
+			name: "unscoped invalid character",
+			src:  "package p\nvar _ = 0 // ERROR \"invalid character U\\+003F\"\n",
+			output: func(file string) string {
+				return file + ":2: invalid character U+003F '?'\n" +
+					file + ":2: expected 'IDENT', found 'ILLEGAL'\n" +
+					file + ":2: illegal character U+003F '?'\n"
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "case.go")
+			if err := os.WriteFile(file, []byte(tt.src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			err := checkExpectedErrors(tt.output(file), file, "case.go")
+			if err == nil || !strings.Contains(err.Error(), "unmatched errors") {
+				t.Fatalf("err=%v, want unmatched errors", err)
+			}
+		})
+	}
+}
+
 func TestPreferSpecificDiagnostics(t *testing.T) {
 	got := preferSpecificDiagnostics([]string{
 		"case.go:18:16: requires go1.22 or later (file declares go1.21)",

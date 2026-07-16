@@ -1108,6 +1108,7 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 		}
 		wanted = append(wanted, expected...)
 	}
+	lexicalLocations := make(map[string]bool)
 	var errs []error
 	for _, expected := range wanted {
 		var candidates []string
@@ -1122,12 +1123,18 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 		}
 		matched := false
 		for _, candidate := range candidates {
+			diagnostic, ok := parseCompilerDiagnostic(candidate)
 			message := candidate
-			if _, suffix, ok := strings.Cut(message, " "); ok {
+			if ok {
+				message = diagnostic.message
+			} else if _, suffix, found := strings.Cut(message, " "); found {
 				message = suffix
 			}
-			if expected.regexp.MatchString(message) {
+			if matchesExpectedDiagnostic(expected.regexp, message) {
 				matched = true
+				if ok && isScopedLexicalDiagnostic(message) {
+					lexicalLocations[diagnostic.location] = true
+				}
 			} else {
 				lines = append(lines, candidate)
 			}
@@ -1136,6 +1143,7 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 			errs = append(errs, fmt.Errorf("%s:%d: no match for %q", expected.file, expected.line, expected.pattern))
 		}
 	}
+	lines = discardLexicalRecoveryDiagnostics(lines, lexicalLocations)
 
 	local := lines[:0]
 	for _, line := range lines {
@@ -1155,22 +1163,117 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 	return errors.Join(errs...)
 }
 
-func preferSpecificDiagnostics(lines []string) []string {
-	discard := make([]bool, len(lines))
-	type parsedDiagnostic struct {
-		location string
-		message  string
+type compilerDiagnostic struct {
+	location string
+	message  string
+}
+
+func parseCompilerDiagnostic(line string) (compilerDiagnostic, bool) {
+	match := diagnosticRx.FindStringSubmatch(line)
+	if match == nil {
+		return compilerDiagnostic{}, false
 	}
-	parsed := make([]parsedDiagnostic, len(lines))
-	for i, line := range lines {
-		match := diagnosticRx.FindStringSubmatch(line)
-		if match == nil {
+	return compilerDiagnostic{
+		location: filepath.Base(match[1]) + ":" + match[2],
+		message:  match[3],
+	}, true
+}
+
+// matchesExpectedDiagnostic accepts the equivalent wording used by the Go
+// scanner for unterminated literals. GOROOT's errorcheck patterns describe gc
+// diagnostics, while llgo's source frontend is go/parser and go/scanner.
+func matchesExpectedDiagnostic(expected *regexp.Regexp, message string) bool {
+	if expected.MatchString(message) {
+		return true
+	}
+	var aliases []string
+	switch message {
+	case "string literal not terminated":
+		aliases = []string{"newline in string", "string not terminated"}
+	case "rune literal not terminated":
+		aliases = []string{"newline in rune literal"}
+	case "raw string literal not terminated":
+		aliases = []string{"string not terminated"}
+	}
+	for _, alias := range aliases {
+		if expected.MatchString(alias) {
+			return true
+		}
+	}
+	return false
+}
+
+// isScopedLexicalDiagnostic identifies primary scanner diagnostics whose
+// follow-up parser and go/types errors are deterministic. A bare invalid
+// character diagnostic is deliberately excluded: without identifier or escape
+// context, a same-line parser error may describe a distinct syntax problem.
+func isScopedLexicalDiagnostic(message string) bool {
+	switch {
+	case strings.HasPrefix(message, "identifier cannot begin with digit"):
+		return true
+	case strings.HasPrefix(message, "invalid character ") &&
+		(strings.Contains(message, " in identifier") || strings.Contains(message, " in octal escape") || strings.Contains(message, " in hexadecimal escape")):
+		return true
+	case strings.HasPrefix(message, "illegal character ") && strings.Contains(message, " in escape sequence"):
+		return true
+	case strings.HasPrefix(message, "unknown escape"):
+		return true
+	case strings.HasPrefix(message, "escape is invalid Unicode code point"),
+		strings.HasPrefix(message, "escape sequence is invalid Unicode code point"):
+		return true
+	case strings.HasPrefix(message, "empty rune literal"),
+		strings.HasPrefix(message, "more than one character in rune literal"),
+		strings.HasPrefix(message, "newline in rune literal"):
+		return true
+	case message == "string literal not terminated", message == "rune literal not terminated", message == "raw string literal not terminated":
+		return true
+	case strings.HasPrefix(message, "'_' must separate successive digits"):
+		return true
+	case strings.Contains(message, " literal has no digits"), strings.Contains(message, "mantissa requires a 'p' exponent"):
+		return true
+	}
+	return false
+}
+
+// discardLexicalRecoveryDiagnostics removes only known secondary diagnostics
+// at a file:line where a scoped lexical diagnostic already satisfied an ERROR
+// expectation. Unrelated diagnostics and recovery on every other line remain
+// unmatched and fail the errorcheck case.
+func discardLexicalRecoveryDiagnostics(lines []string, lexicalLocations map[string]bool) []string {
+	out := lines[:0]
+	for _, line := range lines {
+		diagnostic, ok := parseCompilerDiagnostic(line)
+		if ok && lexicalLocations[diagnostic.location] && isLexicalRecoveryDiagnostic(diagnostic.message) {
 			continue
 		}
-		parsed[i] = parsedDiagnostic{
-			location: filepath.Base(match[1]) + ":" + match[2],
-			message:  match[3],
-		}
+		out = append(out, line)
+	}
+	return out
+}
+
+func isLexicalRecoveryDiagnostic(message string) bool {
+	switch {
+	case strings.HasPrefix(message, "malformed constant: "):
+		return true
+	case message == "illegal rune literal", message == "invalid import path (invalid syntax)":
+		return true
+	case strings.HasPrefix(message, "illegal character U+"):
+		return true
+	case strings.HasPrefix(message, "expected ") && strings.Contains(message, ", found "):
+		return true
+	case strings.HasPrefix(message, "syntax error: unexpected "):
+		return true
+	case strings.HasSuffix(message, " is not used"):
+		return true
+	}
+	return false
+}
+
+func preferSpecificDiagnostics(lines []string) []string {
+	discard := make([]bool, len(lines))
+	parsed := make([]compilerDiagnostic, len(lines))
+	for i, line := range lines {
+		parsed[i], _ = parseCompilerDiagnostic(line)
 	}
 	for i := range lines {
 		if parsed[i].location == "" || discard[i] {
