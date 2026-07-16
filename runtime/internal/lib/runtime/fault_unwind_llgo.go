@@ -53,12 +53,18 @@ func init() {
 var (
 	faultPCs [64]uintptr
 	faultN   int32
+	// faultActive distinguishes a hardware-fault panic from an ordinary
+	// panic even when external PCLN data was unavailable in signal context
+	// and no symbolizable snapshot could be captured.
+	faultActive int32
 	// index into the dynunwind name table per pc, -1 when the pc came
 	// from the FP-chain resume.
 	faultNameIdx [64]int32
 )
 
 func onFault(pc, fp uintptr, sig int32) {
+	faultActive = 1
+	faultN = 0
 	if fpUnwindAvailable() {
 		n := 0
 		if dn := int(c_dynunwindPCCount()); dn > 0 {
@@ -106,6 +112,15 @@ func onFault(pc, fp uintptr, sig int32) {
 	// into an ordinary (recoverable) panic.
 	c_faultCaptureDone()
 	rtdebug.PanicSignal(int(sig))
+}
+
+func clearFaultTraceback() {
+	faultActive = 0
+	faultN = 0
+}
+
+func faultTracebackActive() bool {
+	return faultActive != 0
 }
 
 // fpWalkFrom walks the frame-pointer chain from an arbitrary frame pointer

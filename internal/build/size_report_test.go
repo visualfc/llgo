@@ -4,6 +4,7 @@ package build
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,65 @@ import (
 
 	"golang.org/x/tools/go/packages"
 )
+
+func TestSizeReportIncludesArtifactSizes(t *testing.T) {
+	report := &sizeReport{
+		Binary: "app",
+		Artifacts: []artifactSize{
+			{Kind: "executable", Path: "app", Size: 100},
+			{Kind: "pclntab", Path: "app.pclntab", Size: 40},
+		},
+		Modules: map[string]*moduleSize{},
+	}
+	var text bytes.Buffer
+	printTextReport(&text, report)
+	for _, want := range []string{"Artifact sizes", "100 | executable", "40 | pclntab", "140 | total", "app.pclntab"} {
+		if !strings.Contains(text.String(), want) {
+			t.Fatalf("text report missing %q:\n%s", want, text.String())
+		}
+	}
+
+	var jsonOut bytes.Buffer
+	if err := emitJSONReport(&jsonOut, report); err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Artifacts     []artifactSize `json:"artifacts"`
+		ArtifactTotal uint64         `json:"artifact_total"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Artifacts) != 2 || decoded.Artifacts[1].Kind != "pclntab" || decoded.Artifacts[1].Size != 40 || decoded.ArtifactTotal != 140 {
+		t.Fatalf("JSON artifacts = %+v, total = %d", decoded.Artifacts, decoded.ArtifactTotal)
+	}
+}
+
+func TestCollectArtifactSizesUsesExactFileBytes(t *testing.T) {
+	dir := t.TempDir()
+	executable := filepath.Join(dir, "app")
+	pclntab := executable + ".pclntab"
+	if err := os.WriteFile(executable, bytes.Repeat([]byte{0xaa}, 101), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pclntab, bytes.Repeat([]byte{0xbb}, 43), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sizes, err := collectArtifactSizes(executable, pclntab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sizes) != 2 || sizes[0].Kind != "executable" || sizes[0].Size != 101 || sizes[1].Kind != "pclntab" || sizes[1].Size != 43 {
+		t.Fatalf("artifact sizes = %+v", sizes)
+	}
+	var total uint64
+	for _, artifact := range sizes {
+		total += artifact.Size
+	}
+	if total != 144 {
+		t.Fatalf("artifact total = %d, want 144", total)
+	}
+}
 
 const sampleReadelf = `Sections [
   Section {

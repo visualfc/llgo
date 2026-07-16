@@ -80,15 +80,17 @@ func TestParseGoLinkFlagsDoubleDash(t *testing.T) {
 }
 
 func TestParseGoLinkFlagsSWithExplicitWFalse(t *testing.T) {
-	opts, err := parseGoLinkFlags([]string{"-ldflags=-s -w=0"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !opts.options.OmitSymbolTable || opts.options.EffectiveOmitDWARF() {
-		t.Fatalf("options = %+v, want -s with enabled DWARF", opts.options)
+	for _, value := range []string{"-s -w=0", "-w=0 -s"} {
+		opts, err := parseGoLinkFlags([]string{"-ldflags=" + value})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !opts.options.OmitSymbolTable || opts.options.EffectiveOmitDWARF() {
+			t.Fatalf("%q: options = %+v, want -s with enabled DWARF", value, opts.options)
+		}
 	}
 
-	opts, err = parseGoLinkFlags([]string{"-ldflags=-s"})
+	opts, err := parseGoLinkFlags([]string{"-ldflags=-s"})
 	if err != nil {
 		t.Fatal(err)
 	}

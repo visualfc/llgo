@@ -186,6 +186,103 @@ func TestBuildLTOFlagInvalid(t *testing.T) {
 	}
 }
 
+func TestBuildPCLNFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		want      build.PCLNMode
+		specified bool
+	}{
+		{name: "default embedded", want: build.PCLNEmbedded},
+		{name: "embedded", args: []string{"-pclntab=embedded"}, want: build.PCLNEmbedded, specified: true},
+		{name: "external", args: []string{"-pclntab=external"}, want: build.PCLNExternal, specified: true},
+		{name: "none", args: []string{"-pclntab=none"}, want: build.PCLNNone, specified: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := flag.NewFlagSet(tt.name, flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddBuildFlags(fs)
+			if err := fs.Parse(tt.args); err != nil {
+				t.Fatalf("Parse(%v) unexpected error: %v", tt.args, err)
+			}
+			if PCLN.Specified != tt.specified {
+				t.Fatalf("PCLN.Specified = %v, want %v", PCLN.Specified, tt.specified)
+			}
+			if PCLN.Mode != tt.want {
+				t.Fatalf("PCLN.Mode = %v, want %v", PCLN.Mode, tt.want)
+			}
+			conf := &build.Config{}
+			if err := UpdateConfig(conf); err != nil {
+				t.Fatalf("UpdateConfig error: %v", err)
+			}
+			if conf.PCLNMode != tt.want {
+				t.Fatalf("conf.PCLNMode = %v, want %v", conf.PCLNMode, tt.want)
+			}
+			if conf.PCLNModeSet != tt.specified {
+				t.Fatalf("conf.PCLNModeSet = %v, want %v", conf.PCLNModeSet, tt.specified)
+			}
+		})
+	}
+}
+
+func TestBuildPCLNFlagInvalid(t *testing.T) {
+	tests := [][]string{
+		{"-pclntab"},
+		{"-pclntab="},
+		{"-pclntab=true"},
+		{"-pclntab=off"},
+		{"-pclntab=EXTERNAL"},
+	}
+	for _, args := range tests {
+		fs := flag.NewFlagSet("invalid-pclntab", flag.ContinueOnError)
+		fs.SetOutput(new(bytes.Buffer))
+		AddBuildFlags(fs)
+		if err := fs.Parse(args); err == nil {
+			t.Fatalf("Parse(%v) expected error", args)
+		}
+	}
+}
+
+func TestUpdateConfigPreservesPCLNModeWhenUnspecified(t *testing.T) {
+	fs := flag.NewFlagSet("pclntab-unspecified", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	if err := fs.Parse(nil); err != nil {
+		t.Fatalf("Parse(nil) unexpected error: %v", err)
+	}
+
+	conf := &build.Config{PCLNMode: build.PCLNExternal}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if conf.PCLNMode != build.PCLNExternal {
+		t.Fatalf("conf.PCLNMode = %v, want %v", conf.PCLNMode, build.PCLNExternal)
+	}
+	if conf.PCLNModeSet {
+		t.Fatal("conf.PCLNModeSet = true, want unchanged")
+	}
+}
+
+func TestPCLNFlagOverridesLegacyFuncInfo(t *testing.T) {
+	t.Setenv("LLGO_FUNCINFO", "0")
+	fs := flag.NewFlagSet("pclntab-legacy-precedence", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	if err := fs.Parse([]string{"-pclntab=embedded"}); err != nil {
+		t.Fatalf("Parse unexpected error: %v", err)
+	}
+
+	conf := &build.Config{}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if conf.PCLNMode != build.PCLNEmbedded || !conf.PCLNModeSet {
+		t.Fatalf("explicit -pclntab not preserved: mode=%v set=%v", conf.PCLNMode, conf.PCLNModeSet)
+	}
+}
+
 func TestBuildPthreadStackSizeFlag(t *testing.T) {
 	tests := []struct {
 		arg  string

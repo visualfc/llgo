@@ -82,9 +82,24 @@ func (m *moduleSize) RAM() uint64 {
 }
 
 type sizeReport struct {
-	Binary  string
-	Modules map[string]*moduleSize
-	Total   moduleSize
+	Binary    string
+	Artifacts []artifactSize
+	Modules   map[string]*moduleSize
+	Total     moduleSize
+}
+
+type artifactSize struct {
+	Kind string `json:"kind"`
+	Path string `json:"path"`
+	Size uint64 `json:"size"`
+}
+
+func (r *sizeReport) artifactTotal() uint64 {
+	var total uint64
+	for _, artifact := range r.Artifacts {
+		total += artifact.Size
+	}
+	return total
 }
 
 func (r *sizeReport) module(name string) *moduleSize {
@@ -123,8 +138,12 @@ func (r *sizeReport) add(name string, kind sectionKind, size uint64) {
 	}
 }
 
-func reportBinarySize(path, format, level string, pkgs []Package) error {
+func reportBinarySize(path, pclnPath, format, level string, pkgs []Package) error {
 	report, err := collectBinarySize(path, pkgs, level)
+	if err != nil {
+		return err
+	}
+	report.Artifacts, err = collectArtifactSizes(path, pclnPath)
 	if err != nil {
 		return err
 	}
@@ -137,6 +156,31 @@ func reportBinarySize(path, format, level string, pkgs []Package) error {
 		return fmt.Errorf("unknown size format %q (valid: text,json)", format)
 	}
 	return nil
+}
+
+func collectArtifactSizes(path, pclnPath string) ([]artifactSize, error) {
+	var sizes []artifactSize
+	for _, artifact := range []struct {
+		kind string
+		path string
+	}{
+		{kind: "executable", path: path},
+		{kind: "pclntab", path: pclnPath},
+	} {
+		if artifact.path == "" {
+			continue
+		}
+		st, err := os.Stat(artifact.path)
+		if err != nil {
+			return nil, fmt.Errorf("size report %s artifact: %w", artifact.kind, err)
+		}
+		sizes = append(sizes, artifactSize{
+			Kind: artifact.kind,
+			Path: artifact.path,
+			Size: uint64(st.Size()),
+		})
+	}
+	return sizes, nil
 }
 
 func collectBinarySize(path string, pkgs []Package, level string) (*sizeReport, error) {
@@ -463,12 +507,16 @@ func emitJSONReport(w io.Writer, report *sizeReport) error {
 		})
 	}
 	payload := struct {
-		Binary  string       `json:"binary"`
-		Modules []moduleJSON `json:"modules"`
-		Total   moduleJSON   `json:"total"`
+		Binary        string         `json:"binary"`
+		Artifacts     []artifactSize `json:"artifacts,omitempty"`
+		ArtifactTotal uint64         `json:"artifact_total,omitempty"`
+		Modules       []moduleJSON   `json:"modules"`
+		Total         moduleJSON     `json:"total"`
 	}{
-		Binary:  filepath.Clean(report.Binary),
-		Modules: jsonMods,
+		Binary:        filepath.Clean(report.Binary),
+		Artifacts:     report.Artifacts,
+		ArtifactTotal: report.artifactTotal(),
+		Modules:       jsonMods,
 		Total: moduleJSON{
 			Name:   "total",
 			Code:   report.Total.Code,
@@ -493,6 +541,15 @@ func printTextReport(w io.Writer, report *sizeReport) {
 	}
 	fmt.Fprintln(w, "------------------------------- | --------------- | ----------------")
 	fmt.Fprintf(w, "%7d %7d %7d %7d | %7d %7d | total\n", report.Total.Code, report.Total.ROData, report.Total.Data, report.Total.BSS, report.Total.Flash(), report.Total.RAM())
+	if len(report.Artifacts) != 0 {
+		fmt.Fprintln(w, "\nArtifact sizes")
+		for _, artifact := range report.Artifacts {
+			fmt.Fprintf(w, "%10d | %-10s | %s\n", artifact.Size, artifact.Kind, filepath.Clean(artifact.Path))
+		}
+		if len(report.Artifacts) > 1 {
+			fmt.Fprintf(w, "%10d | %-10s |\n", report.artifactTotal(), "total")
+		}
+	}
 }
 
 func (r *sizeReport) sortedModules() []*moduleSize {

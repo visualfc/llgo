@@ -604,6 +604,65 @@ func TestFuncInfoTableEmptyEncodedInitializers(t *testing.T) {
 	}
 }
 
+func TestExternalFuncInfoTableKeepsPayloadOutOfIR(t *testing.T) {
+	for _, target := range []struct {
+		goos, goarch  string
+		identitySect  string
+		entryBoundary string
+	}{
+		{goos: "linux", goarch: "amd64", identitySect: "llgo_pclntab_id", entryBoundary: "__start_llgo_funcinfo_entry"},
+		{goos: "darwin", goarch: "arm64", identitySect: "__llgo_pid", entryBoundary: "section$start$__DATA$__llgo_fie"},
+	} {
+		t.Run(target.goos+"/"+target.goarch, func(t *testing.T) {
+			prog := llssa.NewProgram(&llssa.Target{GOOS: target.goos, GOARCH: target.goarch})
+			prog.EnableFuncInfoMetadata(true)
+			prog.EnableFuncInfoSites(true)
+			src := prog.NewPackage("example.com/p", "example.com/p")
+			src.EmitFuncInfo("example.com/p.live", "example.com/p.Live", "external.go", 17, 3)
+			src.EmitPCLineInfo(0x1234, "example.com/p.live", "external.go", 19, 5)
+			fn := src.NewFunc("example.com/p.live", llssa.NoArgsNoRet, llssa.InGo)
+			fn.MakeBody(1).Return()
+			ctx := &context{
+				prog: prog,
+				buildConf: &Config{
+					BuildMode: BuildModeExe,
+					Goos:      target.goos,
+					Goarch:    target.goarch,
+					PCLNMode:  PCLNExternal,
+				},
+			}
+			records := collectFuncInfo([]Package{{LPkg: src}})
+			pcLines := collectPCLineInfo([]Package{{LPkg: src}})
+			emitFuncInfoTable(ctx, src, records, pcLines, nil)
+			if ctx.pclnExternal == nil || len(ctx.pclnExternal.Table.Records) != 1 || len(ctx.pclnExternal.Table.PCLines) != 1 || len(ctx.pclnExternal.SymbolIndex) != 1 {
+				t.Fatalf("external payload = %+v", ctx.pclnExternal)
+			}
+			ir := src.String()
+			for _, want := range []string{
+				"@__llgo_funcinfo_table = global ptr null",
+				"@__llgo_funcinfo_count = global i64 0",
+				"@__llgo_pclntab_identity = global [32 x i8] zeroinitializer",
+				target.identitySect,
+				target.entryBoundary,
+			} {
+				if !strings.Contains(ir, want) {
+					t.Fatalf("external table IR missing %q:\n%s", want, ir)
+				}
+			}
+			for _, unwanted := range []string{
+				`"__llgo_funcinfo_table$data"`,
+				`"__llgo_pcline_table$data"`,
+				`"__llgo_funcinfo_strings$data"`,
+				`external.go\00`,
+			} {
+				if strings.Contains(ir, unwanted) {
+					t.Fatalf("external table IR contains payload %q:\n%s", unwanted, ir)
+				}
+			}
+		})
+	}
+}
+
 // Targets without the frame-pointer attribute must declare the chain
 // broken so the runtime never attempts a physical walk there.
 func TestFuncInfoTableFPChainOff(t *testing.T) {

@@ -365,6 +365,59 @@ func TestBuildOutFmtsNativeTarget(t *testing.T) {
 	}
 }
 
+func TestBuildOutFmtsPCLN(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want string
+	}{
+		{
+			name: "embedded",
+			conf: &Config{Mode: ModeBuild, BuildMode: BuildModeExe, OutFile: "app", PCLNMode: PCLNEmbedded},
+		},
+		{
+			name: "none",
+			conf: &Config{Mode: ModeBuild, BuildMode: BuildModeExe, OutFile: "app", PCLNMode: PCLNNone},
+		},
+		{
+			name: "external",
+			conf: &Config{Mode: ModeBuild, BuildMode: BuildModeExe, OutFile: "app", PCLNMode: PCLNExternal},
+			want: "app.pclntab",
+		},
+		{
+			name: "external suffix follows executable extension",
+			conf: &Config{Mode: ModeBuild, BuildMode: BuildModeExe, OutFile: "dist/app.exe", AppExt: ".exe", PCLNMode: PCLNExternal},
+			want: "dist/app.exe.pclntab",
+		},
+		{
+			name: "external install",
+			conf: &Config{Mode: ModeInstall, BuildMode: BuildModeExe, BinPath: "/go/bin", PCLNMode: PCLNExternal},
+			want: "/go/bin/hello.pclntab",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := buildOutFmts("hello", tt.conf, false, &crosscompile.Export{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.PCLN != tt.want {
+				t.Fatalf("buildOutFmts().PCLN = %q, want %q", got.PCLN, tt.want)
+			}
+		})
+	}
+}
+
+func TestOutFmtDetailsToEnvMapIncludesPCLN(t *testing.T) {
+	details := &OutFmtDetails{Out: "app", PCLN: "app.pclntab"}
+	if got := details.ToEnvMap()["pclntab"]; got != details.PCLN {
+		t.Fatalf("ToEnvMap()[pclntab] = %q, want %q", got, details.PCLN)
+	}
+	if _, ok := (&OutFmtDetails{Out: "app"}).ToEnvMap()["pclntab"]; ok {
+		t.Fatal("ToEnvMap() contains pclntab for an empty PCLN output")
+	}
+}
+
 func TestBuildOutFmtsBuildModes(t *testing.T) {
 	tests := []struct {
 		name        string

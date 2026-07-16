@@ -208,6 +208,7 @@ func AddBuildFlags(fs *flag.FlagSet) {
 	AddOptLevelFlags(fs)
 	AddLTOFlag(fs)
 	AddGlobalDCEFlag(fs)
+	addPCLNFlag(fs)
 	fs.StringVar(&Tags, "tags", "", "Build tags")
 	fs.StringVar(&BuildEnv, "buildenv", "", "Build environment")
 	fs.Var(&PthreadStackSize, "pthread-stack-size", "Stack size for pthread-backed goroutines, e.g. 32MB or 1024KB (0 uses the platform default)")
@@ -342,6 +343,10 @@ func UpdateConfig(conf *build.Config) error {
 	conf.PthreadStackSize = int64(PthreadStackSize)
 	if LTO.Specified {
 		conf.LTO = LTO.Mode
+	}
+	if PCLN.Specified {
+		conf.PCLNMode = PCLN.Mode
+		conf.PCLNModeSet = true
 	}
 	if LTOPluginPath != "" {
 		if conf.LTO != lto.Full {

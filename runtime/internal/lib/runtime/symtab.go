@@ -941,11 +941,19 @@ func initRuntimeFuncPCFramesOnce() {
 	if adoptPrebuiltFuncPCTable() {
 		return
 	}
-	frames := make([]runtimeFuncPCFrame, 0, runtimeFuncInfoCount)
+	// Keep potentially large materialization loops free of append and checked
+	// slice indexing. LLGo currently keeps their stack temporaries alive until
+	// function return, which can exhaust a worker thread's fixed-size stack.
+	var frames []runtimeFuncPCFrame
 	entries := make([]uintptr, runtimeFuncInfoCount+1)
 	frames, usedEntrySites := appendRuntimeFuncInfoEntryFrames(frames, entries)
 	symbolBuf := []byte(nil)
 	if !usedEntrySites {
+		frames = make([]runtimeFuncPCFrame, runtimeFuncInfoCount)
+		frameBase := unsafe.Pointer(&frames[0])
+		frameSize := unsafe.Sizeof(frames[0])
+		entryBase := unsafe.Pointer(&entries[0])
+		nframes := 0
 		symbolBuf = make([]byte, 0, maxFuncInfoSymbolLen()+len(runtimeClosureStubPrefix)+1)
 		for i := uintptr(0); i < runtimeFuncInfoCount; i++ {
 			fn := funcInfoAt(i)
@@ -954,14 +962,17 @@ func initRuntimeFuncPCFramesOnce() {
 				continue
 			}
 			index := uint32(i + 1)
-			frames = append(frames, runtimeFuncPCFrame{
+			*(*runtimeFuncPCFrame)(unsafe.Add(frameBase, uintptr(nframes)*frameSize)) = runtimeFuncPCFrame{
 				entry:     pc,
 				funcIndex: index,
-			})
-			if entries[index] == 0 || pc < entries[index] {
-				entries[index] = pc
+			}
+			nframes++
+			entry := (*uintptr)(unsafe.Add(entryBase, uintptr(index)*unsafe.Sizeof(uintptr(0))))
+			if *entry == 0 || pc < *entry {
+				*entry = pc
 			}
 		}
+		frames = frames[:nframes]
 	}
 	frames, usedStubSites := appendRuntimeFuncInfoStubSiteFrames(frames)
 	// Closure stubs are an ABI adapter and may go away in a future closure
@@ -974,6 +985,13 @@ func initRuntimeFuncPCFramesOnce() {
 		if symbolBuf == nil {
 			symbolBuf = make([]byte, 0, maxFuncInfoSymbolLen()+len(runtimeClosureStubPrefix)+1)
 		}
+		base := len(frames)
+		grown := make([]runtimeFuncPCFrame, base+int(runtimeFuncInfoStubCount))
+		copy(grown, frames)
+		frames = grown
+		frameBase := unsafe.Pointer(&frames[0])
+		frameSize := unsafe.Sizeof(frames[0])
+		nframes := base
 		for i := uintptr(0); i < runtimeFuncInfoStubCount; i++ {
 			index := funcInfoStubIndexAt(i)
 			if index == 0 || uintptr(index) > runtimeFuncInfoCount {
@@ -984,11 +1002,13 @@ func initRuntimeFuncPCFramesOnce() {
 			if pc == 0 {
 				continue
 			}
-			frames = append(frames, runtimeFuncPCFrame{
+			*(*runtimeFuncPCFrame)(unsafe.Add(frameBase, uintptr(nframes)*frameSize)) = runtimeFuncPCFrame{
 				entry:     pc,
 				funcIndex: index,
-			})
+			}
+			nframes++
 		}
+		frames = frames[:nframes]
 	}
 	sortRuntimeFuncPCFrames(frames)
 	frames = uniqueRuntimeFuncPCFrames(frames)
@@ -1013,6 +1033,17 @@ func appendRuntimeFuncInfoEntryFrames(frames []runtimeFuncPCFrame, entries []uin
 	if nsite > runtimeFuncInfoCount*16 || nsite > 1<<20 {
 		return frames, false
 	}
+	if nsite == 0 {
+		return frames, false
+	}
+	base := len(frames)
+	grown := make([]runtimeFuncPCFrame, base+int(nsite))
+	copy(grown, frames)
+	frames = grown
+	frameBase := unsafe.Pointer(&frames[0])
+	frameSize := unsafe.Sizeof(frames[0])
+	entryBase := unsafe.Pointer(&entries[0])
+	nframes := base
 	used := false
 	for i := uintptr(0); i < nsite; i++ {
 		site := (*runtimeFuncInfoEntryRecord)(unsafe.Pointer(start + i*size))
@@ -1023,16 +1054,18 @@ func appendRuntimeFuncInfoEntryFrames(frames []runtimeFuncPCFrame, entries []uin
 		if funcIndex == 0 || uintptr(funcIndex) > runtimeFuncInfoCount {
 			continue
 		}
-		frames = append(frames, runtimeFuncPCFrame{
+		*(*runtimeFuncPCFrame)(unsafe.Add(frameBase, uintptr(nframes)*frameSize)) = runtimeFuncPCFrame{
 			entry:     site.pc,
 			funcIndex: funcIndex,
-		})
-		if entries[funcIndex] == 0 || site.pc < entries[funcIndex] {
-			entries[funcIndex] = site.pc
+		}
+		nframes++
+		entry := (*uintptr)(unsafe.Add(entryBase, uintptr(funcIndex)*unsafe.Sizeof(uintptr(0))))
+		if *entry == 0 || site.pc < *entry {
+			*entry = site.pc
 		}
 		used = true
 	}
-	return frames, used
+	return frames[:nframes], used
 }
 
 func appendRuntimeFuncInfoStubSiteFrames(frames []runtimeFuncPCFrame) ([]runtimeFuncPCFrame, bool) {
@@ -1049,6 +1082,16 @@ func appendRuntimeFuncInfoStubSiteFrames(frames []runtimeFuncPCFrame) ([]runtime
 	if nsite > runtimeFuncInfoCount*16 || nsite > 1<<20 {
 		return frames, false
 	}
+	if nsite == 0 {
+		return frames, false
+	}
+	base := len(frames)
+	grown := make([]runtimeFuncPCFrame, base+int(nsite))
+	copy(grown, frames)
+	frames = grown
+	frameBase := unsafe.Pointer(&frames[0])
+	frameSize := unsafe.Sizeof(frames[0])
+	nframes := base
 	used := false
 	for i := uintptr(0); i < nsite; i++ {
 		site := (*runtimeFuncInfoStubSiteRecord)(unsafe.Pointer(start + i*size))
@@ -1059,13 +1102,14 @@ func appendRuntimeFuncInfoStubSiteFrames(frames []runtimeFuncPCFrame) ([]runtime
 		if funcIndex == 0 || uintptr(funcIndex) > runtimeFuncInfoCount {
 			continue
 		}
-		frames = append(frames, runtimeFuncPCFrame{
+		*(*runtimeFuncPCFrame)(unsafe.Add(frameBase, uintptr(nframes)*frameSize)) = runtimeFuncPCFrame{
 			entry:     site.pc,
 			funcIndex: funcIndex,
-		})
+		}
+		nframes++
 		used = true
 	}
-	return frames, used
+	return frames[:nframes], used
 }
 
 func funcInfoIndexForSymbolID(symbolID uint64) uint32 {
@@ -1154,15 +1198,21 @@ func uniqueRuntimeFuncPCFrames(frames []runtimeFuncPCFrame) []runtimeFuncPCFrame
 	if len(frames) < 2 {
 		return frames
 	}
-	out := frames[:1]
-	for i := 1; i < len(frames); i++ {
-		if frames[i].entry == out[len(out)-1].entry {
-			out[len(out)-1] = frames[i]
+	base := unsafe.Pointer(&frames[0])
+	size := unsafe.Sizeof(frames[0])
+	count := len(frames)
+	n := 1
+	for i := 1; i < count; i++ {
+		current := (*runtimeFuncPCFrame)(unsafe.Add(base, uintptr(i)*size))
+		previous := (*runtimeFuncPCFrame)(unsafe.Add(base, uintptr(n-1)*size))
+		if current.entry == previous.entry {
+			*previous = *current
 			continue
 		}
-		out = append(out, frames[i])
+		*(*runtimeFuncPCFrame)(unsafe.Add(base, uintptr(n)*size)) = *current
+		n++
 	}
-	return out
+	return frames[:n]
 }
 
 // buildRuntimeFuncPCIndex is the runtime counterpart of Go's linker-built
@@ -1176,35 +1226,43 @@ func buildRuntimeFuncPCIndex(frames []runtimeFuncPCFrame) runtimePCFindIndex {
 	if uintptr(len(frames)) > ^uintptr(0)>>1 {
 		return runtimePCFindIndex{}
 	}
-	base := frames[0].entry &^ (runtimePCFindBucketSize - 1)
-	last := frames[len(frames)-1].entry
+	frameCount := len(frames)
+	frameBase := &frames[0]
+	frameSize := unsafe.Sizeof(*frameBase)
+	base := frameBase.entry &^ (runtimePCFindBucketSize - 1)
+	last := (*runtimeFuncPCFrame)(unsafe.Add(unsafe.Pointer(frameBase), uintptr(frameCount-1)*frameSize)).entry
 	if last < base {
 		return runtimePCFindIndex{}
 	}
 	nbuckets := (last-base)/runtimePCFindBucketSize + 1
-	if nbuckets > 1<<20 && nbuckets > uintptr(len(frames))*64 {
+	if nbuckets > 1<<20 && nbuckets > uintptr(frameCount)*64 {
 		return runtimePCFindIndex{}
 	}
 	buckets := make([]runtimePCFindBucket, nbuckets)
+	bucketCount := len(buckets)
+	bucketBase := unsafe.Pointer(&buckets[0])
+	bucketSize := unsafe.Sizeof(buckets[0])
 	subSize := runtimePCFindBucketSize / runtimePCFindSubbucket
-	for b := range buckets {
+	for b := 0; b < bucketCount; b++ {
+		bucket := (*runtimePCFindBucket)(unsafe.Add(bucketBase, uintptr(b)*bucketSize))
 		bucketStart := base + uintptr(b)*runtimePCFindBucketSize
-		baseIdx := runtimeFuncPCFrameIndexBinary(frames, bucketStart)
+		baseIdx := runtimeFuncPCFrameIndexUnsafe(frameBase, frameCount, bucketStart)
 		if baseIdx < 0 {
 			baseIdx = 0
 		}
-		if baseIdx > len(frames)-1 {
-			baseIdx = len(frames) - 1
+		if baseIdx > frameCount-1 {
+			baseIdx = frameCount - 1
 		}
-		buckets[b].idx = uint32(baseIdx)
+		bucket.idx = uint32(baseIdx)
+		subbucketBase := unsafe.Pointer(&bucket.subbuckets[0])
 		for s := 0; s < runtimePCFindSubbucket; s++ {
 			pc := bucketStart + uintptr(s)*subSize
-			subIdx := runtimeFuncPCFrameIndexBinary(frames, pc)
+			subIdx := runtimeFuncPCFrameIndexUnsafe(frameBase, frameCount, pc)
 			if subIdx < 0 {
 				subIdx = 0
 			}
-			if subIdx > len(frames)-1 {
-				subIdx = len(frames) - 1
+			if subIdx > frameCount-1 {
+				subIdx = frameCount - 1
 			}
 			// delta counts deduplicated PCs inside one bucket, so it is
 			// bounded by the bucket size and always fits in uint16.
@@ -1212,7 +1270,7 @@ func buildRuntimeFuncPCIndex(frames []runtimeFuncPCFrame) runtimePCFindIndex {
 			if delta < 0 || delta > 0xffff {
 				return runtimePCFindIndex{}
 			}
-			buckets[b].subbuckets[s] = uint16(delta)
+			*(*uint16)(unsafe.Add(subbucketBase, uintptr(s)*unsafe.Sizeof(uint16(0)))) = uint16(delta)
 		}
 	}
 	return runtimePCFindIndex{base: base, buckets: buckets}
@@ -1297,6 +1355,24 @@ func runtimeFuncPCFrameIndexBinary(frames []runtimeFuncPCFrame, pc uintptr) int 
 		return -1
 	}
 	return idx
+}
+
+// runtimeFuncPCFrameIndexUnsafe is used while building an index. The caller
+// validates base and n once so LLGo does not emit a bounds-check stack
+// temporary for every bucket lookup.
+func runtimeFuncPCFrameIndexUnsafe(base *runtimeFuncPCFrame, n int, pc uintptr) int {
+	lo, hi := 0, n
+	size := unsafe.Sizeof(*base)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		frame := (*runtimeFuncPCFrame)(unsafe.Add(unsafe.Pointer(base), uintptr(mid)*size))
+		if frame.entry > pc {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	return lo - 1
 }
 
 // prebuiltFrameIndex is runtimeFuncPCFrameIndex over the zero-copy ftab:
@@ -1657,7 +1733,10 @@ func initRuntimePCLineFramesOnce() {
 	if nsite > runtimePCLineCount*1024 || nsite > 1<<22 {
 		return
 	}
-	frames := make([]runtimePCLineFrame, 0, nsite)
+	frames := make([]runtimePCLineFrame, nsite)
+	frameBase := unsafe.Pointer(&frames[0])
+	frameSize := unsafe.Sizeof(frames[0])
+	nframes := 0
 	symbolBuf := make([]byte, 0, maxFuncInfoSymbolLen()+1)
 	// Sites vastly outnumber distinct functions and files, so materialize the
 	// per-function strings and entry PCs once and the packed file strings once
@@ -1670,6 +1749,8 @@ func initRuntimePCLineFramesOnce() {
 		resolved bool
 	}
 	funcCache := make([]pcLineFuncInfo, runtimeFuncInfoCount+1)
+	funcCacheBase := unsafe.Pointer(&funcCache[0])
+	funcCacheSize := unsafe.Sizeof(funcCache[0])
 	fileCache := make(map[uint32]string)
 	for i := uintptr(0); i < nsite; i++ {
 		site := (*runtimePCSiteRecord)(unsafe.Pointer(start + i*size))
@@ -1682,7 +1763,7 @@ func initRuntimePCLineFramesOnce() {
 		}
 		pc := site.pc
 		fn := funcInfoAt(uintptr(rec.funcIndex) - 1)
-		fc := &funcCache[rec.funcIndex]
+		fc := (*pcLineFuncInfo)(unsafe.Add(funcCacheBase, uintptr(rec.funcIndex)*funcCacheSize))
 		if !fc.resolved {
 			fc.entry = funcEntryForIndex(rec.funcIndex)
 			if fc.entry == 0 {
@@ -1716,15 +1797,17 @@ func initRuntimePCLineFramesOnce() {
 		if line == 0 {
 			line = fc.line
 		}
-		frames = append(frames, runtimePCLineFrame{
+		*(*runtimePCLineFrame)(unsafe.Add(frameBase, uintptr(nframes)*frameSize)) = runtimePCLineFrame{
 			pc:        pc,
 			entry:     entry,
 			function:  fc.function,
 			file:      file,
 			line:      line,
 			startLine: fc.line,
-		})
+		}
+		nframes++
 	}
+	frames = frames[:nframes]
 	sortRuntimePCLineFrames(frames)
 	frames = uniqueRuntimePCLineFrames(frames)
 	runtimePCLineFrames = frames
@@ -1819,15 +1902,21 @@ func uniqueRuntimePCLineFrames(frames []runtimePCLineFrame) []runtimePCLineFrame
 	if len(frames) < 2 {
 		return frames
 	}
-	out := frames[:1]
-	for i := 1; i < len(frames); i++ {
-		if frames[i].pc == out[len(out)-1].pc {
-			out[len(out)-1] = frames[i]
+	base := unsafe.Pointer(&frames[0])
+	size := unsafe.Sizeof(frames[0])
+	count := len(frames)
+	n := 1
+	for i := 1; i < count; i++ {
+		current := (*runtimePCLineFrame)(unsafe.Add(base, uintptr(i)*size))
+		previous := (*runtimePCLineFrame)(unsafe.Add(base, uintptr(n-1)*size))
+		if current.pc == previous.pc {
+			*previous = *current
 			continue
 		}
-		out = append(out, frames[i])
+		*(*runtimePCLineFrame)(unsafe.Add(base, uintptr(n)*size)) = *current
+		n++
 	}
-	return out
+	return frames[:n]
 }
 
 // buildRuntimePCLineIndex reuses the same Go-style bucket geometry for
@@ -1838,35 +1927,43 @@ func buildRuntimePCLineIndex(frames []runtimePCLineFrame) runtimePCFindIndex {
 	if len(frames) == 0 {
 		return runtimePCFindIndex{}
 	}
-	base := frames[0].pc &^ (runtimePCFindBucketSize - 1)
-	last := frames[len(frames)-1].pc
+	frameCount := len(frames)
+	frameBase := &frames[0]
+	frameSize := unsafe.Sizeof(*frameBase)
+	base := frameBase.pc &^ (runtimePCFindBucketSize - 1)
+	last := (*runtimePCLineFrame)(unsafe.Add(unsafe.Pointer(frameBase), uintptr(frameCount-1)*frameSize)).pc
 	if last < base {
 		return runtimePCFindIndex{}
 	}
 	nbuckets := (last-base)/runtimePCFindBucketSize + 1
-	if nbuckets > 1<<20 && nbuckets > uintptr(len(frames))*64 {
+	if nbuckets > 1<<20 && nbuckets > uintptr(frameCount)*64 {
 		return runtimePCFindIndex{}
 	}
 	buckets := make([]runtimePCFindBucket, nbuckets)
+	bucketCount := len(buckets)
+	bucketBase := unsafe.Pointer(&buckets[0])
+	bucketSize := unsafe.Sizeof(buckets[0])
 	subSize := runtimePCFindBucketSize / runtimePCFindSubbucket
-	for b := range buckets {
+	for b := 0; b < bucketCount; b++ {
+		bucket := (*runtimePCFindBucket)(unsafe.Add(bucketBase, uintptr(b)*bucketSize))
 		bucketStart := base + uintptr(b)*runtimePCFindBucketSize
-		baseIdx := runtimePCLineFrameIndexBinary(frames, bucketStart, false)
+		baseIdx := runtimePCLineFrameIndexUnsafe(frameBase, frameCount, bucketStart)
 		if baseIdx < 0 {
 			baseIdx = 0
 		}
-		if baseIdx > len(frames)-1 {
-			baseIdx = len(frames) - 1
+		if baseIdx > frameCount-1 {
+			baseIdx = frameCount - 1
 		}
-		buckets[b].idx = uint32(baseIdx)
+		bucket.idx = uint32(baseIdx)
+		subbucketBase := unsafe.Pointer(&bucket.subbuckets[0])
 		for s := 0; s < runtimePCFindSubbucket; s++ {
 			pc := bucketStart + uintptr(s)*subSize
-			subIdx := runtimePCLineFrameIndexBinary(frames, pc, false)
+			subIdx := runtimePCLineFrameIndexUnsafe(frameBase, frameCount, pc)
 			if subIdx < 0 {
 				subIdx = 0
 			}
-			if subIdx > len(frames)-1 {
-				subIdx = len(frames) - 1
+			if subIdx > frameCount-1 {
+				subIdx = frameCount - 1
 			}
 			// delta counts deduplicated PCs inside one bucket, so it is
 			// bounded by the bucket size and always fits in uint16.
@@ -1874,7 +1971,7 @@ func buildRuntimePCLineIndex(frames []runtimePCLineFrame) runtimePCFindIndex {
 			if delta < 0 || delta > 0xffff {
 				return runtimePCFindIndex{}
 			}
-			buckets[b].subbuckets[s] = uint16(delta)
+			*(*uint16)(unsafe.Add(subbucketBase, uintptr(s)*unsafe.Sizeof(uint16(0)))) = uint16(delta)
 		}
 	}
 	return runtimePCFindIndex{base: base, buckets: buckets}
@@ -1899,6 +1996,23 @@ func runtimePCLineFrameIndex(pc uintptr, exact bool) int {
 
 func runtimePCLineFrameIndexBinary(frames []runtimePCLineFrame, pc uintptr, exact bool) int {
 	return runtimePCLineFrameIndexInRange(frames, pc, exact, 0, len(frames))
+}
+
+// runtimePCLineFrameIndexUnsafe is the unchecked build-time counterpart of
+// runtimePCLineFrameIndexBinary. base points at n validated frames.
+func runtimePCLineFrameIndexUnsafe(base *runtimePCLineFrame, n int, pc uintptr) int {
+	lo, hi := 0, n
+	size := unsafe.Sizeof(*base)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		frame := (*runtimePCLineFrame)(unsafe.Add(unsafe.Pointer(base), uintptr(mid)*size))
+		if frame.pc > pc {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	return lo - 1
 }
 
 func runtimePCLineFrameIndexInRange(frames []runtimePCLineFrame, pc uintptr, exact bool, lo, hi int) int {
@@ -2126,6 +2240,7 @@ func frameSymbolUncached(pc uintptr) pcSymbol {
 }
 
 func (ci *Frames) Next() (frame Frame, more bool) {
+	ensureRuntimePCLN()
 	for len(ci.frames) < 2 {
 		// Find the next frame.
 		// We need to look for 2 frames so we know what
@@ -2234,6 +2349,7 @@ func (f *Func) Entry() uintptr {
 }
 
 func (f *Func) FileLine(pc uintptr) (file string, line int) {
+	ensureRuntimePCLN()
 	if f != nil && f.pc == pc && (f.file != "" || f.line != 0) {
 		return f.file, f.line
 	}
