@@ -133,11 +133,8 @@ populate_linux_sysroot() {
 		debian:bullseye \
 		/populate_linux_sysroot.sh
 }
-populate_linux_sysroot amd64 "${LINUX_AMD64_PREFIX}" &
-PID1=$!
-populate_linux_sysroot arm64 "${LINUX_ARM64_PREFIX}" &
-PID2=$!
-
-# Wait for both background processes to complete
-wait $PID1 || exit $?
-wait $PID2 || exit $?
+# Docker's classic image store keeps only one platform for a tag. Pulling the
+# same tag for two platforms concurrently can replace the image while the other
+# container is starting. Populate the sysroots serially to keep the tag stable.
+populate_linux_sysroot amd64 "${LINUX_AMD64_PREFIX}"
+populate_linux_sysroot arm64 "${LINUX_ARM64_PREFIX}"

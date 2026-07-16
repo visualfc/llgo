@@ -30,10 +30,6 @@ jobs:
         include:
           - os: ubuntu-latest
             llvm: 19
-            go: "1.21.13"
-            lane: compatibility
-          - os: ubuntu-latest
-            llvm: 19
             go: "1.24.2"
             lane: compatibility
           - os: ubuntu-latest
@@ -271,10 +267,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            llvm: 19
-            go: "1.21.13"
-            lane: compatibility
           - os: ubuntu-latest
             llvm: 19
             go: "1.24.2"
