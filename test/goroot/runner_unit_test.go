@@ -644,6 +644,74 @@ func TestCheckExpectedErrorsKeepsUnrelatedDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCheckExpectedErrorsDiscardsExactParserPair(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "case.go")
+	src := "package p\nfunc f() {\n\tif a := 10 { // ERROR \"cannot use a := 10 as value\"\n\t}\n}\n"
+	if err := os.WriteFile(file, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	primary := file + ":3: syntax error: cannot use a := 10 as value"
+	secondary := file + ":3: expected boolean expression, found assignment (missing parentheses around composite literal?)"
+	if err := checkExpectedErrors(primary+"\n"+secondary, file, "case.go"); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkExpectedErrors(primary+"\n"+secondary+"\n"+file+":4: undefined: extra", file, "case.go"); err == nil || !strings.Contains(err.Error(), "undefined: extra") {
+		t.Fatalf("err=%v, want unrelated diagnostic to remain", err)
+	}
+	for _, nearMatch := range []string{
+		"syntax error: cannot use a := 10 as value.",
+		"syntax error: cannot use d := 10 as value",
+	} {
+		if got := parserRecoverySecondaries(nearMatch); got != nil {
+			t.Fatalf("near-match %q activated parser recovery: %v", nearMatch, got)
+		}
+	}
+}
+
+func TestCheckExpectedErrorsScopesImportAlias(t *testing.T) {
+	tests := []struct {
+		name, src string
+		wantOK    bool
+	}{
+		{"parenthesized import", "package p\nimport (\n\t\"io\", // ERROR \"unexpected comma\"\n)\n", true},
+		{"outside import", "package p\n\nvar _ = 0 // ERROR \"unexpected comma\"\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "case.go")
+			if err := os.WriteFile(file, []byte(tt.src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			err := checkExpectedErrors(file+":3: expected ';', found ','", file, "case.go")
+			if tt.wantOK && err != nil || !tt.wantOK && (err == nil || !strings.Contains(err.Error(), "no match")) {
+				t.Fatalf("err=%v, wantOK=%v", err, tt.wantOK)
+			}
+		})
+	}
+}
+
+func TestDiscardPairedParserDiagnosticsIsExactMultiset(t *testing.T) {
+	dir := t.TempDir()
+	fileA := filepath.Join(dir, "a", "case.go")
+	fileB := filepath.Join(dir, "b", "case.go")
+	resolver := newDiagnosticPathResolver([]diagnosticSource{
+		{full: fileA, short: "a.go"}, {full: fileB, short: "b.go"},
+	})
+	secondary := "expected boolean expression, found assignment (missing parentheses around composite literal?)"
+	exact := fileA + ":2: " + secondary
+	wrongLine := fileA + ":3: " + secondary
+	wrongFile := fileB + ":2: " + secondary
+	similar := exact + " extra"
+	pairs := []parserRecoveryPair{{
+		file: canonicalDiagnosticPath(fileA), line: 2, secondaries: []string{secondary},
+	}}
+	got := discardPairedParserDiagnostics([]string{exact, exact, wrongLine, wrongFile, similar}, resolver, pairs)
+	want := []string{exact, wrongLine, wrongFile, similar}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("discardPairedParserDiagnostics()=%v, want %v", got, want)
+	}
+}
+
 func TestPreferSpecificDiagnostics(t *testing.T) {
 	got := preferSpecificDiagnostics([]string{
 		"case.go:18:16: requires go1.22 or later (file declares go1.21)",
