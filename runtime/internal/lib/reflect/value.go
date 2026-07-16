@@ -2985,7 +2985,7 @@ func methodReceiver(op string, v Value, methodIndex int) (rcvrtype *abi.Type, t 
 			panic("reflect: " + op + " of method on nil interface value")
 		}
 		rcvrtype = iface.itab.typ
-		fn = unsafe.Pointer(iface.itab.fun[i])
+		fn = unsafe.Pointer(unsafe.Slice(&iface.itab.fun[0], i+1)[i])
 		t = (*funcType)(unsafe.Pointer(m.Typ_))
 	} else {
 		rcvrtype = v.typ()
