@@ -333,7 +333,9 @@ func runLLGoProbe(t *testing.T, dir string) (string, error) {
 	t.Helper()
 	repoRoot := findStringConversionRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
-	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", filepath.Join(dir, "main.go"))
+	// Keep the precise caller acceptance baseline on the established PCLN
+	// path until #2115 makes Darwin DWARF and statement PC anchors coexist.
+	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", "-ldflags=-w", filepath.Join(dir, "main.go"))
 	cmd.Dir = repoRoot
 	out, err := cmd.CombinedOutput()
 	return string(out), err

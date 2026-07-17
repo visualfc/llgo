@@ -207,7 +207,9 @@ func TestRuntimeStatementLineInfo(t *testing.T) {
 
 	repoRoot := findStringConversionRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
-	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", file)
+	// See #2115: precise Darwin statement PCs currently require the
+	// established non-DWARF PCLN path.
+	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", "-ldflags=-w", file)
 	cmd.Dir = repoRoot
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("llgo statement line probe failed: %v\n%s", err, out)
