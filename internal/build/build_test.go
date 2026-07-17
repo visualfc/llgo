@@ -260,8 +260,6 @@ func TestLinkOptionsOmitDWARFPreservesPclntab(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skip("initial -s/-w backend coverage is limited to native Mach-O and ELF")
 	}
-	t.Setenv(llgoDebug, "")
-	t.Setenv(llgoDbgSyms, "")
 	t.Setenv(llgoFuncInfo, "1")
 
 	tests := []struct {
@@ -299,9 +297,6 @@ func TestLinkOptionsControlELFDWARF(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("ELF DWARF integration test")
 	}
-	t.Setenv(llgoDebug, "")
-	t.Setenv(llgoDbgSyms, "1")
-
 	tests := []struct {
 		name      string
 		options   LinkOptions
@@ -329,9 +324,6 @@ func TestLinkOptionsControlDarwinDebugSymbols(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("Mach-O debug-symbol integration test")
 	}
-	t.Setenv(llgoDebug, "")
-	t.Setenv(llgoDbgSyms, "1")
-
 	tests := []struct {
 		name      string
 		options   LinkOptions

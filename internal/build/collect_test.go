@@ -133,7 +133,7 @@ func TestCollectFingerprintDeterminism(t *testing.T) {
 	}
 }
 
-func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
+func TestCollectFingerprintIncludesEmitDWARF(t *testing.T) {
 	td := t.TempDir()
 	goFile := filepath.Join(td, "main.go")
 	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
@@ -168,12 +168,19 @@ func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
 	if withDWARF.Fingerprint == withoutDWARF.Fingerprint {
 		t.Fatal("-w did not change the package fingerprint")
 	}
-	data, err := decodeManifest(withoutDWARF.Manifest)
+	data, err := decodeManifest(withDWARF.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.Common == nil || !data.Common.OmitDWARF {
-		t.Fatalf("manifest does not contain OMIT_DWARF=true:\n%s", withoutDWARF.Manifest)
+	if data.Common == nil || !data.Common.EmitDWARF {
+		t.Fatalf("manifest does not contain EMIT_DWARF=true:\n%s", withDWARF.Manifest)
+	}
+	withoutData, err := decodeManifest(withoutDWARF.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withoutData.Common != nil && withoutData.Common.EmitDWARF {
+		t.Fatalf("-w manifest unexpectedly contains EMIT_DWARF=true:\n%s", withoutDWARF.Manifest)
 	}
 
 	targetWithoutDWARF := newPkg()
@@ -187,8 +194,8 @@ func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if targetData.Common == nil || !targetData.Common.OmitDWARF {
-		t.Fatalf("target manifest does not contain OMIT_DWARF=true:\n%s", targetWithoutDWARF.Manifest)
+	if targetData.Common != nil && targetData.Common.EmitDWARF {
+		t.Fatalf("always-omit target manifest unexpectedly contains EMIT_DWARF=true:\n%s", targetWithoutDWARF.Manifest)
 	}
 }
 

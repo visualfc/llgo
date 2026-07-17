@@ -75,6 +75,30 @@ func TestEffectiveOmitDWARF(t *testing.T) {
 	}
 }
 
+func TestShouldEmitDebugInfo(t *testing.T) {
+	tests := []struct {
+		name   string
+		conf   Config
+		target crosscompile.Export
+		want   bool
+	}{
+		{name: "linked default", conf: Config{Mode: ModeBuild}, want: true},
+		{name: "linked w", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFOmit}}},
+		{name: "linked s", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{OmitSymbolTable: true}}},
+		{name: "linked s w false", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}}, want: true},
+		{name: "generation default", conf: Config{Mode: ModeGen}},
+		{name: "generation requested", conf: Config{Mode: ModeGen, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, want: true},
+		{name: "target always omits", conf: Config{Mode: ModeBuild}, target: alwaysOmitDebugInfo()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldEmitDebugInfo(&tt.conf, &tt.target); got != tt.want {
+				t.Fatalf("shouldEmitDebugInfo() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateLinkOptions(t *testing.T) {
 	w := LinkOptions{DWARF: DWARFOmit}
 	wFalse := LinkOptions{DWARF: DWARFPreserve}

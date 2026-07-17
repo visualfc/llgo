@@ -73,8 +73,19 @@ func effectiveOmitDWARF(conf *Config, target *crosscompile.Export) bool {
 	return conf.LinkOptions.EffectiveOmitDWARF() || target.DebugInfo.AlwaysOmit
 }
 
+// shouldEmitDebugInfo reports whether this compilation should produce DWARF.
+// Linked modes follow Go's default-on policy. ModeGen keeps stable, compact IR
+// unless its caller explicitly passes the native -w=false linker option.
+func shouldEmitDebugInfo(conf *Config, target *crosscompile.Export) bool {
+	if effectiveOmitDWARF(conf, target) {
+		return false
+	}
+	return conf.Mode != ModeGen || conf.LinkOptions.DWARF == DWARFPreserve
+}
+
 // validateLinkOptions checks whether the typed linker intent can be honored
-// by the selected backend. User-facing flag syntax is parsed by cmd/internal/flags.
+// by the selected backend. User-facing Go flag syntax is parsed by
+// internal/goflags.
 func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 	if err := conf.LinkOptions.validate(); err != nil {
 		return err

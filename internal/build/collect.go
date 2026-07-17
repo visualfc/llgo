@@ -81,8 +81,6 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 
 	// Environment variables that affect build
 	envVars := []string{
-		llgoDebug,
-		llgoDbgSyms,
 		llgoTrace,
 		llgoOptimize,
 		llgoWasmRuntime,
@@ -111,7 +109,7 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	m.common.Target = c.buildConf.Target
 	m.common.TargetABI = c.crossCompile.TargetABI
 	m.common.GoGlobalDCE = c.buildConf.goGlobalDCEEnabled()
-	m.common.OmitDWARF = effectiveOmitDWARF(c.buildConf, &c.crossCompile)
+	m.common.EmitDWARF = shouldEmitDebugInfo(c.buildConf, &c.crossCompile)
 	m.common.PCLNMode = effectivePCLNMode(c.buildConf).String()
 
 	// Compiler configuration

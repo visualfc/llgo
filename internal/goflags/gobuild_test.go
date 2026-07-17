@@ -1,0 +1,93 @@
+/*
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package goflags
+
+import (
+	"reflect"
+	"testing"
+
+	"github.com/goplus/llgo/internal/build"
+	"github.com/goplus/llgo/internal/optlevel"
+)
+
+func TestApplyBuildFlagsNormalizesNativeSpellings(t *testing.T) {
+	conf := &build.Config{}
+	args := []string{
+		"--gcflags", "all=-N -l",
+		"--ldflags=-s -w=false",
+		"-toolexec", "tool --mode check",
+	}
+	if err := ApplyBuildFlags(conf, args); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"-gcflags=all=-N -l",
+		"-ldflags=-s -w=false",
+		"-toolexec=tool --mode check",
+	}
+	if !reflect.DeepEqual(conf.GoBuildFlags, want) {
+		t.Fatalf("GoBuildFlags = %#v, want %#v", conf.GoBuildFlags, want)
+	}
+	if conf.OptLevel != optlevel.O0 {
+		t.Fatalf("OptLevel = %v, want O0", conf.OptLevel)
+	}
+	if !conf.LinkOptions.OmitSymbolTable || conf.LinkOptions.EffectiveOmitDWARF() {
+		t.Fatalf("LinkOptions = %+v, want -s with explicit -w=false", conf.LinkOptions)
+	}
+}
+
+func TestApplyBuildFlagsMissingArgumentListValueIsAtomic(t *testing.T) {
+	conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
+	want := *conf
+	want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
+	if err := ApplyBuildFlags(conf, []string{"--ldflags"}); err == nil {
+		t.Fatal("ApplyBuildFlags succeeded, want error")
+	}
+	if !reflect.DeepEqual(*conf, want) {
+		t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+	}
+}
+
+func TestApplyBuildFlagsFrontendGCFlagSemantics(t *testing.T) {
+	tests := []struct {
+		name      string
+		flags     []string
+		wantLevel optlevel.Level
+		wantGo    string
+	}{
+		{name: "unpatterned", flags: []string{"-gcflags=-lang=go1.25 -N"}, wantLevel: optlevel.O0, wantGo: "go1.25"},
+		{name: "all pattern", flags: []string{"-gcflags=all='-lang=go1.24' '-l'"}, wantLevel: optlevel.O0, wantGo: "go1.24"},
+		{name: "unrelated pattern", flags: []string{"-gcflags=example.com/other=-N"}},
+		{name: "last applicable list wins", flags: []string{"-gcflags=-N -lang=go1.23", "-gcflags="}},
+		{name: "N false", flags: []string{"-gcflags=-N=false"}},
+		{name: "N zero", flags: []string{"-gcflags=-N=0"}},
+		{name: "l false", flags: []string{"-gcflags=-l=false"}},
+		{name: "l zero", flags: []string{"-gcflags=-l=0"}},
+		{name: "l debug count", flags: []string{"-gcflags=-l=4"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			conf := &build.Config{}
+			if err := ApplyBuildFlags(conf, tt.flags); err != nil {
+				t.Fatal(err)
+			}
+			if conf.OptLevel != tt.wantLevel || conf.GoVersion != tt.wantGo {
+				t.Fatalf("frontend config = (%v, %q), want (%v, %q)", conf.OptLevel, conf.GoVersion, tt.wantLevel, tt.wantGo)
+			}
+		})
+	}
+}

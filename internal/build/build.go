@@ -162,8 +162,8 @@ type Config struct {
 	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
 	NoErrorColumn bool   // omit source columns from frontend diagnostics
 	// GoBuildFlags contains normalized raw Go build flags forwarded to
-	// go/packages. Command entry points parse supported compiler and linker
-	// semantics into typed Config fields before calling Do.
+	// go/packages. Callers use internal/goflags to parse supported compiler and
+	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
 	LinkOptions  LinkOptions
 	PCLNMode     PCLNMode
@@ -344,10 +344,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 
-	omitDWARF := effectiveOmitDWARF(conf, &export)
-	emitDebugInfo := IsDbgEnabled() && !omitDWARF
+	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
 	cl.EnableDebug(emitDebugInfo)
-	cl.EnableDbgSyms(IsDbgSymsEnabled() && !omitDWARF)
+	cl.EnableDbgSyms(emitDebugInfo)
 	cl.EnableTrace(IsTraceEnabled())
 	llssa.Initialize(llssa.InitAll)
 
@@ -1281,7 +1280,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	if IsDbgSymsEnabled() && !effectiveOmitDWARF(ctx.buildConf, &ctx.crossCompile) {
+	if shouldEmitDebugInfo(ctx.buildConf, &ctx.crossCompile) {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
 
@@ -2006,8 +2005,6 @@ var (
 )
 */
 
-const llgoDebug = "LLGO_DEBUG"
-const llgoDbgSyms = "LLGO_DEBUG_SYMBOLS"
 const llgoFuncInfo = "LLGO_FUNCINFO"
 const llgoFuncInfoSites = "LLGO_FUNCINFO_SITES"
 const llgoTrace = "LLGO_TRACE"
@@ -2053,10 +2050,6 @@ func IsStdioNobuf() bool {
 	return isEnvOn(llgoStdioNobuf, false)
 }
 
-func IsDbgEnabled() bool {
-	return isEnvOn(llgoDebug, false) || isEnvOn(llgoDbgSyms, false)
-}
-
 func IsFuncInfoEnabled() bool {
 	return isEnvOn(llgoFuncInfo, true)
 }
@@ -2067,10 +2060,6 @@ func IsFuncInfoEnabled() bool {
 // isolating codegen perturbation caused by the in-body asm anchors.
 func IsFuncInfoSitesEnabled() bool {
 	return isEnvOn(llgoFuncInfoSites, true)
-}
-
-func IsDbgSymsEnabled() bool {
-	return isEnvOn(llgoDbgSyms, false)
 }
 
 func IsOptimizeEnabled() bool {

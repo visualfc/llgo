@@ -19,6 +19,7 @@ package flags
 import (
 	"github.com/goplus/llgo/cmd/internal/base"
 	"github.com/goplus/llgo/internal/build"
+	"github.com/goplus/llgo/internal/goflags"
 )
 
 // CaptureGoBuildFlags registers the Go build flags that LLGo forwards to
@@ -36,20 +37,5 @@ func CaptureGoBuildFlags(cmd *base.Command) *base.PassArgs {
 // by the command layer, and stores supported compiler and linker semantics in
 // typed backend configuration. Configuration remains unchanged on error.
 func ApplyGoBuildFlags(conf *build.Config, args []string) error {
-	all := make([]string, 0, len(conf.GoBuildFlags)+len(args))
-	all = append(all, conf.GoBuildFlags...)
-	all = append(all, args...)
-
-	linkFlags, err := parseGoLinkFlags(all)
-	if err != nil {
-		return err
-	}
-	next := *conf
-	next.GoBuildFlags = all
-	applyFrontendGCFlags(&next)
-	if linkFlags.present {
-		next.LinkOptions = linkFlags.options
-	}
-	*conf = next
-	return nil
+	return goflags.ApplyBuildFlags(conf, args)
 }

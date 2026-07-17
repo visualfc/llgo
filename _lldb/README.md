@@ -3,8 +3,16 @@
 ### Build with debug info
 
 ```shell
-LLGO_DEBUG_SYMBOLS=1 llgo build -o cl/_testdata/debug/out ./cl/_testdata/debug
+llgo build -O0 -o cl/_testdata/debug/out ./cl/_testdata/debug
 ```
+
+The native executable build above emits DWARF and debug symbols by default,
+matching the Go linker for this supported configuration. Use `-ldflags=-w` to
+omit them. `-O0` is recommended for the most complete local variable
+inspection in LLDB. The former `LLGO_DEBUG` and `LLGO_DEBUG_SYMBOLS`
+environment variables are no longer read. This uses LLGo's existing runnable
+DWARF path; improving its metadata quality and making it
+optimization-independent are separate follow-up work.
 
 ### Debug with lldb
 
