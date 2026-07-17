@@ -221,7 +221,7 @@ func NewDefaultConf(mode Mode) *Config {
 		Mode:               mode,
 		BuildMode:          BuildModeExe,
 		AbiMode:            cabi.ModeAllFunc,
-		OmitDWARFByDefault: true,
+		OmitDWARFByDefault: mode != ModeGen,
 		PCLNMode:           PCLNEmbedded,
 	}
 	return conf

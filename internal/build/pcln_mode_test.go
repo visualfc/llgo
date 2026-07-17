@@ -159,6 +159,10 @@ func TestNewDefaultConfMetadataDefaults(t *testing.T) {
 	if !conf.OmitDWARFByDefault {
 		t.Fatal("NewDefaultConf().OmitDWARFByDefault = false, want safe provisional-DWARF default")
 	}
+	genConf := NewDefaultConf(ModeGen)
+	if genConf.OmitDWARFByDefault {
+		t.Fatal("NewDefaultConf(ModeGen).OmitDWARFByDefault = true, want no linked-build policy")
+	}
 }
 
 func TestDoValidatesPCLNMode(t *testing.T) {
