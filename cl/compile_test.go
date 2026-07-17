@@ -178,9 +178,6 @@ func TestRunAndTestFromTestgo(t *testing.T) {
 func TestRunAndTestFromTestlto(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeRun)
 	conf.LTO = lto.Full
-	// See #2118: the provisional DWARF path does not yet attach verifier-valid
-	// locations to every synthesized inlinable call consumed by full LTO.
-	conf.LinkOptions.DWARF = build.DWARFOmit
 	ignore := []string{
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_concat",
@@ -231,7 +228,6 @@ func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
 	}
 	conf := build.NewDefaultConf(build.ModeBuild)
 	conf.LTO = lto.Full
-	conf.LinkOptions.DWARF = build.DWARFOmit // See #2118.
 	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testlto", testltoSymbolChecks, cltest.WithRunConfig(conf))
 }
 
@@ -246,7 +242,6 @@ func testltoLTOPluginConf(t *testing.T, mode build.Mode) *build.Config {
 	}
 	conf := build.NewDefaultConf(mode)
 	conf.LTO = lto.Full
-	conf.LinkOptions.DWARF = build.DWARFOmit // See #2118.
 	conf.LTOPlugin = lto.PassPlugin{Path: plugin}
 	return conf
 }

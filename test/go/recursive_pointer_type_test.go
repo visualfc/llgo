@@ -84,7 +84,5 @@ func TestRecursivePointerTypeBuilds(t *testing.T) {
 
 	root := findLLGoRoot(t)
 	t.Setenv("LLGO_ROOT", root)
-	// See #2116: the provisional DWARF type builder does not yet break
-	// recursive named-pointer cycles.
-	runGoCmd(t, root, "run", "./cmd/llgo", "run", "-ldflags=-w", mainFile)
+	runGoCmd(t, root, "run", "./cmd/llgo", "run", mainFile)
 }

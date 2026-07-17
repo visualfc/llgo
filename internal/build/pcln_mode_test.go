@@ -146,7 +146,7 @@ func TestShouldEnablePCLNSites(t *testing.T) {
 	}
 }
 
-func TestNewDefaultConfPCLNMode(t *testing.T) {
+func TestNewDefaultConfMetadataDefaults(t *testing.T) {
 	t.Setenv("GOBIN", t.TempDir())
 	t.Setenv(llgoFuncInfo, "")
 	conf := NewDefaultConf(ModeBuild)
@@ -155,6 +155,9 @@ func TestNewDefaultConfPCLNMode(t *testing.T) {
 	}
 	if conf.PCLNModeSet {
 		t.Fatal("NewDefaultConf().PCLNModeSet = true, want unresolved legacy default")
+	}
+	if !conf.OmitDWARFByDefault {
+		t.Fatal("NewDefaultConf().OmitDWARFByDefault = false, want safe provisional-DWARF default")
 	}
 }
 

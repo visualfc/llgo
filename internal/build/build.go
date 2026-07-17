@@ -166,7 +166,10 @@ type Config struct {
 	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
 	LinkOptions  LinkOptions
-	PCLNMode     PCLNMode
+	// OmitDWARFByDefault controls linked builds only when -w was not
+	// explicitly specified. Explicit -w and -w=false always win.
+	OmitDWARFByDefault bool
+	PCLNMode           PCLNMode
 	// PCLNModeSet marks PCLNMode as authoritative. Command flags set it for
 	// explicit requests; Do sets it after resolving the legacy environment
 	// default.
@@ -212,13 +215,14 @@ func NewDefaultConf(mode Mode) *Config {
 		goarch = runtime.GOARCH
 	}
 	conf := &Config{
-		Goos:      goos,
-		Goarch:    goarch,
-		BinPath:   bin,
-		Mode:      mode,
-		BuildMode: BuildModeExe,
-		AbiMode:   cabi.ModeAllFunc,
-		PCLNMode:  PCLNEmbedded,
+		Goos:               goos,
+		Goarch:             goarch,
+		BinPath:            bin,
+		Mode:               mode,
+		BuildMode:          BuildModeExe,
+		AbiMode:            cabi.ModeAllFunc,
+		OmitDWARFByDefault: true,
+		PCLNMode:           PCLNEmbedded,
 	}
 	return conf
 }

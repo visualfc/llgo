@@ -354,16 +354,6 @@ func withModuleCapture(conf *build.Config, pkgDir string) (*build.Config, *strin
 		conf = build.NewDefaultConf(build.ModeRun)
 	}
 	localConf := *conf
-	// IR golden tests describe LLGo's stable, non-debug LLVM output. Native
-	// executable builds now emit DWARF by default, but injecting !dbg metadata
-	// here would make CHECK-NEXT fixtures depend on the existing provisional
-	// DI implementation and can ask it to encode frontend-specific types it
-	// does not support yet. Keep the historical golden-test policy unless the
-	// caller explicitly selected a DWARF mode. See #2117 for the missing
-	// frontend-specific DI type support exposed by the Python golden suite.
-	if localConf.LinkOptions.DWARF == build.DWARFDefault {
-		localConf.LinkOptions.DWARF = build.DWARFOmit
-	}
 	var module string
 	prevHook := localConf.ModuleHook
 	localConf.ModuleHook = func(pkg build.Package) {
