@@ -299,6 +299,145 @@ func TestAnalyzeAndDetachExternalMachO(t *testing.T) {
 	}
 }
 
+func TestValidateExternalLayout(t *testing.T) {
+	valid := binaryInfo{
+		format:       ExternalFormatELF,
+		pointerSize:  8,
+		littleEndian: true,
+		imageBase:    0x1000,
+		textStart:    0x2000,
+		textEnd:      0x3000,
+	}
+	if err := validateExternalLayout(&valid); err != nil {
+		t.Fatal(err)
+	}
+	valid.format = ExternalFormatMachO
+	if err := validateExternalLayout(&valid); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := map[string]func(*binaryInfo){
+		"format":       func(info *binaryInfo) { info.format = "pe" },
+		"pointer size": func(info *binaryInfo) { info.pointerSize = 4 },
+		"endianness":   func(info *binaryInfo) { info.littleEndian = false },
+		"empty text":   func(info *binaryInfo) { info.textEnd = info.textStart },
+		"image base":   func(info *binaryInfo) { info.imageBase = info.textStart + 1 },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			info := valid
+			mutate(&info)
+			if err := validateExternalLayout(&info); err == nil {
+				t.Fatal("validateExternalLayout accepted invalid layout")
+			}
+		})
+	}
+}
+
+func TestExternalSitesFilterSortAndDedupe(t *testing.T) {
+	info := &binaryInfo{
+		imageBase: 0x1000,
+		textStart: 0x1100,
+		textEnd:   0x1200,
+		syms: []textSym{
+			{addr: 0x1100, size: 0x40, name: "example.com/p.A"},
+			{addr: 0x1140, size: 0x40, name: "__llgo_stub.example.com/p.B"},
+		},
+	}
+	records := []siteRecord{
+		{pc: 0x1148, symbolID: 2},
+		{pc: 0x1108, symbolID: 1},
+		{pc: 0x1108, symbolID: 1},
+		{pc: 0x1108, symbolID: 3},
+		{pc: 0x1080, symbolID: 4},
+		{pc: 0x1200, symbolID: 5},
+	}
+	want := []ExternalSite{{PCOffset: 0x108, ID: 1}, {PCOffset: 0x108, ID: 3}, {PCOffset: 0x148, ID: 2}}
+	if got := externalSites(info, records); !reflect.DeepEqual(got, want) {
+		t.Fatalf("externalSites = %#v, want %#v", got, want)
+	}
+	if got := externalSites(info, []siteRecord{{pc: 0x1080, symbolID: 1}}); len(got) != 0 {
+		t.Fatalf("filtered singleton = %#v, want empty", got)
+	}
+
+	pcRecords := []siteRecord{
+		{pc: 0x1148, symbolID: 2},
+		{pc: 0x1108, symbolID: 1},
+		{pc: 0x1108, symbolID: 1},
+		{pc: 0x1180, symbolID: 3}, // text but no symbol owner
+		{pc: 0x1080, symbolID: 4},
+	}
+	wantPC := []ExternalSite{
+		{PCOffset: 0x108, ID: 1, OwnerSymbol: "example.com/p.A"},
+		{PCOffset: 0x148, ID: 2, OwnerSymbol: "example.com/p.B"},
+	}
+	if got := externalPCLineSites(info, pcRecords); !reflect.DeepEqual(got, wantPC) {
+		t.Fatalf("externalPCLineSites = %#v, want %#v", got, wantPC)
+	}
+	if got := externalPCLineSites(info, []siteRecord{{pc: 0x1108, symbolID: 1}}); len(got) != 1 {
+		t.Fatalf("singleton pcline sites = %#v", got)
+	}
+
+	entries, stubs := partitionExternalEntries(info, []siteRecord{
+		{pc: 0x1100, symbolID: 1},
+		{pc: 0x1140, symbolID: 2},
+		{pc: 0x1190, symbolID: 3},
+	})
+	if len(entries) != 1 || len(stubs) != 1 {
+		t.Fatalf("partition = (%#v, %#v)", entries, stubs)
+	}
+}
+
+func TestAnalyzeExternalRejectsInvalidRecordStates(t *testing.T) {
+	noRecords := func(func(string) uint64) []byte { return nil }
+	unknownRecord := func(func(string) uint64) []byte { return rec(0xdead0000, 1) }
+	inlineOnly := func(addrOf func(string) uint64) []byte {
+		return rec(addrOf("example.com/p.A")+4, fnv64("example.com/p.B"))
+	}
+	validStub := func(addrOf func(string) uint64) []byte {
+		return rec(addrOf("__llgo_stub.example.com/p.A")+4, fnv64("example.com/p.A"))
+	}
+	tests := map[string]string{
+		"no records":   buildELFExternal(t, fixtureFns(), noRecords, noRecords, 0, 0, nil, make([]byte, sha256.Size)),
+		"no survivors": buildELFExternal(t, fixtureFns(), unknownRecord, noRecords, 0, 0, nil, make([]byte, sha256.Size)),
+		"stub only":    buildELFExternal(t, fixtureFns(), inlineOnly, validStub, 0, 0, nil, make([]byte, sha256.Size)),
+	}
+	for name, path := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := AnalyzeExternal(path); err == nil {
+				t.Fatal("AnalyzeExternal accepted invalid record state")
+			}
+		})
+	}
+
+	path := externalELFFixture(t, sha256.Size)
+	info, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary.LittleEndian.PutUint64(raw[info.entryFileOff:], prebuiltMagic)
+	if err := os.WriteFile(path, raw, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AnalyzeExternal(path); err == nil {
+		t.Fatal("AnalyzeExternal accepted an already rewritten entry table")
+	}
+}
+
+func TestReplaceExternalBinaryErrorPaths(t *testing.T) {
+	if err := replaceExternalBinary(t.TempDir()+"/missing", nil, false); err == nil {
+		t.Fatal("replaceExternalBinary accepted a missing input")
+	}
+	dir := t.TempDir()
+	if err := replaceExternalBinary(dir, []byte("replacement"), false); err == nil {
+		t.Fatal("replaceExternalBinary replaced a directory")
+	}
+}
+
 // chainMachOSitePointers makes the fixture resemble lld output: every live
 // site pointer is a DYLD_CHAINED_PTR_64 rebase node in one __DATA page. It
 // returns the page_start field so the detach test can verify that the now

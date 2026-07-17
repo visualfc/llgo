@@ -542,7 +542,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 				return nil, err
 			}
 			if conf.Mode == ModeBuild && conf.SizeReport {
-				if err := reportBinarySize(outFmts.Out, outFmts.PCLN, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
+				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
 				}
 			}

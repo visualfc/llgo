@@ -26,9 +26,6 @@ const pclnSidecarSuffix = ".pclntab"
 // pclnSidecarPath returns the conventional optional runtime-symbolization
 // artifact owned by an executable output.
 func pclnSidecarPath(executable string) string {
-	if executable == "" {
-		return ""
-	}
 	return executable + pclnSidecarSuffix
 }
 

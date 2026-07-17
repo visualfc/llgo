@@ -70,11 +70,11 @@ type binaryInfo struct {
 	// record decoding needs the imports table, not just rebase decoding.
 	bindTargets []uint64
 
-	entryVMAddr, entryVMSize, entryFileOff          uint64
-	stubVMAddr, stubVMSize, stubFileOff             uint64
-	pcLineVMAddr, pcLineVMSize, pcLineFileOff       uint64
-	identityVMAddr, identityVMSize, identityFileOff uint64
-	hasCodeSignature                                bool
+	entryVMAddr, entryVMSize, entryFileOff uint64
+	stubVMAddr, stubVMSize, stubFileOff    uint64
+	pcLineVMSize, pcLineFileOff            uint64
+	identityVMSize, identityFileOff        uint64
+	hasCodeSignature                       bool
 }
 
 // readVM returns n bytes at a link-time virtual address.
@@ -134,13 +134,13 @@ func load(path string) (*binaryInfo, error) {
 			if err != nil {
 				return nil, fmt.Errorf("Mach-O __llgo_pcl: %w", err)
 			}
-			info.pcLineVMAddr, info.pcLineVMSize, info.pcLineFileOff = s.Addr, s.Size, uint64(s.Offset)
+			info.pcLineVMSize, info.pcLineFileOff = s.Size, uint64(s.Offset)
 		}
 		if s := mf.Section("__llgo_pid"); s != nil {
 			if _, err := sectionBytes(info.raw, uint64(s.Offset), s.Size); err != nil {
 				return nil, fmt.Errorf("Mach-O __llgo_pid: %w", err)
 			}
-			info.identityVMAddr, info.identityVMSize, info.identityFileOff = s.Addr, s.Size, uint64(s.Offset)
+			info.identityVMSize, info.identityFileOff = s.Size, uint64(s.Offset)
 		}
 		if s := mf.Section("__text"); s != nil {
 			info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
@@ -224,13 +224,13 @@ func load(path string) (*binaryInfo, error) {
 		if err != nil {
 			return nil, fmt.Errorf("ELF llgo_pcline: %w", err)
 		}
-		info.pcLineVMAddr, info.pcLineVMSize, info.pcLineFileOff = s.Addr, s.Size, s.Offset
+		info.pcLineVMSize, info.pcLineFileOff = s.Size, s.Offset
 	}
 	if s := ef.Section("llgo_pclntab_id"); s != nil {
 		if _, err := sectionBytes(info.raw, s.Offset, s.Size); err != nil {
 			return nil, fmt.Errorf("ELF llgo_pclntab_id: %w", err)
 		}
-		info.identityVMAddr, info.identityVMSize, info.identityFileOff = s.Addr, s.Size, s.Offset
+		info.identityVMSize, info.identityFileOff = s.Size, s.Offset
 	}
 	if s := ef.Section(".text"); s != nil {
 		info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
@@ -451,13 +451,19 @@ func loadBindTargets(info *binaryInfo, mf *macho.File) {
 	for i := uint32(0); i < ncmds && off+8 <= uint64(len(raw)); i++ {
 		cmd := binary.LittleEndian.Uint32(raw[off:])
 		size := binary.LittleEndian.Uint32(raw[off+4:])
+		if size < 8 {
+			return
+		}
 		if cmd == lcDyldChainedFixups {
+			if off+16 > uint64(len(raw)) {
+				return
+			}
 			fixOff = uint64(binary.LittleEndian.Uint32(raw[off+8:]))
 			fixSize = uint64(binary.LittleEndian.Uint32(raw[off+12:]))
 		}
 		off += uint64(size)
 	}
-	if fixOff == 0 || fixOff+28 > uint64(len(raw)) {
+	if fixOff == 0 || fixSize < 28 || fixOff > uint64(len(raw)) || fixSize > uint64(len(raw))-fixOff {
 		return
 	}
 	hdr := raw[fixOff : fixOff+fixSize]

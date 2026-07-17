@@ -47,20 +47,11 @@ func ParseFlagFile(data string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("flags line %d: %w", lineNo+1, err)
 		}
-		if line == "" {
-			continue
-		}
-		if flag, ok, err := wholeLineValueFlag(line); ok {
-			if err != nil {
-				return nil, fmt.Errorf("flags line %d: %w", lineNo+1, err)
-			}
+		if flag, ok := wholeLineValueFlag(line); ok {
 			flags = append(flags, flag)
 			continue
 		}
-		fields, err := splitFlagFields(line)
-		if err != nil {
-			return nil, fmt.Errorf("flags line %d: %w", lineNo+1, err)
-		}
+		fields := splitFlagFields(line)
 		fields, err = normalizeBuildFlags(fields)
 		if err != nil {
 			return nil, fmt.Errorf("flags line %d: %w", lineNo+1, err)
@@ -70,7 +61,7 @@ func ParseFlagFile(data string) ([]string, error) {
 	return flags, nil
 }
 
-func wholeLineValueFlag(line string) (flag string, ok bool, err error) {
+func wholeLineValueFlag(line string) (flag string, ok bool) {
 	for _, name := range argumentListFlagNames {
 		for _, prefix := range []string{"-" + name + "=", "--" + name + "="} {
 			value, found := strings.CutPrefix(line, prefix)
@@ -80,12 +71,12 @@ func wholeLineValueFlag(line string) (flag string, ok bool, err error) {
 			if len(value) != 0 && (value[0] == '\'' || value[0] == '"') {
 				// Let the regular lexer handle quoted values. This also permits
 				// ordinary build flags after the quoted argument list.
-				return "", false, nil
+				return "", false
 			}
-			return "-" + name + "=" + value, true, nil
+			return "-" + name + "=" + value, true
 		}
 	}
-	return "", false, nil
+	return "", false
 }
 
 func trimFlagComment(line string) (string, error) {
@@ -132,7 +123,8 @@ func trimFlagComment(line string) (string, error) {
 	return line, nil
 }
 
-func splitFlagFields(line string) ([]string, error) {
+// splitFlagFields lexes a line already validated by trimFlagComment.
+func splitFlagFields(line string) []string {
 	var fields []string
 	var field strings.Builder
 	var quote rune
@@ -173,20 +165,11 @@ func splitFlagFields(line string) ([]string, error) {
 			inField = true
 		case unicode.IsSpace(r):
 			flush()
-		case r == '#' && !inField:
-			flush()
-			return fields, nil
 		default:
 			field.WriteRune(r)
 			inField = true
 		}
 	}
-	if escaped {
-		return nil, fmt.Errorf("unfinished escape")
-	}
-	if quote != 0 {
-		return nil, fmt.Errorf("unterminated %c quote", quote)
-	}
 	flush()
-	return fields, nil
+	return fields
 }

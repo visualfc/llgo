@@ -3,6 +3,7 @@ package pclnmap
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/goplus/llgo/internal/build/funcinfo"
@@ -148,8 +149,119 @@ func TestEncodeRejectsUnsupportedTarget(t *testing.T) {
 		t.Fatal("Encode accepted unsupported GOOS")
 	}
 	data = sampleData(t)
+	data.GOARCH = "386"
+	if _, err := Encode(data); err == nil {
+		t.Fatal("Encode accepted unsupported GOARCH")
+	}
+	data = sampleData(t)
 	data.PointerSize = 4
 	if _, err := Encode(data); err == nil {
 		t.Fatal("Encode accepted 32-bit pointer size")
+	}
+}
+
+func TestEncodeDarwinArm64AndInvalidTextRanges(t *testing.T) {
+	data := sampleData(t)
+	data.GOOS, data.GOARCH = "darwin", "arm64"
+	raw, err := Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.GOOSCode != GOOSDarwin || view.GOARCHCode != GOARCHARM64 {
+		t.Fatalf("target codes = (%d, %d)", view.GOOSCode, view.GOARCHCode)
+	}
+
+	for name, mutate := range map[string]func(*Data){
+		"start below image": func(data *Data) { data.TextStart = data.ImageBase - 1 },
+		"empty text":        func(data *Data) { data.TextEnd = data.TextStart },
+	} {
+		t.Run(name, func(t *testing.T) {
+			data := sampleData(t)
+			mutate(&data)
+			if _, err := Encode(data); err == nil {
+				t.Fatal("Encode accepted an invalid text range")
+			}
+		})
+	}
+}
+
+func TestParseRejectsInvalidHeadersAndDescriptors(t *testing.T) {
+	original, err := Encode(sampleData(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clone := func() []byte { return append([]byte(nil), original...) }
+	tests := map[string]func([]byte) []byte{
+		"short header": func(raw []byte) []byte { return raw[:HeaderSize-1] },
+		"magic": func(raw []byte) []byte {
+			raw[headerMagic] ^= 0xff
+			return raw
+		},
+		"version": func(raw []byte) []byte {
+			binary.LittleEndian.PutUint32(raw[headerVersion:], Version+1)
+			return raw
+		},
+		"header size": func(raw []byte) []byte {
+			binary.LittleEndian.PutUint32(raw[headerSize:], HeaderSize+1)
+			return raw
+		},
+		"file size": func(raw []byte) []byte {
+			binary.LittleEndian.PutUint64(raw[headerFileSize:], uint64(len(raw)+1))
+			return raw
+		},
+		"endianness": func(raw []byte) []byte {
+			raw[headerEndian] = 0xff
+			return raw
+		},
+		"pointer size": func(raw []byte) []byte {
+			raw[headerPointerSize] = 4
+			return raw
+		},
+		"text range": func(raw []byte) []byte {
+			binary.LittleEndian.PutUint64(raw[headerTextEnd:], binary.LittleEndian.Uint64(raw[headerTextStart:]))
+			return raw
+		},
+		"section count overflow": func(raw []byte) []byte {
+			binary.LittleEndian.PutUint64(raw[headerDescriptors+8:], math.MaxUint64)
+			return raw
+		},
+		"section before header": func(raw []byte) []byte {
+			binary.LittleEndian.PutUint64(raw[headerDescriptors:], uint64(HeaderSize-1))
+			return raw
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := Parse(mutate(clone())); err == nil {
+				t.Fatal("Parse accepted invalid input")
+			}
+		})
+	}
+}
+
+func TestParseAllowsEmptySections(t *testing.T) {
+	raw, err := Encode(sampleData(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, index := range []int{descRecords, descStrings} {
+		base := headerDescriptors + index*16
+		binary.LittleEndian.PutUint64(raw[base+8:], 0)
+	}
+	if _, err := Parse(raw); err != nil {
+		t.Fatalf("Parse rejected empty sections: %v", err)
+	}
+}
+
+func TestDescriptorAndOverflowHelpers(t *testing.T) {
+	if got := descriptorSize(descCount); got != 0 {
+		t.Fatalf("descriptorSize(out of range) = %d", got)
+	}
+	if _, err := checkedBytes(math.MaxUint64, 2); err == nil {
+		t.Fatal("checkedBytes accepted an overflow")
 	}
 }

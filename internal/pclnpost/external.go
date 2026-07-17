@@ -265,11 +265,6 @@ func DetachExternal(path string, identity [sha256.Size]byte) error {
 	if info.identityFileOff == 0 {
 		return fmt.Errorf("pclntab identity section is not file-backed")
 	}
-	identityBytes, err := sectionBytes(info.raw, info.identityFileOff, info.identityVMSize)
-	if err != nil {
-		return fmt.Errorf("pclntab identity section: %w", err)
-	}
-	_ = identityBytes // validates the source range before making a copy
 	if info.entryVMSize == 0 {
 		return fmt.Errorf("missing entry-site section")
 	}
@@ -285,9 +280,6 @@ func DetachExternal(path string, identity [sha256.Size]byte) error {
 		}
 		if off == 0 {
 			return fmt.Errorf("%s section is not file-backed", name)
-		}
-		if _, err := sectionBytes(info.raw, off, size); err != nil {
-			return fmt.Errorf("%s section: %w", name, err)
 		}
 		siteRanges = append(siteRanges, fileRange{name: name, start: off, end: off + size})
 		return nil

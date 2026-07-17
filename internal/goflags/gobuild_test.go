@@ -62,6 +62,18 @@ func TestApplyBuildFlagsMissingArgumentListValueIsAtomic(t *testing.T) {
 	}
 }
 
+func TestApplyBuildFlagsInvalidLinkValueIsAtomic(t *testing.T) {
+	conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
+	want := *conf
+	want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
+	if err := ApplyBuildFlags(conf, []string{"-ldflags=-w=invalid"}); err == nil {
+		t.Fatal("ApplyBuildFlags succeeded, want error")
+	}
+	if !reflect.DeepEqual(*conf, want) {
+		t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+	}
+}
+
 func TestApplyBuildFlagsFrontendGCFlagSemantics(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -78,6 +90,8 @@ func TestApplyBuildFlagsFrontendGCFlagSemantics(t *testing.T) {
 		{name: "l false", flags: []string{"-gcflags=-l=false"}},
 		{name: "l zero", flags: []string{"-gcflags=-l=0"}},
 		{name: "l debug count", flags: []string{"-gcflags=-l=4"}},
+		{name: "N true", flags: []string{"-gcflags=-N=true"}, wantLevel: optlevel.O0},
+		{name: "l true", flags: []string{"-gcflags=-l=true"}, wantLevel: optlevel.O0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

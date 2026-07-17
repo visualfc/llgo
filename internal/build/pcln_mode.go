@@ -63,11 +63,8 @@ func (m PCLNMode) validate() error {
 // effectivePCLNMode translates the legacy environment escape hatch once at
 // the configuration boundary. An explicit -pclntab value always wins.
 func effectivePCLNMode(conf *Config) PCLNMode {
-	if conf != nil && !conf.PCLNModeSet && conf.PCLNMode == PCLNEmbedded && !IsFuncInfoEnabled() {
+	if !conf.PCLNModeSet && conf.PCLNMode == PCLNEmbedded && !IsFuncInfoEnabled() {
 		return PCLNNone
-	}
-	if conf == nil {
-		return PCLNEmbedded
 	}
 	return conf.PCLNMode
 }

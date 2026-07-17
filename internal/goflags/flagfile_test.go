@@ -83,6 +83,18 @@ func TestParseFlagFilePreservesQuotedLinkArguments(t *testing.T) {
 	}
 }
 
+func TestParseFlagFileEscapesAndEmptyQuotedValues(t *testing.T) {
+	input := "-tags=hello\\ world -modfile=\"a\\\"b\" -overlay='' -x#literal # trailing\n"
+	got, err := ParseFlagFile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"-tags=hello world", `-modfile=a"b`, "-overlay=", "-x#literal"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseFlagFile() = %#v, want %#v", got, want)
+	}
+}
+
 func TestParseFlagFileErrors(t *testing.T) {
 	for _, input := range []string{
 		`-tags='unterminated`,

@@ -150,6 +150,7 @@ func TestParseLinkFlagsErrors(t *testing.T) {
 	}{
 		{name: "missing ldflags value", flags: []string{"-ldflags"}},
 		{name: "missing pattern separator", flags: []string{"-ldflags=all"}},
+		{name: "missing pattern", flags: []string{"-ldflags==-s"}},
 		{name: "unsupported package pattern", flags: []string{"-ldflags=example.com/other=-s"}},
 		{name: "quoted first parameter", flags: []string{`-ldflags='-s' -w`}},
 		{name: "missing s boolean", flags: []string{"-ldflags=-s="}},
@@ -164,5 +165,23 @@ func TestParseLinkFlagsErrors(t *testing.T) {
 				t.Fatalf("ParseLinkFlags(%q) succeeded, want error", tt.flags)
 			}
 		})
+	}
+}
+
+func TestParseLinkFlagsWhitespaceOnly(t *testing.T) {
+	opts, err := ParseLinkFlags([]string{"-ldflags= \t\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.Present || opts.Options != (build.LinkOptions{}) || len(opts.Ignored) != 0 {
+		t.Fatalf("options = %+v, want an empty present list", opts)
+	}
+}
+
+func TestArgumentListBuildFlagRejectsBareDash(t *testing.T) {
+	for _, arg := range []string{"-", "--"} {
+		if _, _, _, ok := argumentListBuildFlag(arg); ok {
+			t.Fatalf("argumentListBuildFlag(%q) unexpectedly matched", arg)
+		}
 	}
 }
