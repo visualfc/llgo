@@ -305,28 +305,21 @@ jobs:
           go-version: ${{matrix.go}}
 
       - name: Test Hello World with go.mod 1.21
-        if: startsWith(matrix.go, '1.21') || startsWith(matrix.go, '1.22') || startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
+        if: startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.26')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}
           mod-version: "1.21"
 
       - name: Test Hello World with go.mod 1.22
-        if: startsWith(matrix.go, '1.22') || startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
+        if: startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.26')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}
           mod-version: "1.22"
 
-      - name: Test Hello World with go.mod 1.23
-        if: startsWith(matrix.go, '1.23') || startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
-        uses: ./.github/actions/test-helloworld
-        with:
-          go-version: ${{matrix.go}}
-          mod-version: "1.23"
-
       - name: Test Hello World with go.mod 1.24
-        if: startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.25') || startsWith(matrix.go, '1.26')
+        if: startsWith(matrix.go, '1.24') || startsWith(matrix.go, '1.26')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}
