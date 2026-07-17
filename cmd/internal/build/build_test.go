@@ -38,12 +38,12 @@ func TestRunCmdPassesGoBuildFlags(t *testing.T) {
 				panic(recovered)
 			}
 		}()
-		runCmd(Cmd, []string{"-gcflags=all=-N", filepath.Join(t.TempDir(), "missing")})
+		runCmd(Cmd, []string{"-gcflags=all=-N", "-ldflags=-s -w", filepath.Join(t.TempDir(), "missing")})
 	}()
 	if !exited || mockable.ExitCode() != 1 {
 		t.Fatalf("runCmd exit = (%v, %d), want (true, 1)", exited, mockable.ExitCode())
 	}
-	if !reflect.DeepEqual(goBuildFlags.Args, []string{"-gcflags=all=-N"}) {
+	if !reflect.DeepEqual(goBuildFlags.Args, []string{"-gcflags=all=-N", "-ldflags=-s -w"}) {
 		t.Fatalf("go build flags = %v", goBuildFlags.Args)
 	}
 	if err := stderrFile.Close(); err != nil {

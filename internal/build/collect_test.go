@@ -133,6 +133,65 @@ func TestCollectFingerprintDeterminism(t *testing.T) {
 	}
 }
 
+func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
+	td := t.TempDir()
+	goFile := filepath.Join(td, "main.go")
+	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	newPkg := func() *aPackage {
+		return &aPackage{Package: &packages.Package{
+			PkgPath: "test/pkg",
+			GoFiles: []string{goFile},
+		}}
+	}
+	newContext := func(opts LinkOptions, debugInfo ...crosscompile.DebugInfoPolicy) *context {
+		var policy crosscompile.DebugInfoPolicy
+		if len(debugInfo) != 0 {
+			policy = debugInfo[0]
+		}
+		return &context{
+			conf:         &packages.Config{},
+			buildConf:    &Config{Goos: "linux", Goarch: "amd64", BuildMode: BuildModeExe, LinkOptions: opts},
+			crossCompile: crosscompile.Export{DebugInfo: policy},
+		}
+	}
+
+	withDWARF := newPkg()
+	if err := newContext(LinkOptions{}).collectFingerprint(withDWARF); err != nil {
+		t.Fatal(err)
+	}
+	withoutDWARF := newPkg()
+	if err := newContext(LinkOptions{DWARF: DWARFOmit}).collectFingerprint(withoutDWARF); err != nil {
+		t.Fatal(err)
+	}
+	if withDWARF.Fingerprint == withoutDWARF.Fingerprint {
+		t.Fatal("-w did not change the package fingerprint")
+	}
+	data, err := decodeManifest(withoutDWARF.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Common == nil || !data.Common.OmitDWARF {
+		t.Fatalf("manifest does not contain OMIT_DWARF=true:\n%s", withoutDWARF.Manifest)
+	}
+
+	targetWithoutDWARF := newPkg()
+	if err := newContext(LinkOptions{}, crosscompile.DebugInfoPolicy{AlwaysOmit: true}).collectFingerprint(targetWithoutDWARF); err != nil {
+		t.Fatal(err)
+	}
+	if withDWARF.Fingerprint == targetWithoutDWARF.Fingerprint {
+		t.Fatal("target baseline DWARF omission did not change the package fingerprint")
+	}
+	targetData, err := decodeManifest(targetWithoutDWARF.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targetData.Common == nil || !targetData.Common.OmitDWARF {
+		t.Fatalf("target manifest does not contain OMIT_DWARF=true:\n%s", targetWithoutDWARF.Manifest)
+	}
+}
+
 func TestDevLTOGlobalDCECollectFingerprint(t *testing.T) {
 	td := t.TempDir()
 

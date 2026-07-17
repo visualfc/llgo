@@ -159,8 +159,12 @@ type Config struct {
 	CompilerHash  string // metadata hash for the running compiler (development builds only)
 	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
 	NoErrorColumn bool   // omit source columns from frontend diagnostics
-	GoBuildFlags  []string
-	AllowNoBody   bool // allow declarations without bodies, as go tool compile does
+	// GoBuildFlags contains normalized raw Go build flags forwarded to
+	// go/packages. Command entry points parse supported compiler and linker
+	// semantics into typed Config fields before calling Do.
+	GoBuildFlags []string
+	LinkOptions  LinkOptions
+	AllowNoBody  bool // allow declarations without bodies, as go tool compile does
 
 	// PthreadStackSize sets a custom stack size, in bytes, for pthread-backed
 	// goroutines. A zero value keeps the platform pthread default.
@@ -271,7 +275,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err := ensureSizeReporting(conf); err != nil {
 		return nil, err
 	}
-	applyFrontendGCFlags(conf)
+	if err := conf.LinkOptions.validate(); err != nil {
+		return nil, err
+	}
 	conf.OptLevel = effectiveOptLevel(conf)
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
@@ -286,7 +292,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
 	}
-
+	if err := validateLinkOptions(conf, &export); err != nil {
+		return nil, err
+	}
 	// Enable different export names for TinyGo compatibility when using -target
 	if conf.Target != "" {
 		cl.EnableExportRename(true)
@@ -317,8 +325,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 
-	cl.EnableDebug(IsDbgEnabled())
-	cl.EnableDbgSyms(IsDbgSymsEnabled())
+	omitDWARF := effectiveOmitDWARF(conf, &export)
+	emitDebugInfo := IsDbgEnabled() && !omitDWARF
+	cl.EnableDebug(emitDebugInfo)
+	cl.EnableDbgSyms(IsDbgSymsEnabled() && !omitDWARF)
 	cl.EnableTrace(IsTraceEnabled())
 	llssa.Initialize(llssa.InitAll)
 
@@ -349,11 +359,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	// Site records are inline-asm fragments inside function bodies; their
 	// anchors shift instruction/scope layout enough to confuse debuggers
 	// (LLDB reported variables from an inner lexical block as in scope before
-	// the block began). Debug builds keep the metadata tables — FuncForPC
-	// name/FileLine fidelity survives via the dlsym path — but drop the
-	// sites. Caller-frame instrumentation is independent of both switches,
-	// so runtime.Caller keeps working in debug builds.
-	prog.EnableFuncInfoSites(funcInfo && !IsDbgEnabled() && IsFuncInfoSitesEnabled())
+	// the block began). Builds that emit DWARF keep the metadata tables —
+	// FuncForPC name/FileLine fidelity survives via the dlsym path — but drop
+	// the sites. Caller-frame instrumentation is independent of both switches.
+	prog.EnableFuncInfoSites(funcInfo && !emitDebugInfo && IsFuncInfoSitesEnabled())
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -434,10 +443,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	buildMode := ssaBuildMode
 	cabiOptimize := true
 	passOpt := true
-	if IsDbgEnabled() || mode == ModeGen {
+	if emitDebugInfo || mode == ModeGen {
 		passOpt = false
 	}
-	if IsDbgEnabled() {
+	if emitDebugInfo {
 		buildMode |= ssa.GlobalDebug
 		cabiOptimize = false
 	}
@@ -587,29 +596,6 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	return allPkgs, nil
-}
-
-func applyFrontendGCFlags(conf *Config) {
-	for _, buildFlag := range conf.GoBuildFlags {
-		value, ok := strings.CutPrefix(buildFlag, "-gcflags=")
-		if !ok {
-			continue
-		}
-		fields := strings.Fields(value)
-		if len(fields) != 0 {
-			if _, compilerFlags, hasPattern := strings.Cut(fields[0], "="); hasPattern {
-				fields[0] = compilerFlags
-			}
-		}
-		for _, compilerFlag := range fields {
-			switch {
-			case strings.HasPrefix(compilerFlag, "-lang="):
-				conf.GoVersion = strings.TrimPrefix(compilerFlag, "-lang=")
-			case compilerFlag == "-N", compilerFlag == "-l", strings.HasPrefix(compilerFlag, "-l="):
-				conf.OptLevel = optlevel.O0
-			}
-		}
-	}
 }
 
 func allowMissingFunctionBodies(initial []*packages.Package) {
@@ -1247,6 +1233,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 
 	buildArgs := []string{"-o", app}
 	buildArgs = append(buildArgs, linkArgs...)
+	buildArgs = append(buildArgs, dwarfLinkerArgs(ctx.buildConf, &ctx.crossCompile)...)
 	ltoPluginFlags, err := ctx.buildConf.LTOPlugin.LinkerFlags(ctx.buildConf.Goos)
 	if err != nil {
 		return err
@@ -1264,7 +1251,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	if IsDbgSymsEnabled() {
+	if IsDbgSymsEnabled() && !effectiveOmitDWARF(ctx.buildConf, &ctx.crossCompile) {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
 

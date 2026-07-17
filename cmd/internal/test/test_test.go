@@ -9,6 +9,12 @@ import (
 	"github.com/goplus/llgo/cmd/internal/flags"
 )
 
+func TestBuildFlagsWiring(t *testing.T) {
+	if goBuildFlags.Flag != &Cmd.Flag || Cmd.Flag.Lookup("ldflags") == nil {
+		t.Fatal("test build flags are not bound to the test command")
+	}
+}
+
 func resetTestFlags() {
 	flags.Verbose = false
 	flags.TestRun = ""
