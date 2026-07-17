@@ -694,6 +694,17 @@ func emitExternalFuncInfoTable(ctx *context, mod llvm.Module, records []funcInfo
 	} else {
 		identity.SetSection("llgo_pclntab_id")
 	}
+	// Pure lib/c programs can link without the LLGo runtime, so nothing in
+	// their live graph references the identity slot. Keep it through LTO and
+	// linker GC: external mode still promises a paired sidecar even when the
+	// program itself never calls a runtime symbolization API. llvm.used (rather
+	// than llvm.compiler.used) also asks the native linker to retain the slot.
+	pointerType := llvm.PointerType(typ.i8, 0)
+	usedInit := llvm.ConstArray(pointerType, []llvm.Value{llvm.ConstBitCast(identity, pointerType)})
+	used := llvm.AddGlobal(mod, usedInit.Type(), "llvm.used")
+	used.SetInitializer(usedInit)
+	used.SetLinkage(llvm.AppendingLinkage)
+	used.SetSection("llvm.metadata")
 
 	machO := shouldEmitRuntimeMachOSites(ctx)
 	emitSites := shouldEmitRuntimeSites(ctx)

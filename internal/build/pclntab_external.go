@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/goplus/llgo/internal/pclnmap"
 	"github.com/goplus/llgo/internal/pclnpost"
@@ -69,11 +70,17 @@ func writeExternalPCLN(ctx *context, out *OutFmtDetails, verbose bool) (err erro
 	for i, site := range analysis.EntrySites {
 		data.EntrySites[i] = pclnmap.Site{PCOffset: site.PCOffset, ID: site.ID}
 	}
+	data.StubSites = make([]pclnmap.Site, len(analysis.StubSites))
+	for i, site := range analysis.StubSites {
+		data.StubSites[i] = pclnmap.Site{PCOffset: site.PCOffset, ID: site.ID}
+	}
 	data.PCSites = make([]pclnmap.Site, len(analysis.PCLineSites))
+	pcSiteOwners := make([]string, len(analysis.PCLineSites))
 	for i, site := range analysis.PCLineSites {
 		data.PCSites[i] = pclnmap.Site{PCOffset: site.PCOffset, ID: site.ID}
+		pcSiteOwners[i] = site.OwnerSymbol
 	}
-	if err := filterExternalPCLNJoins(&data); err != nil {
+	if err := filterExternalPCLNJoins(&data, pcSiteOwners); err != nil {
 		return err
 	}
 	raw, err := pclnmap.Encode(data)
@@ -115,39 +122,63 @@ func writeExternalPCLN(ctx *context, out *OutFmtDetails, verbose bool) (err erro
 		return err
 	}
 	if verbose {
-		fmt.Fprintf(os.Stderr, "llgo: external pclntab: %d entries, %d pcline sites (%d bytes) -> %s\n",
-			len(data.EntrySites), len(data.PCSites), len(raw), out.PCLN)
+		fmt.Fprintf(os.Stderr, "llgo: external pclntab: %d entries, %d stubs, %d pcline sites (%d bytes) -> %s\n",
+			len(data.EntrySites), len(data.StubSites), len(data.PCSites), len(raw), out.PCLN)
 	}
 	return nil
 }
 
-func filterExternalPCLNJoins(data *pclnmap.Data) error {
+func filterExternalPCLNJoins(data *pclnmap.Data, pcSiteOwners []string) error {
 	symbols := make(map[uint64]uint32, len(data.SymbolIndex))
 	for _, rec := range data.SymbolIndex {
 		symbols[rec.SymbolID] = rec.FuncIndex
 	}
-	entries := data.EntrySites[:0]
-	var previousPC uint64
-	for _, site := range data.EntrySites {
-		if symbols[site.ID] != 0 && (len(entries) == 0 || site.PCOffset != previousPC) {
-			entries = append(entries, site)
-			previousPC = site.PCOffset
+	filterSymbolSites := func(sites []pclnmap.Site) []pclnmap.Site {
+		filtered := sites[:0]
+		var previousPC uint64
+		for _, site := range sites {
+			if symbols[site.ID] != 0 && (len(filtered) == 0 || site.PCOffset != previousPC) {
+				filtered = append(filtered, site)
+				previousPC = site.PCOffset
+			}
 		}
+		return filtered
 	}
-	data.EntrySites = entries
+	data.EntrySites = filterSymbolSites(data.EntrySites)
+	data.StubSites = filterSymbolSites(data.StubSites)
 	if len(data.EntrySites) == 0 {
 		return fmt.Errorf("external pclntab has no entry sites joined to funcinfo")
 	}
-	pcLines := make(map[uint64]bool, len(data.Table.PCLines))
+	if len(pcSiteOwners) != len(data.PCSites) {
+		return fmt.Errorf("external pclntab has %d pcline sites but %d owner joins", len(data.PCSites), len(pcSiteOwners))
+	}
+	pcLines := make(map[uint64]uint32, len(data.Table.PCLines))
 	for _, rec := range data.Table.PCLines {
-		pcLines[rec.ID] = true
+		pcLines[rec.ID] = rec.Func
 	}
 	pcSites := data.PCSites[:0]
-	for _, site := range data.PCSites {
-		if pcLines[site.ID] {
+	for i, site := range data.PCSites {
+		funcIndex := pcLines[site.ID]
+		if funcIndex != 0 && externalOwnerFuncIndex(symbols, pcSiteOwners[i], data.GOOS) == funcIndex {
 			pcSites = append(pcSites, site)
 		}
 	}
 	data.PCSites = pcSites
 	return nil
+}
+
+func externalOwnerFuncIndex(symbols map[uint64]uint32, owner, goos string) uint32 {
+	for {
+		if index := symbols[funcInfoSymbolID(owner)]; index != 0 {
+			return index
+		}
+		// Mach-O has one C-mangling underscore, while debug/macho's
+		// suffix-shared string table can expose one more or less. Try the same
+		// candidate sequence as pclnpost.canonicalOwner, stopping as soon as a
+		// real funcinfo symbol joins.
+		if goos != "darwin" || !strings.HasPrefix(owner, "_") {
+			return 0
+		}
+		owner = owner[1:]
+	}
 }

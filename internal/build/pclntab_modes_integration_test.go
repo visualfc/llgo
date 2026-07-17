@@ -36,9 +36,9 @@ import (
 	"github.com/goplus/llgo/internal/pclnmap"
 )
 
-// The fixture obtains a real function-entry PC rather than relying only on
-// runtime.Caller. Together the entry lookup and stack APIs exercise the full
-// metadata contract, including their deliberate absence in pclntab=none.
+// The fixture obtains both a closure ABI stub entry PC and a real target
+// mid-function PC. Together those lookups and the stack APIs exercise the
+// full metadata contract, including its deliberate absence in pclntab=none.
 const pclntabModesFixture = `package main
 
 import (
@@ -52,7 +52,24 @@ import (
 )
 
 //go:noinline
-func pclnTarget() {}
+func pclnTarget() uintptr {
+	pc, _, _, ok := runtime.Caller(0)
+	if !ok {
+		return 0
+	}
+	// Keep the target body comfortably larger than the entry-anchor slack.
+	// This makes the returned mid-function PC unambiguously belong to the
+	// target on both fixed-width arm64 and byte-aligned amd64, while the
+	// function value below still exposes the separate closure ABI stub.
+	value := pc
+	for i := uintptr(0); i < 64; i++ {
+		value = value*33 + i
+	}
+	pclnTargetSink = value
+	return pc
+}
+
+var pclnTargetSink uintptr
 
 func pclnState() string {
 	pc := reflect.ValueOf(pclnTarget).Pointer()
@@ -69,6 +86,30 @@ func pclnStateForPC(pc uintptr) string {
 		return "FULL"
 	}
 	return "MISS"
+}
+
+func pclnClosurePCState(fn *runtime.Func, pc uintptr) string {
+	if fn == nil || !strings.HasSuffix(fn.Name(), ".pclnTarget") {
+		return "MISS"
+	}
+	file, line := fn.FileLine(pc)
+	if filepath.Base(file) == "main.go" && line > 0 {
+		return "FULL"
+	}
+	return "MISS"
+}
+
+func pclnClosureState() string {
+	stubPC := reflect.ValueOf(pclnTarget).Pointer()
+	targetPC := pclnTarget()
+	stubFn := runtime.FuncForPC(stubPC)
+	targetFn := runtime.FuncForPC(targetPC)
+	separate := stubFn != nil && targetFn != nil &&
+		stubFn.Name() == targetFn.Name() &&
+		stubFn.Entry() == stubPC && targetFn.Entry() != 0 &&
+		targetFn.Entry() != stubFn.Entry() && targetFn.Entry() <= targetPC
+	return fmt.Sprintf("target=%s stub=%s separate=%t",
+		pclnClosurePCState(targetFn, targetPC), pclnClosurePCState(stubFn, stubPC), separate)
 }
 
 //go:noinline
@@ -166,6 +207,8 @@ func main() {
 		fmt.Println(pclnState())
 	case "apis":
 		fmt.Printf("caller=%s frames=%s func=%s\n", pclnCallerState(), pclnFramesState(), pclnState())
+	case "closure":
+		fmt.Println(pclnClosureState())
 	case "panic":
 		pclnPanic()
 	case "success-cache":
@@ -192,6 +235,15 @@ func main() {
 	default:
 		panic("unknown scenario")
 	}
+}
+`
+
+const pclntabPureCLibraryFixture = `package main
+
+import "github.com/goplus/lib/c"
+
+func main() {
+	c.Printf(c.Str("pure-c-pclntab\n"))
 }
 `
 
@@ -264,6 +316,9 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 		if got := runPCLNIntegrationBinary(t, bin, "once"); got != "FULL\n" {
 			t.Fatalf("runtime metadata state = %q, want FULL", got)
 		}
+		if got := runPCLNIntegrationBinary(t, bin, "closure"); got != "target=FULL stub=FULL separate=true\n" {
+			t.Fatalf("closure target/stub metadata = %q", got)
+		}
 	})
 
 	t.Run("relative-launch-then-chdir", func(t *testing.T) {
@@ -305,6 +360,7 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 			{name: "wrong-ABI", mutate: mismatchPCLNIntegrationABI},
 			{name: "wrong-architecture", mutate: mismatchPCLNIntegrationArchitecture},
 			{name: "overlapping-sections", mutate: overlapPCLNIntegrationSections},
+			{name: "misaligned-stub-section", mutate: misalignPCLNIntegrationStubSection},
 		}
 		for _, failure := range failures {
 			t.Run(failure.name, func(t *testing.T) {
@@ -334,6 +390,31 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 			t.Fatalf("concurrent first load = %q, want all lookups to succeed", got)
 		}
 	})
+}
+
+func TestPCLNExternalPureCLibraryIdentityRetentionIntegration(t *testing.T) {
+	requireNativePCLNSidecars(t)
+	setPCLNIntegrationEnv(t)
+	source := writePCLNIntegrationSource(t, pclntabPureCLibraryFixture)
+	bin := buildPCLNIntegrationBinary(t, source, PCLNExternal, LinkOptions{})
+	verifyPCLNIntegrationSignature(t, bin)
+	if got := runPCLNIntegrationBinary(t, bin); got != "pure-c-pclntab\n" {
+		t.Fatalf("pure lib/c output = %q", got)
+	}
+	if pclnIntegrationHasLLGoRuntime(t, bin) {
+		t.Fatal("pure lib/c fixture unexpectedly linked the LLGo runtime")
+	}
+	raw, err := os.ReadFile(bin + ".pclntab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := pclnmap.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pclnIntegrationBinaryIdentity(t, bin); got != view.Identity {
+		t.Fatalf("binary identity = %x, sidecar identity = %x", got, view.Identity)
+	}
 }
 
 func TestPCLNExternalLinkOptionsIntegration(t *testing.T) {
@@ -396,24 +477,107 @@ func verifyPCLNIntegrationSignature(t *testing.T, path string) {
 
 func setPCLNIntegrationEnv(t *testing.T) {
 	t.Helper()
-	// Enable native debug metadata so the LinkOptions matrix can observe both
-	// its preserved and omitted states. Explicit typed PCLNMode remains
-	// authoritative over the legacy environment switch.
-	t.Setenv(llgoDebug, "0")
-	t.Setenv(llgoDbgSyms, "1")
+	// Explicit typed PCLNMode remains authoritative over the legacy funcinfo
+	// environment switches.
 	t.Setenv(llgoFuncInfo, "1")
 	t.Setenv(llgoFuncInfoSites, "1")
 }
 
 func writePCLNIntegrationFixture(t *testing.T) string {
 	t.Helper()
+	return writePCLNIntegrationSource(t, pclntabModesFixture)
+}
+
+func writePCLNIntegrationSource(t *testing.T, source string) string {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "main.go")
-	if err := os.WriteFile(path, []byte(pclntabModesFixture), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// go/packages' file= query keeps the fixture self-contained without
 	// adding another permanent testdata package to the repository.
 	return "file=" + path
+}
+
+func pclnIntegrationHasLLGoRuntime(t *testing.T, path string) bool {
+	t.Helper()
+	const runtimeSymbol = "github.com/goplus/llgo/runtime/internal/runtime."
+	switch runtime.GOOS {
+	case "linux":
+		f, err := elf.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		syms, err := f.Symbols()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, sym := range syms {
+			if strings.Contains(sym.Name, runtimeSymbol) {
+				return true
+			}
+		}
+	case "darwin":
+		f, err := macho.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if f.Symtab == nil {
+			t.Fatal("Mach-O has no symbol table")
+		}
+		for _, sym := range f.Symtab.Syms {
+			if strings.Contains(sym.Name, runtimeSymbol) {
+				return true
+			}
+		}
+	default:
+		panic(fmt.Sprintf("unexpected GOOS %q", runtime.GOOS))
+	}
+	return false
+}
+
+func pclnIntegrationBinaryIdentity(t *testing.T, path string) [32]byte {
+	t.Helper()
+	var raw []byte
+	var err error
+	switch runtime.GOOS {
+	case "linux":
+		f, openErr := elf.Open(path)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		defer f.Close()
+		section := f.Section("llgo_pclntab_id")
+		if section == nil {
+			t.Fatal("ELF pclntab identity section is missing")
+		}
+		raw, err = section.Data()
+	case "darwin":
+		f, openErr := macho.Open(path)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		defer f.Close()
+		for _, section := range f.Sections {
+			if section.Seg == "__DATA" && section.Name == "__llgo_pid" {
+				raw, err = section.Data()
+				break
+			}
+		}
+	default:
+		panic(fmt.Sprintf("unexpected GOOS %q", runtime.GOOS))
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) != 32 {
+		t.Fatalf("pclntab identity section size = %d, want 32", len(raw))
+	}
+	var identity [32]byte
+	copy(identity[:], raw)
+	return identity
 }
 
 func buildPCLNIntegrationBinary(t *testing.T, source string, mode PCLNMode, options LinkOptions) string {
@@ -607,6 +771,17 @@ func overlapPCLNIntegrationSections(t *testing.T, path string) {
 		pclines := records + pclnIntegrationSectionSize
 		off := binary.LittleEndian.Uint64(raw[records:])
 		binary.LittleEndian.PutUint64(raw[pclines:], off)
+	})
+}
+
+func misalignPCLNIntegrationStubSection(t *testing.T, path string) {
+	t.Helper()
+	mutatePCLNIntegrationHeader(t, path, func(raw []byte) {
+		// v2 descriptor order: records, pclines, strings, string offsets,
+		// hash, symbol index, entries, stubs, pc sites.
+		stub := pclnIntegrationHeaderSections + 7*pclnIntegrationSectionSize
+		off := binary.LittleEndian.Uint64(raw[stub:])
+		binary.LittleEndian.PutUint64(raw[stub:], off+1)
 	})
 }
 

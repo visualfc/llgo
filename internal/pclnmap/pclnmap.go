@@ -31,7 +31,7 @@ import (
 
 const (
 	Magic      = "LLGOPCL1"
-	Version    = uint32(1)
+	Version    = uint32(2)
 	ABIVersion = uint32(1)
 	HeaderSize = uint32(256)
 
@@ -70,6 +70,7 @@ const (
 	descHash
 	descSymbolIndex
 	descEntrySites
+	descStubSites
 	descPCSites
 	descCount
 )
@@ -91,15 +92,17 @@ type SymbolIndexEntry struct {
 }
 
 // Site is a final linked PC expressed relative to the image base. ID is a
-// symbol ID for EntrySites and a pcline record ID for PCSites.
+// symbol ID for EntrySites and StubSites, and a pcline record ID for PCSites.
 type Site struct {
 	PCOffset uint64
 	ID       uint64
 }
 
 // Data is the complete immutable payload needed by the external runtime
-// loader. EntrySites already includes closure stubs and has been normalized
-// and LTO-deduplicated by the post-link analyzer.
+// loader. EntrySites and StubSites have each been normalized and
+// LTO-deduplicated by the post-link analyzer. Keeping them distinct preserves
+// the target function's canonical entry while still making closure ABI stubs
+// independently symbolizable.
 type Data struct {
 	GOOS        string
 	GOARCH      string
@@ -111,6 +114,7 @@ type Data struct {
 	Table       funcinfo.Table
 	SymbolIndex []SymbolIndexEntry
 	EntrySites  []Site
+	StubSites   []Site
 	PCSites     []Site
 }
 
@@ -196,6 +200,7 @@ func Encode(data Data) ([]byte, error) {
 		{uint64(len(data.Table.Hash)), hashSize, 2},
 		{uint64(len(data.SymbolIndex)), symbolIndexSize, 8},
 		{uint64(len(data.EntrySites)), siteSize, 8},
+		{uint64(len(data.StubSites)), siteSize, 8},
 		{uint64(len(data.PCSites)), siteSize, 8},
 	}
 
@@ -278,6 +283,7 @@ func Encode(data Data) ([]byte, error) {
 		}
 	}
 	writeSites(sections[descEntrySites], data.EntrySites)
+	writeSites(sections[descStubSites], data.StubSites)
 	writeSites(sections[descPCSites], data.PCSites)
 	binary.LittleEndian.PutUint64(out[headerPayloadHash:], fnv64(out[HeaderSize:]))
 	return out, nil
@@ -310,7 +316,7 @@ func descriptorSize(index int) uint64 {
 		return hashSize
 	case descSymbolIndex:
 		return symbolIndexSize
-	case descEntrySites, descPCSites:
+	case descEntrySites, descStubSites, descPCSites:
 		return siteSize
 	default:
 		return 0
@@ -321,7 +327,7 @@ func descriptorAlignment(index int) uint64 {
 	switch index {
 	case descRecords, descStringOffsets:
 		return 4
-	case descPCLines, descSymbolIndex, descEntrySites, descPCSites:
+	case descPCLines, descSymbolIndex, descEntrySites, descStubSites, descPCSites:
 		return 8
 	case descHash:
 		return 2

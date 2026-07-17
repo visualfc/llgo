@@ -21,8 +21,12 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	buildfuncinfo "github.com/goplus/llgo/internal/build/funcinfo"
+	"github.com/goplus/llgo/internal/pclnmap"
 )
 
 func TestPCLNModeStringAndValidity(t *testing.T) {
@@ -211,5 +215,48 @@ func TestFinalizeRuntimePCLNRemovesStaleSidecar(t *testing.T) {
 				t.Fatalf("stale sidecar still exists: %v", err)
 			}
 		})
+	}
+}
+
+func TestFilterExternalPCLNJoinsKeepsEntryAndStubKindsSeparate(t *testing.T) {
+	idA := funcInfoSymbolID("example.com/p.A")
+	idB := funcInfoSymbolID("example.com/p.B")
+	data := pclnmap.Data{
+		GOOS: "darwin",
+		Table: buildfuncinfo.Table{PCLines: []buildfuncinfo.EncodedPCLineRecord{
+			{ID: 101, Func: 1},
+			{ID: 202, Func: 2},
+		}},
+		SymbolIndex: []pclnmap.SymbolIndexEntry{
+			{SymbolID: idA, FuncIndex: 1},
+			{SymbolID: idB, FuncIndex: 2},
+		},
+		EntrySites: []pclnmap.Site{
+			{PCOffset: 0x100, ID: idA},
+			{PCOffset: 0x100, ID: idB}, // same-PC alias is deterministically dropped
+			{PCOffset: 0x200, ID: 99},  // missing funcinfo join
+		},
+		StubSites: []pclnmap.Site{
+			{PCOffset: 0x80, ID: idA},
+			{PCOffset: 0x90, ID: 99}, // missing funcinfo join
+		},
+		PCSites: []pclnmap.Site{
+			{PCOffset: 0x110, ID: 101},
+			{PCOffset: 0x120, ID: 101}, // A's pcline copied into B
+			{PCOffset: 0x130, ID: 202},
+		},
+	}
+	if err := filterExternalPCLNJoins(&data, []string{"__example.com/p.A", "_example.com/p.B", "_example.com/p.B"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(data.EntrySites) != 1 || data.EntrySites[0] != (pclnmap.Site{PCOffset: 0x100, ID: idA}) {
+		t.Fatalf("entry sites = %#v", data.EntrySites)
+	}
+	if len(data.StubSites) != 1 || data.StubSites[0] != (pclnmap.Site{PCOffset: 0x80, ID: idA}) {
+		t.Fatalf("stub sites = %#v", data.StubSites)
+	}
+	wantPCSites := []pclnmap.Site{{PCOffset: 0x110, ID: 101}, {PCOffset: 0x130, ID: 202}}
+	if !reflect.DeepEqual(data.PCSites, wantPCSites) {
+		t.Fatalf("pcline sites = %#v, want %#v", data.PCSites, wantPCSites)
 	}
 }

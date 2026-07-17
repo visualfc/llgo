@@ -642,6 +642,7 @@ func TestExternalFuncInfoTableKeepsPayloadOutOfIR(t *testing.T) {
 				"@__llgo_funcinfo_table = global ptr null",
 				"@__llgo_funcinfo_count = global i64 0",
 				"@__llgo_pclntab_identity = global [32 x i8] zeroinitializer",
+				"@llvm.used = appending global [1 x ptr] [ptr @__llgo_pclntab_identity], section \"llvm.metadata\"",
 				target.identitySect,
 				target.entryBoundary,
 			} {

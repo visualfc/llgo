@@ -1141,56 +1141,73 @@ func funcInfoIndexForSymbolID(symbolID uint64) uint32 {
 }
 
 func sortRuntimeFuncPCFrames(frames []runtimeFuncPCFrame) {
-	if len(frames) < 2 {
+	count := len(frames)
+	if count < 2 {
 		return
 	}
-	quickSortRuntimeFuncPCFrames(frames, 0, len(frames)-1)
+	// Pass only the backing-store pointer through the sorting loop. LLGo
+	// currently lowers each checked slice access to a dynamic stack
+	// temporary whose lifetime extends until function return; quicksort's
+	// partition loops can otherwise exhaust the fixed pthread stack.
+	quickSortRuntimeFuncPCFrames(unsafe.Pointer(&frames[0]), 0, count-1)
 }
 
-func quickSortRuntimeFuncPCFrames(frames []runtimeFuncPCFrame, lo, hi int) {
+func runtimeFuncPCFrameAt(base unsafe.Pointer, index int) *runtimeFuncPCFrame {
+	return (*runtimeFuncPCFrame)(unsafe.Add(base, uintptr(index)*unsafe.Sizeof(runtimeFuncPCFrame{})))
+}
+
+func swapRuntimeFuncPCFrames(base unsafe.Pointer, i, j int) {
+	left := runtimeFuncPCFrameAt(base, i)
+	right := runtimeFuncPCFrameAt(base, j)
+	tmp := *left
+	*left = *right
+	*right = tmp
+}
+
+func quickSortRuntimeFuncPCFrames(base unsafe.Pointer, lo, hi int) {
 	for hi-lo > 16 {
 		mid := int(uint(lo+hi) >> 1)
-		if frames[mid].entry < frames[lo].entry {
-			frames[mid], frames[lo] = frames[lo], frames[mid]
+		if runtimeFuncPCFrameAt(base, mid).entry < runtimeFuncPCFrameAt(base, lo).entry {
+			swapRuntimeFuncPCFrames(base, mid, lo)
 		}
-		if frames[hi].entry < frames[mid].entry {
-			frames[hi], frames[mid] = frames[mid], frames[hi]
+		if runtimeFuncPCFrameAt(base, hi).entry < runtimeFuncPCFrameAt(base, mid).entry {
+			swapRuntimeFuncPCFrames(base, hi, mid)
 		}
-		if frames[mid].entry < frames[lo].entry {
-			frames[mid], frames[lo] = frames[lo], frames[mid]
+		if runtimeFuncPCFrameAt(base, mid).entry < runtimeFuncPCFrameAt(base, lo).entry {
+			swapRuntimeFuncPCFrames(base, mid, lo)
 		}
-		pivot := frames[mid].entry
+		pivot := runtimeFuncPCFrameAt(base, mid).entry
 		i, j := lo, hi
 		for {
-			for frames[i].entry < pivot {
+			for runtimeFuncPCFrameAt(base, i).entry < pivot {
 				i++
 			}
-			for frames[j].entry > pivot {
+			for runtimeFuncPCFrameAt(base, j).entry > pivot {
 				j--
 			}
 			if i >= j {
 				break
 			}
-			frames[i], frames[j] = frames[j], frames[i]
+			swapRuntimeFuncPCFrames(base, i, j)
 			i++
 			j--
 		}
 		if j-lo < hi-i {
-			quickSortRuntimeFuncPCFrames(frames, lo, j)
+			quickSortRuntimeFuncPCFrames(base, lo, j)
 			lo = i
 		} else {
-			quickSortRuntimeFuncPCFrames(frames, i, hi)
+			quickSortRuntimeFuncPCFrames(base, i, hi)
 			hi = j
 		}
 	}
 	for i := lo + 1; i <= hi; i++ {
-		x := frames[i]
+		x := *runtimeFuncPCFrameAt(base, i)
 		j := i - 1
-		for j >= lo && frames[j].entry > x.entry {
-			frames[j+1] = frames[j]
+		for j >= lo && runtimeFuncPCFrameAt(base, j).entry > x.entry {
+			*runtimeFuncPCFrameAt(base, j+1) = *runtimeFuncPCFrameAt(base, j)
 			j--
 		}
-		frames[j+1] = x
+		*runtimeFuncPCFrameAt(base, j+1) = x
 	}
 }
 
@@ -1845,56 +1862,72 @@ func symbolPC(symbol string) uintptr {
 }
 
 func sortRuntimePCLineFrames(frames []runtimePCLineFrame) {
-	if len(frames) < 2 {
+	count := len(frames)
+	if count < 2 {
 		return
 	}
-	quickSortRuntimePCLineFrames(frames, 0, len(frames)-1)
+	// Keep this raw-pointer form in sync with sortRuntimeFuncPCFrames. PC-line
+	// tables are usually larger, so checked slice accesses in the partition
+	// loops can hit the same LLGo fixed-stack exhaustion even sooner.
+	quickSortRuntimePCLineFrames(unsafe.Pointer(&frames[0]), 0, count-1)
 }
 
-func quickSortRuntimePCLineFrames(frames []runtimePCLineFrame, lo, hi int) {
+func runtimePCLineFrameAt(base unsafe.Pointer, index int) *runtimePCLineFrame {
+	return (*runtimePCLineFrame)(unsafe.Add(base, uintptr(index)*unsafe.Sizeof(runtimePCLineFrame{})))
+}
+
+func swapRuntimePCLineFrames(base unsafe.Pointer, i, j int) {
+	left := runtimePCLineFrameAt(base, i)
+	right := runtimePCLineFrameAt(base, j)
+	tmp := *left
+	*left = *right
+	*right = tmp
+}
+
+func quickSortRuntimePCLineFrames(base unsafe.Pointer, lo, hi int) {
 	for hi-lo > 16 {
 		mid := int(uint(lo+hi) >> 1)
-		if frames[mid].pc < frames[lo].pc {
-			frames[mid], frames[lo] = frames[lo], frames[mid]
+		if runtimePCLineFrameAt(base, mid).pc < runtimePCLineFrameAt(base, lo).pc {
+			swapRuntimePCLineFrames(base, mid, lo)
 		}
-		if frames[hi].pc < frames[mid].pc {
-			frames[hi], frames[mid] = frames[mid], frames[hi]
+		if runtimePCLineFrameAt(base, hi).pc < runtimePCLineFrameAt(base, mid).pc {
+			swapRuntimePCLineFrames(base, hi, mid)
 		}
-		if frames[mid].pc < frames[lo].pc {
-			frames[mid], frames[lo] = frames[lo], frames[mid]
+		if runtimePCLineFrameAt(base, mid).pc < runtimePCLineFrameAt(base, lo).pc {
+			swapRuntimePCLineFrames(base, mid, lo)
 		}
-		pivot := frames[mid].pc
+		pivot := runtimePCLineFrameAt(base, mid).pc
 		i, j := lo, hi
 		for {
-			for frames[i].pc < pivot {
+			for runtimePCLineFrameAt(base, i).pc < pivot {
 				i++
 			}
-			for frames[j].pc > pivot {
+			for runtimePCLineFrameAt(base, j).pc > pivot {
 				j--
 			}
 			if i >= j {
 				break
 			}
-			frames[i], frames[j] = frames[j], frames[i]
+			swapRuntimePCLineFrames(base, i, j)
 			i++
 			j--
 		}
 		if j-lo < hi-i {
-			quickSortRuntimePCLineFrames(frames, lo, j)
+			quickSortRuntimePCLineFrames(base, lo, j)
 			lo = i
 		} else {
-			quickSortRuntimePCLineFrames(frames, i, hi)
+			quickSortRuntimePCLineFrames(base, i, hi)
 			hi = j
 		}
 	}
 	for i := lo + 1; i <= hi; i++ {
-		x := frames[i]
+		x := *runtimePCLineFrameAt(base, i)
 		j := i - 1
-		for j >= lo && frames[j].pc > x.pc {
-			frames[j+1] = frames[j]
+		for j >= lo && runtimePCLineFrameAt(base, j).pc > x.pc {
+			*runtimePCLineFrameAt(base, j+1) = *runtimePCLineFrameAt(base, j)
 			j--
 		}
-		frames[j+1] = x
+		*runtimePCLineFrameAt(base, j+1) = x
 	}
 }
 

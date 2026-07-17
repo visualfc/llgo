@@ -36,17 +36,20 @@ const (
 
 // ExternalSite is one final linked site. PCOffset is relative to the image
 // base, so it remains valid after ASLR. ID is a funcinfo symbol ID for an
-// entry site and a pcline record ID for a PC-line site.
+// entry site and a pcline record ID for a PC-line site. PC-line sites also
+// carry the final linked owner in OwnerSymbol; it is a post-link join key and
+// is not serialized into the sidecar.
 type ExternalSite struct {
-	PCOffset uint64
-	ID       uint64
+	PCOffset    uint64
+	ID          uint64
+	OwnerSymbol string
 }
 
 // ExternalAnalysis is the immutable input for an external pclntab sidecar.
 // TextStart and TextEnd are link-time virtual addresses; sites are expressed
-// relative to ImageBase. EntrySites combines ordinary function entries and
-// closure stubs after LTO-copy deduplication against the final symbol table.
-// Identity is SHA-256 of the complete, unmodified linked binary.
+// relative to ImageBase. EntrySites and StubSites retain their distinct
+// runtime meanings after LTO-copy deduplication against the final symbol
+// table. Identity is SHA-256 of the complete, unmodified linked binary.
 type ExternalAnalysis struct {
 	Format      string
 	PointerSize int
@@ -56,6 +59,7 @@ type ExternalAnalysis struct {
 	Identity    [sha256.Size]byte
 
 	EntrySites  []ExternalSite
+	StubSites   []ExternalSite
 	PCLineSites []ExternalSite
 
 	EntryRecords  int
@@ -97,6 +101,10 @@ func AnalyzeExternal(path string) (ExternalAnalysis, error) {
 	if len(kept) == 0 {
 		return out, fmt.Errorf("no records survived dedup")
 	}
+	keptEntries, keptStubs := partitionExternalEntries(info, kept)
+	if len(keptEntries) == 0 {
+		return out, fmt.Errorf("no entry records survived dedup")
+	}
 
 	out.Format = info.format
 	out.PointerSize = info.pointerSize
@@ -106,9 +114,32 @@ func AnalyzeExternal(path string) (ExternalAnalysis, error) {
 	out.Identity = sha256.Sum256(info.raw)
 	out.InlineCopies = inline
 	out.NoSymbol = noSymbol
-	out.EntrySites = externalSites(info, kept)
-	out.PCLineSites = externalSites(info, pcLines)
+	out.EntrySites = externalSites(info, keptEntries)
+	out.StubSites = externalSites(info, keptStubs)
+	out.PCLineSites = externalPCLineSites(info, pcLines)
 	return out, nil
+}
+
+// partitionExternalEntries classifies normalized records by their final
+// linked owner, not by the input section that carried the anchor. LTO can
+// inline a target body (and its entry anchor) into the target's closure stub,
+// or retain a stub anchor in the target. In either case the final owner kind
+// is authoritative for the runtime's canonical-entry semantics.
+func partitionExternalEntries(info *binaryInfo, kept []siteRecord) (entries, stubs []siteRecord) {
+	entries = make([]siteRecord, 0, len(kept))
+	stubs = make([]siteRecord, 0, len(kept))
+	for _, record := range kept {
+		owner, ok := owner(info, record.pc)
+		if !ok {
+			continue
+		}
+		if stringIndex(owner.name, stubPrefix) >= 0 {
+			stubs = append(stubs, record)
+		} else {
+			entries = append(entries, record)
+		}
+	}
+	return entries, stubs
 }
 
 func validateExternalLayout(info *binaryInfo) error {
@@ -163,6 +194,52 @@ func externalSites(info *binaryInfo, records []siteRecord) []ExternalSite {
 		out = append(out, site)
 	}
 	return out
+}
+
+func externalPCLineSites(info *binaryInfo, records []siteRecord) []ExternalSite {
+	sites := make([]ExternalSite, 0, len(records))
+	for _, record := range records {
+		if record.pc < info.textStart || record.pc >= info.textEnd || record.pc < info.imageBase {
+			continue
+		}
+		sym, ok := owner(info, record.pc)
+		if !ok {
+			continue
+		}
+		sites = append(sites, ExternalSite{
+			PCOffset:    record.pc - info.imageBase,
+			ID:          record.symbolID,
+			OwnerSymbol: externalOwnerSymbolName(sym.name),
+		})
+	}
+	sort.Slice(sites, func(i, j int) bool {
+		if sites[i].PCOffset != sites[j].PCOffset {
+			return sites[i].PCOffset < sites[j].PCOffset
+		}
+		if sites[i].ID != sites[j].ID {
+			return sites[i].ID < sites[j].ID
+		}
+		return sites[i].OwnerSymbol < sites[j].OwnerSymbol
+	})
+	if len(sites) < 2 {
+		return sites
+	}
+	out := sites[:1]
+	for _, site := range sites[1:] {
+		last := out[len(out)-1]
+		if site.PCOffset == last.PCOffset && site.ID == last.ID && site.OwnerSymbol == last.OwnerSymbol {
+			continue
+		}
+		out = append(out, site)
+	}
+	return out
+}
+
+func externalOwnerSymbolName(name string) string {
+	if i := stringIndex(name, stubPrefix); i >= 0 {
+		return name[i+len(stubPrefix):]
+	}
+	return name
 }
 
 // DetachExternal verifies that identity still names the unmodified binary,
