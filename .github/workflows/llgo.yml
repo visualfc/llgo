@@ -18,32 +18,36 @@ concurrency:
 
 jobs:
   llgo:
-    continue-on-error: true
+    name: llgo (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
+    continue-on-error: ${{ matrix.lane == 'compatibility' }}
     # macOS Intel is much slower than macOS ARM in the "Test demos" step.
     # Observed: macOS ARM about 2m49s vs macOS Intel about 10m26s.
     # Keep a larger budget to avoid timeout-related cancellations.
     timeout-minutes: 60
     strategy:
       matrix:
+        # Compatibility results are tied to these exact patch releases.
         include:
           - os: ubuntu-latest
             llvm: 19
-            go: "1.21.13"
-          - os: ubuntu-latest
-            llvm: 19
             go: "1.24.2"
+            lane: compatibility
           - os: ubuntu-latest
             llvm: 19
-            go: "1.26.0"
+            go: "1.26.5"
+            lane: primary
           - os: macos-latest
             llvm: 19
             go: "1.24.2"
+            lane: compatibility
           - os: macos-latest
             llvm: 19
-            go: "1.26.0"
+            go: "1.26.5"
+            lane: primary
           - os: macos-15-intel
             llvm: 19
-            go: "1.24.2"
+            go: "1.26.5"
+            lane: primary
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -88,15 +92,7 @@ jobs:
           pip3.12 install --break-system-packages "${py_deps[@]}"
 
       - name: Set up Go for build
-        if: ${{ !startsWith(matrix.go, '1.26') }}
         uses: ./.github/actions/setup-go
-        with:
-          go-version: "1.24.2"
-      - name: Set up Go 1.26 for build
-        if: ${{ startsWith(matrix.go, '1.26') }}
-        uses: ./.github/actions/setup-go
-        with:
-          go-version: "1.26.0"
 
       - name: Install
         run: |
@@ -104,7 +100,7 @@ jobs:
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Set up Go for testing
-        uses: actions/setup-go@v7
+        uses: ./.github/actions/setup-go
         with:
           go-version: ${{matrix.go}}
 
@@ -181,16 +177,23 @@ jobs:
           bash _lldb/runtest.sh -v
 
   test:
-    continue-on-error: true
+    name: test (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }}, shard ${{ matrix.shard }})
+    continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: 30
     strategy:
       matrix:
+        # Keep compatibility and primary toolchains pinned to exact patches.
         os:
           - macos-latest
           - ubuntu-latest
         llvm: [19]
-        go: ["1.24.2", "1.26.0"]
+        go: ["1.24.2", "1.26.5"]
         shard: ["0", "1", "2", "3"]
+        include:
+          - go: "1.24.2"
+            lane: compatibility
+          - go: "1.26.5"
+            lane: primary
         exclude:
           - os: macos-latest
             shard: "2"
@@ -212,15 +215,7 @@ jobs:
           pip3.12 install --break-system-packages "${py_deps[@]}"
 
       - name: Set up Go for build
-        if: ${{ !startsWith(matrix.go, '1.26') }}
         uses: ./.github/actions/setup-go
-        with:
-          go-version: "1.24.2"
-      - name: Set up Go 1.26 for build
-        if: ${{ startsWith(matrix.go, '1.26') }}
-        uses: ./.github/actions/setup-go
-        with:
-          go-version: "1.26.0"
 
       - name: Install
         run: |
@@ -228,7 +223,7 @@ jobs:
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Set up Go for testing
-        uses: actions/setup-go@v7
+        uses: ./.github/actions/setup-go
         with:
           go-version: ${{matrix.go}}
       - name: run llgo test
@@ -259,30 +254,31 @@ jobs:
 
           # Run per-package and print elapsed time to keep logs readable.
           for pkg in "${selected[@]}"; do
-            echo "==> llgo test -timeout=20m ${pkg}"
+            echo "==> llgo test -timeout=20m -bench=^BenchmarkGo126 -benchtime=1x ${pkg}"
             SECONDS=0
-            llgo test -timeout=20m "${pkg}"
+            llgo test -timeout=20m -bench='^BenchmarkGo126' -benchtime=1x "${pkg}"
             echo "==> done ${pkg} (${SECONDS}s)"
           done
 
   hello:
-    continue-on-error: true
+    name: hello (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
+    continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: 30
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             llvm: 19
-            go: "1.21.13"
-          - os: ubuntu-latest
-            llvm: 19
             go: "1.24.2"
+            lane: compatibility
           - os: ubuntu-latest
             llvm: 19
-            go: "1.26.0"
+            go: "1.26.5"
+            lane: primary
           - os: macos-latest
             llvm: 19
-            go: "1.24.2"
+            go: "1.26.5"
+            lane: primary
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -293,13 +289,6 @@ jobs:
 
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
-        with:
-          go-version: "1.24.2"
-      - name: Set up Go 1.26 for build
-        if: ${{ startsWith(matrix.go, '1.26') }}
-        uses: ./.github/actions/setup-go
-        with:
-          go-version: "1.26.0"
 
       - name: Install llgo
         run: |
@@ -340,7 +329,6 @@ jobs:
           mod-version: "1.24"
 
   cross-compile:
-    continue-on-error: true
     timeout-minutes: 30
     strategy:
       matrix:
@@ -356,8 +344,6 @@ jobs:
 
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
-        with:
-          go-version: "1.24.2"
 
       - name: Install wamr
         run: |
@@ -377,7 +363,7 @@ jobs:
         shell: bash
         working-directory: _demo/c
         run: |
-          echo "Testing cross-compilation wasm with Go 1.24.2"
+          echo "Testing cross-compilation wasm with $(go env GOVERSION)"
 
           # Compile for wasm architecture
           GOOS=wasip1 GOARCH=wasm llgo build -o hello -tags=nogc -v ./helloc

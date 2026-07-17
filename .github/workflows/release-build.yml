@@ -14,6 +14,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # Container tags cannot use Go patch selectors. Upgrade this exact pin in
+  # the same periodic toolchain-update PR as the setup-go default.
+  GORELEASER_CROSS_IMAGE: ghcr.io/goreleaser/goreleaser-cross:v1.26.4
+
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -72,13 +77,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{github.token}}
         run: |
+          docker run --rm --entrypoint go "${GORELEASER_CROSS_IMAGE}" version
+          docker run --rm "${GORELEASER_CROSS_IMAGE}" --version
           docker run \
             --rm \
             -e GITHUB_TOKEN=${GITHUB_TOKEN} \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v $(pwd):/go/src/llgo \
             -w /go/src/llgo \
-            ghcr.io/goreleaser/goreleaser-cross:v1.22 \
+            "${GORELEASER_CROSS_IMAGE}" \
             release --verbose --skip=publish,nfpm,snapcraft --snapshot --clean
 
       - name: Upload Darwin AMD64 Artifacts
@@ -129,23 +136,23 @@ jobs:
           - os: macos-15-intel
             goos: darwin
             goarch: amd64
-            go-version: "1.24.2"
-            go-mod-version: "1.24"
+            go-version: "1.26.5"
+            go-mod-version: "1.26"
           - os: macos-latest
             goos: darwin
             goarch: arm64
-            go-version: "1.24.2"
-            go-mod-version: "1.24"
+            go-version: "1.26.5"
+            go-mod-version: "1.26"
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-            go-version: "1.24.2"
-            go-mod-version: "1.24"
+            go-version: "1.26.5"
+            go-mod-version: "1.26"
           - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
-            go-version: "1.24.2"
-            go-mod-version: "1.24"
+            go-version: "1.26.5"
+            go-mod-version: "1.26"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -154,7 +161,7 @@ jobs:
         with:
           install-llvm: false
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: ./.github/actions/setup-go
         with:
           go-version: ${{ matrix.go-version }}
       - name: Download Platform Artifact
@@ -197,11 +204,13 @@ jobs:
         run: |
           echo "Publishing release for tag: ${{ github.ref }}"
           echo "All artifact tests passed, proceeding with release..."
+          docker run --rm --entrypoint go "${GORELEASER_CROSS_IMAGE}" version
+          docker run --rm "${GORELEASER_CROSS_IMAGE}" --version
           docker run \
             --rm \
             -e GITHUB_TOKEN=${GITHUB_TOKEN} \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v $(pwd):/go/src/llgo \
             -w /go/src/llgo \
-            ghcr.io/goreleaser/goreleaser-cross:v1.22 \
+            "${GORELEASER_CROSS_IMAGE}" \
             release --clean --verbose --skip nfpm,snapcraft

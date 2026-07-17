@@ -118,7 +118,7 @@ func derefOnly(p *interface{}) interface{} {
 	}
 }
 
-func TestRangeArrayPointerCallEvaluatesWithoutNilCheck(t *testing.T) {
+func TestRangeArrayPointerEffectfulOperandKeepsNilCheck(t *testing.T) {
 	_, m := mustCompileLLPkgFromSrc(t, `
 package foo
 
@@ -133,14 +133,19 @@ func rangeArrayCall() {
 		sink += i
 	}
 }
+
+func rangeArrayReceive(ch <-chan *[3]int) {
+	for i := range *<-ch {
+		sink += i
+	}
+}
 `)
 
-	ir := mustNamedFunction(t, m, "foo.rangeArrayCall").String()
-	if !strings.Contains(ir, "foo.nextArray") {
-		t.Fatalf("range over call operand should still evaluate the call:\n%s", ir)
-	}
-	if strings.Contains(ir, "AssertNilDeref") {
-		t.Fatalf("range over nil *array call should not nil-check the array pointer:\n%s", ir)
+	for _, name := range []string{"rangeArrayCall", "rangeArrayReceive"} {
+		ir := mustNamedFunction(t, m, "foo."+name).String()
+		if !strings.Contains(ir, "AssertNilDeref") {
+			t.Fatalf("%s should preserve its required array pointer nil check:\n%s", name, ir)
+		}
 	}
 }
 
@@ -178,19 +183,135 @@ func lenCallPtr() int {
 func lenCallDeref() int {
 	return len(*nextArray())
 }
+
+func capCallDeref() int {
+	return cap(*nextArray())
+}
+
+func lenReceiveDeref(ch <-chan *[3]int) int {
+	return len(*<-ch)
+}
+
+type arrayPointer *[3]int
+
+func lenConvertedCallDeref() int {
+	return len(*arrayPointer(nextArray()))
+}
+
+func lenAssignedCallDeref() int {
+	p := nextArray()
+	return len(*p)
+}
+
+type holder struct { p *[3]int }
+
+func nextHolder() holder { return holder{} }
+
+func lenFieldCallDeref() int {
+	return len(*nextHolder().p)
+}
 `)
 
-	for _, name := range []string{"lenPtr", "lenDeref", "capPtr", "capDeref", "lenCallPtr", "lenCallDeref"} {
+	for _, name := range []string{"lenPtr", "lenDeref", "capPtr", "capDeref", "lenCallPtr", "lenCallDeref", "capCallDeref", "lenReceiveDeref", "lenConvertedCallDeref", "lenAssignedCallDeref", "lenFieldCallDeref"} {
 		ir := mustNamedFunction(t, m, "foo."+name).String()
 		if !strings.Contains(ir, "ret i64 3") {
 			t.Fatalf("%s should return static array length/capacity 3:\n%s", name, ir)
 		}
-		if strings.Contains(ir, "AssertNilDeref") {
-			t.Fatalf("%s should not nil-check array pointer length/capacity:\n%s", name, ir)
+		wantNilCheck := name == "lenCallDeref" || name == "capCallDeref" || name == "lenReceiveDeref" || name == "lenConvertedCallDeref" || name == "lenFieldCallDeref"
+		if got := strings.Contains(ir, "AssertNilDeref"); got != wantNilCheck {
+			t.Fatalf("%s nil check = %v, want %v:\n%s", name, got, wantNilCheck, ir)
 		}
-		if strings.Contains(name, "Call") && !strings.Contains(ir, "foo.nextArray") {
-			t.Fatalf("%s should still evaluate call operand:\n%s", name, ir)
+		wantCall := ""
+		if strings.Contains(name, "Call") {
+			wantCall = "foo.nextArray"
 		}
+		if name == "lenFieldCallDeref" {
+			wantCall = "foo.nextHolder"
+		}
+		if wantCall != "" && !strings.Contains(ir, wantCall) {
+			t.Fatalf("%s should still evaluate %s:\n%s", name, wantCall, ir)
+		}
+	}
+}
+
+func TestIsEffectfulArrayPointerDerefRejectsOtherShapes(t *testing.T) {
+	if isEffectfulArrayPointerDeref(nil) {
+		t.Fatal("nil instruction should not be detected")
+	}
+	if isEffectfulArrayPointerDeref(&ssa.UnOp{Op: token.SUB}) {
+		t.Fatal("non-deref instruction should not be detected")
+	}
+
+	ssaPkg, _, _ := buildGoSSAPkg(t, `
+package foo
+
+func nextArray() *[3]int { return nil }
+
+func copyCall() [3]int { return *nextArray() }
+
+func use([3]int) {}
+
+func copyParam(p *[3]int) [3]int { return *p }
+
+func copyAssignedCall() [3]int {
+	p := nextArray()
+	return *p
+}
+
+func singleRef() { use(*nextArray()) }
+
+func multiRef() {
+	x := *nextArray()
+	use(x)
+	use(x)
+}
+`)
+
+	if isEffectfulArrayPointerDeref(findUnOp(t, ssaPkg.Func("copyParam"), token.MUL, true)) {
+		t.Fatal("deref without a function call or channel receive should not be detected")
+	}
+	assignedCall := findUnOp(t, ssaPkg.Func("copyAssignedCall"), token.MUL, true)
+	if _, ok := assignedCall.X.(*ssa.Call); !ok {
+		t.Fatalf("assigned call deref operand = %T, want *ssa.Call", assignedCall.X)
+	}
+	if !assignedCall.X.Pos().IsValid() || assignedCall.X.Pos() >= assignedCall.Pos() {
+		t.Fatalf("assigned call position %v should precede deref position %v", assignedCall.X.Pos(), assignedCall.Pos())
+	}
+	if arrayPointerOperandHasEffectAfter(assignedCall.X, assignedCall.Pos(), nil) {
+		t.Fatal("call assigned before deref expression should not be detected")
+	}
+	if isEffectfulArrayPointerDeref(findUnOp(t, ssaPkg.Func("copyCall"), token.MUL, true)) {
+		t.Fatal("deref referenced by return should not be detected")
+	}
+	if isEffectfulArrayPointerDeref(findUnOp(t, ssaPkg.Func("singleRef"), token.MUL, true)) {
+		t.Fatal("deref passed to a non-builtin call should not be detected")
+	}
+	if isEffectfulArrayPointerDeref(findUnOp(t, ssaPkg.Func("multiRef"), token.MUL, true)) {
+		t.Fatal("deref with multiple referrers should not be detected")
+	}
+}
+
+func TestArrayPointerOperandHasEffect(t *testing.T) {
+	call := &ssa.Call{}
+	cycle := &ssa.Phi{}
+	cycle.Edges = []ssa.Value{cycle}
+	for _, tc := range []struct {
+		name  string
+		value ssa.Value
+		want  bool
+	}{
+		{name: "call", value: call, want: true},
+		{name: "receive", value: &ssa.UnOp{Op: token.ARROW}, want: true},
+		{name: "other unary operation", value: &ssa.UnOp{Op: token.SUB}},
+		{name: "nested instruction", value: &ssa.ChangeType{X: call}, want: true},
+		{name: "cycle", value: cycle},
+		{name: "parameter", value: &ssa.Parameter{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := arrayPointerOperandHasEffectAfter(tc.value, token.NoPos, nil); got != tc.want {
+				t.Fatalf("arrayPointerOperandHasEffectAfter(%T) = %v, want %v", tc.value, got, tc.want)
+			}
+		})
 	}
 }
 

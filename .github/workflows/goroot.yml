@@ -9,8 +9,8 @@ concurrency:
 
 jobs:
   goroot:
-    name: GOROOT (${{ matrix.os }}, Go ${{ matrix.go-version }}, shard ${{ matrix.shard-index }}/4)
-    continue-on-error: ${{ matrix.go-version != '1.25.0' }}
+    name: GOROOT (${{ matrix.lane }}, ${{ matrix.os }}, Go ${{ matrix.go-version }}, shard ${{ matrix.shard-index }}/4)
+    continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: 180
     env:
       GOPROXY: https://proxy.golang.org,direct
@@ -19,9 +19,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # These are reproducibility pins, not floating series selectors.
+        # Upgrade them together in a dedicated toolchain-update PR.
         os: [macos-latest, ubuntu-latest]
-        go-version: ["1.24.11", "1.25.0", "1.26.0"]
+        go-version: ["1.24.11", "1.25.0", "1.26.5"]
         shard-index: ["0", "1", "2", "3"]
+        include:
+          - go-version: "1.24.11"
+            lane: compatibility
+          - go-version: "1.25.0"
+            lane: compatibility
+          - go-version: "1.26.5"
+            lane: primary
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
