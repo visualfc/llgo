@@ -22,15 +22,15 @@ jobs:
         # These are reproducibility pins, not floating series selectors.
         # Upgrade them together in a dedicated toolchain-update PR.
         os: [macos-latest, ubuntu-latest]
-        go-version: ["1.24.11", "1.25.0", "1.26.5"]
+        go-version: ["1.24.11", "1.26.5"]
         shard-index: ["0", "1", "2", "3"]
         include:
           - go-version: "1.24.11"
             lane: compatibility
-          - go-version: "1.25.0"
-            lane: compatibility
           - go-version: "1.26.5"
             lane: primary
+        # Keep both supported runtime generations on Linux and macOS. Go 1.25
+        # is intentionally omitted because it is not a compatibility target.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
