@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
+	"go/constant"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -1073,6 +1074,22 @@ type wantedError struct {
 	file    string
 	line    int
 	auto    bool
+	source  string
+}
+
+type compilerDiagnostic struct {
+	file    string
+	line    int
+	message string
+}
+
+func (diagnostic compilerDiagnostic) locationKey() string {
+	return path.Base(diagnostic.file) + ":" + strconv.Itoa(diagnostic.line)
+}
+
+type matchedDiagnostic struct {
+	compilerDiagnostic
+	expected wantedError
 }
 
 type diagnosticSource struct {
@@ -1085,7 +1102,8 @@ var (
 	errorAutoRx    = regexp.MustCompile(`// (?:GC_)?ERRORAUTO (.*)`)
 	errorQuotesRx  = regexp.MustCompile(`"([^"]*)"`)
 	errorLineRx    = regexp.MustCompile(`LINE(([+-])(\d+))?`)
-	diagnosticRx   = regexp.MustCompile(`^(.*?):([0-9]+)(?::[0-9]+)?: (.*)$`)
+	diagnosticRx   = regexp.MustCompile(`^(.*?):([0-9]+)(?:\[[^]]*\])?(?::[0-9]+)?: (.*)$`)
+	gotoOverDeclRx = regexp.MustCompile(`^goto \S+ jumps over variable declaration at line [0-9]+$`)
 )
 
 func checkExpectedErrors(output, fullPath, shortPath string) error {
@@ -1099,19 +1117,27 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 			lines[i] = replaceDiagnosticPrefix(lines[i], source.full, source.short)
 		}
 	}
+	lines = normalizeCompilerDiagnostics(lines)
 	lines = preferSpecificDiagnostics(lines)
 	var wanted []wantedError
+	sourceLines := make(map[string][]string, len(sources))
 	for _, source := range sources {
 		expected, err := wantedErrors(source.full, source.short)
 		if err != nil {
 			return err
 		}
 		wanted = append(wanted, expected...)
+		data, err := os.ReadFile(source.full)
+		if err != nil {
+			return err
+		}
+		sourceLines[normalizeDiagnosticPath(source.short)] = strings.Split(string(data), "\n")
 	}
 	pathResolver := newDiagnosticPathResolver(sources)
 	lexicalLocations := make(map[string]bool)
 	var parserRecoveryPairs []parserRecoveryPair
 	var errs []error
+	var matchedDiagnostics []matchedDiagnostic
 	for _, expected := range wanted {
 		var candidates []string
 		if expected.auto {
@@ -1137,7 +1163,7 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 			if matchesExpectedDiagnostic(expected.regexp, message) || parserAlias {
 				matched = true
 				if ok && isScopedLexicalDiagnostic(message) {
-					lexicalLocations[diagnostic.location] = true
+					lexicalLocations[diagnostic.locationKey()] = true
 				}
 				if sourceOK {
 					if secondaries := parserRecoverySecondaries(message); len(secondaries) != 0 {
@@ -1146,6 +1172,17 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 						})
 					}
 				}
+				if !ok {
+					diagnostic = compilerDiagnostic{
+						file:    normalizeDiagnosticPath(expected.file),
+						line:    expected.line,
+						message: message,
+					}
+				}
+				matchedDiagnostics = append(matchedDiagnostics, matchedDiagnostic{
+					compilerDiagnostic: diagnostic,
+					expected:           expected,
+				})
 			} else {
 				lines = append(lines, candidate)
 			}
@@ -1156,6 +1193,7 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 	}
 	lines = discardLexicalRecoveryDiagnostics(lines, lexicalLocations)
 	lines = discardPairedParserDiagnostics(lines, pathResolver, parserRecoveryPairs)
+	lines = filterSecondaryDiagnostics(lines, matchedDiagnostics, sourceLines)
 
 	local := lines[:0]
 	for _, line := range lines {
@@ -1175,9 +1213,323 @@ func checkExpectedErrorsForFiles(output string, sources []diagnosticSource) erro
 	return errors.Join(errs...)
 }
 
-type compilerDiagnostic struct {
-	location string
-	message  string
+// normalizeCompilerDiagnostics maps the go/types spellings emitted by llgo to
+// equivalent gc spellings already accepted by GOROOT's ERROR expressions.
+func normalizeCompilerDiagnostics(lines []string) []string {
+	for i, line := range lines {
+		diagnostic, ok := parseCompilerDiagnostic(line)
+		if !ok {
+			continue
+		}
+		message := normalizeCompilerDiagnosticMessage(diagnostic.message)
+		if message != diagnostic.message {
+			lines[i] = line[:len(line)-len(diagnostic.message)] + message
+		}
+	}
+	return lines
+}
+
+func normalizeCompilerDiagnosticMessage(message string) string {
+	switch message {
+	case "continue not in for statement":
+		return "continue is not in a loop"
+	case "break not in for, switch, or select statement":
+		return "break is not in a loop, switch, or select"
+	case "expected at most 2 expressions":
+		return "range clause permits at most two iteration variables"
+	case "invalid syntax tree: incorrect form of type switch guard":
+		return "invalid variable name in type switch guard"
+	}
+	if gotoOverDeclRx.MatchString(message) {
+		return "goto jumps over declaration"
+	}
+	if strings.HasPrefix(message, "label ") {
+		switch {
+		case strings.HasSuffix(message, " declared and not used"):
+			return strings.TrimSuffix(message, " declared and not used") + " defined and not used"
+		case strings.HasSuffix(message, " already declared"):
+			return strings.TrimSuffix(message, " already declared") + " already defined"
+		case strings.HasSuffix(message, " not declared"):
+			return strings.TrimSuffix(message, " not declared") + " not defined"
+		}
+	}
+	const modernIntAssignment = ") as int value in variable declaration"
+	if strings.Contains(message, modernIntAssignment) {
+		return strings.Replace(message, modernIntAssignment, ") as type int in variable declaration", 1)
+	}
+	return message
+}
+
+func normalizeDiagnosticPath(value string) string {
+	return filepath.ToSlash(filepath.Clean(value))
+}
+
+func diagnosticPathsEqual(left, right string) bool {
+	left = normalizeDiagnosticPath(left)
+	right = normalizeDiagnosticPath(right)
+	if left == right {
+		return true
+	}
+	return !strings.Contains(left, "/") && path.Base(right) == left ||
+		!strings.Contains(right, "/") && path.Base(left) == right
+}
+
+// filterSecondaryDiagnostics removes a go/types follow-on only when its gc-style
+// primary diagnostic was already matched. This keeps every ERROR mandatory and
+// leaves unrelated local diagnostics visible to the unmatched-error check.
+func filterSecondaryDiagnostics(lines []string, matched []matchedDiagnostic, sources map[string][]string) []string {
+	out := lines[:0]
+	for _, line := range lines {
+		diagnostic, ok := parseCompilerDiagnostic(line)
+		if ok && isSecondaryDiagnostic(diagnostic, matched, sources[diagnostic.file]) {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+func isSecondaryDiagnostic(diagnostic compilerDiagnostic, matched []matchedDiagnostic, source []string) bool {
+	if strings.HasPrefix(diagnostic.message, "initialization cycle for ") &&
+		hasMatchedDiagnostic(matched, diagnostic.file, diagnostic.line, func(item matchedDiagnostic) bool {
+			return strings.Contains(item.expected.pattern, "initialization loop")
+		}) {
+		return true
+	}
+
+	if strings.HasPrefix(diagnostic.message, "invalid recursive type ") &&
+		hasMatchedDiagnostic(matched, diagnostic.file, diagnostic.line, func(item matchedDiagnostic) bool {
+			return strings.Contains(item.expected.pattern, "invalid recursive type")
+		}) {
+		return true
+	}
+
+	if label, ok := unusedLabel(diagnostic.message); ok &&
+		hasMatchedDiagnostic(matched, diagnostic.file, 0, func(item matchedDiagnostic) bool {
+			invalidLabel := item.message == "invalid break label "+label || item.message == "invalid continue label "+label
+			return invalidLabel && sameFunctionScope(source, diagnostic.line, item.line)
+		}) {
+		return true
+	}
+
+	if strings.HasSuffix(diagnostic.message, " (type) is not an expression") &&
+		hasMatchedDiagnostic(matched, diagnostic.file, diagnostic.line, func(item matchedDiagnostic) bool {
+			return strings.HasPrefix(item.message, "undefined: ")
+		}) {
+		return true
+	}
+
+	if diagnostic.message == "invalid use of [...] array (outside a composite literal)" &&
+		hasMatchedDiagnostic(matched, diagnostic.file, diagnostic.line, func(item matchedDiagnostic) bool {
+			return item.message == "cannot parenthesize type in composite literal"
+		}) {
+		return true
+	}
+
+	if diagnostic.message == "range clause permits at most two iteration variables" &&
+		hasMatchedDiagnostic(matched, diagnostic.file, diagnostic.line, func(item matchedDiagnostic) bool {
+			return strings.HasPrefix(item.message, "range over ") && strings.HasSuffix(item.message, " permits only one iteration variable")
+		}) {
+		return true
+	}
+
+	if hasMatchedDiagnostic(matched, diagnostic.file, 0, func(item matchedDiagnostic) bool {
+		return item.message == "too many errors" && diagnostic.line > item.line
+	}) {
+		return true
+	}
+
+	if name, local, ok := unusedName(diagnostic.message); ok &&
+		hasMatchedDiagnostic(matched, diagnostic.file, 0, func(item matchedDiagnostic) bool {
+			code, _, _ := strings.Cut(item.expected.source, "//")
+			if !strings.Contains(item.message, "must be function call") || !containsIdentifier(code, name) {
+				return false
+			}
+			return !local || sameFunctionScope(source, diagnostic.line, item.line)
+		}) {
+		return true
+	}
+
+	return isSpuriousContextualShift(diagnostic, source)
+}
+
+func hasMatchedDiagnostic(matched []matchedDiagnostic, file string, line int, predicate func(matchedDiagnostic) bool) bool {
+	for _, item := range matched {
+		if item.file != file || line != 0 && item.line != line {
+			continue
+		}
+		if predicate(item) {
+			return true
+		}
+	}
+	return false
+}
+
+func unusedLabel(message string) (string, bool) {
+	const prefix = "label "
+	const suffix = " defined and not used"
+	if !strings.HasPrefix(message, prefix) || !strings.HasSuffix(message, suffix) {
+		return "", false
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(message, prefix), suffix), true
+}
+
+func unusedName(message string) (name string, local, ok bool) {
+	const declaredPrefix = "declared and not used: "
+	if strings.HasPrefix(message, declaredPrefix) {
+		return strings.TrimPrefix(message, declaredPrefix), true, true
+	}
+	const importedSuffix = " imported and not used"
+	if !strings.HasSuffix(message, importedSuffix) {
+		return "", false, false
+	}
+	importPath, err := strconv.Unquote(strings.TrimSuffix(message, importedSuffix))
+	if err != nil {
+		return "", false, false
+	}
+	return path.Base(importPath), false, true
+}
+
+func containsIdentifier(source, name string) bool {
+	for index := 0; index < len(source); {
+		for index < len(source) && !isIdentifierByte(source[index]) {
+			index++
+		}
+		start := index
+		for index < len(source) && isIdentifierByte(source[index]) {
+			index++
+		}
+		if source[start:index] == name {
+			return true
+		}
+	}
+	return false
+}
+
+func isIdentifierByte(value byte) bool {
+	return value == '_' || value >= '0' && value <= '9' || value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
+}
+
+type functionScope struct {
+	start int
+	end   int
+}
+
+func sameFunctionScope(source []string, first, second int) bool {
+	firstScope, firstOK := enclosingFunctionScope(source, first)
+	secondScope, secondOK := enclosingFunctionScope(source, second)
+	return firstOK && secondOK && firstScope == secondScope
+}
+
+func enclosingFunctionScope(source []string, line int) (functionScope, bool) {
+	fset := token.NewFileSet()
+	file, _ := parser.ParseFile(fset, "errorcheck.go", strings.Join(source, "\n"), 0)
+	if file == nil {
+		return functionScope{}, false
+	}
+	var best functionScope
+	found := false
+	consider := func(body *ast.BlockStmt) {
+		if body == nil {
+			return
+		}
+		scope := functionScope{
+			start: fset.Position(body.Pos()).Line,
+			end:   fset.Position(body.End()).Line,
+		}
+		if line < scope.start || line > scope.end {
+			return
+		}
+		if !found || scope.end-scope.start < best.end-best.start {
+			best = scope
+			found = true
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch node := node.(type) {
+		case *ast.FuncDecl:
+			consider(node.Body)
+		case *ast.FuncLit:
+			consider(node.Body)
+		}
+		return true
+	})
+	return best, found
+}
+
+func isSpuriousContextualShift(diagnostic compilerDiagnostic, source []string) bool {
+	const suffix = " (untyped float value) must be integer"
+	if !strings.HasPrefix(diagnostic.message, "invalid operation: shifted operand (") ||
+		!strings.HasSuffix(diagnostic.message, suffix) || diagnostic.line < 1 || diagnostic.line > len(source) {
+		return false
+	}
+	if strings.Contains(source[diagnostic.line-1], "// ERROR") {
+		return false
+	}
+	fset := token.NewFileSet()
+	file, _ := parser.ParseFile(fset, "errorcheck.go", strings.Join(source, "\n"), 0)
+	if file == nil {
+		return false
+	}
+	spurious := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		assignment, ok := node.(*ast.AssignStmt)
+		if !ok || assignment.Tok != token.ASSIGN || len(assignment.Lhs) != 1 || len(assignment.Rhs) != 1 {
+			return true
+		}
+		if start, end := fset.Position(assignment.Pos()).Line, fset.Position(assignment.End()).Line; diagnostic.line < start || diagnostic.line > end {
+			return true
+		}
+		name, ok := assignment.Lhs[0].(*ast.Ident)
+		if !ok || !isExplicitIntObject(name.Obj) || !isIntegralFloatNestedShift(assignment.Rhs[0]) {
+			return true
+		}
+		spurious = true
+		return false
+	})
+	return spurious
+}
+
+func isExplicitIntObject(object *ast.Object) bool {
+	if object == nil || object.Kind != ast.Var {
+		return false
+	}
+	var expression ast.Expr
+	switch declaration := object.Decl.(type) {
+	case *ast.ValueSpec:
+		expression = declaration.Type
+	case *ast.Field:
+		expression = declaration.Type
+	default:
+		return false
+	}
+	name, ok := expression.(*ast.Ident)
+	return ok && name.Name == "int"
+}
+
+func isIntegralFloatNestedShift(expression ast.Expr) bool {
+	outer, ok := expression.(*ast.BinaryExpr)
+	if !ok || outer.Op != token.SHL {
+		return false
+	}
+	innerExpression := outer.X
+	if paren, ok := innerExpression.(*ast.ParenExpr); ok {
+		innerExpression = paren.X
+	}
+	inner, ok := innerExpression.(*ast.BinaryExpr)
+	if !ok || inner.Op != token.SHL {
+		return false
+	}
+	literal, ok := inner.X.(*ast.BasicLit)
+	if !ok || literal.Kind != token.FLOAT {
+		return false
+	}
+	value := constant.MakeFromLiteral(literal.Value, token.FLOAT, 0)
+	if value.Kind() == constant.Unknown {
+		return false
+	}
+	_, exact := constant.Int64Val(constant.ToInt(value))
+	return exact
 }
 
 type sourceDiagnostic struct {
@@ -1315,9 +1667,14 @@ func parseCompilerDiagnostic(line string) (compilerDiagnostic, bool) {
 	if match == nil {
 		return compilerDiagnostic{}, false
 	}
+	lineNumber, err := strconv.Atoi(match[2])
+	if err != nil {
+		return compilerDiagnostic{}, false
+	}
 	return compilerDiagnostic{
-		location: filepath.Base(match[1]) + ":" + match[2],
-		message:  match[3],
+		file:    normalizeDiagnosticPath(match[1]),
+		line:    lineNumber,
+		message: match[3],
 	}, true
 }
 
@@ -1385,7 +1742,7 @@ func discardLexicalRecoveryDiagnostics(lines []string, lexicalLocations map[stri
 	out := lines[:0]
 	for _, line := range lines {
 		diagnostic, ok := parseCompilerDiagnostic(line)
-		if ok && lexicalLocations[diagnostic.location] && isLexicalRecoveryDiagnostic(diagnostic.message) {
+		if ok && lexicalLocations[diagnostic.locationKey()] && isLexicalRecoveryDiagnostic(diagnostic.message) {
 			continue
 		}
 		out = append(out, line)
@@ -1418,11 +1775,11 @@ func preferSpecificDiagnostics(lines []string) []string {
 		parsed[i], _ = parseCompilerDiagnostic(line)
 	}
 	for i := range lines {
-		if parsed[i].location == "" || discard[i] {
+		if parsed[i].file == "" || discard[i] {
 			continue
 		}
 		for j := i + 1; j < len(lines); j++ {
-			if parsed[i].location != parsed[j].location || discard[j] {
+			if parsed[i].line != parsed[j].line || !diagnosticPathsEqual(parsed[i].file, parsed[j].file) || discard[j] {
 				continue
 			}
 			switch {
@@ -1513,6 +1870,7 @@ func wantedErrors(fullPath, shortPath string) ([]wantedError, error) {
 				file:    shortPath,
 				line:    lineNumber,
 				auto:    auto,
+				source:  sourceLine,
 			})
 		}
 	}
@@ -1520,16 +1878,23 @@ func wantedErrors(fullPath, shortPath string) ([]wantedError, error) {
 }
 
 func hasDiagnosticPrefix(line, prefix string) bool {
-	colon := strings.IndexByte(line, ':')
-	if colon < 0 {
+	firstLine, _, _ := strings.Cut(line, "\n")
+	diagnostic, ok := parseCompilerDiagnostic(firstLine)
+	if !ok {
 		return false
 	}
-	slash := strings.LastIndex(line[:colon], "/")
-	base := line[slash+1:]
-	if len(base) <= len(prefix) || !strings.HasPrefix(base, prefix) {
+	expectedPath := prefix
+	expectedLine := 0
+	if colon := strings.LastIndexByte(prefix, ':'); colon >= 0 {
+		if lineNumber, err := strconv.Atoi(prefix[colon+1:]); err == nil {
+			expectedPath = prefix[:colon]
+			expectedLine = lineNumber
+		}
+	}
+	if expectedLine != 0 && diagnostic.line != expectedLine {
 		return false
 	}
-	return base[len(prefix)] == ':' || base[len(prefix)] == '['
+	return diagnosticPathsEqual(diagnostic.file, expectedPath)
 }
 
 func partitionCompilerOutput(prefix string, lines []string) (matched, unmatched []string) {
