@@ -384,61 +384,17 @@ func (hw *cheaderWriter) generateParameterDeclaration(paramType types.Type, para
 
 	switch typ := paramType.(type) {
 	case *types.Array:
-		// Handle multidimensional arrays by collecting all dimensions
-		var dimensions []int64
-		baseType := types.Type(typ)
-
-		// Traverse all array dimensions
-		for {
-			if arr, ok := baseType.(*types.Array); ok {
-				dimensions = append(dimensions, arr.Len())
-				baseType = arr.Elem()
-			} else {
-				break
-			}
-		}
-
-		// Get base element type
-		elemType := hw.goCTypeName(baseType)
-
-		// For parameters, preserve all array dimensions
-		// In C, array parameters need special handling for syntax
-		cType = elemType
-
-		// Store dimensions for later use with parameter name
-		var dimStr strings.Builder
-		for _, dim := range dimensions {
-			dimStr.WriteString(fmt.Sprintf("[%d]", dim))
-		}
-
-		// For single dimension, we can use pointer syntax
-		if len(dimensions) == 1 {
-			cType = elemType + "*"
-		} else {
-			// For multi-dimensional, we need to handle it when adding parameter name
-			// Store the dimension info in a special way
-			cType = elemType + "ARRAY_DIMS" + dimStr.String()
-		}
+		// C array parameters decay to pointers and therefore do not preserve
+		// Go's by-value array ABI on architectures such as amd64. Use the same
+		// generated wrapper struct as array return values so C passes the whole
+		// value with the platform aggregate ABI.
+		cType = hw.ensureArrayStruct(typ)
 	case *types.Pointer:
 		pointeeType := hw.goCTypeName(typ.Elem())
 		cType = pointeeType + "*"
 	default:
 		// Regular types
 		cType = hw.goCTypeName(paramType)
-	}
-
-	// Handle special array dimension syntax
-	if strings.Contains(cType, "ARRAY_DIMS") {
-		parts := strings.Split(cType, "ARRAY_DIMS")
-		elemType := parts[0]
-		dimStr := parts[1]
-
-		if paramName == "" {
-			// For unnamed parameters, keep dimension info: type[dim1][dim2]
-			return elemType + dimStr
-		}
-		// For named parameters, use proper array syntax: type name[dim1][dim2]
-		return elemType + " " + paramName + dimStr
 	}
 
 	if paramName == "" {
@@ -692,6 +648,13 @@ func genHeader(p ssa.Program, pkgs []ssa.Package, w io.Writer) error {
 		// Sort functions for testing
 		exportNames := make([]string, 0, len(exports))
 		for name := range exports {
+			// Imported //export metadata may be recorded on the importing
+			// package as well. Only declarations owned by this package belong
+			// in its public header; otherwise internal runtime callbacks can
+			// leak into user headers or fail type generation entirely.
+			if !exportBelongsToPackage(pkg.Path(), name) {
+				continue
+			}
 			exportNames = append(exportNames, name)
 		}
 		sort.Strings(exportNames)
@@ -700,7 +663,7 @@ func genHeader(p ssa.Program, pkgs []ssa.Package, w io.Writer) error {
 			link := exports[name] // link is cName
 			fn := pkg.FuncOf(link)
 			if fn == nil {
-				return fmt.Errorf("function %s not found", link)
+				return fmt.Errorf("function %s not found in package %s", link, pkg.Path())
 			}
 
 			// Write function declaration with proper C types
@@ -722,6 +685,15 @@ func genHeader(p ssa.Program, pkgs []ssa.Package, w io.Writer) error {
 
 	// Write all content to output in the correct order
 	return hw.writeTo(w)
+}
+
+func exportBelongsToPackage(pkgPath, name string) bool {
+	if !strings.Contains(name, ".") {
+		// Preserve support for callers that register the historical
+		// unqualified form via ssa.Package.SetExport.
+		return true
+	}
+	return strings.HasPrefix(name, pkgPath+".")
 }
 
 func GenHeaderFile(p ssa.Program, pkgs []ssa.Package, libName, headerPath string, verbose bool) error {

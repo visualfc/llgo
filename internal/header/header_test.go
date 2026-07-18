@@ -62,6 +62,9 @@ func TestGenCHeaderExport(t *testing.T) {
 	mainPkg.SetExport("HelloWorld", "HelloWorld")
 	mainPkg.SetExport("UseFooPtr", "UseFooPtr")
 	mainPkg.SetExport("UseFoo", "UseFoo")
+	// Imported export metadata must not be treated as a declaration owned by
+	// the main package. There is intentionally no such function in mainPkg.
+	mainPkg.SetExport("runtime.llgo_runtime_signalCallback", "llgo_runtime_signalCallback")
 
 	// Create package C
 	cPkgPath := "github.com/goplus/llgo/test_buildmode/bar"
@@ -109,6 +112,18 @@ func TestGenCHeaderExport(t *testing.T) {
 			t.Fatalf("Generated content: %s\n", got)
 			t.Fatalf("Generated header is missing expected content:\n%s", sub)
 		}
+	}
+}
+
+func TestGenHeaderMissingExport(t *testing.T) {
+	prog := ssa.NewProgram(nil)
+	pkgPath := "github.com/goplus/llgo/test_buildmode/missing"
+	pkg := prog.NewPackage("missing", pkgPath)
+	pkg.SetExport("Missing", "Missing")
+
+	err := genHeader(prog, []ssa.Package{pkg}, &bytes.Buffer{})
+	if err == nil || err.Error() != "function Missing not found in package "+pkgPath {
+		t.Fatalf("genHeader() error = %v", err)
 	}
 }
 
@@ -609,25 +624,25 @@ func TestGenerateParameterDeclaration(t *testing.T) {
 			name:      "array type with name",
 			paramType: types.NewArray(types.Typ[types.Int], 5),
 			paramName: "arr",
-			expected:  "intptr_t* arr",
+			expected:  "Array_intptr_t_5 arr",
 		},
 		{
 			name:      "array type without name",
 			paramType: types.NewArray(types.Typ[types.Int], 5),
 			paramName: "",
-			expected:  "intptr_t*",
+			expected:  "Array_intptr_t_5",
 		},
 		{
 			name:      "multidimensional array with name",
 			paramType: types.NewArray(types.NewArray(types.Typ[types.Int], 4), 3),
 			paramName: "matrix",
-			expected:  "intptr_t matrix[3][4]",
+			expected:  "Array_intptr_t_3_4 matrix",
 		},
 		{
 			name:      "multidimensional array without name",
 			paramType: types.NewArray(types.NewArray(types.Typ[types.Int], 4), 3),
 			paramName: "",
-			expected:  "intptr_t[3][4]",
+			expected:  "Array_intptr_t_3_4",
 		},
 		{
 			name:      "pointer type with name",

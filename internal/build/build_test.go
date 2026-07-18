@@ -15,10 +15,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/goplus/llgo/internal/buildenv"
+	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/packages"
@@ -601,6 +603,203 @@ func TestArchiverAllowsLLGOAROverrideForLTO(t *testing.T) {
 
 	if got := (&context{buildConf: &Config{LTO: lto.Full}}).archiver(); got != "custom-ar" {
 		t.Fatalf("archiver with LLGO_AR = %q, want custom-ar", got)
+	}
+}
+
+func TestCSharedExportArgs(t *testing.T) {
+	if got := cSharedExportArgs(nil, nil); got != nil {
+		t.Fatalf("nil cSharedExportArgs = %v, want nil", got)
+	}
+	prog := llssa.NewProgram(nil)
+	lpkg := prog.NewPackage("example.com/p", "example.com/p")
+	lpkg.SetExport("example.com/p.Z", "Zed")
+	lpkg.SetExport("example.com/p.A", "Add")
+	pkgs := []*aPackage{{LPkg: lpkg}}
+
+	ctx := &context{buildConf: &Config{BuildMode: BuildModeCShared, Goos: "linux"}}
+	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,--undefined=Add -Wl,--undefined=Zed"; got != want {
+		t.Fatalf("linux cSharedExportArgs = %q, want %q", got, want)
+	}
+	ctx.buildConf.Goos = "darwin"
+	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,-u,_Add -Wl,-u,_Zed"; got != want {
+		t.Fatalf("darwin cSharedExportArgs = %q, want %q", got, want)
+	}
+	ctx.buildConf.BuildMode = BuildModeExe
+	if got := cSharedExportArgs(ctx, pkgs); got != nil {
+		t.Fatalf("executable cSharedExportArgs = %v, want nil", got)
+	}
+}
+
+func TestApplyBuildModeCompileFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		mode BuildMode
+		in   []string
+		want string
+	}{
+		{name: "shared adds PIC", mode: BuildModeCShared, want: "-fPIC"},
+		{name: "shared preserves flags", mode: BuildModeCShared, in: []string{"-O2"}, want: "-O2 -fPIC"},
+		{name: "shared does not duplicate PIC", mode: BuildModeCShared, in: []string{"-fPIC"}, want: "-fPIC"},
+		{name: "archive remains unchanged", mode: BuildModeCArchive, in: []string{"-O2"}, want: "-O2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			export := crosscompile.Export{CCFLAGS: slices.Clone(tt.in)}
+			applyBuildModeCompileFlags(tt.mode, &export)
+			if got := strings.Join(export.CCFLAGS, " "); got != tt.want {
+				t.Fatalf("CCFLAGS = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	applyBuildModeCompileFlags(BuildModeCShared, nil)
+}
+
+func TestCHeaderPackagesExcludesStandardRuntime(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	userLPkg := prog.NewPackage("example.com/p", "example.com/p")
+	userLPkg.SetExport("example.com/p.Export", "Export")
+	runtimeLPkg := prog.NewPackage("runtime", "runtime")
+	llgoRuntimeLPkg := prog.NewPackage("github.com/goplus/llgo/runtime/internal/lib/runtime", "github.com/goplus/llgo/runtime/internal/lib/runtime")
+	dependencyLPkg := prog.NewPackage("example.com/dep", "example.com/dep")
+	pkgs := []*aPackage{
+		{Package: &packages.Package{PkgPath: "example.com/p"}, LPkg: userLPkg},
+		{Package: &packages.Package{PkgPath: "runtime"}, LPkg: runtimeLPkg},
+		{Package: &packages.Package{PkgPath: "github.com/goplus/llgo/runtime/internal/lib/runtime"}, LPkg: llgoRuntimeLPkg},
+		{Package: &packages.Package{PkgPath: "example.com/dep"}, LPkg: dependencyLPkg},
+		nil,
+	}
+	got := cHeaderPackages(pkgs)
+	if len(got) != 1 || got[0] != userLPkg {
+		t.Fatalf("cHeaderPackages = %v, want only user package", got)
+	}
+
+	if hasLocalCExports(nil) {
+		t.Fatal("hasLocalCExports(nil) = true, want false")
+	}
+	unqualifiedLPkg := prog.NewPackage("example.com/unqualified", "example.com/unqualified")
+	unqualifiedLPkg.SetExport("Export", "Export")
+	if !hasLocalCExports(unqualifiedLPkg) {
+		t.Fatal("hasLocalCExports(unqualified) = false, want true")
+	}
+	foreignOnlyLPkg := prog.NewPackage("example.com/foreign", "example.com/foreign")
+	foreignOnlyLPkg.SetExport("runtime.Export", "Export")
+	if hasLocalCExports(foreignOnlyLPkg) {
+		t.Fatal("hasLocalCExports(foreign only) = true, want false")
+	}
+}
+
+func TestArchiveMergerSelection(t *testing.T) {
+	t.Run("override", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "custom-llvm-ar")
+		got, err := (&context{}).archiveMerger()
+		if err != nil || got != "custom-llvm-ar" {
+			t.Fatalf("archiveMerger() = %q, %v, want custom-llvm-ar", got, err)
+		}
+	})
+
+	t.Run("next to compiler", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "")
+		t.Setenv("PATH", "")
+		td := t.TempDir()
+		llvmAr := filepath.Join(td, "llvm-ar")
+		if err := os.WriteFile(llvmAr, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		ctx := &context{}
+		ctx.crossCompile.CC = filepath.Join(td, "clang")
+		got, err := ctx.archiveMerger()
+		if err != nil || got != llvmAr {
+			t.Fatalf("archiveMerger() = %q, %v, want %q", got, err, llvmAr)
+		}
+	})
+
+	t.Run("path", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "")
+		td := t.TempDir()
+		llvmAr := filepath.Join(td, "llvm-ar")
+		if err := os.WriteFile(llvmAr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", td)
+		got, err := (&context{}).archiveMerger()
+		if err != nil || got != llvmAr {
+			t.Fatalf("archiveMerger() = %q, %v, want %q", got, err, llvmAr)
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "")
+		t.Setenv("PATH", "")
+		if got, err := (&context{}).archiveMerger(); err == nil || got != "" {
+			t.Fatalf("archiveMerger() = %q, %v, want missing-tool error", got, err)
+		}
+	})
+}
+
+func TestCreateMergedArchiveFileFlattensInputs(t *testing.T) {
+	llvmAr, err := exec.LookPath("llvm-ar")
+	if err != nil {
+		t.Skip("llvm-ar is not installed")
+	}
+	t.Setenv("LLGO_AR", llvmAr)
+
+	td := filepath.Join(t.TempDir(), "archive with spaces")
+	if err := os.MkdirAll(td, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	direct := filepath.Join(td, "direct.o")
+	nestedOne := filepath.Join(td, "nested-one.o")
+	nestedTwo := filepath.Join(td, "nested-two.o")
+	for path, content := range map[string]string{
+		direct:    "direct",
+		nestedOne: "nested one",
+		nestedTwo: "nested two",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nested := filepath.Join(td, "nested.a")
+	if output, err := exec.Command(llvmAr, "rcs", nested, nestedOne, nestedTwo).CombinedOutput(); err != nil {
+		t.Fatalf("create nested archive: %v\n%s", err, output)
+	}
+
+	out := filepath.Join(td, "combined.a")
+	ctx := &context{buildConf: &Config{}}
+	if err := ctx.createMergedArchiveFile(out, []string{direct, nested}, true); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(llvmAr, "t", out).CombinedOutput()
+	if err != nil {
+		t.Fatalf("list merged archive: %v\n%s", err, output)
+	}
+	members := strings.Fields(string(output))
+	slices.Sort(members)
+	if got, want := strings.Join(members, " "), "direct.o nested-one.o nested-two.o"; got != want {
+		t.Fatalf("merged archive members = %q, want %q", got, want)
+	}
+}
+
+func TestCreateMergedArchiveFileErrors(t *testing.T) {
+	ctx := &context{buildConf: &Config{}}
+	if err := ctx.createMergedArchiveFile(filepath.Join(t.TempDir(), "empty.a"), nil); err == nil {
+		t.Fatal("createMergedArchiveFile with no inputs succeeded")
+	}
+
+	td := t.TempDir()
+	failingAr := filepath.Join(td, "llvm-ar")
+	if err := os.WriteFile(failingAr, []byte("#!/bin/sh\necho merge failed >&2\nexit 7\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_AR", failingAr)
+	input := filepath.Join(td, "input.o")
+	if err := os.WriteFile(input, []byte("object"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ctx.createMergedArchiveFile(filepath.Join(td, "failed.a"), []string{input}); err == nil || !strings.Contains(err.Error(), "merge failed") {
+		t.Fatalf("createMergedArchiveFile error = %v, want archiver output", err)
 	}
 }
 

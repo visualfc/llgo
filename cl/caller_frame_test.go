@@ -557,7 +557,7 @@ func leaf() {}
 		`!"caller_frame_compile.go"`,
 		"__llgo_pcsite_",
 		"${:uid}",
-		`.pushsection llgo_pcline`,
+		`.pushsection llgo_pcline,\22awo\22,@progbits`,
 		`.quad __llgo_pcsite_`,
 	} {
 		if !strings.Contains(ir, want) {

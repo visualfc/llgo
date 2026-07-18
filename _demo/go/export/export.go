@@ -1,6 +1,7 @@
 package main
 
 import (
+	"runtime"
 	"unsafe"
 
 	C "github.com/goplus/llgo/_demo/go/export/c"
@@ -47,6 +48,21 @@ type Node struct {
 type MyInt int
 type MyString string
 
+// FuncInfoResult exposes the information resolved from a Callers PC so the C
+// consumer can verify that funcinfo remains usable after loading a c-shared
+// library (and from the equivalent c-archive output).
+type FuncInfoResult struct {
+	CallersCount  int32
+	FramePC       uintptr
+	FrameFunction string
+	FrameFile     string
+	FrameLine     int32
+	FuncName      string
+	FuncEntry     uintptr
+	FuncFile      string
+	FuncLine      int32
+}
+
 // Function types for callbacks
 //
 //llgo:type C
@@ -69,6 +85,53 @@ type ComplexData struct {
 //export HelloWorld
 func HelloWorld() {
 	println("Hello, World!")
+}
+
+//go:noinline
+func captureCFuncInfo() FuncInfoResult {
+	var pcs [16]uintptr
+	n := runtime.Callers(0, pcs[:])
+	result := FuncInfoResult{CallersCount: int32(n)}
+	frames := runtime.CallersFrames(pcs[:n])
+	for {
+		frame, more := frames.Next()
+		if frame.Function == "main.captureCFuncInfo" {
+			result.FramePC = frame.PC
+			result.FrameFunction = frame.Function
+			result.FrameFile = frame.File
+			result.FrameLine = int32(frame.Line)
+
+			// Callers PCs are return addresses. Apply Go's pc-1 convention
+			// before asking FuncForPC for the containing function.
+			if frame.PC > 0 {
+				if fn := runtime.FuncForPC(frame.PC - 1); fn != nil {
+					result.FuncName = fn.Name()
+					result.FuncEntry = fn.Entry()
+					result.FuncFile, frame.Line = fn.FileLine(frame.PC - 1)
+					result.FuncLine = int32(frame.Line)
+				}
+			}
+			break
+		}
+		if !more {
+			break
+		}
+	}
+	return result
+}
+
+//export GetFuncInfo
+func GetFuncInfo() FuncInfoResult {
+	return captureCFuncInfo()
+}
+
+//export RunGoroutine
+func RunGoroutine(value int) int {
+	ch := make(chan int, 1)
+	go func() {
+		ch <- value + 1
+	}()
+	return <-ch
 }
 
 // Functions with small struct parameters and return values
@@ -382,6 +445,11 @@ func ProcessIntSlice(slice []int) int {
 	return total
 }
 
+//export CreateIntSlice
+func CreateIntSlice() []int {
+	return []int{2, 4, 6, 8}
+}
+
 //export ProcessStringMap
 func ProcessStringMap(m map[string]int) int {
 	total := 0
@@ -389,6 +457,11 @@ func ProcessStringMap(m map[string]int) int {
 		total += v
 	}
 	return total
+}
+
+//export CreateStringMap
+func CreateStringMap() map[string]int {
+	return map[string]int{"one": 10, "two": 20, "three": 30}
 }
 
 //export ProcessIntChannel
@@ -399,6 +472,13 @@ func ProcessIntChannel(ch chan int) int {
 	default:
 		return -1
 	}
+}
+
+//export CreateIntChannel
+func CreateIntChannel() chan int {
+	ch := make(chan int, 1)
+	ch <- 321
+	return ch
 }
 
 // Functions with function callbacks
@@ -449,6 +529,16 @@ func ProcessInterface(i interface{}) int {
 	default:
 		return 999 // Non-zero default to avoid false positives
 	}
+}
+
+//export CreateIntInterface
+func CreateIntInterface() interface{} {
+	return 23
+}
+
+//export CreateStringInterface
+func CreateStringInterface() interface{} {
+	return "llgo"
 }
 
 // Functions with various parameter counts
