@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	llabi "github.com/goplus/llgo/internal/abi"
 	"github.com/goplus/llgo/internal/cabi"
 	"github.com/goplus/llgo/internal/packages"
 	llplan9asm "github.com/goplus/llgo/internal/plan9asm"
@@ -79,6 +80,7 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 		// runtime asm uses hand-written calling conventions and must stay on
 		// original Go ABI semantics.
 		if pkg.PkgPath != "runtime" {
+			llabi.LowerLargeAggregates(ctx.prog.TargetData(), mod)
 			ctx.cTransformer.TransformModule(pkg.PkgPath, mod)
 		}
 		ll := mod.String()

@@ -367,11 +367,15 @@ func (p *Transformer) transformFunc(m llvm.Module, fn llvm.Value) bool {
 		return false
 	}
 	nft, attrs := p.transformFuncType(ctx, &info)
+	preloweredSRet := fn.GetEnumAttributeAtIndex(1, llvm.AttributeKindID("sret"))
 	fname := fn.Name()
 	fn.SetName("")
 	nfn := llvm.AddFunction(m, fname, nft)
 	for i, attr := range attrs {
 		nfn.AddAttributeAtIndex(i, attr)
+	}
+	if !preloweredSRet.IsNil() {
+		nfn.AddAttributeAtIndex(1, preloweredSRet)
 	}
 	nfn.SetLinkage(fn.Linkage())
 	nfn.SetFunctionCallConv(fn.FunctionCallConv())
@@ -537,6 +541,7 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 		return false
 	}
 	nft, attrs := p.transformFuncType(ctx, &info)
+	preloweredSRet := call.GetCallSiteEnumAttribute(1, llvm.AttributeKindID("sret"))
 	reflectMethodByNameAttr := call.GetCallSiteStringAttribute(-1, "llgo.reflect.methodbyname")
 	b := ctx.NewBuilder()
 	b.SetInsertPointBefore(call)
@@ -597,6 +602,9 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 	updateCallAttr := func(call llvm.Value) {
 		for i, attr := range attrs {
 			call.AddCallSiteAttribute(i, attr)
+		}
+		if !preloweredSRet.IsNil() {
+			call.AddCallSiteAttribute(1, preloweredSRet)
 		}
 		if !reflectMethodByNameAttr.IsNil() {
 			call.AddCallSiteAttribute(-1, reflectMethodByNameAttr)
