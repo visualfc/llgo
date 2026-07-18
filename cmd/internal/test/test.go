@@ -25,6 +25,7 @@ func init() {
 	Cmd.Run = runCmd
 	goBuildFlags = flags.CaptureGoBuildFlags(Cmd)
 	flags.AddCommonFlags(&Cmd.Flag)
+	flags.AddCompilerVerboseFlag(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
 	flags.AddTestFlags(&Cmd.Flag)
 	flags.AddTestBinaryFlags(&Cmd.Flag)

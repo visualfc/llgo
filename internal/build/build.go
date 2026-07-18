@@ -149,6 +149,7 @@ type Config struct {
 	AbiMode       AbiMode
 	GenExpect     bool // only valid for ModeCmpTest
 	Verbose       bool
+	PrintPackages bool // print package paths as they are compiled, like go build -v
 	PrintCommands bool
 	GenLL         bool // generate pkg .ll files
 	CheckLLFiles  bool // check .ll files valid
@@ -1435,6 +1436,8 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 	pkgPath := pkg.PkgPath
 	if debugBuild || verbose {
 		fmt.Fprintln(os.Stderr, pkgPath)
+	} else {
+		printCompiledPackage(ctx.buildConf, aPkg)
 	}
 	if llruntime.SkipToBuild(pkgPath) {
 		pkg.ExportFile = ""
@@ -1546,6 +1549,12 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		}
 	}
 	return nil
+}
+
+func printCompiledPackage(conf *Config, pkg *aPackage) {
+	if conf.PrintPackages && !pkg.CacheHit {
+		fmt.Fprintln(os.Stderr, pkg.PkgPath)
+	}
 }
 
 func exportObject(ctx *context, pkgPath string, exportFile string, pkg llssa.Package) (string, error) {

@@ -502,3 +502,65 @@ func TestUpdateConfigPreservesLTOWhenUnspecified(t *testing.T) {
 		t.Fatalf("conf.LTO = %v, want %v", conf.LTO, lto.Full)
 	}
 }
+
+func TestUpdateConfigVerboseCompatibility(t *testing.T) {
+	oldVerbose := Verbose
+	oldCompilerVerbose := CompilerVerbose
+	t.Cleanup(func() {
+		Verbose = oldVerbose
+		CompilerVerbose = oldCompilerVerbose
+	})
+
+	tests := []struct {
+		name              string
+		mode              build.Mode
+		verbose           bool
+		compilerVerbose   bool
+		wantVerbose       bool
+		wantPrintPackages bool
+	}{
+		{name: "build v prints packages", mode: build.ModeBuild, verbose: true, wantPrintPackages: true},
+		{name: "build verbose prints debug output", mode: build.ModeBuild, compilerVerbose: true, wantVerbose: true},
+		{name: "build flags can be combined", mode: build.ModeBuild, verbose: true, compilerVerbose: true, wantVerbose: true, wantPrintPackages: true},
+		{name: "test v is reserved for test binary", mode: build.ModeTest, verbose: true},
+		{name: "test verbose prints debug output", mode: build.ModeTest, compilerVerbose: true, wantVerbose: true},
+		{name: "other commands keep v behavior", mode: build.ModeRun, verbose: true, wantVerbose: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			Verbose = tt.verbose
+			CompilerVerbose = tt.compilerVerbose
+			conf := &build.Config{Mode: tt.mode}
+			if err := UpdateConfig(conf); err != nil {
+				t.Fatalf("UpdateConfig() error = %v", err)
+			}
+			if conf.Verbose != tt.wantVerbose {
+				t.Errorf("Verbose = %v, want %v", conf.Verbose, tt.wantVerbose)
+			}
+			if conf.PrintPackages != tt.wantPrintPackages {
+				t.Errorf("PrintPackages = %v, want %v", conf.PrintPackages, tt.wantPrintPackages)
+			}
+		})
+	}
+}
+
+func TestCompilerVerboseFlag(t *testing.T) {
+	oldCompilerVerbose := CompilerVerbose
+	t.Cleanup(func() { CompilerVerbose = oldCompilerVerbose })
+
+	for _, arg := range []string{"-compiler-verbose", "-cv"} {
+		t.Run(arg, func(t *testing.T) {
+			CompilerVerbose = false
+			fs := flag.NewFlagSet("compiler-verbose", flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddCompilerVerboseFlag(fs)
+			if err := fs.Parse([]string{arg}); err != nil {
+				t.Fatalf("Parse(%s) error = %v", arg, err)
+			}
+			if !CompilerVerbose {
+				t.Fatalf("%s did not enable compiler verbose output", arg)
+			}
+		})
+	}
+}
