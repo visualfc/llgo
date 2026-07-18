@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-package flags
+// Package goflags parses Go-compatible build flag syntax into typed LLGo
+// configuration. It is shared by command entry points and non-command build
+// drivers; internal/build consumes only the typed result.
+package goflags
 
 import (
 	"fmt"
@@ -24,59 +27,59 @@ import (
 	"github.com/goplus/llgo/internal/build"
 )
 
-// parsedLinkFlags contains the Go linker options that LLGo currently handles.
-// ignored retains the remaining linker arguments so their order is available
+// ParsedLinkFlags contains the Go linker options that LLGo currently handles.
+// Ignored retains the remaining linker arguments so their order is available
 // as support is added incrementally.
-type parsedLinkFlags struct {
-	options build.LinkOptions
-	ignored []string
-	present bool
+type ParsedLinkFlags struct {
+	Options build.LinkOptions
+	Ignored []string
+	Present bool
 }
 
-// parseGoLinkFlags extracts the currently supported flags from normalized Go
+// ParseLinkFlags extracts the currently supported flags from normalized Go
 // build flags. Repeated -ldflags values are evaluated in command-line order;
 // each applicable value replaces the previous complete argument list.
-func parseGoLinkFlags(buildFlags []string) (parsedLinkFlags, error) {
-	var opts parsedLinkFlags
+func ParseLinkFlags(buildFlags []string) (ParsedLinkFlags, error) {
+	var opts ParsedLinkFlags
 	for _, buildFlag := range buildFlags {
 		if buildFlag == "-ldflags" {
-			return parsedLinkFlags{}, fmt.Errorf("-ldflags requires a value")
+			return ParsedLinkFlags{}, fmt.Errorf("-ldflags requires a value")
 		}
 
 		value, ok := strings.CutPrefix(buildFlag, "-ldflags=")
 		if !ok {
 			continue
 		}
-		opts = parsedLinkFlags{present: true}
+		opts = ParsedLinkFlags{Present: true}
 
 		linkFlags, err := splitPerPackageLinkFlags(value)
 		if err != nil {
-			return parsedLinkFlags{}, fmt.Errorf("invalid -ldflags value %q: %w", value, err)
+			return ParsedLinkFlags{}, fmt.Errorf("invalid -ldflags value %q: %w", value, err)
 		}
 		for _, linkFlag := range linkFlags {
 			switch {
 			case linkFlag == "-s" || linkFlag == "--s":
-				opts.options.OmitSymbolTable = true
+				opts.Options.OmitSymbolTable = true
 			case hasLinkFlagBoolValue(linkFlag, "s"):
 				v, err := parseLinkFlagBool("-s", linkFlagBoolValue(linkFlag, "s"))
 				if err != nil {
-					return parsedLinkFlags{}, err
+					return ParsedLinkFlags{}, err
 				}
-				opts.options.OmitSymbolTable = v
+				opts.Options.OmitSymbolTable = v
 			case linkFlag == "-w" || linkFlag == "--w":
-				opts.options.DWARF = build.DWARFOmit
+				opts.Options.DWARF = build.DWARFOmit
 			case hasLinkFlagBoolValue(linkFlag, "w"):
 				v, err := parseLinkFlagBool("-w", linkFlagBoolValue(linkFlag, "w"))
 				if err != nil {
-					return parsedLinkFlags{}, err
+					return ParsedLinkFlags{}, err
 				}
 				if v {
-					opts.options.DWARF = build.DWARFOmit
+					opts.Options.DWARF = build.DWARFOmit
 				} else {
-					opts.options.DWARF = build.DWARFPreserve
+					opts.Options.DWARF = build.DWARFPreserve
 				}
 			default:
-				opts.ignored = append(opts.ignored, linkFlag)
+				opts.Ignored = append(opts.Ignored, linkFlag)
 			}
 		}
 	}
@@ -109,28 +112,40 @@ func parseLinkFlagBool(name, value string) (bool, error) {
 // unpatterned values and all= before package loading. Other patterns require
 // per-root matching and are rejected instead of being applied globally.
 func splitPerPackageLinkFlags(value string) ([]string, error) {
+	pattern, flags, err := splitPerPackageArgumentList(value)
+	if err != nil {
+		return nil, err
+	}
+	if pattern != "" && pattern != "all" {
+		return nil, fmt.Errorf("package pattern %q is not supported yet; use an unpatterned value or all=", pattern)
+	}
+	return flags, nil
+}
+
+// splitPerPackageArgumentList separates the optional package pattern from a
+// Go build flag's quoted argument list. An empty pattern denotes the
+// unpatterned form.
+func splitPerPackageArgumentList(value string) (pattern string, flags []string, err error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil, nil
+		return "", nil, nil
 	}
 	if value[0] != '-' {
 		if value[0] == '\'' || value[0] == '"' {
-			return nil, fmt.Errorf("parameter may not start with quote character %c", value[0])
+			return "", nil, fmt.Errorf("parameter may not start with quote character %c", value[0])
 		}
 		i := strings.IndexByte(value, '=')
 		if i < 0 {
-			return nil, fmt.Errorf("missing =<value> in <pattern>=<value>")
+			return "", nil, fmt.Errorf("missing =<value> in <pattern>=<value>")
 		}
 		if i == 0 {
-			return nil, fmt.Errorf("missing <pattern> in <pattern>=<value>")
+			return "", nil, fmt.Errorf("missing <pattern> in <pattern>=<value>")
 		}
-		pattern := strings.TrimSpace(value[:i])
-		if pattern != "all" {
-			return nil, fmt.Errorf("package pattern %q is not supported yet; use an unpatterned value or all=", pattern)
-		}
+		pattern = strings.TrimSpace(value[:i])
 		value = value[i+1:]
 	}
-	return splitQuotedFields(value)
+	flags, err = splitQuotedFields(value)
+	return pattern, flags, err
 }
 
 // splitQuotedFields follows the quoting rules used by the Go command for

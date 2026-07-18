@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/goplus/llgo/internal/env"
@@ -80,9 +81,6 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 
 	// Environment variables that affect build
 	envVars := []string{
-		llgoDebug,
-		llgoDbgSyms,
-		llgoFuncInfo,
 		llgoTrace,
 		llgoOptimize,
 		llgoWasmRuntime,
@@ -95,6 +93,11 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 			m.env.Vars = m.env.Vars.Add(envVar, v)
 		}
 	}
+	if effectivePCLNMode(c.buildConf) != PCLNNone {
+		// Record the effective value so equivalent spellings (unset, 1,
+		// true, on) share a cache entry.
+		m.env.Vars = m.env.Vars.Add(llgoFuncInfoSites, strconv.FormatBool(IsFuncInfoSitesEnabled()))
+	}
 }
 
 // collectCommonInputs collects common build configuration inputs.
@@ -106,7 +109,8 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	m.common.Target = c.buildConf.Target
 	m.common.TargetABI = c.crossCompile.TargetABI
 	m.common.GoGlobalDCE = c.buildConf.goGlobalDCEEnabled()
-	m.common.OmitDWARF = effectiveOmitDWARF(c.buildConf, &c.crossCompile)
+	m.common.EmitDWARF = shouldEmitDebugInfo(c.buildConf, &c.crossCompile)
+	m.common.PCLNMode = effectivePCLNMode(c.buildConf).String()
 
 	// Compiler configuration
 	if c.crossCompile.CC != "" {

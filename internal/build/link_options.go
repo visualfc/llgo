@@ -66,15 +66,36 @@ func (o LinkOptions) EffectiveOmitDWARF() bool {
 	}
 }
 
+// omitDWARFRequested combines explicit Go linker flags with LLGo's typed
+// default. The default never overrides an explicit -w value.
+func omitDWARFRequested(conf *Config) bool {
+	if conf.LinkOptions.DWARF == DWARFDefault && conf.OmitDWARFByDefault {
+		return true
+	}
+	return conf.LinkOptions.EffectiveOmitDWARF()
+}
+
 // effectiveOmitDWARF combines command intent with the selected toolchain's
 // baseline behavior. Some fixed-target linkers always omit DWARF, so LLGo
 // should avoid generating debug metadata that cannot reach the artifact.
 func effectiveOmitDWARF(conf *Config, target *crosscompile.Export) bool {
-	return conf.LinkOptions.EffectiveOmitDWARF() || target.DebugInfo.AlwaysOmit
+	return omitDWARFRequested(conf) || target.DebugInfo.AlwaysOmit
+}
+
+// shouldEmitDebugInfo reports whether this compilation should produce DWARF.
+// Linked modes use the typed LLGo default and target/linker constraints, with
+// an explicit -w value taking precedence. ModeGen has no linker, so it emits
+// only on an explicit preserve request.
+func shouldEmitDebugInfo(conf *Config, target *crosscompile.Export) bool {
+	if effectiveOmitDWARF(conf, target) {
+		return false
+	}
+	return conf.Mode != ModeGen || conf.LinkOptions.DWARF == DWARFPreserve
 }
 
 // validateLinkOptions checks whether the typed linker intent can be honored
-// by the selected backend. User-facing flag syntax is parsed by cmd/internal/flags.
+// by the selected backend. User-facing Go flag syntax is parsed by
+// internal/goflags.
 func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 	if err := conf.LinkOptions.validate(); err != nil {
 		return err
@@ -82,7 +103,7 @@ func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 	if conf.LinkOptions.DWARF == DWARFPreserve && target.DebugInfo.AlwaysOmit {
 		return fmt.Errorf("preserving DWARF is not supported by the selected target linker")
 	}
-	if !conf.LinkOptions.EffectiveOmitDWARF() {
+	if !omitDWARFRequested(conf) {
 		return nil
 	}
 	if conf.BuildMode != BuildModeExe {

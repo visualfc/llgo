@@ -23,6 +23,7 @@ import (
 	"github.com/xgo-dev/llvm"
 
 	buildfuncinfo "github.com/goplus/llgo/internal/build/funcinfo"
+	"github.com/goplus/llgo/internal/pclnmap"
 	llssa "github.com/goplus/llgo/ssa"
 )
 
@@ -47,6 +48,7 @@ const (
 	pcSiteStartPtrSymbol            = "__llgo_pcsite_start"
 	pcSiteEndPtrSymbol              = "__llgo_pcsite_end"
 	fpChainSymbol                   = "__llgo_fp_chain"
+	pclnIdentitySymbol              = "__llgo_pclntab_identity"
 	funcInfoDataSymbol              = "__llgo_funcinfo_table$data"
 	pcLineDataSymbol                = "__llgo_pcline_table$data"
 	funcInfoStringsDataSymbol       = "__llgo_funcinfo_strings$data"
@@ -359,6 +361,24 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 		fpChainVal = 1
 	}
 	fpChain.SetInitializer(llvm.ConstInt(i8Type, fpChainVal, false))
+	if ctx.buildConf.PCLNMode == PCLNExternal {
+		emitExternalFuncInfoTable(ctx, mod, records, pcLines, stubRecords, externalFuncInfoGlobals{
+			tablePtr: tablePtr, pcLinePtr: pcLinePtr,
+			pcSiteStartPtr: pcSiteStartPtr, pcSiteEndPtr: pcSiteEndPtr,
+			entryStartPtr: entryStartPtr, entryEndPtr: entryEndPtr,
+			stubSiteStartPtr: stubSiteStartPtr, stubSiteEndPtr: stubSiteEndPtr,
+			stringsPtr: stringsPtr, stringOffsetsPtr: stringOffsetsPtr,
+			stringCount: stringCount, hashPtr: hashPtr, hashMask: hashMask,
+			symbolIndexPtr: symbolIndexPtr, symbolIndexCount: symbolIndexCount,
+			count: count, stubIndexesPtr: stubIndexesPtr, stubCount: stubCount,
+			pcLineCount: pcLineCount,
+		}, externalFuncInfoTypes{
+			i8: i8Type, count: countType,
+			entryRecord: funcEntryRecordType, stubRecord: stubSiteRecordType,
+			pcSiteRecord: pcSiteRecordType,
+		})
+		return
+	}
 	if len(records) == 0 && len(pcLines) == 0 {
 		tablePtr.SetInitializer(llvm.ConstPointerNull(tablePtr.GlobalValueType()))
 		pcLinePtr.SetInitializer(llvm.ConstPointerNull(pcLinePtr.GlobalValueType()))
@@ -605,6 +625,113 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 			llvm.ConstInt(countType, 0, false),
 		}))
 		stubCount.SetInitializer(llvm.ConstInt(countType, uint64(len(stubIndexValues)), false))
+	}
+}
+
+type externalFuncInfoGlobals struct {
+	tablePtr, pcLinePtr                       llvm.Value
+	pcSiteStartPtr, pcSiteEndPtr              llvm.Value
+	entryStartPtr, entryEndPtr                llvm.Value
+	stubSiteStartPtr, stubSiteEndPtr          llvm.Value
+	stringsPtr, stringOffsetsPtr, stringCount llvm.Value
+	hashPtr, hashMask                         llvm.Value
+	symbolIndexPtr, symbolIndexCount          llvm.Value
+	count, stubIndexesPtr, stubCount          llvm.Value
+	pcLineCount                               llvm.Value
+}
+
+type externalFuncInfoTypes struct {
+	i8, count                             llvm.Type
+	entryRecord, stubRecord, pcSiteRecord llvm.Type
+}
+
+func initExternalFuncInfoGlobals(g externalFuncInfoGlobals, countType llvm.Type) {
+	for _, ptr := range []llvm.Value{
+		g.tablePtr, g.pcLinePtr, g.pcSiteStartPtr, g.pcSiteEndPtr,
+		g.entryStartPtr, g.entryEndPtr, g.stubSiteStartPtr, g.stubSiteEndPtr,
+		g.stringsPtr, g.stringOffsetsPtr, g.hashPtr, g.symbolIndexPtr, g.stubIndexesPtr,
+	} {
+		ptr.SetInitializer(llvm.ConstPointerNull(ptr.GlobalValueType()))
+	}
+	for _, count := range []llvm.Value{
+		g.stringCount, g.hashMask, g.symbolIndexCount, g.count, g.stubCount, g.pcLineCount,
+	} {
+		count.SetInitializer(llvm.ConstInt(countType, 0, false))
+	}
+}
+
+// emitExternalFuncInfoTable emits only writable runtime ABI globals, final-PC
+// site boundaries and a post-link identity slot. The table payload is kept in
+// the build context and serialized beside the linked executable; it is never
+// materialized as LLVM constants in the executable.
+func emitExternalFuncInfoTable(ctx *context, mod llvm.Module, records []funcInfoRecord, pcLines []pcLineRecord, stubRecords []funcInfoStubRecord, g externalFuncInfoGlobals, typ externalFuncInfoTypes) {
+	initExternalFuncInfoGlobals(g, typ.count)
+	encoded, err := buildfuncinfo.EncodeWithPCLines(toFuncInfoRecords(records), toPCLineRecords(pcLines))
+	if err != nil {
+		panic(err)
+	}
+	symbolRecords := collectFuncInfoSymbolIndexRecords(records)
+	symbolIndex := make([]pclnmap.SymbolIndexEntry, 0, len(symbolRecords))
+	for _, rec := range symbolRecords {
+		if rec.funcIndex != 0 && int(rec.funcIndex) <= len(encoded.Records) {
+			symbolIndex = append(symbolIndex, pclnmap.SymbolIndexEntry{SymbolID: rec.symbolID, FuncIndex: rec.funcIndex})
+		}
+	}
+	ctx.pclnExternal = &pclnmap.Data{
+		GOOS:        ctx.buildConf.Goos,
+		GOARCH:      ctx.buildConf.Goarch,
+		PointerSize: ctx.prog.PointerSize(),
+		Table:       encoded,
+		SymbolIndex: symbolIndex,
+	}
+
+	identityType := llvm.ArrayType(typ.i8, 32)
+	identity := llvm.AddGlobal(mod, identityType, pclnIdentitySymbol)
+	identity.SetInitializer(llvm.ConstNull(identityType))
+	identity.SetAlignment(8)
+	if ctx.buildConf.Goos == "darwin" {
+		identity.SetSection("__DATA,__llgo_pid")
+	} else {
+		identity.SetSection("llgo_pclntab_id")
+	}
+	// Pure lib/c programs can link without the LLGo runtime, so nothing in
+	// their live graph references the identity slot. Keep it through LTO and
+	// linker GC: external mode still promises a paired sidecar even when the
+	// program itself never calls a runtime symbolization API. llvm.used (rather
+	// than llvm.compiler.used) also asks the native linker to retain the slot.
+	pointerType := llvm.PointerType(typ.i8, 0)
+	usedInit := llvm.ConstArray(pointerType, []llvm.Value{llvm.ConstBitCast(identity, pointerType)})
+	used := llvm.AddGlobal(mod, usedInit.Type(), "llvm.used")
+	used.SetInitializer(usedInit)
+	used.SetLinkage(llvm.AppendingLinkage)
+	used.SetSection("llvm.metadata")
+
+	machO := shouldEmitRuntimeMachOSites(ctx)
+	emitSites := shouldEmitRuntimeSites(ctx)
+	emitPCSites := emitSites && len(encoded.PCLines) != 0
+	emitEntrySites := shouldEmitRuntimeEntryELFSites(ctx) && len(encoded.Records) != 0
+	emitStubSites := shouldEmitRuntimeStubELFSites(ctx) && len(stubRecords) != 0
+	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machO, emitPCSites, emitEntrySites, emitStubSites)
+	if emitPCSites {
+		start, end := pcLineSiteSectionInfo.boundary(machO)
+		startGlobal := llvm.AddGlobal(mod, typ.pcSiteRecord, start)
+		endGlobal := llvm.AddGlobal(mod, typ.pcSiteRecord, end)
+		g.pcSiteStartPtr.SetInitializer(startGlobal)
+		g.pcSiteEndPtr.SetInitializer(endGlobal)
+	}
+	if emitEntrySites {
+		start, end := entrySiteSectionInfo.boundary(machO)
+		startGlobal := llvm.AddGlobal(mod, typ.entryRecord, start)
+		endGlobal := llvm.AddGlobal(mod, typ.entryRecord, end)
+		g.entryStartPtr.SetInitializer(startGlobal)
+		g.entryEndPtr.SetInitializer(endGlobal)
+	}
+	if emitStubSites {
+		start, end := stubSiteSectionInfo.boundary(machO)
+		startGlobal := llvm.AddGlobal(mod, typ.stubRecord, start)
+		endGlobal := llvm.AddGlobal(mod, typ.stubRecord, end)
+		g.stubSiteStartPtr.SetInitializer(startGlobal)
+		g.stubSiteEndPtr.SetInitializer(endGlobal)
 	}
 }
 

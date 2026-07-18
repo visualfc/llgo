@@ -45,7 +45,7 @@ build_project() {
         return 1
     fi
 
-    LLGO_DEBUG_SYMBOLS=1 llgo build "${LLDB_TEST_OPTLEVEL}" -o "debug.out" . || {
+    llgo build "${LLDB_TEST_OPTLEVEL}" -ldflags=-w=false -o "debug.out" . || {
         local ret=$?
         cd "$current_dir" || return
         return $ret

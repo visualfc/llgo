@@ -117,7 +117,8 @@ type commonSection struct {
 	Target      string       `yaml:"TARGET,omitempty"`
 	TargetABI   string       `yaml:"TARGET_ABI,omitempty"`
 	GoGlobalDCE bool         `yaml:"GO_GLOBAL_DCE,omitempty"`
-	OmitDWARF   bool         `yaml:"OMIT_DWARF,omitempty"`
+	EmitDWARF   bool         `yaml:"EMIT_DWARF,omitempty"`
+	PCLNMode    string       `yaml:"PCLN_MODE,omitempty"`
 	CC          string       `yaml:"CC,omitempty"`
 	CCFlags     []string     `yaml:"CCFLAGS,omitempty"`
 	CFlags      []string     `yaml:"CFLAGS,omitempty"`
@@ -128,7 +129,7 @@ type commonSection struct {
 
 func (s *commonSection) empty() bool {
 	return s.AbiMode == "" && len(s.BuildTags) == 0 && s.Target == "" && s.TargetABI == "" &&
-		!s.GoGlobalDCE && !s.OmitDWARF && s.CC == "" && len(s.CCFlags) == 0 && len(s.CFlags) == 0 && len(s.LDFlags) == 0 &&
+		!s.GoGlobalDCE && !s.EmitDWARF && s.PCLNMode == "" && s.CC == "" && len(s.CCFlags) == 0 && len(s.CFlags) == 0 && len(s.LDFlags) == 0 &&
 		s.Linker == "" && len(s.ExtraFiles) == 0
 }
 

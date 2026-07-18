@@ -3,8 +3,17 @@
 ### Build with debug info
 
 ```shell
-LLGO_DEBUG_SYMBOLS=1 llgo build -o cl/_testdata/debug/out ./cl/_testdata/debug
+llgo build -O0 -ldflags=-w=false -o cl/_testdata/debug/out ./cl/_testdata/debug
 ```
+
+LLGo temporarily omits DWARF when `-w` is absent because the current debug
+information path is not yet safe for broad use. The native executable build
+above explicitly uses `-ldflags=-w=false` to enable DWARF. Use
+`-ldflags=-w` to explicitly omit it. `-O0` is recommended for the most
+complete local variable inspection in LLDB. The former `LLGO_DEBUG` and
+`LLGO_DEBUG_SYMBOLS` environment variables are no longer read. This uses
+LLGo's existing runnable DWARF path; improving its metadata quality and making
+it optimization-independent are separate follow-up work.
 
 ### Debug with lldb
 

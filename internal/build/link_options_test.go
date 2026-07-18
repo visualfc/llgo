@@ -40,6 +40,7 @@ func TestDwarfLinkerArgs(t *testing.T) {
 		want   []string
 	}{
 		{name: "default"},
+		{name: "safe default", conf: Config{OmitDWARFByDefault: true}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
 		{name: "w", conf: Config{LinkOptions: LinkOptions{DWARF: DWARFOmit}}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
 		{name: "s implies w", conf: Config{LinkOptions: LinkOptions{OmitSymbolTable: true}}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
 		{name: "explicit w false", conf: Config{LinkOptions: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}}},
@@ -62,14 +63,41 @@ func TestEffectiveOmitDWARF(t *testing.T) {
 		want   bool
 	}{
 		{name: "default"},
+		{name: "safe default", conf: Config{OmitDWARFByDefault: true}, want: true},
 		{name: "requested", conf: Config{LinkOptions: LinkOptions{DWARF: DWARFOmit}}, want: true},
 		{name: "target baseline", target: alwaysOmitDebugInfo(), want: true},
 		{name: "explicit preserve", conf: Config{LinkOptions: LinkOptions{DWARF: DWARFPreserve}}},
+		{name: "explicit preserve overrides safe default", conf: Config{OmitDWARFByDefault: true, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := effectiveOmitDWARF(&tt.conf, &tt.target); got != tt.want {
 				t.Fatalf("effectiveOmitDWARF() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldEmitDebugInfo(t *testing.T) {
+	tests := []struct {
+		name   string
+		conf   Config
+		target crosscompile.Export
+		want   bool
+	}{
+		{name: "linked default", conf: Config{Mode: ModeBuild}, want: true},
+		{name: "linked safe default", conf: Config{Mode: ModeBuild, OmitDWARFByDefault: true}},
+		{name: "linked w", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFOmit}}},
+		{name: "linked s", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{OmitSymbolTable: true}}},
+		{name: "linked s w false", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}}, want: true},
+		{name: "generation default", conf: Config{Mode: ModeGen}},
+		{name: "generation requested", conf: Config{Mode: ModeGen, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, want: true},
+		{name: "target always omits", conf: Config{Mode: ModeBuild}, target: alwaysOmitDebugInfo()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldEmitDebugInfo(&tt.conf, &tt.target); got != tt.want {
+				t.Fatalf("shouldEmitDebugInfo() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -85,6 +113,7 @@ func TestValidateLinkOptions(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "linux executable", conf: Config{Goos: "linux", BuildMode: BuildModeExe, LinkOptions: w}, target: configurableDebugInfo()},
+		{name: "linux executable safe default", conf: Config{Goos: "linux", BuildMode: BuildModeExe, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
 		{name: "darwin executable", conf: Config{Goos: "darwin", BuildMode: BuildModeExe, LinkOptions: w}, target: configurableDebugInfo()},
 		{name: "unsupported native OS", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: w}, wantErr: true},
 		{name: "unsupported build mode", conf: Config{Goos: "linux", BuildMode: BuildModeCShared, LinkOptions: w}, target: configurableDebugInfo(), wantErr: true},

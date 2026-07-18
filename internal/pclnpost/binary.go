@@ -52,15 +52,18 @@ type secInfo struct {
 }
 
 type binaryInfo struct {
-	format    string
-	raw       []byte
-	entrySec  []byte
-	stubSec   []byte
-	textStart uint64
-	textEnd   uint64
-	imageBase uint64
-	syms      []textSym // sorted by addr, text symbols only
-	secs      []secInfo
+	format       string
+	raw          []byte
+	entrySec     []byte
+	stubSec      []byte
+	pcLineSec    []byte
+	textStart    uint64
+	textEnd      uint64
+	imageBase    uint64
+	pointerSize  int
+	littleEndian bool
+	syms         []textSym // sorted by addr, text symbols only
+	secs         []secInfo
 	// Mach-O chained-fixup import targets, ordinal -> resolved vmaddr (0 if
 	// the import name has no local definition). Exported symbols' pointer
 	// slots are emitted as BIND nodes even when they bind to this image, so
@@ -69,6 +72,8 @@ type binaryInfo struct {
 
 	entryVMAddr, entryVMSize, entryFileOff uint64
 	stubVMAddr, stubVMSize, stubFileOff    uint64
+	pcLineVMSize, pcLineFileOff            uint64
+	identityVMSize, identityFileOff        uint64
 	hasCodeSignature                       bool
 }
 
@@ -86,22 +91,59 @@ func readVM(info *binaryInfo, addr uint64, n int) []byte {
 func load(path string) (*binaryInfo, error) {
 	if mf, err := macho.Open(path); err == nil {
 		defer mf.Close()
-		info := &binaryInfo{format: "macho"}
-		info.raw, _ = os.ReadFile(path)
+		pointerSize := 4
+		if mf.Magic == macho.Magic64 {
+			pointerSize = 8
+		}
+		info := &binaryInfo{format: "macho", pointerSize: pointerSize, littleEndian: mf.ByteOrder == binary.LittleEndian}
+		var err error
+		info.raw, err = os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		imageBase := ^uint64(0)
+		for _, l := range mf.Loads {
+			if seg, ok := l.(*macho.Segment); ok && seg.Filesz != 0 && seg.Addr < imageBase {
+				imageBase = seg.Addr
+			}
+		}
+		if imageBase != ^uint64(0) {
+			info.imageBase = imageBase
+		}
 		for _, s := range mf.Sections {
-			info.secs = append(info.secs, secInfo{vmaddr: s.Addr, size: s.Size, fileOff: uint64(s.Offset)})
+			if sectionInFile(info.raw, uint64(s.Offset), s.Size) {
+				info.secs = append(info.secs, secInfo{vmaddr: s.Addr, size: s.Size, fileOff: uint64(s.Offset)})
+			}
 		}
 		if s := mf.Section("__llgo_fie"); s != nil {
-			info.entrySec, _ = s.Data()
+			info.entrySec, err = sectionBytes(info.raw, uint64(s.Offset), s.Size)
+			if err != nil {
+				return nil, fmt.Errorf("Mach-O __llgo_fie: %w", err)
+			}
 			info.entryVMAddr, info.entryVMSize, info.entryFileOff = s.Addr, s.Size, uint64(s.Offset)
 		}
 		if s := mf.Section("__llgo_stub"); s != nil {
-			info.stubSec, _ = s.Data()
+			info.stubSec, err = sectionBytes(info.raw, uint64(s.Offset), s.Size)
+			if err != nil {
+				return nil, fmt.Errorf("Mach-O __llgo_stub: %w", err)
+			}
 			info.stubVMAddr, info.stubVMSize, info.stubFileOff = s.Addr, s.Size, uint64(s.Offset)
+		}
+		if s := mf.Section("__llgo_pcl"); s != nil {
+			info.pcLineSec, err = sectionBytes(info.raw, uint64(s.Offset), s.Size)
+			if err != nil {
+				return nil, fmt.Errorf("Mach-O __llgo_pcl: %w", err)
+			}
+			info.pcLineVMSize, info.pcLineFileOff = s.Size, uint64(s.Offset)
+		}
+		if s := mf.Section("__llgo_pid"); s != nil {
+			if _, err := sectionBytes(info.raw, uint64(s.Offset), s.Size); err != nil {
+				return nil, fmt.Errorf("Mach-O __llgo_pid: %w", err)
+			}
+			info.identityVMSize, info.identityFileOff = s.Size, uint64(s.Offset)
 		}
 		if s := mf.Section("__text"); s != nil {
 			info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
-			info.imageBase = s.Addr &^ 0xFFFFFFF
 		}
 		if mf.Symtab != nil {
 			for _, sym := range mf.Symtab.Syms {
@@ -115,7 +157,9 @@ func load(path string) (*binaryInfo, error) {
 				info.hasCodeSignature = true
 			}
 		}
-		loadBindTargets(info, mf)
+		if pointerSize == 8 && info.littleEndian {
+			loadBindTargets(info, mf)
+		}
 		finish(info)
 		return info, nil
 	}
@@ -124,24 +168,72 @@ func load(path string) (*binaryInfo, error) {
 		return nil, fmt.Errorf("not Mach-O and not ELF: %w", err)
 	}
 	defer ef.Close()
-	info := &binaryInfo{format: "elf"}
-	info.raw, _ = os.ReadFile(path)
+	info := &binaryInfo{format: "elf", littleEndian: ef.ByteOrder == binary.LittleEndian}
+	if ef.Class == elf.ELFCLASS64 {
+		info.pointerSize = 8
+	} else if ef.Class == elf.ELFCLASS32 {
+		info.pointerSize = 4
+	}
+	info.raw, err = os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	imageBase := ^uint64(0)
+	for _, p := range ef.Progs {
+		if p.Type == elf.PT_LOAD && p.Filesz != 0 && p.Vaddr < imageBase {
+			imageBase = p.Vaddr
+		}
+	}
+	if imageBase != ^uint64(0) {
+		info.imageBase = imageBase
+	}
 	for _, s := range ef.Sections {
-		if s.Type != elf.SHT_NOBITS && s.Addr != 0 {
+		if s.Type != elf.SHT_NOBITS && s.Addr != 0 && sectionInFile(info.raw, s.Offset, s.Size) {
 			info.secs = append(info.secs, secInfo{vmaddr: s.Addr, size: s.Size, fileOff: s.Offset})
 		}
 	}
+	// Old pclnpost fixtures predate program headers. Retain a conservative
+	// fallback for such files; real executables always take the PT_LOAD path
+	// above, which deliberately ignores fileless PT_LOAD segments.
+	if imageBase == ^uint64(0) {
+		for _, s := range info.secs {
+			if s.size != 0 && s.vmaddr < imageBase {
+				imageBase = s.vmaddr
+			}
+		}
+		if imageBase != ^uint64(0) {
+			info.imageBase = imageBase
+		}
+	}
 	if s := ef.Section("llgo_funcinfo_entry"); s != nil {
-		info.entrySec, _ = s.Data()
+		info.entrySec, err = sectionBytes(info.raw, s.Offset, s.Size)
+		if err != nil {
+			return nil, fmt.Errorf("ELF llgo_funcinfo_entry: %w", err)
+		}
 		info.entryVMAddr, info.entryVMSize, info.entryFileOff = s.Addr, s.Size, s.Offset
 	}
 	if s := ef.Section("llgo_funcinfo_stubsite"); s != nil {
-		info.stubSec, _ = s.Data()
+		info.stubSec, err = sectionBytes(info.raw, s.Offset, s.Size)
+		if err != nil {
+			return nil, fmt.Errorf("ELF llgo_funcinfo_stubsite: %w", err)
+		}
 		info.stubVMAddr, info.stubVMSize, info.stubFileOff = s.Addr, s.Size, s.Offset
+	}
+	if s := ef.Section("llgo_pcline"); s != nil {
+		info.pcLineSec, err = sectionBytes(info.raw, s.Offset, s.Size)
+		if err != nil {
+			return nil, fmt.Errorf("ELF llgo_pcline: %w", err)
+		}
+		info.pcLineVMSize, info.pcLineFileOff = s.Size, s.Offset
+	}
+	if s := ef.Section("llgo_pclntab_id"); s != nil {
+		if _, err := sectionBytes(info.raw, s.Offset, s.Size); err != nil {
+			return nil, fmt.Errorf("ELF llgo_pclntab_id: %w", err)
+		}
+		info.identityVMSize, info.identityFileOff = s.Size, s.Offset
 	}
 	if s := ef.Section(".text"); s != nil {
 		info.textStart, info.textEnd = s.Addr, s.Addr+s.Size
-		info.imageBase = s.Addr &^ 0xFFFFFFF
 	}
 	syms, _ := ef.Symbols()
 	for _, sym := range syms {
@@ -151,6 +243,17 @@ func load(path string) (*binaryInfo, error) {
 	}
 	finish(info)
 	return info, nil
+}
+
+func sectionInFile(raw []byte, off, size uint64) bool {
+	return off <= uint64(len(raw)) && size <= uint64(len(raw))-off
+}
+
+func sectionBytes(raw []byte, off, size uint64) ([]byte, error) {
+	if !sectionInFile(raw, off, size) {
+		return nil, fmt.Errorf("section range [%#x,%#x) is outside file size %#x", off, off+size, len(raw))
+	}
+	return raw[off : off+size], nil
 }
 
 func finish(info *binaryInfo) {
@@ -348,13 +451,19 @@ func loadBindTargets(info *binaryInfo, mf *macho.File) {
 	for i := uint32(0); i < ncmds && off+8 <= uint64(len(raw)); i++ {
 		cmd := binary.LittleEndian.Uint32(raw[off:])
 		size := binary.LittleEndian.Uint32(raw[off+4:])
+		if size < 8 {
+			return
+		}
 		if cmd == lcDyldChainedFixups {
+			if off+16 > uint64(len(raw)) {
+				return
+			}
 			fixOff = uint64(binary.LittleEndian.Uint32(raw[off+8:]))
 			fixSize = uint64(binary.LittleEndian.Uint32(raw[off+12:]))
 		}
 		off += uint64(size)
 	}
-	if fixOff == 0 || fixOff+28 > uint64(len(raw)) {
+	if fixOff == 0 || fixSize < 28 || fixOff > uint64(len(raw)) || fixSize > uint64(len(raw))-fixOff {
 		return
 	}
 	hdr := raw[fixOff : fixOff+fixSize]

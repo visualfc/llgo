@@ -133,7 +133,7 @@ func TestCollectFingerprintDeterminism(t *testing.T) {
 	}
 }
 
-func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
+func TestCollectFingerprintIncludesEmitDWARF(t *testing.T) {
 	td := t.TempDir()
 	goFile := filepath.Join(td, "main.go")
 	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
@@ -168,12 +168,19 @@ func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
 	if withDWARF.Fingerprint == withoutDWARF.Fingerprint {
 		t.Fatal("-w did not change the package fingerprint")
 	}
-	data, err := decodeManifest(withoutDWARF.Manifest)
+	data, err := decodeManifest(withDWARF.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.Common == nil || !data.Common.OmitDWARF {
-		t.Fatalf("manifest does not contain OMIT_DWARF=true:\n%s", withoutDWARF.Manifest)
+	if data.Common == nil || !data.Common.EmitDWARF {
+		t.Fatalf("manifest does not contain EMIT_DWARF=true:\n%s", withDWARF.Manifest)
+	}
+	withoutData, err := decodeManifest(withoutDWARF.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withoutData.Common != nil && withoutData.Common.EmitDWARF {
+		t.Fatalf("-w manifest unexpectedly contains EMIT_DWARF=true:\n%s", withoutDWARF.Manifest)
 	}
 
 	targetWithoutDWARF := newPkg()
@@ -187,8 +194,168 @@ func TestCollectFingerprintIncludesOmitDWARF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if targetData.Common == nil || !targetData.Common.OmitDWARF {
-		t.Fatalf("target manifest does not contain OMIT_DWARF=true:\n%s", targetWithoutDWARF.Manifest)
+	if targetData.Common != nil && targetData.Common.EmitDWARF {
+		t.Fatalf("always-omit target manifest unexpectedly contains EMIT_DWARF=true:\n%s", targetWithoutDWARF.Manifest)
+	}
+}
+
+func TestCollectFingerprintIncludesPCLNMode(t *testing.T) {
+	t.Setenv(llgoFuncInfo, "")
+	t.Setenv(llgoFuncInfoSites, "")
+	td := t.TempDir()
+	goFile := filepath.Join(td, "main.go")
+	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	newPkg := func() *aPackage {
+		return &aPackage{Package: &packages.Package{
+			PkgPath: "test/pkg",
+			GoFiles: []string{goFile},
+		}}
+	}
+	newContext := func(mode PCLNMode) *context {
+		return &context{
+			conf:      &packages.Config{},
+			buildConf: &Config{Goos: "linux", Goarch: "amd64", BuildMode: BuildModeExe, PCLNMode: mode},
+		}
+	}
+
+	tests := []struct {
+		mode PCLNMode
+		want string
+	}{
+		{mode: PCLNEmbedded, want: "embedded"},
+		{mode: PCLNExternal, want: "external"},
+		{mode: PCLNNone, want: "none"},
+	}
+	fingerprints := make(map[string]bool, len(tests))
+	var embeddedFingerprint string
+	for _, tt := range tests {
+		pkg := newPkg()
+		if err := newContext(tt.mode).collectFingerprint(pkg); err != nil {
+			t.Fatal(err)
+		}
+		data, err := decodeManifest(pkg.Manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if data.Common == nil || data.Common.PCLNMode != tt.want {
+			t.Fatalf("PCLN mode manifest = %+v, want %q", data.Common, tt.want)
+		}
+		if !strings.Contains(pkg.Manifest, "PCLN_MODE: "+tt.want) {
+			t.Fatalf("manifest does not contain PCLN_MODE=%s:\n%s", tt.want, pkg.Manifest)
+		}
+		fingerprints[pkg.Fingerprint] = true
+		if tt.mode == PCLNEmbedded {
+			embeddedFingerprint = pkg.Fingerprint
+		}
+	}
+	if len(fingerprints) != len(tests) {
+		t.Fatalf("PCLN modes produced %d distinct fingerprints, want %d", len(fingerprints), len(tests))
+	}
+
+	defaultMode := newPkg()
+	if err := newContext(PCLNMode(0)).collectFingerprint(defaultMode); err != nil {
+		t.Fatal(err)
+	}
+	if defaultMode.Fingerprint != embeddedFingerprint {
+		t.Fatal("zero-value PCLN mode and embedded mode produced different fingerprints")
+	}
+}
+
+func TestCollectFingerprintCanonicalizesPCLNEnvironment(t *testing.T) {
+	td := t.TempDir()
+	goFile := filepath.Join(td, "main.go")
+	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	collect := func(conf Config, funcInfo, sites string) (*aPackage, manifestData) {
+		t.Helper()
+		t.Setenv(llgoFuncInfo, funcInfo)
+		t.Setenv(llgoFuncInfoSites, sites)
+		ctx := &context{
+			conf:      &packages.Config{},
+			buildConf: &conf,
+		}
+		pkg := &aPackage{Package: &packages.Package{
+			PkgPath: "test/pkg",
+			GoFiles: []string{goFile},
+		}}
+		if err := ctx.collectFingerprint(pkg); err != nil {
+			t.Fatal(err)
+		}
+		data, err := decodeManifest(pkg.Manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg, data
+	}
+	base := Config{Goos: "linux", Goarch: "amd64", BuildMode: BuildModeExe}
+
+	legacyNone, legacyNoneData := collect(base, "0", "1")
+	explicitNoneConf := base
+	explicitNoneConf.PCLNMode = PCLNNone
+	explicitNoneConf.PCLNModeSet = true
+	explicitNone, explicitNoneData := collect(explicitNoneConf, "1", "0")
+	if legacyNone.Fingerprint != explicitNone.Fingerprint {
+		t.Fatal("legacy-disabled and typed none produced different fingerprints")
+	}
+	for _, data := range []manifestData{legacyNoneData, explicitNoneData} {
+		if data.Common == nil || data.Common.PCLNMode != "none" {
+			t.Fatalf("effective PCLN mode = %+v, want none", data.Common)
+		}
+		if _, ok := data.Env.Vars[llgoFuncInfo]; ok {
+			t.Fatalf("manifest redundantly contains %s: %+v", llgoFuncInfo, data.Env.Vars)
+		}
+		if _, ok := data.Env.Vars[llgoFuncInfoSites]; ok {
+			t.Fatalf("none manifest contains irrelevant %s: %+v", llgoFuncInfoSites, data.Env.Vars)
+		}
+	}
+
+	explicitEmbeddedConf := base
+	explicitEmbeddedConf.PCLNModeSet = true
+	embeddedDefault, embeddedDefaultData := collect(explicitEmbeddedConf, "0", "")
+	embeddedOne, embeddedOneData := collect(explicitEmbeddedConf, "1", "1")
+	embeddedTrue, _ := collect(explicitEmbeddedConf, "", "true")
+	legacyEmbedded, _ := collect(base, "on", "on")
+	if embeddedDefault.Fingerprint != embeddedOne.Fingerprint ||
+		embeddedDefault.Fingerprint != embeddedTrue.Fingerprint ||
+		embeddedDefault.Fingerprint != legacyEmbedded.Fingerprint {
+		t.Fatal("equivalent enabled PCLN inputs produced different fingerprints")
+	}
+	for _, data := range []manifestData{embeddedDefaultData, embeddedOneData} {
+		if data.Common == nil || data.Common.PCLNMode != "embedded" {
+			t.Fatalf("explicit embedded mode = %+v, want embedded", data.Common)
+		}
+		if got := data.Env.Vars[llgoFuncInfoSites]; got != "true" {
+			t.Fatalf("%s = %q, want canonical true", llgoFuncInfoSites, got)
+		}
+		if _, ok := data.Env.Vars[llgoFuncInfo]; ok {
+			t.Fatalf("manifest redundantly contains %s: %+v", llgoFuncInfo, data.Env.Vars)
+		}
+	}
+
+	embeddedOff, embeddedOffData := collect(explicitEmbeddedConf, "", "0")
+	if embeddedOff.Fingerprint == embeddedDefault.Fingerprint {
+		t.Fatal("disabling LLGO_FUNCINFO_SITES did not change the fingerprint")
+	}
+	if got := embeddedOffData.Env.Vars[llgoFuncInfoSites]; got != "false" {
+		t.Fatalf("%s = %q, want canonical false", llgoFuncInfoSites, got)
+	}
+
+	explicitExternalConf := base
+	explicitExternalConf.PCLNMode = PCLNExternal
+	explicitExternalConf.PCLNModeSet = true
+	externalLegacyOff, externalLegacyOffData := collect(explicitExternalConf, "0", "1")
+	externalLegacyOn, _ := collect(explicitExternalConf, "1", "true")
+	if externalLegacyOff.Fingerprint != externalLegacyOn.Fingerprint {
+		t.Fatal("LLGO_FUNCINFO changed an explicit external fingerprint")
+	}
+	if externalLegacyOffData.Common == nil || externalLegacyOffData.Common.PCLNMode != "external" {
+		t.Fatalf("explicit external mode = %+v, want external", externalLegacyOffData.Common)
+	}
+	if _, ok := externalLegacyOffData.Env.Vars[llgoFuncInfo]; ok {
+		t.Fatalf("external manifest redundantly contains %s: %+v", llgoFuncInfo, externalLegacyOffData.Env.Vars)
 	}
 }
 

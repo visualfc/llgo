@@ -54,6 +54,7 @@ import (
 	"github.com/goplus/llgo/internal/monitor"
 	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/internal/packages"
+	"github.com/goplus/llgo/internal/pclnmap"
 	"github.com/goplus/llgo/internal/pclnpost"
 	"github.com/goplus/llgo/internal/typepatch"
 	"github.com/goplus/llgo/ssa/abi"
@@ -111,12 +112,13 @@ type OutFmts struct {
 
 // OutFmtDetails contains detailed output file paths for each format
 type OutFmtDetails struct {
-	Out string // Base output file path
-	Bin string // Binary output file path (.bin)
-	Hex string // Intel hex output file path (.hex)
-	Img string // Image output file path (.img)
-	Uf2 string // UF2 output file path (.uf2)
-	Zip string // ZIP/DFU output file path (.zip)
+	Out  string // Base output file path
+	PCLN string // PCLN sidecar output file path (.pclntab)
+	Bin  string // Binary output file path (.bin)
+	Hex  string // Intel hex output file path (.hex)
+	Img  string // Image output file path (.img)
+	Uf2  string // UF2 output file path (.uf2)
+	Zip  string // ZIP/DFU output file path (.zip)
 }
 
 // ModuleHook observes a package module immediately after it is generated and
@@ -161,11 +163,19 @@ type Config struct {
 	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
 	NoErrorColumn bool   // omit source columns from frontend diagnostics
 	// GoBuildFlags contains normalized raw Go build flags forwarded to
-	// go/packages. Command entry points parse supported compiler and linker
-	// semantics into typed Config fields before calling Do.
+	// go/packages. Callers use internal/goflags to parse supported compiler and
+	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
 	LinkOptions  LinkOptions
-	AllowNoBody  bool // allow declarations without bodies, as go tool compile does
+	// OmitDWARFByDefault controls linked builds only when -w was not
+	// explicitly specified. Explicit -w and -w=false always win.
+	OmitDWARFByDefault bool
+	PCLNMode           PCLNMode
+	// PCLNModeSet marks PCLNMode as authoritative. Command flags set it for
+	// explicit requests; Do sets it after resolving the legacy environment
+	// default.
+	PCLNModeSet bool
+	AllowNoBody bool // allow declarations without bodies, as go tool compile does
 
 	// PthreadStackSize sets a custom stack size, in bytes, for pthread-backed
 	// goroutines. A zero value keeps the platform pthread default.
@@ -206,12 +216,14 @@ func NewDefaultConf(mode Mode) *Config {
 		goarch = runtime.GOARCH
 	}
 	conf := &Config{
-		Goos:      goos,
-		Goarch:    goarch,
-		BinPath:   bin,
-		Mode:      mode,
-		BuildMode: BuildModeExe,
-		AbiMode:   cabi.ModeAllFunc,
+		Goos:               goos,
+		Goarch:             goarch,
+		BinPath:            bin,
+		Mode:               mode,
+		BuildMode:          BuildModeExe,
+		AbiMode:            cabi.ModeAllFunc,
+		OmitDWARFByDefault: mode != ModeGen,
+		PCLNMode:           PCLNEmbedded,
 	}
 	return conf
 }
@@ -267,11 +279,16 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.BuildMode == "" {
 		conf.BuildMode = BuildModeExe
 	}
+	conf.PCLNMode = effectivePCLNMode(conf)
+	conf.PCLNModeSet = true
 	if conf.SizeReport && conf.SizeFormat == "" {
 		conf.SizeFormat = "text"
 	}
 	if conf.SizeReport && conf.SizeLevel == "" {
 		conf.SizeLevel = "module"
+	}
+	if err := validatePCLNMode(conf); err != nil {
+		return nil, err
 	}
 	if err := ensureSizeReporting(conf); err != nil {
 		return nil, err
@@ -304,6 +321,12 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	verbose := conf.Verbose
 	patterns := args
 	tags := "llgo,math_big_pure_go,purego"
+	if conf.PCLNMode == PCLNExternal {
+		// Select the optional runtime loader as part of the normal package
+		// cache key. Embedded and none builds do not compile any loader or
+		// sidecar probing code.
+		tags += ",llgo_pclntab_external"
+	}
 	if conf.AbiMode == cabi.ModeAllFunc {
 		tags += ",llgo_abi_2"
 	}
@@ -326,10 +349,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 
-	omitDWARF := effectiveOmitDWARF(conf, &export)
-	emitDebugInfo := IsDbgEnabled() && !omitDWARF
+	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
 	cl.EnableDebug(emitDebugInfo)
-	cl.EnableDbgSyms(IsDbgSymsEnabled() && !omitDWARF)
+	cl.EnableDbgSyms(emitDebugInfo)
 	cl.EnableTrace(IsTraceEnabled())
 	llssa.Initialize(llssa.InitAll)
 
@@ -355,15 +377,14 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
 	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
-	funcInfo := conf.Mode != ModeGen && IsFuncInfoEnabled()
+	funcInfo := conf.Mode != ModeGen && conf.PCLNMode != PCLNNone
 	prog.EnableFuncInfoMetadata(funcInfo)
-	// Site records are inline-asm fragments inside function bodies; their
-	// anchors shift instruction/scope layout enough to confuse debuggers
-	// (LLDB reported variables from an inner lexical block as in scope before
-	// the block began). Builds that emit DWARF keep the metadata tables —
-	// FuncForPC name/FileLine fidelity survives via the dlsym path — but drop
-	// the sites. Caller-frame instrumentation is independent of both switches.
-	prog.EnableFuncInfoSites(funcInfo && !emitDebugInfo && IsFuncInfoSitesEnabled())
+	// Site records are inline-asm fragments inside function bodies. Darwin
+	// DWARF builds avoid them because they disturb LLDB lexical scopes; Linux
+	// still needs them because its restricted dynamic symbol table cannot
+	// reconstruct every Go entry PC through dlsym. External mode always needs
+	// final-PC sites for sidecar construction.
+	prog.EnableFuncInfoSites(shouldEnablePCLNSites(conf, funcInfo, emitDebugInfo))
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -518,7 +539,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 			if err != nil {
 				return nil, err
 			}
-			rewritePrebuiltFuncTab(ctx, outFmts.Out, verbose)
+			if err := finalizeRuntimePCLN(ctx, outFmts, verbose); err != nil {
+				return nil, err
+			}
 			if conf.Mode == ModeBuild && conf.SizeReport {
 				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
@@ -692,6 +715,10 @@ type context struct {
 	plan9asmOnce sync.Once
 	plan9asmMode plan9asmPkgsEnvMode
 	plan9asmPkgs map[string]bool
+
+	// pclnExternal is populated while generating the synthetic main module
+	// and completed with final linked PCs by the post-link externalizer.
+	pclnExternal *pclnmap.Data
 }
 
 func (c *context) compiler() *clang.Cmd {
@@ -1065,6 +1092,7 @@ func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
 }
 
 func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPath string, verbose bool) error {
+	ctx.pclnExternal = nil
 	needRuntime := false
 	needPyInit := false
 	var needAbiInit int
@@ -1147,9 +1175,14 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	// Generate main module file (needed for global variables even in library modes)
 	// This is compiled directly to .o and added to linkInputs (not cached)
 	// Use a stable synthetic name to avoid confusing it with the real main package in traces/logs.
-	funcInfo := prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
-	pcLineInfo := collectPCLineInfo(linkedOrder)
-	funcInfoStubs := collectFuncInfoStubRecords(linkedOrder, funcInfo)
+	var funcInfo []funcInfoRecord
+	var pcLineInfo []pcLineRecord
+	var funcInfoStubs []funcInfoStubRecord
+	if ctx.buildConf.PCLNMode != PCLNNone {
+		funcInfo = prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
+		pcLineInfo = collectPCLineInfo(linkedOrder)
+		funcInfoStubs = collectFuncInfoStubRecords(linkedOrder, funcInfo)
+	}
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
 		rtInit:        needRuntime,
 		pyInit:        needPyInit,
@@ -1252,7 +1285,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	if IsDbgSymsEnabled() && !effectiveOmitDWARF(ctx.buildConf, &ctx.crossCompile) {
+	if shouldEmitDebugInfo(ctx.buildConf, &ctx.crossCompile) {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
 
@@ -1298,7 +1331,7 @@ func needsLinuxNoPIE(ctx *context, linkArgs []string) bool {
 }
 
 func needsLinuxExportDynamic(ctx *context) bool {
-	return ctx.buildConf.Target == "" && ctx.buildConf.Goos == "linux" && IsFuncInfoEnabled()
+	return ctx.buildConf.Target == "" && ctx.buildConf.Goos == "linux" && effectivePCLNMode(ctx.buildConf) != PCLNNone
 }
 
 func linuxExportDynamicArgs(ctx *context) []string {
@@ -1978,8 +2011,6 @@ var (
 )
 */
 
-const llgoDebug = "LLGO_DEBUG"
-const llgoDbgSyms = "LLGO_DEBUG_SYMBOLS"
 const llgoFuncInfo = "LLGO_FUNCINFO"
 const llgoFuncInfoSites = "LLGO_FUNCINFO_SITES"
 const llgoTrace = "LLGO_TRACE"
@@ -2025,10 +2056,6 @@ func IsStdioNobuf() bool {
 	return isEnvOn(llgoStdioNobuf, false)
 }
 
-func IsDbgEnabled() bool {
-	return isEnvOn(llgoDebug, false) || isEnvOn(llgoDbgSyms, false)
-}
-
 func IsFuncInfoEnabled() bool {
 	return isEnvOn(llgoFuncInfo, true)
 }
@@ -2039,10 +2066,6 @@ func IsFuncInfoEnabled() bool {
 // isolating codegen perturbation caused by the in-body asm anchors.
 func IsFuncInfoSitesEnabled() bool {
 	return isEnvOn(llgoFuncInfoSites, true)
-}
-
-func IsDbgSymsEnabled() bool {
-	return isEnvOn(llgoDbgSyms, false)
 }
 
 func IsOptimizeEnabled() bool {
