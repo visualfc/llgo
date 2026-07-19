@@ -51,8 +51,8 @@ type genConfig struct {
 // genMainModule generates the main entry module for an llgo program.
 //
 // The module contains argc/argv globals and, for executable build modes,
-// the entry function that wires initialization and main. For C archive or
-// shared library modes, only the globals are emitted.
+// the entry function that wires initialization and main. C archive and shared
+// library modes also get a constructor when the LLGo runtime is linked.
 func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *genConfig) Package {
 	prog := ctx.prog
 	mainPkg := prog.NewPackage("", pkg.ID+".main")
@@ -78,6 +78,9 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	}
 
 	if ctx.buildConf.BuildMode != BuildModeExe {
+		if cfg.rtInit {
+			defineLibraryRuntimeInit(mainPkg, declareNoArgFunc(mainPkg, rtPkgPath+".init"))
+		}
 		return mainAPkg
 	}
 
@@ -125,6 +128,33 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	}
 
 	return mainAPkg
+}
+
+// defineLibraryRuntimeInit arranges for the LLGo runtime to be initialized
+// before a C program calls an exported Go function. llvm.global_ctors is
+// lowered to the platform's native constructor mechanism for both shared
+// libraries and archive members.
+func defineLibraryRuntimeInit(pkg llssa.Package, rtInit llssa.Function) {
+	const ctorName = "__llgo_runtime_ctor"
+	ctor := pkg.NewFunc(ctorName, llssa.NoArgsNoRet, llssa.InC)
+	ctorValue := pkg.Module().NamedFunction(ctorName)
+	ctorValue.SetLinkage(llvm.InternalLinkage)
+	b := ctor.MakeBody(1)
+	b.Call(rtInit.Expr)
+	b.Return()
+
+	mod := pkg.Module()
+	llvmCtx := mod.Context()
+	priority := llvm.ConstInt(llvmCtx.Int32Type(), 65535, false)
+	entry := llvmCtx.ConstStruct([]llvm.Value{
+		priority,
+		ctorValue,
+		llvm.ConstNull(ctorValue.Type()),
+	}, false)
+	init := llvm.ConstArray(entry.Type(), []llvm.Value{entry})
+	ctors := llvm.AddGlobal(mod, init.Type(), "llvm.global_ctors")
+	ctors.SetInitializer(init)
+	ctors.SetLinkage(llvm.AppendingLinkage)
 }
 
 func filterAbiSymbol(abiInit int, sym *llssa.AbiSymbol) bool {

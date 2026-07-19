@@ -13,6 +13,7 @@ RUNTIME_LIBS = -lpthread -lm $(shell pkg-config --libs bdw-gc || echo -lgc) $(sh
 
 # Default to static linking
 LINK_TYPE ?= static
+LLGOFLAGS ?=
 
 # Platform detection
 UNAME_S := $(shell uname -s)
@@ -46,7 +47,7 @@ all: build-go $(TARGET)
 # Build the Go library first
 build-go:
 	@echo $(BUILD_MSG)
-	cd .. && ../../../dev/llgo.sh build -buildmode $(BUILDMODE) -o export .
+	cd .. && ../../../dev/llgo.sh build -buildmode $(BUILDMODE) $(LLGOFLAGS) -o export .
 
 # Build the C executable
 $(TARGET): $(SOURCES) $(LIBRARY) $(HEADER)

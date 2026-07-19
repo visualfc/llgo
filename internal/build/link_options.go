@@ -106,9 +106,6 @@ func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 	if !omitDWARFRequested(conf) {
 		return nil
 	}
-	if conf.BuildMode != BuildModeExe {
-		return fmt.Errorf("DWARF omission is not supported for -buildmode=%s", conf.BuildMode)
-	}
 	if target.DebugInfo.AlwaysOmit {
 		return nil
 	}
@@ -124,6 +121,11 @@ func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 // rewriting the linked binary afterward.
 func dwarfLinkerArgs(conf *Config, target *crosscompile.Export) []string {
 	if target.DebugInfo.AlwaysOmit || !effectiveOmitDWARF(conf, target) {
+		return nil
+	}
+	// c-archive has no final native link step. Omitting generated DWARF is
+	// sufficient; consumers decide how to link the archive later.
+	if conf.BuildMode == BuildModeCArchive {
 		return nil
 	}
 	return slices.Clone(target.DebugInfo.OmitLinkFlags)

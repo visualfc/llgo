@@ -47,6 +47,54 @@ check_file() {
     fi
 }
 
+# Check that explicitly enabled LLGo DWARF is usable for a Go function reached
+# through the C library. Darwin uses LLDB because Mach-O debug maps may refer
+# back to archive members; ELF keeps the DWARF in the linked artifact.
+check_c_library_debug_info() {
+    local build_mode="$1"
+    local artifact="$2"
+    local executable="$3"
+    local output
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if ! output=$(DYLD_LIBRARY_PATH=.. lldb --batch \
+                -o "settings set target.env-vars DYLD_LIBRARY_PATH=.." \
+                -o "breakpoint set -n main" \
+                -o run \
+                -o "breakpoint set -r captureCFuncInfo" \
+                -o continue \
+                -o "frame info" \
+                -o "process kill" \
+                "./$(basename "$executable")" 2>&1); then
+            print_error "$build_mode: LLDB verification failed"
+            echo "$output"
+            return 1
+        fi
+        if ! grep -Eq 'captureCFuncInfo at .*export\.go:[0-9]+' <<< "$output"; then
+            print_error "$build_mode: LLDB did not resolve the Go source location"
+            echo "$output"
+            return 1
+        fi
+    else
+        if [[ "$build_mode" == "c-archive" ]]; then
+            artifact="$executable"
+        fi
+        if ! output=$(llvm-dwarfdump --regex --name captureCFuncInfo "$artifact" 2>&1); then
+            print_error "$build_mode: DWARF inspection failed"
+            echo "$output"
+            return 1
+        fi
+        if ! grep -q 'DW_TAG_subprogram' <<< "$output" || \
+           ! grep -q 'export.go' <<< "$output"; then
+            print_error "$build_mode: DWARF does not resolve the Go function and source file"
+            echo "$output"
+            return 1
+        fi
+    fi
+
+    print_status "$build_mode: debug information resolved captureCFuncInfo in export.go"
+}
+
 # Function to compare header with expected content
 compare_header() {
     local header_file="$1"
@@ -139,12 +187,15 @@ if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
     # Test C demo with shared library
     print_status "=== Testing C demo with shared library ==="
     if cd use; then
-        if LINK_TYPE=shared make clean && LINK_TYPE=shared make; then
+        if LINK_TYPE=shared make clean && LINK_TYPE=shared LLGOFLAGS=-ldflags=-w=false make; then
             print_status "C demo build succeeded with shared library"
             if LINK_TYPE=shared make run; then
                 print_status "C demo execution succeeded with shared library"
             else
                 print_error "C demo execution failed with shared library"
+                build_failures=$((build_failures + 1))
+            fi
+            if ! check_c_library_debug_info "c-shared" "../$SHARED_LIB" "main.out"; then
                 build_failures=$((build_failures + 1))
             fi
         else
@@ -180,12 +231,15 @@ if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
     # Test C demo with static library
     print_status "=== Testing C demo with static library ==="
     if cd use; then
-        if make clean && make; then
+        if make clean && LLGOFLAGS=-ldflags=-w=false make; then
             print_status "C demo build succeeded with static library"
             if make run; then
                 print_status "C demo execution succeeded with static library"
             else
                 print_error "C demo execution failed with static library"
+                build_failures=$((build_failures + 1))
+            fi
+            if ! check_c_library_debug_info "c-archive" "../libexport.a" "main.out"; then
                 build_failures=$((build_failures + 1))
             fi
         else
@@ -276,6 +330,7 @@ elif [[ "$build_failures" -eq 0 ]] && [[ -f "libexport.a" ]] && [[ -f "libexport
     print_status "  ✅ Go export demo execution with assertions"
     print_status "  ✅ C header generation (c-archive and c-shared modes)"
     print_status "  ✅ C consumer compilation and execution with shared and static libraries"
+    print_status "  ✅ Explicit -w=false DWARF source lookup for c-archive and c-shared"
     print_status "  ✅ Cross-platform symbol renaming"
     print_status "  ✅ Init function export and calling"
     print_status "  ✅ Function callback types with proper typedef syntax"

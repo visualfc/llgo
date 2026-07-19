@@ -75,6 +75,42 @@ func TestGenMainModuleLibrary(t *testing.T) {
 	if !strings.Contains(ir, "@__llgo_argc = global i32 0") {
 		t.Fatalf("library mode missing argc global:\n%s", ir)
 	}
+	if strings.Contains(ir, "@llvm.global_ctors") {
+		t.Fatalf("library mode without the runtime should not emit a constructor:\n%s", ir)
+	}
+}
+
+func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	for _, mode := range []BuildMode{BuildModeCArchive, BuildModeCShared} {
+		t.Run(string(mode), func(t *testing.T) {
+			ctx := &context{
+				prog: llssa.NewProgram(nil),
+				buildConf: &Config{
+					BuildMode: mode,
+					Goos:      "linux",
+					Goarch:    "amd64",
+				},
+			}
+			pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+			mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true})
+			ir := mod.LPkg.String()
+			checks := []string{
+				"@llvm.global_ctors = appending global",
+				"define internal void @__llgo_runtime_ctor()",
+				"call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()",
+			}
+			for _, want := range checks {
+				if !strings.Contains(ir, want) {
+					t.Fatalf("library module IR missing %q:\n%s", want, ir)
+				}
+			}
+			if strings.Contains(ir, "define i32 @main") {
+				t.Fatalf("library mode should not emit main function:\n%s", ir)
+			}
+		})
+	}
 }
 
 func assertInOrder(t *testing.T, s string, wants ...string) {
