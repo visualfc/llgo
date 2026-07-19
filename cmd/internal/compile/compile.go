@@ -206,11 +206,21 @@ func (opts *options) unsupported() []string {
 	appendFlag(opts.writeBar.set, "-wb")
 	for _, setting := range opts.debug {
 		for _, item := range strings.Split(setting, ",") {
-			if item == "panic" || item == "ssa/check/on" {
+			if compatibleDebugSetting(item) {
 				continue
 			}
 			out = append(out, "-d="+item)
 		}
 	}
 	return out
+}
+
+func compatibleDebugSetting(setting string) bool {
+	if setting == "panic" || setting == "ssa/check/on" || setting == "ssa/check/seed" {
+		return true
+	}
+	// LLGo's x/tools SSA sanity checking is always enabled. gc uses this seed
+	// for its own randomized checking order, so it needs no additional LLGo
+	// action.
+	return strings.HasPrefix(setting, "ssa/check/seed=")
 }
