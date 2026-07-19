@@ -192,7 +192,13 @@ func StripABISuffix(sym string) string {
 }
 
 func extraAsmSigsAndDeclMap(pkgPath string, goarch string) map[string]extplan9asm.FuncSig {
-	manual := map[string]extplan9asm.FuncSig{}
+	manual := map[string]extplan9asm.FuncSig{
+		"runtime.memmove": {
+			Name: "memmove",
+			Args: []extplan9asm.LLVMType{extplan9asm.Ptr, extplan9asm.Ptr, extplan9asm.I64},
+			Ret:  extplan9asm.Ptr,
+		},
+	}
 	if pkgPath == "internal/bytealg" {
 		switch goarch {
 		case "arm":

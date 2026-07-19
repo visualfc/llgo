@@ -189,12 +189,16 @@ func TestTranslateHelperFunctions(t *testing.T) {
 }
 
 func TestExtraAsmSigsAndDeclMap(t *testing.T) {
-	if got := extraAsmSigsAndDeclMap("other/pkg", "amd64"); len(got) != 0 {
-		t.Fatalf("unexpected manual sigs for other/pkg: %#v", got)
+	generic := extraAsmSigsAndDeclMap("other/pkg", "amd64")
+	if got, want := len(generic), 1; got != want {
+		t.Fatalf("generic manual sig count = %d, want %d: %#v", got, want, generic)
 	}
-
-	if got := extraAsmSigsAndDeclMap("internal/runtime/gc/scan", "arm64"); len(got) != 0 {
-		t.Fatalf("unexpected manual sigs for scan/arm64: %#v", got)
+	memmove, ok := generic["runtime.memmove"]
+	if !ok {
+		t.Fatal("missing generic memmove signature")
+	}
+	if memmove.Name != "memmove" {
+		t.Fatalf("runtime.memmove declaration = %q, want memmove", memmove.Name)
 	}
 
 	arm := extraAsmSigsAndDeclMap("internal/bytealg", "arm")
@@ -236,7 +240,7 @@ func TestExtraAsmSigsAndDeclMap(t *testing.T) {
 	}
 
 	scan := extraAsmSigsAndDeclMap("internal/runtime/gc/scan", "amd64")
-	if got, want := len(scan), 26; got != want {
+	if got, want := len(scan), 27; got != want {
 		t.Fatalf("scan manual sig count = %d, want %d", got, want)
 	}
 	for _, name := range []string{
