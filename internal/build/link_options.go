@@ -67,10 +67,9 @@ func (o LinkOptions) EffectiveOmitDWARF() bool {
 }
 
 // omitDWARFRequested combines explicit Go linker flags with LLGo's typed
-// executable default. The default never overrides an explicit -w value and
-// does not apply to C libraries, whose linkers do not support DWARF omission.
+// default. The default never overrides an explicit -w value.
 func omitDWARFRequested(conf *Config) bool {
-	if conf.LinkOptions.DWARF == DWARFDefault && conf.OmitDWARFByDefault && conf.BuildMode == BuildModeExe {
+	if conf.LinkOptions.DWARF == DWARFDefault && conf.OmitDWARFByDefault {
 		return true
 	}
 	return conf.LinkOptions.EffectiveOmitDWARF()
@@ -107,9 +106,6 @@ func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 	if !omitDWARFRequested(conf) {
 		return nil
 	}
-	if conf.BuildMode != BuildModeExe {
-		return fmt.Errorf("DWARF omission is not supported for -buildmode=%s", conf.BuildMode)
-	}
 	if target.DebugInfo.AlwaysOmit {
 		return nil
 	}
@@ -125,6 +121,11 @@ func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 // rewriting the linked binary afterward.
 func dwarfLinkerArgs(conf *Config, target *crosscompile.Export) []string {
 	if target.DebugInfo.AlwaysOmit || !effectiveOmitDWARF(conf, target) {
+		return nil
+	}
+	// c-archive has no final native link step. Omitting generated DWARF is
+	// sufficient; consumers decide how to link the archive later.
+	if conf.BuildMode == BuildModeCArchive {
 		return nil
 	}
 	return slices.Clone(target.DebugInfo.OmitLinkFlags)
