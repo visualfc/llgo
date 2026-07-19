@@ -69,7 +69,7 @@ func main() {
 	println(forwardValueSuffix("__ParamValueA__"[2:13]))
 	println(forwardValueSuffix("__ParamValueB__"[2:13]))
 
-	for i := range typeNames {
-		println(forwardTypeName(typeNames[i]))
+	for _, name := range typeNames {
+		println(forwardTypeName(name))
 	}
 }
