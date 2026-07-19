@@ -30,8 +30,7 @@ var loopNames = [2]string{"KeepLoopA", "KeepLoopB"}
 func main() {
 	v := reflect.ValueOf(S{})
 	t := reflect.TypeOf(S{})
-	for i := range loopNames {
-		name := loopNames[i]
+	for _, name := range loopNames {
 		out := v.MethodByName(name).Call(nil)
 		println(out[0].String())
 
