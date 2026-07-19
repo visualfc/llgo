@@ -40,7 +40,9 @@ func TestDwarfLinkerArgs(t *testing.T) {
 		want   []string
 	}{
 		{name: "default"},
-		{name: "safe default", conf: Config{OmitDWARFByDefault: true}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
+		{name: "safe default", conf: Config{BuildMode: BuildModeExe, OmitDWARFByDefault: true}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
+		{name: "safe default c-shared", conf: Config{BuildMode: BuildModeCShared, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
+		{name: "safe default c-archive", conf: Config{BuildMode: BuildModeCArchive, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
 		{name: "w", conf: Config{LinkOptions: LinkOptions{DWARF: DWARFOmit}}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
 		{name: "s implies w", conf: Config{LinkOptions: LinkOptions{OmitSymbolTable: true}}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
 		{name: "explicit w false", conf: Config{LinkOptions: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}}},
@@ -63,7 +65,9 @@ func TestEffectiveOmitDWARF(t *testing.T) {
 		want   bool
 	}{
 		{name: "default"},
-		{name: "safe default", conf: Config{OmitDWARFByDefault: true}, want: true},
+		{name: "safe default", conf: Config{BuildMode: BuildModeExe, OmitDWARFByDefault: true}, want: true},
+		{name: "safe default c-shared", conf: Config{BuildMode: BuildModeCShared, OmitDWARFByDefault: true}},
+		{name: "safe default c-archive", conf: Config{BuildMode: BuildModeCArchive, OmitDWARFByDefault: true}},
 		{name: "requested", conf: Config{LinkOptions: LinkOptions{DWARF: DWARFOmit}}, want: true},
 		{name: "target baseline", target: alwaysOmitDebugInfo(), want: true},
 		{name: "explicit preserve", conf: Config{LinkOptions: LinkOptions{DWARF: DWARFPreserve}}},
@@ -86,7 +90,9 @@ func TestShouldEmitDebugInfo(t *testing.T) {
 		want   bool
 	}{
 		{name: "linked default", conf: Config{Mode: ModeBuild}, want: true},
-		{name: "linked safe default", conf: Config{Mode: ModeBuild, OmitDWARFByDefault: true}},
+		{name: "linked safe default", conf: Config{Mode: ModeBuild, BuildMode: BuildModeExe, OmitDWARFByDefault: true}},
+		{name: "c-shared safe default", conf: Config{Mode: ModeBuild, BuildMode: BuildModeCShared, OmitDWARFByDefault: true}, want: true},
+		{name: "c-archive safe default", conf: Config{Mode: ModeBuild, BuildMode: BuildModeCArchive, OmitDWARFByDefault: true}, want: true},
 		{name: "linked w", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFOmit}}},
 		{name: "linked s", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{OmitSymbolTable: true}}},
 		{name: "linked s w false", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}}, want: true},
@@ -115,6 +121,8 @@ func TestValidateLinkOptions(t *testing.T) {
 		{name: "linux executable", conf: Config{Goos: "linux", BuildMode: BuildModeExe, LinkOptions: w}, target: configurableDebugInfo()},
 		{name: "linux executable safe default", conf: Config{Goos: "linux", BuildMode: BuildModeExe, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
 		{name: "darwin executable", conf: Config{Goos: "darwin", BuildMode: BuildModeExe, LinkOptions: w}, target: configurableDebugInfo()},
+		{name: "c-shared safe default", conf: Config{Goos: "linux", BuildMode: BuildModeCShared, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
+		{name: "c-archive safe default", conf: Config{Goos: "linux", BuildMode: BuildModeCArchive, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
 		{name: "unsupported native OS", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: w}, wantErr: true},
 		{name: "unsupported build mode", conf: Config{Goos: "linux", BuildMode: BuildModeCShared, LinkOptions: w}, target: configurableDebugInfo(), wantErr: true},
 		{name: "fixed target omit", conf: Config{Target: "rp2040", Goos: "linux", BuildMode: BuildModeExe, LinkOptions: w}, target: alwaysOmitDebugInfo()},

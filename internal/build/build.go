@@ -168,7 +168,7 @@ type Config struct {
 	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
 	LinkOptions  LinkOptions
-	// OmitDWARFByDefault controls linked builds only when -w was not
+	// OmitDWARFByDefault controls executable builds only when -w was not
 	// explicitly specified. Explicit -w and -w=false always win.
 	OmitDWARFByDefault bool
 	PCLNMode           PCLNMode
