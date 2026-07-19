@@ -599,7 +599,7 @@ func top() {
 	}
 }
 
-func TestCompileRuntimeCallerPCLineEscapesDollarInInlineAsm(t *testing.T) {
+func TestCompileRuntimeCallerPCLineUsesLocalAnchor(t *testing.T) {
 	ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
 import "runtime"
 
@@ -622,13 +622,17 @@ func top() {
 	if !strings.Contains(ir, `!"example.com/foo.top$1"`) {
 		t.Fatalf("metadata should keep the original Go symbol name:\n%s", ir)
 	}
-	if !strings.Contains(ir, `example.com/foo.top$$1`) {
-		t.Fatalf("inline asm should escape $ in the associated symbol:\n%s", ir)
-	}
+	found := false
 	for _, line := range strings.Split(ir, "\n") {
-		if strings.Contains(line, `.pushsection llgo_pcline`) && strings.Contains(line, `example.com/foo.top$1`) && !strings.Contains(line, `example.com/foo.top$$1`) {
-			t.Fatalf("inline asm has an unescaped $ operand:\n%s", line)
+		if strings.Contains(line, `.pushsection llgo_pcline`) {
+			found = true
+			if !strings.Contains(line, `__llgo_pcsite_`) || strings.Contains(line, `example.com/foo.top`) {
+				t.Fatalf("pcline section should use its local PC label as the SHF_LINK_ORDER anchor:\n%s", line)
+			}
 		}
+	}
+	if !found {
+		t.Fatalf("missing pcline section:\n%s", ir)
 	}
 }
 
