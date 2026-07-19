@@ -7,6 +7,7 @@
 #include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
@@ -617,6 +618,118 @@ bool enumerateConstantPointers(Value *Ptr,
   return true;
 }
 
+struct LocalStringSlot {
+  AllocaInst *Base;
+  uint64_t Offset;
+};
+
+bool enumerateLocalStringSlots(Value *Ptr, const DataLayout &DL,
+                               SmallVectorImpl<LocalStringSlot> &Slots) {
+  Ptr = Ptr->stripPointerCasts();
+  auto *GEP = dyn_cast<GEPOperator>(Ptr);
+  if (!GEP || GEP->getNumIndices() != 1)
+    return false;
+
+  auto *Base =
+      dyn_cast<AllocaInst>(GEP->getPointerOperand()->stripPointerCasts());
+  if (!Base || Base->isArrayAllocation())
+    return false;
+
+  auto *ArrayTy = dyn_cast<ArrayType>(Base->getAllocatedType());
+  if (!ArrayTy || ArrayTy->getElementType() != GEP->getSourceElementType())
+    return false;
+
+  SmallVector<Constant *, 4> Indices;
+  if (!collectIndexConstants(*GEP->idx_begin(), Indices,
+                             ArrayTy->getNumElements()))
+    return false;
+
+  uint64_t ElemSize = DL.getTypeAllocSize(ArrayTy->getElementType());
+  for (Constant *Index : Indices) {
+    auto *IndexC = dyn_cast<ConstantInt>(Index);
+    if (!IndexC || IndexC->isNegative())
+      return false;
+    Slots.push_back({Base, IndexC->getZExtValue() * ElemSize});
+  }
+  return true;
+}
+
+bool hasOnlyConstantLocalSlotUses(Value *Ptr, AllocaInst *Base,
+                                  const DataLayout &DL,
+                                  SmallPtrSetImpl<User *> &Seen) {
+  for (User *U : Ptr->users()) {
+    if (!Seen.insert(U).second)
+      continue;
+
+    if (auto *Load = dyn_cast<LoadInst>(U)) {
+      if (!Load->isSimple())
+        return false;
+      continue;
+    }
+
+    if (auto *Store = dyn_cast<StoreInst>(U)) {
+      if (!Store->isSimple() || !isa<Constant>(Store->getValueOperand()))
+        return false;
+      int64_t Offset = 0;
+      Value *FoundBase = GetPointerBaseWithConstantOffset(
+          Store->getPointerOperand(), Offset, DL);
+      if (FoundBase != Base || Offset < 0)
+        return false;
+      continue;
+    }
+
+    if (isa<GEPOperator>(U) || isa<BitCastOperator>(U) ||
+        isa<AddrSpaceCastOperator>(U) || isa<BitCastInst>(U) ||
+        isa<AddrSpaceCastInst>(U)) {
+      if (!hasOnlyConstantLocalSlotUses(U, Base, DL, Seen))
+        return false;
+      continue;
+    }
+
+    auto *II = dyn_cast<IntrinsicInst>(U);
+    if (II && (II->getIntrinsicID() == Intrinsic::lifetime_start ||
+               II->getIntrinsicID() == Intrinsic::lifetime_end))
+      continue;
+    return false;
+  }
+  return true;
+}
+
+Constant *findDominatingLocalConstant(AllocaInst *Base, uint64_t WantOffset,
+                                      LoadInst *Load, const DataLayout &DL,
+                                      DominatorTree &DT) {
+  uint64_t LoadSize = DL.getTypeStoreSize(Load->getType());
+  Constant *Found = nullptr;
+  for (BasicBlock &BB : *Base->getFunction()) {
+    for (Instruction &I : BB) {
+      auto *Store = dyn_cast<StoreInst>(&I);
+      if (!Store)
+        continue;
+
+      int64_t Offset = 0;
+      Value *FoundBase = GetPointerBaseWithConstantOffset(
+          Store->getPointerOperand(), Offset, DL);
+      if (FoundBase != Base || Offset < 0)
+        continue;
+
+      uint64_t StoreOffset = static_cast<uint64_t>(Offset);
+      uint64_t StoreSize =
+          DL.getTypeStoreSize(Store->getValueOperand()->getType());
+      if (StoreOffset + StoreSize <= WantOffset ||
+          WantOffset + LoadSize <= StoreOffset)
+        continue;
+
+      auto *C = dyn_cast<Constant>(Store->getValueOperand());
+      if (!Store->isSimple() || StoreOffset != WantOffset ||
+          Store->getValueOperand()->getType() != Load->getType() || !C ||
+          !DT.dominates(Store, Load) || (Found && Found != C))
+        return nullptr;
+      Found = C;
+    }
+  }
+  return Found;
+}
+
 bool isByteOffsetFrom(Value *Ptr, Value *Base, int64_t WantOffset,
                       const DataLayout &DL) {
   int64_t Offset = 0;
@@ -652,6 +765,40 @@ bool collectStringSetFromConstantSlots(LoadInst *PtrLoad, LoadInst *LenLoad,
     Constant *Ptr = foldLoadFromConstantPtr(Slot, PtrLoad->getType(), DL);
     Constant *LenPtr = byteOffsetPointer(Slot, 8, Ctx);
     Constant *Len = foldLoadFromConstantPtr(LenPtr, LenLoad->getType(), DL);
+    if (!Ptr || !Len || !collectStringSet(Ptr, Len, DL, Names, Depth + 1))
+      return false;
+  }
+  return true;
+}
+
+bool collectStringSetFromLocalSlots(LoadInst *PtrLoad, LoadInst *LenLoad,
+                                    const DataLayout &DL,
+                                    SmallVectorImpl<std::string> &Names,
+                                    unsigned Depth) {
+  if (!PtrLoad || !LenLoad || !PtrLoad->isSimple() || !LenLoad->isSimple())
+    return false;
+
+  Value *StringSlot = PtrLoad->getPointerOperand()->stripPointerCasts();
+  if (!isByteOffsetFrom(LenLoad->getPointerOperand(), StringSlot, 8, DL))
+    return false;
+
+  SmallVector<LocalStringSlot, 4> Slots;
+  if (!enumerateLocalStringSlots(StringSlot, DL, Slots) || Slots.empty())
+    return false;
+
+  AllocaInst *Base = Slots.front().Base;
+  SmallPtrSet<User *, 16> Seen;
+  if (!hasOnlyConstantLocalSlotUses(Base, Base, DL, Seen))
+    return false;
+
+  DominatorTree DT(*Base->getFunction());
+  for (const LocalStringSlot &Slot : Slots) {
+    if (Slot.Base != Base)
+      return false;
+    Constant *Ptr =
+        findDominatingLocalConstant(Base, Slot.Offset, PtrLoad, DL, DT);
+    Constant *Len =
+        findDominatingLocalConstant(Base, Slot.Offset + 8, LenLoad, DL, DT);
     if (!Ptr || !Len || !collectStringSet(Ptr, Len, DL, Names, Depth + 1))
       return false;
   }
@@ -795,6 +942,10 @@ bool collectStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
 
   if (collectStringSetFromConstantSlots(
           dyn_cast<LoadInst>(Ptr), dyn_cast<LoadInst>(Len), DL, Names, Depth))
+    return true;
+
+  if (collectStringSetFromLocalSlots(dyn_cast<LoadInst>(Ptr),
+                                     dyn_cast<LoadInst>(Len), DL, Names, Depth))
     return true;
 
   if (auto *LenC = dyn_cast<ConstantInt>(Len); LenC && LenC->isZero())
