@@ -1230,6 +1230,7 @@ func normalizeCompilerDiagnostics(lines []string) []string {
 }
 
 func normalizeCompilerDiagnosticMessage(message string) string {
+	message = normalizeGoTypesDiagnosticMessage(message)
 	switch message {
 	case "continue not in for statement":
 		return "continue is not in a loop"
@@ -1256,6 +1257,57 @@ func normalizeCompilerDiagnosticMessage(message string) string {
 	const modernIntAssignment = ") as int value in variable declaration"
 	if strings.Contains(message, modernIntAssignment) {
 		return strings.Replace(message, modernIntAssignment, ") as type int in variable declaration", 1)
+	}
+	return message
+}
+
+// normalizeGoTypesDiagnosticMessage maps wording differences in llgo's
+// go/types frontend to the equivalent cmd/compile diagnostics expected by
+// GOROOT errorcheck cases. It intentionally affects only the test harness.
+func normalizeGoTypesDiagnosticMessage(message string) string {
+	const importPrefix = `non-canonical import path "`
+	if rest, ok := strings.CutPrefix(message, importPrefix); ok {
+		if bad, good, ok := strings.Cut(rest, `": should be "`); ok && strings.HasSuffix(good, `"`) {
+			if _, badErr := strconv.Unquote(`"` + bad + `"`); badErr == nil {
+				if _, goodErr := strconv.Unquote(`"` + good); goodErr == nil {
+					return importPrefix + bad + `" (should be "` + good + `)`
+				}
+			}
+		}
+	}
+
+	for _, prefix := range []string{"cannot refer to unexported field ", "unknown field "} {
+		rest, ok := strings.CutPrefix(message, prefix)
+		if !ok {
+			continue
+		}
+		name, suffix, ok := strings.Cut(rest, " in struct literal of type ")
+		if !ok || !token.IsIdentifier(name) {
+			continue
+		}
+		message = prefix + "'" + name + "' in struct literal of type " + suffix
+		if before, suggestion, ok := strings.Cut(message, ", but does have "); ok {
+			return before + " (but does have " + suggestion + ")"
+		}
+		return message
+	}
+
+	selector, detail, ok := strings.Cut(message, " undefined (")
+	if !ok || selector == "" || !strings.HasSuffix(detail, ")") {
+		return message
+	}
+	detail = strings.TrimSuffix(detail, ")")
+	for _, kind := range []string{"field", "method"} {
+		prefix := "cannot refer to unexported " + kind + " "
+		if name, ok := strings.CutPrefix(detail, prefix); ok && token.IsIdentifier(name) {
+			return selector + " undefined (cannot refer to unexported field or method " + name + ")"
+		}
+	}
+	for _, kind := range []string{"field", "method"} {
+		marker := ", but does have " + kind + " "
+		if before, name, ok := strings.Cut(detail, marker); ok && token.IsIdentifier(name) {
+			return selector + " undefined (" + before + ", but does have " + name + ")"
+		}
 	}
 	return message
 }
