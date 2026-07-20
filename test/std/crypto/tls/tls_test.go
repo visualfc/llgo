@@ -38,7 +38,21 @@ func generateTestCert(t *testing.T) ([]byte, []byte) {
 	}
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyDER, _ := x509.MarshalPKCS8PrivateKey(priv)
+	keyDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		t.Fatalf("Failed to marshal private key: %v", err)
+	}
+	parsedKey, err := x509.ParsePKCS8PrivateKey(keyDER)
+	if err != nil {
+		t.Fatalf("Failed to parse private key: %v", err)
+	}
+	parsedRSA, ok := parsedKey.(*rsa.PrivateKey)
+	if !ok {
+		t.Fatalf("Parsed private key has type %T, want *rsa.PrivateKey", parsedKey)
+	}
+	if !parsedRSA.Equal(priv) {
+		t.Fatal("Parsed private key differs from generated key")
+	}
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 
 	return certPEM, keyPEM

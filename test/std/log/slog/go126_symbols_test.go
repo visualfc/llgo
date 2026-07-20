@@ -5,6 +5,7 @@ package slog_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log/slog"
 	"runtime"
 	"strings"
@@ -33,21 +34,46 @@ func TestMultiHandlerAndRecordSource(t *testing.T) {
 	}
 	withGroup := multi.WithGroup("details")
 	record := slog.NewRecord(time.Unix(1, 0), slog.LevelInfo, "grouped", 0)
-	record.Add("files", 2)
+	record.AddAttrs(slog.GroupAttrs("build", slog.Int("files", 2)))
 	if err := withGroup.Handle(ctx, record); err != nil {
 		t.Fatal(err)
 	}
-	for name, output := range map[string]string{"text": first.String(), "json": second.String()} {
-		if !strings.Contains(output, "direct") || !strings.Contains(output, "compiled") || !strings.Contains(output, "compiler") || !strings.Contains(output, "details") || !strings.Contains(output, "files") {
-			t.Fatalf("%s handler output is incomplete: %q", name, output)
+	textOutput := first.String()
+	for _, want := range []string{"msg=direct", "msg=compiled component=compiler", "msg=grouped details.build.files=2"} {
+		if !strings.Contains(textOutput, want) {
+			t.Fatalf("text handler output %q does not contain %q", textOutput, want)
 		}
+	}
+	jsonLines := bytes.Split(bytes.TrimSpace(second.Bytes()), []byte("\n"))
+	if len(jsonLines) != 3 {
+		t.Fatalf("JSON handler wrote %d records, want 3: %q", len(jsonLines), second.String())
+	}
+	records := make([]map[string]any, len(jsonLines))
+	for i, line := range jsonLines {
+		if err := json.Unmarshal(line, &records[i]); err != nil {
+			t.Fatalf("JSON record %d is invalid: %v: %q", i, err, line)
+		}
+	}
+	if records[0]["msg"] != "direct" {
+		t.Fatalf("first JSON record = %#v", records[0])
+	}
+	if records[1]["msg"] != "compiled" || records[1]["component"] != "compiler" {
+		t.Fatalf("second JSON record = %#v", records[1])
+	}
+	details, ok := records[2]["details"].(map[string]any)
+	if !ok {
+		t.Fatalf("third JSON record has no details group: %#v", records[2])
+	}
+	build, ok := details["build"].(map[string]any)
+	if !ok || build["files"] != float64(2) {
+		t.Fatalf("third JSON record has wrong build group: %#v", records[2])
 	}
 
 	pcs := make([]uintptr, 1)
 	runtime.Callers(1, pcs)
 	sourceRecord := slog.NewRecord(time.Time{}, slog.LevelInfo, "source", pcs[0])
 	source := sourceRecord.Source()
-	if source == nil || source.Function == "" || source.Line == 0 {
+	if source == nil || !strings.Contains(source.Function, "TestMultiHandlerAndRecordSource") || source.Line == 0 {
 		t.Fatalf("Record.Source = %#v", source)
 	}
 }
