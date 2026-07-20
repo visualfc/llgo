@@ -24,6 +24,7 @@ else
     SHARED_EXT = so
     PLATFORM_LIBS = $(shell pkg-config --libs libunwind 2>/dev/null || echo -lunwind)
 endif
+STATIC_STDLIB_LIBS = $(shell pkg-config --libs libffi 2>/dev/null || echo -lffi) -lresolv
 
 # Library and flags based on link type
 ifeq ($(LINK_TYPE),shared)
@@ -35,7 +36,7 @@ ifeq ($(LINK_TYPE),shared)
 else
     BUILDMODE = c-archive
     LIBRARY = ../libexport.a
-    LDFLAGS = $(LIBRARY) $(RUNTIME_LIBS) $(PLATFORM_LIBS)
+    LDFLAGS = $(LIBRARY) $(RUNTIME_LIBS) $(PLATFORM_LIBS) $(STATIC_STDLIB_LIBS)
     BUILD_MSG = "Building Go static library..."
     LINK_MSG = "Linking with static library..."
 endif
