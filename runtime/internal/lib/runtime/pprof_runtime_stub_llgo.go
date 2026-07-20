@@ -9,7 +9,16 @@ import (
 )
 
 type StackRecord struct {
-	Stack []uintptr
+	Stack0 [32]uintptr
+}
+
+func (r *StackRecord) Stack() []uintptr {
+	for i, pc := range r.Stack0 {
+		if pc == 0 {
+			return r.Stack0[:i]
+		}
+	}
+	return r.Stack0[:]
 }
 
 type MemProfileRecord struct {
