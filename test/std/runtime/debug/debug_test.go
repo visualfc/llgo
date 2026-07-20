@@ -74,6 +74,24 @@ func TestRuntimeSettings(t *testing.T) {
 	debug.FreeOSMemory()
 }
 
+func TestPanicOnFaultStateIsGoroutineLocal(t *testing.T) {
+	previous := debug.SetPanicOnFault(true)
+	defer debug.SetPanicOnFault(previous)
+
+	result := make(chan [2]bool, 1)
+	go func() {
+		first := debug.SetPanicOnFault(true)
+		second := debug.SetPanicOnFault(false)
+		result <- [2]bool{first, second}
+	}()
+	if got := <-result; got != [2]bool{false, true} {
+		t.Fatalf("new goroutine SetPanicOnFault states = %v, want [false true]", got)
+	}
+	if got := debug.SetPanicOnFault(previous); !got {
+		t.Fatal("child goroutine changed the parent SetPanicOnFault state")
+	}
+}
+
 func TestCrashAndHeapDumpOutputs(t *testing.T) {
 	crashFile, err := os.CreateTemp(t.TempDir(), "crash-*.log")
 	if err != nil {
