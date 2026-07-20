@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildFlagsWiring(t *testing.T) {
-	if goBuildFlags.Flag != &Cmd.Flag || Cmd.Flag.Lookup("ldflags") == nil {
+	if goBuildFlags.Flag != &Cmd.Flag || Cmd.Flag.Lookup("ldflags") == nil || Cmd.Flag.Lookup("buildmode") == nil {
 		t.Fatal("test build flags are not bound to the test command")
 	}
 }
