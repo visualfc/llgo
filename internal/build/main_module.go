@@ -107,7 +107,11 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	mainMain := declareNoArgFunc(mainPkg, pkg.PkgPath+".main")
 
 	if ctx.buildConf.BuildMode != BuildModeExe {
-		defineLibraryRuntimeInit(mainPkg, pyInit, rtInit, abiInit, runtimeStub, mainInit)
+		initArraySection := ""
+		if ctx.buildConf.BuildMode == BuildModeCShared && ctx.buildConf.Goos == "linux" {
+			initArraySection = ".init_array"
+		}
+		defineLibraryRuntimeInit(mainPkg, initArraySection, pyInit, rtInit, abiInit, runtimeStub, mainInit)
 		return mainAPkg
 	}
 
@@ -129,10 +133,11 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 }
 
 // defineLibraryRuntimeInit arranges for the LLGo runtime to be initialized
-// before a C program calls an exported Go function. llvm.global_ctors is
-// lowered to the platform's native constructor mechanism for both shared
-// libraries and archive members.
-func defineLibraryRuntimeInit(pkg llssa.Package, inits ...llssa.Function) {
+// before a C program calls an exported Go function. Linux shared libraries use
+// .init_array explicitly because the raw LLVM target machine lowers
+// llvm.global_ctors to legacy .ctors; other library formats use LLVM's
+// platform-specific constructor lowering.
+func defineLibraryRuntimeInit(pkg llssa.Package, initArraySection string, inits ...llssa.Function) {
 	const ctorName = "__llgo_runtime_ctor"
 	ctor := pkg.NewFunc(ctorName, llssa.NoArgsNoRet, llssa.InC)
 	ctorValue := pkg.Module().NamedFunction(ctorName)
@@ -146,6 +151,14 @@ func defineLibraryRuntimeInit(pkg llssa.Package, inits ...llssa.Function) {
 	b.Return()
 
 	mod := pkg.Module()
+	if initArraySection != "" {
+		initEntry := llvm.AddGlobal(mod, ctorValue.Type(), "__llgo_runtime_ctor_init")
+		initEntry.SetInitializer(ctorValue)
+		initEntry.SetGlobalConstant(true)
+		initEntry.SetSection(initArraySection)
+		initEntry.SetVisibility(llvm.HiddenVisibility)
+		return
+	}
 	llvmCtx := mod.Context()
 	priority := llvm.ConstInt(llvmCtx.Int32Type(), 65535, false)
 	entry := llvmCtx.ConstStruct([]llvm.Value{
