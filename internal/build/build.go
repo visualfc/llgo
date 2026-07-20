@@ -280,6 +280,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.BuildMode == "" {
 		conf.BuildMode = BuildModeExe
 	}
+	if conf.LinkOptions.OmitSymbolTable {
+		conf.PCLNMode = PCLNNone
+	}
 	conf.PCLNMode = effectivePCLNMode(conf)
 	conf.PCLNModeSet = true
 	if conf.SizeReport && conf.SizeFormat == "" {

@@ -269,8 +269,8 @@ func TestLinkOptionsOmitDWARFPreservesPclntab(t *testing.T) {
 		options LinkOptions
 	}{
 		{name: "w", options: LinkOptions{DWARF: DWARFOmit}},
-		{name: "s", options: LinkOptions{OmitSymbolTable: true}},
-		{name: "s_w_false", options: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}},
+		{name: "s_false", options: LinkOptions{OmitSymbolTable: false}},
+		{name: "s_false_w_false", options: LinkOptions{OmitSymbolTable: false, DWARF: DWARFPreserve}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
