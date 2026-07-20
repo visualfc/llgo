@@ -182,7 +182,9 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_concat",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_global",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_loop",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_param",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_range_literal",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_slice",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_switch",
 	}
@@ -217,7 +219,9 @@ var testltoLTOPluginTests = []string{
 	"globaldce_reflect_method_by_name_ltoplugin",
 	"globaldce_reflect_method_by_name_ltoplugin_concat",
 	"globaldce_reflect_method_by_name_ltoplugin_global",
+	"globaldce_reflect_method_by_name_ltoplugin_loop",
 	"globaldce_reflect_method_by_name_ltoplugin_param",
+	"globaldce_reflect_method_by_name_ltoplugin_range_literal",
 	"globaldce_reflect_method_by_name_ltoplugin_slice",
 	"globaldce_reflect_method_by_name_ltoplugin_switch",
 }
