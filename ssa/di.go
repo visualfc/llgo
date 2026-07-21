@@ -208,7 +208,7 @@ func (b diBuilder) createType(name string, ty Type, pos token.Position) DIType {
 		} else if t.Info()&types.IsFloat != 0 {
 			encoding = llvm.DW_ATE_float
 		} else if t.Info()&types.IsComplex != 0 {
-			return b.createComplexType(ty)
+			encoding = llvm.DW_ATE_complex_float
 		} else if t.Info()&types.IsString != 0 {
 			return b.createStringType()
 		} else {
@@ -223,8 +223,7 @@ func (b diBuilder) createType(name string, ty Type, pos token.Position) DIType {
 	case *types.Pointer:
 		return b.createPointerType(name, b.prog.rawType(t.Elem()), pos)
 	case *types.Named:
-		// Create typedef type for named types
-		return b.createTypedefType(name, ty, pos)
+		return b.createTypedefType(name, ty, b.typeDeclarationPosition(t, pos))
 	case *types.Interface:
 		ty := b.prog.rtType("Iface")
 		return b.createInterfaceType(name, ty)
@@ -235,21 +234,28 @@ func (b diBuilder) createType(name string, ty Type, pos token.Position) DIType {
 	case *types.Struct:
 		return b.createStructType(name, ty, pos)
 	case *types.Signature:
-		tyFn := b.prog.Closure(t)
-		return b.createFuncPtrType(name, tyFn, pos)
+		return b.createFuncPtrType(name, ty, pos)
 	case *types.Array:
 		return b.createArrayType(ty, t.Len())
 	case *types.Chan:
-		return b.createChanType(name, ty, pos)
+		return b.createOpaquePointerType(name, ty)
 	case *types.Map:
-		ty := b.prog.rtType("Map")
-		return b.createMapType(name, ty, pos)
+		return b.createOpaquePointerType(name, ty)
 	case *types.Tuple:
 		return b.createTupleType(name, ty, pos)
 	default:
 		panic(fmt.Errorf("can't create debug info of type: %v, %T", ty.RawType(), ty.RawType()))
 	}
 	return &aDIType{typ}
+}
+
+func (b diBuilder) typeDeclarationPosition(typ *types.Named, fallback token.Position) token.Position {
+	if obj := typ.Obj(); obj != nil && obj.Pos().IsValid() {
+		if pos := b.positioner.Position(obj.Pos()); pos.IsValid() {
+			return pos
+		}
+	}
+	return fallback
 }
 
 // ----------------------------------------------------------------------------
@@ -435,40 +441,12 @@ func (b diBuilder) createMemberTypeEx(name string, tyStruct, tyField Type, idxFi
 	)
 }
 
-func (b diBuilder) createMapType(name string, tyMap Type, pos token.Position) DIType {
-	// ty := tyMap.RawType().(*types.Map)
-	// tk := b.prog.rawType(ty.Key())
-	// tv := b.prog.rawType(ty.Elem())
-	tyCount := b.prog.Int()
-	return b.doCreateStructType(name, tyMap, pos, func(ditStruct DIType) []llvm.Metadata {
-		return []llvm.Metadata{
-			b.createMemberType("count", tyMap, tyCount, 0),
-		}
-	})
-}
-
-func (b diBuilder) createChanType(name string, t Type, pos token.Position) DIType {
-	return b.doCreateStructType(name, t, pos, func(ditStruct DIType) []llvm.Metadata {
-		return []llvm.Metadata{}
-	})
-}
-
-func (b diBuilder) createComplexType(t Type) DIType {
-	var tfield Type
-	var tyName string
-	if t.RawType().(*types.Basic).Kind() == types.Complex128 {
-		tfield = b.prog.Float64()
-		tyName = "complex128"
-	} else {
-		tfield = b.prog.Float32()
-		tyName = "complex64"
-	}
-	return b.doCreateStructType(tyName, t, token.Position{}, func(ditStruct DIType) []llvm.Metadata {
-		return []llvm.Metadata{
-			b.createMemberType("real", t, tfield, 0),
-			b.createMemberType("imag", t, tfield, 1),
-		}
-	})
+func (b diBuilder) createOpaquePointerType(name string, ty Type) DIType {
+	return &aDIType{ll: b.di.CreatePointerType(llvm.DIPointerType{
+		Name:        name,
+		SizeInBits:  b.prog.SizeOf(ty) * 8,
+		AlignInBits: uint32(b.prog.sizes.Alignof(ty.RawType()) * 8),
+	})}
 }
 
 func (b diBuilder) createPointerType(name string, ty Type, pos token.Position) DIType {
@@ -552,10 +530,22 @@ func (b diBuilder) createTupleType(name string, ty Type, pos token.Position) DIT
 }
 
 func (b diBuilder) createFuncPtrType(name string, ty Type, pos token.Position) DIType {
+	sig := ty.RawType().(*types.Signature)
+	params := make([]llvm.Metadata, sig.Params().Len()+1)
+	if results := sig.Results(); results.Len() != 0 {
+		params[0] = b.diType(b.prog.rawType(results), pos).ll
+	}
+	for i := 0; i < sig.Params().Len(); i++ {
+		params[i+1] = b.diType(b.prog.rawType(sig.Params().At(i).Type()), pos).ll
+	}
+	subroutine := b.di.CreateSubroutineType(llvm.DISubroutineType{
+		File:       b.file(pos.Filename).ll,
+		Parameters: params,
+	})
 	ptr := b.prog.VoidPtr()
 	return &aDIType{ll: b.di.CreatePointerType(llvm.DIPointerType{
 		Name:        name,
-		Pointee:     b.diType(ptr, pos).ll,
+		Pointee:     subroutine,
 		SizeInBits:  b.prog.SizeOf(ptr) * 8,
 		AlignInBits: uint32(b.prog.sizes.Alignof(ptr.RawType()) * 8),
 	})}
@@ -787,7 +777,7 @@ func (b Builder) DIGlobal(v Expr, name string, pos token.Position) {
 		pos,
 		name,
 		name,
-		v.Type,
+		b.Prog.Elem(v.Type),
 		false,
 	)
 	v.impl.AddMetadata(MD_dbg, gv.ll)

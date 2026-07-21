@@ -50,7 +50,7 @@ func TestBuilderLifecycleAndModuleMetadata(t *testing.T) {
 	ir := module.String()
 	for _, want := range []string{
 		`!llvm.dbg.cu`,
-		`!DICompileUnit(language: DW_LANG_C`,
+		`!DICompileUnit(language: DW_LANG_Go`,
 		`producer: "LLGo"`,
 		`isOptimized: true`,
 		`!{i32 7, !"Dwarf Version", i32 4}`,

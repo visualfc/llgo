@@ -11,10 +11,9 @@ import (
 const (
 	defaultDebugInfoVersion = 3
 	defaultDwarfVersion     = 4
-	// LLDB has no Go language plugin and disables normal frame-variable
-	// inspection for DW_LANG_Go. LLGo's LLDB formatter currently builds on the
-	// C language plugin, so emit the LLVM C API enum index for DW_LANG_C.
-	dwarfSourceLanguageC llvm.DwarfLang = 1
+	// llvm.DwarfLang is passed to LLVMDIBuilderCreateCompileUnit as the ordinal
+	// LLVMDWARFSourceLanguage value, not the encoded DW_LANG_Go value (0x16).
+	dwarfSourceLanguageGo llvm.DwarfLang = 21
 )
 
 // Config describes properties of the generated debug information. Optimized
@@ -91,7 +90,7 @@ func (b *Builder) Finalize() {
 func (b *Builder) CompileUnit(filename, dir string) llvm.Metadata {
 	b.checkOpen()
 	return b.impl.CreateCompileUnit(llvm.DICompileUnit{
-		Language:       dwarfSourceLanguageC,
+		Language:       dwarfSourceLanguageGo,
 		File:           filename,
 		Dir:            dir,
 		Producer:       b.config.Producer,

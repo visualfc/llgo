@@ -597,7 +597,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		if f.Recover != nil { // set recover block
 			fn.SetRecover(fn.Block(f.Recover.Index))
 		}
-		dbgEnabled := enableDbg && (f == nil || f.Origin() == nil)
+		dbgEnabled := enableDbg
 		dbgSymsEnabled := enableDbgSyms && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
