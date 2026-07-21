@@ -102,3 +102,102 @@ func inspect() {
 		}
 	}
 }
+
+func TestDebugGoTypeEncodings(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "types.go", `package p
+type Named int64
+type Recursive struct { Next *Recursive }
+type Shape struct {
+	Complex complex128
+	Text string
+	Values []Named
+	Lookup map[string]Named
+	Queue chan Named
+	Callback func(Named) (Named, error)
+	Any any
+	Recursive *Recursive
+}
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	typesPkg, err := (&types.Config{}).Check("example.com/p", fset, []*ast.File{file}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(newDebugRuntimePackage())
+	pkg := prog.NewPackage("p", "example.com/p")
+	pkg.InitDebug("p", "example.com/p", fset)
+
+	shape := typesPkg.Scope().Lookup("Shape").Type()
+	global := pkg.NewVar("example.com/p.GlobalShape", types.NewPointer(shape), InGo)
+	fn := pkg.NewFunc("debugTypes", NoArgsNoRet, InGo)
+	builder := fn.NewBuilder()
+	defer builder.impl.Dispose()
+	builder.DIGlobal(global.Expr, "GlobalShape", fset.Position(typesPkg.Scope().Lookup("Shape").Pos()))
+
+	fallback := token.Position{Filename: "fallback.go", Line: 7}
+	noPos := types.NewNamed(types.NewTypeName(token.NoPos, typesPkg, "NoPos", nil), types.Typ[types.Int], nil)
+	if got := pkg.di.typeDeclarationPosition(noPos, fallback); got != fallback {
+		t.Fatalf("invalid declaration position = %v, want %v", got, fallback)
+	}
+
+	pkg.FinalizeDebug()
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("Go type debug metadata is invalid: %v\n%s", err, pkg.Module().String())
+	}
+	ir := pkg.Module().String()
+	for _, want := range []string{
+		"DW_LANG_Go",
+		"DW_ATE_complex_float",
+		"!DISubroutineType",
+		`name: "map[string]example.com/p.Named"`,
+		`name: "chan example.com/p.Named"`,
+		`name: "example.com/p.Recursive"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Errorf("module is missing %q:\n%s", want, ir)
+		}
+	}
+}
+
+func newDebugRuntimePackage() *types.Package {
+	pkg := types.NewPackage(PkgRuntime, "runtime")
+	unsafePointer := types.Typ[types.UnsafePointer]
+	members := map[string][]*types.Var{
+		"String": {
+			types.NewField(token.NoPos, pkg, "data", unsafePointer, false),
+			types.NewField(token.NoPos, pkg, "len", types.Typ[types.Uint], false),
+		},
+		"Slice": {
+			types.NewField(token.NoPos, pkg, "data", unsafePointer, false),
+			types.NewField(token.NoPos, pkg, "len", types.Typ[types.Uint], false),
+			types.NewField(token.NoPos, pkg, "cap", types.Typ[types.Uint], false),
+		},
+		"Eface": {
+			types.NewField(token.NoPos, pkg, "type", unsafePointer, false),
+			types.NewField(token.NoPos, pkg, "data", unsafePointer, false),
+		},
+		"Iface": {
+			types.NewField(token.NoPos, pkg, "type", unsafePointer, false),
+			types.NewField(token.NoPos, pkg, "data", unsafePointer, false),
+		},
+		"Map": {
+			types.NewField(token.NoPos, pkg, "count", types.Typ[types.Int], false),
+		},
+		"Chan": {
+			types.NewField(token.NoPos, pkg, "count", types.Typ[types.Int], false),
+		},
+	}
+	for name, fields := range members {
+		obj := types.NewTypeName(token.NoPos, pkg, name, nil)
+		types.NewNamed(obj, types.NewStruct(fields, nil), nil)
+		pkg.Scope().Insert(obj)
+	}
+	return pkg
+}

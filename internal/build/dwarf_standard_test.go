@@ -31,7 +31,14 @@ func TestStandardDWARF(t *testing.T) {
 		t.Skip("native DWARF integration test requires Mach-O or ELF")
 	}
 
-	for _, level := range []optlevel.Level{optlevel.O0, optlevel.O2} {
+	for _, level := range []optlevel.Level{
+		optlevel.O0,
+		optlevel.O1,
+		optlevel.O2,
+		optlevel.O3,
+		optlevel.Os,
+		optlevel.Oz,
+	} {
 		t.Run(level.String(), func(t *testing.T) {
 			bin := filepath.Join(t.TempDir(), "dwarf-standard")
 			conf := NewDefaultConf(ModeBuild)
@@ -105,8 +112,20 @@ func openNativeDWARF(t *testing.T, bin string) (*dwarf.Data, string) {
 
 func verifyDWARF(t *testing.T, path string) {
 	t.Helper()
-	tool := filepath.Join(llvmenv.New("").BinDir(), "llvm-dwarfdump")
-	if out, err := exec.Command(tool, "--verify", path).CombinedOutput(); err != nil {
+	binDir := llvmenv.New("").BinDir()
+	verifyPath := path
+	if runtime.GOOS == "linux" {
+		// ELF section GC leaves BFD tombstones in DIEs for discarded functions.
+		// Normalize a verifier-only copy; semantic assertions still read the
+		// original ELF because dwarfutil intentionally drops global variables.
+		verifyPath = filepath.Join(t.TempDir(), filepath.Base(path)+".dwarf")
+		tool := filepath.Join(binDir, "llvm-dwarfutil")
+		if out, err := exec.Command(tool, "--garbage-collection", path, verifyPath).CombinedOutput(); err != nil {
+			t.Fatalf("llvm-dwarfutil: %v\n%s", err, out)
+		}
+	}
+	tool := filepath.Join(binDir, "llvm-dwarfdump")
+	if out, err := exec.Command(tool, "--verify", verifyPath).CombinedOutput(); err != nil {
 		t.Fatalf("llvm-dwarfdump --verify: %v\n%s", err, out)
 	}
 }
