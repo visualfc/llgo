@@ -226,6 +226,15 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testlto", ignore, cltest.WithRunConfig(conf))
 }
 
+func TestRunAndTestFromTestltoDWARF(t *testing.T) {
+	t.Setenv("LLGO_BUILD_CACHE", "off")
+	conf := build.NewDefaultConf(build.ModeRun)
+	conf.LTO = lto.Full
+	conf.LinkOptions.DWARF = build.DWARFPreserve
+	cltest.RunAndTestFromDir(t, "reflectmk_runtime", "./_testlto", nil,
+		cltest.WithRunConfig(conf), cltest.WithIRCheck(false))
+}
+
 var testltoSymbolChecks = []string{
 	"globaldce_interface_matrix",
 	"globaldce_interface_slots",
@@ -318,6 +327,14 @@ func TestRunAndTestFromTestltoLTOPlugin(t *testing.T) {
 		cltest.WithRunConfig(conf),
 		cltest.WithIRCheck(false),
 	)
+}
+
+func TestRunAndTestFromTestltoLTOPluginDWARF(t *testing.T) {
+	t.Setenv("LLGO_BUILD_CACHE", "off")
+	conf := testltoLTOPluginConf(t, build.ModeRun)
+	conf.LinkOptions.DWARF = build.DWARFPreserve
+	cltest.RunAndTestFromDir(t, "ltoplugin_switch", "./_testlto", nil,
+		cltest.WithRunConfig(conf), cltest.WithIRCheck(false))
 }
 
 func TestBuildAndCheckSymbolsFromTestltoLTOPlugin(t *testing.T) {

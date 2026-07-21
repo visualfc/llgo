@@ -136,8 +136,14 @@ func (b Builder) Longjmp(jb, retval Expr) {
 
 // -----------------------------------------------------------------------------
 
-func (p Function) deferInitBuilder() (b Builder, next BasicBlock) {
+func (p Function) deferInitBuilder(from Builder) (b Builder, next BasicBlock) {
 	b = p.NewBuilder()
+	if p.diFunc != nil {
+		loc := from.impl.GetCurrentDebugLocation()
+		if !loc.Scope.IsNil() {
+			b.impl.SetCurrentDebugLocation(loc.Line, loc.Col, loc.Scope, loc.InlinedAt)
+		}
+	}
 	next = b.setBlockMoveLast(p.blks[0])
 	p.blks[0].last = next.last
 	return
@@ -197,7 +203,7 @@ func (b Builder) getDefer(kind DoAction) *aDefer {
 		// TODO(xsw): check if in pkg.init
 		var next, panicBlk BasicBlock
 		if kind != DeferAlways {
-			b, next = self.deferInitBuilder()
+			b, next = self.deferInitBuilder(b)
 		}
 
 		blks := self.MakeBlocks(2)
