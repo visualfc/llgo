@@ -154,6 +154,19 @@ func Use() callbackType { return CallbackTypes[1] }
 	}
 }
 
+func TestStaticGlobalZeroSizedSliceLiteralFallsBack(t *testing.T) {
+	const src = `package staticinit
+
+var Values = []struct{}{{}, {}}
+
+func Use() int { return len(Values) }
+`
+	ir := compileWithRewrites(t, src, nil)
+	if strings.Contains(ir, "staticinit.Values$data") {
+		t.Fatalf("zero-sized slice literal unexpectedly uses static backing storage:\n%s", ir)
+	}
+}
+
 func TestStaticGlobalScalarAndSparseArrayInit(t *testing.T) {
 	const src = `package staticinit
 

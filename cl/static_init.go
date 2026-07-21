@@ -195,7 +195,7 @@ func staticSliceInitOf(store *ssa.Store) (*staticSliceInit, bool) {
 		return nil, false
 	}
 	array, ok := ptr.Elem().Underlying().(*types.Array)
-	if !ok || array.Len() > maxStaticInitArrayElements {
+	if !ok || array.Len() == 0 || array.Len() > maxStaticInitArrayElements || staticInitZeroSized(array.Elem()) {
 		return nil, false
 	}
 
@@ -250,6 +250,22 @@ func staticSliceInitOf(store *ssa.Store) (*staticSliceInit, bool) {
 		}
 	}
 	return ret, seenSlice
+}
+
+func staticInitZeroSized(typ types.Type) bool {
+	switch typ := types.Unalias(typ).Underlying().(type) {
+	case *types.Array:
+		return typ.Len() == 0 || staticInitZeroSized(typ.Elem())
+	case *types.Struct:
+		for i := 0; i < typ.NumFields(); i++ {
+			if !staticInitZeroSized(typ.Field(i).Type()) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *context) buildStaticSliceInit(global *ssa.Global, init *staticSliceInit) (llssa.Expr, bool) {
