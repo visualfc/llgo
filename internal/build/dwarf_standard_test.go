@@ -11,9 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/goplus/llgo/internal/optlevel"
 	llvmenv "github.com/goplus/llgo/xtool/env/llvm"
@@ -238,64 +240,83 @@ func assertDWARFCoreTypes(t *testing.T, data *dwarf.Data, cu *dwarfNode) {
 	if !ok {
 		t.Fatalf("Sample underlying type = %T, want struct", unwrapDWARFTypedef(dwarfTypeOf(t, data, sampleNode.entry)))
 	}
-	fields := make(map[string]dwarf.Type, len(sample.Field))
+	fields := make(map[string]*dwarf.StructField, len(sample.Field))
 	for _, field := range sample.Field {
-		fields[field.Name] = unwrapDWARFTypedef(field.Type)
+		fields[field.Name] = field
 	}
-	checks := map[string]any{
-		"Bool":     (*dwarf.BoolType)(nil),
-		"I64":      (*dwarf.IntType)(nil),
-		"U64":      (*dwarf.UintType)(nil),
-		"F64":      (*dwarf.FloatType)(nil),
-		"C64":      (*dwarf.ComplexType)(nil),
-		"C128":     (*dwarf.ComplexType)(nil),
-		"Text":     (*dwarf.StructType)(nil),
-		"Values":   (*dwarf.StructType)(nil),
-		"Fixed":    (*dwarf.ArrayType)(nil),
-		"Lookup":   (*dwarf.PtrType)(nil),
-		"Queue":    (*dwarf.PtrType)(nil),
-		"Callback": (*dwarf.StructType)(nil),
-		"Any":      (*dwarf.StructType)(nil),
-		"Iface":    (*dwarf.StructType)(nil),
-		"Pointer":  (*dwarf.PtrType)(nil),
-		"Unsafe":   (*dwarf.PtrType)(nil),
-		"Pair":     (*dwarf.StructType)(nil),
+	ptrSize := int64(dataAddressSize())
+	checks := map[string]struct {
+		kind any
+		size int64
+	}{
+		"Bool":     {(*dwarf.BoolType)(nil), 1},
+		"I8":       {(*dwarf.IntType)(nil), 1},
+		"I16":      {(*dwarf.IntType)(nil), 2},
+		"I32":      {(*dwarf.IntType)(nil), 4},
+		"I64":      {(*dwarf.IntType)(nil), 8},
+		"U8":       {(*dwarf.UintType)(nil), 1},
+		"U16":      {(*dwarf.UintType)(nil), 2},
+		"U32":      {(*dwarf.UintType)(nil), 4},
+		"U64":      {(*dwarf.UintType)(nil), 8},
+		"F32":      {(*dwarf.FloatType)(nil), 4},
+		"F64":      {(*dwarf.FloatType)(nil), 8},
+		"C64":      {(*dwarf.ComplexType)(nil), 8},
+		"C128":     {(*dwarf.ComplexType)(nil), 16},
+		"Text":     {(*dwarf.StructType)(nil), 2 * ptrSize},
+		"Values":   {(*dwarf.StructType)(nil), 3 * ptrSize},
+		"Fixed":    {(*dwarf.ArrayType)(nil), 6},
+		"Lookup":   {(*dwarf.PtrType)(nil), ptrSize},
+		"Queue":    {(*dwarf.PtrType)(nil), ptrSize},
+		"Callback": {(*dwarf.StructType)(nil), 2 * ptrSize},
+		"Any":      {(*dwarf.StructType)(nil), 2 * ptrSize},
+		"Iface":    {(*dwarf.StructType)(nil), 2 * ptrSize},
+		"Pointer":  {(*dwarf.PtrType)(nil), ptrSize},
+		"Unsafe":   {(*dwarf.PtrType)(nil), ptrSize},
+		"Pair":     {(*dwarf.StructType)(nil), 16},
 	}
-	for name, want := range checks {
-		got := fields[name]
-		if got == nil || fmt.Sprintf("%T", got) != fmt.Sprintf("%T", want) {
-			t.Errorf("Sample.%s type = %T, want %T", name, got, want)
+	for name, check := range checks {
+		field := fields[name]
+		if field == nil {
+			t.Errorf("Sample.%s field not found", name)
+			continue
+		}
+		got := unwrapDWARFTypedef(field.Type)
+		if fmt.Sprintf("%T", got) != fmt.Sprintf("%T", check.kind) {
+			t.Errorf("Sample.%s type = %T, want %T", name, got, check.kind)
+			continue
+		}
+		if got.Size() != check.size {
+			t.Errorf("Sample.%s size = %d, want %d", name, got.Size(), check.size)
 		}
 	}
-	if got := fields["C64"].Size(); got != 8 {
-		t.Errorf("complex64 size = %d, want 8", got)
-	}
-	if got := fields["C128"].Size(); got != 16 {
-		t.Errorf("complex128 size = %d, want 16", got)
-	}
-	array := fields["Fixed"].(*dwarf.ArrayType)
+	assertDWARFReflectLayout(t, sample, reflect.TypeOf(dwarfFixtureSample{}))
+
+	array := unwrapDWARFTypedef(fields["Fixed"].Type).(*dwarf.ArrayType)
 	if array.Count != 3 || array.Type.Size() != 2 {
 		t.Errorf("Fixed = count %d, element size %d; want 3 and 2", array.Count, array.Type.Size())
 	}
-	for _, name := range []string{"Lookup", "Queue", "Pointer", "Unsafe"} {
-		if got := fields[name].Size(); got != int64(dataAddressSize()) {
-			t.Errorf("Sample.%s size = %d, want pointer size %d", name, got, dataAddressSize())
+	for _, name := range []string{"Lookup", "Queue"} {
+		pointer := unwrapDWARFTypedef(fields[name].Type).(*dwarf.PtrType)
+		if _, ok := pointer.Type.(*dwarf.VoidType); pointer.Type != nil && !ok {
+			t.Errorf("Sample.%s pointee = %T, want void or unspecified", name, pointer.Type)
 		}
 	}
-	callback := fields["Callback"].(*dwarf.StructType)
-	var codeType dwarf.Type
-	for _, field := range callback.Field {
-		if field.Name == "$f" {
-			codeType = unwrapDWARFTypedef(field.Type)
-			break
-		}
-	}
+
+	assertDWARFWordStruct(t, "string", fields["Text"].Type, ptrSize, "data", "len")
+	assertDWARFWordStruct(t, "slice", fields["Values"].Type, ptrSize, "data", "len", "cap")
+	assertDWARFWordStruct(t, "any", fields["Any"].Type, ptrSize, "type", "data")
+	assertDWARFWordStruct(t, "interface", fields["Iface"].Type, ptrSize, "type", "data")
+	callback := assertDWARFWordStruct(t, "function value", fields["Callback"].Type, ptrSize, "$f", "$data")
+	codeType := unwrapDWARFTypedef(callback.Field[0].Type)
 	codePointer, ok := codeType.(*dwarf.PtrType)
 	if !ok {
 		t.Fatalf("function value code field = %T, want pointer", codeType)
 	}
-	if _, ok := codePointer.Type.(*dwarf.FuncType); !ok {
+	functionType, ok := codePointer.Type.(*dwarf.FuncType)
+	if !ok {
 		t.Errorf("function value code pointee = %T, want subroutine type", codePointer.Type)
+	} else {
+		assertDWARFFunctionSignature(t, functionType)
 	}
 
 	for _, check := range []struct {
@@ -432,6 +453,127 @@ func markerLineInFile(t *testing.T, path, marker string) int {
 	}
 	t.Fatalf("marker %q not found in %s", marker, path)
 	return 0
+}
+
+func assertDWARFReflectLayout(t *testing.T, got *dwarf.StructType, want reflect.Type) {
+	t.Helper()
+	if got.Size() != int64(want.Size()) {
+		t.Errorf("%s size = %d, want %d", want.Name(), got.Size(), want.Size())
+	}
+	if len(got.Field) != want.NumField() {
+		t.Fatalf("%s has %d fields, want %d", want.Name(), len(got.Field), want.NumField())
+	}
+	for i, field := range got.Field {
+		wantField := want.Field(i)
+		if field.Name != wantField.Name {
+			t.Errorf("%s field %d name = %q, want %q", want.Name(), i, field.Name, wantField.Name)
+		}
+		if field.ByteOffset != int64(wantField.Offset) {
+			t.Errorf("%s.%s offset = %d, want %d", want.Name(), field.Name, field.ByteOffset, wantField.Offset)
+		}
+	}
+}
+
+func assertDWARFWordStruct(t *testing.T, name string, typ dwarf.Type, wordSize int64, fieldNames ...string) *dwarf.StructType {
+	t.Helper()
+	structure, ok := unwrapDWARFTypedef(typ).(*dwarf.StructType)
+	if !ok {
+		t.Fatalf("%s type = %T, want struct", name, unwrapDWARFTypedef(typ))
+	}
+	if structure.Size() != int64(len(fieldNames))*wordSize {
+		t.Errorf("%s size = %d, want %d", name, structure.Size(), int64(len(fieldNames))*wordSize)
+	}
+	if len(structure.Field) != len(fieldNames) {
+		t.Fatalf("%s has %d fields, want %d", name, len(structure.Field), len(fieldNames))
+	}
+	for i, field := range structure.Field {
+		if field.Name != fieldNames[i] {
+			t.Errorf("%s field %d name = %q, want %q", name, i, field.Name, fieldNames[i])
+		}
+		if field.ByteOffset != int64(i)*wordSize {
+			t.Errorf("%s.%s offset = %d, want %d", name, field.Name, field.ByteOffset, int64(i)*wordSize)
+		}
+		fieldType := unwrapDWARFTypedef(field.Type)
+		if field.Name == "len" || field.Name == "cap" {
+			if _, ok := fieldType.(*dwarf.UintType); !ok {
+				t.Errorf("%s.%s type = %T, want unsigned word", name, field.Name, fieldType)
+			}
+		} else if _, ok := fieldType.(*dwarf.PtrType); !ok {
+			t.Errorf("%s.%s type = %T, want pointer", name, field.Name, fieldType)
+		}
+	}
+	return structure
+}
+
+func assertDWARFFunctionSignature(t *testing.T, function *dwarf.FuncType) {
+	t.Helper()
+	if len(function.ParamType) != 1 {
+		t.Fatalf("function parameter count = %d, want 1", len(function.ParamType))
+	}
+	parameter := unwrapDWARFTypedef(function.ParamType[0])
+	if _, ok := parameter.(*dwarf.IntType); !ok || parameter.Size() != 8 {
+		t.Errorf("function parameter = %T size %d, want NamedInt", parameter, parameter.Size())
+	}
+	results, ok := unwrapDWARFTypedef(function.ReturnType).(*dwarf.StructType)
+	if !ok {
+		t.Fatalf("function result = %T, want two-value tuple", unwrapDWARFTypedef(function.ReturnType))
+	}
+	ptrSize := int64(dataAddressSize())
+	if results.Size() != 8+2*ptrSize || len(results.Field) != 2 {
+		t.Fatalf("function result tuple = size %d, %d fields; want size %d, 2 fields", results.Size(), len(results.Field), 8+2*ptrSize)
+	}
+	if results.Field[0].ByteOffset != 0 || results.Field[1].ByteOffset != 8 {
+		t.Errorf("function result offsets = %d, %d; want 0, 8", results.Field[0].ByteOffset, results.Field[1].ByteOffset)
+	}
+	assertDWARFWordStruct(t, "error interface", results.Field[1].Type, ptrSize, "type", "data")
+}
+
+type dwarfFixtureNamedInt int64
+
+type dwarfFixtureRecursive struct {
+	Value dwarfFixtureNamedInt
+	Next  *dwarfFixtureRecursive
+}
+
+type dwarfFixturePair struct {
+	First  dwarfFixtureNamedInt
+	Second dwarfFixtureNamedInt
+}
+
+type dwarfFixtureFuncValue struct {
+	code    unsafe.Pointer
+	context unsafe.Pointer
+}
+
+type dwarfFixtureNumber interface {
+	Number() dwarfFixtureNamedInt
+}
+
+type dwarfFixtureSample struct {
+	Bool     bool
+	I8       int8
+	I16      int16
+	I32      int32
+	I64      int64
+	U8       uint8
+	U16      uint16
+	U32      uint32
+	U64      uint64
+	F32      float32
+	F64      float64
+	C64      complex64
+	C128     complex128
+	Text     string
+	Values   []dwarfFixtureNamedInt
+	Fixed    [3]uint16
+	Lookup   map[string]dwarfFixtureNamedInt
+	Queue    chan dwarfFixturePair
+	Callback dwarfFixtureFuncValue
+	Any      any
+	Iface    dwarfFixtureNumber
+	Pointer  *dwarfFixtureRecursive
+	Unsafe   unsafe.Pointer
+	Pair     dwarfFixturePair
 }
 
 func dataAddressSize() int {
