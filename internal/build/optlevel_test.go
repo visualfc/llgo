@@ -71,3 +71,14 @@ func TestLLVMPassPipeline(t *testing.T) {
 		}
 	}
 }
+
+func TestShouldRunLLVMPasses(t *testing.T) {
+	for _, mode := range []Mode{ModeBuild, ModeInstall, ModeRun, ModeTest, ModeCmpTest} {
+		if !shouldRunLLVMPasses(mode) {
+			t.Errorf("shouldRunLLVMPasses(%v) = false, want true", mode)
+		}
+	}
+	if shouldRunLLVMPasses(ModeGen) {
+		t.Fatal("shouldRunLLVMPasses(ModeGen) = true, want false")
+	}
+}

@@ -382,6 +382,12 @@ func (p Program) EnableLTOPluginMarkers(enable bool) {
 	p.enableLTOPluginMarker = enable
 }
 
+// SetDebugInfoOptimized records whether the LLVM IR optimization pipeline runs.
+// It only controls DWARF's optimized marker and never selects compiler passes.
+func (p Program) SetDebugInfoOptimized(enable bool) {
+	p.debugInfoOptimized = enable
+}
+
 func (p Program) SetNoInterfaceMethod(fullName string) {
 	p.noInterface[fullName] = none{}
 }
