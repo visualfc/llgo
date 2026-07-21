@@ -8,9 +8,12 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/internal/optlevel"
+	llssa "github.com/goplus/llgo/ssa"
 	"github.com/xgo-dev/llvm"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -60,9 +63,12 @@ var anonymous = func(seed int) int {
 		EnableDbgSyms(oldDebugSyms)
 	}()
 
-	prog := newLLSSAProg(t)
+	prog := newLLSSAProgForTarget(t, &llssa.Target{
+		GOOS:     runtime.GOOS,
+		GOARCH:   runtime.GOARCH,
+		OptLevel: optlevel.O0,
+	})
 	defer prog.Dispose()
-	prog.SetDebugInfoOptimized(false)
 	pkg, err := NewPackage(prog, ssaPkg, []*ast.File{file})
 	if err != nil {
 		t.Fatal(err)

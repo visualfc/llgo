@@ -99,12 +99,6 @@ func (b *Builder) CompileUnit(filename, dir string) llvm.Metadata {
 	})
 }
 
-// Optimized reports the code-generation mode recorded in compile units and
-// subprograms.
-func (b *Builder) Optimized() bool {
-	return b != nil && b.config.Optimized
-}
-
 // File returns one metadata node per cleaned source path.
 func (b *Builder) File(filename string) llvm.Metadata {
 	b.checkOpen()

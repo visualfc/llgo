@@ -68,9 +68,6 @@ func TestBuilderMetadataOperations(t *testing.T) {
 	defer module.Dispose()
 
 	builder := New(module, Config{Optimized: true})
-	if !builder.Optimized() {
-		t.Fatal("Optimized returned false")
-	}
 	cu := builder.CompileUnit("main.go", "/src/example")
 	file := builder.File("/src/example/main.go")
 	basic := builder.CreateBasicType(llvm.DIBasicType{

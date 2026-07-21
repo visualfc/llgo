@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -35,10 +36,9 @@ func inspect() {
 		t.Fatal(err)
 	}
 
-	prog := NewProgram(nil)
+	prog := NewProgram(&Target{OptLevel: optlevel.O0})
 	defer prog.Dispose()
 	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
-	prog.SetDebugInfoOptimized(false)
 	pkg := prog.NewPackage("p", "example.com/p")
 	pkg.InitDebug("p", "example.com/p", fset)
 	fn := pkg.NewFunc("debugTypes", NoArgsNoRet, InGo)
