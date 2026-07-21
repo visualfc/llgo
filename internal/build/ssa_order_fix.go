@@ -302,11 +302,15 @@ func fixSSAOrderBlock(b *ssa.BasicBlock) {
 			continue
 		}
 
-		// If the loaded value is used by any instruction between its current
-		// position and the return (excluding return itself), moving it may place
-		// its definition after one of those uses and break SSA form.
+		// DebugRefs are metadata-only and move with the value they describe. Any
+		// executable use before Return still makes reordering unsafe.
+		moving := map[ssa.Instruction]struct{}{u: {}}
 		usedBeforeReturn := false
 		for i := loadIdx + 1; i < retIdx; i++ {
+			if ref, ok := b.Instrs[i].(*ssa.DebugRef); ok && instrUsesValue(ref, u) {
+				moving[ref] = struct{}{}
+				continue
+			}
 			if instrUsesValue(b.Instrs[i], u) {
 				usedBeforeReturn = true
 				break
@@ -316,9 +320,7 @@ func fixSSAOrderBlock(b *ssa.BasicBlock) {
 			continue
 		}
 
-		// Move the load right after the last call (but before Return).
-		b.Instrs = moveInstr(b.Instrs, loadIdx, lastCallIdx+1)
-		// Adjust retIdx for subsequent moves in this block.
+		b.Instrs = moveInstrsAfter(b.Instrs, moving, b.Instrs[lastCallIdx])
 		retIdx = indexOfInstr(b.Instrs, ret)
 	}
 }
@@ -391,41 +393,29 @@ func valueDependsOn(v, target ssa.Value, seen map[ssa.Value]struct{}) bool {
 	return false
 }
 
-// moveInstr moves instrs[from] to position to (like inserting before to),
-// preserving relative order of other elements.
-func moveInstr(instrs []ssa.Instruction, from, to int) []ssa.Instruction {
-	if from < 0 || from >= len(instrs) {
+// moveInstrsAfter moves selected instructions as a stable group immediately
+// after anchor.
+func moveInstrsAfter(instrs []ssa.Instruction, moving map[ssa.Instruction]struct{}, anchor ssa.Instruction) []ssa.Instruction {
+	if len(moving) == 0 || anchor == nil {
 		return instrs
 	}
-	if to < 0 {
-		to = 0
+	moved := make([]ssa.Instruction, 0, len(moving))
+	remaining := make([]ssa.Instruction, 0, len(instrs))
+	for _, instr := range instrs {
+		if _, ok := moving[instr]; ok {
+			moved = append(moved, instr)
+			continue
+		}
+		remaining = append(remaining, instr)
 	}
-	if to > len(instrs) {
-		to = len(instrs)
+	for i, instr := range remaining {
+		if instr == anchor {
+			ret := make([]ssa.Instruction, 0, len(instrs))
+			ret = append(ret, remaining[:i+1]...)
+			ret = append(ret, moved...)
+			ret = append(ret, remaining[i+1:]...)
+			return ret
+		}
 	}
-	if from == to || from+1 == to {
-		return instrs
-	}
-
-	ins := instrs[from]
-	// Remove.
-	copy(instrs[from:], instrs[from+1:])
-	instrs = instrs[:len(instrs)-1]
-
-	// Recompute insertion index after removal.
-	if to > from {
-		to--
-	}
-	if to < 0 {
-		to = 0
-	}
-	if to > len(instrs) {
-		to = len(instrs)
-	}
-
-	// Insert.
-	instrs = append(instrs, nil)
-	copy(instrs[to+1:], instrs[to:])
-	instrs[to] = ins
 	return instrs
 }
