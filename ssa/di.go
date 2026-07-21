@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
-	"path/filepath"
-	"unsafe"
 
+	"github.com/goplus/llgo/internal/debuginfo"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -16,41 +15,32 @@ type Positioner interface {
 }
 
 type aDIBuilder struct {
-	di         *llvm.DIBuilder
+	di         *debuginfo.Builder
 	prog       Program
 	types      map[Type]DIType
 	positioner Positioner
-	m          llvm.Module // Add this field
 }
 
 type diBuilder = *aDIBuilder
 
 func newDIBuilder(prog Program, pkg Package, positioner Positioner) diBuilder {
-	m := pkg.mod
-	ctx := m.Context()
-
-	b := &aDIBuilder{
-		di:         llvm.NewDIBuilder(m),
+	return &aDIBuilder{
+		di: debuginfo.New(pkg.mod, debuginfo.Config{
+			Producer:  "LLGo",
+			Optimized: prog.debugInfoOptimized,
+		}),
 		prog:       prog,
 		types:      make(map[*aType]DIType),
 		positioner: positioner,
-		m:          m, // Initialize the m field
 	}
+}
 
-	b.addNamedMetadataOperand("llvm.module.flags", 2, "Debug Info Version", 3)
-	b.addNamedMetadataOperand("llvm.module.flags", 7, "Dwarf Version", 4)
-	b.addNamedMetadataOperand("llvm.module.flags", 1, "wchar_size", 4)
-	b.addNamedMetadataOperand("llvm.module.flags", 8, "PIC Level", 2)
-	b.addNamedMetadataOperand("llvm.module.flags", 7, "uwtable", 1)
-	b.addNamedMetadataOperand("llvm.module.flags", 7, "frame-pointer", 1)
-
-	// Add llvm.ident metadata
-	identNode := ctx.MDNode([]llvm.Metadata{
-		ctx.MDString("LLGo Compiler"),
-	})
-	m.AddNamedMetadataOperand("llvm.ident", identNode)
-
-	return b
+func (b diBuilder) finalize() {
+	if b == nil || b.di == nil {
+		return
+	}
+	b.di.Finalize()
+	b.di = nil
 }
 
 func hasTypeParam(typ types.Type) bool {
@@ -143,18 +133,6 @@ func hasTypeParam(typ types.Type) bool {
 	return visit(typ)
 }
 
-// New method to add named metadata operand
-func (b diBuilder) addNamedMetadataOperand(name string, intValue int, stringValue string, intValue2 int) {
-	ctx := b.m.Context()
-	b.m.AddNamedMetadataOperand(name,
-		ctx.MDNode([]llvm.Metadata{
-			llvm.ConstInt(ctx.Int32Type(), uint64(intValue), false).ConstantAsMetadata(),
-			ctx.MDString(stringValue),
-			llvm.ConstInt(ctx.Int32Type(), uint64(intValue2), false).ConstantAsMetadata(),
-		}),
-	)
-}
-
 // ----------------------------------------------------------------------------
 
 type aCompilationUnit struct {
@@ -167,19 +145,8 @@ func (c CompilationUnit) scopeMeta(b diBuilder, pos token.Position) DIScopeMeta 
 	return &aDIScopeMeta{c.ll}
 }
 
-var DWARF_LANG_C llvm.DwarfLang = 0x2
-var DWARF_LANG_GO llvm.DwarfLang = 0x16
-
 func (b diBuilder) createCompileUnit(filename, dir string) CompilationUnit {
-	return &aCompilationUnit{ll: b.di.CreateCompileUnit(llvm.DICompileUnit{
-		// TODO(lijie): use C language for now, change after Go plugin of LLDB is ready
-		Language:       DWARF_LANG_C - 1,
-		File:           filename,
-		Dir:            dir,
-		Producer:       "LLGo",
-		Optimized:      true,
-		RuntimeVersion: 1,
-	})}
+	return &aCompilationUnit{ll: b.di.CompileUnit(filename, dir)}
 }
 
 // ----------------------------------------------------------------------------
@@ -203,8 +170,7 @@ type aDIFile struct {
 type DIFile = *aDIFile
 
 func (b diBuilder) createFile(filename string) DIFile {
-	dir, file := filepath.Split(filename)
-	return &aDIFile{ll: b.di.CreateFile(file, dir)}
+	return &aDIFile{ll: b.di.File(filename)}
 }
 
 func (f DIFile) scopeMeta(b diBuilder, pos token.Position) DIScopeMeta {
@@ -375,15 +341,31 @@ func (b diBuilder) createAutoVariable(scope DIScope, pos token.Position, name st
 }
 
 func (b diBuilder) createTypedefType(name string, ty Type, pos token.Position) DIType {
+	scope := b.file(pos.Filename)
+	ret := &aDIType{ll: b.di.CreateReplaceableCompositeType(
+		scope.ll,
+		llvm.DIReplaceableCompositeType{
+			Tag:         dwarf.TagStructType,
+			Name:        name,
+			File:        scope.ll,
+			Line:        pos.Line,
+			SizeInBits:  b.prog.SizeOf(ty) * 8,
+			AlignInBits: uint32(b.prog.sizes.Alignof(ty.RawType()) * 8),
+		},
+	)}
+	b.types[ty] = ret
+
 	underlyingType := b.diType(b.prog.rawType(ty.RawType().(*types.Named).Underlying()), pos)
 	typ := b.di.CreateTypedef(llvm.DITypedef{
 		Name:        name,
 		Type:        underlyingType.ll,
-		File:        b.file(pos.Filename).ll,
+		File:        scope.ll,
 		Line:        pos.Line,
 		AlignInBits: uint32(b.prog.sizes.Alignof(ty.RawType()) * 8),
 	})
-	return &aDIType{typ}
+	ret.ll.ReplaceAllUsesWith(typ)
+	ret.ll = typ
+	return ret
 }
 
 func (b diBuilder) createStringType() DIType {
@@ -757,47 +739,39 @@ func (b Builder) DIVarAuto(scope DIScope, pos token.Position, varName string, vt
 	return b.di().varAuto(scope, pos, varName, t)
 }
 
-// hack for types.Scope
-type hackScope struct {
-	parent   *types.Scope
-	children []*types.Scope
-	number   int                     // parent.children[number-1] is this scope; 0 if there is no parent
-	elems    map[string]types.Object // lazily allocated
-	pos, end token.Pos               // scope extent; may be invalid
-	comment  string                  // for debugging only
-	isFunc   bool                    // set if this is a function scope (internal use only)
-}
-
-func isFunc(scope *types.Scope) bool {
-	hs := (*hackScope)(unsafe.Pointer(scope))
-	return hs.isFunc
-}
-
 func (b Builder) DIScope(f Function, scope *types.Scope) DIScope {
+	if scope == nil || b.diFuncScope == nil {
+		return f
+	}
 	if cachedScope, ok := b.diScopeCache[scope]; ok {
 		return cachedScope
 	}
-	pos := b.di().positioner.Position(scope.Pos())
-	// skip package and universe scope
-	// if scope.Parent().Parent() == nil {
-	// 	return b.di().file(pos.Filename)
-	// }
-
-	var result DIScope
-	if isFunc(scope) {
-		// TODO(lijie): should check scope == function scope
-		result = f
-	} else {
-		parentScope := b.DIScope(f, scope.Parent())
-		result = &aDILexicalBlock{b.di().di.CreateLexicalBlock(parentScope.scopeMeta(b.di(), pos).ll, llvm.DILexicalBlock{
-			File:   b.di().file(pos.Filename).ll,
-			Line:   pos.Line,
-			Column: pos.Column,
-		})}
+	if scope == b.diFuncScope {
+		b.diScopeCache[scope] = f
+		return f
+	}
+	if !isScopeWithin(scope, b.diFuncScope) {
+		return f
 	}
 
+	pos := b.di().positioner.Position(scope.Pos())
+	parentScope := b.DIScope(f, scope.Parent())
+	result := &aDILexicalBlock{b.di().di.CreateLexicalBlock(parentScope.scopeMeta(b.di(), pos).ll, llvm.DILexicalBlock{
+		File:   b.di().file(pos.Filename).ll,
+		Line:   pos.Line,
+		Column: pos.Column,
+	})}
 	b.diScopeCache[scope] = result
 	return result
+}
+
+func isScopeWithin(scope, root *types.Scope) bool {
+	for current := scope; current != nil; current = current.Parent() {
+		if current == root {
+			return true
+		}
+	}
+	return false
 }
 
 const (
@@ -829,7 +803,8 @@ func (b Builder) DISetCurrentDebugLocation(diScope DIScope, pos token.Position) 
 	)
 }
 
-func (b Builder) DebugFunction(f Function, pos token.Position, bodyPos token.Position) {
+func (b Builder) DebugFunction(f Function, funcScope *types.Scope, pos token.Position, bodyPos token.Position) {
+	b.diFuncScope = funcScope
 	p := f
 	if p.diFunc == nil {
 		sig := p.Type.raw.Type.(*types.Signature)
@@ -852,7 +827,6 @@ func (b Builder) DebugFunction(f Function, pos token.Position, bodyPos token.Pos
 			ScopeLine:    bodyPos.Line,
 			IsDefinition: true,
 			LocalToUnit:  true,
-			Optimized:    true,
 		}
 		p.diFunc = &aDIFunction{
 			b.di().di.CreateFunction(b.di().file(pos.Filename).ll, dif),
