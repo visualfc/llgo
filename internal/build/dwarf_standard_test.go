@@ -21,7 +21,7 @@ import (
 	llvmenv "github.com/goplus/llgo/xtool/env/llvm"
 )
 
-const dwarfLanguageGo = 0x16
+const dwarfLanguageC = 0x02
 
 type dwarfNode struct {
 	entry    *dwarf.Entry
@@ -61,8 +61,8 @@ func TestStandardDWARF(t *testing.T) {
 			if cu == nil {
 				t.Fatal("main compile unit not found")
 			}
-			if got, _ := cu.entry.Val(dwarf.AttrLanguage).(int64); got != dwarfLanguageGo {
-				t.Fatalf("DW_AT_language = %#x, want DW_LANG_Go", got)
+			if got, _ := cu.entry.Val(dwarf.AttrLanguage).(int64); got != dwarfLanguageC {
+				t.Fatalf("DW_AT_language = %#x, want DW_LANG_C", got)
 			}
 			if got, _ := cu.entry.Val(dwarf.AttrProducer).(string); got != "LLGo" {
 				t.Fatalf("DW_AT_producer = %q, want LLGo", got)

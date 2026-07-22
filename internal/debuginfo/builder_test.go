@@ -50,9 +50,11 @@ func TestBuilderLifecycleAndModuleMetadata(t *testing.T) {
 	ir := module.String()
 	for _, want := range []string{
 		`!llvm.dbg.cu`,
-		`!DICompileUnit(language: DW_LANG_Go`,
+		`!DICompileUnit(language: DW_LANG_C`,
 		`producer: "LLGo"`,
 		`isOptimized: true`,
+		`@__llgo_debugger_marker_v1 = linkonce_odr hidden constant i8 1`,
+		`@llvm.used = appending global [1 x ptr] [ptr @__llgo_debugger_marker_v1], section "llvm.metadata"`,
 		`!{i32 7, !"Dwarf Version", i32 4}`,
 	} {
 		if !strings.Contains(ir, want) {

@@ -11,9 +11,12 @@ import (
 const (
 	defaultDebugInfoVersion = 3
 	defaultDwarfVersion     = 4
-	// llvm.DwarfLang is passed to LLVMDIBuilderCreateCompileUnit as the ordinal
-	// LLVMDWARFSourceLanguage value, not the encoded DW_LANG_Go value (0x16).
-	dwarfSourceLanguageGo llvm.DwarfLang = 21
+	// LLDB has no Go language plugin and limits frame-variable inspection for
+	// DW_LANG_Go. Keep the compile unit on its C language path until the LLDB Go
+	// extension can consume LLGo's otherwise Go-shaped DWARF.
+	dwarfSourceLanguageC llvm.DwarfLang = 1
+
+	debuggerMarkerSymbol = "__llgo_debugger_marker_v1"
 )
 
 // Config describes properties of the generated debug information. Optimized
@@ -51,12 +54,30 @@ func New(module llvm.Module, config Config) *Builder {
 	b.addModuleFlag(8, "PIC Level", 2)
 	b.addModuleFlag(7, "uwtable", 1)
 	b.addModuleFlag(7, "frame-pointer", 1)
+	b.addDebuggerMarker()
 
 	ctx := module.Context()
 	module.AddNamedMetadataOperand("llvm.ident", ctx.MDNode([]llvm.Metadata{
 		ctx.MDString(config.Producer + " Compiler"),
 	}))
 	return b
+}
+
+func (b *Builder) addDebuggerMarker() {
+	ctx := b.module.Context()
+	i8 := ctx.Int8Type()
+	marker := llvm.AddGlobal(b.module, i8, debuggerMarkerSymbol)
+	marker.SetInitializer(llvm.ConstInt(i8, 1, false))
+	marker.SetGlobalConstant(true)
+	marker.SetLinkage(llvm.LinkOnceODRLinkage)
+	marker.SetVisibility(llvm.HiddenVisibility)
+
+	ptr := llvm.PointerType(i8, 0)
+	usedInit := llvm.ConstArray(ptr, []llvm.Value{llvm.ConstBitCast(marker, ptr)})
+	used := llvm.AddGlobal(b.module, usedInit.Type(), "llvm.used")
+	used.SetInitializer(usedInit)
+	used.SetLinkage(llvm.AppendingLinkage)
+	used.SetSection("llvm.metadata")
 }
 
 func (b *Builder) addModuleFlag(behavior int, name string, value int) {
@@ -90,7 +111,7 @@ func (b *Builder) Finalize() {
 func (b *Builder) CompileUnit(filename, dir string) llvm.Metadata {
 	b.checkOpen()
 	return b.impl.CreateCompileUnit(llvm.DICompileUnit{
-		Language:       dwarfSourceLanguageGo,
+		Language:       dwarfSourceLanguageC,
 		File:           filename,
 		Dir:            dir,
 		Producer:       b.config.Producer,

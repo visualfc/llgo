@@ -167,6 +167,12 @@ jobs:
       - name: Show test result
         run: cat result.md
 
+      - name: LLDB integration tests
+        if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
+        run: |
+          echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
+          bash _lldb/runtest.sh -v
+
       - name: DWARF standard tests
         if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
         run: go test -timeout 15m ./internal/build -run '^TestStandardDWARF$' -count=1 -v

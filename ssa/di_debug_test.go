@@ -153,7 +153,7 @@ type Shape struct {
 	}
 	ir := pkg.Module().String()
 	for _, want := range []string{
-		"DW_LANG_Go",
+		"DW_LANG_C",
 		"DW_ATE_complex_float",
 		"!DISubroutineType",
 		`name: "map[string]example.com/p.Named"`,
