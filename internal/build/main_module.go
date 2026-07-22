@@ -110,8 +110,15 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		})
 	}
 
-	mainInit := declareNoArgFunc(mainPkg, pkg.PkgPath+".init")
-	mainMain := declareNoArgFunc(mainPkg, pkg.PkgPath+".main")
+	var pkgPath string
+	if pkg.Types.Name() == "main" {
+		pkgPath = "main"
+	} else {
+		pkgPath = pkg.PkgPath
+	}
+
+	mainInit := declareNoArgFunc(mainPkg, pkgPath+".init")
+	mainMain := declareNoArgFunc(mainPkg, pkgPath+".main")
 
 	entryFn := defineEntryFunction(ctx, mainPkg, argcVar, argvVar, argvValueType, entryFunctions{
 		runtimeStub: runtimeStub,

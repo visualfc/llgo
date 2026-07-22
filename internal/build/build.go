@@ -689,6 +689,9 @@ func filterTestPackages(initial []*packages.Package, outFile string) ([]*package
 		if needLink(pkg, ModeTest) {
 			filtered = append(filtered, pkg)
 		}
+		if pkg.Types.Name() == "main" {
+			pkg.Types.SetName("main.test")
+		}
 	}
 	if len(filtered) > 1 && outFile != "" {
 		return nil, fmt.Errorf("cannot use -o flag with multiple packages")
@@ -1132,6 +1135,9 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	methodByName := make(map[string]none)
 	allPkgs := []*packages.Package{pkg}
 	for _, v := range pkgs {
+		if v.PkgPath != pkg.PkgPath && v.Types.Name() == "main" {
+			continue
+		}
 		allPkgs = append(allPkgs, v.Package)
 	}
 	visitRoots := allPkgs
