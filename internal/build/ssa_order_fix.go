@@ -186,6 +186,9 @@ func moveAssignDepsAfterRecv(b *ssa.BasicBlock, roots []ssa.Value, recv ssa.Valu
 	if len(move) == 0 {
 		return false
 	}
+	// Metadata uses must follow the definitions they describe rather than
+	// blocking an otherwise safe source-order repair.
+	includeDebugRefsForMovedValues(b.Instrs, move, recvIdx)
 	if moveWouldBreakSSA(b.Instrs, move, recvIdx) {
 		return false
 	}
@@ -203,6 +206,30 @@ func moveAssignDepsAfterRecv(b *ssa.BasicBlock, roots []ssa.Value, recv ssa.Valu
 	}
 	b.Instrs = next
 	return true
+}
+
+func includeDebugRefsForMovedValues(instrs []ssa.Instruction, move map[int]struct{}, through int) {
+	moved := make(map[ssa.Value]struct{}, len(move))
+	for i := range move {
+		if v, ok := instrs[i].(ssa.Value); ok && v != nil {
+			moved[v] = struct{}{}
+		}
+	}
+	for i := 0; i <= through && i < len(instrs); i++ {
+		if _, moving := move[i]; moving {
+			continue
+		}
+		ref, ok := instrs[i].(*ssa.DebugRef)
+		if !ok {
+			continue
+		}
+		for v := range moved {
+			if instrUsesValue(ref, v) {
+				move[i] = struct{}{}
+				break
+			}
+		}
+	}
 }
 
 func moveWouldBreakSSA(instrs []ssa.Instruction, move map[int]struct{}, recvIdx int) bool {
