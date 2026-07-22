@@ -208,6 +208,7 @@ type context struct {
 
 	staticGlobalInits map[*ssa.Global]llssa.Expr
 	staticInitStores  map[*ssa.Store]none
+	staticInitInstrs  map[ssa.Instruction]none
 }
 
 func (p *context) rewriteValue(name string) (string, bool) {
@@ -1608,6 +1609,9 @@ func (p *context) getDebugLocScope(v *ssa.Function, pos token.Pos) *types.Scope 
 }
 
 func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
+	if _, ok := p.staticInitInstrs[instr]; ok {
+		return
+	}
 	if iv, ok := instr.(instrOrValue); ok {
 		p.compileInstrOrValue(b, iv, false)
 		return

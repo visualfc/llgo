@@ -125,6 +125,48 @@ func Use() string {
 	assertNoStoreToGlobal(t, ir, "@staticinit.MethodNames")
 }
 
+func TestStaticGlobalSliceLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type callbackType string
+
+var CallbackTypes = []callbackType{
+	"BeforeCreate",
+	"AfterCreate",
+}
+
+func Use() callbackType { return CallbackTypes[1] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		`@"staticinit.CallbackTypes$data" = global [2 x %"github.com/goplus/llgo/runtime/internal/runtime.String"]`,
+		`@staticinit.CallbackTypes = global %"github.com/goplus/llgo/runtime/internal/runtime.Slice" { ptr @"staticinit.CallbackTypes$data", i64 2, i64 2 }`,
+		`c"BeforeCreate"`,
+		`c"AfterCreate"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static slice initializer %q in IR:\n%s", want, ir)
+		}
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.CallbackTypes")
+	if strings.Contains(ir, "runtime.AllocZ") {
+		t.Fatalf("static slice initializer still allocates at runtime:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalZeroSizedSliceLiteralFallsBack(t *testing.T) {
+	const src = `package staticinit
+
+var Values = []struct{}{{}, {}}
+
+func Use() int { return len(Values) }
+`
+	ir := compileWithRewrites(t, src, nil)
+	if strings.Contains(ir, "staticinit.Values$data") {
+		t.Fatalf("zero-sized slice literal unexpectedly uses static backing storage:\n%s", ir)
+	}
+}
+
 func TestStaticGlobalScalarAndSparseArrayInit(t *testing.T) {
 	const src = `package staticinit
 

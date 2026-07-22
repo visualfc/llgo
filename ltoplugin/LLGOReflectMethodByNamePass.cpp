@@ -223,18 +223,42 @@ bool collectStringSetFromStringSlice2(CallBase *CB, const DataLayout &DL,
   return true;
 }
 
-bool hasOnlyReadUses(User *U, SmallPtrSetImpl<User *> &Seen) {
+bool hasOnlyReadUses(User *U, SmallPtrSetImpl<User *> &Seen,
+                     bool FollowGlobalPointerLoads = false) {
   if (!Seen.insert(U).second)
     return true;
 
-  if (auto *Load = dyn_cast<LoadInst>(U))
-    return Load->isSimple();
+  if (auto *Load = dyn_cast<LoadInst>(U)) {
+    if (!Load->isSimple())
+      return false;
+    if (!FollowGlobalPointerLoads || !Load->getType()->isPointerTy() ||
+        !isa<GlobalVariable>(
+            Load->getPointerOperand()->stripPointerCasts()))
+      return true;
+    for (User *Next : Load->users()) {
+      if (!hasOnlyReadUses(Next, Seen, false))
+        return false;
+    }
+    return true;
+  }
+
+  // A static slice backing array is referenced by the constant slice-header
+  // initializer, which in turn initializes the package global. Follow that
+  // chain and prove that pointers loaded from the slice header are only used
+  // for reads before consulting the backing initializer.
+  if (isa<ConstantAggregate>(U) || isa<GlobalVariable>(U)) {
+    for (User *Next : U->users()) {
+      if (!hasOnlyReadUses(Next, Seen, true))
+        return false;
+    }
+    return true;
+  }
 
   if (isa<GEPOperator>(U) || isa<BitCastOperator>(U) ||
       isa<AddrSpaceCastOperator>(U) || isa<BitCastInst>(U) ||
       isa<AddrSpaceCastInst>(U)) {
     for (User *Next : U->users()) {
-      if (!hasOnlyReadUses(Next, Seen))
+      if (!hasOnlyReadUses(Next, Seen, FollowGlobalPointerLoads))
         return false;
     }
     return true;
@@ -534,17 +558,27 @@ bool collectIndexConstants(Value *Index, SmallVectorImpl<Constant *> &Constants,
   return true;
 }
 
-std::optional<uint64_t> firstIndexArrayBound(Value *Ptr, Type *ElemTy) {
-  auto *GV = dyn_cast<GlobalVariable>(Ptr->stripPointerCasts());
-  if (!GV)
-    return std::nullopt;
-  auto *ArrayTy = dyn_cast<ArrayType>(GV->getValueType());
-  if (!ArrayTy || ArrayTy->getElementType() != ElemTy)
-    return std::nullopt;
-  return ArrayTy->getNumElements();
+std::optional<uint64_t>
+firstIndexArrayBound(ArrayRef<Constant *> Bases, Type *ElemTy,
+                     const DataLayout &DL) {
+  std::optional<uint64_t> Bound;
+  for (Constant *Base : Bases) {
+    int64_t Offset = 0;
+    Value *Root = GetPointerBaseWithConstantOffset(Base, Offset, DL);
+    auto *GV = Root ? dyn_cast<GlobalVariable>(Root->stripPointerCasts())
+                    : nullptr;
+    auto *ArrayTy = GV ? dyn_cast<ArrayType>(GV->getValueType()) : nullptr;
+    if (!ArrayTy || ArrayTy->getElementType() != ElemTy || Offset != 0)
+      return std::nullopt;
+    uint64_t Current = ArrayTy->getNumElements();
+    if (Bound && *Bound != Current)
+      return std::nullopt;
+    Bound = Current;
+  }
+  return Bound;
 }
 
-bool enumerateConstantPointers(Value *Ptr,
+bool enumerateConstantPointers(Value *Ptr, const DataLayout &DL,
                                SmallVectorImpl<Constant *> &Pointers) {
   Ptr = Ptr->stripPointerCasts();
   if (auto *C = dyn_cast<Constant>(Ptr)) {
@@ -552,12 +586,17 @@ bool enumerateConstantPointers(Value *Ptr,
     return true;
   }
 
+  if (auto *Load = dyn_cast<LoadInst>(Ptr)) {
+    Constant *Folded = foldConstantLoad(Load, DL);
+    return Folded && enumerateConstantPointers(Folded, DL, Pointers);
+  }
+
   auto *GEP = dyn_cast<GEPOperator>(Ptr);
   if (!GEP)
     return false;
 
   SmallVector<Constant *, 4> Bases;
-  if (!enumerateConstantPointers(GEP->getPointerOperand(), Bases))
+  if (!enumerateConstantPointers(GEP->getPointerOperand(), DL, Bases))
     return false;
 
   SmallVector<SmallVector<Constant *, 4>, 4> IndexChoices;
@@ -567,7 +606,7 @@ bool enumerateConstantPointers(Value *Ptr,
     SmallVector<Constant *, 4> Choices;
     std::optional<uint64_t> Bound;
     if (FirstIndex) {
-      Bound = firstIndexArrayBound(GEP->getPointerOperand(), IndexedTy);
+      Bound = firstIndexArrayBound(Bases, IndexedTy, DL);
     } else {
       if (auto *ArrayTy = dyn_cast<ArrayType>(IndexedTy))
         Bound = ArrayTy->getNumElements();
@@ -757,7 +796,7 @@ bool collectStringSetFromConstantSlots(LoadInst *PtrLoad, LoadInst *LenLoad,
     return false;
 
   SmallVector<Constant *, 4> Slots;
-  if (!enumerateConstantPointers(StringSlot, Slots))
+  if (!enumerateConstantPointers(StringSlot, DL, Slots))
     return false;
 
   LLVMContext &Ctx = PtrLoad->getContext();
