@@ -415,7 +415,7 @@ func TestDevLTOGlobalDCECollectFingerprint(t *testing.T) {
 	}
 }
 
-func TestCollectFingerprintIncludesLTOPluginMarkers(t *testing.T) {
+func TestCollectFingerprintIncludesLTOPlugin(t *testing.T) {
 	td := t.TempDir()
 	goFile := filepath.Join(td, "main.go")
 	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
@@ -458,8 +458,8 @@ func TestCollectFingerprintIncludesLTOPluginMarkers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if data.Common == nil || !data.Common.LTOPluginMarkers {
-		t.Fatalf("manifest should contain LTO_PLUGIN_MARKERS=true:\n%s", withPlugin.Manifest)
+	if data.Common == nil || !data.Common.EnableLTOPlugin {
+		t.Fatalf("manifest should contain ENABLE_LTO_PLUGIN=true:\n%s", withPlugin.Manifest)
 	}
 }
 
