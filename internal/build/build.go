@@ -130,41 +130,42 @@ type OutFmtDetails struct {
 type ModuleHook func(pkg Package)
 
 type Config struct {
-	Goos          string
-	Goarch        string
-	Target        string // target name (e.g., "rp2040", "wasi") - takes precedence over Goos/Goarch
-	OptLevel      optlevel.Level
-	LTO           lto.Mode
-	LTOPlugin     lto.PassPlugin
-	BinPath       string
-	AppExt        string  // ".exe" on Windows, empty on Unix
-	OutFile       string  // only valid for ModeBuild when len(pkgs) == 1
-	OutFmts       OutFmts // Output format specifications (only for Target != "")
-	CompileOnly   bool    // compile test binary but do not run it (only valid for ModeTest)
-	Emulator      bool    // run in emulator mode
-	Port          string  // target port for flashing
-	BaudRate      int     // baudrate for serial communication
-	RunArgs       []string
-	Mode          Mode
-	BuildMode     BuildMode // Build mode: exe, c-archive, c-shared
-	AbiMode       AbiMode
-	GenExpect     bool // only valid for ModeCmpTest
-	Verbose       bool
-	PrintPackages bool // print package paths as they are compiled, like go build -v
-	PrintCommands bool
-	GenLL         bool // generate pkg .ll files
-	DeadcodeDrop  bool // enable Go dead code drop
-	CheckLLFiles  bool // check .ll files valid
-	CheckLinkArgs bool // check linkargs valid
-	ForceEspClang bool // force to use esp-clang
-	ForceRebuild  bool // force rebuilding of packages that are already up-to-date
-	Tags          string
-	SizeReport    bool   // print size report after successful build
-	SizeFormat    string // size report format: text,json (default text)
-	SizeLevel     string // size aggregation level: full,module,package (default module)
-	CompilerHash  string // metadata hash for the running compiler (development builds only)
-	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
-	NoErrorColumn bool   // omit source columns from frontend diagnostics
+	Goos               string
+	Goarch             string
+	Target             string // target name (e.g., "rp2040", "wasi") - takes precedence over Goos/Goarch
+	OptLevel           optlevel.Level
+	LTO                lto.Mode
+	LTOPlugin          lto.PassPlugin
+	BinPath            string
+	AppExt             string  // ".exe" on Windows, empty on Unix
+	OutFile            string  // only valid for ModeBuild when len(pkgs) == 1
+	OutFmts            OutFmts // Output format specifications (only for Target != "")
+	CompileOnly        bool    // compile test binary but do not run it (only valid for ModeTest)
+	Emulator           bool    // run in emulator mode
+	Port               string  // target port for flashing
+	BaudRate           int     // baudrate for serial communication
+	RunArgs            []string
+	Mode               Mode
+	BuildMode          BuildMode // Build mode: exe, c-archive, c-shared
+	AbiMode            AbiMode
+	GenExpect          bool // only valid for ModeCmpTest
+	Verbose            bool
+	PrintPackages      bool // print package paths as they are compiled, like go build -v
+	PrintCommands      bool
+	GenLL              bool // generate pkg .ll files
+	DeadcodeDrop       bool // enable Go dead code drop (development builds only)
+	CollectPackageMeta bool // collect package metadata without enabling dead code drop
+	CheckLLFiles       bool // check .ll files valid
+	CheckLinkArgs      bool // check linkargs valid
+	ForceEspClang      bool // force to use esp-clang
+	ForceRebuild       bool // force rebuilding of packages that are already up-to-date
+	Tags               string
+	SizeReport         bool   // print size report after successful build
+	SizeFormat         string // size report format: text,json (default text)
+	SizeLevel          string // size aggregation level: full,module,package (default module)
+	CompilerHash       string // metadata hash for the running compiler (development builds only)
+	GoVersion          string // Go language version accepted by the frontend (for example, "go1.22")
+	NoErrorColumn      bool   // omit source columns from frontend diagnostics
 	// GoBuildFlags contains normalized raw Go build flags forwarded to
 	// go/packages. Callers use internal/goflags to parse supported compiler and
 	// linker semantics into typed Config fields before calling Do.
@@ -225,7 +226,6 @@ func NewDefaultConf(mode Mode) *Config {
 		Mode:               mode,
 		BuildMode:          BuildModeExe,
 		AbiMode:            cabi.ModeAllFunc,
-		DeadcodeDrop:       true,
 		OmitDWARFByDefault: mode != ModeGen,
 		PCLNMode:           PCLNEmbedded,
 	}
@@ -262,7 +262,11 @@ func (c *Config) goGlobalDCEEnabled() bool {
 }
 
 func (c *Config) deadcodeDropEnabled() bool {
-	return c.DeadcodeDrop && !c.goGlobalDCEEnabled()
+	return buildenv.Dev && c.DeadcodeDrop && !c.goGlobalDCEEnabled()
+}
+
+func (c *Config) packageMetaEnabled() bool {
+	return c.CollectPackageMeta || c.deadcodeDropEnabled()
 }
 
 // -----------------------------------------------------------------------------
@@ -1624,7 +1628,7 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		return fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
 
-	needMeta := !aPkg.CacheHit && ctx.prog.DeadcodeDropEnabled()
+	needMeta := !aPkg.CacheHit && ctx.buildConf.packageMetaEnabled()
 	ret, externs, err := cl.NewPackageExWithEmbedMeta(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta)
 	check(err)
 

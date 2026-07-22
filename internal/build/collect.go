@@ -355,7 +355,7 @@ func (c *context) tryLoadFromCache(pkg *aPackage) bool {
 		return false
 	}
 	var pkgMeta *meta.PackageMeta
-	if c.buildConf.deadcodeDropEnabled() {
+	if c.buildConf.packageMetaEnabled() {
 		pkgMeta, err = readMeta(paths.Meta)
 		if err != nil {
 			return false
@@ -481,7 +481,7 @@ func (c *context) saveToCache(pkg *aPackage) error {
 		return nil
 	}
 
-	if c.buildConf.deadcodeDropEnabled() {
+	if c.buildConf.packageMetaEnabled() {
 		if err := writeMeta(paths.Meta, pkg.Meta); err != nil {
 			return err
 		}

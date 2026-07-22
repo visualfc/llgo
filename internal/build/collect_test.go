@@ -750,9 +750,9 @@ func TestSaveToCache_MainPackage(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:         "darwin",
-			Goarch:       "arm64",
-			DeadcodeDrop: true,
+			Goos:               "darwin",
+			Goarch:             "arm64",
+			CollectPackageMeta: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -790,9 +790,9 @@ func TestTryLoadFromCache_MainPackage(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:         "darwin",
-			Goarch:       "arm64",
-			DeadcodeDrop: true,
+			Goos:               "darwin",
+			Goarch:             "arm64",
+			CollectPackageMeta: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -839,9 +839,9 @@ func TestSaveToCache_Success(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:         "darwin",
-			Goarch:       "arm64",
-			DeadcodeDrop: true,
+			Goos:               "darwin",
+			Goarch:             "arm64",
+			CollectPackageMeta: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -919,9 +919,9 @@ func TestTryLoadFromCache_LoadsPackageMeta(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:         "darwin",
-			Goarch:       "arm64",
-			DeadcodeDrop: true,
+			Goos:               "darwin",
+			Goarch:             "arm64",
+			CollectPackageMeta: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -994,9 +994,9 @@ func TestTryLoadFromCacheRejectsBadMeta(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:         "darwin",
-			Goarch:       "arm64",
-			DeadcodeDrop: true,
+			Goos:               "darwin",
+			Goarch:             "arm64",
+			CollectPackageMeta: true,
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
@@ -1033,7 +1033,7 @@ func TestTryLoadFromCacheRejectsBadMeta(t *testing.T) {
 	}
 }
 
-func TestTryLoadFromCacheIgnoresMetaWhenDeadcodeDropDisabled(t *testing.T) {
+func TestTryLoadFromCacheIgnoresMetaWhenPackageMetaDisabled(t *testing.T) {
 	td := t.TempDir()
 	oldFunc := cacheRootFunc
 	cacheRootFunc = func() string { return td }
@@ -1042,9 +1042,8 @@ func TestTryLoadFromCacheIgnoresMetaWhenDeadcodeDropDisabled(t *testing.T) {
 	ctx := &context{
 		conf: &packages.Config{},
 		buildConf: &Config{
-			Goos:         "darwin",
-			Goarch:       "arm64",
-			DeadcodeDrop: false,
+			Goos:   "darwin",
+			Goarch: "arm64",
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",

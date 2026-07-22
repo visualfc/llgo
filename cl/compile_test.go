@@ -176,7 +176,10 @@ func TestRunAndTestFromTestgo(t *testing.T) {
 }
 
 func TestRunAndTestFromTestmeta(t *testing.T) {
+	conf := build.NewDefaultConf(build.ModeRun)
+	conf.CollectPackageMeta = true
 	cltest.RunAndTestFromDir(t, "", "./_testmeta", nil,
+		cltest.WithRunConfig(conf),
 		cltest.WithOutputCheck(false),
 		cltest.WithIRCheck(false),
 		cltest.WithMetaCheck(true),
