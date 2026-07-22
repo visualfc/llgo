@@ -209,16 +209,16 @@ func staticSliceInitOf(store *ssa.Store) (*staticSliceInit, bool) {
 		values: make(map[int]*ssa.Const),
 		instrs: []ssa.Instruction{alloc, slice, store},
 	}
-	sliceRefs := slice.Referrers()
-	if sliceRefs == nil || len(*sliceRefs) != 1 || (*sliceRefs)[0] != store {
+	sliceRefs, ok := nonDebugReferrers(slice)
+	if !ok || len(sliceRefs) != 1 || sliceRefs[0] != store {
 		return nil, false
 	}
-	refs := alloc.Referrers()
-	if refs == nil {
+	refs, ok := nonDebugReferrers(alloc)
+	if !ok {
 		return nil, false
 	}
 	seenSlice := false
-	for _, ref := range *refs {
+	for _, ref := range refs {
 		switch ref := ref.(type) {
 		case *ssa.Slice:
 			if ref != slice || seenSlice {
@@ -233,11 +233,11 @@ func staticSliceInitOf(store *ssa.Store) (*staticSliceInit, bool) {
 			if !ok || index >= int(array.Len()) {
 				return nil, false
 			}
-			indexRefs := ref.Referrers()
-			if indexRefs == nil || len(*indexRefs) != 1 {
+			indexRefs, ok := nonDebugReferrers(ref)
+			if !ok || len(indexRefs) != 1 {
 				return nil, false
 			}
-			elemStore, ok := (*indexRefs)[0].(*ssa.Store)
+			elemStore, ok := indexRefs[0].(*ssa.Store)
 			if !ok || elemStore.Addr != ref {
 				return nil, false
 			}
