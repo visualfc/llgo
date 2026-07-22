@@ -15,6 +15,13 @@ complete local variable inspection in LLDB. The former `LLGO_DEBUG` and
 LLGo's existing runnable DWARF path; improving its metadata quality and making
 it optimization-independent are separate follow-up work.
 
+LLGo currently marks compile units as `DW_LANG_C` because stock LLDB does not
+provide a Go language plugin and otherwise hides valid frame variables.
+`DW_AT_producer` remains `LLGo`, and a versioned debugger marker lets this
+plugin distinguish LLGo binaries from ordinary C targets. Native
+`DW_LANG_Go` support is tracked by
+[issue #2154](https://github.com/xgo-dev/llgo/issues/2154).
+
 ### Debug with lldb
 
 ```shell

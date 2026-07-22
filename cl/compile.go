@@ -176,7 +176,8 @@ type context struct {
 	linkOnceFns          map[*ssa.Function]none
 	stackDefers          map[*ssa.Function]bool
 	anonDefers           map[*ssa.Function]bool
-	paramDIVars          map[*types.Var]llssa.DIVar
+	debugDIVars          map[*types.Var]llssa.DIVar
+	debugAllocVars       map[*ssa.Alloc]*types.Var
 	runtimeCallerFuncs   map[*ssa.Function]bool
 	pcLineSeq            uint64
 
@@ -596,7 +597,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		if f.Recover != nil { // set recover block
 			fn.SetRecover(fn.Block(f.Recover.Index))
 		}
-		dbgEnabled := enableDbg && (f == nil || f.Origin() == nil)
+		dbgEnabled := enableDbg
 		dbgSymsEnabled := enableDbgSyms && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
@@ -609,9 +610,11 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			}()
 			p.phis = nil
 			if dbgSymsEnabled {
-				p.paramDIVars = make(map[*types.Var]llssa.DIVar)
+				p.debugDIVars = make(map[*types.Var]llssa.DIVar)
+				p.debugAllocVars = collectDebugAllocVariables(f)
 			} else {
-				p.paramDIVars = nil
+				p.debugDIVars = nil
+				p.debugAllocVars = nil
 			}
 			dbgGoSSADump(f)
 			dbgInstrln("==> FuncBody", name)
@@ -619,7 +622,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			if dbgEnabled {
 				pos := p.goProg.Fset.Position(f.Pos())
 				bodyPos := p.getFuncBodyPos(f)
-				b.DebugFunction(fn, pos, bodyPos)
+				b.DebugFunction(fn, debugFunctionScope(f), pos, bodyPos)
 			}
 			p.bvals = make(map[ssa.Value]llssa.Expr)
 			p.methodNilDerefChecks = collectMethodNilDerefChecks(f)
@@ -787,13 +790,23 @@ func (p *context) debugRef(b llssa.Builder, v *ssa.DebugRef) {
 		return
 	}
 	pos := p.goProg.Fset.Position(v.Pos())
-	value := p.compileValue(b, v.X)
+	var value llssa.Expr
+	if iv, ok := v.X.(instrOrValue); ok {
+		var exists bool
+		value, exists = p.bvals[iv]
+		if !exists {
+			// DebugRef is metadata-only. Do not rematerialize an SSA value that
+			// executable lowering deliberately omitted.
+			return
+		}
+	} else {
+		value = p.compileValue(b, v.X)
+	}
 	fn := v.Parent()
 	dbgVar := p.getLocalVariable(b, fn, variable)
 	scope := variable.Parent()
 	diScope := b.DIScope(p.fn, scope)
 	if v.IsAddr {
-		// *ssa.Alloc
 		b.DIDeclare(variable, value, dbgVar, diScope, pos, b.Func.Block(v.Block().Index))
 	} else {
 		b.DIValue(variable, value, dbgVar, diScope, pos, b.Func.Block(v.Block().Index))
@@ -803,13 +816,16 @@ func (p *context) debugRef(b llssa.Builder, v *ssa.DebugRef) {
 func (p *context) debugParams(b llssa.Builder, f *ssa.Function) {
 	for i, param := range f.Params {
 		variable := param.Object().(*types.Var)
+		if hasDebugAlloc(p.debugAllocVars, variable) {
+			continue
+		}
 		pos := p.goProg.Fset.Position(param.Pos())
 		v := p.compileValue(b, param)
 		ty := param.Type()
 		argNo := i + 1
 		div := b.DIVarParam(p.fn, pos, param.Name(), p.type_(ty, llssa.InGo), argNo)
-		if p.paramDIVars != nil {
-			p.paramDIVars[variable] = div
+		if p.debugDIVars != nil {
+			p.debugDIVars[variable] = div
 		}
 		b.DIParam(variable, v, div, p.fn, pos, p.fn.Block(0))
 	}
@@ -960,8 +976,8 @@ func skipUnusedArrayDeref(v *ssa.UnOp) bool {
 	if block == nil || len(block.Succs) != 1 || !strings.HasPrefix(block.Succs[0].Comment, "rangeindex.") {
 		return false
 	}
-	refs := v.Referrers()
-	if refs == nil || len(*refs) != 0 {
+	refs, ok := nonDebugReferrers(v)
+	if !ok || len(refs) != 0 {
 		return false
 	}
 	if _, ok := v.Type().Underlying().(*types.Array); !ok {
@@ -1059,11 +1075,11 @@ func (p *context) checkVArgs(v *ssa.Alloc, t *types.Pointer) bool {
 }
 
 func (p *context) skipSyntheticMakeSliceAlloc(v *ssa.Alloc) bool {
-	refs := v.Referrers()
-	if refs == nil || len(*refs) != 1 {
+	refs, ok := nonDebugReferrers(v)
+	if !ok || len(refs) != 1 {
 		return false
 	}
-	slice, ok := (*refs)[0].(*ssa.Slice)
+	slice, ok := refs[0].(*ssa.Slice)
 	if !ok {
 		return false
 	}
@@ -1103,11 +1119,14 @@ func (p *context) syntheticMakeSliceCap(v *ssa.Slice) (llssa.Expr, bool) {
 }
 
 func isAllocVargs(ctx *context, v *ssa.Alloc) bool {
-	refs := *v.Referrers()
+	refs, ok := nonDebugReferrers(v)
+	if !ok || len(refs) == 0 {
+		return false
+	}
 	n := len(refs)
 	lastref := refs[n-1]
 	if i, ok := lastref.(*ssa.Slice); ok {
-		if refs = *i.Referrers(); len(refs) == 1 {
+		if refs, _ = nonDebugReferrers(i); len(refs) == 1 {
 			var call *ssa.CallCommon
 			switch ref := refs[0].(type) {
 			case *ssa.Call:
@@ -1216,7 +1235,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				p.recordPanicLocation(b, v.Pos())
 				b.AssertNilDeref(x)
 			}
-			if refs := v.Referrers(); refs != nil && len(*refs) == 0 {
+			if refs, ok := nonDebugReferrers(v); ok && len(refs) == 0 {
 				if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil {
 					if p.isLargeNonPointerValue(t) {
 						x := p.compileValue(b, v.X)
@@ -1240,8 +1259,8 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 					return
 				}
 			}
-			if refs := v.Referrers(); refs != nil && len(*refs) == 1 {
-				if _, ok := (*refs)[0].(*ssa.MakeInterface); ok {
+			if refs, ok := nonDebugReferrers(v); ok && len(refs) == 1 {
+				if _, ok := refs[0].(*ssa.MakeInterface); ok {
 					if t := p.type_(v.Type(), llssa.InGo); t.RawType() != nil {
 						if p.isLargeNonPointerValue(t) {
 							// Skip the load: the MakeInterface handler below copies
@@ -1318,6 +1337,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 		elem := p.type_(t.Elem(), llssa.InGo)
 		ret = b.Alloc(elem, v.Heap)
+		p.debugAlloc(b, v, ret)
 	case *ssa.IndexAddr:
 		vx := v.X
 		if _, ok := p.isVArgs(vx); ok { // varargs: this is a varargs index
@@ -1368,7 +1388,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		ret = b.Slice(x, low, high, max)
 		ret.Type = p.type_(v.Type(), llssa.InGo)
 	case *ssa.MakeInterface:
-		if refs := *v.Referrers(); len(refs) == 1 {
+		if refs, _ := nonDebugReferrers(v); len(refs) == 1 {
 			switch ref := refs[0].(type) {
 			case *ssa.Store:
 				if va, ok := ref.Addr.(*ssa.IndexAddr); ok {
@@ -1485,14 +1505,14 @@ func isEffectfulArrayPointerDeref(v *ssa.UnOp) bool {
 	if !arrayPointerOperandHasEffectAfter(v.X, v.Pos(), nil) {
 		return false
 	}
-	refs := v.Referrers()
-	if refs == nil || len(*refs) == 0 {
-		return refs != nil
+	refs, ok := nonDebugReferrers(v)
+	if !ok || len(refs) == 0 {
+		return ok
 	}
-	if len(*refs) != 1 {
+	if len(refs) != 1 {
 		return false
 	}
-	call, ok := (*refs)[0].(*ssa.Call)
+	call, ok := refs[0].(*ssa.Call)
 	if !ok {
 		return false
 	}
@@ -1543,11 +1563,11 @@ func isInterfaceCompareDeref(v *ssa.UnOp) bool {
 	case *ssa.Alloc, *ssa.Extract, *ssa.FieldAddr, *ssa.FreeVar, *ssa.Global, *ssa.IndexAddr:
 		return false
 	}
-	refs := v.Referrers()
-	if refs == nil || len(*refs) != 1 {
+	refs, ok := nonDebugReferrers(v)
+	if !ok || len(refs) != 1 {
 		return false
 	}
-	bin, ok := (*refs)[0].(*ssa.BinOp)
+	bin, ok := refs[0].(*ssa.BinOp)
 	return ok && (bin.Op == token.EQL || bin.Op == token.NEQ)
 }
 
@@ -1612,17 +1632,19 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 	if _, ok := p.staticInitInstrs[instr]; ok {
 		return
 	}
+	if enableDbg && instr.Parent().Origin() == nil {
+		if _, isDebugRef := instr.(*ssa.DebugRef); !isDebugRef {
+			scope := p.getDebugLocScope(instr.Parent(), instr.Pos())
+			if scope != nil {
+				diScope := b.DIScope(p.fn, scope)
+				pos := p.fset.Position(instr.Pos())
+				b.DISetCurrentDebugLocation(diScope, pos)
+			}
+		}
+	}
 	if iv, ok := instr.(instrOrValue); ok {
 		p.compileInstrOrValue(b, iv, false)
 		return
-	}
-	if enableDbg && instr.Parent().Origin() == nil {
-		scope := p.getDebugLocScope(instr.Parent(), instr.Pos())
-		if scope != nil {
-			diScope := b.DIScope(p.fn, scope)
-			pos := p.fset.Position(instr.Pos())
-			b.DISetCurrentDebugLocation(diScope, pos)
-		}
 	}
 	switch v := instr.(type) {
 	case *ssa.Store:
@@ -1717,15 +1739,19 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 }
 
 func (p *context) getLocalVariable(b llssa.Builder, fn *ssa.Function, v *types.Var) llssa.DIVar {
-	if p.paramDIVars != nil {
-		if div, ok := p.paramDIVars[v]; ok {
+	if p.debugDIVars != nil {
+		if div, ok := p.debugDIVars[v]; ok {
 			return div
 		}
 	}
 	pos := p.fset.Position(v.Pos())
 	t := p.type_(v.Type(), llssa.InGo)
 	scope := b.DIScope(p.fn, v.Parent())
-	return b.DIVarAuto(scope, pos, v.Name(), t)
+	div := b.DIVarAuto(scope, pos, v.Name(), t)
+	if p.debugDIVars != nil {
+		p.debugDIVars[v] = div
+	}
+	return div
 }
 
 func (p *context) compileFunction(v *ssa.Function) (goFn llssa.Function, pyFn llssa.PyObjRef, kind int) {
@@ -2009,6 +2035,7 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 	ret = prog.NewPackage(pkgName, pkgPath)
 	if enableDbg {
 		ret.InitDebug(pkgName, pkgPath, pkgProg.Fset)
+		defer ret.FinalizeDebug()
 	}
 
 	if ct == nil {
