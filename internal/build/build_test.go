@@ -22,6 +22,7 @@ import (
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/lto"
+	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/packages"
 	llssa "github.com/goplus/llgo/ssa"
@@ -36,6 +37,40 @@ func TestMain(m *testing.M) {
 	cacheRootFunc = old
 	_ = os.RemoveAll(td)
 	os.Exit(code)
+}
+
+func TestClosePackageMetas(t *testing.T) {
+	b := meta.NewBuilder()
+	b.Sym("pkg.main")
+	written, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "pkg.meta")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := written.WriteTo(f); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := readMeta(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := &aPackage{Package: &packages.Package{}, Meta: loaded}
+	ctx := &context{pkgs: map[*packages.Package]Package{pkg.Package: pkg}}
+	ctx.closePackageMetas()
+	if pkg.Meta != nil {
+		t.Fatal("package metadata was not cleared")
+	}
+	if n, err := loaded.WriteTo(io.Discard); err != nil || n != 0 {
+		t.Fatalf("closed metadata still has mapped bytes: n=%d err=%v", n, err)
+	}
 }
 
 func TestNeedsLinuxNoPIE(t *testing.T) {

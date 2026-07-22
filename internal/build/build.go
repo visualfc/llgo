@@ -508,6 +508,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		crossCompile:   export,
 		cTransformer:   cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, conf.AbiMode, cabiOptimize),
 	}
+	defer ctx.closePackageMetas()
 
 	// default runtime globals must be registered before packages are built
 	addGlobalString(conf, "runtime.defaultGOROOT="+runtime.GOROOT(), nil)
@@ -762,6 +763,18 @@ type context struct {
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
 	pclnExternal *pclnmap.Data
+}
+
+// closePackageMetas releases metadata mappings owned by this build. Metadata
+// remains available to hooks and whole-program consumers until Do returns.
+func (c *context) closePackageMetas() {
+	for _, pkg := range c.pkgs {
+		if pkg.Meta == nil {
+			continue
+		}
+		_ = pkg.Meta.Close()
+		pkg.Meta = nil
+	}
 }
 
 func (c *context) compiler() *clang.Cmd {
