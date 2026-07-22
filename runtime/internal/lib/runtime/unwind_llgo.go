@@ -8,6 +8,9 @@ import (
 	rtdebug "github.com/goplus/llgo/runtime/internal/runtime"
 )
 
+// c_framepointer returns its caller's frame pointer while the C helper frame
+// is still alive.
+//
 //go:linkname c_framepointer C.llgo_framepointer
 func c_framepointer() unsafe.Pointer
 
@@ -118,9 +121,8 @@ func fpCallers(skip int, pc []uintptr) int {
 	initRuntimeFuncPCFrames()
 	fp := uintptr(c_framepointer())
 	n := 0
-	// The helper's saved chain starts at our own frame; skip fpCallers
-	// itself so skip counting matches the caller's view.
-	skip++
+	// The helper returns this function's frame pointer, so the first return
+	// address already represents fpCallers' caller.
 	const maxFrames = 4096
 	for i := 0; fp != 0 && n < len(pc) && i < maxFrames; i++ {
 		prev := *(*uintptr)(unsafe.Pointer(fp))

@@ -139,6 +139,53 @@ func TestCallerAcceptancePanicTraceback(t *testing.T) {
 	}
 }
 
+// Scenario: the FP walker starts from a live caller frame even when O0 and
+// DWARF make the C helper's returned stack slot easy to overwrite.
+const shallowPanicAcceptanceProbe = `package main
+
+import "runtime"
+
+//go:noinline
+func panicSite() {
+	panic("shallow-panic")
+}
+
+func main() {
+	_ = runtime.NumCPU()
+	panicSite()
+}
+`
+
+func TestCallerAcceptanceShallowPanicBuildModes(t *testing.T) {
+	_, dir := prepareCallerAcceptanceProbe(t, shallowPanicAcceptanceProbe)
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "O0_DWARF", args: []string{"-O0", "-ldflags=-w=false"}},
+		{name: "O0_no_DWARF", args: []string{"-O0", "-ldflags=-w"}},
+		{name: "O2_DWARF", args: []string{"-O2", "-ldflags=-w=false"}},
+		{name: "O2_no_DWARF", args: []string{"-O2", "-ldflags=-w"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			out, err := runLLGoProbeWithFlags(t, dir, test.args...)
+			if err == nil {
+				t.Fatalf("panic probe unexpectedly succeeded:\n%s", out)
+			}
+			for _, want := range []string{
+				"panic: shallow-panic",
+				"goroutine 1 [running]:",
+				"main.panicSite(...)",
+				"main.main(...)",
+			} {
+				if !strings.Contains(out, want) {
+					t.Fatalf("panic traceback missing %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
 // Scenario: a failing test reports the t.Errorf call's file:line, exactly
 // like `go test` (the whole testing harness runs under llgo).
 func TestCallerAcceptanceTestingFailure(t *testing.T) {
@@ -331,9 +378,15 @@ func markerLineOf(t *testing.T, source, marker string) string {
 
 func runLLGoProbe(t *testing.T, dir string) (string, error) {
 	t.Helper()
+	return runLLGoProbeWithFlags(t, dir)
+}
+
+func runLLGoProbeWithFlags(t *testing.T, dir string, flags ...string) (string, error) {
+	t.Helper()
 	repoRoot := findStringConversionRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
-	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", filepath.Join(dir, "main.go"))
+	args := append([]string{"run", "./cmd/llgo", "run", "-a"}, flags...)
+	cmd := exec.Command("go", append(args, filepath.Join(dir, "main.go"))...)
 	cmd.Dir = repoRoot
 	out, err := cmd.CombinedOutput()
 	return string(out), err

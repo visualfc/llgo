@@ -27,7 +27,9 @@ int llgo_maxprocs()
 __attribute__((noinline)) void *llgo_framepointer(void)
 {
 #if defined(__GNUC__) || defined(__clang__)
-    return __builtin_frame_address(0);
+    /* Read the saved caller FP before this helper's frame becomes invalid. */
+    void **frame = (void **)__builtin_frame_address(0);
+    return frame ? *frame : 0;
 #else
     return 0;
 #endif
