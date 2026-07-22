@@ -20,6 +20,7 @@ import (
 	"go/token"
 	"go/types"
 
+	llabi "github.com/goplus/llgo/internal/abi"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -114,6 +115,9 @@ func (b Builder) Alloc(elem Type, heap bool) (ret Expr) {
 	prog := b.Prog
 	pkg := b.Pkg
 	size := SizeOf(prog, elem)
+	if !heap && prog.SizeOf(elem) > llabi.MaxStackVarSize {
+		heap = true
+	}
 	if heap {
 		if prog.SizeOf(elem) == 0 {
 			return pkg.moduleZeroSizedAlloc(elem)

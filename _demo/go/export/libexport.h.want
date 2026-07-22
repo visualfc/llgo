@@ -80,6 +80,22 @@ typedef struct {
     _Bool Flag;
 } C_XType;
 
+typedef struct {
+    int32_t CallersCount;
+    uintptr_t FramePC;
+    GoString FrameFunction;
+    GoString FrameFile;
+    int32_t FrameLine;
+    GoString FuncName;
+    uintptr_t FuncEntry;
+    GoString FuncFile;
+    int32_t FuncLine;
+} main_FuncInfoResult;
+
+typedef struct {
+    intptr_t data[5];
+} Array_intptr_t_5;
+
 typedef intptr_t main_MyInt;
 
 typedef GoString main_MyString;
@@ -111,6 +127,15 @@ CreateComplexData(void);
 Array_double_5_4
 CreateGrid5x4(void);
 
+GoChan
+CreateIntChannel(void);
+
+GoInterface
+CreateIntInterface(void);
+
+GoSlice
+CreateIntSlice(void);
+
 main_LargeStruct
 CreateLargeStruct(int64_t id, GoString name);
 
@@ -129,8 +154,17 @@ CreateNode(intptr_t data);
 main_SmallStruct
 CreateSmallStruct(int8_t id, _Bool flag);
 
+GoInterface
+CreateStringInterface(void);
+
+GoMap
+CreateStringMap(void);
+
 C_XType
 CreateXType(int32_t id, GoString name, double value, _Bool flag);
+
+main_FuncInfoResult
+GetFuncInfo(void);
 
 void
 HelloWorld(void);
@@ -166,7 +200,7 @@ double
 ProcessFloat64(double x);
 
 double
-ProcessGrid5x4(double grid[5][4]);
+ProcessGrid5x4(Array_double_5_4 grid);
 
 intptr_t
 ProcessInt(intptr_t x);
@@ -184,7 +218,7 @@ int8_t
 ProcessInt8(int8_t x);
 
 intptr_t
-ProcessIntArray(intptr_t* arr);
+ProcessIntArray(Array_intptr_t_5 arr);
 
 intptr_t
 ProcessIntChannel(GoChan ch);
@@ -202,10 +236,10 @@ main_LargeStruct*
 ProcessLargeStructPtr(main_LargeStruct* ls);
 
 int32_t
-ProcessMatrix2D(int32_t matrix[3][4]);
+ProcessMatrix2D(Array_int32_t_3_4 matrix);
 
 uint32_t
-ProcessMatrix3D(uint8_t cube[2][3][4]);
+ProcessMatrix3D(Array_uint8_t_2_3_4 cube);
 
 main_MyInt
 ProcessMyInt(main_MyInt x);
@@ -264,6 +298,9 @@ ProcessXType(C_XType x);
 C_XType*
 ProcessXTypePtr(C_XType* x);
 
+intptr_t
+RunGoroutine(intptr_t value);
+
 double
 ThreeParams(int32_t a, double b, _Bool c);
 
@@ -275,39 +312,6 @@ TwoParams(intptr_t a, GoString b);
 
 void
 github_com_goplus_llgo__demo_go_export_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/_demo/go/export.init")
-
-void
-github_com_goplus_llgo_runtime_abi_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/abi.init")
-
-void
-github_com_goplus_llgo_runtime_internal_clite_bdwgc_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/clite/bdwgc.init")
-
-void
-github_com_goplus_llgo_runtime_internal_clite_bitcast_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/clite/bitcast.init")
-
-void
-github_com_goplus_llgo_runtime_internal_clite_debug_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/clite/debug.init")
-
-void
-github_com_goplus_llgo_runtime_internal_clite_pthread_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/clite/pthread.init")
-
-void
-github_com_goplus_llgo_runtime_internal_clite_pthread_sync_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/clite/pthread/sync.init")
-
-void
-github_com_goplus_llgo_runtime_internal_clite_signal_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/clite/signal.init")
-
-void
-github_com_goplus_llgo_runtime_internal_clite_tls_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/clite/tls.init")
-
-void
-github_com_goplus_llgo_runtime_internal_runtime_goarch_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/runtime/goarch.init")
-
-void
-github_com_goplus_llgo_runtime_internal_runtime_math_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/runtime/math.init")
-
-void
-github_com_goplus_llgo_runtime_internal_runtime_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/runtime/internal/runtime.init")
 
 
 

@@ -33,6 +33,10 @@ type elfFn struct {
 }
 
 func buildELF(t *testing.T, fns []elfFn, entryRecs, stubRecs func(addrOf func(string) uint64) []byte, entryPad, stubPad int) string {
+	return buildELFExternal(t, fns, entryRecs, stubRecs, entryPad, stubPad, nil, nil)
+}
+
+func buildELFExternal(t *testing.T, fns []elfFn, entryRecs, stubRecs func(addrOf func(string) uint64) []byte, entryPad, stubPad int, pcLine, identity []byte) string {
 	t.Helper()
 	const base = uint64(0x10000)
 	var text bytes.Buffer
@@ -98,9 +102,17 @@ func buildELF(t *testing.T, fns []elfFn, entryRecs, stubRecs func(addrOf func(st
 		binary.Write(&symtab, binary.LittleEndian, fn.size)
 	}
 
+	sectionNames := []string{".text", "llgo_funcinfo_entry", "llgo_funcinfo_stubsite"}
+	if pcLine != nil {
+		sectionNames = append(sectionNames, "llgo_pcline")
+	}
+	if identity != nil {
+		sectionNames = append(sectionNames, "llgo_pclntab_id")
+	}
+	sectionNames = append(sectionNames, ".data", ".symtab", ".strtab", ".shstrtab")
 	shstr := []byte{0}
 	names := map[string]uint32{}
-	for _, n := range []string{".text", "llgo_funcinfo_entry", "llgo_funcinfo_stubsite", ".data", ".symtab", ".strtab", ".shstrtab"} {
+	for _, n := range sectionNames {
 		names[n] = uint32(len(shstr))
 		shstr = append(shstr, n...)
 		shstr = append(shstr, 0)
@@ -118,11 +130,20 @@ func buildELF(t *testing.T, fns []elfFn, entryRecs, stubRecs func(addrOf func(st
 		{".text", 1, base, text.Bytes(), 0, 0},
 		{"llgo_funcinfo_entry", 1, base + 0x4000, entry, 0, 0},
 		{"llgo_funcinfo_stubsite", 1, base + 0x6000, stub, 0, 0},
-		{".data", 1, idxTableAddr, data.Bytes(), 0, 0},
-		{".symtab", 2, 0, symtab.Bytes(), 6, 24},
-		{".strtab", 3, 0, strtab, 0, 0},
-		{".shstrtab", 3, 0, shstr, 0, 0},
 	}
+	if pcLine != nil {
+		secs = append(secs, sec{"llgo_pcline", 1, base + 0x7000, pcLine, 0, 0})
+	}
+	if identity != nil {
+		secs = append(secs, sec{"llgo_pclntab_id", 1, base + 0x7800, identity, 0, 0})
+	}
+	secs = append(secs, sec{".data", 1, idxTableAddr, data.Bytes(), 0, 0})
+	strtabIndex := uint32(len(secs) + 2)
+	secs = append(secs,
+		sec{".symtab", 2, 0, symtab.Bytes(), strtabIndex, 24},
+		sec{".strtab", 3, 0, strtab, 0, 0},
+		sec{".shstrtab", 3, 0, shstr, 0, 0},
+	)
 
 	var body bytes.Buffer
 	body.Write(make([]byte, 64)) // ELF header placeholder

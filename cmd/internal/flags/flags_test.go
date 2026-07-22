@@ -3,14 +3,71 @@ package flags
 import (
 	"bytes"
 	"flag"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/cmd/internal/base"
 	"github.com/goplus/llgo/internal/build"
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/optlevel"
 )
+
+func TestApplyGoBuildFlags(t *testing.T) {
+	cmd := new(base.Command)
+	captured := CaptureGoBuildFlags(cmd)
+	if err := cmd.Flag.Parse([]string{"-ldflags=-s -w", "-gcflags=all=-N", "."}); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
+	if err := ApplyGoBuildFlags(conf, captured.Args); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"-tags=existing", "-ldflags=-s -w", "-gcflags=all=-N"}
+	if !reflect.DeepEqual(conf.GoBuildFlags, want) {
+		t.Fatalf("GoBuildFlags = %v, want %v", conf.GoBuildFlags, want)
+	}
+	if !conf.LinkOptions.OmitSymbolTable || !conf.LinkOptions.EffectiveOmitDWARF() {
+		t.Fatalf("LinkOptions = %+v, want -s with effective -w", conf.LinkOptions)
+	}
+}
+
+func TestApplyGoBuildFlagsIsAtomicOnParseError(t *testing.T) {
+	conf := &build.Config{
+		GoBuildFlags: []string{"-tags=existing"},
+		LinkOptions:  build.LinkOptions{OmitSymbolTable: true},
+		GoVersion:    "go1.22",
+		OptLevel:     optlevel.O2,
+	}
+	want := *conf
+	want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
+	if err := ApplyGoBuildFlags(conf, []string{"-gcflags=all=-lang=go1.17 -N", "-ldflags=-w=invalid"}); err == nil {
+		t.Fatal("ApplyGoBuildFlags succeeded, want error")
+	}
+	if !reflect.DeepEqual(*conf, want) {
+		t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+	}
+}
+
+func TestApplyGoBuildFlagsMapsFrontendGCFlags(t *testing.T) {
+	conf := &build.Config{GoBuildFlags: []string{
+		"-tags=integration",
+		"-gcflags=",
+		"-gcflags=-l",
+		"-gcflags=all=-lang=go1.17 -N -l=4",
+	}}
+	if err := ApplyGoBuildFlags(conf, nil); err != nil {
+		t.Fatal(err)
+	}
+	if conf.GoVersion != "go1.17" {
+		t.Fatalf("GoVersion=%q, want go1.17", conf.GoVersion)
+	}
+	if conf.OptLevel != optlevel.O0 {
+		t.Fatalf("OptLevel=%v, want O0", conf.OptLevel)
+	}
+}
 
 func TestBuildOptimizationFlags(t *testing.T) {
 	tests := []struct {
@@ -126,6 +183,103 @@ func TestBuildLTOFlagInvalid(t *testing.T) {
 		if err := fs.Parse(args); err == nil {
 			t.Fatalf("Parse(%v) expected error", args)
 		}
+	}
+}
+
+func TestBuildPCLNFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		want      build.PCLNMode
+		specified bool
+	}{
+		{name: "default embedded", want: build.PCLNEmbedded},
+		{name: "embedded", args: []string{"-pclntab=embedded"}, want: build.PCLNEmbedded, specified: true},
+		{name: "external", args: []string{"-pclntab=external"}, want: build.PCLNExternal, specified: true},
+		{name: "none", args: []string{"-pclntab=none"}, want: build.PCLNNone, specified: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := flag.NewFlagSet(tt.name, flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddBuildFlags(fs)
+			if err := fs.Parse(tt.args); err != nil {
+				t.Fatalf("Parse(%v) unexpected error: %v", tt.args, err)
+			}
+			if PCLN.Specified != tt.specified {
+				t.Fatalf("PCLN.Specified = %v, want %v", PCLN.Specified, tt.specified)
+			}
+			if PCLN.Mode != tt.want {
+				t.Fatalf("PCLN.Mode = %v, want %v", PCLN.Mode, tt.want)
+			}
+			conf := &build.Config{}
+			if err := UpdateConfig(conf); err != nil {
+				t.Fatalf("UpdateConfig error: %v", err)
+			}
+			if conf.PCLNMode != tt.want {
+				t.Fatalf("conf.PCLNMode = %v, want %v", conf.PCLNMode, tt.want)
+			}
+			if conf.PCLNModeSet != tt.specified {
+				t.Fatalf("conf.PCLNModeSet = %v, want %v", conf.PCLNModeSet, tt.specified)
+			}
+		})
+	}
+}
+
+func TestBuildPCLNFlagInvalid(t *testing.T) {
+	tests := [][]string{
+		{"-pclntab"},
+		{"-pclntab="},
+		{"-pclntab=true"},
+		{"-pclntab=off"},
+		{"-pclntab=EXTERNAL"},
+	}
+	for _, args := range tests {
+		fs := flag.NewFlagSet("invalid-pclntab", flag.ContinueOnError)
+		fs.SetOutput(new(bytes.Buffer))
+		AddBuildFlags(fs)
+		if err := fs.Parse(args); err == nil {
+			t.Fatalf("Parse(%v) expected error", args)
+		}
+	}
+}
+
+func TestUpdateConfigPreservesPCLNModeWhenUnspecified(t *testing.T) {
+	fs := flag.NewFlagSet("pclntab-unspecified", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	if err := fs.Parse(nil); err != nil {
+		t.Fatalf("Parse(nil) unexpected error: %v", err)
+	}
+
+	conf := &build.Config{PCLNMode: build.PCLNExternal}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if conf.PCLNMode != build.PCLNExternal {
+		t.Fatalf("conf.PCLNMode = %v, want %v", conf.PCLNMode, build.PCLNExternal)
+	}
+	if conf.PCLNModeSet {
+		t.Fatal("conf.PCLNModeSet = true, want unchanged")
+	}
+}
+
+func TestPCLNFlagOverridesLegacyFuncInfo(t *testing.T) {
+	t.Setenv("LLGO_FUNCINFO", "0")
+	fs := flag.NewFlagSet("pclntab-legacy-precedence", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	if err := fs.Parse([]string{"-pclntab=embedded"}); err != nil {
+		t.Fatalf("Parse unexpected error: %v", err)
+	}
+
+	conf := &build.Config{}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if conf.PCLNMode != build.PCLNEmbedded || !conf.PCLNModeSet {
+		t.Fatalf("explicit -pclntab not preserved: mode=%v set=%v", conf.PCLNMode, conf.PCLNModeSet)
 	}
 }
 
@@ -375,5 +529,67 @@ func TestUpdateConfigPreservesLTOWhenUnspecified(t *testing.T) {
 	}
 	if conf.LTO != lto.Full {
 		t.Fatalf("conf.LTO = %v, want %v", conf.LTO, lto.Full)
+	}
+}
+
+func TestUpdateConfigVerboseCompatibility(t *testing.T) {
+	oldVerbose := Verbose
+	oldCompilerVerbose := CompilerVerbose
+	t.Cleanup(func() {
+		Verbose = oldVerbose
+		CompilerVerbose = oldCompilerVerbose
+	})
+
+	tests := []struct {
+		name              string
+		mode              build.Mode
+		verbose           bool
+		compilerVerbose   bool
+		wantVerbose       bool
+		wantPrintPackages bool
+	}{
+		{name: "build v prints packages", mode: build.ModeBuild, verbose: true, wantPrintPackages: true},
+		{name: "build verbose prints debug output", mode: build.ModeBuild, compilerVerbose: true, wantVerbose: true},
+		{name: "build flags can be combined", mode: build.ModeBuild, verbose: true, compilerVerbose: true, wantVerbose: true, wantPrintPackages: true},
+		{name: "test v is reserved for test binary", mode: build.ModeTest, verbose: true},
+		{name: "test verbose prints debug output", mode: build.ModeTest, compilerVerbose: true, wantVerbose: true},
+		{name: "other commands keep v behavior", mode: build.ModeRun, verbose: true, wantVerbose: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			Verbose = tt.verbose
+			CompilerVerbose = tt.compilerVerbose
+			conf := &build.Config{Mode: tt.mode}
+			if err := UpdateConfig(conf); err != nil {
+				t.Fatalf("UpdateConfig() error = %v", err)
+			}
+			if conf.Verbose != tt.wantVerbose {
+				t.Errorf("Verbose = %v, want %v", conf.Verbose, tt.wantVerbose)
+			}
+			if conf.PrintPackages != tt.wantPrintPackages {
+				t.Errorf("PrintPackages = %v, want %v", conf.PrintPackages, tt.wantPrintPackages)
+			}
+		})
+	}
+}
+
+func TestCompilerVerboseFlag(t *testing.T) {
+	oldCompilerVerbose := CompilerVerbose
+	t.Cleanup(func() { CompilerVerbose = oldCompilerVerbose })
+
+	for _, arg := range []string{"-compiler-verbose", "-cv"} {
+		t.Run(arg, func(t *testing.T) {
+			CompilerVerbose = false
+			fs := flag.NewFlagSet("compiler-verbose", flag.ContinueOnError)
+			fs.SetOutput(new(bytes.Buffer))
+			AddCompilerVerboseFlag(fs)
+			if err := fs.Parse([]string{arg}); err != nil {
+				t.Fatalf("Parse(%s) error = %v", arg, err)
+			}
+			if !CompilerVerbose {
+				t.Fatalf("%s did not enable compiler verbose output", arg)
+			}
+		})
 	}
 }

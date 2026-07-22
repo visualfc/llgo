@@ -188,6 +188,13 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 	conf.LTO = lto.Full
 	ignore := []string{
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_concat",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_global",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_global_slice",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_loop",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_param",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_range_literal",
+		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_slice",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_switch",
 	}
 	if !buildenv.Dev {
@@ -219,6 +226,13 @@ var testltoSymbolChecks = []string{
 
 var testltoLTOPluginTests = []string{
 	"globaldce_reflect_method_by_name_ltoplugin",
+	"globaldce_reflect_method_by_name_ltoplugin_concat",
+	"globaldce_reflect_method_by_name_ltoplugin_global",
+	"globaldce_reflect_method_by_name_ltoplugin_global_slice",
+	"globaldce_reflect_method_by_name_ltoplugin_loop",
+	"globaldce_reflect_method_by_name_ltoplugin_param",
+	"globaldce_reflect_method_by_name_ltoplugin_range_literal",
+	"globaldce_reflect_method_by_name_ltoplugin_slice",
 	"globaldce_reflect_method_by_name_ltoplugin_switch",
 }
 
@@ -329,18 +343,64 @@ func TestRunFromTestgoSelectAllowsKnownInterleavings(t *testing.T) {
 		t.Fatalf("run failed: %v\noutput: %s", err, string(output))
 	}
 	lines := selectOutputLines(string(output))
-	if len(lines) != 3 {
+	if !validSelectOutputLines(lines) {
 		t.Fatalf("unexpected select output lines %q from:\n%s", lines, output)
 	}
-	if lines[0] != "100" && lines[0] != "200" {
-		t.Fatalf("unexpected select send output %q from:\n%s", lines[0], output)
-	}
-	for _, line := range lines[1:] {
+}
+
+func validSelectOutputLines(lines []string) bool {
+	sendCount, recvCount := 0, 0
+	seenCh1, seenCh2 := false, false
+	for _, line := range lines {
 		switch line {
-		case "ch1", "ch2", "exit":
+		case "100", "200":
+			sendCount++
+			if sendCount > 1 {
+				return false
+			}
+		case "ch1":
+			if seenCh1 {
+				return false
+			}
+			seenCh1 = true
+			recvCount++
+		case "ch2":
+			if seenCh2 {
+				return false
+			}
+			seenCh2 = true
+			recvCount++
+		case "exit":
+			recvCount++
 		default:
-			t.Fatalf("unexpected select recv output %q from:\n%s", line, output)
+			return false
 		}
+	}
+	return recvCount == 2
+}
+
+func TestValidSelectOutputLines(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		valid bool
+	}{
+		{name: "sender exits before print", lines: []string{"ch1", "ch2"}, valid: true},
+		{name: "both receives default", lines: []string{"exit", "exit"}, valid: true},
+		{name: "send prints first", lines: []string{"100", "ch1", "ch2"}, valid: true},
+		{name: "send print is interleaved", lines: []string{"ch1", "200", "exit"}, valid: true},
+		{name: "duplicate receive", lines: []string{"ch1", "ch1"}},
+		{name: "missing receive", lines: []string{"100", "ch1"}},
+		{name: "extra receive", lines: []string{"ch1", "ch2", "exit"}},
+		{name: "multiple sends", lines: []string{"100", "200", "ch1", "ch2"}},
+		{name: "unknown output", lines: []string{"100", "ch1", "unknown"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validSelectOutputLines(tt.lines); got != tt.valid {
+				t.Fatalf("validSelectOutputLines(%q) = %v, want %v", tt.lines, got, tt.valid)
+			}
+		})
 	}
 }
 

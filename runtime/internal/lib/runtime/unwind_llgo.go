@@ -13,6 +13,7 @@ func c_framepointer() unsafe.Pointer
 
 func init() {
 	rtdebug.PanicTraceback = panicTraceback
+	rtdebug.PanicRecovered = clearFaultTraceback
 }
 
 func hasPrefix(s, prefix string) bool {
@@ -31,6 +32,15 @@ func panicTraceback(skip int) bool {
 	if faultTraceback(skip) {
 		return true
 	}
+	if faultTracebackActive() {
+		// The sidecar was not already available in signal context. Preserve
+		// the async-signal failure policy through the resulting fatal panic:
+		// use the clite/raw-PC fallback and never initiate filesystem I/O.
+		return false
+	}
+	// Normal panic traceback is an I/O-safe first-use point. Hardware fault
+	// traceback above deliberately never initiates sidecar loading.
+	ensureRuntimePCLN()
 	if !fpUnwindAvailable() {
 		return false
 	}
@@ -155,5 +165,5 @@ var runtimeFPChain uint8
 // binary, and the funcinfo tables are present (without them symbolization
 // would fall back to dlsym anyway).
 func fpUnwindAvailable() bool {
-	return runtimeFPChain != 0 && runtimeFuncInfoTable != nil && runtimeFuncInfoCount > 0
+	return runtimePCLNReady() && runtimeFPChain != 0 && runtimeFuncInfoTable != nil && runtimeFuncInfoCount > 0
 }

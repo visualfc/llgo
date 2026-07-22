@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,6 +39,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/goplus/llgo/cl"
+	llabi "github.com/goplus/llgo/internal/abi"
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/cabi"
 	"github.com/goplus/llgo/internal/clang"
@@ -53,6 +55,7 @@ import (
 	"github.com/goplus/llgo/internal/monitor"
 	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/internal/packages"
+	"github.com/goplus/llgo/internal/pclnmap"
 	"github.com/goplus/llgo/internal/pclnpost"
 	"github.com/goplus/llgo/internal/typepatch"
 	"github.com/goplus/llgo/ssa/abi"
@@ -110,12 +113,13 @@ type OutFmts struct {
 
 // OutFmtDetails contains detailed output file paths for each format
 type OutFmtDetails struct {
-	Out string // Base output file path
-	Bin string // Binary output file path (.bin)
-	Hex string // Intel hex output file path (.hex)
-	Img string // Image output file path (.img)
-	Uf2 string // UF2 output file path (.uf2)
-	Zip string // ZIP/DFU output file path (.zip)
+	Out  string // Base output file path
+	PCLN string // PCLN sidecar output file path (.pclntab)
+	Bin  string // Binary output file path (.bin)
+	Hex  string // Intel hex output file path (.hex)
+	Img  string // Image output file path (.img)
+	Uf2  string // UF2 output file path (.uf2)
+	Zip  string // ZIP/DFU output file path (.zip)
 }
 
 // ModuleHook observes a package module immediately after it is generated and
@@ -146,6 +150,7 @@ type Config struct {
 	AbiMode       AbiMode
 	GenExpect     bool // only valid for ModeCmpTest
 	Verbose       bool
+	PrintPackages bool // print package paths as they are compiled, like go build -v
 	PrintCommands bool
 	GenLL         bool // generate pkg .ll files
 	DeadcodeDrop  bool // enable Go dead code drop
@@ -158,6 +163,22 @@ type Config struct {
 	SizeFormat    string // size report format: text,json (default text)
 	SizeLevel     string // size aggregation level: full,module,package (default module)
 	CompilerHash  string // metadata hash for the running compiler (development builds only)
+	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
+	NoErrorColumn bool   // omit source columns from frontend diagnostics
+	// GoBuildFlags contains normalized raw Go build flags forwarded to
+	// go/packages. Callers use internal/goflags to parse supported compiler and
+	// linker semantics into typed Config fields before calling Do.
+	GoBuildFlags []string
+	LinkOptions  LinkOptions
+	// OmitDWARFByDefault controls linked builds only when -w was not
+	// explicitly specified. Explicit -w and -w=false always win.
+	OmitDWARFByDefault bool
+	PCLNMode           PCLNMode
+	// PCLNModeSet marks PCLNMode as authoritative. Command flags set it for
+	// explicit requests; Do sets it after resolving the legacy environment
+	// default.
+	PCLNModeSet bool
+	AllowNoBody bool // allow declarations without bodies, as go tool compile does
 
 	// PthreadStackSize sets a custom stack size, in bytes, for pthread-backed
 	// goroutines. A zero value keeps the platform pthread default.
@@ -198,13 +219,15 @@ func NewDefaultConf(mode Mode) *Config {
 		goarch = runtime.GOARCH
 	}
 	conf := &Config{
-		Goos:         goos,
-		Goarch:       goarch,
-		BinPath:      bin,
-		Mode:         mode,
-		BuildMode:    BuildModeExe,
-		AbiMode:      cabi.ModeAllFunc,
-		DeadcodeDrop: true,
+		Goos:               goos,
+		Goarch:             goarch,
+		BinPath:            bin,
+		Mode:               mode,
+		BuildMode:          BuildModeExe,
+		AbiMode:            cabi.ModeAllFunc,
+		DeadcodeDrop:       true,
+		OmitDWARFByDefault: mode != ModeGen,
+		PCLNMode:           PCLNEmbedded,
 	}
 	return conf
 }
@@ -267,13 +290,21 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.BuildMode != BuildModeExe {
 		conf.DeadcodeDrop = false
 	}
+	conf.PCLNMode = effectivePCLNMode(conf)
+	conf.PCLNModeSet = true
 	if conf.SizeReport && conf.SizeFormat == "" {
 		conf.SizeFormat = "text"
 	}
 	if conf.SizeReport && conf.SizeLevel == "" {
 		conf.SizeLevel = "module"
 	}
+	if err := validatePCLNMode(conf); err != nil {
+		return nil, err
+	}
 	if err := ensureSizeReporting(conf); err != nil {
+		return nil, err
+	}
+	if err := conf.LinkOptions.validate(); err != nil {
 		return nil, err
 	}
 	conf.OptLevel = effectiveOptLevel(conf)
@@ -283,6 +314,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup crosscompile: %w", err)
 	}
+	applyBuildModeCompileFlags(conf.BuildMode, &export)
 	// Update GOOS/GOARCH from export if target was used
 	if conf.Target != "" && export.GOOS != "" {
 		conf.Goos = export.GOOS
@@ -290,7 +322,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
 	}
-
+	if err := validateLinkOptions(conf, &export); err != nil {
+		return nil, err
+	}
 	// Enable different export names for TinyGo compatibility when using -target
 	if conf.Target != "" {
 		cl.EnableExportRename(true)
@@ -299,6 +333,12 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	verbose := conf.Verbose
 	patterns := args
 	tags := "llgo,math_big_pure_go,purego"
+	if conf.PCLNMode == PCLNExternal {
+		// Select the optional runtime loader as part of the normal package
+		// cache key. Embedded and none builds do not compile any loader or
+		// sidecar probing code.
+		tags += ",llgo_pclntab_external"
+	}
 	if conf.AbiMode == cabi.ModeAllFunc {
 		tags += ",llgo_abi_2"
 	}
@@ -308,9 +348,11 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if len(export.BuildTags) > 0 {
 		tags += "," + strings.Join(export.BuildTags, ",")
 	}
+	goBuildFlags := []string{"-tags=" + tags}
+	goBuildFlags = append(goBuildFlags, conf.GoBuildFlags...)
 	cfg := &packages.Config{
 		Mode:       loadSyntax | packages.NeedDeps | packages.NeedModule | packages.NeedExportFile,
-		BuildFlags: []string{"-tags=" + tags},
+		BuildFlags: goBuildFlags,
 		Fset:       token.NewFileSet(),
 		Tests:      conf.Mode == ModeTest,
 		Env:        append(slices.Clone(os.Environ()), "GOOS="+conf.Goos, "GOARCH="+conf.Goarch),
@@ -319,8 +361,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 
-	cl.EnableDebug(IsDbgEnabled())
-	cl.EnableDbgSyms(IsDbgSymsEnabled())
+	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
+	cl.EnableDebug(emitDebugInfo)
+	cl.EnableDbgSyms(emitDebugInfo)
 	cl.EnableTrace(IsTraceEnabled())
 	llssa.Initialize(llssa.InitAll)
 
@@ -347,16 +390,14 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
 	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
-	funcInfo := conf.Mode != ModeGen && IsFuncInfoEnabled()
+	funcInfo := conf.Mode != ModeGen && conf.PCLNMode != PCLNNone
 	prog.EnableFuncInfoMetadata(funcInfo)
-	// Site records are inline-asm fragments inside function bodies; their
-	// anchors shift instruction/scope layout enough to confuse debuggers
-	// (LLDB reported variables from an inner lexical block as in scope before
-	// the block began). Debug builds keep the metadata tables — FuncForPC
-	// name/FileLine fidelity survives via the dlsym path — but drop the
-	// sites. Caller-frame instrumentation is independent of both switches,
-	// so runtime.Caller keeps working in debug builds.
-	prog.EnableFuncInfoSites(funcInfo && !IsDbgEnabled() && IsFuncInfoSitesEnabled())
+	// Site records are inline-asm fragments inside function bodies. Darwin
+	// DWARF builds avoid them because they disturb LLDB lexical scopes; Linux
+	// still needs them because its restricted dynamic symbol table cannot
+	// reconstruct every Go entry PC through dlsym. External mode always needs
+	// final-PC sites for sidecar construction.
+	prog.EnableFuncInfoSites(shouldEnablePCLNSites(conf, funcInfo, emitDebugInfo))
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
 		if arch == "wasm" {
 			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
@@ -387,9 +428,12 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	initial, err := packages.LoadEx(dedup, sizes, cfg, patterns...)
+	initial, err := packages.LoadExWithGoVersion(dedup, sizes, cfg, conf.GoVersion, patterns...)
 	if err != nil {
 		return nil, err
+	}
+	if conf.AllowNoBody {
+		allowMissingFunctionBodies(initial)
 	}
 	mode := conf.Mode
 	if mode == ModeTest {
@@ -416,8 +460,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	altPkgPaths := altPkgs(initial, conf, llssa.PkgRuntime)
-	cfg.Dir = env.LLGoRuntimeDir()
-	altPkgs, err := packages.LoadEx(dedup, sizes, cfg, altPkgPaths...)
+	altCfg := *cfg
+	altCfg.Dir = env.LLGoRuntimeDir()
+	altPkgs, err := packages.LoadEx(dedup, sizes, &altCfg, altPkgPaths...)
 	if err != nil {
 		return nil, err
 	}
@@ -433,10 +478,10 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	buildMode := ssaBuildMode
 	cabiOptimize := true
 	passOpt := true
-	if IsDbgEnabled() || mode == ModeGen {
+	if emitDebugInfo || mode == ModeGen {
 		passOpt = false
 	}
-	if IsDbgEnabled() {
+	if emitDebugInfo {
 		buildMode |= ssa.GlobalDebug
 		cabiOptimize = false
 	}
@@ -507,7 +552,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 			if err != nil {
 				return nil, err
 			}
-			rewritePrebuiltFuncTab(ctx, outFmts.Out, verbose)
+			if err := finalizeRuntimePCLN(ctx, outFmts, verbose); err != nil {
+				return nil, err
+			}
 			if conf.Mode == ModeBuild && conf.SizeReport {
 				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
@@ -518,12 +565,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 			if ctx.buildConf.BuildMode == BuildModeCArchive || ctx.buildConf.BuildMode == BuildModeCShared {
 				libname := strings.TrimSuffix(filepath.Base(outFmts.Out), conf.AppExt)
 				headerPath := filepath.Join(filepath.Dir(outFmts.Out), libname) + ".h"
-				pkgs := make([]llssa.Package, 0, len(allPkgs))
-				for _, p := range allPkgs {
-					if p.LPkg != nil {
-						pkgs = append(pkgs, p.LPkg)
-					}
-				}
+				pkgs := cHeaderPackages(allPkgs)
 				headerErr := header.GenHeaderFile(prog, pkgs, libname, headerPath, verbose)
 				if headerErr != nil {
 					return nil, headerErr
@@ -586,6 +628,63 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	return allPkgs, nil
+}
+
+// cHeaderPackages excludes the patched standard runtime implementation. Its
+// //export callbacks are linker implementation details and may use internal C
+// types that are deliberately not representable in a public generated header.
+func cHeaderPackages(allPkgs []*aPackage) []llssa.Package {
+	pkgs := make([]llssa.Package, 0, len(allPkgs))
+	for _, pkg := range allPkgs {
+		if pkg == nil || pkg.LPkg == nil || pkg.Package == nil || pkg.PkgPath == "runtime" || isRuntimePkg(pkg.PkgPath) || !hasLocalCExports(pkg.LPkg) {
+			continue
+		}
+		pkgs = append(pkgs, pkg.LPkg)
+	}
+	return pkgs
+}
+
+func hasLocalCExports(pkg llssa.Package) bool {
+	if pkg == nil {
+		return false
+	}
+	for name := range pkg.ExportFuncs() {
+		if !strings.Contains(name, ".") || strings.HasPrefix(name, pkg.Path()+".") {
+			return true
+		}
+	}
+	return false
+}
+
+// applyBuildModeCompileFlags adds code-generation flags that must be present
+// while package C/C++ sources are compiled. Passing -fPIC only to the final
+// shared-library link is too late for objects containing global references.
+func applyBuildModeCompileFlags(mode BuildMode, export *crosscompile.Export) {
+	if mode == BuildModeCShared && export != nil && !slices.Contains(export.CCFLAGS, "-fPIC") {
+		export.CCFLAGS = append(export.CCFLAGS, "-fPIC")
+	}
+}
+
+func allowMissingFunctionBodies(initial []*packages.Package) {
+	for _, pkg := range initial {
+		hasMissingBody := false
+		hasOtherError := false
+		for _, pkgErr := range pkg.Errors {
+			switch {
+			case strings.Contains(pkgErr.Msg, "missing function body"):
+				hasMissingBody = true
+			case strings.HasPrefix(pkgErr.Msg, "# "):
+				// go list prefixes compiler diagnostics with the package name.
+			default:
+				hasOtherError = true
+			}
+		}
+		if hasMissingBody && !hasOtherError {
+			pkg.Errors = nil
+			pkg.TypeErrors = nil
+			pkg.IllTyped = false
+		}
+	}
 }
 
 func needLink(pkg *packages.Package, mode Mode) bool {
@@ -659,6 +758,10 @@ type context struct {
 	plan9asmOnce sync.Once
 	plan9asmMode plan9asmPkgsEnvMode
 	plan9asmPkgs map[string]bool
+
+	// pclnExternal is populated while generating the synthetic main module
+	// and completed with final linked PCs by the post-link externalizer.
+	pclnExternal *pclnmap.Data
 }
 
 func (c *context) compiler() *clang.Cmd {
@@ -1032,6 +1135,7 @@ func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
 }
 
 func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPath string, verbose bool) error {
+	ctx.pclnExternal = nil
 	needRuntime := false
 	needPyInit := false
 	var needAbiInit int
@@ -1114,9 +1218,14 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	// Generate main module file (needed for global variables even in library modes)
 	// This is compiled directly to .o and added to linkInputs (not cached)
 	// Use a stable synthetic name to avoid confusing it with the real main package in traces/logs.
-	funcInfo := prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
-	pcLineInfo := collectPCLineInfo(linkedOrder)
-	funcInfoStubs := collectFuncInfoStubRecords(linkedOrder, funcInfo)
+	var funcInfo []funcInfoRecord
+	var pcLineInfo []pcLineRecord
+	var funcInfoStubs []funcInfoStubRecord
+	if ctx.buildConf.PCLNMode != PCLNNone {
+		funcInfo = prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
+		pcLineInfo = collectPCLineInfo(linkedOrder)
+		funcInfoStubs = collectFuncInfoStubRecords(linkedOrder, funcInfo)
+	}
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
 		rtInit:        needRuntime,
 		pyInit:        needPyInit,
@@ -1158,6 +1267,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 			}
 		}
 	}
+	linkArgs = append(linkArgs, cSharedExportArgs(ctx, linkedOrder)...)
 
 	err = linkObjFiles(ctx, outputPath, linkInputs, linkArgs, verbose)
 	if err != nil {
@@ -1196,11 +1306,12 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	printCmds := ctx.shouldPrintCommands(verbose)
 	// Handle c-archive mode differently - use ar tool instead of linker
 	if ctx.buildConf.BuildMode == BuildModeCArchive {
-		return ctx.createArchiveFile(app, objFiles, printCmds)
+		return ctx.createMergedArchiveFile(app, objFiles, printCmds)
 	}
 
 	buildArgs := []string{"-o", app}
 	buildArgs = append(buildArgs, linkArgs...)
+	buildArgs = append(buildArgs, dwarfLinkerArgs(ctx.buildConf, &ctx.crossCompile)...)
 	ltoPluginFlags, err := ctx.buildConf.LTOPlugin.LinkerFlags(ctx.buildConf.Goos)
 	if err != nil {
 		return err
@@ -1218,7 +1329,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		buildArgs = append(buildArgs, linuxExportDynamicArgs(ctx)...)
 	}
 
-	if IsDbgSymsEnabled() {
+	if shouldEmitDebugInfo(ctx.buildConf, &ctx.crossCompile) {
 		buildArgs = append(buildArgs, "-gdwarf-4")
 	}
 
@@ -1249,6 +1360,40 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	return cmd.Link(buildArgs...)
 }
 
+// cSharedExportArgs keeps //export functions as shared-library link roots. The
+// functions live in package archives and otherwise remain unreferenced, so the
+// linker can omit both their object files and dynamic symbols.
+func cSharedExportArgs(ctx *context, pkgs []*aPackage) []string {
+	if ctx == nil || ctx.buildConf == nil || ctx.buildConf.BuildMode != BuildModeCShared {
+		return nil
+	}
+	exports := make(map[string]none)
+	for _, pkg := range pkgs {
+		if pkg == nil || pkg.LPkg == nil {
+			continue
+		}
+		for _, name := range pkg.LPkg.ExportFuncs() {
+			if name != "" {
+				exports[name] = none{}
+			}
+		}
+	}
+	names := make([]string, 0, len(exports))
+	for name := range exports {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	args := make([]string, 0, len(names))
+	for _, name := range names {
+		if ctx.buildConf.Goos == "darwin" {
+			args = append(args, "-Wl,-u,_"+name)
+		} else {
+			args = append(args, "-Wl,--undefined="+name)
+		}
+	}
+	return args
+}
+
 func needsLinuxNoPIE(ctx *context, linkArgs []string) bool {
 	if ctx.buildConf.Target != "" || ctx.buildConf.Goos != "linux" {
 		return false
@@ -1264,7 +1409,7 @@ func needsLinuxNoPIE(ctx *context, linkArgs []string) bool {
 }
 
 func needsLinuxExportDynamic(ctx *context) bool {
-	return ctx.buildConf.Target == "" && ctx.buildConf.Goos == "linux" && IsFuncInfoEnabled()
+	return ctx.buildConf.Target == "" && ctx.buildConf.Goos == "linux" && effectivePCLNMode(ctx.buildConf) != PCLNNone
 }
 
 func linuxExportDynamicArgs(ctx *context) []string {
@@ -1301,6 +1446,78 @@ func (c *context) archiver() string {
 		}
 	}
 	return "ar"
+}
+
+// archiveMerger returns an archiver with MRI support, which is required to
+// flatten package archives into the final c-archive instead of nesting .a
+// files as members. LLVM is already a required LLGo toolchain dependency.
+func (c *context) archiveMerger() (string, error) {
+	if ar := os.Getenv("LLGO_AR"); ar != "" {
+		return ar, nil
+	}
+	if c.crossCompile.CC != "" {
+		llvmAr := filepath.Join(filepath.Dir(c.crossCompile.CC), "llvm-ar")
+		if _, err := os.Stat(llvmAr); err == nil {
+			return llvmAr, nil
+		}
+	}
+	if llvmAr, err := exec.LookPath("llvm-ar"); err == nil {
+		return llvmAr, nil
+	}
+	return "", errors.New("llvm-ar is required to create a flat c-archive")
+}
+
+// createMergedArchiveFile combines object files and package archives into one
+// flat archive. A regular `ar rcs output.a input.a` stores input.a as a nested
+// member, which C linkers cannot search or load.
+func (c *context) createMergedArchiveFile(archivePath string, inputs []string, verbose ...bool) error {
+	if len(inputs) == 0 {
+		return fmt.Errorf("no inputs provided for archive %s", archivePath)
+	}
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(archivePath), filepath.Base(archivePath)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	_ = os.Remove(tmpName)
+
+	var script strings.Builder
+	fmt.Fprintf(&script, "CREATE %s\n", strconv.Quote(tmpName))
+	for _, input := range inputs {
+		command := "ADDMOD"
+		if strings.HasSuffix(strings.ToLower(input), ".a") {
+			command = "ADDLIB"
+		}
+		fmt.Fprintf(&script, "%s %s\n", command, strconv.Quote(input))
+	}
+	script.WriteString("SAVE\nEND\n")
+
+	arCmd, err := c.archiveMerger()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(arCmd, "-M")
+	cmd.Stdin = strings.NewReader(script.String())
+	printCmds := c.shouldPrintCommands(len(verbose) > 0 && verbose[0])
+	if printCmds {
+		fmt.Fprintf(os.Stderr, "%s -M\n%s", filepath.Base(arCmd), script.String())
+	}
+	if output, err := cmd.CombinedOutput(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("merge archive %s: %w\n%s", archivePath, err, output)
+	}
+	if err := os.Rename(tmpName, archivePath); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("publish archive %s: %w", archivePath, err)
+	}
+	return nil
 }
 
 // createArchiveFile builds an archive at archivePath atomically to avoid races when
@@ -1368,6 +1585,8 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 	pkgPath := pkg.PkgPath
 	if debugBuild || verbose {
 		fmt.Fprintln(os.Stderr, pkgPath)
+	} else {
+		printCompiledPackage(ctx.buildConf, aPkg)
 	}
 	if llruntime.SkipToBuild(pkgPath) {
 		pkg.ExportFile = ""
@@ -1410,6 +1629,7 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 	}
 
 	ctx.cTransformer.SetSkipFuncs(cabiSkipFuncsForPlan9Asm(ctx, pkgPath, ret.Module()))
+	llabi.LowerLargeAggregates(ctx.prog.TargetData(), ret.Module())
 	ctx.cTransformer.TransformModule(ret.Path(), ret.Module())
 	ctx.cTransformer.SetSkipFuncs(nil)
 
@@ -1482,6 +1702,12 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		}
 	}
 	return nil
+}
+
+func printCompiledPackage(conf *Config, pkg *aPackage) {
+	if conf.PrintPackages && !pkg.CacheHit {
+		fmt.Fprintln(os.Stderr, pkg.PkgPath)
+	}
 }
 
 func exportObject(ctx *context, pkgPath string, exportFile string, pkg llssa.Package) (string, error) {
@@ -1758,13 +1984,61 @@ func buildSSAPkgs(ctx *context, initial []*packages.Package, verbose bool) ([]*a
 	if len(errs) > 0 {
 		for _, errPkg := range errs {
 			for _, err := range errPkg.Errors {
-				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, formatPackageError(err, ctx.buildConf.NoErrorColumn))
 			}
 			fmt.Fprintln(os.Stderr, "cannot build SSA for package", errPkg)
 		}
 		return nil, fmt.Errorf("cannot build SSA for packages")
 	}
 	return all, nil
+}
+
+func formatPackageError(err packages.Error, noColumn bool) string {
+	formatted := err.Error()
+	if !noColumn {
+		return formatted
+	}
+	if pos, ok := positionWithoutColumn(err.Pos); ok {
+		return pos + ": " + err.Msg
+	}
+	lines := strings.Split(formatted, "\n")
+	for i, line := range lines {
+		if line, ok := diagnosticWithoutColumn(line); ok {
+			lines[i] = line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func positionWithoutColumn(pos string) (string, bool) {
+	lastColon := strings.LastIndexByte(pos, ':')
+	if lastColon < 0 {
+		return "", false
+	}
+	if _, parseErr := strconv.Atoi(pos[lastColon+1:]); parseErr != nil {
+		return "", false
+	}
+	linePos := pos[:lastColon]
+	lineColon := strings.LastIndexByte(linePos, ':')
+	if lineColon < 0 {
+		return "", false
+	}
+	if _, parseErr := strconv.Atoi(linePos[lineColon+1:]); parseErr != nil {
+		return "", false
+	}
+	return linePos, true
+}
+
+func diagnosticWithoutColumn(line string) (string, bool) {
+	separator := strings.Index(line, ": ")
+	if separator < 0 {
+		return "", false
+	}
+	pos, ok := positionWithoutColumn(line[:separator])
+	if !ok {
+		return "", false
+	}
+	return pos + line[separator:], true
 }
 
 func collectRewriteVars(ctx *context, pkgPath string) map[string]string {
@@ -1900,8 +2174,6 @@ var (
 )
 */
 
-const llgoDebug = "LLGO_DEBUG"
-const llgoDbgSyms = "LLGO_DEBUG_SYMBOLS"
 const llgoFuncInfo = "LLGO_FUNCINFO"
 const llgoFuncInfoSites = "LLGO_FUNCINFO_SITES"
 const llgoTrace = "LLGO_TRACE"
@@ -1947,10 +2219,6 @@ func IsStdioNobuf() bool {
 	return isEnvOn(llgoStdioNobuf, false)
 }
 
-func IsDbgEnabled() bool {
-	return isEnvOn(llgoDebug, false) || isEnvOn(llgoDbgSyms, false)
-}
-
 func IsFuncInfoEnabled() bool {
 	return isEnvOn(llgoFuncInfo, true)
 }
@@ -1961,10 +2229,6 @@ func IsFuncInfoEnabled() bool {
 // isolating codegen perturbation caused by the in-body asm anchors.
 func IsFuncInfoSitesEnabled() bool {
 	return isEnvOn(llgoFuncInfoSites, true)
-}
-
-func IsDbgSymsEnabled() bool {
-	return isEnvOn(llgoDbgSyms, false)
 }
 
 func IsOptimizeEnabled() bool {

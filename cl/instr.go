@@ -711,6 +711,14 @@ func (p *context) pkgNoInit(pkg *types.Package) bool {
 }
 
 func (p *context) offsetOfBuiltinArg(arg ssa.Value) (llssa.Expr, bool) {
+	if field, ok := arg.(*ssa.Field); ok {
+		st, ok := field.X.Type().Underlying().(*types.Struct)
+		if !ok || field.Field < 0 || field.Field >= st.NumFields() {
+			return llssa.Expr{}, false
+		}
+		typ := p.type_(field.X.Type(), llssa.InGo)
+		return p.prog.Val(int(p.prog.OffsetOf(typ, field.Field))), true
+	}
 	load, ok := arg.(*ssa.UnOp)
 	if !ok || load.Op != token.MUL {
 		return llssa.Expr{}, false
@@ -1569,11 +1577,14 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 		align = "2"
 	}
 	// Keep section names in sync with internal/build/funcinfo_table.go
-	// (pcLineSiteSectionInfo). ELF ties the record to the function via
-	// SHF_LINK_ORDER (honored by --gc-sections); Mach-O uses a live_support
-	// section plus one linker-private atom symbol per record so -dead_strip
-	// keeps a record exactly when the function containing its label is live.
-	pushSection := ".pushsection llgo_pcline,\"ao\",@progbits," + asmQuoteSymbol(p.fn.Name())
+	// (pcLineSiteSectionInfo). ELF ties the record to its final code location
+	// via SHF_LINK_ORDER (honored by --gc-sections). Use the local asm label
+	// rather than the source function symbol: Full LTO can inline or remove the
+	// latter without rewriting symbol names embedded in inline-asm strings.
+	// Mach-O uses a live_support section plus one linker-private atom symbol per
+	// record so -dead_strip keeps a record exactly when the function containing
+	// its label is live.
+	pushSection := ".pushsection llgo_pcline,\"awo\",@progbits," + asmLabel
 	recordSymbol := ""
 	if target.GOOS == "darwin" {
 		pushSection = ".pushsection __DATA,__llgo_pcl,regular,live_support"

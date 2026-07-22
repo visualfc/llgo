@@ -101,6 +101,9 @@ var funcForPCCacheNext [funcForPCCacheSets]uint8
 var funcForPCLast funcForPCCacheEntry
 
 func FuncForPC(pc uintptr) *Func {
+	// External metadata must be installed before consulting either cache:
+	// caching a pre-load miss would otherwise survive a successful load.
+	ensureRuntimePCLN()
 	if fn := funcForPCLast.fn; fn != nil && funcForPCLast.pc == pc {
 		return fn
 	}

@@ -5,6 +5,7 @@ package build
 
 import (
 	"bytes"
+	"debug/macho"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -14,10 +15,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/goplus/llgo/internal/buildenv"
+	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/lto"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/packages"
@@ -255,6 +258,126 @@ func TestLdFlagsRewriteVarsMainAlias(t *testing.T) {
 	buildRewriteBinary(t, true, "alias-main", "alias-pkg")
 }
 
+func TestLinkOptionsOmitDWARFPreservesPclntab(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("initial -s/-w backend coverage is limited to native Mach-O and ELF")
+	}
+	t.Setenv(llgoFuncInfo, "1")
+
+	tests := []struct {
+		name    string
+		options LinkOptions
+	}{
+		{name: "w", options: LinkOptions{DWARF: DWARFOmit}},
+		{name: "s", options: LinkOptions{OmitSymbolTable: true}},
+		{name: "s_w_false", options: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			binPath := filepath.Join(t.TempDir(), "ldflagsstrip")
+			cfg := &Config{
+				Mode:        ModeBuild,
+				OutFile:     binPath,
+				LinkOptions: tt.options,
+			}
+			if _, err := Do([]string{"./testdata/ldflagsstrip"}, cfg); err != nil {
+				t.Fatalf("ModeBuild with LinkOptions %+v failed: %v", tt.options, err)
+			}
+			if got, want := runBinary(t, binPath), "main.caller main.go true\n"; got != want {
+				t.Fatalf("runtime symbolization with LinkOptions %+v:\nwant %q\ngot  %q", tt.options, want, got)
+			}
+			if runtime.GOOS == "darwin" {
+				if out, err := exec.Command("codesign", "--verify", "--verbose=4", binPath).CombinedOutput(); err != nil {
+					t.Fatalf("codesign verification with LinkOptions %+v: %v\n%s", tt.options, err, out)
+				}
+			}
+		})
+	}
+}
+
+func TestLinkOptionsControlELFDWARF(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("ELF DWARF integration test")
+	}
+	tests := []struct {
+		name      string
+		options   LinkOptions
+		wantDWARF bool
+	}{
+		{name: "omit", options: LinkOptions{DWARF: DWARFOmit}},
+		{name: "preserve", options: LinkOptions{DWARF: DWARFPreserve}, wantDWARF: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			binPath := filepath.Join(t.TempDir(), "ldflagsstrip")
+			cfg := &Config{Mode: ModeBuild, OutFile: binPath, LinkOptions: tt.options}
+			if _, err := Do([]string{"./testdata/ldflagsstrip"}, cfg); err != nil {
+				t.Fatalf("ModeBuild with LinkOptions %+v failed: %v", tt.options, err)
+			}
+			if got := elfHasDebugInfo(t, binPath); got != tt.wantDWARF {
+				t.Fatalf("ELF DWARF with LinkOptions %+v = %v, want %v", tt.options, got, tt.wantDWARF)
+			}
+			_ = runBinary(t, binPath)
+		})
+	}
+}
+
+func TestLinkOptionsControlDarwinDebugSymbols(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Mach-O debug-symbol integration test")
+	}
+	tests := []struct {
+		name      string
+		options   LinkOptions
+		wantSTABS bool
+	}{
+		{name: "omit", options: LinkOptions{DWARF: DWARFOmit}},
+		{name: "preserve", options: LinkOptions{DWARF: DWARFPreserve}, wantSTABS: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			binPath := filepath.Join(t.TempDir(), "ldflagsstrip")
+			cfg := &Config{Mode: ModeBuild, OutFile: binPath, LinkOptions: tt.options}
+			if _, err := Do([]string{"./testdata/ldflagsstrip"}, cfg); err != nil {
+				t.Fatalf("ModeBuild with LinkOptions %+v failed: %v", tt.options, err)
+			}
+			if got := machoHasStabs(t, binPath); got != tt.wantSTABS {
+				t.Fatalf("Mach-O STABS with LinkOptions %+v = %v, want %v", tt.options, got, tt.wantSTABS)
+			}
+			_ = runBinary(t, binPath)
+			if out, err := exec.Command("codesign", "--verify", "--verbose=4", binPath).CombinedOutput(); err != nil {
+				t.Fatalf("codesign verification with LinkOptions %+v: %v\n%s", tt.options, err, out)
+			}
+		})
+	}
+}
+
+func machoHasStabs(t *testing.T, path string) bool {
+	t.Helper()
+	f, err := macho.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if f.Symtab == nil {
+		return false
+	}
+	const nStab = 0xe0
+	for _, symbol := range f.Symtab.Syms {
+		if symbol.Type&nStab != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDoRejectsInvalidLinkOptions(t *testing.T) {
+	_, err := Do(nil, &Config{LinkOptions: LinkOptions{DWARF: DWARFMode(255)}})
+	if err == nil || !strings.Contains(err.Error(), "invalid DWARF mode 255") {
+		t.Fatalf("Do() error = %v, want invalid DWARF mode", err)
+	}
+}
+
 func buildRewriteBinary(t *testing.T, useMainAlias bool, mainVal, depVal string) {
 	t.Helper()
 	binPath := filepath.Join(t.TempDir(), "rewrite")
@@ -483,6 +606,203 @@ func TestArchiverAllowsLLGOAROverrideForLTO(t *testing.T) {
 	}
 }
 
+func TestCSharedExportArgs(t *testing.T) {
+	if got := cSharedExportArgs(nil, nil); got != nil {
+		t.Fatalf("nil cSharedExportArgs = %v, want nil", got)
+	}
+	prog := llssa.NewProgram(nil)
+	lpkg := prog.NewPackage("example.com/p", "example.com/p")
+	lpkg.SetExport("example.com/p.Z", "Zed")
+	lpkg.SetExport("example.com/p.A", "Add")
+	pkgs := []*aPackage{{LPkg: lpkg}}
+
+	ctx := &context{buildConf: &Config{BuildMode: BuildModeCShared, Goos: "linux"}}
+	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,--undefined=Add -Wl,--undefined=Zed"; got != want {
+		t.Fatalf("linux cSharedExportArgs = %q, want %q", got, want)
+	}
+	ctx.buildConf.Goos = "darwin"
+	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,-u,_Add -Wl,-u,_Zed"; got != want {
+		t.Fatalf("darwin cSharedExportArgs = %q, want %q", got, want)
+	}
+	ctx.buildConf.BuildMode = BuildModeExe
+	if got := cSharedExportArgs(ctx, pkgs); got != nil {
+		t.Fatalf("executable cSharedExportArgs = %v, want nil", got)
+	}
+}
+
+func TestApplyBuildModeCompileFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		mode BuildMode
+		in   []string
+		want string
+	}{
+		{name: "shared adds PIC", mode: BuildModeCShared, want: "-fPIC"},
+		{name: "shared preserves flags", mode: BuildModeCShared, in: []string{"-O2"}, want: "-O2 -fPIC"},
+		{name: "shared does not duplicate PIC", mode: BuildModeCShared, in: []string{"-fPIC"}, want: "-fPIC"},
+		{name: "archive remains unchanged", mode: BuildModeCArchive, in: []string{"-O2"}, want: "-O2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			export := crosscompile.Export{CCFLAGS: slices.Clone(tt.in)}
+			applyBuildModeCompileFlags(tt.mode, &export)
+			if got := strings.Join(export.CCFLAGS, " "); got != tt.want {
+				t.Fatalf("CCFLAGS = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	applyBuildModeCompileFlags(BuildModeCShared, nil)
+}
+
+func TestCHeaderPackagesExcludesStandardRuntime(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	userLPkg := prog.NewPackage("example.com/p", "example.com/p")
+	userLPkg.SetExport("example.com/p.Export", "Export")
+	runtimeLPkg := prog.NewPackage("runtime", "runtime")
+	llgoRuntimeLPkg := prog.NewPackage("github.com/goplus/llgo/runtime/internal/lib/runtime", "github.com/goplus/llgo/runtime/internal/lib/runtime")
+	dependencyLPkg := prog.NewPackage("example.com/dep", "example.com/dep")
+	pkgs := []*aPackage{
+		{Package: &packages.Package{PkgPath: "example.com/p"}, LPkg: userLPkg},
+		{Package: &packages.Package{PkgPath: "runtime"}, LPkg: runtimeLPkg},
+		{Package: &packages.Package{PkgPath: "github.com/goplus/llgo/runtime/internal/lib/runtime"}, LPkg: llgoRuntimeLPkg},
+		{Package: &packages.Package{PkgPath: "example.com/dep"}, LPkg: dependencyLPkg},
+		nil,
+	}
+	got := cHeaderPackages(pkgs)
+	if len(got) != 1 || got[0] != userLPkg {
+		t.Fatalf("cHeaderPackages = %v, want only user package", got)
+	}
+
+	if hasLocalCExports(nil) {
+		t.Fatal("hasLocalCExports(nil) = true, want false")
+	}
+	unqualifiedLPkg := prog.NewPackage("example.com/unqualified", "example.com/unqualified")
+	unqualifiedLPkg.SetExport("Export", "Export")
+	if !hasLocalCExports(unqualifiedLPkg) {
+		t.Fatal("hasLocalCExports(unqualified) = false, want true")
+	}
+	foreignOnlyLPkg := prog.NewPackage("example.com/foreign", "example.com/foreign")
+	foreignOnlyLPkg.SetExport("runtime.Export", "Export")
+	if hasLocalCExports(foreignOnlyLPkg) {
+		t.Fatal("hasLocalCExports(foreign only) = true, want false")
+	}
+}
+
+func TestArchiveMergerSelection(t *testing.T) {
+	t.Run("override", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "custom-llvm-ar")
+		got, err := (&context{}).archiveMerger()
+		if err != nil || got != "custom-llvm-ar" {
+			t.Fatalf("archiveMerger() = %q, %v, want custom-llvm-ar", got, err)
+		}
+	})
+
+	t.Run("next to compiler", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "")
+		t.Setenv("PATH", "")
+		td := t.TempDir()
+		llvmAr := filepath.Join(td, "llvm-ar")
+		if err := os.WriteFile(llvmAr, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		ctx := &context{}
+		ctx.crossCompile.CC = filepath.Join(td, "clang")
+		got, err := ctx.archiveMerger()
+		if err != nil || got != llvmAr {
+			t.Fatalf("archiveMerger() = %q, %v, want %q", got, err, llvmAr)
+		}
+	})
+
+	t.Run("path", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "")
+		td := t.TempDir()
+		llvmAr := filepath.Join(td, "llvm-ar")
+		if err := os.WriteFile(llvmAr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", td)
+		got, err := (&context{}).archiveMerger()
+		if err != nil || got != llvmAr {
+			t.Fatalf("archiveMerger() = %q, %v, want %q", got, err, llvmAr)
+		}
+	})
+
+	t.Run("missing", func(t *testing.T) {
+		t.Setenv("LLGO_AR", "")
+		t.Setenv("PATH", "")
+		if got, err := (&context{}).archiveMerger(); err == nil || got != "" {
+			t.Fatalf("archiveMerger() = %q, %v, want missing-tool error", got, err)
+		}
+	})
+}
+
+func TestCreateMergedArchiveFileFlattensInputs(t *testing.T) {
+	llvmAr, err := exec.LookPath("llvm-ar")
+	if err != nil {
+		t.Skip("llvm-ar is not installed")
+	}
+	t.Setenv("LLGO_AR", llvmAr)
+
+	td := filepath.Join(t.TempDir(), "archive with spaces")
+	if err := os.MkdirAll(td, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	direct := filepath.Join(td, "direct.o")
+	nestedOne := filepath.Join(td, "nested-one.o")
+	nestedTwo := filepath.Join(td, "nested-two.o")
+	for path, content := range map[string]string{
+		direct:    "direct",
+		nestedOne: "nested one",
+		nestedTwo: "nested two",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	nested := filepath.Join(td, "nested.a")
+	if output, err := exec.Command(llvmAr, "rcs", nested, nestedOne, nestedTwo).CombinedOutput(); err != nil {
+		t.Fatalf("create nested archive: %v\n%s", err, output)
+	}
+
+	out := filepath.Join(td, "combined.a")
+	ctx := &context{buildConf: &Config{}}
+	if err := ctx.createMergedArchiveFile(out, []string{direct, nested}, true); err != nil {
+		t.Fatal(err)
+	}
+	output, err := exec.Command(llvmAr, "t", out).CombinedOutput()
+	if err != nil {
+		t.Fatalf("list merged archive: %v\n%s", err, output)
+	}
+	members := strings.Fields(string(output))
+	slices.Sort(members)
+	if got, want := strings.Join(members, " "), "direct.o nested-one.o nested-two.o"; got != want {
+		t.Fatalf("merged archive members = %q, want %q", got, want)
+	}
+}
+
+func TestCreateMergedArchiveFileErrors(t *testing.T) {
+	ctx := &context{buildConf: &Config{}}
+	if err := ctx.createMergedArchiveFile(filepath.Join(t.TempDir(), "empty.a"), nil); err == nil {
+		t.Fatal("createMergedArchiveFile with no inputs succeeded")
+	}
+
+	td := t.TempDir()
+	failingAr := filepath.Join(td, "llvm-ar")
+	if err := os.WriteFile(failingAr, []byte("#!/bin/sh\necho merge failed >&2\nexit 7\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_AR", failingAr)
+	input := filepath.Join(td, "input.o")
+	if err := os.WriteFile(input, []byte("object"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ctx.createMergedArchiveFile(filepath.Join(td, "failed.a"), []string{input}); err == nil || !strings.Contains(err.Error(), "merge failed") {
+		t.Fatalf("createMergedArchiveFile error = %v, want archiver output", err)
+	}
+}
+
 func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 	tests := []struct {
 		name string
@@ -521,6 +841,86 @@ func TestDeadcodeDropDisabledWhenGoGlobalDCEEnabled(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.conf.deadcodeDropEnabled(); got != tt.want {
 				t.Fatalf("deadcodeDropEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAllowMissingFunctionBodies(t *testing.T) {
+	pkg := &packages.Package{
+		Errors: []packages.Error{
+			{Msg: "# command-line-arguments"},
+			{Msg: "missing function body"},
+		},
+		IllTyped: true,
+	}
+	allowMissingFunctionBodies([]*packages.Package{pkg})
+	if pkg.IllTyped || len(pkg.Errors) != 0 || len(pkg.TypeErrors) != 0 {
+		t.Fatalf("package remains ill-typed: %+v", pkg.Errors)
+	}
+
+	pkg = &packages.Package{
+		Errors: []packages.Error{
+			{Msg: "missing function body"},
+			{Msg: "undefined: missing"},
+		},
+		IllTyped: true,
+	}
+	allowMissingFunctionBodies([]*packages.Package{pkg})
+	if !pkg.IllTyped || len(pkg.Errors) != 2 {
+		t.Fatalf("mixed errors were incorrectly suppressed: %+v", pkg.Errors)
+	}
+
+	unchanged := &packages.Package{Errors: []packages.Error{{Msg: "# command-line-arguments"}}, IllTyped: true}
+	allowMissingFunctionBodies([]*packages.Package{unchanged})
+	if !unchanged.IllTyped || len(unchanged.Errors) != 1 {
+		t.Fatalf("package without a missing-body diagnostic was changed: %+v", unchanged)
+	}
+}
+
+func TestDoAllowsMissingFunctionBodies(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "nobody.go")
+	if err := os.WriteFile(file, []byte(`package nobody
+
+func External()
+
+func F() {}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf := NewDefaultConf(ModeGen)
+	conf.AllowNoBody = true
+	pkgs, err := Do([]string{file}, conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 1 || pkgs[0].LPkg == nil {
+		t.Fatalf("Do returned packages = %+v, want one compiled package", pkgs)
+	}
+	pkgs[0].LPkg.Prog.Dispose()
+}
+
+func TestFormatPackageError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      packages.Error
+		noColumn bool
+		want     string
+	}{
+		{name: "keep columns", err: packages.Error{Pos: "case.go:2:3", Msg: "bad"}, want: "case.go:2:3: bad"},
+		{name: "remove column", err: packages.Error{Pos: "case.go:2:3", Msg: "bad"}, noColumn: true, want: "case.go:2: bad"},
+		{name: "driver diagnostic", err: packages.Error{Pos: "-", Msg: "# command-line-arguments\ndriver detail\ncase.go:2:3: bad"}, noColumn: true, want: "-: # command-line-arguments\ndriver detail\ncase.go:2: bad"},
+		{name: "empty position", err: packages.Error{Msg: "bad"}, noColumn: true, want: "-: bad"},
+		{name: "dash position", err: packages.Error{Pos: "-", Msg: "bad"}, noColumn: true, want: "-: bad"},
+		{name: "missing separators", err: packages.Error{Pos: "case.go", Msg: "bad"}, noColumn: true, want: "case.go: bad"},
+		{name: "invalid column", err: packages.Error{Pos: "case.go:2:x", Msg: "bad"}, noColumn: true, want: "case.go:2:x: bad"},
+		{name: "missing line separator", err: packages.Error{Pos: "2:3", Msg: "bad"}, noColumn: true, want: "2:3: bad"},
+		{name: "invalid line", err: packages.Error{Pos: "case.go:x:3", Msg: "bad"}, noColumn: true, want: "case.go:x:3: bad"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatPackageError(tt.err, tt.noColumn); got != tt.want {
+				t.Fatalf("formatPackageError() = %q, want %q", got, tt.want)
 			}
 		})
 	}

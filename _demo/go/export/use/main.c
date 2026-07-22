@@ -2,7 +2,33 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <assert.h>
+#include <string.h>
 #include "../libexport.h"
+
+static int go_string_equals(GoString got, const char *want) {
+    size_t want_len = strlen(want);
+    return got.n == (intptr_t)want_len && memcmp(got.p, want, want_len) == 0;
+}
+
+static int go_string_has_suffix(GoString got, const char *suffix) {
+    size_t suffix_len = strlen(suffix);
+    return got.n >= (intptr_t)suffix_len &&
+        memcmp(got.p + got.n - suffix_len, suffix, suffix_len) == 0;
+}
+
+static intptr_t int_callback(intptr_t value) {
+    return value + 700;
+}
+
+static GoString string_callback(GoString value) {
+    return value;
+}
+
+static int void_callback_count;
+
+static void void_callback(void) {
+    void_callback_count++;
+}
 
 int main() {
     printf("=== C Export Demo ===\n");
@@ -12,15 +38,36 @@ int main() {
     github_com_goplus_llgo__demo_go_export_c_init();
     github_com_goplus_llgo__demo_go_export_init();
 
+    // Verify that funcinfo is not merely linkable: runtime.Callers must yield
+    // a symbolized frame and runtime.FuncForPC must resolve that PC's details.
+    main_FuncInfoResult func_info = GetFuncInfo();
+    assert(func_info.CallersCount > 0);
+    assert(func_info.FramePC != 0);
+    assert(go_string_equals(func_info.FrameFunction, "main.captureCFuncInfo"));
+    assert(go_string_has_suffix(func_info.FrameFile, "export.go"));
+    assert(func_info.FrameLine > 0);
+    assert(go_string_equals(func_info.FuncName, "main.captureCFuncInfo"));
+    assert(func_info.FuncEntry != 0);
+    assert(go_string_has_suffix(func_info.FuncFile, "export.go"));
+    assert(func_info.FuncLine == func_info.FrameLine);
+    printf("FuncInfo: %.*s %.*s:%d\n",
+        (int)func_info.FuncName.n, func_info.FuncName.p,
+        (int)func_info.FuncFile.n, func_info.FuncFile.p,
+        func_info.FuncLine);
+
     // Test HelloWorld
     HelloWorld();
     printf("\n");
 
     // Test small struct
     main_SmallStruct small = CreateSmallStruct(5, 1);  // 1 for true
+    assert(small.ID == 5);
+    assert(small.Flag == 1);
     printf("Small struct: %d %d\n", small.ID, small.Flag);
 
     main_SmallStruct processed = ProcessSmallStruct(small);
+    assert(processed.ID == 6);
+    assert(processed.Flag == 0);
     printf("Processed small: %d %d\n", processed.ID, processed.Flag);
 
     main_SmallStruct* ptrSmall = ProcessSmallStructPtr(&small);
@@ -31,6 +78,7 @@ int main() {
     // Test large struct - create GoString for name parameter
     GoString name = {"test_large", 10};  // name and length
     main_LargeStruct large = CreateLargeStruct(12345, name);
+    assert(large.ID == 12345);
     printf("Large struct ID: %" PRId64 "\n", large.ID);
 
     int64_t total = ProcessLargeStruct(large);
@@ -98,6 +146,15 @@ int main() {
     assert(f64_result > 7.84 && f64_result < 7.86);  // ProcessFloat64(x) returns x * 2.5 ≈ 7.85
     printf("Float64: %f\n", f64_result);
 
+    GoString raw_string = {"value", 5};
+    GoString processed_string = ProcessString(raw_string);
+    assert(go_string_equals(processed_string, "processed_value"));
+    assert(RunGoroutine(41) == 42);
+    assert(go_string_equals(ProcessMyString(raw_string), "modified_value"));
+    assert(go_string_equals(TwoParams(65, (GoString){"bc", 2}), "Abc"));
+    assert(go_string_equals(MultipleParams(1, 2, 3, 4, 5.0f, 6.0,
+        (GoString){"multi", 5}, 1), "multi_B23_true_4_5_6"));
+
     // Test unsafe pointer
     int test_val = 42;
     void* ptr_result = ProcessUnsafePointer(&test_val);
@@ -108,15 +165,36 @@ int main() {
     printf("MyInt: %ld\n", (long)myInt);
 
     // Test arrays
-    intptr_t arr[5] = {1, 2, 3, 4, 5};
-    printf("Array sum: %ld\n", ProcessIntArray(arr));
+    Array_intptr_t_5 arr = {.data = {1, 2, 3, 4, 5}};
+    intptr_t arr_sum = ProcessIntArray(arr);
+    assert(arr_sum == 15);
+    printf("Array sum: %ld\n", (long)arr_sum);
 
     // Test complex data with multidimensional arrays
     main_ComplexData complex = CreateComplexData();
+    assert(ProcessComplexData(complex) == 78);
+    assert(complex.IntArray[0] == 10 && complex.IntArray[4] == 50);
+    assert(complex.Slices.len == 1);
+    assert(complex.DataList.len == 1);
+    assert(((double*)complex.DataList.data)[0] == 1.0);
     printf("Complex data matrix sum: %" PRId32 "\n", ProcessComplexData(complex));
 
-    // Test interface - this is more complex in C, we'll skip for now
-    printf("Interface test skipped (complex in C)\n");
+    intptr_t c_slice_values[] = {3, 6, 9};
+    GoSlice c_slice = {c_slice_values, 3, 3};
+    assert(ProcessIntSlice(c_slice) == 18);
+    GoSlice int_slice = CreateIntSlice();
+    assert(int_slice.len == 4);
+    assert(ProcessIntSlice(int_slice) == 20);
+    GoMap string_map = CreateStringMap();
+    assert(string_map.data != NULL);
+    assert(ProcessStringMap(string_map) == 60);
+    GoChan int_channel = CreateIntChannel();
+    assert(int_channel.data != NULL);
+    assert(ProcessIntChannel(int_channel) == 321);
+    GoInterface int_interface = CreateIntInterface();
+    GoInterface string_interface = CreateStringInterface();
+    assert(ProcessInterface(int_interface) == 123);
+    assert(ProcessInterface(string_interface) == 40);
 
     // Test various parameter counts
     assert(NoParams() == 42);  // NoParams() always returns 42
@@ -134,6 +212,11 @@ int main() {
     assert(unnamed_result == 22.5);  // (10 + 5) * 1.5 = 22.5
     printf("ProcessThreeUnnamedParams: %f\n", unnamed_result);
     
+    assert(ProcessWithIntCallback(23, int_callback) == 723);
+    assert(go_string_equals(ProcessWithStringCallback(raw_string, string_callback), "value"));
+    assert(ProcessWithVoidCallback(void_callback) == 123);
+    assert(void_callback_count == 1);
+
     // Test ProcessWithVoidCallback - now returns int
     int void_callback_result = ProcessWithVoidCallback(NULL);
     assert(void_callback_result == 456);  // Returns 456 when callback is nil
@@ -165,22 +248,22 @@ int main() {
     printf("Testing 2D matrix functions...\n");
     
     // Create a test 2D matrix [3][4]int32
-    int32_t test_matrix[3][4] = {
+    Array_int32_t_3_4 test_matrix = {.data = {
         {1, 2, 3, 4},
-        {5, 6, 7, 8}, 
+        {5, 6, 7, 8},
         {9, 10, 11, 12}
-    };
+    }};
     int32_t matrix_sum = ProcessMatrix2D(test_matrix);
     assert(matrix_sum == 78);  // Sum of 1+2+3+...+12 = 78
     printf("Matrix2D sum: %d\n", matrix_sum);
     
     // Create a test 3D cube [2][3][4]uint8
-    uint8_t test_cube[2][3][4];
+    Array_uint8_t_2_3_4 test_cube;
     uint8_t val = 1;
     for (int i = 0; i < 2; i++) {
         for (int j = 0; j < 3; j++) {
             for (int k = 0; k < 4; k++) {
-                test_cube[i][j][k] = val++;
+                test_cube.data[i][j][k] = val++;
             }
         }
     }
@@ -189,11 +272,11 @@ int main() {
     printf("Matrix3D (cube) sum: %u\n", cube_sum);
     
     // Create a test 5x4 grid [5][4]double
-    double test_grid[5][4];
+    Array_double_5_4 test_grid;
     double grid_val = 1.0;
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 4; j++) {
-            test_grid[i][j] = grid_val;
+            test_grid.data[i][j] = grid_val;
             grid_val += 0.5;
         }
     }
@@ -208,6 +291,7 @@ int main() {
     printf("About to call CreateMatrix1D()...\n");
     fflush(stdout);
     Array_int32_t_4 matrix1d = CreateMatrix1D();
+    assert(matrix1d.data[0] == 1);
     printf("CreateMatrix1D() call completed\n");
     printf("CreateMatrix1D() returned struct, first element: %d\n", matrix1d.data[0]);
     
@@ -215,21 +299,22 @@ int main() {
     printf("About to call CreateMatrix2D()...\n");
     fflush(stdout);
     Array_int32_t_3_4 matrix2d = CreateMatrix2D();
+    assert(matrix2d.data[0][0] == 1);
     printf("CreateMatrix2D() call completed\n");
     printf("CreateMatrix2D() returned struct, first element: %d\n", matrix2d.data[0][0]);
     
     // Test CreateMatrix3D() which returns Array_uint8_t_2_3_4
     Array_uint8_t_2_3_4 cube = CreateMatrix3D();
+    assert(cube.data[0][0][0] == 1);
     printf("CreateMatrix3D() returned struct, first element: %u\n", cube.data[0][0][0]);
     
     // Test CreateGrid5x4() which returns Array_double_5_4
     Array_double_5_4 grid = CreateGrid5x4();
+    assert(grid.data[0][0] == 1.0);
     printf("CreateGrid5x4() returned struct, first element: %f\n", grid.data[0][0]);
 
-    // Test NoReturn function
-    // Note: This function takes a string parameter which is complex to pass from C
-    // We'll skip it for now or pass a simple string if the binding allows
-    printf("NoReturn test skipped (string parameter)\n");
+    // Test a void function with a string parameter.
+    NoReturn((GoString){"called from C", 13});
 
     printf("C demo completed!\n");
 

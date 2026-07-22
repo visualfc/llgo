@@ -56,6 +56,7 @@ exclude_list+=(--exclude "/run")
 exclude_list+=(--exclude "/sbin")
 exclude_list+=(--exclude "/srv")
 exclude_list+=(--exclude "/sys")
+exclude_list+=(--exclude "/sysroot")
 exclude_list+=(--exclude "/tmp")
 exclude_list+=(--exclude "/usr/bin")
 exclude_list+=(--exclude "/usr/games")
@@ -75,6 +76,7 @@ exclude_list+=(--exclude "/snap")
 exclude_list+=(--exclude "*python*")
 
 include_list+=(--include "*.a")
+include_list+=(--include "*.o")
 include_list+=(--include "*.so")
 include_list+=(--include "*.so.*")
 include_list+=(--include "*.h")
@@ -88,6 +90,9 @@ include_list+=(--include "/lib")
 include_list+=(--include "/lib32")
 include_list+=(--include "/lib64")
 include_list+=(--include "/libx32")
+# libstdc++ has extensionless headers such as string, optional, and type_traits.
+include_list+=(--include "/usr/include/c++/***")
+include_list+=(--include "/usr/include/*-linux-gnu/c++/***")
 include_list+=(--include "*/")
 
 do-sync() {
@@ -133,11 +138,8 @@ populate_linux_sysroot() {
 		debian:bullseye \
 		/populate_linux_sysroot.sh
 }
-populate_linux_sysroot amd64 "${LINUX_AMD64_PREFIX}" &
-PID1=$!
-populate_linux_sysroot arm64 "${LINUX_ARM64_PREFIX}" &
-PID2=$!
-
-# Wait for both background processes to complete
-wait $PID1 || exit $?
-wait $PID2 || exit $?
+# Docker's classic image store keeps only one platform for a tag. Pulling the
+# same tag for two platforms concurrently can replace the image while the other
+# container is starting. Populate the sysroots serially to keep the tag stable.
+populate_linux_sysroot amd64 "${LINUX_AMD64_PREFIX}"
+populate_linux_sysroot arm64 "${LINUX_ARM64_PREFIX}"

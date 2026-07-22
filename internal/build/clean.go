@@ -71,12 +71,17 @@ func cleanMainPkg(pkg *packages.Package, conf *Config, verbose bool) {
 	name := path.Base(pkgPath)
 	fname := name + conf.AppExt
 	app := filepath.Join(conf.BinPath, fname)
-	removeFile(app, verbose)
+	removeExecutableArtifacts(app, verbose)
 	if len(pkg.CompiledGoFiles) > 0 {
 		dir := filepath.Dir(pkg.CompiledGoFiles[0])
 		buildApp := filepath.Join(dir, fname)
-		removeFile(buildApp, verbose)
+		removeExecutableArtifacts(buildApp, verbose)
 	}
+}
+
+func removeExecutableArtifacts(executable string, verbose bool) {
+	removeFile(executable, verbose)
+	removeFile(pclnSidecarPath(executable), verbose)
 }
 
 func cleanPkgs(initial []*packages.Package, verbose bool) {

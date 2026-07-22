@@ -42,7 +42,17 @@ type staticInitStore struct {
 
 type staticInitCandidate struct {
 	stores  []staticInitStore
+	slice   *staticSliceInit
 	invalid bool
+}
+
+type staticSliceInit struct {
+	store  *ssa.Store
+	slice  *ssa.Slice
+	alloc  *ssa.Alloc
+	array  *types.Array
+	values map[int]*ssa.Const
+	instrs []ssa.Instruction
 }
 
 type staticInitNode struct {
@@ -106,9 +116,19 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 				continue
 			}
 
-			path, ok := staticInitStorePath(store.Addr)
-			value, isConst := store.Val.(*ssa.Const)
 			candidate := candidateOf(global)
+			path, ok := staticInitStorePath(store.Addr)
+			if ok && len(path) == 0 {
+				if slice, ok := staticSliceInitOf(store); ok {
+					if candidate.slice != nil || len(candidate.stores) != 0 {
+						candidate.invalid = true
+					} else {
+						candidate.slice = slice
+					}
+					continue
+				}
+			}
+			value, isConst := store.Val.(*ssa.Const)
 			if !ok || !isConst {
 				candidate.invalid = true
 				continue
@@ -131,22 +151,139 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 
 	for _, global := range orderedGlobals {
 		candidate := candidates[global]
-		if candidate.invalid || len(candidate.stores) == 0 {
+		if candidate.invalid || (len(candidate.stores) == 0 && candidate.slice == nil) {
 			continue
 		}
-		init, ok := p.buildStaticGlobalInit(global, candidate.stores)
+		var init llssa.Expr
+		var ok bool
+		if candidate.slice != nil {
+			init, ok = p.buildStaticSliceInit(global, candidate.slice)
+		} else {
+			init, ok = p.buildStaticGlobalInit(global, candidate.stores)
+		}
 		if !ok {
 			continue
 		}
 		if p.staticGlobalInits == nil {
 			p.staticGlobalInits = make(map[*ssa.Global]llssa.Expr)
 			p.staticInitStores = make(map[*ssa.Store]none)
+			p.staticInitInstrs = make(map[ssa.Instruction]none)
 		}
 		p.staticGlobalInits[global] = init
+		if candidate.slice != nil {
+			for _, instr := range candidate.slice.instrs {
+				p.staticInitInstrs[instr] = none{}
+			}
+		}
 		for _, store := range candidate.stores {
 			p.staticInitStores[store.store] = none{}
 		}
 	}
+}
+
+func staticSliceInitOf(store *ssa.Store) (*staticSliceInit, bool) {
+	slice, ok := store.Val.(*ssa.Slice)
+	if !ok || slice.Low != nil || slice.High != nil || slice.Max != nil {
+		return nil, false
+	}
+	alloc, ok := slice.X.(*ssa.Alloc)
+	if !ok || alloc.Parent() != store.Parent() {
+		return nil, false
+	}
+	ptr, ok := alloc.Type().Underlying().(*types.Pointer)
+	if !ok {
+		return nil, false
+	}
+	array, ok := ptr.Elem().Underlying().(*types.Array)
+	if !ok || array.Len() == 0 || array.Len() > maxStaticInitArrayElements || staticInitZeroSized(array.Elem()) {
+		return nil, false
+	}
+
+	ret := &staticSliceInit{
+		store: store, slice: slice, alloc: alloc, array: array,
+		values: make(map[int]*ssa.Const),
+		instrs: []ssa.Instruction{alloc, slice, store},
+	}
+	sliceRefs := slice.Referrers()
+	if sliceRefs == nil || len(*sliceRefs) != 1 || (*sliceRefs)[0] != store {
+		return nil, false
+	}
+	refs := alloc.Referrers()
+	if refs == nil {
+		return nil, false
+	}
+	seenSlice := false
+	for _, ref := range *refs {
+		switch ref := ref.(type) {
+		case *ssa.Slice:
+			if ref != slice || seenSlice {
+				return nil, false
+			}
+			seenSlice = true
+		case *ssa.IndexAddr:
+			if ref.X != alloc {
+				return nil, false
+			}
+			index, ok := staticInitConstIndex(ref.Index)
+			if !ok || index >= int(array.Len()) {
+				return nil, false
+			}
+			indexRefs := ref.Referrers()
+			if indexRefs == nil || len(*indexRefs) != 1 {
+				return nil, false
+			}
+			elemStore, ok := (*indexRefs)[0].(*ssa.Store)
+			if !ok || elemStore.Addr != ref {
+				return nil, false
+			}
+			value, ok := elemStore.Val.(*ssa.Const)
+			if !ok {
+				return nil, false
+			}
+			if _, exists := ret.values[index]; exists {
+				return nil, false
+			}
+			ret.values[index] = value
+			ret.instrs = append(ret.instrs, ref, elemStore)
+		default:
+			return nil, false
+		}
+	}
+	return ret, seenSlice
+}
+
+func staticInitZeroSized(typ types.Type) bool {
+	switch typ := types.Unalias(typ).Underlying().(type) {
+	case *types.Array:
+		return typ.Len() == 0 || staticInitZeroSized(typ.Elem())
+	case *types.Struct:
+		for i := 0; i < typ.NumFields(); i++ {
+			if !staticInitZeroSized(typ.Field(i).Type()) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *context) buildStaticSliceInit(global *ssa.Global, init *staticSliceInit) (llssa.Expr, bool) {
+	n := int(init.array.Len())
+	values := make([]llssa.Expr, n)
+	for i := range values {
+		var node *staticInitNode
+		if value := init.values[i]; value != nil {
+			node = &staticInitNode{value: value}
+		}
+		var ok bool
+		values[i], ok = p.buildStaticInitExpr(init.array.Elem(), node)
+		if !ok {
+			return llssa.Expr{}, false
+		}
+	}
+	sliceType := p.type_(global.Type().(*types.Pointer).Elem(), llssa.InGo)
+	return p.pkg.ConstSlice(p.globalFullName(global)+"$data", sliceType, values), true
 }
 
 func staticInitRootGlobal(addr ssa.Value) *ssa.Global {

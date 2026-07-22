@@ -23,13 +23,17 @@ func callerLocation(file string, line int) (string, int) {
 
 //go:noinline
 func Caller(skip int) (pc uintptr, file string, line int, ok bool) {
+	ensureRuntimePCLN()
 	if fpUnwindAvailable() {
 		var pcs [1]uintptr
 		if fpCallers(skip+1, pcs[:]) >= 1 {
-			// pcs hold return addresses; attribute to the call instruction.
-			sym := frameSymbol(pcs[0] - 1)
+			// Caller returns the call-instruction PC (matching Go), whereas
+			// Callers returns return PCs. Keeping the adjusted value matters
+			// when the return address equals the next function's entry.
+			pc = pcs[0] - 1
+			sym := frameSymbol(pc)
 			file, line = callerLocation(sym.file, sym.line)
-			return pcs[0], file, line, true
+			return pc, file, line, true
 		}
 	}
 	if frame, ok := rtdebug.Caller(skip); ok {
@@ -47,6 +51,7 @@ func Caller(skip int) (pc uintptr, file string, line int, ok bool) {
 
 //go:noinline
 func Callers(skip int, pc []uintptr) int {
+	ensureRuntimePCLN()
 	if fpUnwindAvailable() {
 		if n := fpCallers(skip, pc); n > 0 {
 			return n

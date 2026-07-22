@@ -16,7 +16,8 @@ include(AddLLVM)
 add_definitions(${LLVM_DEFINITIONS})
 
 add_llvm_pass_plugin(LLGOLTOPlugin
-  LLGOLTOPasses.cpp
+  LLGOLTOPlugin.cpp
+  LLGOReflectMethodByNamePass.cpp
 )
 
 target_compile_features(LLGOLTOPlugin PRIVATE cxx_std_17)

@@ -43,6 +43,9 @@ func Recover() (ret any) {
 		excepKey.Set(nil)
 		ret = *(*any)(ptr)
 		c.Free(ptr)
+		if PanicRecovered != nil {
+			PanicRecovered()
+		}
 	}
 	return
 }
@@ -90,6 +93,10 @@ func TracePanic(v any) {
 // Go-style stack trace for an unrecovered panic and reports whether it
 // printed anything; the clite frame dump remains the fallback.
 var PanicTraceback func(skip int) bool
+
+// PanicRecovered, when set by the public runtime package, releases auxiliary
+// traceback state associated with a recovered panic.
+var PanicRecovered func()
 
 // PanicSignal converts a hardware signal into the same Go panic the
 // legacy signal handler raised.

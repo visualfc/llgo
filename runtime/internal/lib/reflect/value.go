@@ -2456,7 +2456,6 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	var (
 		ft   *abi.FuncType
 		tin  []*abi.Type
-		tout []*abi.Type
 		args []unsafe.Pointer
 		fn   unsafe.Pointer
 		ret  unsafe.Pointer
@@ -2465,7 +2464,6 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	if v.typ_.IsClosure() && v.flag&flagMethod == 0 {
 		ft = v.typ_.StructType().Fields[0].Typ.FuncType()
 		tin = append([]*abi.Type{rtypeOf(unsafe.Pointer(nil))}, ft.In...)
-		tout = ft.Out
 		c := (*struct {
 			fn  unsafe.Pointer
 			env unsafe.Pointer
@@ -2480,7 +2478,6 @@ func (v Value) call(op string, in []Value) (out []Value) {
 			)
 			rcvrtype, ft, fn = methodReceiver(op, v, int(v.flag)>>flagMethodShift)
 			tin = append([]*abi.Type{rcvrtype}, ft.In...)
-			tout = ft.Out
 			ioff = 1
 			var ptr unsafe.Pointer
 			storeRcvr(v, unsafe.Pointer(&ptr))
@@ -2493,8 +2490,11 @@ func (v Value) call(op string, in []Value) (out []Value) {
 			}
 			ft = v.typ_.FuncType()
 			tin = ft.In
-			tout = ft.Out
 		}
+	}
+
+	if fn == nil {
+		panic("reflect.Value.Call: call of nil function")
 	}
 
 	isSlice := op == "CallSlice"
@@ -2527,7 +2527,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		}
 	}
 	for i := 0; i < n; i++ {
-		if xt, targ := in[i].Type(), ft.In[i]; !xt.AssignableTo(toRType(targ)) {
+		if xt, targ := in[i].Type(), ft.In[i]; !xt.AssignableTo(toPublicType(targ)) {
 			panic("reflect: " + op + " using " + xt.String() + " as type " + stringFor(targ))
 		}
 	}
@@ -2535,7 +2535,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		// prepare slice for remaining values
 		m := len(in) - n
 		slice := MakeSlice(toRType(ft.In[n]), m, m)
-		elem := toRType(ft.In[n].Elem()) // FIXME cast to slice type and Elem()
+		elem := toPublicType(ft.In[n].Elem()) // FIXME cast to slice type and Elem()
 		for i := 0; i < m; i++ {
 			x := in[n+i]
 			if xt := x.Type(); !xt.AssignableTo(elem) {
@@ -2570,8 +2570,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 		args = append(args, toFFIArg(arg, typ))
 	}
 
-	tout = toRuntimeTypes(tout)
-	sig, err := ffi.NewSignature(toFFIRetType(tout), ffiArgs...)
+	sig, err := ffi.NewSignature(toFFIRetType(ft.Out), ffiArgs...)
 	if err != nil {
 		panic(err)
 	}
@@ -2581,6 +2580,7 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	}
 
 	ffi.Call(sig, fn, ret, args...)
+	tout := toRuntimeTypes(ft.Out)
 	switch n := len(tout); n {
 	case 0:
 	case 1:
@@ -2664,12 +2664,22 @@ func storeRcvr(v Value, p unsafe.Pointer) {
 		// the interface data word becomes the receiver word
 		iface := (*nonEmptyInterface)(v.ptr)
 		*(*unsafe.Pointer)(p) = ifacePtrData(iface)
-	} else if v.flag&flagIndir != 0 && !ifaceIndir(t) {
-		*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(v.ptr)
-	} else if v.flag&flagIndir == 0 && runtime.DirectIfaceData(t) {
-		*(*unsafe.Pointer)(p) = unsafe.Pointer(&v.ptr)
+	} else if v.flag&flagIndir != 0 {
+		if ifaceIndir(t) {
+			*(*unsafe.Pointer)(p) = v.ptr
+		} else if runtime.DirectIfaceData(t) {
+			*(*unsafe.Pointer)(p) = v.ptr
+		} else {
+			*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(v.ptr)
+		}
 	} else {
-		*(*unsafe.Pointer)(p) = v.ptr
+		if ifaceIndir(t) {
+			*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(v.ptr)
+		} else if runtime.DirectIfaceData(t) {
+			*(*unsafe.Pointer)(p) = unsafe.Pointer(&v.ptr)
+		} else {
+			*(*unsafe.Pointer)(p) = v.ptr
+		}
 	}
 }
 
@@ -2975,7 +2985,7 @@ func methodReceiver(op string, v Value, methodIndex int) (rcvrtype *abi.Type, t 
 			panic("reflect: " + op + " of method on nil interface value")
 		}
 		rcvrtype = iface.itab.typ
-		fn = unsafe.Pointer(iface.itab.fun[i])
+		fn = unsafe.Pointer(unsafe.Slice(&iface.itab.fun[0], i+1)[i])
 		t = (*funcType)(unsafe.Pointer(m.Typ_))
 	} else {
 		rcvrtype = v.typ()

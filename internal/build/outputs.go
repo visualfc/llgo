@@ -21,6 +21,14 @@ type OutputCfg struct {
 	DirectGen bool   // True if can generate firmware directly without intermediate file
 }
 
+const pclnSidecarSuffix = ".pclntab"
+
+// pclnSidecarPath returns the conventional optional runtime-symbolization
+// artifact owned by an executable output.
+func pclnSidecarPath(executable string) string {
+	return executable + pclnSidecarSuffix
+}
+
 func genTempOutputFile(prefix, ext string) (string, error) {
 	tmpFile, err := os.CreateTemp("", prefix+"-*"+ext)
 	if err != nil {
@@ -165,6 +173,9 @@ func buildOutFmts(pkgName string, conf *Config, multiPkg bool, crossCompile *cro
 		return nil, err
 	}
 	details.Out = outputPath
+	if conf.PCLNMode == PCLNExternal {
+		details.PCLN = pclnSidecarPath(details.Out)
+	}
 
 	if conf.Target == "" {
 		// Native target - we're done
@@ -245,6 +256,9 @@ func (details *OutFmtDetails) ToEnvMap() map[string]string {
 	}
 	if details.Zip != "" {
 		envMap["zip"] = details.Zip
+	}
+	if details.PCLN != "" {
+		envMap["pclntab"] = details.PCLN
 	}
 
 	return envMap

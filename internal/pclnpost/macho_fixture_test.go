@@ -29,6 +29,10 @@ import (
 // __llgo_stub, plus LC_SYMTAB and an LC_DYLD_CHAINED_FIXUPS whose imports
 // table binds ordinal 1 to a local symbol.
 func buildMachO(t *testing.T, entry, stub []byte, syms []elfFn) string {
+	return buildMachOExternal(t, entry, stub, nil, nil, syms)
+}
+
+func buildMachOExternal(t *testing.T, entry, stub, pcLine, identity []byte, syms []elfFn) string {
 	t.Helper()
 	const base = uint64(0x100000000)
 	text := make([]byte, 0x40000) // big enough that findfunctab buckets outgrow a tiny entry section
@@ -66,16 +70,34 @@ func buildMachO(t *testing.T, entry, stub []byte, syms []elfFn) string {
 	const entryOff = uint64(0x2000)
 	stubOff := entryOff + uint64(len(entry))
 	dataEnd := stubOff + uint64(len(stub))
+	pcLineOff := dataEnd
+	if pcLine != nil {
+		dataEnd += uint64(len(pcLine))
+	}
+	identityOff := dataEnd
+	if identity != nil {
+		dataEnd += uint64(len(identity))
+	}
 	symOff := (dataEnd + 0xF) &^ 0xF
 	fixOff := symOff + 0x800
 
+	// A fileless low segment mirrors __PAGEZERO in real executables. Image
+	// base discovery must ignore it and choose file-backed __TEXT instead.
+	cmds = append(cmds, lc{segment("__PAGEZERO", 0, 0, 0, nil)})
 	cmds = append(cmds, lc{segment("__TEXT", base, 0, textOff+uint64(len(text)), [][]byte{
 		sect("__text", "__TEXT", base+textOff, textOff, uint64(len(text))),
 	})})
-	cmds = append(cmds, lc{segment("__DATA", base+entryOff, entryOff, dataEnd-entryOff, [][]byte{
+	dataSections := [][]byte{
 		sect("__llgo_fie", "__DATA", base+entryOff, entryOff, uint64(len(entry))),
 		sect("__llgo_stub", "__DATA", base+stubOff, stubOff, uint64(len(stub))),
-	})})
+	}
+	if pcLine != nil {
+		dataSections = append(dataSections, sect("__llgo_pcl", "__DATA", base+pcLineOff, pcLineOff, uint64(len(pcLine))))
+	}
+	if identity != nil {
+		dataSections = append(dataSections, sect("__llgo_pid", "__DATA", base+identityOff, identityOff, uint64(len(identity))))
+	}
+	cmds = append(cmds, lc{segment("__DATA", base+entryOff, entryOff, dataEnd-entryOff, dataSections)})
 
 	// Symtab: nlist_64 entries + strtab.
 	strtab := []byte{0}
@@ -106,12 +128,14 @@ func buildMachO(t *testing.T, entry, stub []byte, syms []elfFn) string {
 	fxHdr := make([]byte, 28)
 	binary.LittleEndian.PutUint32(fxHdr[4:], 28) // starts_offset
 	fx.Write(fxHdr)
-	// starts_in_image: seg_count=2; __TEXT has no chains, __DATA gets a
+	// starts_in_image: seg_count=3; __PAGEZERO and __TEXT have no chains,
+	// __DATA gets a
 	// starts_in_segment whose pages are all "no chain yet" so the rewriter
 	// can splice its live-relocation inserts.
-	binary.Write(&fx, binary.LittleEndian, uint32(2))
+	binary.Write(&fx, binary.LittleEndian, uint32(3))
 	binary.Write(&fx, binary.LittleEndian, uint32(0))
-	segInfoOff := 12 // seg_count + two offsets, then this struct
+	binary.Write(&fx, binary.LittleEndian, uint32(0))
+	segInfoOff := 16 // seg_count + three offsets, then this struct
 	binary.Write(&fx, binary.LittleEndian, uint32(segInfoOff))
 	// pad to seg_info start (nothing between)
 	dataPages := int((dataEnd-entryOff)/0x4000 + 1)
@@ -169,6 +193,12 @@ func buildMachO(t *testing.T, entry, stub []byte, syms []elfFn) string {
 	copy(raw[textOff:], text)
 	copy(raw[entryOff:], entry)
 	copy(raw[stubOff:], stub)
+	if pcLine != nil {
+		copy(raw[pcLineOff:], pcLine)
+	}
+	if identity != nil {
+		copy(raw[identityOff:], identity)
+	}
 	copy(raw[symOff:], nlist.Bytes())
 	copy(raw[strOff:], strtab)
 	copy(raw[fixOff:], blob)

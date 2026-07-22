@@ -33,11 +33,14 @@ var Cmd = &base.Command{
 	Short:     "Compile packages and dependencies",
 }
 
+var goBuildFlags *base.PassArgs
+
 func init() {
 	Cmd.Run = runCmd
-	base.PassBuildFlags(Cmd)
+	goBuildFlags = flags.CaptureGoBuildFlags(Cmd)
 
 	flags.AddCommonFlags(&Cmd.Flag)
+	flags.AddCompilerVerboseFlag(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
 	flags.AddBuildModeFlags(&Cmd.Flag)
 	flags.AddEmulatorFlags(&Cmd.Flag)
@@ -53,6 +56,10 @@ func runCmd(cmd *base.Command, args []string) {
 
 	conf := build.NewDefaultConf(build.ModeBuild)
 	if err := flags.UpdateBuildConfig(conf); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		mockable.Exit(1)
+	}
+	if err := flags.ApplyGoBuildFlags(conf, goBuildFlags.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}

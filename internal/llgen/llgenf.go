@@ -17,12 +17,14 @@
 package llgen
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/goplus/llgo/internal/build"
+	"github.com/goplus/llgo/internal/goflags"
 )
 
 func GenFrom(fileOrPkg string) string {
@@ -37,22 +39,13 @@ func GenFrom(fileOrPkg string) string {
 }
 
 func genFrom(pkgPath string, abiMode build.AbiMode) (build.Package, error) {
-	oldDbg := os.Getenv("LLGO_DEBUG")
-	oldDbgSyms := os.Getenv("LLGO_DEBUG_SYMBOLS")
-	dbg := isDbgSymEnabled(filepath.Join(pkgPath, "flags.txt"))
-	if dbg {
-		os.Setenv("LLGO_DEBUG", "1")
-		os.Setenv("LLGO_DEBUG_SYMBOLS", "1")
-	}
-	defer func() {
-		os.Setenv("LLGO_DEBUG", oldDbg)
-		os.Setenv("LLGO_DEBUG_SYMBOLS", oldDbgSyms)
-	}()
-
 	conf := &build.Config{
 		Mode:    build.ModeGen,
 		AbiMode: abiMode,
 		GenLL:   true,
+	}
+	if err := applyGoBuildFlagsFile(conf, filepath.Join(pkgPath, "flags.txt")); err != nil {
+		return nil, err
 	}
 	pkgs, err := build.Do([]string{pkgPath}, conf)
 	if err != nil {
@@ -67,18 +60,30 @@ func DoFile(fileOrPkg, outFile string) {
 	check(err)
 }
 
-func isDbgSymEnabled(flagsFile string) bool {
+func readGoBuildFlags(flagsFile string) ([]string, error) {
 	data, err := os.ReadFile(flagsFile)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
 	if err != nil {
-		return false
+		return nil, err
 	}
-	toks := strings.Split(strings.Join(strings.Split(string(data), "\n"), " "), " ")
-	for _, tok := range toks {
-		if tok == "-dbg" {
-			return true
-		}
+	flags, err := goflags.ParseFlagFile(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", flagsFile, err)
 	}
-	return false
+	return flags, nil
+}
+
+func applyGoBuildFlagsFile(conf *build.Config, flagsFile string) error {
+	flags, err := readGoBuildFlags(flagsFile)
+	if err != nil {
+		return err
+	}
+	if err := goflags.ApplyBuildFlags(conf, flags); err != nil {
+		return fmt.Errorf("apply %s: %w", flagsFile, err)
+	}
+	return nil
 }
 
 func SmartDoFile(pkgPath string) {

@@ -69,6 +69,21 @@ func (prog Program) ConstArray(t Type, values []Expr) Expr {
 	return Expr{llvm.ConstArray(elem.ll, fields), t}
 }
 
+// ConstSlice creates a slice constant backed by a writable package global.
+// The backing store must remain writable because a Go slice literal may be
+// mutated after package initialization.
+func (pkg Package) ConstSlice(name string, t Type, values []Expr) Expr {
+	prog := pkg.Prog
+	elem := prog.Index(t)
+	array := prog.rawType(types.NewArray(elem.RawType(), int64(len(values))))
+	data := pkg.NewVarEx(name, prog.Pointer(array))
+	data.Init(prog.ConstArray(array, values))
+
+	n := prog.IntVal(uint64(len(values)), prog.Int())
+	cv := llvm.ConstNamedStruct(t.ll, []llvm.Value{data.impl, n.impl, n.impl})
+	return Expr{cv, t}
+}
+
 // ConstStruct creates an LLVM constant struct expression.
 func (prog Program) ConstStruct(t Type, values []Expr) Expr {
 	fields := make([]llvm.Value, len(values))

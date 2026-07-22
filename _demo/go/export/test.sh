@@ -47,6 +47,54 @@ check_file() {
     fi
 }
 
+# Check that explicitly enabled LLGo DWARF is usable for a Go function reached
+# through the C library. Darwin uses LLDB because Mach-O debug maps may refer
+# back to archive members; ELF keeps the DWARF in the linked artifact.
+check_c_library_debug_info() {
+    local build_mode="$1"
+    local artifact="$2"
+    local executable="$3"
+    local output
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if ! output=$(DYLD_LIBRARY_PATH=.. lldb --batch \
+                -o "settings set target.env-vars DYLD_LIBRARY_PATH=.." \
+                -o "breakpoint set -n main" \
+                -o run \
+                -o "breakpoint set -r captureCFuncInfo" \
+                -o continue \
+                -o "frame info" \
+                -o "process kill" \
+                "./$(basename "$executable")" 2>&1); then
+            print_error "$build_mode: LLDB verification failed"
+            echo "$output"
+            return 1
+        fi
+        if ! grep -Eq 'captureCFuncInfo at .*export\.go:[0-9]+' <<< "$output"; then
+            print_error "$build_mode: LLDB did not resolve the Go source location"
+            echo "$output"
+            return 1
+        fi
+    else
+        if [[ "$build_mode" == "c-archive" ]]; then
+            artifact="$executable"
+        fi
+        if ! output=$(llvm-dwarfdump --regex --name captureCFuncInfo "$artifact" 2>&1); then
+            print_error "$build_mode: DWARF inspection failed"
+            echo "$output"
+            return 1
+        fi
+        if ! grep -q 'DW_TAG_subprogram' <<< "$output" || \
+           ! grep -q 'export.go' <<< "$output"; then
+            print_error "$build_mode: DWARF does not resolve the Go function and source file"
+            echo "$output"
+            return 1
+        fi
+    fi
+
+    print_status "$build_mode: debug information resolved captureCFuncInfo in export.go"
+}
+
 # Function to compare header with expected content
 compare_header() {
     local header_file="$1"
@@ -94,9 +142,27 @@ print_status "Starting C header generation tests..."
 print_status "Working directory: $SCRIPT_DIR"
 
 echo ""
+build_failures=0
+run_build_mode_tests=true
+
+# The LLGo build wrapper loads the repository module, so these tests require a
+# Go toolchain new enough for the go directive in the root go.mod. Older Go
+# versions remain in the CI matrix for compatibility testing of installed LLGo.
+CURRENT_GO_VERSION="$(go env GOVERSION)"
+CURRENT_GO_VERSION="${CURRENT_GO_VERSION#go}"
+REQUIRED_GO_VERSION="$(awk '$1 == "go" { print $2; exit }' ../../../go.mod)"
+IFS=. read -r current_go_major current_go_minor _ <<< "$CURRENT_GO_VERSION"
+IFS=. read -r required_go_major required_go_minor _ <<< "$REQUIRED_GO_VERSION"
+if (( current_go_major < required_go_major ||
+      (current_go_major == required_go_major && current_go_minor < required_go_minor) )); then
+    run_build_mode_tests=false
+    print_warning "Skipping c-shared/c-archive tests: Go $CURRENT_GO_VERSION is older than the module requirement $REQUIRED_GO_VERSION"
+fi
+
+if [[ "$run_build_mode_tests" == true ]]; then
 
 # Test 1: c-shared mode
-print_status "=== Test 2: Building with -buildmode c-shared ==="
+print_status "=== Test 1: Building with -buildmode c-shared ==="
 if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
     print_status "Build succeeded"
 
@@ -121,15 +187,20 @@ if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
     # Test C demo with shared library
     print_status "=== Testing C demo with shared library ==="
     if cd use; then
-        if LINK_TYPE=shared make clean && LINK_TYPE=shared make; then
+        if LINK_TYPE=shared make clean && LINK_TYPE=shared LLGOFLAGS=-ldflags=-w=false make; then
             print_status "C demo build succeeded with shared library"
             if LINK_TYPE=shared make run; then
                 print_status "C demo execution succeeded with shared library"
             else
-                print_warning "C demo execution failed with shared library"
+                print_error "C demo execution failed with shared library"
+                build_failures=$((build_failures + 1))
+            fi
+            if ! check_c_library_debug_info "c-shared" "../$SHARED_LIB" "main.out"; then
+                build_failures=$((build_failures + 1))
             fi
         else
-            print_warning "C demo build failed with shared library"
+            print_error "C demo build failed with shared library"
+            build_failures=$((build_failures + 1))
         fi
         cd ..
     else
@@ -140,10 +211,11 @@ if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
     cleanup "$SHARED_LIB" "libexport.h"
 else
     print_error "Build failed for c-shared mode"
+    build_failures=$((build_failures + 1))
 fi
 
 # Test 2: c-archive mode
-print_status "=== Test 1: Building with -buildmode c-archive ==="
+print_status "=== Test 2: Building with -buildmode c-archive ==="
 if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
     print_status "Build succeeded"
 
@@ -159,15 +231,20 @@ if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
     # Test C demo with static library
     print_status "=== Testing C demo with static library ==="
     if cd use; then
-        if make clean && make; then
+        if make clean && LLGOFLAGS=-ldflags=-w=false make; then
             print_status "C demo build succeeded with static library"
             if make run; then
                 print_status "C demo execution succeeded with static library"
             else
-                print_warning "C demo execution failed with static library"
+                print_error "C demo execution failed with static library"
+                build_failures=$((build_failures + 1))
+            fi
+            if ! check_c_library_debug_info "c-archive" "../libexport.a" "main.out"; then
+                build_failures=$((build_failures + 1))
             fi
         else
-            print_warning "C demo build failed with static library"
+            print_error "C demo build failed with static library"
+            build_failures=$((build_failures + 1))
         fi
         cd ..
     else
@@ -178,6 +255,9 @@ if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
     # cleanup "libexport.a" "libexport.h"
 else
     print_error "Build failed for c-archive mode"
+    build_failures=$((build_failures + 1))
+fi
+
 fi
 
 echo ""
@@ -243,11 +323,14 @@ echo ""
 
 # Final summary
 print_status "=== Test Summary ==="
-if [[ -f "libexport.a" ]] && [[ -f "libexport.h" ]]; then
-    print_status "All tests completed successfully:"
+if [[ "$run_build_mode_tests" != true ]]; then
+    print_status "Build-mode tests were skipped because the active Go toolchain is older than the module requirement"
+elif [[ "$build_failures" -eq 0 ]] && [[ -f "libexport.a" ]] && [[ -f "libexport.h" ]]; then
+    print_status "All required build-mode tests completed successfully:"
     print_status "  ✅ Go export demo execution with assertions"
     print_status "  ✅ C header generation (c-archive and c-shared modes)"
-    print_status "  ✅ C demo compilation and execution"
+    print_status "  ✅ C consumer compilation and execution with shared and static libraries"
+    print_status "  ✅ Explicit -w=false DWARF source lookup for c-archive and c-shared"
     print_status "  ✅ Cross-platform symbol renaming"
     print_status "  ✅ Init function export and calling"
     print_status "  ✅ Function callback types with proper typedef syntax"
@@ -256,7 +339,9 @@ if [[ -f "libexport.a" ]] && [[ -f "libexport.h" ]]; then
     print_status "Final files available:"
     print_status "  - libexport.a (static library)"
     print_status "  - libexport.h (C header file)"
-    print_status "  - use/main.out (C demo executable)"
+    if [[ -f "use/main.out" ]]; then
+        print_status "  - use/main.out (C demo executable)"
+    fi
 
     echo ""
     echo "==================="
@@ -264,15 +349,20 @@ else
     print_error "Some tests may have failed. Check the output above."
 fi
 
-# Show file sizes for reference
-if [[ -f "libexport.a" ]]; then
+# Show file sizes for reference when the build-mode tests ran.
+if [[ "$run_build_mode_tests" == true ]] && [[ -f "libexport.a" ]]; then
     SIZE=$(wc -c < libexport.a)
     print_status "Static library size: $SIZE bytes"
 fi
 
-if [[ -f "libexport.h" ]]; then
+if [[ "$run_build_mode_tests" == true ]] && [[ -f "libexport.h" ]]; then
     LINES=$(wc -l < libexport.h)
     print_status "Header file lines: $LINES"
+fi
+
+if [[ "$build_failures" -ne 0 ]]; then
+    print_error "$build_failures build-mode test(s) failed"
+    exit 1
 fi
 
 print_status "C header generation and demo tests completed!"

@@ -68,15 +68,3 @@ func NewPassArgs(flag *flag.FlagSet) *PassArgs {
 	p := &PassArgs{Flag: flag}
 	return p
 }
-
-func PassBuildFlags(cmd *Command) *PassArgs {
-	p := NewPassArgs(&cmd.Flag)
-	p.Bool("n")
-	// Note: "a" flag removed - now handled by flags.AddBuildFlags()
-	p.Bool("linkshared", "race", "msan", "asan",
-		"trimpath", "work")
-	p.Var("p", "asmflags", "compiler",
-		"gcflags", "gccgoflags", "installsuffix",
-		"ldflags", "pkgdir", "toolexec", "buildvcs")
-	return p
-}

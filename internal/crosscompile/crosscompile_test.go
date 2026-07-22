@@ -248,6 +248,12 @@ func TestUseTarget(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Unexpected error for target %s: %v", tc.targetName, err)
 			}
+			if !export.DebugInfo.AlwaysOmit {
+				t.Fatalf("target %s debug-info policy = %+v, want AlwaysOmit", tc.targetName, export.DebugInfo)
+			}
+			if !slices.Contains(export.LDFLAGS, "-S") {
+				t.Fatalf("target %s declares AlwaysOmit without linker -S: %v", tc.targetName, export.LDFLAGS)
+			}
 
 			// Check if LLVM target is in CCFLAGS
 			if tc.expectLLVM != "" {
@@ -336,6 +342,31 @@ func TestUseWithTarget(t *testing.T) {
 	// Should use native configuration (only check for macOS since that's where tests run)
 	if runtime.GOOS == "darwin" && len(export.LDFLAGS) == 0 {
 		t.Error("Expected LDFLAGS to be set for native build")
+	}
+	wantDebugInfo := nativeDebugInfoPolicy(runtime.GOOS)
+	if export.DebugInfo.AlwaysOmit != wantDebugInfo.AlwaysOmit || !slices.Equal(export.DebugInfo.OmitLinkFlags, wantDebugInfo.OmitLinkFlags) {
+		t.Fatalf("native debug-info policy = %+v, want %+v", export.DebugInfo, wantDebugInfo)
+	}
+}
+
+func TestNativeDebugInfoPolicy(t *testing.T) {
+	tests := []struct {
+		goos      string
+		supported bool
+	}{
+		{goos: "darwin", supported: true},
+		{goos: "linux", supported: true},
+		{goos: "windows"},
+		{goos: "freebsd"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			policy := nativeDebugInfoPolicy(tt.goos)
+			got := !policy.AlwaysOmit && slices.Equal(policy.OmitLinkFlags, []string{"-Wl,-S"})
+			if got != tt.supported {
+				t.Fatalf("nativeDebugInfoPolicy(%q) = %+v, supported = %v", tt.goos, policy, got)
+			}
+		})
 	}
 }
 

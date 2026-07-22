@@ -203,3 +203,57 @@ attributes #0 = { "llgo.reflect.methodbyname"="value" }
 		t.Fatalf("reflect MethodByName name marker should not be remapped to string length:\n%s", ir)
 	}
 }
+
+func TestPreloweredSRetAttributePreserved(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Large = type [65537 x i8]
+%Param = type { i64, i64, i64 }
+
+define void @callee(ptr sret(%Large) %result, %Param %param) {
+entry:
+  ret void
+}
+
+define void @caller(ptr %result, %Param %param) {
+entry:
+  call void @callee(ptr sret(%Large) %result, %Param %param)
+  ret void
+}
+`
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "prelowered_sret.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	tr := NewTransformer(prog, "arm64-apple-darwin", "", ModeAllFunc, true)
+	tr.TransformModule("test", mod)
+
+	callee := mod.NamedFunction("callee").String()
+	if !strings.Contains(callee, "define void @callee(ptr sret([65537 x i8])") {
+		t.Fatalf("pre-lowered function lost its sret attribute:\n%s", callee)
+	}
+	caller := mod.NamedFunction("caller").String()
+	if !strings.Contains(caller, "call void @callee(ptr sret([65537 x i8])") {
+		t.Fatalf("pre-lowered call lost its sret attribute:\n%s", caller)
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("transformed module is invalid: %v\n%s", err, mod.String())
+	}
+}

@@ -9,9 +9,11 @@ INCLUDES = -I..
 TARGET = main.out
 SOURCES = main.c
 HEADER = ../libexport.h
+RUNTIME_LIBS = -lpthread -lm $(shell pkg-config --libs bdw-gc || echo -lgc) $(shell pkg-config --libs libuv || echo -luv)
 
 # Default to static linking
 LINK_TYPE ?= static
+LLGOFLAGS ?=
 
 # Platform detection
 UNAME_S := $(shell uname -s)
@@ -27,13 +29,13 @@ endif
 ifeq ($(LINK_TYPE),shared)
     BUILDMODE = c-shared
     LIBRARY = ../libexport.$(SHARED_EXT)
-    LDFLAGS = -L.. -lexport -lpthread -lm $(shell pkg-config --libs bdw-gc || echo -lgc) $(PLATFORM_LIBS)
+    LDFLAGS = -L.. -lexport $(RUNTIME_LIBS) $(PLATFORM_LIBS)
     BUILD_MSG = "Building Go shared library..."
     LINK_MSG = "Linking with shared library..."
 else
     BUILDMODE = c-archive
     LIBRARY = ../libexport.a
-    LDFLAGS = $(LIBRARY) -lpthread -lm $(shell pkg-config --libs bdw-gc || echo -lgc) $(PLATFORM_LIBS)
+    LDFLAGS = $(LIBRARY) $(RUNTIME_LIBS) $(PLATFORM_LIBS)
     BUILD_MSG = "Building Go static library..."
     LINK_MSG = "Linking with static library..."
 endif
@@ -45,7 +47,7 @@ all: build-go $(TARGET)
 # Build the Go library first
 build-go:
 	@echo $(BUILD_MSG)
-	cd .. && ../../../dev/llgo.sh build -buildmode $(BUILDMODE) -o export .
+	cd .. && ../../../dev/llgo.sh build -buildmode $(BUILDMODE) $(LLGOFLAGS) -o export .
 
 # Build the C executable
 $(TARGET): $(SOURCES) $(LIBRARY) $(HEADER)

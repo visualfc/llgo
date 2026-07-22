@@ -16,9 +16,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: 1.24.x
+      uses: ./.github/actions/setup-go
     - name: Restore Linux sysroot cache
       id: cache-linux-sysroot
       uses: actions/cache/restore@v5

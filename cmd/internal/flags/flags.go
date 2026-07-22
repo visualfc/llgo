@@ -30,6 +30,7 @@ func AddOutputFlags(fs *flag.FlagSet) {
 }
 
 var Verbose bool
+var CompilerVerbose bool
 var BuildEnv string
 var BuildMode string
 var Tags string
@@ -170,6 +171,11 @@ func AddCommonFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&Verbose, "v", false, "Verbose output")
 }
 
+func AddCompilerVerboseFlag(fs *flag.FlagSet) {
+	fs.BoolVar(&CompilerVerbose, "compiler-verbose", false, "Print verbose compiler output")
+	fs.BoolVar(&CompilerVerbose, "cv", false, "Print verbose compiler output (shorthand for -compiler-verbose)")
+}
+
 func AddOptLevelFlags(fs *flag.FlagSet) {
 	OptLevel = optlevel.Unset
 	var optSource string
@@ -211,6 +217,7 @@ func AddBuildFlags(fs *flag.FlagSet) {
 	AddOptLevelFlags(fs)
 	AddLTOFlag(fs)
 	AddGlobalDCEFlag(fs)
+	addPCLNFlag(fs)
 	fs.StringVar(&Tags, "tags", "", "Build tags")
 	fs.StringVar(&BuildEnv, "buildenv", "", "Build environment")
 	fs.Var(&PthreadStackSize, "pthread-stack-size", "Stack size for pthread-backed goroutines, e.g. 32MB or 1024KB (0 uses the platform default)")
@@ -336,6 +343,18 @@ func UpdateConfig(conf *build.Config) error {
 	conf.CompilerHash = compilerhash.Value()
 	conf.Tags = Tags
 	conf.Verbose = Verbose
+	conf.PrintPackages = false
+	switch conf.Mode {
+	case build.ModeBuild:
+		// Match go build -v: print package names as they are compiled. The
+		// legacy LLGo compiler output is available through -compiler-verbose.
+		conf.Verbose = CompilerVerbose
+		conf.PrintPackages = Verbose
+	case build.ModeTest:
+		// For go test, -v controls the test binary only. buildTestArgs forwards
+		// it as -test.v.
+		conf.Verbose = CompilerVerbose
+	}
 	conf.PrintCommands = PrintCommands
 	conf.DeadcodeDrop = !NoDeadcodeDrop
 	conf.OptLevel = OptLevel
@@ -346,6 +365,10 @@ func UpdateConfig(conf *build.Config) error {
 	conf.PthreadStackSize = int64(PthreadStackSize)
 	if LTO.Specified {
 		conf.LTO = LTO.Mode
+	}
+	if PCLN.Specified {
+		conf.PCLNMode = PCLN.Mode
+		conf.PCLNModeSet = true
 	}
 	if LTOPluginPath != "" {
 		if conf.LTO != lto.Full {

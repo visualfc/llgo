@@ -23,6 +23,7 @@ import (
 	"github.com/xgo-dev/llvm"
 
 	buildfuncinfo "github.com/goplus/llgo/internal/build/funcinfo"
+	"github.com/goplus/llgo/internal/pclnmap"
 	llssa "github.com/goplus/llgo/ssa"
 )
 
@@ -47,6 +48,7 @@ const (
 	pcSiteStartPtrSymbol            = "__llgo_pcsite_start"
 	pcSiteEndPtrSymbol              = "__llgo_pcsite_end"
 	fpChainSymbol                   = "__llgo_fp_chain"
+	pclnIdentitySymbol              = "__llgo_pclntab_identity"
 	funcInfoDataSymbol              = "__llgo_funcinfo_table$data"
 	pcLineDataSymbol                = "__llgo_pcline_table$data"
 	funcInfoStringsDataSymbol       = "__llgo_funcinfo_strings$data"
@@ -346,6 +348,11 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 	symbolIndexPtr := llvm.AddGlobal(mod, llvm.PointerType(symbolIndexRecordType, 0), funcInfoSymbolIndexSymbol)
 	count := llvm.AddGlobal(mod, countType, funcInfoCountSymbol)
 	symbolIndexCount := llvm.AddGlobal(mod, countType, funcInfoSymbolIndexCountSymbol)
+	// ELF metadata records contain absolute addresses for these two globals.
+	// Keep them non-preemptible so shared-library links can lower the pointers
+	// to relative dynamic relocations in the writable metadata section.
+	symbolIndexPtr.SetVisibility(llvm.HiddenVisibility)
+	symbolIndexCount.SetVisibility(llvm.HiddenVisibility)
 	stubIndexesPtr := llvm.AddGlobal(mod, llvm.PointerType(i32Type, 0), funcInfoStubIndexesSymbol)
 	stubCount := llvm.AddGlobal(mod, countType, funcInfoStubCountSymbol)
 	pcLineCount := llvm.AddGlobal(mod, countType, pcLineCountSymbol)
@@ -359,6 +366,24 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 		fpChainVal = 1
 	}
 	fpChain.SetInitializer(llvm.ConstInt(i8Type, fpChainVal, false))
+	if ctx.buildConf.PCLNMode == PCLNExternal {
+		emitExternalFuncInfoTable(ctx, mod, records, pcLines, stubRecords, externalFuncInfoGlobals{
+			tablePtr: tablePtr, pcLinePtr: pcLinePtr,
+			pcSiteStartPtr: pcSiteStartPtr, pcSiteEndPtr: pcSiteEndPtr,
+			entryStartPtr: entryStartPtr, entryEndPtr: entryEndPtr,
+			stubSiteStartPtr: stubSiteStartPtr, stubSiteEndPtr: stubSiteEndPtr,
+			stringsPtr: stringsPtr, stringOffsetsPtr: stringOffsetsPtr,
+			stringCount: stringCount, hashPtr: hashPtr, hashMask: hashMask,
+			symbolIndexPtr: symbolIndexPtr, symbolIndexCount: symbolIndexCount,
+			count: count, stubIndexesPtr: stubIndexesPtr, stubCount: stubCount,
+			pcLineCount: pcLineCount,
+		}, externalFuncInfoTypes{
+			i8: i8Type, count: countType,
+			entryRecord: funcEntryRecordType, stubRecord: stubSiteRecordType,
+			pcSiteRecord: pcSiteRecordType,
+		})
+		return
+	}
 	if len(records) == 0 && len(pcLines) == 0 {
 		tablePtr.SetInitializer(llvm.ConstPointerNull(tablePtr.GlobalValueType()))
 		pcLinePtr.SetInitializer(llvm.ConstPointerNull(pcLinePtr.GlobalValueType()))
@@ -608,6 +633,113 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 	}
 }
 
+type externalFuncInfoGlobals struct {
+	tablePtr, pcLinePtr                       llvm.Value
+	pcSiteStartPtr, pcSiteEndPtr              llvm.Value
+	entryStartPtr, entryEndPtr                llvm.Value
+	stubSiteStartPtr, stubSiteEndPtr          llvm.Value
+	stringsPtr, stringOffsetsPtr, stringCount llvm.Value
+	hashPtr, hashMask                         llvm.Value
+	symbolIndexPtr, symbolIndexCount          llvm.Value
+	count, stubIndexesPtr, stubCount          llvm.Value
+	pcLineCount                               llvm.Value
+}
+
+type externalFuncInfoTypes struct {
+	i8, count                             llvm.Type
+	entryRecord, stubRecord, pcSiteRecord llvm.Type
+}
+
+func initExternalFuncInfoGlobals(g externalFuncInfoGlobals, countType llvm.Type) {
+	for _, ptr := range []llvm.Value{
+		g.tablePtr, g.pcLinePtr, g.pcSiteStartPtr, g.pcSiteEndPtr,
+		g.entryStartPtr, g.entryEndPtr, g.stubSiteStartPtr, g.stubSiteEndPtr,
+		g.stringsPtr, g.stringOffsetsPtr, g.hashPtr, g.symbolIndexPtr, g.stubIndexesPtr,
+	} {
+		ptr.SetInitializer(llvm.ConstPointerNull(ptr.GlobalValueType()))
+	}
+	for _, count := range []llvm.Value{
+		g.stringCount, g.hashMask, g.symbolIndexCount, g.count, g.stubCount, g.pcLineCount,
+	} {
+		count.SetInitializer(llvm.ConstInt(countType, 0, false))
+	}
+}
+
+// emitExternalFuncInfoTable emits only writable runtime ABI globals, final-PC
+// site boundaries and a post-link identity slot. The table payload is kept in
+// the build context and serialized beside the linked executable; it is never
+// materialized as LLVM constants in the executable.
+func emitExternalFuncInfoTable(ctx *context, mod llvm.Module, records []funcInfoRecord, pcLines []pcLineRecord, stubRecords []funcInfoStubRecord, g externalFuncInfoGlobals, typ externalFuncInfoTypes) {
+	initExternalFuncInfoGlobals(g, typ.count)
+	encoded, err := buildfuncinfo.EncodeWithPCLines(toFuncInfoRecords(records), toPCLineRecords(pcLines))
+	if err != nil {
+		panic(err)
+	}
+	symbolRecords := collectFuncInfoSymbolIndexRecords(records)
+	symbolIndex := make([]pclnmap.SymbolIndexEntry, 0, len(symbolRecords))
+	for _, rec := range symbolRecords {
+		if rec.funcIndex != 0 && int(rec.funcIndex) <= len(encoded.Records) {
+			symbolIndex = append(symbolIndex, pclnmap.SymbolIndexEntry{SymbolID: rec.symbolID, FuncIndex: rec.funcIndex})
+		}
+	}
+	ctx.pclnExternal = &pclnmap.Data{
+		GOOS:        ctx.buildConf.Goos,
+		GOARCH:      ctx.buildConf.Goarch,
+		PointerSize: ctx.prog.PointerSize(),
+		Table:       encoded,
+		SymbolIndex: symbolIndex,
+	}
+
+	identityType := llvm.ArrayType(typ.i8, 32)
+	identity := llvm.AddGlobal(mod, identityType, pclnIdentitySymbol)
+	identity.SetInitializer(llvm.ConstNull(identityType))
+	identity.SetAlignment(8)
+	if ctx.buildConf.Goos == "darwin" {
+		identity.SetSection("__DATA,__llgo_pid")
+	} else {
+		identity.SetSection("llgo_pclntab_id")
+	}
+	// Pure lib/c programs can link without the LLGo runtime, so nothing in
+	// their live graph references the identity slot. Keep it through LTO and
+	// linker GC: external mode still promises a paired sidecar even when the
+	// program itself never calls a runtime symbolization API. llvm.used (rather
+	// than llvm.compiler.used) also asks the native linker to retain the slot.
+	pointerType := llvm.PointerType(typ.i8, 0)
+	usedInit := llvm.ConstArray(pointerType, []llvm.Value{llvm.ConstBitCast(identity, pointerType)})
+	used := llvm.AddGlobal(mod, usedInit.Type(), "llvm.used")
+	used.SetInitializer(usedInit)
+	used.SetLinkage(llvm.AppendingLinkage)
+	used.SetSection("llvm.metadata")
+
+	machO := shouldEmitRuntimeMachOSites(ctx)
+	emitSites := shouldEmitRuntimeSites(ctx)
+	emitPCSites := emitSites && len(encoded.PCLines) != 0
+	emitEntrySites := shouldEmitRuntimeEntryELFSites(ctx) && len(encoded.Records) != 0
+	emitStubSites := shouldEmitRuntimeStubELFSites(ctx) && len(stubRecords) != 0
+	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machO, emitPCSites, emitEntrySites, emitStubSites)
+	if emitPCSites {
+		start, end := pcLineSiteSectionInfo.boundary(machO)
+		startGlobal := llvm.AddGlobal(mod, typ.pcSiteRecord, start)
+		endGlobal := llvm.AddGlobal(mod, typ.pcSiteRecord, end)
+		g.pcSiteStartPtr.SetInitializer(startGlobal)
+		g.pcSiteEndPtr.SetInitializer(endGlobal)
+	}
+	if emitEntrySites {
+		start, end := entrySiteSectionInfo.boundary(machO)
+		startGlobal := llvm.AddGlobal(mod, typ.entryRecord, start)
+		endGlobal := llvm.AddGlobal(mod, typ.entryRecord, end)
+		g.entryStartPtr.SetInitializer(startGlobal)
+		g.entryEndPtr.SetInitializer(endGlobal)
+	}
+	if emitStubSites {
+		start, end := stubSiteSectionInfo.boundary(machO)
+		startGlobal := llvm.AddGlobal(mod, typ.stubRecord, start)
+		endGlobal := llvm.AddGlobal(mod, typ.stubRecord, end)
+		g.stubSiteStartPtr.SetInitializer(startGlobal)
+		g.stubSiteEndPtr.SetInitializer(endGlobal)
+	}
+}
+
 func shouldEmitRuntimeELFSites(ctx *context) bool {
 	return ctx != nil &&
 		ctx.buildConf != nil &&
@@ -624,12 +756,14 @@ func shouldEmitRuntimeMachOSites(ctx *context) bool {
 
 // shouldEmitRuntimeSites reports whether the target object format has a
 // DCE-safe section story for metadata site records. ELF uses SHF_LINK_ORDER
-// associated sections (honored by --gc-sections). Mach-O uses live_support
-// sections: under ld64/lld -dead_strip a live_support atom survives only if
-// the atom it references (the anchor inside the function body) is live, which
-// is the same records-follow-function semantics. Sites are additionally
-// gated per Program: debug builds keep the funcinfo tables but drop the
-// body-embedded site records (see Program.EnableFuncInfoSites).
+// associated sections (honored by --gc-sections). The ELF sections are also
+// writable because shared libraries need dynamic relative relocations for the
+// absolute pointers stored in each record. Mach-O uses live_support sections:
+// under ld64/lld -dead_strip a live_support atom survives only if the atom it
+// references (the anchor inside the function body) is live, which is the same
+// records-follow-function semantics. Sites are additionally gated per Program:
+// debug builds keep the funcinfo tables but drop the body-embedded site records
+// (see Program.EnableFuncInfoSites).
 func shouldEmitRuntimeSites(ctx *context) bool {
 	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() {
 		return false
@@ -662,7 +796,7 @@ func (s siteSectionInfo) push(machO bool, anchor string) string {
 	if machO {
 		return ".pushsection " + s.machO + ",regular,live_support"
 	}
-	return ".pushsection " + s.elf + ",\"ao\",@progbits," + anchor
+	return ".pushsection " + s.elf + ",\"awo\",@progbits," + anchor
 }
 
 // recordSymbol returns the extra label line each Mach-O record needs: the
@@ -680,7 +814,7 @@ func (s siteSectionInfo) retain(machO bool) string {
 	if machO {
 		return ".section " + s.machO + ",regular,live_support"
 	}
-	return ".section " + s.elf + ",\"aR\",@progbits"
+	return ".section " + s.elf + ",\"awR\",@progbits"
 }
 
 // retainSymbol returns the label lines that pin the zero record under
