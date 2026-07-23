@@ -1131,8 +1131,12 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	methodByIndex := make(map[int]none)
 	methodByName := make(map[string]none)
 	allPkgs := []*packages.Package{pkg}
+	var mainPkg llssa.Package
 	for _, v := range pkgs {
 		allPkgs = append(allPkgs, v.Package)
+		if v.PkgPath == pkg.PkgPath {
+			mainPkg = v.LPkg
+		}
 	}
 	visitRoots := allPkgs
 	if ctx.mode == ModeTest {
@@ -1225,6 +1229,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		funcInfo:      funcInfo,
 		pcLineInfo:    pcLineInfo,
 		funcInfoStubs: funcInfoStubs,
+		mainPkg:       mainPkg,
 	})
 	entryObjFile, err := exportObject(ctx, "entry_main", entryPkg.ExportFile, entryPkg.LPkg)
 	if err != nil {

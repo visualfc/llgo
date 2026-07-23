@@ -403,6 +403,10 @@ func (p Program) Linkname(name string) (link string, ok bool) {
 	return
 }
 
+func (p Program) Linknames() map[string]string {
+	return p.linkname
+}
+
 func (p Program) runtime() *types.Package {
 	if p.rt == nil {
 		p.rt = p.rtget()

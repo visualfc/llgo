@@ -327,6 +327,10 @@ func (p Function) Param(i int) Expr {
 	return Expr{p.impl.Param(i), p.params[i]}
 }
 
+func (p Function) SetAliasName(name string) {
+	llvm.AddAlias(p.Pkg.mod, p.Type.ll, 0, p.impl, name)
+}
+
 func (p Function) closureCtx(b Builder) Expr {
 	if p.freeVars.IsNil() {
 		if p.base == 0 {

@@ -29,6 +29,7 @@ package build
 import (
 	"go/token"
 	"go/types"
+	"strings"
 
 	"github.com/goplus/llgo/internal/packages"
 	llvm "github.com/xgo-dev/llvm"
@@ -46,6 +47,25 @@ type genConfig struct {
 	funcInfo      []funcInfoRecord
 	pcLineInfo    []pcLineRecord
 	funcInfoStubs []funcInfoStubRecord
+	mainPkg       llssa.Package
+}
+
+func checkMainLinkName(prog llssa.Program, pkgPath string, pkg llssa.Package, main llssa.Package) {
+	for _, link := range prog.Linknames() {
+		if strings.HasPrefix(link, "main.") {
+			name := pkgPath + link[4:]
+			fn := pkg.FuncOf(name)
+			if fn == nil {
+				continue
+			}
+			sig, ok := fn.Type.RawType().(*types.Signature)
+			if !ok {
+				continue
+			}
+			mfn := main.NewFunc(name, sig, llssa.InGo)
+			mfn.SetAliasName(link)
+		}
+	}
 }
 
 // genMainModule generates the main entry module for an llgo program.
@@ -75,6 +95,9 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 			ExportFile: exportFile + "-main",
 		},
 		LPkg: mainPkg,
+	}
+	if cfg.mainPkg != nil && pkg.Name == "main" {
+		defer checkMainLinkName(prog, pkg.PkgPath, cfg.mainPkg, mainPkg)
 	}
 
 	if ctx.buildConf.BuildMode != BuildModeExe {

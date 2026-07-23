@@ -124,3 +124,39 @@ func assertInOrder(t *testing.T, s string, wants ...string) {
 		offset += i + len(want)
 	}
 }
+
+func TestGenMainModuleLinknames(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	ctx := &context{
+		prog: llssa.NewProgram(nil),
+		buildConf: &Config{
+			BuildMode: BuildModeCShared,
+			Goos:      "linux",
+			Goarch:    "amd64",
+		},
+	}
+	mainPkg := ctx.prog.NewPackage("main", "example.com/foo/pkg")
+	fn := mainPkg.NewFunc("example.com/foo/pkg.demo", llssa.NoArgsNoRet, llssa.InC)
+	fn.MakeBody(1).Return()
+	fn = mainPkg.NewFunc("example.com/foo/pkg.main", llssa.NoArgsNoRet, llssa.InC)
+	fn.MakeBody(1).Return()
+
+	ctx.prog.SetLinkname("main_demo", "main.demo")
+	ctx.prog.SetLinkname("main_main", "main.main")
+
+	pkg := &packages.Package{PkgPath: "example.com/foo/pkg", Name: "main"}
+	mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
+		mainPkg: mainPkg,
+	})
+	ir := mod.LPkg.String()
+	if !strings.Contains(ir, "main.main") {
+		t.Fatalf("go:linkname missing main.main:\n%s", ir)
+	}
+	if !strings.Contains(ir, "main.demo") {
+		t.Fatalf("go:linkname missing main.demo:\n%s", ir)
+	}
+	if strings.Contains(ir, "@llvm.global_ctors") {
+		t.Fatalf("library mode without the runtime should not emit a constructor:\n%s", ir)
+	}
+}
