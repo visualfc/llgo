@@ -2071,10 +2071,6 @@ xfails:
     reason: gc-specific -m optimization diagnostics are not implemented by llgo
   - version: go1.26
     directive: errorcheck
-    case: uintptrkeepalive.go
-    reason: gc-specific go:uintptrkeepalive pragma validation is not implemented by llgo
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue20780.go
     reason: gc-specific stack-frame size diagnostics are not implemented by llgo
   - version: go1.26
