@@ -105,7 +105,7 @@ func TestUnsupportedCompilerFlags(t *testing.T) {
 		writeBar:    countFlag{set: true},
 		debug:       stringListFlag{"panic,libfuzzer", "ssa/check/on,ssa/check/seed=1,wb"},
 	}
-	want := []string{"-B", "-dynlink", "-m", "-live", "-race", "-smallframes", "-std", "-+", "-wb", "-d=libfuzzer", "-d=wb"}
+	want := []string{"-B", "-dynlink", "-m", "-live", "-race", "-smallframes", "-+", "-wb", "-d=libfuzzer", "-d=wb"}
 	if got := opts.unsupported(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("unsupported=%v, want %v", got, want)
 	}
@@ -162,6 +162,15 @@ func TestRunCmdBuildsAndReportsErrors(t *testing.T) {
 	_, stderr, code = runCompileCommand(t, []string{invalid})
 	if code != 1 || !strings.Contains(stderr, "missing") {
 		t.Fatalf("invalid compile exit code = %d, stderr=%q; want code 1 and diagnostic", code, stderr)
+	}
+
+	invalidPragma := dir + "/invalid_pragma.go"
+	if err := os.WriteFile(invalidPragma, []byte("package compilecase\n//go:uintptrkeepalive\nfunc F(uintptr) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, code = runCompileCommand(t, []string{"-C", "-std", invalidPragma})
+	if code != 1 || !strings.Contains(stderr, "go:uintptrkeepalive requires go:nosplit") {
+		t.Fatalf("-std compile exit code = %d, stderr=%q; want code 1 and pragma diagnostic", code, stderr)
 	}
 }
 

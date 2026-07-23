@@ -172,6 +172,9 @@ func runCmd(_ *base.Command, args []string) {
 	if opts.complete {
 		loaderCompilerFlags = append(loaderCompilerFlags, "-complete")
 	}
+	if opts.standard {
+		loaderCompilerFlags = append(loaderCompilerFlags, "-std")
+	}
 	if len(loaderCompilerFlags) != 0 {
 		conf.GoBuildFlags = append(conf.GoBuildFlags, "-gcflags=command-line-arguments="+strings.Join(loaderCompilerFlags, " "))
 	}
@@ -201,7 +204,6 @@ func (opts *options) unsupported() []string {
 	appendFlag(opts.live, "-live")
 	appendFlag(opts.race, "-race")
 	appendFlag(opts.smallFrames, "-smallframes")
-	appendFlag(opts.standard, "-std")
 	appendFlag(opts.runtimePkg, "-+")
 	appendFlag(opts.writeBar.set, "-wb")
 	for _, setting := range opts.debug {
