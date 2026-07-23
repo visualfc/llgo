@@ -18,6 +18,8 @@ package runtime
 
 import "unsafe"
 
+// The compiler emits localInitReady directly from cl/locality_lower.go. Keep
+// these numeric values stable and update the compiler constant if they change.
 const (
 	localInitUninitialized uint8 = iota
 	localInitInitializing

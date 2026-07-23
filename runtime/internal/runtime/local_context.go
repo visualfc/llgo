@@ -35,6 +35,9 @@ type localBlock struct {
 	cacheSlot *uintptr
 }
 
+// EnterLocalContext installs ctx when the current thread has no local owner.
+// A nonzero result means this is a nested Go entry that inherited the returned
+// context; in that case ctx is not installed.
 func EnterLocalContext(ctx *LocalContext) uintptr {
 	previous := currentLocalContext
 	if previous == 0 {
@@ -46,6 +49,9 @@ func EnterLocalContext(ctx *LocalContext) uintptr {
 	return previous
 }
 
+// LeaveLocalContext finishes an entry paired with EnterLocalContext. A nested
+// entry verifies and retains its inherited context. An outer entry clears ctx
+// and releases its package-block roots.
 func LeaveLocalContext(ctx *LocalContext, previous uintptr) {
 	if previous != 0 {
 		if currentLocalContext != previous {

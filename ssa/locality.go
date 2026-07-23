@@ -103,18 +103,21 @@ func resolveLocality(lookup func(string) (VariableLocality, bool), linkname func
 	if !ok {
 		result = VariableLocality{}
 	}
-	seen := make(map[string]bool)
+	var seen map[string]bool
 	current := name
 	for {
-		if seen[current] {
-			return "", VariableLocality{}, false, fmt.Errorf("declaration linkname cycle involving %s", current)
-		}
-		seen[current] = true
 		target, hasLink := linkname(current)
 		target = strings.TrimPrefix(target, "go:")
 		if !hasLink || target == "" {
 			return current, result, ok, nil
 		}
+		if seen == nil {
+			seen = make(map[string]bool)
+		}
+		if seen[current] {
+			return "", VariableLocality{}, false, fmt.Errorf("declaration linkname cycle involving %s", current)
+		}
+		seen[current] = true
 		if currentInfo, exists := lookup(current); exists && currentInfo.Locality != locality.None {
 			return "", VariableLocality{}, false, fmt.Errorf("local variable %s cannot use go:linkname", current)
 		}
@@ -135,6 +138,10 @@ func hasInitialization(info locality.Info) bool {
 func (p Program) ValidateLocalities(pkgPath string) error {
 	prefix := pkgPath + "."
 	p.localities.mu.RLock()
+	if len(p.localities.entries) == 0 {
+		p.localities.mu.RUnlock()
+		return nil
+	}
 	nameSet := make(map[string]bool)
 	localNames := make(map[string]bool)
 	for name, info := range p.localities.entries {
@@ -146,6 +153,9 @@ func (p Program) ValidateLocalities(pkgPath string) error {
 		}
 	}
 	p.localities.mu.RUnlock()
+	if len(localNames) == 0 {
+		return nil
+	}
 	p.linknameMu.RLock()
 	links := make(map[string]string, len(p.linkname))
 	for name, target := range p.linkname {

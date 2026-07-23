@@ -28,6 +28,8 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
+// localInitReady is part of the compiler/runtime ABI. Keep it in sync with
+// runtime/internal/runtime.localInitReady.
 const localInitReady = 2
 
 type localVariable struct {
