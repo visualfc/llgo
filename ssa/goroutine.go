@@ -36,22 +36,6 @@ func (p Program) tyRoutine() *types.Signature {
 	return p.routineTy
 }
 
-func (b Builder) pthreadCreate(pp, attr, routine, arg Expr) Expr {
-	fn := b.Pkg.rtFunc("CreateThread")
-	return b.Call(fn, pp, attr, routine, arg)
-}
-
-func (b Builder) pthreadAttr() Expr {
-	prog := b.Prog
-	fn := b.Pkg.rtFunc("CreateThread")
-	params := fn.raw.Type.(*types.Signature).Params()
-	attr := prog.rawType(params.At(1).Type())
-	elem := prog.rawType(attr.RawType().(*types.Pointer).Elem())
-	return b.AllocaT(elem)
-}
-
-// -----------------------------------------------------------------------------
-
 // The Go instruction creates a new goroutine and calls the specified
 // function within it.
 //
@@ -88,17 +72,8 @@ func (b Builder) Go(fn Expr, buildCall func(Builder, Expr, ...Expr) Expr, args .
 	dataPtr := b.Call(pkg.rtFunc("AllocRoot"), prog.IntVal(prog.SizeOf(t), prog.Uintptr())).impl
 	aggregateInit(b.impl, dataPtr, t.ll, flds...)
 	data := Expr{dataPtr, voidPtr}
-	size := prog.SizeOf(voidPtr)
-	pthd := b.Alloca(prog.IntVal(uint64(size), prog.Uintptr()))
-	attr := b.pthreadAttr()
-	if prog.pthreadStackSize > 0 {
-		stackSize := prog.IntVal(prog.pthreadStackSize, prog.Uintptr())
-		b.Call(pkg.rtFunc("InitThreadAttrWithStack"), attr, stackSize)
-	} else {
-		b.Call(pkg.rtFunc("InitThreadAttr"), attr)
-	}
-	b.pthreadCreate(pthd, attr, pkg.routine(t, fn, buildCall, len(args)), data)
-	b.Call(pkg.rtFunc("DestroyThreadAttr"), attr)
+	stackSize := prog.IntVal(prog.pthreadStackSize, prog.Uintptr())
+	b.Call(pkg.rtFunc("NewProc"), pkg.routine(t, fn, buildCall, len(args)), data, stackSize)
 }
 
 func (p Package) routineName() string {

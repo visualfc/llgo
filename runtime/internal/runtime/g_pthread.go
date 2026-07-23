@@ -40,17 +40,24 @@ func getg() *g {
 	if ptr := gKey.Get(); ptr != nil {
 		return (*g)(ptr)
 	}
-	ptr := AllocRoot(unsafe.Sizeof(g{}))
-	if ptr == nil {
-		panic("runtime: failed to allocate g")
-	}
-	c.Memset(ptr, 0, unsafe.Sizeof(g{}))
-	if ret := gKey.Set(ptr); ret != 0 {
-		FreeRoot(ptr)
+	gp := initRuntimeContext(allocRuntimeContext(), nil, _Grunning)
+	if ret := setgRaw(gp); ret != 0 {
+		destroyG(c.Pointer(unsafe.Pointer(gp)))
 		c.Fprintf(c.Stderr, c.Str("runtime: pthread_setspecific failed (errno=%d)\n"), ret)
 		panic("runtime: failed to install g")
 	}
-	return (*g)(ptr)
+	return gp
+}
+
+func setg(gp *g) {
+	if ret := setgRaw(gp); ret != 0 {
+		c.Fprintf(c.Stderr, c.Str("runtime: pthread_setspecific failed (errno=%d)\n"), ret)
+		panic("runtime: failed to install g")
+	}
+}
+
+func setgRaw(gp *g) c.Int {
+	return gKey.Set(c.Pointer(unsafe.Pointer(gp)))
 }
 
 func destroyG(ptr c.Pointer) {
@@ -61,6 +68,10 @@ func destroyG(ptr c.Pointer) {
 	if gp.panic_ != nil {
 		c.Free(gp.panic_)
 	}
-	*gp = g{}
-	FreeRoot(ptr)
+	ctx := gp.context
+	if ctx != nil && ctx.root != nil {
+		root := ctx.root
+		ctx.root = nil
+		FreeRoot(root)
+	}
 }

@@ -82,7 +82,7 @@ func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {
 	}
 }
 
-func TestGoUsesPthreadAttrForDetachedStack(t *testing.T) {
+func TestGoPassesConfiguredStackSizeToRuntime(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	prog.SetPthreadStackSize(32 << 20)
 	pkg := prog.NewPackage("bar", "foo/bar")
@@ -95,24 +95,18 @@ func TestGoUsesPthreadAttrForDetachedStack(t *testing.T) {
 	ob.Return()
 
 	ir := pkg.String()
-	initAttr := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.InitThreadAttrWithStack"`)
-	createThread := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.CreateThread"`)
-	destroyAttr := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.DestroyThreadAttr"`)
-	if initAttr < 0 || createThread < 0 || destroyAttr < 0 {
-		t.Fatalf("goroutine should initialize, use, and destroy pthread attrs:\n%s", ir)
-	}
-	if !(initAttr < createThread && createThread < destroyAttr) {
-		t.Fatalf("pthread attr calls should wrap CreateThread:\n%s", ir)
+	if !strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.NewProc"`) {
+		t.Fatalf("goroutine should delegate startup to the runtime:\n%s", ir)
 	}
 	if !strings.Contains(ir, "33554432") {
-		t.Fatalf("goroutine should pass configured pthread stack size:\n%s", ir)
+		t.Fatalf("goroutine should pass the configured stack size:\n%s", ir)
 	}
-	if strings.Contains(ir, "llgo_pthread_create_detached") {
-		t.Fatalf("goroutine should not call detached C wrapper:\n%s", ir)
+	if strings.Contains(ir, "pthread") {
+		t.Fatalf("compiler IR should not depend on the pthread backend:\n%s", ir)
 	}
 }
 
-func TestGoUsesPthreadAttrWithoutStackByDefault(t *testing.T) {
+func TestGoPassesZeroStackSizeToRuntimeByDefault(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	pkg := prog.NewPackage("bar", "foo/bar")
 
@@ -124,10 +118,10 @@ func TestGoUsesPthreadAttrWithoutStackByDefault(t *testing.T) {
 	ob.Return()
 
 	ir := pkg.String()
-	if !strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.InitThreadAttr"`) {
-		t.Fatalf("goroutine should initialize pthread attrs:\n%s", ir)
+	if !strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.NewProc"`) {
+		t.Fatalf("goroutine should delegate startup to the runtime:\n%s", ir)
 	}
-	if strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.InitThreadAttrWithStack"`) {
-		t.Fatalf("default goroutine should not request custom pthread stack size:\n%s", ir)
+	if strings.Contains(ir, "pthread") {
+		t.Fatalf("compiler IR should not depend on the pthread backend:\n%s", ir)
 	}
 }

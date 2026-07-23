@@ -6,20 +6,14 @@ func main() {
 	// CHECK: call ptr @"{{.*}}AllocZ"(i64 1)
 	// CHECK: store i1 false, ptr %0, align 1
 	// CHECK: call ptr @"{{.*}}AllocRoot"(i64 16)
-	// CHECK: alloca %"{{.*}}pthread.Attr", align 8
-	// CHECK: call i32 @"{{.*}}InitThreadAttr"
-	// CHECK: call i32 @"{{.*}}CreateThread"(ptr {{%[0-9]+}}, ptr {{%[0-9]+}}, ptr @"{{.*}}goroutine._llgo_routine$1", ptr %1)
-	// CHECK: call i32 @"{{.*}}DestroyThreadAttr"
+	// CHECK: call void @"{{.*}}NewProc"(ptr @"{{.*}}goroutine._llgo_routine$1", ptr %1, i64 0)
 	done := false
 	go println("hello")
 	go func(s string) {
 		// CHECK: call ptr @"{{.*}}AllocU"(i64 8)
 		// CHECK: { ptr @"{{.*}}goroutine.main$1", ptr undef }
 		// CHECK: call ptr @"{{.*}}AllocRoot"(i64 32)
-		// CHECK: alloca %"{{.*}}pthread.Attr", align 8
-		// CHECK: call i32 @"{{.*}}InitThreadAttr"
-		// CHECK: call i32 @"{{.*}}CreateThread"(ptr {{%[0-9]+}}, ptr {{%[0-9]+}}, ptr @"{{.*}}goroutine._llgo_routine$2", ptr {{%[0-9]+}})
-		// CHECK: call i32 @"{{.*}}DestroyThreadAttr"
+		// CHECK: call void @"{{.*}}NewProc"(ptr @"{{.*}}goroutine._llgo_routine$2", ptr {{%[0-9]+}}, i64 0)
 		// CHECK: call void @"{{.*}}PrintString"(%"{{.*}}String" { ptr @2, i64 1 })
 		// CHECK: ret void
 		// CHECK-LABEL: define void @"{{.*}}goroutine.main$1"(ptr %0, %"{{.*}}String" %1){{.*}} {

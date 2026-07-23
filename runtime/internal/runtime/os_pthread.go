@@ -17,13 +17,34 @@
 package runtime
 
 import (
-	_ "unsafe"
+	"unsafe"
 
 	c "github.com/goplus/llgo/runtime/internal/clite"
 	"github.com/goplus/llgo/runtime/internal/clite/pthread"
 )
 
-func InitThreadAttr(attr *pthread.Attr) c.Int {
+// mOS is the pthread-specific part of an M.
+type mOS struct {
+	thread pthread.Thread
+}
+
+// newosproc provides the current host-thread backend for newm.
+func newosproc(mp *m, stackSize uintptr) int {
+	var attr pthread.Attr
+	if ret := initThreadAttr(&attr, stackSize); ret != 0 {
+		return int(ret)
+	}
+	ret := pthread.Create(
+		&mp.os.thread,
+		&attr,
+		pthread.RoutineFunc(mstart),
+		c.Pointer(unsafe.Pointer(mp)),
+	)
+	attr.Destroy()
+	return int(ret)
+}
+
+func initThreadAttr(attr *pthread.Attr, stackSize uintptr) c.Int {
 	if ret := attr.Init(); ret != 0 {
 		return ret
 	}
@@ -31,24 +52,17 @@ func InitThreadAttr(attr *pthread.Attr) c.Int {
 		attr.Destroy()
 		return ret
 	}
-	return 0
-}
-
-func InitThreadAttrWithStack(attr *pthread.Attr, stackSize uintptr) c.Int {
-	if ret := InitThreadAttr(attr); ret != 0 {
-		return ret
-	}
-	if ret := attr.SetStackSize(stackSize); ret != 0 {
-		attr.Destroy()
-		return ret
+	if stackSize != 0 {
+		if ret := attr.SetStackSize(stackSize); ret != 0 {
+			attr.Destroy()
+			return ret
+		}
 	}
 	return 0
 }
 
-func DestroyThreadAttr(attr *pthread.Attr) c.Int {
-	return attr.Destroy()
-}
-
-func CreateThread(th *pthread.Thread, attr *pthread.Attr, routine pthread.RoutineFunc, arg c.Pointer) c.Int {
-	return pthread.Create(th, attr, routine, arg)
+func exitCurrentM() {
+	mp := getg().m
+	mexit(mp)
+	pthread.Exit(nil)
 }

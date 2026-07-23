@@ -1,3 +1,5 @@
+//go:build !baremetal
+
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
@@ -16,26 +18,26 @@
 
 package runtime
 
-// SetPanicOnFault updates the fault behavior requested by the current
-// goroutine and reports its previous value.
-func SetPanicOnFault(in bool) (out bool) {
-	gp := getg()
-	out = gp.paniconfault
-	gp.paniconfault = in
-	return out
+import "github.com/goplus/llgo/runtime/internal/clite/sync/atomic"
+
+func nextGoid(gp *g) uint64 {
+	return atomic.Add(&sched.goidgen, uint64(1))
 }
 
-// SetThreadDefer associates the current goroutine with the given defer chain.
-func SetThreadDefer(head *Defer) {
-	getg().defer_ = head
+func nextMid(mp *m) int64 {
+	return atomic.Add(&sched.midgen, int64(1))
 }
 
-// GetThreadDefer returns the current goroutine's defer chain head.
-func GetThreadDefer() *Defer {
-	return getg().defer_
+func nextPid(pp *p) int32 {
+	return atomic.Add(&sched.pidgen, int32(1)) - 1
 }
 
-// ClearThreadDefer resets the current goroutine's defer chain to nil.
-func ClearThreadDefer() {
-	getg().defer_ = nil
+func readgstatus(gp *g) uint32 {
+	return atomic.Load(&gp.atomicstatus)
+}
+
+func casgstatus(gp *g, oldval, newval uint32) {
+	if _, ok := atomic.CompareAndExchange(&gp.atomicstatus, oldval, newval); !ok {
+		fatal("runtime: invalid goroutine status transition")
+	}
 }
