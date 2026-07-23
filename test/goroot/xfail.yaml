@@ -1924,7 +1924,7 @@ xfails:
   - version: go1.26
     directive: errorcheck
     case: writebarrier.go
-    reason: gc-specific write-barrier diagnostics are not implemented by llgo
+    reason: "not applicable: llgo's BDWGC and tinygogc runtimes do not use Go GC write barriers"
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue19743.go
@@ -1968,7 +1968,7 @@ xfails:
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/notinheap3.go
-    reason: gc runtime write-barrier and notinheap diagnostics are not implemented by llgo
+    reason: "not applicable: llgo's runtimes do not use Go GC write barriers; notinheap diagnostics are covered separately"
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue13273.go
@@ -2096,7 +2096,7 @@ xfails:
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue19168.go
-    reason: gc-specific write-barrier diagnostics are not implemented by llgo
+    reason: "not applicable: llgo's BDWGC and tinygogc runtimes do not use Go GC write barriers"
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue75278.go
@@ -2120,7 +2120,7 @@ xfails:
   - version: go1.26
     directive: errorcheck
     case: live2.go
-    reason: gc-specific liveness and write-barrier diagnostics are not implemented by llgo
+    reason: "not applicable: llgo's runtimes do not use Go GC write barriers; liveness diagnostics require separate compiler support"
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue12006.go
@@ -2240,7 +2240,7 @@ xfails:
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue13587.go
-    reason: gc-specific write-barrier diagnostics are not implemented by llgo
+    reason: "not applicable: llgo's BDWGC and tinygogc runtimes do not use Go GC write barriers"
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue16241.go
@@ -2304,7 +2304,7 @@ xfails:
   - version: go1.26
     directive: errorcheck
     case: nowritebarrier.go
-    reason: gc runtime write-barrier prohibition diagnostics are not implemented by llgo
+    reason: "not applicable: llgo's BDWGC and tinygogc runtimes do not use Go GC write barriers"
   - version: go1.26
     directive: errorcheck
     case: tailcall.go
@@ -2316,7 +2316,7 @@ xfails:
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue34723.go
-    reason: gc-specific write-barrier diagnostics are not implemented by llgo
+    reason: "not applicable: llgo's BDWGC and tinygogc runtimes do not use Go GC write barriers"
   - version: go1.26
     directive: errorcheck
     case: syntax/vareq1.go
