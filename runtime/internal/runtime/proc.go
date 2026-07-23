@@ -106,7 +106,7 @@ func mstart(arg unsafe.Pointer) unsafe.Pointer {
 
 	setg(gp)
 	casgstatus(gp, _Grunnable, _Grunning)
-	pp.status = _Prunning
+	setpstatus(pp, _Prunning)
 
 	fn, arg := gp.startfn, gp.startarg
 	gp.startfn = nil
@@ -130,7 +130,7 @@ func mexit(mp *m) {
 	root := ctx.root
 
 	casgstatus(gp, _Grunning, _Gdead)
-	pp.status = _Pdead
+	setpstatus(pp, _Pdead)
 
 	pp.m = nil
 	mp.p = nil
@@ -162,10 +162,11 @@ func initRuntimeContext(ctx *runtimeContext, callergp *g, status uint32) *g {
 	mp.id = nextMid(mp)
 
 	pp.id = nextPid(pp)
-	pp.status = _Pidle
+	pstatus := uint32(_Pidle)
 	if status == _Grunning {
-		pp.status = _Prunning
+		pstatus = _Prunning
 	}
+	setpstatus(pp, pstatus)
 	pp.m = mp
 	return gp
 }
@@ -180,7 +181,7 @@ func GMPForTesting() (goid, parentGoid uint64, mid int64, pid int32, gstatus, ps
 	mp := gp.m
 	pp := mp.p
 	ctx := gp.context
-	return gp.goid, gp.parentGoid, mp.id, pp.id, readgstatus(gp), pp.status,
+	return gp.goid, gp.parentGoid, mp.id, pp.id, readgstatus(gp), readpstatus(pp),
 		mp.curg == gp && pp.m == mp && ctx != nil &&
 			&ctx.g == gp && &ctx.m == mp && &ctx.p == pp
 }

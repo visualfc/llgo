@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,9 @@ func newosproc(mp *m, stackSize uintptr) int {
 		pthread.RoutineFunc(mstart),
 		c.Pointer(unsafe.Pointer(mp)),
 	)
-	attr.Destroy()
+	// Once Create succeeds, mp belongs to the detached thread. A destroy
+	// failure cannot be reported as creation failure without freeing live data.
+	_ = attr.Destroy()
 	return int(ret)
 }
 
@@ -49,12 +51,12 @@ func initThreadAttr(attr *pthread.Attr, stackSize uintptr) c.Int {
 		return ret
 	}
 	if ret := attr.SetDetached(pthread.CreateDetached); ret != 0 {
-		attr.Destroy()
+		_ = attr.Destroy()
 		return ret
 	}
 	if stackSize != 0 {
 		if ret := attr.SetStackSize(stackSize); ret != 0 {
-			attr.Destroy()
+			_ = attr.Destroy()
 			return ret
 		}
 	}

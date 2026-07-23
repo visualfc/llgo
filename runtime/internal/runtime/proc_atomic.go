@@ -41,3 +41,11 @@ func casgstatus(gp *g, oldval, newval uint32) {
 		fatal("runtime: invalid goroutine status transition")
 	}
 }
+
+func readpstatus(pp *p) uint32 {
+	return atomic.Load(&pp.status)
+}
+
+func setpstatus(pp *p, status uint32) {
+	atomic.Store(&pp.status, status)
+}

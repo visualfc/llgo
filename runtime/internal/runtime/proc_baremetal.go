@@ -47,3 +47,11 @@ func casgstatus(gp *g, oldval, newval uint32) {
 	}
 	gp.atomicstatus = newval
 }
+
+func readpstatus(pp *p) uint32 {
+	return pp.status
+}
+
+func setpstatus(pp *p, status uint32) {
+	pp.status = status
+}
