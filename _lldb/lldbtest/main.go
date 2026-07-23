@@ -69,8 +69,8 @@ func FuncWithAllTypeStructParam(s StructWithAllTypeFields) {
 	//   s.f32: 11
 	//   s.f64: 12
 	//   s.b: true
-	//   s.c64: complex64{real = 13, imag = 14}
-	//   s.c128: complex128{real = 15, imag = 16}
+	//   s.c64: 13 + 14i
+	//   s.c128: 15 + 16i
 	//   s.slice: []int{21, 22, 23}
 	//   s.arr: [3]int{24, 25, 26}
 	//   s.arr2: [3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}
@@ -204,8 +204,8 @@ func FuncWithAllTypeParams(
 	//   f32: 19
 	//   f64: 20
 	//   b: false
-	//   c64: complex64{real = 21, imag = 22}
-	//   c128: complex128{real = 23, imag = 24}
+	//   c64: 21 + 22i
+	//   c128: 23 + 24i
 	//   slice: []int{31, 32, 33}
 	//   arr2: [3]lldbtest.E{{i = 37}, {i = 38}, {i = 39}}
 	//   s: "world"
@@ -508,8 +508,8 @@ func main() {
 	//   s.f32: 11
 	//   s.f64: 12
 	//   s.b: true
-	//   s.c64: complex64{real = 13, imag = 14}
-	//   s.c128: complex128{real = 15, imag = 16}
+	//   s.c64: 13 + 14i
+	//   s.c128: 15 + 16i
 	//   s.slice: []int{21, 22, 23}
 	//   s.arr: [3]int{24, 25, 26}
 	//   s.arr2: [3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}
@@ -521,8 +521,11 @@ func main() {
 	globalStructPtr = &s
 	globalStruct = s
 	println("globalInt:", globalInt)
-	// Expected(skip):
-	//   all variables: globalInt globalStruct globalStructPtr s i err
+	// Expected:
+	//   all variables: s i err
+	//   globalInt: 301
+	//   globalStruct.i8: '\x01'
+	//   (*globalStructPtr).i16: 2
 	println("s:", &s)
 	FuncWithAllTypeStructParam(s)
 	println("called function with struct")

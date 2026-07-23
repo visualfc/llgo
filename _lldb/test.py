@@ -78,6 +78,10 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"Failed to create target for {self.executable_path}")
 
+        if not llgo_plugin.is_llgo_compiler(self.target):
+            raise LLDBTestException(
+                "Target does not contain a supported LLGo debugger marker")
+
         self.debugger.HandleCommand(
             'command script add -f llgo_plugin.print_go_expression p')
         self.debugger.HandleCommand(
@@ -107,7 +111,7 @@ class LLDBDebugger:
 
     def get_all_variable_names(self) -> Set[str]:
         frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
-        return set(var.GetName() for var in frame.GetVariables(True, True, True, True))
+        return set(var.GetName() for var in frame.GetVariables(True, True, False, True))
 
     def get_current_function_name(self) -> str:
         frame = self.process.GetSelectedThread().GetFrameAtIndex(0)

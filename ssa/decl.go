@@ -357,8 +357,13 @@ func (p Function) NewBuilder() Builder {
 	b := prog.ctx.NewBuilder()
 	// TODO(xsw): Finalize may cause panic, so comment it.
 	// b.Finalize()
-	return &aBuilder{b, nil, p, p.Pkg, prog,
-		make(map[*types.Scope]DIScope)}
+	return &aBuilder{
+		impl:         b,
+		Func:         p,
+		Pkg:          p.Pkg,
+		Prog:         prog,
+		diScopeCache: make(map[*types.Scope]DIScope),
+	}
 }
 
 // HasBody reports whether the function has a body.

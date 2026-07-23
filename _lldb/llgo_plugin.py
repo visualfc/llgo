@@ -5,6 +5,9 @@ import re
 import lldb
 
 
+LLGO_DEBUGGER_MARKERS = ("__llgo_debugger_marker_v1",)
+
+
 def log(*args: Any, **kwargs: Any) -> None:
     print(*args, **kwargs, flush=True)
 
@@ -16,8 +19,11 @@ def __lldb_init_module(debugger: lldb.SBDebugger, _: Dict[str, Any]) -> None:
         'command script add -f llgo_plugin.print_all_variables v')
 
 
-def is_llgo_compiler(_target: lldb.SBTarget) -> bool:
-    return True
+def is_llgo_compiler(target: lldb.SBTarget) -> bool:
+    if not target or not target.IsValid():
+        return False
+    return any(target.FindSymbols(marker).GetSize() > 0
+               for marker in LLGO_DEBUGGER_MARKERS)
 
 
 def get_indexed_value(value: lldb.SBValue, index: int) -> Optional[lldb.SBValue]:
@@ -39,6 +45,14 @@ def get_indexed_value(value: lldb.SBValue, index: int) -> Optional[lldb.SBValue]
         return value.GetChildAtIndex(index)
     else:
         return None
+
+
+def find_variable(frame: lldb.SBFrame, name: str) -> lldb.SBValue:
+    value = frame.FindVariable(name)
+    if value and value.IsValid():
+        return value
+    target = frame.GetThread().GetProcess().GetTarget()
+    return target.FindFirstGlobalVariable(name)
 
 
 def evaluate_expression(frame: lldb.SBFrame, expression: str) -> Optional[lldb.SBValue]:
@@ -71,7 +85,7 @@ def evaluate_expression(frame: lldb.SBFrame, expression: str) -> Optional[lldb.S
                 return value, i + 1
             elif part == '.':
                 if value is None:
-                    value = frame.FindVariable(parts[i+1])
+                    value = find_variable(frame, parts[i+1])
                 else:
                     value = value.GetChildMemberWithName(parts[i+1])
                 i += 2
@@ -81,7 +95,7 @@ def evaluate_expression(frame: lldb.SBFrame, expression: str) -> Optional[lldb.S
                 i += 1
             else:
                 if value is None:
-                    value = frame.FindVariable(part)
+                    value = find_variable(frame, part)
                 else:
                     value = value.GetChildMemberWithName(part)
                 i += 1
@@ -126,7 +140,7 @@ def print_all_variables(debugger: lldb.SBDebugger, _command: str, result: lldb.S
 
 
 def is_pointer(frame: lldb.SBFrame, var_name: str) -> bool:
-    var = frame.FindVariable(var_name)
+    var = find_variable(frame, var_name)
     return var.IsValid() and var.GetType().IsPointerType()
 
 

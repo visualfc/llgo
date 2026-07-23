@@ -2,10 +2,12 @@
 
 set -e
 
+script_dir=$(cd "$(dirname "$0")" && pwd)
+
 # Source common functions and variables
 # shellcheck source=./_lldb/common.sh
 # shellcheck disable=SC1091
-source "$(dirname "$0")/common.sh" || exit 1
+source "$script_dir/common.sh" || exit 1
 
 # Parse command-line arguments
 package_path="$DEFAULT_PACKAGE_PATH"
@@ -62,8 +64,20 @@ eval "$LLDB_PATH $lldb_command_string"
 if [ -f "$result_file" ]; then
     exit_code=$(cat "$result_file")
     rm "$result_file"
-    exit "$exit_code"
 else
     echo "Error: Could not find exit code file"
     exit 1
 fi
+
+if [ "$exit_code" -ne 0 ]; then
+    exit "$exit_code"
+fi
+
+# The LLGo formatter must not attach itself to an ordinary C target.
+non_llgo_dir=$(mktemp -d)
+trap 'rm -rf "$non_llgo_dir"' EXIT
+printf 'int main(void) { return 0; }\n' | \
+    "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo" -
+"$LLDB_PATH" --batch "$non_llgo_dir/non-llgo" \
+    -o "command script import \"$script_dir/llgo_plugin.py\"" \
+    -o 'script assert not llgo_plugin.is_llgo_compiler(lldb.target)'

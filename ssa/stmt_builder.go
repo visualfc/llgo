@@ -65,6 +65,7 @@ type aBuilder struct {
 	Prog Program
 
 	diScopeCache map[*types.Scope]DIScope // avoid duplicated DILexicalBlock(s)
+	diFuncScope  *types.Scope
 }
 
 // Builder represents a builder for creating instructions in a function.

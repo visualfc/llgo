@@ -27,6 +27,7 @@ import (
 
 	"github.com/goplus/llgo/internal/env"
 	"github.com/goplus/llgo/internal/meta"
+	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/ssa/abi"
 	"github.com/xgo-dev/llvm"
 	"golang.org/x/tools/go/types/typeutil"
@@ -242,6 +243,7 @@ type aProgram struct {
 
 	enableFuncInfoMetadata bool
 	enableFuncInfoSites    bool
+	debugInfoOptimized     bool
 }
 
 type AbiSymbol struct {
@@ -314,6 +316,7 @@ func NewProgram(target *Target) Program {
 		target: target, td: td, tm: tm, is32Bits: is32Bits,
 		ptrSize: td.PointerSize(), named: make(map[string]Type), fnnamed: make(map[string]int),
 		linkname: make(map[string]string), noInterface: make(map[string]none), abiSymbol: make(map[string]*AbiSymbol),
+		debugInfoOptimized: target.effectiveOptLevel() != optlevel.O0,
 	}
 	prog.abi.Init(uintptr(prog.ptrSize), (*goProgram)(unsafe.Pointer(prog)))
 	return prog
@@ -944,6 +947,14 @@ func (p Package) AfterInit(b Builder, ret BasicBlock) {
 func (p Package) InitDebug(name, pkgPath string, positioner Positioner) {
 	p.di = newDIBuilder(p.Prog, p, positioner)
 	p.cu = p.di.createCompileUnit(name, pkgPath)
+}
+
+// FinalizeDebug resolves temporary debug metadata and releases the package's
+// DI builder. No debug records may be added after this call.
+func (p Package) FinalizeDebug() {
+	if p.di != nil {
+		p.di.finalize()
+	}
 }
 
 func (p Package) createGlobalStr(v string) (ret llvm.Value) {
