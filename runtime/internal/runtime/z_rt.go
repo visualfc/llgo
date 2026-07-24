@@ -20,7 +20,6 @@ import (
 	"unsafe"
 
 	c "github.com/goplus/llgo/runtime/internal/clite"
-	"github.com/goplus/llgo/runtime/internal/clite/pthread"
 	"github.com/goplus/llgo/runtime/internal/clite/setjmp"
 )
 
@@ -38,9 +37,10 @@ type Defer struct {
 
 // Recover recovers a panic.
 func Recover() (ret any) {
-	ptr := excepKey.Get()
+	gp := getg()
+	ptr := gp.panic_
 	if ptr != nil {
-		excepKey.Set(nil)
+		gp.panic_ = nil
 		ret = *(*any)(ptr)
 		c.Free(ptr)
 		if PanicRecovered != nil {
@@ -58,26 +58,20 @@ func Panic(v any) {
 	SavePanicCallerFrames()
 	ptr := c.Malloc(unsafe.Sizeof(v))
 	*(*any)(ptr) = v
-	excepKey.Set(ptr)
+	gp := getg()
+	gp.panic_ = ptr
 
-	Rethrow((*Defer)(c.GoDeferData()))
+	Rethrow(gp.defer_)
 }
 
-var (
-	excepKey   pthread.Key
-	goexitKey  pthread.Key
-	mainThread pthread.Thread
-)
-
 func Goexit() {
-	goexitKey.Set(unsafe.Pointer(&goexitKey))
-	Rethrow((*Defer)(c.GoDeferData()))
+	gp := getg()
+	gp.goexit = true
+	Rethrow(gp.defer_)
 }
 
 func init() {
-	excepKey.Create(nil)
-	goexitKey.Create(nil)
-	mainThread = pthread.Self()
+	getg().isMain = true
 }
 
 // -----------------------------------------------------------------------------
