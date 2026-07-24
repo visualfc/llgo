@@ -689,7 +689,7 @@ func filterTestPackages(initial []*packages.Package, outFile string) ([]*package
 		if needLink(pkg, ModeTest) {
 			filtered = append(filtered, pkg)
 		}
-		if pkg.Types.Name() == "main" {
+		if pkg.Types != nil && pkg.Types.Name() == "main" {
 			pkg.Types.SetName("main.test")
 		}
 	}
