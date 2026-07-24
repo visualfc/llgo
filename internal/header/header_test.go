@@ -252,6 +252,11 @@ func TestGoCTypeName(t *testing.T) {
 			goType:   types.NewSignature(nil, nil, nil, false),
 			expected: "void (*)(void)",
 		},
+		{
+			name:     "alias signature type",
+			goType:   types.NewAlias(types.NewTypeName(0, nil, "MyFunc", nil), types.NewSignature(nil, nil, nil, false)),
+			expected: "void (*)(void)",
+		},
 	}
 
 	for _, tt := range tests {

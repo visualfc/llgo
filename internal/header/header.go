@@ -158,6 +158,7 @@ func (hw *cheaderWriter) processSignatureTypes(sig *types.Signature, visiting ma
 
 // goCTypeName returns the C type name for a Go type
 func (hw *cheaderWriter) goCTypeName(t types.Type) string {
+retry:
 	switch typ := t.(type) {
 	case *types.Basic:
 		switch typ.Kind() {
@@ -238,6 +239,9 @@ func (hw *cheaderWriter) goCTypeName(t types.Type) string {
 		// Function types are represented as function pointers in C
 		// Generate proper function pointer syntax
 		return hw.generateFunctionPointerType(typ)
+	case *types.Alias:
+		t = types.Unalias(typ)
+		goto retry
 	}
 	panic(fmt.Errorf("unsupported type: %v", t))
 }
