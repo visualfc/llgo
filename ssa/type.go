@@ -665,14 +665,18 @@ func FuncName(pkg *types.Package, name string, recv *types.Var, org bool) string
 }
 
 func recvNamed(t types.Type) (typ *types.Named, ptr bool) {
-	if tp, ok := t.(*types.Pointer); ok {
-		t = tp.Elem()
+retry:
+	switch typ := t.(type) {
+	case *types.Named:
+		return typ, ptr
+	case *types.Pointer:
+		t = typ.Elem()
 		ptr = true
+		goto retry
+	case *types.Alias:
+		t = types.Unalias(typ)
+		goto retry
 	}
-	if _, ok := t.(*types.Alias); ok {
-		t = types.Unalias(t)
-	}
-	typ, _ = t.(*types.Named)
 	return
 }
 
