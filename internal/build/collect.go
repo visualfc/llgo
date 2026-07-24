@@ -109,6 +109,7 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	m.common.Target = c.buildConf.Target
 	m.common.TargetABI = c.crossCompile.TargetABI
 	m.common.GoGlobalDCE = c.buildConf.goGlobalDCEEnabled()
+	m.common.EnableLTOPlugin = c.buildConf.LTOPlugin.Enabled()
 	m.common.EmitDWARF = shouldEmitDebugInfo(c.buildConf, &c.crossCompile)
 	m.common.PCLNMode = effectivePCLNMode(c.buildConf).String()
 

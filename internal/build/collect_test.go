@@ -415,6 +415,54 @@ func TestDevLTOGlobalDCECollectFingerprint(t *testing.T) {
 	}
 }
 
+func TestCollectFingerprintIncludesLTOPlugin(t *testing.T) {
+	td := t.TempDir()
+	goFile := filepath.Join(td, "main.go")
+	if err := os.WriteFile(goFile, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	collect := func(plugin lto.PassPlugin) *aPackage {
+		pkg := &aPackage{Package: &packages.Package{
+			PkgPath: "test/pkg",
+			GoFiles: []string{goFile},
+		}}
+		ctx := &context{
+			conf: &packages.Config{},
+			buildConf: &Config{
+				Goos:      "linux",
+				Goarch:    "amd64",
+				LTO:       lto.Full,
+				LTOPlugin: plugin,
+			},
+			crossCompile: crosscompile.Export{LLVMTarget: "x86_64-unknown-linux"},
+		}
+		if err := ctx.collectFingerprint(pkg); err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	}
+
+	withoutPlugin := collect(lto.PassPlugin{})
+	withPlugin := collect(lto.PassPlugin{Path: "/tmp/LLGOLTOPlugin.so"})
+	withOtherPluginPath := collect(lto.PassPlugin{Path: "/opt/LLGOLTOPlugin.so"})
+
+	if withoutPlugin.Fingerprint == withPlugin.Fingerprint {
+		t.Fatal("plugin and non-plugin builds should not share a cache fingerprint")
+	}
+	if withPlugin.Fingerprint != withOtherPluginPath.Fingerprint {
+		t.Fatal("plugin path should not affect package cache fingerprint")
+	}
+
+	data, err := decodeManifest(withPlugin.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Common == nil || !data.Common.EnableLTOPlugin {
+		t.Fatalf("manifest should contain ENABLE_LTO_PLUGIN=true:\n%s", withPlugin.Manifest)
+	}
+}
+
 func TestCollectFingerprintDependencies(t *testing.T) {
 	td := t.TempDir()
 
