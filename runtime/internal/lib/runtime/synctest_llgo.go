@@ -23,3 +23,17 @@ func synctest_disassociate(_ unsafe.Pointer) {}
 func synctest_isAssociated(_ unsafe.Pointer) bool {
 	return false
 }
+
+//go:linkname synctest_acquire internal/synctest.acquire
+func synctest_acquire() any {
+	return nil
+}
+
+//go:linkname synctest_release internal/synctest.release
+func synctest_release(bubble any) {
+}
+
+//go:linkname synctest_inBubble internal/synctest.inBubble
+func synctest_inBubble(bubble any, f func()) {
+	f()
+}
