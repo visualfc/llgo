@@ -173,20 +173,40 @@ bool isRuntimeStringSlice2(CallBase *CB) {
   return Callee && Callee->getName().ends_with(RuntimeStringSlice2Suffix);
 }
 
+bool consumeStringCallArgument(CallBase *CB, unsigned &NextArgIndex,
+                               const DataLayout &DL,
+                               SmallVectorImpl<std::string> &Names,
+                               unsigned Depth) {
+  if (NextArgIndex >= CB->arg_size())
+    return false;
+
+  Value *Arg = CB->getArgOperand(NextArgIndex);
+  if (Arg->getType()->isStructTy()) {
+    ++NextArgIndex;
+    return collectStringSetFromStringValue(Arg, DL, Names, Depth + 1);
+  }
+
+  if (NextArgIndex + 1 >= CB->arg_size())
+    return false;
+  Value *Len = CB->getArgOperand(NextArgIndex + 1);
+  if (!Arg->getType()->isPointerTy() || !Len->getType()->isIntegerTy())
+    return false;
+  NextArgIndex += 2;
+  return collectStringSet(Arg, Len, DL, Names, Depth + 1);
+}
+
 bool collectStringSetFromStringCat(CallBase *CB, const DataLayout &DL,
                                    SmallVectorImpl<std::string> &Names,
                                    unsigned Depth) {
   if (!isRuntimeStringCat(CB))
     return false;
-  if (CB->arg_size() != 4)
-    return false;
 
   SmallVector<std::string, 4> Prefixes;
   SmallVector<std::string, 4> Suffixes;
-  if (!collectStringSet(CB->getArgOperand(0), CB->getArgOperand(1), DL,
-                        Prefixes, Depth + 1) ||
-      !collectStringSet(CB->getArgOperand(2), CB->getArgOperand(3), DL,
-                        Suffixes, Depth + 1))
+  unsigned NextArgIndex = 0;
+  if (!consumeStringCallArgument(CB, NextArgIndex, DL, Prefixes, Depth) ||
+      !consumeStringCallArgument(CB, NextArgIndex, DL, Suffixes, Depth) ||
+      NextArgIndex != CB->arg_size())
     return false;
   return addConcatenatedNames(Names, Prefixes, Suffixes);
 }
@@ -196,18 +216,19 @@ bool collectStringSetFromStringSlice2(CallBase *CB, const DataLayout &DL,
                                       unsigned Depth) {
   if (!isRuntimeStringSlice2(CB))
     return false;
-  if (CB->arg_size() != 6)
-    return false;
 
   SmallVector<std::string, 4> Bases;
-  if (!collectStringSet(CB->getArgOperand(0), CB->getArgOperand(1), DL, Bases,
-                        Depth + 1))
+  unsigned NextArgIndex = 0;
+  if (!consumeStringCallArgument(CB, NextArgIndex, DL, Bases, Depth) ||
+      CB->arg_size() != NextArgIndex + 4)
     return false;
 
   SmallVector<uint64_t, 4> Lows;
   SmallVector<uint64_t, 4> Highs;
-  if (!collectIntegerChoices(CB->getArgOperand(2), Lows, Depth + 1) ||
-      !collectIntegerChoices(CB->getArgOperand(3), Highs, Depth + 1))
+  if (!collectIntegerChoices(CB->getArgOperand(NextArgIndex), Lows,
+                             Depth + 1) ||
+      !collectIntegerChoices(CB->getArgOperand(NextArgIndex + 1), Highs,
+                             Depth + 1))
     return false;
 
   for (const std::string &Base : Bases) {
@@ -886,6 +907,37 @@ bool collectStringSetFromFunctionStringArg(Value *Ptr, Value *Len,
   return true;
 }
 
+bool collectStringSetFromFunctionStringValueArg(
+    Value *StringValue, const DataLayout &DL,
+    SmallVectorImpl<std::string> &Names, unsigned Depth) {
+  auto *Arg = dyn_cast<Argument>(StringValue);
+  if (!Arg || !Arg->getType()->isStructTy())
+    return false;
+
+  Function *F = Arg->getParent();
+  if (!F)
+    return false;
+
+  unsigned ArgNo = Arg->getArgNo();
+  SmallVector<CallBase *, 8> Callers;
+  for (User *U : F->users()) {
+    auto *CB = dyn_cast<CallBase>(U);
+    if (!CB || CB->getCalledFunction() != F || ArgNo >= CB->arg_size())
+      return false;
+    Callers.push_back(CB);
+  }
+  if (Callers.empty())
+    return false;
+
+  for (CallBase *CB : Callers) {
+    Value *CallValue = CB->getArgOperand(ArgNo);
+    if (!CallValue->getType()->isStructTy() ||
+        !collectStringSetFromStringValue(CallValue, DL, Names, Depth + 1))
+      return false;
+  }
+  return true;
+}
+
 bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
                                      SmallVectorImpl<std::string> &Names,
                                      unsigned Depth) {
@@ -906,6 +958,9 @@ bool collectStringSetFromStringValue(Value *StringValue, const DataLayout &DL,
     if (Constant *Folded = foldConstantLoad(Load, DL))
       return collectStringSetFromStringConstant(Folded, DL, Names, Depth + 1);
   }
+
+  if (collectStringSetFromFunctionStringValueArg(StringValue, DL, Names, Depth))
+    return true;
 
   if (auto *Insert = dyn_cast<InsertValueInst>(StringValue)) {
     Value *Ptr = findInsertedValue(Insert, 0);
@@ -1039,23 +1094,18 @@ std::optional<unsigned> findReflectMethodNameArg(CallBase *ReflectCall) {
   return std::nullopt;
 }
 
-// The plugin runs during LTO, after LLGo has applied C ABI lowering to every
-// module that participates in the link. At this point a Go string argument is
-// always split into (ptr, len). LLGo marks the string pointer parameter, and
-// the length is the following parameter produced by the same lowering step.
+// Optimized C ABI lowering splits a Go string into (ptr, len), with the name
+// attribute on the pointer. Debug-preserving builds can retain the original
+// aggregate string argument instead. Accept both representations so enabling
+// DWARF does not change MethodByName reachability.
 bool collectStringSetFromCallArgs(CallBase *ReflectCall, const DataLayout &DL,
                                   SmallVectorImpl<std::string> &Names) {
   std::optional<unsigned> NameArg = findReflectMethodNameArg(ReflectCall);
   if (!NameArg)
     return false;
 
-  if (*NameArg + 1 >= ReflectCall->arg_size())
-    return false;
-  Value *Ptr = ReflectCall->getArgOperand(*NameArg);
-  Value *Len = ReflectCall->getArgOperand(*NameArg + 1);
-  if (!Ptr->getType()->isPointerTy() || !Len->getType()->isIntegerTy())
-    return false;
-  return collectStringSet(Ptr, Len, DL, Names);
+  unsigned NextArgIndex = *NameArg;
+  return consumeStringCallArgument(ReflectCall, NextArgIndex, DL, Names, 0);
 }
 
 bool isTypeCheckedLoad(CallBase *CB) {
