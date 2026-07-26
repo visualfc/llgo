@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"runtime"
 	"unsafe"
 
@@ -132,6 +133,11 @@ func RunGoroutine(value int) int {
 		ch <- value + 1
 	}()
 	return <-ch
+}
+
+//export FormatValue
+func FormatValue(value string, number int) string {
+	return fmt.Sprintf("%s:%d", value, number)
 }
 
 // Functions with small struct parameters and return values

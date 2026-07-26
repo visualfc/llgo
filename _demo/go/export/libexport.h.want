@@ -121,6 +121,9 @@ mul(float a, float b);
 void
 github_com_goplus_llgo__demo_go_export_c_init(void) GO_SYMBOL_RENAME("github.com/goplus/llgo/_demo/go/export/c.init")
 
+intptr_t
+AllThreadsSyscallStatus(void);
+
 main_ComplexData
 CreateComplexData(void);
 
@@ -162,6 +165,9 @@ CreateStringMap(void);
 
 C_XType
 CreateXType(int32_t id, GoString name, double value, _Bool flag);
+
+GoString
+FormatValue(GoString value, intptr_t number);
 
 main_FuncInfoResult
 GetFuncInfo(void);

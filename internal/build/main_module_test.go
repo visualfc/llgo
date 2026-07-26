@@ -97,9 +97,13 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 			mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true})
 			ir := mod.LPkg.String()
 			checks := []string{
-				"@llvm.global_ctors = appending global",
 				"define internal void @__llgo_runtime_ctor()",
 				"call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()",
+			}
+			if mode == BuildModeCShared {
+				checks = append(checks, `@__llgo_runtime_ctor_init = hidden constant ptr @__llgo_runtime_ctor, section ".init_array"`)
+			} else {
+				checks = append(checks, "@llvm.global_ctors = appending global")
 			}
 			for _, want := range checks {
 				if !strings.Contains(ir, want) {

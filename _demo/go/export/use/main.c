@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <inttypes.h>
 #include <assert.h>
+#include <errno.h>
 #include <string.h>
 #include "../libexport.h"
 
@@ -58,6 +59,16 @@ int main() {
     // Test HelloWorld
     HelloWorld();
     printf("\n");
+
+    // Verify that a C library can initialize and call standard-library paths
+    // that depend on the runtime hooks supplied by LLGo.
+    GoString formatted = FormatValue((GoString){"answer", 6}, 42);
+    assert(go_string_equals(formatted, "answer:42"));
+#ifdef __linux__
+    assert(AllThreadsSyscallStatus() == ENOTSUP);
+#else
+    assert(AllThreadsSyscallStatus() == 0);
+#endif
 
     // Test small struct
     main_SmallStruct small = CreateSmallStruct(5, 1);  // 1 for true
