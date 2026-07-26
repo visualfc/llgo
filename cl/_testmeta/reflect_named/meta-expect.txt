@@ -56,8 +56,8 @@ github.com/goplus/llgo/cl/_testmeta/reflect_named.main:
 
 [UseIfaceMethod]
 github.com/goplus/llgo/cl/_testmeta/reflect_named.main:
-    github.com/goplus/llgo/runtime/internal/lib/reflect.iface$iKaf3qt2OaMUwQszh7IENnt26Bv3ufKgLDSVmXKN7gI MethodByName _llgo_func$aM2cVUtLQbPq1YHtnabQiM7XJ5Cg5RyV6BIDWrqey7E
-    github.com/goplus/llgo/runtime/internal/lib/reflect.iface$iKaf3qt2OaMUwQszh7IENnt26Bv3ufKgLDSVmXKN7gI MethodByName _llgo_func$aM2cVUtLQbPq1YHtnabQiM7XJ5Cg5RyV6BIDWrqey7E
+    github.com/goplus/llgo/runtime/internal/lib/reflect.iface$mD8cc0P9iPHqG1cgYNbFpshv9b41oJ45HmjD5KeBlWw MethodByName _llgo_func$aM2cVUtLQbPq1YHtnabQiM7XJ5Cg5RyV6BIDWrqey7E
+    github.com/goplus/llgo/runtime/internal/lib/reflect.iface$mD8cc0P9iPHqG1cgYNbFpshv9b41oJ45HmjD5KeBlWw MethodByName _llgo_func$aM2cVUtLQbPq1YHtnabQiM7XJ5Cg5RyV6BIDWrqey7E
 
 [UseNamedMethod]
 github.com/goplus/llgo/cl/_testmeta/reflect_named.main:
@@ -73,7 +73,7 @@ _llgo_github.com/goplus/llgo/cl/_testmeta/reflect_named.T:
     1 github.com/goplus/llgo/cl/_testmeta/reflect_named.m _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac github.com/goplus/llgo/cl/_testmeta/reflect_named.(*T).m __llgo_stub.github.com/goplus/llgo/cl/_testmeta/reflect_named.T.m
 
 [InterfaceInfo]
-github.com/goplus/llgo/runtime/internal/lib/reflect.iface$iKaf3qt2OaMUwQszh7IENnt26Bv3ufKgLDSVmXKN7gI:
+github.com/goplus/llgo/runtime/internal/lib/reflect.iface$mD8cc0P9iPHqG1cgYNbFpshv9b41oJ45HmjD5KeBlWw:
     Align _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     AssignableTo _llgo_func$Kxk9fspGkjXcoNWf2ucHG1vOQ5VHxVtYionfm-DnvWE
     Bits _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
@@ -88,20 +88,24 @@ github.com/goplus/llgo/runtime/internal/lib/reflect.iface$iKaf3qt2OaMUwQszh7IENn
     FieldByIndex _llgo_func$LPPtiM49dEPl48CC3WRhXm3YPnfUJEZE_k8Tx3rMuSk
     FieldByName _llgo_func$dEvABJ5r0MMUlf4smWpIDG5dO8AuGklGdNJ1xneL3UM
     FieldByNameFunc _llgo_func$xySrXVFC_2LK2oP71R2UryKi6UmdEJUo9k6aQuz4TvI
+    Fields _llgo_func$oBV5vpKn4Ua1AX8aLdZdui_u_jYkARX719I2f59QfI0
     Implements _llgo_func$Kxk9fspGkjXcoNWf2ucHG1vOQ5VHxVtYionfm-DnvWE
     In _llgo_func$dPYu3A0LoGTV2Hd8PW4KPw2ITiUSo9q-4Bg9ZrPITnY
+    Ins _llgo_func$8_pqxZCIokgbis1m-GfDe9OwwxKW0spiCo-YwkvkWSQ
     IsVariadic _llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk
     Key _llgo_func$b6KOG2Oj7wt8ogb9H8QPbhEfXhxMMjdxRZgPLK_UOwI
     Kind _llgo_func$w8Mj2LK8G5p7MIiGWR6MYjyXy3L8SVVzYlT1bb6KNXk
     Len _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     Method _llgo_func$FmJJGomlX5kINJGxQdQDCAkD89ySoMslAYFrziWInVc
     MethodByName _llgo_func$aM2cVUtLQbPq1YHtnabQiM7XJ5Cg5RyV6BIDWrqey7E
+    Methods _llgo_func$9XHZL9qb1KUOQ6EU9OsN3ciYPpEIDSIJvzJ89Pr58Eo
     Name _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to
     NumField _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     NumIn _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     NumMethod _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     NumOut _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     Out _llgo_func$dPYu3A0LoGTV2Hd8PW4KPw2ITiUSo9q-4Bg9ZrPITnY
+    Outs _llgo_func$8_pqxZCIokgbis1m-GfDe9OwwxKW0spiCo-YwkvkWSQ
     OverflowComplex _llgo_func$cGkbH-2LQOLoq64Rqj3WeO56U8al7FfVkf5K1FFbPpE
     OverflowFloat _llgo_func$uk7PgUVap9GZdvS8R_mZCDbAbqnAbcNryqybtDogUNI
     OverflowInt _llgo_func$odFOIClZoEVGbTP_BEfZxVM5ex3r8Fj1afUEeP_awp8
