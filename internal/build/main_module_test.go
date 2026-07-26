@@ -75,8 +75,8 @@ func TestGenMainModuleLibrary(t *testing.T) {
 	if !strings.Contains(ir, "@__llgo_argc = global i32 0") {
 		t.Fatalf("library mode missing argc global:\n%s", ir)
 	}
-	if strings.Contains(ir, "@llvm.global_ctors") {
-		t.Fatalf("library mode without the runtime should not emit a constructor:\n%s", ir)
+	if !strings.Contains(ir, "@llvm.global_ctors") {
+		t.Fatalf("library mode missing constructor:\n%s", ir)
 	}
 }
 

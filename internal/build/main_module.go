@@ -77,13 +77,6 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		LPkg: mainPkg,
 	}
 
-	if ctx.buildConf.BuildMode != BuildModeExe {
-		if cfg.rtInit {
-			defineLibraryRuntimeInit(mainPkg, declareNoArgFunc(mainPkg, rtPkgPath+".init"))
-		}
-		return mainAPkg
-	}
-
 	runtimeStub := defineWeakNoArgStub(mainPkg, "runtime.init")
 	// TODO(lijie): workaround for syscall patch
 	defineWeakNoArgStub(mainPkg, "syscall.init")
@@ -113,6 +106,11 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	mainInit := declareNoArgFunc(mainPkg, pkg.PkgPath+".init")
 	mainMain := declareNoArgFunc(mainPkg, pkg.PkgPath+".main")
 
+	if ctx.buildConf.BuildMode != BuildModeExe {
+		defineLibraryRuntimeInit(mainPkg, pyInit, rtInit, abiInit, runtimeStub, mainInit)
+		return mainAPkg
+	}
+
 	entryFn := defineEntryFunction(ctx, mainPkg, argcVar, argvVar, argvValueType, entryFunctions{
 		runtimeStub: runtimeStub,
 		mainInit:    mainInit,
@@ -134,13 +132,17 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 // before a C program calls an exported Go function. llvm.global_ctors is
 // lowered to the platform's native constructor mechanism for both shared
 // libraries and archive members.
-func defineLibraryRuntimeInit(pkg llssa.Package, rtInit llssa.Function) {
+func defineLibraryRuntimeInit(pkg llssa.Package, inits ...llssa.Function) {
 	const ctorName = "__llgo_runtime_ctor"
 	ctor := pkg.NewFunc(ctorName, llssa.NoArgsNoRet, llssa.InC)
 	ctorValue := pkg.Module().NamedFunction(ctorName)
 	ctorValue.SetLinkage(llvm.InternalLinkage)
 	b := ctor.MakeBody(1)
-	b.Call(rtInit.Expr)
+	for _, init := range inits {
+		if init != nil {
+			b.Call(init.Expr)
+		}
+	}
 	b.Return()
 
 	mod := pkg.Module()
