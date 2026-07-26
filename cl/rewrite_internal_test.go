@@ -17,6 +17,7 @@ import (
 	gpackages "github.com/goplus/gogen/packages"
 	llssa "github.com/goplus/llgo/ssa"
 	"github.com/goplus/llgo/ssa/ssatest"
+	"github.com/xgo-dev/llvm"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 )
@@ -771,6 +772,16 @@ func f() {
 		defer func() { _ = v }()
 	}
 }
+
+func namedResult(stop bool) (result *int) {
+	if stop {
+		return nil
+	}
+	for v := range seq {
+		defer func() { result = &v }()
+	}
+	return nil
+}
 `)
 
 	ir := m.String()
@@ -779,6 +790,9 @@ func f() {
 	}
 	if !strings.Contains(ir, "sigsetjmp") && !strings.Contains(ir, "setjmp") {
 		t.Fatalf("expected rangefunc defer stack setup in module, got:\n%s", ir)
+	}
+	if err := llvm.VerifyModule(m, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("rangefunc defer module is invalid: %v\n%s", err, ir)
 	}
 }
 

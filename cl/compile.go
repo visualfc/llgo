@@ -1681,16 +1681,27 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		jmpb := p.jumpTo(v)
 		b.Jump(jmpb)
 	case *ssa.Return:
+		runDefers := p.returnNeedsImplicitRunDefers(v)
+		if runDefers {
+			p.recordPanicLocation(b, v.Pos())
+			b.RunDefers()
+		}
 		var results []llssa.Expr
 		if n := len(v.Results); n > 0 {
 			results = make([]llssa.Expr, n)
 			for i, r := range v.Results {
+				// A named result may be changed by a deferred call. Its SSA
+				// load was emitted before the implicit RunDefers above, so
+				// reload it in the continuation block after all defers have
+				// completed.
+				if runDefers && v.Parent().Signature.Results().At(i).Name() != "" {
+					if load, ok := r.(*ssa.UnOp); ok && load.Op == token.MUL {
+						results[i] = p.compileInstrOrValue(b, load, false)
+						continue
+					}
+				}
 				results[i] = p.compileValue(b, r)
 			}
-		}
-		if p.returnNeedsImplicitRunDefers(v) {
-			p.recordPanicLocation(b, v.Pos())
-			b.RunDefers()
 		}
 		if p.shouldTrackCallerFrames() {
 			p.popCallerLocationFrame(b)
