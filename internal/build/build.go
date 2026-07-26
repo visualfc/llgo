@@ -44,6 +44,7 @@ import (
 	"github.com/goplus/llgo/internal/cabi"
 	"github.com/goplus/llgo/internal/clang"
 	"github.com/goplus/llgo/internal/crosscompile"
+	"github.com/goplus/llgo/internal/deadcode"
 	"github.com/goplus/llgo/internal/env"
 	"github.com/goplus/llgo/internal/firmware"
 	"github.com/goplus/llgo/internal/flash"
@@ -1237,11 +1238,12 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	}
 
 	if ctx.buildConf.deadcodeDropEnabled() && ctx.buildConf.BuildMode == BuildModeExe {
-		var err error
-		ctx.liveMethodSlots, err = ctx.analyzeDeadcode(linkedOrder, pkg, needRuntime)
+		metas := linkedPackageMetas(linkedOrder)
+		summary, err := meta.NewGlobalSummary(metas)
 		if err != nil {
 			return err
 		}
+		ctx.liveMethodSlots = deadcode.Analyze(summary, dceEntryRootCandidates(pkg, needRuntime))
 	}
 
 	// Generate main module file (needed for global variables even in library modes)
@@ -1304,6 +1306,22 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	}
 
 	return nil
+}
+
+func linkedPackageMetas(pkgs []Package) []*meta.PackageMeta {
+	metas := make([]*meta.PackageMeta, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		metas = append(metas, pkg.Meta)
+	}
+	return metas
+}
+
+func dceEntryRootCandidates(pkg *packages.Package, needRuntime bool) []string {
+	roots := []string{pkg.PkgPath + ".init", pkg.PkgPath + ".main"}
+	if needRuntime {
+		roots = append(roots, llssa.PkgRuntime+".init")
+	}
+	return roots
 }
 
 func linkedModuleGlobals(pkgs []Package) map[string]none {
