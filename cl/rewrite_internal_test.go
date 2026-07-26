@@ -796,6 +796,34 @@ func namedResult(stop bool) (result *int) {
 	}
 }
 
+func TestNamedResultSlot(t *testing.T) {
+	ssaPkg, _, _ := buildGoSSAPkg(t, `
+package foo
+
+func seq(yield func(int) bool) { _ = yield(1) }
+
+func f() (result *int) {
+	for v := range seq {
+		defer func() { result = &v }()
+	}
+	return nil
+}
+
+func unnamed() string { return "" }
+`)
+
+	fn := ssaPkg.Func("f")
+	ctx := &context{goFn: fn}
+	slot := ctx.namedResultSlot(0)
+	if slot == nil || slot.Comment != "result" {
+		t.Fatalf("named result slot = %v, want result allocation", slot)
+	}
+	ctx.goFn = ssaPkg.Func("unnamed")
+	if got := ctx.namedResultSlot(0); got != nil {
+		t.Fatalf("unnamed result slot = %v, want nil", got)
+	}
+}
+
 func TestDeferStackOwnerUsesEnclosingSourceFunction(t *testing.T) {
 	const src = `package foo
 

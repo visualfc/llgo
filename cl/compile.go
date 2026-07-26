@@ -1690,14 +1690,13 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		if n := len(v.Results); n > 0 {
 			results = make([]llssa.Expr, n)
 			for i, r := range v.Results {
-				// Go SSA forms the named-result tuple with loads from the
-				// result slots. Reload the slot in the RunDefers continuation
-				// so deferred calls can change the value we return. Avoid the
-				// general UnOp path: this plain local load needs neither its
-				// cached value nor any dereference side effects.
-				if runDefers && v.Parent().Signature.Results().At(i).Name() != "" {
-					if load, ok := r.(*ssa.UnOp); ok && load.Op == token.MUL {
-						results[i] = b.Load(p.compileValue(b, load.X))
+				// A deferred call may change a named result independently of
+				// the SSA value in Return.Results. Reload the result's storage
+				// in the RunDefers continuation instead of depending on the
+				// particular SSA node used to form the return tuple.
+				if runDefers {
+					if slot := p.namedResultSlot(i); slot != nil {
+						results[i] = b.Load(p.compileValue(b, slot))
 						continue
 					}
 				}
@@ -1903,6 +1902,30 @@ func (p *context) returnNeedsImplicitRunDefers(ret *ssa.Return) bool {
 		return false
 	}
 	return p.functionHasExplicitStackDeferInAnon(fn)
+}
+
+// namedResultSlot returns the allocation for fn's named result at index.
+// The SSA Function API exposes result variables through their source-level
+// Alloc instructions, while Return.Results only exposes the values currently
+// used to form a particular return tuple.
+func (p *context) namedResultSlot(index int) *ssa.Alloc {
+	fn := p.goFn
+	if fn == nil || index < 0 || index >= fn.Signature.Results().Len() {
+		return nil
+	}
+	result := fn.Signature.Results().At(index)
+	if result.Name() == "" {
+		return nil
+	}
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			alloc, ok := instr.(*ssa.Alloc)
+			if ok && alloc.Comment == result.Name() && alloc.Pos() == result.Pos() {
+				return alloc
+			}
+		}
+	}
+	return nil
 }
 
 func previousNonDebugInstrIsRunDefers(ret *ssa.Return) bool {
