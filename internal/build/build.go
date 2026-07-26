@@ -767,6 +767,10 @@ type context struct {
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
 	pclnExternal *pclnmap.Data
+
+	// liveMethodSlots is the GlobalSummary-based method liveness result. The
+	// LLVM method-table rewrite consumes it in a later stage.
+	liveMethodSlots map[string][]int
 }
 
 // closePackageMetas releases metadata mappings owned by this build. Metadata
@@ -1230,6 +1234,14 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	if needRuntime || needPyInit || ctx.buildConf.Target == "" {
 		linkArgs = append(linkArgs, rtLinkArgs...)
 		archiveInputs = append(archiveInputs, rtLinkInputs...)
+	}
+
+	if ctx.buildConf.deadcodeDropEnabled() && ctx.buildConf.BuildMode == BuildModeExe {
+		var err error
+		ctx.liveMethodSlots, err = ctx.analyzeDeadcode(linkedOrder, pkg, needRuntime)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Generate main module file (needed for global variables even in library modes)
