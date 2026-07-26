@@ -68,6 +68,8 @@ var (
 	checkLineRE    = regexp.MustCompile(`^\s*//\s*CHECK(?:-[A-Z]+)?:`)
 	debugMetaRE    = regexp.MustCompile(`, ![A-Za-z0-9_.-]+ ![0-9]+`)
 	numericNameRE  = regexp.MustCompile(`^\d+$`)
+	cgoSymRE       = regexp.MustCompile(`\b(_cgo_[0-9a-f]{12}_(?:Cfunc|Cfpvarfp|Cvar|Ctype|Cenum|Cmacro)_\w+|_cgo_panic|_cgo_CHECK|crosscall2)\b`)
+	cgoHashRe      = regexp.MustCompile(`_cgo_[0-9a-f]{12}`)
 )
 
 func generateFile(target resolvedTarget) error {
@@ -217,10 +219,21 @@ func collectAnchors(src string, fset *token.FileSet, file *ast.File) (map[string
 
 func topInsertPos(src string, fset *token.FileSet, file *ast.File) int {
 	for _, decl := range file.Decls {
-		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.IMPORT {
-			continue
+		var doc *ast.CommentGroup
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			doc = d.Doc
+		case *ast.GenDecl:
+			if d.Tok == token.IMPORT {
+				continue
+			}
+			doc = d.Doc
 		}
-		return lineStart(src, offsetOf(fset, decl.Pos()))
+		pos := decl.Pos()
+		if doc != nil {
+			pos = doc.Pos()
+		}
+		return lineStart(src, offsetOf(fset, pos))
 	}
 	return len(src)
 }
@@ -437,8 +450,76 @@ func generalizeIRLine(line, modulePath string) string {
 	return generalizeModulePath(scrubIRLine(line), modulePath)
 }
 
+func transformCgoSymbols(input string) string {
+	return cgoSymRE.ReplaceAllStringFunc(input, func(match string) string {
+		return cgoHashRe.ReplaceAllString(match, `_cgo_{{.*}}`)
+	})
+}
+
+// transformBrackets process [[ ... ] ..]
+func transformBrackets(input string) string {
+	var result strings.Builder
+	i := 0
+	for i < len(input) {
+		if i+1 < len(input) && input[i] == '[' && input[i+1] == '[' {
+			end := findMatch(input, i)
+			if end > i {
+				fullContent := input[i : end+1]
+				transformed := escapeBrackets(fullContent)
+				result.WriteString("{{")
+				result.WriteString(transformed)
+				result.WriteString("}}")
+				i = end + 1
+				continue
+			}
+		}
+		result.WriteByte(input[i])
+		i++
+	}
+	return result.String()
+}
+
+func findMatch(s string, start int) int {
+	if start+1 >= len(s) || s[start] != '[' || s[start+1] != '[' {
+		return -1
+	}
+
+	depth := 0
+	i := start
+
+	for i < len(s) {
+		if s[i] == '[' {
+			depth++
+		} else if s[i] == ']' {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+		i++
+	}
+
+	return -1
+}
+
+func escapeBrackets(s string) string {
+	var result strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '[' {
+			result.WriteString(`\[`)
+		} else if s[i] == ']' {
+			result.WriteString(`\]`)
+		} else {
+			result.WriteByte(s[i])
+		}
+	}
+	return result.String()
+}
+
 func scrubIRLine(line string) string {
 	line = debugMetaRE.ReplaceAllString(line, "")
+	line = transformCgoSymbols(line)
+	line = transformBrackets(line)
 	return strings.TrimRight(line, " \t")
 }
 
@@ -506,6 +587,9 @@ func shouldSkipFunctionCheck(symbol string) bool {
 }
 
 func trimPkgPrefix(symbol, pkgPath string) (string, bool) {
+	if strings.HasPrefix(symbol, "main.") {
+		return symbol[5:], true
+	}
 	prefix := pkgPath + "."
 	if strings.HasPrefix(symbol, prefix) {
 		return strings.TrimPrefix(symbol, prefix), true
