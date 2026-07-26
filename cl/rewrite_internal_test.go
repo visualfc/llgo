@@ -810,10 +810,20 @@ func f() (result *int) {
 }
 
 func unnamed() string { return "" }
+
+func lifted() (result int) { return }
 `)
 
 	fn := ssaPkg.Func("f")
 	ctx := &context{goFn: fn}
+	if got := (&context{}).namedResultSlot(0); got != nil {
+		t.Fatalf("nil function result slot = %v, want nil", got)
+	}
+	for _, index := range []int{-1, 1} {
+		if got := ctx.namedResultSlot(index); got != nil {
+			t.Fatalf("result slot at index %d = %v, want nil", index, got)
+		}
+	}
 	slot := ctx.namedResultSlot(0)
 	if slot == nil || slot.Comment != "result" {
 		t.Fatalf("named result slot = %v, want result allocation", slot)
@@ -821,6 +831,10 @@ func unnamed() string { return "" }
 	ctx.goFn = ssaPkg.Func("unnamed")
 	if got := ctx.namedResultSlot(0); got != nil {
 		t.Fatalf("unnamed result slot = %v, want nil", got)
+	}
+	ctx.goFn = ssaPkg.Func("lifted")
+	if got := ctx.namedResultSlot(0); got != nil {
+		t.Fatalf("lifted named result slot = %v, want nil", got)
 	}
 }
 
