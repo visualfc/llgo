@@ -22,6 +22,7 @@ import (
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/crosscompile"
 	"github.com/goplus/llgo/internal/lto"
+	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/packages"
 	llssa "github.com/goplus/llgo/ssa"
@@ -36,6 +37,40 @@ func TestMain(m *testing.M) {
 	cacheRootFunc = old
 	_ = os.RemoveAll(td)
 	os.Exit(code)
+}
+
+func TestClosePackageMetas(t *testing.T) {
+	b := meta.NewBuilder()
+	b.Sym("pkg.main")
+	written, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "pkg.meta")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := written.WriteTo(f); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := readMeta(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := &aPackage{Package: &packages.Package{}, Meta: loaded}
+	ctx := &context{pkgs: map[*packages.Package]Package{pkg.Package: pkg}}
+	ctx.closePackageMetas()
+	if pkg.Meta != nil {
+		t.Fatal("package metadata was not cleared")
+	}
+	if n, err := loaded.WriteTo(io.Discard); err != nil || n != 0 {
+		t.Fatalf("closed metadata still has mapped bytes: n=%d err=%v", n, err)
+	}
 }
 
 func TestNeedsLinuxNoPIE(t *testing.T) {
@@ -820,6 +855,48 @@ func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.conf.goGlobalDCEEnabled(); got != tt.want {
 				t.Fatalf("goGlobalDCEEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDeadcodeDropEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want bool
+	}{
+		{name: "not requested", conf: &Config{LTO: lto.Off}, want: false},
+		{name: "requested", conf: &Config{DeadcodeDrop: true, LTO: lto.Off}, want: buildenv.Dev},
+		{name: "disabled by go global dce", conf: &Config{DeadcodeDrop: true, LTO: lto.Full}, want: false},
+		{name: "enabled when go global dce disabled", conf: &Config{DeadcodeDrop: true, LTO: lto.Full, DisableGoGlobalDCE: true}, want: buildenv.Dev},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.conf.deadcodeDropEnabled(); got != tt.want {
+				t.Fatalf("deadcodeDropEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPackageMetaEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want bool
+	}{
+		{name: "disabled", conf: &Config{}, want: false},
+		{name: "explicit collection", conf: &Config{CollectPackageMeta: true}, want: true},
+		{name: "deadcode drop", conf: &Config{DeadcodeDrop: true}, want: buildenv.Dev},
+		{name: "collection with global dce", conf: &Config{CollectPackageMeta: true, LTO: lto.Full}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.conf.packageMetaEnabled(); got != tt.want {
+				t.Fatalf("packageMetaEnabled() = %v, want %v", got, tt.want)
 			}
 		})
 	}

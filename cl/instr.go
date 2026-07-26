@@ -2138,21 +2138,23 @@ func (p *context) reflectTypeMethodCheck(call *ssa.CallCommon, method *types.Fun
 			return
 		}
 		if index, ok := constInt(call.Args[0]); ok {
-			p.pkg.RecordReflectMethodByIndex(index)
+			p.pkg.RecordReflectMethodByIndex(p.fn.Name(), index)
 			check.Kind = llssa.ReflectTypeMethodByIndex
 			break
 		}
+		p.pkg.MarkReflectMethod(p.fn.Name())
 		check.Kind = llssa.ReflectTypeMethodDynamic
 	case "MethodByName":
 		if len(call.Args) != 1 {
 			return
 		}
 		if name, ok := constStr(call.Args[0]); ok {
-			p.pkg.RecordReflectMethodByName(name)
+			p.pkg.RecordReflectMethodByName(p.fn.Name(), name)
 			check.Kind = llssa.ReflectTypeMethodByName
 			check.Name = name
 			break
 		}
+		p.pkg.MarkReflectMethod(p.fn.Name())
 		check.Kind = llssa.ReflectTypeMethodDynamic | llssa.ReflectTypeMethodByName
 	}
 	p.pkg.NeedAbiInit |= check.Kind

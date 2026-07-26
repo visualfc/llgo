@@ -838,6 +838,202 @@ func TestDevLTOGlobalDCEAbiTypeFakeUseFieldIndexes(t *testing.T) {
 	checkFieldIndex(reflect.TypeOf(reflect.Method{}), reflectMethodFuncFieldIndex, "Func")
 }
 
+func TestRecordTypeChildren(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	disabledPkg := prog.NewPackage("pkg", "pkg/disabled")
+	(&aBuilder{Prog: prog, Pkg: disabledPkg}).recordTypeChildren("pkg.disabled", types.Typ[types.Int])
+	if disabledPkg.metaBuilder != nil {
+		t.Fatal("metadata builder should remain disabled")
+	}
+
+	params := types.NewTuple(
+		types.NewVar(token.NoPos, nil, "n", types.Typ[types.Int]),
+		types.NewVar(token.NoPos, nil, "s", types.Typ[types.String]),
+	)
+	results := types.NewTuple(
+		types.NewVar(token.NoPos, nil, "ok", types.Typ[types.Bool]),
+		types.NewVar(token.NoPos, nil, "n", types.Typ[types.Int]),
+	)
+	sig := types.NewSignatureType(nil, nil, nil, params, results, false)
+
+	mapType := types.NewMap(types.Typ[types.String], types.Typ[types.Int])
+	arrayElem := types.Typ[types.Byte]
+	pkgTypes := types.NewPackage("example.com/pkg", "pkg")
+	namedType := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkgTypes, "Named", nil),
+		types.NewStruct([]*types.Var{
+			types.NewVar(token.NoPos, pkgTypes, "Field", types.Typ[types.Bool]),
+		}, nil),
+		nil,
+	)
+	ifaceMethod := types.NewFunc(token.NoPos, pkgTypes, "M", types.NewSignatureType(
+		nil, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, nil, "n", types.Typ[types.Int])),
+		nil,
+		false,
+	))
+	interfaceType := types.NewInterfaceType([]*types.Func{ifaceMethod}, nil)
+	interfaceType.Complete()
+
+	pkg := prog.NewPackageEx("pkg", "pkg", true)
+	b := &aBuilder{Prog: prog, Pkg: pkg}
+	b.recordTypeChildren("pkg.basic", types.Typ[types.Int])
+	b.recordTypeChildren("pkg.pointer", types.NewPointer(types.Typ[types.Int]))
+	b.recordTypeChildren("pkg.channel", types.NewChan(types.SendRecv, types.Typ[types.String]))
+	b.recordTypeChildren("pkg.slice", types.NewSlice(types.Typ[types.Bool]))
+	b.recordTypeChildren("pkg.array", types.NewArray(arrayElem, 4))
+	b.recordTypeChildren("pkg.map", mapType)
+	b.recordTypeChildren("pkg.signature", sig)
+	b.recordTypeChildren("pkg.emptySignature", types.NewSignatureType(nil, nil, nil, nil, nil, false))
+	b.recordTypeChildren("pkg.struct", types.NewStruct([]*types.Var{
+		types.NewVar(token.NoPos, pkgTypes, "N", types.Typ[types.Int]),
+		types.NewVar(token.NoPos, pkgTypes, "S", types.Typ[types.String]),
+	}, nil))
+	b.recordTypeChildren("pkg.named", namedType)
+	b.recordTypeChildren("pkg.interface", interfaceType)
+
+	pm, err := pkg.metaBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pm.Close()
+
+	const want = `[TypeChildren]
+pkg.array:
+    _llgo_uint8
+pkg.channel:
+    _llgo_string
+pkg.map:
+    _llgo_int
+    _llgo_string
+pkg.named:
+    _llgo_bool
+pkg.pointer:
+    _llgo_int
+pkg.signature:
+    _llgo_bool
+    _llgo_int
+    _llgo_string
+pkg.slice:
+    _llgo_bool
+pkg.struct:
+    _llgo_int
+    _llgo_string
+
+`
+	if got := pm.String(); got != want {
+		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRecordMethodSlots(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+
+	goPkg := types.NewPackage("example.com/pkg", "pkg")
+	named := types.NewNamed(types.NewTypeName(token.NoPos, goPkg, "T", nil), types.NewStruct(nil, nil), nil)
+	recv := types.NewVar(token.NoPos, goPkg, "", named)
+	named.AddMethod(types.NewFunc(token.NoPos, goPkg, "M", types.NewSignatureType(recv, nil, nil, nil, nil, false)))
+
+	pkg := prog.NewPackageEx("pkg", goPkg.Path(), true)
+	fn := pkg.NewFunc("use", types.NewSignatureType(nil, nil, nil, nil, nil, false), InGo)
+	b := fn.MakeBody(1)
+	b.abiType(named)
+	b.Return()
+
+	pm, err := pkg.metaBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pm.Close()
+
+	const want = `[TypeChildren]
+*_llgo_example.com/pkg.T:
+    _llgo_example.com/pkg.T
+*_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
+    _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
+
+[MethodInfo]
+*_llgo_example.com/pkg.T:
+    0 M _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac example.com/pkg.(*T).M __llgo_stub.example.com/pkg.(*T).M
+_llgo_example.com/pkg.T:
+    0 M _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac example.com/pkg.(*T).M __llgo_stub.example.com/pkg.T.M
+
+`
+	if got := pm.String(); got != want {
+		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRecordReflectMethodDemands(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	pkg := prog.NewPackageEx("pkg", "pkg", true)
+	pkg.RecordReflectMethodByName("pkg.named", "Keep")
+	pkg.MarkReflectMethod("pkg.dynamic")
+
+	pm, err := pkg.metaBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pm.Close()
+
+	const want = `[UseNamedMethod]
+pkg.named:
+    Keep
+
+[Reflect]
+    pkg.dynamic
+
+`
+	if got := pm.String(); got != want {
+		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRecordUseIface(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkg := prog.NewPackageEx("pkg", "pkg", true)
+	fn := pkg.NewFunc("caller", types.NewSignatureType(nil, nil, nil, nil, nil, false), InGo)
+	b := fn.MakeBody(1)
+	b.recordUseIface(prog.Int())
+	b.recordUseIface(prog.Any())
+	b.Return()
+
+	pm, err := pkg.metaBuilder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pm.Close()
+
+	const want = `[UseIface]
+caller:
+    _llgo_int
+
+`
+	if got := pm.String(); got != want {
+		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestDevLTOGlobalDCERecordAbiTypeFakeUsesUsesCache(t *testing.T) {
 	requireGoGlobalDCE(t)
 
@@ -1374,7 +1570,7 @@ func TestIfaceMethodClosureCallIR(t *testing.T) {
 		types.NewTuple(types.NewVar(0, nil, "", types.Typ[types.Int])), true)
 	recvMeth := types.NewFunc(0, pkgTypes, "Printf", recvSig)
 
-	pkg := prog.NewPackage("bar", "foo/bar")
+	pkg := prog.NewPackageEx("bar", "foo/bar", true)
 	callerSig := types.NewSignatureType(nil, nil, nil,
 		types.NewTuple(types.NewVar(0, pkgTypes, "i", namedIface)),
 		types.NewTuple(types.NewVar(0, nil, "", types.Typ[types.Int])), false)
@@ -1383,6 +1579,28 @@ func TestIfaceMethodClosureCallIR(t *testing.T) {
 	closure := b.Imethod(caller.Param(0), recvMeth)
 	ret := b.Call(closure, prog.Val(100), prog.Val(200))
 	b.Return(ret)
+
+	if err := pkg.FinishMetaCollection(); err != nil {
+		t.Fatal(err)
+	}
+	pm := pkg.Meta
+	defer pm.Close()
+	const wantMeta = `[OrdinaryEdges]
+caller:
+    github.com/goplus/llgo/runtime/internal/runtime.IfacePtrData
+
+[UseIfaceMethod]
+caller:
+    _llgo_iface$Yoe3OCWqNu8XXGUO_vekWtum96Bix1ffdbPGjVhQ1pI Printf _llgo_func$_RYiBYcSxJjuvzYmA4xYm18hT18pH0_ng6z76aK77Bk
+
+[InterfaceInfo]
+_llgo_iface$Yoe3OCWqNu8XXGUO_vekWtum96Bix1ffdbPGjVhQ1pI:
+    Printf _llgo_func$_RYiBYcSxJjuvzYmA4xYm18hT18pH0_ng6z76aK77Bk
+
+`
+	if got := pm.String(); got != wantMeta {
+		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, wantMeta)
+	}
 
 	assertPkg(t, pkg, `; ModuleID = 'foo/bar'
 source_filename = "foo/bar"

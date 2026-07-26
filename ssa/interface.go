@@ -65,7 +65,9 @@ func iMethodOf(rawIntf *types.Interface, name string) int {
 // Imethod returns closure of an interface method.
 func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 	prog := b.Prog
-	rawIntf := intf.raw.Type.Underlying().(*types.Interface)
+	intfType := types.Unalias(intf.raw.Type)
+	patchedIntfType := prog.patch(intfType)
+	rawIntf := patchedIntfType.Underlying().(*types.Interface)
 	sig := method.Type().(*types.Signature)
 	if sig.Recv() == nil && sig.Params().Len() > 0 {
 		pt := types.Unalias(sig.Params().At(0).Type())
@@ -79,9 +81,10 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 		}
 	}
 	tclosure := prog.Type(sig, InGo)
+	i := iMethodOf(rawIntf, method.Name())
+	b.recordUseIfaceMethod(rawIntf, i)
 	data := b.InlineCall(b.Pkg.rtFunc("IfacePtrData"), intf)
 	var fn Expr
-	i := iMethodOf(rawIntf, method.Name())
 	impl := intf.impl
 	itab := Expr{b.faceItab(impl), prog.VoidPtrPtr()}
 	pfn := b.Advance(itab, prog.IntVal(uint64(i+3), prog.Int()))
@@ -123,6 +126,7 @@ func (b Builder) MakeInterface(tinter Type, x Expr) (ret Expr) {
 	}
 	prog := b.Prog
 	typ := x.Type
+	b.recordUseIface(typ)
 	tabi := b.abiType(typ.raw.Type)
 	if !directIfaceType(typ.raw.Type) {
 		vptr := b.AllocU(typ)
@@ -172,11 +176,44 @@ func (b Builder) MakeInterfaceFromPtr(tinter Type, ptr Expr) (ret Expr) {
 		return b.MakeInterface(tinter, b.Load(ptr))
 	}
 
+	b.recordUseIface(typ)
 	vptr := b.AllocU(typ)
 	dst := b.Convert(prog.VoidPtr(), vptr)
 	src := b.Convert(prog.VoidPtr(), ptr)
 	b.Call(b.Pkg.rtFunc("Typedmemmove"), tabi, dst, src)
 	return Expr{b.unsafeInterface(rawIntf, tabi, vptr.impl), tinter}
+}
+
+func (b Builder) recordUseIface(typ Type) {
+	if mb := b.Pkg.metaBuilder; mb != nil {
+		if _, ok := types.Unalias(typ.raw.Type).Underlying().(*types.Interface); !ok {
+			typeName, _ := b.Prog.abi.TypeName(typ.raw.Type)
+			mb.AddIfaceUse(mb.Sym(b.Func.Name()), mb.Sym(typeName))
+		}
+	}
+}
+
+func (b Builder) recordUseIfaceMethod(rawIntf *types.Interface, methodIndex int) {
+	if mb := b.Pkg.metaBuilder; mb != nil {
+		intfSymName, _ := b.Prog.abi.TypeName(rawIntf)
+		intfSym := mb.Sym(intfSymName)
+		b.recordInterfaceInfo(rawIntf, intfSymName)
+		mb.AddIfaceMethodUse(mb.Sym(b.Func.Name()), intfSym, uint32(methodIndex))
+	}
+}
+
+func (b Builder) recordInterfaceInfo(t *types.Interface, typeName string) {
+	mb := b.Pkg.metaBuilder
+	if mb == nil {
+		return
+	}
+	prog := b.Prog
+	intfSym := mb.Sym(typeName)
+	for i := 0; i < t.NumMethods(); i++ {
+		f := t.Method(i)
+		ftypName, _ := prog.abi.TypeName(funcType(prog, f.Type()))
+		mb.AddIfaceMethod(intfSym, abiMethodName(f), mb.Sym(ftypName))
+	}
 }
 
 func (b Builder) valFromData(typ Type, data llvm.Value) Expr {

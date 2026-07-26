@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/goplus/llgo/internal/meta"
 )
 
 func TestSanitizePkgPath(t *testing.T) {
@@ -68,6 +70,11 @@ func TestCacheManager_PackagePaths(t *testing.T) {
 	expectedManifest := filepath.Join(expectedDir, "abc123.manifest")
 	if paths.Manifest != expectedManifest {
 		t.Errorf("Manifest = %q, want %q", paths.Manifest, expectedManifest)
+	}
+
+	expectedMeta := filepath.Join(expectedDir, "abc123.meta")
+	if paths.Meta != expectedMeta {
+		t.Errorf("Meta = %q, want %q", paths.Meta, expectedMeta)
 	}
 }
 
@@ -159,7 +166,7 @@ func TestCacheManager_CacheExists(t *testing.T) {
 	paths := cm.PackagePaths("arm64-darwin", "test/pkg", "fp123")
 
 	// Initially should not exist
-	if cm.cacheExists(paths) {
+	if cm.cacheExists(paths, false) {
 		t.Error("cache should not exist initially")
 	}
 
@@ -170,17 +177,95 @@ func TestCacheManager_CacheExists(t *testing.T) {
 	os.WriteFile(paths.Archive, []byte("archive"), 0644)
 
 	// Still should not exist (manifest missing)
-	if cm.cacheExists(paths) {
+	if cm.cacheExists(paths, false) {
 		t.Error("cache should not exist without manifest")
 	}
 
 	// Create manifest
 	os.WriteFile(paths.Manifest, []byte("manifest"), 0644)
 
-	// Now should exist
-	if !cm.cacheExists(paths) {
-		t.Error("cache should exist with both files")
+	if !cm.cacheExists(paths, false) {
+		t.Error("cache should exist without meta when meta is not required")
 	}
+	if cm.cacheExists(paths, true) {
+		t.Error("cache should not exist without meta")
+	}
+
+	// Create invalid meta
+	os.WriteFile(paths.Meta, []byte("bad meta"), 0644)
+	if !cm.cacheExists(paths, false) {
+		t.Error("cache should ignore invalid meta when meta is not required")
+	}
+	if cm.cacheExists(paths, true) {
+		t.Error("cache should not exist with invalid meta")
+	}
+
+	// Create valid meta
+	writeTestMetaFile(t, paths.Meta)
+
+	// Now should exist
+	if !cm.cacheExists(paths, true) {
+		t.Error("cache should exist with archive, manifest, and valid meta")
+	}
+}
+
+func writeTestMetaFile(t *testing.T, path string) {
+	t.Helper()
+	pm, err := meta.NewBuilder().Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if err := writeMeta(path, pm); err != nil {
+		t.Fatalf("writeMeta %s: %v", path, err)
+	}
+}
+
+func TestWriteMetaErrors(t *testing.T) {
+	pm, err := meta.NewBuilder().Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("create directory", func(t *testing.T) {
+		blocker := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := writeMeta(filepath.Join(blocker, "test.meta"), pm)
+		if err == nil || !strings.Contains(err.Error(), "create meta dir") {
+			t.Fatalf("writeMeta error = %v, want create meta dir error", err)
+		}
+	})
+
+	t.Run("create temporary file", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), strings.Repeat("x", 256))
+		err := writeMeta(path, pm)
+		if err == nil || !strings.Contains(err.Error(), "create temp meta") {
+			t.Fatalf("writeMeta error = %v, want create temp meta error", err)
+		}
+	})
+
+	t.Run("publish", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "test.meta")
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "keep"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := writeMeta(path, pm)
+		if err == nil || !strings.Contains(err.Error(), "publish meta") {
+			t.Fatalf("writeMeta error = %v, want publish meta error", err)
+		}
+		matches, err := filepath.Glob(path + ".tmp-*")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(matches) != 0 {
+			t.Fatalf("temporary metadata files were not removed: %v", matches)
+		}
+	})
 }
 
 func TestTargetTriple(t *testing.T) {
@@ -224,7 +309,7 @@ func TestCacheManager_CleanPackageCache(t *testing.T) {
 	}
 
 	// Should not exist
-	if cm.cacheExists(paths) {
+	if cm.cacheExists(paths, false) {
 		t.Error("cache should be cleaned")
 	}
 }

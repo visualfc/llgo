@@ -26,6 +26,7 @@ import (
 	"unsafe"
 
 	"github.com/goplus/llgo/internal/env"
+	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/internal/optlevel"
 	"github.com/goplus/llgo/ssa/abi"
 	"github.com/xgo-dev/llvm"
@@ -236,6 +237,7 @@ type aProgram struct {
 	disposed bool
 
 	enableGoGlobalDCE     bool
+	enableDeadcodeDrop    bool
 	pthreadStackSize      uint64
 	enableLTOPluginMarker bool
 
@@ -353,6 +355,14 @@ func (p Program) SetCompileMethods(check func(Package, types.Type)) {
 
 func (p Program) EnableGoGlobalDCE(enable bool) {
 	p.enableGoGlobalDCE = enable
+}
+
+func (p Program) EnableDeadcodeDrop(enable bool) {
+	p.enableDeadcodeDrop = enable
+}
+
+func (p Program) DeadcodeDropEnabled() bool {
+	return p.enableDeadcodeDrop
 }
 
 func (p Program) SetPthreadStackSize(size uint64) {
@@ -496,6 +506,10 @@ func (p Program) tyComplex128() llvm.Type {
 
 // NewPackage creates a new package.
 func (p Program) NewPackage(name, pkgPath string) Package {
+	return p.NewPackageEx(name, pkgPath, false)
+}
+
+func (p Program) NewPackageEx(name, pkgPath string, metaCollect bool) Package {
 	mod := p.ctx.NewModule(pkgPath)
 	mod.SetDataLayout(p.DataLayout())
 	mod.SetTarget(p.Target().Spec().Triple)
@@ -528,6 +542,10 @@ func (p Program) NewPackage(name, pkgPath string) Package {
 		llvmUsedValues: make([]llvm.Value, 0, 4),
 
 		abiTypeFakeUseCache: make(map[llvm.Value][]llvm.Value),
+	}
+	if metaCollect {
+		ret.metaBuilder = meta.NewBuilder()
+		ret.abiTypeWithUncommon = make(map[llvm.Value]struct{})
 	}
 	if p.enableGoGlobalDCE {
 		p.addVirtualFunctionElimModuleFlag(mod)
@@ -793,11 +811,14 @@ type aPackage struct {
 
 	iRoutine int
 
-	NeedRuntime   bool
-	NeedPyInit    bool
-	NeedAbiInit   int // bitmask of Reflect* flags indicating which reflect type-construction operations are used
-	MethodByIndex map[int]none
-	MethodByName  map[string]none
+	NeedRuntime         bool
+	NeedPyInit          bool
+	NeedAbiInit         int // bitmask of Reflect* flags indicating which reflect type-construction operations are used
+	MethodByIndex       map[int]none
+	MethodByName        map[string]none
+	Meta                *meta.PackageMeta
+	metaBuilder         *meta.Builder
+	abiTypeWithUncommon map[llvm.Value]struct{}
 
 	export         map[string]string   // pkgPath.nameInPkg => exportname
 	preserveSyms   map[string]struct{} // set of exported symbol names
@@ -812,6 +833,17 @@ type Package = *aPackage
 
 func (p Package) Module() llvm.Module {
 	return p.mod
+}
+
+func (p Package) FinishMetaCollection() error {
+	extractOrdinaryEdges(p.metaBuilder, p.mod, p.abiTypeWithUncommon)
+	pm, err := p.metaBuilder.Build()
+	if err != nil {
+		return err
+	}
+	p.Meta = pm
+	p.metaBuilder = nil
+	return nil
 }
 
 func (p Package) SetExport(name, export string) {

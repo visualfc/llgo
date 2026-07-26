@@ -1315,21 +1315,23 @@ func (b Builder) checkReflect(fn Expr, args []Expr) (check ReflectMethodCheck) {
 	case "reflect.Value.Method":
 		if len(args) == 2 {
 			if v, ok := extractConstInt(args[1].impl); ok {
-				pkg.RecordReflectMethodByIndex(v)
+				pkg.RecordReflectMethodByIndex(b.Func.Name(), v)
 				reflectKind = ReflectMethodByIndex
 				break
 			}
 			reflectKind = ReflectMethodDynamic
+			pkg.MarkReflectMethod(b.Func.Name())
 		}
 	case "reflect.Value.MethodByName":
 		if len(args) == 2 {
 			if v, ok := extractConstString(args[1].impl); ok {
-				pkg.RecordReflectMethodByName(v)
+				pkg.RecordReflectMethodByName(b.Func.Name(), v)
 				reflectKind = ReflectMethodByName
 				check.Name = v
 				break
 			}
 			reflectKind = ReflectMethodDynamic | ReflectMethodByName
+			pkg.MarkReflectMethod(b.Func.Name())
 		}
 	}
 	pkg.NeedAbiInit |= reflectKind
@@ -1337,18 +1339,28 @@ func (b Builder) checkReflect(fn Expr, args []Expr) (check ReflectMethodCheck) {
 	return
 }
 
-func (p Package) RecordReflectMethodByIndex(index int) {
+func (p Package) RecordReflectMethodByIndex(funcName string, index int) {
 	if p.MethodByIndex == nil {
 		p.MethodByIndex = make(map[int]none)
 	}
 	p.MethodByIndex[index] = none{}
+	p.MarkReflectMethod(funcName)
 }
 
-func (p Package) RecordReflectMethodByName(name string) {
+func (p Package) RecordReflectMethodByName(funcName, name string) {
 	if p.MethodByName == nil {
 		p.MethodByName = make(map[string]none)
 	}
 	p.MethodByName[name] = none{}
+	if mb := p.metaBuilder; mb != nil {
+		mb.AddNamedMethodUse(mb.Sym(funcName), name)
+	}
+}
+
+func (p Package) MarkReflectMethod(funcName string) {
+	if mb := p.metaBuilder; mb != nil {
+		mb.MarkReflect(mb.Sym(funcName))
+	}
 }
 
 func extractConstInt(v llvm.Value) (r int, ok bool) {

@@ -50,6 +50,7 @@ import (
 	"github.com/goplus/llgo/internal/goembed"
 	"github.com/goplus/llgo/internal/header"
 	"github.com/goplus/llgo/internal/lto"
+	"github.com/goplus/llgo/internal/meta"
 	"github.com/goplus/llgo/internal/mockable"
 	"github.com/goplus/llgo/internal/monitor"
 	"github.com/goplus/llgo/internal/optlevel"
@@ -129,40 +130,42 @@ type OutFmtDetails struct {
 type ModuleHook func(pkg Package)
 
 type Config struct {
-	Goos          string
-	Goarch        string
-	Target        string // target name (e.g., "rp2040", "wasi") - takes precedence over Goos/Goarch
-	OptLevel      optlevel.Level
-	LTO           lto.Mode
-	LTOPlugin     lto.PassPlugin
-	BinPath       string
-	AppExt        string  // ".exe" on Windows, empty on Unix
-	OutFile       string  // only valid for ModeBuild when len(pkgs) == 1
-	OutFmts       OutFmts // Output format specifications (only for Target != "")
-	CompileOnly   bool    // compile test binary but do not run it (only valid for ModeTest)
-	Emulator      bool    // run in emulator mode
-	Port          string  // target port for flashing
-	BaudRate      int     // baudrate for serial communication
-	RunArgs       []string
-	Mode          Mode
-	BuildMode     BuildMode // Build mode: exe, c-archive, c-shared
-	AbiMode       AbiMode
-	GenExpect     bool // only valid for ModeCmpTest
-	Verbose       bool
-	PrintPackages bool // print package paths as they are compiled, like go build -v
-	PrintCommands bool
-	GenLL         bool // generate pkg .ll files
-	CheckLLFiles  bool // check .ll files valid
-	CheckLinkArgs bool // check linkargs valid
-	ForceEspClang bool // force to use esp-clang
-	ForceRebuild  bool // force rebuilding of packages that are already up-to-date
-	Tags          string
-	SizeReport    bool   // print size report after successful build
-	SizeFormat    string // size report format: text,json (default text)
-	SizeLevel     string // size aggregation level: full,module,package (default module)
-	CompilerHash  string // metadata hash for the running compiler (development builds only)
-	GoVersion     string // Go language version accepted by the frontend (for example, "go1.22")
-	NoErrorColumn bool   // omit source columns from frontend diagnostics
+	Goos               string
+	Goarch             string
+	Target             string // target name (e.g., "rp2040", "wasi") - takes precedence over Goos/Goarch
+	OptLevel           optlevel.Level
+	LTO                lto.Mode
+	LTOPlugin          lto.PassPlugin
+	BinPath            string
+	AppExt             string  // ".exe" on Windows, empty on Unix
+	OutFile            string  // only valid for ModeBuild when len(pkgs) == 1
+	OutFmts            OutFmts // Output format specifications (only for Target != "")
+	CompileOnly        bool    // compile test binary but do not run it (only valid for ModeTest)
+	Emulator           bool    // run in emulator mode
+	Port               string  // target port for flashing
+	BaudRate           int     // baudrate for serial communication
+	RunArgs            []string
+	Mode               Mode
+	BuildMode          BuildMode // Build mode: exe, c-archive, c-shared
+	AbiMode            AbiMode
+	GenExpect          bool // only valid for ModeCmpTest
+	Verbose            bool
+	PrintPackages      bool // print package paths as they are compiled, like go build -v
+	PrintCommands      bool
+	GenLL              bool // generate pkg .ll files
+	DeadcodeDrop       bool // enable Go dead code drop (development builds only)
+	CollectPackageMeta bool // collect package metadata without enabling dead code drop
+	CheckLLFiles       bool // check .ll files valid
+	CheckLinkArgs      bool // check linkargs valid
+	ForceEspClang      bool // force to use esp-clang
+	ForceRebuild       bool // force rebuilding of packages that are already up-to-date
+	Tags               string
+	SizeReport         bool   // print size report after successful build
+	SizeFormat         string // size report format: text,json (default text)
+	SizeLevel          string // size aggregation level: full,module,package (default module)
+	CompilerHash       string // metadata hash for the running compiler (development builds only)
+	GoVersion          string // Go language version accepted by the frontend (for example, "go1.22")
+	NoErrorColumn      bool   // omit source columns from frontend diagnostics
 	// GoBuildFlags contains normalized raw Go build flags forwarded to
 	// go/packages. Callers use internal/goflags to parse supported compiler and
 	// linker semantics into typed Config fields before calling Do.
@@ -258,6 +261,14 @@ func (c *Config) goGlobalDCEEnabled() bool {
 	return buildenv.Dev && c.ltoMode() == lto.Full && !c.DisableGoGlobalDCE
 }
 
+func (c *Config) deadcodeDropEnabled() bool {
+	return buildenv.Dev && c.DeadcodeDrop && !c.goGlobalDCEEnabled()
+}
+
+func (c *Config) packageMetaEnabled() bool {
+	return c.CollectPackageMeta || c.deadcodeDropEnabled()
+}
+
 // -----------------------------------------------------------------------------
 
 const (
@@ -279,6 +290,9 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 	if conf.BuildMode == "" {
 		conf.BuildMode = BuildModeExe
+	}
+	if conf.BuildMode != BuildModeExe {
+		conf.DeadcodeDrop = false
 	}
 	conf.PCLNMode = effectivePCLNMode(conf)
 	conf.PCLNModeSet = true
@@ -375,6 +389,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		defer prog.Dispose()
 	}
 	prog.EnableGoGlobalDCE(conf.goGlobalDCEEnabled())
+	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
@@ -497,6 +512,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 		crossCompile:   export,
 		cTransformer:   cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, conf.AbiMode, cabiOptimize),
 	}
+	defer ctx.closePackageMetas()
 
 	// default runtime globals must be registered before packages are built
 	addGlobalString(conf, "runtime.defaultGOROOT="+runtime.GOROOT(), nil)
@@ -751,6 +767,18 @@ type context struct {
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
 	pclnExternal *pclnmap.Data
+}
+
+// closePackageMetas releases metadata mappings owned by this build. Metadata
+// remains available to hooks and whole-program consumers until Do returns.
+func (c *context) closePackageMetas() {
+	for _, pkg := range c.pkgs {
+		if pkg.Meta == nil {
+			continue
+		}
+		_ = pkg.Meta.Close()
+		pkg.Meta = nil
+	}
 }
 
 func (c *context) compiler() *clang.Cmd {
@@ -1600,10 +1628,14 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		return fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
 
-	ret, externs, err := cl.NewPackageExWithEmbed(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap)
+	needMeta := !aPkg.CacheHit && ctx.buildConf.packageMetaEnabled()
+	ret, externs, err := cl.NewPackageExWithEmbedMeta(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta)
 	check(err)
 
 	aPkg.LPkg = ret
+	if !aPkg.CacheHit {
+		aPkg.Meta = ret.Meta
+	}
 	if hook := ctx.buildConf.ModuleHook; hook != nil {
 		hook(aPkg)
 	}
@@ -1918,6 +1950,7 @@ type aPackage struct {
 	LinkArgs    []string
 	ObjFiles    []string // object files: .o or .ll (output of compiler, input to archiver)
 	ArchiveFile string   // archive file: .a (output of archiver, used for linking)
+	Meta        *meta.PackageMeta
 	rewriteVars map[string]string
 
 	// Cache related fields

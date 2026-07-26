@@ -283,6 +283,46 @@ func TestPCLNFlagOverridesLegacyFuncInfo(t *testing.T) {
 	}
 }
 
+func TestDeadcodeDropBuildFlag(t *testing.T) {
+	fs := flag.NewFlagSet("deadcodedrop-default", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	if got := fs.Lookup("deadcodedrop") != nil; got != buildenv.Dev {
+		t.Fatalf("deadcodedrop flag registered = %v, want %v", got, buildenv.Dev)
+	}
+	if err := fs.Parse(nil); err != nil {
+		t.Fatalf("Parse(nil) unexpected error: %v", err)
+	}
+	conf := &build.Config{}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if conf.DeadcodeDrop {
+		t.Fatal("DeadcodeDrop enabled by default")
+	}
+
+	fs = flag.NewFlagSet("deadcodedrop-enabled", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	err := fs.Parse([]string{"-deadcodedrop"})
+	if !buildenv.Dev {
+		if err == nil {
+			t.Fatal("Parse(-deadcodedrop) succeeded in a non-development build")
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("Parse(-deadcodedrop) unexpected error: %v", err)
+	}
+	conf = &build.Config{}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if !conf.DeadcodeDrop {
+		t.Fatal("DeadcodeDrop not enabled by -deadcodedrop")
+	}
+}
+
 func TestBuildPthreadStackSizeFlag(t *testing.T) {
 	tests := []struct {
 		arg  string

@@ -2004,7 +2004,7 @@ func NewPackage(prog llssa.Program, pkg *ssa.Package, files []*ast.File) (ret ll
 // The rewrites map uses short variable names (without package qualifier) and
 // only affects string-typed globals defined in the current package.
 func NewPackageEx(prog llssa.Program, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File) (ret llssa.Package, externs []string, err error) {
-	return newPackageEx(prog, nil, patches, rewrites, pkg, files, nil)
+	return newPackageEx(prog, nil, patches, rewrites, pkg, files, nil, false)
 }
 
 // NewPackageExWithEmbed compiles a package using pre-loaded go:embed metadata.
@@ -2015,10 +2015,14 @@ func NewPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 // of one compilation (like patches). nil means one-shot: a fresh
 // instance is created for this call.
 func NewPackageExWithEmbed(prog llssa.Program, ct *CallerTracking, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap goembed.VarMap) (ret llssa.Package, externs []string, err error) {
-	return newPackageEx(prog, ct, patches, rewrites, pkg, files, &embedMap)
+	return newPackageEx(prog, ct, patches, rewrites, pkg, files, &embedMap, false)
 }
 
-func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap *goembed.VarMap) (ret llssa.Package, externs []string, err error) {
+func NewPackageExWithEmbedMeta(prog llssa.Program, ct *CallerTracking, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap goembed.VarMap, metaCollect bool) (ret llssa.Package, externs []string, err error) {
+	return newPackageEx(prog, ct, patches, rewrites, pkg, files, &embedMap, metaCollect)
+}
+
+func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap *goembed.VarMap, metaCollect bool) (ret llssa.Package, externs []string, err error) {
 	pkgProg := pkg.Prog
 	pkgTypes := pkg.Pkg
 	oldTypes := pkgTypes
@@ -2032,7 +2036,7 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 	if pkgPath == llssa.PkgRuntime {
 		prog.SetRuntime(pkgTypes)
 	}
-	ret = prog.NewPackage(pkgName, pkgPath)
+	ret = prog.NewPackageEx(pkgName, pkgPath, metaCollect)
 	if enableDbg {
 		ret.InitDebug(pkgName, pkgPath, pkgProg.Fset)
 		defer ret.FinalizeDebug()
@@ -2104,6 +2108,11 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 		fn()
 	}
 	ret.MaterializePreserveSyms()
+	if metaCollect {
+		if err := ret.FinishMetaCollection(); err != nil {
+			return nil, nil, fmt.Errorf("build meta for %s: %w", pkgPath, err)
+		}
+	}
 	externs = ctx.cgoSymbols
 	return
 }
