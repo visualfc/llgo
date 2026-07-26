@@ -20,15 +20,27 @@
 *_llgo_uint8:
     _llgo_uint8
 []_llgo_uint8:
+    *[]_llgo_uint8
     _llgo_uint8
 _llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w:
+    *_llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w
     _llgo_error
 _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk:
+    *_llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
     []_llgo_uint8
     _llgo_error
     _llgo_int
 _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to:
+    *_llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to
     _llgo_string
+_llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Source:
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Source
+_llgo_int:
+    *_llgo_int
+_llgo_string:
+    *_llgo_string
+_llgo_uint8:
+    *_llgo_uint8
 
 [OrdinaryEdges]
 *[]_llgo_uint8:

@@ -8,9 +8,13 @@
 *_llgo_int:
     _llgo_int
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
+    *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     _llgo_int
 _llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]:
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]
     _llgo_int
+_llgo_int:
+    *_llgo_int
 
 [OrdinaryEdges]
 *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:

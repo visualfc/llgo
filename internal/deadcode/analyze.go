@@ -34,12 +34,10 @@ type pass struct {
 	methodImplKeys    map[methodID][]ifaceMethodKey
 	methodRefs        map[meta.MethodSig][]meta.Symbol // sig → []iface (built eagerly)
 	ifaceMethodCounts map[meta.Symbol]int              // iface → unique method name count
-	typeSymbols       map[meta.Symbol]struct{}
-
-	reachable        map[meta.Symbol]struct{}
-	usedInIface      map[meta.Symbol]struct{}
-	processedIfaceTy map[meta.Symbol]struct{}
-	workQueue        []meta.Symbol
+	reachable         map[meta.Symbol]struct{}
+	usedInIface       map[meta.Symbol]struct{}
+	processedIfaceTy  map[meta.Symbol]struct{}
+	workQueue         []meta.Symbol
 
 	ifaceMethod        map[ifaceMethodKey]struct{}
 	genericIfaceMethod map[meta.Name]struct{}
@@ -76,7 +74,6 @@ func deadcode(info *meta.GlobalSummary, roots []meta.Symbol) map[meta.Symbol][]i
 		methodImplKeys:     make(map[methodID][]ifaceMethodKey),
 		methodRefs:         make(map[meta.MethodSig][]meta.Symbol),
 		ifaceMethodCounts:  make(map[meta.Symbol]int),
-		typeSymbols:        make(map[meta.Symbol]struct{}),
 		reachable:          make(map[meta.Symbol]struct{}),
 		usedInIface:        make(map[meta.Symbol]struct{}),
 		processedIfaceTy:   make(map[meta.Symbol]struct{}),
@@ -108,7 +105,6 @@ func deadcode(info *meta.GlobalSummary, roots []meta.Symbol) map[meta.Symbol][]i
 // computeMethodImplKeys when a type first enters usedInIface.
 func (d *pass) buildMethodRefs() {
 	for _, iface := range d.info.Ifaces() {
-		d.typeSymbols[iface] = struct{}{}
 		seenNames := make(map[meta.Name]struct{})
 		for _, sig := range d.info.IfaceMethods(iface) {
 			d.methodRefs[sig] = appendSymbolUnique(d.methodRefs[sig], iface)
@@ -132,8 +128,7 @@ func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.MethodSlot) {
 		// markUsedInIface only calls this when slots is non-empty.
 		return
 	}
-	// Mark the type and compute all slots at once.
-	d.typeSymbols[typ] = struct{}{}
+	// Compute all slots at once.
 	impls := make(map[meta.Symbol]int)
 	seen := make(map[ifaceMethodName]struct{})
 
@@ -168,11 +163,7 @@ func (d *pass) flood() {
 			continue
 		}
 
-		_, usedInIface := d.usedInIface[sym]
 		for _, dst := range d.info.OrdinaryEdges(sym) {
-			if usedInIface {
-				d.markTypeUsedInIface(dst)
-			}
 			d.markReachable(dst)
 		}
 
@@ -280,22 +271,6 @@ func (d *pass) markUsedInIface(typ meta.Symbol) {
 	}
 	for _, child := range d.info.TypeChildren(typ) {
 		d.markUsedInIface(child)
-	}
-}
-
-func (d *pass) markTypeUsedInIface(sym meta.Symbol) {
-	if !d.info.HasFacts(sym) {
-		return
-	}
-	if _, ok := d.typeSymbols[sym]; ok {
-		d.markUsedInIface(sym)
-		return
-	}
-	// Lazy check: interfaces are in typeSymbols, concrete types are detected
-	// by the presence of MethodSlots.
-	if len(d.info.MethodSlots(sym)) > 0 {
-		d.typeSymbols[sym] = struct{}{}
-		d.markUsedInIface(sym)
 	}
 }
 

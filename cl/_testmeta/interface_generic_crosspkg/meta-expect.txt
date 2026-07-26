@@ -14,13 +14,21 @@
 *_llgo_string:
     _llgo_string
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
+    *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     _llgo_int
 _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to:
+    *_llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to
     _llgo_string
 _llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[int]:
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[int]
     _llgo_int
 _llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[string]:
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[string]
     _llgo_string
+_llgo_int:
+    *_llgo_int
+_llgo_string:
+    *_llgo_string
 
 [OrdinaryEdges]
 *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:

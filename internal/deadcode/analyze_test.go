@@ -194,6 +194,7 @@ func TestAnalyze(t *testing.T) {
 				b.addEdge(containerPtr, container)
 				b.addEdge(container, raw)
 				b.addEdge(raw, rawPtr)
+				b.b.AddTypeChild(raw, rawPtr)
 				b.addUseIface(main, containerPtr)
 				b.addUseIfaceMethod(unmarshal, iface, unmarshalSig)
 			}),

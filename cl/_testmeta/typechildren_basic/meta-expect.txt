@@ -8,10 +8,16 @@
 *_llgo_string:
     _llgo_string
 _llgo_github.com/goplus/llgo/cl/_testmeta/typechildren_basic.Inner:
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/typechildren_basic.Inner
     _llgo_string
 _llgo_github.com/goplus/llgo/cl/_testmeta/typechildren_basic.Outer:
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/typechildren_basic.Outer
     _llgo_github.com/goplus/llgo/cl/_testmeta/typechildren_basic.Inner
     _llgo_int
+_llgo_int:
+    *_llgo_int
+_llgo_string:
+    *_llgo_string
 
 [OrdinaryEdges]
 *_llgo_github.com/goplus/llgo/cl/_testmeta/typechildren_basic.Inner:

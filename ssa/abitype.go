@@ -347,7 +347,16 @@ func (b Builder) recordTypeChildren(parentName string, t types.Type) {
 		return
 	}
 	parent := mb.Sym(parentName)
-	for _, child := range b.directTypeChildren(t) {
+	children := b.directTypeChildren(t)
+	underlying := types.Unalias(t).Underlying()
+	// PtrToThis lets reflection derive *T from an addressable T. Interface
+	// descriptors intentionally stay out of this type-child relation.
+	if _, ok := underlying.(*types.Pointer); !ok {
+		if _, ok := underlying.(*types.Interface); !ok {
+			children = append(children, types.NewPointer(t))
+		}
+	}
+	for _, child := range children {
 		childName, _ := b.Prog.abi.TypeName(child)
 		mb.AddTypeChild(parent, mb.Sym(childName))
 	}
