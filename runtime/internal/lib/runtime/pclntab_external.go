@@ -58,6 +58,12 @@ const (
 )
 
 const (
+	// Keep zero-copy decoding strides synchronized with the runtime structs.
+	_ = uintptr(0) - (externalRecordSize - unsafe.Sizeof(runtimeFuncInfoRecord{}))
+	_ = uintptr(0) - (externalPCLineSize - unsafe.Sizeof(runtimePCLineRecord{}))
+)
+
+const (
 	externalPCLNUnattempted uint32 = iota
 	externalPCLNLoading
 	externalPCLNLoaded
@@ -306,6 +312,8 @@ func installExternalPCLN(raw []byte, view externalPCLNView, loadBase uintptr) bo
 	entries := view.sections[externalDescEntrySites]
 	stubs := view.sections[externalDescStubSites]
 	pcsites := view.sections[externalDescPCSites]
+	// String IDs are uint32. The offset section and sidecar size bound their
+	// count now, rather than the old uint16 ID limit.
 	if records.count == 0 || records.count > 1<<20 || offsets.count == 0 ||
 		stringsSec.count == 0 || stringsSec.count > 1<<30 || pclines.count > 1<<22 ||
 		symbols.count > records.count || entries.count > records.count*16 || stubs.count > records.count*16 || pcsites.count > 1<<24 {
@@ -314,19 +322,15 @@ func installExternalPCLN(raw []byte, view externalPCLNView, loadBase uintptr) bo
 	// Validate every string ID before any runtime pointer is published.
 	stringBase := externalSectionPtr(raw, stringsSec)
 	offsetBase := externalSectionPtr(raw, offsets)
+	// Offsets may reuse suffixes inside another string, so they need not point
+	// immediately after a NUL. A trailing NUL and an in-bounds offset are
+	// sufficient to guarantee termination without rescanning every suffix.
+	if *(*byte)(unsafe.Add(stringBase, stringsSec.count-1)) != 0 {
+		return false
+	}
 	for i := uintptr(0); i < offsets.count; i++ {
 		off := uintptr(*(*uint32)(unsafe.Add(offsetBase, i*externalStringOffsetSize)))
 		if off >= stringsSec.count {
-			return false
-		}
-		terminated := false
-		for p := off; p < stringsSec.count; p++ {
-			if *(*byte)(unsafe.Add(stringBase, p)) == 0 {
-				terminated = true
-				break
-			}
-		}
-		if !terminated {
 			return false
 		}
 	}
