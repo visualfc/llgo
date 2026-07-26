@@ -259,12 +259,19 @@ jobs:
           printf '  %s\n' "${selected[@]}"
 
           # Run per-package and print elapsed time to keep logs readable.
+          std_pkgs=()
           for pkg in "${selected[@]}"; do
             echo "==> llgo test -timeout=20m -bench=^BenchmarkGo126 -benchtime=1x ${pkg}"
             SECONDS=0
             llgo test -timeout=20m -bench='^BenchmarkGo126' -benchtime=1x "${pkg}"
+            if [[ "${{ matrix.os }}" == ubuntu-latest && "${{ matrix.go }}" == 1.26.5 && "${pkg}" == */test/std/* ]]; then
+              std_pkgs+=("${pkg}")
+            fi
             echo "==> done ${pkg} (${SECONDS}s)"
           done
+          if [[ "${#std_pkgs[@]}" -ne 0 ]]; then
+            dev/test_std_buildmodes.sh "${std_pkgs[@]}"
+          fi
 
   hello:
     name: hello (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})

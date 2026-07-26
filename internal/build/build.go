@@ -1393,9 +1393,9 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	return cmd.Link(buildArgs...)
 }
 
-// cSharedExportArgs keeps //export functions as shared-library link roots. The
-// functions live in package archives and otherwise remain unreferenced, so the
-// linker can omit both their object files and dynamic symbols.
+// cSharedExportArgs keeps //export functions and synthetic test entry points as
+// shared-library link roots. They live in package archives and otherwise remain
+// unreferenced, so the linker can omit both their object files and symbols.
 func cSharedExportArgs(ctx *context, pkgs []*aPackage) []string {
 	if ctx == nil || ctx.buildConf == nil || ctx.buildConf.BuildMode != BuildModeCShared {
 		return nil
@@ -1409,6 +1409,10 @@ func cSharedExportArgs(ctx *context, pkgs []*aPackage) []string {
 			if name != "" {
 				exports[name] = none{}
 			}
+		}
+		if ctx.mode == ModeTest && pkg.Package != nil && pkg.Name == "main" && strings.HasSuffix(pkg.PkgPath, ".test") {
+			exports[pkg.PkgPath+".init"] = none{}
+			exports[pkg.PkgPath+".main"] = none{}
 		}
 	}
 	names := make([]string, 0, len(exports))

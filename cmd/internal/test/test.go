@@ -27,6 +27,7 @@ func init() {
 	flags.AddCommonFlags(&Cmd.Flag)
 	flags.AddCompilerVerboseFlag(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
+	flags.AddBuildModeFlags(&Cmd.Flag)
 	flags.AddTestFlags(&Cmd.Flag)
 	flags.AddTestBinaryFlags(&Cmd.Flag)
 	flags.AddEmulatorFlags(&Cmd.Flag)
@@ -43,7 +44,7 @@ func runCmd(cmd *base.Command, args []string) {
 	}
 
 	conf := build.NewDefaultConf(build.ModeTest)
-	if err := flags.UpdateConfig(conf); err != nil {
+	if err := flags.UpdateBuildConfig(conf); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}

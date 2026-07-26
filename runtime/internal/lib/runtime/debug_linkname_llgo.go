@@ -2,6 +2,8 @@ package runtime
 
 import (
 	_ "unsafe"
+
+	llrt "github.com/goplus/llgo/runtime/internal/runtime"
 )
 
 var (
@@ -35,7 +37,9 @@ func setGCPercent(in int32) (out int32) {
 }
 
 //go:linkname setPanicOnFault runtime/debug.setPanicOnFault
-func setPanicOnFault(_ bool) (old bool) { return false }
+func setPanicOnFault(in bool) (out bool) {
+	return llrt.SetPanicOnFault(in)
+}
 
 //go:linkname setMaxThreads runtime/debug.setMaxThreads
 func setMaxThreads(in int) (out int) {

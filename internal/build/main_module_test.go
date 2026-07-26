@@ -99,6 +99,7 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 			checks := []string{
 				"define internal void @__llgo_runtime_ctor()",
 				"call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()",
+				"call void @\"example.com/foo.init\"()",
 			}
 			if mode == BuildModeCShared {
 				checks = append(checks, `@__llgo_runtime_ctor_init = hidden constant ptr @__llgo_runtime_ctor, section ".init_array"`)
@@ -112,6 +113,34 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 			}
 			if strings.Contains(ir, "define i32 @main") {
 				t.Fatalf("library mode should not emit main function:\n%s", ir)
+			}
+		})
+	}
+}
+
+func TestGenMainModuleTestLibraryDefersMainInit(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	for _, mode := range []BuildMode{BuildModeCArchive, BuildModeCShared} {
+		t.Run(string(mode), func(t *testing.T) {
+			ctx := &context{
+				prog: llssa.NewProgram(nil),
+				mode: ModeTest,
+				buildConf: &Config{
+					Mode:      ModeTest,
+					BuildMode: mode,
+					Goos:      "linux",
+					Goarch:    "amd64",
+				},
+			}
+			pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+			mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true})
+			ir := mod.LPkg.String()
+			if !strings.Contains(ir, "call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()") {
+				t.Fatalf("test library constructor missing runtime init:\n%s", ir)
+			}
+			if strings.Contains(ir, "call void @\"example.com/foo.init\"()") {
+				t.Fatalf("test library constructor initialized test main before the C runner supplied argc/argv:\n%s", ir)
 			}
 		})
 	}

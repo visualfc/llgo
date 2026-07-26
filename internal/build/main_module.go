@@ -111,7 +111,13 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		if ctx.buildConf.BuildMode == BuildModeCShared && ctx.buildConf.Goos == "linux" {
 			initArraySection = ".init_array"
 		}
-		defineLibraryRuntimeInit(mainPkg, initArraySection, pyInit, rtInit, abiInit, runtimeStub, mainInit)
+		inits := []llssa.Function{pyInit, rtInit, abiInit, runtimeStub}
+		// The C test runner supplies argc/argv before calling the generated
+		// test main package's init and main functions.
+		if ctx.mode != ModeTest {
+			inits = append(inits, mainInit)
+		}
+		defineLibraryRuntimeInit(mainPkg, initArraySection, inits...)
 		return mainAPkg
 	}
 
