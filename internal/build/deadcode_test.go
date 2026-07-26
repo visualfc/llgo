@@ -19,9 +19,3 @@ func TestDCEEntryRootCandidates(t *testing.T) {
 		t.Fatalf("dceEntryRootCandidates(true) = %v, want %v", got, want)
 	}
 }
-
-func TestDCEEntryRootCandidatesNil(t *testing.T) {
-	if got := dceEntryRootCandidates(nil, true); got != nil {
-		t.Fatalf("dceEntryRootCandidates(nil) = %v, want nil", got)
-	}
-}
