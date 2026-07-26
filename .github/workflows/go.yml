@@ -138,9 +138,6 @@ jobs:
 
           echo "LLGO_LTO_PLUGIN=$GITHUB_WORKSPACE/ltoplugin/build/LLGOLTOPlugin.so" >> "$GITHUB_ENV"
 
-      - name: Run dev Go method drop tests
-        run: go test -tags=dev -timeout 30m -run '^TestBuildAndCheckSymbolsFromTestdrop$' ./cl
-
       - name: Run dev LTO GlobalDCE tests and demos with coverage
         run: |
           set -euo pipefail
@@ -182,3 +179,36 @@ jobs:
           token: ${{secrets.CODECOV_TOKEN}}
           files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt,coverage-dev-lto-globaldce-symbols.txt,coverage-dev-lto-plugin-cl.txt
           flags: dev-lto-globaldce
+
+  # See https://github.com/goplus/llgo/issues/1853.
+  dev-go-methoddrop:
+    name: Dev Go Method Drop (see #1853)
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+
+      - name: Setup demo dependencies
+        uses: ./.github/actions/setup-demo-deps
+
+      - name: Set LLGO_ROOT
+        run: echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Build llgo with dev tag
+        run: go install -tags=dev ./cmd/llgo
+
+      - name: Run Go method drop tests (see #1853)
+        run: go test -tags=dev -timeout 30m -run '^TestBuildAndCheckSymbolsFromTestdrop$' ./cl
+
+      - name: Run Go deadcode-drop demos
+        run: |
+          LLGO_DEMO_LLGORUN_FLAGS="-deadcodedrop" \
+            bash .github/workflows/test_demo.sh
