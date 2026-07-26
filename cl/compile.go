@@ -1690,13 +1690,14 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		if n := len(v.Results); n > 0 {
 			results = make([]llssa.Expr, n)
 			for i, r := range v.Results {
-				// A named result may be changed by a deferred call. Its SSA
-				// load was emitted before the implicit RunDefers above, so
-				// reload it in the continuation block after all defers have
-				// completed.
+				// Go SSA forms the named-result tuple with loads from the
+				// result slots. Reload the slot in the RunDefers continuation
+				// so deferred calls can change the value we return. Avoid the
+				// general UnOp path: this plain local load needs neither its
+				// cached value nor any dereference side effects.
 				if runDefers && v.Parent().Signature.Results().At(i).Name() != "" {
 					if load, ok := r.(*ssa.UnOp); ok && load.Op == token.MUL {
-						results[i] = p.compileInstrOrValue(b, load, false)
+						results[i] = b.Load(p.compileValue(b, load.X))
 						continue
 					}
 				}

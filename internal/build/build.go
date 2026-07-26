@@ -1661,7 +1661,7 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 			return fmt.Errorf("verify LLVM module for %v failed: %w", pkgPath, err)
 		}
 		if err := mod.RunPasses(llvmPassPipeline(ctx.buildConf.OptLevel, ctx.buildConf.ltoMode()), ctx.prog.TargetMachine(), pbo); err != nil {
-			return fmt.Errorf("run LLVM passes failed for %v: %v", pkgPath, err)
+			return fmt.Errorf("run LLVM passes failed for %v: %w", pkgPath, err)
 		}
 	}
 	emitFuncInfoEntrySites(ctx, ret)
