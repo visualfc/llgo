@@ -2343,10 +2343,6 @@ xfails:
     reason: llgo parser recovery emits additional diagnostics after the expected syntax error
   - version: go1.26
     directive: compile
-    case: fixedbugs/issue48092.go
-    reason: gc-specific -B bounds-checking backend option is not implemented by llgo
-  - version: go1.26
-    directive: compile
     case: typeparam/issue50993.go
     reason: gc-specific -d=checkptr backend option is not implemented by llgo
   - version: go1.26

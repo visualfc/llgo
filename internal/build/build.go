@@ -180,6 +180,9 @@ type Config struct {
 	// default.
 	PCLNModeSet bool
 	AllowNoBody bool // allow declarations without bodies, as go tool compile does
+	// DisableBoundsChecks disables index, slice, and slice-to-array conversion
+	// bounds checks while retaining required integer conversions and nil checks.
+	DisableBoundsChecks bool
 
 	// PthreadStackSize sets a custom stack size, in bytes, for pthread-backed
 	// goroutines. A zero value keeps the platform pthread default.
@@ -379,6 +382,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 
 	prog := llssa.NewProgram(target)
+	prog.DisableBoundsChecks(conf.DisableBoundsChecks)
 	if conf.Mode != ModeGen {
 		// ModeGen callers (llgen and the golden suites) read LPkg.String()
 		// after Do returns and dispose the program themselves; every other

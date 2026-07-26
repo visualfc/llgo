@@ -14,6 +14,7 @@ func TestGoCompilerFlagNamesAndTypes(t *testing.T) {
 	opts := new(options)
 	fs := newFlagSet(opts)
 	err := fs.Parse([]string{
+		"-B",
 		"-c=2",
 		"-C",
 		"-e",
@@ -27,7 +28,7 @@ func TestGoCompilerFlagNamesAndTypes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.concurrency != 2 || opts.noColumns.value != 1 || opts.allErrors.value != 1 || opts.noInline.value != 4 {
+	if opts.noBounds.value != 1 || opts.concurrency != 2 || opts.noColumns.value != 1 || opts.allErrors.value != 1 || opts.noInline.value != 4 {
 		t.Fatalf("parsed flags: %+v", opts)
 	}
 	if opts.lang != "go1.17" || opts.pkgPath != "p" || opts.importCfg != "importcfg" {
@@ -94,7 +95,6 @@ func TestCountAndListFlags(t *testing.T) {
 
 func TestUnsupportedCompilerFlags(t *testing.T) {
 	opts := &options{
-		noBounds:    countFlag{value: 1},
 		dynlink:     true,
 		showOpt:     countFlag{value: 1},
 		live:        true,
@@ -105,7 +105,7 @@ func TestUnsupportedCompilerFlags(t *testing.T) {
 		writeBar:    countFlag{set: true},
 		debug:       stringListFlag{"panic,libfuzzer", "ssa/check/on,ssa/check/seed=1,wb"},
 	}
-	want := []string{"-B", "-dynlink", "-m", "-live", "-race", "-smallframes", "-+", "-wb", "-d=libfuzzer", "-d=wb"}
+	want := []string{"-dynlink", "-m", "-live", "-race", "-smallframes", "-+", "-wb", "-d=libfuzzer", "-d=wb"}
 	if got := opts.unsupported(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("unsupported=%v, want %v", got, want)
 	}
@@ -120,7 +120,6 @@ func TestRunCmdValidationAndVersion(t *testing.T) {
 	}{
 		{name: "bad flag", args: []string{"-unknown"}, wantCode: 2, wantOutput: "flag provided but not defined"},
 		{name: "no files", wantCode: 2, wantOutput: "no Go source files"},
-		{name: "unsupported", args: []string{"-B", "case.go"}, wantCode: 2, wantOutput: "unsupported llgo compiler option(s): -B"},
 		{name: "negative concurrency", args: []string{"-c=-1", "case.go"}, wantCode: 2, wantOutput: "-c must be non-negative"},
 		{name: "invalid language", args: []string{"-lang=1.22", "case.go"}, wantCode: 2, wantOutput: "invalid value"},
 		{name: "version", args: []string{"-V"}, wantOutput: "compile version llgo"},
@@ -146,13 +145,22 @@ func TestRunCmdBuildsAndReportsErrors(t *testing.T) {
 	}
 	previousProcs := runtime.GOMAXPROCS(0)
 	stdout, stderr, code := runCompileCommand(t, []string{
-		"-c=1", "-C", "-e", "-lang=go1.22", "-N", "-l", "-complete", valid,
+		"-B", "-c=1", "-C", "-e", "-lang=go1.22", "-N", "-l", "-complete", valid,
 	})
 	if code != 0 {
 		t.Fatalf("valid compile exit code = %d; stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	if got := runtime.GOMAXPROCS(0); got != previousProcs {
 		t.Fatalf("GOMAXPROCS = %d after compile, want restored value %d", got, previousProcs)
+	}
+
+	zeroArray := dir + "/zero_array.go"
+	if err := os.WriteFile(zeroArray, []byte("package compilecase\ntype A [0]byte\nfunc Get(a *A, i int) byte { return a[i] }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, code = runCompileCommand(t, []string{"-B", zeroArray})
+	if code != 0 {
+		t.Fatalf("-B zero-length array compile exit code = %d; stdout=%q stderr=%q", code, stdout, stderr)
 	}
 
 	invalid := dir + "/invalid.go"

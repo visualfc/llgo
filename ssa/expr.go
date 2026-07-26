@@ -1467,11 +1467,13 @@ func (b Builder) SelectValue(cond Expr, a Expr, bExpr Expr) Expr {
 //	t1 = slice to array pointer *[4]byte <- []byte (t0)
 func (b Builder) SliceToArrayPointer(x Expr, typ Type) (ret Expr) {
 	ret.Type = typ
-	max := b.Prog.IntVal(uint64(typ.RawType().Underlying().(*types.Pointer).Elem().Underlying().(*types.Array).Len()), b.Prog.Int())
-	failed := Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, b.SliceLen(x).impl, max.impl), b.Prog.Bool()}
-	b.IfThen(failed, func() {
-		b.InlineCall(b.Pkg.rtFunc("PanicSliceConvert"), max, b.SliceLen(x))
-	})
+	if !b.Prog.disableBoundsChecks {
+		max := b.Prog.IntVal(uint64(typ.RawType().Underlying().(*types.Pointer).Elem().Underlying().(*types.Array).Len()), b.Prog.Int())
+		failed := Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, b.SliceLen(x).impl, max.impl), b.Prog.Bool()}
+		b.IfThen(failed, func() {
+			b.InlineCall(b.Pkg.rtFunc("PanicSliceConvert"), max, b.SliceLen(x))
+		})
+	}
 	ret.impl = b.SliceData(x).impl
 	return
 }
