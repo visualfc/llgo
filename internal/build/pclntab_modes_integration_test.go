@@ -25,6 +25,7 @@ import (
 	"debug/macho"
 	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -361,6 +362,7 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 			{name: "wrong-architecture", mutate: mismatchPCLNIntegrationArchitecture},
 			{name: "overlapping-sections", mutate: overlapPCLNIntegrationSections},
 			{name: "misaligned-stub-section", mutate: misalignPCLNIntegrationStubSection},
+			{name: "unterminated-string-pool", mutate: unterminatePCLNIntegrationStringPool},
 		}
 		for _, failure := range failures {
 			t.Run(failure.name, func(t *testing.T) {
@@ -728,11 +730,13 @@ func mismatchPCLNIntegrationIdentity(t *testing.T, path string) {
 }
 
 const (
-	pclnIntegrationHeaderVersion    = 8
-	pclnIntegrationHeaderGOARCH     = 19
-	pclnIntegrationHeaderABIVersion = 20
-	pclnIntegrationHeaderSections   = 96
-	pclnIntegrationSectionSize      = 16
+	pclnIntegrationHeaderVersion     = 8
+	pclnIntegrationHeaderGOARCH      = 19
+	pclnIntegrationHeaderABIVersion  = 20
+	pclnIntegrationHeaderPayloadHash = 32
+	pclnIntegrationHeaderSections    = 96
+	pclnIntegrationSectionSize       = 16
+	pclnIntegrationDescStrings       = 2
 )
 
 func mismatchPCLNIntegrationVersion(t *testing.T, path string) {
@@ -777,12 +781,44 @@ func overlapPCLNIntegrationSections(t *testing.T, path string) {
 func misalignPCLNIntegrationStubSection(t *testing.T, path string) {
 	t.Helper()
 	mutatePCLNIntegrationHeader(t, path, func(raw []byte) {
-		// v2 descriptor order: records, pclines, strings, string offsets,
+		// v3 descriptor order: records, pclines, strings, string offsets,
 		// hash, symbol index, entries, stubs, pc sites.
 		stub := pclnIntegrationHeaderSections + 7*pclnIntegrationSectionSize
 		off := binary.LittleEndian.Uint64(raw[stub:])
 		binary.LittleEndian.PutUint64(raw[stub:], off+1)
 	})
+}
+
+func unterminatePCLNIntegrationStringPool(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := pclnmap.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stringsSec := view.Sections[pclnIntegrationDescStrings]
+	if stringsSec.Count == 0 || stringsSec.Offset+stringsSec.Count > uint64(len(raw)) {
+		t.Fatalf("invalid string section: %+v", stringsSec)
+	}
+	last := stringsSec.Offset + stringsSec.Count - 1
+	if raw[last] != 0 {
+		t.Fatalf("string pool last byte = %#x, want NUL", raw[last])
+	}
+	raw[last] = 'x'
+	hash := fnv.New64a()
+	_, _ = hash.Write(raw[pclnmap.HeaderSize:])
+	binary.LittleEndian.PutUint64(raw[pclnIntegrationHeaderPayloadHash:], hash.Sum64())
+	// Keep the sidecar structurally valid so the runtime rejects the string
+	// pool itself rather than its payload checksum.
+	if _, err := pclnmap.Parse(raw); err != nil {
+		t.Fatalf("string-only mutation invalidated the map: %v", err)
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func mutatePCLNIntegrationHeader(t *testing.T, path string, mutate func([]byte)) {

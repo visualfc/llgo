@@ -73,6 +73,34 @@ func TestEncodeParse(t *testing.T) {
 	}
 }
 
+func TestEncodePreservesUint32StringIDs(t *testing.T) {
+	data := sampleData(t)
+	const (
+		symbolNameID = uint32(1 << 16)
+		fileNameID   = symbolNameID + 1
+	)
+	data.Table.Records[0].SymbolName = symbolNameID
+	data.Table.PCLines[0].FileName = fileNameID
+	data.Table.StringOffsets = make([]uint32, fileNameID+1)
+
+	raw, err := Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := raw[view.Sections[descRecords].Offset:]
+	if got := binary.LittleEndian.Uint32(record[4:]); got != symbolNameID {
+		t.Fatalf("symbol name id = %d, want %d", got, symbolNameID)
+	}
+	pcLine := raw[view.Sections[descPCLines].Offset:]
+	if got := binary.LittleEndian.Uint32(pcLine[16:]); got != fileNameID {
+		t.Fatalf("pcline file name id = %d, want %d", got, fileNameID)
+	}
+}
+
 func TestParseRejectsCorruptionAndTruncation(t *testing.T) {
 	raw, err := Encode(sampleData(t))
 	if err != nil {

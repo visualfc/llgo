@@ -16,7 +16,11 @@
 
 package funcinfo
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+	"unsafe"
+)
 
 func TestEncodePoolsStringsAndBuildsHash(t *testing.T) {
 	table, err := Encode([]Record{
@@ -79,6 +83,33 @@ func TestEncodeWithPCLines(t *testing.T) {
 	}
 }
 
+func TestAssignStringIDsSupportsUint32(t *testing.T) {
+	const count = 1 << 16
+	strings := make([]string, count)
+	for i := range strings {
+		strings[i] = "string" + strconv.Itoa(i)
+	}
+	ids, values, err := assignStringIDs(strings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids[strings[len(strings)-1]]; got != count {
+		t.Fatalf("last string id = %d, want %d", got, count)
+	}
+	if got := len(values); got != count+1 {
+		t.Fatalf("string count = %d, want %d", got, count+1)
+	}
+}
+
+func TestEncodedRecordSizes(t *testing.T) {
+	if got := unsafe.Sizeof(EncodedRecord{}); got != EncodedRecordSize {
+		t.Fatalf("encoded record size = %d, want %d", got, EncodedRecordSize)
+	}
+	if got := unsafe.Sizeof(EncodedPCLineRecord{}); got != EncodedPCLineRecordSize {
+		t.Fatalf("encoded pcline record size = %d, want %d", got, EncodedPCLineRecordSize)
+	}
+}
+
 func TestEncodeRoundTripsSingleRecord(t *testing.T) {
 	table, err := Encode([]Record{{Symbol: "s", Name: "n", File: "f", Line: 1, Column: 2}})
 	if err != nil {
@@ -138,9 +169,9 @@ func TestEncodeOmitsHashWhenRecordIndexesDoNotFitUint16(t *testing.T) {
 
 func TestEncodeSplitsPackageAndFilePrefixes(t *testing.T) {
 	records := []Record{
-		{Symbol: "example.com/p.alpha", Name: "example.com/p.Alpha", File: "/home/me/mod/p/alpha.go", Line: 10},
-		{Symbol: "example.com/p.beta", Name: "example.com/p.Beta", File: "/home/me/mod/p/beta.go", Line: 20},
-		{Symbol: "example.com/q.gamma", Name: "example.com/q.Gamma", File: "/home/me/mod/q/gamma.go", Line: 30},
+		{Symbol: "example.com/long/shared/module/p.alpha", Name: "example.com/long/shared/module/p.Alpha", File: "/home/me/long/shared/module/p/alpha.go", Line: 10},
+		{Symbol: "example.com/long/shared/module/p.beta", Name: "example.com/long/shared/module/p.Beta", File: "/home/me/long/shared/module/p/beta.go", Line: 20},
+		{Symbol: "example.com/long/shared/module/q.gamma", Name: "example.com/long/shared/module/q.Gamma", File: "/home/me/long/shared/module/q/gamma.go", Line: 30},
 	}
 	table, err := Encode(records)
 	if err != nil {

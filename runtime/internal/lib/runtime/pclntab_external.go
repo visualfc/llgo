@@ -13,7 +13,7 @@ import (
 
 const (
 	externalPCLNMagic      = "LLGOPCL1"
-	externalPCLNVersion    = uint32(2)
+	externalPCLNVersion    = uint32(3)
 	externalPCLNABIVersion = uint32(1)
 	externalPCLNHeaderSize = uintptr(256)
 	externalPCLNMaxSize    = int64(512 << 20)
@@ -49,12 +49,18 @@ const (
 )
 
 const (
-	externalRecordSize       = uintptr(16)
+	externalRecordSize       = uintptr(28)
 	externalPCLineSize       = uintptr(24)
 	externalStringOffsetSize = uintptr(4)
 	externalHashSize         = uintptr(2)
 	externalSymbolIndexSize  = uintptr(16)
 	externalSiteSize         = uintptr(16)
+)
+
+const (
+	// Keep zero-copy decoding strides synchronized with the runtime structs.
+	_ = uintptr(0) - (externalRecordSize - unsafe.Sizeof(runtimeFuncInfoRecord{}))
+	_ = uintptr(0) - (externalPCLineSize - unsafe.Sizeof(runtimePCLineRecord{}))
 )
 
 const (
@@ -306,7 +312,9 @@ func installExternalPCLN(raw []byte, view externalPCLNView, loadBase uintptr) bo
 	entries := view.sections[externalDescEntrySites]
 	stubs := view.sections[externalDescStubSites]
 	pcsites := view.sections[externalDescPCSites]
-	if records.count == 0 || records.count > 1<<20 || offsets.count == 0 || offsets.count > 1<<16 ||
+	// String IDs are uint32. The offset section and sidecar size bound their
+	// count now, rather than the old uint16 ID limit.
+	if records.count == 0 || records.count > 1<<20 || offsets.count == 0 ||
 		stringsSec.count == 0 || stringsSec.count > 1<<30 || pclines.count > 1<<22 ||
 		symbols.count > records.count || entries.count > records.count*16 || stubs.count > records.count*16 || pcsites.count > 1<<24 {
 		return false
@@ -314,19 +322,15 @@ func installExternalPCLN(raw []byte, view externalPCLNView, loadBase uintptr) bo
 	// Validate every string ID before any runtime pointer is published.
 	stringBase := externalSectionPtr(raw, stringsSec)
 	offsetBase := externalSectionPtr(raw, offsets)
+	// Offsets may reuse suffixes inside another string, so they need not point
+	// immediately after a NUL. A trailing NUL and an in-bounds offset are
+	// sufficient to guarantee termination without rescanning every suffix.
+	if *(*byte)(unsafe.Add(stringBase, stringsSec.count-1)) != 0 {
+		return false
+	}
 	for i := uintptr(0); i < offsets.count; i++ {
 		off := uintptr(*(*uint32)(unsafe.Add(offsetBase, i*externalStringOffsetSize)))
 		if off >= stringsSec.count {
-			return false
-		}
-		terminated := false
-		for p := off; p < stringsSec.count; p++ {
-			if *(*byte)(unsafe.Add(stringBase, p)) == 0 {
-				terminated = true
-				break
-			}
-		}
-		if !terminated {
 			return false
 		}
 	}
@@ -363,7 +367,7 @@ func installExternalPCLN(raw []byte, view externalPCLNView, loadBase uintptr) bo
 	for i := uintptr(0); i < pclines.count; i++ {
 		rec := (*runtimePCLineRecord)(unsafe.Add(pclineBase, i*externalPCLineSize))
 		if rec.id == 0 || rec.funcIndex == 0 || uintptr(rec.funcIndex) > records.count ||
-			(i != 0 && rec.id <= prevPCLine) || uintptr(rec.file>>16) >= offsets.count || uintptr(uint16(rec.file)) >= offsets.count {
+			(i != 0 && rec.id <= prevPCLine) || uintptr(rec.fileRoot) >= offsets.count || uintptr(rec.fileName) >= offsets.count {
 			return false
 		}
 		prevPCLine = rec.id
