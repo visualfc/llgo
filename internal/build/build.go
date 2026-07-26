@@ -24,6 +24,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -35,6 +36,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -44,6 +46,7 @@ import (
 	"github.com/goplus/llgo/internal/cabi"
 	"github.com/goplus/llgo/internal/clang"
 	"github.com/goplus/llgo/internal/crosscompile"
+	"github.com/goplus/llgo/internal/dcepass"
 	"github.com/goplus/llgo/internal/deadcode"
 	"github.com/goplus/llgo/internal/env"
 	"github.com/goplus/llgo/internal/firmware"
@@ -768,10 +771,6 @@ type context struct {
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
 	pclnExternal *pclnmap.Data
-
-	// liveMethodSlots is the GlobalSummary-based method liveness result. The
-	// LLVM method-table rewrite consumes it in a later stage.
-	liveMethodSlots map[string][]int
 }
 
 // closePackageMetas releases metadata mappings owned by this build. Metadata
@@ -1237,15 +1236,6 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		archiveInputs = append(archiveInputs, rtLinkInputs...)
 	}
 
-	if ctx.buildConf.deadcodeDropEnabled() && ctx.buildConf.BuildMode == BuildModeExe {
-		metas := linkedPackageMetas(linkedOrder)
-		summary, err := meta.NewGlobalSummary(metas)
-		if err != nil {
-			return err
-		}
-		ctx.liveMethodSlots = deadcode.Analyze(summary, dceEntryRootCandidates(pkg, needRuntime))
-	}
-
 	// Generate main module file (needed for global variables even in library modes)
 	// This is compiled directly to .o and added to linkInputs (not cached)
 	// Use a stable synthetic name to avoid confusing it with the real main package in traces/logs.
@@ -1268,6 +1258,11 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		pcLineInfo:    pcLineInfo,
 		funcInfoStubs: funcInfoStubs,
 	})
+	if ctx.buildConf.deadcodeDropEnabled() {
+		if err := applyDeadcodeDropOverrides(ctx, pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
+			return err
+		}
+	}
 	entryObjFile, err := exportObject(ctx, "entry_main", entryPkg.ExportFile, entryPkg.LPkg)
 	if err != nil {
 		return err
@@ -1314,6 +1309,67 @@ func linkedPackageMetas(pkgs []Package) []*meta.PackageMeta {
 		metas = append(metas, pkg.Meta)
 	}
 	return metas
+}
+
+func applyDeadcodeDropOverrides(ctx *context, mainPkg *packages.Package, pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
+	metas := linkedPackageMetas(pkgs)
+	mergeStart := time.Now()
+	summary, err := meta.NewGlobalSummary(metas)
+	if err != nil {
+		return err
+	}
+	mergeDur := time.Since(mergeStart)
+
+	roots := dceEntryRootCandidates(mainPkg, needRuntime)
+	analyzeStart := time.Now()
+	liveSlots := deadcode.Analyze(summary, roots)
+	analyzeDur := time.Since(analyzeStart)
+	if len(liveSlots) == 0 {
+		return nil
+	}
+
+	if verbose {
+		liveCount := 0
+		for _, slots := range liveSlots {
+			liveCount += len(slots)
+		}
+		fmt.Fprintf(os.Stderr, "[deadcodedrop] packages=%d roots=%s merge=%v analyze=%v live method slots=%d types=%d\n",
+			len(metas), strings.Join(roots, ","), mergeDur, analyzeDur, liveCount, len(liveSlots))
+		err := dcepass.EmitStrongTypeOverridesDebug(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, os.Stderr)
+		printDeadcodeDropMetaInputs(ctx, pkgs, os.Stderr)
+		return err
+	}
+	return dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots)
+}
+
+func dceSourceModules(pkgs []Package) []gllvm.Module {
+	mods := make([]gllvm.Module, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		mods = append(mods, pkg.LPkg.Module())
+	}
+	return mods
+}
+
+func printDeadcodeDropMetaInputs(ctx *context, pkgs []Package, w io.Writer) {
+	cm := ctx.ensureCacheManager()
+	targetTriple := ctx.targetTriple()
+	fmt.Fprintln(w, "[deadcodedrop] meta inputs:")
+	for _, pkg := range pkgs {
+		if pkg.Fingerprint == "" || pkg.Name == "main" {
+			fmt.Fprintf(w, "[deadcodedrop]   %s memory\n", pkg.PkgPath)
+			continue
+		}
+		paths := cm.PackagePaths(targetTriple, pkg.PkgPath, pkg.Fingerprint)
+		state := "miss"
+		if pkg.CacheHit {
+			state = "hit"
+		}
+		exists := "missing"
+		if _, err := os.Stat(paths.Meta); err == nil {
+			exists = "exists"
+		}
+		fmt.Fprintf(w, "[deadcodedrop]   %s %s %s %s\n", pkg.PkgPath, state, exists, paths.Meta)
+	}
 }
 
 func dceEntryRootCandidates(pkg *packages.Package, needRuntime bool) []string {

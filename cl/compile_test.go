@@ -254,6 +254,36 @@ func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
 	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testlto", testltoSymbolChecks, cltest.WithRunConfig(conf))
 }
 
+var testdropSymbolChecks = []string{
+	"direct_func",
+	"direct_method",
+	"exported_method_crosspkg",
+	"generic_interface_crosspkg",
+	"generic_interface_func_crosspkg",
+	"iface_flow_crosspkg",
+	"interface_demand_fixedpoint",
+	"interface_match",
+	"interface_slot",
+	"promoted_method_wrapper",
+	"reflect_dynamic_iface_crosspkg",
+	"reflect_named_method",
+	"source64_crosspkg",
+	"unexported_method_identity",
+}
+
+func TestBuildAndCheckSymbolsFromTestdrop(t *testing.T) {
+	if !buildenv.Dev {
+		t.Skip("deadcode drop symbol checks require dev build")
+	}
+	conf := build.NewDefaultConf(build.ModeBuild)
+	conf.DeadcodeDrop = true
+	conf.ForceRebuild = true
+	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testdrop", testdropSymbolChecks,
+		cltest.WithRunConfig(conf),
+		cltest.WithOutputCheck(true),
+	)
+}
+
 func testltoLTOPluginConf(t *testing.T, mode build.Mode) *build.Config {
 	t.Helper()
 	if !buildenv.Dev {

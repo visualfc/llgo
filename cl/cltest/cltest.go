@@ -505,6 +505,20 @@ func testBuildAndCheckSymbolsFrom(t *testing.T, pkgDir, relPkg, sel, symbolSpec 
 	if sel != "" && !strings.Contains(pkgDir, sel) {
 		return
 	}
+	var (
+		expectedOutput []byte
+		checkOutput    bool
+		err            error
+	)
+	if opts.checkOutput {
+		expectedOutput, checkOutput, err = readGolden(filepath.Join(pkgDir, "expect.txt"))
+		if err != nil {
+			t.Fatal("ReadFile failed:", err)
+		}
+		if !checkOutput {
+			t.Fatal("missing expect.txt")
+		}
+	}
 	outFile := filepath.Join(t.TempDir(), filepath.Base(pkgDir))
 	output, err := buildWithConf(relPkg, pkgDir, opts.conf, outFile)
 	if err != nil {
@@ -512,6 +526,22 @@ func testBuildAndCheckSymbolsFrom(t *testing.T, pkgDir, relPkg, sel, symbolSpec 
 		t.Fatalf("build failed: %v\noutput: %s", err, string(output))
 	}
 	assertExpectedSymbols(t, outFile, symbolSpec)
+	if checkOutput {
+		output, err := runBuiltBinary(outFile, pkgDir)
+		if err != nil {
+			t.Logf("raw output:\n%s", string(output))
+			t.Fatalf("run built binary failed: %v\noutput: %s", err, string(output))
+		}
+		assertExpectedOutput(t, pkgDir, expectedOutput, output, opts)
+	}
+}
+
+func runBuiltBinary(bin, dir string) ([]byte, error) {
+	cmd := exec.Command(bin)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	output = filterRunOutput(output)
+	return output, err
 }
 
 func buildWithConf(relPkg, pkgDir string, conf *build.Config, outFile string) ([]byte, error) {

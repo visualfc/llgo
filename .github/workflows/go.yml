@@ -165,6 +165,9 @@ jobs:
 
           echo "LLGO_LTO_PLUGIN=$GITHUB_WORKSPACE/ltoplugin/build/LLGOLTOPlugin.so" >> "$GITHUB_ENV"
 
+      - name: Run dev Go method drop tests
+        run: go test -tags=dev -timeout 30m -run '^TestBuildAndCheckSymbolsFromTestdrop$' ./cl
+
       - name: Run dev LTO GlobalDCE tests and demos with coverage
         run: |
           set -euo pipefail
