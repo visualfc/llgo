@@ -31,7 +31,7 @@ import (
 
 const (
 	Magic      = "LLGOPCL1"
-	Version    = uint32(2)
+	Version    = uint32(3)
 	ABIVersion = uint32(1)
 	HeaderSize = uint32(256)
 
@@ -76,8 +76,8 @@ const (
 )
 
 const (
-	recordSize       = uint64(16)
-	pcLineSize       = uint64(24)
+	recordSize       = uint64(funcinfo.EncodedRecordSize)
+	pcLineSize       = uint64(funcinfo.EncodedPCLineRecordSize)
 	stringOffsetSize = uint64(4)
 	hashSize         = uint64(2)
 	symbolIndexSize  = uint64(16)
@@ -239,13 +239,13 @@ func Encode(data Data) ([]byte, error) {
 	pos := sections[descRecords].Offset
 	for _, rec := range data.Table.Records {
 		p := out[pos : pos+recordSize]
-		binary.LittleEndian.PutUint16(p[0:], rec.SymbolPkg)
-		binary.LittleEndian.PutUint16(p[2:], rec.SymbolName)
-		binary.LittleEndian.PutUint16(p[4:], rec.NamePkg)
-		binary.LittleEndian.PutUint16(p[6:], rec.NameName)
-		binary.LittleEndian.PutUint16(p[8:], rec.FileRoot)
-		binary.LittleEndian.PutUint16(p[10:], rec.FileName)
-		binary.LittleEndian.PutUint32(p[12:], rec.Line)
+		binary.LittleEndian.PutUint32(p[0:], rec.SymbolPkg)
+		binary.LittleEndian.PutUint32(p[4:], rec.SymbolName)
+		binary.LittleEndian.PutUint32(p[8:], rec.NamePkg)
+		binary.LittleEndian.PutUint32(p[12:], rec.NameName)
+		binary.LittleEndian.PutUint32(p[16:], rec.FileRoot)
+		binary.LittleEndian.PutUint32(p[20:], rec.FileName)
+		binary.LittleEndian.PutUint32(p[24:], rec.Line)
 		pos += recordSize
 	}
 	pos = sections[descPCLines].Offset
@@ -253,8 +253,9 @@ func Encode(data Data) ([]byte, error) {
 		p := out[pos : pos+pcLineSize]
 		binary.LittleEndian.PutUint64(p[0:], rec.ID)
 		binary.LittleEndian.PutUint32(p[8:], rec.Func)
-		binary.LittleEndian.PutUint32(p[12:], rec.File)
-		binary.LittleEndian.PutUint32(p[16:], rec.Line)
+		binary.LittleEndian.PutUint32(p[12:], rec.FileRoot)
+		binary.LittleEndian.PutUint32(p[16:], rec.FileName)
+		binary.LittleEndian.PutUint32(p[20:], rec.Line)
 		pos += pcLineSize
 	}
 	copy(out[sections[descStrings].Offset:], data.Table.Strings)

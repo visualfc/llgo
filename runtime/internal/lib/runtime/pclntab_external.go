@@ -13,7 +13,7 @@ import (
 
 const (
 	externalPCLNMagic      = "LLGOPCL1"
-	externalPCLNVersion    = uint32(2)
+	externalPCLNVersion    = uint32(3)
 	externalPCLNABIVersion = uint32(1)
 	externalPCLNHeaderSize = uintptr(256)
 	externalPCLNMaxSize    = int64(512 << 20)
@@ -49,7 +49,7 @@ const (
 )
 
 const (
-	externalRecordSize       = uintptr(16)
+	externalRecordSize       = uintptr(28)
 	externalPCLineSize       = uintptr(24)
 	externalStringOffsetSize = uintptr(4)
 	externalHashSize         = uintptr(2)
@@ -306,7 +306,7 @@ func installExternalPCLN(raw []byte, view externalPCLNView, loadBase uintptr) bo
 	entries := view.sections[externalDescEntrySites]
 	stubs := view.sections[externalDescStubSites]
 	pcsites := view.sections[externalDescPCSites]
-	if records.count == 0 || records.count > 1<<20 || offsets.count == 0 || offsets.count > 1<<16 ||
+	if records.count == 0 || records.count > 1<<20 || offsets.count == 0 ||
 		stringsSec.count == 0 || stringsSec.count > 1<<30 || pclines.count > 1<<22 ||
 		symbols.count > records.count || entries.count > records.count*16 || stubs.count > records.count*16 || pcsites.count > 1<<24 {
 		return false
@@ -363,7 +363,7 @@ func installExternalPCLN(raw []byte, view externalPCLNView, loadBase uintptr) bo
 	for i := uintptr(0); i < pclines.count; i++ {
 		rec := (*runtimePCLineRecord)(unsafe.Add(pclineBase, i*externalPCLineSize))
 		if rec.id == 0 || rec.funcIndex == 0 || uintptr(rec.funcIndex) > records.count ||
-			(i != 0 && rec.id <= prevPCLine) || uintptr(rec.file>>16) >= offsets.count || uintptr(uint16(rec.file)) >= offsets.count {
+			(i != 0 && rec.id <= prevPCLine) || uintptr(rec.fileRoot) >= offsets.count || uintptr(rec.fileName) >= offsets.count {
 			return false
 		}
 		prevPCLine = rec.id

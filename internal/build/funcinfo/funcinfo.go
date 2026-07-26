@@ -40,21 +40,27 @@ type PCLineRecord struct {
 }
 
 type EncodedRecord struct {
-	SymbolPkg  uint16
-	SymbolName uint16
-	NamePkg    uint16
-	NameName   uint16
-	FileRoot   uint16
-	FileName   uint16
+	SymbolPkg  uint32
+	SymbolName uint32
+	NamePkg    uint32
+	NameName   uint32
+	FileRoot   uint32
+	FileName   uint32
 	Line       uint32
 }
 
 type EncodedPCLineRecord struct {
-	ID   uint64
-	Func uint32
-	File uint32
-	Line uint32
+	ID       uint64
+	Func     uint32
+	FileRoot uint32
+	FileName uint32
+	Line     uint32
 }
+
+const (
+	EncodedRecordSize       = 28
+	EncodedPCLineRecordSize = 24
+)
 
 type Table struct {
 	Records       []EncodedRecord
@@ -113,10 +119,11 @@ func EncodeWithPCLines(records []Record, pcLines []PCLineRecord) (Table, error) 
 		idx := funcIndex[rec.Symbol]
 		fileRoot, fileName := splitFileName(rec.File)
 		out.PCLines = append(out.PCLines, EncodedPCLineRecord{
-			ID:   rec.ID,
-			Func: idx,
-			File: packStringIDs(ids[fileRoot], ids[fileName]),
-			Line: rec.Line,
+			ID:       rec.ID,
+			Func:     idx,
+			FileRoot: ids[fileRoot],
+			FileName: ids[fileName],
+			Line:     rec.Line,
 		})
 	}
 	sort.Slice(out.PCLines, func(i, j int) bool {
@@ -155,10 +162,6 @@ func collectStrings(records []Record, pcLines []PCLineRecord) []string {
 	return out
 }
 
-func packStringIDs(hi, lo uint16) uint32 {
-	return uint32(hi)<<16 | uint32(lo)
-}
-
 func splitRecordStrings(rec Record) []string {
 	symPkg, symName := splitQualifiedName(rec.Symbol)
 	namePkg, nameName := splitQualifiedName(rec.Name)
@@ -166,18 +169,10 @@ func splitRecordStrings(rec Record) []string {
 	return []string{symPkg, symName, namePkg, nameName, fileRoot, fileName}
 }
 
-func buildStringTable(strings []string) (map[string]uint16, []uint32, []byte, error) {
-	ids := map[string]uint16{"": 0}
-	values := []string{""}
-	for _, s := range strings {
-		if _, ok := ids[s]; ok {
-			continue
-		}
-		if len(values) > math.MaxUint16 {
-			return nil, nil, nil, fmt.Errorf("funcinfo string id table exceeds 65535 entries")
-		}
-		ids[s] = uint16(len(values))
-		values = append(values, s)
+func buildStringTable(strings []string) (map[string]uint32, []uint32, []byte, error) {
+	ids, values, err := assignStringIDs(strings)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	pool := stringPool{
 		offsets: map[string]uint32{"": 0},
@@ -193,6 +188,22 @@ func buildStringTable(strings []string) (map[string]uint16, []uint32, []byte, er
 		offsets[id] = off
 	}
 	return ids, offsets, pool.data, nil
+}
+
+func assignStringIDs(strings []string) (map[string]uint32, []string, error) {
+	ids := map[string]uint32{"": 0}
+	values := []string{""}
+	for _, s := range strings {
+		if _, ok := ids[s]; ok {
+			continue
+		}
+		if uint64(len(values)) > math.MaxUint32 {
+			return nil, nil, fmt.Errorf("funcinfo string id table exceeds 4294967295 entries")
+		}
+		ids[s] = uint32(len(values))
+		values = append(values, s)
+	}
+	return ids, values, nil
 }
 
 func splitQualifiedName(name string) (pkg, local string) {
@@ -285,8 +296,8 @@ func HashString(s string) uint32 {
 	return h
 }
 
-func (t Table) String(id uint16) string {
-	if int(id) >= len(t.StringOffsets) {
+func (t Table) String(id uint32) string {
+	if uint64(id) >= uint64(len(t.StringOffsets)) {
 		return ""
 	}
 	return cstring(t.Strings, t.StringOffsets[id])
@@ -305,7 +316,7 @@ func (t Table) File(rec EncodedRecord) string {
 }
 
 func (t Table) PCLineFile(rec EncodedPCLineRecord) string {
-	return t.String(uint16(rec.File>>16)) + t.String(uint16(rec.File))
+	return t.String(rec.FileRoot) + t.String(rec.FileName)
 }
 
 func (t Table) LookupSymbol(symbol string) (int, bool) {
@@ -329,7 +340,8 @@ func (t Table) LookupSymbol(symbol string) (int, bool) {
 }
 
 func (t Table) SizeBytes() int {
-	return len(t.Records)*16 + len(t.PCLines)*24 + len(t.StringOffsets)*4 + len(t.Strings) + len(t.Hash)*2
+	return len(t.Records)*EncodedRecordSize + len(t.PCLines)*EncodedPCLineRecordSize +
+		len(t.StringOffsets)*4 + len(t.Strings) + len(t.Hash)*2
 }
 
 func joinQualified(pkg, local string) string {
