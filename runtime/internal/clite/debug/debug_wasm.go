@@ -20,11 +20,17 @@ type Info struct {
 }
 
 func Address() unsafe.Pointer {
-	panic("not implemented")
+	return nil
 }
 
 func Addrinfo(addr unsafe.Pointer, info *Info) c.Int {
-	panic("not implemented")
+	_, _ = addr, info
+	return 0
+}
+
+func Symbol(name *c.Char) unsafe.Pointer {
+	_ = name
+	return nil
 }
 
 type Frame struct {
@@ -35,7 +41,7 @@ type Frame struct {
 }
 
 func StackTrace(skip int, fn func(fr *Frame) bool) {
-	panic("not implemented")
+	_, _ = skip, fn
 }
 
 func PrintStack(skip int) {

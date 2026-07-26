@@ -384,3 +384,42 @@ jobs:
 
           # Run the wasm binary using llgo_wasm
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
+
+  wasm-runtime:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.24.2", "1.26.5"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Emscripten
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: "4.0.21"
+
+      - name: Set up Go for building llgo
+        uses: ./.github/actions/setup-go
+
+      - name: Install llgo
+        run: |
+          go install ./...
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Set up Go for testing
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{matrix.go}}
+
+      - name: Build standard runtime for wasm
+        shell: bash
+        run: |
+          GOOS=js GOARCH=wasm llgo build -o "$RUNNER_TEMP/runtime-js.wasm" ./internal/build/testdata/wasm-runtime
+          GOOS=wasip1 GOARCH=wasm llgo build -o "$RUNNER_TEMP/runtime-wasip1.wasm" ./internal/build/testdata/wasm-runtime
+          file "$RUNNER_TEMP/runtime-js.wasm" "$RUNNER_TEMP/runtime-wasip1.wasm"

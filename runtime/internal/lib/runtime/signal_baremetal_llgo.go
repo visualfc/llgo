@@ -1,8 +1,8 @@
-//go:build baremetal
+//go:build baremetal || wasm
 
 package runtime
 
-// Baremetal targets do not provide OS signal delivery.
+// Baremetal and wasm targets do not provide POSIX signal delivery.
 
 func signal_enable(sig uint32) {
 	_ = sig
