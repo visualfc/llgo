@@ -240,7 +240,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %64 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.FuncOf(%"{{.*}}/runtime/internal/runtime.Slice" %58, %"{{.*}}/runtime/internal/runtime.Slice" %63, i1 false)
 // CHECK-NEXT:   %65 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %64)
 // CHECK-NEXT:   %66 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %64, 0
-// CHECK-NEXT:   %67 = getelementptr ptr, ptr %66, i64 {{(18|19)}}
+// CHECK-NEXT:   %67 = getelementptr ptr, ptr %66, i64 18
 // CHECK-NEXT:   %68 = load ptr, ptr %67, align 8
 // CHECK-NEXT:   %69 = insertvalue { ptr, ptr } undef, ptr %68, 0
 // CHECK-NEXT:   %70 = insertvalue { ptr, ptr } %69, ptr %65, 1
@@ -270,7 +270,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   %86 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.MapOf(%"{{.*}}/runtime/internal/runtime.iface" %9, %"{{.*}}/runtime/internal/runtime.iface" %9)
 // CHECK-NEXT:   %87 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %86)
 // CHECK-NEXT:   %88 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %86, 0
-// CHECK-NEXT:   %89 = getelementptr ptr, ptr %88, i64 {{(20|22)}}
+// CHECK-NEXT:   %89 = getelementptr ptr, ptr %88, i64 20
 // CHECK-NEXT:   %90 = load ptr, ptr %89, align 8
 // CHECK-NEXT:   %91 = insertvalue { ptr, ptr } undef, ptr %90, 0
 // CHECK-NEXT:   %92 = insertvalue { ptr, ptr } %91, ptr %87, 1
@@ -292,7 +292,7 @@ func methodByName(name string) {
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_4
 // CHECK-NEXT:   %106 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %64)
 // CHECK-NEXT:   %107 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %64, 0
-// CHECK-NEXT:   %108 = getelementptr ptr, ptr %107, i64 {{(30|33)}}
+// CHECK-NEXT:   %108 = getelementptr ptr, ptr %107, i64 30
 // CHECK-NEXT:   %109 = load ptr, ptr %108, align 8
 // CHECK-NEXT:   %110 = insertvalue { ptr, ptr } undef, ptr %109, 0
 // CHECK-NEXT:   %111 = insertvalue { ptr, ptr } %110, ptr %106, 1
@@ -445,7 +445,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %220, i8 0, i64 80, i1 false)
 // CHECK-NEXT:   %221 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
 // CHECK-NEXT:   %222 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %9, 0
-// CHECK-NEXT:   %223 = getelementptr ptr, ptr %222, i64 {{(23|25)}}
+// CHECK-NEXT:   %223 = getelementptr ptr, ptr %222, i64 23
 // CHECK-NEXT:   %224 = load ptr, ptr %223, align 8
 // CHECK-NEXT:   %225 = insertvalue { ptr, ptr } undef, ptr %224, 0
 // CHECK-NEXT:   %226 = insertvalue { ptr, ptr } %225, ptr %221, 1
@@ -471,7 +471,7 @@ func methodByName(name string) {
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %236, i8 0, i64 80, i1 false)
 // CHECK-NEXT:   %237 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
 // CHECK-NEXT:   %238 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %9, 0
-// CHECK-NEXT:   %239 = getelementptr ptr, ptr %238, i64 {{(24|26)}}
+// CHECK-NEXT:   %239 = getelementptr ptr, ptr %238, i64 24
 // CHECK-NEXT:   %240 = load ptr, ptr %239, align 8
 // CHECK-NEXT:   %241 = insertvalue { ptr, ptr } undef, ptr %240, 0
 // CHECK-NEXT:   %242 = insertvalue { ptr, ptr } %241, ptr %237, 1
@@ -626,4 +626,22 @@ func methodByName(name string) {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal64"(ptr %1, ptr %2)
 // CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.{{.*}}/cl/_testgo/reflectmk.Point.String"(ptr %0, %"{{.*}}/cl/_testgo/reflectmk.Point" %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.Point.String"(%"{{.*}}/cl/_testgo/reflectmk.Point" %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/reflectmk.(*Point).Set"(ptr %0, ptr %1, i64 %2, i64 %3){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/reflectmk.(*Point).Set"(ptr %1, i64 %2, i64 %3)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.{{.*}}/cl/_testgo/reflectmk.(*Point).String"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.(*Point).String"(ptr %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
 // CHECK-NEXT: }

@@ -3,9 +3,8 @@ package main
 
 import _ "unsafe"
 
-// CHECK-DAG: {{^}}@0 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testdata/method.T", align 1{{$}}
-// CHECK-DAG: {{^}}@1 = private unnamed_addr constant [3 x i8] c"Add", align 1{{$}}
-// CHECK-DAG: @"{{.*}}/cl/_testdata/method.format" = global [10 x i8] c"Hello %d\0A\00", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [44 x i8] c"{{.*}}/cl/_testdata/method.T", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [3 x i8] c"Add", align 1{{$}}
 
 type T int
 

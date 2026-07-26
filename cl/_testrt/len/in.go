@@ -1,6 +1,21 @@
 // LITTEST
 package main
 
+// CHECK: {{^}}@16 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+
+// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/len.init"(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/len.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/len.init$guard", align 1
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
 type data struct {
 	s string
 	c chan int
@@ -98,9 +113,22 @@ type data struct {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
+
 func main() {
 	d := &data{}
 	println(len(d.s), len(d.c), len(d.m), len(d.a), cap(d.c), cap(d.a))
 	v := &data{s: "hello", c: make(chan int, 2), m: map[int]string{1: "hello"}, a: []int{1, 2, 3}}
 	println(len(v.s), len(v.c), len(v.m), len(v.a), cap(v.c), cap(v.a))
 }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal64"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal64"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal8"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal8"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }

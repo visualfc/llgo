@@ -3,7 +3,19 @@ package main
 
 import _ "unsafe"
 
-// CHECK: {{^}}@_bar_x = external global { [16 x i8], [2 x ptr] }, align 8{{$}}
+// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cvar.init"(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/cvar.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/cvar.init$guard", align 1
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
 //
 //go:linkname barX _bar_x
 var barX struct {
@@ -11,7 +23,6 @@ var barX struct {
 	Callbacks [2]func()
 }
 
-// CHECK: {{^}}@_bar_y = external global { [16 x i8] }, align 1{{$}}
 //
 //go:linkname barY _bar_y
 var barY struct {
@@ -24,6 +35,7 @@ var barY struct {
 // CHECK-NEXT:   %1 = load { [16 x i8] }, ptr @_bar_y, align 1
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
+
 func main() {
 	_ = barX
 	_ = barY

@@ -36,6 +36,7 @@ func Async[T any](fn func(func(T))) Future[T] {
 // CHECK-NEXT: }
 
 func ReadFile(fileName string) Future[Tuple[error]] {
+
 	// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpmethod.ReadFile$1"({ ptr, ptr } %0){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testrt/tpmethod.Tuple[error]", align 8
@@ -83,6 +84,7 @@ func ReadFile(fileName string) Future[Tuple[error]] {
 // CHECK-NEXT: }
 
 func main() {
+
 	// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpmethod.main$1"(%"{{.*}}/cl/_testrt/tpmethod.Tuple[error]" %0){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %1 = call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testrt/tpmethod.Tuple[error].Get"(%"{{.*}}/cl/_testrt/tpmethod.Tuple[error]" %0)
@@ -148,8 +150,26 @@ func main() {
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %3
 // CHECK-NEXT: }
 
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.iface" @"__llgo_stub.{{.*}}/cl/_testrt/tpmethod.(*Tuple[error]).Get"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testrt/tpmethod.(*Tuple[error]).Get"(ptr %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %2
+// CHECK-NEXT: }
+
 // CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.interequal"(ptr %0, ptr %1, ptr %2){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.interequal"(ptr %1, ptr %2)
 // CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.iface" @"__llgo_stub.{{.*}}/cl/_testrt/tpmethod.Tuple[error].Get"(ptr %0, %"{{.*}}/cl/_testrt/tpmethod.Tuple[error]" %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testrt/tpmethod.Tuple[error].Get"(%"{{.*}}/cl/_testrt/tpmethod.Tuple[error]" %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testrt/tpmethod.(*future[{{.*}}/cl/_testrt/tpmethod.Tuple[error]]).Then"(ptr %0, ptr %1, { ptr, ptr } %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/tpmethod.(*future[{{.*}}/cl/_testrt/tpmethod.Tuple[error]]).Then"(ptr %1, { ptr, ptr } %2)
+// CHECK-NEXT:   ret void
 // CHECK-NEXT: }

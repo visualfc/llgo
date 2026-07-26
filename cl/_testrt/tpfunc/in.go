@@ -38,6 +38,7 @@ type Callback[T any] func(*T)
 // CHECK-NEXT: }
 
 func main() {
+
 	// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpfunc.main$1"(ptr %0){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %1 = icmp eq ptr %0, null

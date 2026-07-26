@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// CHECK: @0 = private unnamed_addr constant [19 x i8] c"will panic in defer", align 1
-// CHECK: @1 = private unnamed_addr constant [3 x i8] c"end", align 1
-// CHECK: @2 = private unnamed_addr constant [13 x i8] c"panic in main", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [19 x i8] c"will panic in defer", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [3 x i8] c"end", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [13 x i8] c"panic in main", align 1{{$}}
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/recoverthenpanic.End"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -11,7 +11,7 @@ package main
 // CHECK-NEXT:   %1 = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"(%"{{.*}}/runtime/internal/runtime.eface" %0, %"{{.*}}/runtime/internal/runtime.eface" zeroinitializer)
 // CHECK-NEXT:   %2 = xor i1 %1, true
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %4 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %4 = alloca i8, i64 196, align 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %6 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 0
 // CHECK-NEXT:   store ptr %4, ptr %6, align 8
@@ -27,7 +27,7 @@ package main
 // CHECK-NEXT:   %12 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 4
 // CHECK-NEXT:   %13 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %13, align 8
-// CHECK-NEXT:   %14 = call i32 @{{.*}}sigsetjmp(ptr %4, i32 0)
+// CHECK-NEXT:   %14 = call i32 @sigsetjmp(ptr %4, i32 0)
 // CHECK-NEXT:   %15 = icmp eq i32 %14, 0
 // CHECK-NEXT:   br i1 %15, label %_llgo_4, label %_llgo_7
 // CHECK-EMPTY:
@@ -135,7 +135,7 @@ func main() {
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/recoverthenpanic.main"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8, i64 196, align 1
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -151,7 +151,7 @@ func main() {
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 4
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %10, align 8
-// CHECK-NEXT:   %11 = call i32 @{{.*}}sigsetjmp(ptr %1, i32 0)
+// CHECK-NEXT:   %11 = call i32 @sigsetjmp(ptr %1, i32 0)
 // CHECK-NEXT:   %12 = icmp eq i32 %11, 0
 // CHECK-NEXT:   br i1 %12, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:

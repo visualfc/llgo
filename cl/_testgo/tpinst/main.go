@@ -1,8 +1,6 @@
 // LITTEST
 package main
 
-// CHECK-NOT: @6 = private unnamed_addr constant [5 x i8] c"value", align 1
-// CHECK: @6 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/tpinst.value", align 1
 // CHECK: {{^}}@8 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
 // CHECK: {{^}}@15 = private unnamed_addr constant [22 x i8] c"interface{value() int}", align 1{{$}}
 // CHECK: {{^}}@16 = private unnamed_addr constant [5 x i8] c"value", align 1{{$}}

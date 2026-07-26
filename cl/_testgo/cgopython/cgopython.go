@@ -7,6 +7,14 @@ package main
 */
 import "C"
 
+// CHECK: {{^}}@0 = private unnamed_addr constant [23 x i8] c"print('Hello, Python!')", align 1{{$}}
+
+func main() {
+	C.Py_Initialize()
+	defer C.Py_Finalize()
+	C.PyRun_SimpleString(C.CString("print('Hello, Python!')"))
+}
+
 // CHECK-LABEL: define i32 @"{{.*}}/cl/_testgo/cgopython._Cfunc_PyRun_SimpleString"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
@@ -32,6 +40,11 @@ import "C"
 // CHECK-NEXT:   ret [0 x i8] %2
 // CHECK-NEXT: }
 
+// CHECK-LABEL: define ptr @"{{.*}}/cl/_testgo/cgopython._Cgo_ptr"(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   ret ptr %0
+// CHECK-NEXT: }
+
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/cgopython.init"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/cgopython.init$guard", align 1
@@ -54,7 +67,7 @@ import "C"
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call [0 x i8] @"{{.*}}/cl/_testgo/cgopython._Cfunc_Py_Initialize"()
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %2 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %2 = alloca i8, i64 196, align 1
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 0
 // CHECK-NEXT:   store ptr %2, ptr %4, align 8
@@ -70,7 +83,7 @@ import "C"
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 4
 // CHECK-NEXT:   %11 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %11, align 8
-// CHECK-NEXT:   %12 = call i32 @{{.*}}sigsetjmp(ptr %2, i32 0)
+// CHECK-NEXT:   %12 = call i32 @sigsetjmp(ptr %2, i32 0)
 // CHECK-NEXT:   %13 = icmp eq i32 %12, 0
 // CHECK-NEXT:   br i1 %13, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:
@@ -105,8 +118,3 @@ import "C"
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-func main() {
-	C.Py_Initialize()
-	defer C.Py_Finalize()
-	C.PyRun_SimpleString(C.CString("print('Hello, Python!')"))
-}

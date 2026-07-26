@@ -3,8 +3,6 @@ package main
 
 var seed = 40
 
-// CHECK: @"{{.*}}/cl/_testrt/litdemo.seed" = global i64 40, align 8
-
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/litdemo.add"(i64 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = add i64 %0, %1

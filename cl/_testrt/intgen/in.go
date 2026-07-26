@@ -5,6 +5,10 @@ import (
 	"github.com/goplus/lib/c"
 )
 
+// CHECK: {{^}}@0 = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1{{$}}
+
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/cl/_testrt/intgen.genInts"(i64 %0, { ptr, ptr } %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.MakeSlice"(i64 %0, i64 %0, i64 4)
@@ -26,7 +30,7 @@ import (
 // CHECK-NEXT:   %12 = icmp slt i64 %5, 0
 // CHECK-NEXT:   %13 = icmp uge i64 %5, %11
 // CHECK-NEXT:   %14 = or i1 %13, %12
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %14, {{.*}})
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %14, i64 %5, i1 true, i64 %11)
 // CHECK-NEXT:   %15 = getelementptr inbounds i32, ptr %10, i64 %5
 // CHECK-NEXT:   store i32 %9, ptr %15, align 4
 // CHECK-NEXT:   br label %_llgo_1
@@ -34,6 +38,7 @@ import (
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.Slice" %2
 // CHECK-NEXT: }
+
 func genInts(n int, gen func() c.Int) []c.Int {
 	a := make([]c.Int, n)
 	for i := range a {
@@ -53,10 +58,24 @@ func genInts(n int, gen func() c.Int) []c.Int {
 // CHECK-NEXT:   %6 = load i32, ptr %5, align 4
 // CHECK-NEXT:   ret i32 %6
 // CHECK-NEXT: }
+
 func (g *generator) next() c.Int {
 	g.val++
 	return g.val
 }
+
+// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/intgen.init"(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/intgen.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/intgen.init$guard", align 1
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
 
 type generator struct {
 	val c.Int
@@ -80,7 +99,7 @@ type generator struct {
 // CHECK-NEXT:   %7 = icmp slt i64 %3, 0
 // CHECK-NEXT:   %8 = icmp uge i64 %3, %6
 // CHECK-NEXT:   %9 = or i1 %8, %7
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %9, {{.*}})
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %9, i64 %3, i1 true, i64 %6)
 // CHECK-NEXT:   %10 = getelementptr inbounds i32, ptr %5, i64 %3
 // CHECK-NEXT:   %11 = load i32, ptr %10, align 4
 // CHECK-NEXT:   %12 = call i32 (ptr, ...) @printf(ptr @0, i32 %11)
@@ -109,7 +128,7 @@ type generator struct {
 // CHECK-NEXT:   %24 = icmp slt i64 %20, 0
 // CHECK-NEXT:   %25 = icmp uge i64 %20, %23
 // CHECK-NEXT:   %26 = or i1 %25, %24
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %26, {{.*}})
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %26, i64 %20, i1 true, i64 %23)
 // CHECK-NEXT:   %27 = getelementptr inbounds i32, ptr %22, i64 %20
 // CHECK-NEXT:   %28 = load i32, ptr %27, align 4
 // CHECK-NEXT:   %29 = call i32 (ptr, ...) @printf(ptr @1, i32 %28)
@@ -139,7 +158,7 @@ type generator struct {
 // CHECK-NEXT:   %42 = icmp slt i64 %38, 0
 // CHECK-NEXT:   %43 = icmp uge i64 %38, %41
 // CHECK-NEXT:   %44 = or i1 %43, %42
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %44, {{.*}})
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %44, i64 %38, i1 true, i64 %41)
 // CHECK-NEXT:   %45 = getelementptr inbounds i32, ptr %40, i64 %38
 // CHECK-NEXT:   %46 = load i32, ptr %45, align 4
 // CHECK-NEXT:   %47 = call i32 (ptr, ...) @printf(ptr @2, i32 %46)
@@ -148,6 +167,7 @@ type generator struct {
 // CHECK-NEXT: _llgo_9:                                          ; preds = %_llgo_7
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
+
 func main() {
 	for _, v := range genInts(5, c.Rand) {
 
@@ -155,19 +175,20 @@ func main() {
 	}
 
 	initVal := c.Int(1)
+	// CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/intgen.main$1"(ptr %0){{.*}} {
+	// CHECK-NEXT: _llgo_0:
+	// CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
+	// CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
+	// CHECK-NEXT:   %3 = load i32, ptr %2, align 4
+	// CHECK-NEXT:   %4 = mul i32 %3, 2
+	// CHECK-NEXT:   %5 = extractvalue { ptr } %1, 0
+	// CHECK-NEXT:   store i32 %4, ptr %5, align 4
+	// CHECK-NEXT:   %6 = extractvalue { ptr } %1, 0
+	// CHECK-NEXT:   %7 = load i32, ptr %6, align 4
+	// CHECK-NEXT:   ret i32 %7
+	// CHECK-NEXT: }
+
 	ints := genInts(5, func() c.Int {
-		// CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/intgen.main$1"(ptr %0){{.*}} {
-		// CHECK-NEXT: _llgo_0:
-		// CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
-		// CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
-		// CHECK-NEXT:   %3 = load i32, ptr %2, align 4
-		// CHECK-NEXT:   %4 = mul i32 %3, 2
-		// CHECK-NEXT:   %5 = extractvalue { ptr } %1, 0
-		// CHECK-NEXT:   store i32 %4, ptr %5, align 4
-		// CHECK-NEXT:   %6 = extractvalue { ptr } %1, 0
-		// CHECK-NEXT:   %7 = load i32, ptr %6, align 4
-		// CHECK-NEXT:   ret i32 %7
-		// CHECK-NEXT: }
 		initVal *= 2
 		return initVal
 	})
@@ -179,12 +200,13 @@ func main() {
 	for _, v := range genInts(5, g.next) {
 		c.Printf(c.Str("%d\n"), v)
 	}
-	// CHECK-LABEL: define linkonce i32 @__llgo_stub.rand(ptr %0){{.*}} {
-	// CHECK-NEXT: _llgo_0:
-	// CHECK-NEXT:   %1 = tail call i32 @rand()
-	// CHECK-NEXT:   ret i32 %1
-	// CHECK-NEXT: }
 }
+
+// CHECK-LABEL: define linkonce i32 @__llgo_stub.rand(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = tail call i32 @rand()
+// CHECK-NEXT:   ret i32 %1
+// CHECK-NEXT: }
 
 // CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/intgen.(*generator).next$bound"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:

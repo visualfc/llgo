@@ -46,13 +46,13 @@ func WriteFile(fileName string) IO[error] {
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testgo/tpnamed.main"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:  %0 = call [0 x i8] @"{{.*}}/cl/_testgo/tpnamed.RunIO{{\[\[0\]byte\]}}"(%"{{.*}}/cl/_testgo/tpnamed.IO{{\[\[0\]byte\]}}" { ptr @"__llgo_stub.{{.*}}/cl/_testgo/tpnamed.main$1", ptr null })
-// CHECK-NEXT:  ret void
+// CHECK-NEXT:   %0 = call [0 x i8] @"{{.*}}/cl/_testgo/tpnamed.RunIO{{\[\[0\]byte\]}}"(%"{{.*}}/cl/_testgo/tpnamed.IO{{\[\[0\]byte\]}}" { ptr @"__llgo_stub.{{.*}}/cl/_testgo/tpnamed.main$1", ptr null })
+// CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
 func main() {
 
-	// CHECK-LABEL: define %"{{.*}}/cl/_testgo/tpnamed.Future{{\[\[0\]byte\]}}" @"{{.*}}/cl/_testgo/tpnamed.main$1"()
+	// CHECK-LABEL: define %"{{.*}}/cl/_testgo/tpnamed.Future{{\[\[0\]byte\]}}" @"{{.*}}/cl/_testgo/tpnamed.main$1"(){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   ret %"{{.*}}/cl/_testgo/tpnamed.Future{{\[\[0\]byte\]}}" { ptr @"__llgo_stub.{{.*}}/cl/_testgo/tpnamed.main$1$1", ptr null }
 	// CHECK-NEXT: }

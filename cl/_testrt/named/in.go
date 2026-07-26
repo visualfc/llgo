@@ -3,6 +3,21 @@ package main
 
 import "github.com/goplus/lib/c"
 
+// CHECK: {{^}}@0 = private unnamed_addr constant [19 x i8] c"%d %d %d %d %d %d\0A\00", align 1{{$}}
+
+// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/named.init"(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/named.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/named.init$guard", align 1
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
 type mSpanList struct {
 	first *mspan
 	last  *mspan
@@ -112,6 +127,7 @@ type mspan struct {
 // CHECK-NEXT:   %74 = call i32 (ptr, ...) @printf(ptr @0, i64 %41, i64 %48, i64 %52, i64 %58, i64 %64, i64 %73)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
+
 func main() {
 	m := &mspan{}
 	m.value = 100
@@ -122,9 +138,6 @@ func main() {
 	m.list.last.value = 300
 	m.info.info = 10
 	m.info.span = m
-	m.check = func(n int) int {
-		return m.value * n
-	}
 	// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/named.main$1"(ptr %0, i64 %1){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %2 = load { ptr }, ptr %0, align 8
@@ -135,6 +148,10 @@ func main() {
 	// CHECK-NEXT:   %7 = mul i64 %6, %1
 	// CHECK-NEXT:   ret i64 %7
 	// CHECK-NEXT: }
+
+	m.check = func(n int) int {
+		return m.value * n
+	}
 	c.Printf(c.Str("%d %d %d %d %d %d\n"), m.next.value, m.list.last.value, m.info.info,
 		m.info.span.value, m.check(-2), m.info.span.check(-3))
 }

@@ -2164,10 +2164,34 @@ const (
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.(*Pos).IsValid"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.(*Pos).IsValid"(ptr %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
 // CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal8"(ptr %0, ptr %1, ptr %2){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal8"(ptr %1, ptr %2)
 // CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.Pos.IsValid"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.Pos.IsValid"(i64 %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.go/ast.(*ObjKind).String"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"go/ast.(*ObjKind).String"(ptr %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.go/ast.ObjKind.String"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"go/ast.ObjKind.String"(i64 %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.nilinterequal"(ptr %0, ptr %1, ptr %2){{.*}} {
@@ -2176,8 +2200,1088 @@ const (
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Object).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Object).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Ident).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Ident).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/ast.(*Ident).IsExported"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/ast.(*Ident).IsExported"(ptr %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Ident).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Ident).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.go/ast.(*Ident).String"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"go/ast.(*Ident).String"(ptr %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*Ident).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*Ident).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
 // CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.interequal"(ptr %0, ptr %1, ptr %2){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.interequal"(ptr %1, ptr %2)
 // CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ArrayType).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ArrayType).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ArrayType).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ArrayType).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ArrayType).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ArrayType).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.(*Token).IsKeyword"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.(*Token).IsKeyword"(ptr %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.(*Token).IsLiteral"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.(*Token).IsLiteral"(ptr %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.(*Token).IsOperator"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.(*Token).IsOperator"(ptr %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/token.(*Token).Precedence"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/token.(*Token).Precedence"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.go/token.(*Token).String"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"go/token.(*Token).String"(ptr %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.Token.IsKeyword"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.Token.IsKeyword"(i64 %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.Token.IsLiteral"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.Token.IsLiteral"(i64 %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.go/token.Token.IsOperator"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i1 @"go/token.Token.IsOperator"(i64 %1)
+// CHECK-NEXT:   ret i1 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/token.Token.Precedence"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/token.Token.Precedence"(i64 %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.go/token.Token.String"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"go/token.Token.String"(i64 %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*AssignStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*AssignStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*AssignStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*AssignStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*AssignStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*AssignStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BadDecl).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BadDecl).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BadDecl).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BadDecl).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*BadDecl).declNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*BadDecl).declNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BadExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BadExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BadExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BadExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*BadExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*BadExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BadStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BadStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BadStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BadStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*BadStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*BadStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BasicLit).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BasicLit).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BasicLit).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BasicLit).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*BasicLit).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*BasicLit).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BinaryExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BinaryExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BinaryExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BinaryExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*BinaryExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*BinaryExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BlockStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BlockStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BlockStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BlockStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*BlockStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*BlockStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BranchStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BranchStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*BranchStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*BranchStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*BranchStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*BranchStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CallExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CallExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CallExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CallExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*CallExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*CallExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CaseClause).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CaseClause).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CaseClause).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CaseClause).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*CaseClause).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*CaseClause).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ChanType).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ChanType).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ChanType).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ChanType).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ChanType).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ChanType).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CommClause).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CommClause).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CommClause).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CommClause).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*CommClause).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*CommClause).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Comment).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Comment).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Comment).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Comment).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CommentGroup).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CommentGroup).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CommentGroup).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CommentGroup).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.go/ast.(*CommentGroup).Text"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"go/ast.(*CommentGroup).Text"(ptr %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CompositeLit).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CompositeLit).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*CompositeLit).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*CompositeLit).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*CompositeLit).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*CompositeLit).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*DeclStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*DeclStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*DeclStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*DeclStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*DeclStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*DeclStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*DeferStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*DeferStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*DeferStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*DeferStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*DeferStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*DeferStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Ellipsis).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Ellipsis).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Ellipsis).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Ellipsis).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*Ellipsis).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*Ellipsis).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*EmptyStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*EmptyStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*EmptyStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*EmptyStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*EmptyStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*EmptyStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ExprStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ExprStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ExprStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ExprStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ExprStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ExprStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Field).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Field).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Field).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Field).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FieldList).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FieldList).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FieldList).NumFields"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FieldList).NumFields"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FieldList).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FieldList).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce ptr @"__llgo_stub.go/ast.(*Scope).Insert"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call ptr @"go/ast.(*Scope).Insert"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret ptr %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce ptr @"__llgo_stub.go/ast.(*Scope).Lookup"(ptr %0, ptr %1, %"{{.*}}/runtime/internal/runtime.String" %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call ptr @"go/ast.(*Scope).Lookup"(ptr %1, %"{{.*}}/runtime/internal/runtime.String" %2)
+// CHECK-NEXT:   ret ptr %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"__llgo_stub.go/ast.(*Scope).String"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call %"{{.*}}/runtime/internal/runtime.String" @"go/ast.(*Scope).String"(ptr %1)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ImportSpec).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ImportSpec).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ImportSpec).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ImportSpec).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ImportSpec).specNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ImportSpec).specNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*File).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*File).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*File).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*File).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ForStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ForStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ForStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ForStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ForStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ForStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FuncType).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FuncType).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FuncType).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FuncType).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*FuncType).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*FuncType).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FuncDecl).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FuncDecl).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FuncDecl).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FuncDecl).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*FuncDecl).declNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*FuncDecl).declNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FuncLit).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FuncLit).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*FuncLit).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*FuncLit).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*FuncLit).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*FuncLit).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*GenDecl).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*GenDecl).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*GenDecl).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*GenDecl).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*GenDecl).declNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*GenDecl).declNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*GoStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*GoStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*GoStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*GoStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*GoStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*GoStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IfStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IfStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IfStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IfStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*IfStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*IfStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IncDecStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IncDecStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IncDecStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IncDecStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*IncDecStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*IncDecStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IndexExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IndexExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IndexExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IndexExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*IndexExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*IndexExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IndexListExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IndexListExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*IndexListExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*IndexListExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*IndexListExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*IndexListExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*InterfaceType).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*InterfaceType).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*InterfaceType).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*InterfaceType).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*InterfaceType).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*InterfaceType).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*KeyValueExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*KeyValueExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*KeyValueExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*KeyValueExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*KeyValueExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*KeyValueExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*LabeledStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*LabeledStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*LabeledStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*LabeledStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*LabeledStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*LabeledStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*MapType).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*MapType).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*MapType).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*MapType).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*MapType).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*MapType).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Package).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Package).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*Package).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*Package).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ParenExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ParenExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ParenExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ParenExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ParenExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ParenExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*RangeStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*RangeStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*RangeStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*RangeStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*RangeStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*RangeStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ReturnStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ReturnStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ReturnStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ReturnStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ReturnStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ReturnStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SelectStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SelectStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SelectStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SelectStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*SelectStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*SelectStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SelectorExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SelectorExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SelectorExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SelectorExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*SelectorExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*SelectorExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SendStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SendStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SendStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SendStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*SendStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*SendStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SliceExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SliceExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SliceExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SliceExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*SliceExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*SliceExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*StarExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*StarExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*StarExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*StarExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*StarExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*StarExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*StructType).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*StructType).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*StructType).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*StructType).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*StructType).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*StructType).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SwitchStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SwitchStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*SwitchStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*SwitchStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*SwitchStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*SwitchStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*TypeAssertExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*TypeAssertExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*TypeAssertExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*TypeAssertExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*TypeAssertExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*TypeAssertExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*TypeSpec).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*TypeSpec).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*TypeSpec).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*TypeSpec).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*TypeSpec).specNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*TypeSpec).specNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*TypeSwitchStmt).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*TypeSwitchStmt).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*TypeSwitchStmt).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*TypeSwitchStmt).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*TypeSwitchStmt).stmtNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*TypeSwitchStmt).stmtNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*UnaryExpr).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*UnaryExpr).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*UnaryExpr).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*UnaryExpr).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*UnaryExpr).exprNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*UnaryExpr).exprNode"(ptr %1)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ValueSpec).End"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ValueSpec).End"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.go/ast.(*ValueSpec).Pos"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = tail call i64 @"go/ast.(*ValueSpec).Pos"(ptr %1)
+// CHECK-NEXT:   ret i64 %2
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce void @"__llgo_stub.go/ast.(*ValueSpec).specNode"(ptr %0, ptr %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   tail call void @"go/ast.(*ValueSpec).specNode"(ptr %1)
+// CHECK-NEXT:   ret void
 // CHECK-NEXT: }

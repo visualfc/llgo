@@ -1,6 +1,21 @@
 // LITTEST
 package main
 
+// CHECK: {{^}}@29 = private unnamed_addr constant [5 x i8] c"world", align 1{{$}}
+
+// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpmap.init"(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/tpmap.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/tpmap.init$guard", align 1
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }
+
 type T1 int
 
 type T2 struct {
@@ -21,7 +36,7 @@ type cacheKey struct {
 
 // CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpmap.main"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.MakeMap"(ptr @"map[_llgo_github.com/goplus/llgo/cl/_testrt/tpmap.cacheKey]_llgo_string", i64 0)
+// CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.MakeMap"(ptr @"map[_llgo_{{.*}}/cl/_testrt/tpmap.cacheKey]_llgo_string", i64 0)
 // CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testrt/tpmap.cacheKey", align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 48, i1 false)
 // CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpmap.cacheKey", ptr %1, i32 0, i32 0
@@ -42,7 +57,7 @@ type cacheKey struct {
 // CHECK-NEXT:   %11 = load %"{{.*}}/cl/_testrt/tpmap.cacheKey", ptr %1, align 8
 // CHECK-NEXT:   %12 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testrt/tpmap.cacheKey" %11, ptr %12, align 8
-// CHECK-NEXT:   %13 = call ptr @"{{.*}}/runtime/internal/runtime.MapAssign"(ptr @"map[_llgo_github.com/goplus/llgo/cl/_testrt/tpmap.cacheKey]_llgo_string", ptr %0, ptr %12)
+// CHECK-NEXT:   %13 = call ptr @"{{.*}}/runtime/internal/runtime.MapAssign"(ptr @"map[_llgo_{{.*}}/cl/_testrt/tpmap.cacheKey]_llgo_string", ptr %0, ptr %12)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @29, i64 5 }, ptr %13, align 8
 // CHECK-NEXT:   %14 = alloca %"{{.*}}/cl/_testrt/tpmap.cacheKey", align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %14, i8 0, i64 48, i1 false)
@@ -64,7 +79,7 @@ type cacheKey struct {
 // CHECK-NEXT:   %24 = load %"{{.*}}/cl/_testrt/tpmap.cacheKey", ptr %14, align 8
 // CHECK-NEXT:   %25 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testrt/tpmap.cacheKey" %24, ptr %25, align 8
-// CHECK-NEXT:   %26 = call { ptr, i1 } @"{{.*}}/runtime/internal/runtime.MapAccess2"(ptr @"map[_llgo_github.com/goplus/llgo/cl/_testrt/tpmap.cacheKey]_llgo_string", ptr %0, ptr %25)
+// CHECK-NEXT:   %26 = call { ptr, i1 } @"{{.*}}/runtime/internal/runtime.MapAccess2"(ptr @"map[_llgo_{{.*}}/cl/_testrt/tpmap.cacheKey]_llgo_string", ptr %0, ptr %25)
 // CHECK-NEXT:   %27 = extractvalue { ptr, i1 } %26, 0
 // CHECK-NEXT:   %28 = load %"{{.*}}/runtime/internal/runtime.String", ptr %27, align 8
 // CHECK-NEXT:   %29 = extractvalue { ptr, i1 } %26, 1
@@ -78,9 +93,28 @@ type cacheKey struct {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
+
 func main() {
 	m := map[cacheKey]string{}
 	m[cacheKey{0, T2{0}, T3[any]{0}, nil, 0}] = "world"
 	v, ok := m[cacheKey{0, T2{0}, T3[any]{0}, nil, 0}]
 	println(v, ok)
 }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal64"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal64"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.nilinterequal"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.nilinterequal"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define linkonce i1 @"__llgo_stub.{{.*}}/runtime/internal/runtime.memequal8"(ptr %0, ptr %1, ptr %2){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %3 = tail call i1 @"{{.*}}/runtime/internal/runtime.memequal8"(ptr %1, ptr %2)
+// CHECK-NEXT:   ret i1 %3
+// CHECK-NEXT: }
