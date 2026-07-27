@@ -28,9 +28,6 @@ func normalizeBuildFlags(args []string) ([]string, error) {
 	ret := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "-dbg" || arg == "--dbg" {
-			return nil, fmt.Errorf("%s was removed; use -ldflags=-w=false", arg)
-		}
 		if value, hasValue, ok := buildParallelFlag(arg); ok {
 			if !hasValue {
 				if i+1 == len(args) {
