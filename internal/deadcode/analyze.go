@@ -117,6 +117,9 @@ func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.MethodSlot) {
 	// Compute all slots at once.
 	impls := make(map[meta.Symbol]int)
 
+	// For example, if typ has Read and Write slots, Read matches Reader and
+	// ReaderWriter while Write matches Writer and ReaderWriter. The resulting
+	// counts are Reader=1, Writer=1, and ReaderWriter=2.
 	for _, slot := range slots {
 		sig := meta.MethodSig{Name: slot.Name, MType: slot.MType}
 		for _, iface := range d.methodRefs[sig] {
@@ -124,6 +127,10 @@ func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.MethodSlot) {
 		}
 	}
 
+	// Record keys only for interfaces that typ implements completely. For the
+	// example above, the resulting methodImplKeys are:
+	//	Read slot:  Reader, ReaderWriter
+	//	Write slot: Writer, ReaderWriter
 	for slotIndex, slot := range slots {
 		id := methodID{owner: typ, slot: slotIndex}
 		sig := meta.MethodSig{Name: slot.Name, MType: slot.MType}
@@ -165,6 +172,8 @@ func (d *pass) flood() {
 			if _, processed := d.processedIfaceTy[sym]; !processed {
 				d.processedIfaceTy[sym] = struct{}{}
 				slots := d.info.MethodSlots(sym)
+				// Build interface implementation links lazily: only types that
+				// enter an interface need method matching.
 				if len(slots) > 0 {
 					d.computeMethodImplKeys(sym, slots)
 				}
@@ -197,6 +206,23 @@ func (d *pass) methodMarkingLoop() bool {
 	return changed
 }
 
+// shouldKeep reports whether a concrete method slot is demanded. Reflection
+// and MethodByName demands are conservative shortcuts handled first.
+//
+// For ordinary interface calls, method liveness is the intersection of three
+// sets:
+//  1. Concrete types in the interface domain. A type enters this set when a
+//     reachable conversion stores it in an interface, or when TypeChildren
+//     propagate that status from another such type. Only methods of these
+//     types are added to markableMethods.
+//  2. Reachable interface-method demands, such as ReaderWriter.Read. These are
+//     recorded in ifaceMethod while flooding reachable functions.
+//  3. Complete interface implementation relationships. methodImplKeys records
+//     that the concrete owner implements the whole interface and that this
+//     slot matches the demanded interface method by name and method type.
+//
+// The loop below intersects sets 2 and 3; membership in set 1 is guaranteed by
+// the construction of markableMethods.
 func (d *pass) shouldKeep(method methodRef) bool {
 	if d.reflectSeen && token.IsExported(d.info.Name(method.slotInfo.Name)) {
 		return true
