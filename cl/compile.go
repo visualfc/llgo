@@ -1681,16 +1681,27 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		jmpb := p.jumpTo(v)
 		b.Jump(jmpb)
 	case *ssa.Return:
+		runDefers := p.returnNeedsImplicitRunDefers(v)
+		if runDefers {
+			p.recordPanicLocation(b, v.Pos())
+			b.RunDefers()
+		}
 		var results []llssa.Expr
 		if n := len(v.Results); n > 0 {
 			results = make([]llssa.Expr, n)
 			for i, r := range v.Results {
+				// A deferred call may change a named result independently of
+				// the SSA value in Return.Results. Reload the result's storage
+				// in the RunDefers continuation instead of depending on the
+				// particular SSA node used to form the return tuple.
+				if runDefers {
+					if slot := p.namedResultSlot(i); slot != nil {
+						results[i] = b.Load(p.compileValue(b, slot))
+						continue
+					}
+				}
 				results[i] = p.compileValue(b, r)
 			}
-		}
-		if p.returnNeedsImplicitRunDefers(v) {
-			p.recordPanicLocation(b, v.Pos())
-			b.RunDefers()
 		}
 		if p.shouldTrackCallerFrames() {
 			p.popCallerLocationFrame(b)
@@ -1891,6 +1902,30 @@ func (p *context) returnNeedsImplicitRunDefers(ret *ssa.Return) bool {
 		return false
 	}
 	return p.functionHasExplicitStackDeferInAnon(fn)
+}
+
+// namedResultSlot returns the allocation for fn's named result at index.
+// The SSA Function API exposes result variables through their source-level
+// Alloc instructions, while Return.Results only exposes the values currently
+// used to form a particular return tuple.
+func (p *context) namedResultSlot(index int) *ssa.Alloc {
+	fn := p.goFn
+	if fn == nil || index < 0 || index >= fn.Signature.Results().Len() {
+		return nil
+	}
+	result := fn.Signature.Results().At(index)
+	if result.Name() == "" {
+		return nil
+	}
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			alloc, ok := instr.(*ssa.Alloc)
+			if ok && alloc.Comment == result.Name() && alloc.Pos() == result.Pos() {
+				return alloc
+			}
+		}
+	}
+	return nil
 }
 
 func previousNonDebugInstrIsRunDefers(ret *ssa.Return) bool {
