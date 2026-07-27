@@ -171,7 +171,7 @@ type Config struct {
 	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
 	// BuildParallelism is the package-level concurrency requested by Go's -p
-	// build flag. Zero uses the Go default, GOMAXPROCS.
+	// build flag for llgo test. Zero uses the Go default, GOMAXPROCS.
 	BuildParallelism int
 	LinkOptions      LinkOptions
 	// OmitDWARFByDefault controls linked builds only when -w was not

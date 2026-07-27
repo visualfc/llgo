@@ -3,8 +3,10 @@
 package test
 
 import (
+	"bytes"
 	"errors"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -118,12 +120,12 @@ func TestSplitArgsAt(t *testing.T) {
 
 func TestBuildParallelChildArgs(t *testing.T) {
 	got := buildParallelChildArgs(
-		[]string{"-p=3", "-run=TestOne"},
+		[]string{"-p", "3", "--p=4", "-run=TestOne", "--"},
 		"example.com/p",
 		[]string{"-custom", "value"},
 	)
 	want := []string{
-		"test", "-p=3", "-run=TestOne", "example.com/p",
+		"test", "-run=TestOne", "-p=1", "example.com/p",
 		"-args", "-custom", "value",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -136,21 +138,21 @@ func TestCanRunPackagesInParallel(t *testing.T) {
 	t.Setenv(parallelWorkerEnv, "")
 	conf := build.NewDefaultConf(build.ModeTest)
 	conf.BuildParallelism = 2
-	if !canRunPackagesInParallel(conf, []string{"./..."}) {
+	if !canRunPackagesInParallel(conf, []string{"./..."}, 2) {
 		t.Fatal("ordinary package pattern cannot run in parallel")
 	}
 
 	flags.TestCoverProfile = "cover.out"
-	if canRunPackagesInParallel(conf, []string{"./..."}) {
+	if canRunPackagesInParallel(conf, []string{"./..."}, 2) {
 		t.Fatal("shared coverage profile can run in parallel")
 	}
 	flags.TestCoverProfile = ""
 
-	if canRunPackagesInParallel(conf, []string{"one_test.go"}) {
+	if canRunPackagesInParallel(conf, []string{"one_test.go"}, 2) {
 		t.Fatal("Go file arguments can run in parallel")
 	}
 	conf.CompileOnly = true
-	if canRunPackagesInParallel(conf, []string{"./..."}) {
+	if canRunPackagesInParallel(conf, []string{"./..."}, 2) {
 		t.Fatal("-c can run in parallel")
 	}
 }
@@ -166,12 +168,51 @@ func TestListTestPackages(t *testing.T) {
 	if want := []string{pkg}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("listTestPackages() = %v, want %v", got, want)
 	}
+
+	_, err = listTestPackages(conf, []string{"-definitely-not-a-package"})
+	if err == nil {
+		t.Fatal("leading-dash package pattern unexpectedly succeeded")
+	}
+	if strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("leading-dash package pattern was parsed as a flag: %v", err)
+	}
+}
+
+func TestReportTestPackageResult(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	reportTestPackageResult(&stdout, &stderr, "example.com/pass", []byte("PASS"), nil, false)
+	if got, want := stdout.String(), "PASS\nok  \texample.com/pass\n"; got != want {
+		t.Fatalf("success stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("success stderr = %q", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	reportTestPackageResult(&stdout, &stderr, "example.com/fail", []byte("failure\n"), errors.New("failed"), false)
+	if got, want := stdout.String(), "failure\n"; got != want {
+		t.Fatalf("failure stdout = %q, want %q", got, want)
+	}
+	if got, want := stderr.String(), "FAIL\texample.com/fail\n"; got != want {
+		t.Fatalf("failure stderr = %q, want %q", got, want)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	reportTestPackageResult(&stdout, &stderr, "example.com/json", []byte("{\"Action\":\"pass\"}\n"), nil, true)
+	if got, want := stdout.String(), "{\"Action\":\"pass\"}\n"; got != want {
+		t.Fatalf("JSON stdout = %q, want %q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("JSON stderr = %q", stderr.String())
+	}
 }
 
 func TestRunTestPackagesLimitAndFailure(t *testing.T) {
 	started := make(chan struct{}, 4)
 	release := make(chan struct{})
-	result := make(chan bool)
+	result := make(chan testRunResult)
 	var active atomic.Int32
 	var maximum atomic.Int32
 	go func() {
@@ -201,7 +242,7 @@ func TestRunTestPackagesLimitAndFailure(t *testing.T) {
 	default:
 	}
 	close(release)
-	if !<-result {
+	if got := <-result; !got.failed {
 		t.Fatal("runTestPackages reported success after a package failed")
 	}
 	if got := maximum.Load(); got != 2 {
@@ -211,12 +252,15 @@ func TestRunTestPackagesLimitAndFailure(t *testing.T) {
 
 func TestRunTestPackagesFailFast(t *testing.T) {
 	var runs atomic.Int32
-	failed := runTestPackages([]string{"a", "b", "c"}, 1, true, func(string) error {
+	result := runTestPackages([]string{"a", "b", "c"}, 1, true, func(string) error {
 		runs.Add(1)
 		return errors.New("failed")
 	})
-	if !failed {
+	if !result.failed {
 		t.Fatal("runTestPackages reported success")
+	}
+	if result.skipped != 2 {
+		t.Fatalf("skipped %d packages, want 2", result.skipped)
 	}
 	if got := runs.Load(); got != 1 {
 		t.Fatalf("ran %d packages after the first failure, want 1", got)
