@@ -50,15 +50,19 @@ func TestApplyBuildFlagsNormalizesNativeSpellings(t *testing.T) {
 	}
 }
 
-func TestApplyBuildFlagsMissingArgumentListValueIsAtomic(t *testing.T) {
-	conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
-	want := *conf
-	want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
-	if err := ApplyBuildFlags(conf, []string{"--ldflags"}); err == nil {
-		t.Fatal("ApplyBuildFlags succeeded, want error")
-	}
-	if !reflect.DeepEqual(*conf, want) {
-		t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+func TestApplyBuildFlagsMissingValueIsAtomic(t *testing.T) {
+	for _, arg := range []string{"--ldflags", "-p"} {
+		t.Run(arg, func(t *testing.T) {
+			conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
+			want := *conf
+			want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
+			if err := ApplyBuildFlags(conf, []string{arg}); err == nil {
+				t.Fatal("ApplyBuildFlags succeeded, want error")
+			}
+			if !reflect.DeepEqual(*conf, want) {
+				t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+			}
+		})
 	}
 }
 
