@@ -13,8 +13,8 @@ func TestAnalyze(t *testing.T) {
 		// type T struct{}
 		// func (T) M() {}
 		// func (T) N() {}
-		// func main() { use(T{}) }
-		// func use(i I) { i.M() }
+		// func main() { use(&T{}) }
+		// func use(v any) { v.(I).M() }
 		{
 			name:  "keeps interface method implementation",
 			roots: []string{"pkg.main"},
@@ -163,6 +163,34 @@ func TestAnalyze(t *testing.T) {
 				"_llgo_pkg.Child": {0},
 				"_llgo_pkg.T":     {0},
 			},
+		},
+		// type I interface{ M() }
+		// type T struct{}
+		// func (*T) M() {}
+		// func main() { use(T{}) }
+		// func use(i I) { i.M() }
+		{
+			name:  "handles cyclic type children",
+			roots: []string{"pkg.main"},
+			summary: buildPackage(func(b *pkgBuilder) {
+				main := b.sym("pkg.main")
+				typ := b.sym("_llgo_pkg.T")
+				ptr := b.sym("*_llgo_pkg.T")
+				iface := b.sym("_llgo_iface$I")
+				mSig := methodSig(b, "M")
+
+				b.addIfaceEntry(iface, []pkgSig{mSig})
+				b.addMethodInfo(ptr, []pkgSlot{
+					methodSlot(b, mSig, "pkg.(*T).M", "pkg.(*T).M"),
+				})
+				b.b.AddTypeChild(typ, ptr)
+				b.b.AddTypeChild(ptr, typ)
+				b.addEdge(main, ptr)
+				b.addEdge(typ, ptr)
+				b.addUseIface(main, ptr)
+				b.addUseIfaceMethod(main, iface, mSig)
+			}),
+			want: map[string][]int{"*_llgo_pkg.T": {0}},
 		},
 		// type Unmarshaler interface{ UnmarshalJSON([]byte) error }
 		// type RawMessage []byte

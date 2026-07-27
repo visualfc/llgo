@@ -44,7 +44,6 @@ type pass struct {
 	reflectSeen        bool
 
 	markableMethods []methodRef
-	markedMethods   map[methodID]struct{}
 	liveSlots       map[meta.Symbol][]int
 }
 
@@ -79,7 +78,6 @@ func deadcode(info *meta.GlobalSummary, roots []meta.Symbol) map[meta.Symbol][]i
 		processedIfaceTy:   make(map[meta.Symbol]struct{}),
 		ifaceMethod:        make(map[ifaceMethodKey]struct{}),
 		genericIfaceMethod: make(map[meta.Name]struct{}),
-		markedMethods:      make(map[methodID]struct{}),
 		liveSlots:          make(map[meta.Symbol][]int),
 	}
 	d.buildMethodRefs()
@@ -206,9 +204,8 @@ func (d *pass) methodMarkingLoop() bool {
 
 	for _, method := range d.markableMethods {
 		if d.shouldKeep(method) {
-			if d.markMethod(method) {
-				changed = true
-			}
+			d.markMethod(method)
+			changed = true
 			continue
 		}
 		rem = append(rem, method)
@@ -236,18 +233,12 @@ func (d *pass) shouldKeep(method methodRef) bool {
 	return false
 }
 
-func (d *pass) markMethod(method methodRef) bool {
-	id := methodID{owner: method.owner, slot: method.slot}
-	if _, ok := d.markedMethods[id]; ok {
-		return false
-	}
-	d.markedMethods[id] = struct{}{}
+func (d *pass) markMethod(method methodRef) {
 	d.liveSlots[method.owner] = append(d.liveSlots[method.owner], method.slot)
 
 	d.markReachable(method.slotInfo.MType)
 	d.markReachable(method.slotInfo.IFn)
 	d.markReachable(method.slotInfo.TFn)
-	return true
 }
 
 func (d *pass) markReachable(sym meta.Symbol) {
@@ -263,9 +254,6 @@ func (d *pass) markUsedInIface(typ meta.Symbol) {
 		return
 	}
 	d.usedInIface[typ] = struct{}{}
-	if !d.info.HasFacts(typ) {
-		return
-	}
 	if _, ok := d.reachable[typ]; ok {
 		d.workQueue = append(d.workQueue, typ)
 	}
