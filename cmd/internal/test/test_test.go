@@ -3,10 +3,13 @@
 package test
 
 import (
+	"errors"
 	"reflect"
+	"sync/atomic"
 	"testing"
 
 	"github.com/goplus/llgo/cmd/internal/flags"
+	"github.com/goplus/llgo/internal/build"
 )
 
 func TestBuildFlagsWiring(t *testing.T) {
@@ -110,6 +113,113 @@ func TestSplitArgsAt(t *testing.T) {
 				t.Errorf("splitArgsAt() after = %v, want %v", gotAft, tt.wantAft)
 			}
 		})
+	}
+}
+
+func TestBuildParallelChildArgs(t *testing.T) {
+	got := buildParallelChildArgs(
+		[]string{"-p=3", "-run=TestOne"},
+		"example.com/p",
+		[]string{"-custom", "value"},
+	)
+	want := []string{
+		"test", "-p=3", "-run=TestOne", "example.com/p",
+		"-args", "-custom", "value",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildParallelChildArgs() = %v, want %v", got, want)
+	}
+}
+
+func TestCanRunPackagesInParallel(t *testing.T) {
+	resetTestFlags()
+	t.Setenv(parallelWorkerEnv, "")
+	conf := build.NewDefaultConf(build.ModeTest)
+	conf.BuildParallelism = 2
+	if !canRunPackagesInParallel(conf, []string{"./..."}) {
+		t.Fatal("ordinary package pattern cannot run in parallel")
+	}
+
+	flags.TestCoverProfile = "cover.out"
+	if canRunPackagesInParallel(conf, []string{"./..."}) {
+		t.Fatal("shared coverage profile can run in parallel")
+	}
+	flags.TestCoverProfile = ""
+
+	if canRunPackagesInParallel(conf, []string{"one_test.go"}) {
+		t.Fatal("Go file arguments can run in parallel")
+	}
+	conf.CompileOnly = true
+	if canRunPackagesInParallel(conf, []string{"./..."}) {
+		t.Fatal("-c can run in parallel")
+	}
+}
+
+func TestListTestPackages(t *testing.T) {
+	conf := build.NewDefaultConf(build.ModeTest)
+	conf.BuildParallelism = 2
+	pkg := "github.com/goplus/llgo/internal/goflags"
+	got, err := listTestPackages(conf, []string{pkg, pkg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{pkg}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("listTestPackages() = %v, want %v", got, want)
+	}
+}
+
+func TestRunTestPackagesLimitAndFailure(t *testing.T) {
+	started := make(chan struct{}, 4)
+	release := make(chan struct{})
+	result := make(chan bool)
+	var active atomic.Int32
+	var maximum atomic.Int32
+	go func() {
+		result <- runTestPackages([]string{"a", "b", "c", "d"}, 2, false, func(pkg string) error {
+			now := active.Add(1)
+			for {
+				old := maximum.Load()
+				if now <= old || maximum.CompareAndSwap(old, now) {
+					break
+				}
+			}
+			started <- struct{}{}
+			<-release
+			active.Add(-1)
+			if pkg == "d" {
+				return errors.New("failed")
+			}
+			return nil
+		})
+	}()
+
+	<-started
+	<-started
+	select {
+	case <-started:
+		t.Fatal("more than two packages started concurrently")
+	default:
+	}
+	close(release)
+	if !<-result {
+		t.Fatal("runTestPackages reported success after a package failed")
+	}
+	if got := maximum.Load(); got != 2 {
+		t.Fatalf("maximum concurrency = %d, want 2", got)
+	}
+}
+
+func TestRunTestPackagesFailFast(t *testing.T) {
+	var runs atomic.Int32
+	failed := runTestPackages([]string{"a", "b", "c"}, 1, true, func(string) error {
+		runs.Add(1)
+		return errors.New("failed")
+	})
+	if !failed {
+		t.Fatal("runTestPackages reported success")
+	}
+	if got := runs.Load(); got != 1 {
+		t.Fatalf("ran %d packages after the first failure, want 1", got)
 	}
 }
 

@@ -170,7 +170,10 @@ type Config struct {
 	// go/packages. Callers use internal/goflags to parse supported compiler and
 	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
-	LinkOptions  LinkOptions
+	// BuildParallelism is the package-level concurrency requested by Go's -p
+	// build flag. Zero uses the Go default, GOMAXPROCS.
+	BuildParallelism int
+	LinkOptions      LinkOptions
 	// OmitDWARFByDefault controls linked builds only when -w was not
 	// explicitly specified. Explicit -w and -w=false always win.
 	OmitDWARFByDefault bool
@@ -672,6 +675,11 @@ func applyBuildModeCompileFlags(mode BuildMode, export *crosscompile.Export) {
 	if mode == BuildModeCShared && export != nil && !slices.Contains(export.CCFLAGS, "-fPIC") {
 		export.CCFLAGS = append(export.CCFLAGS, "-fPIC")
 	}
+}
+
+// DefaultBuildTags returns the build tags LLGo always enables for a target.
+func DefaultBuildTags(goarch, target string) string {
+	return defaultBuildTags(goarch, target)
 }
 
 func defaultBuildTags(goarch, target string) string {

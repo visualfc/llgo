@@ -3,9 +3,13 @@
 package test
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/goplus/llgo/cmd/internal/base"
 	"github.com/goplus/llgo/cmd/internal/flags"
@@ -20,6 +24,8 @@ var Cmd = &base.Command{
 }
 
 var goBuildFlags *base.PassArgs
+
+const parallelWorkerEnv = "LLGO_TEST_PARALLEL_WORKER"
 
 func init() {
 	Cmd.Run = runCmd
@@ -66,12 +72,165 @@ func runCmd(cmd *base.Command, args []string) {
 	// Build test binary arguments from flags
 	conf.RunArgs = buildTestArgs(testBinaryArgs)
 
-	args = cmd.Flag.Args()
-	_, err := build.Do(args, conf)
+	pkgArgs := cmd.Flag.Args()
+	if canRunPackagesInParallel(conf, pkgArgs) {
+		pkgs, err := listTestPackages(conf, pkgArgs)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			mockable.Exit(1)
+		}
+		if len(pkgs) > 1 {
+			executable, err := os.Executable()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				mockable.Exit(1)
+			}
+			flagArgs := llgoArgs[:len(llgoArgs)-len(pkgArgs)]
+			failed := runTestPackages(pkgs, effectiveParallelism(conf.BuildParallelism), flags.TestFailfast, func(pkg string) error {
+				childArgs := buildParallelChildArgs(flagArgs, pkg, testBinaryArgs)
+				child := exec.Command(executable, childArgs...)
+				child.Env = append(os.Environ(), parallelWorkerEnv+"=1")
+				child.Stdout = os.Stdout
+				child.Stderr = os.Stderr
+				if err := child.Run(); err != nil {
+					if _, ok := err.(*exec.ExitError); !ok {
+						fmt.Fprintf(os.Stderr, "failed to run test package %s: %v\n", pkg, err)
+					}
+					return err
+				}
+				return nil
+			})
+			if failed {
+				mockable.Exit(1)
+			}
+			return
+		}
+	}
+
+	_, err := build.Do(pkgArgs, conf)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
+}
+
+func canRunPackagesInParallel(conf *build.Config, pkgArgs []string) bool {
+	if os.Getenv(parallelWorkerEnv) != "" || conf.Target != "" || conf.CompileOnly || conf.OutFile != "" {
+		return false
+	}
+	if effectiveParallelism(conf.BuildParallelism) == 1 {
+		return false
+	}
+	for _, arg := range pkgArgs {
+		if strings.HasSuffix(arg, ".go") {
+			return false
+		}
+	}
+	// These flags name process-wide output files. Until LLGo merges or
+	// disambiguates them like cmd/go, keep the existing sequential behavior.
+	return flags.TestCoverProfile == "" &&
+		flags.TestCPUProfile == "" &&
+		flags.TestMemProfile == "" &&
+		flags.TestBlockProfile == "" &&
+		flags.TestMutexProfile == "" &&
+		flags.TestTrace == "" &&
+		flags.TestTestLogFile == "" &&
+		flags.TestFuzz == ""
+}
+
+func effectiveParallelism(parallelism int) int {
+	if parallelism == 0 {
+		parallelism = runtime.GOMAXPROCS(0)
+	}
+	if parallelism < 1 {
+		return 1
+	}
+	return parallelism
+}
+
+func listTestPackages(conf *build.Config, patterns []string) ([]string, error) {
+	if len(patterns) == 0 {
+		patterns = []string{"."}
+	}
+	tags := build.DefaultBuildTags(conf.Goarch, conf.Target)
+	if conf.Tags != "" {
+		tags += "," + conf.Tags
+	}
+	args := make([]string, 0, 3+len(conf.GoBuildFlags)+len(patterns))
+	args = append(args, "list", "-tags="+tags)
+	args = append(args, conf.GoBuildFlags...)
+	args = append(args, patterns...)
+
+	list := exec.Command("go", args...)
+	list.Env = append(os.Environ(), "GOOS="+conf.Goos, "GOARCH="+conf.Goarch)
+	var stderr bytes.Buffer
+	list.Stderr = &stderr
+	output, err := list.Output()
+	if err != nil {
+		if message := strings.TrimSpace(stderr.String()); message != "" {
+			return nil, fmt.Errorf("%s", message)
+		}
+		return nil, err
+	}
+
+	lines := strings.Fields(string(output))
+	pkgs := make([]string, 0, len(lines))
+	seen := make(map[string]bool, len(lines))
+	for _, pkg := range lines {
+		if !seen[pkg] {
+			seen[pkg] = true
+			pkgs = append(pkgs, pkg)
+		}
+	}
+	return pkgs, nil
+}
+
+func buildParallelChildArgs(flagArgs []string, pkg string, testBinaryArgs []string) []string {
+	args := make([]string, 0, 2+len(flagArgs)+len(testBinaryArgs))
+	args = append(args, "test")
+	args = append(args, flagArgs...)
+	args = append(args, pkg)
+	if len(testBinaryArgs) != 0 {
+		args = append(args, "-args")
+		args = append(args, testBinaryArgs...)
+	}
+	return args
+}
+
+func runTestPackages(pkgs []string, parallelism int, failFast bool, run func(string) error) bool {
+	if parallelism < 1 {
+		parallelism = 1
+	}
+	if parallelism > len(pkgs) {
+		parallelism = len(pkgs)
+	}
+	results := make(chan error, parallelism)
+	start := func(pkg string) {
+		go func() {
+			results <- run(pkg)
+		}()
+	}
+
+	next := 0
+	running := 0
+	for next < len(pkgs) && running < parallelism {
+		start(pkgs[next])
+		next++
+		running++
+	}
+	failed := false
+	for running != 0 {
+		if err := <-results; err != nil {
+			failed = true
+		}
+		running--
+		if next < len(pkgs) && !(failFast && failed) {
+			start(pkgs[next])
+			next++
+			running++
+		}
+	}
+	return failed
 }
 
 // splitArgsAt splits args at the separator flag (e.g., "-args")
