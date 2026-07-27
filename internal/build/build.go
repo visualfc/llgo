@@ -1318,7 +1318,8 @@ func applyDeadcodeDropOverrides(mainPkg *packages.Package, pkgs []Package, entry
 
 	roots := dceEntryRootCandidates(mainPkg, needRuntime)
 	liveSlots := deadcode.Analyze(summary, roots)
-	return dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, verbose)
+	dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, verbose)
+	return nil
 }
 
 func dceSourceModules(pkgs []Package) []gllvm.Module {

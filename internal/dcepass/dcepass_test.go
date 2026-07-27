@@ -2,98 +2,111 @@ package dcepass
 
 import (
 	"os"
-	"strings"
+	"path/filepath"
 	"testing"
 
+	qtest "github.com/qiniu/x/test"
 	"github.com/xgo-dev/llvm"
 )
 
-func TestEmitStrongTypeOverridesPrunesDeadMethodSlots(t *testing.T) {
-	ctx := llvm.NewContext()
-	defer ctx.Dispose()
-	src := ctx.NewModule("src")
-	defer src.Dispose()
-	dst := ctx.NewModule("dst")
-	defer dst.Dispose()
+const (
+	taskTypeName    = "_llgo_main.Task"
+	ptrTaskTypeName = "*_llgo_main.Task"
+)
 
-	addMethodTypeGlobal(src, "_llgo_pkg.T", "M", "N")
-	if err := EmitStrongTypeOverrides(dst, []llvm.Module{src}, map[string][]int{"_llgo_pkg.T": {0}}, false); err != nil {
-		t.Fatal(err)
+func TestEmitStrongTypeOverrides(t *testing.T) {
+	tests := []struct {
+		name      string
+		liveSlots map[string][]int
+	}{
+		{
+			name: "method_slots",
+			liveSlots: map[string][]int{
+				taskTypeName:    {1}, // Run
+				ptrTaskTypeName: {1}, // Run
+			},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := llvm.NewContext()
+			defer ctx.Dispose()
+			dir := filepath.Join("testdata", tt.name)
+			src := parseModule(t, &ctx, filepath.Join(dir, "in.ll"))
+			defer src.Dispose()
+			dst := ctx.NewModule("dst")
+			defer dst.Dispose()
 
-	out := dst.String()
-	if !strings.Contains(out, `@_llgo_pkg.T = constant`) {
-		t.Fatalf("override type global was not emitted:\n%s", out)
-	}
-	if !strings.Contains(out, `ptr @"pkg.(*T).M", ptr @pkg.T.M`) {
-		t.Fatalf("live method slot was not preserved:\n%s", out)
-	}
-	if strings.Contains(out, `ptr @"pkg.(*T).N"`) || strings.Contains(out, `ptr @pkg.T.N`) {
-		t.Fatalf("dead method slot still references N functions:\n%s", out)
-	}
-	if !strings.Contains(out, `ptr @"`+unreachableMethodName+`"`) {
-		t.Fatalf("dead method slot was not redirected to unreachableMethod:\n%s", out)
-	}
-}
-
-func TestEmitStrongTypeOverridesLogsDroppedMethodSlots(t *testing.T) {
-	ctx := llvm.NewContext()
-	defer ctx.Dispose()
-	src := ctx.NewModule("src")
-	defer src.Dispose()
-	dst := ctx.NewModule("dst")
-	defer dst.Dispose()
-
-	addMethodTypeGlobal(src, "_llgo_pkg.T", "M")
-	logFile, err := os.CreateTemp(t.TempDir(), "dcepass-stderr")
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldStderr := os.Stderr
-	os.Stderr = logFile
-	t.Cleanup(func() {
-		os.Stderr = oldStderr
-	})
-	if err := EmitStrongTypeOverrides(dst, []llvm.Module{src}, nil, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := logFile.Close(); err != nil {
-		t.Fatal(err)
-	}
-	log, err := os.ReadFile(logFile.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := `[dce] drop method _llgo_pkg.T[0] ifn=pkg.(*T).M tfn=pkg.T.M`; !strings.Contains(string(log), want) {
-		t.Fatalf("debug log missing dropped method slot\nwant: %s\ngot:\n%s", want, log)
-	}
-}
-
-func addMethodTypeGlobal(mod llvm.Module, name string, methods ...string) {
-	ctx := mod.Context()
-	fnTy := llvm.FunctionType(ctx.VoidType(), nil, false)
-	ptrTy := llvm.PointerType(fnTy, 0)
-	stringTy := ctx.StructCreateNamed("runtime/internal/runtime.String")
-	stringTy.StructSetBody([]llvm.Type{llvm.PointerType(ctx.Int8Type(), 0), ctx.Int64Type()}, false)
-	methodTy := ctx.StructCreateNamed("github.com/goplus/llgo/runtime/abi.Method")
-	methodTy.StructSetBody([]llvm.Type{stringTy, ptrTy, ptrTy, ptrTy}, false)
-
-	mtyp := llvm.AddGlobal(mod, ptrTy, "mtyp")
-	methodValues := make([]llvm.Value, len(methods))
-	for i, method := range methods {
-		ifn := llvm.AddFunction(mod, "pkg.(*T)."+method, fnTy)
-		tfn := llvm.AddFunction(mod, "pkg.T."+method, fnTy)
-		methodValues[i] = llvm.ConstNamedStruct(methodTy, []llvm.Value{
-			llvm.ConstNull(stringTy), mtyp, ifn, tfn,
+			EmitStrongTypeOverrides(dst, []llvm.Module{src}, tt.liveSlots, true)
+			want, err := os.ReadFile(filepath.Join(dir, "expect.ll"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			qtest.Diff(t, filepath.Join(dir, "expect.ll.new"), []byte(dst.String()), want)
 		})
 	}
-	methodArray := llvm.ConstArray(methodTy, methodValues)
-	typeTy := ctx.StructCreateNamed("pkg.T.type")
-	typeTy.StructSetBody([]llvm.Type{ctx.Int8Type(), methodArray.Type()}, false)
-	typeDesc := llvm.AddGlobal(mod, typeTy, name)
-	typeDesc.SetGlobalConstant(true)
-	typeDesc.SetLinkage(llvm.WeakODRLinkage)
-	typeDesc.SetInitializer(llvm.ConstNamedStruct(typeTy, []llvm.Value{
-		llvm.ConstNull(ctx.Int8Type()), methodArray,
-	}))
+}
+
+func TestMethodArray(t *testing.T) {
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+
+	initWithLast := func(last llvm.Value) llvm.Value {
+		return llvm.ConstStruct([]llvm.Value{llvm.ConstNull(ctx.Int8Type()), last}, false)
+	}
+	intValue := llvm.ConstInt(ctx.Int8Type(), 1, false)
+	methodTy := ctx.StructCreateNamed("runtime/abi.Method")
+	methodTy.StructSetBody([]llvm.Type{ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type()}, false)
+	method := llvm.ConstNamedStruct(methodTy, []llvm.Value{intValue, intValue, intValue, intValue})
+	methods := llvm.ConstArray(methodTy, []llvm.Value{method, method})
+
+	methodsVal, elemTy, ok := methodArray(initWithLast(methods))
+	if !ok {
+		t.Fatal("methodArray failed to recognize an ABI method array")
+	}
+	if methodsVal.OperandsCount() != 2 {
+		t.Fatalf("methodArray returned %d methods, want 2", methodsVal.OperandsCount())
+	}
+	if elemTy.StructElementTypesCount() != 4 {
+		t.Fatalf("methodArray returned %d fields, want 4", elemTy.StructElementTypesCount())
+	}
+
+	arrayOfInts := llvm.ConstArray(ctx.Int8Type(), []llvm.Value{intValue})
+	wrongFieldsTy := ctx.StructType([]llvm.Type{ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type()}, false)
+	wrongFields := llvm.ConstNamedStruct(wrongFieldsTy, []llvm.Value{intValue, intValue, intValue})
+	wrongNameTy := ctx.StructCreateNamed("other.Method")
+	wrongNameTy.StructSetBody([]llvm.Type{ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type()}, false)
+	wrongName := llvm.ConstNamedStruct(wrongNameTy, []llvm.Value{intValue, intValue, intValue, intValue})
+
+	tests := []struct {
+		name string
+		init llvm.Value
+	}{
+		{name: "nil", init: llvm.Value{}},
+		{name: "no operands", init: llvm.ConstNull(ctx.Int32Type())},
+		{name: "last operand is not array", init: initWithLast(intValue)},
+		{name: "array element is not struct", init: initWithLast(arrayOfInts)},
+		{name: "struct has wrong field count", init: initWithLast(llvm.ConstArray(wrongFieldsTy, []llvm.Value{wrongFields}))},
+		{name: "struct has wrong name", init: initWithLast(llvm.ConstArray(wrongNameTy, []llvm.Value{wrongName}))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, _, ok := methodArray(tt.init); ok {
+				t.Fatalf("methodArray recognized invalid initializer: %s", tt.name)
+			}
+		})
+	}
+}
+
+func parseModule(t *testing.T, ctx *llvm.Context, path string) llvm.Module {
+	t.Helper()
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mod
 }

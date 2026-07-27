@@ -17,7 +17,7 @@ const unreachableMethodName = "github.com/goplus/llgo/runtime/internal/runtime.u
 // global with a method array, it creates a same-name strong global in dst and
 // clears IFn/TFn for method slots not listed in liveSlots[typeName].
 // When verbose is true, dropped method slots are reported to os.Stderr.
-func EmitStrongTypeOverrides(dst llvm.Module, srcMods []llvm.Module, liveSlots map[string][]int, verbose bool) error {
+func EmitStrongTypeOverrides(dst llvm.Module, srcMods []llvm.Module, liveSlots map[string][]int, verbose bool) {
 	emitted := make(map[string]bool)
 	emitter := newOverrideEmitter(dst)
 	for _, src := range srcMods {
@@ -30,13 +30,10 @@ func EmitStrongTypeOverrides(dst llvm.Module, srcMods []llvm.Module, liveSlots m
 			if !ok {
 				continue
 			}
-			if err := emitter.emitTypeOverride(g, methodsVal, elemTy, liveSlotSet(liveSlots[name]), verbose); err != nil {
-				return fmt.Errorf("emit override %q: %w", name, err)
-			}
+			emitter.emitTypeOverride(g, methodsVal, elemTy, liveSlotSet(liveSlots[name]), verbose)
 			emitted[name] = true
 		}
 	}
-	return nil
 }
 
 type overrideEmitter struct {
@@ -48,7 +45,7 @@ func newOverrideEmitter(dst llvm.Module) *overrideEmitter {
 	return &overrideEmitter{dst: dst, values: make(map[llvm.Value]llvm.Value)}
 }
 
-func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemTy llvm.Type, keepIdx map[int]bool, verbose bool) error {
+func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemTy llvm.Type, keepIdx map[int]bool, verbose bool) {
 	init := srcType.Initializer()
 	dstType := e.ensureOverrideGlobal(srcType)
 	e.values[srcType] = dstType
@@ -56,37 +53,22 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 	fieldCount := init.OperandsCount()
 	fields := make([]llvm.Value, fieldCount)
 	for i := 0; i < fieldCount-1; i++ {
-		clone, err := e.cloneConst(init.Operand(i))
-		if err != nil {
-			return err
-		}
-		fields[i] = clone
+		fields[i] = e.cloneConst(init.Operand(i))
 	}
 
-	elemFields := elemTy.StructElementTypes()
-	unreachableMethod := e.unreachableMethod(elemFields[2])
+	unreachableMethod := e.unreachableMethod()
 	methods := make([]llvm.Value, methodsVal.OperandsCount())
 	for i := range methods {
 		orig := methodsVal.Operand(i)
 		if keepIdx[i] {
-			clone, err := e.cloneConst(orig)
-			if err != nil {
-				return err
-			}
-			methods[i] = clone
+			methods[i] = e.cloneConst(orig)
 			continue
 		}
 		if verbose {
-			fmt.Fprintf(os.Stderr, "[dce] drop method %s[%d] ifn=%s tfn=%s\n", srcType.Name(), i, valueName(orig.Operand(2)), valueName(orig.Operand(3)))
+			fmt.Fprintf(os.Stderr, "[dce] drop method %s[%d] ifn=%s tfn=%s\n", srcType.Name(), i, orig.Operand(2).Name(), orig.Operand(3).Name())
 		}
-		name, err := e.cloneConst(orig.Operand(0))
-		if err != nil {
-			return err
-		}
-		mtype, err := e.cloneConst(orig.Operand(1))
-		if err != nil {
-			return err
-		}
+		name := e.cloneConst(orig.Operand(0))
+		mtype := e.cloneConst(orig.Operand(1))
 		methods[i] = llvm.ConstNamedStruct(elemTy, []llvm.Value{
 			name,
 			mtype,
@@ -100,19 +82,15 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 	dstType.SetGlobalConstant(true)
 	dstType.SetLinkage(llvm.ExternalLinkage)
 	copyGlobalAttrs(dstType, srcType)
-	return nil
 }
 
-func (e *overrideEmitter) unreachableMethod(ptrTy llvm.Type) llvm.Value {
+func (e *overrideEmitter) unreachableMethod() llvm.Value {
 	fn := e.dst.NamedFunction(unreachableMethodName)
 	if fn.IsNil() {
 		fn = llvm.AddFunction(e.dst, unreachableMethodName,
 			llvm.FunctionType(e.dst.Context().VoidType(), nil, false))
 	}
-	if fn.Type() == ptrTy {
-		return fn
-	}
-	return llvm.ConstBitCast(fn, ptrTy)
+	return fn
 }
 
 func (e *overrideEmitter) ensureOverrideGlobal(src llvm.Value) llvm.Value {
@@ -125,78 +103,51 @@ func (e *overrideEmitter) ensureOverrideGlobal(src llvm.Value) llvm.Value {
 	return dst
 }
 
-func (e *overrideEmitter) cloneConst(v llvm.Value) (llvm.Value, error) {
+func (e *overrideEmitter) cloneConst(v llvm.Value) llvm.Value {
 	if mapped, ok := e.values[v]; ok {
-		return mapped, nil
+		return mapped
 	}
 	if gv := v.IsAGlobalValue(); !gv.IsNil() {
-		clone, err := e.cloneGlobalValue(gv)
-		if err != nil {
-			return llvm.Value{}, err
-		}
-		e.values[v] = clone
-		return clone, nil
+		return e.cloneGlobalValue(gv)
 	}
 	if !v.IsAConstantStruct().IsNil() {
-		ops, err := e.cloneOperands(v)
-		if err != nil {
-			return llvm.Value{}, err
-		}
-		clone := constStructOfType(v.Type(), ops)
+		clone := constStructOfType(v.Type(), e.cloneOperands(v))
 		e.values[v] = clone
-		return clone, nil
+		return clone
 	}
-	return v, nil
+	return v
 }
 
-func (e *overrideEmitter) cloneOperands(v llvm.Value) ([]llvm.Value, error) {
+func (e *overrideEmitter) cloneOperands(v llvm.Value) []llvm.Value {
 	ops := make([]llvm.Value, v.OperandsCount())
 	for i := range ops {
-		clone, err := e.cloneConst(v.Operand(i))
-		if err != nil {
-			return nil, err
-		}
-		ops[i] = clone
+		ops[i] = e.cloneConst(v.Operand(i))
 	}
-	return ops, nil
+	return ops
 }
 
-func (e *overrideEmitter) cloneGlobalValue(v llvm.Value) (llvm.Value, error) {
-	if mapped, ok := e.values[v]; ok {
-		return mapped, nil
-	}
+func (e *overrideEmitter) cloneGlobalValue(v llvm.Value) llvm.Value {
+	// Rebind a source-module function reference to a declaration in dst. The
+	// function body remains in its package object and resolves by name at link
+	// time; the override initializer only needs a destination-owned reference
+	// with the same function type.
 	if fn := v.IsAFunction(); !fn.IsNil() {
 		dstFn := e.dst.NamedFunction(fn.Name())
 		if dstFn.IsNil() {
 			dstFn = llvm.AddFunction(e.dst, fn.Name(), fn.GlobalValueType())
 		}
 		e.values[v] = dstFn
-		return dstFn, nil
+		return dstFn
 	}
 	if gv := v.IsAGlobalVariable(); !gv.IsNil() {
-		clone, err := e.cloneGlobalVariable(gv)
-		if err != nil {
-			return llvm.Value{}, err
-		}
-		e.values[v] = clone
-		return clone, nil
+		return e.cloneGlobalVariable(gv)
 	}
-	name := v.Name()
-	if name == "" {
-		return llvm.Value{}, fmt.Errorf("unsupported unnamed global reference")
-	}
-	dst := e.dst.NamedGlobal(name)
-	if dst.IsNil() {
-		dst = llvm.AddGlobal(e.dst, v.GlobalValueType(), name)
-		dst.SetLinkage(llvm.ExternalLinkage)
-	}
-	e.values[v] = dst
-	return dst, nil
+	panic("dcepass: unsupported global value")
 }
 
-func (e *overrideEmitter) cloneGlobalVariable(src llvm.Value) (llvm.Value, error) {
+func (e *overrideEmitter) cloneGlobalVariable(src llvm.Value) llvm.Value {
 	if mapped, ok := e.values[src]; ok {
-		return mapped, nil
+		return mapped
 	}
 	name := src.Name()
 	if name != "" && !isLocalLinkage(src.Linkage()) {
@@ -206,7 +157,7 @@ func (e *overrideEmitter) cloneGlobalVariable(src llvm.Value) (llvm.Value, error
 			dst.SetLinkage(llvm.ExternalLinkage)
 		}
 		e.values[src] = dst
-		return dst, nil
+		return dst
 	}
 
 	dst := llvm.AddGlobal(e.dst, src.GlobalValueType(), "")
@@ -215,13 +166,9 @@ func (e *overrideEmitter) cloneGlobalVariable(src llvm.Value) (llvm.Value, error
 	dst.SetLinkage(src.Linkage())
 	dst.SetGlobalConstant(src.IsGlobalConstant())
 	if init := src.Initializer(); !init.IsNil() {
-		clone, err := e.cloneConst(init)
-		if err != nil {
-			return llvm.Value{}, err
-		}
-		dst.SetInitializer(clone)
+		dst.SetInitializer(e.cloneConst(init))
 	}
-	return dst, nil
+	return dst
 }
 
 func methodArray(init llvm.Value) (llvm.Value, llvm.Type, bool) {
@@ -252,9 +199,6 @@ func liveSlotSet(slots []int) map[int]bool {
 
 func copyGlobalAttrs(dst, src llvm.Value) {
 	dst.SetVisibility(src.Visibility())
-	if sec := src.Section(); sec != "" {
-		dst.SetSection(sec)
-	}
 	dst.SetThreadLocal(src.IsThreadLocal())
 	if align := src.Alignment(); align > 0 {
 		dst.SetAlignment(align)
@@ -263,24 +207,6 @@ func copyGlobalAttrs(dst, src llvm.Value) {
 
 func isLocalLinkage(linkage llvm.Linkage) bool {
 	return linkage == llvm.PrivateLinkage || linkage == llvm.InternalLinkage
-}
-
-func valueName(v llvm.Value) string {
-	if !v.IsAGlobalValue().IsNil() {
-		if name := v.Name(); name != "" {
-			return name
-		}
-	}
-	if !v.IsAConstantExpr().IsNil() && v.OperandsCount() > 0 {
-		return valueName(v.Operand(0))
-	}
-	if !v.IsAConstantPointerNull().IsNil() || v.IsNull() {
-		return "<nil>"
-	}
-	if name := v.Name(); name != "" {
-		return name
-	}
-	return v.String()
 }
 
 func constStructOfType(typ llvm.Type, fields []llvm.Value) llvm.Value {
