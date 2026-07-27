@@ -25,7 +25,12 @@ import (
 func TestRuntimeSetFinalizerTinyObjects(t *testing.T) {
 	const n = 32
 	finalized := make(chan int32, n)
-	makeFinalizerTinyObjects(n, finalized)
+	created := make(chan struct{})
+	go func() {
+		makeFinalizerTinyObjects(n, finalized)
+		close(created)
+	}()
+	<-created
 
 	done := make([]bool, n)
 	count := 0
