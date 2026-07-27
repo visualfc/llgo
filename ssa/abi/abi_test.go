@@ -407,3 +407,15 @@ func isPaddedField(t reflect.Type, i int) bool {
 	}
 	return field.Offset+field.Type.Size() != t.Size()
 }
+
+func TestRewriteMainPrefix(t *testing.T) {
+	pkg := types.NewPackage("example.com/foo/pkg", "main")
+	if path := abi.PathOf(pkg); path != "example.com/foo/pkg" {
+		t.Fatalf("error %v", path)
+	}
+	abi.SetRewriteMainPrefix(true)
+	if path := abi.PathOf(pkg); path != "main" {
+		t.Fatalf("error %v", path)
+	}
+	abi.SetRewriteMainPrefix(false)
+}

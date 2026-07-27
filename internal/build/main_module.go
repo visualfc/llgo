@@ -31,9 +31,8 @@ import (
 	"go/types"
 
 	"github.com/goplus/llgo/internal/packages"
-	llvm "github.com/xgo-dev/llvm"
-
 	llssa "github.com/goplus/llgo/ssa"
+	llvm "github.com/xgo-dev/llvm"
 )
 
 type genConfig struct {
@@ -104,7 +103,7 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	}
 
 	var pkgPath string
-	if pkg.Types.Name() == "main" {
+	if ctx.buildConf.RewriteMainPrefix && pkg.Types.Name() == "main" {
 		pkgPath = "main"
 	} else {
 		pkgPath = pkg.PkgPath

@@ -192,6 +192,11 @@ type Config struct {
 	// when it would otherwise be enabled by full LTO.
 	DisableGoGlobalDCE bool
 
+	// RewriteMainPrefix controls whether symbols in the main package
+	// use "main." as their package path prefix instead of the actual
+	// import path. When true, pkgpath.sym is rewritten to main.sym.
+	RewriteMainPrefix bool
+
 	// GlobalRewrites specifies compile-time overrides for global string variables.
 	// Keys are fully qualified package paths (e.g. "main" or "github.com/user/pkg").
 	// Each Rewrites entry maps variable names to replacement string values. Only
@@ -367,6 +372,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if conf.Mode == ModeTest {
 		cfg.Mode |= packages.NeedForTest
 	}
+	abi.SetRewriteMainPrefix(conf.RewriteMainPrefix)
 
 	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
 	cl.EnableDebug(emitDebugInfo)
@@ -445,7 +451,7 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	}
 	mode := conf.Mode
 	if mode == ModeTest {
-		initial, err = filterTestPackages(initial, conf.OutFile)
+		initial, err = filterTestPackages(initial, conf.OutFile, conf.RewriteMainPrefix)
 		if err != nil {
 			return nil, err
 		}
@@ -715,13 +721,13 @@ func needLink(pkg *packages.Package, mode Mode) bool {
 	return pkg.Name == "main"
 }
 
-func filterTestPackages(initial []*packages.Package, outFile string) ([]*packages.Package, error) {
+func filterTestPackages(initial []*packages.Package, outFile string, rewriteMainPrefix bool) ([]*packages.Package, error) {
 	filtered := initial[:0]
 	for _, pkg := range initial {
 		if needLink(pkg, ModeTest) {
 			filtered = append(filtered, pkg)
 		}
-		if pkg.Types != nil && pkg.Types.Name() == "main" {
+		if rewriteMainPrefix && pkg.Types != nil && pkg.Types.Name() == "main" {
 			pkg.Types.SetName("main.test")
 		}
 	}
@@ -1179,7 +1185,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	methodByName := make(map[string]none)
 	allPkgs := []*packages.Package{pkg}
 	for _, v := range pkgs {
-		if v.PkgPath != pkg.PkgPath && v.Types.Name() == "main" {
+		if v.PkgPath != pkg.PkgPath && v.Types != nil && v.Types.Name() == "main" {
 			continue
 		}
 		allPkgs = append(allPkgs, v.Package)
