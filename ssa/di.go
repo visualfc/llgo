@@ -769,6 +769,11 @@ const (
 )
 
 func (b Builder) DIGlobal(v Expr, name string, pos token.Position) {
+	// Frontend pseudo-variables, such as Python module attributes, have no
+	// native storage to describe or attach metadata to.
+	if v.impl.IsNil() {
+		return
+	}
 	if _, ok := b.Pkg.glbDbgVars[v]; ok {
 		return
 	}

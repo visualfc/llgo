@@ -483,6 +483,13 @@ func TestRunAndTestFromTestpy(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testpy", nil)
 }
 
+func TestRunAndTestFromTestpyDWARF(t *testing.T) {
+	conf := build.NewDefaultConf(build.ModeRun)
+	conf.LinkOptions.DWARF = build.DWARFPreserve
+	cltest.RunAndTestFromDir(t, "", "./_testpy", nil,
+		cltest.WithRunConfig(conf), cltest.WithIRCheck(false))
+}
+
 func TestRunAndTestFromTestlibgo(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testlibgo", nil)
 }
