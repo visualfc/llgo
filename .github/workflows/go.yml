@@ -180,9 +180,10 @@ jobs:
           files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt,coverage-dev-lto-globaldce-symbols.txt,coverage-dev-lto-plugin-cl.txt
           flags: dev-lto-globaldce
 
+  # Tests deletion of unreachable Go methods.
   # See https://github.com/goplus/llgo/issues/1853.
   dev-go-methoddrop:
-    name: Dev Go Method Drop (see #1853)
+    name: Dev Go Method Drop
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
@@ -205,7 +206,7 @@ jobs:
       - name: Build llgo with dev tag
         run: go install -tags=dev ./cmd/llgo
 
-      - name: Run Go method drop tests (see #1853)
+      - name: Run Go method drop tests
         run: go test -tags=dev -timeout 30m -run '^TestBuildAndCheckSymbolsFromTestdrop$' ./cl
 
       - name: Run Go deadcode-drop demos
