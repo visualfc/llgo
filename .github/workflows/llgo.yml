@@ -237,7 +237,7 @@ jobs:
         env:
           SHARD_INDEX: ${{ matrix.shard }}
           SHARD_TOTAL: ${{ startsWith(matrix.os, 'macos') && '1' || '2' }}
-          TEST_JOBS: ${{ startsWith(matrix.os, 'macos') && '2' || '4' }}
+          TEST_JOBS: ${{ startsWith(matrix.os, 'macos') && '3' || '4' }}
         run: |
           set -euo pipefail
 
