@@ -4,7 +4,7 @@ package dcepass
 
 import (
 	"fmt"
-	"io"
+	"os"
 	"strings"
 
 	"github.com/xgo-dev/llvm"
@@ -16,13 +16,8 @@ const unreachableMethodName = "github.com/goplus/llgo/runtime/internal/runtime.u
 // srcMods contains the original package modules. For each constant ABI type
 // global with a method array, it creates a same-name strong global in dst and
 // clears IFn/TFn for method slots not listed in liveSlots[typeName].
-func EmitStrongTypeOverrides(dst llvm.Module, srcMods []llvm.Module, liveSlots map[string][]int) error {
-	return EmitStrongTypeOverridesDebug(dst, srcMods, liveSlots, nil)
-}
-
-// EmitStrongTypeOverridesDebug is EmitStrongTypeOverrides with one debug line
-// per method slot whose IFn/TFn references are cleared when logw is non-nil.
-func EmitStrongTypeOverridesDebug(dst llvm.Module, srcMods []llvm.Module, liveSlots map[string][]int, logw io.Writer) error {
+// When verbose is true, dropped method slots are reported to os.Stderr.
+func EmitStrongTypeOverrides(dst llvm.Module, srcMods []llvm.Module, liveSlots map[string][]int, verbose bool) error {
 	emitted := make(map[string]bool)
 	emitter := newOverrideEmitter(dst)
 	for _, src := range srcMods {
@@ -35,7 +30,7 @@ func EmitStrongTypeOverridesDebug(dst llvm.Module, srcMods []llvm.Module, liveSl
 			if !ok {
 				continue
 			}
-			if err := emitter.emitTypeOverride(g, methodsVal, elemTy, liveSlotSet(liveSlots[name]), logw); err != nil {
+			if err := emitter.emitTypeOverride(g, methodsVal, elemTy, liveSlotSet(liveSlots[name]), verbose); err != nil {
 				return fmt.Errorf("emit override %q: %w", name, err)
 			}
 			emitted[name] = true
@@ -53,7 +48,7 @@ func newOverrideEmitter(dst llvm.Module) *overrideEmitter {
 	return &overrideEmitter{dst: dst, values: make(map[llvm.Value]llvm.Value)}
 }
 
-func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemTy llvm.Type, keepIdx map[int]bool, logw io.Writer) error {
+func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemTy llvm.Type, keepIdx map[int]bool, verbose bool) error {
 	init := srcType.Initializer()
 	dstType := e.ensureOverrideGlobal(srcType)
 	e.values[srcType] = dstType
@@ -81,8 +76,8 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 			methods[i] = clone
 			continue
 		}
-		if logw != nil {
-			fmt.Fprintf(logw, "[dce] drop method %s[%d] ifn=%s tfn=%s\n", srcType.Name(), i, valueName(orig.Operand(2)), valueName(orig.Operand(3)))
+		if verbose {
+			fmt.Fprintf(os.Stderr, "[dce] drop method %s[%d] ifn=%s tfn=%s\n", srcType.Name(), i, valueName(orig.Operand(2)), valueName(orig.Operand(3)))
 		}
 		name, err := e.cloneConst(orig.Operand(0))
 		if err != nil {

@@ -24,7 +24,6 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -36,7 +35,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"golang.org/x/tools/go/ssa"
 
@@ -1259,7 +1257,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		funcInfoStubs: funcInfoStubs,
 	})
 	if ctx.buildConf.deadcodeDropEnabled() {
-		if err := applyDeadcodeDropOverrides(ctx, pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
+		if err := applyDeadcodeDropOverrides(pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
 			return err
 		}
 	}
@@ -1311,35 +1309,16 @@ func linkedPackageMetas(pkgs []Package) []*meta.PackageMeta {
 	return metas
 }
 
-func applyDeadcodeDropOverrides(ctx *context, mainPkg *packages.Package, pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
+func applyDeadcodeDropOverrides(mainPkg *packages.Package, pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
 	metas := linkedPackageMetas(pkgs)
-	mergeStart := time.Now()
 	summary, err := meta.NewGlobalSummary(metas)
 	if err != nil {
 		return err
 	}
-	mergeDur := time.Since(mergeStart)
 
 	roots := dceEntryRootCandidates(mainPkg, needRuntime)
-	analyzeStart := time.Now()
 	liveSlots := deadcode.Analyze(summary, roots)
-	analyzeDur := time.Since(analyzeStart)
-	if len(liveSlots) == 0 {
-		return nil
-	}
-
-	if verbose {
-		liveCount := 0
-		for _, slots := range liveSlots {
-			liveCount += len(slots)
-		}
-		fmt.Fprintf(os.Stderr, "[deadcodedrop] packages=%d roots=%s merge=%v analyze=%v live method slots=%d types=%d\n",
-			len(metas), strings.Join(roots, ","), mergeDur, analyzeDur, liveCount, len(liveSlots))
-		err := dcepass.EmitStrongTypeOverridesDebug(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, os.Stderr)
-		printDeadcodeDropMetaInputs(ctx, pkgs, os.Stderr)
-		return err
-	}
-	return dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots)
+	return dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, verbose)
 }
 
 func dceSourceModules(pkgs []Package) []gllvm.Module {
@@ -1348,28 +1327,6 @@ func dceSourceModules(pkgs []Package) []gllvm.Module {
 		mods = append(mods, pkg.LPkg.Module())
 	}
 	return mods
-}
-
-func printDeadcodeDropMetaInputs(ctx *context, pkgs []Package, w io.Writer) {
-	cm := ctx.ensureCacheManager()
-	targetTriple := ctx.targetTriple()
-	fmt.Fprintln(w, "[deadcodedrop] meta inputs:")
-	for _, pkg := range pkgs {
-		if pkg.Fingerprint == "" || pkg.Name == "main" {
-			fmt.Fprintf(w, "[deadcodedrop]   %s memory\n", pkg.PkgPath)
-			continue
-		}
-		paths := cm.PackagePaths(targetTriple, pkg.PkgPath, pkg.Fingerprint)
-		state := "miss"
-		if pkg.CacheHit {
-			state = "hit"
-		}
-		exists := "missing"
-		if _, err := os.Stat(paths.Meta); err == nil {
-			exists = "exists"
-		}
-		fmt.Fprintf(w, "[deadcodedrop]   %s %s %s %s\n", pkg.PkgPath, state, exists, paths.Meta)
-	}
 }
 
 func dceEntryRootCandidates(pkg *packages.Package, needRuntime bool) []string {

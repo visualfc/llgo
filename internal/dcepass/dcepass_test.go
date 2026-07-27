@@ -1,7 +1,7 @@
 package dcepass
 
 import (
-	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -17,7 +17,7 @@ func TestEmitStrongTypeOverridesPrunesDeadMethodSlots(t *testing.T) {
 	defer dst.Dispose()
 
 	addMethodTypeGlobal(src, "_llgo_pkg.T", "M", "N")
-	if err := EmitStrongTypeOverrides(dst, []llvm.Module{src}, map[string][]int{"_llgo_pkg.T": {0}}); err != nil {
+	if err := EmitStrongTypeOverrides(dst, []llvm.Module{src}, map[string][]int{"_llgo_pkg.T": {0}}, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -45,12 +45,27 @@ func TestEmitStrongTypeOverridesLogsDroppedMethodSlots(t *testing.T) {
 	defer dst.Dispose()
 
 	addMethodTypeGlobal(src, "_llgo_pkg.T", "M")
-	var log bytes.Buffer
-	if err := EmitStrongTypeOverridesDebug(dst, []llvm.Module{src}, nil, &log); err != nil {
+	logFile, err := os.CreateTemp(t.TempDir(), "dcepass-stderr")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `[dce] drop method _llgo_pkg.T[0] ifn=pkg.(*T).M tfn=pkg.T.M`; !strings.Contains(log.String(), want) {
-		t.Fatalf("debug log missing dropped method slot\nwant: %s\ngot:\n%s", want, log.String())
+	oldStderr := os.Stderr
+	os.Stderr = logFile
+	t.Cleanup(func() {
+		os.Stderr = oldStderr
+	})
+	if err := EmitStrongTypeOverrides(dst, []llvm.Module{src}, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := logFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	log, err := os.ReadFile(logFile.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `[dce] drop method _llgo_pkg.T[0] ifn=pkg.(*T).M tfn=pkg.T.M`; !strings.Contains(string(log), want) {
+		t.Fatalf("debug log missing dropped method slot\nwant: %s\ngot:\n%s", want, log)
 	}
 }
 

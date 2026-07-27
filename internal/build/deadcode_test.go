@@ -36,7 +36,7 @@ func TestApplyDeadcodeDropOverridesWritesStrongTypeOverride(t *testing.T) {
 		ExportFile: "pkg.a",
 	}, &genConfig{})
 
-	if err := applyDeadcodeDropOverrides(ctx, srcAPkg.Package, []Package{srcAPkg}, entryPkg, false, false); err != nil {
+	if err := applyDeadcodeDropOverrides(srcAPkg.Package, []Package{srcAPkg}, entryPkg, false, false); err != nil {
 		t.Fatal(err)
 	}
 
