@@ -107,7 +107,7 @@ func (d *pass) buildMethodRefs() {
 	for _, iface := range d.info.Ifaces() {
 		seenNames := make(map[meta.Name]struct{})
 		for _, sig := range d.info.IfaceMethods(iface) {
-			d.methodRefs[sig] = appendSymbolUnique(d.methodRefs[sig], iface)
+			d.methodRefs[sig] = append(d.methodRefs[sig], iface)
 			if _, ok := seenNames[sig.Name]; ok {
 				continue
 			}
@@ -279,13 +279,4 @@ func (d *pass) popWork() meta.Symbol {
 	copy(d.workQueue, d.workQueue[1:])
 	d.workQueue = d.workQueue[:len(d.workQueue)-1]
 	return sym
-}
-
-func appendSymbolUnique(items []meta.Symbol, item meta.Symbol) []meta.Symbol {
-	for _, existing := range items {
-		if existing == item {
-			return items
-		}
-	}
-	return append(items, item)
 }

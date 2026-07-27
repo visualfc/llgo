@@ -32,7 +32,7 @@ func EmitStrongTypeOverridesDebug(dst llvm.Module, srcMods []llvm.Module, liveSl
 				continue
 			}
 			methodsVal, elemTy, ok := methodArray(g.Initializer())
-			if !ok || methodsVal.OperandsCount() == 0 {
+			if !ok {
 				continue
 			}
 			if err := emitter.emitTypeOverride(g, methodsVal, elemTy, liveSlotSet(liveSlots[name]), logw); err != nil {
