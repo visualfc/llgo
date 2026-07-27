@@ -12,11 +12,6 @@ type ifaceMethodKey struct {
 	sig   meta.MethodSig
 }
 
-type ifaceMethodName struct {
-	iface meta.Symbol
-	name  meta.Name
-}
-
 type methodID struct {
 	owner meta.Symbol
 	slot  int
@@ -82,6 +77,7 @@ func deadcode(info *meta.GlobalSummary, roots []meta.Symbol) map[meta.Symbol][]i
 	}
 	d.buildMethodRefs()
 
+	// Seed the initial reachability flood with entry-point roots.
 	for _, root := range roots {
 		d.markReachable(root)
 	}
@@ -118,26 +114,12 @@ func (d *pass) buildMethodRefs() {
 // computeMethodImplKeys lazily builds methodImplKeys for a single concrete type
 // that has entered usedInIface. Called at most once per type.
 func (d *pass) computeMethodImplKeys(typ meta.Symbol, slots []meta.MethodSlot) {
-	if _, done := d.methodImplKeys[methodID{owner: typ, slot: 0}]; done {
-		// Already computed — check skip by looking at slot 0. If slot 0 has
-		// an entry, the whole type was processed (we always process all slots
-		// of a type at once).
-		// Fine print: a type with 0 slots will never reach here because
-		// markUsedInIface only calls this when slots is non-empty.
-		return
-	}
 	// Compute all slots at once.
 	impls := make(map[meta.Symbol]int)
-	seen := make(map[ifaceMethodName]struct{})
 
 	for _, slot := range slots {
 		sig := meta.MethodSig{Name: slot.Name, MType: slot.MType}
 		for _, iface := range d.methodRefs[sig] {
-			key := ifaceMethodName{iface: iface, name: slot.Name}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
 			impls[iface]++
 		}
 	}
