@@ -16,17 +16,6 @@
 
 package runtime
 
-import "unsafe"
-
-// g holds the runtime state owned by one LLGo goroutine.
-type g struct {
-	defer_       *Defer
-	panic_       unsafe.Pointer
-	goexit       bool
-	isMain       bool
-	paniconfault bool
-}
-
 // SetPanicOnFault updates the fault behavior requested by the current
 // goroutine and reports its previous value.
 func SetPanicOnFault(in bool) (out bool) {

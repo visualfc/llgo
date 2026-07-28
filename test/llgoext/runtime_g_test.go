@@ -76,6 +76,94 @@ func TestRuntimeGetGIsolation(t *testing.T) {
 	}
 }
 
+//go:linkname runtimeGMPForTesting github.com/goplus/llgo/runtime/internal/runtime.GMPForTesting
+func runtimeGMPForTesting() (goid, parentGoid uint64, mid int64, pid int32, gstatus, pstatus uint32, linked bool)
+
+const (
+	runtimeGRunning = 2
+	runtimePRunning = 1
+)
+
+type runtimeGMPState struct {
+	goid       uint64
+	parentGoid uint64
+	mid        int64
+	pid        int32
+	gstatus    uint32
+	pstatus    uint32
+	linked     bool
+}
+
+func currentRuntimeGMPState() runtimeGMPState {
+	goid, parentGoid, mid, pid, gstatus, pstatus, linked := runtimeGMPForTesting()
+	return runtimeGMPState{
+		goid:       goid,
+		parentGoid: parentGoid,
+		mid:        mid,
+		pid:        pid,
+		gstatus:    gstatus,
+		pstatus:    pstatus,
+		linked:     linked,
+	}
+}
+
+func checkRunningRuntimeGMP(t *testing.T, state runtimeGMPState) {
+	t.Helper()
+	if state.goid == 0 {
+		t.Fatal("current G has no ID")
+	}
+	if state.mid == 0 {
+		t.Fatal("current G has no M")
+	}
+	if state.pid < 0 {
+		t.Fatalf("current G has invalid P id %d", state.pid)
+	}
+	if state.gstatus != runtimeGRunning {
+		t.Fatalf("G status = %d, want running (%d)", state.gstatus, runtimeGRunning)
+	}
+	if state.pstatus != runtimePRunning {
+		t.Fatalf("P status = %d, want running (%d)", state.pstatus, runtimePRunning)
+	}
+	if !state.linked {
+		t.Fatal("G, M, and P links are inconsistent")
+	}
+}
+
+func TestRuntimeGMPLinks(t *testing.T) {
+	parent := currentRuntimeGMPState()
+	checkRunningRuntimeGMP(t, parent)
+
+	results := make(chan runtimeGMPState, 2)
+	for i := 0; i < cap(results); i++ {
+		go func() {
+			results <- currentRuntimeGMPState()
+		}()
+	}
+
+	seenG := map[uint64]bool{parent.goid: true}
+	seenM := map[int64]bool{parent.mid: true}
+	seenP := map[int32]bool{parent.pid: true}
+	for i := 0; i < cap(results); i++ {
+		state := <-results
+		checkRunningRuntimeGMP(t, state)
+		if state.parentGoid != parent.goid {
+			t.Fatalf("G %d parent = %d, want %d", state.goid, state.parentGoid, parent.goid)
+		}
+		if seenG[state.goid] {
+			t.Fatalf("duplicate G id %d", state.goid)
+		}
+		if seenM[state.mid] {
+			t.Fatalf("duplicate M id %d", state.mid)
+		}
+		if seenP[state.pid] {
+			t.Fatalf("duplicate P id %d", state.pid)
+		}
+		seenG[state.goid] = true
+		seenM[state.mid] = true
+		seenP[state.pid] = true
+	}
+}
+
 type runtimeDeferProbeResult struct {
 	before unsafe.Pointer
 	inside unsafe.Pointer
