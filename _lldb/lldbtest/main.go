@@ -365,6 +365,7 @@ func ScopeIf(branch int) {
 	// Expected:
 	//   all variables: a branch
 	//   a: 1
+	println(a)
 	if branch == 1 {
 		b := 2
 		c := 3

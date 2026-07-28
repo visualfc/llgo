@@ -44,21 +44,20 @@ result_file="/tmp/lldb_exit_code"
 
 # Prepare LLDB commands
 lldb_commands=(
-    "command script import ../llgo_plugin.py"
     "command script import ../test.py"
     "script test.run_tests_with_result('./debug.out', ['main.go'], $verbose, $interactive, $plugin_path, '$result_file')"
     "quit"
 )
 
-# Run LLDB with prepared commands
-lldb_command_string=""
+# Prepare LLDB arguments without shell re-parsing.
+lldb_args=()
 for cmd in "${lldb_commands[@]}"; do
-    lldb_command_string+=" -o \"$cmd\""
+    lldb_args+=("-o" "$cmd")
 done
 
 cd "$package_path"
-# Run LLDB with the test script
-eval "$LLDB_PATH $lldb_command_string"
+# Run LLDB with the embedded LLGo plugin and the test script.
+llgo lldb -lldb "$LLDB_PATH" -- "${lldb_args[@]}"
 
 # Read the exit code from the result file
 if [ -f "$result_file" ]; then
@@ -78,6 +77,5 @@ non_llgo_dir=$(mktemp -d)
 trap 'rm -rf "$non_llgo_dir"' EXIT
 printf 'int main(void) { return 0; }\n' | \
     "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo" -
-"$LLDB_PATH" --batch "$non_llgo_dir/non-llgo" \
-    -o "command script import \"$script_dir/llgo_plugin.py\"" \
+llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo" \
     -o 'script assert not llgo_plugin.is_llgo_compiler(lldb.target)'

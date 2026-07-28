@@ -18,24 +18,33 @@ it optimization-independent are separate follow-up work.
 LLGo currently marks compile units as `DW_LANG_C` because stock LLDB does not
 provide a Go language plugin and otherwise hides valid frame variables.
 `DW_AT_producer` remains `LLGo`, and a versioned debugger marker lets this
-plugin distinguish LLGo binaries from ordinary C targets. Native
-`DW_LANG_Go` support is tracked by
-[issue #2154](https://github.com/xgo-dev/llgo/issues/2154).
+plugin distinguish LLGo binaries from ordinary C targets. Upstream LLDB
+requires an RFC and a long-term maintainer before restoring native Go language
+support, so LLGo keeps its language-specific adapter external; the decision is
+recorded in [issue #2154](https://github.com/xgo-dev/llgo/issues/2154).
 
 ### Debug with lldb
 
 ```shell
-_lldb/runlldb.sh ./cl/_testdata/debug/out
+llgo lldb ./cl/_testdata/debug/out
 ```
 
-or
+Use `-lldb` or `LLGO_LLDB` to select a particular LLDB 18+ executable. Arguments
+after the LLGo flags are passed through to LLDB; use `--` when the first LLDB
+argument begins with `-`:
 
 ```shell
-/opt/homebrew/bin/lldb -O "command script import _lldb/llgo_plugin.py" ./cl/_testdata/debug/out
+llgo lldb -lldb /opt/homebrew/bin/lldb -- --batch ./cl/_testdata/debug/out
+```
+
+The command embeds and loads the LLGo Python adapter, so an installed `llgo`
+does not depend on a source checkout. `_lldb/runlldb.sh` remains as a thin
+compatibility wrapper.
+
+```text
 # github.com/goplus/llgo/cl/_testdata/debug
 Breakpoint 1: no locations (pending).
 Breakpoint set in dummy target, will get copied into future targets.
-(lldb) command script import _lldb/llgo_plugin.py
 (lldb) target create "./cl/_testdata/debug/out"
 Current executable set to '/Users/lijie/source/goplus/llgo/cl/_testdata/debug/out' (arm64).
 (lldb) r
