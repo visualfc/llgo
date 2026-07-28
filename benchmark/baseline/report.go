@@ -286,8 +286,14 @@ func formatDuration(value float64) string {
 }
 
 func formatDelta(current float64, baseline *float64) string {
-	if baseline == nil || *baseline == 0 {
+	if baseline == nil {
 		return "new"
+	}
+	if *baseline == 0 {
+		if current == 0 {
+			return "0.0%"
+		}
+		return "from 0"
 	}
 	return fmt.Sprintf("%+.1f%%", (current/(*baseline)-1)*100)
 }

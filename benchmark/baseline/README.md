@@ -15,16 +15,12 @@ The program workloads reuse:
 - `benchmark/binary_size/fmtprintf`: `fmt.Printf`.
 
 For each workload, the collector records median warm build time, median process
-time, file size, executable/constant bytes, initialized data, and zero-filled
-data. The Go benchmark stream adds selected compiler helpers and LLGo-generated
-core-language operations: direct/interface calls, defer, goroutine creation,
-channels, `getg`, and global/TLS/GLS access.
-
-Before TLS/GLS directives are implemented, their benchmark variables compile as
-ordinary package globals. This intentionally establishes the global-access
-lower bound before the feature changes their storage. Their accessors use
-atomic loads and stores so LLVM cannot replace a read with a constant; the
-atomic cost is identical across the global, TLS, and GLS cases.
+time, file size, executable-code bytes, allocated non-executable data, and
+zero-filled data. On ELF, read-only constants are included in the data bucket;
+on Mach-O, `__TEXT` constants are included in the text bucket. The Go benchmark
+stream adds selected compiler helpers and LLGo-generated core-language
+operations: direct/interface calls, defer, goroutine creation, channels,
+`getg`, and global access.
 
 Results are compared against the latest `main` series during the unprivileged
 benchmark workflow. A separate trusted `workflow_run` validates the artifact
@@ -53,8 +49,26 @@ go run ./benchmark/baseline \
   -out .benchmark/results
 ```
 
-Write selected Go benchmark output to `.benchmark/results/go.txt`, then verify
-the complete artifact:
+Write the selected Go benchmark output to `.benchmark/results/go.txt`:
+
+```sh
+results=.benchmark/results/go.txt
+GOMAXPROCS=1 go test \
+  -run '^$' \
+  -bench '^(BenchmarkMergeCompilerFlags|BenchmarkMergeLinkerFlags|BenchmarkLookupPCRandom)$' \
+  -benchtime=250ms -count=1 -cpu=1 \
+  ./internal/clang ./internal/build/funcinfo | tee "$results"
+GOMAXPROCS=1 .benchmark/llgo test \
+  -run '^$' \
+  -bench '^(BenchmarkRuntimeGetG|BenchmarkGlobal(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
+  -benchtime=250ms -count=1 \
+  ./test/llgoext | tee -a "$results"
+GOMAXPROCS=1 .benchmark/llgo test \
+  -run '^$' -bench '^BenchmarkGoroutine$' -benchtime=100x -count=1 \
+  ./test/llgoext | tee -a "$results"
+```
+
+Then verify the complete artifact:
 
 ```sh
 go run ./benchmark/baseline -mode validate -out .benchmark/results

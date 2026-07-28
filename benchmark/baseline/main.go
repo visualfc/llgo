@@ -63,8 +63,6 @@ var expectedGoBenchmarks = []string{
 	"BenchmarkChannelHandoff",
 	"BenchmarkDefer",
 	"BenchmarkDirectCall",
-	"BenchmarkGLSRead",
-	"BenchmarkGLSWrite",
 	"BenchmarkGlobalRead",
 	"BenchmarkGlobalWrite",
 	"BenchmarkGoroutine",
@@ -73,8 +71,6 @@ var expectedGoBenchmarks = []string{
 	"BenchmarkMergeCompilerFlags",
 	"BenchmarkMergeLinkerFlags",
 	"BenchmarkRuntimeGetG",
-	"BenchmarkTLSRead",
-	"BenchmarkTLSWrite",
 }
 
 type footprint struct {
@@ -218,15 +214,20 @@ func run(ctx context.Context, env []string, output io.Writer, name string, args 
 }
 
 func durationMetric(name string, values []time.Duration) metric {
-	slices.Sort(values)
-	mid := values[len(values)/2]
+	ordered := slices.Clone(values)
+	slices.Sort(ordered)
+	middle := len(ordered) / 2
+	median := float64(ordered[middle].Nanoseconds())
+	if len(ordered)%2 == 0 {
+		median = (float64(ordered[middle-1].Nanoseconds()) + median) / 2
+	}
 	return metric{
 		Name:  name,
 		Unit:  "ns",
-		Value: float64(mid.Nanoseconds()),
-		Range: strconv.FormatInt(values[0].Nanoseconds(), 10) + ".." +
-			strconv.FormatInt(values[len(values)-1].Nanoseconds(), 10),
-		Extra: fmt.Sprintf("median of %d consecutive runs", len(values)),
+		Value: median,
+		Range: strconv.FormatInt(ordered[0].Nanoseconds(), 10) + ".." +
+			strconv.FormatInt(ordered[len(ordered)-1].Nanoseconds(), 10),
+		Extra: fmt.Sprintf("median of %d consecutive runs", len(ordered)),
 	}
 }
 

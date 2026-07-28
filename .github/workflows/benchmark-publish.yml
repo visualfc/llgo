@@ -195,7 +195,7 @@ jobs:
           ref: ${{ steps.series.outputs.sha }}
           auto-push: true
 
-      - name: Reset benchmark data checkout again
+      - name: Reset benchmark data checkout
         run: rm -rf benchmark-data-repository
 
       - name: Publish Linux core benchmarks
@@ -211,7 +211,7 @@ jobs:
           ref: ${{ steps.series.outputs.sha }}
           auto-push: true
 
-      - name: Reset benchmark data checkout before macOS
+      - name: Reset benchmark data checkout
         run: rm -rf benchmark-data-repository
 
       - name: Publish macOS program sizes
@@ -227,7 +227,7 @@ jobs:
           ref: ${{ steps.series.outputs.sha }}
           auto-push: true
 
-      - name: Reset benchmark data checkout after macOS sizes
+      - name: Reset benchmark data checkout
         run: rm -rf benchmark-data-repository
 
       - name: Publish macOS program timings
@@ -243,7 +243,7 @@ jobs:
           ref: ${{ steps.series.outputs.sha }}
           auto-push: true
 
-      - name: Reset benchmark data checkout after macOS timings
+      - name: Reset benchmark data checkout
         run: rm -rf benchmark-data-repository
 
       - name: Publish macOS core benchmarks

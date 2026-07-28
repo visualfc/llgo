@@ -27,18 +27,28 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestDurationMetric(t *testing.T) {
-	got := durationMetric("compile/test", []time.Duration{9, 3, 6})
+	values := []time.Duration{9, 3, 6}
+	got := durationMetric("compile/test", values)
 	if got.Name != "compile/test" || got.Unit != "ns" || got.Value != 6 {
 		t.Fatalf("durationMetric = %+v", got)
 	}
 	if got.Range != "3..9" || got.Extra != "median of 3 consecutive runs" {
 		t.Fatalf("duration metadata = %+v", got)
+	}
+	if !slices.Equal(values, []time.Duration{9, 3, 6}) {
+		t.Fatalf("durationMetric mutated input: %v", values)
+	}
+
+	even := durationMetric("compile/even", []time.Duration{8, 2})
+	if even.Value != 5 || even.Range != "2..8" {
+		t.Fatalf("even durationMetric = %+v", even)
 	}
 }
 

@@ -71,7 +71,7 @@ jobs:
 
           GOMAXPROCS=1 "$GITHUB_WORKSPACE/.benchmark/llgo" test \
             -run '^$' \
-            -bench '^(BenchmarkRuntimeGetG|Benchmark(Global|TLS|GLS)(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
+            -bench '^(BenchmarkRuntimeGetG|BenchmarkGlobal(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
             -benchtime=250ms \
             -count=1 \
             ./test/llgoext \

@@ -19,18 +19,13 @@
 package llgoext
 
 import (
+	"sync"
 	"sync/atomic"
 	"testing"
 )
 
 var (
 	benchmarkGlobal int64
-
-	//llgo:tls
-	benchmarkTLS int64
-
-	//llgo:gls
-	benchmarkGLS int64
 
 	benchmarkIntSink int
 	benchmarkI64Sink int64
@@ -42,28 +37,8 @@ func benchmarkReadGlobal() int64 {
 }
 
 //go:noinline
-func benchmarkReadTLS() int64 {
-	return atomic.LoadInt64(&benchmarkTLS)
-}
-
-//go:noinline
-func benchmarkReadGLS() int64 {
-	return atomic.LoadInt64(&benchmarkGLS)
-}
-
-//go:noinline
 func benchmarkWriteGlobal(v int64) {
 	atomic.StoreInt64(&benchmarkGlobal, v)
-}
-
-//go:noinline
-func benchmarkWriteTLS(v int64) {
-	atomic.StoreInt64(&benchmarkTLS, v)
-}
-
-//go:noinline
-func benchmarkWriteGLS(v int64) {
-	atomic.StoreInt64(&benchmarkGLS, v)
 }
 
 func BenchmarkGlobalRead(b *testing.B) {
@@ -75,39 +50,9 @@ func BenchmarkGlobalRead(b *testing.B) {
 	benchmarkI64Sink = value
 }
 
-func BenchmarkTLSRead(b *testing.B) {
-	atomic.StoreInt64(&benchmarkTLS, 1)
-	var value int64
-	for i := 0; i < b.N; i++ {
-		value += benchmarkReadTLS()
-	}
-	benchmarkI64Sink = value
-}
-
-func BenchmarkGLSRead(b *testing.B) {
-	atomic.StoreInt64(&benchmarkGLS, 1)
-	var value int64
-	for i := 0; i < b.N; i++ {
-		value += benchmarkReadGLS()
-	}
-	benchmarkI64Sink = value
-}
-
 func BenchmarkGlobalWrite(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		benchmarkWriteGlobal(int64(i))
-	}
-}
-
-func BenchmarkTLSWrite(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		benchmarkWriteTLS(int64(i))
-	}
-}
-
-func BenchmarkGLSWrite(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		benchmarkWriteGLS(int64(i))
 	}
 }
 
@@ -156,13 +101,12 @@ func BenchmarkDefer(b *testing.B) {
 }
 
 func BenchmarkGoroutine(b *testing.B) {
-	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(b.N)
 	for i := 0; i < b.N; i++ {
-		go func() {
-			done <- struct{}{}
-		}()
-		<-done
+		go wg.Done()
 	}
+	wg.Wait()
 }
 
 func BenchmarkChannelBuffered(b *testing.B) {

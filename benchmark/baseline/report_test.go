@@ -144,6 +144,13 @@ func TestReportHelpers(t *testing.T) {
 	if got := formatDelta(1, nil); got != "new" {
 		t.Fatalf("formatDelta without baseline = %q", got)
 	}
+	zero := 0.0
+	if got := formatDelta(0, &zero); got != "0.0%" {
+		t.Fatalf("formatDelta with two zero values = %q", got)
+	}
+	if got := formatDelta(1, &zero); got != "from 0" {
+		t.Fatalf("formatDelta from zero = %q", got)
+	}
 	if got := benchmarkCategory("BenchmarkFutureFeature"); got != "Other" {
 		t.Fatalf("benchmarkCategory for a future benchmark = %q", got)
 	}
