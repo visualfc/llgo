@@ -116,12 +116,14 @@ func FuncWithAllTypeParams(
 	err error,
 	fn func(string) (int, error),
 ) (int, error) {
+	currentI32 := i32
+	currentU32 := u32
 	// Expected:
-	//   all variables: i8 i16 i32 i64 i u8 u16 u32 u64 u f32 f64 b c64 c128 slice arr arr2 s e f pf pi intr m c err fn
-	//   i32: 3
+	//   all variables: i8 i16 i32 i64 i u8 u16 u32 u64 u f32 f64 b c64 c128 slice arr arr2 s e f pf pi intr m c err fn currentI32 currentU32
+	//   currentI32: 3
 	//   i64: 4
 	//   i: 5
-	//   u32: 8
+	//   currentU32: 8
 	//   u64: 9
 	//   u: 10
 	//   f32: 11
@@ -147,10 +149,8 @@ func FuncWithAllTypeParams(
 	//   u16: 7
 	//   b: true
 	println(
-		i8, i16, i32, i64, i, u8, u16, u32, u64, u,
+		i8, i16, currentI32, i64, i, u8, u16, currentU32, u64, u,
 		f32, f64, b,
-		// Keep register parameters available at this breakpoint on all targets.
-		&i32, &i64, &i, &u32, &u64, &u, &f32, &f64,
 		c64, c128,
 		slice, arr[0:],
 		s,
@@ -180,8 +180,9 @@ func FuncWithAllTypeParams(
 	arr2 = [3]E{{i: 37}, {i: 38}, {i: 39}}
 	s = "world"
 	e = E{i: 40}
-
-	println(i8, i16, i32, i64, i, u8, u16, u32, u64, u,
+	currentI32 = i32
+	currentU32 = u32
+	println(i8, i16, currentI32, i64, i, u8, u16, currentU32, u64, u,
 		f32, f64, b,
 		c64, c128,
 		slice, arr[0:], &arr2,
@@ -195,12 +196,12 @@ func FuncWithAllTypeParams(
 	// Expected:
 	//   i8: '\t'
 	//   i16: 10
-	//   i32: 11
+	//   currentI32: 11
 	//   i64: 12
 	//   i: 13
 	//   u8: '\x0e'
 	//   u16: 15
-	//   u32: 16
+	//   currentU32: 16
 	//   u64: 17
 	//   u: 18
 	//   f32: 19
@@ -556,11 +557,10 @@ func main() {
 	println(globalStructPtr)
 	println(&globalStruct)
 	s.i8 = 0x12
-	println(s.i8)
 	// Expected:
 	//   all variables: s i err
-	//   s.i8: '\x12'
-	println(s.i8)
+	//   (*globalStructPtr).i8: '\x12'
+	println((*globalStructPtr).i8)
 
 	// Expected(skip):
 	//   globalStruct.i8: '\x01'

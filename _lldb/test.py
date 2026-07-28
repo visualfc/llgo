@@ -194,7 +194,13 @@ def parse_expected_values(source_files: List[str]) -> List[TestCase]:
                             var, value = map(str.strip, parts)
                             tests.append(Test(source_file, i + 1, var, value))
                         i += 1
-                    end_line = i + 1
+                    breakpoint_line = i
+                    while breakpoint_line < len(content):
+                        line = content[breakpoint_line].strip()
+                        if line and not line.startswith('//'):
+                            break
+                        breakpoint_line += 1
+                    end_line = breakpoint_line + 1
                     test_cases.append(
                         TestCase(source_file, start_line, end_line, tests))
                 else:
