@@ -5,7 +5,7 @@ site-path: llgo/baseline
 include:
   - "^BenchmarkProgram/"
   - "^Benchmark(MergeCompilerFlags|MergeLinkerFlags|LookupPCRandom)$"
-  - "^Benchmark(RuntimeGetG|(Global|TLS|GLS)(Read|Write))$"
+  - "^Benchmark(RuntimeGetG|Global(Read|Write))$"
   - "^Benchmark(DirectCall|InterfaceCall|Defer|Goroutine)$"
   - "^BenchmarkChannel(Buffered|Handoff)$"
 groups:
@@ -13,7 +13,7 @@ groups:
   compiler: "^(MergeCompilerFlags|MergeLinkerFlags|LookupPCRandom)$"
   core:
     match:
-      - "^(RuntimeGetG|(Global|TLS|GLS)(Read|Write))$"
+      - "^(RuntimeGetG|Global(Read|Write))$"
       - "^(DirectCall|InterfaceCall|Defer|Goroutine)$"
       - "^Channel(Buffered|Handoff)$"
 views:

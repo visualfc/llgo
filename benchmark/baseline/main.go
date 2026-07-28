@@ -93,19 +93,12 @@ func main() {
 func runCLI(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("llgo-baseline", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	mode := flags.String("mode", "collect", "collect, validate, export, or report")
+	mode := flags.String("mode", "collect", "collect, validate, or export")
 	root := flags.String("root", ".", "LLGo repository root")
 	llgo := flags.String("llgo", "llgo", "LLGo command")
 	out := flags.String("out", filepath.Join("benchmark", "baseline", "out"), "result directory")
 	buildRuns := flags.Int("build-runs", 3, "build repetitions per workload")
 	runRuns := flags.Int("run-runs", 7, "process repetitions per workload")
-	currentData := flags.String("current-data", "", "current benchmark-action data.js")
-	mainData := flags.String("main-data", "", "main benchmark-action data.js")
-	report := flags.String("report", "", "Markdown report output")
-	seriesURL := flags.String("series-url", "", "published benchmark series URL")
-	sourceURL := flags.String("source-url", "", "source commit URL")
-	runURL := flags.String("run-url", "", "source workflow run URL")
-	sourceSHA := flags.String("source-sha", "", "source commit SHA")
 	benchmarkOutput := flags.String(
 		"benchmark-output",
 		"",
@@ -122,16 +115,6 @@ func runCLI(ctx context.Context, args []string) error {
 		return validateArtifact(*out)
 	case "export":
 		return exportBenchmarks(*out, *benchmarkOutput)
-	case "report":
-		return writeBenchmarkReport(reportOptions{
-			currentData: *currentData,
-			mainData:    *mainData,
-			output:      *report,
-			seriesURL:   *seriesURL,
-			sourceURL:   *sourceURL,
-			runURL:      *runURL,
-			sourceSHA:   *sourceSHA,
-		})
 	default:
 		return fmt.Errorf("unknown mode %q", *mode)
 	}
