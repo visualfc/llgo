@@ -31,9 +31,8 @@ import (
 	"go/types"
 
 	"github.com/goplus/llgo/internal/packages"
-	llvm "github.com/xgo-dev/llvm"
-
 	llssa "github.com/goplus/llgo/ssa"
+	llvm "github.com/xgo-dev/llvm"
 )
 
 type genConfig struct {
@@ -103,8 +102,15 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		})
 	}
 
-	mainInit := declareNoArgFunc(mainPkg, pkg.PkgPath+".init")
-	mainMain := declareNoArgFunc(mainPkg, pkg.PkgPath+".main")
+	var pkgPath string
+	if ctx.buildConf.RewriteMainPrefix && pkg.Types.Name() == "main" {
+		pkgPath = "main"
+	} else {
+		pkgPath = pkg.PkgPath
+	}
+
+	mainInit := declareNoArgFunc(mainPkg, pkgPath+".init")
+	mainMain := declareNoArgFunc(mainPkg, pkgPath+".main")
 
 	if ctx.buildConf.BuildMode != BuildModeExe {
 		initArraySection := ""

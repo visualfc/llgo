@@ -26,7 +26,8 @@ import (
 )
 
 var (
-	abi = flag.Int("abi", 0, "ABI mode (default 0). 0 = none, 1 = cfunc, 2 = allfunc.")
+	abi               = flag.Int("abi", 0, "ABI mode (default 0). 0 = none, 1 = cfunc, 2 = allfunc.")
+	rewriteMainPrefix = flag.Bool("rewrite-main-prefix", false, "Rewrite symbol names in the main package from 'pkgpath.sym' to 'main.sym'.")
 )
 
 func main() {
@@ -35,5 +36,5 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Usage: llgen [flags] <pkg>")
 		return
 	}
-	llgen.SmartDoFileEx(flag.Args()[0], build.AbiMode(*abi))
+	llgen.SmartDoFileEx(flag.Args()[0], build.AbiMode(*abi), *rewriteMainPrefix)
 }

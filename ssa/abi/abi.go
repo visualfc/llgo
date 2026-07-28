@@ -279,10 +279,22 @@ const (
 	PatchPathPrefix = env.LLGoRuntimePkg + "/internal/lib/"
 )
 
+// SetRewriteMainPrefix controls whether symbols in the main package
+// use "main." as their package path prefix instead of the actual
+// import path. When true, pkgpath.sym is rewritten to main.sym.
+func SetRewriteMainPrefix(b bool) {
+	rewriteMainPrefix = b
+}
+
+var rewriteMainPrefix bool
+
 // PathOf returns the package path of the specified package.
 func PathOf(pkg *types.Package) string {
 	if pkg == nil {
 		return ""
+	}
+	if rewriteMainPrefix && pkg.Name() == "main" {
+		return "main"
 	}
 	return strings.TrimPrefix(pkg.Path(), PatchPathPrefix)
 }
