@@ -17,6 +17,7 @@ jobs:
     uses: cpunion/setup-benchmark-go-action/.github/workflows/publish.yml@v1
     with:
       run_id: ${{ github.event.workflow_run.id }}
+      config_path: .github/llgo-benchmark.yml
       data_repository: >-
         ${{ vars.BENCHMARKS_REPOSITORY ||
             format('{0}/llgo-benchmark-data', github.repository_owner) }}
