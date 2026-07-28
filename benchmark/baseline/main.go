@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -92,7 +93,7 @@ func main() {
 func runCLI(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("llgo-baseline", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	mode := flags.String("mode", "collect", "collect or validate")
+	mode := flags.String("mode", "collect", "collect, validate, export, or report")
 	root := flags.String("root", ".", "LLGo repository root")
 	llgo := flags.String("llgo", "llgo", "LLGo command")
 	out := flags.String("out", filepath.Join("benchmark", "baseline", "out"), "result directory")
@@ -105,6 +106,11 @@ func runCLI(ctx context.Context, args []string) error {
 	sourceURL := flags.String("source-url", "", "source commit URL")
 	runURL := flags.String("run-url", "", "source workflow run URL")
 	sourceSHA := flags.String("source-sha", "", "source commit SHA")
+	benchmarkOutput := flags.String(
+		"benchmark-output",
+		"",
+		"standard Go benchmark output for export mode",
+	)
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -114,6 +120,8 @@ func runCLI(ctx context.Context, args []string) error {
 		return collect(ctx, *root, *llgo, *out, *buildRuns, *runRuns)
 	case "validate":
 		return validateArtifact(*out)
+	case "export":
+		return exportBenchmarks(*out, *benchmarkOutput)
 	case "report":
 		return writeBenchmarkReport(reportOptions{
 			currentData: *currentData,
@@ -127,6 +135,79 @@ func runCLI(ctx context.Context, args []string) error {
 	default:
 		return fmt.Errorf("unknown mode %q", *mode)
 	}
+}
+
+func exportBenchmarks(dir, output string) error {
+	if output == "" {
+		return errors.New("export mode requires benchmark-output")
+	}
+	if err := validateArtifact(dir); err != nil {
+		return err
+	}
+	sizes, err := readMetrics(filepath.Join(dir, "size.json"))
+	if err != nil {
+		return err
+	}
+	timings, err := readMetrics(filepath.Join(dir, "time.json"))
+	if err != nil {
+		return err
+	}
+	core, err := os.ReadFile(filepath.Join(dir, "go.txt"))
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]float64, len(sizes)+len(timings))
+	for _, value := range append(sizes, timings...) {
+		byName[value.Name] = value.Value
+	}
+
+	var data strings.Builder
+	fmt.Fprintf(&data, "goos: %s\ngoarch: %s\n", runtime.GOOS, runtime.GOARCH)
+	data.WriteString("pkg: github.com/goplus/llgo/benchmark/baseline\n")
+	for _, unit := range []string{
+		"file-bytes",
+		"text-bytes",
+		"data-bytes",
+		"bss-bytes",
+	} {
+		fmt.Fprintf(&data, "Unit %s better=lower assume=exact\n", unit)
+	}
+	data.WriteString("Unit build-ns better=lower\n")
+	data.WriteString("Unit run-ns better=lower\n")
+	for _, item := range workloads {
+		fmt.Fprintf(
+			&data,
+			"BenchmarkProgram/%s 1 %s file-bytes %s text-bytes %s data-bytes %s bss-bytes %s build-ns %s run-ns\n",
+			item.name,
+			formatMetric(byName["binary/"+item.name+"/file"]),
+			formatMetric(byName["binary/"+item.name+"/text"]),
+			formatMetric(byName["binary/"+item.name+"/data"]),
+			formatMetric(byName["binary/"+item.name+"/bss"]),
+			formatMetric(byName["compile/"+item.name]),
+			formatMetric(byName["run/"+item.name]),
+		)
+	}
+	if len(core) > 0 && core[len(core)-1] != '\n' {
+		core = append(core, '\n')
+	}
+	data.Write(core)
+	return os.WriteFile(output, []byte(data.String()), 0o644)
+}
+
+func readMetrics(path string) ([]metric, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var values []metric
+	if err := json.Unmarshal(data, &values); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return values, nil
+}
+
+func formatMetric(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
 func collect(ctx context.Context, root, llgo, out string, buildRuns, runRuns int) error {

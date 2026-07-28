@@ -27,9 +27,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
-      BENCHMARKS_REPOSITORY: >-
-        ${{ vars.BENCHMARKS_REPOSITORY ||
-            format('{0}/llgo-benchmark-data', github.repository_owner) }}
       GOMAXPROCS: "2"
       LLGO_ROOT: ${{ github.workspace }}
     steps:
@@ -89,8 +86,20 @@ jobs:
             ./test/llgoext \
             | tee -a "$results"
 
-      - name: Validate benchmark artifact
-        run: go run ./benchmark/baseline -mode validate -out .benchmark/results
+      - name: Validate and export benchmark artifact
+        run: |
+          go run ./benchmark/baseline \
+            -mode export \
+            -out .benchmark/results \
+            -benchmark-output .benchmark/results/benchmark.txt
+
+      - name: Record benchmark result
+        uses: cpunion/setup-benchmark-go-action@v1
+        with:
+          config: .github/llgo-benchmark.yml
+          benchmark-file: .benchmark/results/benchmark.txt
+          platform-id: ${{ matrix.id }}
+          platform-label: ${{ matrix.display }}
 
       - name: Upload benchmark artifact
         uses: actions/upload-artifact@v7
@@ -100,72 +109,6 @@ jobs:
             .benchmark/results/size.json
             .benchmark/results/time.json
             .benchmark/results/go.txt
+            .benchmark/results/benchmark.txt
           if-no-files-found: error
           retention-days: 30
-
-      - name: Download main benchmark history
-        run: |
-          set -euo pipefail
-          history_js=".benchmark/main-data.js"
-          history_json=".benchmark/main-data.json"
-          history_url="https://raw.githubusercontent.com/${BENCHMARKS_REPOSITORY}/pages/llgo/baseline/main/data.js"
-          http_status="$(
-            curl --silent --show-error --location \
-              --retry 3 --retry-all-errors \
-              --output "$history_js" \
-              --write-out '%{http_code}' \
-              "$history_url"
-          )"
-          case "$http_status" in
-            200)
-              sed 's/^window\.BENCHMARK_DATA = //' "$history_js" | jq . > "$history_json"
-              ;;
-            404)
-              printf '%s\n' '{"lastUpdate":0,"repoUrl":"","entries":{}}' > "$history_json"
-              ;;
-            *)
-              echo "benchmark history download returned HTTP $http_status" >&2
-              exit 1
-              ;;
-          esac
-
-      # v1.22.1. PR and branch jobs only read the main history. A trusted
-      # workflow_run publishes validated artifacts without exposing its token.
-      - name: Compare program sizes with main
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
-        with:
-          name: ${{ matrix.display }} program binary size
-          tool: customSmallerIsBetter
-          output-file-path: .benchmark/results/size.json
-          external-data-json-path: .benchmark/main-data.json
-          save-data-file: false
-          summary-always: true
-          alert-threshold: 105%
-          fail-threshold: 110%
-          fail-on-alert: true
-
-      - name: Compare program timings with main
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
-        with:
-          name: ${{ matrix.display }} program build and run time
-          tool: customSmallerIsBetter
-          output-file-path: .benchmark/results/time.json
-          external-data-json-path: .benchmark/main-data.json
-          save-data-file: false
-          summary-always: true
-          alert-threshold: 140%
-          fail-threshold: 200%
-          fail-on-alert: true
-
-      - name: Compare core benchmarks with main
-        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
-        with:
-          name: ${{ matrix.display }} compiler and core language
-          tool: go
-          output-file-path: .benchmark/results/go.txt
-          external-data-json-path: .benchmark/main-data.json
-          save-data-file: false
-          summary-always: true
-          alert-threshold: 140%
-          fail-threshold: 200%
-          fail-on-alert: true

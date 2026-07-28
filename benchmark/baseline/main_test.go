@@ -79,6 +79,38 @@ func TestWriteAndValidateMetrics(t *testing.T) {
 	}
 }
 
+func TestExportBenchmarks(t *testing.T) {
+	dir := t.TempDir()
+	writeValidArtifact(t, dir)
+	output := filepath.Join(dir, "benchmark.txt")
+	if err := exportBenchmarks(dir, output); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		"pkg: github.com/goplus/llgo/benchmark/baseline",
+		"Unit file-bytes better=lower assume=exact",
+		"Unit build-ns better=lower",
+		"BenchmarkProgram/cprintf 1 1 file-bytes 1 text-bytes 1 data-bytes 1 bss-bytes 1 build-ns 1 run-ns",
+		"BenchmarkRuntimeGetG-1 100 12.5 ns/op",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("export does not contain %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestExportBenchmarksRejectsInvalidInput(t *testing.T) {
+	if err := exportBenchmarks(t.TempDir(), ""); err == nil ||
+		!strings.Contains(err.Error(), "benchmark-output") {
+		t.Fatalf("exportBenchmarks error = %v", err)
+	}
+}
+
 func TestWriteMetricsRejectsDirectory(t *testing.T) {
 	if err := writeMetrics(t.TempDir(), []metric{{Name: "one", Unit: "bytes", Value: 1}}); err == nil {
 		t.Fatal("writeMetrics unexpectedly accepted a directory")
@@ -425,6 +457,14 @@ func TestRunCLI(t *testing.T) {
 	dir := t.TempDir()
 	writeValidArtifact(t, dir)
 	if err := runCLI(context.Background(), []string{"-mode=validate", "-out", dir}); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "benchmark.txt")
+	if err := runCLI(context.Background(), []string{
+		"-mode=export",
+		"-out", dir,
+		"-benchmark-output", output,
+	}); err != nil {
 		t.Fatal(err)
 	}
 }
