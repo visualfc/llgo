@@ -189,7 +189,9 @@ jobs:
           - ubuntu-latest
         llvm: [19]
         go: ["1.24.2", "1.26.5"]
-        shard: ["0", "1", "2", "3"]
+        # In-command package parallelism lets Ubuntu use two shards while
+        # retaining headroom for the serial std build-mode checks.
+        shard: ["0", "1"]
         include:
           - go: "1.24.2"
             lane: compatibility
@@ -198,13 +200,12 @@ jobs:
         exclude:
           # The full demo lane above exercises Go 1.24 user-project/runtime
           # compatibility on macOS. Keep the much larger per-package
-          # compatibility matrix on Ubuntu to avoid two redundant Mac shards.
+          # compatibility matrix on Ubuntu and use one parallel primary shard
+          # on macOS.
           - os: macos-latest
             go: "1.24.2"
           - os: macos-latest
-            shard: "2"
-          - os: macos-latest
-            shard: "3"
+            shard: "1"
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -235,7 +236,8 @@ jobs:
       - name: run llgo test
         env:
           SHARD_INDEX: ${{ matrix.shard }}
-          SHARD_TOTAL: ${{ startsWith(matrix.os, 'macos') && '2' || '4' }}
+          SHARD_TOTAL: ${{ startsWith(matrix.os, 'macos') && '1' || '2' }}
+          TEST_JOBS: ${{ startsWith(matrix.os, 'macos') && '3' || '4' }}
         run: |
           set -euo pipefail
 
@@ -258,17 +260,18 @@ jobs:
           fi
           printf '  %s\n' "${selected[@]}"
 
-          # Run per-package and print elapsed time to keep logs readable.
           std_pkgs=()
           for pkg in "${selected[@]}"; do
-            echo "==> llgo test -timeout=20m -bench=^BenchmarkGo126 -benchtime=1x ${pkg}"
-            SECONDS=0
-            llgo test -timeout=20m -bench='^BenchmarkGo126' -benchtime=1x "${pkg}"
             if [[ "${{ matrix.os }}" == ubuntu-latest && "${{ matrix.go }}" == 1.26.5 && "${pkg}" == */test/std/* ]]; then
               std_pkgs+=("${pkg}")
             fi
-            echo "==> done ${pkg} (${SECONDS}s)"
           done
+
+          echo "==> llgo test -p=${TEST_JOBS} (${#selected[@]} packages)"
+          SECONDS=0
+          llgo test -p="${TEST_JOBS}" -timeout=20m -bench='^BenchmarkGo126' -benchtime=1x "${selected[@]}"
+          echo "==> llgo test done (${SECONDS}s)"
+
           if [[ "${#std_pkgs[@]}" -ne 0 ]]; then
             dev/test_std_buildmodes.sh "${std_pkgs[@]}"
           fi

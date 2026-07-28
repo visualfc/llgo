@@ -76,14 +76,13 @@ LLGo-specific command flags such as `-pclntab` remain in
 `cmd/internal/flags`. Both paths write only typed `internal/build.Config`
 fields; the build package does not parse command strings.
 
-The golden-test `flags.txt` format now accepts native Go build flags instead of
-the private `-dbg` token. It accepts `-flag=value` and `-flag value`, single or
-double dashes, blank lines, comments, shell-style quoting, and multiple
-ordinary flags on one line. An unquoted argument-list form such as
-`-ldflags=-s -w=false` consumes the remainder of its line; quote that value to
-put another build flag on the same line. The removed `-dbg` spelling reports a
-migration error. The debug fixture uses `-ldflags=-w=false`, so ModeGen debug
-metadata follows the same linker semantics as the CLI.
+The golden-test `flags.txt` format accepts native Go build flags. It accepts
+`-flag=value` and `-flag value`, single or double dashes, blank lines, comments,
+shell-style quoting, and multiple ordinary flags on one line. An unquoted
+argument-list form such as `-ldflags=-s -w=false` consumes the remainder of its
+line; quote that value to put another build flag on the same line. The debug
+fixture uses `-ldflags=-w=false`, so ModeGen debug metadata follows the same
+linker semantics as the CLI.
 
 This is syntax compatibility, not complete linker-backend support. Among
 `-ldflags` options, this change translates only `-s` and `-w` into typed LLGo

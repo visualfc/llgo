@@ -50,16 +50,15 @@ func TestApplyGoBuildFlagsFile(t *testing.T) {
 	}
 }
 
-func TestApplyGoBuildFlagsFileErrorsIncludePath(t *testing.T) {
-	for _, data := range []string{"-ldflags='unterminated\n", "-dbg\n"} {
-		dir := t.TempDir()
-		path := filepath.Join(dir, "flags.txt")
-		if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		err := applyGoBuildFlagsFile(new(build.Config), path)
-		if err == nil || !strings.Contains(err.Error(), path) {
-			t.Fatalf("applyGoBuildFlagsFile(%q) error = %v, want path", data, err)
-		}
+func TestApplyGoBuildFlagsFileErrorIncludesPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "flags.txt")
+	data := "-ldflags='unterminated\n"
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := applyGoBuildFlagsFile(new(build.Config), path)
+	if err == nil || !strings.Contains(err.Error(), path) {
+		t.Fatalf("applyGoBuildFlagsFile(%q) error = %v, want path", data, err)
 	}
 }

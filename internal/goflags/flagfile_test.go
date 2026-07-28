@@ -100,7 +100,6 @@ func TestParseFlagFileErrors(t *testing.T) {
 		`-tags='unterminated`,
 		"-trimpath \\",
 		`-ldflags='-s -w=false`,
-		`-dbg`,
 	} {
 		if _, err := ParseFlagFile(input); err == nil {
 			t.Fatalf("ParseFlagFile(%q) succeeded, want error", input)
