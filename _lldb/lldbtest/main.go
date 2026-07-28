@@ -116,6 +116,15 @@ func FuncWithAllTypeParams(
 	err error,
 	fn func(string) (int, error),
 ) (int, error) {
+	// Keep register parameters at stable locations for cross-platform inspection.
+	_ = &i32
+	_ = &i64
+	_ = &i
+	_ = &u32
+	_ = &u64
+	_ = &u
+	_ = &f32
+	_ = &f64
 	// Expected:
 	//   all variables: i8 i16 i32 i64 i u8 u16 u32 u64 u f32 f64 b c64 c128 slice arr arr2 s e f pf pi intr m c err fn
 	//   i32: 3
@@ -558,6 +567,7 @@ func main() {
 	// Expected:
 	//   all variables: s i err
 	//   s.i8: '\x12'
+	println(s.i8)
 
 	// Expected(skip):
 	//   globalStruct.i8: '\x01'
