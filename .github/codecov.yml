@@ -3,8 +3,6 @@ ignore:
   - "chore"
   - "cmd"
   - "cl/cltest"
-  - "internal/build"
-  - "internal/cabi"
   - "internal/llgen"
   - "internal/mockable"
   - "internal/packages"
