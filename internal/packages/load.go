@@ -121,9 +121,11 @@ type Cached struct {
 }
 
 type aDeduper struct {
-	cache   sync.Map
-	setpath func(path string, name string) string
-	preload func(pkg *types.Package, syntax []*ast.File)
+	cache     sync.Map
+	checked   sync.Map
+	setpath   func(path string, name string) string
+	preload   func(pkg *types.Package, syntax []*ast.File)
+	llgoFiles map[string][]string
 }
 
 type Deduper = *aDeduper
@@ -138,6 +140,10 @@ func (p Deduper) SetPreload(fn func(pkg *types.Package, syntax []*ast.File)) {
 
 func (p Deduper) SetPkgPath(fn func(path, name string) string) {
 	p.setpath = fn
+}
+
+func (p Deduper) SetLLGoFiles(files map[string][]string) {
+	p.llgoFiles = files
 }
 
 func (p Deduper) Check(id string) *Cached {
@@ -207,6 +213,12 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 		}()
 		if dedup.setpath != nil {
 			lpkg.PkgPath = dedup.setpath(lpkg.PkgPath, lpkg.Name)
+		}
+		if _, ok := dedup.checked.Load(lpkg.PkgPath); !ok {
+			dedup.checked.Store(lpkg.PkgPath, struct{}{})
+			if files, ok := dedup.llgoFiles[lpkg.PkgPath]; ok {
+				lpkg.CompiledGoFiles = append(lpkg.CompiledGoFiles, files...)
+			}
 		}
 	}
 

@@ -149,7 +149,7 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 	m.pkg.PkgID = p.ID
 
 	// Go source files
-	goFilesList, err := digestFilesWithOverlay(p.GoFiles, c.conf.Overlay)
+	goFilesList, err := digestFilesWithOverlay(p.GoFiles, c.buildConf.Overlay)
 	if err != nil {
 		return fmt.Errorf("digest go files: %w", err)
 	}
@@ -157,7 +157,7 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 
 	// Alt package files (if any)
 	if pkg.AltPkg != nil {
-		altList, err := digestFilesWithOverlay(pkg.AltPkg.GoFiles, c.conf.Overlay)
+		altList, err := digestFilesWithOverlay(pkg.AltPkg.GoFiles, c.buildConf.Overlay)
 		if err != nil {
 			return fmt.Errorf("digest alt go files: %w", err)
 		}
@@ -172,7 +172,7 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 	}
 	otherFiles = append(otherFiles, sfiles...)
 	if len(otherFiles) > 0 {
-		otherList, err := digestFilesWithOverlay(otherFiles, c.conf.Overlay)
+		otherList, err := digestFilesWithOverlay(otherFiles, c.buildConf.Overlay)
 		if err != nil {
 			return fmt.Errorf("digest other files: %w", err)
 		}

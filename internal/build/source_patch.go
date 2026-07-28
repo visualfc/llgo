@@ -10,7 +10,6 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,56 +37,57 @@ type sourcePatchBuildContext struct {
 	buildFlags []string
 }
 
-func buildSourcePatchOverlay(base map[string][]byte, runtimeDir string) (map[string][]byte, error) {
-	return buildSourcePatchOverlayForGOROOT(base, runtimeDir, runtime.GOROOT(), sourcePatchBuildContext{})
-}
-
-func buildSourcePatchOverlayForGOROOT(base map[string][]byte, runtimeDir, goroot string, ctx sourcePatchBuildContext) (map[string][]byte, error) {
+func buildSourcePatchOverlayForGOROOT(base map[string][]byte, runtimeDir, goroot string, ctx sourcePatchBuildContext) (map[string][]byte, map[string][]string, error) {
 	var out map[string][]byte
+	pkgFiles := make(map[string][]string)
 	for _, pkgPath := range llruntime.SourcePatchPkgPaths() {
-		changed, next, err := applySourcePatchForPkg(base, out, runtimeDir, goroot, pkgPath, ctx)
+		changed, next, files, err := applySourcePatchForPkg(base, out, runtimeDir, goroot, pkgPath, ctx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !changed {
 			continue
 		}
 		out = next
+		pkgFiles[pkgPath] = files
 	}
 	if out == nil {
-		return base, nil
+		return base, nil, nil
 	}
-	return out, nil
+	return out, pkgFiles, nil
 }
 
-func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot, pkgPath string, ctx sourcePatchBuildContext) (bool, map[string][]byte, error) {
+func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot, pkgPath string, ctx sourcePatchBuildContext) (bool, map[string][]byte, []string, error) {
 	patchDir := filepath.Join(runtimeDir, "_patch", filepath.FromSlash(pkgPath))
 	entries, err := os.ReadDir(patchDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, current, nil
+			return false, current, nil, nil
 		}
-		return false, nil, fmt.Errorf("read source patch dir %s: %w", pkgPath, err)
+		return false, nil, nil, fmt.Errorf("read source patch dir %s: %w", pkgPath, err)
 	}
 
 	srcDir := filepath.Join(goroot, "src", filepath.FromSlash(pkgPath))
 	srcEntries, err := os.ReadDir(srcDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, current, nil
+			return false, current, nil, nil
 		}
 		if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EPERM) {
-			return false, current, nil
+			return false, current, nil, nil
 		}
-		return false, nil, fmt.Errorf("read stdlib dir %s: %w", pkgPath, err)
+		return false, nil, nil, fmt.Errorf("read stdlib dir %s: %w", pkgPath, err)
 	}
 
 	var (
 		out       = current
 		changed   bool
-		patchSrcs = make(map[string][]byte)
-		skipAll   bool
-		skips     = make(map[string]struct{})
+		patchSrcs = make(map[string]struct {
+			filename string
+			data     []byte
+		})
+		skipAll bool
+		skips   = make(map[string]struct{})
 	)
 	readOverlay := func(filename string) ([]byte, error) {
 		if out != nil {
@@ -102,7 +102,7 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 	}
 	buildCtx, err := newSourcePatchMatchContext(goroot, ctx)
 	if err != nil {
-		return false, nil, err
+		return false, nil, nil, err
 	}
 
 	for _, entry := range entries {
@@ -115,7 +115,7 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 		}
 		match, err := buildCtx.MatchFile(patchDir, name)
 		if err != nil {
-			return false, nil, fmt.Errorf("match source patch file %s: %w", filepath.Join(patchDir, name), err)
+			return false, nil, nil, fmt.Errorf("match source patch file %s: %w", filepath.Join(patchDir, name), err)
 		}
 		if !match {
 			continue
@@ -123,13 +123,19 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 		filename := filepath.Join(patchDir, name)
 		src, err := readOverlay(filename)
 		if err != nil {
-			return false, nil, fmt.Errorf("read source patch file %s: %w", filename, err)
+			return false, nil, nil, fmt.Errorf("read source patch file %s: %w", filename, err)
 		}
 		directives, err := collectSourcePatchDirectives(src)
 		if err != nil {
-			return false, nil, fmt.Errorf("parse source patch directives %s: %w", filename, err)
+			return false, nil, nil, fmt.Errorf("parse source patch directives %s: %w", filename, err)
 		}
-		patchSrcs[name] = buildInjectedSourcePatchFile(filename, src)
+		patchSrcs[name] = struct {
+			filename string
+			data     []byte
+		}{
+			filename,
+			buildInjectedSourcePatchFile(filename, src),
+		}
 		if directives.skipAll {
 			skipAll = true
 		}
@@ -138,7 +144,7 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 		}
 	}
 	if len(patchSrcs) == 0 {
-		return false, current, nil
+		return false, current, nil, nil
 	}
 
 	ensureOverlay := func() {
@@ -161,7 +167,7 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 			}
 			match, err := buildCtx.MatchFile(srcDir, name)
 			if err != nil {
-				return false, nil, fmt.Errorf("match stdlib assembly file %s: %w", filepath.Join(srcDir, name), err)
+				return false, nil, nil, fmt.Errorf("match stdlib assembly file %s: %w", filepath.Join(srcDir, name), err)
 			}
 			if !match {
 				continue
@@ -172,6 +178,7 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 		}
 	}
 
+	var files []string
 	if skipAll {
 		for _, entry := range srcEntries {
 			if entry.IsDir() {
@@ -184,11 +191,11 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 			filename := filepath.Join(srcDir, name)
 			src, err := readOverlay(filename)
 			if err != nil {
-				return false, nil, fmt.Errorf("read stdlib source file %s: %w", filename, err)
+				return false, nil, nil, fmt.Errorf("read stdlib source file %s: %w", filename, err)
 			}
 			stub, err := packageStubSource(src)
 			if err != nil {
-				return false, nil, fmt.Errorf("build stdlib stub %s: %w", filename, err)
+				return false, nil, nil, fmt.Errorf("build stdlib stub %s: %w", filename, err)
 			}
 			ensureOverlay()
 			out[filename] = stub
@@ -206,11 +213,11 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 			filename := filepath.Join(srcDir, name)
 			src, err := readOverlay(filename)
 			if err != nil {
-				return false, nil, fmt.Errorf("read stdlib source file %s: %w", filename, err)
+				return false, nil, nil, fmt.Errorf("read stdlib source file %s: %w", filename, err)
 			}
 			filtered, changedFile, err := filterSourcePatchFile(src, skips)
 			if err != nil {
-				return false, nil, fmt.Errorf("filter stdlib source file %s: %w", filename, err)
+				return false, nil, nil, fmt.Errorf("filter stdlib source file %s: %w", filename, err)
 			}
 			if !changedFile {
 				continue
@@ -224,10 +231,11 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 	for name, src := range patchSrcs {
 		target := filepath.Join(srcDir, "z_llgo_patch_"+name)
 		ensureOverlay()
-		out[target] = src
+		out[target] = src.data
+		files = append(files, src.filename)
 		changed = true
 	}
-	return changed, out, nil
+	return changed, out, files, nil
 }
 
 func newSourcePatchMatchContext(goroot string, ctx sourcePatchBuildContext) (build.Context, error) {

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"log"
@@ -207,6 +208,7 @@ type Config struct {
 	// packages in the current build.
 	GlobalRewrites map[string]Rewrites
 	ModuleHook     ModuleHook
+	Overlay        map[string][]byte
 }
 
 type Rewrites map[string]string
@@ -436,7 +438,8 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.Overlay, err = buildSourcePatchOverlayForGOROOT(cfg.Overlay, env.LLGoRuntimeDir(), sourcePatchGOROOT, sourcePatchBuildContext{
+	var llgoFiles map[string][]string
+	conf.Overlay, llgoFiles, err = buildSourcePatchOverlayForGOROOT(conf.Overlay, env.LLGoRuntimeDir(), sourcePatchGOROOT, sourcePatchBuildContext{
 		goos:       conf.Goos,
 		goarch:     conf.Goarch,
 		goversion:  sourcePatchGoVersion,
@@ -445,6 +448,16 @@ func Do(args []string, conf *Config) ([]Package, error) {
 	if err != nil {
 		return nil, err
 	}
+	dedup.SetLLGoFiles(llgoFiles)
+	cfg.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+		if data, ok := conf.Overlay[filename]; ok {
+			src = data
+		}
+		// We implicitly promise to keep doing ast.Object resolution. :(
+		const mode = parser.AllErrors | parser.ParseComments
+		return parser.ParseFile(fset, filename, src, mode)
+	}
+
 	initial, err := packages.LoadExWithGoVersion(dedup, sizes, cfg, conf.GoVersion, patterns...)
 	if err != nil {
 		return nil, err
