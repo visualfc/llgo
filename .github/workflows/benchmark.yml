@@ -100,15 +100,3 @@ jobs:
           benchmark-file: .benchmark/results/benchmark.txt
           platform-id: ${{ matrix.id }}
           platform-label: ${{ matrix.display }}
-
-      - name: Upload benchmark artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: llgo-baseline-benchmark-${{ matrix.id }}
-          path: |
-            .benchmark/results/size.json
-            .benchmark/results/time.json
-            .benchmark/results/go.txt
-            .benchmark/results/benchmark.txt
-          if-no-files-found: error
-          retention-days: 30
