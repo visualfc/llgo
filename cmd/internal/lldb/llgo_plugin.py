@@ -13,10 +13,15 @@ def log(*args: Any, **kwargs: Any) -> None:
 
 
 def __lldb_init_module(debugger: lldb.SBDebugger, _: Dict[str, Any]) -> None:
+    register_commands(debugger)
+
+
+def register_commands(debugger: lldb.SBDebugger) -> None:
+    debugger.HandleCommand('command container add llgo')
     debugger.HandleCommand(
-        'command script add -f llgo_plugin.print_go_expression p')
+        'command script add -f llgo_plugin.print_go_expression llgo print')
     debugger.HandleCommand(
-        'command script add -f llgo_plugin.print_all_variables v')
+        'command script add -f llgo_plugin.print_all_variables llgo vars')
 
 
 def is_llgo_compiler(target: lldb.SBTarget) -> bool:

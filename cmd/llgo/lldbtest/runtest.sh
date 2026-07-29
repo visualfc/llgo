@@ -78,4 +78,5 @@ trap 'rm -rf "$non_llgo_dir"' EXIT
 printf 'int main(void) { return 0; }\n' | \
     "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo" \
-    -o 'script assert not llgo_plugin.is_llgo_compiler(lldb.target)'
+    -o 'script assert not llgo_plugin.is_llgo_compiler(lldb.target)' \
+    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); assert result.Succeeded() and "2" in result.GetOutput()'

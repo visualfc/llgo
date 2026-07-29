@@ -39,7 +39,9 @@ llgo lldb -lldb /opt/homebrew/bin/lldb -- --batch ./cl/_testdata/debug/out
 
 The command embeds and loads the LLGo Python adapter, so an installed `llgo`
 does not depend on a source checkout. `cmd/llgo/lldbtest/runlldb.sh` remains as
-a thin compatibility wrapper.
+a thin compatibility wrapper. Adapter commands live under `llgo`, including
+`llgo print` and `llgo vars`; stock LLDB commands and aliases such as `p` and
+`v` are left unchanged.
 
 The integration fixture follows LLDB's API-test style: `main.go` marks
 executable breakpoint lines with `LLDB_BREAK`, while `test.py` keeps the

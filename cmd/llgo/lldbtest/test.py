@@ -284,10 +284,7 @@ class LLDBDebugger:
             raise LLDBTestException(
                 "Target does not contain a supported LLGo debugger marker")
 
-        self.debugger.HandleCommand(
-            'command script add -f llgo_plugin.print_go_expression p')
-        self.debugger.HandleCommand(
-            'command script add -f llgo_plugin.print_all_variables v')
+        llgo_plugin.register_commands(self.debugger)
 
     def set_breakpoint(self, file_spec: str, line_number: int) -> lldb.SBBreakpoint:
         bp = self.target.BreakpointCreateByLocation(file_spec, line_number)

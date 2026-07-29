@@ -137,9 +137,23 @@ func TestRunRequiresExecutable(t *testing.T) {
 
 func TestEmbeddedPluginIdentity(t *testing.T) {
 	source := string(pluginSource)
-	for _, want := range []string{"__lldb_init_module", "__llgo_debugger_marker_v1", "is_llgo_compiler"} {
+	for _, want := range []string{
+		"__lldb_init_module",
+		"__llgo_debugger_marker_v1",
+		"is_llgo_compiler",
+		"llgo print",
+		"llgo vars",
+	} {
 		if !strings.Contains(source, want) {
 			t.Errorf("embedded plugin is missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{
+		"llgo_plugin.print_go_expression p'",
+		"llgo_plugin.print_all_variables v'",
+	} {
+		if strings.Contains(source, unwanted) {
+			t.Errorf("embedded plugin overrides stock LLDB command in %q", unwanted)
 		}
 	}
 }
