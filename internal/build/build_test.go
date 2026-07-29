@@ -718,7 +718,7 @@ func TestPrepareLocalVariablesKeepsAltDeclarationOwners(t *testing.T) {
 	file, err := parser.ParseFile(fset, "runtime.go", `package runtime
 
 //llgo:gls
-var goroutineState uint32
+var goroutineState *uint32
 
 //llgo:tls
 var threadState uintptr
@@ -752,14 +752,23 @@ var threadState uintptr
 	if err != nil {
 		t.Fatalf("prepareLocalVariables confused standard and alternate runtime packages: %v", err)
 	}
-	for name, kind := range map[string]llssa.Locality{
-		"runtime.goroutineState": llssa.GoroutineLocal,
-		"runtime.threadState":    llssa.ThreadLocal,
+	for name, want := range map[string]llssa.VariableLocality{
+		"runtime.goroutineState": {
+			Info:         llssa.LocalityInfo{Locality: llssa.GoroutineLocal},
+			LocalStorage: llssa.LocalStoragePackage,
+		},
+		"runtime.threadState": {
+			Info:         llssa.LocalityInfo{Locality: llssa.ThreadLocal},
+			LocalStorage: llssa.LocalStorageNativeTLS,
+		},
 	} {
 		got, ok := prog.VariableLocality(name)
-		if !ok || got.Locality != kind || got.LocalStorage != llssa.LocalStorageNativeTLS {
+		if !ok || got.Locality != want.Locality || got.LocalStorage != want.LocalStorage {
 			t.Fatalf("%s locality = %+v, %v", name, got, ok)
 		}
+	}
+	if !prog.NeedsLocalContext() {
+		t.Fatal("active alternate runtime package did not require a local context")
 	}
 }
 

@@ -55,6 +55,7 @@ type localityInfos struct {
 	entries            map[string]VariableLocality
 	ownerlessEntries   map[string]VariableLocality
 	declarationEntries map[string]map[string]VariableLocality
+	activePackages     map[string]struct{}
 	parsedPackages     map[*types.Package]struct{}
 }
 
@@ -63,6 +64,7 @@ func newLocalityInfos() *localityInfos {
 		entries:            make(map[string]VariableLocality),
 		ownerlessEntries:   make(map[string]VariableLocality),
 		declarationEntries: make(map[string]map[string]VariableLocality),
+		activePackages:     make(map[string]struct{}),
 		parsedPackages:     make(map[*types.Package]struct{}),
 	}
 }
@@ -133,6 +135,19 @@ func (p Program) SetLocalStorage(name string, storage LocalStorage) {
 // declaration.
 func (p Program) SetLocalStorageFor(pkg *types.Package, name string, storage LocalStorage) {
 	p.localities.updateFor(pkg, name, func(info *VariableLocality) { info.LocalStorage = storage })
+}
+
+// ActivateLocalitiesFor marks pkg's concrete import path as part of the
+// effective build graph. Alternate packages are scanned and prepared before
+// link reachability is known; their declarations must not require a
+// LocalContext merely because metadata exists.
+func (p Program) ActivateLocalitiesFor(pkg *types.Package) {
+	if pkg == nil {
+		return
+	}
+	p.localities.mu.Lock()
+	p.localities.activePackages[pkg.Path()] = struct{}{}
+	p.localities.mu.Unlock()
 }
 
 func (p Program) VariableLocality(name string) (VariableLocality, bool) {
@@ -369,8 +384,8 @@ func (p Program) NeedsLocalContext() bool {
 		}
 	}
 	for _, entries := range p.localities.declarationEntries {
-		for _, info := range entries {
-			if needsContext(info) {
+		for owner, info := range entries {
+			if _, active := p.localities.activePackages[owner]; active && needsContext(info) {
 				return true
 			}
 		}

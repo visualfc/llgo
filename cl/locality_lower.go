@@ -405,6 +405,9 @@ func (p *context) ensureLocalInitializer(b llssa.Builder, owner *localPackage, k
 }
 
 func (p *context) initializeLocalGuards(b llssa.Builder) {
+	if p.goTyps == nil {
+		return
+	}
 	owner := p.locality.packages[p.goTyps.Path()]
 	if owner == nil {
 		return

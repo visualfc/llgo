@@ -1990,10 +1990,31 @@ func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) er
 				return
 			}
 			seen[p.Types] = true
-			firstErr = cl.PrepareLocalVariables(prog, p.Fset, p.Types, p.TypesInfo, p.Syntax)
+			firstErr = cl.PrepareInactiveLocalVariables(prog, p.Fset, p.Types, p.TypesInfo, p.Syntax)
 		})
 		if firstErr != nil {
 			return firstErr
+		}
+	}
+
+	if len(groups) == 0 {
+		return nil
+	}
+	active := make(map[string]bool)
+	activate := func(p *packages.Package) {
+		if p.Types == nil || p.IllTyped {
+			return
+		}
+		active[llssa.PathOf(p.Types)] = true
+		prog.ActivateLocalitiesFor(p.Types)
+	}
+	packages.Visit(groups[0], nil, activate)
+	for _, roots := range groups[1:] {
+		for _, root := range roots {
+			if root == nil || root.Types == nil || !active[llssa.PathOf(root.Types)] {
+				continue
+			}
+			packages.Visit([]*packages.Package{root}, nil, activate)
 		}
 	}
 	return nil

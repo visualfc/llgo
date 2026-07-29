@@ -32,6 +32,22 @@ import (
 // construction, then records the storage strategy selected by the independent
 // package-layout planner.
 func PrepareLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.Package, info *types.Info, files []*ast.File) error {
+	if err := prepareLocalVariables(prog, fset, pkg, info, files); err != nil {
+		return err
+	}
+	prog.ActivateLocalitiesFor(pkg)
+	return nil
+}
+
+// PrepareInactiveLocalVariables prepares declarations from an alternate
+// package without making them affect the program-wide LocalContext decision.
+// The build driver activates an alternate package only when its canonical
+// package participates in the effective dependency graph.
+func PrepareInactiveLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.Package, info *types.Info, files []*ast.File) error {
+	return prepareLocalVariables(prog, fset, pkg, info, files)
+}
+
+func prepareLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.Package, info *types.Info, files []*ast.File) error {
 	if pkg == nil || info == nil {
 		return nil
 	}

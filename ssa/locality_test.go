@@ -140,6 +140,30 @@ func TestNeedsLocalContext(t *testing.T) {
 	}
 }
 
+func TestNeedsLocalContextIgnoresInactiveDeclarations(t *testing.T) {
+	prog := NewProgram(nil)
+	std := types.NewPackage("runtime", "runtime")
+	alt := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
+	name := "runtime.state"
+
+	prog.DeclareLocality(std, "state", LocalityInfo{Locality: ThreadLocal})
+	prog.SetLocalStorageFor(std, name, LocalStorageNativeTLS)
+	prog.DeclareLocality(alt, "state", LocalityInfo{Locality: GoroutineLocal})
+	prog.SetLocalStorageFor(alt, name, LocalStoragePackage)
+	if prog.NeedsLocalContext() {
+		t.Fatal("scanned inactive alternate declaration required a local context")
+	}
+
+	prog.ActivateLocalitiesFor(std)
+	if prog.NeedsLocalContext() {
+		t.Fatal("active native-TLS standard declaration used alternate package storage")
+	}
+	prog.ActivateLocalitiesFor(alt)
+	if !prog.NeedsLocalContext() {
+		t.Fatal("active alternate package storage did not require a local context")
+	}
+}
+
 func TestRejectsLinknameLocality(t *testing.T) {
 	prog := NewProgram(nil)
 	target := "example.com/target.value"
