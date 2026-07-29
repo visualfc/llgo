@@ -20,7 +20,6 @@ import (
 	"unsafe"
 
 	clitedebug "github.com/goplus/llgo/runtime/internal/clite/debug"
-	"github.com/goplus/llgo/runtime/internal/clite/tls"
 )
 
 type CallerFrame struct {
@@ -59,10 +58,15 @@ type callerLocationStore struct {
 	goexitPCBase  uintptr
 }
 
-var callerLocationTLS = tls.Alloc[*callerLocationStore](nil)
+// callerLocationStoreCurrent follows the logical goroutine: its shadow stack
+// and synthetic PCs must move with that goroutine when the backend eventually
+// permits migration between OS threads.
+//
+//llgo:gls
+var callerLocationStoreCurrent *callerLocationStore
 
 func PushCallerLocationFrame(entry uintptr, name, file string, startLine int) int {
-	store := callerLocationStoreForThread()
+	store := callerLocationStoreForGoroutine()
 	mark := len(store.stack)
 	store.stack = append(store.stack, CallerFrame{
 		PC:        entry,
@@ -76,7 +80,7 @@ func PushCallerLocationFrame(entry uintptr, name, file string, startLine int) in
 }
 
 func PopCallerLocationFrame(mark int) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil {
 		return
 	}
@@ -108,7 +112,7 @@ func RecordPanicLocation(entry uintptr, name, file string, line int) {
 }
 
 func updateCurrentFrame(entry uintptr, name, file string, line int) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil {
 		return
 	}
@@ -132,7 +136,7 @@ func updateCurrentFrame(entry uintptr, name, file string, line int) {
 }
 
 func recordPCLocation(pc, entry uintptr, name, file string, line int) {
-	store := callerLocationStoreForThread()
+	store := callerLocationStoreForGoroutine()
 	for i := range store.frames {
 		frame := &store.frames[i]
 		if (pc != 0 && frame.PC == pc) || (pc == 0 && frame.PC == 0 && frame.Entry == entry) {
@@ -162,7 +166,7 @@ func Caller(skip int) (CallerFrame, bool) {
 	if skip < 0 {
 		return CallerFrame{}, false
 	}
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || len(store.stack) == 0 {
 		return CallerFrame{}, false
 	}
@@ -186,7 +190,7 @@ func Callers(skip int, pcs []uintptr) int {
 	if skip < 0 {
 		skip = 0
 	}
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || len(store.stack) == 0 {
 		return 0
 	}
@@ -230,7 +234,7 @@ func SavePanicCallerFrames() {
 }
 
 func BindCallerLocation(pc uintptr, rawName string) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || pc == 0 {
 		return
 	}
@@ -273,7 +277,7 @@ func FrameForPC(pc uintptr) (CallerFrame, bool) {
 			return frame, true
 		}
 	}
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || pc == 0 {
 		return CallerFrame{}, false
 	}
@@ -311,7 +315,7 @@ func FrameForPC(pc uintptr) (CallerFrame, bool) {
 }
 
 func syntheticFrameForPC(pc uintptr) (CallerFrame, bool) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil {
 		return CallerFrame{}, false
 	}
@@ -330,11 +334,11 @@ func syntheticFrameForPC(pc uintptr) (CallerFrame, bool) {
 	return frame, true
 }
 
-func callerLocationStoreForThread() *callerLocationStore {
-	store := callerLocationTLS.Get()
+func callerLocationStoreForGoroutine() *callerLocationStore {
+	store := callerLocationStoreCurrent
 	if store == nil {
 		store = new(callerLocationStore)
-		callerLocationTLS.Set(store)
+		callerLocationStoreCurrent = store
 	}
 	return store
 }

@@ -6,11 +6,16 @@ package sync
 
 import (
 	"sync"
-	"sync/atomic"
 	"unsafe"
-
-	"github.com/goplus/llgo/runtime/internal/clite/tls"
 )
+
+// poolLocals belongs to the current LLGo P. The 1:1 backend permanently binds
+// each P to one M/OS thread, so TLS preserves the execution-resource locality
+// that sync.Pool requires. This is intentionally TLS rather than GLS: cached
+// values do not belong to a logical goroutine.
+//
+//llgo:tls
+var poolLocals map[*Pool]*poolLocal
 
 // A Pool is a set of temporary objects that may be individually saved and
 // retrieved.
@@ -127,42 +132,18 @@ func (p *Pool) pin() (*poolLocal, int) {
 		panic("nil Pool")
 	}
 
-	if ptr := atomic.LoadPointer(&p.local); ptr != nil {
-		handle := (*tls.Handle[*poolLocal])(ptr)
-		l := handle.Get()
-		if l == nil {
-			l = &poolLocal{}
-			handle.Set(l)
+	l := poolLocals[p]
+	if l == nil {
+		l = new(poolLocal)
+		if poolLocals == nil {
+			poolLocals = make(map[*Pool]*poolLocal)
 		}
-		return l, 0
+		poolLocals[p] = l
 	}
-
-	return p.pinSlow()
-}
-
-func (p *Pool) pinSlow() (*poolLocal, int) {
-	p.once.Do(func() {
-		handle := tls.Alloc[*poolLocal](func(head **poolLocal) {
-			if head != nil {
-				atomic.StorePointer(&p.victim, unsafe.Pointer(*head))
-			}
-		})
-		atomic.StorePointer(&p.local, unsafe.Pointer(&handle))
-	})
-	handle := (*tls.Handle[*poolLocal])(p.local)
-	l := &poolLocal{}
-	handle.Set(l)
 	return l, 0
 }
 
 func (p *Pool) getSlow(pid int) any {
-	if ptr := atomic.LoadPointer(&p.victim); ptr != nil {
-		l := (*poolLocal)(ptr)
-		if x, _ := l.shared.popTail(); x != nil {
-			return x
-		}
-		atomic.StorePointer(&p.victim, nil)
-	}
 	return nil
 }
 

@@ -111,7 +111,7 @@ func (attr *Attr) GetStackAddr(stackAddr *c.Pointer) c.Int { return 0 }
 func (attr *Attr) SetStackAddr(stackAddr c.Pointer) c.Int { return 0 }
 
 // -----------------------------------------------------------------------------
-// Thread Local Storage
+// Thread lifecycle cleanup
 
 type Key c.Uint
 
@@ -121,13 +121,5 @@ type KeyDestructor func(c.Pointer)
 // llgo:link (*Key).Create C.pthread_key_create
 func (key *Key) Create(destructor KeyDestructor) c.Int { return 0 }
 
-// llgo:link Key.Delete C.pthread_key_delete
-func (key Key) Delete() c.Int { return 0 }
-
-// llgo:link Key.Get C.pthread_getspecific
-func (key Key) Get() c.Pointer { return nil }
-
 // llgo:link Key.Set C.pthread_setspecific
 func (key Key) Set(value c.Pointer) c.Int { return __noop__() }
-
-// -----------------------------------------------------------------------------

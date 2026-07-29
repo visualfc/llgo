@@ -34,20 +34,28 @@ func main() {
 
 // CHECK-LABEL: define ptr @"{{.*}}goroutine._llgo_routine$1"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load { %"{{.*}}String" }, ptr %0, align 8
-// CHECK-NEXT:   %2 = extractvalue { %"{{.*}}String" } %1, 0
+// CHECK-NEXT:   %1 = alloca %"{{.*}}LocalContext", align 8
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 8, i1 false)
+// CHECK-NEXT:   %2 = call i64 @"{{.*}}EnterLocalContext"(ptr %1)
+// CHECK-NEXT:   %3 = load { %"{{.*}}String" }, ptr %0, align 8
+// CHECK-NEXT:   %4 = extractvalue { %"{{.*}}String" } %3, 0
 // CHECK-NEXT:   call void @"{{.*}}FreeRoot"(ptr %0)
-// CHECK-NEXT:   call void @"{{.*}}PrintString"(%"{{.*}}String" %2)
+// CHECK-NEXT:   call void @"{{.*}}PrintString"(%"{{.*}}String" %4)
 // CHECK-NEXT:   call void @"{{.*}}PrintByte"(i8 10)
+// CHECK-NEXT:   call void @"{{.*}}LeaveLocalContext"(ptr %1, i64 %2)
 // CHECK-NEXT:   ret ptr null
 
 // CHECK-LABEL: define ptr @"{{.*}}goroutine._llgo_routine$2"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = load { { ptr, ptr }, %"{{.*}}String" }, ptr %0, align 8
-// CHECK-NEXT:   %2 = extractvalue { { ptr, ptr }, %"{{.*}}String" } %1, 0
-// CHECK-NEXT:   %3 = extractvalue { { ptr, ptr }, %"{{.*}}String" } %1, 1
+// CHECK-NEXT:   %1 = alloca %"{{.*}}LocalContext", align 8
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 8, i1 false)
+// CHECK-NEXT:   %2 = call i64 @"{{.*}}EnterLocalContext"(ptr %1)
+// CHECK-NEXT:   %3 = load { { ptr, ptr }, %"{{.*}}String" }, ptr %0, align 8
+// CHECK-NEXT:   %4 = extractvalue { { ptr, ptr }, %"{{.*}}String" } %3, 0
+// CHECK-NEXT:   %5 = extractvalue { { ptr, ptr }, %"{{.*}}String" } %3, 1
 // CHECK-NEXT:   call void @"{{.*}}FreeRoot"(ptr %0)
-// CHECK-NEXT:   %4 = extractvalue { ptr, ptr } %2, 1
-// CHECK-NEXT:   %5 = extractvalue { ptr, ptr } %2, 0
-// CHECK-NEXT:   call void %5(ptr %4, %"{{.*}}String" %3)
+// CHECK-NEXT:   %6 = extractvalue { ptr, ptr } %4, 1
+// CHECK-NEXT:   %7 = extractvalue { ptr, ptr } %4, 0
+// CHECK-NEXT:   call void %7(ptr %6, %"{{.*}}String" %5)
+// CHECK-NEXT:   call void @"{{.*}}LeaveLocalContext"(ptr %1, i64 %2)
 // CHECK-NEXT:   ret ptr null

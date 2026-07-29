@@ -1,24 +1,45 @@
-# Defer Loop GC Integration
+# Defer Locality and GC Integration
 
 ## Background
 
-`defer` chains are stored in a per-thread TLS slot so that unwind paths can locate the active `*runtime.Defer`. With the default allocator (`AllocU`) backed by Boehm GC (bdwgc), those TLS-resident pointers were invisible to the collector. In stress scenarios—e.g. `TestDeferLoopStress` with 1,000,000 defers—the collector reclaimed the defer nodes, leaving dangling pointers and causing crashes inside the deferred closures.
+`defer` chains belong to the current goroutine, and unwind paths must locate the
+active `*runtime.Defer`. A raw pointer stored only in pthread TLS is invisible to
+the Boehm collector. In stress scenarios—e.g. `TestDeferLoopStress` with
+1,000,000 defers—the collector could reclaim defer nodes, leaving dangling
+pointers and causing crashes inside deferred closures.
 
 Prior experiments (`test-defer-dont-free` branch) confirmed the crash disappeared when allocations bypassed GC (plain `malloc` without `free`), pointing to a root-registration gap rather than logical corruption.
 
-## Solution Overview
+## Current Design
 
-1. **GC-aware TLS slot helper** *(from PR [#1347](https://github.com/goplus/llgo/pull/1347))*
-   - Added `runtime/internal/clite/tls`, which exposes `tls.Alloc` to create per-thread storage that is automatically registered as a Boehm GC root.
-   - `SetThreadDefer` delegates to this helper so every thread reuses the same GC-safe slot without bespoke plumbing.
-   - The package handles TLS key creation, root registration/removal, and invokes an optional destructor when a thread exits.
+1. **Runtime-owned goroutine state**
+   - Each `runtimeContext` owns its `g`, `m`, and `p`; `g.defer_` is the current
+     goroutine's defer-chain head.
+   - The context is allocated with `AllocRoot`, so pointers reachable through
+     `g` remain visible to the collector.
+   - A pointer-free `//llgo:tls` `uintptr` slot locates the current `g`. The
+     slot is only an address cache; the `runtimeContext` allocation is the GC
+     root.
+   - Runtime-created threads release that root in `mexit`. A pthread key remains
+     only as a thread-exit destructor sidecar for main and foreign threads; the
+     current-G read path does not call `pthread_getspecific`.
 
 2. **SSA codegen synchronization**
-   - `ssa/eh.go` now calls `runtime.SetThreadDefer` whenever it updates the TLS pointer (on first allocation and when restoring the previous link during unwind).
+   - `ssa/eh.go` calls `runtime.SetThreadDefer` whenever it updates the current
+     goroutine's defer head (on first allocation and when restoring the
+     previous link during unwind).
    - Defer argument nodes and the `runtime.Defer` struct itself are allocated with `aggregateAllocU`, ensuring new memory comes from GC-managed heaps, and nodes are released via `runtime.FreeDeferNode`.
 
-3. **Non-GC builds**
-   - The `tls` helper falls back to a malloc-backed TLS slot without GC registration, while `FreeDeferNode` continues to release nodes via `c.Free` when building with `-tags nogc`.
+3. **Locality directives**
+   - Runtime state that belongs to a logical goroutine uses `//llgo:gls`.
+   - Physical scheduler and execution-resource slots that must be available
+     before goroutine-local context setup use `//llgo:tls`.
+   - Pointer-bearing locality variables are kept in the GC-rooted locality
+     package payload rather than bespoke pthread-key allocations.
+
+4. **Non-GC builds**
+   - `FreeDeferNode` continues to release nodes via `c.Free` when building with
+     `-tags nogc`.
 
 ## Testing
 
