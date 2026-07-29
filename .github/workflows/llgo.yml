@@ -175,7 +175,7 @@ jobs:
         if: ${{ matrix.lane == 'primary' }}
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
-          bash _lldb/runtest.sh -v
+          bash cmd/llgo/lldbtest/runtest.sh -v
 
       - name: DWARF standard tests
         if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}

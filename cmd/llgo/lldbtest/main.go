@@ -54,35 +54,8 @@ func (s *Struct) Foo(a []int, b string) int {
 
 func FuncWithAllTypeStructParam(s StructWithAllTypeFields) {
 	println(&s)
-	// Expected:
-	//   all variables: s
-	//   s.i8: '\x01'
-	//   s.i16: 2
-	//   s.i32: 3
-	//   s.i64: 4
-	//   s.i: 5
-	//   s.u8: '\x06'
-	//   s.u16: 7
-	//   s.u32: 8
-	//   s.u64: 9
-	//   s.u: 10
-	//   s.f32: 11
-	//   s.f64: 12
-	//   s.b: true
-	//   s.c64: 13 + 14i
-	//   s.c128: 15 + 16i
-	//   s.slice: []int{21, 22, 23}
-	//   s.arr: [3]int{24, 25, 26}
-	//   s.arr2: [3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}
-	//   s.s: "hello"
-	//   s.e: lldbtest.E{i = 30}
-	//   s.pad1: 100
-	//   s.pad2: 200
-	s.i8 = '\b'
-	// Expected:
-	//   s.i8: '\b'
-	//   s.i16: 2
-	println(len(s.s), s.i8)
+	s.i8 = '\b'             // LLDB_BREAK: struct_param_initial
+	println(len(s.s), s.i8) // LLDB_BREAK: struct_param_updated
 }
 
 // Params is a function with all types of parameters.
@@ -124,37 +97,7 @@ func FuncWithAllTypeParams(
 	currentU := u
 	currentF32 := f32
 	currentF64 := f64
-	// Expected:
-	//   all variables: i8 i16 i32 i64 i u8 u16 u32 u64 u f32 f64 b c64 c128 slice arr arr2 s e f pf pi intr m c err fn currentI32 currentI64 currentI currentU32 currentU64 currentU currentF32 currentF64
-	//   currentI32: 3
-	//   currentI64: 4
-	//   currentI: 5
-	//   currentU32: 8
-	//   currentU64: 9
-	//   currentU: 10
-	//   currentF32: 11
-	//   currentF64: 12
-	//   slice: []int{21, 22, 23}
-	//   arr: [3]int{24, 25, 26}
-	//   arr2: [3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}
-	//   slice[0]: 21
-	//   slice[1]: 22
-	//   slice[2]: 23
-	//   arr[0]: 24
-	//   arr[1]: 25
-	//   arr[2]: 26
-	//   arr2[0].i: 27
-	//   arr2[1].i: 28
-	//   arr2[2].i: 29
-	//   e: lldbtest.E{i = 30}
-
-	// Expected(skip):
-	//   i8: '\b'
-	//   i16: 2
-	//   u8: '\x06'
-	//   u16: 7
-	//   b: true
-	println(
+	println( // LLDB_BREAK: all_params_initial
 		i8, i16, currentI32, currentI64, currentI, u8, u16, currentU32, currentU64, currentU,
 		currentF32, currentF64, b,
 		c64, c128,
@@ -205,30 +148,7 @@ func FuncWithAllTypeParams(
 		err,
 		fn,
 	)
-	// Expected:
-	//   i8: '\t'
-	//   i16: 10
-	//   currentI32: 11
-	//   currentI64: 12
-	//   currentI: 13
-	//   u8: '\x0e'
-	//   u16: 15
-	//   currentU32: 16
-	//   currentU64: 17
-	//   currentU: 18
-	//   currentF32: 19
-	//   currentF64: 20
-	//   b: false
-	//   c64: 21 + 22i
-	//   c128: 23 + 24i
-	//   slice: []int{31, 32, 33}
-	//   arr2: [3]lldbtest.E{{i = 37}, {i = 38}, {i = 39}}
-	//   s: "world"
-	//   e: lldbtest.E{i = 40}
-
-	// Expected(skip):
-	//   arr: [3]int{34, 35, 36}
-	return 1, errors.New("some error")
+	return 1, errors.New("some error") // LLDB_BREAK: all_params_updated
 }
 
 type TinyStruct struct {
@@ -261,25 +181,7 @@ type BigStruct struct {
 
 func FuncStructParams(t TinyStruct, s SmallStruct, m MidStruct, b BigStruct) {
 	// println(&t, &s, &m, &b)
-	// Expected:
-	//   all variables: t s m b
-	//   t.I: 1
-	//   s.I: 2
-	//   s.J: 3
-	//   m.I: 4
-	//   m.J: 5
-	//   m.K: 6
-	//   b.I: 7
-	//   b.J: 8
-	//   b.K: 9
-	//   b.L: 10
-	//   b.M: 11
-	//   b.N: 12
-	//   b.O: 13
-	//   b.P: 14
-	//   b.Q: 15
-	//   b.R: 16
-	println(t.I, s.I, s.J, m.I, m.J, m.K, b.I, b.J, b.K, b.L, b.M, b.N, b.O, b.P, b.Q, b.R)
+	println(t.I, s.I, s.J, m.I, m.J, m.K, b.I, b.J, b.K, b.L, b.M, b.N, b.O, b.P, b.Q, b.R) // LLDB_BREAK: struct_values_initial
 	t.I = 10
 	s.I = 20
 	s.J = 21
@@ -296,47 +198,11 @@ func FuncStructParams(t TinyStruct, s SmallStruct, m MidStruct, b BigStruct) {
 	b.P = 77
 	b.Q = 78
 	b.R = 79
-	// Expected:
-	//   all variables: t s m b
-	//   t.I: 10
-	//   s.I: 20
-	//   s.J: 21
-	//   m.I: 40
-	//   m.J: 41
-	//   m.K: 42
-	//   b.I: 70
-	//   b.J: 71
-	//   b.K: 72
-	//   b.L: 73
-	//   b.M: 74
-	//   b.N: 75
-	//   b.O: 76
-	//   b.P: 77
-	//   b.Q: 78
-	//   b.R: 79
-	println("done")
+	println("done") // LLDB_BREAK: struct_values_updated
 }
 
 func FuncStructPtrParams(t *TinyStruct, s *SmallStruct, m *MidStruct, b *BigStruct) {
-	// Expected:
-	//   all variables: t s m b
-	//   t.I: 1
-	//   s.I: 2
-	//   s.J: 3
-	//   m.I: 4
-	//   m.J: 5
-	//   m.K: 6
-	//   b.I: 7
-	//   b.J: 8
-	//   b.K: 9
-	//   b.L: 10
-	//   b.M: 11
-	//   b.N: 12
-	//   b.O: 13
-	//   b.P: 14
-	//   b.Q: 15
-	//   b.R: 16
-	println(t, s, m, b)
+	println(t, s, m, b) // LLDB_BREAK: struct_ptrs_initial
 	t.I = 10
 	s.I = 20
 	s.J = 21
@@ -353,59 +219,23 @@ func FuncStructPtrParams(t *TinyStruct, s *SmallStruct, m *MidStruct, b *BigStru
 	b.P = 77
 	b.Q = 78
 	b.R = 79
-	// Expected:
-	//   all variables: t s m b
-	//   t.I: 10
-	//   s.I: 20
-	//   s.J: 21
-	//   m.I: 40
-	//   m.J: 41
-	//   m.K: 42
-	//   b.I: 70
-	//   b.J: 71
-	//   b.K: 72
-	//   b.L: 73
-	//   b.M: 74
-	//   b.N: 75
-	//   b.O: 76
-	//   b.P: 77
-	//   b.Q: 78
-	//   b.R: 79
-	println(t.I, s.I, s.J, m.I, m.J, m.K, b.I, b.J, b.K, b.L, b.M, b.N, b.O, b.P, b.Q, b.R)
+	println(t.I, s.I, s.J, m.I, m.J, m.K, b.I, b.J, b.K, b.L, b.M, b.N, b.O, b.P, b.Q, b.R) // LLDB_BREAK: struct_ptrs_updated
 	println("done")
 }
 
 func ScopeIf(branch int) {
 	a := 1
-	// Expected:
-	//   all variables: a branch
-	//   a: 1
-	println(a)
+	println(a) // LLDB_BREAK: scope_if_entry
 	if branch == 1 {
 		b := 2
 		c := 3
-		// Expected:
-		//   all variables: a b c branch
-		//   a: 1
-		//   b: 2
-		//   c: 3
-		//   branch: 1
-		println(a, b, c)
+		println(a, b, c) // LLDB_BREAK: scope_if_true
 	} else {
 		c := 3
 		d := 4
-		// Expected:
-		//   all variables: a c d branch
-		//   a: 1
-		//   c: 3
-		//   d: 4
-		//   branch: 0
-		println(a, c, d)
+		println(a, c, d) // LLDB_BREAK: scope_if_false
 	}
-	// Expected:
-	//   all variables: a branch
-	//   a: 1
-	println("a:", a)
+	println("a:", a) // LLDB_BREAK: scope_if_exit
 }
 
 func ScopeFor() {
@@ -414,18 +244,10 @@ func ScopeFor() {
 		switch i {
 		case 0:
 			println("i is 0")
-			// Expected:
-			//   all variables: i a
-			//   i: 0
-			//   a: 1
-			println("i:", i)
+			println("i:", i) // LLDB_BREAK: scope_for_zero
 		case 1:
 			println("i is 1")
-			// Expected:
-			//   all variables: i a
-			//   i: 1
-			//   a: 1
-			println("i:", i)
+			println("i:", i) // LLDB_BREAK: scope_for_one
 		default:
 			println("i is", i)
 		}
@@ -439,35 +261,17 @@ func ScopeSwitch(i int) {
 	case 1:
 		b := 1
 		println("i is 1")
-		// Expected:
-		//   all variables: i a b
-		//   i: 1
-		//   a: 0
-		//   b: 1
-		println("i:", i, "a:", a, "b:", b)
+		println("i:", i, "a:", a, "b:", b) // LLDB_BREAK: scope_switch_one
 	case 2:
 		c := 2
 		println("i is 2")
-		// Expected:
-		//   all variables: i a c
-		//   i: 2
-		//   a: 0
-		//   c: 2
-		println("i:", i, "a:", a, "c:", c)
+		println("i:", i, "a:", a, "c:", c) // LLDB_BREAK: scope_switch_two
 	default:
 		d := 3
 		println("i is", i)
-		// Expected:
-		//   all variables: i a d
-		//   i: 3
-		//   a: 0
-		//   d: 3
-		println("i:", i, "a:", a, "d:", d)
+		println("i:", i, "a:", a, "d:", d) // LLDB_BREAK: scope_switch_default
 	}
-	// Expected:
-	//   all variables: a i
-	//   a: 0
-	println("a:", a)
+	println("a:", a) // LLDB_BREAK: scope_switch_exit
 }
 
 func main() {
@@ -509,40 +313,10 @@ func main() {
 		pad1: 100,
 		pad2: 200,
 	}
-	// Expected:
-	//   all variables: s i err
-	//   s.i8: '\x01'
-	//   s.i16: 2
-	//   s.i32: 3
-	//   s.i64: 4
-	//   s.i: 5
-	//   s.u8: '\x06'
-	//   s.u16: 7
-	//   s.u32: 8
-	//   s.u64: 9
-	//   s.u: 10
-	//   s.f32: 11
-	//   s.f64: 12
-	//   s.b: true
-	//   s.c64: 13 + 14i
-	//   s.c128: 15 + 16i
-	//   s.slice: []int{21, 22, 23}
-	//   s.arr: [3]int{24, 25, 26}
-	//   s.arr2: [3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}
-	//   s.s: "hello"
-	//   s.e: lldbtest.E{i = 30}
-	//   s.pf.i16: 100
-	//   *(s.pf).i16: 100
-	//   *(s.pi): 100
-	globalStructPtr = &s
+	globalStructPtr = &s // LLDB_BREAK: main_struct_initial
 	globalStruct = s
 	println("globalInt:", globalInt)
-	// Expected:
-	//   all variables: s i err
-	//   globalInt: 301
-	//   globalStruct.i8: '\x01'
-	//   (*globalStructPtr).i16: 2
-	println("s:", &s)
+	println("s:", &s) // LLDB_BREAK: main_globals
 	FuncWithAllTypeStructParam(s)
 	println("called function with struct")
 	i, err := FuncWithAllTypeParams(
@@ -569,13 +343,7 @@ func main() {
 	println(globalStructPtr)
 	println(&globalStruct)
 	s.i8 = 0x12
-	// Expected:
-	//   all variables: s i err
-	//   (*globalStructPtr).i8: '\x12'
-	println((*globalStructPtr).i8)
-
-	// Expected(skip):
-	//   globalStruct.i8: '\x01'
+	println((*globalStructPtr).i8) // LLDB_BREAK: main_struct_updated
 	println((*globalStructPtr).i8)
 	println("done")
 	println("")

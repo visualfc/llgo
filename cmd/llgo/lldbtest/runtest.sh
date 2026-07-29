@@ -5,7 +5,7 @@ set -e
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
 # Source common functions and variables
-# shellcheck source=./_lldb/common.sh
+# shellcheck source=./common.sh
 # shellcheck disable=SC1091
 source "$script_dir/common.sh" || exit 1
 
@@ -44,7 +44,7 @@ result_file="/tmp/lldb_exit_code"
 
 # Prepare LLDB commands
 lldb_commands=(
-    "command script import ../test.py"
+    "command script import ./test.py"
     "script test.run_tests_with_result('./debug.out', ['main.go'], $verbose, $interactive, $plugin_path, '$result_file')"
     "quit"
 )
