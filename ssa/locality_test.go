@@ -20,6 +20,8 @@ import (
 	"go/types"
 	"strings"
 	"testing"
+
+	"github.com/goplus/llgo/ssa/abi"
 )
 
 func TestLocalityInfos(t *testing.T) {
@@ -58,6 +60,35 @@ func TestLocalityInfos(t *testing.T) {
 	delete(decls, name)
 	if _, ok := prog.VariableLocality(name); !ok {
 		t.Fatal("mutating PackageLocalities changed program metadata")
+	}
+}
+
+func TestPackageLocalitiesRetainDeclarationOwners(t *testing.T) {
+	prog := NewProgram(nil)
+	std := types.NewPackage("runtime", "runtime")
+	alt := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
+
+	prog.DeclareLocality(std, "stdState", LocalityInfo{Locality: ThreadLocal})
+	prog.DeclareLocality(alt, "altState", LocalityInfo{Locality: GoroutineLocal})
+	prog.SetLocalityInfo("runtime.preloadedState", LocalityInfo{Locality: ThreadLocal})
+
+	check := func(pkg *types.Package, wants ...string) {
+		t.Helper()
+		got := prog.PackageLocalitiesFor(pkg)
+		if len(got) != len(wants) {
+			t.Fatalf("PackageLocalitiesFor(%q) = %+v, want %v", pkg.Path(), got, wants)
+		}
+		for _, name := range wants {
+			if _, ok := got["runtime."+name]; !ok {
+				t.Fatalf("PackageLocalitiesFor(%q) = %+v, missing %q", pkg.Path(), got, name)
+			}
+		}
+	}
+	check(std, "stdState", "preloadedState")
+	check(alt, "altState", "preloadedState")
+
+	if got := prog.PackageLocalities("runtime"); len(got) != 3 {
+		t.Fatalf("canonical PackageLocalities(runtime) = %+v, want all three declarations", got)
 	}
 }
 

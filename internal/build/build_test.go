@@ -713,6 +713,56 @@ func TestPrepareLocalVariables(t *testing.T) {
 	})
 }
 
+func TestPrepareLocalVariablesKeepsAltDeclarationOwners(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "runtime.go", `package runtime
+
+//llgo:gls
+var goroutineState uint32
+
+//llgo:tls
+var threadState uintptr
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &types.Info{
+		Types:      make(map[ast.Expr]types.TypeAndValue),
+		Defs:       make(map[*ast.Ident]types.Object),
+		Uses:       make(map[*ast.Ident]types.Object),
+		Implicits:  make(map[ast.Node]types.Object),
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		Scopes:     make(map[ast.Node]*types.Scope),
+		Instances:  make(map[*ast.Ident]types.Instance),
+	}
+	alt, err := (&types.Config{}).Check(altPkgPathPrefix+"runtime", fset, []*ast.File{file}, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prog := llssa.NewProgram(nil)
+	if err := cl.ParsePkgSyntax(prog, fset, alt, []*ast.File{file}); err != nil {
+		t.Fatal(err)
+	}
+	std := types.NewPackage("runtime", "runtime")
+	err = prepareLocalVariables(prog,
+		[]*packages.Package{{Types: std, TypesInfo: &types.Info{}}},
+		[]*packages.Package{{Types: alt, TypesInfo: info, Syntax: []*ast.File{file}, Fset: fset}},
+	)
+	if err != nil {
+		t.Fatalf("prepareLocalVariables confused standard and alternate runtime packages: %v", err)
+	}
+	for name, kind := range map[string]llssa.Locality{
+		"runtime.goroutineState": llssa.GoroutineLocal,
+		"runtime.threadState":    llssa.ThreadLocal,
+	} {
+		got, ok := prog.VariableLocality(name)
+		if !ok || got.Locality != kind || got.LocalStorage != llssa.LocalStorageNativeTLS {
+			t.Fatalf("%s locality = %+v, %v", name, got, ok)
+		}
+	}
+}
+
 func TestLTOEnabledDefault(t *testing.T) {
 	host := &Config{Target: ""}
 	if host.ltoEnabled() {

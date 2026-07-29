@@ -36,14 +36,16 @@ func PrepareLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.P
 		return nil
 	}
 	path := llssa.PathOf(pkg)
-	prepared, err := locality.Prepare(fset, path, pkg, info, files, packageLocalities(prog, path))
+	decls := prog.PackageLocalitiesFor(pkg)
+	prepared, err := locality.Prepare(fset, path, pkg, info, files, localityInfos(path, decls))
 	if err != nil {
 		return err
 	}
 	for name, local := range prepared {
 		prog.SetLocalityInfo(llssa.FullName(pkg, name), local)
 	}
-	for fullName := range prog.PackageLocalities(path) {
+	decls = prog.PackageLocalitiesFor(pkg)
+	for fullName := range decls {
 		name := strings.TrimPrefix(fullName, path+".")
 		object, _ := pkg.Scope().Lookup(name).(*types.Var)
 		if object == nil {
@@ -55,7 +57,7 @@ func PrepareLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.P
 		}
 		prog.SetLocalStorage(fullName, localitylayout.StorageForType(object.Type()))
 	}
-	_, err = planLocalPackage(prog, pkg)
+	_, err = planLocalPackageWithDecls(prog, pkg, decls)
 	return err
 }
 
@@ -64,9 +66,13 @@ func validateLocalInitializers(prog llssa.Program, pkg *types.Package) error {
 }
 
 func packageLocalities(prog llssa.Program, pkgPath string) map[string]locality.Info {
+	return localityInfos(pkgPath, prog.PackageLocalities(pkgPath))
+}
+
+func localityInfos(pkgPath string, decls map[string]llssa.VariableLocality) map[string]locality.Info {
 	prefix := pkgPath + "."
 	ret := make(map[string]locality.Info)
-	for name, info := range prog.PackageLocalities(pkgPath) {
+	for name, info := range decls {
 		ret[strings.TrimPrefix(name, prefix)] = info.Info
 	}
 	return ret
@@ -77,8 +83,15 @@ func planLocalPackage(prog llssa.Program, pkg *types.Package) (localitylayout.Pa
 		return localitylayout.Package{}, nil
 	}
 	path := llssa.PathOf(pkg)
+	return planLocalPackageWithDecls(prog, pkg, prog.PackageLocalities(path))
+}
+
+func planLocalPackageWithDecls(prog llssa.Program, pkg *types.Package, decls map[string]llssa.VariableLocality) (localitylayout.Package, error) {
+	if pkg == nil {
+		return localitylayout.Package{}, nil
+	}
+	path := llssa.PathOf(pkg)
 	prefix := path + "."
-	decls := prog.PackageLocalities(path)
 	input := make([]localitylayout.Declaration, 0, len(decls))
 	for fullName := range decls {
 		_, info, _, err := prog.ResolveLocality(fullName)

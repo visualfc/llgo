@@ -51,15 +51,17 @@ type VariableLocality struct {
 }
 
 type localityInfos struct {
-	mu             sync.RWMutex
-	entries        map[string]VariableLocality
-	parsedPackages map[*types.Package]struct{}
+	mu                sync.RWMutex
+	entries           map[string]VariableLocality
+	declarationOwners map[string]map[*types.Package]struct{}
+	parsedPackages    map[*types.Package]struct{}
 }
 
 func newLocalityInfos() *localityInfos {
 	return &localityInfos{
-		entries:        make(map[string]VariableLocality),
-		parsedPackages: make(map[*types.Package]struct{}),
+		entries:           make(map[string]VariableLocality),
+		declarationOwners: make(map[string]map[*types.Package]struct{}),
+		parsedPackages:    make(map[*types.Package]struct{}),
 	}
 }
 
@@ -73,6 +75,24 @@ func (p *localityInfos) update(name string, update func(*VariableLocality)) {
 
 func (p Program) SetLocalityInfo(name string, info LocalityInfo) {
 	p.localities.update(name, func(current *VariableLocality) { current.Info = info })
+}
+
+// DeclareLocality records locality metadata found on a declaration in pkg.
+// Alternate packages can share canonical symbol names with the packages they
+// replace, so declaration ownership must retain the concrete types.Package.
+func (p Program) DeclareLocality(pkg *types.Package, name string, info LocalityInfo) {
+	fullName := FullName(pkg, name)
+	p.localities.mu.Lock()
+	current := p.localities.entries[fullName]
+	current.Info = info
+	p.localities.entries[fullName] = current
+	owners := p.localities.declarationOwners[fullName]
+	if owners == nil {
+		owners = make(map[*types.Package]struct{})
+		p.localities.declarationOwners[fullName] = owners
+	}
+	owners[pkg] = struct{}{}
+	p.localities.mu.Unlock()
 }
 
 func (p Program) SetLocalStorage(name string, storage LocalStorage) {
@@ -211,6 +231,30 @@ func (p Program) PackageLocalities(pkgPath string) map[string]VariableLocality {
 	p.localities.mu.RLock()
 	for name, info := range p.localities.entries {
 		if info.Locality != locality.None && strings.HasPrefix(name, prefix) {
+			ret[name] = info
+		}
+	}
+	p.localities.mu.RUnlock()
+	return ret
+}
+
+// PackageLocalitiesFor returns locality metadata applicable to the concrete
+// package. Metadata discovered on declarations belongs only to its declaration
+// owners. Metadata installed directly through SetLocalityInfo has no owner and
+// remains applicable by canonical package path for compatibility with
+// preloaded metadata.
+func (p Program) PackageLocalitiesFor(pkg *types.Package) map[string]VariableLocality {
+	prefix := PathOf(pkg) + "."
+	ret := make(map[string]VariableLocality)
+	p.localities.mu.RLock()
+	for name, info := range p.localities.entries {
+		if info.Locality == locality.None || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		owners := p.localities.declarationOwners[name]
+		if len(owners) == 0 {
+			ret[name] = info
+		} else if _, ok := owners[pkg]; ok {
 			ret[name] = info
 		}
 	}
