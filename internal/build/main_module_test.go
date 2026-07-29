@@ -4,6 +4,8 @@
 package build
 
 import (
+	"go/token"
+	"go/types"
 	"strings"
 	"testing"
 
@@ -144,6 +146,44 @@ func TestGenMainModuleTestLibraryDefersMainInit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	prog := llssa.NewProgram(nil)
+	runtimePkg := types.NewPackage(llssa.PkgRuntime, "runtime")
+	contextName := types.NewTypeName(token.NoPos, runtimePkg, "LocalContext", nil)
+	contextType := types.NewNamed(contextName, types.NewStruct(nil, nil), nil)
+	runtimePkg.Scope().Insert(contextName)
+	contextPointer := types.NewPointer(contextType)
+	enterParams := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer))
+	enterResults := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]))
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "EnterLocalContext", types.NewSignatureType(nil, nil, nil, enterParams, enterResults, false)))
+	leaveParams := types.NewTuple(
+		types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer),
+		types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]),
+	)
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "LeaveLocalContext", types.NewSignatureType(nil, nil, nil, leaveParams, nil, false)))
+	prog.SetRuntime(runtimePkg)
+	prog.SetLocalityInfo("example.com/state.Value", llssa.LocalityInfo{Locality: llssa.GoroutineLocal})
+	prog.SetLocalStorage("example.com/state.Value", llssa.LocalStoragePackage)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "linux",
+			Goarch:    "amd64",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{}).LPkg.String()
+	assertInOrder(t, ir,
+		"EnterLocalContext",
+		`call void @"example.com/foo.init"()`,
+		`call void @"example.com/foo.main"()`,
+		"LeaveLocalContext",
+	)
 }
 
 func assertInOrder(t *testing.T, s string, wants ...string) {

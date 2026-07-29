@@ -5,6 +5,7 @@ package runtime
 import (
 	"unsafe"
 
+	latomic "github.com/goplus/llgo/runtime/internal/lib/sync/atomic"
 	llrt "github.com/goplus/llgo/runtime/internal/runtime"
 )
 
@@ -100,26 +101,36 @@ func SetCPUProfileRate(hz int) {}
 const funcForPCCacheSets = 1024
 const funcForPCCacheWays = 4
 
-type funcForPCCacheEntry struct {
-	pc uintptr
-	fn *Func
-}
+// Cache immutable Func pointers as single atomic words. The queried pc lives
+// in Func itself, so concurrent replacement cannot combine fields from two
+// different cache entries.
+var funcForPCCache [funcForPCCacheSets][funcForPCCacheWays]unsafe.Pointer
+var funcForPCCacheNext [funcForPCCacheSets]uint32
+var funcForPCLast unsafe.Pointer
 
-var funcForPCCache [funcForPCCacheSets][funcForPCCacheWays]funcForPCCacheEntry
-var funcForPCCacheNext [funcForPCCacheSets]uint8
-var funcForPCLast funcForPCCacheEntry
+func cachedFuncForPC(entry *unsafe.Pointer, pc uintptr) *Func {
+	p := latomic.LoadPointer(entry)
+	if p == nil {
+		return nil
+	}
+	fn := (*Func)(p)
+	if fn.pc != pc {
+		return nil
+	}
+	return fn
+}
 
 func FuncForPC(pc uintptr) *Func {
 	// External metadata must be installed before consulting either cache:
 	// caching a pre-load miss would otherwise survive a successful load.
 	ensureRuntimePCLN()
-	if fn := funcForPCLast.fn; fn != nil && funcForPCLast.pc == pc {
+	if fn := cachedFuncForPC(&funcForPCLast, pc); fn != nil {
 		return fn
 	}
 	set := &funcForPCCache[funcForPCCacheIndex(pc)]
 	for i := 0; i < funcForPCCacheWays; i++ {
-		if fn := set[i].fn; fn != nil && set[i].pc == pc {
-			funcForPCLast = funcForPCCacheEntry{pc: pc, fn: fn}
+		if fn := cachedFuncForPC(&set[i], pc); fn != nil {
+			latomic.StorePointer(&funcForPCLast, unsafe.Pointer(fn))
 			return fn
 		}
 	}
@@ -235,12 +246,12 @@ func newFuncForPC(pc uintptr, sym pcSymbol) *Func {
 // symbolized, going through the FuncForPC cache so repeated CallersFrames
 // walks over the same PCs stop allocating a Func per frame.
 func frameFuncForPC(pc uintptr, sym pcSymbol, name string) *Func {
-	if fn := funcForPCLast.fn; fn != nil && funcForPCLast.pc == pc {
+	if fn := cachedFuncForPC(&funcForPCLast, pc); fn != nil {
 		return fn
 	}
 	set := &funcForPCCache[funcForPCCacheIndex(pc)]
 	for i := 0; i < funcForPCCacheWays; i++ {
-		if fn := set[i].fn; fn != nil && set[i].pc == pc {
+		if fn := cachedFuncForPC(&set[i], pc); fn != nil {
 			return fn
 		}
 	}
@@ -264,16 +275,16 @@ func cacheFuncForPC(pc uintptr, fn *Func) {
 	setIndex := funcForPCCacheIndex(pc)
 	set := &funcForPCCache[setIndex]
 	for i := 0; i < funcForPCCacheWays; i++ {
-		if set[i].fn == nil || set[i].pc == pc {
-			set[i] = funcForPCCacheEntry{pc: pc, fn: fn}
-			funcForPCLast = set[i]
+		p := latomic.LoadPointer(&set[i])
+		if p == nil || (*Func)(p).pc == pc {
+			latomic.StorePointer(&set[i], unsafe.Pointer(fn))
+			latomic.StorePointer(&funcForPCLast, unsafe.Pointer(fn))
 			return
 		}
 	}
-	way := funcForPCCacheNext[setIndex] & (funcForPCCacheWays - 1)
-	funcForPCCacheNext[setIndex] = way + 1
-	set[way] = funcForPCCacheEntry{pc: pc, fn: fn}
-	funcForPCLast = set[way]
+	way := (latomic.AddUint32(&funcForPCCacheNext[setIndex], 1) - 1) & (funcForPCCacheWays - 1)
+	latomic.StorePointer(&set[way], unsafe.Pointer(fn))
+	latomic.StorePointer(&funcForPCLast, unsafe.Pointer(fn))
 }
 
 func funcForPCCacheIndex(pc uintptr) uintptr {

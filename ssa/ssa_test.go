@@ -2114,6 +2114,25 @@ source_filename = "foo/bar"
 `)
 }
 
+func TestThreadLocalVar(t *testing.T) {
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("bar", "foo/bar")
+	a := pkg.NewThreadLocalVar("a", types.NewPointer(types.Typ[types.Int]), InGo)
+	if got := pkg.NewThreadLocalVar("a", types.NewPointer(types.Typ[types.Int]), InGo); got != a {
+		t.Fatal("NewThreadLocalVar(a) did not reuse the existing global")
+	}
+	a.InitNil()
+	empty := types.NewStruct(nil, nil)
+	z := pkg.NewThreadLocalVar("z", types.NewPointer(empty), InGo)
+	z.InitNil()
+	assertPkg(t, pkg, `; ModuleID = 'foo/bar'
+source_filename = "foo/bar"
+
+@a = thread_local global i64 0, align 8
+@z = thread_local global {} zeroinitializer, align 1
+`)
+}
+
 func TestConst(t *testing.T) {
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("bar", "foo/bar")
@@ -2893,7 +2912,7 @@ func TestRtFuncResolvesLinkname(t *testing.T) {
 		return name
 	})
 
-	if got := pkg.rtFunc("Sigsetjmp").impl.Name(); got != "sigsetjmp" {
+	if got := pkg.RuntimeFunc("Sigsetjmp").impl.Name(); got != "sigsetjmp" {
 		t.Fatalf("rtFunc linkname = %q, want %q", got, "sigsetjmp")
 	}
 }

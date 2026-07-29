@@ -28,7 +28,9 @@ import (
 
 	"golang.org/x/tools/go/ssa"
 
+	"github.com/goplus/llgo/internal/directive"
 	"github.com/goplus/llgo/internal/env"
+	"github.com/goplus/llgo/internal/locality"
 	llssa "github.com/goplus/llgo/ssa"
 )
 
@@ -218,30 +220,6 @@ func (p *context) initFiles(pkgPath string, files []*ast.File, cPkg bool) {
 	}
 }
 
-// PreCollectLinknames scans syntax files before SSA compilation and populates
-// prog.Linkname for package-level //go:linkname / //llgo:link declarations.
-// It intentionally ignores //export because there is no package export context
-// during the pre-collection phase.
-func PreCollectLinknames(prog llssa.Program, pkgPath string, files []*ast.File) {
-	ctx := &context{prog: prog}
-	for _, file := range files {
-		for _, decl := range file.Decls {
-			switch decl := decl.(type) {
-			case *ast.FuncDecl:
-				fullName, inPkgName := astFuncName(pkgPath, decl)
-				ctx.processLinknameByDoc(decl.Doc, fullName, inPkgName, false, false)
-			case *ast.GenDecl:
-				if decl.Tok == token.VAR && len(decl.Specs) == 1 {
-					if names := decl.Specs[0].(*ast.ValueSpec).Names; len(names) == 1 {
-						inPkgName := names[0].Name
-						ctx.processLinknameByDoc(decl.Doc, pkgPath+"."+inPkgName, inPkgName, true, false)
-					}
-				}
-			}
-		}
-	}
-}
-
 // Collect skip names and skip other annotations, such as go: and llgo:
 // llgo:skip symbol1 symbol2 ...
 // llgo:skipall
@@ -294,6 +272,21 @@ func (p *context) collectSkip(line string, prefix int) {
 	for _, name := range names {
 		if name != "" {
 			p.skips[name] = none{}
+		}
+	}
+}
+
+func collectLinknameByDoc(prog llssa.Program, doc *ast.CommentGroup, fullName, inPkgName string) {
+	directives := directive.ParseGroup(doc)
+	for n := len(directives) - 1; n >= 0; n-- {
+		directive := directives[n]
+		if directive.Name != "go:linkname" && directive.Name != "llgo:link" {
+			continue
+		}
+		fields := strings.Fields(directive.Args)
+		if len(fields) >= 2 && fields[0] == inPkgName {
+			prog.SetLinkname(fullName, strings.Join(fields[1:], " "))
+			return
 		}
 	}
 }
@@ -722,6 +715,9 @@ func (p *context) varOf(b llssa.Builder, v *ssa.Global) llssa.Expr {
 		}
 		panic("unreachable")
 	}
+	if local, ok := p.localVariableAddress(b, v, name); ok {
+		return local
+	}
 	ret := pkg.VarOf(name)
 	if ret == nil {
 		ret = pkg.NewVar(name, p.patchType(v.Type()), llssa.Background(vtype))
@@ -754,24 +750,59 @@ func (p *context) initPyModule() {
 	}
 }
 
-// ParsePkgSyntax parses AST of a package to check package-level compiler directives.
-func ParsePkgSyntax(prog llssa.Program, pkg *types.Package, files []*ast.File) {
+// ParsePkgSyntax collects declaration directives in one syntax pass before SSA
+// creation. Directives that need an LLVM package (such as //export) are applied
+// later by initFiles.
+func ParsePkgSyntax(prog llssa.Program, fset *token.FileSet, pkg *types.Package, files []*ast.File) error {
+	if pkg == nil {
+		return nil
+	}
+	if prog.PackageSyntaxParsed(pkg) {
+		return nil
+	}
 	ctx := &context{prog: prog}
 	pkgPath := llssa.PathOf(pkg)
 	for _, file := range files {
 		for _, decl := range file.Decls {
 			switch decl := decl.(type) {
 			case *ast.FuncDecl:
-				fullName, _ := astFuncName(pkgPath, decl)
+				if err := locality.ValidateDoc(fset, decl.Doc); err != nil {
+					return err
+				}
+				if err := locality.ValidateFuncBody(fset, decl.Body); err != nil {
+					return err
+				}
+				fullName, inPkgName := astFuncName(pkgPath, decl)
+				collectLinknameByDoc(prog, decl.Doc, fullName, inPkgName)
 				ctx.processNoInterfaceByDoc(decl.Doc, fullName)
 			case *ast.GenDecl:
-				switch decl.Tok {
-				case token.TYPE:
+				if decl.Tok == token.VAR {
+					if len(decl.Specs) == 1 {
+						if names := decl.Specs[0].(*ast.ValueSpec).Names; len(names) == 1 {
+							inPkgName := names[0].Name
+							collectLinknameByDoc(prog, decl.Doc, pkgPath+"."+inPkgName, inPkgName)
+						}
+					}
+					vars, err := locality.ScanPackageVar(fset, decl)
+					if err != nil {
+						return err
+					}
+					for _, variable := range vars {
+						prog.SetLocalityInfo(llssa.FullName(pkg, variable.Name), variable.Info)
+					}
+					continue
+				}
+				if err := locality.ValidateNonPackageVar(fset, decl); err != nil {
+					return err
+				}
+				if decl.Tok == token.TYPE {
 					handleTypeDecl(prog, pkg, decl)
 				}
 			}
 		}
 	}
+	prog.MarkPackageSyntaxParsed(pkg)
+	return nil
 }
 
 func handleTypeDecl(prog llssa.Program, pkg *types.Package, decl *ast.GenDecl) {

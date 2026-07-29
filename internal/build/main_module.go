@@ -252,6 +252,11 @@ func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa
 		fnVal.SetUnnamedAddr(true)
 	}
 	b := fn.MakeBody(1)
+	var localCtx, previousLocalCtx llssa.Expr
+	hasLocalContext := prog.NeedsLocalContext()
+	if hasLocalContext {
+		localCtx, previousLocalCtx = b.EnterLocalContext()
+	}
 	b.Store(argcVar.Expr, fn.Param(0))
 	b.Store(argvVar.Expr, fn.Param(1))
 	if IsStdioNobuf() {
@@ -271,6 +276,9 @@ func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa
 	b.Call(fns.mainMain.Expr)
 	if fns.pyFinalize != nil {
 		b.Call(fns.pyFinalize.Expr)
+	}
+	if hasLocalContext {
+		b.LeaveLocalContext(localCtx, previousLocalCtx)
 	}
 	b.Return(prog.IntVal(0, prog.Int32()))
 	return fn

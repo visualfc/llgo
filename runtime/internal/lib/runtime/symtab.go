@@ -805,22 +805,22 @@ var runtimePrebuiltEntriesOnce uint32
 // lookups. The set-associative pc cache in FuncForPC thrashes once the live
 // pc population outgrows it (thousands of distinct functions queried in a
 // loop); this cache is keyed by table row, so batch workloads stay O(search)
-// after the first pass regardless of scale. Same benign-race model as the
-// pc cache: word-sized pointer stores of identical values.
+// after the first pass regardless of scale. Atomic pointer publication keeps
+// concurrently created Func values fully initialized before readers use them.
 var runtimePrebuiltFuncs []unsafe.Pointer
 
 func prebuiltFuncCacheLoad(idx int) unsafe.Pointer {
 	if idx < 0 || idx >= len(runtimePrebuiltFuncs) {
 		return nil
 	}
-	return runtimePrebuiltFuncs[idx]
+	return latomic.LoadPointer(&runtimePrebuiltFuncs[idx])
 }
 
 func prebuiltFuncCacheStore(idx int, fn unsafe.Pointer) {
 	if idx < 0 || idx >= len(runtimePrebuiltFuncs) {
 		return
 	}
-	runtimePrebuiltFuncs[idx] = fn
+	latomic.StorePointer(&runtimePrebuiltFuncs[idx], fn)
 }
 
 // prebuiltFrameIndexForEntry returns the ftab row whose entry is exactly pc,
@@ -1573,9 +1573,9 @@ func init() {
 	// Write-warm the FuncForPC cache: its first stores otherwise take
 	// zero-fill write faults, one per page, on the first few lookups.
 	for i := 0; i < funcForPCCacheSets; i += 4096 / int(unsafe.Sizeof(funcForPCCache[0])) {
-		funcForPCCache[i][0].pc = 0
+		latomic.StorePointer(&funcForPCCache[i][0], nil)
 	}
-	funcForPCCache[funcForPCCacheSets-1][0].pc = 0
+	latomic.StorePointer(&funcForPCCache[funcForPCCacheSets-1][0], nil)
 }
 
 func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {

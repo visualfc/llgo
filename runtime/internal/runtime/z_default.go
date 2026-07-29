@@ -40,6 +40,7 @@ func Rethrow(link *Defer) {
 			fatal("no goroutines (main called runtime.Goexit) - deadlock!")
 			c.Exit(2)
 		}
+		leaveCurrentLocalContext()
 		exitCurrentM()
 	}
 }
