@@ -354,6 +354,8 @@ const (
 	loadSyntax  = loadTypes | packages.NeedSyntax | packages.NeedTypesInfo
 )
 
+var llssaInitOnce sync.Once
+
 func Do(args []string, conf *Config) ([]Package, error) {
 	return Build(Invocation{Args: args, Config: conf})
 }
@@ -391,11 +393,6 @@ func Build(inv Invocation) ([]Package, error) {
 	if err := validateLinkOptions(conf, &export); err != nil {
 		return nil, err
 	}
-	// Enable different export names for TinyGo compatibility when using -target
-	if conf.Target != "" {
-		cl.EnableExportRename(true)
-	}
-
 	verbose := conf.Verbose
 	patterns := slices.Clone(inv.Args)
 	tags := defaultBuildTags(conf.Goarch, conf.Target)
@@ -428,10 +425,16 @@ func Build(inv Invocation) ([]Package, error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
-	cl.EnableDebug(emitDebugInfo)
-	cl.EnableDbgSyms(emitDebugInfo)
-	cl.EnableTrace(IsTraceEnabled())
-	llssa.Initialize(llssa.InitAll)
+	frontendOptions := cl.Options{
+		Debug:        emitDebugInfo,
+		DebugSymbols: emitDebugInfo,
+		Trace:        IsTraceEnabled(),
+		ExportRename: conf.Target != "",
+		ShadowStack:  isEnvOn(llgoShadowStack, false),
+	}
+	llssaInitOnce.Do(func() {
+		llssa.Initialize(llssa.InitAll)
+	})
 
 	target := &llssa.Target{
 		GOOS:     conf.Goos,
@@ -598,15 +601,16 @@ func Build(inv Invocation) ([]Package, error) {
 	ctx := &context{conf: cfg, progSSA: progSSA, prog: prog, dedup: dedup,
 		patches: patches, callerTracking: cl.NewCallerTracking(),
 		built: make(map[string]none), initial: initial, mode: mode,
-		fingerprinting: make(map[string]bool),
-		pkgs:           map[*packages.Package]Package{},
-		pkgByID:        map[string]Package{},
-		output:         output,
-		passOpt:        passOpt,
-		buildConf:      conf,
-		crossCompile:   export,
-		commands:       commands,
-		cTransformer:   cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, conf.AbiMode, cabiOptimize),
+		fingerprinting:  make(map[string]bool),
+		pkgs:            map[*packages.Package]Package{},
+		pkgByID:         map[string]Package{},
+		output:          output,
+		passOpt:         passOpt,
+		buildConf:       conf,
+		crossCompile:    export,
+		commands:        commands,
+		frontendOptions: frontendOptions,
+		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, conf.AbiMode, cabiOptimize),
 	}
 	defer ctx.closePackageMetas()
 
@@ -861,9 +865,10 @@ type context struct {
 	output         bool
 	passOpt        bool
 
-	buildConf    *Config
-	crossCompile crosscompile.Export
-	commands     commandEnv
+	buildConf       *Config
+	crossCompile    crosscompile.Export
+	commands        commandEnv
+	frontendOptions cl.Options
 
 	cTransformer *cabi.Transformer
 
@@ -885,6 +890,11 @@ type context struct {
 	// and completed with final linked PCs by the post-link externalizer.
 	pclnExternal *pclnmap.Data
 }
+
+// frontendDebugMu protects the legacy cl/ssa instruction-debug switches.
+// Code-generation options are invocation-local; this process-wide lock remains
+// only for verbose diagnostic logging until those helpers accept a logger.
+var frontendDebugMu sync.RWMutex
 
 // closePackageMetas releases metadata mappings owned by this build. Metadata
 // remains available to hooks and whole-program consumers until Do returns.
@@ -1747,22 +1757,27 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 		syntax = append(syntax, altPkg.Syntax...)
 	}
 	showDetail := verbose && pkgExists(ctx.initial, pkg)
-	if showDetail {
-		llssa.SetDebug(llssa.DbgFlagAll)
-		cl.SetDebug(cl.DbgFlagAll)
-		defer func() {
-			llssa.SetDebug(0)
-			cl.SetDebug(0)
-		}()
-	}
-
-	embedMap, err := goembed.LoadDirectives(ctx.conf.Fset, syntax)
-	if err != nil {
-		return fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
-	}
-
 	needMeta := !aPkg.CacheHit && ctx.buildConf.packageMetaEnabled()
-	ret, externs, err := cl.NewPackageExWithEmbedMeta(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta)
+	ret, externs, err := func() (llssa.Package, []string, error) {
+		if showDetail {
+			frontendDebugMu.Lock()
+			defer frontendDebugMu.Unlock()
+			llssa.SetDebug(llssa.DbgFlagAll)
+			cl.SetDebug(cl.DbgFlagAll)
+			defer func() {
+				llssa.SetDebug(0)
+				cl.SetDebug(0)
+			}()
+		} else {
+			frontendDebugMu.RLock()
+			defer frontendDebugMu.RUnlock()
+		}
+		embedMap, err := goembed.LoadDirectives(ctx.conf.Fset, syntax)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
+		}
+		return cl.NewPackageExWithEmbedMetaOptions(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta, ctx.frontendOptions)
+	}()
 	check(err)
 
 	aPkg.LPkg = ret
@@ -2362,6 +2377,7 @@ const llgoWasiThreads = "LLGO_WASI_THREADS"
 const llgoStdioNobuf = "LLGO_STDIO_NOBUF"
 const llgoFullRpath = "LLGO_FULL_RPATH"
 const llgoBuildCache = "LLGO_BUILD_CACHE"
+const llgoShadowStack = "LLGO_SHADOW_STACK"
 
 // for Plan9 asm translation debug
 const llgoPlan9ASMPkgs = "LLGO_PLAN9ASM_PKGS"
