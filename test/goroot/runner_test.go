@@ -1649,7 +1649,7 @@ func parseSourceDiagnostic(line string, resolver diagnosticPathResolver) (source
 }
 
 // parserRecoverySecondaries is deliberately limited to exact diagnostic pairs
-// emitted by the five GOROOT cases enabled with this compatibility shim.
+// emitted by GOROOT cases enabled with this compatibility shim.
 func parserRecoverySecondaries(primary string) []string {
 	switch primary {
 	case "syntax error: cannot use a := 10 as value":
@@ -1664,6 +1664,10 @@ func parserRecoverySecondaries(primary string) []string {
 		return []string{"expected if statement or block, found ';'"}
 	case "syntax error: unexpected newline in type declaration", "syntax error: unexpected EOF in type declaration":
 		return []string{"expected type, found newline"}
+	case "syntax error: unexpected newline in composite literal; possibly missing comma or }":
+		return []string{"missing ',' before newline in composite literal"}
+	case "syntax error: unexpected newline in parameter list; possibly missing comma or )":
+		return []string{"missing ',' before newline in parameter list"}
 	}
 	return nil
 }

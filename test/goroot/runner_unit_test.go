@@ -603,6 +603,54 @@ var _ = 0 // ERROR "mantissa requires a 'p' exponent"
 	}
 }
 
+func TestCheckExpectedErrorsDiscardsPairedMissingCommaDiagnostics(t *testing.T) {
+	tests := []struct {
+		name      string
+		source    string
+		primary   string
+		secondary string
+	}{
+		{
+			name: "composite literal",
+			source: `package p
+var _ = []int{
+	3 // ERROR "need trailing comma before newline in composite literal|possibly missing comma or }"
+}
+`,
+			primary:   "syntax error: unexpected newline in composite literal; possibly missing comma or }",
+			secondary: "missing ',' before newline in composite literal",
+		},
+		{
+			name: "parameter list",
+			source: `package p
+func f(
+	x int // ERROR "unexpected newline"
+) {}
+`,
+			primary:   "syntax error: unexpected newline in parameter list; possibly missing comma or )",
+			secondary: "missing ',' before newline in parameter list",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "case.go")
+			if err := os.WriteFile(file, []byte(tt.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			output := fmt.Sprintf("%s:3: %s\n%s:3: %s\n", file, tt.primary, file, tt.secondary)
+			if err := checkExpectedErrors(output, file, "case.go"); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkExpectedErrors(fmt.Sprintf("%s:3: %s\n", file, tt.secondary), file, "case.go"); err == nil {
+				t.Fatal("secondary diagnostic passed without its primary")
+			}
+			if got := parserRecoverySecondaries(tt.primary + "."); got != nil {
+				t.Fatalf("near-match primary activated parser recovery: %v", got)
+			}
+		})
+	}
+}
+
 func TestCheckExpectedErrorsKeepsUnrelatedDiagnostics(t *testing.T) {
 	tests := []struct {
 		name   string
