@@ -18,7 +18,7 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y libsdl2-2.0-0
+        sudo apt-get install -y libsdl2-2.0-0 libslirp0
 
     - name: Install ESP QEMU toolchains
       shell: bash
