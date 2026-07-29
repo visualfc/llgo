@@ -679,6 +679,12 @@ func TestPrepareLocalVariables(t *testing.T) {
 		return loaded, file
 	}
 
+	t.Run("accepts no package groups", func(t *testing.T) {
+		if err := prepareLocalVariables(llssa.NewProgram(nil)); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("filters and deduplicates packages", func(t *testing.T) {
 		prog := llssa.NewProgram(nil)
 		loaded, file := newLocalPackage("example.com/local", true)
@@ -709,6 +715,19 @@ func TestPrepareLocalVariables(t *testing.T) {
 		err := prepareLocalVariables(prog, []*packages.Package{root})
 		if err == nil || !strings.Contains(err.Error(), "without syntax files") {
 			t.Fatalf("prepareLocalVariables error = %v", err)
+		}
+	})
+
+	t.Run("skips inactive alternate roots", func(t *testing.T) {
+		prog := llssa.NewProgram(nil)
+		active := &packages.Package{Types: types.NewPackage("example.com/active", "active")}
+		inactive := &packages.Package{Types: types.NewPackage("example.com/inactive", "inactive")}
+		err := prepareLocalVariables(prog,
+			[]*packages.Package{active},
+			[]*packages.Package{{}, inactive},
+		)
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 }

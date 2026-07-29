@@ -164,6 +164,63 @@ func TestNeedsLocalContextIgnoresInactiveDeclarations(t *testing.T) {
 	}
 }
 
+func TestLocalityMetadataFallbacks(t *testing.T) {
+	t.Run("owner update and ownerless fallback", func(t *testing.T) {
+		prog := NewProgram(nil)
+		pkg := types.NewPackage("example.com/p", "p")
+		ownedName := "example.com/p.owned"
+		prog.SetLocalityInfoFor(pkg, ownedName, LocalityInfo{Locality: ThreadLocal})
+		owned, ok := prog.VariableLocalityFor(pkg, ownedName)
+		if !ok || owned.Locality != ThreadLocal {
+			t.Fatalf("owner-specific locality = %+v, %v", owned, ok)
+		}
+
+		fallbackName := "example.com/p.fallback"
+		prog.SetLocalityInfo(fallbackName, LocalityInfo{Locality: GoroutineLocal})
+		fallback, ok := prog.VariableLocalityFor(pkg, fallbackName)
+		if !ok || fallback.Locality != GoroutineLocal {
+			t.Fatalf("ownerless fallback locality = %+v, %v", fallback, ok)
+		}
+
+		prog.SetLocalityInfo("example.com/p.ordinary", LocalityInfo{})
+		prog.SetLocalityInfo("example.com/other.local", LocalityInfo{Locality: ThreadLocal})
+		got := prog.PackageLocalitiesFor(pkg)
+		if _, ok := got["example.com/p.ordinary"]; ok {
+			t.Fatalf("ordinary variable returned as local: %+v", got)
+		}
+		if _, ok := got["example.com/other.local"]; ok {
+			t.Fatalf("other package locality returned: %+v", got)
+		}
+
+		// A nil package is intentionally a no-op for callers walking optional
+		// package roots.
+		prog.ActivateLocalitiesFor(nil)
+	})
+
+	t.Run("metadata without local variables", func(t *testing.T) {
+		prog := NewProgram(nil)
+		prog.SetLocalityInfo("example.com/p.ordinary", LocalityInfo{})
+		if err := prog.ValidateLocalities("example.com/p"); err != nil {
+			t.Fatalf("ordinary metadata failed locality validation: %v", err)
+		}
+	})
+
+	t.Run("legacy canonical entry", func(t *testing.T) {
+		prog := NewProgram(nil)
+		// The entries map predates declaration ownership. Keep its compatibility
+		// path covered for callers that preload canonical metadata directly.
+		prog.localities.mu.Lock()
+		prog.localities.entries["example.com/p.legacy"] = VariableLocality{
+			Info:         LocalityInfo{Locality: GoroutineLocal},
+			LocalStorage: LocalStoragePackage,
+		}
+		prog.localities.mu.Unlock()
+		if !prog.NeedsLocalContext() {
+			t.Fatal("legacy canonical locality did not require a context")
+		}
+	})
+}
+
 func TestRejectsLinknameLocality(t *testing.T) {
 	prog := NewProgram(nil)
 	target := "example.com/target.value"
