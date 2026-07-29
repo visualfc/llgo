@@ -37,19 +37,33 @@ Prior experiments (`test-defer-dont-free` branch) confirmed the crash disappeare
    - Runtime state that belongs to a logical goroutine uses `//llgo:gls`.
    - Physical scheduler and execution-resource slots that must be available
      before goroutine-local context setup use `//llgo:tls`.
+   - TLS and GLS currently share one physical owner because LLGo binds one
+     goroutine/P/M to one OS thread. The directive still records the intended
+     lifetime so a future scheduler can keep GLS with a migrating goroutine
+     while TLS remains with the thread.
    - Pointer-bearing locality variables are kept in the GC-rooted locality
      package payload rather than bespoke pthread-key allocations.
    - Bare-metal builds use ordinary globals for the caller and FIPS state:
-     they have one logical context, and avoiding the locality package cache
-     keeps unsupported native TLS relocations out of those targets.
+     they have one logical context. This is an implementation fallback because
+     the current GLS package-block accessor still uses a native TLS address
+     cache, which those LLVM targets cannot lower.
 
 4. **Dynamic `sync.Pool` state**
    - `sync.Pool` retains the GC-aware `clite/tls` handle. Each `Pool` needs a
      dynamically allocated per-thread slot, while locality directives declare
      a fixed set of static package variables.
-   - Keeping the handle also preserves the atomic hot path, thread-exit victim
-     handoff, cross-thread stealing, and cleanup of short-lived pools. A static
-     TLS map would retain every `*Pool` for the lifetime of a thread.
+   - Keeping the handle preserves the existing atomic hot path, thread-exit
+     victim handoff, and cross-thread access to that victim. A static TLS map
+     would add an explicit never-pruned `*Pool` key set and a map lookup to
+     every `Get` and `Put`.
+   - The existing dynamic handle can itself retain state until thread exit;
+     matching upstream's GC-cycle pool cleanup would require a separate runtime
+     integration. This migration deliberately preserves the baseline behavior
+     instead of introducing a new retention mechanism.
+   - This cache has per-P/execution-resource lifetime, not goroutine lifetime;
+     dynamic TLS is correct for the current 1:1 P/M/thread model. Fully modeling
+     a scheduler that can move P between M would require a dynamic P-local
+     facility rather than GLS.
 
 5. **Non-GC builds**
    - `FreeDeferNode` continues to release nodes via `c.Free` when building with
