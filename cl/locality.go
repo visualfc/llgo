@@ -81,10 +81,6 @@ func validateLocalInitializers(prog llssa.Program, pkg *types.Package) error {
 	return locality.ValidatePrepared(llssa.PathOf(pkg), packageLocalitiesFor(prog, pkg))
 }
 
-func packageLocalities(prog llssa.Program, pkgPath string) map[string]locality.Info {
-	return localityInfos(pkgPath, prog.PackageLocalities(pkgPath))
-}
-
 func packageLocalitiesFor(prog llssa.Program, pkg *types.Package) map[string]locality.Info {
 	return localityInfos(llssa.PathOf(pkg), prog.PackageLocalitiesFor(pkg))
 }
