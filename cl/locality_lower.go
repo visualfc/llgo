@@ -66,7 +66,7 @@ type localEnsureCacheKey struct {
 // localityLowering owns all compiler state for TLS/GLS lowering. Only this
 // value is embedded in the general compiler context.
 type localityLowering struct {
-	packages  map[string]*localPackage
+	packages  map[*types.Package]*localPackage
 	variables map[*ssa.Global]*localVariable
 	function  localityFunction
 }
@@ -138,7 +138,7 @@ func (p *context) prepareLocalVariables(pkg llssa.Package, globals []*ssa.Global
 // aliases and layout validation cannot diverge between lowering cases.
 func (p *context) localVariableFor(pkg llssa.Package, global *ssa.Global, defineCurrent bool) (*localVariable, bool, error) {
 	fullName := llssa.FullName(global.Pkg.Pkg, global.Name())
-	canonical, info, ok, err := p.prog.ResolveLocality(fullName)
+	canonical, info, ok, err := p.prog.ResolveLocalityFor(global.Pkg.Pkg, fullName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -161,7 +161,7 @@ func (p *context) localVariableFor(pkg llssa.Package, global *ssa.Global, define
 }
 
 func (p *context) localityGlobalStorage(pkg llssa.Package, global *ssa.Global, name string, typ types.Type, bg llssa.Background) (llssa.Global, bool) {
-	info, ok := p.resolveLocality(llssa.FullName(global.Pkg.Pkg, global.Name()))
+	info, ok := p.resolveLocality(global.Pkg.Pkg, llssa.FullName(global.Pkg.Pkg, global.Name()))
 	if !ok || info.Locality == locality.None {
 		return pkg.NewVar(name, typ, bg), false
 	}
@@ -215,8 +215,7 @@ func (p *context) localPackageFor(typesPkg *types.Package, pkg llssa.Package, de
 	if typesPkg == nil {
 		return nil, nil
 	}
-	path := llssa.PathOf(typesPkg)
-	if owner := p.locality.packages[path]; owner != nil {
+	if owner := p.locality.packages[typesPkg]; owner != nil {
 		return owner, nil
 	}
 	plan, err := planLocalPackage(p.prog, typesPkg)
@@ -227,14 +226,14 @@ func (p *context) localPackageFor(typesPkg *types.Package, pkg llssa.Package, de
 		return nil, nil
 	}
 	if p.locality.packages == nil {
-		p.locality.packages = make(map[string]*localPackage)
+		p.locality.packages = make(map[*types.Package]*localPackage)
 	}
 	owner := &localPackage{
 		plan:   plan,
 		direct: make(map[string]llssa.Global),
 		init:   make(map[locality.Kind]*localInitializer),
 	}
-	p.locality.packages[path] = owner
+	p.locality.packages[typesPkg] = owner
 	p.buildLocalPackage(pkg, owner, define)
 	return owner, nil
 }
@@ -352,15 +351,15 @@ func (p *context) localVariableAddr(b llssa.Builder, v *ssa.Global, info llssa.V
 }
 
 func (p *context) localVariableAddress(b llssa.Builder, variable *ssa.Global, name string) (llssa.Expr, bool) {
-	info, ok := p.resolveLocality(llssa.FullName(variable.Pkg.Pkg, variable.Name()))
+	info, ok := p.resolveLocality(variable.Pkg.Pkg, llssa.FullName(variable.Pkg.Pkg, variable.Name()))
 	if !ok || info.Locality == locality.None {
 		return llssa.Expr{}, false
 	}
 	return p.localVariableAddr(b, variable, info, name), true
 }
 
-func (p *context) resolveLocality(name string) (llssa.VariableLocality, bool) {
-	_, info, ok, err := p.prog.ResolveLocality(name)
+func (p *context) resolveLocality(pkg *types.Package, name string) (llssa.VariableLocality, bool) {
+	_, info, ok, err := p.prog.ResolveLocalityFor(pkg, name)
 	if err != nil {
 		panic(err)
 	}
@@ -405,7 +404,7 @@ func (p *context) ensureLocalInitializer(b llssa.Builder, owner *localPackage, k
 }
 
 func (p *context) initializeLocalGuards(b llssa.Builder) {
-	owner := p.locality.packages[llssa.PathOf(p.goTyps)]
+	owner := p.locality.packages[p.goTyps]
 	if owner == nil {
 		return
 	}

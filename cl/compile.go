@@ -2087,7 +2087,7 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 	if err = ParsePkgSyntax(prog, pkgProg.Fset, pkgTypes, files); err != nil {
 		return nil, nil, err
 	}
-	if err = prog.ValidateLocalities(llssa.PathOf(pkgTypes)); err != nil {
+	if err = prog.ValidateLocalitiesFor(pkgTypes); err != nil {
 		return nil, nil, err
 	}
 	if err = validateLocalInitializers(prog, pkgTypes); err != nil {

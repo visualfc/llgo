@@ -147,8 +147,8 @@ func TestLocalityLoweringDiagnostics(t *testing.T) {
 	t.Run("stale plan", func(t *testing.T) {
 		prog := newProgram()
 		ctx := &context{prog: prog, goTyps: typesPkg}
-		ctx.locality.packages = map[string]*localPackage{
-			typesPkg.Path(): {plan: localitylayout.Package{Path: typesPkg.Path()}},
+		ctx.locality.packages = map[*types.Package]*localPackage{
+			typesPkg: {plan: localitylayout.Package{Path: typesPkg.Path()}},
 		}
 		if _, _, err := ctx.localVariableFor(nil, global, false); err == nil || !strings.Contains(err.Error(), "missing locality layout") {
 			t.Fatalf("localVariableFor error = %v", err)
@@ -164,7 +164,7 @@ func TestLocalityLoweringDiagnostics(t *testing.T) {
 		if _, _, err := ctx.localVariableFor(nil, global, false); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
 			t.Fatalf("localVariableFor error = %v", err)
 		}
-		assertLocalityPanic(t, "resolveLocality", func() { ctx.resolveLocality(name) })
+		assertLocalityPanic(t, "resolveLocality", func() { ctx.resolveLocality(typesPkg, name) })
 		assertLocalityPanic(t, "prepareLocalVariables", func() { ctx.prepareLocalVariables(nil, nil) })
 		assertLocalityPanic(t, "localVariableAddr", func() {
 			ctx.localVariableAddr(nil, global, llssa.VariableLocality{Info: llssa.LocalityInfo{Locality: llssa.ThreadLocal}}, name)

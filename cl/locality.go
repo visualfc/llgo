@@ -42,7 +42,7 @@ func PrepareLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.P
 		return err
 	}
 	for name, local := range prepared {
-		prog.SetLocalityInfo(llssa.FullName(pkg, name), local)
+		prog.SetLocalityInfoFor(pkg, llssa.FullName(pkg, name), local)
 	}
 	decls = prog.PackageLocalitiesFor(pkg)
 	for fullName := range decls {
@@ -51,22 +51,26 @@ func PrepareLocalVariables(prog llssa.Program, fset *token.FileSet, pkg *types.P
 		if object == nil {
 			return fmt.Errorf("locality layout: package %s has no variable %s", path, name)
 		}
-		_, _, _, err := prog.ResolveLocality(fullName)
+		_, _, _, err := prog.ResolveLocalityFor(pkg, fullName)
 		if err != nil {
 			return err
 		}
-		prog.SetLocalStorage(fullName, localitylayout.StorageForType(object.Type()))
+		prog.SetLocalStorageFor(pkg, fullName, localitylayout.StorageForType(object.Type()))
 	}
 	_, err = planLocalPackageWithDecls(prog, pkg, decls)
 	return err
 }
 
 func validateLocalInitializers(prog llssa.Program, pkg *types.Package) error {
-	return locality.ValidatePrepared(llssa.PathOf(pkg), packageLocalities(prog, llssa.PathOf(pkg)))
+	return locality.ValidatePrepared(llssa.PathOf(pkg), packageLocalitiesFor(prog, pkg))
 }
 
 func packageLocalities(prog llssa.Program, pkgPath string) map[string]locality.Info {
 	return localityInfos(pkgPath, prog.PackageLocalities(pkgPath))
+}
+
+func packageLocalitiesFor(prog llssa.Program, pkg *types.Package) map[string]locality.Info {
+	return localityInfos(llssa.PathOf(pkg), prog.PackageLocalitiesFor(pkg))
 }
 
 func localityInfos(pkgPath string, decls map[string]llssa.VariableLocality) map[string]locality.Info {
@@ -82,8 +86,7 @@ func planLocalPackage(prog llssa.Program, pkg *types.Package) (localitylayout.Pa
 	if pkg == nil {
 		return localitylayout.Package{}, nil
 	}
-	path := llssa.PathOf(pkg)
-	return planLocalPackageWithDecls(prog, pkg, prog.PackageLocalities(path))
+	return planLocalPackageWithDecls(prog, pkg, prog.PackageLocalitiesFor(pkg))
 }
 
 func planLocalPackageWithDecls(prog llssa.Program, pkg *types.Package, decls map[string]llssa.VariableLocality) (localitylayout.Package, error) {
@@ -94,7 +97,7 @@ func planLocalPackageWithDecls(prog llssa.Program, pkg *types.Package, decls map
 	prefix := path + "."
 	input := make([]localitylayout.Declaration, 0, len(decls))
 	for fullName := range decls {
-		_, info, _, err := prog.ResolveLocality(fullName)
+		_, info, _, err := prog.ResolveLocalityFor(pkg, fullName)
 		if err != nil {
 			return localitylayout.Package{}, err
 		}

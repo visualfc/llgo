@@ -70,6 +70,10 @@ func TestPackageLocalitiesRetainDeclarationOwners(t *testing.T) {
 
 	prog.DeclareLocality(std, "stdState", LocalityInfo{Locality: ThreadLocal})
 	prog.DeclareLocality(alt, "altState", LocalityInfo{Locality: GoroutineLocal})
+	prog.DeclareLocality(std, "sharedState", LocalityInfo{Locality: ThreadLocal})
+	prog.DeclareLocality(alt, "sharedState", LocalityInfo{Locality: GoroutineLocal})
+	prog.SetLocalStorageFor(std, "runtime.sharedState", LocalStorageNativeTLS)
+	prog.SetLocalStorageFor(alt, "runtime.sharedState", LocalStoragePackage)
 	prog.SetLocalityInfo("runtime.preloadedState", LocalityInfo{Locality: ThreadLocal})
 
 	check := func(pkg *types.Package, wants ...string) {
@@ -84,11 +88,20 @@ func TestPackageLocalitiesRetainDeclarationOwners(t *testing.T) {
 			}
 		}
 	}
-	check(std, "stdState", "preloadedState")
-	check(alt, "altState", "preloadedState")
+	check(std, "stdState", "sharedState", "preloadedState")
+	check(alt, "altState", "sharedState", "preloadedState")
 
-	if got := prog.PackageLocalities("runtime"); len(got) != 3 {
-		t.Fatalf("canonical PackageLocalities(runtime) = %+v, want all three declarations", got)
+	stdShared, ok := prog.VariableLocalityFor(std, "runtime.sharedState")
+	if !ok || stdShared.Locality != ThreadLocal || stdShared.LocalStorage != LocalStorageNativeTLS {
+		t.Fatalf("standard sharedState = %+v, %v", stdShared, ok)
+	}
+	altShared, ok := prog.VariableLocalityFor(alt, "runtime.sharedState")
+	if !ok || altShared.Locality != GoroutineLocal || altShared.LocalStorage != LocalStoragePackage {
+		t.Fatalf("alternate sharedState = %+v, %v", altShared, ok)
+	}
+
+	if got := prog.PackageLocalities("runtime"); len(got) != 4 {
+		t.Fatalf("canonical PackageLocalities(runtime) = %+v, want all four declaration names", got)
 	}
 }
 
