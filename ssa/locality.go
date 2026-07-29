@@ -51,7 +51,9 @@ type VariableLocality struct {
 }
 
 type localityInfos struct {
-	mu                 sync.RWMutex
+	mu sync.RWMutex
+	// entries and ownerlessEntries retain the canonical-only compatibility
+	// view. Production declaration handling uses declarationEntries instead.
 	entries            map[string]VariableLocality
 	ownerlessEntries   map[string]VariableLocality
 	declarationEntries map[string]map[string]VariableLocality
@@ -150,6 +152,9 @@ func (p Program) ActivateLocalitiesFor(pkg *types.Package) {
 	p.localities.mu.Unlock()
 }
 
+// VariableLocality returns the legacy canonical-only metadata view. Its result
+// is unspecified when multiple declaration owners share name; use
+// VariableLocalityFor in owner-aware code.
 func (p Program) VariableLocality(name string) (VariableLocality, bool) {
 	p.localities.mu.RLock()
 	info, ok := p.localities.entries[name]
@@ -185,7 +190,8 @@ func (p Program) ResolveLocality(name string) (string, VariableLocality, bool, e
 }
 
 // ResolveLocalityFor resolves locality metadata using the concrete package's
-// declaration when the canonical package path has multiple owners.
+// declaration when the canonical package path has multiple owners. Owner-less
+// preloaded metadata remains a canonical-name compatibility fallback.
 func (p Program) ResolveLocalityFor(pkg *types.Package, name string) (string, VariableLocality, bool, error) {
 	prefix := PathOf(pkg) + "."
 	lookup := func(name string) (VariableLocality, bool) {
@@ -243,6 +249,9 @@ func hasInitialization(info locality.Info) bool {
 	return info.HasInitializer || info.InitFunc != "" || info.InitOrder != 0
 }
 
+// ValidateLocalities validates the legacy canonical-only metadata view. Its
+// result is unspecified when multiple declaration owners share a canonical
+// path; use ValidateLocalitiesFor in owner-aware code.
 func (p Program) ValidateLocalities(pkgPath string) error {
 	return p.validateLocalities(pkgPath, p.PackageLocalities(pkgPath), p.ResolveLocality)
 }
@@ -333,6 +342,9 @@ func (p Program) MarkPackageSyntaxParsed(pkg *types.Package) {
 	p.localities.mu.Unlock()
 }
 
+// PackageLocalities returns the legacy canonical-only metadata view. Its
+// result is unspecified when a canonical path has multiple declaration
+// owners; use PackageLocalitiesFor in owner-aware code.
 func (p Program) PackageLocalities(pkgPath string) map[string]VariableLocality {
 	prefix := pkgPath + "."
 	ret := make(map[string]VariableLocality)
