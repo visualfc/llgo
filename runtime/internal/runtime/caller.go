@@ -58,13 +58,6 @@ type callerLocationStore struct {
 	goexitPCBase  uintptr
 }
 
-// callerLocationStoreCurrent follows the logical goroutine: its shadow stack
-// and synthetic PCs must move with that goroutine when the backend eventually
-// permits migration between OS threads.
-//
-//llgo:gls
-var callerLocationStoreCurrent *callerLocationStore
-
 func PushCallerLocationFrame(entry uintptr, name, file string, startLine int) int {
 	store := callerLocationStoreForGoroutine()
 	mark := len(store.stack)

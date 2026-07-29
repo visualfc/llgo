@@ -71,11 +71,19 @@ func getg() *g {
 
 func setg(gp *g) {
 	if currentGHasLifecycle {
+		old := (*g)(unsafe.Pointer(currentG))
 		if ret := gLifecycleKey.Set(nil); ret != 0 {
 			c.Fprintf(c.Stderr, c.Str("runtime: pthread_setspecific failed (errno=%d)\n"), ret)
 			panic("runtime: failed to clear g lifecycle key")
 		}
 		currentGHasLifecycle = false
+		currentG = 0
+		// A lazy main/foreign-thread context may be replaced when the thread
+		// becomes runtime-owned. Transfer ownership if it is the same G;
+		// otherwise release the root no longer covered by the destructor.
+		if old != nil && old != gp {
+			destroyG(c.Pointer(unsafe.Pointer(old)))
+		}
 	}
 	currentG = uintptr(unsafe.Pointer(gp))
 }

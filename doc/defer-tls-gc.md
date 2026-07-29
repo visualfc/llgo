@@ -20,6 +20,9 @@ Prior experiments (`test-defer-dont-free` branch) confirmed the crash disappeare
    - A pointer-free `//llgo:tls` `uintptr` slot locates the current `g`. The
      slot is only an address cache; the `runtimeContext` allocation is the GC
      root.
+   - Bare-metal targets keep the same state in ordinary globals because they
+     have one execution context and their LLVM backends do not support native
+     TLS relocations.
    - Runtime-created threads release that root in `mexit`. A pthread key remains
      only as a thread-exit destructor sidecar for main and foreign threads; the
      current-G read path does not call `pthread_getspecific`.
@@ -36,8 +39,19 @@ Prior experiments (`test-defer-dont-free` branch) confirmed the crash disappeare
      before goroutine-local context setup use `//llgo:tls`.
    - Pointer-bearing locality variables are kept in the GC-rooted locality
      package payload rather than bespoke pthread-key allocations.
+   - Bare-metal builds use ordinary globals for the caller and FIPS state:
+     they have one logical context, and avoiding the locality package cache
+     keeps unsupported native TLS relocations out of those targets.
 
-4. **Non-GC builds**
+4. **Dynamic `sync.Pool` state**
+   - `sync.Pool` retains the GC-aware `clite/tls` handle. Each `Pool` needs a
+     dynamically allocated per-thread slot, while locality directives declare
+     a fixed set of static package variables.
+   - Keeping the handle also preserves the atomic hot path, thread-exit victim
+     handoff, cross-thread stealing, and cleanup of short-lived pools. A static
+     TLS map would retain every `*Pool` for the lifetime of a thread.
+
+5. **Non-GC builds**
    - `FreeDeferNode` continues to release nodes via `c.Free` when building with
      `-tags nogc`.
 
