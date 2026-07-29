@@ -167,6 +167,32 @@ func TestWasmRuntimeAvoidsNativeHostDependencies(t *testing.T) {
 	}
 }
 
+func TestBaremetalRuntimeAvoidsLocalityDirectives(t *testing.T) {
+	for _, relative := range []string{
+		filepath.Join("internal", "runtime"),
+		filepath.Join("internal", "lib", "runtime"),
+	} {
+		t.Run(relative, func(t *testing.T) {
+			dir := filepath.Join(env.LLGoRuntimeDir(), relative)
+			ctx := gobuild.Default
+			ctx.BuildTags = []string{"llgo", "baremetal"}
+			pkg, err := ctx.ImportDir(dir, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range append(pkg.GoFiles, pkg.CgoFiles...) {
+				content, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if bytes.Contains(content, []byte("//llgo:tls")) || bytes.Contains(content, []byte("//llgo:gls")) {
+					t.Fatalf("bare-metal runtime selected locality directive in %s", name)
+				}
+			}
+		})
+	}
+}
+
 func TestNeedsLinuxExportDynamic(t *testing.T) {
 	t.Setenv(llgoFuncInfo, "")
 	ctx := &context{buildConf: &Config{Goos: "linux"}}
