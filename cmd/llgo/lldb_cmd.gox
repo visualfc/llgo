@@ -17,7 +17,7 @@ import (
 	self "github.com/goplus/llgo/cmd/internal/lldb"
 )
 
-use "lldb [flags] executable [lldb arguments...]"
+use "lldb [-lldb path] [--] executable [lldb arguments...]"
 
 short "Debug an LLGo executable with LLDB"
 

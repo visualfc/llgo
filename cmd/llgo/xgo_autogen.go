@@ -190,7 +190,7 @@ func (this *Cmd_install) Classfname() string {
 func (this *Cmd_lldb) Main(_xgo_arg0 string) {
 	this.Command.Main(_xgo_arg0)
 //line cmd/llgo/lldb_cmd.gox:20:1
-	this.Use("lldb [flags] executable [lldb arguments...]")
+	this.Use("lldb [-lldb path] [--] executable [lldb arguments...]")
 //line cmd/llgo/lldb_cmd.gox:22:1
 	this.Short("Debug an LLGo executable with LLDB")
 //line cmd/llgo/lldb_cmd.gox:24:1

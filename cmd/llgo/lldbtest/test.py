@@ -284,6 +284,8 @@ class LLDBDebugger:
         if not target_info.supported:
             raise LLDBTestException(
                 "Target does not contain a supported LLGo debugger marker")
+        if llgo_plugin.inspect_target(self.target) is not target_info:
+            raise LLDBTestException("LLGo target inspection was not cached")
         if (target_info.schema_version != 1 or
                 target_info.runtime_layout_version != 1):
             raise LLDBTestException(
@@ -589,8 +591,7 @@ def main() -> None:
     parser.add_argument("--result-path", help="Path to write the result")
     args = parser.parse_args()
 
-    plugin_path = args.plugin or os.path.join(os.path.dirname(
-        os.path.realpath(__file__)), "go_lldb_plugin.py")
+    plugin_path = args.plugin
 
     try:
         if args.result_path:

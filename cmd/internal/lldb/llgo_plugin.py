@@ -10,6 +10,7 @@ LLGO_DEBUGGER_MARKER_PREFIX = "__llgo_debugger_marker_v"
 LLGO_DEBUGGER_SCHEMAS = {
     "__llgo_debugger_marker_v1": (1, 1),
 }
+_TARGET_INFO_CACHE: Dict[Tuple[Any, ...], "LLGoTargetInfo"] = {}
 
 
 @dataclass(frozen=True)
@@ -48,22 +49,16 @@ def _marker_versions(target: lldb.SBTarget) -> Tuple[int, ...]:
     if not target or not target.IsValid():
         return ()
 
-    versions = {
-        schema_version
-        for marker, (schema_version, _runtime_layout_version)
-        in LLGO_DEBUGGER_SCHEMAS.items()
-        if target.FindSymbols(marker).GetSize() > 0
-    }
+    versions = set()
     marker_pattern = re.compile(
         rf"^{re.escape(LLGO_DEBUGGER_MARKER_PREFIX)}([0-9]+)$")
-    if target.GetNumModules() == 0:
-        return ()
-    module = target.GetModuleAtIndex(0)
-    for index in range(module.GetNumSymbols()):
-        name = module.GetSymbolAtIndex(index).GetName()
-        match = marker_pattern.match(name or "")
-        if match:
-            versions.add(int(match.group(1)))
+    for module_index in range(target.GetNumModules()):
+        module = target.GetModuleAtIndex(module_index)
+        for symbol_index in range(module.GetNumSymbols()):
+            name = module.GetSymbolAtIndex(symbol_index).GetName()
+            match = marker_pattern.match(name or "")
+            if match:
+                versions.add(int(match.group(1)))
     return tuple(sorted(versions))
 
 
@@ -75,13 +70,36 @@ def _byte_order_name(byte_order: int) -> str:
     }.get(byte_order, "unknown")
 
 
+def _target_cache_key(target: lldb.SBTarget) -> Tuple[Any, ...]:
+    modules = []
+    for index in range(target.GetNumModules()):
+        module = target.GetModuleAtIndex(index)
+        modules.append((
+            module.GetUUIDString() or "",
+            str(module.GetFileSpec()),
+        ))
+    return (
+        target.GetTriple() or "",
+        target.GetAddressByteSize(),
+        target.GetByteOrder(),
+        tuple(modules),
+    )
+
+
 def inspect_target(target: lldb.SBTarget) -> LLGoTargetInfo:
     if not target or not target.IsValid():
         return LLGoTargetInfo((), None, None, "", 0, "unknown")
 
+    cache_key = _target_cache_key(target)
+    cached = _TARGET_INFO_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     marker_versions = _marker_versions(target)
     schema_version: Optional[int] = None
     runtime_layout_version: Optional[int] = None
+    # Multiple markers are ambiguous: do not select a runtime layout merely
+    # because one of the advertised schema versions happens to be supported.
     if len(marker_versions) == 1:
         candidate = marker_versions[0]
         for supported_schema, supported_runtime_layout in (
@@ -91,7 +109,7 @@ def inspect_target(target: lldb.SBTarget) -> LLGoTargetInfo:
                 runtime_layout_version = supported_runtime_layout
                 break
 
-    return LLGoTargetInfo(
+    info = LLGoTargetInfo(
         marker_versions=marker_versions,
         schema_version=schema_version,
         runtime_layout_version=runtime_layout_version,
@@ -99,6 +117,8 @@ def inspect_target(target: lldb.SBTarget) -> LLGoTargetInfo:
         pointer_size=target.GetAddressByteSize(),
         byte_order=_byte_order_name(target.GetByteOrder()),
     )
+    _TARGET_INFO_CACHE[cache_key] = info
+    return info
 
 
 def target_status(info: LLGoTargetInfo) -> str:

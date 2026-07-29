@@ -56,6 +56,7 @@ func init() {
 
 func runCmd(cmd *base.Command, args []string) {
 	if err := cmd.Flag.Parse(args); err != nil {
+		mockable.Exit(2)
 		return
 	}
 	if err := run(lldbPath, cmd.Flag.Args(), os.Stdin, os.Stdout, os.Stderr); err != nil {

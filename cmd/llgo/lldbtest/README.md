@@ -77,7 +77,7 @@ Process 21992 stopped
    223 		println(&globalStruct)
    224 		s.i8 = 0x12
 -> 225 		println(s.i8) // LLDB_BREAK: main_struct_updated
-(lldb) v
+(lldb) llgo vars
 var i int = <variable not available>
 var s github.com/goplus/llgo/cl/_testdata/debug.StructWithAllTypeFields = {
   i8 = '\x12',

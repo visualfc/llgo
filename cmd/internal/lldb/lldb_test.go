@@ -25,6 +25,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/goplus/llgo/cmd/internal/base"
+	"github.com/goplus/llgo/internal/mockable"
 )
 
 func TestParseLLDBMajor(t *testing.T) {
@@ -132,6 +135,29 @@ func TestRunRequiresExecutable(t *testing.T) {
 	err := run("lldb", nil, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
 	if err == nil || err.Error() != "llgo lldb: no executable specified" {
 		t.Fatalf("run() error = %v", err)
+	}
+}
+
+func TestRunCmdParseErrorExits(t *testing.T) {
+	var cmd base.Command
+	mockable.EnableMock()
+	defer mockable.DisableMock()
+
+	exited := false
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if recovered == "exit" {
+					exited = true
+					return
+				}
+				panic(recovered)
+			}
+		}()
+		runCmd(&cmd, []string{"--batch", "./program"})
+	}()
+	if !exited || mockable.ExitCode() != 2 {
+		t.Fatalf("runCmd parse error exit = (%v, %d), want (true, 2)", exited, mockable.ExitCode())
 	}
 }
 
