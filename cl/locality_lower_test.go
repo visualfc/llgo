@@ -147,8 +147,8 @@ func TestLocalityLoweringDiagnostics(t *testing.T) {
 	t.Run("stale plan", func(t *testing.T) {
 		prog := newProgram()
 		ctx := &context{prog: prog, goTyps: typesPkg}
-		ctx.locality.packages = map[*types.Package]*localPackage{
-			typesPkg: {plan: localitylayout.Package{Path: typesPkg.Path()}},
+		ctx.locality.packages = map[string]*localPackage{
+			typesPkg.Path(): {plan: localitylayout.Package{Path: typesPkg.Path()}},
 		}
 		if _, _, err := ctx.localVariableFor(nil, global, false); err == nil || !strings.Contains(err.Error(), "missing locality layout") {
 			t.Fatalf("localVariableFor error = %v", err)

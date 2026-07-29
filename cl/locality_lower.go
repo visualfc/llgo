@@ -66,7 +66,7 @@ type localEnsureCacheKey struct {
 // localityLowering owns all compiler state for TLS/GLS lowering. Only this
 // value is embedded in the general compiler context.
 type localityLowering struct {
-	packages  map[*types.Package]*localPackage
+	packages  map[string]*localPackage
 	variables map[*ssa.Global]*localVariable
 	function  localityFunction
 }
@@ -215,7 +215,8 @@ func (p *context) localPackageFor(typesPkg *types.Package, pkg llssa.Package, de
 	if typesPkg == nil {
 		return nil, nil
 	}
-	if owner := p.locality.packages[typesPkg]; owner != nil {
+	ownerPath := typesPkg.Path()
+	if owner := p.locality.packages[ownerPath]; owner != nil {
 		return owner, nil
 	}
 	plan, err := planLocalPackage(p.prog, typesPkg)
@@ -226,14 +227,14 @@ func (p *context) localPackageFor(typesPkg *types.Package, pkg llssa.Package, de
 		return nil, nil
 	}
 	if p.locality.packages == nil {
-		p.locality.packages = make(map[*types.Package]*localPackage)
+		p.locality.packages = make(map[string]*localPackage)
 	}
 	owner := &localPackage{
 		plan:   plan,
 		direct: make(map[string]llssa.Global),
 		init:   make(map[locality.Kind]*localInitializer),
 	}
-	p.locality.packages[typesPkg] = owner
+	p.locality.packages[ownerPath] = owner
 	p.buildLocalPackage(pkg, owner, define)
 	return owner, nil
 }
@@ -404,7 +405,7 @@ func (p *context) ensureLocalInitializer(b llssa.Builder, owner *localPackage, k
 }
 
 func (p *context) initializeLocalGuards(b llssa.Builder) {
-	owner := p.locality.packages[p.goTyps]
+	owner := p.locality.packages[p.goTyps.Path()]
 	if owner == nil {
 		return
 	}

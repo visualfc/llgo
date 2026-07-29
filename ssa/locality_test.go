@@ -99,6 +99,16 @@ func TestPackageLocalitiesRetainDeclarationOwners(t *testing.T) {
 	if !ok || altShared.Locality != GoroutineLocal || altShared.LocalStorage != LocalStoragePackage {
 		t.Fatalf("alternate sharedState = %+v, %v", altShared, ok)
 	}
+	reloadedAlt := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
+	reloadedShared, ok := prog.VariableLocalityFor(reloadedAlt, "runtime.sharedState")
+	if !ok || reloadedShared != altShared {
+		t.Fatalf("reloaded alternate sharedState = %+v, %v; want %+v", reloadedShared, ok, altShared)
+	}
+	prog.DeclareLocality(reloadedAlt, "sharedState", LocalityInfo{Locality: GoroutineLocal})
+	redeclaredShared, ok := prog.VariableLocalityFor(reloadedAlt, "runtime.sharedState")
+	if !ok || redeclaredShared != altShared {
+		t.Fatalf("redeclared alternate sharedState = %+v, %v; want prepared %+v", redeclaredShared, ok, altShared)
+	}
 
 	if got := prog.PackageLocalities("runtime"); len(got) != 4 {
 		t.Fatalf("canonical PackageLocalities(runtime) = %+v, want all four declaration names", got)

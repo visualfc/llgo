@@ -54,7 +54,7 @@ type localityInfos struct {
 	mu                 sync.RWMutex
 	entries            map[string]VariableLocality
 	ownerlessEntries   map[string]VariableLocality
-	declarationEntries map[string]map[*types.Package]VariableLocality
+	declarationEntries map[string]map[string]VariableLocality
 	parsedPackages     map[*types.Package]struct{}
 }
 
@@ -62,7 +62,7 @@ func newLocalityInfos() *localityInfos {
 	return &localityInfos{
 		entries:            make(map[string]VariableLocality),
 		ownerlessEntries:   make(map[string]VariableLocality),
-		declarationEntries: make(map[string]map[*types.Package]VariableLocality),
+		declarationEntries: make(map[string]map[string]VariableLocality),
 		parsedPackages:     make(map[*types.Package]struct{}),
 	}
 }
@@ -82,12 +82,13 @@ func (p *localityInfos) updateFor(pkg *types.Package, name string, update func(*
 	p.mu.Lock()
 	entries := p.declarationEntries[name]
 	if entries == nil {
-		entries = make(map[*types.Package]VariableLocality)
+		entries = make(map[string]VariableLocality)
 		p.declarationEntries[name] = entries
 	}
-	info := entries[pkg]
+	owner := pkg.Path()
+	info := entries[owner]
 	update(&info)
-	entries[pkg] = info
+	entries[owner] = info
 	p.entries[name] = info
 	p.mu.Unlock()
 }
@@ -105,10 +106,23 @@ func (p Program) SetLocalityInfoFor(pkg *types.Package, name string, info Locali
 
 // DeclareLocality records locality metadata found on a declaration in pkg.
 // Alternate packages can share canonical symbol names with the packages they
-// replace, so both ownership and metadata retain the concrete types.Package.
+// replace, so both ownership and metadata retain the raw import path. Repeated
+// loads of the same raw path preserve metadata enriched during preparation.
 func (p Program) DeclareLocality(pkg *types.Package, name string, info LocalityInfo) {
 	fullName := FullName(pkg, name)
-	p.SetLocalityInfoFor(pkg, fullName, info)
+	owner := pkg.Path()
+	p.localities.mu.Lock()
+	entries := p.localities.declarationEntries[fullName]
+	if entries == nil {
+		entries = make(map[string]VariableLocality)
+		p.localities.declarationEntries[fullName] = entries
+	}
+	if _, exists := entries[owner]; !exists {
+		current := VariableLocality{Info: info}
+		entries[owner] = current
+		p.localities.entries[fullName] = current
+	}
+	p.localities.mu.Unlock()
 }
 
 func (p Program) SetLocalStorage(name string, storage LocalStorage) {
@@ -133,7 +147,7 @@ func (p Program) VariableLocality(name string) (VariableLocality, bool) {
 func (p Program) VariableLocalityFor(pkg *types.Package, name string) (VariableLocality, bool) {
 	p.localities.mu.RLock()
 	if entries := p.localities.declarationEntries[name]; entries != nil {
-		if info, ok := entries[pkg]; ok {
+		if info, ok := entries[pkg.Path()]; ok {
 			p.localities.mu.RUnlock()
 			return info, true
 		}
@@ -164,7 +178,7 @@ func (p Program) ResolveLocalityFor(pkg *types.Package, name string) (string, Va
 		defer p.localities.mu.RUnlock()
 		if strings.HasPrefix(name, prefix) {
 			if entries := p.localities.declarationEntries[name]; entries != nil {
-				if info, ok := entries[pkg]; ok {
+				if info, ok := entries[pkg.Path()]; ok {
 					return info, true
 				}
 			}
@@ -335,7 +349,7 @@ func (p Program) PackageLocalitiesFor(pkg *types.Package) map[string]VariableLoc
 		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
-		if info, ok := entries[pkg]; ok && info.Locality != locality.None {
+		if info, ok := entries[pkg.Path()]; ok && info.Locality != locality.None {
 			ret[name] = info
 		}
 	}
