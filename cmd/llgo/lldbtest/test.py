@@ -280,9 +280,19 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"Failed to create target for {self.executable_path}")
 
-        if not llgo_plugin.is_llgo_compiler(self.target):
+        target_info = llgo_plugin.inspect_target(self.target)
+        if not target_info.supported:
             raise LLDBTestException(
                 "Target does not contain a supported LLGo debugger marker")
+        if (target_info.schema_version != 1 or
+                target_info.runtime_layout_version != 1):
+            raise LLDBTestException(
+                f"Unexpected LLGo debugger schema: {target_info}")
+        if (target_info.pointer_size != self.target.GetAddressByteSize() or
+                target_info.byte_order == "unknown" or
+                not target_info.triple):
+            raise LLDBTestException(
+                f"Incomplete LLGo target properties: {target_info}")
 
         llgo_plugin.register_commands(self.debugger)
 

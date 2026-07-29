@@ -1,11 +1,29 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring
 
+from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Tuple
 import re
 import lldb
 
 
-LLGO_DEBUGGER_MARKERS = ("__llgo_debugger_marker_v1",)
+LLGO_DEBUGGER_MARKER_PREFIX = "__llgo_debugger_marker_v"
+LLGO_DEBUGGER_SCHEMAS = {
+    "__llgo_debugger_marker_v1": (1, 1),
+}
+
+
+@dataclass(frozen=True)
+class LLGoTargetInfo:
+    marker_versions: Tuple[int, ...]
+    schema_version: Optional[int]
+    runtime_layout_version: Optional[int]
+    triple: str
+    pointer_size: int
+    byte_order: str
+
+    @property
+    def supported(self) -> bool:
+        return self.schema_version is not None
 
 
 def log(*args: Any, **kwargs: Any) -> None:
@@ -19,16 +37,103 @@ def __lldb_init_module(debugger: lldb.SBDebugger, _: Dict[str, Any]) -> None:
 def register_commands(debugger: lldb.SBDebugger) -> None:
     debugger.HandleCommand('command container add llgo')
     debugger.HandleCommand(
+        'command script add -f llgo_plugin.print_target_status llgo status')
+    debugger.HandleCommand(
         'command script add -f llgo_plugin.print_go_expression llgo print')
     debugger.HandleCommand(
         'command script add -f llgo_plugin.print_all_variables llgo vars')
 
 
-def is_llgo_compiler(target: lldb.SBTarget) -> bool:
+def _marker_versions(target: lldb.SBTarget) -> Tuple[int, ...]:
     if not target or not target.IsValid():
-        return False
-    return any(target.FindSymbols(marker).GetSize() > 0
-               for marker in LLGO_DEBUGGER_MARKERS)
+        return ()
+
+    versions = {
+        schema_version
+        for marker, (schema_version, _runtime_layout_version)
+        in LLGO_DEBUGGER_SCHEMAS.items()
+        if target.FindSymbols(marker).GetSize() > 0
+    }
+    marker_pattern = re.compile(
+        rf"^{re.escape(LLGO_DEBUGGER_MARKER_PREFIX)}([0-9]+)$")
+    if target.GetNumModules() == 0:
+        return ()
+    module = target.GetModuleAtIndex(0)
+    for index in range(module.GetNumSymbols()):
+        name = module.GetSymbolAtIndex(index).GetName()
+        match = marker_pattern.match(name or "")
+        if match:
+            versions.add(int(match.group(1)))
+    return tuple(sorted(versions))
+
+
+def _byte_order_name(byte_order: int) -> str:
+    return {
+        lldb.eByteOrderBig: "big",
+        lldb.eByteOrderPDP: "pdp",
+        lldb.eByteOrderLittle: "little",
+    }.get(byte_order, "unknown")
+
+
+def inspect_target(target: lldb.SBTarget) -> LLGoTargetInfo:
+    if not target or not target.IsValid():
+        return LLGoTargetInfo((), None, None, "", 0, "unknown")
+
+    marker_versions = _marker_versions(target)
+    schema_version: Optional[int] = None
+    runtime_layout_version: Optional[int] = None
+    if len(marker_versions) == 1:
+        candidate = marker_versions[0]
+        for supported_schema, supported_runtime_layout in (
+                LLGO_DEBUGGER_SCHEMAS.values()):
+            if candidate == supported_schema:
+                schema_version = supported_schema
+                runtime_layout_version = supported_runtime_layout
+                break
+
+    return LLGoTargetInfo(
+        marker_versions=marker_versions,
+        schema_version=schema_version,
+        runtime_layout_version=runtime_layout_version,
+        triple=target.GetTriple() or "",
+        pointer_size=target.GetAddressByteSize(),
+        byte_order=_byte_order_name(target.GetByteOrder()),
+    )
+
+
+def target_status(info: LLGoTargetInfo) -> str:
+    if not info.marker_versions:
+        return "Not an LLGo target; raw LLDB debugging remains available."
+    if not info.supported:
+        versions = ", ".join(f"v{version}"
+                             for version in info.marker_versions)
+        return (
+            f"Unsupported LLGo debugger marker version(s): {versions}; "
+            "raw LLDB debugging remains available."
+        )
+    return (
+        f"LLGo debugger schema v{info.schema_version} "
+        f"(runtime layout v{info.runtime_layout_version}); "
+        f"target {info.triple}; pointer size {info.pointer_size}; "
+        f"byte order {info.byte_order}."
+    )
+
+
+def is_llgo_compiler(target: lldb.SBTarget) -> bool:
+    return inspect_target(target).supported
+
+
+def print_target_status(debugger: lldb.SBDebugger, _command: str, result: lldb.SBCommandReturnObject, _internal_dict: Dict[str, Any]) -> None:
+    result.AppendMessage(target_status(
+        inspect_target(debugger.GetSelectedTarget())))
+
+
+def _require_supported_target(debugger: lldb.SBDebugger, result: lldb.SBCommandReturnObject) -> bool:
+    info = inspect_target(debugger.GetSelectedTarget())
+    if info.supported:
+        return True
+    result.SetError(target_status(info))
+    return False
 
 
 def get_indexed_value(value: lldb.SBValue, index: int) -> Optional[lldb.SBValue]:
@@ -115,6 +220,8 @@ def evaluate_expression(frame: lldb.SBFrame, expression: str) -> Optional[lldb.S
 
 
 def print_go_expression(debugger: lldb.SBDebugger, command: str, result: lldb.SBCommandReturnObject, _internal_dict: Dict[str, Any]) -> None:
+    if not _require_supported_target(debugger, result):
+        return
     frame = debugger.GetSelectedTarget().GetProcess(
     ).GetSelectedThread().GetSelectedFrame()
     value = evaluate_expression(frame, command)
@@ -126,9 +233,7 @@ def print_go_expression(debugger: lldb.SBDebugger, command: str, result: lldb.SB
 
 
 def print_all_variables(debugger: lldb.SBDebugger, _command: str, result: lldb.SBCommandReturnObject, _internal_dict: Dict[str, Any]) -> None:
-    target = debugger.GetSelectedTarget()
-    if not is_llgo_compiler(target):
-        result.AppendMessage("Not a LLGo compiled binary.")
+    if not _require_supported_target(debugger, result):
         return
 
     frame = debugger.GetSelectedTarget().GetProcess(

@@ -141,6 +141,9 @@ func TestEmbeddedPluginIdentity(t *testing.T) {
 		"__lldb_init_module",
 		"__llgo_debugger_marker_v1",
 		"is_llgo_compiler",
+		"inspect_target",
+		"LLGO_DEBUGGER_SCHEMAS",
+		"llgo status",
 		"llgo print",
 		"llgo vars",
 	} {
