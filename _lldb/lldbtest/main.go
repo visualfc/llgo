@@ -117,17 +117,23 @@ func FuncWithAllTypeParams(
 	fn func(string) (int, error),
 ) (int, error) {
 	currentI32 := i32
+	currentI64 := i64
+	currentI := i
 	currentU32 := u32
+	currentU64 := u64
+	currentU := u
+	currentF32 := f32
+	currentF64 := f64
 	// Expected:
-	//   all variables: i8 i16 i32 i64 i u8 u16 u32 u64 u f32 f64 b c64 c128 slice arr arr2 s e f pf pi intr m c err fn currentI32 currentU32
+	//   all variables: i8 i16 i32 i64 i u8 u16 u32 u64 u f32 f64 b c64 c128 slice arr arr2 s e f pf pi intr m c err fn currentI32 currentI64 currentI currentU32 currentU64 currentU currentF32 currentF64
 	//   currentI32: 3
-	//   i64: 4
-	//   i: 5
+	//   currentI64: 4
+	//   currentI: 5
 	//   currentU32: 8
-	//   u64: 9
-	//   u: 10
-	//   f32: 11
-	//   f64: 12
+	//   currentU64: 9
+	//   currentU: 10
+	//   currentF32: 11
+	//   currentF64: 12
 	//   slice: []int{21, 22, 23}
 	//   arr: [3]int{24, 25, 26}
 	//   arr2: [3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}
@@ -149,8 +155,8 @@ func FuncWithAllTypeParams(
 	//   u16: 7
 	//   b: true
 	println(
-		i8, i16, currentI32, i64, i, u8, u16, currentU32, u64, u,
-		f32, f64, b,
+		i8, i16, currentI32, currentI64, currentI, u8, u16, currentU32, currentU64, currentU,
+		currentF32, currentF64, b,
 		c64, c128,
 		slice, arr[0:],
 		s,
@@ -181,9 +187,15 @@ func FuncWithAllTypeParams(
 	s = "world"
 	e = E{i: 40}
 	currentI32 = i32
+	currentI64 = i64
+	currentI = i
 	currentU32 = u32
-	println(i8, i16, currentI32, i64, i, u8, u16, currentU32, u64, u,
-		f32, f64, b,
+	currentU64 = u64
+	currentU = u
+	currentF32 = f32
+	currentF64 = f64
+	println(i8, i16, currentI32, currentI64, currentI, u8, u16, currentU32, currentU64, currentU,
+		currentF32, currentF64, b,
 		c64, c128,
 		slice, arr[0:], &arr2,
 		s,
@@ -197,15 +209,15 @@ func FuncWithAllTypeParams(
 	//   i8: '\t'
 	//   i16: 10
 	//   currentI32: 11
-	//   i64: 12
-	//   i: 13
+	//   currentI64: 12
+	//   currentI: 13
 	//   u8: '\x0e'
 	//   u16: 15
 	//   currentU32: 16
-	//   u64: 17
-	//   u: 18
-	//   f32: 19
-	//   f64: 20
+	//   currentU64: 17
+	//   currentU: 18
+	//   currentF32: 19
+	//   currentF64: 20
 	//   b: false
 	//   c64: 21 + 22i
 	//   c128: 23 + 24i
