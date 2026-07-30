@@ -138,7 +138,7 @@ func (p *context) prepareLocalVariables(pkg llssa.Package, globals []*ssa.Global
 // aliases and layout validation cannot diverge between lowering cases.
 func (p *context) localVariableFor(pkg llssa.Package, global *ssa.Global, defineCurrent bool) (*localVariable, bool, error) {
 	fullName := llssa.FullName(global.Pkg.Pkg, global.Name())
-	canonical, info, ok, err := p.prog.ResolveLocality(fullName)
+	canonical, info, ok, err := p.prog.ResolveLocalityFor(global.Pkg.Pkg, fullName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -161,7 +161,7 @@ func (p *context) localVariableFor(pkg llssa.Package, global *ssa.Global, define
 }
 
 func (p *context) localityGlobalStorage(pkg llssa.Package, global *ssa.Global, name string, typ types.Type, bg llssa.Background) (llssa.Global, bool) {
-	info, ok := p.resolveLocality(llssa.FullName(global.Pkg.Pkg, global.Name()))
+	info, ok := p.resolveLocality(global.Pkg.Pkg, llssa.FullName(global.Pkg.Pkg, global.Name()))
 	if !ok || info.Locality == locality.None {
 		return pkg.NewVar(name, typ, bg), false
 	}
@@ -215,8 +215,8 @@ func (p *context) localPackageFor(typesPkg *types.Package, pkg llssa.Package, de
 	if typesPkg == nil {
 		return nil, nil
 	}
-	path := llssa.PathOf(typesPkg)
-	if owner := p.locality.packages[path]; owner != nil {
+	ownerPath := typesPkg.Path()
+	if owner := p.locality.packages[ownerPath]; owner != nil {
 		return owner, nil
 	}
 	plan, err := planLocalPackage(p.prog, typesPkg)
@@ -234,7 +234,7 @@ func (p *context) localPackageFor(typesPkg *types.Package, pkg llssa.Package, de
 		direct: make(map[string]llssa.Global),
 		init:   make(map[locality.Kind]*localInitializer),
 	}
-	p.locality.packages[path] = owner
+	p.locality.packages[ownerPath] = owner
 	p.buildLocalPackage(pkg, owner, define)
 	return owner, nil
 }
@@ -352,15 +352,15 @@ func (p *context) localVariableAddr(b llssa.Builder, v *ssa.Global, info llssa.V
 }
 
 func (p *context) localVariableAddress(b llssa.Builder, variable *ssa.Global, name string) (llssa.Expr, bool) {
-	info, ok := p.resolveLocality(llssa.FullName(variable.Pkg.Pkg, variable.Name()))
+	info, ok := p.resolveLocality(variable.Pkg.Pkg, llssa.FullName(variable.Pkg.Pkg, variable.Name()))
 	if !ok || info.Locality == locality.None {
 		return llssa.Expr{}, false
 	}
 	return p.localVariableAddr(b, variable, info, name), true
 }
 
-func (p *context) resolveLocality(name string) (llssa.VariableLocality, bool) {
-	_, info, ok, err := p.prog.ResolveLocality(name)
+func (p *context) resolveLocality(pkg *types.Package, name string) (llssa.VariableLocality, bool) {
+	_, info, ok, err := p.prog.ResolveLocalityFor(pkg, name)
 	if err != nil {
 		panic(err)
 	}
@@ -405,7 +405,10 @@ func (p *context) ensureLocalInitializer(b llssa.Builder, owner *localPackage, k
 }
 
 func (p *context) initializeLocalGuards(b llssa.Builder) {
-	owner := p.locality.packages[llssa.PathOf(p.goTyps)]
+	if p.goTyps == nil {
+		return
+	}
+	owner := p.locality.packages[p.goTyps.Path()]
 	if owner == nil {
 		return
 	}

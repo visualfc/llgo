@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	llssa "github.com/goplus/llgo/ssa"
+	"github.com/goplus/llgo/ssa/abi"
 	"github.com/goplus/llgo/ssa/ssatest"
 	"golang.org/x/tools/go/ssa"
 )
@@ -493,6 +494,41 @@ func TestValidateLocalInitializers(t *testing.T) {
 	prog.SetLocalityInfo(name, llssa.LocalityInfo{Locality: llssa.ThreadLocal, HasInitializer: true, InitFunc: "example.com/locality.init", InitOrder: 1})
 	if err := validateLocalInitializers(prog, pkg); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestConcretePackageLocalityMetadata(t *testing.T) {
+	std := types.NewPackage("runtime", "runtime")
+	alt := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
+	for _, pkg := range []*types.Package{std, alt} {
+		pkg.Scope().Insert(types.NewVar(token.NoPos, pkg, "state", types.Typ[types.Uintptr]))
+	}
+
+	prog := ssatest.NewProgram(t, nil)
+	name := "runtime.state"
+	prog.DeclareLocality(std, "state", llssa.LocalityInfo{
+		Locality:       llssa.ThreadLocal,
+		HasInitializer: true,
+	})
+	prog.DeclareLocality(alt, "state", llssa.LocalityInfo{
+		Locality: llssa.GoroutineLocal,
+	})
+	prog.SetLocalStorageFor(std, name, llssa.LocalStorageNativeTLS)
+	prog.SetLocalStorageFor(alt, name, llssa.LocalStoragePackage)
+
+	if err := validateLocalInitializers(prog, std); err == nil || !strings.Contains(err.Error(), "inconsistent initializer metadata") {
+		t.Fatalf("standard validation error = %v", err)
+	}
+	if err := validateLocalInitializers(prog, alt); err != nil {
+		t.Fatalf("alternate validation used standard metadata: %v", err)
+	}
+	plan, err := planLocalPackage(prog, alt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, ok := plan.Lookup(name)
+	if !ok || state.Info.Locality != llssa.GoroutineLocal {
+		t.Fatalf("alternate plan state = %+v, %v", state, ok)
 	}
 }
 

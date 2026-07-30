@@ -164,7 +164,7 @@ func TestLocalityLoweringDiagnostics(t *testing.T) {
 		if _, _, err := ctx.localVariableFor(nil, global, false); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
 			t.Fatalf("localVariableFor error = %v", err)
 		}
-		assertLocalityPanic(t, "resolveLocality", func() { ctx.resolveLocality(name) })
+		assertLocalityPanic(t, "resolveLocality", func() { ctx.resolveLocality(typesPkg, name) })
 		assertLocalityPanic(t, "prepareLocalVariables", func() { ctx.prepareLocalVariables(nil, nil) })
 		assertLocalityPanic(t, "localVariableAddr", func() {
 			ctx.localVariableAddr(nil, global, llssa.VariableLocality{Info: llssa.LocalityInfo{Locality: llssa.ThreadLocal}}, name)

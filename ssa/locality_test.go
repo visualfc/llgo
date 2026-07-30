@@ -20,6 +20,8 @@ import (
 	"go/types"
 	"strings"
 	"testing"
+
+	"github.com/goplus/llgo/ssa/abi"
 )
 
 func TestLocalityInfos(t *testing.T) {
@@ -61,6 +63,58 @@ func TestLocalityInfos(t *testing.T) {
 	}
 }
 
+func TestPackageLocalitiesRetainDeclarationOwners(t *testing.T) {
+	prog := NewProgram(nil)
+	std := types.NewPackage("runtime", "runtime")
+	alt := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
+
+	prog.DeclareLocality(std, "stdState", LocalityInfo{Locality: ThreadLocal})
+	prog.DeclareLocality(alt, "altState", LocalityInfo{Locality: GoroutineLocal})
+	prog.DeclareLocality(std, "sharedState", LocalityInfo{Locality: ThreadLocal})
+	prog.DeclareLocality(alt, "sharedState", LocalityInfo{Locality: GoroutineLocal})
+	prog.SetLocalStorageFor(std, "runtime.sharedState", LocalStorageNativeTLS)
+	prog.SetLocalStorageFor(alt, "runtime.sharedState", LocalStoragePackage)
+	prog.SetLocalityInfo("runtime.preloadedState", LocalityInfo{Locality: ThreadLocal})
+
+	check := func(pkg *types.Package, wants ...string) {
+		t.Helper()
+		got := prog.PackageLocalitiesFor(pkg)
+		if len(got) != len(wants) {
+			t.Fatalf("PackageLocalitiesFor(%q) = %+v, want %v", pkg.Path(), got, wants)
+		}
+		for _, name := range wants {
+			if _, ok := got["runtime."+name]; !ok {
+				t.Fatalf("PackageLocalitiesFor(%q) = %+v, missing %q", pkg.Path(), got, name)
+			}
+		}
+	}
+	check(std, "stdState", "sharedState", "preloadedState")
+	check(alt, "altState", "sharedState", "preloadedState")
+
+	stdShared, ok := prog.VariableLocalityFor(std, "runtime.sharedState")
+	if !ok || stdShared.Locality != ThreadLocal || stdShared.LocalStorage != LocalStorageNativeTLS {
+		t.Fatalf("standard sharedState = %+v, %v", stdShared, ok)
+	}
+	altShared, ok := prog.VariableLocalityFor(alt, "runtime.sharedState")
+	if !ok || altShared.Locality != GoroutineLocal || altShared.LocalStorage != LocalStoragePackage {
+		t.Fatalf("alternate sharedState = %+v, %v", altShared, ok)
+	}
+	reloadedAlt := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
+	reloadedShared, ok := prog.VariableLocalityFor(reloadedAlt, "runtime.sharedState")
+	if !ok || reloadedShared != altShared {
+		t.Fatalf("reloaded alternate sharedState = %+v, %v; want %+v", reloadedShared, ok, altShared)
+	}
+	prog.DeclareLocality(reloadedAlt, "sharedState", LocalityInfo{Locality: GoroutineLocal})
+	redeclaredShared, ok := prog.VariableLocalityFor(reloadedAlt, "runtime.sharedState")
+	if !ok || redeclaredShared != altShared {
+		t.Fatalf("redeclared alternate sharedState = %+v, %v; want prepared %+v", redeclaredShared, ok, altShared)
+	}
+
+	if got := prog.PackageLocalities("runtime"); len(got) != 4 {
+		t.Fatalf("canonical PackageLocalities(runtime) = %+v, want all four declaration names", got)
+	}
+}
+
 func TestNeedsLocalContext(t *testing.T) {
 	prog := NewProgram(nil)
 	if prog.NeedsLocalContext() {
@@ -84,6 +138,87 @@ func TestNeedsLocalContext(t *testing.T) {
 	if !prog.NeedsLocalContext() {
 		t.Fatal("context storage was not detected")
 	}
+}
+
+func TestNeedsLocalContextIgnoresInactiveDeclarations(t *testing.T) {
+	prog := NewProgram(nil)
+	std := types.NewPackage("runtime", "runtime")
+	alt := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
+	name := "runtime.state"
+
+	prog.DeclareLocality(std, "state", LocalityInfo{Locality: ThreadLocal})
+	prog.SetLocalStorageFor(std, name, LocalStorageNativeTLS)
+	prog.DeclareLocality(alt, "state", LocalityInfo{Locality: GoroutineLocal})
+	prog.SetLocalStorageFor(alt, name, LocalStoragePackage)
+	if prog.NeedsLocalContext() {
+		t.Fatal("scanned inactive alternate declaration required a local context")
+	}
+
+	prog.ActivateLocalitiesFor(std)
+	if prog.NeedsLocalContext() {
+		t.Fatal("active native-TLS standard declaration used alternate package storage")
+	}
+	prog.ActivateLocalitiesFor(alt)
+	if !prog.NeedsLocalContext() {
+		t.Fatal("active alternate package storage did not require a local context")
+	}
+}
+
+func TestLocalityMetadataFallbacks(t *testing.T) {
+	t.Run("owner update and ownerless fallback", func(t *testing.T) {
+		prog := NewProgram(nil)
+		pkg := types.NewPackage("example.com/p", "p")
+		ownedName := "example.com/p.owned"
+		prog.SetLocalityInfoFor(pkg, ownedName, LocalityInfo{Locality: ThreadLocal})
+		owned, ok := prog.VariableLocalityFor(pkg, ownedName)
+		if !ok || owned.Locality != ThreadLocal {
+			t.Fatalf("owner-specific locality = %+v, %v", owned, ok)
+		}
+
+		fallbackName := "example.com/p.fallback"
+		prog.SetLocalityInfo(fallbackName, LocalityInfo{Locality: GoroutineLocal})
+		fallback, ok := prog.VariableLocalityFor(pkg, fallbackName)
+		if !ok || fallback.Locality != GoroutineLocal {
+			t.Fatalf("ownerless fallback locality = %+v, %v", fallback, ok)
+		}
+
+		prog.SetLocalityInfo("example.com/p.ordinary", LocalityInfo{})
+		prog.SetLocalityInfo("example.com/other.local", LocalityInfo{Locality: ThreadLocal})
+		got := prog.PackageLocalitiesFor(pkg)
+		if _, ok := got["example.com/p.ordinary"]; ok {
+			t.Fatalf("ordinary variable returned as local: %+v", got)
+		}
+		if _, ok := got["example.com/other.local"]; ok {
+			t.Fatalf("other package locality returned: %+v", got)
+		}
+
+		// A nil package is intentionally a no-op for callers walking optional
+		// package roots.
+		prog.ActivateLocalitiesFor(nil)
+	})
+
+	t.Run("metadata without local variables", func(t *testing.T) {
+		prog := NewProgram(nil)
+		prog.SetLocalityInfo("example.com/p.ordinary", LocalityInfo{})
+		if err := prog.ValidateLocalities("example.com/p"); err != nil {
+			t.Fatalf("ordinary metadata failed locality validation: %v", err)
+		}
+	})
+
+	t.Run("legacy canonical entry", func(t *testing.T) {
+		prog := NewProgram(nil)
+		// The entries map predates declaration ownership. Keep its compatibility
+		// path covered for callers that preload canonical metadata directly.
+		prog.localities.mu.Lock()
+		prog.localities.entries["example.com/p.legacy"] = VariableLocality{
+			Info:         LocalityInfo{Locality: GoroutineLocal},
+			LocalStorage: LocalStoragePackage,
+		}
+		prog.localities.mu.Unlock()
+		if !prog.NeedsLocalContext() {
+			t.Fatal("legacy canonical locality did not require a context")
+		}
+	})
 }
 
 func TestRejectsLinknameLocality(t *testing.T) {
