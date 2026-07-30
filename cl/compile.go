@@ -457,7 +457,13 @@ func (p *context) compileGlobal(pkg llssa.Package, gbl *ssa.Global) {
 	}
 }
 
-func makeClosureCtx(pkg *types.Package, vars []*ssa.FreeVar) *types.Var {
+func (p *context) makeClosureCtx(fn *ssa.Function, pkg *types.Package, vars []*ssa.FreeVar) *types.Var {
+	oldGoFn := p.goFn
+	p.goFn = fn
+	defer func() {
+		p.goFn = oldGoFn
+	}()
+
 	n := len(vars)
 	flds := make([]*types.Var, n)
 	for i, v := range vars {
@@ -465,7 +471,7 @@ func makeClosureCtx(pkg *types.Package, vars []*ssa.FreeVar) *types.Var {
 		if name == "" {
 			name = "_"
 		}
-		flds[i] = types.NewField(token.NoPos, pkg, name, v.Type(), false)
+		flds[i] = types.NewField(token.NoPos, pkg, name, p.patchType(v.Type()), false)
 	}
 	t := types.NewPointer(types.NewStruct(flds, nil))
 	return types.NewParam(token.NoPos, pkg, "$env", t)
@@ -635,7 +641,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		dbgInstrln("==> NewZeroSizedClosure", name, "type:", sig)
 	} else if hasFreeVars {
 		dbgInstrln("==> NewClosure", name, "type:", sig)
-		ctx = makeClosureCtx(pkgTypes, f.FreeVars)
+		ctx = p.makeClosureCtx(f, pkgTypes, f.FreeVars)
 	} else if hasExplicitEnv {
 		dbgInstrln("==> NewEnvFunc", name, "type:", sig)
 		ctx = types.NewVar(token.NoPos, nil, "$env", types.Typ[types.UnsafePointer])
@@ -2714,19 +2720,16 @@ func (p *context) localTypeOrdinal(obj types.Object) int {
 }
 
 func (p *context) inCurrentFunction(pos token.Pos) bool {
-	if !pos.IsValid() {
-		return false
-	}
-	syntax := p.currentFunctionSyntax()
-	return syntax != nil && syntax.Pos() <= pos && pos <= syntax.End()
+	return p.enclosingFunctionSyntax(pos) != nil
 }
 
 func (p *context) localTypeOrdinalBySyntax(pos token.Pos) int {
-	if !p.inCurrentFunction(pos) {
+	syntax := p.enclosingFunctionSyntax(pos)
+	if syntax == nil {
 		return 0
 	}
 	n := 0
-	ast.Inspect(p.currentFunctionSyntax(), func(node ast.Node) bool {
+	ast.Inspect(syntax, func(node ast.Node) bool {
 		spec, ok := node.(*ast.TypeSpec)
 		if !ok {
 			return true
@@ -2737,6 +2740,22 @@ func (p *context) localTypeOrdinalBySyntax(pos token.Pos) int {
 		return true
 	})
 	return n
+}
+
+func (p *context) enclosingFunctionSyntax(pos token.Pos) ast.Node {
+	if !pos.IsValid() {
+		return nil
+	}
+	for fn := p.goFn; fn != nil; fn = fn.Parent() {
+		syntaxFn := fn
+		if origin := fn.Origin(); origin != nil {
+			syntaxFn = origin
+		}
+		if syntax := syntaxFn.Syntax(); syntax != nil && syntax.Pos() <= pos && pos <= syntax.End() {
+			return syntax
+		}
+	}
+	return nil
 }
 
 func (p *context) currentFunctionSyntax() ast.Node {
