@@ -39,8 +39,10 @@ done
 # Build the project
 build_project "$package_path" || exit 1
 
-# Set up the result file path
-result_file="/tmp/lldb_exit_code"
+# Set up private paths for test results and auxiliary fixtures.
+test_tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/llgo-lldbtest.XXXXXX")
+trap 'rm -rf "$test_tmp_dir"' EXIT
+result_file="$test_tmp_dir/exit-code"
 
 # Prepare LLDB commands
 lldb_commands=(
@@ -77,8 +79,8 @@ llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
     -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "LLGo debugger schema v1 (runtime layout v1)" in result.GetOutput()'
 
 # The LLGo formatter must not attach itself to an ordinary C target.
-non_llgo_dir=$(mktemp -d)
-trap 'rm -rf "$non_llgo_dir"' EXIT
+non_llgo_dir="$test_tmp_dir/non-llgo"
+mkdir -p "$non_llgo_dir"
 printf 'int main(void) { return 0; }\n' | \
     "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo" \
