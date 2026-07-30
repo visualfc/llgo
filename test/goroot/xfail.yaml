@@ -2015,10 +2015,6 @@ xfails:
     reason: llgo parser recovery emits additional malformed-expression diagnostics
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/issue14520.go
-    reason: llgo parser emits an additional missing-comma diagnostic
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue17328.go
     reason: llgo parser recovery emits additional end-of-file diagnostics
   - version: go1.26
@@ -2185,10 +2181,6 @@ xfails:
     directive: errorcheck
     case: fixedbugs/issue24651b.go
     reason: gc-specific -m optimization diagnostics are not implemented by llgo
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/composite.go
-    reason: llgo parser reports an additional missing-comma diagnostic
   - version: go1.26
     directive: errorcheck
     case: escape_goto.go
