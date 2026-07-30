@@ -156,6 +156,42 @@ def _require_supported_target(debugger: lldb.SBDebugger, result: lldb.SBCommandR
     return False
 
 
+def _selected_stopped_frame(debugger: lldb.SBDebugger, result: lldb.SBCommandReturnObject) -> Optional[lldb.SBFrame]:
+    target = debugger.GetSelectedTarget()
+    if not target or not target.IsValid():
+        result.SetError("LLGo command requires a valid target.")
+        return None
+
+    process = target.GetProcess()
+    if (not process or not process.IsValid() or
+            process.GetState() != lldb.eStateStopped):
+        result.SetError("LLGo command requires a stopped process.")
+        return None
+
+    thread = process.GetSelectedThread()
+    if not thread or not thread.IsValid():
+        result.SetError("LLGo command requires a selected thread.")
+        return None
+
+    frame = thread.GetSelectedFrame()
+    if not frame or not frame.IsValid():
+        result.SetError("LLGo command requires a selected frame.")
+        return None
+    return frame
+
+
+def _value_as_int(value: lldb.SBValue) -> Optional[int]:
+    if not value or not value.IsValid():
+        return None
+    raw = value.GetValue()
+    if raw is None:
+        return None
+    try:
+        return int(raw, 0)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_indexed_value(value: lldb.SBValue, index: int) -> Optional[lldb.SBValue]:
     if not value or not value.IsValid():
         return None
@@ -166,7 +202,9 @@ def get_indexed_value(value: lldb.SBValue, index: int) -> Optional[lldb.SBValue]
         data_ptr = value.GetChildMemberWithName('data')
         element_type = data_ptr.GetType().GetPointeeType()
         element_size = element_type.GetByteSize()
-        ptr_value = int(data_ptr.GetValue(), 16)
+        ptr_value = _value_as_int(data_ptr)
+        if ptr_value is None:
+            return None
         element_address = ptr_value + index * element_size
         target = value.GetTarget()
         return target.CreateValueFromAddress(
@@ -187,6 +225,8 @@ def find_variable(frame: lldb.SBFrame, name: str) -> lldb.SBValue:
 
 def evaluate_expression(frame: lldb.SBFrame, expression: str) -> Optional[lldb.SBValue]:
     parts = re.findall(r'\*|\w+|\(|\)|\[.*?\]|\.', expression)
+    if not parts or "".join(parts) != re.sub(r"\s+", "", expression):
+        return None
 
     def evaluate_part(i: int) -> Tuple[Optional[lldb.SBValue], int]:
         nonlocal parts
@@ -209,18 +249,25 @@ def evaluate_expression(frame: lldb.SBFrame, expression: str) -> Optional[lldb.S
                     elif parts[j] == ')':
                         depth -= 1
                     j += 1
+                if depth != 0:
+                    return None, j
                 value, i = evaluate_part(i + 1)
                 i = j - 1
             elif part == ')':
                 return value, i + 1
             elif part == '.':
+                if i + 1 >= len(parts) or not re.fullmatch(r'\w+', parts[i + 1]):
+                    return None, i + 1
                 if value is None:
                     value = find_variable(frame, parts[i+1])
                 else:
                     value = value.GetChildMemberWithName(parts[i+1])
                 i += 2
             elif part.startswith('['):
-                index = int(part[1:-1])
+                try:
+                    index = int(part[1:-1])
+                except ValueError:
+                    return None, i + 1
                 value = get_indexed_value(value, index)
                 i += 1
             else:
@@ -242,13 +289,17 @@ def evaluate_expression(frame: lldb.SBFrame, expression: str) -> Optional[lldb.S
 def print_go_expression(debugger: lldb.SBDebugger, command: str, result: lldb.SBCommandReturnObject, _internal_dict: Dict[str, Any]) -> None:
     if not _require_supported_target(debugger, result):
         return
-    frame = debugger.GetSelectedTarget().GetProcess(
-    ).GetSelectedThread().GetSelectedFrame()
+    frame = _selected_stopped_frame(debugger, result)
+    if frame is None:
+        return
     value = evaluate_expression(frame, command)
     if value and value.IsValid():
-        result.AppendMessage(format_value(value, debugger))
+        try:
+            result.AppendMessage(format_value(value, debugger))
+        except (IndexError, TypeError, ValueError) as error:
+            result.SetError(f"Unable to format expression {command!r}: {error}")
     else:
-        result.AppendMessage(
+        result.SetError(
             f"Error: Unable to evaluate expression '{command}'")
 
 
@@ -256,15 +307,21 @@ def print_all_variables(debugger: lldb.SBDebugger, _command: str, result: lldb.S
     if not _require_supported_target(debugger, result):
         return
 
-    frame = debugger.GetSelectedTarget().GetProcess(
-    ).GetSelectedThread().GetSelectedFrame()
+    frame = _selected_stopped_frame(debugger, result)
+    if frame is None:
+        return
     variables = frame.GetVariables(True, True, True, True)
 
     output: List[str] = []
-    for var in variables:
-        type_name = map_type_name(var.GetType().GetName())
-        formatted = format_value(var, debugger, include_type=False, indent=0)
-        output.append(f"var {var.GetName()} {type_name} = {formatted}")
+    try:
+        for var in variables:
+            type_name = map_type_name(var.GetType().GetName())
+            formatted = format_value(
+                var, debugger, include_type=False, indent=0)
+            output.append(f"var {var.GetName()} {type_name} = {formatted}")
+    except (IndexError, TypeError, ValueError) as error:
+        result.SetError(f"Unable to format LLGo variables: {error}")
+        return
 
     result.AppendMessage("\n".join(output))
 
@@ -319,7 +376,9 @@ def format_slice(var: lldb.SBValue, debugger: lldb.SBDebugger, indent: int) -> s
     data_ptr = var.GetChildMemberWithName('data')
     elements: List[str] = []
 
-    ptr_value = int(data_ptr.GetValue(), 16)
+    ptr_value = _value_as_int(data_ptr)
+    if ptr_value is None:
+        return "<variable not available>"
     element_type = data_ptr.GetType().GetPointeeType()
     element_size = element_type.GetByteSize()
 
@@ -371,12 +430,16 @@ def format_string(var: lldb.SBValue) -> str:
     if summary is not None:
         return summary  # Keep the quotes
     else:
-        data = var.GetChildMemberWithName('data').GetValue()
-        length = var.GetChildMemberWithName('len').GetValue()
-        if data and length:
-            length = int(length)
+        data = _value_as_int(var.GetChildMemberWithName('data'))
+        length = _value_as_int(var.GetChildMemberWithName('len'))
+        if length == 0:
+            return '""'
+        if data is not None and length is not None:
             error = lldb.SBError()
-            return '"%s"' % var.process.ReadCStringFromMemory(int(data, 16), length + 1, error)
+            value = var.process.ReadCStringFromMemory(
+                data, length + 1, error)
+            if error.Success():
+                return '"%s"' % value
     return "<variable not available>"
 
 

@@ -33,15 +33,21 @@ import (
 	"github.com/goplus/llgo/internal/mockable"
 )
 
-const minimumLLDBVersion = 18
+const minimumUpstreamLLDBVersion = 18
 
 var (
 	//go:embed llgo_plugin.py
 	pluginSource []byte
 
-	lldbVersionPattern = regexp.MustCompile(`(?i)\blldb(?:\s+version|-)?\s*([0-9]+)`)
-	lldbPath           string
+	upstreamLLDBVersionPattern = regexp.MustCompile(`(?i)\blldb\s+version\s+([0-9]+)`)
+	appleLLDBVersionPattern    = regexp.MustCompile(`(?i)\blldb-([0-9]+)`)
+	lldbPath                   string
 )
+
+type lldbVersion struct {
+	major int
+	apple bool
+}
 
 // Cmd is the llgo lldb command.
 var Cmd = &base.Command{
@@ -51,7 +57,7 @@ var Cmd = &base.Command{
 
 func init() {
 	Cmd.Run = runCmd
-	Cmd.Flag.StringVar(&lldbPath, "lldb", "", "path to LLDB 18 or newer (default $LLGO_LLDB or auto-detect)")
+	Cmd.Flag.StringVar(&lldbPath, "lldb", "", "path to upstream LLDB 18 or newer, or Apple LLDB (default $LLGO_LLDB or auto-detect)")
 }
 
 func runCmd(cmd *base.Command, args []string) {
@@ -128,7 +134,7 @@ func findLLDBFrom(configuredPath, environmentPath string, candidates []string) (
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("llgo lldb: LLDB %d or newer not found; install LLDB or set LLGO_LLDB", minimumLLDBVersion)
+	return "", fmt.Errorf("llgo lldb: upstream LLDB %d or newer, or Apple LLDB not found; install LLDB or set LLGO_LLDB", minimumUpstreamLLDBVersion)
 }
 
 func validateLLDB(name string) (string, error) {
@@ -140,23 +146,34 @@ func validateLLDB(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("llgo lldb: query %q version: %w", path, err)
 	}
-	major, ok := parseLLDBMajor(string(output))
+	version, ok := parseLLDBVersion(string(output))
 	if !ok {
 		return "", fmt.Errorf("llgo lldb: cannot parse LLDB version from %q", strings.TrimSpace(string(output)))
 	}
-	if major < minimumLLDBVersion {
-		return "", fmt.Errorf("llgo lldb: %q is LLDB %d; version %d or newer is required", path, major, minimumLLDBVersion)
+	// Apple reports an independent vendor build number (for example
+	// lldb-1703), not the upstream LLVM major. Recognize that toolchain
+	// explicitly instead of comparing its build number with the upstream
+	// minimum.
+	if !version.apple && version.major < minimumUpstreamLLDBVersion {
+		return "", fmt.Errorf("llgo lldb: %q is upstream LLDB %d; version %d or newer is required", path, version.major, minimumUpstreamLLDBVersion)
 	}
 	return path, nil
 }
 
-func parseLLDBMajor(version string) (int, bool) {
-	match := lldbVersionPattern.FindStringSubmatch(version)
+func parseLLDBVersion(output string) (lldbVersion, bool) {
+	pattern := upstreamLLDBVersionPattern
+	apple := false
+	match := pattern.FindStringSubmatch(output)
 	if len(match) != 2 {
-		return 0, false
+		pattern = appleLLDBVersionPattern
+		apple = true
+		match = pattern.FindStringSubmatch(output)
+		if len(match) != 2 {
+			return lldbVersion{}, false
+		}
 	}
 	major, err := strconv.Atoi(match[1])
-	return major, err == nil
+	return lldbVersion{major: major, apple: apple}, err == nil
 }
 
 func lldbImportCommand(path string) string {

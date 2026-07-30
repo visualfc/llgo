@@ -30,21 +30,21 @@ import (
 	"github.com/goplus/llgo/internal/mockable"
 )
 
-func TestParseLLDBMajor(t *testing.T) {
+func TestParseLLDBVersion(t *testing.T) {
 	tests := []struct {
 		version string
-		want    int
+		want    lldbVersion
 		ok      bool
 	}{
-		{"lldb version 18.1.8", 18, true},
-		{"lldb-1703.0.236.21\nApple Swift version 6.2", 1703, true},
-		{"LLDB version 21.0.0git", 21, true},
-		{"clang version 21.0.0", 0, false},
+		{"lldb version 18.1.8", lldbVersion{major: 18}, true},
+		{"lldb-1703.0.236.21\nApple Swift version 6.2", lldbVersion{major: 1703, apple: true}, true},
+		{"LLDB version 21.0.0git", lldbVersion{major: 21}, true},
+		{"clang version 21.0.0", lldbVersion{}, false},
 	}
 	for _, test := range tests {
-		got, ok := parseLLDBMajor(test.version)
+		got, ok := parseLLDBVersion(test.version)
 		if got != test.want || ok != test.ok {
-			t.Errorf("parseLLDBMajor(%q) = (%d, %v), want (%d, %v)", test.version, got, ok, test.want, test.ok)
+			t.Errorf("parseLLDBVersion(%q) = (%+v, %v), want (%+v, %v)", test.version, got, ok, test.want, test.ok)
 		}
 	}
 }
@@ -64,6 +64,11 @@ func TestValidateLLDB(t *testing.T) {
 	newLLDB := writeFakeLLDB(t, "lldb version 18.1.8", "")
 	if got, err := validateLLDB(newLLDB); err != nil || got != newLLDB {
 		t.Fatalf("validateLLDB() = (%q, %v), want (%q, nil)", got, err, newLLDB)
+	}
+
+	appleLLDB := writeFakeLLDB(t, "lldb-1703.0.236.21\nApple Swift version 6.2", "")
+	if got, err := validateLLDB(appleLLDB); err != nil || got != appleLLDB {
+		t.Fatalf("validateLLDB(Apple) = (%q, %v), want (%q, nil)", got, err, appleLLDB)
 	}
 
 	oldLLDB := writeFakeLLDB(t, "lldb version 17.0.6", "")

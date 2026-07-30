@@ -76,7 +76,9 @@ fi
 
 llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
     -o 'script info = llgo_plugin.inspect_target(lldb.target); assert info.schema_version == 1 and info.runtime_layout_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown"' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "LLGo debugger schema v1 (runtime layout v1)" in result.GetOutput()'
+    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "LLGo debugger schema v1 (runtime layout v1)" in result.GetOutput()' \
+    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); assert not result.Succeeded() and "requires a stopped process" in result.GetError()' \
+    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo print s", result); assert not result.Succeeded() and "requires a stopped process" in result.GetError()'
 
 # The LLGo formatter must not attach itself to an ordinary C target.
 non_llgo_dir="$test_tmp_dir/non-llgo"

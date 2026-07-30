@@ -329,6 +329,15 @@ class LLDBDebugger:
         frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
         return frame.GetFunctionName()
 
+    def require_print_error(self, expression: str, expected: str) -> None:
+        result = lldb.SBCommandReturnObject()
+        llgo_plugin.print_go_expression(
+            self.debugger, expression, result, {})
+        if result.Succeeded() or expected not in (result.GetError() or ""):
+            raise LLDBTestException(
+                f"llgo print {expression!r} did not fail with {expected!r}: "
+                f"{result.GetOutput()!r} {result.GetError()!r}")
+
     def cleanup(self) -> None:
         if self.process and self.process.IsValid():
             self.process.Kill()
@@ -413,6 +422,9 @@ def execute_tests(executable_path: str, test_cases: List[TestCase], verbose: boo
             debugger.setup()
             debugger.set_breakpoint(test_case.source_file, line_number)
             debugger.run_to_breakpoint()
+            if not results.case_results:
+                debugger.require_print_error(
+                    "slice[bad]", "Unable to evaluate expression")
 
             all_variable_names = debugger.get_all_variable_names()
 
