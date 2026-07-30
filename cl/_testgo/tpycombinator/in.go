@@ -1,4 +1,8 @@
+// LITTEST
 package main
+
+// CHECK-DAG: %"{{.*}}internal[{{.*}},int,int;{{.*}},int,int]" = type { ptr, ptr }
+// CHECK-DAG: %"{{.*}}internal[{{.*}},string,string;{{.*}},string,string]" = type { ptr, ptr }
 
 func Y[Endo ~func(RecFct) RecFct, RecFct ~func(T) R, T, R any](f Endo) RecFct {
 	type internal[RecFct ~func(T) R, T, R any] func(internal[RecFct, T, R]) RecFct
