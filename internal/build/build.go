@@ -182,8 +182,13 @@ type Config struct {
 	BuildParallelism int
 	// BuildTrace is an optional Chrome Trace Event JSON output path. Relative
 	// paths are resolved from the build invocation directory.
-	BuildTrace  string
-	LinkOptions LinkOptions
+	BuildTrace string
+	// TestRunSequential disables concurrent test binary execution when test
+	// flags share output paths or otherwise require one active binary.
+	TestRunSequential bool
+	TestFailFast      bool
+	TestJSON          bool
+	LinkOptions       LinkOptions
 	// OmitDWARFByDefault controls linked builds only when -w was not
 	// explicitly specified. Explicit -w and -w=false always win.
 	OmitDWARFByDefault bool
