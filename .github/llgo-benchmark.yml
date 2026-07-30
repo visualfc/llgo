@@ -1,0 +1,54 @@
+version: 1
+id: llgo-baseline
+title: LLGo baseline benchmarks
+site-path: llgo/baseline
+include:
+  - "^BenchmarkProgram/"
+  - "^Benchmark(MergeCompilerFlags|MergeLinkerFlags|LookupPCRandom)$"
+  - "^Benchmark(RuntimeGetG|Global(Read|Write))$"
+  - "^Benchmark(DirectCall|InterfaceCall|Defer|Goroutine)$"
+  - "^BenchmarkChannel(Buffered|Handoff)$"
+groups:
+  programs: "^Program/"
+  compiler: "^(MergeCompilerFlags|MergeLinkerFlags|LookupPCRandom)$"
+  core:
+    match:
+      - "^(RuntimeGetG|Global(Read|Write))$"
+      - "^(DirectCall|InterfaceCall|Defer|Goroutine)$"
+      - "^Channel(Buffered|Handoff)$"
+views:
+  programs:
+    title: Program measurements
+    select:
+      groups: "^programs$"
+      metrics: "^(file-bytes|build-ns|run-ns)$"
+    table:
+      rows: [platform, benchmark]
+      columns: [metric]
+      missing: error
+      empty: error
+      dimensions:
+        benchmark:
+          title: Workload
+          trim-prefix: BenchmarkProgram/
+      metrics:
+        file-bytes:
+          title: File size
+          format: bytes
+        build-ns:
+          title: Build
+          format: duration-ns
+        run-ns:
+          title: Run
+          format: duration-ns
+  core:
+    title: Core language and compiler benchmarks
+    select:
+      groups: "^(compiler|core)$"
+      metrics: "^ns/op$"
+    table:
+      rows: [platform, benchmark]
+      columns: [metric]
+      collapsed: true
+      missing: error
+      empty: error

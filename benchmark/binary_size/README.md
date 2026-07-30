@@ -1,9 +1,9 @@
 # Binary size workloads
 
 These fixed programs keep LLGo binary-size measurements comparable across
-linker and PCLN packaging changes. This directory intentionally contains only
-the workloads; automated collection, history storage, and CI tracking belong
-in a follow-up change.
+linker and PCLN packaging changes. The comprehensive linker/PCLN matrix is
+maintained by `xgo-dev/benchmarks`; `benchmark/baseline` reuses the three
+smallest workloads for the per-commit lightweight size and timing gate.
 
 - `cprintf`: the smallest C-library hello world, using only `lib/c.Printf`.
 - `println`: a hello world using the built-in `println`.

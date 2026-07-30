@@ -1,0 +1,138 @@
+//go:build llgo
+
+/*
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package llgoext
+
+import (
+	"sync"
+	"sync/atomic"
+	"testing"
+)
+
+var (
+	benchmarkGlobal int64
+
+	benchmarkIntSink int
+	benchmarkI64Sink int64
+)
+
+//go:noinline
+func benchmarkReadGlobal() int64 {
+	return atomic.LoadInt64(&benchmarkGlobal)
+}
+
+//go:noinline
+func benchmarkWriteGlobal(v int64) {
+	atomic.StoreInt64(&benchmarkGlobal, v)
+}
+
+func BenchmarkGlobalRead(b *testing.B) {
+	atomic.StoreInt64(&benchmarkGlobal, 1)
+	var value int64
+	for i := 0; i < b.N; i++ {
+		value += benchmarkReadGlobal()
+	}
+	benchmarkI64Sink = value
+}
+
+func BenchmarkGlobalWrite(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchmarkWriteGlobal(int64(i))
+	}
+}
+
+//go:noinline
+func benchmarkDirectCall(v int) int {
+	return v + 1
+}
+
+type benchmarkCaller interface {
+	call(int) int
+}
+
+type benchmarkCallImpl struct{}
+
+//go:noinline
+func (benchmarkCallImpl) call(v int) int {
+	return v + 1
+}
+
+func BenchmarkDirectCall(b *testing.B) {
+	value := 0
+	for i := 0; i < b.N; i++ {
+		value = benchmarkDirectCall(value)
+	}
+	benchmarkIntSink = value
+}
+
+func BenchmarkInterfaceCall(b *testing.B) {
+	var caller benchmarkCaller = benchmarkCallImpl{}
+	value := 0
+	for i := 0; i < b.N; i++ {
+		value = caller.call(value)
+	}
+	benchmarkIntSink = value
+}
+
+//go:noinline
+func benchmarkDefer() {
+	defer func() {}()
+}
+
+func BenchmarkDefer(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchmarkDefer()
+	}
+}
+
+func BenchmarkGoroutine(b *testing.B) {
+	var wg sync.WaitGroup
+	wg.Add(b.N)
+	for i := 0; i < b.N; i++ {
+		go wg.Done()
+	}
+	wg.Wait()
+}
+
+func BenchmarkChannelBuffered(b *testing.B) {
+	values := make(chan int, 1)
+	for i := 0; i < b.N; i++ {
+		values <- i
+		benchmarkIntSink = <-values
+	}
+}
+
+func BenchmarkChannelHandoff(b *testing.B) {
+	values := make(chan int)
+	acks := make(chan int)
+	done := make(chan struct{})
+	go func() {
+		for value := range values {
+			acks <- value
+		}
+		close(done)
+	}()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		values <- i
+		benchmarkIntSink = <-acks
+	}
+	b.StopTimer()
+	close(values)
+	<-done
+}
