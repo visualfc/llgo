@@ -3,9 +3,7 @@ name: Format Check
 on:
   push:
     branches:
-      - "**"
-      - "!dependabot/**"
-      - "!xgopilot/**"
+      - main
   pull_request:
     branches: ["**"]
 

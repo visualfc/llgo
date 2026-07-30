@@ -3,9 +3,7 @@ name: Targets
 on:
   push:
     branches:
-      - "**"
-      - "!dependabot/**"
-      - "!xgopilot/**"
+      - main
   pull_request:
     branches: ["**"]
 
