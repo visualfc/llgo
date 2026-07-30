@@ -6,9 +6,9 @@ name: Go
 on:
   push:
     branches:
-      - "**"
-      - "!dependabot/**"
-      - "!xgopilot/**"
+      - main
+    tags:
+      - "*"
   pull_request:
     branches: ["**"]
 
