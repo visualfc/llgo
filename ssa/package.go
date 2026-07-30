@@ -215,13 +215,9 @@ type aProgram struct {
 	stackSaveTy    *types.Signature
 	stackRestoreTy *types.Signature
 
-	createKeyTy *types.Signature
-	getSpecTy   *types.Signature
-	setSpecTy   *types.Signature
-	routineTy   *types.Signature
-	destructTy  *types.Signature
-	setjmpTy    *types.Signature
-	longjmpTy   *types.Signature
+	routineTy *types.Signature
+	setjmpTy  *types.Signature
+	longjmpTy *types.Signature
 
 	printfTy *types.Signature
 
