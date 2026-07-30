@@ -1,5 +1,7 @@
 #!/bin/bash
 
+LLDB_TEST_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
 # Function to find LLDB 18+
 find_lldb() {
     local lldb_paths=(
@@ -31,7 +33,7 @@ $LLDB_PATH --version
 export LLDB_PATH
 
 # Default package path
-export DEFAULT_PACKAGE_PATH="./_lldb/lldbtest"
+export DEFAULT_PACKAGE_PATH="$LLDB_TEST_ROOT"
 export LLDB_TEST_OPTLEVEL="${LLDB_TEST_OPTLEVEL:--O0}"
 
 # Function to build the project

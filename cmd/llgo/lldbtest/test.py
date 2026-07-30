@@ -17,8 +17,6 @@ class LLDBTestException(Exception):
 
 @dataclass
 class Test:
-    source_file: str
-    line_number: int
     variable: str
     expected_value: str
 
@@ -36,8 +34,7 @@ class TestResult:
 @dataclass
 class TestCase:
     source_file: str
-    start_line: int
-    end_line: int
+    marker: str
     tests: List[Test]
 
 
@@ -54,6 +51,211 @@ class TestResults:
     passed: int = 0
     failed: int = 0
     case_results: List[CaseResult] = field(default_factory=list)
+
+
+def test_case(marker: str, expectations: List[tuple[str, str]]) -> TestCase:
+    return TestCase(
+        source_file="main.go",
+        marker=f"LLDB_BREAK: {marker}",
+        tests=[Test(variable, expected) for variable, expected in expectations],
+    )
+
+
+STRUCT_INITIAL = [
+    ("all variables", "s"),
+    ("s.i8", r"'\x01'"),
+    ("s.i16", "2"),
+    ("s.i32", "3"),
+    ("s.i64", "4"),
+    ("s.i", "5"),
+    ("s.u8", r"'\x06'"),
+    ("s.u16", "7"),
+    ("s.u32", "8"),
+    ("s.u64", "9"),
+    ("s.u", "10"),
+    ("s.f32", "11"),
+    ("s.f64", "12"),
+    ("s.b", "true"),
+    ("s.c64", "13 + 14i"),
+    ("s.c128", "15 + 16i"),
+    ("s.slice", "[]int{21, 22, 23}"),
+    ("s.arr", "[3]int{24, 25, 26}"),
+    ("s.arr2", "[3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}"),
+    ("s.s", '"hello"'),
+    ("s.e", "lldbtest.E{i = 30}"),
+    ("s.pad1", "100"),
+    ("s.pad2", "200"),
+]
+
+STRUCT_VALUES_INITIAL = [
+    ("all variables", "t s m b"),
+    ("t.I", "1"),
+    ("s.I", "2"),
+    ("s.J", "3"),
+    ("m.I", "4"),
+    ("m.J", "5"),
+    ("m.K", "6"),
+    ("b.I", "7"),
+    ("b.J", "8"),
+    ("b.K", "9"),
+    ("b.L", "10"),
+    ("b.M", "11"),
+    ("b.N", "12"),
+    ("b.O", "13"),
+    ("b.P", "14"),
+    ("b.Q", "15"),
+    ("b.R", "16"),
+]
+
+STRUCT_VALUES_UPDATED = [
+    ("all variables", "t s m b"),
+    ("t.I", "10"),
+    ("s.I", "20"),
+    ("s.J", "21"),
+    ("m.I", "40"),
+    ("m.J", "41"),
+    ("m.K", "42"),
+    ("b.I", "70"),
+    ("b.J", "71"),
+    ("b.K", "72"),
+    ("b.L", "73"),
+    ("b.M", "74"),
+    ("b.N", "75"),
+    ("b.O", "76"),
+    ("b.P", "77"),
+    ("b.Q", "78"),
+    ("b.R", "79"),
+]
+
+TEST_CASES = [
+    test_case("struct_param_initial", STRUCT_INITIAL),
+    test_case("struct_param_updated", [
+        ("s.i8", r"'\b'"),
+        ("s.i16", "2"),
+    ]),
+    test_case("all_params_initial", [
+        ("all variables", "i8 i16 i32 i64 i u8 u16 u32 u64 u f32 f64 b "
+         "c64 c128 slice arr arr2 s e f pf pi intr m c err fn currentI32 "
+         "currentI64 currentI currentU32 currentU64 currentU currentF32 currentF64"),
+        ("currentI32", "3"),
+        ("currentI64", "4"),
+        ("currentI", "5"),
+        ("currentU32", "8"),
+        ("currentU64", "9"),
+        ("currentU", "10"),
+        ("currentF32", "11"),
+        ("currentF64", "12"),
+        ("slice", "[]int{21, 22, 23}"),
+        ("arr", "[3]int{24, 25, 26}"),
+        ("arr2", "[3]lldbtest.E{{i = 27}, {i = 28}, {i = 29}}"),
+        ("slice[0]", "21"),
+        ("slice[1]", "22"),
+        ("slice[2]", "23"),
+        ("arr[0]", "24"),
+        ("arr[1]", "25"),
+        ("arr[2]", "26"),
+        ("arr2[0].i", "27"),
+        ("arr2[1].i", "28"),
+        ("arr2[2].i", "29"),
+        ("e", "lldbtest.E{i = 30}"),
+    ]),
+    test_case("all_params_updated", [
+        ("i8", r"'\t'"),
+        ("i16", "10"),
+        ("currentI32", "11"),
+        ("currentI64", "12"),
+        ("currentI", "13"),
+        ("u8", r"'\x0e'"),
+        ("u16", "15"),
+        ("currentU32", "16"),
+        ("currentU64", "17"),
+        ("currentU", "18"),
+        ("currentF32", "19"),
+        ("currentF64", "20"),
+        ("b", "false"),
+        ("c64", "21 + 22i"),
+        ("c128", "23 + 24i"),
+        ("slice", "[]int{31, 32, 33}"),
+        ("arr2", "[3]lldbtest.E{{i = 37}, {i = 38}, {i = 39}}"),
+        ("s", '"world"'),
+        ("e", "lldbtest.E{i = 40}"),
+    ]),
+    test_case("struct_values_initial", STRUCT_VALUES_INITIAL),
+    test_case("struct_values_updated", STRUCT_VALUES_UPDATED),
+    test_case("struct_ptrs_initial", STRUCT_VALUES_INITIAL),
+    test_case("struct_ptrs_updated", STRUCT_VALUES_UPDATED),
+    test_case("scope_if_entry", [
+        ("all variables", "a branch"),
+        ("a", "1"),
+    ]),
+    test_case("scope_if_true", [
+        ("all variables", "a b c branch"),
+        ("a", "1"),
+        ("b", "2"),
+        ("c", "3"),
+        ("branch", "1"),
+    ]),
+    test_case("scope_if_false", [
+        ("all variables", "a c d branch"),
+        ("a", "1"),
+        ("c", "3"),
+        ("d", "4"),
+        ("branch", "0"),
+    ]),
+    test_case("scope_if_exit", [
+        ("all variables", "a branch"),
+        ("a", "1"),
+    ]),
+    test_case("scope_for_zero", [
+        ("all variables", "i a"),
+        ("i", "0"),
+        ("a", "1"),
+    ]),
+    test_case("scope_for_one", [
+        ("all variables", "i a"),
+        ("i", "1"),
+        ("a", "1"),
+    ]),
+    test_case("scope_switch_one", [
+        ("all variables", "i a b"),
+        ("i", "1"),
+        ("a", "0"),
+        ("b", "1"),
+    ]),
+    test_case("scope_switch_two", [
+        ("all variables", "i a c"),
+        ("i", "2"),
+        ("a", "0"),
+        ("c", "2"),
+    ]),
+    test_case("scope_switch_default", [
+        ("all variables", "i a d"),
+        ("i", "3"),
+        ("a", "0"),
+        ("d", "3"),
+    ]),
+    test_case("scope_switch_exit", [
+        ("all variables", "a i"),
+        ("a", "0"),
+    ]),
+    test_case("main_struct_initial", [
+        ("all variables", "s i err"),
+        *STRUCT_INITIAL[1:-2],
+        ("s.pf.i16", "100"),
+        ("*(s.pf).i16", "100"),
+        ("*(s.pi)", "100"),
+    ]),
+    test_case("main_globals", [
+        ("all variables", "s i err"),
+        ("globalInt", "301"),
+        ("globalStruct.i8", r"'\x01'"),
+        ("(*globalStructPtr).i16", "2"),
+    ]),
+    test_case("main_struct_updated", [
+        ("all variables", "s i err"),
+        ("(*globalStructPtr).i8", r"'\x12'"),
+    ]),
+]
 
 
 class LLDBDebugger:
@@ -78,20 +280,30 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"Failed to create target for {self.executable_path}")
 
-        if not llgo_plugin.is_llgo_compiler(self.target):
+        target_info = llgo_plugin.inspect_target(self.target)
+        if not target_info.supported:
             raise LLDBTestException(
                 "Target does not contain a supported LLGo debugger marker")
+        if llgo_plugin.inspect_target(self.target) is not target_info:
+            raise LLDBTestException("LLGo target inspection was not cached")
+        if (target_info.schema_version != 1 or
+                target_info.runtime_layout_version != 1):
+            raise LLDBTestException(
+                f"Unexpected LLGo debugger schema: {target_info}")
+        if (target_info.pointer_size != self.target.GetAddressByteSize() or
+                target_info.byte_order == "unknown" or
+                not target_info.triple):
+            raise LLDBTestException(
+                f"Incomplete LLGo target properties: {target_info}")
 
-        self.debugger.HandleCommand(
-            'command script add -f llgo_plugin.print_go_expression p')
-        self.debugger.HandleCommand(
-            'command script add -f llgo_plugin.print_all_variables v')
+        llgo_plugin.register_commands(self.debugger)
 
     def set_breakpoint(self, file_spec: str, line_number: int) -> lldb.SBBreakpoint:
         bp = self.target.BreakpointCreateByLocation(file_spec, line_number)
-        if not bp.IsValid():
+        if not bp.IsValid() or bp.GetNumLocations() != 1:
             raise LLDBTestException(
-                f"Failed to set breakpoint at {file_spec}: {line_number}")
+                f"Expected one breakpoint at {file_spec}:{line_number}, "
+                f"found {bp.GetNumLocations()}")
         return bp
 
     def run_to_breakpoint(self) -> None:
@@ -116,6 +328,15 @@ class LLDBDebugger:
     def get_current_function_name(self) -> str:
         frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
         return frame.GetFunctionName()
+
+    def require_print_error(self, expression: str, expected: str) -> None:
+        result = lldb.SBCommandReturnObject()
+        llgo_plugin.print_go_expression(
+            self.debugger, expression, result, {})
+        if result.Succeeded() or expected not in (result.GetError() or ""):
+            raise LLDBTestException(
+                f"llgo print {expression!r} did not fail with {expected!r}: "
+                f"{result.GetOutput()!r} {result.GetError()!r}")
 
     def cleanup(self) -> None:
         if self.process and self.process.IsValid():
@@ -173,33 +394,17 @@ class LLDBDebugger:
         return continue_tests
 
 
-def parse_expected_values(source_files: List[str]) -> List[TestCase]:
-    test_cases: List[TestCase] = []
-    for source_file in source_files:
-        with open(source_file, 'r', encoding='utf-8') as f:
-            content = f.readlines()
-            i = 0
-            while i < len(content):
-                line = content[i].strip()
-                if line.startswith('// Expected:'):
-                    start_line = i + 1
-                    tests: List[Test] = []
-                    i += 1
-                    while i < len(content):
-                        line = content[i].strip()
-                        if not line.startswith('//'):
-                            break
-                        parts = line.lstrip('//').strip().split(':', 1)
-                        if len(parts) == 2:
-                            var, value = map(str.strip, parts)
-                            tests.append(Test(source_file, i + 1, var, value))
-                        i += 1
-                    end_line = i
-                    test_cases.append(
-                        TestCase(source_file, start_line, end_line, tests))
-                else:
-                    i += 1
-    return test_cases
+def marker_line(source_file: str, marker: str) -> int:
+    with open(source_file, 'r', encoding='utf-8') as source:
+        matches = [
+            line_number for line_number, line in enumerate(source, start=1)
+            if marker in line
+        ]
+    if len(matches) != 1:
+        raise LLDBTestException(
+            f"Expected one {marker!r} marker in {source_file}, "
+            f"found {len(matches)}")
+    return matches[0]
 
 
 def execute_tests(executable_path: str, test_cases: List[TestCase], verbose: bool, interactive: bool, plugin_path: Optional[str]) -> TestResults:
@@ -208,12 +413,18 @@ def execute_tests(executable_path: str, test_cases: List[TestCase], verbose: boo
     for test_case in test_cases:
         debugger = LLDBDebugger(executable_path, plugin_path)
         try:
+            line_number = marker_line(
+                test_case.source_file, test_case.marker)
             if verbose:
                 log(
-                    f"\nSetting breakpoint at {test_case.source_file}:{test_case.end_line}")
+                    f"\nSetting breakpoint at {test_case.source_file}:"
+                    f"{line_number} ({test_case.marker})")
             debugger.setup()
-            debugger.set_breakpoint(test_case.source_file, test_case.end_line)
+            debugger.set_breakpoint(test_case.source_file, line_number)
             debugger.run_to_breakpoint()
+            if not results.case_results:
+                debugger.require_print_error(
+                    "slice[bad]", "Unable to evaluate expression")
 
             all_variable_names = debugger.get_all_variable_names()
 
@@ -226,7 +437,7 @@ def execute_tests(executable_path: str, test_cases: List[TestCase], verbose: boo
             results.case_results.append(case_result)
 
             case = case_result.test_case
-            loc = f"{case.source_file}:{case.start_line}-{case.end_line}"
+            loc = f"{case.source_file}:{line_number} ({case.marker})"
             if verbose or interactive or any(r.status != 'pass' for r in case_result.results):
                 log(f"\nTest case: {loc} in function '{case_result.function}'")
             for result in case_result.results:
@@ -246,7 +457,14 @@ def execute_tests(executable_path: str, test_cases: List[TestCase], verbose: boo
 
 
 def run_tests(executable_path: str, source_files: List[str], verbose: bool, interactive: bool, plugin_path: Optional[str]) -> int:
-    test_cases = parse_expected_values(source_files)
+    selected_sources = {os.path.basename(path) for path in source_files}
+    test_cases = [
+        test_case for test_case in TEST_CASES
+        if test_case.source_file in selected_sources
+    ]
+    if not test_cases:
+        raise LLDBTestException(
+            f"No test cases registered for {', '.join(source_files)}")
     if verbose:
         log(f"Running tests for {', '.join(source_files)} with {executable_path}")
         log(f"Found {len(test_cases)} test cases")
@@ -334,11 +552,11 @@ def print_test_result(result: TestResult, verbose: bool) -> None:
 
     if result.status == 'pass':
         if verbose:
-            log(f"{status_symbol} Line {test.line_number}, {test.variable}: {status_text}")
+            log(f"{status_symbol} {test.variable}: {status_text}")
             if test.variable == 'all variables':
                 log(f"    Variables: {', '.join(sorted(result.actual))}")
     else:  # fail or error
-        log(f"{status_symbol} Line {test.line_number}, {test.variable}: {status_text}")
+        log(f"{status_symbol} {test.variable}: {status_text}")
         if test.variable == 'all variables':
             if result.missing:
                 log(f"    Missing variables: {', '.join(sorted(result.missing))}")
@@ -385,8 +603,7 @@ def main() -> None:
     parser.add_argument("--result-path", help="Path to write the result")
     args = parser.parse_args()
 
-    plugin_path = args.plugin or os.path.join(os.path.dirname(
-        os.path.realpath(__file__)), "go_lldb_plugin.py")
+    plugin_path = args.plugin
 
     try:
         if args.result_path:

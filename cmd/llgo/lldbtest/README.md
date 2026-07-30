@@ -18,24 +18,43 @@ it optimization-independent are separate follow-up work.
 LLGo currently marks compile units as `DW_LANG_C` because stock LLDB does not
 provide a Go language plugin and otherwise hides valid frame variables.
 `DW_AT_producer` remains `LLGo`, and a versioned debugger marker lets this
-plugin distinguish LLGo binaries from ordinary C targets. Native
-`DW_LANG_Go` support is tracked by
-[issue #2154](https://github.com/xgo-dev/llgo/issues/2154).
+plugin distinguish LLGo binaries from ordinary C targets. Upstream LLDB
+requires an RFC and a long-term maintainer before restoring native Go language
+support, so LLGo keeps its language-specific adapter external; the decision is
+recorded in [issue #2154](https://github.com/xgo-dev/llgo/issues/2154).
 
 ### Debug with lldb
 
 ```shell
-_lldb/runlldb.sh ./cl/_testdata/debug/out
+llgo lldb ./cl/_testdata/debug/out
 ```
 
-or
+Use `-lldb` or `LLGO_LLDB` to select a particular LLDB 18+ executable. Arguments
+after the LLGo flags are passed through to LLDB; use `--` when the first LLDB
+argument begins with `-`:
 
 ```shell
-/opt/homebrew/bin/lldb -O "command script import _lldb/llgo_plugin.py" ./cl/_testdata/debug/out
+llgo lldb -lldb /opt/homebrew/bin/lldb -- --batch ./cl/_testdata/debug/out
+```
+
+The command embeds and loads the LLGo Python adapter, so an installed `llgo`
+does not depend on a source checkout. `cmd/llgo/lldbtest/runlldb.sh` remains as
+a thin compatibility wrapper. Adapter commands live under `llgo`, including
+`llgo status`, `llgo print`, and `llgo vars`; stock LLDB commands and aliases
+such as `p` and `v` are left unchanged. `llgo status` reports the recognized
+debugger schema, runtime-layout version, target triple, pointer size, and byte
+order. Unknown marker versions disable only the LLGo-specific commands; raw
+LLDB debugging remains available.
+
+The integration fixture follows LLDB's API-test style: `main.go` marks
+executable breakpoint lines with `LLDB_BREAK`, while `test.py` keeps the
+expected variables and values in an explicit SB API test table. Assertions are
+not parsed from source comments.
+
+```text
 # github.com/goplus/llgo/cl/_testdata/debug
 Breakpoint 1: no locations (pending).
 Breakpoint set in dummy target, will get copied into future targets.
-(lldb) command script import _lldb/llgo_plugin.py
 (lldb) target create "./cl/_testdata/debug/out"
 Current executable set to '/Users/lijie/source/goplus/llgo/cl/_testdata/debug/out' (arm64).
 (lldb) r
@@ -54,14 +73,11 @@ called function with types
 Process 21992 stopped
 * thread #1, queue = 'com.apple.main-thread', stop reason = breakpoint 1.1
     frame #0: 0x000000010001b3b4 out`main at in.go:225:12
-   222 		//   s.i8: '\x01'
-   223 		//   s.i16: 2
+   222 		println(globalStructPtr)
+   223 		println(&globalStruct)
    224 		s.i8 = 0x12
--> 225 		println(s.i8)
-   226 		// Expected:
-   227 		//   all variables: globalInt globalStruct globalStructPtr s i err
-   228 		//   s.i8: '\x12'
-(lldb) v
+-> 225 		println(s.i8) // LLDB_BREAK: main_struct_updated
+(lldb) llgo vars
 var i int = <variable not available>
 var s github.com/goplus/llgo/cl/_testdata/debug.StructWithAllTypeFields = {
   i8 = '\x12',

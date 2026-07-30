@@ -165,11 +165,15 @@ jobs:
       - name: Show test result
         run: cat result.md
 
+      - name: Install LLDB for integration tests
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.lane == 'primary' }}
+        run: sudo apt-get install -y lldb-${{matrix.llvm}}
+
       - name: LLDB integration tests
-        if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
+        if: ${{ matrix.lane == 'primary' }}
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
-          bash _lldb/runtest.sh -v
+          bash cmd/llgo/lldbtest/runtest.sh -v
 
       - name: DWARF standard tests
         if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}

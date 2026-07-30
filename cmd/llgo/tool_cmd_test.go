@@ -30,6 +30,24 @@ func TestToolCommand(t *testing.T) {
 	}
 }
 
+func TestLLDBCommand(t *testing.T) {
+	cmd := &Cmd_lldb{App: new(App)}
+	cmd.Main("lldb")
+	if cmd.Command.Command.Use != "lldb [-lldb path] [--] executable [lldb arguments...]" ||
+		cmd.Command.Command.Short != "Debug an LLGo executable with LLDB" {
+		t.Fatalf("lldb command metadata = (%q, %q)", cmd.Command.Command.Use, cmd.Command.Command.Short)
+	}
+	if !cmd.DisableFlagParsing {
+		t.Fatal("lldb should pass flags through unchanged")
+	}
+	if got := cmd.Classfname(); got != "lldb" {
+		t.Fatalf("Classfname() = %q, want lldb", got)
+	}
+	if cmd.Run == nil {
+		t.Fatal("lldb command has no run function")
+	}
+}
+
 func TestToolCompileCommand(t *testing.T) {
 	cmd := &Cmd_tool_compile{App: new(App)}
 	cmd.Main("compile")
