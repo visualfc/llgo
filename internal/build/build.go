@@ -829,16 +829,20 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 
 	linkMultiple := mode == ModeBuild && len(initial) > 1
 	var linkErrs []error
+	var testPrograms []testProgram
 	for _, pkg := range initial {
 		if !needLink(pkg, mode) || inv.compileOnly {
 			continue
 		}
-		if err := linkInitialPackage(ctx, pkg, allPkgs, conf, verbose, linkMultiple && conf.OutFile == ""); err != nil {
+		program, err := linkInitialPackage(ctx, pkg, allPkgs, conf, verbose, linkMultiple && conf.OutFile == "")
+		if err != nil {
 			if inv.disableMultiFallback {
 				linkErrs = append(linkErrs, err)
 			} else {
 				linkErrs = append(linkErrs, fmt.Errorf("%s: %w", pkg.PkgPath, err))
 			}
+		} else if program != nil {
+			testPrograms = append(testPrograms, *program)
 		}
 	}
 	// The shared graph completed, so a link failure must not trigger the
@@ -846,6 +850,13 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// attempted above and their link errors are returned together.
 	fallback = nil
 	ctx.disposeBackendPrograms()
+	if len(linkErrs) == 0 && len(testPrograms) != 0 {
+		result := runNativeTestPrograms(ctx.commands, testPrograms, conf, os.Stdout, os.Stderr)
+		ctx.testFail = result.failed
+		if result.skipped != 0 {
+			fmt.Fprintf(os.Stderr, "FAIL\t%d package(s) skipped by -failfast\n", result.skipped)
+		}
+	}
 
 	if mode == ModeTest && ctx.testFail {
 		mockable.Exit(1)
@@ -854,11 +865,11 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	return allPkgs, errors.Join(linkErrs...)
 }
 
-func linkInitialPackage(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, verbose, discardOutput bool) error {
+func linkInitialPackage(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, verbose, discardOutput bool) (*testProgram, error) {
 	name := defaultExecutableName(pkg.PkgPath)
 	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1, &ctx.crossCompile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if discardOutput {
 		defer removeOutFmts(outFmts)
@@ -871,13 +882,13 @@ func linkInitialPackage(ctx *context, pkg *packages.Package, allPkgs []*aPackage
 	err = linkMainPkg(ctx, pkg, allPkgs, outFmts.Out, verbose)
 	linkSpan.done()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := finalizeRuntimePCLN(ctx, outFmts, verbose); err != nil {
-		return err
+		return nil, err
 	}
 	if err := finalizeDarwinSizeExecutable(ctx, outFmts.Out, verbose); err != nil {
-		return err
+		return nil, err
 	}
 	if conf.Mode == ModeBuild && conf.SizeReport {
 		if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
@@ -887,36 +898,43 @@ func linkInitialPackage(ctx *context, pkg *packages.Package, allPkgs []*aPackage
 	if ctx.buildConf.BuildMode == BuildModeCArchive || ctx.buildConf.BuildMode == BuildModeCShared {
 		libname := strings.TrimSuffix(filepath.Base(outFmts.Out), conf.AppExt)
 		headerPath := filepath.Join(filepath.Dir(outFmts.Out), libname) + ".h"
-		return header.GenHeaderFile(ctx.prog, cHeaderPackages(allPkgs), libname, headerPath, verbose)
+		return nil, header.GenHeaderFile(ctx.prog, cHeaderPackages(allPkgs), libname, headerPath, verbose)
 	}
 
 	envMap := outFmts.ToEnvMap()
 	if conf.Target != "" {
 		if err := firmware.ConvertFormats(ctx.crossCompile.BinaryFormat, ctx.crossCompile.FormatDetail, envMap); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	switch conf.Mode {
 	case ModeInstall:
 		if conf.Target != "" {
-			return flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose)
+			return nil, flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose)
 		}
 	case ModeRun, ModeTest, ModeCmpTest:
 		if conf.Target == "" {
-			return runNative(ctx, outFmts.Out, pkg.Dir, pkg.PkgPath, conf, conf.Mode)
+			if conf.Mode == ModeTest {
+				return &testProgram{
+					app:     outFmts.Out,
+					pkgDir:  pkg.Dir,
+					pkgName: strings.TrimSuffix(pkg.PkgPath, ".test"),
+				}, nil
+			}
+			return nil, runNative(ctx, outFmts.Out, pkg.Dir, pkg.PkgPath, conf, conf.Mode)
 		}
 		if conf.Emulator {
-			return runInEmulator(ctx.commands, ctx.crossCompile.Emulator, envMap, pkg.Dir, pkg.PkgPath, conf, conf.Mode, verbose)
+			return nil, runInEmulator(ctx.commands, ctx.crossCompile.Emulator, envMap, pkg.Dir, pkg.PkgPath, conf, conf.Mode, verbose)
 		}
 		if err := flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose); err != nil {
-			return err
+			return nil, err
 		}
-		return monitor.Monitor(monitor.MonitorConfig{
+		return nil, monitor.Monitor(monitor.MonitorConfig{
 			Port: ctx.buildConf.Port, Target: conf.Target, Executable: outFmts.Out,
 			BaudRate: conf.BaudRate, SerialPort: ctx.crossCompile.Device.SerialPort,
 		}, verbose)
 	}
-	return nil
+	return nil, nil
 }
 
 func removeOutFmts(outFmts *OutFmtDetails) {
