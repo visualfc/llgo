@@ -94,7 +94,7 @@ jobs:
             -benchmark-output .benchmark/results/benchmark.txt
 
       - name: Record benchmark result
-        uses: cpunion/setup-benchmark-go-action@v1
+        uses: xgo-dev/setup-benchmark-go-action@v1
         with:
           config: .github/llgo-benchmark.yml
           benchmark-file: .benchmark/results/benchmark.txt
