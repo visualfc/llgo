@@ -58,13 +58,17 @@ func TestNotifyMultipleSignals(t *testing.T) {
 		t.Fatalf("Signal SIGWINCH error: %v", err)
 	}
 
-	select {
-	case sig := <-c:
-		if sig != syscall.SIGWINCH {
-			t.Errorf("First signal = %v, want SIGWINCH", sig)
+	timeout := time.After(time.Second)
+	for {
+		select {
+		case sig := <-c:
+			// SIGCHLD may arrive first, so wait for the signal sent above.
+			if sig == syscall.SIGWINCH {
+				return
+			}
+		case <-timeout:
+			t.Fatal("Timeout waiting for SIGWINCH")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("Timeout waiting for first signal")
 	}
 }
 
