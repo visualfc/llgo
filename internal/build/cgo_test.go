@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -94,6 +95,117 @@ func TestCollectCgoSymbolsStripsPackagePrefix(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("collectCgoSymbols = %#v, want %#v", got, want)
+	}
+}
+
+func TestGenExternDeclsUsesProcessLLVMPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a shell script")
+	}
+
+	clang := filepath.Join(t.TempDir(), "clang")
+	script := `#!/bin/sh
+for arg in "$@"; do
+	if [ "$arg" = "-dM" ]; then
+		printf '#define request_macro 1\n'
+		exit 0
+	fi
+done
+printf '%s\n' '{"kind":"TranslationUnitDecl","inner":[{"kind":"FunctionDecl","name":"request_func"}]}'
+`
+	if err := os.WriteFile(clang, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	symbols := map[string]string{
+		"cgo_func":  "request_func",
+		"cgo_macro": "request_macro",
+	}
+	t.Setenv("PATH", filepath.Dir(clang))
+	got, err := genExternDeclsByClang(commandEnv{}, nil, "", nil, symbols, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"typeof(request_func)* cgo_func;",
+		"typeof(request_macro) cgo_macro;",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("generated declarations missing %q:\n%s", want, got)
+		}
+	}
+	if len(symbols) != 0 {
+		t.Fatalf("resolved symbols were not removed: %v", symbols)
+	}
+
+	for _, tt := range []struct {
+		name    string
+		script  string
+		wantErr string
+	}{
+		{
+			name:    "function probe",
+			script:  "#!/bin/sh\nexit 1\n",
+			wantErr: "failed to get func names",
+		},
+		{
+			name: "macro probe",
+			script: `#!/bin/sh
+for arg in "$@"; do
+	if [ "$arg" = "-dM" ]; then
+		exit 1
+	fi
+done
+printf '%s\n' '{"kind":"TranslationUnitDecl"}'
+`,
+			wantErr: "failed to get macro names",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			clang := filepath.Join(t.TempDir(), "clang")
+			if err := os.WriteFile(clang, []byte(tt.script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", filepath.Dir(clang))
+			if _, err := genExternDeclsByClang(commandEnv{}, nil, "", nil, nil, false); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("genExternDeclsByClang() error = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestBuildCgoReportsClangProbeFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a shell script")
+	}
+
+	dir := t.TempDir()
+	clang := filepath.Join(dir, "clang")
+	if err := os.WriteFile(clang, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	src := `package demo
+
+/*
+int request_value;
+*/
+import "unsafe"
+`
+	goFile := filepath.Join(dir, "demo.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, goFile, src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := &context{
+		conf:      &packages.Config{},
+		buildConf: &Config{},
+	}
+	pkg := &aPackage{Package: &packages.Package{Fset: fset}}
+	if _, _, err := buildCgo(ctx, pkg, []*ast.File{file}, nil, false); err == nil || !strings.Contains(err.Error(), "failed to generate extern decls") {
+		t.Fatalf("buildCgo() error = %v, want clang probe failure", err)
 	}
 }
 

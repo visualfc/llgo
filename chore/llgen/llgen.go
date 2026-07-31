@@ -23,6 +23,7 @@ import (
 
 	"github.com/goplus/llgo/internal/build"
 	"github.com/goplus/llgo/internal/llgen"
+	"github.com/goplus/llgo/xtool/env/llvm"
 )
 
 var (
@@ -31,6 +32,7 @@ var (
 )
 
 func main() {
+	llvm.SetupPath()
 	flag.Parse()
 	if len(flag.Args()) != 1 {
 		fmt.Fprintln(os.Stderr, "Usage: llgen [flags] <pkg>")

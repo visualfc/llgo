@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -86,6 +87,35 @@ func New(llvmConfigBin string) *Env {
 // BinDir returns the directory containing LLVM executables. An empty string
 // means LLVM executables are assumed to be in PATH.
 func (e *Env) BinDir() string { return e.binDir }
+
+// SetupPath makes the selected LLVM installation part of the process
+// environment. Command entry points call it before starting builds; build
+// requests and workers then inherit LLVM through the ordinary PATH snapshot.
+func SetupPath() {
+	binDir := New("").BinDir()
+	if binDir == "" {
+		return
+	}
+
+	path := os.Getenv("PATH")
+	for _, dir := range filepath.SplitList(path) {
+		if samePath(dir, binDir) {
+			return
+		}
+	}
+	if path != "" {
+		binDir += string(os.PathListSeparator) + path
+	}
+	_ = os.Setenv("PATH", binDir)
+}
+
+func samePath(x, y string) bool {
+	x, y = filepath.Clean(x), filepath.Clean(y)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(x, y)
+	}
+	return x == y
+}
 
 // Clang returns a new [clang.Cmd] instance.
 func (e *Env) Clang() *clang.Cmd {

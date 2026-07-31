@@ -188,13 +188,23 @@ func TestDoNormalizesLegacyPCLNMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			conf := tt.conf
+			before := conf
 			// Stop after PCLN normalization without setting up a toolchain.
 			conf.LinkOptions.DWARF = DWARFMode(255)
+			before.LinkOptions.DWARF = DWARFMode(255)
 			if _, err := Do(nil, &conf); err == nil {
 				t.Fatal("Do() succeeded with an invalid DWARF mode")
 			}
-			if conf.PCLNMode != tt.want || !conf.PCLNModeSet {
-				t.Fatalf("normalized PCLN config = (%v, set=%v), want (%v, set=true)", conf.PCLNMode, conf.PCLNModeSet, tt.want)
+			if !reflect.DeepEqual(conf, before) {
+				t.Fatalf("Do() modified input config:\n got: %#v\nwant: %#v", conf, before)
+			}
+			conf.LinkOptions.DWARF = DWARFDefault
+			resolved, err := resolveBuildConfig(&conf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolved.PCLNMode != tt.want || !resolved.PCLNModeSet {
+				t.Fatalf("resolved PCLN config = (%v, set=%v), want (%v, set=true)", resolved.PCLNMode, resolved.PCLNModeSet, tt.want)
 			}
 		})
 	}
