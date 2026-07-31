@@ -94,9 +94,15 @@ func buildPackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) er
 	if len(tasks) == 0 {
 		return nil
 	}
+	prepareSpan := ctx.buildTrace.startCoordinator("prepare packages", map[string]any{
+		"count":   len(tasks),
+		"runtime": tasks[0].isRuntime(),
+	})
 	if err := preparePackageBuilds(ctx, tasks, verbose); err != nil {
+		prepareSpan.done()
 		return err
 	}
+	prepareSpan.done()
 
 	isolated := make([]int, 0, len(tasks))
 	// Complete coordinator and patched work before starting ordinary workers:
@@ -109,16 +115,36 @@ func buildPackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) er
 			isolated = append(isolated, i)
 			continue
 		}
-		if err := buildPackage(ctx, task, verbose, task.isolated); err != nil {
+		if err := tracePackageBuild(ctx, task, verbose, task.isolated, false); err != nil {
 			return err
 		}
 	}
 	if err := runBoundedPackageJobs(ctx.buildConf.parallelism(), isolated, func(index int) error {
-		return buildPackage(ctx, tasks[index], verbose, true)
+		return tracePackageBuild(ctx, tasks[index], verbose, true, true)
 	}); err != nil {
 		return err
 	}
 	return nil
+}
+
+func tracePackageBuild(ctx *context, task *packageBuildTask, verbose, isolated, worker bool) (err error) {
+	class := "coordinator"
+	var traceSpan *buildTraceSpan
+	if worker {
+		class = "isolated"
+		traceSpan = ctx.buildTrace.startWorker("backend+publish", task.pkg.PkgPath)
+	} else {
+		if isolated {
+			class = "patched"
+		}
+		traceSpan = ctx.buildTrace.startPackageCoordinator("backend+publish", task.pkg.PkgPath)
+	}
+	traceSpan.setArg("package_id", task.pkg.ID)
+	traceSpan.setArg("class", class)
+	traceSpan.setArg("archive_publication", !task.pkg.CacheHit)
+	ctx.buildTrace.flowFromSSA(task.pkg.ID, traceSpan)
+	defer traceSpan.done()
+	return buildPackage(ctx, task, verbose, isolated)
 }
 
 func buildPackage(ctx *context, task *packageBuildTask, verbose, isolated bool) error {
@@ -267,6 +293,7 @@ func (ctx *context) newBackendTask(session backendSession) *context {
 		commands:        ctx.commands,
 		frontendOptions: ctx.frontendOptions,
 		cTransformer:    session.transformer,
+		buildTrace:      ctx.buildTrace,
 		sfilesCache:     ctx.sfilesCache,
 		sfilesFrozen:    true,
 		plan9asmReady:   true,
