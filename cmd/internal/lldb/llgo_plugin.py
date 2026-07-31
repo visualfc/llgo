@@ -12,6 +12,7 @@ LLGO_DEBUGGER_SCHEMAS = {
 }
 LLGO_TYPE_CATEGORY = "LLGo"
 LLGO_MAX_STRING_SUMMARY_BYTES = 256
+LLGO_DEFAULT_MAX_CHILDREN = 256
 _TARGET_INFO_CACHE: Dict[Tuple[Any, ...], "LLGoTargetInfo"] = {}
 
 
@@ -24,6 +25,15 @@ class LLGoRuntimeLayout:
     slice_data: str
     slice_len: str
     slice_cap: str
+
+
+@dataclass(frozen=True)
+class LLGoSliceValue:
+    address: int
+    length: int
+    capacity: int
+    element_type: lldb.SBType
+    element_size: int
 
 
 LLGO_RUNTIME_LAYOUTS = {
@@ -285,7 +295,8 @@ def _string_fields(value: lldb.SBValue, layout: LLGoRuntimeLayout) -> Optional[T
     return data, length
 
 
-def _slice_fields(value: lldb.SBValue, layout: LLGoRuntimeLayout) -> Optional[Tuple[lldb.SBValue, int, int]]:
+def _slice_fields(value: lldb.SBValue,
+                  layout: LLGoRuntimeLayout) -> Optional[LLGoSliceValue]:
     raw = _raw_value(value)
     if not re.fullmatch(layout.slice_type_pattern,
                         _canonical_type_name(raw)):
@@ -296,23 +307,30 @@ def _slice_fields(value: lldb.SBValue, layout: LLGoRuntimeLayout) -> Optional[Tu
     if (not data or not data.IsValid() or length is None or
             capacity is None or length < 0 or capacity < length):
         return None
-    return data, length, capacity
+    address = _value_as_int(data)
+    element_type = data.GetType().GetPointeeType()
+    if address is None:
+        return None
+    if not element_type or not element_type.IsValid():
+        return None
+    return LLGoSliceValue(
+        address=address,
+        length=length,
+        capacity=capacity,
+        element_type=element_type,
+        element_size=element_type.GetByteSize(),
+    )
 
 
 def _slice_element(value: lldb.SBValue, index: int,
-                   fields: Tuple[lldb.SBValue, int, int]) -> Optional[lldb.SBValue]:
-    data, length, _ = fields
-    if index < 0 or index >= length:
+                   fields: LLGoSliceValue) -> Optional[lldb.SBValue]:
+    if index < 0 or index >= fields.length or fields.address == 0:
         return None
-    address = _value_as_int(data)
-    element_type = data.GetType().GetPointeeType()
-    if (address is None or address == 0 or not element_type or
-            not element_type.IsValid()):
-        return None
-    element_address = address + index * element_type.GetByteSize()
+    element_address = fields.address + index * fields.element_size
     target = value.GetTarget()
     return target.CreateValueFromAddress(
-        f"[{index}]", lldb.SBAddress(element_address, target), element_type)
+        f"[{index}]", lldb.SBAddress(element_address, target),
+        fields.element_type)
 
 
 def _quote_go_bytes(value: bytes) -> str:
@@ -348,6 +366,36 @@ def _quote_go_bytes(value: bytes) -> str:
     return "".join(quoted)
 
 
+def _utf8_bounded_prefix(value: bytes, limit: int) -> bytes:
+    prefix = value[:limit]
+    if len(value) <= limit or limit == 0:
+        return prefix
+
+    start = limit - 1
+    lower_bound = max(0, limit - 4)
+    while start >= lower_bound and value[start] & 0xC0 == 0x80:
+        start -= 1
+    if start < lower_bound:
+        return prefix
+    lead = value[start]
+    if 0xC2 <= lead <= 0xDF:
+        sequence_length = 2
+    elif 0xE0 <= lead <= 0xEF:
+        sequence_length = 3
+    elif 0xF0 <= lead <= 0xF4:
+        sequence_length = 4
+    else:
+        return prefix
+    sequence_end = start + sequence_length
+    if sequence_end <= limit or sequence_end > len(value):
+        return prefix
+    try:
+        value[start:sequence_end].decode("utf-8")
+    except UnicodeDecodeError:
+        return prefix
+    return value[:start]
+
+
 def _format_runtime_string(value: lldb.SBValue,
                            layout: LLGoRuntimeLayout) -> Optional[str]:
     fields = _string_fields(value, layout)
@@ -361,7 +409,8 @@ def _format_runtime_string(value: lldb.SBValue,
     if (address is None or address == 0 or not process or
             not process.IsValid()):
         return None
-    read_length = min(length, LLGO_MAX_STRING_SUMMARY_BYTES)
+    display_length = min(length, LLGO_MAX_STRING_SUMMARY_BYTES)
+    read_length = min(length, LLGO_MAX_STRING_SUMMARY_BYTES + 3)
     error = lldb.SBError()
     contents = process.ReadMemory(address, read_length, error)
     if not error.Success() or contents is None:
@@ -370,8 +419,9 @@ def _format_runtime_string(value: lldb.SBValue,
         contents = contents.encode("latin-1", errors="surrogateescape")
     else:
         contents = bytes(contents)
+    contents = _utf8_bounded_prefix(contents, display_length)
     summary = _quote_go_bytes(contents)
-    return summary if read_length == length else summary + "..."
+    return summary if display_length == length else summary + "..."
 
 
 def string_summary(value: lldb.SBValue, _internal_dict: Dict[str, Any]) -> Optional[str]:
@@ -384,28 +434,28 @@ def slice_summary(value: lldb.SBValue, _internal_dict: Dict[str, Any]) -> Option
     fields = _slice_fields(value, layout) if layout else None
     if fields is None:
         return None
-    _, length, capacity = fields
-    return f"len={length} cap={capacity}"
+    return f"len={fields.length} cap={fields.capacity}"
 
 
 class SliceSyntheticProvider:
     def __init__(self, value: lldb.SBValue, _internal_dict: Dict[str, Any]) -> None:
         self.value = value
         self.raw = _raw_value(value)
-        self.fields: Optional[Tuple[lldb.SBValue, int, int]] = None
+        self.layout = _runtime_layout(self.raw)
+        self.fields: Optional[LLGoSliceValue] = None
         self.update()
 
     def update(self) -> bool:
         self.raw = _raw_value(self.value)
-        layout = _runtime_layout(self.raw)
-        self.fields = _slice_fields(self.raw, layout) if layout else None
+        self.fields = (_slice_fields(self.raw, self.layout)
+                       if self.layout else None)
         return False
 
     def num_children(self, max_children: Optional[int] = None) -> int:
         if self.fields is None:
             count = self.raw.GetNumChildren()
         else:
-            count = self.fields[1]
+            count = self.fields.length
         if max_children is not None and max_children >= 0:
             count = min(count, max_children)
         return count
@@ -435,14 +485,11 @@ def get_indexed_value(value: lldb.SBValue, index: int) -> Optional[lldb.SBValue]
     if not value or not value.IsValid():
         return None
 
-    if _canonical_type_name(value).startswith('[]'):  # Slice
-        layout = _runtime_layout(value)
-        fields = _slice_fields(value, layout) if layout else None
-        return _slice_element(value, index, fields) if fields else None
-    elif value.GetType().IsArrayType():  # Array
+    if value.GetType().IsArrayType():
         return value.GetChildAtIndex(index)
-    else:
-        return None
+    layout = _runtime_layout(value)
+    fields = _slice_fields(value, layout) if layout else None
+    return _slice_element(value, index, fields) if fields else None
 
 
 def find_variable(frame: lldb.SBFrame, name: str) -> lldb.SBValue:
@@ -603,19 +650,29 @@ def format_slice(var: lldb.SBValue, debugger: lldb.SBDebugger, indent: int) -> s
     fields = _slice_fields(var, layout) if layout else None
     if fields is None:
         return "<variable not available>"
-    _, length, _ = fields
     elements: List[str] = []
 
     indent_str = '  ' * indent
     next_indent_str = '  ' * (indent + 1)
 
-    for i in range(length):
+    values = lldb.SBDebugger.GetInternalVariableValue(
+        "target.max-children-count", debugger.GetInstanceName())
+    max_children = LLGO_DEFAULT_MAX_CHILDREN
+    if values.GetSize() != 0:
+        try:
+            max_children = max(0, int(values.GetStringAtIndex(0), 0))
+        except (TypeError, ValueError):
+            pass
+    displayed = min(fields.length, max_children)
+    for i in range(displayed):
         element = _slice_element(var, i, fields)
         if element is None or not element.IsValid():
             return "<variable not available>"
         value = format_value(
             element, debugger, include_type=False, indent=indent+1)
         elements.append(value)
+    if displayed < fields.length:
+        elements.append(f"... ({fields.length - displayed} more)")
 
     type_name = var.GetType().GetName()
 

@@ -183,8 +183,8 @@ TEST_CASES = [
     ]),
     test_case("runtime_values", [
         ("all variables",
-         "text empty binary unicodeText invalid ints nilInts emptyInts "
-         "namedText namedInts"),
+         "text empty binary unicodeText longUnicode invalid ints nilInts "
+         "emptyInts namedText namedInts"),
         ("text", '"hello"'),
         ("empty", '""'),
         ("binary", r'"a\x00b"'),
@@ -198,6 +198,7 @@ TEST_CASES = [
         ("empty", '""', "summary"),
         ("binary", r'"a\x00b"', "summary"),
         ("unicodeText", '"世界"', "summary"),
+        ("longUnicode", '"' + "a" * 255 + '"...', "summary"),
         ("invalid", r'"\xff"', "summary"),
         ("namedText", '"named"', "summary"),
         ("ints", "len=2 cap=4", "summary"),
@@ -208,6 +209,7 @@ TEST_CASES = [
         ("nilInts", "", "synthetic"),
         ("emptyInts", "", "synthetic"),
         ("namedInts", "[0]=11, [1]=12, [2]=13, [3]=14", "synthetic"),
+        ("ints", "[]int{7, ... (1 more)}", "limited"),
     ]),
     test_case("struct_values_initial", STRUCT_VALUES_INITIAL),
     test_case("struct_values_updated", STRUCT_VALUES_UPDATED),
@@ -564,6 +566,14 @@ def execute_single_variable_test(debugger: LLDBDebugger, test: Test) -> TestResu
         actual_value = debugger.get_variable_summary(test.variable)
     elif test.mode == "synthetic":
         actual_value = debugger.get_synthetic_children(test.variable)
+    elif test.mode == "limited":
+        debugger.debugger.HandleCommand(
+            "settings set target.max-children-count 1")
+        try:
+            actual_value = debugger.get_variable_value(test.variable)
+        finally:
+            debugger.debugger.HandleCommand(
+                "settings set target.max-children-count 256")
     else:
         actual_value = debugger.get_variable_value(test.variable)
     if actual_value is None:

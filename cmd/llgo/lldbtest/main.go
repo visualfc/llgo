@@ -1,6 +1,9 @@
 package main
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 type Base struct {
 	name string
@@ -60,13 +63,14 @@ func RuntimeValues() {
 	empty := ""
 	binary := "a\x00b"
 	unicodeText := "世界"
+	longUnicode := strings.Repeat("a", 255) + "界tail"
 	invalid := "\xff"
 	ints := []int{7, 8, 9, 10}[:2]
 	var nilInts []int
 	emptyInts := []int{}
 	namedText := NamedString("named")
 	namedInts := NamedInts{11, 12, 13, 14}
-	println(text, empty, binary, unicodeText, invalid, ints, nilInts, emptyInts, namedText, namedInts) // LLDB_BREAK: runtime_values
+	println(text, empty, binary, unicodeText, longUnicode, invalid, ints, nilInts, emptyInts, namedText, namedInts) // LLDB_BREAK: runtime_values
 }
 
 func FuncWithAllTypeStructParam(s StructWithAllTypeFields) {
