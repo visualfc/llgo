@@ -3,9 +3,9 @@ package main
 
 import "reflect"
 
-// CHECK-DAG: @"_llgo_{{.*}}globaldce_reflect_type_method_by_name.S" = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility !{{[0-9]+}}
-// CHECK-DAG: @"*_llgo_{{.*}}globaldce_reflect_type_method_by_name.S" = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility !{{[0-9]+}}
-// CHECK-LABEL: define void @"github.com/goplus/llgo/cl/_testlto/globaldce_reflect_type_method_by_name.main"
+// CHECK-DAG: @_llgo_main.S = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility !{{[0-9]+}}
+// CHECK-DAG: @"*_llgo_main.S" = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility !{{[0-9]+}}
+// CHECK-LABEL: define void @main.main
 // CHECK-NOT: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.value.reflect")
 // CHECK-NOT: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect")
 // CHECK: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect.Keep")
