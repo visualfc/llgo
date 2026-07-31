@@ -103,7 +103,7 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	}
 
 	var pkgPath string
-	if ctx.buildConf.RewriteMainPrefix && pkg.Types.Name() == "main" {
+	if pkg.Types != nil && pkg.Types.Name() == "main" {
 		pkgPath = "main"
 	} else {
 		pkgPath = pkg.PkgPath

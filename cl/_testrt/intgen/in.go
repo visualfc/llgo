@@ -5,7 +5,7 @@ import (
 	"github.com/goplus/lib/c"
 )
 
-// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/cl/_testrt/intgen.genInts"(i64 %0, { ptr, ptr } %1){{.*}} {
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.Slice" @main.genInts(i64 %0, { ptr, ptr } %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.MakeSlice"(i64 %0, i64 %0, i64 4)
 // CHECK-NEXT:   %3 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %2, 1
@@ -42,14 +42,14 @@ func genInts(n int, gen func() c.Int) []c.Int {
 	return a
 }
 
-// CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/intgen.(*generator).next"(ptr %0){{.*}} {
+// CHECK-LABEL: define i32 @"main.(*generator).next"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testrt/intgen.generator", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %main.generator, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %2 = load i32, ptr %1, align 4
 // CHECK-NEXT:   %3 = add i32 %2, 1
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testrt/intgen.generator", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %4 = getelementptr inbounds %main.generator, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i32 %3, ptr %4, align 4
-// CHECK-NEXT:   %5 = getelementptr inbounds %"{{.*}}/cl/_testrt/intgen.generator", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %5 = getelementptr inbounds %main.generator, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %6 = load i32, ptr %5, align 4
 // CHECK-NEXT:   ret i32 %6
 // CHECK-NEXT: }
@@ -62,9 +62,9 @@ type generator struct {
 	val c.Int
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/intgen.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/cl/_testrt/intgen.genInts"(i64 5, { ptr, ptr } { ptr @__llgo_stub.rand, ptr null })
+// CHECK-NEXT:   %0 = call %"{{.*}}/runtime/internal/runtime.Slice" @main.genInts(i64 5, { ptr, ptr } { ptr @__llgo_stub.rand, ptr null })
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
@@ -92,8 +92,8 @@ type generator struct {
 // CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   %15 = getelementptr inbounds { ptr }, ptr %14, i32 0, i32 0
 // CHECK-NEXT:   store ptr %13, ptr %15, align 8
-// CHECK-NEXT:   %16 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testrt/intgen.main$1", ptr undef }, ptr %14, 1
-// CHECK-NEXT:   %17 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/cl/_testrt/intgen.genInts"(i64 5, { ptr, ptr } %16)
+// CHECK-NEXT:   %16 = insertvalue { ptr, ptr } { ptr @"main.main$1", ptr undef }, ptr %14, 1
+// CHECK-NEXT:   %17 = call %"{{.*}}/runtime/internal/runtime.Slice" @main.genInts(i64 5, { ptr, ptr } %16)
 // CHECK-NEXT:   %18 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %17, 1
 // CHECK-NEXT:   br label %_llgo_4
 // CHECK-EMPTY:
@@ -117,13 +117,13 @@ type generator struct {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_4
 // CHECK-NEXT:   %30 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 4)
-// CHECK-NEXT:   %31 = getelementptr inbounds %"{{.*}}/cl/_testrt/intgen.generator", ptr %30, i32 0, i32 0
+// CHECK-NEXT:   %31 = getelementptr inbounds %main.generator, ptr %30, i32 0, i32 0
 // CHECK-NEXT:   store i32 1, ptr %31, align 4
 // CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   %33 = getelementptr inbounds { ptr }, ptr %32, i32 0, i32 0
 // CHECK-NEXT:   store ptr %30, ptr %33, align 8
-// CHECK-NEXT:   %34 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testrt/intgen.(*generator).next$bound", ptr undef }, ptr %32, 1
-// CHECK-NEXT:   %35 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/cl/_testrt/intgen.genInts"(i64 5, { ptr, ptr } %34)
+// CHECK-NEXT:   %34 = insertvalue { ptr, ptr } { ptr @"main.(*generator).next$bound", ptr undef }, ptr %32, 1
+// CHECK-NEXT:   %35 = call %"{{.*}}/runtime/internal/runtime.Slice" @main.genInts(i64 5, { ptr, ptr } %34)
 // CHECK-NEXT:   %36 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, 1
 // CHECK-NEXT:   br label %_llgo_7
 // CHECK-EMPTY:
@@ -156,7 +156,7 @@ func main() {
 
 	initVal := c.Int(1)
 	ints := genInts(5, func() c.Int {
-		// CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/intgen.main$1"(ptr %0){{.*}} {
+		// CHECK-LABEL: define i32 @"main.main$1"(ptr %0){{.*}} {
 		// CHECK-NEXT: _llgo_0:
 		// CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
 		// CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
@@ -186,10 +186,10 @@ func main() {
 	// CHECK-NEXT: }
 }
 
-// CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/intgen.(*generator).next$bound"(ptr %0){{.*}} {
+// CHECK-LABEL: define i32 @"main.(*generator).next$bound"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
 // CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
-// CHECK-NEXT:   %3 = call i32 @"{{.*}}/cl/_testrt/intgen.(*generator).next"(ptr %2)
+// CHECK-NEXT:   %3 = call i32 @"main.(*generator).next"(ptr %2)
 // CHECK-NEXT:   ret i32 %3
 // CHECK-NEXT: }

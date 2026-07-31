@@ -5,16 +5,16 @@ import (
 	"unicode/utf8"
 )
 
-// CHECK: @"{{.*}}.array" = global [8 x i8] c"\01\02\03\04\05\06\07\08", align 1
+// CHECK: @main.array = global [8 x i8] c"\01\02\03\04\05\06\07\08", align 1
 
-// CHECK-LABEL: define i8 @"{{.*}}.index"(i8 %0){{.*}} {
+// CHECK-LABEL: define i8 @main.index(i8 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = sext i8 %0 to i64
 // CHECK-NEXT:   %2 = icmp slt i64 %1, 0
 // CHECK-NEXT:   %3 = icmp uge i64 %1, 8
 // CHECK-NEXT:   %4 = or i1 %3, %2
-// CHECK-NEXT:   call void @"{{.*}}.CheckIndexRange"(i1 %4, {{.*}})
-// CHECK-NEXT:   %5 = getelementptr inbounds i8, ptr @"{{.*}}.array", i64 %1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %4, {{.*}})
+// CHECK-NEXT:   %5 = getelementptr inbounds i8, ptr @main.array, i64 %1
 // CHECK-NEXT:   %6 = load i8, ptr %5, align 1
 // CHECK-NEXT:   ret i8 %6
 // CHECK-NEXT: }
@@ -22,13 +22,13 @@ func index(n int8) uint8 {
 	return array[n]
 }
 
-// CHECK-LABEL: define void @"{{.*}}.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK:   call void @"unicode/utf8.init"()
 var array = [...]uint8{
 	1, 2, 3, 4, 5, 6, 7, 8,
 }
 
-// CHECK-LABEL: define void @"{{.*}}cl/_testdata/utf8.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
@@ -49,7 +49,7 @@ var array = [...]uint8{
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   %8 = call i8 @"{{.*}}cl/_testdata/utf8.index"(i8 2)
+// CHECK-NEXT:   %8 = call i8 @main.index(i8 2)
 // CHECK-NEXT:   %9 = icmp eq i8 %8, 3
 // CHECK-NEXT:   call void @"{{.*}}runtime/internal/runtime.PrintBool"(i1 %9)
 // CHECK-NEXT:   call void @"{{.*}}runtime/internal/runtime.PrintByte"(i8 10)

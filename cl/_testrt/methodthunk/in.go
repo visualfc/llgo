@@ -10,9 +10,9 @@ type outer struct {
 	inner
 }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/methodthunk.(*InnerInt).M"(ptr %0){{.*}} {
+// CHECK-LABEL: define i64 @"main.(*InnerInt).M"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testrt/methodthunk.InnerInt", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %main.InnerInt, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %2 = load i64, ptr %1, align 8
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
@@ -22,10 +22,10 @@ type InnerInt struct {
 	X int
 }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/methodthunk.(*OuterInt).M"(ptr %0){{.*}} {
+// CHECK-LABEL: define i64 @"main.(*OuterInt).M"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testrt/methodthunk.OuterInt", ptr %0, i32 0, i32 1
-// CHECK-NEXT:   %2 = call i64 @"{{.*}}/cl/_testrt/methodthunk.(*InnerInt).M"(ptr %1)
+// CHECK-NEXT:   %1 = getelementptr inbounds %main.OuterInt, ptr %0, i32 0, i32 1
+// CHECK-NEXT:   %2 = call i64 @"main.(*InnerInt).M"(ptr %1)
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
 type OuterInt struct {
@@ -37,16 +37,16 @@ func (i *InnerInt) M() int {
 	return i.X
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/methodthunk.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.github.com/goplus/llgo/cl/_testrt/methodthunk.(*outer).M$thunk", ptr null }, ptr %0, align 8
-// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$31N-NdXOzvOy55m3NGAY_hdZ_NIdtCAe5V7uk7-a5HU", ptr undef }, ptr %0, 1
+// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.main.(*outer).M$thunk", ptr null }, ptr %0, align 8
+// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.github.com/goplus/llgo/cl/_testrt/methodthunk.(*InnerInt).M$thunk", ptr null }, ptr %2, align 8
-// CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$ygdobeQSbhO1hSbeWA66ORl_cNKHor-iD8MqRFtuWHg", ptr undef }, ptr %2, 1
+// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.main.(*InnerInt).M$thunk", ptr null }, ptr %2, align 8
+// CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %2, 1
 // CHECK-NEXT:   %4 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %1, 0
-// CHECK-NEXT:   %5 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$31N-NdXOzvOy55m3NGAY_hdZ_NIdtCAe5V7uk7-a5HU", ptr %4)
+// CHECK-NEXT:   %5 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %4)
 // CHECK-NEXT:   br i1 %5, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_8
@@ -79,7 +79,7 @@ func (i *InnerInt) M() int {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintBool"(i1 %14)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %3, 0
-// CHECK-NEXT:   %17 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$31N-NdXOzvOy55m3NGAY_hdZ_NIdtCAe5V7uk7-a5HU", ptr %16)
+// CHECK-NEXT:   %17 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %16)
 // CHECK-NEXT:   br i1 %17, label %_llgo_6, label %_llgo_7
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_5
@@ -115,21 +115,21 @@ func main() {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/methodthunk.(*outer).M"(ptr %0){{.*}} {
+// CHECK-LABEL: define void @"main.(*outer).M"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func (m *outer) M() {}
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/methodthunk.(*outer).M$thunk"(ptr %0){{.*}} {
+// CHECK-LABEL: define void @"main.(*outer).M$thunk"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/methodthunk.(*outer).M"(ptr %0)
+// CHECK-NEXT:   call void @"main.(*outer).M"(ptr %0)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.github.com/goplus/llgo/cl/_testrt/methodthunk.(*outer).M$thunk"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce void @"__llgo_stub.main.(*outer).M$thunk"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/methodthunk.(*outer).M$thunk"(ptr %1)
+// CHECK-NEXT:   tail call void @"main.(*outer).M$thunk"(ptr %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -139,14 +139,14 @@ func (m *outer) M() {}
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/methodthunk.(*InnerInt).M$thunk"(ptr %0){{.*}} {
+// CHECK-LABEL: define i64 @"main.(*InnerInt).M$thunk"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = call i64 @"{{.*}}/cl/_testrt/methodthunk.(*InnerInt).M"(ptr %0)
+// CHECK-NEXT:   %1 = call i64 @"main.(*InnerInt).M"(ptr %0)
 // CHECK-NEXT:   ret i64 %1
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce i64 @"__llgo_stub.github.com/goplus/llgo/cl/_testrt/methodthunk.(*InnerInt).M$thunk"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.main.(*InnerInt).M$thunk"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = tail call i64 @"{{.*}}/cl/_testrt/methodthunk.(*InnerInt).M$thunk"(ptr %1)
+// CHECK-NEXT:   %2 = tail call i64 @"main.(*InnerInt).M$thunk"(ptr %1)
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }

@@ -993,8 +993,8 @@ func TestFuncInfoDisplayName(t *testing.T) {
 		pkg      *types.Package
 		in, want string
 	}{
-		{mainPkg, "example.com/cmd.main", "main.main"},
-		{mainPkg, "example.com/cmd.main$2", "main.main.func2"},
+		{mainPkg, "main.main", "main.main"},
+		{mainPkg, "main.main$2", "main.main.func2"},
 		{mainPkg, "other/path.f", "other/path.f"},
 		{libPkg, "example.com/lib.f$1", "example.com/lib.f.func1"},
 		{nil, "plain.f$x", "plain.f$x"},

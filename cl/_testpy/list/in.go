@@ -29,13 +29,13 @@ func main() {
 	c.Printf(c.Str("pi = %.15g\n"), y.ListItem(2).Float64())
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testpy/list.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testpy/list.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testpy/list.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   call void @"github.com/goplus/lib/py/math.init"()
 // CHECK-NEXT:   call void @"github.com/goplus/lib/py/std.init"()
 // CHECK-NEXT:   %1 = load ptr, ptr @__llgo_py.builtins, align 8
@@ -46,7 +46,7 @@ func main() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testpy/list.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   store i64 100, ptr %0, align 8

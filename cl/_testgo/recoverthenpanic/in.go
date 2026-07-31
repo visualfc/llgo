@@ -5,7 +5,7 @@ package main
 // CHECK: @1 = private unnamed_addr constant [3 x i8] c"end", align 1
 // CHECK: @2 = private unnamed_addr constant [13 x i8] c"panic in main", align 1
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/recoverthenpanic.End"(){{.*}} {
+// CHECK-LABEL: define void @main.End(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/runtime/internal/runtime.Recover"()
 // CHECK-NEXT:   %1 = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"(%"{{.*}}/runtime/internal/runtime.eface" %0, %"{{.*}}/runtime/internal/runtime.eface" zeroinitializer)
@@ -20,7 +20,7 @@ package main
 // CHECK-NEXT:   %8 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 2
 // CHECK-NEXT:   store ptr %3, ptr %8, align 8
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 3
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/recoverthenpanic.End", %_llgo_5), ptr %9, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.End, %_llgo_5), ptr %9, align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %5)
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 1
 // CHECK-NEXT:   %11 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 3
@@ -51,7 +51,7 @@ package main
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_4
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 3 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/recoverthenpanic.End", %_llgo_8), ptr %12, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.End, %_llgo_8), ptr %12, align 8
 // CHECK-NEXT:   br label %_llgo_5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_6
@@ -61,7 +61,7 @@ package main
 // CHECK-NEXT:   br i1 %2, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_7, %_llgo_2
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/recoverthenpanic.End", %_llgo_6), ptr %11, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.End, %_llgo_6), ptr %11, align 8
 // CHECK-NEXT:   %23 = load i64, ptr %10, align 8
 // CHECK-NEXT:   %24 = and i64 %23, 1
 // CHECK-NEXT:   %25 = icmp ne i64 %24, 0
@@ -72,7 +72,7 @@ package main
 // CHECK-NEXT:   br label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/recoverthenpanic.End", %_llgo_6), ptr %12, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.End, %_llgo_6), ptr %12, align 8
 // CHECK-NEXT:   %26 = load ptr, ptr %11, align 8
 // CHECK-NEXT:   indirectbr ptr %26, [label %_llgo_6, label %_llgo_5]
 // CHECK-EMPTY:
@@ -119,20 +119,20 @@ func main() {
 	panic("panic in main")
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/recoverthenpanic.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/recoverthenpanic.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/recoverthenpanic.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/recoverthenpanic.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
 // CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
@@ -144,7 +144,7 @@ func main() {
 // CHECK-NEXT:   %5 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 2
 // CHECK-NEXT:   store ptr %0, ptr %5, align 8
 // CHECK-NEXT:   %6 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 3
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/recoverthenpanic.main", %_llgo_2), ptr %6, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_2), ptr %6, align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %2)
 // CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 1
 // CHECK-NEXT:   %8 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 3
@@ -159,9 +159,9 @@ func main() {
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/recoverthenpanic.main", %_llgo_3), ptr %8, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/recoverthenpanic.End"()
+// CHECK-NEXT:   call void @main.End()
 // CHECK-NEXT:   %14 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %15 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %14, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %15)
@@ -180,7 +180,7 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/recoverthenpanic.main", %_llgo_3), ptr %9, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %9, align 8
 // CHECK-NEXT:   %19 = load ptr, ptr %8, align 8
 // CHECK-NEXT:   indirectbr ptr %19, [label %_llgo_3, label %_llgo_2]
 // CHECK-NEXT: }

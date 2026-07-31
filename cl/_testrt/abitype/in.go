@@ -7,14 +7,14 @@ import (
 	"github.com/goplus/llgo/runtime/abi"
 )
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/abitype.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 4)
 // CHECK-NEXT:   store i32 0, ptr %1, align 4
 // CHECK-NEXT:   %2 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_int32, ptr undef }, ptr %1, 1
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.eface" %2, ptr %0, align 8
-// CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/cl/_testrt/abitype.eface", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %3 = getelementptr inbounds %main.eface, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %4 = load ptr, ptr %3, align 8
 // CHECK-NEXT:   %5 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/abi.(*Type).String"(ptr %4)
 // CHECK-NEXT:   %6 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %5, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 5 })
@@ -33,7 +33,7 @@ import (
 // CHECK-NEXT:   store i8 0, ptr %10, align 1
 // CHECK-NEXT:   %11 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_uint8, ptr undef }, ptr %10, 1
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.eface" %11, ptr %0, align 8
-// CHECK-NEXT:   %12 = getelementptr inbounds %"{{.*}}/cl/_testrt/abitype.eface", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %12 = getelementptr inbounds %main.eface, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %13 = load ptr, ptr %12, align 8
 // CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/abi.(*Type).String"(ptr %13)
 // CHECK-NEXT:   %15 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %14, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 5 })

@@ -511,7 +511,7 @@ func TestFilterTestPackages(t *testing.T) {
 			pkg("github.com/goplus/llgo/chore/ardump"),
 			pkg("github.com/goplus/llgo/chore/ardump [github.com/goplus/llgo/chore/ardump.test]"),
 		}
-		filtered, err := filterTestPackages(initial, "", false)
+		filtered, err := filterTestPackages(initial, "")
 		if err != nil {
 			t.Fatalf("filterTestPackages returned unexpected error: %v", err)
 		}
@@ -525,7 +525,7 @@ func TestFilterTestPackages(t *testing.T) {
 			pkg("foo"),
 			pkg("foo.test"),
 		}
-		filtered, err := filterTestPackages(initial, "", false)
+		filtered, err := filterTestPackages(initial, "")
 		if err != nil {
 			t.Fatalf("filterTestPackages returned unexpected error: %v", err)
 		}
@@ -537,12 +537,31 @@ func TestFilterTestPackages(t *testing.T) {
 		}
 	})
 
+	t.Run("rename main package", func(t *testing.T) {
+		mainPkg := pkg("example.com/cmd")
+		mainPkg.Types = types.NewPackage(mainPkg.ID, "main")
+		initial := []*packages.Package{
+			mainPkg,
+			pkg("example.com/cmd.test"),
+		}
+		filtered, err := filterTestPackages(initial, "")
+		if err != nil {
+			t.Fatalf("filterTestPackages returned unexpected error: %v", err)
+		}
+		if len(filtered) != 1 || filtered[0].ID != "example.com/cmd.test" {
+			t.Fatalf("filtered = %#v, want only example.com/cmd.test", filtered)
+		}
+		if got := mainPkg.Types.Name(); got != "main.test" {
+			t.Fatalf("main package name = %q, want %q", got, "main.test")
+		}
+	})
+
 	t.Run("multiple test packages with output file", func(t *testing.T) {
 		initial := []*packages.Package{
 			pkg("a.test"),
 			pkg("b.test"),
 		}
-		_, err := filterTestPackages(initial, "/tmp/out", false)
+		_, err := filterTestPackages(initial, "/tmp/out")
 		if err == nil {
 			t.Fatal("expected error for -o with multiple test packages, got nil")
 		}

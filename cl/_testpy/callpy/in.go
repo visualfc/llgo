@@ -20,13 +20,13 @@ func main() {
 	c.Printf(c.Str("cwd ok = %d\n"), int(wd.IsTrue()))
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testpy/callpy.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testpy/callpy.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testpy/callpy.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   call void @"github.com/goplus/lib/py/math.init"()
 // CHECK-NEXT:   call void @"github.com/goplus/lib/py/os.init"()
 // CHECK-NEXT:   %1 = load ptr, ptr @__llgo_py.math, align 8
@@ -39,7 +39,7 @@ func main() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testpy/callpy.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @PyFloat_FromDouble(double 2.000000e+00)
 // CHECK-NEXT:   %1 = load ptr, ptr @__llgo_py.math.sqrt, align 8

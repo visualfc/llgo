@@ -51,7 +51,6 @@ var PrintCommands bool
 var DeadcodeDrop bool
 var PthreadStackSize byteSizeFlag
 var OptLevel optlevel.Level
-var RewriteMainPrefix bool = true
 
 type byteSizeFlag int64
 
@@ -230,7 +229,6 @@ func AddBuildFlags(fs *flag.FlagSet) {
 		fs.BoolVar(&CheckLLFiles, "check-llfiles", false, "check .ll files valid")
 		fs.BoolVar(&GenLLFiles, "gen-llfiles", false, "generate .ll files for pkg export")
 		fs.BoolVar(&ForceEspClang, "force-espclang", false, "force to use esp-clang")
-		fs.BoolVar(&RewriteMainPrefix, "rewrite-main-prefix", true, "Rewrite symbol names in the main package from 'pkgpath.sym' to 'main.sym'")
 	}
 
 	fs.BoolVar(&SizeReport, "size", false, "Print size report after build (default format=text, level=module)")
@@ -425,7 +423,6 @@ func UpdateConfig(conf *build.Config) error {
 		conf.GenLL = GenLLFiles
 		conf.ForceEspClang = ForceEspClang
 	}
-	conf.RewriteMainPrefix = RewriteMainPrefix
 	return nil
 }
 

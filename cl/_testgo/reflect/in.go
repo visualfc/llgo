@@ -89,31 +89,31 @@ type T struct {
 	n int
 }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/reflect.(*T).Add"(ptr %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i64 @"main.(*T).Add"(ptr %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 11 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflect.T", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %3 = load i64, ptr %2, align 8
 // CHECK-NEXT:   %4 = add i64 %3, %1
-// CHECK-NEXT:   %5 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflect.T", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %5 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 %4, ptr %5, align 8
-// CHECK-NEXT:   %6 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflect.T", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %6 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %7 = load i64, ptr %6, align 8
 // CHECK-NEXT:   ret i64 %7
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.callClosure"(){{.*}} {
+// CHECK-LABEL: define void @main.callClosure(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   store i64 100, ptr %0, align 8
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   %2 = getelementptr inbounds { ptr }, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   store ptr %0, ptr %2, align 8
-// CHECK-NEXT:   %3 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testgo/reflect.callClosure$1", ptr undef }, ptr %1, 1
+// CHECK-NEXT:   %3 = insertvalue { ptr, ptr } { ptr @"main.callClosure$1", ptr undef }, ptr %1, 1
 // CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { ptr, ptr } %3, ptr %4, align 8
-// CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr undef }, ptr %4, 1
+// CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4, 1
 // CHECK-NEXT:   %6 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %5)
 // CHECK-NEXT:   %7 = call i64 @reflect.Value.Kind(%reflect.Value %6)
 // CHECK-NEXT:   %8 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %6)
@@ -155,7 +155,7 @@ type T struct {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %34 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %6)
 // CHECK-NEXT:   %35 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %34, 0
-// CHECK-NEXT:   %36 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %35)
+// CHECK-NEXT:   %36 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %35)
 // CHECK-NEXT:   br i1 %36, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -188,7 +188,7 @@ type T struct {
 // CHECK-NEXT:   br i1 %48, label %_llgo_2, label %_llgo_1
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/reflect.callClosure$1"(ptr %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i64 @"main.callClosure$1"(ptr %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @9, i64 12 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
@@ -200,11 +200,11 @@ type T struct {
 // CHECK-NEXT:   ret i64 %6
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.callFunc"(){{.*}} {
+// CHECK-LABEL: define void @main.callFunc(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.{{.*}}/cl/_testgo/reflect.callFunc$1", ptr null }, ptr %0, align 8
-// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr undef }, ptr %0, 1
+// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.main.callFunc$1", ptr null }, ptr %0, align 8
+// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %2 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %1)
 // CHECK-NEXT:   %3 = call i64 @reflect.Value.Kind(%reflect.Value %2)
 // CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %2)
@@ -246,7 +246,7 @@ type T struct {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %30 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %2)
 // CHECK-NEXT:   %31 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %30, 0
-// CHECK-NEXT:   %32 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %31)
+// CHECK-NEXT:   %32 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %31)
 // CHECK-NEXT:   br i1 %32, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -279,7 +279,7 @@ type T struct {
 // CHECK-NEXT:   br i1 %44, label %_llgo_2, label %_llgo_1
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/reflect.callFunc$1"(i64 %0){{.*}} {
+// CHECK-LABEL: define i64 @"main.callFunc$1"(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @11, i64 9 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
@@ -319,12 +319,12 @@ func callMethod() {
 	println(r2[0].Int())
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.callIMethod"(){{.*}} {
+// CHECK-LABEL: define void @main.callIMethod(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflect.T", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 1, ptr %1, align 8
-// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$VdBKYV8-gcMjZtZfcf-u2oKoj9Lu3VXwuG8TGCW2S4A", ptr @"*_llgo_{{.*}}/cl/_testgo/reflect.T")
+// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.T")
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %2, 0
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %3, ptr %0, 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %4)
@@ -373,7 +373,7 @@ func callMethod() {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %38 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %10)
 // CHECK-NEXT:   %39 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %38, 0
-// CHECK-NEXT:   %40 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %39)
+// CHECK-NEXT:   %40 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %39)
 // CHECK-NEXT:   br i1 %40, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -429,12 +429,12 @@ func callMethod() {
 // CHECK-NEXT:   br i1 %70, label %_llgo_2, label %_llgo_1
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.callMethod"(){{.*}} {
+// CHECK-LABEL: define void @main.callMethod(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflect.T", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 1, ptr %1, align 8
-// CHECK-NEXT:   %2 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_{{.*}}/cl/_testgo/reflect.T", ptr undef }, ptr %0, 1
+// CHECK-NEXT:   %2 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_main.T", ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %3 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %2)
 // CHECK-NEXT:   %4 = call %reflect.Value @reflect.Value.Method(%reflect.Value %3, i64 0)
 // CHECK-NEXT:   %5 = call i64 @reflect.Value.Kind(%reflect.Value %4)
@@ -477,7 +477,7 @@ func callMethod() {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %32 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %4)
 // CHECK-NEXT:   %33 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %32, 0
-// CHECK-NEXT:   %34 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %33)
+// CHECK-NEXT:   %34 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %33)
 // CHECK-NEXT:   br i1 %34, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -533,11 +533,11 @@ func callMethod() {
 // CHECK-NEXT:   br i1 %64, label %_llgo_2, label %_llgo_1
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.callSlice"(){{.*}} {
+// CHECK-LABEL: define void @main.callSlice(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.{{.*}}/cl/_testgo/reflect.demo", ptr null }, ptr %0, align 8
-// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$FjMjjQr3-2iTiWyZP1IIQFOz0hUCa0OS6pEm5uVV6Pk", ptr undef }, ptr %0, 1
+// CHECK-NEXT:   store { ptr, ptr } { ptr @__llgo_stub.main.demo, ptr null }, ptr %0, align 8
+// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %2 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %1)
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store i64 1, ptr %3, align 8
@@ -679,7 +679,7 @@ func callMethod() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { i64, i64 } @"{{.*}}/cl/_testgo/reflect.demo"(i64 %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, %"{{.*}}/runtime/internal/runtime.Slice" %9){{.*}} {
+// CHECK-LABEL: define { i64, i64 } @main.demo(i64 %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, %"{{.*}}/runtime/internal/runtime.Slice" %9){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %10 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %9, 1
 // CHECK-NEXT:   br label %_llgo_1
@@ -728,13 +728,13 @@ func callMethod() {
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/reflect.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/reflect.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   call void @reflect.init()
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
@@ -742,15 +742,15 @@ func callMethod() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflect.callSlice"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflect.callFunc"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflect.callClosure"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflect.callMethod"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflect.callIMethod"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflect.mapDemo1"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflect.mapDemo2"()
+// CHECK-NEXT:   call void @main.callSlice()
+// CHECK-NEXT:   call void @main.callFunc()
+// CHECK-NEXT:   call void @main.callClosure()
+// CHECK-NEXT:   call void @main.callMethod()
+// CHECK-NEXT:   call void @main.callIMethod()
+// CHECK-NEXT:   call void @main.mapDemo1()
+// CHECK-NEXT:   call void @main.mapDemo2()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -771,7 +771,7 @@ func callIMethod() {
 	println(r2[0].Int())
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.mapDemo1"(){{.*}} {
+// CHECK-LABEL: define void @main.mapDemo1(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.MakeMap"(ptr @"map[_llgo_int]_llgo_string", i64 2)
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
@@ -951,7 +951,7 @@ func mapDemo1() {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflect.mapDemo2"(){{.*}} {
+// CHECK-LABEL: define void @main.mapDemo2(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store i64 0, ptr %0, align 8
@@ -1152,15 +1152,15 @@ func mapDemo2() {
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce i64 @"__llgo_stub.{{.*}}/cl/_testgo/reflect.callFunc$1"(ptr %0, i64 %1){{.*}} {
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.main.callFunc$1"(ptr %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = tail call i64 @"{{.*}}/cl/_testgo/reflect.callFunc$1"(i64 %1)
+// CHECK-NEXT:   %2 = tail call i64 @"main.callFunc$1"(i64 %1)
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce i64 @"__llgo_stub.{{.*}}/cl/_testgo/reflect.(*T).Add"(ptr %0, ptr %1, i64 %2){{.*}} {
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.main.(*T).Add"(ptr %0, ptr %1, i64 %2){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %3 = tail call i64 @"{{.*}}/cl/_testgo/reflect.(*T).Add"(ptr %1, i64 %2)
+// CHECK-NEXT:   %3 = tail call i64 @"main.(*T).Add"(ptr %1, i64 %2)
 // CHECK-NEXT:   ret i64 %3
 // CHECK-NEXT: }
 
@@ -1170,9 +1170,9 @@ func mapDemo2() {
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce { i64, i64 } @"__llgo_stub.{{.*}}/cl/_testgo/reflect.demo"(ptr %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9, %"{{.*}}/runtime/internal/runtime.Slice" %10){{.*}} {
+// CHECK-LABEL: define linkonce { i64, i64 } @__llgo_stub.main.demo(ptr %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9, %"{{.*}}/runtime/internal/runtime.Slice" %10){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %11 = tail call { i64, i64 } @"{{.*}}/cl/_testgo/reflect.demo"(i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9, %"{{.*}}/runtime/internal/runtime.Slice" %10)
+// CHECK-NEXT:   %11 = tail call { i64, i64 } @main.demo(i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9, %"{{.*}}/runtime/internal/runtime.Slice" %10)
 // CHECK-NEXT:   ret { i64, i64 } %11
 // CHECK-NEXT: }
 

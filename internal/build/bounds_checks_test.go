@@ -114,7 +114,7 @@ func boundsChecksModuleIR(t *testing.T, disable bool) string {
 	var ir string
 	conf.ModuleHook = func(pkg Package) {
 		module := pkg.LPkg.String()
-		if strings.Contains(module, ".indexString\"") {
+		if strings.Contains(module, "main.indexString(") || strings.Contains(module, ".indexString\"(") {
 			ir = module
 		}
 	}
@@ -158,28 +158,26 @@ func buildBoundsChecksBinaryFrom(t *testing.T, fixture string, disable bool) str
 
 func llvmFunctionBody(t *testing.T, module, name string) string {
 	t.Helper()
-	marker := "." + name + "\"("
-	markerAt := 0
-	start := -1
-	for {
-		next := strings.Index(module[markerAt:], marker)
-		if next < 0 {
-			break
+	markers := []string{"." + name + "\"(", "." + name + "("}
+	for _, marker := range markers {
+		markerAt := 0
+		for {
+			next := strings.Index(module[markerAt:], marker)
+			if next < 0 {
+				break
+			}
+			markerAt += next
+			lineStart := strings.LastIndex(module[:markerAt], "\n") + 1
+			if strings.HasPrefix(module[lineStart:markerAt], "define ") {
+				end := strings.Index(module[markerAt:], "\n}")
+				if end < 0 {
+					t.Fatalf("end of LLVM definition for %q not found", name)
+				}
+				return module[lineStart : markerAt+end+2]
+			}
+			markerAt += len(marker)
 		}
-		markerAt += next
-		lineStart := strings.LastIndex(module[:markerAt], "\n") + 1
-		if strings.HasPrefix(module[lineStart:markerAt], "define ") {
-			start = lineStart
-			break
-		}
-		markerAt += len(marker)
 	}
-	if start < 0 {
-		t.Fatalf("LLVM definition for %q not found", name)
-	}
-	end := strings.Index(module[markerAt:], "\n}")
-	if end < 0 {
-		t.Fatalf("end of LLVM definition for %q not found", name)
-	}
-	return module[start : markerAt+end+2]
+	t.Fatalf("LLVM definition for %q not found", name)
+	return ""
 }

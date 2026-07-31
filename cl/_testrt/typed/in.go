@@ -2,15 +2,15 @@
 package main
 
 // CHECK: @0 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK: @3 = private unnamed_addr constant [41 x i8] c"{{.*}}/cl/_testrt/typed.T", align 1
+// CHECK: @1 = private unnamed_addr constant [6 x i8] c"main.T", align 1
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/typed.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/typed.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/typed.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -20,13 +20,13 @@ package main
 type T string
 type A [2]int
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/typed.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 5 }, ptr %0, align 8
-// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_{{.*}}/cl/_testrt/typed.T", ptr undef }, ptr %0, 1
+// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.T, ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %2 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %1, 0
-// CHECK-NEXT:   %3 = icmp eq ptr %2, @"_llgo_{{.*}}/cl/_testrt/typed.T"
+// CHECK-NEXT:   %3 = icmp eq ptr %2, @_llgo_main.T
 // CHECK-NEXT:   br i1 %3, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
@@ -69,11 +69,11 @@ type A [2]int
 // CHECK-NEXT:   %18 = load [2 x i64], ptr %15, align 8
 // CHECK-NEXT:   %19 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store [2 x i64] %18, ptr %19, align 8
-// CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_{{.*}}/cl/_testrt/typed.A", ptr undef }, ptr %19, 1
+// CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.A, ptr undef }, ptr %19, 1
 // CHECK-NEXT:   %21 = alloca [2 x i64], align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %21, i8 0, i64 16, i1 false)
 // CHECK-NEXT:   %22 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %20, 0
-// CHECK-NEXT:   %23 = icmp eq ptr %22, @"_llgo_{{.*}}/cl/_testrt/typed.A"
+// CHECK-NEXT:   %23 = icmp eq ptr %22, @_llgo_main.A
 // CHECK-NEXT:   br i1 %23, label %_llgo_6, label %_llgo_7
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_5

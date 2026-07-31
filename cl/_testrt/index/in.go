@@ -3,13 +3,13 @@ package main
 
 // CHECK: @0 = private unnamed_addr constant [6 x i8] c"123456", align 1
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/index.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/index.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/index.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -25,34 +25,34 @@ type N [2]int
 type T *N
 type S []int
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/index.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = alloca %"{{.*}}/cl/_testrt/index.point", align 8
+// CHECK-NEXT:   %0 = alloca %main.point, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %0, i8 0, i64 16, i1 false)
-// CHECK-NEXT:   %1 = alloca [3 x %"{{.*}}/cl/_testrt/index.point"], align 8
+// CHECK-NEXT:   %1 = alloca [3 x %main.point], align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 48, i1 false)
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %1, i64 0
-// CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %2, i32 0, i32 0
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %2, i32 0, i32 1
-// CHECK-NEXT:   %5 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %1, i64 1
-// CHECK-NEXT:   %6 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %5, i32 0, i32 0
-// CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %5, i32 0, i32 1
-// CHECK-NEXT:   %8 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %1, i64 2
-// CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %8, i32 0, i32 0
-// CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %8, i32 0, i32 1
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.point, ptr %1, i64 0
+// CHECK-NEXT:   %3 = getelementptr inbounds %main.point, ptr %2, i32 0, i32 0
+// CHECK-NEXT:   %4 = getelementptr inbounds %main.point, ptr %2, i32 0, i32 1
+// CHECK-NEXT:   %5 = getelementptr inbounds %main.point, ptr %1, i64 1
+// CHECK-NEXT:   %6 = getelementptr inbounds %main.point, ptr %5, i32 0, i32 0
+// CHECK-NEXT:   %7 = getelementptr inbounds %main.point, ptr %5, i32 0, i32 1
+// CHECK-NEXT:   %8 = getelementptr inbounds %main.point, ptr %1, i64 2
+// CHECK-NEXT:   %9 = getelementptr inbounds %main.point, ptr %8, i32 0, i32 0
+// CHECK-NEXT:   %10 = getelementptr inbounds %main.point, ptr %8, i32 0, i32 1
 // CHECK-NEXT:   store i64 1, ptr %3, align 8
 // CHECK-NEXT:   store i64 2, ptr %4, align 8
 // CHECK-NEXT:   store i64 3, ptr %6, align 8
 // CHECK-NEXT:   store i64 4, ptr %7, align 8
 // CHECK-NEXT:   store i64 5, ptr %9, align 8
 // CHECK-NEXT:   store i64 6, ptr %10, align 8
-// CHECK-NEXT:   %11 = load [3 x %"{{.*}}/cl/_testrt/index.point"], ptr %1, align 8
-// CHECK-NEXT:   %12 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %1, i64 2
-// CHECK-NEXT:   %13 = load %"{{.*}}/cl/_testrt/index.point", ptr %12, align 8
-// CHECK-NEXT:   store %"{{.*}}/cl/_testrt/index.point" %13, ptr %0, align 8
-// CHECK-NEXT:   %14 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %11 = load [3 x %main.point], ptr %1, align 8
+// CHECK-NEXT:   %12 = getelementptr inbounds %main.point, ptr %1, i64 2
+// CHECK-NEXT:   %13 = load %main.point, ptr %12, align 8
+// CHECK-NEXT:   store %main.point %13, ptr %0, align 8
+// CHECK-NEXT:   %14 = getelementptr inbounds %main.point, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %15 = load i64, ptr %14, align 8
-// CHECK-NEXT:   %16 = getelementptr inbounds %"{{.*}}/cl/_testrt/index.point", ptr %0, i32 0, i32 1
+// CHECK-NEXT:   %16 = getelementptr inbounds %main.point, ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %17 = load i64, ptr %16, align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %15)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)

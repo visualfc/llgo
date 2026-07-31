@@ -15,13 +15,13 @@ import (
 // CHECK: {{^}}@6 = private unnamed_addr constant [30 x i8] c"unsafe.Slice: len out of range", align 1{{$}}
 // CHECK: {{^}}@7 = private unnamed_addr constant [46 x i8] c"unsafe.Slice: nil pointer with non-zero length", align 1{{$}}
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/unsafe.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/unsafe.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/unsafe.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -41,7 +41,7 @@ type N struct {
 	v  int
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/unsafe.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   br i1 false, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:

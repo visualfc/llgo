@@ -1,47 +1,43 @@
 [TypeChildren]
 *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
     _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
-*_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]:
-    _llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]
 *_llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8:
     _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
 *_llgo_int:
     _llgo_int
+*_llgo_main.Box[int]:
+    _llgo_main.Box[int]
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
     _llgo_int
-_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]:
+_llgo_main.Box[int]:
     _llgo_int
 
 [OrdinaryEdges]
 *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequalptr
     _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
-*_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]:
-    __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequalptr
-    _llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]
 *_llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8:
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequalptr
     _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
 *_llgo_int:
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequalptr
     _llgo_int
-__llgo_stub.github.com/goplus/llgo/cl/_testmeta/interface_generic.(*Box[int]).Value:
-    github.com/goplus/llgo/cl/_testmeta/interface_generic.(*Box[int]).Value
+*_llgo_main.Box[int]:
+    __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequalptr
+    _llgo_main.Box[int]
 __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.interequal:
     github.com/goplus/llgo/runtime/internal/runtime.interequal
 __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequal64:
     github.com/goplus/llgo/runtime/internal/runtime.memequal64
 __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequalptr:
     github.com/goplus/llgo/runtime/internal/runtime.memequalptr
+__llgo_stub.main.(*Box[int]).Value:
+    main.(*Box[int]).Value
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
     *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA$out
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA$out:
     _llgo_int
-_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]:
-    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]
-    github.com/goplus/llgo/cl/_testmeta/interface_generic.struct$lOhriNu2BrWBR2Mh8k-KggMYlAw0Wx-2ftE2_gNyubg$fields
-    github.com/goplus/llgo/runtime/internal/runtime.structequal
 _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8:
     *_llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.interequal
@@ -51,30 +47,34 @@ _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8$imethods:
 _llgo_int:
     *_llgo_int
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequal64
-github.com/goplus/llgo/cl/_testmeta/interface_generic.init:
-    github.com/goplus/llgo/cl/_testmeta/interface_generic.init$guard
-github.com/goplus/llgo/cl/_testmeta/interface_generic.main:
-    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]
-    _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
-    github.com/goplus/llgo/cl/_testmeta/interface_generic.useInt
-    github.com/goplus/llgo/runtime/internal/runtime.AllocZ
-    github.com/goplus/llgo/runtime/internal/runtime.NewItab
+_llgo_main.Box[int]:
+    *_llgo_main.Box[int]
+    github.com/goplus/llgo/cl/_testmeta/interface_generic.struct$lOhriNu2BrWBR2Mh8k-KggMYlAw0Wx-2ftE2_gNyubg$fields
+    github.com/goplus/llgo/runtime/internal/runtime.structequal
 github.com/goplus/llgo/cl/_testmeta/interface_generic.struct$lOhriNu2BrWBR2Mh8k-KggMYlAw0Wx-2ftE2_gNyubg$fields:
     _llgo_int
-github.com/goplus/llgo/cl/_testmeta/interface_generic.useInt:
+main.init:
+    main.init$guard
+main.main:
+    *_llgo_main.Box[int]
+    _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
+    github.com/goplus/llgo/runtime/internal/runtime.AllocZ
+    github.com/goplus/llgo/runtime/internal/runtime.NewItab
+    main.useInt
+main.useInt:
     github.com/goplus/llgo/runtime/internal/runtime.IfacePtrData
 
 [UseIface]
-github.com/goplus/llgo/cl/_testmeta/interface_generic.main:
-    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]
+main.main:
+    *_llgo_main.Box[int]
 
 [UseIfaceMethod]
-github.com/goplus/llgo/cl/_testmeta/interface_generic.useInt:
+main.useInt:
     _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8 Value _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
 
 [MethodInfo]
-*_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic.Box[int]:
-    0 Value _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA github.com/goplus/llgo/cl/_testmeta/interface_generic.(*Box[int]).Value __llgo_stub.github.com/goplus/llgo/cl/_testmeta/interface_generic.(*Box[int]).Value
+*_llgo_main.Box[int]:
+    0 Value _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA main.(*Box[int]).Value __llgo_stub.main.(*Box[int]).Value
 
 [InterfaceInfo]
 _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8:

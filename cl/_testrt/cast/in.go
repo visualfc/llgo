@@ -5,7 +5,7 @@ package main
 
 // CHECK: @0 = private unnamed_addr constant [5 x i8] c"error", align 1
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32Fto32"(float %0, i32 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt32Fto32(float %0, i32 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = fcmp ole float %0, 0xC1E0000000000000
 // CHECK-NEXT:   %3 = fcmp oge float %0, 0x41E0000000000000
@@ -37,7 +37,7 @@ func cvt32Fto32(a float32, b int32) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float %0, i32 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt32Fto32U(float %0, i32 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = fcmp ole float %0, 0xC3E0000000000000
 // CHECK-NEXT:   %3 = fcmp oge float %0, 0x43E0000000000000
@@ -70,7 +70,7 @@ func cvt32Fto32U(a float32, b uint32) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float %0, double %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt32Fto64F(float %0, double %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = fpext float %0 to double
 // CHECK-NEXT:   %3 = fcmp une double %2, %1
@@ -93,7 +93,7 @@ func cvt32Fto64F(a float32, b float64) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32Fto8"(float %0, i8 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt32Fto8(float %0, i8 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = fcmp ole float %0, 0xC1E0000000000000
 // CHECK-NEXT:   %3 = fcmp oge float %0, 0x41E0000000000000
@@ -126,7 +126,7 @@ func cvt32Fto8(a float32, b int8) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32Fto8U"(float %0, i8 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt32Fto8U(float %0, i8 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = fcmp ole float %0, 0xC1E0000000000000
 // CHECK-NEXT:   %3 = fcmp oge float %0, 0x41E0000000000000
@@ -159,7 +159,7 @@ func cvt32Fto8U(a float32, b uint8) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt32to64"(i32 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt32to64(i32 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = sext i32 %0 to i64
 // CHECK-NEXT:   %3 = icmp ne i64 %2, %1
@@ -182,7 +182,7 @@ func cvt32to64(a int32, b int64) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt64Fto32F"(double %0, float %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt64Fto32F(double %0, float %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = fptrunc double %0 to float
 // CHECK-NEXT:   %3 = fcmp une float %2, %1
@@ -205,7 +205,7 @@ func cvt64Fto32F(a float64, b float32) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt64Uto64F"(i64 %0, double %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt64Uto64F(i64 %0, double %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = uitofp i64 %0 to double
 // CHECK-NEXT:   %3 = fcmp une double %2, %1
@@ -228,7 +228,7 @@ func cvt64Uto64F(a uint64, b float64) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt64to64F"(i64 %0, double %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt64to64F(i64 %0, double %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = sitofp i64 %0 to double
 // CHECK-NEXT:   %3 = fcmp une double %2, %1
@@ -251,7 +251,7 @@ func cvt64to64F(a int64, b float64) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt64to8"(i64 %0, i8 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt64to8(i64 %0, i8 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = trunc i64 %0 to i8
 // CHECK-NEXT:   %3 = icmp ne i8 %2, %1
@@ -274,7 +274,7 @@ func cvt64to8(a int64, b int8) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvt64to8U"(i64 %0, i8 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvt64to8U(i64 %0, i8 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = trunc i64 %0 to i8
 // CHECK-NEXT:   %3 = icmp ne i8 %2, %1
@@ -297,7 +297,7 @@ func cvt64to8U(a int, b uint8) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvtFtoUintptr"(double %0, i64 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvtFtoUintptr(double %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = fcmp olt double %0, 0.000000e+00
 // CHECK-NEXT:   %3 = fcmp oge double %0, 0x43F0000000000000
@@ -329,7 +329,7 @@ func cvtFtoUintptr(a float64, b uintptr) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.cvtUinptr"(i32 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define void @main.cvtUinptr(i32 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = sext i32 %0 to i64
 // CHECK-NEXT:   %3 = icmp ne i64 %2, %1
@@ -448,75 +448,75 @@ func main() {
 	cvtFtoUintptr(1e5, 100000)
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/cast.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/cast.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/cast.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8"(i64 0, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8"(i64 127, i8 127)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8"(i64 128, i8 -128)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8"(i64 -128, i8 -128)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8"(i64 -129, i8 127)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8"(i64 256, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8U"(i64 0, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8U"(i64 255, i8 -1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8U"(i64 256, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8U"(i64 257, i8 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to8U"(i64 -1, i8 -1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8"(float 0x3FB99999A0000000, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8"(float 0x405FC66660000000, i8 127)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8"(float 0x4060033340000000, i8 -128)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8"(float 0xC060033340000000, i8 -128)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8"(float 0xC060233340000000, i8 127)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8"(float 0x40700199A0000000, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8U"(float 0.000000e+00, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8U"(float 2.550000e+02, i8 -1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8U"(float 2.560000e+02, i8 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8U"(float 2.570000e+02, i8 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto8U"(float -1.000000e+00, i8 -1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32"(float 0.000000e+00, i32 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32"(float 1.500000e+00, i32 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32"(float 0x41D1194D80000000, i32 1147483648)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32"(float 0xC1E0000000000000, i32 -2147483648)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0.000000e+00, i32 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 1.500000e+00, i32 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0x41F0000000000000, i32 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0x41F3B9ACA0000000, i32 1000000000)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xC1F0000000000000, i32 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xC1D34BE880000000, i32 -1294967296)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto32U"(float 0xBFF19999A0000000, i32 -1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float 0.000000e+00, double 0.000000e+00)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float 1.500000e+00, double 1.500000e+00)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float 1.000000e+10, double 1.000000e+10)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32Fto64F"(float -1.000000e+10, double -1.000000e+10)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Fto32F"(double 0.000000e+00, float 0.000000e+00)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Fto32F"(double 1.500000e+00, float 1.500000e+00)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Fto32F"(double 1.000000e+10, float 1.000000e+10)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Fto32F"(double -1.000000e+10, float -1.000000e+10)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to64F"(i64 0, double 0.000000e+00)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to64F"(i64 10000000000, double 1.000000e+10)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to64F"(i64 9223372036854775807, double 0x43E0000000000000)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64to64F"(i64 -9223372036854775807, double 0xC3E0000000000000)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Uto64F"(i64 0, double 0.000000e+00)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Uto64F"(i64 10000000000, double 1.000000e+10)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Uto64F"(i64 9223372036854775807, double 0x43E0000000000000)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt64Uto64F"(i64 -1, double 0x43F0000000000000)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32to64"(i32 0, i64 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvt32to64"(i32 2147483647, i64 2147483647)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvtUinptr"(i32 1024, i64 1024)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvtFtoUintptr"(double 1.000000e+02, i64 100)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvtFtoUintptr"(double 0.000000e+00, i64 0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/cast.cvtFtoUintptr"(double 1.000000e+05, i64 100000)
+// CHECK-NEXT:   call void @main.cvt64to8(i64 0, i8 0)
+// CHECK-NEXT:   call void @main.cvt64to8(i64 127, i8 127)
+// CHECK-NEXT:   call void @main.cvt64to8(i64 128, i8 -128)
+// CHECK-NEXT:   call void @main.cvt64to8(i64 -128, i8 -128)
+// CHECK-NEXT:   call void @main.cvt64to8(i64 -129, i8 127)
+// CHECK-NEXT:   call void @main.cvt64to8(i64 256, i8 0)
+// CHECK-NEXT:   call void @main.cvt64to8U(i64 0, i8 0)
+// CHECK-NEXT:   call void @main.cvt64to8U(i64 255, i8 -1)
+// CHECK-NEXT:   call void @main.cvt64to8U(i64 256, i8 0)
+// CHECK-NEXT:   call void @main.cvt64to8U(i64 257, i8 1)
+// CHECK-NEXT:   call void @main.cvt64to8U(i64 -1, i8 -1)
+// CHECK-NEXT:   call void @main.cvt32Fto8(float 0x3FB99999A0000000, i8 0)
+// CHECK-NEXT:   call void @main.cvt32Fto8(float 0x405FC66660000000, i8 127)
+// CHECK-NEXT:   call void @main.cvt32Fto8(float 0x4060033340000000, i8 -128)
+// CHECK-NEXT:   call void @main.cvt32Fto8(float 0xC060033340000000, i8 -128)
+// CHECK-NEXT:   call void @main.cvt32Fto8(float 0xC060233340000000, i8 127)
+// CHECK-NEXT:   call void @main.cvt32Fto8(float 0x40700199A0000000, i8 0)
+// CHECK-NEXT:   call void @main.cvt32Fto8U(float 0.000000e+00, i8 0)
+// CHECK-NEXT:   call void @main.cvt32Fto8U(float 2.550000e+02, i8 -1)
+// CHECK-NEXT:   call void @main.cvt32Fto8U(float 2.560000e+02, i8 0)
+// CHECK-NEXT:   call void @main.cvt32Fto8U(float 2.570000e+02, i8 1)
+// CHECK-NEXT:   call void @main.cvt32Fto8U(float -1.000000e+00, i8 -1)
+// CHECK-NEXT:   call void @main.cvt32Fto32(float 0.000000e+00, i32 0)
+// CHECK-NEXT:   call void @main.cvt32Fto32(float 1.500000e+00, i32 1)
+// CHECK-NEXT:   call void @main.cvt32Fto32(float 0x41D1194D80000000, i32 1147483648)
+// CHECK-NEXT:   call void @main.cvt32Fto32(float 0xC1E0000000000000, i32 -2147483648)
+// CHECK-NEXT:   call void @main.cvt32Fto32U(float 0.000000e+00, i32 0)
+// CHECK-NEXT:   call void @main.cvt32Fto32U(float 1.500000e+00, i32 1)
+// CHECK-NEXT:   call void @main.cvt32Fto32U(float 0x41F0000000000000, i32 0)
+// CHECK-NEXT:   call void @main.cvt32Fto32U(float 0x41F3B9ACA0000000, i32 1000000000)
+// CHECK-NEXT:   call void @main.cvt32Fto32U(float 0xC1F0000000000000, i32 0)
+// CHECK-NEXT:   call void @main.cvt32Fto32U(float 0xC1D34BE880000000, i32 -1294967296)
+// CHECK-NEXT:   call void @main.cvt32Fto32U(float 0xBFF19999A0000000, i32 -1)
+// CHECK-NEXT:   call void @main.cvt32Fto64F(float 0.000000e+00, double 0.000000e+00)
+// CHECK-NEXT:   call void @main.cvt32Fto64F(float 1.500000e+00, double 1.500000e+00)
+// CHECK-NEXT:   call void @main.cvt32Fto64F(float 1.000000e+10, double 1.000000e+10)
+// CHECK-NEXT:   call void @main.cvt32Fto64F(float -1.000000e+10, double -1.000000e+10)
+// CHECK-NEXT:   call void @main.cvt64Fto32F(double 0.000000e+00, float 0.000000e+00)
+// CHECK-NEXT:   call void @main.cvt64Fto32F(double 1.500000e+00, float 1.500000e+00)
+// CHECK-NEXT:   call void @main.cvt64Fto32F(double 1.000000e+10, float 1.000000e+10)
+// CHECK-NEXT:   call void @main.cvt64Fto32F(double -1.000000e+10, float -1.000000e+10)
+// CHECK-NEXT:   call void @main.cvt64to64F(i64 0, double 0.000000e+00)
+// CHECK-NEXT:   call void @main.cvt64to64F(i64 10000000000, double 1.000000e+10)
+// CHECK-NEXT:   call void @main.cvt64to64F(i64 9223372036854775807, double 0x43E0000000000000)
+// CHECK-NEXT:   call void @main.cvt64to64F(i64 -9223372036854775807, double 0xC3E0000000000000)
+// CHECK-NEXT:   call void @main.cvt64Uto64F(i64 0, double 0.000000e+00)
+// CHECK-NEXT:   call void @main.cvt64Uto64F(i64 10000000000, double 1.000000e+10)
+// CHECK-NEXT:   call void @main.cvt64Uto64F(i64 9223372036854775807, double 0x43E0000000000000)
+// CHECK-NEXT:   call void @main.cvt64Uto64F(i64 -1, double 0x43F0000000000000)
+// CHECK-NEXT:   call void @main.cvt32to64(i32 0, i64 0)
+// CHECK-NEXT:   call void @main.cvt32to64(i32 2147483647, i64 2147483647)
+// CHECK-NEXT:   call void @main.cvtUinptr(i32 1024, i64 1024)
+// CHECK-NEXT:   call void @main.cvtFtoUintptr(double 1.000000e+02, i64 100)
+// CHECK-NEXT:   call void @main.cvtFtoUintptr(double 0.000000e+00, i64 0)
+// CHECK-NEXT:   call void @main.cvtFtoUintptr(double 1.000000e+05, i64 100000)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

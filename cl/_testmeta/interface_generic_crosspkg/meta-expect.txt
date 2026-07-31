@@ -90,22 +90,6 @@ _llgo_int:
 _llgo_string:
     *_llgo_string
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.strequal
-github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg.init:
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg.init$guard
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/api.init
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.init
-github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg.main:
-    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[int]
-    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[string]
-    _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg.sink
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/api.UseInt
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.NewIntBox
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.NewStringBox
-    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.UseStringBox
-    github.com/goplus/llgo/runtime/internal/runtime.NewItab
-    github.com/goplus/llgo/runtime/internal/runtime.PrintByte
-    github.com/goplus/llgo/runtime/internal/runtime.PrintInt
 github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[int]).Drop:
     _llgo_string
     github.com/goplus/llgo/runtime/internal/runtime.AllocU
@@ -118,15 +102,31 @@ github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.struct$XNpH
     _llgo_string
 github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.struct$lOhriNu2BrWBR2Mh8k-KggMYlAw0Wx-2ftE2_gNyubg$fields:
     _llgo_int
-
-[UseIface]
-github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg.main:
+main.init:
+    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/api.init
+    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.init
+    main.init$guard
+main.main:
     *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[int]
     *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[string]
+    _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
+    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/api.UseInt
+    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.NewIntBox
+    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.NewStringBox
+    github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.UseStringBox
+    github.com/goplus/llgo/runtime/internal/runtime.NewItab
+    github.com/goplus/llgo/runtime/internal/runtime.PrintByte
+    github.com/goplus/llgo/runtime/internal/runtime.PrintInt
+    main.sink
+
+[UseIface]
 github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[int]).Drop:
     _llgo_string
 github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.(*Box[string]).Drop:
     _llgo_string
+main.main:
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[int]
+    *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[string]
 
 [MethodInfo]
 *_llgo_github.com/goplus/llgo/cl/_testmeta/interface_generic_crosspkg/model.Box[int]:

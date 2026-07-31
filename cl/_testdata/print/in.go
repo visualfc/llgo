@@ -36,23 +36,23 @@ type stringStruct struct {
 	len int
 }
 
-// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/cl/_testdata/print.bytes"(%"{{.*}}/runtime/internal/runtime.String" %0){{.*}} {
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.Slice" @main.bytes(%"{{.*}}/runtime/internal/runtime.String" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %0, ptr %1, align 8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 24)
-// CHECK-NEXT:   %3 = call ptr @"{{.*}}/cl/_testdata/print.stringStructOf"(ptr %1)
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testdata/print.stringStruct", ptr %3, i32 0, i32 0
+// CHECK-NEXT:   %3 = call ptr @main.stringStructOf(ptr %1)
+// CHECK-NEXT:   %4 = getelementptr inbounds %main.stringStruct, ptr %3, i32 0, i32 0
 // CHECK-NEXT:   %5 = load ptr, ptr %4, align 8
-// CHECK-NEXT:   %6 = getelementptr inbounds %"{{.*}}/cl/_testdata/print.slice", ptr %2, i32 0, i32 0
+// CHECK-NEXT:   %6 = getelementptr inbounds %main.slice, ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %5, ptr %6, align 8
-// CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/cl/_testdata/print.stringStruct", ptr %3, i32 0, i32 1
+// CHECK-NEXT:   %7 = getelementptr inbounds %main.stringStruct, ptr %3, i32 0, i32 1
 // CHECK-NEXT:   %8 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/cl/_testdata/print.slice", ptr %2, i32 0, i32 1
+// CHECK-NEXT:   %9 = getelementptr inbounds %main.slice, ptr %2, i32 0, i32 1
 // CHECK-NEXT:   store i64 %8, ptr %9, align 8
-// CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/cl/_testdata/print.stringStruct", ptr %3, i32 0, i32 1
+// CHECK-NEXT:   %10 = getelementptr inbounds %main.stringStruct, ptr %3, i32 0, i32 1
 // CHECK-NEXT:   %11 = load i64, ptr %10, align 8
-// CHECK-NEXT:   %12 = getelementptr inbounds %"{{.*}}/cl/_testdata/print.slice", ptr %2, i32 0, i32 2
+// CHECK-NEXT:   %12 = getelementptr inbounds %main.slice, ptr %2, i32 0, i32 2
 // CHECK-NEXT:   store i64 %11, ptr %12, align 8
 // CHECK-NEXT:   %13 = load %"{{.*}}/runtime/internal/runtime.Slice", ptr %2, align 8
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.Slice" %13
@@ -67,7 +67,7 @@ func bytes(s string) (ret []byte) {
 	return
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.gwrite"(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
+// CHECK-LABEL: define void @main.gwrite(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK-NEXT:   %2 = icmp eq i64 %1, 0
@@ -102,13 +102,13 @@ func bytes(s string) (ret []byte) {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testdata/print.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testdata/print.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -124,32 +124,32 @@ func gwrite(b []byte) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 4 })
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 1024)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printhex"(i64 305441743)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.prinxor"(i64 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.prinsub"(i64 100)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.prinusub"(i64 -1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.prinfsub"(double 1.001000e+02)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 4 })
+// CHECK-NEXT:   call void @main.printnl()
+// CHECK-NEXT:   call void @main.printuint(i64 1024)
+// CHECK-NEXT:   call void @main.printnl()
+// CHECK-NEXT:   call void @main.printhex(i64 305441743)
+// CHECK-NEXT:   call void @main.printnl()
+// CHECK-NEXT:   call void @main.prinxor(i64 1)
+// CHECK-NEXT:   call void @main.printnl()
+// CHECK-NEXT:   call void @main.prinsub(i64 100)
+// CHECK-NEXT:   call void @main.printnl()
+// CHECK-NEXT:   call void @main.prinusub(i64 -1)
+// CHECK-NEXT:   call void @main.printnl()
+// CHECK-NEXT:   call void @main.prinfsub(double 1.001000e+02)
+// CHECK-NEXT:   call void @main.printnl()
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 4)
 // CHECK-NEXT:   store float 1.000000e+09, ptr %0, align 4
 // CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_float32, ptr undef }, ptr %0, 1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printany"(%"{{.*}}/runtime/internal/runtime.eface" %1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
+// CHECK-NEXT:   call void @main.printany(%"{{.*}}/runtime/internal/runtime.eface" %1)
+// CHECK-NEXT:   call void @main.printnl()
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store double 2.000000e+09, ptr %2, align 8
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_float64, ptr undef }, ptr %2, 1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printany"(%"{{.*}}/runtime/internal/runtime.eface" %3)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
+// CHECK-NEXT:   call void @main.printany(%"{{.*}}/runtime/internal/runtime.eface" %3)
+// CHECK-NEXT:   call void @main.printnl()
 // CHECK-NEXT:   br i1 true, label %_llgo_3, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_3
@@ -167,7 +167,7 @@ func gwrite(b []byte) {
 // CHECK-NEXT:   %11 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %4, 0
 // CHECK-NEXT:   %12 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %11, i64 2, 1
 // CHECK-NEXT:   %13 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %12, i64 2, 2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.println"(%"{{.*}}/runtime/internal/runtime.Slice" %13)
+// CHECK-NEXT:   call void @main.println(%"{{.*}}/runtime/internal/runtime.Slice" %13)
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_3, %_llgo_0
@@ -190,7 +190,7 @@ func gwrite(b []byte) {
 // CHECK-NEXT:   %24 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %14, 0
 // CHECK-NEXT:   %25 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %24, i64 3, 1
 // CHECK-NEXT:   %26 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %25, i64 3, 2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.println"(%"{{.*}}/runtime/internal/runtime.Slice" %26)
+// CHECK-NEXT:   call void @main.println(%"{{.*}}/runtime/internal/runtime.Slice" %26)
 // CHECK-NEXT:   %27 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 256)
 // CHECK-NEXT:   %28 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %27, i64 0
 // CHECK-NEXT:   %29 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 1)
@@ -275,7 +275,7 @@ func gwrite(b []byte) {
 // CHECK-NEXT:   %76 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %27, 0
 // CHECK-NEXT:   %77 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %76, i64 16, 1
 // CHECK-NEXT:   %78 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %77, i64 16, 2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.println"(%"{{.*}}/runtime/internal/runtime.Slice" %78)
+// CHECK-NEXT:   call void @main.println(%"{{.*}}/runtime/internal/runtime.Slice" %78)
 // CHECK-NEXT:   %79 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   %80 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %79, i64 0
 // CHECK-NEXT:   %81 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
@@ -285,7 +285,7 @@ func gwrite(b []byte) {
 // CHECK-NEXT:   %83 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %79, 0
 // CHECK-NEXT:   %84 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %83, i64 1, 1
 // CHECK-NEXT:   %85 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %84, i64 1, 2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.println"(%"{{.*}}/runtime/internal/runtime.Slice" %85)
+// CHECK-NEXT:   call void @main.println(%"{{.*}}/runtime/internal/runtime.Slice" %85)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_0
@@ -325,10 +325,10 @@ func main() {
 	println(1 + 2i)
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.prinfsub"(double %0){{.*}} {
+// CHECK-LABEL: define void @main.prinfsub(double %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = fneg double %0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printfloat"(double %1)
+// CHECK-NEXT:   call void @main.printfloat(double %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -336,10 +336,10 @@ func prinfsub(n float64) {
 	printfloat(-n)
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.prinsub"(i64 %0){{.*}} {
+// CHECK-LABEL: define void @main.prinsub(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = sub i64 0, %0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printint"(i64 %1)
+// CHECK-NEXT:   call void @main.printint(i64 %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -347,7 +347,7 @@ func prinsub(n int64) {
 	printint(-n)
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printany"(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
+// CHECK-LABEL: define void @main.printany(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %0, 0
 // CHECK-NEXT:   %2 = icmp eq ptr %1, @_llgo_bool
@@ -357,7 +357,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_37
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printbool"(i1 %53)
+// CHECK-NEXT:   call void @main.printbool(i1 %53)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_37
@@ -366,7 +366,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %4, label %_llgo_38, label %_llgo_39
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_40
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printint"(i64 %60)
+// CHECK-NEXT:   call void @main.printint(i64 %60)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_40
@@ -376,7 +376,7 @@ func prinsub(n int64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_43
 // CHECK-NEXT:   %7 = sext i8 %67 to i64
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printint"(i64 %7)
+// CHECK-NEXT:   call void @main.printint(i64 %7)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_43
@@ -386,7 +386,7 @@ func prinsub(n int64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_46
 // CHECK-NEXT:   %10 = sext i16 %74 to i64
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printint"(i64 %10)
+// CHECK-NEXT:   call void @main.printint(i64 %10)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_9:                                          ; preds = %_llgo_46
@@ -396,7 +396,7 @@ func prinsub(n int64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_10:                                         ; preds = %_llgo_49
 // CHECK-NEXT:   %13 = sext i32 %81 to i64
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printint"(i64 %13)
+// CHECK-NEXT:   call void @main.printint(i64 %13)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_11:                                         ; preds = %_llgo_49
@@ -405,7 +405,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %15, label %_llgo_50, label %_llgo_51
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_12:                                         ; preds = %_llgo_52
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printint"(i64 %88)
+// CHECK-NEXT:   call void @main.printint(i64 %88)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_13:                                         ; preds = %_llgo_52
@@ -414,7 +414,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %17, label %_llgo_53, label %_llgo_54
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_14:                                         ; preds = %_llgo_55
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %95)
+// CHECK-NEXT:   call void @main.printuint(i64 %95)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_15:                                         ; preds = %_llgo_55
@@ -424,7 +424,7 @@ func prinsub(n int64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_58
 // CHECK-NEXT:   %20 = zext i8 %102 to i64
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %20)
+// CHECK-NEXT:   call void @main.printuint(i64 %20)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_17:                                         ; preds = %_llgo_58
@@ -434,7 +434,7 @@ func prinsub(n int64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_61
 // CHECK-NEXT:   %23 = zext i16 %109 to i64
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %23)
+// CHECK-NEXT:   call void @main.printuint(i64 %23)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_19:                                         ; preds = %_llgo_61
@@ -444,7 +444,7 @@ func prinsub(n int64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_20:                                         ; preds = %_llgo_64
 // CHECK-NEXT:   %26 = zext i32 %116 to i64
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %26)
+// CHECK-NEXT:   call void @main.printuint(i64 %26)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_21:                                         ; preds = %_llgo_64
@@ -453,7 +453,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %28, label %_llgo_65, label %_llgo_66
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_22:                                         ; preds = %_llgo_67
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %123)
+// CHECK-NEXT:   call void @main.printuint(i64 %123)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_23:                                         ; preds = %_llgo_67
@@ -462,7 +462,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %30, label %_llgo_68, label %_llgo_69
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_24:                                         ; preds = %_llgo_70
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %130)
+// CHECK-NEXT:   call void @main.printuint(i64 %130)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_25:                                         ; preds = %_llgo_70
@@ -472,7 +472,7 @@ func prinsub(n int64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_26:                                         ; preds = %_llgo_73
 // CHECK-NEXT:   %33 = fpext float %137 to double
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printfloat"(double %33)
+// CHECK-NEXT:   call void @main.printfloat(double %33)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_27:                                         ; preds = %_llgo_73
@@ -481,7 +481,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %35, label %_llgo_74, label %_llgo_75
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_28:                                         ; preds = %_llgo_76
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printfloat"(double %144)
+// CHECK-NEXT:   call void @main.printfloat(double %144)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_29:                                         ; preds = %_llgo_76
@@ -490,14 +490,14 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %37, label %_llgo_77, label %_llgo_78
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_30:                                         ; preds = %_llgo_79
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 1 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 1 })
 // CHECK-NEXT:   %38 = extractvalue { float, float } %151, 0
 // CHECK-NEXT:   %39 = fpext float %38 to double
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printfloat"(double %39)
+// CHECK-NEXT:   call void @main.printfloat(double %39)
 // CHECK-NEXT:   %40 = extractvalue { float, float } %151, 1
 // CHECK-NEXT:   %41 = fpext float %40 to double
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printfloat"(double %41)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 2 })
+// CHECK-NEXT:   call void @main.printfloat(double %41)
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 2 })
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_31:                                         ; preds = %_llgo_79
@@ -506,12 +506,12 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %43, label %_llgo_80, label %_llgo_81
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_32:                                         ; preds = %_llgo_82
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 1 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 1 })
 // CHECK-NEXT:   %44 = extractvalue { double, double } %158, 0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printfloat"(double %44)
+// CHECK-NEXT:   call void @main.printfloat(double %44)
 // CHECK-NEXT:   %45 = extractvalue { double, double } %158, 1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printfloat"(double %45)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 2 })
+// CHECK-NEXT:   call void @main.printfloat(double %45)
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @22, i64 2 })
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_33:                                         ; preds = %_llgo_82
@@ -520,7 +520,7 @@ func prinsub(n int64) {
 // CHECK-NEXT:   br i1 %47, label %_llgo_83, label %_llgo_84
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_34:                                         ; preds = %_llgo_85
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" %165)
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" %165)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_35:                                         ; preds = %_llgo_0
@@ -841,19 +841,19 @@ func printany(v any) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printbool"(i1 %0){{.*}} {
+// CHECK-LABEL: define void @main.printbool(i1 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   br i1 %0, label %_llgo_1, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @23, i64 4 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @23, i64 4 })
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_3, %_llgo_1
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @24, i64 5 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @24, i64 5 })
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-NEXT: }
 
@@ -865,17 +865,17 @@ func printbool(v bool) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printfloat"(double %0){{.*}} {
+// CHECK-LABEL: define void @main.printfloat(double %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = fcmp une double %0, %0
 // CHECK-NEXT:   br i1 %1, label %_llgo_1, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @25, i64 3 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @25, i64 3 })
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_7
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @26, i64 4 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @26, i64 4 })
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_0
@@ -884,7 +884,7 @@ func printbool(v bool) {
 // CHECK-NEXT:   br i1 %3, label %_llgo_6, label %_llgo_7
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_10
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @27, i64 4 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @27, i64 4 })
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_7
@@ -1059,7 +1059,7 @@ func printbool(v bool) {
 // CHECK-NEXT:   %87 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %8, 0
 // CHECK-NEXT:   %88 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %87, i64 14, 1
 // CHECK-NEXT:   %89 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %88, i64 14, 2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.gwrite"(%"{{.*}}/runtime/internal/runtime.Slice" %89)
+// CHECK-NEXT:   call void @main.gwrite(%"{{.*}}/runtime/internal/runtime.Slice" %89)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1135,7 +1135,7 @@ func printfloat(v float64) {
 	gwrite(buf[:])
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printhex"(i64 %0){{.*}} {
+// CHECK-LABEL: define void @main.printhex(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 100)
 // CHECK-NEXT:   br label %_llgo_3
@@ -1171,7 +1171,7 @@ func printfloat(v float64) {
 // CHECK-NEXT:   %20 = getelementptr inbounds i8, ptr %1, i64 %16
 // CHECK-NEXT:   store i8 48, ptr %20, align 1
 // CHECK-NEXT:   %21 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice2"(ptr %1, i64 1, i64 100, i64 %16, i64 100, i1 true, i1 true, i1 true)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.gwrite"(%"{{.*}}/runtime/internal/runtime.Slice" %21)
+// CHECK-NEXT:   call void @main.gwrite(%"{{.*}}/runtime/internal/runtime.Slice" %21)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_4, %_llgo_0
@@ -1187,7 +1187,7 @@ func printfloat(v float64) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_1
 // CHECK-NEXT:   %27 = sub i64 100, %23
-// CHECK-NEXT:   %28 = load i64, ptr @"{{.*}}/cl/_testdata/print.minhexdigits", align 8
+// CHECK-NEXT:   %28 = load i64, ptr @main.minhexdigits, align 8
 // CHECK-NEXT:   %29 = icmp sge i64 %27, %28
 // CHECK-NEXT:   br i1 %29, label %_llgo_2, label %_llgo_4
 // CHECK-NEXT: }
@@ -1210,19 +1210,19 @@ func printhex(v uint64) {
 	gwrite(buf[i:])
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printint"(i64 %0){{.*}} {
+// CHECK-LABEL: define void @main.printint(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp slt i64 %0, 0
 // CHECK-NEXT:   br i1 %1, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @29, i64 1 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @29, i64 1 })
 // CHECK-NEXT:   %2 = sub i64 0, %0
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
 // CHECK-NEXT:   %3 = phi i64 [ %0, %_llgo_0 ], [ %2, %_llgo_1 ]
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %3)
+// CHECK-NEXT:   call void @main.printuint(i64 %3)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1234,7 +1234,7 @@ func printint(v int64) {
 	printuint(uint64(v))
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.println"(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
+// CHECK-LABEL: define void @main.println(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK-NEXT:   br label %_llgo_1
@@ -1258,15 +1258,15 @@ func printint(v int64) {
 // CHECK-NEXT:   br i1 %12, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printnl"()
+// CHECK-NEXT:   call void @main.printnl()
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @30, i64 1 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @30, i64 1 })
 // CHECK-NEXT:   br label %_llgo_5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_4, %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printany"(%"{{.*}}/runtime/internal/runtime.eface" %11)
+// CHECK-NEXT:   call void @main.printany(%"{{.*}}/runtime/internal/runtime.eface" %11)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-NEXT: }
 
@@ -1280,9 +1280,9 @@ func println(args ...any) {
 	printnl()
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printnl"(){{.*}} {
+// CHECK-LABEL: define void @main.printnl(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @31, i64 1 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @31, i64 1 })
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1290,9 +1290,9 @@ func printnl() {
 	printstring("\n")
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printsp"(){{.*}} {
+// CHECK-LABEL: define void @main.printsp(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" { ptr @30, i64 1 })
+// CHECK-NEXT:   call void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" { ptr @30, i64 1 })
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1300,10 +1300,10 @@ func printsp() {
 	printstring(" ")
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printstring"(%"{{.*}}/runtime/internal/runtime.String" %0){{.*}} {
+// CHECK-LABEL: define void @main.printstring(%"{{.*}}/runtime/internal/runtime.String" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/cl/_testdata/print.bytes"(%"{{.*}}/runtime/internal/runtime.String" %0)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.gwrite"(%"{{.*}}/runtime/internal/runtime.Slice" %1)
+// CHECK-NEXT:   %1 = call %"{{.*}}/runtime/internal/runtime.Slice" @main.bytes(%"{{.*}}/runtime/internal/runtime.String" %0)
+// CHECK-NEXT:   call void @main.gwrite(%"{{.*}}/runtime/internal/runtime.Slice" %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1311,7 +1311,7 @@ func printstring(s string) {
 	gwrite(bytes(s))
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.printuint"(i64 %0){{.*}} {
+// CHECK-LABEL: define void @main.printuint(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 100)
 // CHECK-NEXT:   br label %_llgo_3
@@ -1331,7 +1331,7 @@ func printstring(s string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_3
 // CHECK-NEXT:   %10 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.NewSlice2"(ptr %1, i64 1, i64 100, i64 %12, i64 100, i1 true, i1 true, i1 true)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.gwrite"(%"{{.*}}/runtime/internal/runtime.Slice" %10)
+// CHECK-NEXT:   call void @main.gwrite(%"{{.*}}/runtime/internal/runtime.Slice" %10)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_4, %_llgo_0
@@ -1359,10 +1359,10 @@ func printuint(v uint64) {
 	gwrite(buf[i:])
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.prinusub"(i64 %0){{.*}} {
+// CHECK-LABEL: define void @main.prinusub(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = sub i64 0, %0
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printuint"(i64 %1)
+// CHECK-NEXT:   call void @main.printuint(i64 %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1370,10 +1370,10 @@ func prinusub(n uint64) {
 	printuint(-n)
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/print.prinxor"(i64 %0){{.*}} {
+// CHECK-LABEL: define void @main.prinxor(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = xor i64 %0, -1
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/print.printint"(i64 %1)
+// CHECK-NEXT:   call void @main.printint(i64 %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1381,7 +1381,7 @@ func prinxor(n int64) {
 	printint(^n)
 }
 
-// CHECK-LABEL: define ptr @"{{.*}}/cl/_testdata/print.stringStructOf"(ptr %0){{.*}} {
+// CHECK-LABEL: define ptr @main.stringStructOf(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret ptr %0
 // CHECK-NEXT: }

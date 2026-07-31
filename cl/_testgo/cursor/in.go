@@ -32,11 +32,11 @@ func (c Cursor) Node() ast.Node {
 	return c.in.events[c.index].node
 }
 
-// CHECK-LABEL: define { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } @"{{.*}}/cl/_testgo/cursor.Cursor.FindNode"(%"{{.*}}/cl/_testgo/cursor.Cursor" %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
+// CHECK-LABEL: define { %main.Cursor, i1 } @main.Cursor.FindNode(%main.Cursor %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
+// CHECK-NEXT:   %2 = alloca %main.Cursor, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %2, i8 0, i64 16, i1 false)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %0, ptr %2, align 8
+// CHECK-NEXT:   store %main.Cursor %0, ptr %2, align 8
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.iface" %1, ptr %3, align 8
 // CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
@@ -44,7 +44,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   br i1 false, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %6 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %2, align 8
+// CHECK-NEXT:   %6 = load %main.Cursor, ptr %2, align 8
 // CHECK-NEXT:   %7 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %3, align 8
 // CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.iface", ptr %8, i64 0
@@ -52,7 +52,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   %10 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %8, 0
 // CHECK-NEXT:   %11 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %10, i64 1, 1
 // CHECK-NEXT:   %12 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %11, i64 1, 2
-// CHECK-NEXT:   %13 = call %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" @"{{.*}}/cl/_testgo/cursor.Cursor.Preorder"(%"{{.*}}/cl/_testgo/cursor.Cursor" %6, %"{{.*}}/runtime/internal/runtime.Slice" %12)
+// CHECK-NEXT:   %13 = call %"iter.Seq[main.Cursor]" @main.Cursor.Preorder(%main.Cursor %6, %"{{.*}}/runtime/internal/runtime.Slice" %12)
 // CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %15 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 32)
 // CHECK-NEXT:   %16 = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %15, i32 0, i32 0
@@ -63,9 +63,9 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   store ptr %4, ptr %18, align 8
 // CHECK-NEXT:   %19 = getelementptr inbounds { ptr, ptr, ptr, ptr }, ptr %15, i32 0, i32 3
 // CHECK-NEXT:   store ptr %5, ptr %19, align 8
-// CHECK-NEXT:   %20 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testgo/cursor.Cursor.FindNode$1", ptr undef }, ptr %15, 1
-// CHECK-NEXT:   %21 = extractvalue %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" %13, 1
-// CHECK-NEXT:   %22 = extractvalue %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" %13, 0
+// CHECK-NEXT:   %20 = insertvalue { ptr, ptr } { ptr @"main.Cursor.FindNode$1", ptr undef }, ptr %15, 1
+// CHECK-NEXT:   %21 = extractvalue %"iter.Seq[main.Cursor]" %13, 1
+// CHECK-NEXT:   %22 = extractvalue %"iter.Seq[main.Cursor]" %13, 0
 // CHECK-NEXT:   call void %22(ptr %21, { ptr, ptr } %20)
 // CHECK-NEXT:   %23 = load i64, ptr %14, align 8
 // CHECK-NEXT:   %24 = icmp eq i64 %23, -1
@@ -79,25 +79,25 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   %28 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %25, 0
 // CHECK-NEXT:   %29 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %28, i64 1, 1
 // CHECK-NEXT:   %30 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %29, i64 1, 2
-// CHECK-NEXT:   %31 = call i64 @"{{.*}}/cl/_testgo/cursor.maskOf"(%"{{.*}}/runtime/internal/runtime.Slice" %30)
-// CHECK-NEXT:   %32 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %2, i32 0, i32 0
+// CHECK-NEXT:   %31 = call i64 @main.maskOf(%"{{.*}}/runtime/internal/runtime.Slice" %30)
+// CHECK-NEXT:   %32 = getelementptr inbounds %main.Cursor, ptr %2, i32 0, i32 0
 // CHECK-NEXT:   %33 = load ptr, ptr %32, align 8
-// CHECK-NEXT:   %34 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Inspector", ptr %33, i32 0, i32 0
+// CHECK-NEXT:   %34 = getelementptr inbounds %main.Inspector, ptr %33, i32 0, i32 0
 // CHECK-NEXT:   %35 = load %"{{.*}}/runtime/internal/runtime.Slice", ptr %34, align 8
-// CHECK-NEXT:   %36 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %2, align 8
-// CHECK-NEXT:   %37 = call { i32, i32 } @"{{.*}}/cl/_testgo/cursor.Cursor.indices"(%"{{.*}}/cl/_testgo/cursor.Cursor" %36)
+// CHECK-NEXT:   %36 = load %main.Cursor, ptr %2, align 8
+// CHECK-NEXT:   %37 = call { i32, i32 } @main.Cursor.indices(%main.Cursor %36)
 // CHECK-NEXT:   %38 = extractvalue { i32, i32 } %37, 0
 // CHECK-NEXT:   %39 = extractvalue { i32, i32 } %37, 1
 // CHECK-NEXT:   br label %_llgo_9
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_7, %_llgo_6
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" zeroinitializer, ptr %4, align 8
+// CHECK-NEXT:   store %main.Cursor zeroinitializer, ptr %4, align 8
 // CHECK-NEXT:   store i1 false, ptr %5, align 1
-// CHECK-NEXT:   %40 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %4, align 8
+// CHECK-NEXT:   %40 = load %main.Cursor, ptr %4, align 8
 // CHECK-NEXT:   %41 = load i1, ptr %5, align 1
-// CHECK-NEXT:   %42 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } undef, %"{{.*}}/cl/_testgo/cursor.Cursor" %40, 0
-// CHECK-NEXT:   %43 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %42, i1 %41, 1
-// CHECK-NEXT:   ret { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %43
+// CHECK-NEXT:   %42 = insertvalue { %main.Cursor, i1 } undef, %main.Cursor %40, 0
+// CHECK-NEXT:   %43 = insertvalue { %main.Cursor, i1 } %42, i1 %41, 1
+// CHECK-NEXT:   ret { %main.Cursor, i1 } %43
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_1
 // CHECK-NEXT:   %44 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
@@ -119,11 +119,11 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   br i1 %47, label %_llgo_8, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_7
-// CHECK-NEXT:   %48 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %4, align 8
+// CHECK-NEXT:   %48 = load %main.Cursor, ptr %4, align 8
 // CHECK-NEXT:   %49 = load i1, ptr %5, align 1
-// CHECK-NEXT:   %50 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } undef, %"{{.*}}/cl/_testgo/cursor.Cursor" %48, 0
-// CHECK-NEXT:   %51 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %50, i1 %49, 1
-// CHECK-NEXT:   ret { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %51
+// CHECK-NEXT:   %50 = insertvalue { %main.Cursor, i1 } undef, %main.Cursor %48, 0
+// CHECK-NEXT:   %51 = insertvalue { %main.Cursor, i1 } %50, i1 %49, 1
+// CHECK-NEXT:   ret { %main.Cursor, i1 } %51
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_9:                                          ; preds = %_llgo_13, %_llgo_2
 // CHECK-NEXT:   %52 = phi i32 [ %38, %_llgo_2 ], [ %75, %_llgo_13 ]
@@ -131,7 +131,7 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   br i1 %53, label %_llgo_10, label %_llgo_11
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_10:                                         ; preds = %_llgo_9
-// CHECK-NEXT:   %54 = alloca %"{{.*}}/cl/_testgo/cursor.event", align 8
+// CHECK-NEXT:   %54 = alloca %main.event, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %54, i8 0, i64 32, i1 false)
 // CHECK-NEXT:   %55 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, 0
 // CHECK-NEXT:   %56 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, 1
@@ -140,25 +140,25 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   %59 = icmp uge i64 %57, %56
 // CHECK-NEXT:   %60 = or i1 %59, %58
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %60, i64 %57, i1 true, i64 %56)
-// CHECK-NEXT:   %61 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %55, i64 %57
-// CHECK-NEXT:   %62 = load %"{{.*}}/cl/_testgo/cursor.event", ptr %61, align 8
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.event" %62, ptr %54, align 8
-// CHECK-NEXT:   %63 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %54, i32 0, i32 2
+// CHECK-NEXT:   %61 = getelementptr inbounds %main.event, ptr %55, i64 %57
+// CHECK-NEXT:   %62 = load %main.event, ptr %61, align 8
+// CHECK-NEXT:   store %main.event %62, ptr %54, align 8
+// CHECK-NEXT:   %63 = getelementptr inbounds %main.event, ptr %54, i32 0, i32 2
 // CHECK-NEXT:   %64 = load i32, ptr %63, align 4
 // CHECK-NEXT:   %65 = icmp sgt i32 %64, %52
 // CHECK-NEXT:   br i1 %65, label %_llgo_12, label %_llgo_13
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_11:                                         ; preds = %_llgo_9
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" zeroinitializer, ptr %4, align 8
+// CHECK-NEXT:   store %main.Cursor zeroinitializer, ptr %4, align 8
 // CHECK-NEXT:   store i1 false, ptr %5, align 1
-// CHECK-NEXT:   %66 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %4, align 8
+// CHECK-NEXT:   %66 = load %main.Cursor, ptr %4, align 8
 // CHECK-NEXT:   %67 = load i1, ptr %5, align 1
-// CHECK-NEXT:   %68 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } undef, %"{{.*}}/cl/_testgo/cursor.Cursor" %66, 0
-// CHECK-NEXT:   %69 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %68, i1 %67, 1
-// CHECK-NEXT:   ret { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %69
+// CHECK-NEXT:   %68 = insertvalue { %main.Cursor, i1 } undef, %main.Cursor %66, 0
+// CHECK-NEXT:   %69 = insertvalue { %main.Cursor, i1 } %68, i1 %67, 1
+// CHECK-NEXT:   ret { %main.Cursor, i1 } %69
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_12:                                         ; preds = %_llgo_10
-// CHECK-NEXT:   %70 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %54, i32 0, i32 1
+// CHECK-NEXT:   %70 = getelementptr inbounds %main.event, ptr %54, i32 0, i32 1
 // CHECK-NEXT:   %71 = load i64, ptr %70, align 8
 // CHECK-NEXT:   %72 = and i64 %71, %31
 // CHECK-NEXT:   %73 = icmp ne i64 %72, 0
@@ -170,25 +170,25 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   br label %_llgo_9
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_14:                                         ; preds = %_llgo_16
-// CHECK-NEXT:   %76 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
+// CHECK-NEXT:   %76 = alloca %main.Cursor, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %76, i8 0, i64 16, i1 false)
-// CHECK-NEXT:   %77 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %76, i32 0, i32 0
-// CHECK-NEXT:   %78 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %2, i32 0, i32 0
+// CHECK-NEXT:   %77 = getelementptr inbounds %main.Cursor, ptr %76, i32 0, i32 0
+// CHECK-NEXT:   %78 = getelementptr inbounds %main.Cursor, ptr %2, i32 0, i32 0
 // CHECK-NEXT:   %79 = load ptr, ptr %78, align 8
-// CHECK-NEXT:   %80 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %76, i32 0, i32 1
+// CHECK-NEXT:   %80 = getelementptr inbounds %main.Cursor, ptr %76, i32 0, i32 1
 // CHECK-NEXT:   store ptr %79, ptr %77, align 8
 // CHECK-NEXT:   store i32 %52, ptr %80, align 4
-// CHECK-NEXT:   %81 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %76, align 8
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %81, ptr %4, align 8
+// CHECK-NEXT:   %81 = load %main.Cursor, ptr %76, align 8
+// CHECK-NEXT:   store %main.Cursor %81, ptr %4, align 8
 // CHECK-NEXT:   store i1 true, ptr %5, align 1
-// CHECK-NEXT:   %82 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %4, align 8
+// CHECK-NEXT:   %82 = load %main.Cursor, ptr %4, align 8
 // CHECK-NEXT:   %83 = load i1, ptr %5, align 1
-// CHECK-NEXT:   %84 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } undef, %"{{.*}}/cl/_testgo/cursor.Cursor" %82, 0
-// CHECK-NEXT:   %85 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %84, i1 %83, 1
-// CHECK-NEXT:   ret { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %85
+// CHECK-NEXT:   %84 = insertvalue { %main.Cursor, i1 } undef, %main.Cursor %82, 0
+// CHECK-NEXT:   %85 = insertvalue { %main.Cursor, i1 } %84, i1 %83, 1
+// CHECK-NEXT:   ret { %main.Cursor, i1 } %85
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_15:                                         ; preds = %_llgo_16, %_llgo_12
-// CHECK-NEXT:   %86 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %54, i32 0, i32 2
+// CHECK-NEXT:   %86 = getelementptr inbounds %main.event, ptr %54, i32 0, i32 2
 // CHECK-NEXT:   %87 = load i32, ptr %86, align 4
 // CHECK-NEXT:   %88 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, 0
 // CHECK-NEXT:   %89 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, 1
@@ -197,15 +197,15 @@ func (c Cursor) Node() ast.Node {
 // CHECK-NEXT:   %92 = icmp uge i64 %90, %89
 // CHECK-NEXT:   %93 = or i1 %92, %91
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %93, i64 %90, i1 true, i64 %89)
-// CHECK-NEXT:   %94 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %88, i64 %90
-// CHECK-NEXT:   %95 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %94, i32 0, i32 1
+// CHECK-NEXT:   %94 = getelementptr inbounds %main.event, ptr %88, i64 %90
+// CHECK-NEXT:   %95 = getelementptr inbounds %main.event, ptr %94, i32 0, i32 1
 // CHECK-NEXT:   %96 = load i64, ptr %95, align 8
 // CHECK-NEXT:   %97 = and i64 %96, %31
 // CHECK-NEXT:   %98 = icmp eq i64 %97, 0
 // CHECK-NEXT:   br i1 %98, label %_llgo_17, label %_llgo_13
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_12
-// CHECK-NEXT:   %99 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %54, i32 0, i32 0
+// CHECK-NEXT:   %99 = getelementptr inbounds %main.event, ptr %54, i32 0, i32 0
 // CHECK-NEXT:   %100 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %99, align 8
 // CHECK-NEXT:   %101 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %3, align 8
 // CHECK-NEXT:   %102 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %100)
@@ -497,7 +497,7 @@ const (
 	nValueSpec
 )
 
-// CHECK-LABEL: define i1 @"{{.*}}/cl/_testgo/cursor.Cursor.FindNode$1"(ptr %0, %"{{.*}}/cl/_testgo/cursor.Cursor" %1){{.*}} {
+// CHECK-LABEL: define i1 @"main.Cursor.FindNode$1"(ptr %0, %main.Cursor %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = load { ptr, ptr, ptr, ptr }, ptr %0, align 8
 // CHECK-NEXT:   %3 = extractvalue { ptr, ptr, ptr, ptr } %2, 0
@@ -508,7 +508,7 @@ const (
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %6 = extractvalue { ptr, ptr, ptr, ptr } %2, 0
 // CHECK-NEXT:   store i64 -1, ptr %6, align 8
-// CHECK-NEXT:   %7 = call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.Cursor.Node"(%"{{.*}}/cl/_testgo/cursor.Cursor" %1)
+// CHECK-NEXT:   %7 = call %"{{.*}}/runtime/internal/runtime.iface" @main.Cursor.Node(%main.Cursor %1)
 // CHECK-NEXT:   %8 = extractvalue { ptr, ptr, ptr, ptr } %2, 1
 // CHECK-NEXT:   %9 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %8, align 8
 // CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %7)
@@ -531,7 +531,7 @@ const (
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
 // CHECK-NEXT:   %21 = extractvalue { ptr, ptr, ptr, ptr } %2, 2
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %1, ptr %21, align 8
+// CHECK-NEXT:   store %main.Cursor %1, ptr %21, align 8
 // CHECK-NEXT:   %22 = extractvalue { ptr, ptr, ptr, ptr } %2, 3
 // CHECK-NEXT:   store i1 true, ptr %22, align 1
 // CHECK-NEXT:   %23 = extractvalue { ptr, ptr, ptr, ptr } %2, 0
@@ -544,12 +544,12 @@ const (
 // CHECK-NEXT:   ret i1 true
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.Cursor.Node"(%"{{.*}}/cl/_testgo/cursor.Cursor" %0){{.*}} {
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @main.Cursor.Node(%main.Cursor %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
+// CHECK-NEXT:   %1 = alloca %main.Cursor, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %0, ptr %1, align 8
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   store %main.Cursor %0, ptr %1, align 8
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %3 = load i32, ptr %2, align 4
 // CHECK-NEXT:   %4 = icmp slt i32 %3, 0
 // CHECK-NEXT:   br i1 %4, label %_llgo_1, label %_llgo_2
@@ -558,11 +558,11 @@ const (
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" zeroinitializer
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %5 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 0
+// CHECK-NEXT:   %5 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
-// CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Inspector", ptr %6, i32 0, i32 0
+// CHECK-NEXT:   %7 = getelementptr inbounds %main.Inspector, ptr %6, i32 0, i32 0
 // CHECK-NEXT:   %8 = load %"{{.*}}/runtime/internal/runtime.Slice", ptr %7, align 8
-// CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   %9 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %10 = load i32, ptr %9, align 4
 // CHECK-NEXT:   %11 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %8, 0
 // CHECK-NEXT:   %12 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %8, 1
@@ -571,43 +571,43 @@ const (
 // CHECK-NEXT:   %15 = icmp uge i64 %13, %12
 // CHECK-NEXT:   %16 = or i1 %15, %14
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %16, i64 %13, i1 true, i64 %12)
-// CHECK-NEXT:   %17 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %11, i64 %13
-// CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %17, i32 0, i32 0
+// CHECK-NEXT:   %17 = getelementptr inbounds %main.event, ptr %11, i64 %13
+// CHECK-NEXT:   %18 = getelementptr inbounds %main.event, ptr %17, i32 0, i32 0
 // CHECK-NEXT:   %19 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %18, align 8
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %19
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" @"{{.*}}/cl/_testgo/cursor.Cursor.Preorder"(%"{{.*}}/cl/_testgo/cursor.Cursor" %0, %"{{.*}}/runtime/internal/runtime.Slice" %1){{.*}} {
+// CHECK-LABEL: define %"iter.Seq[main.Cursor]" @main.Cursor.Preorder(%main.Cursor %0, %"{{.*}}/runtime/internal/runtime.Slice" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %0, ptr %2, align 8
+// CHECK-NEXT:   store %main.Cursor %0, ptr %2, align 8
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT:   %4 = call i64 @"{{.*}}/cl/_testgo/cursor.maskOf"(%"{{.*}}/runtime/internal/runtime.Slice" %1)
+// CHECK-NEXT:   %4 = call i64 @main.maskOf(%"{{.*}}/runtime/internal/runtime.Slice" %1)
 // CHECK-NEXT:   store i64 %4, ptr %3, align 8
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   %6 = getelementptr inbounds { ptr, ptr }, ptr %5, i32 0, i32 0
 // CHECK-NEXT:   store ptr %2, ptr %6, align 8
 // CHECK-NEXT:   %7 = getelementptr inbounds { ptr, ptr }, ptr %5, i32 0, i32 1
 // CHECK-NEXT:   store ptr %3, ptr %7, align 8
-// CHECK-NEXT:   %8 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testgo/cursor.Cursor.Preorder$1", ptr undef }, ptr %5, 1
-// CHECK-NEXT:   %9 = alloca %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]", align 8
+// CHECK-NEXT:   %8 = insertvalue { ptr, ptr } { ptr @"main.Cursor.Preorder$1", ptr undef }, ptr %5, 1
+// CHECK-NEXT:   %9 = alloca %"iter.Seq[main.Cursor]", align 8
 // CHECK-NEXT:   store { ptr, ptr } %8, ptr %9, align 8
-// CHECK-NEXT:   %10 = load %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]", ptr %9, align 8
-// CHECK-NEXT:   ret %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" %10
+// CHECK-NEXT:   %10 = load %"iter.Seq[main.Cursor]", ptr %9, align 8
+// CHECK-NEXT:   ret %"iter.Seq[main.Cursor]" %10
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/cursor.Cursor.Preorder$1"(ptr %0, { ptr, ptr } %1){{.*}} {
+// CHECK-LABEL: define void @"main.Cursor.Preorder$1"(ptr %0, { ptr, ptr } %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = load { ptr, ptr }, ptr %0, align 8
 // CHECK-NEXT:   %3 = extractvalue { ptr, ptr } %2, 0
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %3, i32 0, i32 0
+// CHECK-NEXT:   %4 = getelementptr inbounds %main.Cursor, ptr %3, i32 0, i32 0
 // CHECK-NEXT:   %5 = load ptr, ptr %4, align 8
-// CHECK-NEXT:   %6 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Inspector", ptr %5, i32 0, i32 0
+// CHECK-NEXT:   %6 = getelementptr inbounds %main.Inspector, ptr %5, i32 0, i32 0
 // CHECK-NEXT:   %7 = load %"{{.*}}/runtime/internal/runtime.Slice", ptr %6, align 8
 // CHECK-NEXT:   %8 = extractvalue { ptr, ptr } %2, 0
 // CHECK-NEXT:   %9 = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr %8)
-// CHECK-NEXT:   %10 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %9, align 8
-// CHECK-NEXT:   %11 = call { i32, i32 } @"{{.*}}/cl/_testgo/cursor.Cursor.indices"(%"{{.*}}/cl/_testgo/cursor.Cursor" %10)
+// CHECK-NEXT:   %10 = load %main.Cursor, ptr %9, align 8
+// CHECK-NEXT:   %11 = call { i32, i32 } @main.Cursor.indices(%main.Cursor %10)
 // CHECK-NEXT:   %12 = extractvalue { i32, i32 } %11, 0
 // CHECK-NEXT:   %13 = extractvalue { i32, i32 } %11, 1
 // CHECK-NEXT:   br label %_llgo_1
@@ -618,7 +618,7 @@ const (
 // CHECK-NEXT:   br i1 %15, label %_llgo_2, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   %16 = alloca %"{{.*}}/cl/_testgo/cursor.event", align 8
+// CHECK-NEXT:   %16 = alloca %main.event, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %16, i8 0, i64 32, i1 false)
 // CHECK-NEXT:   %17 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 0
 // CHECK-NEXT:   %18 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 1
@@ -627,10 +627,10 @@ const (
 // CHECK-NEXT:   %21 = icmp uge i64 %19, %18
 // CHECK-NEXT:   %22 = or i1 %21, %20
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %22, i64 %19, i1 true, i64 %18)
-// CHECK-NEXT:   %23 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %17, i64 %19
-// CHECK-NEXT:   %24 = load %"{{.*}}/cl/_testgo/cursor.event", ptr %23, align 8
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.event" %24, ptr %16, align 8
-// CHECK-NEXT:   %25 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %16, i32 0, i32 2
+// CHECK-NEXT:   %23 = getelementptr inbounds %main.event, ptr %17, i64 %19
+// CHECK-NEXT:   %24 = load %main.event, ptr %23, align 8
+// CHECK-NEXT:   store %main.event %24, ptr %16, align 8
+// CHECK-NEXT:   %25 = getelementptr inbounds %main.event, ptr %16, i32 0, i32 2
 // CHECK-NEXT:   %26 = load i32, ptr %25, align 4
 // CHECK-NEXT:   %27 = icmp sgt i32 %26, %14
 // CHECK-NEXT:   br i1 %27, label %_llgo_4, label %_llgo_5
@@ -639,7 +639,7 @@ const (
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   %28 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %16, i32 0, i32 1
+// CHECK-NEXT:   %28 = getelementptr inbounds %main.event, ptr %16, i32 0, i32 1
 // CHECK-NEXT:   %29 = load i64, ptr %28, align 8
 // CHECK-NEXT:   %30 = extractvalue { ptr, ptr } %2, 1
 // CHECK-NEXT:   %31 = load i64, ptr %30, align 8
@@ -652,7 +652,7 @@ const (
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_7, %_llgo_4
-// CHECK-NEXT:   %35 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %16, i32 0, i32 2
+// CHECK-NEXT:   %35 = getelementptr inbounds %main.event, ptr %16, i32 0, i32 2
 // CHECK-NEXT:   %36 = load i32, ptr %35, align 4
 // CHECK-NEXT:   %37 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 0
 // CHECK-NEXT:   %38 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %7, 1
@@ -661,8 +661,8 @@ const (
 // CHECK-NEXT:   %41 = icmp uge i64 %39, %38
 // CHECK-NEXT:   %42 = or i1 %41, %40
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %42, i64 %39, i1 true, i64 %38)
-// CHECK-NEXT:   %43 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %37, i64 %39
-// CHECK-NEXT:   %44 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %43, i32 0, i32 1
+// CHECK-NEXT:   %43 = getelementptr inbounds %main.event, ptr %37, i64 %39
+// CHECK-NEXT:   %44 = getelementptr inbounds %main.event, ptr %43, i32 0, i32 1
 // CHECK-NEXT:   %45 = load i64, ptr %44, align 8
 // CHECK-NEXT:   %46 = extractvalue { ptr, ptr } %2, 1
 // CHECK-NEXT:   %47 = load i64, ptr %46, align 8
@@ -671,19 +671,19 @@ const (
 // CHECK-NEXT:   br i1 %49, label %_llgo_8, label %_llgo_5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_4
-// CHECK-NEXT:   %50 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
+// CHECK-NEXT:   %50 = alloca %main.Cursor, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %50, i8 0, i64 16, i1 false)
-// CHECK-NEXT:   %51 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %50, i32 0, i32 0
+// CHECK-NEXT:   %51 = getelementptr inbounds %main.Cursor, ptr %50, i32 0, i32 0
 // CHECK-NEXT:   %52 = extractvalue { ptr, ptr } %2, 0
-// CHECK-NEXT:   %53 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %52, i32 0, i32 0
+// CHECK-NEXT:   %53 = getelementptr inbounds %main.Cursor, ptr %52, i32 0, i32 0
 // CHECK-NEXT:   %54 = load ptr, ptr %53, align 8
-// CHECK-NEXT:   %55 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %50, i32 0, i32 1
+// CHECK-NEXT:   %55 = getelementptr inbounds %main.Cursor, ptr %50, i32 0, i32 1
 // CHECK-NEXT:   store ptr %54, ptr %51, align 8
 // CHECK-NEXT:   store i32 %14, ptr %55, align 4
-// CHECK-NEXT:   %56 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %50, align 8
+// CHECK-NEXT:   %56 = load %main.Cursor, ptr %50, align 8
 // CHECK-NEXT:   %57 = extractvalue { ptr, ptr } %1, 1
 // CHECK-NEXT:   %58 = extractvalue { ptr, ptr } %1, 0
-// CHECK-NEXT:   %59 = call i1 %58(ptr %57, %"{{.*}}/cl/_testgo/cursor.Cursor" %56)
+// CHECK-NEXT:   %59 = call i1 %58(ptr %57, %main.Cursor %56)
 // CHECK-NEXT:   br i1 %59, label %_llgo_6, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_6
@@ -691,20 +691,20 @@ const (
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { i32, i32 } @"{{.*}}/cl/_testgo/cursor.Cursor.indices"(%"{{.*}}/cl/_testgo/cursor.Cursor" %0){{.*}} {
+// CHECK-LABEL: define { i32, i32 } @main.Cursor.indices(%main.Cursor %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/cursor.Cursor", align 8
+// CHECK-NEXT:   %1 = alloca %main.Cursor, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/cursor.Cursor" %0, ptr %1, align 8
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   store %main.Cursor %0, ptr %1, align 8
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %3 = load i32, ptr %2, align 4
 // CHECK-NEXT:   %4 = icmp slt i32 %3, 0
 // CHECK-NEXT:   br i1 %4, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %5 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 0
+// CHECK-NEXT:   %5 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
-// CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Inspector", ptr %6, i32 0, i32 0
+// CHECK-NEXT:   %7 = getelementptr inbounds %main.Inspector, ptr %6, i32 0, i32 0
 // CHECK-NEXT:   %8 = load %"{{.*}}/runtime/internal/runtime.Slice", ptr %7, align 8
 // CHECK-NEXT:   %9 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %8, 1
 // CHECK-NEXT:   %10 = trunc i64 %9 to i32
@@ -712,13 +712,13 @@ const (
 // CHECK-NEXT:   ret { i32, i32 } %11
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %12 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   %12 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %13 = load i32, ptr %12, align 4
-// CHECK-NEXT:   %14 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 0
+// CHECK-NEXT:   %14 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %15 = load ptr, ptr %14, align 8
-// CHECK-NEXT:   %16 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Inspector", ptr %15, i32 0, i32 0
+// CHECK-NEXT:   %16 = getelementptr inbounds %main.Inspector, ptr %15, i32 0, i32 0
 // CHECK-NEXT:   %17 = load %"{{.*}}/runtime/internal/runtime.Slice", ptr %16, align 8
-// CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   %18 = getelementptr inbounds %main.Cursor, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %19 = load i32, ptr %18, align 4
 // CHECK-NEXT:   %20 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %17, 0
 // CHECK-NEXT:   %21 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %17, 1
@@ -727,8 +727,8 @@ const (
 // CHECK-NEXT:   %24 = icmp uge i64 %22, %21
 // CHECK-NEXT:   %25 = or i1 %24, %23
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %25, i64 %22, i1 true, i64 %21)
-// CHECK-NEXT:   %26 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %20, i64 %22
-// CHECK-NEXT:   %27 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.event", ptr %26, i32 0, i32 2
+// CHECK-NEXT:   %26 = getelementptr inbounds %main.event, ptr %20, i64 %22
+// CHECK-NEXT:   %27 = getelementptr inbounds %main.event, ptr %26, i32 0, i32 2
 // CHECK-NEXT:   %28 = load i32, ptr %27, align 4
 // CHECK-NEXT:   %29 = add i32 %28, 1
 // CHECK-NEXT:   %30 = insertvalue { i32, i32 } undef, i32 %13, 0
@@ -736,43 +736,43 @@ const (
 // CHECK-NEXT:   ret { i32, i32 } %31
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } @"{{.*}}/cl/_testgo/cursor.(*Cursor).FindNode"(ptr %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
+// CHECK-LABEL: define { %main.Cursor, i1 } @"main.(*Cursor).FindNode"(ptr %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 8 })
-// CHECK-NEXT:   %3 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %4 = call { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } @"{{.*}}/cl/_testgo/cursor.Cursor.FindNode"(%"{{.*}}/cl/_testgo/cursor.Cursor" %3, %"{{.*}}/runtime/internal/runtime.iface" %1)
-// CHECK-NEXT:   %5 = extractvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %4, 0
-// CHECK-NEXT:   %6 = extractvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %4, 1
-// CHECK-NEXT:   %7 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } undef, %"{{.*}}/cl/_testgo/cursor.Cursor" %5, 0
-// CHECK-NEXT:   %8 = insertvalue { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %7, i1 %6, 1
-// CHECK-NEXT:   ret { %"{{.*}}/cl/_testgo/cursor.Cursor", i1 } %8
+// CHECK-NEXT:   %3 = load %main.Cursor, ptr %0, align 8
+// CHECK-NEXT:   %4 = call { %main.Cursor, i1 } @main.Cursor.FindNode(%main.Cursor %3, %"{{.*}}/runtime/internal/runtime.iface" %1)
+// CHECK-NEXT:   %5 = extractvalue { %main.Cursor, i1 } %4, 0
+// CHECK-NEXT:   %6 = extractvalue { %main.Cursor, i1 } %4, 1
+// CHECK-NEXT:   %7 = insertvalue { %main.Cursor, i1 } undef, %main.Cursor %5, 0
+// CHECK-NEXT:   %8 = insertvalue { %main.Cursor, i1 } %7, i1 %6, 1
+// CHECK-NEXT:   ret { %main.Cursor, i1 } %8
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.(*Cursor).Node"(ptr %0){{.*}} {
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"main.(*Cursor).Node"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 4 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.iface" @"{{.*}}/cl/_testgo/cursor.Cursor.Node"(%"{{.*}}/cl/_testgo/cursor.Cursor" %2)
+// CHECK-NEXT:   %2 = load %main.Cursor, ptr %0, align 8
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.iface" @main.Cursor.Node(%main.Cursor %2)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" @"{{.*}}/cl/_testgo/cursor.(*Cursor).Preorder"(ptr %0, %"{{.*}}/runtime/internal/runtime.Slice" %1){{.*}} {
+// CHECK-LABEL: define %"iter.Seq[main.Cursor]" @"main.(*Cursor).Preorder"(ptr %0, %"{{.*}}/runtime/internal/runtime.Slice" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 8 })
-// CHECK-NEXT:   %3 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %4 = call %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" @"{{.*}}/cl/_testgo/cursor.Cursor.Preorder"(%"{{.*}}/cl/_testgo/cursor.Cursor" %3, %"{{.*}}/runtime/internal/runtime.Slice" %1)
-// CHECK-NEXT:   ret %"iter.Seq[{{.*}}/cl/_testgo/cursor.Cursor]" %4
+// CHECK-NEXT:   %3 = load %main.Cursor, ptr %0, align 8
+// CHECK-NEXT:   %4 = call %"iter.Seq[main.Cursor]" @main.Cursor.Preorder(%main.Cursor %3, %"{{.*}}/runtime/internal/runtime.Slice" %1)
+// CHECK-NEXT:   ret %"iter.Seq[main.Cursor]" %4
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { i32, i32 } @"{{.*}}/cl/_testgo/cursor.(*Cursor).indices"(ptr %0){{.*}} {
+// CHECK-LABEL: define { i32, i32 } @"main.(*Cursor).indices"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 47 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 7 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, align 8
-// CHECK-NEXT:   %3 = call { i32, i32 } @"{{.*}}/cl/_testgo/cursor.Cursor.indices"(%"{{.*}}/cl/_testgo/cursor.Cursor" %2)
+// CHECK-NEXT:   %2 = load %main.Cursor, ptr %0, align 8
+// CHECK-NEXT:   %3 = call { i32, i32 } @main.Cursor.indices(%main.Cursor %2)
 // CHECK-NEXT:   %4 = extractvalue { i32, i32 } %3, 0
 // CHECK-NEXT:   %5 = extractvalue { i32, i32 } %3, 1
 // CHECK-NEXT:   %6 = insertvalue { i32, i32 } undef, i32 %4, 0
@@ -780,13 +780,13 @@ const (
 // CHECK-NEXT:   ret { i32, i32 } %7
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/cursor.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/cursor.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/cursor.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   call void @"go/ast.init"()
 // CHECK-NEXT:   call void @iter.init()
 // CHECK-NEXT:   call void @math.init()
@@ -796,16 +796,16 @@ const (
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/cursor.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/cursor.Cursor", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %main.Cursor, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 24)
 // CHECK-NEXT:   store ptr %2, ptr %1, align 8
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/cursor.maskOf"(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
+// CHECK-LABEL: define i64 @main.maskOf(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK-NEXT:   %2 = icmp eq i64 %1, 0
@@ -834,7 +834,7 @@ const (
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %12, i64 %6, i1 true, i64 %9)
 // CHECK-NEXT:   %13 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.iface", ptr %8, i64 %6
 // CHECK-NEXT:   %14 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %13, align 8
-// CHECK-NEXT:   %15 = call i64 @"{{.*}}/cl/_testgo/cursor.typeOf"(%"{{.*}}/runtime/internal/runtime.iface" %14)
+// CHECK-NEXT:   %15 = call i64 @main.typeOf(%"{{.*}}/runtime/internal/runtime.iface" %14)
 // CHECK-NEXT:   %16 = or i64 %4, %15
 // CHECK-NEXT:   br label %_llgo_3
 // CHECK-EMPTY:
@@ -842,7 +842,7 @@ const (
 // CHECK-NEXT:   ret i64 %4
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testgo/cursor.typeOf"(%"{{.*}}/runtime/internal/runtime.iface" %0){{.*}} {
+// CHECK-LABEL: define i64 @main.typeOf(%"{{.*}}/runtime/internal/runtime.iface" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %0)
 // CHECK-NEXT:   %2 = icmp eq ptr %1, @"*_llgo_go/ast.Ident"
