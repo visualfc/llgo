@@ -16,12 +16,12 @@ type M[T any] struct {
 	m2 N[T]
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/tpunsafe.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 12)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/tpunsafe.(*M[bool]).check"(ptr %0, i64 1, i64 8, i64 1)
+// CHECK-NEXT:   call void @"main.(*M[bool]).check"(ptr %0, i64 1, i64 8, i64 1)
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/tpunsafe.(*M[int64]).check"(ptr %1, i64 8, i64 16, i64 8)
+// CHECK-NEXT:   call void @"main.(*M[int64]).check"(ptr %1, i64 8, i64 16, i64 8)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func main() {
@@ -31,10 +31,10 @@ func main() {
 	m2.check(8, 16, 8)
 }
 
-// CHECK-LABEL: define linkonce void @"{{.*}}/cl/_testrt/tpunsafe.(*M[bool]).check"(ptr %0, i64 %1, i64 %2, i64 %3){{.*}} {
+// CHECK-LABEL: define linkonce void @"main.(*M[bool]).check"(ptr %0, i64 %1, i64 %2, i64 %3){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.M[bool]", ptr %0, i32 0, i32 2
-// CHECK-NEXT:   %5 = load %"{{.*}}/cl/_testrt/tpunsafe.N[bool]", ptr %4, align 1
+// CHECK-NEXT:   %4 = getelementptr inbounds %"main.M[bool]", ptr %0, i32 0, i32 2
+// CHECK-NEXT:   %5 = load %"main.N[bool]", ptr %4, align 1
 // CHECK-NEXT:   %6 = icmp ne i64 1, %1
 // CHECK-NEXT:   br i1 %6, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
@@ -54,8 +54,8 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.M[bool]", ptr %0, i32 0, i32 2
-// CHECK-NEXT:   %10 = load %"{{.*}}/cl/_testrt/tpunsafe.N[bool]", ptr %9, align 1
+// CHECK-NEXT:   %9 = getelementptr inbounds %"main.M[bool]", ptr %0, i32 0, i32 2
+// CHECK-NEXT:   %10 = load %"main.N[bool]", ptr %9, align 1
 // CHECK-NEXT:   %11 = icmp ne i64 8, %2
 // CHECK-NEXT:   br i1 %11, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
@@ -75,8 +75,8 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   %14 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.M[bool]", ptr %0, i32 0, i32 2
-// CHECK-NEXT:   %15 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.N[bool]", ptr %14, i32 0, i32 1
+// CHECK-NEXT:   %14 = getelementptr inbounds %"main.M[bool]", ptr %0, i32 0, i32 2
+// CHECK-NEXT:   %15 = getelementptr inbounds %"main.N[bool]", ptr %14, i32 0, i32 1
 // CHECK-NEXT:   %16 = load i1, ptr %15, align 1
 // CHECK-NEXT:   %17 = icmp ne i64 1, %3
 // CHECK-NEXT:   br i1 %17, label %_llgo_5, label %_llgo_6
@@ -114,10 +114,10 @@ func (m *M[T]) check(align, offset1, offset2 uintptr) {
 	}
 }
 
-// CHECK-LABEL: define linkonce void @"{{.*}}/cl/_testrt/tpunsafe.(*M[int64]).check"(ptr %0, i64 %1, i64 %2, i64 %3){{.*}} {
+// CHECK-LABEL: define linkonce void @"main.(*M[int64]).check"(ptr %0, i64 %1, i64 %2, i64 %3){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.M[int64]", ptr %0, i32 0, i32 2
-// CHECK-NEXT:   %5 = load %"{{.*}}/cl/_testrt/tpunsafe.N[int64]", ptr %4, align 8
+// CHECK-NEXT:   %4 = getelementptr inbounds %"main.M[int64]", ptr %0, i32 0, i32 2
+// CHECK-NEXT:   %5 = load %"main.N[int64]", ptr %4, align 8
 // CHECK-NEXT:   %6 = icmp ne i64 8, %1
 // CHECK-NEXT:   br i1 %6, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
@@ -137,8 +137,8 @@ func (m *M[T]) check(align, offset1, offset2 uintptr) {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.M[int64]", ptr %0, i32 0, i32 2
-// CHECK-NEXT:   %10 = load %"{{.*}}/cl/_testrt/tpunsafe.N[int64]", ptr %9, align 8
+// CHECK-NEXT:   %9 = getelementptr inbounds %"main.M[int64]", ptr %0, i32 0, i32 2
+// CHECK-NEXT:   %10 = load %"main.N[int64]", ptr %9, align 8
 // CHECK-NEXT:   %11 = icmp ne i64 16, %2
 // CHECK-NEXT:   br i1 %11, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
@@ -158,8 +158,8 @@ func (m *M[T]) check(align, offset1, offset2 uintptr) {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   %14 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.M[int64]", ptr %0, i32 0, i32 2
-// CHECK-NEXT:   %15 = getelementptr inbounds %"{{.*}}/cl/_testrt/tpunsafe.N[int64]", ptr %14, i32 0, i32 1
+// CHECK-NEXT:   %14 = getelementptr inbounds %"main.M[int64]", ptr %0, i32 0, i32 2
+// CHECK-NEXT:   %15 = getelementptr inbounds %"main.N[int64]", ptr %14, i32 0, i32 1
 // CHECK-NEXT:   %16 = load i64, ptr %15, align 8
 // CHECK-NEXT:   %17 = icmp ne i64 8, %3
 // CHECK-NEXT:   br i1 %17, label %_llgo_5, label %_llgo_6

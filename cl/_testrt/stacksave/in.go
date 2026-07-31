@@ -9,7 +9,7 @@ import (
 //go:linkname getsp llgo.stackSave
 func getsp() unsafe.Pointer
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/stacksave.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @llvm.stacksave.p0()
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr %0)

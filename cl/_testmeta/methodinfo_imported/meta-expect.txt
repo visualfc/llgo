@@ -510,11 +510,11 @@ bytes.struct$8M6lRFZ7Fk2XCr2laNI9Y7uQtk2A8VDBrezMuq2Fkuo$fields:
     []_llgo_uint8
     _llgo_bytes.readOp
     _llgo_int
-github.com/goplus/llgo/cl/_testmeta/methodinfo_imported.init:
+main.init:
     bytes.init
-    github.com/goplus/llgo/cl/_testmeta/methodinfo_imported.init$guard
     io.init
-github.com/goplus/llgo/cl/_testmeta/methodinfo_imported.main:
+    main.init$guard
+main.main:
     *_llgo_bytes.Buffer
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw
     bytes.NewBuffer
@@ -522,11 +522,11 @@ github.com/goplus/llgo/cl/_testmeta/methodinfo_imported.main:
     github.com/goplus/llgo/runtime/internal/runtime.NewItab
 
 [UseIface]
-github.com/goplus/llgo/cl/_testmeta/methodinfo_imported.main:
+main.main:
     *_llgo_bytes.Buffer
 
 [UseIfaceMethod]
-github.com/goplus/llgo/cl/_testmeta/methodinfo_imported.main:
+main.main:
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw Read _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
 
 [MethodInfo]

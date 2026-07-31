@@ -289,10 +289,10 @@ _llgo_uint64:
 _llgo_uint8:
     *_llgo_uint8
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequal8
-github.com/goplus/llgo/cl/_testmeta/interface_exported_var.init:
+main.init:
     encoding/binary.init
-    github.com/goplus/llgo/cl/_testmeta/interface_exported_var.init$guard
-github.com/goplus/llgo/cl/_testmeta/interface_exported_var.main:
+    main.init$guard
+main.main:
     _llgo_encoding/binary.littleEndian
     _llgo_iface$J1wM-rGcIPemx5jloXBmH7pUzUCSqpgNkOdb0QIFTxw
     encoding/binary.LittleEndian
@@ -303,11 +303,11 @@ github.com/goplus/llgo/cl/_testmeta/interface_exported_var.main:
     github.com/goplus/llgo/runtime/internal/runtime.Typedmemmove
 
 [UseIface]
-github.com/goplus/llgo/cl/_testmeta/interface_exported_var.main:
+main.main:
     _llgo_encoding/binary.littleEndian
 
 [UseIfaceMethod]
-github.com/goplus/llgo/cl/_testmeta/interface_exported_var.main:
+main.main:
     _llgo_iface$J1wM-rGcIPemx5jloXBmH7pUzUCSqpgNkOdb0QIFTxw Uint16 _llgo_func$hV5ojfmZDe6MffI0ylemgDF5GZlZiYaJbQvka2A0Gus
 
 [MethodInfo]

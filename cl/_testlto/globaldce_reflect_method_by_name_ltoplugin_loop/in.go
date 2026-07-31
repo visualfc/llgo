@@ -3,10 +3,10 @@ package main
 
 import "reflect"
 
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_loop{{.*}}S{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_loop{{.*}}S{{.*}}KeepLoopA
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_loop{{.*}}S{{.*}}KeepLoopB
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_loop{{.*}}S{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepLoopA
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepLoopB
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
 

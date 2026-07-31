@@ -1,14 +1,14 @@
 // LITTEST
 package main
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/closureiface.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   store i64 200, ptr %0, align 8
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   %2 = getelementptr inbounds { ptr }, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   store ptr %0, ptr %2, align 8
-// CHECK-NEXT:   %3 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testrt/closureiface.main$1", ptr undef }, ptr %1, 1
+// CHECK-NEXT:   %3 = insertvalue { ptr, ptr } { ptr @"main.main$1", ptr undef }, ptr %1, 1
 // CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { ptr, ptr } %3, ptr %4, align 8
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr undef }, ptr %4, 1
@@ -49,7 +49,7 @@ package main
 // CHECK-NEXT: }
 func main() {
 	var m int = 200
-	// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/closureiface.main$1"(ptr %0, i64 %1){{.*}} {
+	// CHECK-LABEL: define i64 @"main.main$1"(ptr %0, i64 %1){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %2 = load { ptr }, ptr %0, align 8
 	// CHECK-NEXT:   %3 = extractvalue { ptr } %2, 0

@@ -38,20 +38,20 @@ func main() {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/selects.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/selects.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/selects.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/selects.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.NewChan"(i64 0, i64 1)
@@ -70,11 +70,11 @@ func main() {
 // CHECK-NEXT:   store ptr %2, ptr %9, align 8
 // CHECK-NEXT:   %10 = getelementptr inbounds { ptr, ptr, ptr }, ptr %7, i32 0, i32 2
 // CHECK-NEXT:   store ptr %4, ptr %10, align 8
-// CHECK-NEXT:   %11 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testgo/selects.main$1", ptr undef }, ptr %7, 1
+// CHECK-NEXT:   %11 = insertvalue { ptr, ptr } { ptr @"main.main$1", ptr undef }, ptr %7, 1
 // CHECK-NEXT:   %12 = call ptr @"{{.*}}/runtime/internal/runtime.AllocRoot"(i64 16)
 // CHECK-NEXT:   %13 = getelementptr inbounds { { ptr, ptr } }, ptr %12, i32 0, i32 0
 // CHECK-NEXT:   store { ptr, ptr } %11, ptr %13, align 8
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.NewProc"(ptr @"{{.*}}/cl/_testgo/selects._llgo_routine$1", ptr %12, i64 0)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.NewProc"(ptr @"main._llgo_routine$1", ptr %12, i64 0)
 // CHECK-NEXT:   %14 = load ptr, ptr %0, align 8
 // CHECK-NEXT:   %15 = call ptr @llvm.stacksave.p0()
 // CHECK-NEXT:   %16 = alloca {}, align 8
@@ -149,7 +149,7 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/selects.main$1"(ptr %0){{.*}} {
+// CHECK-LABEL: define void @"main.main$1"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = load { ptr, ptr, ptr }, ptr %0, align 8
 // CHECK-NEXT:   %2 = extractvalue { ptr, ptr, ptr } %1, 0
@@ -228,7 +228,7 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define ptr @"{{.*}}/cl/_testgo/selects._llgo_routine$1"(ptr %0){{.*}} {
+// CHECK-LABEL: define ptr @"main._llgo_routine$1"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = load { { ptr, ptr } }, ptr %0, align 8
 // CHECK-NEXT:   %2 = extractvalue { { ptr, ptr } } %1, 0

@@ -1,7 +1,7 @@
 // LITTEST
 package main
 
-// CHECK: define void @"{{.*}}/deferpanic.main"(){{.*}} {
+// CHECK: define void @main.main(){{.*}} {
 func main() {
 	defer func() {
 		e := recover()

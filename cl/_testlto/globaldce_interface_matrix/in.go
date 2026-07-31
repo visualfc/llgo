@@ -5,21 +5,21 @@ package main
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.A:func() int")
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.B:func(int) int")
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.C:func() string")
-// CHECK-DAG: @"_llgo_{{.*}}/cl/_testlto/globaldce_interface_matrix.T1" = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility
-// CHECK-DAG: @"*_llgo_{{.*}}/cl/_testlto/globaldce_interface_matrix.T2" = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility
+// CHECK-DAG: @_llgo_main.T1 = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility
+// CHECK-DAG: @"*_llgo_main.T2" = weak_odr constant {{.*}}, !type !{{[0-9]+}}{{.*}}, !vcall_visibility
 // CHECK-DAG: !{i64 {{[0-9]+}}, !"go.method.A:func() int"}
 // CHECK-DAG: !{i64 {{[0-9]+}}, !"go.method.B:func(int) int"}
 // CHECK-DAG: !{i64 {{[0-9]+}}, !"go.method.C:func() string"}
-// SYMBOL-NOT: globaldce_interface_matrix{{.*}}T1{{.*}}Drop
-// SYMBOL-NOT: globaldce_interface_matrix{{.*}}T2{{.*}}Drop
-// SYMBOL-DAG: globaldce_interface_matrix{{.*}}T1{{.*}}A
-// SYMBOL-DAG: globaldce_interface_matrix{{.*}}T1{{.*}}B
-// SYMBOL-DAG: globaldce_interface_matrix{{.*}}T1{{.*}}C
-// SYMBOL-DAG: globaldce_interface_matrix{{.*}}T2{{.*}}A
-// SYMBOL-DAG: globaldce_interface_matrix{{.*}}T2{{.*}}B
-// SYMBOL-DAG: globaldce_interface_matrix{{.*}}T2{{.*}}C
-// SYMBOL-NOT: globaldce_interface_matrix{{.*}}T1{{.*}}Drop
-// SYMBOL-NOT: globaldce_interface_matrix{{.*}}T2{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}T1{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}T2{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}T1{{.*}}A
+// SYMBOL-DAG: main{{.*}}T1{{.*}}B
+// SYMBOL-DAG: main{{.*}}T1{{.*}}C
+// SYMBOL-DAG: main{{.*}}T2{{.*}}A
+// SYMBOL-DAG: main{{.*}}T2{{.*}}B
+// SYMBOL-DAG: main{{.*}}T2{{.*}}C
+// SYMBOL-NOT: main{{.*}}T1{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}T2{{.*}}Drop
 
 type Base interface {
 	A() int

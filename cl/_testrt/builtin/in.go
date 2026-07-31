@@ -29,7 +29,7 @@ const (
 	fracMask = 1<<shift - 1
 )
 
-// CHECK-LABEL: define double @"{{.*}}/cl/_testrt/builtin.Float64frombits"(i64 %0){{.*}} {
+// CHECK-LABEL: define double @main.Float64frombits(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   store i64 %0, ptr %1, align 8
@@ -39,7 +39,7 @@ const (
 
 func Float64frombits(b uint64) float64 { return *(*float64)(unsafe.Pointer(&b)) }
 
-// CHECK-LABEL: define double @"{{.*}}/cl/_testrt/builtin.Inf"(i64 %0){{.*}} {
+// CHECK-LABEL: define double @main.Inf(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp sge i64 %0, 0
 // CHECK-NEXT:   br i1 %1, label %_llgo_1, label %_llgo_3
@@ -49,7 +49,7 @@ func Float64frombits(b uint64) float64 { return *(*float64)(unsafe.Pointer(&b)) 
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_3, %_llgo_1
 // CHECK-NEXT:   %2 = phi i64 [ 9218868437227405312, %_llgo_1 ], [ -4503599627370496, %_llgo_3 ]
-// CHECK-NEXT:   %3 = call double @"{{.*}}/cl/_testrt/builtin.Float64frombits"(i64 %2)
+// CHECK-NEXT:   %3 = call double @main.Float64frombits(i64 %2)
 // CHECK-NEXT:   ret double %3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_0
@@ -67,7 +67,7 @@ func Inf(sign int) float64 {
 	return Float64frombits(v)
 }
 
-// CHECK-LABEL: define i1 @"{{.*}}/cl/_testrt/builtin.IsNaN"(double %0){{.*}} {
+// CHECK-LABEL: define i1 @main.IsNaN(double %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = fcmp une double %0, %0
 // CHECK-NEXT:   ret i1 %1
@@ -77,16 +77,16 @@ func IsNaN(f float64) (is bool) {
 	return f != f
 }
 
-// CHECK-LABEL: define double @"{{.*}}/cl/_testrt/builtin.NaN"(){{.*}} {
+// CHECK-LABEL: define double @main.NaN(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = call double @"{{.*}}/cl/_testrt/builtin.Float64frombits"(i64 9221120237041090561)
+// CHECK-NEXT:   %0 = call double @main.Float64frombits(i64 9221120237041090561)
 // CHECK-NEXT:   ret double %0
 // CHECK-NEXT: }
 
 // NaN returns an IEEE 754 “not-a-number” value.
 func NaN() float64 { return Float64frombits(uvnan) }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/builtin.demo"(){{.*}} {
+// CHECK-LABEL: define void @main.demo(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -94,7 +94,7 @@ func NaN() float64 { return Float64frombits(uvnan) }
 func demo() {
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/builtin.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
 // CHECK-NEXT:   %1 = getelementptr inbounds i64, ptr %0, i64 0
@@ -266,7 +266,7 @@ func demo() {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %89 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   %90 = getelementptr inbounds { ptr, ptr }, ptr %89, i64 0
-// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.{{.*}}/cl/_testrt/builtin.main$1", ptr null }, ptr %90, align 8
+// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.main.main$1", ptr null }, ptr %90, align 8
 // CHECK-NEXT:   %91 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %89, 0
 // CHECK-NEXT:   %92 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %91, i64 1, 1
 // CHECK-NEXT:   %93 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %92, i64 1, 2
@@ -355,12 +355,12 @@ func demo() {
 // CHECK-NEXT:   %132 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   %133 = getelementptr inbounds { ptr }, ptr %132, i32 0, i32 0
 // CHECK-NEXT:   store ptr %103, ptr %133, align 8
-// CHECK-NEXT:   %134 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testrt/builtin.main$3", ptr undef }, ptr %132, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @"{{.*}}/cl/_testrt/builtin.demo")
+// CHECK-NEXT:   %134 = insertvalue { ptr, ptr } { ptr @"main.main$3", ptr undef }, ptr %132, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @main.demo)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @"{{.*}}/cl/_testrt/builtin.demo")
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @main.demo)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @"{{.*}}/cl/_testrt/builtin.main$2")
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @"main.main$2")
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
 // CHECK-NEXT:   %135 = extractvalue { ptr, ptr } %134, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr %135)
@@ -384,12 +384,12 @@ func demo() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   %142 = call double @"{{.*}}/cl/_testrt/builtin.Inf"(i64 1)
-// CHECK-NEXT:   %143 = call double @"{{.*}}/cl/_testrt/builtin.Inf"(i64 -1)
-// CHECK-NEXT:   %144 = call double @"{{.*}}/cl/_testrt/builtin.NaN"()
-// CHECK-NEXT:   %145 = call double @"{{.*}}/cl/_testrt/builtin.NaN"()
-// CHECK-NEXT:   %146 = call i1 @"{{.*}}/cl/_testrt/builtin.IsNaN"(double %145)
-// CHECK-NEXT:   %147 = call i1 @"{{.*}}/cl/_testrt/builtin.IsNaN"(double 1.000000e+00)
+// CHECK-NEXT:   %142 = call double @main.Inf(i64 1)
+// CHECK-NEXT:   %143 = call double @main.Inf(i64 -1)
+// CHECK-NEXT:   %144 = call double @main.NaN()
+// CHECK-NEXT:   %145 = call double @main.NaN()
+// CHECK-NEXT:   %146 = call i1 @main.IsNaN(double %145)
+// CHECK-NEXT:   %147 = call i1 @main.IsNaN(double 1.000000e+00)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintFloat"(double %142)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintFloat"(double %143)
@@ -477,7 +477,7 @@ func main() {
 	println(data)
 	fns := []func(){}
 
-	// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/builtin.main$1"(){{.*}} {
+	// CHECK-LABEL: define void @"main.main$1"(){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   ret void
 	// CHECK-NEXT: }
@@ -494,7 +494,7 @@ func main() {
 
 	fn1 := demo
 
-	// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/builtin.main$2"(){{.*}} {
+	// CHECK-LABEL: define void @"main.main$2"(){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 2 })
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
@@ -505,7 +505,7 @@ func main() {
 		println("fn")
 	}
 
-	// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/builtin.main$3"(ptr %0){{.*}} {
+	// CHECK-LABEL: define void @"main.main$3"(ptr %0){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
 	// CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
@@ -535,9 +535,9 @@ func main() {
 	println(s1 == "abc", s1 == s2, s1 != s2, s1 < s2, s1 <= s2, s1 > s2, s1 >= s2)
 }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testrt/builtin.main$1"(ptr %0){{.*}} {
+// CHECK-LABEL: define linkonce void @"__llgo_stub.main.main$1"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/builtin.main$1"()
+// CHECK-NEXT:   tail call void @"main.main$1"()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 

@@ -127,24 +127,24 @@ _llgo_string:
 _llgo_uint8:
     *_llgo_uint8
     __llgo_stub.github.com/goplus/llgo/runtime/internal/runtime.memequal8
-github.com/goplus/llgo/cl/_testmeta/interface_imported.init:
-    github.com/goplus/llgo/cl/_testmeta/interface_imported.init$guard
+main.init:
     github.com/goplus/llgo/cl/_testmeta/interface_imported/api.init
-github.com/goplus/llgo/cl/_testmeta/interface_imported.main:
+    main.init$guard
+main.main:
     _llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Source
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw
-    github.com/goplus/llgo/cl/_testmeta/interface_imported.use
     github.com/goplus/llgo/runtime/internal/runtime.AllocU
     github.com/goplus/llgo/runtime/internal/runtime.NewItab
-github.com/goplus/llgo/cl/_testmeta/interface_imported.use:
+    main.use
+main.use:
     github.com/goplus/llgo/runtime/internal/runtime.IfacePtrData
 
 [UseIface]
-github.com/goplus/llgo/cl/_testmeta/interface_imported.main:
+main.main:
     _llgo_github.com/goplus/llgo/cl/_testmeta/interface_imported/api.Source
 
 [UseIfaceMethod]
-github.com/goplus/llgo/cl/_testmeta/interface_imported.use:
+main.use:
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw Read _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
 
 [MethodInfo]

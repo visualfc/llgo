@@ -1,43 +1,43 @@
 // LITTEST
 package main
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/mask.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = call i32 @"{{.*}}/cl/_testrt/mask.mask"(i8 1)
+// CHECK-NEXT:   %0 = call i32 @main.mask(i8 1)
 // CHECK-NEXT:   %1 = sext i32 %0 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %1)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %2 = call i64 @"{{.*}}/cl/_testrt/mask.mask_shl"(i64 127, i64 5)
+// CHECK-NEXT:   %2 = call i64 @main.mask_shl(i64 127, i64 5)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %2)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %3 = call i8 @"{{.*}}/cl/_testrt/mask.mask_shl8"(i8 127, i64 5)
+// CHECK-NEXT:   %3 = call i8 @main.mask_shl8(i8 127, i64 5)
 // CHECK-NEXT:   %4 = sext i8 %3 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %4)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %5 = call i8 @"{{.*}}/cl/_testrt/mask.mask_shl8u"(i8 127, i64 5)
+// CHECK-NEXT:   %5 = call i8 @main.mask_shl8u(i8 127, i64 5)
 // CHECK-NEXT:   %6 = zext i8 %5 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintUint"(i64 %6)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %7 = call i8 @"{{.*}}/cl/_testrt/mask.mask_shl8"(i8 127, i64 16)
+// CHECK-NEXT:   %7 = call i8 @main.mask_shl8(i8 127, i64 16)
 // CHECK-NEXT:   %8 = sext i8 %7 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %8)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %9 = call i8 @"{{.*}}/cl/_testrt/mask.mask_shl8u"(i8 127, i64 16)
+// CHECK-NEXT:   %9 = call i8 @main.mask_shl8u(i8 127, i64 16)
 // CHECK-NEXT:   %10 = zext i8 %9 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintUint"(i64 %10)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %11 = call i64 @"{{.*}}/cl/_testrt/mask.mask_shr"(i64 127, i64 5)
+// CHECK-NEXT:   %11 = call i64 @main.mask_shr(i64 127, i64 5)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %11)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %12 = call i8 @"{{.*}}/cl/_testrt/mask.mask_shr8"(i8 127, i64 5)
+// CHECK-NEXT:   %12 = call i8 @main.mask_shr8(i8 127, i64 5)
 // CHECK-NEXT:   %13 = sext i8 %12 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %13)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %14 = call i8 @"{{.*}}/cl/_testrt/mask.mask_shr8u"(i8 127, i64 5)
+// CHECK-NEXT:   %14 = call i8 @main.mask_shr8u(i8 127, i64 5)
 // CHECK-NEXT:   %15 = zext i8 %14 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintUint"(i64 %15)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %16 = call i8 @"{{.*}}/cl/_testrt/mask.mask_shr8"(i8 127, i64 16)
+// CHECK-NEXT:   %16 = call i8 @main.mask_shr8(i8 127, i64 16)
 // CHECK-NEXT:   %17 = sext i8 %16 to i64
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %17)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
@@ -56,7 +56,7 @@ func main() {
 	println(mask_shr8(127, 16))
 }
 
-// CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/mask.mask"(i8 %0){{.*}} {
+// CHECK-LABEL: define i32 @main.mask(i8 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = sext i8 %0 to i32
 // CHECK-NEXT:   %2 = shl i32 %1, 31
@@ -68,7 +68,7 @@ func mask(x int8) int32 {
 	return int32(x) << 31 >> 31
 }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/mask.mask_shl"(i64 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i64 @main.mask_shl(i64 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp slt i64 %1, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNegativeShift"(i1 %2)
@@ -81,7 +81,7 @@ func mask_shl(x int, y int) int {
 	return x << y
 }
 
-// CHECK-LABEL: define i8 @"{{.*}}/cl/_testrt/mask.mask_shl8"(i8 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i8 @main.mask_shl8(i8 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp slt i64 %1, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNegativeShift"(i1 %2)
@@ -95,7 +95,7 @@ func mask_shl8(x int8, y int) int8 {
 	return x << y
 }
 
-// CHECK-LABEL: define i8 @"{{.*}}/cl/_testrt/mask.mask_shl8u"(i8 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i8 @main.mask_shl8u(i8 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp slt i64 %1, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNegativeShift"(i1 %2)
@@ -109,7 +109,7 @@ func mask_shl8u(x uint8, y int) uint8 {
 	return x << y
 }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/mask.mask_shr"(i64 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i64 @main.mask_shr(i64 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp slt i64 %1, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNegativeShift"(i1 %2)
@@ -122,7 +122,7 @@ func mask_shr(x int, y int) int {
 	return x >> y
 }
 
-// CHECK-LABEL: define i8 @"{{.*}}/cl/_testrt/mask.mask_shr8"(i8 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i8 @main.mask_shr8(i8 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp slt i64 %1, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNegativeShift"(i1 %2)
@@ -136,7 +136,7 @@ func mask_shr8(x int8, y int) int8 {
 	return x >> y
 }
 
-// CHECK-LABEL: define i8 @"{{.*}}/cl/_testrt/mask.mask_shr8u"(i8 %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i8 @main.mask_shr8u(i8 %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp slt i64 %1, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNegativeShift"(i1 %2)

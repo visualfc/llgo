@@ -10,7 +10,7 @@ import (
 //go:linkname qsort C.qsort
 func qsort(base c.Pointer, count, elem uintptr, compar func(a, b c.Pointer) c.Int)
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/qsort.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
 // CHECK-NEXT:   %1 = getelementptr inbounds i64, ptr %0, i64 0
@@ -24,7 +24,7 @@ func qsort(base c.Pointer, count, elem uintptr, compar func(a, b c.Pointer) c.In
 // CHECK-NEXT:   store i64 2, ptr %4, align 8
 // CHECK-NEXT:   store i64 7, ptr %5, align 8
 // CHECK-NEXT:   %6 = getelementptr inbounds i64, ptr %0, i64 0
-// CHECK-NEXT:   call void @qsort(ptr %6, i64 5, i64 8, ptr @"{{.*}}/cl/_testrt/qsort.main$1")
+// CHECK-NEXT:   call void @qsort(ptr %6, i64 5, i64 8, ptr @"main.main$1")
 // CHECK-NEXT:   %7 = load [5 x i64], ptr %0, align 8
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
@@ -52,7 +52,7 @@ func main() {
 	qsort(c.Pointer(&a[0]), 5, unsafe.Sizeof(0), func(a, b c.Pointer) c.Int {
 		return c.Int(*(*int)(a) - *(*int)(b))
 	})
-	// CHECK-LABEL: define i32 @"{{.*}}/cl/_testrt/qsort.main$1"(ptr %0, ptr %1){{.*}} {
+	// CHECK-LABEL: define i32 @"main.main$1"(ptr %0, ptr %1){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %2 = load i64, ptr %0, align 8
 	// CHECK-NEXT:   %3 = load i64, ptr %1, align 8

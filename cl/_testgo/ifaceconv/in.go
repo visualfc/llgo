@@ -33,7 +33,7 @@ type I2 interface {
 type C0 struct{}
 type C1 struct{}
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.C1.f"(%"{{.*}}/cl/_testgo/ifaceconv.C1" %0){{.*}} {
+// CHECK-LABEL: define void @main.C1.f(%main.C1 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -107,60 +107,60 @@ func main() {
 	println("pass")
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.(*C1).f"(ptr %0){{.*}} {
+// CHECK-LABEL: define void @"main.(*C1).f"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 46 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 1 })
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C1.f"(%"{{.*}}/cl/_testgo/ifaceconv.C1" zeroinitializer)
+// CHECK-NEXT:   call void @main.C1.f(%main.C1 zeroinitializer)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.C2.f"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %0){{.*}} {
+// CHECK-LABEL: define void @main.C2.f(%main.C2 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.C2.g"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %0){{.*}} {
+// CHECK-LABEL: define void @main.C2.g(%main.C2 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.(*C2).f"(ptr %0){{.*}} {
+// CHECK-LABEL: define void @"main.(*C2).f"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 46 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 1 })
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C2.f"(%"{{.*}}/cl/_testgo/ifaceconv.C2" zeroinitializer)
+// CHECK-NEXT:   call void @main.C2.f(%main.C2 zeroinitializer)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.(*C2).g"(ptr %0){{.*}} {
+// CHECK-LABEL: define void @"main.(*C2).g"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 46 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 1 })
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/ifaceconv.C2.g"(%"{{.*}}/cl/_testgo/ifaceconv.C2" zeroinitializer)
+// CHECK-NEXT:   call void @main.C2.g(%main.C2 zeroinitializer)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/ifaceconv.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/ifaceconv.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/ifaceconv.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   br i1 false, label %_llgo_23, label %_llgo_24
 // CHECK-EMPTY:
@@ -203,16 +203,16 @@ func main() {
 // CHECK-NEXT:   %14 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" undef, ptr %13, 0
 // CHECK-NEXT:   %15 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" %14, ptr null, 1
 // CHECK-NEXT:   %16 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" zeroinitializer)
-// CHECK-NEXT:   %17 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface$brpgdLtIeRlPi8QUoTgPCXzlehUkncg7v9aITo-GsF4", ptr %16)
+// CHECK-NEXT:   %17 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface${{[-A-Za-z0-9_]+}}", ptr %16)
 // CHECK-NEXT:   %18 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %17, 0
 // CHECK-NEXT:   %19 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %18, ptr null, 1
 // CHECK-NEXT:   %20 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 0)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/ifaceconv.C1" zeroinitializer, ptr %20, align 1
-// CHECK-NEXT:   %21 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface$brpgdLtIeRlPi8QUoTgPCXzlehUkncg7v9aITo-GsF4", ptr @"_llgo_{{.*}}/cl/_testgo/ifaceconv.C1")
+// CHECK-NEXT:   store %main.C1 zeroinitializer, ptr %20, align 1
+// CHECK-NEXT:   %21 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface${{[-A-Za-z0-9_]+}}", ptr @_llgo_main.C1)
 // CHECK-NEXT:   %22 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %21, 0
 // CHECK-NEXT:   %23 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %22, ptr %20, 1
 // CHECK-NEXT:   %24 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %23)
-// CHECK-NEXT:   %25 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"_llgo_{{.*}}/cl/_testgo/ifaceconv.I0", ptr %24)
+// CHECK-NEXT:   %25 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @_llgo_main.I0, ptr %24)
 // CHECK-NEXT:   br i1 %25, label %_llgo_32, label %_llgo_33
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_34
@@ -236,7 +236,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_10:                                         ; preds = %_llgo_37
 // CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %23)
-// CHECK-NEXT:   %33 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"_llgo_{{.*}}/cl/_testgo/ifaceconv.I2", ptr %32)
+// CHECK-NEXT:   %33 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @_llgo_main.I2, ptr %32)
 // CHECK-NEXT:   br i1 %33, label %_llgo_38, label %_llgo_39
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_11:                                         ; preds = %_llgo_40
@@ -248,12 +248,12 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_12:                                         ; preds = %_llgo_40
 // CHECK-NEXT:   %36 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 0)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/ifaceconv.C2" zeroinitializer, ptr %36, align 1
-// CHECK-NEXT:   %37 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface$brpgdLtIeRlPi8QUoTgPCXzlehUkncg7v9aITo-GsF4", ptr @"_llgo_{{.*}}/cl/_testgo/ifaceconv.C2")
+// CHECK-NEXT:   store %main.C2 zeroinitializer, ptr %36, align 1
+// CHECK-NEXT:   %37 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface${{[-A-Za-z0-9_]+}}", ptr @_llgo_main.C2)
 // CHECK-NEXT:   %38 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %37, 0
 // CHECK-NEXT:   %39 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %38, ptr %36, 1
 // CHECK-NEXT:   %40 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %39)
-// CHECK-NEXT:   %41 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"_llgo_{{.*}}/cl/_testgo/ifaceconv.I0", ptr %40)
+// CHECK-NEXT:   %41 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @_llgo_main.I0, ptr %40)
 // CHECK-NEXT:   br i1 %41, label %_llgo_41, label %_llgo_42
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_13:                                         ; preds = %_llgo_43
@@ -277,7 +277,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_46
 // CHECK-NEXT:   %48 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %39)
-// CHECK-NEXT:   %49 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"_llgo_{{.*}}/cl/_testgo/ifaceconv.I2", ptr %48)
+// CHECK-NEXT:   %49 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @_llgo_main.I2, ptr %48)
 // CHECK-NEXT:   br i1 %49, label %_llgo_47, label %_llgo_48
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_17:                                         ; preds = %_llgo_49
@@ -289,8 +289,8 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_49
 // CHECK-NEXT:   %52 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 0)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/ifaceconv.C1" zeroinitializer, ptr %52, align 1
-// CHECK-NEXT:   %53 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface$brpgdLtIeRlPi8QUoTgPCXzlehUkncg7v9aITo-GsF4", ptr @"_llgo_{{.*}}/cl/_testgo/ifaceconv.C1")
+// CHECK-NEXT:   store %main.C1 zeroinitializer, ptr %52, align 1
+// CHECK-NEXT:   %53 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface${{[-A-Za-z0-9_]+}}", ptr @_llgo_main.C1)
 // CHECK-NEXT:   %54 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %53, 0
 // CHECK-NEXT:   %55 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %54, ptr %52, 1
 // CHECK-NEXT:   %56 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %55)
@@ -399,7 +399,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_38:                                         ; preds = %_llgo_10
 // CHECK-NEXT:   %95 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %23, 1
-// CHECK-NEXT:   %96 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface$gZBF8fFlqIMZ9M6lT2VWPyc3eu5Co6j0WoKGIEgDPAw", ptr %32)
+// CHECK-NEXT:   %96 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface${{[-A-Za-z0-9_]+}}", ptr %32)
 // CHECK-NEXT:   %97 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %96, 0
 // CHECK-NEXT:   %98 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %97, ptr %95, 1
 // CHECK-NEXT:   %99 = insertvalue { %"{{.*}}/runtime/internal/runtime.iface", i1 } undef, %"{{.*}}/runtime/internal/runtime.iface" %98, 0
@@ -448,7 +448,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_47:                                         ; preds = %_llgo_16
 // CHECK-NEXT:   %117 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %39, 1
-// CHECK-NEXT:   %118 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface$gZBF8fFlqIMZ9M6lT2VWPyc3eu5Co6j0WoKGIEgDPAw", ptr %48)
+// CHECK-NEXT:   %118 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/ifaceconv.iface${{[-A-Za-z0-9_]+}}", ptr %48)
 // CHECK-NEXT:   %119 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %118, 0
 // CHECK-NEXT:   %120 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %119, ptr %117, 1
 // CHECK-NEXT:   %121 = insertvalue { %"{{.*}}/runtime/internal/runtime.iface", i1 } undef, %"{{.*}}/runtime/internal/runtime.iface" %120, 0
@@ -483,38 +483,38 @@ func main() {
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.(*C1).f"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce void @"__llgo_stub.main.(*C1).f"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.(*C1).f"(ptr %1)
+// CHECK-NEXT:   tail call void @"main.(*C1).f"(ptr %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.C1.f"(ptr %0, %"{{.*}}/cl/_testgo/ifaceconv.C1" %1){{.*}} {
+// CHECK-LABEL: define linkonce void @__llgo_stub.main.C1.f(ptr %0, %main.C1 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.C1.f"(%"{{.*}}/cl/_testgo/ifaceconv.C1" %1)
+// CHECK-NEXT:   tail call void @main.C1.f(%main.C1 %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.(*C2).f"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce void @"__llgo_stub.main.(*C2).f"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.(*C2).f"(ptr %1)
+// CHECK-NEXT:   tail call void @"main.(*C2).f"(ptr %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.(*C2).g"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce void @"__llgo_stub.main.(*C2).g"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.(*C2).g"(ptr %1)
+// CHECK-NEXT:   tail call void @"main.(*C2).g"(ptr %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.C2.f"(ptr %0, %"{{.*}}/cl/_testgo/ifaceconv.C2" %1){{.*}} {
+// CHECK-LABEL: define linkonce void @__llgo_stub.main.C2.f(ptr %0, %main.C2 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.C2.f"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %1)
+// CHECK-NEXT:   tail call void @main.C2.f(%main.C2 %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testgo/ifaceconv.C2.g"(ptr %0, %"{{.*}}/cl/_testgo/ifaceconv.C2" %1){{.*}} {
+// CHECK-LABEL: define linkonce void @__llgo_stub.main.C2.g(ptr %0, %main.C2 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testgo/ifaceconv.C2.g"(%"{{.*}}/cl/_testgo/ifaceconv.C2" %1)
+// CHECK-NEXT:   tail call void @main.C2.g(%main.C2 %1)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

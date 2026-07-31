@@ -154,12 +154,15 @@ func testModule(t *testing.T, ctx context, td llvm.TargetData, m llvm.Module, c 
 	for _, fn := range fns {
 		// check c linkname
 		testFunc(t, ctx, td, m.NamedFunction(fn.Name()), fn)
-		// check go
-		testFunc(t, ctx, td, m.NamedFunction("command-line-arguments."+fn.Name()), fn)
+		// check Go symbol
+		testFunc(t, ctx, td, m.NamedFunction("main."+fn.Name()), fn)
 	}
 }
 
 func testFunc(t *testing.T, ctx context, td llvm.TargetData, fn llvm.Value, cfn llvm.Value) {
+	if fn.IsNil() {
+		t.Fatalf("%v: function %q not found", ctx, cfn.Name())
+	}
 	ft := fn.GlobalValueType()
 	cft := cfn.GlobalValueType()
 	pts := ft.ParamTypes()

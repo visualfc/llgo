@@ -33,14 +33,14 @@ func (p *Point) Set(x int, y int) {
 	p.y = y
 }
 
-// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.Point.String"(%"{{.*}}/cl/_testgo/reflectmk.Point" %0){{.*}} {
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @main.Point.String(%main.Point %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = alloca %"{{.*}}/cl/_testgo/reflectmk.Point", align 8
+// CHECK-NEXT:   %1 = alloca %main.Point, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
-// CHECK-NEXT:   store %"{{.*}}/cl/_testgo/reflectmk.Point" %0, ptr %1, align 8
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %1, i32 0, i32 0
+// CHECK-NEXT:   store %main.Point %0, ptr %1, align 8
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.Point, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %3 = load i64, ptr %2, align 8
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   %4 = getelementptr inbounds %main.Point, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %5 = load i64, ptr %4, align 8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
 // CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %6, i64 0
@@ -60,11 +60,11 @@ func (p *Point) Set(x int, y int) {
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %16
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflectmk.(*Point).Set"(ptr %0, i64 %1, i64 %2){{.*}} {
+// CHECK-LABEL: define void @"main.(*Point).Set"(ptr %0, i64 %1, i64 %2){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %3 = getelementptr inbounds %main.Point, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 %1, ptr %3, align 8
-// CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %0, i32 0, i32 1
+// CHECK-NEXT:   %4 = getelementptr inbounds %main.Point, ptr %0, i32 0, i32 1
 // CHECK-NEXT:   store i64 %2, ptr %4, align 8
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -129,22 +129,22 @@ func methodByName(name string) {
 	}
 }
 
-// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.(*Point).String"(ptr %0){{.*}} {
+// CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.(*Point).String"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 49 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
-// CHECK-NEXT:   %2 = load %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %0, align 8
-// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/reflectmk.Point.String"(%"{{.*}}/cl/_testgo/reflectmk.Point" %2)
+// CHECK-NEXT:   %2 = load %main.Point, ptr %0, align 8
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @main.Point.String(%main.Point %2)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflectmk.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/reflectmk.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/reflectmk.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   call void @fmt.init()
 // CHECK-NEXT:   call void @reflect.init()
 // CHECK-NEXT:   br label %_llgo_2
@@ -153,9 +153,9 @@ func methodByName(name string) {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflectmk.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.TypeOf(%"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_{{.*}}/cl/_testgo/reflectmk.Point", ptr null })
+// CHECK-NEXT:   %0 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.TypeOf(%"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_main.Point", ptr null })
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %0)
 // CHECK-NEXT:   %2 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %0, 0
 // CHECK-NEXT:   %3 = getelementptr ptr, ptr %2, i64 11
@@ -492,11 +492,11 @@ func methodByName(name string) {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_20:                                         ; preds = %_llgo_21
 // CHECK-NEXT:   %250 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   %251 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %250, i32 0, i32 0
-// CHECK-NEXT:   %252 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %250, i32 0, i32 1
+// CHECK-NEXT:   %251 = getelementptr inbounds %main.Point, ptr %250, i32 0, i32 0
+// CHECK-NEXT:   %252 = getelementptr inbounds %main.Point, ptr %250, i32 0, i32 1
 // CHECK-NEXT:   store i64 1, ptr %251, align 8
 // CHECK-NEXT:   store i64 2, ptr %252, align 8
-// CHECK-NEXT:   %253 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_{{.*}}/cl/_testgo/reflectmk.Point", ptr undef }, ptr %250, 1
+// CHECK-NEXT:   %253 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_main.Point", ptr undef }, ptr %250, 1
 // CHECK-NEXT:   %254 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %253)
 // CHECK-NEXT:   %255 = call %reflect.Value @reflect.Value.Method(%reflect.Value %254, i64 1)
 // CHECK-NEXT:   %256 = call %"{{.*}}/runtime/internal/runtime.Slice" @reflect.Value.Call(%reflect.Value %255, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
@@ -549,19 +549,19 @@ func methodByName(name string) {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_25:                                         ; preds = %_llgo_23
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflectmk.method"(i64 1)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/reflectmk.methodByName"(%"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
+// CHECK-NEXT:   call void @main.method(i64 1)
+// CHECK-NEXT:   call void @main.methodByName(%"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 6 })
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflectmk.method"(i64 %0){{.*}} {
+// CHECK-LABEL: define void @main.method(i64 %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %1, i32 0, i32 0
-// CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.Point, ptr %1, i32 0, i32 0
+// CHECK-NEXT:   %3 = getelementptr inbounds %main.Point, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   store i64 1, ptr %2, align 8
 // CHECK-NEXT:   store i64 2, ptr %3, align 8
-// CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_{{.*}}/cl/_testgo/reflectmk.Point", ptr undef }, ptr %1, 1
+// CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_main.Point", ptr undef }, ptr %1, 1
 // CHECK-NEXT:   %5 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %4)
 // CHECK-NEXT:   %6 = call %reflect.Value @reflect.Value.Method(%reflect.Value %5, i64 %0)
 // CHECK-NEXT:   %7 = call %"{{.*}}/runtime/internal/runtime.Slice" @reflect.Value.Call(%reflect.Value %6, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
@@ -588,14 +588,14 @@ func methodByName(name string) {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/reflectmk.methodByName"(%"{{.*}}/runtime/internal/runtime.String" %0){{.*}} {
+// CHECK-LABEL: define void @main.methodByName(%"{{.*}}/runtime/internal/runtime.String" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %1, i32 0, i32 0
-// CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/cl/_testgo/reflectmk.Point", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.Point, ptr %1, i32 0, i32 0
+// CHECK-NEXT:   %3 = getelementptr inbounds %main.Point, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   store i64 1, ptr %2, align 8
 // CHECK-NEXT:   store i64 2, ptr %3, align 8
-// CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_{{.*}}/cl/_testgo/reflectmk.Point", ptr undef }, ptr %1, 1
+// CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_main.Point", ptr undef }, ptr %1, 1
 // CHECK-NEXT:   %5 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %4)
 // CHECK-NEXT:   %6 = call %reflect.Value @reflect.Value.MethodByName(%reflect.Value %5, %"{{.*}}/runtime/internal/runtime.String" %0)
 // CHECK-NEXT:   %7 = call %"{{.*}}/runtime/internal/runtime.Slice" @reflect.Value.Call(%reflect.Value %6, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)

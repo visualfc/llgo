@@ -251,6 +251,10 @@ func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
 	}
 	conf := build.NewDefaultConf(build.ModeBuild)
 	conf.LTO = lto.Full
+	// Linux exports main.* when PCLN is enabled so runtime funcinfo can resolve
+	// symbols. Disable that retention here so the final symbol table measures
+	// GlobalDCE rather than the executable's dynamic-export policy.
+	conf.PCLNMode = build.PCLNNone
 	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testlto", testltoSymbolChecks, cltest.WithRunConfig(conf))
 }
 
@@ -279,6 +283,9 @@ func TestRunAndTestFromTestltoLTOPlugin(t *testing.T) {
 
 func TestBuildAndCheckSymbolsFromTestltoLTOPlugin(t *testing.T) {
 	buildConf := testltoLTOPluginConf(t, build.ModeBuild)
+	// See TestBuildAndCheckSymbolsFromTestlto: dynamic main.* exports retain
+	// otherwise-dead symbols on Linux and would mask the plugin's DCE result.
+	buildConf.PCLNMode = build.PCLNNone
 	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testlto", testltoLTOPluginTests,
 		cltest.WithRunConfig(buildConf),
 	)

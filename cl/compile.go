@@ -578,7 +578,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 				goName = funcName(pkgTypes, f, false)
 			}
 			pos := p.funcInfoPosition(f)
-			pkg.EmitFuncInfo(fn.Name(), funcInfoDisplayName(pkgTypes, goName), pos.Filename, pos.Line, pos.Column)
+			pkg.EmitFuncInfo(fn.Name(), funcInfoDisplayName(goName), pos.Filename, pos.Line, pos.Column)
 		}
 		var childInits []func()
 		if len(f.AnonFuncs) > 0 {
@@ -671,17 +671,10 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	return fn, nil, goFunc
 }
 
-// funcInfoDisplayName normalizes a funcinfo metadata display name to gc's
-// reporting conventions: the main package is "main" no matter what the
-// module names it (frame filters in the wild match on the "main." prefix),
-// and anonymous functions are pkg.fn.funcN (our linker symbols use $N).
-// Linker symbols are not affected.
-func funcInfoDisplayName(pkgTypes *types.Package, goName string) string {
-	if pkgTypes != nil && pkgTypes.Name() == "main" {
-		if path := llssa.PathOf(pkgTypes); path != "main" && strings.HasPrefix(goName, path+".") {
-			goName = "main" + goName[len(path):]
-		}
-	}
+// funcInfoDisplayName normalizes anonymous functions to gc's pkg.fn.funcN
+// reporting convention (our linker symbols use $N). Linker symbols are not
+// affected.
+func funcInfoDisplayName(goName string) string {
 	return normalizeRuntimeAnonFuncName(goName)
 }
 

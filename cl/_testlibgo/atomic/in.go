@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testlibgo/atomic.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 func main() {
 	var v int64
 

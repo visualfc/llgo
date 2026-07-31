@@ -7,7 +7,7 @@ import (
 	"github.com/goplus/llgo/runtime/abi"
 )
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/eface.(*T).Invoke"(ptr %0){{.*}} {
+// CHECK-LABEL: define void @"main.(*T).Invoke"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 6 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
@@ -17,13 +17,13 @@ func (t *T) Invoke() {
 	println("invoke")
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/eface.dump"(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
+// CHECK-LABEL: define void @main.dump(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.eface" %0, ptr %1, align 8
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testrt/eface.eface", ptr %1, i32 0, i32 0
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.eface, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/eface.dumpTyp"(ptr %3, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @main.dumpTyp(ptr %3, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func dump(v any) {
@@ -31,7 +31,7 @@ func dump(v any) {
 	dumpTyp(e._type, "")
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/eface.dumpTyp"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" %1){{.*}} {
+// CHECK-LABEL: define void @main.dumpTyp(ptr %0, %"{{.*}}/runtime/internal/runtime.String" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %1)
 // CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/abi.(*Type).String"(ptr %0)
@@ -77,7 +77,7 @@ func dump(v any) {
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %22 = call ptr @"{{.*}}/runtime/abi.(*Type).Elem"(ptr %0)
 // CHECK-NEXT:   %23 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 7 })
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/eface.dumpTyp"(ptr %22, %"{{.*}}/runtime/internal/runtime.String" %23)
+// CHECK-NEXT:   call void @main.dumpTyp(ptr %22, %"{{.*}}/runtime/internal/runtime.String" %23)
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -88,7 +88,7 @@ func dump(v any) {
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   %26 = call ptr @"{{.*}}/runtime/abi.(*Type).Uncommon"(ptr %0)
 // CHECK-NEXT:   %27 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 9 })
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/eface.dumpUncommon"(ptr %26, %"{{.*}}/runtime/internal/runtime.String" %27)
+// CHECK-NEXT:   call void @main.dumpUncommon(ptr %26, %"{{.*}}/runtime/internal/runtime.String" %27)
 // CHECK-NEXT:   %28 = getelementptr inbounds %"{{.*}}/runtime/abi.Type", ptr %0, i32 0, i32 10
 // CHECK-NEXT:   %29 = load ptr, ptr %28, align 8
 // CHECK-NEXT:   %30 = icmp ne ptr %29, null
@@ -102,7 +102,7 @@ func dump(v any) {
 // CHECK-NEXT:   %32 = load ptr, ptr %31, align 8
 // CHECK-NEXT:   %33 = call ptr @"{{.*}}/runtime/abi.(*Type).Uncommon"(ptr %32)
 // CHECK-NEXT:   %34 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 9 })
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/eface.dumpUncommon"(ptr %33, %"{{.*}}/runtime/internal/runtime.String" %34)
+// CHECK-NEXT:   call void @main.dumpUncommon(ptr %33, %"{{.*}}/runtime/internal/runtime.String" %34)
 // CHECK-NEXT:   br label %_llgo_4
 // CHECK-NEXT: }
 func dumpTyp(t *abi.Type, sep string) {
@@ -119,7 +119,7 @@ func dumpTyp(t *abi.Type, sep string) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/eface.dumpUncommon"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" %1){{.*}} {
+// CHECK-LABEL: define void @main.dumpUncommon(ptr %0, %"{{.*}}/runtime/internal/runtime.String" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %1)
 // CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/runtime/abi.UncommonType", ptr %0, i32 0, i32 0
@@ -151,21 +151,21 @@ type eface struct {
 	data  unsafe.Pointer
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/eface.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 1)
 // CHECK: store i1 true, ptr {{%[0-9]+}}, align 1
 // CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_bool, ptr undef }
-// CHECK: call void @"{{.*}}/cl/_testrt/eface.dump"
+// CHECK: call void @main.dump
 // CHECK: call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK: store i64 0, ptr {{%[0-9]+}}, align 8
 // CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_int, ptr undef }
-// CHECK: call void @"{{.*}}/cl/_testrt/eface.dump"
+// CHECK: call void @main.dump
 // CHECK: call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 80)
 // CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[10]_llgo_int"
 // CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure
 // CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int"
 // CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testrt/eface.struct
-// CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_github.com/goplus/llgo/cl/_testrt/eface.T"
+// CHECK: insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.T
 // CHECK: ret void
 func main() {
 	dump(true)
@@ -184,7 +184,7 @@ func main() {
 	dump(float64(0))
 	dump([10]int{})
 	dump(func() {})
-	// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/eface.main$1"(){{.*}} {
+	// CHECK-LABEL: define void @"main.main$1"(){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   ret void
 	// CHECK-NEXT: }
@@ -200,8 +200,8 @@ func main() {
 	dump(t)
 }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.github.com/goplus/llgo/cl/_testrt/eface.main$1"(ptr %0){{.*}} {
+// CHECK-LABEL: define linkonce void @"__llgo_stub.main.main$1"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/eface.main$1"()
+// CHECK-NEXT:   tail call void @"main.main$1"()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

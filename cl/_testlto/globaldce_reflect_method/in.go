@@ -15,9 +15,9 @@ import "reflect"
 // CHECK-DAG: !"go.method.value.reflect.Keep"
 // CHECK-DAG: !"go.method.type.reflect"
 // CHECK-DAG: !"go.method.type.reflect.Keep"
-// SYMBOL-NOT: globaldce_reflect_method{{.*}}S{{.*}}hidden
-// SYMBOL-DAG: globaldce_reflect_method{{.*}}S{{.*}}Keep
-// SYMBOL-NOT: globaldce_reflect_method{{.*}}S{{.*}}hidden
+// SYMBOL-NOT: main{{.*}}S{{.*}}hidden
+// SYMBOL-DAG: main{{.*}}S{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}S{{.*}}hidden
 
 type S struct{}
 

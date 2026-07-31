@@ -1,7 +1,7 @@
 // LITTEST
 package main
 
-// CHECK-LABEL: define i64 @"{{.*}}allocinloop.Foo"(%"{{.*}}String" %0){{.*}} {
+// CHECK-LABEL: define i64 @main.Foo(%"{{.*}}String" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}String" %0, 1
 // CHECK-NEXT:   ret i64 %1
@@ -9,7 +9,7 @@ func Foo(s string) int {
 	return len(s)
 }
 
-// CHECK-LABEL: define void @"{{.*}}allocinloop.Test"(){{.*}} {
+// CHECK-LABEL: define void @main.Test(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
@@ -20,7 +20,7 @@ func Foo(s string) int {
 // CHECK-NEXT:   br i1 %2, label %_llgo_2, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:
-// CHECK-NEXT:   %3 = call i64 @"{{.*}}allocinloop.Foo"(%"{{.*}}String" { ptr @0, i64 5 })
+// CHECK-NEXT:   %3 = call i64 @main.Foo(%"{{.*}}String" { ptr @0, i64 5 })
 // CHECK-NEXT:   %4 = add i64 %0, %3
 // CHECK-NEXT:   %5 = add i64 %1, 1
 // CHECK-NEXT:   br label %_llgo_1
@@ -37,9 +37,9 @@ func Test() {
 	println(j)
 }
 
-// CHECK-LABEL: define void @"{{.*}}allocinloop.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}allocinloop.Test"()
+// CHECK-NEXT:   call void @main.Test()
 // CHECK-NEXT:   ret void
 func main() {
 	Test()

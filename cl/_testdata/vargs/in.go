@@ -16,20 +16,20 @@ func test(a ...any) {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/vargs.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testdata/vargs.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testdata/vargs.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/vargs.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 48)
 // CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %0, i64 0
@@ -50,11 +50,11 @@ func test(a ...any) {
 // CHECK-NEXT:   %10 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %0, 0
 // CHECK-NEXT:   %11 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %10, i64 3, 1
 // CHECK-NEXT:   %12 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %11, i64 3, 2
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/vargs.test"(%"{{.*}}/runtime/internal/runtime.Slice" %12)
+// CHECK-NEXT:   call void @main.test(%"{{.*}}/runtime/internal/runtime.Slice" %12)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testdata/vargs.test"(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
+// CHECK-LABEL: define void @main.test(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK-NEXT:   br label %_llgo_1

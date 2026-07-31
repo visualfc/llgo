@@ -1,22 +1,22 @@
 // LITTEST
 package main
 
-// CHECK-LABEL: define void @"{{.*}}goroutine.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 func main() {
 	// CHECK: call ptr @"{{.*}}AllocZ"(i64 1)
 	// CHECK: store i1 false, ptr %0, align 1
 	// CHECK: call ptr @"{{.*}}AllocRoot"(i64 16)
-	// CHECK: call void @"{{.*}}NewProc"(ptr @"{{.*}}goroutine._llgo_routine$1", ptr %1, i64 0)
+	// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$1", ptr %1, i64 0)
 	done := false
 	go println("hello")
 	go func(s string) {
 		// CHECK: call ptr @"{{.*}}AllocU"(i64 8)
-		// CHECK: { ptr @"{{.*}}goroutine.main$1", ptr undef }
+		// CHECK: { ptr @"main.main$1", ptr undef }
 		// CHECK: call ptr @"{{.*}}AllocRoot"(i64 32)
-		// CHECK: call void @"{{.*}}NewProc"(ptr @"{{.*}}goroutine._llgo_routine$2", ptr {{%[0-9]+}}, i64 0)
+		// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$2", ptr {{%[0-9]+}}, i64 0)
 		// CHECK: call void @"{{.*}}PrintString"(%"{{.*}}String" { ptr @2, i64 1 })
 		// CHECK: ret void
-		// CHECK-LABEL: define void @"{{.*}}goroutine.main$1"(ptr %0, %"{{.*}}String" %1){{.*}} {
+		// CHECK-LABEL: define void @"main.main$1"(ptr %0, %"{{.*}}String" %1){{.*}} {
 		// CHECK-NEXT: _llgo_0:
 		// CHECK-NEXT:   call void @"{{.*}}PrintString"(%"{{.*}}String" %1)
 		// CHECK-NEXT:   call void @"{{.*}}PrintByte"(i8 10)
@@ -32,7 +32,7 @@ func main() {
 	}
 }
 
-// CHECK-LABEL: define ptr @"{{.*}}goroutine._llgo_routine$1"(ptr %0){{.*}} {
+// CHECK-LABEL: define ptr @"main._llgo_routine$1"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = load { %"{{.*}}String" }, ptr %0, align 8
 // CHECK-NEXT:   %2 = extractvalue { %"{{.*}}String" } %1, 0
@@ -41,7 +41,7 @@ func main() {
 // CHECK-NEXT:   call void @"{{.*}}PrintByte"(i8 10)
 // CHECK-NEXT:   ret ptr null
 
-// CHECK-LABEL: define ptr @"{{.*}}goroutine._llgo_routine$2"(ptr %0){{.*}} {
+// CHECK-LABEL: define ptr @"main._llgo_routine$2"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = load { { ptr, ptr }, %"{{.*}}String" }, ptr %0, align 8
 // CHECK-NEXT:   %2 = extractvalue { { ptr, ptr }, %"{{.*}}String" } %1, 0

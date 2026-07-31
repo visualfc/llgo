@@ -3,9 +3,9 @@ package main
 
 import "reflect"
 
-// CHECK-DAG: @"_llgo_{{.*}}globaldce_reflect_type_method.S" = weak_odr constant {{.*}}, !type ![[SIG:[0-9]+]], !type ![[VANY:[0-9]+]], !type ![[VKEEP:[0-9]+]], !type ![[TANY:[0-9]+]], !type ![[TKEEP:[0-9]+]], !vcall_visibility !{{[0-9]+}}
-// CHECK-DAG: @"*_llgo_{{.*}}globaldce_reflect_type_method.S" = weak_odr constant {{.*}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !vcall_visibility !{{[0-9]+}}
-// CHECK-LABEL: define void @"github.com/goplus/llgo/cl/_testlto/globaldce_reflect_type_method.main"
+// CHECK-DAG: @_llgo_main.S = weak_odr constant {{.*}}, !type ![[SIG:[0-9]+]], !type ![[VANY:[0-9]+]], !type ![[VKEEP:[0-9]+]], !type ![[TANY:[0-9]+]], !type ![[TKEEP:[0-9]+]], !vcall_visibility !{{[0-9]+}}
+// CHECK-DAG: @"*_llgo_main.S" = weak_odr constant {{.*}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !type !{{[0-9]+}}, !vcall_visibility !{{[0-9]+}}
+// CHECK-LABEL: define void @main.main
 // CHECK: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.Method:func(int) reflect.Method")
 // CHECK-NOT: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.value.reflect")
 // CHECK: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.type.reflect")
