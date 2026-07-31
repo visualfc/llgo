@@ -6,11 +6,11 @@ import (
 	"reflect"
 )
 
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_switch{{.*}}S{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_switch{{.*}}S{{.*}}KeepA
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_switch{{.*}}S{{.*}}KeepB
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_switch{{.*}}S{{.*}}KeepC
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_switch{{.*}}S{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepA
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepB
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepC
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
 

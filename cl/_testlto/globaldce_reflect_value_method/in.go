@@ -15,9 +15,9 @@ import "reflect"
 // CHECK-DAG: !"go.method.Drop:func() string"
 // CHECK-DAG: !"go.method.value.reflect.Keep"
 // CHECK-DAG: !"go.method.value.reflect.Drop"
-// SYMBOL-NOT: globaldce_reflect_value_method{{.*}}S{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_value_method{{.*}}S{{.*}}Keep
-// SYMBOL-NOT: globaldce_reflect_value_method{{.*}}S{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}S{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
 

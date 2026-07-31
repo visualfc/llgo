@@ -5,12 +5,12 @@ import (
 	"reflect"
 )
 
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_string_abi{{.*}}Known{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_string_abi{{.*}}Known{{.*}}Direct
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_string_abi{{.*}}Known{{.*}}Concat
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_string_abi{{.*}}Known{{.*}}Slice
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_string_abi{{.*}}Known{{.*}}Forward
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_string_abi{{.*}}Known{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}Known{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}Known{{.*}}Direct
+// SYMBOL-DAG: main{{.*}}Known{{.*}}Concat
+// SYMBOL-DAG: main{{.*}}Known{{.*}}Slice
+// SYMBOL-DAG: main{{.*}}Known{{.*}}Forward
+// SYMBOL-NOT: main{{.*}}Known{{.*}}Drop
 
 type Known struct{}
 

@@ -6,16 +6,16 @@ import (
 	"reflect"
 )
 
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepValue
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepValueAlt
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepType
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepTypeAlt
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepMultiValue
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepMultiAltValue
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepMultiType
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}KeepMultiAltType
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_concat{{.*}}S{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepValue
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepValueAlt
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepType
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepTypeAlt
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepMultiValue
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepMultiAltValue
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepMultiType
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepMultiAltType
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
 

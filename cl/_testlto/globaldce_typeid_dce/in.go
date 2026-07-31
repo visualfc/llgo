@@ -5,11 +5,11 @@ package main
 // CHECK-DAG: !"go.method.Keep:func() int"
 // CHECK-DAG: !"go.method.value.reflect"
 // CHECK-DAG: !"go.method.type.reflect"
-// SYMBOL-NOT: globaldce_typeid_dce{{.*}}Worker{{.*}}Drop
-// SYMBOL-NOT: globaldce_typeid_dce{{.*}}Worker{{.*}}DropWithArg
-// SYMBOL-DAG: globaldce_typeid_dce{{.*}}Worker{{.*}}Keep
-// SYMBOL-NOT: globaldce_typeid_dce{{.*}}Worker{{.*}}Drop
-// SYMBOL-NOT: globaldce_typeid_dce{{.*}}Worker{{.*}}DropWithArg
+// SYMBOL-NOT: main{{.*}}Worker{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}Worker{{.*}}DropWithArg
+// SYMBOL-DAG: main{{.*}}Worker{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}Worker{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}Worker{{.*}}DropWithArg
 
 type Keeper interface {
 	Keep() int
