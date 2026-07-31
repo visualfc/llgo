@@ -113,6 +113,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testrt/tpfunc",      // unexpected output: type size mismatch (got 8 4 4, expected 16 8 8)
 				"./_testrt/typalias",    // fast fail: build constraints exclude all Go files
 				"./_testrt/unreachable", // timeout: emulator panic (Instruction access fault), no auto-exit
+
+				"./_testrt/reflectclosureenv", // baseline embedded runtime cannot build this reflect path
 			},
 			"./_testdata": {
 				"./_testdata/debug", // llgo panic: unsatisfied import internal/runtime/sys
@@ -155,6 +157,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testrt/struct",   // panic: runtime index out of range
 				"./_testrt/tpfunc",   // unexpected output
 				"./_testrt/typalias", // panic: runtime index out of range
+
+				"./_testrt/reflectclosureenv", // baseline embedded runtime cannot build this reflect path
 			},
 			"./_testdata": {
 				"./_testdata/cpkgimp", // unexpected output
