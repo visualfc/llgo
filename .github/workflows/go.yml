@@ -7,7 +7,6 @@ on:
   push:
     branches:
       - main
-      - codex/dce-analyzer-skeleton # Temporary fork CI while PR checks are queued.
   pull_request:
     branches: ["**"]
 
