@@ -284,6 +284,9 @@ func TestBuildAndCheckSymbolsFromTestdrop(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeBuild)
 	conf.DeadcodeDrop = true
 	conf.ForceRebuild = true
+	// Linux exports main.* when PCLN is enabled, which retains otherwise-dead
+	// methods. Disable that retention so the symbol table measures method DCE.
+	conf.PCLNMode = build.PCLNNone
 	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testdrop", testdropSymbolChecks,
 		cltest.WithRunConfig(conf),
 		cltest.WithOutputCheck(true),
