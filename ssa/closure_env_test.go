@@ -12,6 +12,38 @@ import (
 	"github.com/xgo-dev/llvm"
 )
 
+func TestClosureEnvDirectiveCacheUsesSourceIdentity(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	fset := token.NewFileSet()
+	otherFset := token.NewFileSet()
+	const (
+		name = "example.com/p.entry"
+		pos  = token.Pos(7)
+	)
+	prog.SetClosureEnvDirective(fset, name, pos, true)
+	if enabled, ok := prog.ClosureEnvDirective(fset, name, pos); !ok || !enabled {
+		t.Fatalf("ClosureEnvDirective() = (%v, %v), want (true, true)", enabled, ok)
+	}
+	for _, key := range []struct {
+		fset *token.FileSet
+		name string
+		pos  token.Pos
+	}{
+		{otherFset, name, pos},
+		{fset, "example.com/p.alias", pos},
+		{fset, name, pos + 1},
+	} {
+		if _, ok := prog.ClosureEnvDirective(key.fset, key.name, key.pos); ok {
+			t.Fatalf("distinct source declaration (%p, %q, %d) shared cached directives", key.fset, key.name, key.pos)
+		}
+	}
+	prog.SetClosureEnvDirective(fset, name, pos, false)
+	if enabled, ok := prog.ClosureEnvDirective(fset, name, pos); !ok || enabled {
+		t.Fatalf("updated ClosureEnvDirective() = (%v, %v), want (false, true)", enabled, ok)
+	}
+}
+
 func TestClosureEnvABIForTarget(t *testing.T) {
 	tests := []struct {
 		triple string

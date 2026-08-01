@@ -57,6 +57,39 @@ func compileWithRewritesTarget(t *testing.T, src string, rewrites map[string]str
 	return ret.String()
 }
 
+func TestClosureEnvDirectiveFallbackWithoutSyntaxPreload(t *testing.T) {
+	const src = `package fallback
+//llgo:env
+func withEnv() {}
+func plain() {}
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "fallback.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importer := gpackages.NewImporter(fset)
+	pkg, _, err := ssautil.BuildPackage(&types.Config{Importer: importer}, fset,
+		types.NewPackage("fallback", "fallback"), []*ast.File{file}, ssa.SanityCheckFunctions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := ssatest.NewProgramEx(t, nil, importer)
+	ctx := &context{prog: prog, goProg: pkg.Prog}
+	for _, test := range []struct {
+		name string
+		want bool
+	}{
+		{"withEnv", true},
+		{"plain", false},
+	} {
+		fn := pkg.Func(test.name)
+		if got := ctx.hasClosureEnvDirective(pkg.Pkg, fn); got != test.want {
+			t.Fatalf("hasClosureEnvDirective(%s) = %v, want %v", test.name, got, test.want)
+		}
+	}
+}
+
 func TestClosureEnvIntrinsicRequiresEnvBearingEntry(t *testing.T) {
 	valid := `package closureenv
 

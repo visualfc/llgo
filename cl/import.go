@@ -276,18 +276,32 @@ func (p *context) collectSkip(line string, prefix int) {
 	}
 }
 
-func collectLinknameByDoc(prog llssa.Program, doc *ast.CommentGroup, fullName, inPkgName string) {
+// collectDeclarationDirectives caches source metadata needed after the syntax
+// pass. funcPos is token.NoPos for non-function declarations.
+func collectDeclarationDirectives(prog llssa.Program, fset *token.FileSet, doc *ast.CommentGroup, fullName, inPkgName string, funcPos token.Pos) {
 	directives := directive.ParseGroup(doc)
+	linkCollected := false
+	hasClosureEnv := false
 	for n := len(directives) - 1; n >= 0; n-- {
-		directive := directives[n]
-		if directive.Name != "go:linkname" && directive.Name != "llgo:link" {
-			continue
+		item := directives[n]
+		switch item.Name {
+		case "go:linkname", "llgo:link":
+			if linkCollected {
+				continue
+			}
+			fields := strings.Fields(item.Args)
+			if len(fields) >= 2 && fields[0] == inPkgName {
+				prog.SetLinkname(fullName, strings.Join(fields[1:], " "))
+				linkCollected = true
+			}
+		case "llgo:env":
+			if funcPos.IsValid() {
+				hasClosureEnv = true
+			}
 		}
-		fields := strings.Fields(directive.Args)
-		if len(fields) >= 2 && fields[0] == inPkgName {
-			prog.SetLinkname(fullName, strings.Join(fields[1:], " "))
-			return
-		}
+	}
+	if funcPos.IsValid() {
+		prog.SetClosureEnvDirective(fset, fullName, funcPos, hasClosureEnv)
 	}
 }
 
@@ -563,8 +577,7 @@ const (
 	llgoAtomicCmpXchgOK    = llgoInstrBase + 0x45
 	llgoAtomicAddReturnNew = llgoInstrBase + 0x46
 	llgoBoolToUint8        = llgoInstrBase + 0x47
-	// 0x48 is reserved for llgoCoroPark in the coroutine backend.
-	llgoClosureEnv = llgoInstrBase + 0x49
+	llgoClosureEnv         = llgoInstrBase + 0x48
 
 	llgoAtomicOpLast = llgoAtomicOpBase + int(llssa.OpUMin)
 )
@@ -775,14 +788,14 @@ func ParsePkgSyntax(prog llssa.Program, fset *token.FileSet, pkg *types.Package,
 					return err
 				}
 				fullName, inPkgName := astFuncName(pkgPath, decl)
-				collectLinknameByDoc(prog, decl.Doc, fullName, inPkgName)
+				collectDeclarationDirectives(prog, fset, decl.Doc, fullName, inPkgName, decl.Pos())
 				ctx.processNoInterfaceByDoc(decl.Doc, fullName)
 			case *ast.GenDecl:
 				if decl.Tok == token.VAR {
 					if len(decl.Specs) == 1 {
 						if names := decl.Specs[0].(*ast.ValueSpec).Names; len(names) == 1 {
 							inPkgName := names[0].Name
-							collectLinknameByDoc(prog, decl.Doc, pkgPath+"."+inPkgName, inPkgName)
+							collectDeclarationDirectives(prog, fset, decl.Doc, pkgPath+"."+inPkgName, inPkgName, token.NoPos)
 						}
 					}
 					vars, err := locality.ScanPackageVar(fset, decl)

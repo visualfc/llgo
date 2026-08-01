@@ -251,20 +251,59 @@ func TestParsePkgSyntaxCollectsLinknames(t *testing.T) {
 		})
 	}
 	prog := llssa.NewProgram(nil)
-	collectLinknameByDoc(prog, &ast.CommentGroup{List: []*ast.Comment{{Text: "//go:linkname Other C.other"}}}, llssa.PkgRuntime+".Sigsetjmp", "Sigsetjmp")
+	collectDeclarationDirectives(prog, nil, &ast.CommentGroup{List: []*ast.Comment{{Text: "//go:linkname Other C.other"}}}, llssa.PkgRuntime+".Sigsetjmp", "Sigsetjmp", token.NoPos)
 	if _, ok := prog.Linkname(llssa.PkgRuntime + ".Sigsetjmp"); ok {
 		t.Fatal("mismatched linkname was collected")
 	}
 }
 
-func TestCollectLinknameByDocIgnoresOtherDirectives(t *testing.T) {
+func TestParsePkgSyntaxCollectsClosureEnvDirectives(t *testing.T) {
+	const src = `package p
+//go:linkname env C.old
+//llgo:env
+//go:linkname env C.new
+func env() {}
+
+// llgo:env
+func spaced() {}
+
+func plain() {}
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := llssa.NewProgram(nil)
+	pkg := types.NewPackage("example.com/p", "p")
+	if err := ParsePkgSyntax(prog, fset, pkg, []*ast.File{file}); err != nil {
+		t.Fatal(err)
+	}
+	if link, ok := prog.Linkname("example.com/p.env"); !ok || link != "C.new" {
+		t.Fatalf("combined declaration linkname = (%q, %v), want (C.new, true)", link, ok)
+	}
+	want := map[string]bool{"env": true, "spaced": true, "plain": false}
+	for _, node := range file.Decls {
+		decl := node.(*ast.FuncDecl)
+		fullName, _ := astFuncName(pkg.Path(), decl)
+		got, ok := prog.ClosureEnvDirective(fset, fullName, decl.Pos())
+		if !ok || got != want[decl.Name.Name] {
+			t.Fatalf("ClosureEnvDirective(%s) = (%v, %v), want (%v, true)", decl.Name.Name, got, ok, want[decl.Name.Name])
+		}
+	}
+	if _, ok := prog.ClosureEnvDirective(fset, "example.com/p.missing", token.NoPos); ok {
+		t.Fatal("missing declaration unexpectedly has cached directives")
+	}
+}
+
+func TestCollectDeclarationDirectivesIgnoresOtherDirectives(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	doc := &ast.CommentGroup{List: []*ast.Comment{
 		{Text: "//go:noinline"},
 		{Text: "//llgo:tls"},
 	}}
 	const fullName = "example.com/p.Value"
-	collectLinknameByDoc(prog, doc, fullName, "Value")
+	collectDeclarationDirectives(prog, nil, doc, fullName, "Value", token.NoPos)
 	if _, ok := prog.Linkname(fullName); ok {
 		t.Fatal("non-link directives installed a linkname")
 	}

@@ -618,7 +618,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	fn := pkg.FuncOf(name)
 	hasFreeVars := len(f.FreeVars) > 0
 	elideFreeVarEnv := p.canElideZeroSizedClosureEnv(f)
-	hasExplicitEnv := hasClosureEnvDirective(f)
+	hasExplicitEnv := p.hasClosureEnvDirective(pkgTypes, f)
 	hasCtx := hasFreeVars && !elideFreeVarEnv || hasExplicitEnv
 	var ctx *types.Var
 	if elideFreeVarEnv {
@@ -761,11 +761,17 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 // hasClosureEnvDirective is intentionally source-only. //llgo:env may mark
 // only internal bodies emitted in their defining package; external env-bearing
 // declarations must be reconstructed explicitly with llssa.NewEnvFunc.
-func hasClosureEnvDirective(f *ssa.Function) bool {
+func (p *context) hasClosureEnvDirective(pkg *types.Package, f *ssa.Function) bool {
 	decl, _ := f.Syntax().(*ast.FuncDecl)
-	if decl == nil || decl.Doc == nil {
+	if decl == nil {
 		return false
 	}
+	fullName, _ := astFuncName(llssa.PathOf(pkg), decl)
+	if enabled, ok := p.prog.ClosureEnvDirective(p.goProg.Fset, fullName, decl.Pos()); ok {
+		return enabled
+	}
+	// Keep custom compilation paths that did not preload this declaration
+	// source-compatible. Normal builds consume the ParsePkgSyntax cache above.
 	for _, parsed := range directive.ParseGroup(decl.Doc) {
 		if parsed.Name == "llgo:env" {
 			return true
