@@ -168,6 +168,54 @@ func TestInvocationUsesExplicitWorkingDirectory(t *testing.T) {
 	pkgs[0].LPkg.Prog.Dispose()
 }
 
+func TestConcurrentInvocationsIsolateFrontendOptions(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/frontend\n\ngo 1.24\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "frontend.go"), []byte("package frontend\n\nfunc F(v int) int { return v + 1 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(llgoBuildCache, "0")
+
+	type result struct {
+		debug bool
+		pkgs  []Package
+		err   error
+	}
+	results := make(chan result, 2)
+	for _, debug := range []bool{false, true} {
+		conf := NewDefaultConf(ModeGen)
+		conf.LinkOptions.DWARF = DWARFOmit
+		if debug {
+			conf.LinkOptions.DWARF = DWARFPreserve
+			conf.Verbose = true
+		}
+		go func() {
+			pkgs, err := Build(Invocation{
+				Args:   []string{"."},
+				Config: conf,
+				Dir:    dir,
+			})
+			results <- result{debug: debug, pkgs: pkgs, err: err}
+		}()
+	}
+	for range 2 {
+		got := <-results
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if len(got.pkgs) != 1 || got.pkgs[0].LPkg == nil {
+			t.Fatalf("Build returned packages = %+v, want one compiled package", got.pkgs)
+		}
+		t.Cleanup(got.pkgs[0].LPkg.Prog.Dispose)
+		hasDebugInfo := strings.Contains(got.pkgs[0].LPkg.String(), "!llvm.dbg.cu")
+		if hasDebugInfo != got.debug {
+			t.Fatalf("debug=%v produced hasDebugInfo=%v", got.debug, hasDebugInfo)
+		}
+	}
+}
+
 func TestResolveOutputsUsesInvocationDirectory(t *testing.T) {
 	dir := t.TempDir()
 	out := &OutFmtDetails{

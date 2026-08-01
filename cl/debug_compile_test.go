@@ -19,6 +19,45 @@ import (
 	"golang.org/x/tools/go/ssa/ssautil"
 )
 
+func TestFrontendOptions(t *testing.T) {
+	oldDebug := enableDbg
+	oldDebugSymbols := enableDbgSyms
+	oldTrace := enableCallTracing
+	oldExportRename := enableExportRename
+	t.Cleanup(func() {
+		enableDbg = oldDebug
+		enableDbgSyms = oldDebugSymbols
+		enableCallTracing = oldTrace
+		enableExportRename = oldExportRename
+	})
+
+	EnableDebug(true)
+	EnableDbgSyms(true)
+	EnableTrace(true)
+	EnableExportRename(true)
+	t.Setenv("LLGO_SHADOW_STACK", "1")
+
+	wantLegacy := Options{
+		Debug:        true,
+		DebugSymbols: true,
+		Trace:        true,
+		ExportRename: true,
+		ShadowStack:  true,
+	}
+	if got := (&context{}).frontendOptions(); got != wantLegacy {
+		t.Fatalf("frontendOptions() = %+v, want legacy options %+v", got, wantLegacy)
+	}
+	if got := (*context)(nil).frontendOptions(); got != wantLegacy {
+		t.Fatalf("nil frontendOptions() = %+v, want legacy options %+v", got, wantLegacy)
+	}
+
+	wantExplicit := Options{Trace: true}
+	ctx := &context{options: wantExplicit, optionsSet: true}
+	if got := ctx.frontendOptions(); got != wantExplicit {
+		t.Fatalf("frontendOptions() = %+v, want explicit options %+v", got, wantExplicit)
+	}
+}
+
 func TestCompileDebugMetadata(t *testing.T) {
 	const source = `package debugcompile
 
@@ -55,21 +94,16 @@ var anonymous = func(seed int) int {
 		t.Fatal(err)
 	}
 
-	oldDebug, oldDebugSyms := enableDbg, enableDbgSyms
-	EnableDebug(true)
-	EnableDbgSyms(true)
-	defer func() {
-		EnableDebug(oldDebug)
-		EnableDbgSyms(oldDebugSyms)
-	}()
-
 	prog := newLLSSAProgForTarget(t, &llssa.Target{
 		GOOS:     runtime.GOOS,
 		GOARCH:   runtime.GOARCH,
 		OptLevel: optlevel.O0,
 	})
 	defer prog.Dispose()
-	pkg, err := NewPackage(prog, ssaPkg, []*ast.File{file})
+	pkg, _, err := newPackageEx(prog, nil, nil, nil, ssaPkg, []*ast.File{file}, nil, false, Options{
+		Debug:        true,
+		DebugSymbols: true,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
