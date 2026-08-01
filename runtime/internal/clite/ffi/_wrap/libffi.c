@@ -28,6 +28,10 @@ struct llgo_ffi_call_context {
     void *saved_return;
 };
 
+/* Targets entered through this context must return normally. A non-local exit
+ * across ffi_call would skip both the trampoline register restore and the TLS
+ * restore in llgo_ffi_call_with_env. */
+
 static _Thread_local struct llgo_ffi_call_context llgo_ffi_call_current;
 
 __attribute__((noinline, used)) static struct llgo_ffi_call_context *

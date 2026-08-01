@@ -32,6 +32,7 @@ import (
 
 	"github.com/goplus/llgo/cl/blocks"
 	"github.com/goplus/llgo/cl/ssawrap"
+	"github.com/goplus/llgo/internal/directive"
 	"github.com/goplus/llgo/internal/goembed"
 	"github.com/goplus/llgo/internal/typepatch"
 	"golang.org/x/tools/go/ssa"
@@ -765,8 +766,8 @@ func hasClosureEnvDirective(f *ssa.Function) bool {
 	if decl == nil || decl.Doc == nil {
 		return false
 	}
-	for _, c := range decl.Doc.List {
-		if strings.TrimSpace(c.Text) == "//llgo:env" {
+	for _, parsed := range directive.ParseGroup(decl.Doc) {
+		if parsed.Name == "llgo:env" {
 			return true
 		}
 	}

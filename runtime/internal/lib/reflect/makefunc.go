@@ -71,7 +71,7 @@ func makeFunc(typ Type, fn func(args []Value) (results []Value)) Value {
 	}
 	// keep alive for bdw-gc
 	keepMutex.Lock()
-	keepAlive = append(keepAlive, &closure.Fn, sig, userdata)
+	keepAlive = append(keepAlive, closure, sig, userdata)
 	keepMutex.Unlock()
 
 	styp := closureOf(ftyp)

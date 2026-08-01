@@ -42,8 +42,12 @@ func closureEnvABIForTarget(triple string) closureEnvABI {
 		return closureEnvSwiftSelf
 	case arch == "x86_64", arch == "amd64",
 		arch == "x86", arch == "386",
-		arch == "i386", arch == "i486", arch == "i586", arch == "i686",
-		arch == "riscv32", arch == "riscv64":
+		arch == "i386", arch == "i486", arch == "i586", arch == "i686":
+		return closureEnvNest
+	case arch == "riscv32", arch == "riscv64":
+		// LLVM lowers the RISC-V nest parameter through t2 (x7). The public
+		// libffi final-hop bridge installs the environment in the same register;
+		// the ESP32-C3 suite exercises this transport on riscv32.
 		return closureEnvNest
 	default:
 		return closureEnvExplicit
