@@ -54,13 +54,27 @@ func TestApplyDeadcodeDropOverridesWritesStrongTypeOverride(t *testing.T) {
 
 func TestDCEEntryRootCandidates(t *testing.T) {
 	want := []string{"main.init", "main.main"}
-	if got := dceEntryRootCandidates(false); !reflect.DeepEqual(got, want) {
+	if got := dceEntryRootCandidates(nil, false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("dceEntryRootCandidates(false) = %v, want %v", got, want)
 	}
 
 	want = append(want, llssa.PkgRuntime+".init")
-	if got := dceEntryRootCandidates(true); !reflect.DeepEqual(got, want) {
+	if got := dceEntryRootCandidates(nil, true); !reflect.DeepEqual(got, want) {
 		t.Fatalf("dceEntryRootCandidates(true) = %v, want %v", got, want)
+	}
+}
+
+func TestDCEEntryRootCandidatesIncludesCExports(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	lpkg := prog.NewPackage("pkg", "pkg")
+	lpkg.SetExport("main.Z", "Zed")
+	lpkg.SetExport("main.A", "Add")
+	pkgs := []Package{&aPackage{LPkg: lpkg}}
+
+	want := []string{"main.init", "main.main", "Add", "Zed"}
+	if got := dceEntryRootCandidates(pkgs, false); !reflect.DeepEqual(got, want) {
+		t.Fatalf("dceEntryRootCandidates() = %v, want %v", got, want)
 	}
 }
 

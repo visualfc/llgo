@@ -1440,7 +1440,7 @@ func applyDeadcodeDropOverrides(pkgs []Package, entryPkg Package, needRuntime bo
 		return err
 	}
 
-	roots := dceEntryRootCandidates(needRuntime)
+	roots := dceEntryRootCandidates(pkgs, needRuntime)
 	liveSlots := deadcode.Analyze(summary, roots)
 	dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, verbose)
 	return nil
@@ -1454,8 +1454,18 @@ func dceSourceModules(pkgs []Package) []gllvm.Module {
 	return mods
 }
 
-func dceEntryRootCandidates(needRuntime bool) []string {
+func dceEntryRootCandidates(pkgs []Package, needRuntime bool) []string {
 	roots := []string{"main.init", "main.main"}
+	// C code can call //export functions without an ordinary edge from a Go
+	// root, so their final linker names must seed the analysis explicitly.
+	var exports []string
+	for _, pkg := range pkgs {
+		for _, name := range pkg.LPkg.ExportFuncs() {
+			exports = append(exports, name)
+		}
+	}
+	slices.Sort(exports)
+	roots = append(roots, exports...)
 	if needRuntime {
 		roots = append(roots, llssa.PkgRuntime+".init")
 	}

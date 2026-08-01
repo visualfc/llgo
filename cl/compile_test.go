@@ -259,6 +259,7 @@ func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
 }
 
 var testdropSymbolChecks = []string{
+	"c_export_callback",
 	"direct_func",
 	"direct_method",
 	"exported_method_crosspkg",
