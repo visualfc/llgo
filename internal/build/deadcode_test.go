@@ -73,6 +73,7 @@ func buildDeadcodeMeta(t *testing.T) *meta.PackageMeta {
 	iface := b.Sym("_llgo_iface$I")
 	mtype := b.Sym("_llgo_func$X")
 
+	b.AddOrdinaryEdge(mtype, mtype)
 	b.AddIfaceMethod(iface, "M", mtype)
 	b.AddMethodSlot(typ, "M", mtype, b.Sym("pkg.(*T).M"), b.Sym("pkg.T.M"))
 	b.AddMethodSlot(typ, "N", mtype, b.Sym("pkg.(*T).N"), b.Sym("pkg.T.N"))
