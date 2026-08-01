@@ -36,7 +36,7 @@ func TestApplyDeadcodeDropOverridesWritesStrongTypeOverride(t *testing.T) {
 		ExportFile: "pkg.a",
 	}, &genConfig{})
 
-	if err := applyDeadcodeDropOverrides(srcAPkg.Package, []Package{srcAPkg}, entryPkg, false, false); err != nil {
+	if err := applyDeadcodeDropOverrides([]Package{srcAPkg}, entryPkg, false, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -53,13 +53,13 @@ func TestApplyDeadcodeDropOverridesWritesStrongTypeOverride(t *testing.T) {
 }
 
 func TestDCEEntryRootCandidates(t *testing.T) {
-	want := []string{"pkg.init", "pkg.main"}
-	if got := dceEntryRootCandidates(&packages.Package{PkgPath: "pkg"}, false); !reflect.DeepEqual(got, want) {
+	want := []string{"main.init", "main.main"}
+	if got := dceEntryRootCandidates(false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("dceEntryRootCandidates(false) = %v, want %v", got, want)
 	}
 
 	want = append(want, llssa.PkgRuntime+".init")
-	if got := dceEntryRootCandidates(&packages.Package{PkgPath: "pkg"}, true); !reflect.DeepEqual(got, want) {
+	if got := dceEntryRootCandidates(true); !reflect.DeepEqual(got, want) {
 		t.Fatalf("dceEntryRootCandidates(true) = %v, want %v", got, want)
 	}
 }
@@ -67,7 +67,7 @@ func TestDCEEntryRootCandidates(t *testing.T) {
 func buildDeadcodeMeta(t *testing.T) *meta.PackageMeta {
 	t.Helper()
 	b := meta.NewBuilder()
-	main := b.Sym("pkg.main")
+	main := b.Sym("main.main")
 	use := b.Sym("pkg.use")
 	typ := b.Sym("_llgo_pkg.T")
 	iface := b.Sym("_llgo_iface$I")

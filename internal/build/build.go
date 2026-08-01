@@ -1381,7 +1381,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		funcInfoStubs: funcInfoStubs,
 	})
 	if ctx.buildConf.deadcodeDropEnabled() {
-		if err := applyDeadcodeDropOverrides(pkg, linkedOrder, entryPkg, needRuntime, verbose); err != nil {
+		if err := applyDeadcodeDropOverrides(linkedOrder, entryPkg, needRuntime, verbose); err != nil {
 			return err
 		}
 	}
@@ -1433,14 +1433,14 @@ func linkedPackageMetas(pkgs []Package) []*meta.PackageMeta {
 	return metas
 }
 
-func applyDeadcodeDropOverrides(mainPkg *packages.Package, pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
+func applyDeadcodeDropOverrides(pkgs []Package, entryPkg Package, needRuntime bool, verbose bool) error {
 	metas := linkedPackageMetas(pkgs)
 	summary, err := meta.NewGlobalSummary(metas)
 	if err != nil {
 		return err
 	}
 
-	roots := dceEntryRootCandidates(mainPkg, needRuntime)
+	roots := dceEntryRootCandidates(needRuntime)
 	liveSlots := deadcode.Analyze(summary, roots)
 	dcepass.EmitStrongTypeOverrides(entryPkg.LPkg.Module(), dceSourceModules(pkgs), liveSlots, verbose)
 	return nil
@@ -1454,8 +1454,8 @@ func dceSourceModules(pkgs []Package) []gllvm.Module {
 	return mods
 }
 
-func dceEntryRootCandidates(pkg *packages.Package, needRuntime bool) []string {
-	roots := []string{pkg.PkgPath + ".init", pkg.PkgPath + ".main"}
+func dceEntryRootCandidates(needRuntime bool) []string {
+	roots := []string{"main.init", "main.main"}
 	if needRuntime {
 		roots = append(roots, llssa.PkgRuntime+".init")
 	}
