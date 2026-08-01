@@ -21,9 +21,9 @@ func TestClosureEnvDirectiveCacheUsesSourceIdentity(t *testing.T) {
 		name = "example.com/p.entry"
 		pos  = token.Pos(7)
 	)
-	prog.SetClosureEnvDirective(fset, name, pos, true)
-	if enabled, ok := prog.ClosureEnvDirective(fset, name, pos); !ok || !enabled {
-		t.Fatalf("ClosureEnvDirective() = (%v, %v), want (true, true)", enabled, ok)
+	prog.SetClosureEnvDirective(fset, name, pos)
+	if !prog.HasClosureEnvDirective(fset, name, pos) {
+		t.Fatal("HasClosureEnvDirective() = false, want true")
 	}
 	for _, key := range []struct {
 		fset *token.FileSet
@@ -34,13 +34,9 @@ func TestClosureEnvDirectiveCacheUsesSourceIdentity(t *testing.T) {
 		{fset, "example.com/p.alias", pos},
 		{fset, name, pos + 1},
 	} {
-		if _, ok := prog.ClosureEnvDirective(key.fset, key.name, key.pos); ok {
+		if prog.HasClosureEnvDirective(key.fset, key.name, key.pos) {
 			t.Fatalf("distinct source declaration (%p, %q, %d) shared cached directives", key.fset, key.name, key.pos)
 		}
-	}
-	prog.SetClosureEnvDirective(fset, name, pos, false)
-	if enabled, ok := prog.ClosureEnvDirective(fset, name, pos); !ok || enabled {
-		t.Fatalf("updated ClosureEnvDirective() = (%v, %v), want (false, true)", enabled, ok)
 	}
 }
 

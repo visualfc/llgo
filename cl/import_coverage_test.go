@@ -286,12 +286,12 @@ func plain() {}
 	for _, node := range file.Decls {
 		decl := node.(*ast.FuncDecl)
 		fullName, _ := astFuncName(pkg.Path(), decl)
-		got, ok := prog.ClosureEnvDirective(fset, fullName, decl.Pos())
-		if !ok || got != want[decl.Name.Name] {
-			t.Fatalf("ClosureEnvDirective(%s) = (%v, %v), want (%v, true)", decl.Name.Name, got, ok, want[decl.Name.Name])
+		got := prog.HasClosureEnvDirective(fset, fullName, decl.Pos())
+		if got != want[decl.Name.Name] {
+			t.Fatalf("HasClosureEnvDirective(%s) = %v, want %v", decl.Name.Name, got, want[decl.Name.Name])
 		}
 	}
-	if _, ok := prog.ClosureEnvDirective(fset, "example.com/p.missing", token.NoPos); ok {
+	if prog.HasClosureEnvDirective(fset, "example.com/p.missing", token.NoPos) {
 		t.Fatal("missing declaration unexpectedly has cached directives")
 	}
 }

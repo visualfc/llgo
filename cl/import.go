@@ -300,8 +300,8 @@ func collectDeclarationDirectives(prog llssa.Program, fset *token.FileSet, doc *
 			}
 		}
 	}
-	if funcPos.IsValid() {
-		prog.SetClosureEnvDirective(fset, fullName, funcPos, hasClosureEnv)
+	if hasClosureEnv {
+		prog.SetClosureEnvDirective(fset, fullName, funcPos)
 	}
 }
 

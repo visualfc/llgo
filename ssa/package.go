@@ -224,7 +224,7 @@ type aProgram struct {
 	paramObjPtr_         *types.Var
 	linknameMu           sync.RWMutex
 	linkname             map[string]string // pkgPath.nameInPkg => linkname
-	closureEnvDirectives sync.Map          // closureEnvDirectiveKey => bool
+	closureEnvDirectives sync.Map          // closureEnvDirectiveKey => none
 	localities           *localityInfos
 	noInterface          map[string]none       // pkgPath.T.method or pkgPath.(*T).method
 	abiSymbol            map[string]*AbiSymbol // abi symbol name => AbiSymbol
@@ -432,23 +432,20 @@ type closureEnvDirectiveKey struct {
 	pos  token.Pos
 }
 
-// SetClosureEnvDirective records whether a source function declaration has the
+// SetClosureEnvDirective records that a source function declaration has the
 // llgo:env directive. name and pos identify the source declaration rather
 // than its resolved linker symbol, so aliases retain independent ABI metadata.
-func (p Program) SetClosureEnvDirective(fset *token.FileSet, name string, pos token.Pos, enabled bool) {
+func (p Program) SetClosureEnvDirective(fset *token.FileSet, name string, pos token.Pos) {
 	key := closureEnvDirectiveKey{fset: fset, name: name, pos: pos}
-	p.closureEnvDirectives.Store(key, enabled)
+	p.closureEnvDirectives.Store(key, none{})
 }
 
-// ClosureEnvDirective reports the cached llgo:env state for a source
-// function declaration. ok is false when that declaration was not scanned.
-func (p Program) ClosureEnvDirective(fset *token.FileSet, name string, pos token.Pos) (enabled, ok bool) {
+// HasClosureEnvDirective reports whether a source function declaration has the
+// cached llgo:env directive.
+func (p Program) HasClosureEnvDirective(fset *token.FileSet, name string, pos token.Pos) bool {
 	key := closureEnvDirectiveKey{fset: fset, name: name, pos: pos}
-	value, ok := p.closureEnvDirectives.Load(key)
-	if ok {
-		enabled = value.(bool)
-	}
-	return enabled, ok
+	_, ok := p.closureEnvDirectives.Load(key)
+	return ok
 }
 
 func (p Program) runtime() *types.Package {

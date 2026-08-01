@@ -32,7 +32,6 @@ import (
 
 	"github.com/goplus/llgo/cl/blocks"
 	"github.com/goplus/llgo/cl/ssawrap"
-	"github.com/goplus/llgo/internal/directive"
 	"github.com/goplus/llgo/internal/goembed"
 	"github.com/goplus/llgo/internal/typepatch"
 	"golang.org/x/tools/go/ssa"
@@ -618,7 +617,13 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	fn := pkg.FuncOf(name)
 	hasFreeVars := len(f.FreeVars) > 0
 	elideFreeVarEnv := p.canElideZeroSizedClosureEnv(f)
-	hasExplicitEnv := p.hasClosureEnvDirective(pkgTypes, f)
+	hasExplicitEnv := false
+	// ParsePkgSyntax is the sole //llgo:env extractor. Lowering only consumes
+	// its source-declaration cache; imported env entries use NewEnvFunc.
+	if decl, ok := f.Syntax().(*ast.FuncDecl); ok {
+		fullName, _ := astFuncName(llssa.PathOf(pkgTypes), decl)
+		hasExplicitEnv = p.prog.HasClosureEnvDirective(p.goProg.Fset, fullName, decl.Pos())
+	}
 	hasCtx := hasFreeVars && !elideFreeVarEnv || hasExplicitEnv
 	var ctx *types.Var
 	if elideFreeVarEnv {
@@ -756,28 +761,6 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		})
 	}
 	return fn, nil, goFunc
-}
-
-// hasClosureEnvDirective is intentionally source-only. //llgo:env may mark
-// only internal bodies emitted in their defining package; external env-bearing
-// declarations must be reconstructed explicitly with llssa.NewEnvFunc.
-func (p *context) hasClosureEnvDirective(pkg *types.Package, f *ssa.Function) bool {
-	decl, _ := f.Syntax().(*ast.FuncDecl)
-	if decl == nil {
-		return false
-	}
-	fullName, _ := astFuncName(llssa.PathOf(pkg), decl)
-	if enabled, ok := p.prog.ClosureEnvDirective(p.goProg.Fset, fullName, decl.Pos()); ok {
-		return enabled
-	}
-	// Keep custom compilation paths that did not preload this declaration
-	// source-compatible. Normal builds consume the ParsePkgSyntax cache above.
-	for _, parsed := range directive.ParseGroup(decl.Doc) {
-		if parsed.Name == "llgo:env" {
-			return true
-		}
-	}
-	return false
 }
 
 // funcInfoDisplayName normalizes anonymous functions to gc's pkg.fn.funcN
