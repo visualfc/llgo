@@ -10,6 +10,7 @@ static int callCallback(void) {
 import "C"
 
 // SYMBOL-NOT: main{{.*}}T{{.*}}Drop
+// SYMBOL-DAG: {{ T _?Callback$}}
 // SYMBOL-DAG: main{{.*}}T{{.*}}M
 // SYMBOL-NOT: main{{.*}}T{{.*}}Drop
 
