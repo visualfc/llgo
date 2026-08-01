@@ -25,6 +25,9 @@ import (
 // NOTE: golang.org/x/tools/go/packages.Package does not expose SFiles, so we
 // query `go list -json` here to get the exact filtered set for GOOS/GOARCH.
 func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbose bool) ([]string, error) {
+	if llruntime.SourcePatchReplacesAsmForGOARCH(pkg.PkgPath, ctx.buildConf.Goarch) {
+		return nil, nil
+	}
 	sfiles, err := pkgSFiles(ctx, pkg)
 	if err != nil {
 		return nil, err
@@ -39,7 +42,7 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 			// Some stdlib .s files are placeholders without any TEXT bodies
 			// (e.g. runtime/debug/debug.s). They carry no executable asm and
 			// are safe to ignore.
-			hasText, err := llplan9asm.HasAnyTextAsm(ctx.conf.Overlay, sfiles)
+			hasText, err := llplan9asm.HasAnyTextAsm(ctx.buildConf.Overlay, sfiles)
 			if err != nil {
 				return nil, fmt.Errorf("%s: inspect asm files: %w", pkg.PkgPath, err)
 			}
@@ -57,7 +60,7 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 	skipDarwinDynimportTrampolines := shouldCheckDarwinDynimportTrampolineAsm(ctx, pkg)
 	objFiles := make([]string, 0, len(sfiles))
 	for _, sfile := range sfiles {
-		src, err := llplan9asm.ReadFileWithOverlay(ctx.conf.Overlay, sfile)
+		src, err := llplan9asm.ReadFileWithOverlay(ctx.buildConf.Overlay, sfile)
 		if err != nil {
 			return nil, fmt.Errorf("%s: read %s: %w", pkg.PkgPath, sfile, err)
 		}
@@ -254,7 +257,7 @@ func plan9asmSigsForPkg(ctx *context, pkgPath string) (map[string]struct{}, erro
 		return nil, err
 	}
 	for _, sfile := range sfiles {
-		src, err := llplan9asm.ReadFileWithOverlay(ctx.conf.Overlay, sfile)
+		src, err := llplan9asm.ReadFileWithOverlay(ctx.buildConf.Overlay, sfile)
 		if err != nil {
 			return nil, fmt.Errorf("%s: read %s: %w", pkg.PkgPath, sfile, err)
 		}
@@ -405,16 +408,16 @@ func pkgSFiles(ctx *context, pkg *packages.Package) ([]string, error) {
 	args = append(args, pkg.PkgPath)
 
 	cmd := exec.Command("go", args...)
+	ctx.commands.configure(cmd)
 	// Resolve dependencies from the module or workspace used by packages.Load.
 	// A dependency directory in the module cache may not contain a go.mod.
-	if ctx.conf != nil {
+	if ctx.conf != nil && ctx.conf.Dir != "" {
 		cmd.Dir = ctx.conf.Dir
 	}
-	cmdEnv := os.Environ()
 	if ctx.conf != nil && len(ctx.conf.Env) > 0 {
-		cmdEnv = append([]string(nil), ctx.conf.Env...)
+		cmd.Env = append([]string(nil), ctx.conf.Env...)
 	}
-	cmd.Env = append(cmdEnv,
+	cmd.Env = withEnv(cmd.Env,
 		"GOOS="+ctx.buildConf.Goos,
 		"GOARCH="+ctx.buildConf.Goarch,
 	)

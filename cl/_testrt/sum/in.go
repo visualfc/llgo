@@ -5,7 +5,7 @@ import (
 	"github.com/goplus/lib/c"
 )
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/sum.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
 // CHECK-NEXT:   %1 = getelementptr inbounds i64, ptr %0, i64 0
@@ -19,7 +19,7 @@ import (
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %0, 0
 // CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %5, i64 4, 1
 // CHECK-NEXT:   %7 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %6, i64 4, 2
-// CHECK-NEXT:   %8 = call i64 @"{{.*}}/cl/_testrt/sum.sum"(%"{{.*}}/runtime/internal/runtime.Slice" %7)
+// CHECK-NEXT:   %8 = call i64 @main.sum(%"{{.*}}/runtime/internal/runtime.Slice" %7)
 // CHECK-NEXT:   %9 = call i32 (ptr, ...) @printf(ptr @0, i64 %8)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -27,7 +27,7 @@ func main() {
 	c.Printf(c.Str("Hello %d\n"), sum(1, 2, 3, 4))
 }
 
-// CHECK-LABEL: define i64 @"{{.*}}/cl/_testrt/sum.sum"(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
+// CHECK-LABEL: define i64 @main.sum(%"{{.*}}/runtime/internal/runtime.Slice" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK-NEXT:   br label %_llgo_1

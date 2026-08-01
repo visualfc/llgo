@@ -6,16 +6,16 @@ package main
 */
 import "C"
 
-// CHECK-LABEL: define [0 x i8] @"{{.*}}/cl/_testgo/cgodefer._Cfunc_free"(ptr %0){{.*}} {
+// CHECK-LABEL: define [0 x i8] @main._Cfunc_free(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT:   %2 = load ptr, ptr @"{{.*}}/cl/_testgo/cgodefer._cgo_{{.*}}_Cfunc_free", align 8
+// CHECK-NEXT:   %2 = load ptr, ptr @main._cgo_{{.*}}_Cfunc_free, align 8
 // CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
 // CHECK-NEXT:   %4 = call [0 x i8] %3(ptr %0)
 // CHECK-NEXT:   ret [0 x i8] %4
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/cgodefer.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %1 = call ptr @malloc(i64 1024)
@@ -23,7 +23,7 @@ import "C"
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   %3 = getelementptr inbounds { ptr }, ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %0, ptr %3, align 8
-// CHECK-NEXT:   %4 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testgo/cgodefer.main$1", ptr undef }, ptr %2, 1
+// CHECK-NEXT:   %4 = insertvalue { ptr, ptr } { ptr @"main.main$1", ptr undef }, ptr %2, 1
 // CHECK-NEXT:   %5 = extractvalue { ptr, ptr } %4, 1
 // CHECK-NEXT:   %6 = extractvalue { ptr, ptr } %4, 0
 // CHECK-NEXT:   %7 = call { ptr, ptr } %6(ptr %5)
@@ -37,7 +37,7 @@ import "C"
 // CHECK-NEXT:   %13 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 2
 // CHECK-NEXT:   store ptr %8, ptr %13, align 8
 // CHECK-NEXT:   %14 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 3
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/cgodefer.main", %_llgo_2), ptr %14, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_2), ptr %14, align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %10)
 // CHECK-NEXT:   %15 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 1
 // CHECK-NEXT:   %16 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 3
@@ -52,7 +52,7 @@ import "C"
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/cgodefer.main", %_llgo_3), ptr %16, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %16, align 8
 // CHECK-NEXT:   %21 = load i64, ptr %15, align 8
 // CHECK-NEXT:   %22 = load ptr, ptr %18, align 8
 // CHECK-NEXT:   %23 = icmp ne ptr %22, null
@@ -72,11 +72,11 @@ import "C"
 // CHECK-NEXT:   %28 = getelementptr inbounds { ptr, i64, { ptr, ptr } }, ptr %25, i32 0, i32 2
 // CHECK-NEXT:   store { ptr, ptr } %7, ptr %28, align 8
 // CHECK-NEXT:   store ptr %25, ptr %18, align 8
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/cgodefer.main", %_llgo_6), ptr %17, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_6), ptr %17, align 8
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store ptr blockaddress(@"{{.*}}/cl/_testgo/cgodefer.main", %_llgo_3), ptr %17, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %17, align 8
 // CHECK-NEXT:   %29 = load ptr, ptr %16, align 8
 // CHECK-NEXT:   indirectbr ptr %29, [label %_llgo_3, label %_llgo_2]
 // CHECK-EMPTY:
@@ -103,7 +103,7 @@ import "C"
 // CHECK-NEXT:   indirectbr ptr %38, [label %_llgo_3, label %_llgo_6]
 // CHECK-NEXT: }
 func main() {
-	// CHECK-LABEL: define { ptr, ptr } @"{{.*}}/cl/_testgo/cgodefer.main$1"(ptr %0){{.*}} {
+	// CHECK-LABEL: define { ptr, ptr } @"main.main$1"(ptr %0){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 	// CHECK-NEXT:   %2 = load { ptr }, ptr %0, align 8
@@ -113,11 +113,11 @@ func main() {
 	// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 	// CHECK-NEXT:   %6 = getelementptr inbounds { ptr }, ptr %5, i32 0, i32 0
 	// CHECK-NEXT:   store ptr %1, ptr %6, align 8
-	// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } { ptr @"{{.*}}/cl/_testgo/cgodefer.main$1$1", ptr undef }, ptr %5, 1
+	// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } { ptr @"main.main$1$1", ptr undef }, ptr %5, 1
 	// CHECK-NEXT:   ret { ptr, ptr } %7
 	// CHECK-NEXT: }
 	p := C.malloc(1024)
-	// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/cgodefer.main$1$1"(ptr %0){{.*}} {
+	// CHECK-LABEL: define void @"main.main$1$1"(ptr %0){{.*}} {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
 	// CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
@@ -125,7 +125,7 @@ func main() {
 	// CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_Pointer, ptr undef }, ptr %3, 1
 	// CHECK-NEXT:   %5 = extractvalue { ptr } %1, 0
 	// CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
-	// CHECK-NEXT:   %7 = call [0 x i8] @"{{.*}}/cl/_testgo/cgodefer._Cfunc_free"(ptr %6)
+	// CHECK-NEXT:   %7 = call [0 x i8] @main._Cfunc_free(ptr %6)
 	// CHECK-NEXT:   ret void
 	// CHECK-NEXT: }
 	defer C.free(p)

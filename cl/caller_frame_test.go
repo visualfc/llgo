@@ -984,23 +984,20 @@ func helper() {}
 	}
 }
 
-// Display names follow gc's reporting conventions regardless of the module
-// path; linker symbols are untouched.
+// Anonymous function display names follow gc's reporting convention; linker
+// symbols are untouched.
 func TestFuncInfoDisplayName(t *testing.T) {
-	mainPkg := types.NewPackage("example.com/cmd", "main")
-	libPkg := types.NewPackage("example.com/lib", "lib")
 	cases := []struct {
-		pkg      *types.Package
 		in, want string
 	}{
-		{mainPkg, "example.com/cmd.main", "main.main"},
-		{mainPkg, "example.com/cmd.main$2", "main.main.func2"},
-		{mainPkg, "other/path.f", "other/path.f"},
-		{libPkg, "example.com/lib.f$1", "example.com/lib.f.func1"},
-		{nil, "plain.f$x", "plain.f$x"},
+		{"main.main", "main.main"},
+		{"main.main$2", "main.main.func2"},
+		{"other/path.f", "other/path.f"},
+		{"example.com/lib.f$1", "example.com/lib.f.func1"},
+		{"plain.f$x", "plain.f$x"},
 	}
 	for _, c := range cases {
-		if got := funcInfoDisplayName(c.pkg, c.in); got != c.want {
+		if got := funcInfoDisplayName(c.in); got != c.want {
 			t.Fatalf("funcInfoDisplayName(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}

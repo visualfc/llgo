@@ -52,6 +52,9 @@ import (
 type Pool struct {
 	noCopy noCopy
 
+	// Keep the standard-library field sequence: the overlay is compiled
+	// against the exported sync.Pool type data even though LLGo's 1:1 backend
+	// uses one dynamically allocated TLS local rather than a [P] array.
 	local     unsafe.Pointer // local fixed-size per-P pool, actual type is [P]poolLocal
 	localSize uintptr        // size of the local array
 
@@ -116,9 +119,9 @@ func (p *Pool) Get() any {
 	return x
 }
 
-// pin pins the current goroutine to P, disables preemption and
-// returns poolLocal pool for the P and the P's id.
-// Caller must call runtime_procUnpin() when done with the pool.
+// pin returns the Pool cache for the current execution resource. LLGo's
+// current 1:1 P/M/thread binding lets the dynamic pthread TLS slot model the
+// per-P lifetime; the returned P id is therefore always zero.
 func (p *Pool) pin() (*poolLocal, int) {
 	// Check whether p is nil to get a panic.
 	// Otherwise the nil dereference happens while the m is pinned,

@@ -1,0 +1,102 @@
+name: Baseline benchmarks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: benchmark (${{ matrix.display }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            id: linux
+            display: Linux
+          - os: macos-latest
+            id: macos
+            display: macOS
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      GOMAXPROCS: "2"
+      LLGO_ROOT: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+
+      - name: Build LLGo
+        run: |
+          set -euo pipefail
+          mkdir -p .benchmark
+          go build -p=1 -o .benchmark/llgo ./cmd/llgo
+
+      - name: Measure programs
+        run: |
+          set -euo pipefail
+          go run ./benchmark/baseline \
+            -llgo "$GITHUB_WORKSPACE/.benchmark/llgo" \
+            -out "$GITHUB_WORKSPACE/.benchmark/results"
+
+      - name: Run selected Go benchmarks
+        run: |
+          set -euo pipefail
+          results="$GITHUB_WORKSPACE/.benchmark/results/go.txt"
+          GOMAXPROCS=1 go test \
+            -run '^$' \
+            -bench '^(BenchmarkMergeCompilerFlags|BenchmarkMergeLinkerFlags|BenchmarkLookupPCRandom)$' \
+            -benchtime=250ms \
+            -count=1 \
+            -cpu=1 \
+            ./internal/clang ./internal/build/funcinfo \
+            | tee "$results"
+
+          GOMAXPROCS=1 "$GITHUB_WORKSPACE/.benchmark/llgo" test \
+            -run '^$' \
+            -bench '^(BenchmarkRuntimeGetG|BenchmarkGlobal(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
+            -benchtime=250ms \
+            -count=1 \
+            ./test/llgoext \
+            | tee -a "$results"
+
+          # The current native backend creates one pthread per goroutine and
+          # intentionally has a bounded lifecycle stress limit. Keep creation
+          # monitoring deterministic instead of letting testing auto-calibrate
+          # to millions of host threads.
+          GOMAXPROCS=1 "$GITHUB_WORKSPACE/.benchmark/llgo" test \
+            -run '^$' \
+            -bench '^BenchmarkGoroutine$' \
+            -benchtime=100x \
+            -count=1 \
+            ./test/llgoext \
+            | tee -a "$results"
+
+      - name: Validate and export benchmark artifact
+        run: |
+          go run ./benchmark/baseline \
+            -mode export \
+            -out .benchmark/results \
+            -benchmark-output .benchmark/results/benchmark.txt
+
+      - name: Record benchmark result
+        uses: xgo-dev/setup-benchmark-go-action@v1
+        with:
+          config: .github/llgo-benchmark.yml
+          benchmark-file: .benchmark/results/benchmark.txt
+          platform-id: ${{ matrix.id }}
+          platform-label: ${{ matrix.display }}

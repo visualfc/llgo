@@ -5,7 +5,6 @@ package runtime
 import (
 	c "github.com/goplus/llgo/runtime/internal/clite"
 	"github.com/goplus/llgo/runtime/internal/clite/debug"
-	"github.com/goplus/llgo/runtime/internal/clite/pthread"
 )
 
 var (
@@ -41,6 +40,7 @@ func Rethrow(link *Defer) {
 			fatal("no goroutines (main called runtime.Goexit) - deadlock!")
 			c.Exit(2)
 		}
-		pthread.Exit(nil)
+		leaveCurrentLocalContext()
+		exitCurrentM()
 	}
 }

@@ -603,6 +603,61 @@ var _ = 0 // ERROR "mantissa requires a 'p' exponent"
 	}
 }
 
+func TestCheckExpectedErrorsDiscardsPairedMissingCommaDiagnostics(t *testing.T) {
+	tests := []struct {
+		name      string
+		source    string
+		line      int
+		primary   string
+		secondary string
+	}{
+		{
+			name: "composite literal",
+			source: `package p
+var _ = []int{
+	3 // ERROR "need trailing comma before newline in composite literal|possibly missing comma or }"
+}
+`,
+			line:      3,
+			primary:   "syntax error: unexpected newline in composite literal; possibly missing comma or }",
+			secondary: "missing ',' before newline in composite literal",
+		},
+		{
+			name: "parameter list",
+			source: `package p
+func f(x int /* // GC_ERROR "unexpected newline"
+
+*/) // GCCGO_ERROR "expected .*\).*|expected declaration"
+`,
+			line:      2,
+			primary:   "syntax error: unexpected newline in parameter list; possibly missing comma or )",
+			secondary: "missing ',' before newline in parameter list",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "case.go")
+			if err := os.WriteFile(file, []byte(tt.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			output := fmt.Sprintf("%s:%d: %s\n%s:%d: %s\n", file, tt.line, tt.primary, file, tt.line, tt.secondary)
+			if err := checkExpectedErrors(output, file, "case.go"); err != nil {
+				t.Fatal(err)
+			}
+			if err := checkExpectedErrors(fmt.Sprintf("%s:%d: %s\n", file, tt.line, tt.secondary), file, "case.go"); err == nil {
+				t.Fatal("secondary diagnostic passed without its primary")
+			}
+			wrongLine := fmt.Sprintf("%s:%d: %s\n%s:%d: %s\n", file, tt.line, tt.primary, file, tt.line+1, tt.secondary)
+			if err := checkExpectedErrors(wrongLine, file, "case.go"); err == nil || !strings.Contains(err.Error(), tt.secondary) {
+				t.Fatalf("secondary diagnostic on another line was discarded: %v", err)
+			}
+			if got := parserRecoverySecondaries(tt.primary + "."); got != nil {
+				t.Fatalf("near-match primary activated parser recovery: %v", got)
+			}
+		})
+	}
+}
+
 func TestCheckExpectedErrorsKeepsUnrelatedDiagnostics(t *testing.T) {
 	tests := []struct {
 		name   string

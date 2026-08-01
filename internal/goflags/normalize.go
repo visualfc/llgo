@@ -28,8 +28,16 @@ func normalizeBuildFlags(args []string) ([]string, error) {
 	ret := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "-dbg" || arg == "--dbg" {
-			return nil, fmt.Errorf("%s was removed; use -ldflags=-w=false", arg)
+		if value, hasValue, ok := buildParallelFlag(arg); ok {
+			if !hasValue {
+				if i+1 == len(args) {
+					return nil, fmt.Errorf("-p requires a value")
+				}
+				i++
+				value = args[i]
+			}
+			ret = append(ret, "-p="+value)
+			continue
 		}
 		name, value, hasValue, ok := argumentListBuildFlag(arg)
 		if !ok {
@@ -46,6 +54,19 @@ func normalizeBuildFlags(args []string) ([]string, error) {
 		ret = append(ret, "-"+name+"="+value)
 	}
 	return ret, nil
+}
+
+func buildParallelFlag(arg string) (value string, hasValue, ok bool) {
+	trimmed := strings.TrimPrefix(arg, "-")
+	trimmed = strings.TrimPrefix(trimmed, "-")
+	if trimmed == arg || trimmed == "" {
+		return "", false, false
+	}
+	name, value, hasValue := strings.Cut(trimmed, "=")
+	if name != "p" {
+		return "", false, false
+	}
+	return value, hasValue, true
 }
 
 func argumentListBuildFlag(arg string) (name, value string, hasValue, ok bool) {

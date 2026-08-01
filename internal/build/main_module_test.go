@@ -4,6 +4,8 @@
 package build
 
 import (
+	"go/token"
+	"go/types"
 	"strings"
 	"testing"
 
@@ -97,9 +99,14 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 			mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true})
 			ir := mod.LPkg.String()
 			checks := []string{
-				"@llvm.global_ctors = appending global",
 				"define internal void @__llgo_runtime_ctor()",
 				"call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()",
+				"call void @\"example.com/foo.init\"()",
+			}
+			if mode == BuildModeCShared {
+				checks = append(checks, `@__llgo_runtime_ctor_init = hidden constant ptr @__llgo_runtime_ctor, section ".init_array"`)
+			} else {
+				checks = append(checks, "@llvm.global_ctors = appending global")
 			}
 			for _, want := range checks {
 				if !strings.Contains(ir, want) {
@@ -111,6 +118,72 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenMainModuleTestLibraryDefersMainInit(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	for _, mode := range []BuildMode{BuildModeCArchive, BuildModeCShared} {
+		t.Run(string(mode), func(t *testing.T) {
+			ctx := &context{
+				prog: llssa.NewProgram(nil),
+				mode: ModeTest,
+				buildConf: &Config{
+					Mode:      ModeTest,
+					BuildMode: mode,
+					Goos:      "linux",
+					Goarch:    "amd64",
+				},
+			}
+			pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+			mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true})
+			ir := mod.LPkg.String()
+			if !strings.Contains(ir, "call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()") {
+				t.Fatalf("test library constructor missing runtime init:\n%s", ir)
+			}
+			if strings.Contains(ir, "call void @\"example.com/foo.init\"()") {
+				t.Fatalf("test library constructor initialized test main before the C runner supplied argc/argv:\n%s", ir)
+			}
+		})
+	}
+}
+
+func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	prog := llssa.NewProgram(nil)
+	runtimePkg := types.NewPackage(llssa.PkgRuntime, "runtime")
+	contextName := types.NewTypeName(token.NoPos, runtimePkg, "LocalContext", nil)
+	contextType := types.NewNamed(contextName, types.NewStruct(nil, nil), nil)
+	runtimePkg.Scope().Insert(contextName)
+	contextPointer := types.NewPointer(contextType)
+	enterParams := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer))
+	enterResults := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]))
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "EnterLocalContext", types.NewSignatureType(nil, nil, nil, enterParams, enterResults, false)))
+	leaveParams := types.NewTuple(
+		types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer),
+		types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]),
+	)
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "LeaveLocalContext", types.NewSignatureType(nil, nil, nil, leaveParams, nil, false)))
+	prog.SetRuntime(runtimePkg)
+	prog.SetLocalityInfo("example.com/state.Value", llssa.LocalityInfo{Locality: llssa.GoroutineLocal})
+	prog.SetLocalStorage("example.com/state.Value", llssa.LocalStoragePackage)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "linux",
+			Goarch:    "amd64",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{}).LPkg.String()
+	assertInOrder(t, ir,
+		"EnterLocalContext",
+		`call void @"example.com/foo.init"()`,
+		`call void @"example.com/foo.main"()`,
+		"LeaveLocalContext",
+	)
 }
 
 func assertInOrder(t *testing.T, s string, wants ...string) {

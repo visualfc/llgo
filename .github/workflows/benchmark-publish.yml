@@ -1,0 +1,26 @@
+name: Publish baseline benchmarks
+
+on:
+  workflow_run:
+    workflows: [Baseline benchmarks]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  publish:
+    if: github.event.workflow_run.conclusion == 'success'
+    uses: xgo-dev/setup-benchmark-go-action/.github/workflows/publish.yml@v1
+    with:
+      run_id: ${{ github.event.workflow_run.id }}
+      config_path: .github/llgo-benchmark.yml
+      data_repository: >-
+        ${{ vars.BENCHMARKS_REPOSITORY ||
+            format('{0}/llgo-benchmark-data', github.repository_owner) }}
+      data_dispatch_event: llgo-baseline-published
+    secrets:
+      data_token: ${{ secrets.BENCHMARK_DATA_TOKEN }}

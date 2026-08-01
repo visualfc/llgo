@@ -6,6 +6,14 @@ import "unsafe"
 
 // Minimal synctest stubs for llgo.
 
+//go:linkname synctest_run internal/synctest.Run
+func synctest_run(f func()) {
+	f()
+}
+
+//go:linkname synctest_wait internal/synctest.Wait
+func synctest_wait() {}
+
 //go:linkname synctest_isInBubble internal/synctest.IsInBubble
 func synctest_isInBubble() bool {
 	return false

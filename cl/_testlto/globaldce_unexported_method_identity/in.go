@@ -10,10 +10,10 @@ import (
 // CHECK-DAG: !"go.method.github.com/goplus/llgo/cl/_testlto/globaldce_unexported_method_identity/other.hidden:func() int"
 // CHECK-DAG: !"go.method.github.com/goplus/llgo/cl/_testlto/globaldce_unexported_method_identity.hidden:func() int"
 // SYMBOL-NOT: globaldce_unexported_method_identity/other{{.*}}Other{{.*}}hidden
-// SYMBOL-NOT: globaldce_unexported_method_identity{{.*}}Local{{.*}}hidden
+// SYMBOL-NOT: main{{.*}}Local{{.*}}hidden
 // SYMBOL-DAG: globaldce_unexported_method_identity/base{{.*}}Exported{{.*}}hidden
 // SYMBOL-NOT: globaldce_unexported_method_identity/other{{.*}}Other{{.*}}hidden
-// SYMBOL-NOT: globaldce_unexported_method_identity{{.*}}Local{{.*}}hidden
+// SYMBOL-NOT: main{{.*}}Local{{.*}}hidden
 
 type Combined struct {
 	base.Exported

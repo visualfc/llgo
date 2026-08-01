@@ -302,16 +302,17 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 	i64Type := llvmCtx.Int64Type()
 	countType := llvmCtx.IntType(ctx.prog.PointerSize() * 8)
 	recordType := llvmCtx.StructType([]llvm.Type{
-		i16Type,
-		i16Type,
-		i16Type,
-		i16Type,
-		i16Type,
-		i16Type,
+		i32Type,
+		i32Type,
+		i32Type,
+		i32Type,
+		i32Type,
+		i32Type,
 		i32Type,
 	}, false)
 	pcLineRecordType := llvmCtx.StructType([]llvm.Type{
 		i64Type,
+		i32Type,
 		i32Type,
 		i32Type,
 		i32Type,
@@ -437,12 +438,12 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 	values := make([]llvm.Value, 0, len(encoded.Records))
 	for _, rec := range encoded.Records {
 		values = append(values, llvm.ConstNamedStruct(recordType, []llvm.Value{
-			llvm.ConstInt(i16Type, uint64(rec.SymbolPkg), false),
-			llvm.ConstInt(i16Type, uint64(rec.SymbolName), false),
-			llvm.ConstInt(i16Type, uint64(rec.NamePkg), false),
-			llvm.ConstInt(i16Type, uint64(rec.NameName), false),
-			llvm.ConstInt(i16Type, uint64(rec.FileRoot), false),
-			llvm.ConstInt(i16Type, uint64(rec.FileName), false),
+			llvm.ConstInt(i32Type, uint64(rec.SymbolPkg), false),
+			llvm.ConstInt(i32Type, uint64(rec.SymbolName), false),
+			llvm.ConstInt(i32Type, uint64(rec.NamePkg), false),
+			llvm.ConstInt(i32Type, uint64(rec.NameName), false),
+			llvm.ConstInt(i32Type, uint64(rec.FileRoot), false),
+			llvm.ConstInt(i32Type, uint64(rec.FileName), false),
 			llvm.ConstInt(i32Type, uint64(rec.Line), false),
 		}))
 	}
@@ -459,7 +460,8 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 		pcLineValues = append(pcLineValues, llvm.ConstNamedStruct(pcLineRecordType, []llvm.Value{
 			llvm.ConstInt(i64Type, rec.ID, false),
 			llvm.ConstInt(i32Type, uint64(rec.Func), false),
-			llvm.ConstInt(i32Type, uint64(rec.File), false),
+			llvm.ConstInt(i32Type, uint64(rec.FileRoot), false),
+			llvm.ConstInt(i32Type, uint64(rec.FileName), false),
 			llvm.ConstInt(i32Type, uint64(rec.Line), false),
 		}))
 	}

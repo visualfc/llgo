@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -136,6 +137,53 @@ func TestCallerAcceptancePanicTraceback(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("panic traceback missing %q:\n%s", want, out)
 		}
+	}
+}
+
+// Scenario: the FP walker starts from a live caller frame even when O0 and
+// DWARF make the C helper's returned stack slot easy to overwrite.
+const shallowPanicAcceptanceProbe = `package main
+
+import "runtime"
+
+//go:noinline
+func panicSite() {
+	panic("shallow-panic")
+}
+
+func main() {
+	_ = runtime.NumCPU()
+	panicSite()
+}
+`
+
+func TestCallerAcceptanceShallowPanicBuildModes(t *testing.T) {
+	_, dir := prepareCallerAcceptanceProbe(t, shallowPanicAcceptanceProbe)
+	for _, test := range []struct {
+		name string
+		args []string
+	}{
+		{name: "O0_DWARF", args: []string{"-O0", "-ldflags=-w=false"}},
+		{name: "O0_no_DWARF", args: []string{"-O0", "-ldflags=-w"}},
+		{name: "O2_DWARF", args: []string{"-O2", "-ldflags=-w=false"}},
+		{name: "O2_no_DWARF", args: []string{"-O2", "-ldflags=-w"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			out, err := runLLGoProbeWithFlags(t, dir, test.args...)
+			if err == nil {
+				t.Fatalf("panic probe unexpectedly succeeded:\n%s", out)
+			}
+			for _, want := range []string{
+				"panic: shallow-panic",
+				"goroutine 1 [running]:",
+				"main.panicSite(...)",
+				"main.main(...)",
+			} {
+				if !strings.Contains(out, want) {
+					t.Fatalf("panic traceback missing %q:\n%s", want, out)
+				}
+			}
+		})
 	}
 }
 
@@ -331,9 +379,15 @@ func markerLineOf(t *testing.T, source, marker string) string {
 
 func runLLGoProbe(t *testing.T, dir string) (string, error) {
 	t.Helper()
+	return runLLGoProbeWithFlags(t, dir)
+}
+
+func runLLGoProbeWithFlags(t *testing.T, dir string, flags ...string) (string, error) {
+	t.Helper()
 	repoRoot := findStringConversionRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
-	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", filepath.Join(dir, "main.go"))
+	args := append([]string{"run", "./cmd/llgo", "run", "-a"}, flags...)
+	cmd := exec.Command("go", append(args, filepath.Join(dir, "main.go"))...)
 	cmd.Dir = repoRoot
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -422,6 +476,7 @@ func TestCallerAcceptanceCFaultRecover(t *testing.T) {
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	_ "unsafe"
 )
 
@@ -437,7 +492,7 @@ func viaGo() {
 	cexcSegv(2)
 }
 
-func main() {
+func one(last bool) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -448,9 +503,21 @@ func main() {
 		if !ok || err.Error() != "runtime error: invalid memory address or nil pointer dereference" {
 			panic(r)
 		}
-		os.Stdout.WriteString("CFAULT_OK\n")
+		if last {
+			os.Stdout.WriteString("CFAULT_OK\n")
+			os.Stdout.Write(debug.Stack())
+		}
 	}()
 	viaGo()
+}
+
+func main() {
+	// Three sequential faults: a handler that leaves the signal blocked
+	// after the longjmp escape (savemask=0 jmpbufs) survives the first
+	// fault and core-dumps on the second — the exact CI failure mode.
+	one(false)
+	one(false)
+	one(true)
 }
 `
 	const csrc = `#include <stdint.h>
@@ -460,9 +527,11 @@ func main() {
 static int32_t *volatile cexc_null;
 volatile int32_t cexc_marks;
 
-static void cexc_leaf(void) { *cexc_null = 42; }
+/* Non-static: the fault-chain tail cut keeps frames dladdr can name;
+ * static helpers have no symbol and would end the visible chain. */
+void cexc_leaf(void) { *cexc_null = 42; }
 
-static void cexc_mid(int32_t depth) {
+void cexc_mid(int32_t depth) {
 	if (depth > 0) {
 		cexc_mid(depth - 1);
 		cexc_marks++;
@@ -488,6 +557,20 @@ void cexc_segv(int32_t depth) {
 	}
 	if !strings.Contains(out, "CFAULT_OK") {
 		t.Fatalf("C fault probe missing marker:\n%s", out)
+	}
+	// The fault-site chain must be visible from the recovered deferred
+	// function. C frame names come from dladdr, which on linux only sees
+	// dynamic symbols — there the C frames show as raw pcs and only the
+	// Go side of the chain is asserted (foreign-symbol naming is the
+	// planned link-phase hole-sentinel follow-up).
+	wants := []string{"main.viaGo", "main.main"}
+	if runtime.GOOS == "darwin" {
+		wants = append(wants, "cexc_segv")
+	}
+	for _, want := range wants {
+		if !strings.Contains(out, want) {
+			t.Fatalf("recovered stack missing fault frame %q:\n%s", want, out)
+		}
 	}
 }
 

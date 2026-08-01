@@ -9,10 +9,10 @@ import (
 // CHECK: @5 = private unnamed_addr constant [4 x i8] c"demo", align 1
 // CHECK: @6 = private unnamed_addr constant [5 x i8] c"hello", align 1
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/funcdecl.check"({ ptr, ptr } %0){{.*}} {
+// CHECK-LABEL: define void @main.check({ ptr, ptr } %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store { ptr, ptr } { ptr @"__llgo_stub.{{.*}}/cl/_testrt/funcdecl.demo", ptr null }, ptr %1, align 8
+// CHECK-NEXT:   store { ptr, ptr } { ptr @__llgo_stub.main.demo, ptr null }, ptr %1, align 8
 // CHECK-NEXT:   %2 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$b7Su1hWaFih-M0M9hMk6nO_RD1K_GQu5WjIXQp6Q2e8", ptr undef }, ptr %1, 1
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { ptr, ptr } %0, ptr %3, align 8
@@ -48,10 +48,10 @@ import (
 // CHECK-NEXT:   %15 = extractvalue { ptr, ptr } %12, 0
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr %15)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @"{{.*}}/cl/_testrt/funcdecl.demo")
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr @main.demo)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   %16 = call ptr @"{{.*}}/cl/_testrt/funcdecl.closurePtr"(%"{{.*}}/runtime/internal/runtime.eface" %2)
-// CHECK-NEXT:   %17 = call ptr @"{{.*}}/cl/_testrt/funcdecl.closurePtr"(%"{{.*}}/runtime/internal/runtime.eface" %4)
+// CHECK-NEXT:   %16 = call ptr @main.closurePtr(%"{{.*}}/runtime/internal/runtime.eface" %2)
+// CHECK-NEXT:   %17 = call ptr @main.closurePtr(%"{{.*}}/runtime/internal/runtime.eface" %4)
 // CHECK-NEXT:   %18 = icmp eq ptr %16, %17
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintBool"(i1 %18)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
@@ -71,11 +71,11 @@ func check(fn func()) {
 	println(closurePtr(a) == closurePtr(b))
 }
 
-// CHECK-LABEL: define ptr @"{{.*}}/cl/_testrt/funcdecl.closurePtr"(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
+// CHECK-LABEL: define ptr @main.closurePtr(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.eface" %0, ptr %1, align 8
-// CHECK-NEXT:   %2 = getelementptr inbounds %"{{.*}}/cl/_testrt/funcdecl.rtype", ptr %1, i32 0, i32 1
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.rtype, ptr %1, i32 0, i32 1
 // CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
 // CHECK-NEXT:   %4 = getelementptr inbounds { ptr, ptr }, ptr %3, i32 0, i32 0
 // CHECK-NEXT:   %5 = load ptr, ptr %4, align 8
@@ -94,20 +94,20 @@ type rtype struct {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/funcdecl.demo"(){{.*}} {
+// CHECK-LABEL: define void @main.demo(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/funcdecl.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testrt/funcdecl.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testrt/funcdecl.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -118,11 +118,11 @@ func demo() {
 	println("demo")
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testrt/funcdecl.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testrt/funcdecl.check"({ ptr, ptr } { ptr @"__llgo_stub.{{.*}}/cl/_testrt/funcdecl.demo", ptr null })
+// CHECK-NEXT:   call void @main.check({ ptr, ptr } { ptr @__llgo_stub.main.demo, ptr null })
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -131,8 +131,8 @@ func main() {
 	check(demo)
 }
 
-// CHECK-LABEL: define linkonce void @"__llgo_stub.{{.*}}/cl/_testrt/funcdecl.demo"(ptr %0){{.*}} {
+// CHECK-LABEL: define linkonce void @__llgo_stub.main.demo(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   tail call void @"{{.*}}/cl/_testrt/funcdecl.demo"()
+// CHECK-NEXT:   tail call void @main.demo()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

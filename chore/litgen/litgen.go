@@ -23,9 +23,11 @@ import (
 	"path/filepath"
 
 	"github.com/goplus/llgo/internal/littest"
+	"github.com/goplus/llgo/xtool/env/llvm"
 )
 
 func main() {
+	llvm.SetupPath()
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s <file-or-dir> [<file-or-dir>...]\n", filepath.Base(os.Args[0]))
 		flag.PrintDefaults()

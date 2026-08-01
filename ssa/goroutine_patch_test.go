@@ -53,6 +53,29 @@ func TestGoClosureStartupUsesGCManagedMemory(t *testing.T) {
 	if got := strings.Count(ir, `"github.com/goplus/llgo/runtime/internal/runtime.AllocU"`); got < 1 {
 		t.Fatalf("expected closure ctx to use AllocU, got %d:\n%s", got, ir)
 	}
+	if strings.Contains(ir, "EnterLocalContext") {
+		t.Fatalf("program without context-backed locals paid locality entry cost:\n%s", ir)
+	}
+}
+
+func TestGoInstallsContextForContextBackedLocals(t *testing.T) {
+	prog := ssatest.NewProgram(t, nil)
+	prog.SetLocalityInfo("example.com/state.Value", ssa.LocalityInfo{Locality: ssa.GoroutineLocal})
+	prog.SetLocalStorage("example.com/state.Value", ssa.LocalStoragePackage)
+	pkg := prog.NewPackage("bar", "foo/bar")
+	outer := pkg.NewFunc("outer", ssa.NoArgsNoRet, ssa.InGo)
+	b := outer.MakeBody(1)
+	b.Go(ssa.Nil, func(b ssa.Builder, _ ssa.Expr, args ...ssa.Expr) ssa.Expr {
+		return ssa.Expr{}
+	})
+	b.Return()
+
+	ir := pkg.String()
+	for _, want := range []string{"LocalContext", "EnterLocalContext", "LeaveLocalContext"} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("goroutine wrapper missing %q:\n%s", want, ir)
+		}
+	}
 }
 
 func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {
@@ -82,7 +105,7 @@ func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {
 	}
 }
 
-func TestGoUsesPthreadAttrForDetachedStack(t *testing.T) {
+func TestGoPassesConfiguredStackSizeToRuntime(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	prog.SetPthreadStackSize(32 << 20)
 	pkg := prog.NewPackage("bar", "foo/bar")
@@ -95,24 +118,18 @@ func TestGoUsesPthreadAttrForDetachedStack(t *testing.T) {
 	ob.Return()
 
 	ir := pkg.String()
-	initAttr := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.InitThreadAttrWithStack"`)
-	createThread := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.CreateThread"`)
-	destroyAttr := strings.Index(ir, `"github.com/goplus/llgo/runtime/internal/runtime.DestroyThreadAttr"`)
-	if initAttr < 0 || createThread < 0 || destroyAttr < 0 {
-		t.Fatalf("goroutine should initialize, use, and destroy pthread attrs:\n%s", ir)
-	}
-	if !(initAttr < createThread && createThread < destroyAttr) {
-		t.Fatalf("pthread attr calls should wrap CreateThread:\n%s", ir)
+	if !strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.NewProc"`) {
+		t.Fatalf("goroutine should delegate startup to the runtime:\n%s", ir)
 	}
 	if !strings.Contains(ir, "33554432") {
-		t.Fatalf("goroutine should pass configured pthread stack size:\n%s", ir)
+		t.Fatalf("goroutine should pass the configured stack size:\n%s", ir)
 	}
-	if strings.Contains(ir, "llgo_pthread_create_detached") {
-		t.Fatalf("goroutine should not call detached C wrapper:\n%s", ir)
+	if strings.Contains(ir, "pthread") {
+		t.Fatalf("compiler IR should not depend on the pthread backend:\n%s", ir)
 	}
 }
 
-func TestGoUsesPthreadAttrWithoutStackByDefault(t *testing.T) {
+func TestGoPassesZeroStackSizeToRuntimeByDefault(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	pkg := prog.NewPackage("bar", "foo/bar")
 
@@ -124,10 +141,10 @@ func TestGoUsesPthreadAttrWithoutStackByDefault(t *testing.T) {
 	ob.Return()
 
 	ir := pkg.String()
-	if !strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.InitThreadAttr"`) {
-		t.Fatalf("goroutine should initialize pthread attrs:\n%s", ir)
+	if !strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.NewProc"`) {
+		t.Fatalf("goroutine should delegate startup to the runtime:\n%s", ir)
 	}
-	if strings.Contains(ir, `"github.com/goplus/llgo/runtime/internal/runtime.InitThreadAttrWithStack"`) {
-		t.Fatalf("default goroutine should not request custom pthread stack size:\n%s", ir)
+	if strings.Contains(ir, "pthread") {
+		t.Fatalf("compiler IR should not depend on the pthread backend:\n%s", ir)
 	}
 }

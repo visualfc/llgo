@@ -51,6 +51,7 @@ func NewConfig(cc string, ccflags, cflags, ldflags []string, linker string) Conf
 type Cmd struct {
 	app     string
 	config  Config
+	Dir     string
 	Env     []string
 	Verbose bool
 	Stdin   io.Reader
@@ -158,6 +159,7 @@ func (c *Cmd) mergeLinkerFlags() []string {
 // exec executes the clang command with given arguments.
 func (c *Cmd) exec(args ...string) error {
 	cmd := exec.Command(c.app, args...)
+	cmd.Dir = c.Dir
 	if c.Verbose {
 		fmt.Fprintf(os.Stderr, "%v\n", cmd)
 	}

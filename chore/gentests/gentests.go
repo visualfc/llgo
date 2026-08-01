@@ -27,10 +27,12 @@ import (
 	"github.com/goplus/llgo/internal/littest"
 	"github.com/goplus/llgo/internal/llgen"
 	"github.com/goplus/llgo/internal/lto"
+	"github.com/goplus/llgo/xtool/env/llvm"
 	"github.com/goplus/mod"
 )
 
 func main() {
+	llvm.SetupPath()
 	dir, _, err := mod.FindGoMod(".")
 	check(err)
 

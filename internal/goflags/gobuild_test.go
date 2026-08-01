@@ -50,15 +50,19 @@ func TestApplyBuildFlagsNormalizesNativeSpellings(t *testing.T) {
 	}
 }
 
-func TestApplyBuildFlagsMissingArgumentListValueIsAtomic(t *testing.T) {
-	conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
-	want := *conf
-	want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
-	if err := ApplyBuildFlags(conf, []string{"--ldflags"}); err == nil {
-		t.Fatal("ApplyBuildFlags succeeded, want error")
-	}
-	if !reflect.DeepEqual(*conf, want) {
-		t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+func TestApplyBuildFlagsMissingValueIsAtomic(t *testing.T) {
+	for _, arg := range []string{"--ldflags", "-p"} {
+		t.Run(arg, func(t *testing.T) {
+			conf := &build.Config{GoBuildFlags: []string{"-tags=existing"}}
+			want := *conf
+			want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
+			if err := ApplyBuildFlags(conf, []string{arg}); err == nil {
+				t.Fatal("ApplyBuildFlags succeeded, want error")
+			}
+			if !reflect.DeepEqual(*conf, want) {
+				t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+			}
+		})
 	}
 }
 
@@ -71,6 +75,38 @@ func TestApplyBuildFlagsInvalidLinkValueIsAtomic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*conf, want) {
 		t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+	}
+}
+
+func TestApplyBuildFlagsParallelism(t *testing.T) {
+	conf := &build.Config{}
+	if err := ApplyBuildFlags(conf, []string{"-p", "2", "--p=4"}); err != nil {
+		t.Fatal(err)
+	}
+	if conf.BuildParallelism != 4 {
+		t.Fatalf("BuildParallelism = %d, want 4", conf.BuildParallelism)
+	}
+	if want := []string{"-p=2", "-p=4"}; !reflect.DeepEqual(conf.GoBuildFlags, want) {
+		t.Fatalf("GoBuildFlags = %#v, want %#v", conf.GoBuildFlags, want)
+	}
+}
+
+func TestApplyBuildFlagsInvalidParallelismIsAtomic(t *testing.T) {
+	for _, value := range []string{"0", "-1", "nope"} {
+		t.Run(value, func(t *testing.T) {
+			conf := &build.Config{
+				GoBuildFlags:     []string{"-tags=existing"},
+				BuildParallelism: 3,
+			}
+			want := *conf
+			want.GoBuildFlags = append([]string(nil), conf.GoBuildFlags...)
+			if err := ApplyBuildFlags(conf, []string{"-p=" + value}); err == nil {
+				t.Fatalf("ApplyBuildFlags(-p=%s) succeeded, want error", value)
+			}
+			if !reflect.DeepEqual(*conf, want) {
+				t.Fatalf("configuration changed on error:\n got %+v\nwant %+v", *conf, want)
+			}
+		})
 	}
 }
 

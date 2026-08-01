@@ -3,9 +3,7 @@ name: Doc Link Checker
 on:
   push:
     branches:
-      - "**"
-      - "!dependabot/**"
-      - "!xgopilot/**"
+      - main
     paths:
       - "README.md"
   pull_request:

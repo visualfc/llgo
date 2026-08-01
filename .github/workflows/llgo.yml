@@ -6,9 +6,7 @@ name: LLGo
 on:
   push:
     branches:
-      - "**"
-      - "!dependabot/**"
-      - "!xgopilot/**"
+      - main
   pull_request:
     branches: ["**"]
 
@@ -125,11 +123,15 @@ jobs:
       - name: Show test result
         run: cat result.md
 
+      - name: Install LLDB for integration tests
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.lane == 'primary' }}
+        run: sudo apt-get install -y lldb-${{matrix.llvm}}
+
       - name: LLDB integration tests
-        if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
+        if: ${{ matrix.lane == 'primary' }}
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
-          bash _lldb/runtest.sh -v
+          bash cmd/llgo/lldbtest/runtest.sh -v
 
       - name: DWARF standard tests
         if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
@@ -138,7 +140,7 @@ jobs:
   test:
     name: test (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }}, shard ${{ matrix.shard }})
     continue-on-error: ${{ matrix.lane == 'compatibility' }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ startsWith(matrix.os, 'macos') && 45 || 30 }}
     strategy:
       matrix:
         # Keep compatibility and primary toolchains pinned to exact patches.
@@ -147,7 +149,9 @@ jobs:
           - ubuntu-latest
         llvm: [19]
         go: ["1.24.2", "1.26.5"]
-        shard: ["0", "1", "2", "3"]
+        # In-command package parallelism lets Ubuntu use two shards while
+        # retaining headroom for the serial std build-mode checks.
+        shard: ["0", "1"]
         include:
           - go: "1.24.2"
             lane: compatibility
@@ -156,13 +160,12 @@ jobs:
         exclude:
           # The full demo lane above exercises Go 1.24 user-project/runtime
           # compatibility on macOS. Keep the much larger per-package
-          # compatibility matrix on Ubuntu to avoid two redundant Mac shards.
+          # compatibility matrix on Ubuntu and use one parallel primary shard
+          # on macOS.
           - os: macos-latest
             go: "1.24.2"
           - os: macos-latest
-            shard: "2"
-          - os: macos-latest
-            shard: "3"
+            shard: "1"
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -193,7 +196,8 @@ jobs:
       - name: run llgo test
         env:
           SHARD_INDEX: ${{ matrix.shard }}
-          SHARD_TOTAL: ${{ startsWith(matrix.os, 'macos') && '2' || '4' }}
+          SHARD_TOTAL: ${{ startsWith(matrix.os, 'macos') && '1' || '2' }}
+          TEST_JOBS: ${{ startsWith(matrix.os, 'macos') && '3' || '4' }}
         run: |
           set -euo pipefail
 
@@ -216,13 +220,21 @@ jobs:
           fi
           printf '  %s\n' "${selected[@]}"
 
-          # Run per-package and print elapsed time to keep logs readable.
+          std_pkgs=()
           for pkg in "${selected[@]}"; do
-            echo "==> llgo test -timeout=20m -bench=^BenchmarkGo126 -benchtime=1x ${pkg}"
-            SECONDS=0
-            llgo test -timeout=20m -bench='^BenchmarkGo126' -benchtime=1x "${pkg}"
-            echo "==> done ${pkg} (${SECONDS}s)"
+            if [[ "${{ matrix.os }}" == ubuntu-latest && "${{ matrix.go }}" == 1.26.5 && "${pkg}" == */test/std/* ]]; then
+              std_pkgs+=("${pkg}")
+            fi
           done
+
+          echo "==> llgo test -p=${TEST_JOBS} (${#selected[@]} packages)"
+          SECONDS=0
+          llgo test -p="${TEST_JOBS}" -timeout=20m -bench='^BenchmarkGo126' -benchtime=1x "${selected[@]}"
+          echo "==> llgo test done (${SECONDS}s)"
+
+          if [[ "${#std_pkgs[@]}" -ne 0 ]]; then
+            dev/test_std_buildmodes.sh "${std_pkgs[@]}"
+          fi
 
   hello:
     name: hello (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
@@ -342,3 +354,42 @@ jobs:
 
           # Run the wasm binary using llgo_wasm
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
+
+  wasm-runtime:
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.24.2", "1.26.5"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Emscripten
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: "4.0.21"
+
+      - name: Set up Go for building llgo
+        uses: ./.github/actions/setup-go
+
+      - name: Install llgo
+        run: |
+          go install ./...
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Set up Go for testing
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{matrix.go}}
+
+      - name: Build standard runtime for wasm
+        shell: bash
+        run: |
+          GOOS=js GOARCH=wasm llgo build -o "$RUNNER_TEMP/runtime-js.wasm" ./internal/build/testdata/wasm-runtime
+          GOOS=wasip1 GOARCH=wasm llgo build -o "$RUNNER_TEMP/runtime-wasip1.wasm" ./internal/build/testdata/wasm-runtime
+          file "$RUNNER_TEMP/runtime-js.wasm" "$RUNNER_TEMP/runtime-wasip1.wasm"

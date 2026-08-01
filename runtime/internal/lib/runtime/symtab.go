@@ -141,12 +141,12 @@ func recordFrameSymbol(pc, offset uintptr, name string) {
 }
 
 type runtimeFuncInfoRecord struct {
-	symbolPkg  uint16
-	symbolName uint16
-	namePkg    uint16
-	nameName   uint16
-	fileRoot   uint16
-	fileName   uint16
+	symbolPkg  uint32
+	symbolName uint32
+	namePkg    uint32
+	nameName   uint32
+	fileRoot   uint32
+	fileName   uint32
 	line       uint32
 }
 
@@ -213,7 +213,8 @@ var runtimeFuncInfoStubSiteEnd *runtimeFuncInfoStubSiteRecord
 type runtimePCLineRecord struct {
 	id        uint64
 	funcIndex uint32
-	file      uint32
+	fileRoot  uint32
+	fileName  uint32
 	line      uint32
 }
 
@@ -378,7 +379,7 @@ func cStringAppend(dst []byte, cstr *c.Char) []byte {
 	}
 }
 
-func funcInfoCString(id uint16) *c.Char {
+func funcInfoCString(id uint32) *c.Char {
 	if runtimeFuncInfoStrings == nil || runtimeFuncInfoStringOffsets == nil ||
 		uintptr(id) >= runtimeFuncInfoStringCount {
 		return nil
@@ -432,7 +433,7 @@ func funcInfoSymbolEqual(rec *runtimeFuncInfoRecord, symbol string) bool {
 	return cStringCompare(name, symbol[pkgLen+1:]) == 0
 }
 
-func funcInfoJoinName(pkgID, nameID uint16) string {
+func funcInfoJoinName(pkgID, nameID uint32) string {
 	pkg := funcInfoCString(pkgID)
 	name := funcInfoCString(nameID)
 	pkgLen := cStringLen(pkg)
@@ -450,7 +451,7 @@ func funcInfoJoinName(pkgID, nameID uint16) string {
 	return string(buf)
 }
 
-func funcInfoNameLen(pkgID, nameID uint16) int {
+func funcInfoNameLen(pkgID, nameID uint32) int {
 	pkgLen := cStringLen(funcInfoCString(pkgID))
 	nameLen := cStringLen(funcInfoCString(nameID))
 	if pkgLen == 0 {
@@ -462,7 +463,7 @@ func funcInfoNameLen(pkgID, nameID uint16) int {
 	return pkgLen + 1 + nameLen
 }
 
-func appendFuncInfoName(dst []byte, pkgID, nameID uint16) []byte {
+func appendFuncInfoName(dst []byte, pkgID, nameID uint32) []byte {
 	pkg := funcInfoCString(pkgID)
 	name := funcInfoCString(nameID)
 	pkgLen := cStringLen(pkg)
@@ -478,7 +479,7 @@ func appendFuncInfoName(dst []byte, pkgID, nameID uint16) []byte {
 	return cStringAppend(dst, name)
 }
 
-func funcInfoJoinFile(rootID, nameID uint16) string {
+func funcInfoJoinFile(rootID, nameID uint32) string {
 	root := funcInfoCString(rootID)
 	name := funcInfoCString(nameID)
 	rootLen := cStringLen(root)
@@ -493,10 +494,6 @@ func funcInfoJoinFile(rootID, nameID uint16) string {
 	buf = cStringAppend(buf, root)
 	buf = cStringAppend(buf, name)
 	return string(buf)
-}
-
-func funcInfoPackedFile(file uint32) string {
-	return funcInfoJoinFile(uint16(file>>16), uint16(file))
 }
 
 func maxFuncInfoSymbolLen() int {
@@ -518,12 +515,12 @@ func symbolPCBytes(name []byte) uintptr {
 	return uintptr(clitedebug.Symbol((*c.Char)(unsafe.Pointer(&name[0]))))
 }
 
-func symbolPCFuncInfoName(buf []byte, pkgID, nameID uint16) uintptr {
+func symbolPCFuncInfoName(buf []byte, pkgID, nameID uint32) uintptr {
 	name := appendFuncInfoName(buf[:0], pkgID, nameID)
 	return symbolPCBytes(name)
 }
 
-func symbolPCPrefixedFuncInfoName(buf []byte, prefix string, pkgID, nameID uint16) uintptr {
+func symbolPCPrefixedFuncInfoName(buf []byte, prefix string, pkgID, nameID uint32) uintptr {
 	name := append(buf[:0], prefix...)
 	name = appendFuncInfoName(name, pkgID, nameID)
 	return symbolPCBytes(name)
@@ -808,22 +805,22 @@ var runtimePrebuiltEntriesOnce uint32
 // lookups. The set-associative pc cache in FuncForPC thrashes once the live
 // pc population outgrows it (thousands of distinct functions queried in a
 // loop); this cache is keyed by table row, so batch workloads stay O(search)
-// after the first pass regardless of scale. Same benign-race model as the
-// pc cache: word-sized pointer stores of identical values.
+// after the first pass regardless of scale. Atomic pointer publication keeps
+// concurrently created Func values fully initialized before readers use them.
 var runtimePrebuiltFuncs []unsafe.Pointer
 
 func prebuiltFuncCacheLoad(idx int) unsafe.Pointer {
 	if idx < 0 || idx >= len(runtimePrebuiltFuncs) {
 		return nil
 	}
-	return runtimePrebuiltFuncs[idx]
+	return latomic.LoadPointer(&runtimePrebuiltFuncs[idx])
 }
 
 func prebuiltFuncCacheStore(idx int, fn unsafe.Pointer) {
 	if idx < 0 || idx >= len(runtimePrebuiltFuncs) {
 		return
 	}
-	runtimePrebuiltFuncs[idx] = fn
+	latomic.StorePointer(&runtimePrebuiltFuncs[idx], fn)
 }
 
 // prebuiltFrameIndexForEntry returns the ftab row whose entry is exactly pc,
@@ -1558,7 +1555,7 @@ func init() {
 	if runtimeFuncInfoStrings != nil && runtimeFuncInfoStringCount > 0 {
 		last := uintptr(*(*uint32)(unsafe.Add(unsafe.Pointer(runtimeFuncInfoStringOffsets),
 			(runtimeFuncInfoStringCount-1)*unsafe.Sizeof(uint32(0)))))
-		lastStr := funcInfoCString(uint16(runtimeFuncInfoStringCount - 1))
+		lastStr := funcInfoCString(uint32(runtimeFuncInfoStringCount - 1))
 		touch(unsafe.Pointer(runtimeFuncInfoStrings), last+uintptr(cStringLen(lastStr))+1)
 	}
 	// The pcline table is on the Caller/CallersFrames path; building it
@@ -1576,9 +1573,9 @@ func init() {
 	// Write-warm the FuncForPC cache: its first stores otherwise take
 	// zero-fill write faults, one per page, on the first few lookups.
 	for i := 0; i < funcForPCCacheSets; i += 4096 / int(unsafe.Sizeof(funcForPCCache[0])) {
-		funcForPCCache[i][0].pc = 0
+		latomic.StorePointer(&funcForPCCache[i][0], nil)
 	}
-	funcForPCCache[funcForPCCacheSets-1][0].pc = 0
+	latomic.StorePointer(&funcForPCCache[funcForPCCacheSets-1][0], nil)
 }
 
 func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
@@ -1698,6 +1695,17 @@ func refinePCSymbolLine(sym pcSymbol, pc uintptr) pcSymbol {
 		lineSym.pc = pc
 		return mergePCLineSymbol(sym, lineSym)
 	}
+	// No same-function statement anchor covers pc. Mid-function pcs of a
+	// record with no evidence can actually belong to a foreign (C)
+	// function linked between Go functions — nearest-below cannot see the
+	// hole and would misattribute the frame to the preceding Go function.
+	// One dladdr cross-check on this cold, cache-backed path: a closer
+	// symbol wins. Exact entries and anchored functions never get here.
+	if pc != sym.entry {
+		if ai := addrInfoSymbol(pc); ai.ok && ai.entry > sym.entry {
+			return ai
+		}
+	}
 	return sym
 }
 
@@ -1756,7 +1764,7 @@ func initRuntimePCLineFramesOnce() {
 	nframes := 0
 	symbolBuf := make([]byte, 0, maxFuncInfoSymbolLen()+1)
 	// Sites vastly outnumber distinct functions and files, so materialize the
-	// per-function strings and entry PCs once and the packed file strings once
+	// per-function strings and entry PCs once and the file strings once
 	// per file ID. Building them per site used to dominate first-use latency.
 	type pcLineFuncInfo struct {
 		entry    uintptr
@@ -1768,7 +1776,7 @@ func initRuntimePCLineFramesOnce() {
 	funcCache := make([]pcLineFuncInfo, runtimeFuncInfoCount+1)
 	funcCacheBase := unsafe.Pointer(&funcCache[0])
 	funcCacheSize := unsafe.Sizeof(funcCache[0])
-	fileCache := make(map[uint32]string)
+	fileCache := make(map[uint64]string)
 	for i := uintptr(0); i < nsite; i++ {
 		site := (*runtimePCSiteRecord)(unsafe.Pointer(start + i*size))
 		if site == nil || site.id == 0 || site.pc == 0 {
@@ -1800,11 +1808,12 @@ func initRuntimePCLineFramesOnce() {
 			entry = sym.entry
 		}
 		file := ""
-		if rec.file != 0 {
+		fileID := uint64(rec.fileRoot)<<32 | uint64(rec.fileName)
+		if fileID != 0 {
 			var ok bool
-			if file, ok = fileCache[rec.file]; !ok {
-				file = funcInfoPackedFile(rec.file)
-				fileCache[rec.file] = file
+			if file, ok = fileCache[fileID]; !ok {
+				file = funcInfoJoinFile(rec.fileRoot, rec.fileName)
+				fileCache[fileID] = file
 			}
 		}
 		if file == "" {

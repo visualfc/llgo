@@ -11,9 +11,9 @@ require (
 	github.com/mattn/go-tty v0.0.8
 	github.com/qiniu/x v1.18.0
 	github.com/xgo-dev/llvm v0.9.5
-	github.com/xgo-dev/plan9asm v0.3.3
+	github.com/xgo-dev/plan9asm v0.3.5
 	go.bug.st/serial v1.6.4
-	go.yaml.in/yaml/v3 v3.0.4
+	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/mod v0.29.0
 	golang.org/x/sys v0.37.0
 	golang.org/x/tools v0.38.0

@@ -178,8 +178,11 @@ func TestParseLinkFlagsWhitespaceOnly(t *testing.T) {
 	}
 }
 
-func TestArgumentListBuildFlagRejectsBareDash(t *testing.T) {
+func TestBuildFlagMatchersRejectBareDash(t *testing.T) {
 	for _, arg := range []string{"-", "--"} {
+		if _, _, ok := buildParallelFlag(arg); ok {
+			t.Fatalf("buildParallelFlag(%q) unexpectedly matched", arg)
+		}
 		if _, _, _, ok := argumentListBuildFlag(arg); ok {
 			t.Fatalf("argumentListBuildFlag(%q) unexpectedly matched", arg)
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/goplus/llgo/cmd/internal/clean"
 	"github.com/goplus/llgo/cmd/internal/compile"
 	"github.com/goplus/llgo/cmd/internal/install"
+	"github.com/goplus/llgo/cmd/internal/lldb"
 	"github.com/goplus/llgo/cmd/internal/monitor"
 	"github.com/goplus/llgo/cmd/internal/run"
 	"github.com/goplus/llgo/cmd/internal/test"
@@ -36,6 +37,10 @@ type Cmd_get struct {
 	*App
 }
 type Cmd_install struct {
+	xcmd.Command
+	*App
+}
+type Cmd_lldb struct {
 	xcmd.Command
 	*App
 }
@@ -78,13 +83,14 @@ func (this *App) Main() {
 	_xgo_obj2 := &Cmd_cmptest{App: this}
 	_xgo_obj3 := &Cmd_get{App: this}
 	_xgo_obj4 := &Cmd_install{App: this}
-	_xgo_obj5 := &Cmd_monitor{App: this}
-	_xgo_obj6 := &Cmd_run{App: this}
-	_xgo_obj7 := &Cmd_test{App: this}
-	_xgo_obj8 := &Cmd_tool{App: this}
-	_xgo_obj9 := &Cmd_tool_compile{App: this}
-	_xgo_obj10 := &Cmd_version{App: this}
-	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10)
+	_xgo_obj5 := &Cmd_lldb{App: this}
+	_xgo_obj6 := &Cmd_monitor{App: this}
+	_xgo_obj7 := &Cmd_run{App: this}
+	_xgo_obj8 := &Cmd_test{App: this}
+	_xgo_obj9 := &Cmd_tool{App: this}
+	_xgo_obj10 := &Cmd_tool_compile{App: this}
+	_xgo_obj11 := &Cmd_version{App: this}
+	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11)
 }
 
 //line cmd/llgo/build_cmd.gox:20
@@ -178,6 +184,25 @@ func (this *Cmd_install) Main(_xgo_arg0 string) {
 }
 func (this *Cmd_install) Classfname() string {
 	return "install"
+}
+
+//line cmd/llgo/lldb_cmd.gox:20
+func (this *Cmd_lldb) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/lldb_cmd.gox:20:1
+	this.Use("lldb [-lldb path] [--] executable [lldb arguments...]")
+//line cmd/llgo/lldb_cmd.gox:22:1
+	this.Short("Debug an LLGo executable with LLDB")
+//line cmd/llgo/lldb_cmd.gox:24:1
+	this.FlagOff()
+//line cmd/llgo/lldb_cmd.gox:26:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/lldb_cmd.gox:27:1
+		lldb.Cmd.Run(lldb.Cmd, args)
+	})
+}
+func (this *Cmd_lldb) Classfname() string {
+	return "lldb"
 }
 
 //line cmd/llgo/monitor_cmd.gox:21

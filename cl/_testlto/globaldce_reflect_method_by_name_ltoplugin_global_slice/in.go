@@ -3,10 +3,10 @@ package main
 
 import "reflect"
 
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_global_slice{{.*}}S{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_global_slice{{.*}}S{{.*}}KeepA
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_global_slice{{.*}}S{{.*}}KeepB
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_global_slice{{.*}}S{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepA
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepB
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
 

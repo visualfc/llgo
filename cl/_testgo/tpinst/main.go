@@ -2,7 +2,7 @@
 package main
 
 // CHECK-NOT: @6 = private unnamed_addr constant [5 x i8] c"value", align 1
-// CHECK: @6 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/tpinst.value", align 1
+// CHECK: @6 = private unnamed_addr constant [10 x i8] c"main.value", align 1
 // CHECK: {{^}}@8 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
 // CHECK: {{^}}@15 = private unnamed_addr constant [22 x i8] c"interface{value() int}", align 1{{$}}
 // CHECK: {{^}}@16 = private unnamed_addr constant [5 x i8] c"value", align 1{{$}}
@@ -15,12 +15,12 @@ type I[T interface{}] interface {
 	Value() T
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/tpinst.demo"(){{.*}} {
+// CHECK-LABEL: define void @main.demo(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/tpinst.M[int]", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %"main.M[int]", ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 100, ptr %1, align 8
-// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8", ptr @"*_llgo_{{.*}}/cl/_testgo/tpinst.M[int]")
+// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.M[int]")
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %2, 0
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %3, ptr %0, 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %4)
@@ -44,9 +44,9 @@ type I[T interface{}] interface {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %17 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/cl/_testgo/tpinst.M[float64]", ptr %17, i32 0, i32 0
+// CHECK-NEXT:   %18 = getelementptr inbounds %"main.M[float64]", ptr %17, i32 0, i32 0
 // CHECK-NEXT:   store double 1.001000e+02, ptr %18, align 8
-// CHECK-NEXT:   %19 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$2dxw6yZ6V86Spb7J0dTDIoWqg7ba7UDXlAlpJv3-HLk", ptr @"*_llgo_{{.*}}/cl/_testgo/tpinst.M[float64]")
+// CHECK-NEXT:   %19 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.M[float64]")
 // CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %19, 0
 // CHECK-NEXT:   %21 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %20, ptr %17, 1
 // CHECK-NEXT:   %22 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %21)
@@ -70,7 +70,7 @@ type I[T interface{}] interface {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   %34 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %4)
-// CHECK-NEXT:   %35 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"{{.*}}/cl/_testgo/tpinst.iface$2sV9fFeqOv1SzesvwIdhTqCFzDT8ZX5buKUSAoHNSww", ptr %34)
+// CHECK-NEXT:   %35 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"{{.*}}/cl/_testgo/tpinst.iface${{[-A-Za-z0-9_]+}}", ptr %34)
 // CHECK-NEXT:   br i1 %35, label %_llgo_7, label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_7
@@ -85,7 +85,7 @@ type I[T interface{}] interface {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_4
 // CHECK-NEXT:   %38 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %4, 1
-// CHECK-NEXT:   %39 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/tpinst.iface$2sV9fFeqOv1SzesvwIdhTqCFzDT8ZX5buKUSAoHNSww", ptr %34)
+// CHECK-NEXT:   %39 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/tpinst.iface${{[-A-Za-z0-9_]+}}", ptr %34)
 // CHECK-NEXT:   %40 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %39, 0
 // CHECK-NEXT:   %41 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %40, ptr %38, 1
 // CHECK-NEXT:   %42 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %41)
@@ -105,13 +105,13 @@ type I[T interface{}] interface {
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/tpinst.init"(){{.*}} {
+// CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = load i1, ptr @"{{.*}}/cl/_testgo/tpinst.init$guard", align 1
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i1 true, ptr @"{{.*}}/cl/_testgo/tpinst.init$guard", align 1
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -136,9 +136,9 @@ func demo() {
 	}
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/tpinst.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/cl/_testgo/tpinst.demo"()
+// CHECK-NEXT:   call void @main.demo()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -154,16 +154,16 @@ func (pt *M[T]) value() T {
 	return pt.v
 }
 
-// CHECK-LABEL: define linkonce i64 @"{{.*}}/cl/_testgo/tpinst.(*M[int]).Value"(ptr %0){{.*}} {
+// CHECK-LABEL: define linkonce i64 @"main.(*M[int]).Value"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/tpinst.M[int]", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %"main.M[int]", ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %2 = load i64, ptr %1, align 8
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce i64 @"{{.*}}/cl/_testgo/tpinst.(*M[int]).value"(ptr %0){{.*}} {
+// CHECK-LABEL: define linkonce i64 @"main.(*M[int]).value"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/tpinst.M[int]", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %"main.M[int]", ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %2 = load i64, ptr %1, align 8
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
@@ -174,15 +174,15 @@ func (pt *M[T]) value() T {
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce i64 @"__llgo_stub.{{.*}}/cl/_testgo/tpinst.(*M[int]).Value"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.main.(*M[int]).Value"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = tail call i64 @"{{.*}}/cl/_testgo/tpinst.(*M[int]).Value"(ptr %1)
+// CHECK-NEXT:   %2 = tail call i64 @"main.(*M[int]).Value"(ptr %1)
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce i64 @"__llgo_stub.{{.*}}/cl/_testgo/tpinst.(*M[int]).value"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce i64 @"__llgo_stub.main.(*M[int]).value"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = tail call i64 @"{{.*}}/cl/_testgo/tpinst.(*M[int]).value"(ptr %1)
+// CHECK-NEXT:   %2 = tail call i64 @"main.(*M[int]).value"(ptr %1)
 // CHECK-NEXT:   ret i64 %2
 // CHECK-NEXT: }
 
@@ -192,16 +192,16 @@ func (pt *M[T]) value() T {
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce double @"{{.*}}/cl/_testgo/tpinst.(*M[float64]).Value"(ptr %0){{.*}} {
+// CHECK-LABEL: define linkonce double @"main.(*M[float64]).Value"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/tpinst.M[float64]", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %"main.M[float64]", ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %2 = load double, ptr %1, align 8
 // CHECK-NEXT:   ret double %2
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce double @"{{.*}}/cl/_testgo/tpinst.(*M[float64]).value"(ptr %0){{.*}} {
+// CHECK-LABEL: define linkonce double @"main.(*M[float64]).value"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %1 = getelementptr inbounds %"{{.*}}/cl/_testgo/tpinst.M[float64]", ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %1 = getelementptr inbounds %"main.M[float64]", ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %2 = load double, ptr %1, align 8
 // CHECK-NEXT:   ret double %2
 // CHECK-NEXT: }
@@ -212,14 +212,14 @@ func (pt *M[T]) value() T {
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce double @"__llgo_stub.{{.*}}/cl/_testgo/tpinst.(*M[float64]).Value"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce double @"__llgo_stub.main.(*M[float64]).Value"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = tail call double @"{{.*}}/cl/_testgo/tpinst.(*M[float64]).Value"(ptr %1)
+// CHECK-NEXT:   %2 = tail call double @"main.(*M[float64]).Value"(ptr %1)
 // CHECK-NEXT:   ret double %2
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define linkonce double @"__llgo_stub.{{.*}}/cl/_testgo/tpinst.(*M[float64]).value"(ptr %0, ptr %1){{.*}} {
+// CHECK-LABEL: define linkonce double @"__llgo_stub.main.(*M[float64]).value"(ptr %0, ptr %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = tail call double @"{{.*}}/cl/_testgo/tpinst.(*M[float64]).value"(ptr %1)
+// CHECK-NEXT:   %2 = tail call double @"main.(*M[float64]).value"(ptr %1)
 // CHECK-NEXT:   ret double %2
 // CHECK-NEXT: }

@@ -407,3 +407,10 @@ func isPaddedField(t reflect.Type, i int) bool {
 	}
 	return field.Offset+field.Type.Size() != t.Size()
 }
+
+func TestMainPackagePath(t *testing.T) {
+	pkg := types.NewPackage("example.com/foo/pkg", "main")
+	if path := abi.PathOf(pkg); path != "main" {
+		t.Fatalf("PathOf(main package) = %q, want main", path)
+	}
+}

@@ -11,9 +11,9 @@ import (
 const (
 	defaultDebugInfoVersion = 3
 	defaultDwarfVersion     = 4
-	// LLDB has no Go language plugin and limits frame-variable inspection for
-	// DW_LANG_Go. Keep the compile unit on its C language path until the LLDB Go
-	// extension can consume LLGo's otherwise Go-shaped DWARF.
+	// Stock LLDB has no maintained Go language plugin and limits frame-variable
+	// inspection for DW_LANG_Go. Use its C language path for interoperable
+	// access to LLGo's otherwise Go-shaped DWARF.
 	dwarfSourceLanguageC llvm.DwarfLang = 1
 
 	debuggerMarkerSymbol = "__llgo_debugger_marker_v1"

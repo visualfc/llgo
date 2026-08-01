@@ -20,7 +20,6 @@ import (
 	"unsafe"
 
 	clitedebug "github.com/goplus/llgo/runtime/internal/clite/debug"
-	"github.com/goplus/llgo/runtime/internal/clite/tls"
 )
 
 type CallerFrame struct {
@@ -59,10 +58,8 @@ type callerLocationStore struct {
 	goexitPCBase  uintptr
 }
 
-var callerLocationTLS = tls.Alloc[*callerLocationStore](nil)
-
 func PushCallerLocationFrame(entry uintptr, name, file string, startLine int) int {
-	store := callerLocationStoreForThread()
+	store := callerLocationStoreForGoroutine()
 	mark := len(store.stack)
 	store.stack = append(store.stack, CallerFrame{
 		PC:        entry,
@@ -76,7 +73,7 @@ func PushCallerLocationFrame(entry uintptr, name, file string, startLine int) in
 }
 
 func PopCallerLocationFrame(mark int) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil {
 		return
 	}
@@ -108,7 +105,7 @@ func RecordPanicLocation(entry uintptr, name, file string, line int) {
 }
 
 func updateCurrentFrame(entry uintptr, name, file string, line int) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil {
 		return
 	}
@@ -132,7 +129,7 @@ func updateCurrentFrame(entry uintptr, name, file string, line int) {
 }
 
 func recordPCLocation(pc, entry uintptr, name, file string, line int) {
-	store := callerLocationStoreForThread()
+	store := callerLocationStoreForGoroutine()
 	for i := range store.frames {
 		frame := &store.frames[i]
 		if (pc != 0 && frame.PC == pc) || (pc == 0 && frame.PC == 0 && frame.Entry == entry) {
@@ -162,7 +159,7 @@ func Caller(skip int) (CallerFrame, bool) {
 	if skip < 0 {
 		return CallerFrame{}, false
 	}
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || len(store.stack) == 0 {
 		return CallerFrame{}, false
 	}
@@ -186,7 +183,7 @@ func Callers(skip int, pcs []uintptr) int {
 	if skip < 0 {
 		skip = 0
 	}
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || len(store.stack) == 0 {
 		return 0
 	}
@@ -226,11 +223,104 @@ func Callers(skip int, pcs []uintptr) int {
 	return n
 }
 
+// PanicPCSnapshot, set by the public runtime package at init, captures the
+// physical pc chain at panic time into the per-goroutine snapshot below. gc
+// runs deferred functions on top of the panicked stack, so runtime.Caller,
+// CallersFrames and debug.Stack invoked from a deferred function (before or
+// after recover) see the panic-site frames; LLGo's longjmp unwinding
+// removes them physically, and this snapshot is what caller-info APIs
+// splice back in.
+var PanicPCSnapshot func()
+
 func SavePanicCallerFrames() {
+	// A fault handler stores the fault-site snapshot right before it
+	// panics; the regular capture here must not overwrite it.
+	p := panicPCStoreForG()
+	if p.armed != 0 {
+		p.armed = 0
+		return
+	}
+	if PanicPCSnapshot != nil {
+		PanicPCSnapshot()
+	}
+}
+
+type panicPCStore struct {
+	n      int32
+	armed  int32
+	fault  int32
+	recFP1 uintptr
+	recFP2 uintptr
+	pcs    [64]uintptr
+}
+
+func panicPCStoreForG() *panicPCStore {
+	return &getg().panicPCs
+}
+
+// StorePanicPCs replaces the goroutine's panic snapshot (a new panic
+// supersedes the previous one) and resets the recover marks.
+func StorePanicPCs(pcs []uintptr) {
+	storePanicPCs(pcs, 0)
+}
+
+// StoreFaultPCs is StorePanicPCs for fault handlers: the imminent
+// panic's own capture is suppressed so the fault-site chain survives.
+func StoreFaultPCs(pcs []uintptr) {
+	storePanicPCs(pcs, 1)
+}
+
+func storePanicPCs(pcs []uintptr, armed int32) {
+	p := panicPCStoreForG()
+	n := len(pcs)
+	if n > len(p.pcs) {
+		n = len(p.pcs)
+	}
+	copy(p.pcs[:n], pcs)
+	p.n = int32(n)
+	p.armed = armed
+	p.fault = armed
+	p.recFP1 = 0
+	p.recFP2 = 0
+}
+
+// PanicPCsAreFault reports whether the stored snapshot came from a
+// hardware-fault context (captured without the program-text bound).
+func PanicPCsAreFault() bool {
+	return panicPCStoreForG().fault != 0
+}
+
+// PanicPCs returns the goroutine's captured panic pcs (nil when none).
+func PanicPCs() []uintptr {
+	p := panicPCStoreForG()
+	if p.n == 0 {
+		return nil
+	}
+	return p.pcs[:p.n]
+}
+
+// MarkPanicRecoverFPs records the frames observing the panic at recover
+// time; the snapshot stays spliceable exactly while one of them is live on
+// the physical chain (the deferred function has not returned yet).
+func MarkPanicRecoverFPs(fp1, fp2 uintptr) {
+	p := panicPCStoreForG()
+	p.recFP1 = fp1
+	p.recFP2 = fp2
+}
+
+// PanicRecoverFPs returns the recover-time frame marks.
+func PanicRecoverFPs() (uintptr, uintptr) {
+	p := panicPCStoreForG()
+	return p.recFP1, p.recFP2
+}
+
+// PanicActive reports whether a panic is in flight (not yet recovered).
+func PanicActive() bool {
+	return getg().panic_ != nil
 }
 
 func BindCallerLocation(pc uintptr, rawName string) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || pc == 0 {
 		return
 	}
@@ -273,7 +363,7 @@ func FrameForPC(pc uintptr) (CallerFrame, bool) {
 			return frame, true
 		}
 	}
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil || pc == 0 {
 		return CallerFrame{}, false
 	}
@@ -311,7 +401,7 @@ func FrameForPC(pc uintptr) (CallerFrame, bool) {
 }
 
 func syntheticFrameForPC(pc uintptr) (CallerFrame, bool) {
-	store := callerLocationTLS.Get()
+	store := callerLocationStoreCurrent
 	if store == nil {
 		return CallerFrame{}, false
 	}
@@ -330,11 +420,11 @@ func syntheticFrameForPC(pc uintptr) (CallerFrame, bool) {
 	return frame, true
 }
 
-func callerLocationStoreForThread() *callerLocationStore {
-	store := callerLocationTLS.Get()
+func callerLocationStoreForGoroutine() *callerLocationStore {
+	store := callerLocationStoreCurrent
 	if store == nil {
 		store = new(callerLocationStore)
-		callerLocationTLS.Set(store)
+		callerLocationStoreCurrent = store
 	}
 	return store
 }

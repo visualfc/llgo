@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testlibgo/strings.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 func main() {
 	// CHECK-NEXT: _llgo_0:
 	// CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
@@ -28,10 +28,10 @@ func main() {
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %6)
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-	// CHECK-NEXT:   %7 = call i64 @strings.IndexFunc(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 13 }, { ptr, ptr } { ptr @"__llgo_stub.{{.*}}/cl/_testlibgo/strings.main$1", ptr null })
+	// CHECK-NEXT:   %7 = call i64 @strings.IndexFunc(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 13 }, { ptr, ptr } { ptr @"__llgo_stub.main.main$1", ptr null })
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %7)
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
-	// CHECK-NEXT:   %8 = call i64 @strings.IndexFunc(%"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 12 }, { ptr, ptr } { ptr @"__llgo_stub.{{.*}}/cl/_testlibgo/strings.main$1", ptr null })
+	// CHECK-NEXT:   %8 = call i64 @strings.IndexFunc(%"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 12 }, { ptr, ptr } { ptr @"__llgo_stub.main.main$1", ptr null })
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %8)
 	// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 	// CHECK-NEXT:   ret void

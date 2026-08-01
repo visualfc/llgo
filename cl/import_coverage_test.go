@@ -62,7 +62,9 @@ func (A) StackedHidden() {}
 	}
 	prog := llssa.NewProgram(nil)
 	pkg := types.NewPackage("example.com/p", "p")
-	ParsePkgSyntax(prog, pkg, []*ast.File{file})
+	if err := ParsePkgSyntax(prog, fset, pkg, []*ast.File{file}); err != nil {
+		t.Fatal(err)
+	}
 
 	ctx := &context{prog: prog}
 	ctx.processNoInterfaceByDoc(nil, "example.com/p.NilDoc")
@@ -70,6 +72,59 @@ func (A) StackedHidden() {}
 		{Text: "// not a directive"},
 		{Text: "//go:nointerface"},
 	}}, "example.com/p.NonDirectiveStops")
+
+	if !prog.PackageSyntaxParsed(pkg) {
+		t.Fatal("package syntax was not marked as parsed")
+	}
+	badFile, err := parser.ParseFile(fset, "bad.go", "package p\n//llgo:tls\nfunc Bad() {}\n", parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ParsePkgSyntax(prog, fset, pkg, []*ast.File{badFile}); err != nil {
+		t.Fatalf("already parsed package was scanned again: %v", err)
+	}
+}
+
+func TestParsePkgSyntaxReportsLocalityErrors(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	if err := ParsePkgSyntax(prog, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "function body",
+			src:  "package p\nfunc f() {\n//llgo:gls\nvar value int\n_ = value\n}\n",
+			want: "package-level var",
+		},
+		{
+			name: "package var",
+			src:  "package p\n//llgo:tls extra\nvar Value int\n",
+			want: "does not accept arguments",
+		},
+		{
+			name: "non-var declaration",
+			src:  "package p\n//llgo:gls\nconst Value = 1\n",
+			want: "package-level var",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "p.go", test.src, parser.ParseComments)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pkg := types.NewPackage("example.com/"+strings.ReplaceAll(test.name, " ", "-"), "p")
+			err = ParsePkgSyntax(llssa.NewProgram(nil), fset, pkg, []*ast.File{file})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("ParsePkgSyntax error = %v, want %q", err, test.want)
+			}
+		})
+	}
 }
 
 func TestPkgSymInfoAddSymAndInitLinknamesCoverage(t *testing.T) {
@@ -166,13 +221,14 @@ func TestAstAndTypesFuncNameCoverage(t *testing.T) {
 	}
 }
 
-func TestPreCollectLinknames(t *testing.T) {
+func TestParsePkgSyntaxCollectsLinknames(t *testing.T) {
 	cases := []struct {
 		name      string
 		directive string
 		want      string
 	}{
 		{name: "go-linkname", directive: "//go:linkname Sigsetjmp C.sigsetjmp", want: "C.sigsetjmp"},
+		{name: "go-linkname-tabs", directive: "//go:linkname\tSigsetjmp\tC.sigsetjmp", want: "C.sigsetjmp"},
 		{name: "llgo-linkname", directive: "//llgo:link Sigsetjmp C.sigsetjmp", want: "C.sigsetjmp"},
 		{name: "llgo-linkname-spaced", directive: "// llgo:link Sigsetjmp C.sigsetjmp", want: "C.sigsetjmp"},
 	}
@@ -185,11 +241,32 @@ func TestPreCollectLinknames(t *testing.T) {
 				t.Fatalf("ParseFile failed: %v", err)
 			}
 			prog := llssa.NewProgram(nil)
-			PreCollectLinknames(prog, llssa.PkgRuntime, []*ast.File{file})
+			pkg := types.NewPackage(llssa.PkgRuntime, "runtime")
+			if err := ParsePkgSyntax(prog, fset, pkg, []*ast.File{file}); err != nil {
+				t.Fatal(err)
+			}
 			if got, ok := prog.Linkname(llssa.PkgRuntime + ".Sigsetjmp"); !ok || got != tt.want {
 				t.Fatalf("pre-collected linkname = (%q,%v), want (%q,%v)", got, ok, tt.want, true)
 			}
 		})
+	}
+	prog := llssa.NewProgram(nil)
+	collectLinknameByDoc(prog, &ast.CommentGroup{List: []*ast.Comment{{Text: "//go:linkname Other C.other"}}}, llssa.PkgRuntime+".Sigsetjmp", "Sigsetjmp")
+	if _, ok := prog.Linkname(llssa.PkgRuntime + ".Sigsetjmp"); ok {
+		t.Fatal("mismatched linkname was collected")
+	}
+}
+
+func TestCollectLinknameByDocIgnoresOtherDirectives(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	doc := &ast.CommentGroup{List: []*ast.Comment{
+		{Text: "//go:noinline"},
+		{Text: "//llgo:tls"},
+	}}
+	const fullName = "example.com/p.Value"
+	collectLinknameByDoc(prog, doc, fullName, "Value")
+	if _, ok := prog.Linkname(fullName); ok {
+		t.Fatal("non-link directives installed a linkname")
 	}
 }
 

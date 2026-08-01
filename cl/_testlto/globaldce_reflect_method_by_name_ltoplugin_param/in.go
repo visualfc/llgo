@@ -3,12 +3,12 @@ package main
 
 import "reflect"
 
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_param{{.*}}S{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_param{{.*}}S{{.*}}KeepParamValueA
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_param{{.*}}S{{.*}}KeepParamValueB
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_param{{.*}}S{{.*}}KeepParamTypeA
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_param{{.*}}S{{.*}}KeepParamTypeB
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_param{{.*}}S{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepParamValueA
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepParamValueB
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepParamTypeA
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepParamTypeB
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
 

@@ -3,11 +3,11 @@ package main
 
 import "reflect"
 
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_range_literal{{.*}}S{{.*}}Drop
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_range_literal{{.*}}S{{.*}}Query
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_range_literal{{.*}}S{{.*}}Mutation
-// SYMBOL-DAG: globaldce_reflect_method_by_name_ltoplugin_range_literal{{.*}}S{{.*}}Subscription
-// SYMBOL-NOT: globaldce_reflect_method_by_name_ltoplugin_range_literal{{.*}}S{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}S{{.*}}Query
+// SYMBOL-DAG: main{{.*}}S{{.*}}Mutation
+// SYMBOL-DAG: main{{.*}}S{{.*}}Subscription
+// SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 const (
 	Query        = "Query"

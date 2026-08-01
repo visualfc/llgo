@@ -5,14 +5,14 @@ const c = 100
 
 var a float64 = 1
 
-// CHECK: @"{{.*}}/untyped.a" = global double 1.000000e+00, align 8
+// CHECK: @main.a = global double 1.000000e+00, align 8
 
-// CHECK-LABEL: define void @"{{.*}}.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   br i1 false, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:{{.*}}
-// CHECK-NEXT:   store double 0.000000e+00, ptr @"{{.*}}.a", align 8
+// CHECK-NEXT:   store double 0.000000e+00, ptr @main.a, align 8
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:{{.*}}

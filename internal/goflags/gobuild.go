@@ -30,6 +30,10 @@ func ApplyBuildFlags(conf *build.Config, args []string) error {
 		return err
 	}
 
+	parallelism, parallelismPresent, err := parseBuildParallelism(all)
+	if err != nil {
+		return err
+	}
 	linkFlags, err := ParseLinkFlags(all)
 	if err != nil {
 		return err
@@ -37,6 +41,9 @@ func ApplyBuildFlags(conf *build.Config, args []string) error {
 	next := *conf
 	next.GoBuildFlags = all
 	applyFrontendGCFlags(&next)
+	if parallelismPresent {
+		next.BuildParallelism = parallelism
+	}
 	if linkFlags.Present {
 		next.LinkOptions = linkFlags.Options
 	}

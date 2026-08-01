@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,11 +14,142 @@ import (
 	"testing"
 
 	"github.com/goplus/llgo/internal/env"
+	"github.com/goplus/llgo/internal/packages"
 	llruntime "github.com/goplus/llgo/runtime"
 )
 
+func TestWasmRuntimeSourcePatchTypeChecks(t *testing.T) {
+	for _, goos := range []string{"js", "wasip1"} {
+		t.Run(goos, func(t *testing.T) {
+			cfgEnv := append(os.Environ(), "GOOS="+goos, "GOARCH=wasm")
+			goroot, goversion, err := env.GOROOTAndGOVERSIONWithEnv(cfgEnv)
+			if err != nil {
+				t.Fatal(err)
+			}
+			overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), goroot, sourcePatchBuildContext{
+				goos:      goos,
+				goarch:    "wasm",
+				goversion: goversion,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			pkgs, err := packages.LoadEx(nil, func(types.Sizes, string, string) types.Sizes {
+				return &types.StdSizes{WordSize: 4, MaxAlign: 4}
+			}, &packages.Config{
+				Mode:    loadSyntax | packages.NeedDeps | packages.NeedModule | packages.NeedExportFile,
+				Env:     cfgEnv,
+				Fset:    token.NewFileSet(),
+				Overlay: overlay,
+			}, "runtime")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(pkgs) != 1 {
+				t.Fatalf("loaded %d runtime packages, want 1", len(pkgs))
+			}
+			if pkgs[0].IllTyped {
+				logPackageErrors(t, pkgs[0], make(map[string]bool))
+				t.Fatal("runtime did not type-check with wasm32 sizes")
+			}
+		})
+	}
+}
+
+func logPackageErrors(t *testing.T, pkg *packages.Package, seen map[string]bool) {
+	t.Helper()
+	if pkg == nil || seen[pkg.ID] {
+		return
+	}
+	seen[pkg.ID] = true
+	for _, err := range pkg.Errors {
+		t.Log(err)
+	}
+	for _, imported := range pkg.Imports {
+		if imported.IllTyped {
+			logPackageErrors(t, imported, seen)
+		}
+	}
+}
+
+func TestWasmBytealgSourcePatchReplacesAsm(t *testing.T) {
+	for _, pkgPath := range []string{"internal/bytealg", "internal/chacha8rand", "internal/runtime/atomic"} {
+		if !llruntime.HasSourcePatchPkg(pkgPath) {
+			t.Fatalf("%s should be registered as a source patch package", pkgPath)
+		}
+		if !llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "wasm") {
+			t.Fatalf("%s wasm assembly should be replaced by its source patch", pkgPath)
+		}
+		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "arm64") {
+			t.Fatalf("%s native assembly should remain enabled", pkgPath)
+		}
+	}
+
+	overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), runtime.GOROOT(), sourcePatchBuildContext{
+		goos:      "js",
+		goarch:    "wasm",
+		goversion: runtime.Version(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{
+		"internal/bytealg/compare_wasm.s",
+		"internal/bytealg/equal_wasm.s",
+		"internal/bytealg/indexbyte_wasm.s",
+		"internal/chacha8rand/chacha8_stub.s",
+		"internal/runtime/atomic/atomic_wasm.s",
+	} {
+		path := filepath.Join(runtime.GOROOT(), "src", filepath.FromSlash(file))
+		if got := string(overlay[path]); got != "// replaced by LLGo source patch\n" {
+			t.Fatalf("overlay[%q] = %q, want assembly replacement", path, got)
+		}
+	}
+}
+
+func TestCompilePkgSFilesSkipsSourcePatchedAssembly(t *testing.T) {
+	got, err := compilePkgSFiles(
+		&context{buildConf: &Config{Goarch: "wasm"}},
+		nil,
+		&packages.Package{PkgPath: "internal/bytealg"},
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("compilePkgSFiles returned %v, want no object files", got)
+	}
+}
+
+func TestSourcePatchAssemblyMatchError(t *testing.T) {
+	goroot := t.TempDir()
+	runtimeDir := t.TempDir()
+	const pkgPath = "internal/bytealg"
+	srcDir := filepath.Join(goroot, "src", filepath.FromSlash(pkgPath))
+	patchDir := filepath.Join(runtimeDir, "_patch", filepath.FromSlash(pkgPath))
+
+	if err := os.MkdirAll(filepath.Join(srcDir, "adir"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(srcDir, "bad_wasm.s"), "//go:build (\n")
+	mustWriteFile(t, filepath.Join(patchDir, "bytealg_wasm.go"), `//go:build wasm
+
+package bytealg
+`)
+
+	_, _, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
+		goos:   "js",
+		goarch: "wasm",
+	})
+	if err == nil || !strings.Contains(err.Error(), "match stdlib assembly file") {
+		t.Fatalf("applySourcePatchForPkg error = %v, want assembly match error", err)
+	}
+}
+
 func TestBuildSourcePatchOverlayForIter(t *testing.T) {
-	overlay, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), runtime.GOROOT(), sourcePatchBuildContext{})
+	overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), runtime.GOROOT(), sourcePatchBuildContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +205,7 @@ type Mutex struct{}
 func boolToUint8(bool) uint8
 `)
 
-	overlay, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), goroot, sourcePatchBuildContext{
+	overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), goroot, sourcePatchBuildContext{
 		goos:      runtime.GOOS,
 		goarch:    runtime.GOARCH,
 		goversion: "go1.26.0",
@@ -172,7 +304,7 @@ func TestApplySourcePatchForPkg_MissingStdlibPkg(t *testing.T) {
 func Pull[V any](seq func(func(V) bool)) {}
 `)
 
-	changed, overlay, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{})
+	changed, overlay, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +333,7 @@ package demo
 const Only = "patched"
 `)
 
-	changed, overlay, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
+	changed, overlay, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
 		goos:      runtime.GOOS,
 		goarch:    runtime.GOARCH,
 		goversion: "go1.24.11",
@@ -213,7 +345,7 @@ const Only = "patched"
 		t.Fatalf("expected go1.26-tagged patch to be ignored on go1.24, got overlay: %#v", overlay)
 	}
 
-	changed, overlay, err = applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
+	changed, overlay, _, err = applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
 		goos:      runtime.GOOS,
 		goarch:    runtime.GOARCH,
 		goversion: "go1.26.0",
@@ -249,7 +381,7 @@ func TestApplySourcePatchForPkg_UnreadableStdlibPkg(t *testing.T) {
 func Pull[V any](seq func(func(V) bool)) {}
 `)
 
-	changed, overlay, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{})
+	changed, overlay, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +406,7 @@ func runSourcePatchCase(t *testing.T, caseName string) {
 	copyTree(t, filepath.Join(assetRoot, "pkg"), srcDir)
 	copyTree(t, filepath.Join(assetRoot, "patch"), patchDir)
 
-	changed, overlay, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{})
+	changed, overlay, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -131,6 +131,29 @@ func TestManifestBuilder_FingerprintDifferentValues(t *testing.T) {
 	}
 }
 
+func TestManifestBuilder_DisableBoundsChecks(t *testing.T) {
+	checked := newManifestBuilder()
+	unchecked := newManifestBuilder()
+	unchecked.common.DisableBoundsChecks = true
+
+	if !checked.common.empty() {
+		t.Fatal("default common section is not empty")
+	}
+	if unchecked.common.empty() {
+		t.Fatal("disabled bounds checks did not make the common section non-empty")
+	}
+	if checked.Fingerprint() == unchecked.Fingerprint() {
+		t.Fatal("disabled bounds checks did not change the build fingerprint")
+	}
+	data, err := decodeManifest(unchecked.Build())
+	if err != nil {
+		t.Fatalf("decodeManifest: %v", err)
+	}
+	if data.Common == nil || !data.Common.DisableBoundsChecks {
+		t.Fatalf("decoded common section = %#v, want disabled bounds checks", data.Common)
+	}
+}
+
 func TestManifestBuilder_EmptySections(t *testing.T) {
 	m := newManifestBuilder()
 	content := m.Build()

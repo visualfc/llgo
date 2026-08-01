@@ -210,6 +210,7 @@ type context struct {
 	staticGlobalInits map[*ssa.Global]llssa.Expr
 	staticInitStores  map[*ssa.Store]none
 	staticInitInstrs  map[ssa.Instruction]none
+	locality          localityLowering
 }
 
 func (p *context) rewriteValue(name string) (string, bool) {
@@ -391,7 +392,10 @@ func (p *context) compileGlobal(pkg llssa.Package, gbl *ssa.Global) {
 		return
 	}
 	dbgInstrln("==> NewVar", name, typ)
-	g := pkg.NewVar(name, typ, llssa.Background(vtype))
+	g, skip := p.localityGlobalStorage(pkg, gbl, name, typ, llssa.Background(vtype))
+	if skip {
+		return
+	}
 	if p.tryEmbedGlobalInit(pkg, gbl, g, name) {
 		return
 	}
@@ -574,7 +578,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 				goName = funcName(pkgTypes, f, false)
 			}
 			pos := p.funcInfoPosition(f)
-			pkg.EmitFuncInfo(fn.Name(), funcInfoDisplayName(pkgTypes, goName), pos.Filename, pos.Line, pos.Column)
+			pkg.EmitFuncInfo(fn.Name(), funcInfoDisplayName(goName), pos.Filename, pos.Line, pos.Column)
 		}
 		var childInits []func()
 		if len(f.AnonFuncs) > 0 {
@@ -601,12 +605,15 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		dbgSymsEnabled := enableDbgSyms && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
+			oldLocalityFunction := p.locality.function
 			p.fn = fn
 			p.goFn = f
 			p.callerFrameMark = llssa.Nil
+			p.locality.function = localityFunction{}
 			p.state = state // restore pkgState when compiling funcBody
 			defer func() {
 				p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark = oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark
+				p.locality.function = oldLocalityFunction
 			}()
 			p.phis = nil
 			if dbgSymsEnabled {
@@ -624,6 +631,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 				bodyPos := p.getFuncBodyPos(f)
 				b.DebugFunction(fn, debugFunctionScope(f), pos, bodyPos)
 			}
+			p.prepareExportedLocalContext(f)
 			p.bvals = make(map[ssa.Value]llssa.Expr)
 			p.methodNilDerefChecks = collectMethodNilDerefChecks(f)
 			off := make([]int, len(f.Blocks))
@@ -663,17 +671,10 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	return fn, nil, goFunc
 }
 
-// funcInfoDisplayName normalizes a funcinfo metadata display name to gc's
-// reporting conventions: the main package is "main" no matter what the
-// module names it (frame filters in the wild match on the "main." prefix),
-// and anonymous functions are pkg.fn.funcN (our linker symbols use $N).
-// Linker symbols are not affected.
-func funcInfoDisplayName(pkgTypes *types.Package, goName string) string {
-	if pkgTypes != nil && pkgTypes.Name() == "main" {
-		if path := llssa.PathOf(pkgTypes); path != "main" && strings.HasPrefix(goName, path+".") {
-			goName = "main" + goName[len(path):]
-		}
-	}
+// funcInfoDisplayName normalizes anonymous functions to gc's pkg.fn.funcN
+// reporting convention (our linker symbols use $N). Linker symbols are not
+// affected.
+func funcInfoDisplayName(goName string) string {
 	return normalizeRuntimeAnonFuncName(goName)
 }
 
@@ -832,6 +833,9 @@ func (p *context) debugParams(b llssa.Builder, f *ssa.Function) {
 }
 
 func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, doModInit bool) llssa.BasicBlock {
+	oldLocalBlock := p.locality.function.block
+	p.locality.function.block = block
+	defer func() { p.locality.function.block = oldLocalBlock }()
 	var last int
 	var pyModInit bool
 	var prog = p.prog
@@ -840,6 +844,9 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 	var instrs = block.Instrs[n:]
 	var ret = fn.Block(block.Index)
 	b.SetBlock(ret)
+	if block.Index == 0 {
+		p.enterExportedLocalContext(b)
+	}
 	if block.Index == 0 && p.shouldTrackCallerFrames() {
 		p.pushCallerLocationFrame(b, block.Parent())
 	}
@@ -852,6 +859,7 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 	}
 
 	if doModInit {
+		p.initializeLocalGuards(b)
 		if p.state != pkgInPatch {
 			p.applyEmbedInits(b)
 		}
@@ -1681,20 +1689,33 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		jmpb := p.jumpTo(v)
 		b.Jump(jmpb)
 	case *ssa.Return:
+		runDefers := p.returnNeedsImplicitRunDefers(v)
+		if runDefers {
+			p.recordPanicLocation(b, v.Pos())
+			p.emitPCLineLabel(b, p.deferRunPos(v.Pos()))
+			b.RunDefers()
+		}
 		var results []llssa.Expr
 		if n := len(v.Results); n > 0 {
 			results = make([]llssa.Expr, n)
 			for i, r := range v.Results {
+				// A deferred call may change a named result independently of
+				// the SSA value in Return.Results. Reload the result's storage
+				// in the RunDefers continuation instead of depending on the
+				// particular SSA node used to form the return tuple.
+				if runDefers {
+					if slot := p.namedResultSlot(i); slot != nil {
+						results[i] = b.Load(p.compileValue(b, slot))
+						continue
+					}
+				}
 				results[i] = p.compileValue(b, r)
 			}
-		}
-		if p.returnNeedsImplicitRunDefers(v) {
-			p.recordPanicLocation(b, v.Pos())
-			b.RunDefers()
 		}
 		if p.shouldTrackCallerFrames() {
 			p.popCallerLocationFrame(b)
 		}
+		p.leaveExportedLocalContext(b)
 		b.Return(results...)
 	case *ssa.If:
 		fn := p.fn
@@ -1719,10 +1740,16 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		p.call(b, llssa.Go, &v.Call)
 	case *ssa.RunDefers:
 		p.recordPanicLocation(b, v.Pos())
+		p.emitPCLineLabel(b, p.deferRunPos(v.Pos()))
 		b.RunDefers()
 	case *ssa.Panic:
 		arg := p.compileValue(b, v.X)
 		p.recordPanicLocation(b, v.Pos())
+		// panic is not a Call instruction, so callEx's statement anchor
+		// does not cover it; the panic snapshot attributes the panicking
+		// frame to this pc (issue5856 wants the panic line, not the
+		// nearest call's).
+		p.emitPCLineLabel(b, v.Pos())
 		b.Panic(arg)
 	case *ssa.Send:
 		ch := p.compileValue(b, v.Chan)
@@ -1793,7 +1820,7 @@ func (p *context) compileValue(b llssa.Builder, v ssa.Value) llssa.Expr {
 		if isCgoVar(varName) {
 			p.cgoSymbols = append(p.cgoSymbols, val.Name())
 		}
-		if enableDbgSyms {
+		if enableDbgSyms && p.localityAllowsGlobalDebug(v) {
 			pos := p.fset.Position(v.Pos())
 			b.DIGlobal(val, v.Name(), pos)
 		}
@@ -1882,6 +1909,25 @@ func (p *context) functionHasExplicitStackDeferSeen(fn *ssa.Function, seen map[*
 	return false
 }
 
+// deferRunPos is where gc attributes a deferred function's caller frame:
+// the function's closing brace — defers run at function exit, not at the
+// defer statement (goroot issue14646, issue5856).
+func (p *context) deferRunPos(fallback token.Pos) token.Pos {
+	if p.goFn != nil {
+		switch syntax := p.goFn.Syntax().(type) {
+		case *ast.FuncDecl:
+			if syntax.Body != nil && syntax.Body.Rbrace.IsValid() {
+				return syntax.Body.Rbrace
+			}
+		case *ast.FuncLit:
+			if syntax.Body != nil && syntax.Body.Rbrace.IsValid() {
+				return syntax.Body.Rbrace
+			}
+		}
+	}
+	return fallback
+}
+
 func (p *context) returnNeedsImplicitRunDefers(ret *ssa.Return) bool {
 	fn := ret.Parent()
 	if fn == nil || fn.Synthetic != "" || ret.Block() == fn.Recover {
@@ -1891,6 +1937,30 @@ func (p *context) returnNeedsImplicitRunDefers(ret *ssa.Return) bool {
 		return false
 	}
 	return p.functionHasExplicitStackDeferInAnon(fn)
+}
+
+// namedResultSlot returns the allocation for fn's named result at index.
+// The SSA Function API exposes result variables through their source-level
+// Alloc instructions, while Return.Results only exposes the values currently
+// used to form a particular return tuple.
+func (p *context) namedResultSlot(index int) *ssa.Alloc {
+	fn := p.goFn
+	if fn == nil || index < 0 || index >= fn.Signature.Results().Len() {
+		return nil
+	}
+	result := fn.Signature.Results().At(index)
+	if result.Name() == "" {
+		return nil
+	}
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			alloc, ok := instr.(*ssa.Alloc)
+			if ok && alloc.Comment == result.Name() && alloc.Pos() == result.Pos() {
+				return alloc
+			}
+		}
+	}
+	return nil
 }
 
 func previousNonDebugInstrIsRunDefers(ret *ssa.Return) bool {
@@ -2033,6 +2103,15 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 		pkg.Pkg = pkgTypes
 		patch.Alt.Pkg = pkgTypes
 	}
+	if err = ParsePkgSyntax(prog, pkgProg.Fset, pkgTypes, files); err != nil {
+		return nil, nil, err
+	}
+	if err = prog.ValidateLocalitiesFor(pkgTypes); err != nil {
+		return nil, nil, err
+	}
+	if err = validateLocalInitializers(prog, pkgTypes); err != nil {
+		return nil, nil, err
+	}
 	if pkgPath == llssa.PkgRuntime {
 		prog.SetRuntime(pkgTypes)
 	}
@@ -2139,6 +2218,17 @@ func processPkg(ctx *context, ret llssa.Package, pkg *ssa.Package) {
 	sort.Slice(members, func(i, j int) bool {
 		return members[i].name < members[j].name
 	})
+	localGlobals := make([]*ssa.Global, 0)
+	for _, m := range members {
+		global, ok := m.val.(*ssa.Global)
+		if !ok || isCgoFuncPtrVar(global.Name()) {
+			continue
+		}
+		localGlobals = append(localGlobals, global)
+	}
+	// Address accessors and replay guards must exist before any function body
+	// can reference a local package variable, regardless of member sort order.
+	ctx.prepareLocalVariables(ret, localGlobals)
 
 	for _, m := range members {
 		member := m.val

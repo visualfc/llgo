@@ -1,7 +1,7 @@
 // LITTEST
 package main
 
-// CHECK-LABEL: define void @"{{.*}}print.main"(){{.*}} {
+// CHECK-LABEL: define void @main.main(){{.*}} {
 func main() {
 	// CHECK: PrintInt"(i64 46)
 	// CHECK-NEXT: PrintByte"(i8 32)
