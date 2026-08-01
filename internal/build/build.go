@@ -891,11 +891,6 @@ type context struct {
 	pclnExternal *pclnmap.Data
 }
 
-// frontendDebugMu protects the legacy cl/ssa instruction-debug switches.
-// Code-generation options are invocation-local; this process-wide lock remains
-// only for verbose diagnostic logging until those helpers accept a logger.
-var frontendDebugMu sync.RWMutex
-
 // closePackageMetas releases metadata mappings owned by this build. Metadata
 // remains available to hooks and whole-program consumers until Do returns.
 func (c *context) closePackageMetas() {
@@ -1758,26 +1753,16 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 	}
 	showDetail := verbose && pkgExists(ctx.initial, pkg)
 	needMeta := !aPkg.CacheHit && ctx.buildConf.packageMetaEnabled()
-	ret, externs, err := func() (llssa.Package, []string, error) {
-		if showDetail {
-			frontendDebugMu.Lock()
-			defer frontendDebugMu.Unlock()
-			llssa.SetDebug(llssa.DbgFlagAll)
-			cl.SetDebug(cl.DbgFlagAll)
-			defer func() {
-				llssa.SetDebug(0)
-				cl.SetDebug(0)
-			}()
-		} else {
-			frontendDebugMu.RLock()
-			defer frontendDebugMu.RUnlock()
-		}
-		embedMap, err := goembed.LoadDirectives(ctx.conf.Fset, syntax)
-		if err != nil {
-			return nil, nil, fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
-		}
-		return cl.NewPackageExWithEmbedMetaOptions(ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars, aPkg.SSA, syntax, embedMap, needMeta, ctx.frontendOptions)
-	}()
+	if showDetail {
+		fmt.Fprintf(os.Stderr, "==> Compile %s\n", pkgPath)
+	}
+	embedMap, err := goembed.LoadDirectives(ctx.conf.Fset, syntax)
+	if err != nil {
+		return fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
+	}
+	ret, externs, err := cl.NewPackageExWithEmbedMetaOptions(
+		ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars,
+		aPkg.SSA, syntax, embedMap, needMeta, ctx.frontendOptions)
 	check(err)
 
 	aPkg.LPkg = ret
