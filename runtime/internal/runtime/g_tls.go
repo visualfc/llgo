@@ -97,16 +97,16 @@ func setAutoG(gp *g) c.Int {
 	return 0
 }
 
+func currentGUsesLifecycle() bool {
+	return currentGHasLifecycle
+}
+
 func destroyG(ptr c.Pointer) {
 	gp := (*g)(ptr)
 	if gp == nil {
 		return
 	}
-	lastAfterMainExit := releaseG() == 0 && hasMainExited()
-	if lastAfterMainExit {
-		fatal("no goroutines (main called runtime.Goexit) - deadlock!")
-		c.Exit(2)
-	}
+	releaseGAndCheckDeadlock()
 	if gp.panic_ != nil {
 		c.Free(gp.panic_)
 	}

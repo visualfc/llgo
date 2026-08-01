@@ -45,9 +45,11 @@ var sched struct {
 	goidgen uint64
 	midgen  int64
 	pidgen  int32
-	gcount  uint64 // live or registered goroutine contexts
 
-	mainExited uint32 // set after the main goroutine finishes Goexit defers
+	// gstate packs the live/registered goroutine count with the main-exited
+	// bit. The goroutine whose release observes count zero can therefore make
+	// the deadlock decision from one atomic result.
+	gstate uint64
 }
 
 // NewProc creates a new G running fn.
@@ -132,10 +134,9 @@ func mexit(mp *m) {
 	pp := mp.p
 	ctx := gp.context
 	root := ctx.root
-	lastAfterMainExit := releaseG() == 0 && hasMainExited()
-	if lastAfterMainExit {
-		fatal("no goroutines (main called runtime.Goexit) - deadlock!")
-		c.Exit(2)
+	ownedByLifecycle := currentGUsesLifecycle()
+	if !ownedByLifecycle {
+		releaseGAndCheckDeadlock()
 	}
 
 	casgstatus(gp, _Grunning, _Gdead)
@@ -147,9 +148,20 @@ func mexit(mp *m) {
 	gp.m = nil
 
 	setg(nil)
-	if root != nil {
+	if !ownedByLifecycle && root != nil {
 		ctx.root = nil
 		FreeRoot(root)
+	}
+}
+
+// releaseGAndCheckDeadlock is the sole last-goroutine decision. Main marks its
+// exit before releasing its own context, so regardless of release ordering the
+// final goroutine observes both facts in the packed atomic state.
+func releaseGAndCheckDeadlock() {
+	remaining, mainExited := releaseG()
+	if remaining == 0 && mainExited {
+		fatal("no goroutines (main called runtime.Goexit) - deadlock!")
+		c.Exit(2)
 	}
 }
 
@@ -194,4 +206,11 @@ func GMPForTesting() (goid, parentGoid uint64, mid int64, pid int32, gstatus, ps
 	return gp.goid, gp.parentGoid, mp.id, pp.id, readgstatus(gp), readpstatus(pp),
 		mp.curg == gp && pp.m == mp && ctx != nil &&
 			&ctx.g == gp && &ctx.m == mp && &ctx.p == pp
+}
+
+// GStateForTesting reports the packed scheduler state without changing it.
+// Execution tests use it to wait until a lifecycle-owned main G has completed
+// mexit before allowing the last worker to return.
+func GStateForTesting() (count uint64, mainExited bool) {
+	return gStateForTesting()
 }
