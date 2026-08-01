@@ -472,13 +472,11 @@ func makeClosureCtx(pkg *types.Package, vars []*ssa.FreeVar) *types.Var {
 // zero-sized variables are heap allocated, and LLGo already gives every such
 // allocation the same permitted non-nil sentinel address.
 //
+// A non-synthetic function with a lexical parent is a source closure.
 // Synthetic wrappers are deliberately excluded: a zero-sized method receiver
 // can still carry a semantically significant nil/non-nil pointer value.
 func (p *context) canElideZeroSizedClosureEnv(f *ssa.Function) bool {
 	if f == nil || f.Parent() == nil || f.Synthetic != "" || len(f.FreeVars) == 0 {
-		return false
-	}
-	if _, ok := f.Syntax().(*ast.FuncLit); !ok {
 		return false
 	}
 	for _, freeVar := range f.FreeVars {
@@ -490,23 +488,13 @@ func (p *context) canElideZeroSizedClosureEnv(f *ssa.Function) bool {
 }
 
 func (p *context) isElidableZeroSizedFreeVar(freeVar *ssa.FreeVar) bool {
-	typ := p.type_(freeVar.Type(), llssa.InGo)
-	if p.prog.SizeOf(typ) == 0 {
-		return true
-	}
 	ptr, ok := types.Unalias(p.patchType(freeVar.Type())).Underlying().(*types.Pointer)
 	return ok && p.prog.SizeOf(p.type_(ptr.Elem(), llssa.InGo)) == 0
 }
 
 func (p *context) elidedZeroSizedFreeVar(b llssa.Builder, freeVar *ssa.FreeVar) llssa.Expr {
 	typ := p.type_(freeVar.Type(), llssa.InGo)
-	if p.prog.SizeOf(typ) == 0 {
-		return p.prog.Zero(typ)
-	}
-	ptr, ok := types.Unalias(p.patchType(freeVar.Type())).Underlying().(*types.Pointer)
-	if !ok {
-		panic("zero-sized closure free variable is not reproducible")
-	}
+	ptr := types.Unalias(p.patchType(freeVar.Type())).Underlying().(*types.Pointer)
 	addr := b.Alloc(p.type_(ptr.Elem(), llssa.InGo), true)
 	return b.Convert(typ, addr)
 }
@@ -630,9 +618,6 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	hasFreeVars := len(f.FreeVars) > 0
 	elideFreeVarEnv := p.canElideZeroSizedClosureEnv(f)
 	hasExplicitEnv := hasClosureEnvDirective(f)
-	if hasFreeVars && hasExplicitEnv {
-		panic("llgo:env cannot be combined with Go free variables")
-	}
 	hasCtx := hasFreeVars && !elideFreeVarEnv || hasExplicitEnv
 	var ctx *types.Var
 	if elideFreeVarEnv {

@@ -94,11 +94,7 @@ func (p Program) closureEnvAttribute() llvm.Attribute {
 	default:
 		return llvm.Attribute{}
 	}
-	kind := llvm.AttributeKindID(name)
-	if kind == 0 {
-		panic("ssa: LLVM has no " + name + " parameter attribute")
-	}
-	return p.ctx.CreateEnumAttribute(kind, 0)
+	return p.ctx.CreateEnumAttribute(llvm.AttributeKindID(name), 0)
 }
 
 func (p Program) markClosureEnvFunction(fn llvm.Value, physicalIndex int) {

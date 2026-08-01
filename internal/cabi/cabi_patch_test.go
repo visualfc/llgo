@@ -156,55 +156,80 @@ func TestClosureEnvAttributePreservedByCallbackWrapper(t *testing.T) {
 	const testIR = `
 %Value = type { ptr, ptr, i64 }
 
-define %Value @callback(ptr ATTR %env, %Value %value) {
+define RETURN @callback(ptr ATTR %env, %Value %value) {
 entry:
-  ret %Value %value
+  RET
 }
 `
-	for _, attrName := range []string{"nest", "swiftself"} {
-		t.Run(attrName, func(t *testing.T) {
-			ctx := llvm.NewContext()
-			defer ctx.Dispose()
-			path := filepath.Join(t.TempDir(), "closure_env_callback.ll")
-			if err := os.WriteFile(path, []byte(strings.ReplaceAll(testIR, "ATTR", attrName)), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			buf, err := llvm.NewMemoryBufferFromFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			mod, err := ctx.ParseIR(buf)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer mod.Dispose()
-
-			prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
-			defer prog.Dispose()
-			tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
-			callback := mod.NamedFunction("callback")
-			wrapper, ok := tr.transformCallbackFunc(mod, callback)
-			if !ok {
-				t.Fatalf("callback wrapper was not required:\n%s", mod.String())
-			}
-
-			kind := llvm.AttributeKindID(attrName)
-			if got := wrapper.GetEnumAttributeAtIndex(2, kind); got.IsNil() {
-				t.Fatalf("callback wrapper lost/remapped %s:\n%s", attrName, wrapper.String())
-			}
-			var callbackCall llvm.Value
-			for block := wrapper.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
-				for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
-					if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue() == callback {
-						callbackCall = call
+	returnCases := []struct {
+		name string
+		typ  string
+		ret  string
+	}{
+		{name: "aggregate", typ: "%Value", ret: "ret %Value %value"},
+		{name: "void", typ: "void", ret: "ret void"},
+		{name: "scalar", typ: "i64", ret: "ret i64 7"},
+	}
+	for _, returnCase := range returnCases {
+		t.Run(returnCase.name, func(t *testing.T) {
+			for _, attrName := range []string{"nest", "swiftself"} {
+				t.Run(attrName, func(t *testing.T) {
+					ctx := llvm.NewContext()
+					defer ctx.Dispose()
+					path := filepath.Join(t.TempDir(), "closure_env_callback.ll")
+					ir := strings.NewReplacer(
+						"RETURN", returnCase.typ,
+						"RET", returnCase.ret,
+						"ATTR", attrName,
+					).Replace(testIR)
+					if err := os.WriteFile(path, []byte(ir), 0o644); err != nil {
+						t.Fatal(err)
 					}
-				}
-			}
-			if callbackCall.IsNil() || callbackCall.GetCallSiteEnumAttribute(1, kind).IsNil() {
-				t.Fatalf("callback wrapper call lost %s:\n%s", attrName, wrapper.String())
-			}
-			if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
-				t.Fatalf("C ABI callback closure-env module is invalid: %v\n%s", err, mod.String())
+					buf, err := llvm.NewMemoryBufferFromFile(path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					mod, err := ctx.ParseIR(buf)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer mod.Dispose()
+
+					prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+					defer prog.Dispose()
+					tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
+					callback := mod.NamedFunction("callback")
+					wrapper, ok := tr.transformCallbackFunc(mod, callback)
+					if !ok {
+						t.Fatalf("callback wrapper was not required:\n%s", mod.String())
+					}
+
+					kind := llvm.AttributeKindID(attrName)
+					var wrapperHasAttr bool
+					for i := 1; i <= wrapper.GlobalValueType().ParamTypesCount(); i++ {
+						if !wrapper.GetEnumAttributeAtIndex(i, kind).IsNil() {
+							wrapperHasAttr = true
+							break
+						}
+					}
+					if !wrapperHasAttr {
+						t.Fatalf("callback wrapper lost/remapped %s:\n%s", attrName, wrapper.String())
+					}
+					var callbackCall llvm.Value
+					for block := wrapper.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+						for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+							if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue() == callback {
+								callbackCall = call
+							}
+						}
+					}
+					if callbackCall.IsNil() || callbackCall.GetCallSiteEnumAttribute(1, kind).IsNil() {
+						t.Fatalf("callback wrapper call lost %s:\n%s", attrName, wrapper.String())
+					}
+					if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+						t.Fatalf("C ABI callback closure-env module is invalid: %v\n%s", err, mod.String())
+					}
+				})
 			}
 		})
 	}

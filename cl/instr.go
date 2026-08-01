@@ -666,12 +666,9 @@ func (p *context) funcOf(fn *ssa.Function) (aFn llssa.Function, pyFn llssa.PyObj
 				return nil, nil, ignoredFunc
 			}
 			sig := p.patchType(fn.Signature).(*types.Signature)
-			if hasClosureEnvDirective(fn) {
-				env := types.NewVar(token.NoPos, nil, "$env", types.Typ[types.UnsafePointer])
-				aFn = pkg.NewEnvFunc(name, sig, llssa.Background(ftype), env, p.needsLinkOnce(fn))
-			} else {
-				aFn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), false, p.needsLinkOnce(fn))
-			}
+			// Source env-bearing bodies are created by compileFuncDecl before
+			// lowering. Imported declarations cannot reconstruct //llgo:env.
+			aFn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), false, p.needsLinkOnce(fn))
 			if disableInline {
 				aFn.Inline(llssa.NoInline)
 			}

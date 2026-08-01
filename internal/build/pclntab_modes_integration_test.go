@@ -268,7 +268,7 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				bin := buildPCLNIntegrationBinaryAt(t, source, tt.mode, LinkOptions{}, filepath.Join(packagingDir, "pclntab-modes-"+tt.name))
+				bin := buildPCLNIntegrationBinaryAt(t, source, tt.mode, LinkOptions{}, filepath.Join(packagingDir, "pclntab-modes-"+tt.name), false)
 				binaries[tt.mode] = bin
 				if tt.mode == PCLNExternal {
 					verifyPCLNIntegrationSignature(t, bin)
@@ -397,7 +397,11 @@ func TestPCLNExternalPureCLibraryIdentityRetentionIntegration(t *testing.T) {
 	requireNativePCLNSidecars(t)
 	setPCLNIntegrationEnv(t)
 	source := writePCLNIntegrationSource(t, pclntabPureCLibraryFixture)
-	bin := buildPCLNIntegrationBinary(t, source, PCLNExternal, LinkOptions{})
+	// Exercise the external-sidecar summary as part of a real detach rather
+	// than mocking the final publication path.
+	bin := buildPCLNIntegrationBinaryAt(
+		t, source, PCLNExternal, LinkOptions{}, filepath.Join(t.TempDir(), "pclntab-pure-c"), true,
+	)
 	verifyPCLNIntegrationSignature(t, bin)
 	if got := runPCLNIntegrationBinary(t, bin); got != "pure-c-pclntab\n" {
 		t.Fatalf("pure lib/c output = %q", got)
@@ -583,10 +587,10 @@ func pclnIntegrationBinaryIdentity(t *testing.T, path string) [32]byte {
 
 func buildPCLNIntegrationBinary(t *testing.T, source string, mode PCLNMode, options LinkOptions) string {
 	t.Helper()
-	return buildPCLNIntegrationBinaryAt(t, source, mode, options, filepath.Join(t.TempDir(), "pclntab-modes"))
+	return buildPCLNIntegrationBinaryAt(t, source, mode, options, filepath.Join(t.TempDir(), "pclntab-modes"), false)
 }
 
-func buildPCLNIntegrationBinaryAt(t *testing.T, source string, mode PCLNMode, options LinkOptions, bin string) string {
+func buildPCLNIntegrationBinaryAt(t *testing.T, source string, mode PCLNMode, options LinkOptions, bin string, verbose bool) string {
 	t.Helper()
 	started := time.Now()
 	conf := &Config{
@@ -596,6 +600,7 @@ func buildPCLNIntegrationBinaryAt(t *testing.T, source string, mode PCLNMode, op
 		PCLNMode:    mode,
 		PCLNModeSet: true,
 		LinkOptions: options,
+		Verbose:     verbose,
 	}
 	if _, err := Do([]string{source}, conf); err != nil {
 		t.Fatalf("build %s PCLN fixture with LinkOptions %+v: %v", mode, options, err)

@@ -124,6 +124,10 @@ func TestClosureEnvMetadataRejectsInvalidUses(t *testing.T) {
 	pkg := prog.NewPackage("p", "example.com/p")
 	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
 	env := types.NewParam(token.NoPos, nil, "$env", types.NewPointer(types.NewStruct(nil, nil)))
+	envEntry := pkg.NewEnvFunc("binding-mismatch", sig, InGo, env, false)
+	plainEntry := pkg.NewFunc("plain-binding", sig, InGo)
+	caller := pkg.NewFunc("binding-validation", sig, InGo)
+	b := caller.MakeBody(1)
 
 	tests := []struct {
 		name string
@@ -152,6 +156,18 @@ func TestClosureEnvMetadataRejectsInvalidUses(t *testing.T) {
 			name: "environment from plain entry",
 			fn: func() {
 				pkg.NewFunc("plain-env", sig, InGo).Env()
+			},
+		},
+		{
+			name: "environment binding count mismatch",
+			fn: func() {
+				b.MakeClosure(envEntry.Expr, []Expr{prog.Val(1)})
+			},
+		},
+		{
+			name: "binding on plain entry",
+			fn: func() {
+				b.MakeClosure(plainEntry.Expr, []Expr{prog.Val(1)})
 			},
 		},
 	}

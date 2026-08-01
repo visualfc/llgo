@@ -107,6 +107,23 @@ func use() unsafe.Pointer { return closureEnv(1) }
 	}
 }
 
+func TestClosureEnvRejectsConflictingEntryABI(t *testing.T) {
+	const src = `package closureenv
+
+import _ "unsafe"
+
+//go:linkname plain closureenv.entry
+func plain() {}
+
+//go:linkname withEnv closureenv.entry
+//llgo:env
+func withEnv() {}
+`
+	mustPanic(t, "conflicting closure environment ABI", func() {
+		compileWithRewrites(t, src, nil)
+	})
+}
+
 func assertNoStoreToGlobal(t *testing.T, ir, global string) {
 	t.Helper()
 	for _, line := range strings.Split(ir, "\n") {
