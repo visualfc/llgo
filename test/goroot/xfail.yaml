@@ -1926,26 +1926,6 @@ xfails:
     directive: errorcheck
     case: syntax/vareq.go
     reason: llgo parser recovery emits additional diagnostics after the expected syntax error
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: finprofiled.go
-    reason: LLGo finalizer profiling run hangs beyond the 1m timeout on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: finprofiled.go
-    reason: LLGo finalizer profiling run hangs beyond the 1m timeout on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: gcstring.go
-    reason: GC frees a string-backed pointer before its finalizer check on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: gcstring.go
-    reason: GC frees a string-backed pointer before its finalizer check on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: inline_caller.go
@@ -1962,36 +1942,6 @@ xfails:
     directive: run
     case: fixedbugs/issue72063.go
     reason: generic Y-combinator build exits successfully without producing a binary on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue8047b.go
-    reason: recover interaction panics with value 1 on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue8047b.go
-    reason: recover interaction panics with value 1 on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: typeparam/orderedmap.go
-    reason: generic ordered-map iterator dereferences a nil entry on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: typeparam/orderedmap.go
-    reason: generic ordered-map iterator dereferences a nil entry on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: uintptrescapes3.go
-    reason: uintptr escape round trip dereferences a nil pointer on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: uintptrescapes3.go
-    reason: uintptr escape round trip dereferences a nil pointer on darwin/arm64
   - version: go1.26
     platform: darwin/arm64
     directive: run
@@ -2021,36 +1971,6 @@ xfails:
     directive: run
     case: zerodivide.go
     reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue16130.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue16130.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue19040.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue19040.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue37975.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue37975.go
-    reason: current main goroot run failure on darwin/arm64
   - version: go1.26
     platform: darwin/arm64
     directive: run
@@ -2068,27 +1988,12 @@ xfails:
   - version: go1.24
     platform: linux/amd64
     directive: run
-    case: append.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
     case: init1.go
     reason: go1.24 goroot run failure on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: run
     case: recover2.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: recover3.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: switch.go
     reason: go1.24 goroot run failure on linux/amd64
   - version: go1.24
     platform: linux/amd64
@@ -2110,31 +2015,6 @@ xfails:
     directive: run
     case: typeparam/mdempsky/16.go
     reason: nil-interface assertion panic implements runtime.Error but the message lacks the source interface type and prints the command-line-arguments package path on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue19040.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue37975.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue63657.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue65417.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: append.go
-    reason: go1.25 goroot run failure on linux/amd64
   - version: go1.25
     platform: linux/amd64
     directive: run
@@ -2148,43 +2028,8 @@ xfails:
   - version: go1.25
     platform: linux/amd64
     directive: run
-    case: recover3.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: switch.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
     case: zerodivide.go
     reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue19040.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue37975.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue63657.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue65417.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: append.go
-    reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -2198,37 +2043,7 @@ xfails:
   - version: go1.26
     platform: linux/amd64
     directive: run
-    case: recover3.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: switch.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
     case: zerodivide.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue19040.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue37975.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue63657.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue65417.go
     reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
@@ -2239,11 +2054,6 @@ xfails:
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue73916b.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue75327.go
     reason: go1.26 goroot run failure on linux/amd64
   - version: go1.24
     platform: linux/amd64
@@ -2338,16 +2148,6 @@ xfails:
     directive: run
     case: fixedbugs/issue46725.go
     reason: latest main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue5493.go
-    reason: latest main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue5493.go
-    reason: latest main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue57823.go
@@ -2381,11 +2181,6 @@ xfails:
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue24491b.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue26335.go
     reason: go1.25 goroot run failure on linux/amd64
   - version: go1.25
     platform: linux/amd64
@@ -2426,11 +2221,6 @@ xfails:
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue46725.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue72860.go
     reason: go1.25 goroot run failure on linux/amd64
   - version: go1.25
     platform: linux/amd64
@@ -2476,11 +2266,6 @@ xfails:
     platform: linux/amd64
     directive: run
     case: stackobj3.go
-    reason: go1.25 goroot run failure on linux/amd64
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: tinyfin.go
     reason: go1.25 goroot run failure on linux/amd64
 
   - version: go1.24
@@ -2556,22 +2341,12 @@ xfails:
   - version: go1.24
     platform: linux/amd64
     directive: run
-    case: tinyfin.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
     case: fixedbugs/bug348.go
     reason: panic/fault statement-line granularity in untracked functions (P4b prebuilt pcline)
   - version: go1.24
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue15281.go
-    reason: go1.24 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue26335.go
     reason: go1.24 goroot run failure on linux/amd64
   - version: go1.24
     platform: linux/amd64
@@ -2641,22 +2416,12 @@ xfails:
   - version: go1.26
     platform: linux/amd64
     directive: run
-    case: tinyfin.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
     case: fixedbugs/bug348.go
     reason: panic/fault statement-line granularity in untracked functions (P4b prebuilt pcline)
   - version: go1.26
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue15281.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue26335.go
     reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
@@ -2683,11 +2448,6 @@ xfails:
     directive: run
     case: fixedbugs/issue4562.go
     reason: panic/fault statement-line granularity in untracked functions (P4b prebuilt pcline)
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue72860.go
-    reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -2738,59 +2498,9 @@ xfails:
     directive: run
     case: fixedbugs/issue57823.go
     reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/bug273.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/bug273.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue12133.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue12133.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue13169.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue13169.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue19246.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue19246.go
-    reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue26094.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue43835.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue43835.go
     reason: current main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
@@ -2806,71 +2516,9 @@ xfails:
     directive: run
     case: fixedbugs/issue73920.go
     reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue8048.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue8048.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue8132.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue8132.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: nil.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: nil.go
-    reason: current main goroot run failure on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: typeparam/chans.go
-    reason: select over unbuffered channel misses final receive on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: run
-    case: typeparam/chans.go
-    reason: select over unbuffered channel misses final receive on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: runoutput
-    case: index0.go
-    reason: current main goroot runoutput failure on darwin/arm64
-  - version: go1.25
-    platform: darwin/arm64
-    directive: runoutput
-    case: index0.go
-    reason: current main goroot runoutput failure on darwin/arm64
-  - platform: linux/amd64
-    directive: run
-    case: fixedbugs/bug273.go
-    reason: current main goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue19246.go
-    reason: current main goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue26094.go
-    reason: current main goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue43835.go
     reason: current main goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
@@ -2882,14 +2530,6 @@ xfails:
     directive: run
     case: fixedbugs/issue73920.go
     reason: go1.26 goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue8048.go
-    reason: current main goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue8132.go
-    reason: current main goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue38496.go
@@ -2906,20 +2546,12 @@ xfails:
     reason: go1.25 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
-    case: nil.go
-    reason: current main goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
     case: nilptr.go
     reason: current main goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: typeparam/chans.go
     reason: select over unbuffered channel misses final receive on linux/amd64
-  - platform: linux/amd64
-    directive: runoutput
-    case: index0.go
-    reason: current main goroot runoutput failure on linux/amd64
   - version: go1.26
     platform: darwin/arm64
     directive: rundir
