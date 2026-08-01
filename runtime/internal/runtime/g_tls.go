@@ -102,6 +102,11 @@ func destroyG(ptr c.Pointer) {
 	if gp == nil {
 		return
 	}
+	lastAfterMainExit := releaseG() == 0 && hasMainExited()
+	if lastAfterMainExit {
+		fatal("no goroutines (main called runtime.Goexit) - deadlock!")
+		c.Exit(2)
+	}
 	if gp.panic_ != nil {
 		c.Free(gp.panic_)
 	}

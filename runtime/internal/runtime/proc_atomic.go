@@ -32,6 +32,26 @@ func nextPid(pp *p) int32 {
 	return atomic.Add(&sched.pidgen, int32(1)) - 1
 }
 
+func retainG() {
+	atomic.Add(&sched.gcount, uint64(1))
+}
+
+func releaseG() uint64 {
+	return atomic.Sub(&sched.gcount, uint64(1))
+}
+
+func liveGCount() uint64 {
+	return atomic.Load(&sched.gcount)
+}
+
+func markMainExited() {
+	atomic.Store(&sched.mainExited, uint32(1))
+}
+
+func hasMainExited() bool {
+	return atomic.Load(&sched.mainExited) != 0
+}
+
 func readgstatus(gp *g) uint32 {
 	return atomic.Load(&gp.atomicstatus)
 }

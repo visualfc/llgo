@@ -36,9 +36,12 @@ func Rethrow(link *Defer) {
 		if link != nil {
 			c.Siglongjmp(link.Addr, 1)
 		}
-		if gp.isMain {
+		if gp.isMain && liveGCount() == 1 {
 			fatal("no goroutines (main called runtime.Goexit) - deadlock!")
 			c.Exit(2)
+		}
+		if gp.isMain {
+			markMainExited()
 		}
 		leaveCurrentLocalContext()
 		exitCurrentM()

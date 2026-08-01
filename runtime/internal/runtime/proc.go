@@ -45,6 +45,9 @@ var sched struct {
 	goidgen uint64
 	midgen  int64
 	pidgen  int32
+	gcount  uint64 // live or registered goroutine contexts
+
+	mainExited uint32 // set after the main goroutine finishes Goexit defers
 }
 
 // NewProc creates a new G running fn.
@@ -56,6 +59,7 @@ func NewProc(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr) {
 	gp := newproc1(fn, arg, getg())
 	if errno := newm(gp.m, stackSize); errno != 0 {
 		ctx := gp.context
+		releaseG()
 		FreeRoot(arg)
 		FreeRoot(ctx.root)
 		panic("runtime: failed to create new OS thread")
@@ -128,6 +132,11 @@ func mexit(mp *m) {
 	pp := mp.p
 	ctx := gp.context
 	root := ctx.root
+	lastAfterMainExit := releaseG() == 0 && hasMainExited()
+	if lastAfterMainExit {
+		fatal("no goroutines (main called runtime.Goexit) - deadlock!")
+		c.Exit(2)
+	}
 
 	casgstatus(gp, _Grunning, _Gdead)
 	setpstatus(pp, _Pdead)
@@ -168,6 +177,7 @@ func initRuntimeContext(ctx *runtimeContext, callergp *g, status uint32) *g {
 	}
 	setpstatus(pp, pstatus)
 	pp.m = mp
+	retainG()
 	return gp
 }
 

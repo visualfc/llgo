@@ -35,6 +35,17 @@ func nextPid(pp *p) int32 {
 	return int32((uintptr(unsafe.Pointer(pp)) >> 2) & 0x7fffffff)
 }
 
+func retainG() {
+}
+
+func releaseG() uint64 {
+	return 1
+}
+
+func hasMainExited() bool {
+	return false
+}
+
 // Each bare-metal G owns its status transitions in the current backend.
 func readgstatus(gp *g) uint32 {
 	return gp.atomicstatus
