@@ -1183,7 +1183,7 @@ type I2 interface {
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %8
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i1 @"main.*struct{m int; *bytes.Buffer}.empty"(ptr %0){{.*}} {
+// CHECK-LABEL: define i1 @"main.*struct{m int; *bytes.Buffer}.bytes.empty"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %2 = load ptr, ptr %1, align 8
@@ -1191,7 +1191,7 @@ type I2 interface {
 // CHECK-NEXT:   ret i1 %3
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i64 @"main.*struct{m int; *bytes.Buffer}.grow"(ptr %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i64 @"main.*struct{m int; *bytes.Buffer}.bytes.grow"(ptr %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
@@ -1199,7 +1199,7 @@ type I2 interface {
 // CHECK-NEXT:   ret i64 %4
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } @"main.*struct{m int; *bytes.Buffer}.readSlice"(ptr %0, i8 %1){{.*}} {
+// CHECK-LABEL: define { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } @"main.*struct{m int; *bytes.Buffer}.bytes.readSlice"(ptr %0, i8 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
@@ -1211,7 +1211,7 @@ type I2 interface {
 // CHECK-NEXT:   ret { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } %8
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { i64, i1 } @"main.*struct{m int; *bytes.Buffer}.tryGrowByReslice"(ptr %0, i64 %1){{.*}} {
+// CHECK-LABEL: define { i64, i1 } @"main.*struct{m int; *bytes.Buffer}.bytes.tryGrowByReslice"(ptr %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
@@ -1533,7 +1533,7 @@ type I2 interface {
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %9
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i1 @"main.struct{m int; *bytes.Buffer}.empty"({ i64, ptr } %0){{.*}} {
+// CHECK-LABEL: define i1 @"main.struct{m int; *bytes.Buffer}.bytes.empty"({ i64, ptr } %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = alloca { i64, ptr }, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %1, i8 0, i64 16, i1 false)
@@ -1544,7 +1544,7 @@ type I2 interface {
 // CHECK-NEXT:   ret i1 %4
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define i64 @"main.struct{m int; *bytes.Buffer}.grow"({ i64, ptr } %0, i64 %1){{.*}} {
+// CHECK-LABEL: define i64 @"main.struct{m int; *bytes.Buffer}.bytes.grow"({ i64, ptr } %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = alloca { i64, ptr }, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %2, i8 0, i64 16, i1 false)
@@ -1555,7 +1555,7 @@ type I2 interface {
 // CHECK-NEXT:   ret i64 %5
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } @"main.struct{m int; *bytes.Buffer}.readSlice"({ i64, ptr } %0, i8 %1){{.*}} {
+// CHECK-LABEL: define { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } @"main.struct{m int; *bytes.Buffer}.bytes.readSlice"({ i64, ptr } %0, i8 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = alloca { i64, ptr }, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %2, i8 0, i64 16, i1 false)
@@ -1570,7 +1570,7 @@ type I2 interface {
 // CHECK-NEXT:   ret { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } %9
 // CHECK-NEXT: }
 
-// CHECK-LABEL: define { i64, i1 } @"main.struct{m int; *bytes.Buffer}.tryGrowByReslice"({ i64, ptr } %0, i64 %1){{.*}} {
+// CHECK-LABEL: define { i64, i1 } @"main.struct{m int; *bytes.Buffer}.bytes.tryGrowByReslice"({ i64, ptr } %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = alloca { i64, ptr }, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %2, i8 0, i64 16, i1 false)
