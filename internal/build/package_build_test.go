@@ -25,8 +25,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/goplus/llgo/cl"
 	"github.com/goplus/llgo/internal/env"
 	"github.com/goplus/llgo/internal/packages"
+	"golang.org/x/tools/go/ssa"
 )
 
 func TestPackageBuildSpecAndResult(t *testing.T) {
@@ -142,6 +144,28 @@ func TestPreflightPackageBuildSkipsDeclarationOnlyPackage(t *testing.T) {
 	}
 }
 
+func TestPreflightPackageBuildSkipsExternalLinkOnlyPackage(t *testing.T) {
+	pkg := &aPackage{Package: &packages.Package{
+		ID:         "example.com/linkonly",
+		PkgPath:    "example.com/linkonly",
+		Name:       "linkonly",
+		Types:      types.NewPackage("example.com/linkonly", "linkonly"),
+		ExportFile: "stale.a",
+	}}
+	ctx := &context{buildConf: &Config{}, built: make(map[string]none)}
+	spec := packageBuildSpec{pkg: pkg, kind: cl.PkgLinkExtern, kindParam: "-lexample"}
+	skip, err := preflightPackageBuild(ctx, spec, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skip || pkg.ExportFile != "" {
+		t.Fatalf("external link-only preflight = skip %v, export %q", skip, pkg.ExportFile)
+	}
+	if len(pkg.LinkArgs) != 1 || pkg.LinkArgs[0] != "-lexample" {
+		t.Fatalf("external link args = %q, want [-lexample]", pkg.LinkArgs)
+	}
+}
+
 func TestFinalizePackageBuildReturnsCachedResult(t *testing.T) {
 	pkg := &aPackage{Package: &packages.Package{
 		ID:      "example.com/cached",
@@ -156,4 +180,14 @@ func TestFinalizePackageBuildReturnsCachedResult(t *testing.T) {
 	if !result.needPyInit {
 		t.Fatalf("build result = %+v, want Python initialization requirement preserved", result)
 	}
+}
+
+func TestBuildSSAPkgsEmptyAndNilEntries(t *testing.T) {
+	ctx := &context{buildConf: &Config{}}
+	buildSSAPkgs(ctx, nil)
+	buildSSAPkgs(ctx, []ssaBuildEntry{{}, {fixOrder: true}})
+
+	prog := ssa.NewProgram(token.NewFileSet(), ssa.SanityCheckFunctions)
+	pkg := prog.CreatePackage(types.NewPackage("example.com/ssa", "ssa"), nil, nil, true)
+	buildSSAPkgs(ctx, []ssaBuildEntry{{pkg: pkg}, {pkg: pkg}})
 }
