@@ -244,6 +244,12 @@ func (d *pass) shouldKeep(method methodRef) bool {
 func (d *pass) markMethod(method methodRef) {
 	d.liveSlots[method.owner] = append(d.liveSlots[method.owner], method.slot)
 
+	// The method descriptor is itself a type descriptor, and reflection can
+	// reach its parameter and result types through operations such as
+	// reflect.Type.Method(i).Type.Out(j). Traverse those child types with
+	// UsedInIface set; otherwise a reflected result such as U from T.Make can
+	// be reachable without U's methods participating in a later MethodByName.
+	d.markUsedInIface(method.slotInfo.MType)
 	d.markReachable(method.slotInfo.MType)
 	d.markReachable(method.slotInfo.IFn)
 	d.markReachable(method.slotInfo.TFn)

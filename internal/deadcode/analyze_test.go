@@ -500,7 +500,9 @@ func methodSig(b *pkgBuilder, name string) pkgSig {
 }
 
 func methodSigWithType(b *pkgBuilder, name, mtype string) pkgSig {
-	return pkgSig{name: name, mtype: b.sym(mtype)}
+	typ := b.sym(mtype)
+	b.addEdge(typ, typ)
+	return pkgSig{name: name, mtype: typ}
 }
 
 func methodSlot(b *pkgBuilder, sig pkgSig, ifn, tfn string) pkgSlot {
