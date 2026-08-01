@@ -1448,6 +1448,30 @@ func F() {}
 	pkgs[0].LPkg.Prog.Dispose()
 }
 
+func TestDoOptimizesUnreachableBodylessCalls(t *testing.T) {
+	conf := NewDefaultConf(ModeGen)
+	conf.AllowNoBody = true
+	pkgs, err := Do([]string{"./testdata/unreachablebodyless/main.go"}, conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 1 || pkgs[0].LPkg == nil {
+		t.Fatalf("Do returned packages = %+v, want one compiled package", pkgs)
+	}
+	defer pkgs[0].LPkg.Prog.Dispose()
+	mod := pkgs[0].LPkg.Module()
+	mod.SetDataLayout(pkgs[0].LPkg.Prog.DataLayout())
+	mod.SetTarget(pkgs[0].LPkg.Prog.Target().Spec().Triple)
+	pbo := llvm.NewPassBuilderOptions()
+	defer pbo.Dispose()
+	if err := mod.RunPasses("default<O2>", pkgs[0].LPkg.Prog.TargetMachine(), pbo); err != nil {
+		t.Fatalf("optimize generated module: %v", err)
+	}
+	if ir := mod.String(); strings.Contains(ir, "call void @main.fail") {
+		t.Fatalf("unreachable bodyless call remains after optimization:\n%s", ir)
+	}
+}
+
 func TestDoReportsLocalityDirectiveError(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "invalid_locality.go")
 	if err := os.WriteFile(file, []byte(`package invalidlocality

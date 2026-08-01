@@ -1309,6 +1309,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			b.DeferStackDrain()
 		}
 	case *ssa.BinOp:
+		if value, ok := foldConstComparison(v); ok {
+			ret = p.prog.BoolVal(value)
+			break
+		}
 		if isUntypedNilConst(v.X) && isUntypedNilConst(v.Y) {
 			switch v.Op {
 			case token.EQL:
@@ -1682,6 +1686,20 @@ func isUntypedNilConst(v ssa.Value) bool {
 	}
 	basic, ok := c.Type().Underlying().(*types.Basic)
 	return ok && basic.Kind() == types.UntypedNil
+}
+
+func foldConstComparison(v *ssa.BinOp) (bool, bool) {
+	switch v.Op {
+	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
+	default:
+		return false, false
+	}
+	x, xok := v.X.(*ssa.Const)
+	y, yok := v.Y.(*ssa.Const)
+	if !xok || !yok || x.Value == nil || y.Value == nil {
+		return false, false
+	}
+	return constant.Compare(x.Value, v.Op, y.Value), true
 }
 
 func (p *context) nilOf(typ types.Type) llssa.Expr {
