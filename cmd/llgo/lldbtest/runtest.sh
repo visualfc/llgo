@@ -83,25 +83,28 @@ llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
 # The LLGo formatter must not attach itself to an ordinary C target.
 non_llgo_dir="$test_tmp_dir/non-llgo"
 mkdir -p "$non_llgo_dir"
-printf 'int main(void) { return 0; }\n' | \
+printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; int main(void) { return 0; }\n' | \
     "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo" \
     -o 'script info = llgo_plugin.inspect_target(lldb.target); assert not info.marker_versions and not info.supported' \
+    -o 'script value = lldb.target.FindFirstGlobalVariable("cstring"); assert value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2' \
     -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "Not an LLGo target" in result.GetOutput()' \
     -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); assert result.Succeeded() and "2" in result.GetOutput()'
 
 # An unknown marker must disable only LLGo-specific presentation.
-printf '__attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
+printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; __attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
     "${CC:-cc}" -x c -g -o "$non_llgo_dir/unsupported-llgo" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/unsupported-llgo" \
     -o 'script info = llgo_plugin.inspect_target(lldb.target); assert info.marker_versions == (2,) and not info.supported' \
+    -o 'script value = lldb.target.FindFirstGlobalVariable("cstring"); assert value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2' \
     -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "Unsupported LLGo debugger marker version(s): v2" in result.GetOutput()' \
     -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); assert not result.Succeeded() and "Unsupported LLGo debugger marker version(s): v2" in result.GetError()' \
     -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); assert result.Succeeded() and "2" in result.GetOutput()'
 
 # Multiple marker versions are ambiguous even when one version is supported.
-printf '__attribute__((used)) int __llgo_debugger_marker_v1 = 1; __attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
+printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; __attribute__((used)) int __llgo_debugger_marker_v1 = 1; __attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
     "${CC:-cc}" -x c -g -o "$non_llgo_dir/ambiguous-llgo" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/ambiguous-llgo" \
     -o 'script info = llgo_plugin.inspect_target(lldb.target); assert info.marker_versions == (1, 2) and not info.supported' \
+    -o 'script value = lldb.target.FindFirstGlobalVariable("cstring"); assert value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2' \
     -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "Unsupported LLGo debugger marker version(s): v1, v2" in result.GetOutput()'

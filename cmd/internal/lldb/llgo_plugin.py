@@ -10,7 +10,43 @@ LLGO_DEBUGGER_MARKER_PREFIX = "__llgo_debugger_marker_v"
 LLGO_DEBUGGER_SCHEMAS = {
     "__llgo_debugger_marker_v1": (1, 1),
 }
+LLGO_TYPE_CATEGORY = "LLGo"
+LLGO_MAX_STRING_SUMMARY_BYTES = 256
+LLGO_DEFAULT_MAX_CHILDREN = 256
 _TARGET_INFO_CACHE: Dict[Tuple[Any, ...], "LLGoTargetInfo"] = {}
+
+
+@dataclass(frozen=True)
+class LLGoRuntimeLayout:
+    string_type: str
+    string_data: str
+    string_len: str
+    slice_type_pattern: str
+    slice_data: str
+    slice_len: str
+    slice_cap: str
+
+
+@dataclass(frozen=True)
+class LLGoSliceValue:
+    address: int
+    length: int
+    capacity: int
+    element_type: lldb.SBType
+    element_size: int
+
+
+LLGO_RUNTIME_LAYOUTS = {
+    1: LLGoRuntimeLayout(
+        string_type="string",
+        string_data="data",
+        string_len="len",
+        slice_type_pattern=r"^\[\].+",
+        slice_data="data",
+        slice_len="len",
+        slice_cap="cap",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -43,6 +79,39 @@ def register_commands(debugger: lldb.SBDebugger) -> None:
         'command script add -f llgo_plugin.print_go_expression llgo print')
     debugger.HandleCommand(
         'command script add -f llgo_plugin.print_all_variables llgo vars')
+    register_type_formatters(debugger)
+
+
+def _type_options(hide_children: bool = False) -> int:
+    options = lldb.eTypeOptionCascade
+    options |= getattr(lldb, "eTypeOptionSkipPointers", 0)
+    options |= getattr(lldb, "eTypeOptionSkipReferences", 0)
+    if hide_children:
+        options |= getattr(lldb, "eTypeOptionHideChildren", 0)
+    return options
+
+
+def register_type_formatters(debugger: lldb.SBDebugger) -> None:
+    category = debugger.CreateCategory(LLGO_TYPE_CATEGORY)
+    for layout in LLGO_RUNTIME_LAYOUTS.values():
+        category.AddTypeSummary(
+            lldb.SBTypeNameSpecifier(layout.string_type, False),
+            lldb.SBTypeSummary.CreateWithFunctionName(
+                "llgo_plugin.string_summary", _type_options(True)),
+        )
+        slice_specifier = lldb.SBTypeNameSpecifier(
+            layout.slice_type_pattern, True)
+        category.AddTypeSummary(
+            slice_specifier,
+            lldb.SBTypeSummary.CreateWithFunctionName(
+                "llgo_plugin.slice_summary", _type_options()),
+        )
+        category.AddTypeSynthetic(
+            slice_specifier,
+            lldb.SBTypeSynthetic.CreateWithClassName(
+                "llgo_plugin.SliceSyntheticProvider", _type_options()),
+        )
+    category.SetEnabled(True)
 
 
 def _marker_versions(target: lldb.SBTarget) -> Tuple[int, ...]:
@@ -192,27 +261,235 @@ def _value_as_int(value: lldb.SBValue) -> Optional[int]:
         return None
 
 
+def _raw_value(value: lldb.SBValue) -> lldb.SBValue:
+    if not value or not value.IsValid():
+        return value
+    raw = value.GetNonSyntheticValue()
+    return raw if raw and raw.IsValid() else value
+
+
+def _canonical_type_name(value: lldb.SBValue) -> str:
+    value_type = _raw_value(value).GetType()
+    while value_type and value_type.IsValid() and value_type.IsTypedefType():
+        value_type = value_type.GetTypedefedType()
+    return value_type.GetName() if value_type and value_type.IsValid() else ""
+
+
+def _runtime_layout(value: lldb.SBValue) -> Optional[LLGoRuntimeLayout]:
+    if not value or not value.IsValid():
+        return None
+    info = inspect_target(value.GetTarget())
+    if not info.supported or info.runtime_layout_version is None:
+        return None
+    return LLGO_RUNTIME_LAYOUTS.get(info.runtime_layout_version)
+
+
+def _string_fields(value: lldb.SBValue, layout: LLGoRuntimeLayout) -> Optional[Tuple[lldb.SBValue, int]]:
+    raw = _raw_value(value)
+    if _canonical_type_name(raw) != layout.string_type:
+        return None
+    data = raw.GetChildMemberWithName(layout.string_data)
+    length = _value_as_int(raw.GetChildMemberWithName(layout.string_len))
+    if not data or not data.IsValid() or length is None or length < 0:
+        return None
+    return data, length
+
+
+def _slice_fields(value: lldb.SBValue,
+                  layout: LLGoRuntimeLayout) -> Optional[LLGoSliceValue]:
+    raw = _raw_value(value)
+    if not re.fullmatch(layout.slice_type_pattern,
+                        _canonical_type_name(raw)):
+        return None
+    data = raw.GetChildMemberWithName(layout.slice_data)
+    length = _value_as_int(raw.GetChildMemberWithName(layout.slice_len))
+    capacity = _value_as_int(raw.GetChildMemberWithName(layout.slice_cap))
+    if (not data or not data.IsValid() or length is None or
+            capacity is None or length < 0 or capacity < length):
+        return None
+    address = _value_as_int(data)
+    element_type = data.GetType().GetPointeeType()
+    if address is None:
+        return None
+    if not element_type or not element_type.IsValid():
+        return None
+    return LLGoSliceValue(
+        address=address,
+        length=length,
+        capacity=capacity,
+        element_type=element_type,
+        element_size=element_type.GetByteSize(),
+    )
+
+
+def _slice_element(value: lldb.SBValue, index: int,
+                   fields: LLGoSliceValue) -> Optional[lldb.SBValue]:
+    if index < 0 or index >= fields.length or fields.address == 0:
+        return None
+    element_address = fields.address + index * fields.element_size
+    target = value.GetTarget()
+    return target.CreateValueFromAddress(
+        f"[{index}]", lldb.SBAddress(element_address, target),
+        fields.element_type)
+
+
+def _quote_go_bytes(value: bytes) -> str:
+    escapes = {
+        "\a": r"\a",
+        "\b": r"\b",
+        "\f": r"\f",
+        "\n": r"\n",
+        "\r": r"\r",
+        "\t": r"\t",
+        "\v": r"\v",
+        '"': r'\"',
+        "\\": r"\\",
+    }
+    quoted: List[str] = ['"']
+    for char in value.decode("utf-8", errors="surrogateescape"):
+        escaped = escapes.get(char)
+        if escaped is not None:
+            quoted.append(escaped)
+            continue
+        code = ord(char)
+        if 0xDC80 <= code <= 0xDCFF:
+            quoted.append(f"\\x{code - 0xDC00:02x}")
+        elif char.isprintable():
+            quoted.append(char)
+        elif code <= 0xFF:
+            quoted.append(f"\\x{code:02x}")
+        elif code <= 0xFFFF:
+            quoted.append(f"\\u{code:04x}")
+        else:
+            quoted.append(f"\\U{code:08x}")
+    quoted.append('"')
+    return "".join(quoted)
+
+
+def _utf8_bounded_prefix(value: bytes, limit: int) -> bytes:
+    prefix = value[:limit]
+    if len(value) <= limit or limit == 0:
+        return prefix
+
+    start = limit - 1
+    lower_bound = max(0, limit - 4)
+    while start >= lower_bound and value[start] & 0xC0 == 0x80:
+        start -= 1
+    if start < lower_bound:
+        return prefix
+    lead = value[start]
+    if 0xC2 <= lead <= 0xDF:
+        sequence_length = 2
+    elif 0xE0 <= lead <= 0xEF:
+        sequence_length = 3
+    elif 0xF0 <= lead <= 0xF4:
+        sequence_length = 4
+    else:
+        return prefix
+    sequence_end = start + sequence_length
+    if sequence_end <= limit or sequence_end > len(value):
+        return prefix
+    try:
+        value[start:sequence_end].decode("utf-8")
+    except UnicodeDecodeError:
+        return prefix
+    return value[:start]
+
+
+def _format_runtime_string(value: lldb.SBValue,
+                           layout: LLGoRuntimeLayout) -> Optional[str]:
+    fields = _string_fields(value, layout)
+    if fields is None:
+        return None
+    data, length = fields
+    if length == 0:
+        return '""'
+    address = _value_as_int(data)
+    process = value.GetProcess()
+    if (address is None or address == 0 or not process or
+            not process.IsValid()):
+        return None
+    display_length = min(length, LLGO_MAX_STRING_SUMMARY_BYTES)
+    read_length = min(length, LLGO_MAX_STRING_SUMMARY_BYTES + 3)
+    error = lldb.SBError()
+    contents = process.ReadMemory(address, read_length, error)
+    if not error.Success() or contents is None:
+        return None
+    if isinstance(contents, str):
+        contents = contents.encode("latin-1", errors="surrogateescape")
+    else:
+        contents = bytes(contents)
+    contents = _utf8_bounded_prefix(contents, display_length)
+    summary = _quote_go_bytes(contents)
+    return summary if display_length == length else summary + "..."
+
+
+def string_summary(value: lldb.SBValue, _internal_dict: Dict[str, Any]) -> Optional[str]:
+    layout = _runtime_layout(value)
+    return _format_runtime_string(value, layout) if layout else None
+
+
+def slice_summary(value: lldb.SBValue, _internal_dict: Dict[str, Any]) -> Optional[str]:
+    layout = _runtime_layout(value)
+    fields = _slice_fields(value, layout) if layout else None
+    if fields is None:
+        return None
+    return f"len={fields.length} cap={fields.capacity}"
+
+
+class SliceSyntheticProvider:
+    def __init__(self, value: lldb.SBValue, _internal_dict: Dict[str, Any]) -> None:
+        self.value = value
+        self.raw = _raw_value(value)
+        self.layout = _runtime_layout(self.raw)
+        self.fields: Optional[LLGoSliceValue] = None
+        self.update()
+
+    def update(self) -> bool:
+        self.raw = _raw_value(self.value)
+        self.fields = (_slice_fields(self.raw, self.layout)
+                       if self.layout else None)
+        return False
+
+    def num_children(self, max_children: Optional[int] = None) -> int:
+        if self.fields is None:
+            count = self.raw.GetNumChildren()
+        else:
+            count = self.fields.length
+        if max_children is not None and max_children >= 0:
+            count = min(count, max_children)
+        return count
+
+    def get_child_at_index(self, index: int) -> Optional[lldb.SBValue]:
+        if self.fields is None:
+            return self.raw.GetChildAtIndex(index)
+        return _slice_element(self.raw, index, self.fields)
+
+    def get_child_index(self, name: str) -> int:
+        if self.fields is None:
+            for index in range(self.raw.GetNumChildren()):
+                if self.raw.GetChildAtIndex(index).GetName() == name:
+                    return index
+            return -1
+        match = re.fullmatch(r"\[([0-9]+)\]", name or "")
+        if match is None:
+            return -1
+        index = int(match.group(1))
+        return index if index < self.num_children() else -1
+
+    def has_children(self) -> bool:
+        return self.num_children() != 0
+
+
 def get_indexed_value(value: lldb.SBValue, index: int) -> Optional[lldb.SBValue]:
     if not value or not value.IsValid():
         return None
 
-    type_name = value.GetType().GetName()
-
-    if type_name.startswith('[]'):  # Slice
-        data_ptr = value.GetChildMemberWithName('data')
-        element_type = data_ptr.GetType().GetPointeeType()
-        element_size = element_type.GetByteSize()
-        ptr_value = _value_as_int(data_ptr)
-        if ptr_value is None:
-            return None
-        element_address = ptr_value + index * element_size
-        target = value.GetTarget()
-        return target.CreateValueFromAddress(
-            f"element_{index}", lldb.SBAddress(element_address, target), element_type)
-    elif value.GetType().IsArrayType():  # Array
+    if value.GetType().IsArrayType():
         return value.GetChildAtIndex(index)
-    else:
-        return None
+    layout = _runtime_layout(value)
+    fields = _slice_fields(value, layout) if layout else None
+    return _slice_element(value, index, fields) if fields else None
 
 
 def find_variable(frame: lldb.SBFrame, name: str) -> lldb.SBValue:
@@ -369,30 +646,33 @@ def format_value(var: lldb.SBValue, debugger: lldb.SBDebugger, include_type: boo
 
 
 def format_slice(var: lldb.SBValue, debugger: lldb.SBDebugger, indent: int) -> str:
-    length = var.GetChildMemberWithName('len').GetValue()
-    if length is None:
+    layout = _runtime_layout(var)
+    fields = _slice_fields(var, layout) if layout else None
+    if fields is None:
         return "<variable not available>"
-    length = int(length)
-    data_ptr = var.GetChildMemberWithName('data')
     elements: List[str] = []
 
-    ptr_value = _value_as_int(data_ptr)
-    if ptr_value is None:
-        return "<variable not available>"
-    element_type = data_ptr.GetType().GetPointeeType()
-    element_size = element_type.GetByteSize()
-
-    target = debugger.GetSelectedTarget()
     indent_str = '  ' * indent
     next_indent_str = '  ' * (indent + 1)
 
-    for i in range(length):
-        element_address = ptr_value + i * element_size
-        element = target.CreateValueFromAddress(
-            f"element_{i}", lldb.SBAddress(element_address, target), element_type)
+    values = lldb.SBDebugger.GetInternalVariableValue(
+        "target.max-children-count", debugger.GetInstanceName())
+    max_children = LLGO_DEFAULT_MAX_CHILDREN
+    if values.GetSize() != 0:
+        try:
+            max_children = max(0, int(values.GetStringAtIndex(0), 0))
+        except (TypeError, ValueError):
+            pass
+    displayed = min(fields.length, max_children)
+    for i in range(displayed):
+        element = _slice_element(var, i, fields)
+        if element is None or not element.IsValid():
+            return "<variable not available>"
         value = format_value(
             element, debugger, include_type=False, indent=indent+1)
         elements.append(value)
+    if displayed < fields.length:
+        elements.append(f"... ({fields.length - displayed} more)")
 
     type_name = var.GetType().GetName()
 
@@ -426,21 +706,9 @@ def format_array(var: lldb.SBValue, debugger: lldb.SBDebugger, indent: int) -> s
 
 
 def format_string(var: lldb.SBValue) -> str:
-    summary = var.GetSummary()
-    if summary is not None:
-        return summary  # Keep the quotes
-    else:
-        data = _value_as_int(var.GetChildMemberWithName('data'))
-        length = _value_as_int(var.GetChildMemberWithName('len'))
-        if length == 0:
-            return '""'
-        if data is not None and length is not None:
-            error = lldb.SBError()
-            value = var.process.ReadCStringFromMemory(
-                data, length + 1, error)
-            if error.Success():
-                return '"%s"' % value
-    return "<variable not available>"
+    layout = _runtime_layout(var)
+    value = _format_runtime_string(var, layout) if layout else None
+    return value if value is not None else "<variable not available>"
 
 
 def format_struct(var: lldb.SBValue, debugger: lldb.SBDebugger, include_type: bool = True, indent: int = 0, type_name: str = "") -> str:

@@ -1,6 +1,9 @@
 package main
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 type Base struct {
 	name string
@@ -46,10 +49,28 @@ type Interface interface {
 	Foo(a []int, b string) int
 }
 
+type NamedString string
+type NamedInts []int
+
 type Struct struct{}
 
 func (s *Struct) Foo(a []int, b string) int {
 	return 1
+}
+
+func RuntimeValues() {
+	text := "hello"
+	empty := ""
+	binary := "a\x00b"
+	unicodeText := "世界"
+	longUnicode := strings.Repeat("a", 255) + "界tail"
+	invalid := "\xff"
+	ints := []int{7, 8, 9, 10}[:2]
+	var nilInts []int
+	emptyInts := []int{}
+	namedText := NamedString("named")
+	namedInts := NamedInts{11, 12, 13, 14}
+	println(text, empty, binary, unicodeText, longUnicode, invalid, ints, nilInts, emptyInts, namedText, namedInts) // LLDB_BREAK: runtime_values
 }
 
 func FuncWithAllTypeStructParam(s StructWithAllTypeFields) {
@@ -318,6 +339,7 @@ func main() {
 	println("globalInt:", globalInt)
 	println("s:", &s) // LLDB_BREAK: main_globals
 	FuncWithAllTypeStructParam(s)
+	RuntimeValues()
 	println("called function with struct")
 	i, err := FuncWithAllTypeParams(
 		s.i8, s.i16, s.i32, s.i64, s.i, s.u8, s.u16, s.u32, s.u64, s.u,

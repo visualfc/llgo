@@ -19,6 +19,7 @@ class LLDBTestException(Exception):
 class Test:
     variable: str
     expected_value: str
+    mode: str = "value"
 
 
 @dataclass
@@ -53,11 +54,11 @@ class TestResults:
     case_results: List[CaseResult] = field(default_factory=list)
 
 
-def test_case(marker: str, expectations: List[tuple[str, str]]) -> TestCase:
+def test_case(marker: str, expectations: List[tuple]) -> TestCase:
     return TestCase(
         source_file="main.go",
         marker=f"LLDB_BREAK: {marker}",
-        tests=[Test(variable, expected) for variable, expected in expectations],
+        tests=[Test(*expectation) for expectation in expectations],
     )
 
 
@@ -180,6 +181,36 @@ TEST_CASES = [
         ("s", '"world"'),
         ("e", "lldbtest.E{i = 40}"),
     ]),
+    test_case("runtime_values", [
+        ("all variables",
+         "text empty binary unicodeText longUnicode invalid ints nilInts "
+         "emptyInts namedText namedInts"),
+        ("text", '"hello"'),
+        ("empty", '""'),
+        ("binary", r'"a\x00b"'),
+        ("unicodeText", '"世界"'),
+        ("invalid", r'"\xff"'),
+        ("nilInts", "[]int{}"),
+        ("emptyInts", "[]int{}"),
+        ("namedText", '"named"'),
+        ("namedInts", "lldbtest.NamedInts{11, 12, 13, 14}"),
+        ("text", '"hello"', "summary"),
+        ("empty", '""', "summary"),
+        ("binary", r'"a\x00b"', "summary"),
+        ("unicodeText", '"世界"', "summary"),
+        ("longUnicode", '"' + "a" * 255 + '"...', "summary"),
+        ("invalid", r'"\xff"', "summary"),
+        ("namedText", '"named"', "summary"),
+        ("ints", "len=2 cap=4", "summary"),
+        ("nilInts", "len=0 cap=0", "summary"),
+        ("emptyInts", "len=0 cap=0", "summary"),
+        ("namedInts", "len=4 cap=4", "summary"),
+        ("ints", "[0]=7, [1]=8", "synthetic"),
+        ("nilInts", "", "synthetic"),
+        ("emptyInts", "", "synthetic"),
+        ("namedInts", "[0]=11, [1]=12, [2]=13, [3]=14", "synthetic"),
+        ("ints", "[]int{7, ... (1 more)}", "limited"),
+    ]),
     test_case("struct_values_initial", STRUCT_VALUES_INITIAL),
     test_case("struct_values_updated", STRUCT_VALUES_UPDATED),
     test_case("struct_ptrs_initial", STRUCT_VALUES_INITIAL),
@@ -272,9 +303,9 @@ class LLDBDebugger:
         }
 
     def setup(self) -> None:
-        if self.plugin_path:
-            self.debugger.HandleCommand(
-                f'command script import "{self.plugin_path}"')
+        plugin_path = self.plugin_path or llgo_plugin.__file__
+        self.debugger.HandleCommand(
+            f'command script import "{plugin_path}"')
         self.target = self.debugger.CreateTarget(self.executable_path)
         if not self.target:
             raise LLDBTestException(
@@ -296,8 +327,6 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"Incomplete LLGo target properties: {target_info}")
 
-        llgo_plugin.register_commands(self.debugger)
-
     def set_breakpoint(self, file_spec: str, line_number: int) -> lldb.SBBreakpoint:
         bp = self.target.BreakpointCreateByLocation(file_spec, line_number)
         if not bp.IsValid() or bp.GetNumLocations() != 1:
@@ -315,11 +344,35 @@ class LLDBDebugger:
             raise LLDBTestException("Process didn't stop at breakpoint")
 
     def get_variable_value(self, var_expression: str) -> Optional[str]:
-        frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
-        value = llgo_plugin.evaluate_expression(frame, var_expression)
+        value = self.get_variable(var_expression)
         if value and value.IsValid():
             return llgo_plugin.format_value(value, self.debugger)
         return None
+
+    def get_variable(self, var_expression: str) -> Optional[lldb.SBValue]:
+        frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
+        return llgo_plugin.evaluate_expression(frame, var_expression)
+
+    def get_variable_summary(self, var_expression: str) -> Optional[str]:
+        value = self.get_variable(var_expression)
+        if value and value.IsValid():
+            return value.GetSummary()
+        return None
+
+    def get_synthetic_children(self, var_expression: str) -> Optional[str]:
+        value = self.get_variable(var_expression)
+        if not value or not value.IsValid():
+            return None
+        value = value.GetSyntheticValue()
+        if not value or not value.IsValid():
+            return None
+        children: List[str] = []
+        for index in range(value.GetNumChildren()):
+            child = value.GetChildAtIndex(index)
+            child_value = llgo_plugin.format_value(
+                child, self.debugger, include_type=False)
+            children.append(f"{child.GetName()}={child_value}")
+        return ", ".join(children)
 
     def get_all_variable_names(self) -> Set[str]:
         frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
@@ -509,7 +562,20 @@ def execute_all_variables_test(test: Test, all_variable_names: Set[str]) -> Test
 
 
 def execute_single_variable_test(debugger: LLDBDebugger, test: Test) -> TestResult:
-    actual_value = debugger.get_variable_value(test.variable)
+    if test.mode == "summary":
+        actual_value = debugger.get_variable_summary(test.variable)
+    elif test.mode == "synthetic":
+        actual_value = debugger.get_synthetic_children(test.variable)
+    elif test.mode == "limited":
+        debugger.debugger.HandleCommand(
+            "settings set target.max-children-count 1")
+        try:
+            actual_value = debugger.get_variable_value(test.variable)
+        finally:
+            debugger.debugger.HandleCommand(
+                "settings set target.max-children-count 256")
+    else:
+        actual_value = debugger.get_variable_value(test.variable)
     if actual_value is None:
         return TestResult(
             test=test,
