@@ -189,21 +189,60 @@ func TestFoldConstComparison(t *testing.T) {
 	}); ok {
 		t.Fatal("nil comparison was folded through go/constant")
 	}
+
+	for _, tt := range []struct {
+		name string
+		x, y constant.Value
+	}{
+		{"integer", constant.MakeInt64(0), constant.MakeInt64(1)},
+		{"string", constant.MakeString("a"), constant.MakeString("b")},
+		{"rune", constant.MakeInt64('☃'), constant.MakeInt64('☀')},
+		{"float", constant.MakeFloat64(0), constant.MakeFloat64(1)},
+		{
+			"complex",
+			constant.MakeFromLiteral("1i", token.IMAG, 0),
+			constant.MakeFromLiteral("-1i", token.IMAG, 0),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			typ := types.Typ[types.UntypedInt]
+			if tt.name == "string" {
+				typ = types.Typ[types.UntypedString]
+			}
+			if got, ok := foldConstComparison(&gossa.BinOp{
+				Op: token.EQL,
+				X:  gossa.NewConst(tt.x, typ),
+				Y:  gossa.NewConst(tt.y, typ),
+			}); !ok || got {
+				t.Fatalf("foldConstComparison(%s equality) = %v, %v; want false, true", tt.name, got, ok)
+			}
+		})
+	}
 }
 
-func TestCompileFoldsConstStringComparison(t *testing.T) {
+func TestCompileFoldsConstComparisons(t *testing.T) {
 	_, mod := mustCompileLLPkgFromSrc(t, `
 package foo
 
-func equal() bool { return "a" == "b" }
-func less() bool  { return "a" < "b" }
+func intEqual() bool     { return 0 == 1 }
+func stringEqual() bool  { return "a" == "b" }
+func runeEqual() bool    { return '☃' == '☀' }
+func floatEqual() bool   { return 0.0 == 1.0 }
+func complexEqual() bool { return 1i == -1i }
+func stringLess() bool   { return "a" < "b" }
 `)
 	ir := mod.String()
 	if strings.Contains(ir, "StringEqual") {
 		t.Fatalf("constant string comparison called the runtime helper:\n%s", ir)
 	}
-	if !strings.Contains(ir, "ret i1 false") || !strings.Contains(ir, "ret i1 true") {
-		t.Fatalf("constant string comparisons were not folded:\n%s", ir)
+	for _, name := range []string{"intEqual", "stringEqual", "runeEqual", "floatEqual", "complexEqual"} {
+		fn := llvmFunction(t, ir, "foo."+name)
+		if !strings.Contains(fn, "ret i1 false") {
+			t.Fatalf("%s was not folded to false:\n%s", name, fn)
+		}
+	}
+	if fn := llvmFunction(t, ir, "foo.stringLess"); !strings.Contains(fn, "ret i1 true") {
+		t.Fatalf("stringLess was not folded to true:\n%s", fn)
 	}
 }
 
