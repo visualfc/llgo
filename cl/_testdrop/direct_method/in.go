@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// SYMBOL-NOT: testdrop/direct_method{{.*}}T{{.*}}Drop
-// SYMBOL-DAG: testdrop/direct_method{{.*}}T{{.*}}Keep
-// SYMBOL-NOT: testdrop/direct_method{{.*}}T{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}T{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
 
 var sink any
 var keepMethod = T.Keep

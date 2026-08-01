@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// SYMBOL-NOT: testdrop/direct_func{{.*}}Drop
-// SYMBOL-DAG: testdrop/direct_func{{.*}}Keep
-// SYMBOL-NOT: testdrop/direct_func{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}Drop
 
 var keepFunc = Keep
 

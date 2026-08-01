@@ -3,9 +3,9 @@ package main
 
 import "reflect"
 
-// SYMBOL-NOT: testdrop/reflect_named_method{{.*}}T{{.*}}Drop
-// SYMBOL-DAG: testdrop/reflect_named_method{{.*}}T{{.*}}Keep
-// SYMBOL-NOT: testdrop/reflect_named_method{{.*}}T{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}T{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
 
 type T struct {
 	n int

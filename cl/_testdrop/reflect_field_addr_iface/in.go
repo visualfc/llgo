@@ -3,8 +3,8 @@ package main
 
 import "reflect"
 
-// SYMBOL-DAG: testdrop/reflect_field_addr_iface{{.*}}RawMessage{{.*}}UnmarshalJSON
-// SYMBOL-NOT: testdrop/reflect_field_addr_iface{{.*}}RawMessage{{.*}}drop
+// SYMBOL-DAG: main{{.*}}RawMessage{{.*}}UnmarshalJSON
+// SYMBOL-NOT: main{{.*}}RawMessage{{.*}}drop
 
 type Unmarshaler interface {
 	UnmarshalJSON([]byte) error

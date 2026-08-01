@@ -3,9 +3,9 @@ package main
 
 import "github.com/goplus/llgo/cl/_testdrop/exported_method_crosspkg/api"
 
-// SYMBOL-NOT: testdrop/exported_method_crosspkg{{.*}}T{{.*}}Drop
-// SYMBOL-DAG: testdrop/exported_method_crosspkg{{.*}}T{{.*}}Keep
-// SYMBOL-NOT: testdrop/exported_method_crosspkg{{.*}}T{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}T{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
 
 // The interface type and dynamic call live in package api, while T and its
 // method table live in this package. Exported method identity must let the

@@ -1,15 +1,15 @@
 // LITTEST
 package main
 
-// SYMBOL-NOT: testdrop/interface_match{{.*}}OnlyReader{{.*}}Read
-// SYMBOL-NOT: testdrop/interface_match{{.*}}OnlyReader{{.*}}Drop
-// SYMBOL-NOT: testdrop/interface_match{{.*}}Full{{.*}}Write
-// SYMBOL-NOT: testdrop/interface_match{{.*}}Full{{.*}}Drop
-// SYMBOL-DAG: testdrop/interface_match{{.*}}Full{{.*}}Read
-// SYMBOL-NOT: testdrop/interface_match{{.*}}OnlyReader{{.*}}Read
-// SYMBOL-NOT: testdrop/interface_match{{.*}}OnlyReader{{.*}}Drop
-// SYMBOL-NOT: testdrop/interface_match{{.*}}Full{{.*}}Write
-// SYMBOL-NOT: testdrop/interface_match{{.*}}Full{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}OnlyReader{{.*}}Read
+// SYMBOL-NOT: main{{.*}}OnlyReader{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}Full{{.*}}Write
+// SYMBOL-NOT: main{{.*}}Full{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}Full{{.*}}Read
+// SYMBOL-NOT: main{{.*}}OnlyReader{{.*}}Read
+// SYMBOL-NOT: main{{.*}}OnlyReader{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}Full{{.*}}Write
+// SYMBOL-NOT: main{{.*}}Full{{.*}}Drop
 
 type Reader interface {
 	Read() int

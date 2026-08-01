@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// SYMBOL-NOT: testdrop/promoted_method_wrapper{{.*}}Wrapper{{.*}}Drop
-// SYMBOL-DAG: testdrop/promoted_method_wrapper{{.*}}Wrapper{{.*}}Keep
-// SYMBOL-NOT: testdrop/promoted_method_wrapper{{.*}}Wrapper{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}Wrapper{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}Wrapper{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}Wrapper{{.*}}Drop
 
 type I interface {
 	Keep() int

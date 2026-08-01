@@ -1,9 +1,9 @@
 // LITTEST
 package main
 
-// SYMBOL-NOT: testdrop/interface_slot{{.*}}T{{.*}}Drop
-// SYMBOL-DAG: testdrop/interface_slot{{.*}}T{{.*}}Keep
-// SYMBOL-NOT: testdrop/interface_slot{{.*}}T{{.*}}Drop
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
+// SYMBOL-DAG: main{{.*}}T{{.*}}Keep
+// SYMBOL-NOT: main{{.*}}T{{.*}}Drop
 
 type I interface {
 	Keep() int
