@@ -748,6 +748,9 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 	// linker has while building pclntab. The inline-asm fragment lives in a
 	// section tied to the function body (SHF_LINK_ORDER on ELF; live_support
 	// on Mach-O), so dead functions do not leave stale entry records behind.
+	// Compiler-generated wrappers and adapters participate through their own
+	// ordinary funcinfo record; this path never classifies functions by their
+	// lowering role or calling convention.
 	// Runtime still sorts these final PCs before building the Go-style
 	// findfunc bucket index, because LLVM IR generation does not know final
 	// linked text order.

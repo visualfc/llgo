@@ -65,6 +65,19 @@ func TestEncodeParse(t *testing.T) {
 	}
 }
 
+func TestVersion4FunctionCentricDescriptorLayout(t *testing.T) {
+	if Version != 4 {
+		t.Fatalf("format version = %d, want 4", Version)
+	}
+	if descRecords != 0 || descPCLines != 1 || descStrings != 2 ||
+		descStringOffsets != 3 || descHash != 4 || descSymbolIndex != 5 ||
+		descEntrySites != 6 || descPCSites != 7 || descCount != 8 {
+		t.Fatalf("unexpected v4 descriptor layout: records=%d pclines=%d strings=%d offsets=%d hash=%d symbols=%d entries=%d pcsites=%d count=%d",
+			descRecords, descPCLines, descStrings, descStringOffsets, descHash,
+			descSymbolIndex, descEntrySites, descPCSites, descCount)
+	}
+}
+
 func TestEncodePreservesUint32StringIDs(t *testing.T) {
 	data := sampleData(t)
 	const (

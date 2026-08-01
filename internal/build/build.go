@@ -2455,7 +2455,7 @@ func IsFuncInfoEnabled() bool {
 
 // IsFuncInfoSitesEnabled controls the body-embedded site records
 // independently of the funcinfo tables (LLGO_FUNCINFO_SITES=0 keeps the
-// metadata but drops entry/stub/pc-line inline-asm sites). Useful for
+// metadata but drops entry and PC-line inline-asm sites). Useful for
 // isolating codegen perturbation caused by the in-body asm anchors.
 func IsFuncInfoSitesEnabled() bool {
 	return isEnvOn(llgoFuncInfoSites, true)

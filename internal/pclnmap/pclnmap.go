@@ -98,8 +98,10 @@ type Site struct {
 }
 
 // Data is the complete immutable payload needed by the external runtime
-// loader. EntrySites have been normalized and LTO-deduplicated by the
-// post-link analyzer.
+// loader. EntrySites are physical function entries normalized and
+// LTO-deduplicated by the post-link analyzer. Compiler-generated wrappers and
+// adapters use ordinary function records and entry sites; calling conventions
+// and closure environment transport are deliberately not represented here.
 type Data struct {
 	GOOS        string
 	GOARCH      string

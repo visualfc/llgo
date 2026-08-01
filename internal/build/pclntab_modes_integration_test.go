@@ -360,7 +360,7 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 			{name: "wrong-ABI", mutate: mismatchPCLNIntegrationABI},
 			{name: "wrong-architecture", mutate: mismatchPCLNIntegrationArchitecture},
 			{name: "overlapping-sections", mutate: overlapPCLNIntegrationSections},
-			{name: "misaligned-stub-section", mutate: misalignPCLNIntegrationStubSection},
+			{name: "misaligned-pc-site-section", mutate: misalignPCLNIntegrationPCSiteSection},
 			{name: "unterminated-string-pool", mutate: unterminatePCLNIntegrationStringPool},
 		}
 		for _, failure := range failures {
@@ -782,14 +782,14 @@ func overlapPCLNIntegrationSections(t *testing.T, path string) {
 	})
 }
 
-func misalignPCLNIntegrationStubSection(t *testing.T, path string) {
+func misalignPCLNIntegrationPCSiteSection(t *testing.T, path string) {
 	t.Helper()
 	mutatePCLNIntegrationHeader(t, path, func(raw []byte) {
-		// v3 descriptor order: records, pclines, strings, string offsets,
-		// hash, symbol index, entries, stubs, pc sites.
-		stub := pclnIntegrationHeaderSections + 7*pclnIntegrationSectionSize
-		off := binary.LittleEndian.Uint64(raw[stub:])
-		binary.LittleEndian.PutUint64(raw[stub:], off+1)
+		// v4 descriptor order: records, pclines, strings, string offsets,
+		// hash, symbol index, entries, pc sites.
+		pcSites := pclnIntegrationHeaderSections + 7*pclnIntegrationSectionSize
+		off := binary.LittleEndian.Uint64(raw[pcSites:])
+		binary.LittleEndian.PutUint64(raw[pcSites:], off+1)
 	})
 }
 

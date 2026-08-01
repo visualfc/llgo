@@ -31,6 +31,9 @@ This document records the phase-one design from
 - Function values point directly at their physical entries; closure calls do
   not add a generated adapter layer. C function values point directly at the C
   entry.
+- PCLN metadata remains function-centric. A compiler-generated wrapper or
+  adapter, if one is needed for another purpose, is an ordinary function with
+  its own function record; closure environment transport is not part of PCLN.
 
 Native dynamic calls always use one hidden-env call edge, including when env is
 nil. An optimizer barrier keeps the indirect code pointer opaque: LLVM IR

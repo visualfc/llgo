@@ -348,6 +348,8 @@ func canonicalOwner(info *binaryInfo, name string, symbolID uint64) bool {
 // is canonical when the symbol that owns its anchor PC is the function the
 // symbolID names (id == fnv64(owner)). Everything else with a known owner is
 // an LTO inline copy: inlining duplicated the body-embedded record into a host
+// function. A compiler-generated wrapper or adapter is therefore represented
+// by its own funcinfo symbol and follows exactly the same path as any other
 // function.
 // Kept records are normalized to their owner's true entry address. Records
 // whose owner cannot be determined are dropped conservatively.
