@@ -55,7 +55,7 @@ func TestMethodArray(t *testing.T) {
 		return llvm.ConstStruct([]llvm.Value{llvm.ConstNull(ctx.Int8Type()), last}, false)
 	}
 	intValue := llvm.ConstInt(ctx.Int8Type(), 1, false)
-	methodTy := ctx.StructCreateNamed("runtime/abi.Method")
+	methodTy := ctx.StructCreateNamed(abiMethodTypeName)
 	methodTy.StructSetBody([]llvm.Type{ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type()}, false)
 	method := llvm.ConstNamedStruct(methodTy, []llvm.Value{intValue, intValue, intValue, intValue})
 	methods := llvm.ConstArray(methodTy, []llvm.Value{method, method})
@@ -74,7 +74,7 @@ func TestMethodArray(t *testing.T) {
 	arrayOfInts := llvm.ConstArray(ctx.Int8Type(), []llvm.Value{intValue})
 	wrongFieldsTy := ctx.StructType([]llvm.Type{ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type()}, false)
 	wrongFields := llvm.ConstNamedStruct(wrongFieldsTy, []llvm.Value{intValue, intValue, intValue})
-	wrongNameTy := ctx.StructCreateNamed("other.Method")
+	wrongNameTy := ctx.StructCreateNamed("external/" + abiMethodTypeName)
 	wrongNameTy.StructSetBody([]llvm.Type{ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type()}, false)
 	wrongName := llvm.ConstNamedStruct(wrongNameTy, []llvm.Value{intValue, intValue, intValue, intValue})
 
@@ -87,7 +87,7 @@ func TestMethodArray(t *testing.T) {
 		{name: "last operand is not array", init: initWithLast(intValue)},
 		{name: "array element is not struct", init: initWithLast(arrayOfInts)},
 		{name: "struct has wrong field count", init: initWithLast(llvm.ConstArray(wrongFieldsTy, []llvm.Value{wrongFields}))},
-		{name: "struct has wrong name", init: initWithLast(llvm.ConstArray(wrongNameTy, []llvm.Value{wrongName}))},
+		{name: "struct name only contains ABI name", init: initWithLast(llvm.ConstArray(wrongNameTy, []llvm.Value{wrongName}))},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

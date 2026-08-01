@@ -5,12 +5,14 @@ package dcepass
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/xgo-dev/llvm"
 )
 
-const unreachableMethodName = "github.com/goplus/llgo/runtime/internal/runtime.unreachableMethod"
+const (
+	abiMethodTypeName     = "github.com/goplus/llgo/runtime/abi.Method"
+	unreachableMethodName = "github.com/goplus/llgo/runtime/internal/runtime.unreachableMethod"
+)
 
 // EmitStrongTypeOverrides emits method-pruned strong ABI type symbols into dst.
 // srcMods contains the original package modules. For each constant ABI type
@@ -183,7 +185,7 @@ func methodArray(init llvm.Value) (llvm.Value, llvm.Type, bool) {
 	if elemTy.TypeKind() != llvm.StructTypeKind || elemTy.StructElementTypesCount() != 4 {
 		return llvm.Value{}, llvm.Type{}, false
 	}
-	if !strings.Contains(elemTy.StructName(), "runtime/abi.Method") {
+	if elemTy.StructName() != abiMethodTypeName {
 		return llvm.Value{}, llvm.Type{}, false
 	}
 	return methodsVal, elemTy, true
