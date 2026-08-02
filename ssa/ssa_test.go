@@ -902,23 +902,34 @@ func TestRecordTypeChildren(t *testing.T) {
 
 	const want = `[TypeChildren]
 pkg.array:
+    *[4]_llgo_uint8
     _llgo_uint8
+pkg.basic:
+    *_llgo_int
 pkg.channel:
+    *chan _llgo_string
     _llgo_string
+pkg.emptySignature:
+    *_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
 pkg.map:
+    *map[_llgo_string]_llgo_int
     _llgo_int
     _llgo_string
 pkg.named:
+    *_llgo_example.com/pkg.Named
     _llgo_bool
 pkg.pointer:
     _llgo_int
 pkg.signature:
+    *_llgo_func$ZJJ9zC4Iq-CB1QSlO9vdPouqa3YC-lLDsE6RcJPWFiQ
     _llgo_bool
     _llgo_int
     _llgo_string
 pkg.slice:
+    *[]_llgo_bool
     _llgo_bool
 pkg.struct:
+    *_llgo_struct$0VM4HVYYqIuvLFTFnW5tNIahdvhuRgu-SencVQDPbzk
     _llgo_int
     _llgo_string
 
@@ -962,6 +973,10 @@ func TestRecordMethodSlots(t *testing.T) {
     _llgo_example.com/pkg.T
 *_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
     _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
+_llgo_example.com/pkg.T:
+    *_llgo_example.com/pkg.T
+_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
+    *_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
 
 [MethodInfo]
 *_llgo_example.com/pkg.T:

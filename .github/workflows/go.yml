@@ -114,35 +114,8 @@ jobs:
       - name: Set up Go
         uses: ./.github/actions/setup-go
 
-      - name: Prepare demo dependencies
-        run: |
-          set -euo pipefail
-
-          mkdir -p ./_demo/c/cargs/libs
-          cd ./_demo/c/cargs/libs
-          wget https://github.com/goplus/llpkg/releases/download/cargs/v1.0.0/cargs_linux_amd64.zip
-          unzip cargs_linux_amd64.zip
-
-          actual_prefix="$(pwd)"
-          for tmpl in lib/pkgconfig/*.pc.tmpl; do
-            pc_file="${tmpl%.tmpl}"
-            sed "s|{{.Prefix}}|${actual_prefix}|g" "$tmpl" > "$pc_file"
-          done
-
-          echo "PKG_CONFIG_PATH=${actual_prefix}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
-
-          py_deps=(
-            numpy
-            torch
-          )
-          pip3.12 install --break-system-packages "${py_deps[@]}"
-
-          pcdir="$HOME/pc"
-          mkdir -p "$pcdir"
-          libdir="$(pkg-config --variable=libdir python-3.12-embed)"
-          ln -sf "$libdir/pkgconfig/python-3.12-embed.pc" "$pcdir/python3-embed.pc"
-          echo "PKG_CONFIG_PATH=$pcdir:${actual_prefix}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
-          echo "LLGO_FULL_RPATH=true" >> "$GITHUB_ENV"
+      - name: Setup demo dependencies
+        uses: ./.github/actions/setup-demo-deps
 
       - name: Set LLGO_ROOT
         run: echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
@@ -204,3 +177,37 @@ jobs:
           token: ${{secrets.CODECOV_TOKEN}}
           files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt,coverage-dev-lto-globaldce-symbols.txt,coverage-dev-lto-plugin-cl.txt
           flags: dev-lto-globaldce
+
+  # Tests deletion of unreachable Go methods.
+  # See https://github.com/goplus/llgo/issues/1853.
+  dev-go-methoddrop:
+    name: Dev Go Method Drop
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+
+      - name: Setup demo dependencies
+        uses: ./.github/actions/setup-demo-deps
+
+      - name: Set LLGO_ROOT
+        run: echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Build llgo with dev tag
+        run: go install -tags=dev ./cmd/llgo
+
+      - name: Run Go method drop tests
+        run: go test -tags=dev -timeout 30m -run '^TestBuildAndCheckSymbolsFromTestdrop$' ./cl
+
+      - name: Run Go deadcode-drop demos
+        run: |
+          LLGO_DEMO_LLGORUN_FLAGS="-deadcodedrop" \
+            bash .github/workflows/test_demo.sh

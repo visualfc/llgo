@@ -1,0 +1,61 @@
+name: "Setup Demo Dependencies"
+description: "Install dependencies required by the LLGo demo suite"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install cargs demo library
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        case "${RUNNER_OS}" in
+          Linux)
+            demo_pkg="cargs_linux_amd64.zip"
+            ;;
+          macOS)
+            case "$(uname -m)" in
+              x86_64)
+                demo_pkg="cargs_darwin_amd64.zip"
+                ;;
+              arm64)
+                demo_pkg="cargs_darwin_arm64.zip"
+                ;;
+              *)
+                echo "Unsupported macOS architecture: $(uname -m)" >&2
+                exit 1
+                ;;
+            esac
+            ;;
+          *)
+            echo "Unsupported runner OS: ${RUNNER_OS}" >&2
+            exit 1
+            ;;
+        esac
+
+        libs_dir="${GITHUB_WORKSPACE}/_demo/c/cargs/libs"
+        mkdir -p "${libs_dir}"
+        wget -P "${libs_dir}" "https://github.com/goplus/llpkg/releases/download/cargs/v1.0.0/${demo_pkg}"
+        unzip -o "${libs_dir}/${demo_pkg}" -d "${libs_dir}"
+
+        for tmpl in "${libs_dir}"/lib/pkgconfig/*.pc.tmpl; do
+          pc_file="${tmpl%.tmpl}"
+          sed "s|{{.Prefix}}|${libs_dir}|g" "${tmpl}" > "${pc_file}"
+        done
+
+        echo "PKG_CONFIG_PATH=${libs_dir}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "${GITHUB_ENV}"
+
+    - name: Install Python demo dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        pip3.12 install --break-system-packages numpy torch
+
+        pcdir="${HOME}/pc"
+        mkdir -p "${pcdir}"
+        libdir="$(pkg-config --variable=libdir python-3.12-embed)"
+        ln -sf "${libdir}/pkgconfig/python-3.12-embed.pc" "${pcdir}/python3-embed.pc"
+
+        echo "PKG_CONFIG_PATH=${pcdir}:${PKG_CONFIG_PATH:-}" >> "${GITHUB_ENV}"
+        echo "LLGO_FULL_RPATH=true" >> "${GITHUB_ENV}"

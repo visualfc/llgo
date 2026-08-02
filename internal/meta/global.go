@@ -221,6 +221,13 @@ func (g *GlobalSummary) LookupSymbol(name string) (Symbol, bool) {
 	return id, ok
 }
 
+// HasFacts reports whether sym has a package owner carrying metadata facts.
+// A symbol may be present only because another fact references it, such as a
+// method slot's function symbol.
+func (g *GlobalSummary) HasFacts(sym Symbol) bool {
+	return g.owner[sym].pkg >= 0
+}
+
 // SymbolName returns the text of a global Symbol.
 func (g *GlobalSummary) SymbolName(sym Symbol) string {
 	return g.symStrings[sym]

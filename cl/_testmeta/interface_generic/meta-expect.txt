@@ -8,8 +8,12 @@
 *_llgo_main.Box[int]:
     _llgo_main.Box[int]
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
+    *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     _llgo_int
+_llgo_int:
+    *_llgo_int
 _llgo_main.Box[int]:
+    *_llgo_main.Box[int]
     _llgo_int
 
 [OrdinaryEdges]

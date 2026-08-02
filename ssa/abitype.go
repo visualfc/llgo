@@ -354,6 +354,19 @@ func (b Builder) recordTypeChildren(parentName string, t types.Type) {
 }
 
 func (b Builder) directTypeChildren(t types.Type) []types.Type {
+	children := b.structuralTypeChildren(t)
+	underlying := types.Unalias(t).Underlying()
+	// PtrToThis lets reflection derive *T from an addressable T. Interface
+	// descriptors intentionally stay out of this type-child relation.
+	if _, ok := underlying.(*types.Pointer); !ok {
+		if _, ok := underlying.(*types.Interface); !ok {
+			children = append(children, types.NewPointer(t))
+		}
+	}
+	return children
+}
+
+func (b Builder) structuralTypeChildren(t types.Type) []types.Type {
 	switch t := types.Unalias(t).(type) {
 	case *types.Basic:
 		return nil
@@ -382,7 +395,7 @@ func (b Builder) directTypeChildren(t types.Type) []types.Type {
 		}
 		return children
 	case *types.Named:
-		return b.directTypeChildren(t.Underlying())
+		return b.structuralTypeChildren(t.Underlying())
 	}
 	return nil
 }

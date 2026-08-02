@@ -7,11 +7,17 @@
     _llgo_main.Outer
 *_llgo_string:
     _llgo_string
+_llgo_int:
+    *_llgo_int
 _llgo_main.Inner:
+    *_llgo_main.Inner
     _llgo_string
 _llgo_main.Outer:
+    *_llgo_main.Outer
     _llgo_int
     _llgo_main.Inner
+_llgo_string:
+    *_llgo_string
 
 [OrdinaryEdges]
 *_llgo_int:

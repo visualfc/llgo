@@ -1,6 +1,8 @@
 [TypeChildren]
 *_llgo_main.T:
     _llgo_main.T
+_llgo_main.T:
+    *_llgo_main.T
 
 [OrdinaryEdges]
 *_llgo_main.T:
