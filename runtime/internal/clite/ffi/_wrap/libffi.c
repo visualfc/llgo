@@ -4,21 +4,36 @@ void *llgo_ffi_closure_alloc(void **code) {
     return ffi_closure_alloc(sizeof(ffi_closure), code);
 }
 
-/*
- * ffi_call does not expose a portable static-chain argument. Keep the real
+/* Use libffi's Go-ABI entry without compiling an intermediate trampoline when
+ * both its headers and target ABI provide LLGo's nest transport. Keep the
+ * public-ffi_call trampoline for targets whose static-chain register does not
+ * match LLGo's hidden-env register. */
+#if !defined(_WIN32) && !defined(__APPLE__) &&                              \
+    defined(FFI_GO_CLOSURES) &&                                             \
+    (defined(__x86_64__) || defined(__i386__) || defined(__riscv) ||        \
+     defined(__riscv__) ||                                                  \
+     (defined(__aarch64__) && !defined(__ANDROID__)))
+#define LLGO_FFI_USE_CALL_GO 1
+#endif
+
+#if defined(LLGO_FFI_USE_CALL_GO)
+
+void llgo_ffi_call_with_env(ffi_cif *cif, void (*fn)(void), void *rvalue,
+                            void **avalue, void *env) {
+    ffi_call_go(cif, fn, rvalue, avalue, env);
+}
+
+#elif !defined(_WIN32) &&                                                   \
+    (defined(__x86_64__) || defined(__i386__) || defined(__aarch64__) ||    \
+     defined(__arm__) || defined(__riscv) || defined(__riscv__))
+
+/* ffi_call does not expose a portable static-chain argument. Keep the real
  * target and environment in a per-thread context while it marshals arguments.
  * The trampoline is its final target: it saves the already-marshalled argument
  * registers, obtains that context, and installs LLVM's nest/swiftself register
  * for the real entry. A callee-saved swiftself register is restored afterward;
- * caller-saved transports can tail-jump. No generated function needs an adapter.
- *
- * Use libffi's optional Go-ABI entry when it is exported and its static-chain
- * register matches LLGo's nest transport. Common system libffi builds omit
- * that symbol, so the public-ffi_call trampoline remains the fallback.
- */
-#if !defined(_WIN32) &&                                                     \
-    (defined(__x86_64__) || defined(__i386__) || defined(__aarch64__) ||    \
-     defined(__arm__) || defined(__riscv) || defined(__riscv__))
+ * caller-saved transports can tail-jump. No generated function needs an
+ * adapter. */
 
 struct llgo_ffi_call_context {
     void (*target)(void);
@@ -38,19 +53,6 @@ __attribute__((noinline, used)) static struct llgo_ffi_call_context *
 llgo_ffi_current_call(void) {
     return &llgo_ffi_call_current;
 }
-
-/* libffi implements ffi_call_go by passing this final argument through its
- * private argument marshaller into the target's static-chain register. Apple
- * headers may declare a symbol that the dylib omits, so use the public path
- * there; reference the optional symbol weakly on other matching targets. */
-#if !defined(__APPLE__) &&                                                  \
-    (defined(__x86_64__) || defined(__i386__) || defined(__riscv) ||        \
-     defined(__riscv__) ||                                                  \
-     (defined(__aarch64__) && !defined(__ANDROID__)))
-#define LLGO_FFI_GO_ABI_MATCHES 1
-extern void ffi_call_go(ffi_cif *, void (*)(void), void *, void **, void *)
-    __attribute__((weak));
-#endif
 
 #if defined(__APPLE__)
 #define LLGO_ASM_CSYM(name) "_" #name
@@ -334,12 +336,6 @@ __attribute__((naked)) static void llgo_ffi_env_trampoline(void) {
 
 void llgo_ffi_call_with_env(ffi_cif *cif, void (*fn)(void), void *rvalue,
                             void **avalue, void *env) {
-#if defined(LLGO_FFI_GO_ABI_MATCHES)
-    if (ffi_call_go != NULL) {
-        ffi_call_go(cif, fn, rvalue, avalue, env);
-        return;
-    }
-#endif
     struct llgo_ffi_call_context previous = llgo_ffi_call_current;
     llgo_ffi_call_current.target = fn;
     llgo_ffi_call_current.env = env;
