@@ -7,8 +7,9 @@ void *llgo_ffi_closure_alloc(void **code) {
 /*
  * Use libffi's Go ABI directly when its static-chain register is LLGo's nest
  * register. ARM32 needs only a final register bridge from libffi's IP/R12 to
- * swiftself/R10. AArch64 Apple/Android use the public-ffi_call trampoline
- * because X18 is reserved and LLGo uses swiftself/X20 instead.
+ * swiftself/R10. Use the public-ffi_call trampoline when libffi does not
+ * expose its Go ABI on x86, and on AArch64 Apple/Android where X18 is reserved
+ * and LLGo uses swiftself/X20 instead.
  *
  * Windows follows the same architecture-selected closure ABI even though LLGo
  * does not support the OS yet. x86 can use the direct path below. TODO: add and
@@ -27,19 +28,18 @@ void *llgo_ffi_closure_alloc(void **code) {
 #define LLGO_FFI_CALL_GO_DIRECT 1
 #elif !defined(_WIN32) && defined(__arm__)
 #define LLGO_FFI_CALL_GO_ARM_BRIDGE 1
-#elif !defined(_WIN32) && defined(__aarch64__) &&                          \
-    (defined(__APPLE__) || defined(__ANDROID__))
+#elif !defined(_WIN32) &&                                                  \
+    (((defined(__x86_64__) || defined(__i386__)) &&                        \
+      !defined(FFI_GO_CLOSURES)) ||                                        \
+     (defined(__aarch64__) &&                                              \
+      (defined(__APPLE__) || defined(__ANDROID__))))
 #define LLGO_FFI_CALL_PUBLIC_TRAMPOLINE 1
 #endif
 
-#if defined(__APPLE__) && (defined(__x86_64__) || defined(__i386__)) &&     \
-    !defined(FFI_GO_CLOSURES)
-#error "LLGo macOS x86 requires libffi with FFI_GO_CLOSURES"
-#elif defined(LLGO_FFI_CALL_GO_ARM_BRIDGE) && !defined(FFI_GO_CLOSURES)
+#if defined(LLGO_FFI_CALL_GO_ARM_BRIDGE) && !defined(FFI_GO_CLOSURES)
 #error "LLGo hidden closure environments require libffi Go closures on ARM"
-#elif !defined(FFI_GO_CLOSURES) &&                                        \
-    (defined(__x86_64__) || defined(__i386__) || defined(__riscv) ||       \
-     defined(__riscv__) ||                                                 \
+#elif !defined(_WIN32) && !defined(FFI_GO_CLOSURES) &&                     \
+    (defined(__riscv) || defined(__riscv__) ||                             \
      (defined(__aarch64__) && !defined(__APPLE__) && !defined(__ANDROID__) && \
       !defined(_WIN32)))
 #error "LLGo hidden closure environments require libffi Go closures on this target"
@@ -136,7 +136,61 @@ llgo_ffi_current_call(void) {
 #define LLGO_ASM_CSYM(name) #name
 #endif
 
-#if defined(__aarch64__)
+#if defined(__x86_64__)
+
+__attribute__((naked)) static void llgo_ffi_env_trampoline(void) {
+    __asm__ volatile(
+        "subq $200, %rsp\n\t"
+        "movq %rdi, 0(%rsp)\n\t"
+        "movq %rsi, 8(%rsp)\n\t"
+        "movq %rdx, 16(%rsp)\n\t"
+        "movq %rcx, 24(%rsp)\n\t"
+        "movq %r8, 32(%rsp)\n\t"
+        "movq %r9, 40(%rsp)\n\t"
+        "movq %rax, 48(%rsp)\n\t"
+        "movdqu %xmm0, 64(%rsp)\n\t"
+        "movdqu %xmm1, 80(%rsp)\n\t"
+        "movdqu %xmm2, 96(%rsp)\n\t"
+        "movdqu %xmm3, 112(%rsp)\n\t"
+        "movdqu %xmm4, 128(%rsp)\n\t"
+        "movdqu %xmm5, 144(%rsp)\n\t"
+        "movdqu %xmm6, 160(%rsp)\n\t"
+        "movdqu %xmm7, 176(%rsp)\n\t"
+        "callq " LLGO_ASM_CSYM(llgo_ffi_current_call) "\n\t"
+        "movq 0(%rax), %r11\n\t"
+        "movq 8(%rax), %r10\n\t"
+        "movdqu 64(%rsp), %xmm0\n\t"
+        "movdqu 80(%rsp), %xmm1\n\t"
+        "movdqu 96(%rsp), %xmm2\n\t"
+        "movdqu 112(%rsp), %xmm3\n\t"
+        "movdqu 128(%rsp), %xmm4\n\t"
+        "movdqu 144(%rsp), %xmm5\n\t"
+        "movdqu 160(%rsp), %xmm6\n\t"
+        "movdqu 176(%rsp), %xmm7\n\t"
+        "movq 0(%rsp), %rdi\n\t"
+        "movq 8(%rsp), %rsi\n\t"
+        "movq 16(%rsp), %rdx\n\t"
+        "movq 24(%rsp), %rcx\n\t"
+        "movq 32(%rsp), %r8\n\t"
+        "movq 40(%rsp), %r9\n\t"
+        "movq 48(%rsp), %rax\n\t"
+        "addq $200, %rsp\n\t"
+        "jmpq *%r11");
+}
+
+#elif defined(__i386__)
+
+__attribute__((naked)) static void llgo_ffi_env_trampoline(void) {
+    __asm__ volatile(
+        "subl $12, %esp\n\t"
+        "calll " LLGO_ASM_CSYM(llgo_ffi_current_call) "\n\t"
+        "movl 0(%eax), %edx\n\t"
+        "movl 4(%eax), %ecx\n\t"
+        "addl $12, %esp\n\t"
+        "jmpl *%edx");
+}
+
+#elif defined(__aarch64__)
 
 __attribute__((naked)) static void llgo_ffi_env_trampoline(void) {
     __asm__ volatile(

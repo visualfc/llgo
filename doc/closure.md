@@ -85,22 +85,23 @@ returns or lowers its C ABI.
   use the semantic signature. This is the only `env != nil` decision in the
   reflection/FFI path;
 - native hidden env target: x86, RISC-V, and AArch64 targets where X18 is
-  available use libffi's `ffi_call_go` directly because its static-chain
-  register is LLGo's `nest` register. ARM also uses `ffi_call_go`; a short
-  final-hop bridge moves libffi's IP/R12 context to `swiftself`/R10 without
-  saving argument registers or using TLS. LLVM lowers ARM32 `nest` as an
-  ordinary leading argument rather than a hidden static chain, so it cannot
-  replace this `swiftself` bridge.
+  available use libffi's `ffi_call_go` directly when libffi exposes that API,
+  because its static-chain register is LLGo's `nest` register. ARM also uses
+  `ffi_call_go`; a short final-hop bridge moves libffi's IP/R12 context to
+  `swiftself`/R10 without saving argument registers or using TLS. LLVM lowers
+  ARM32 `nest` as an ordinary leading argument rather than a hidden static
+  chain, so it cannot replace this `swiftself` bridge.
+- x86 libffi builds without `FFI_GO_CLOSURES`, including Apple SDK libffi, use
+  stock `ffi_call` plus the TLS final-hop trampoline, which installs LLVM's
+  `nest` register before entering the real target.
 - Apple/Android AArch64 use stock `ffi_call` plus the TLS final-hop trampoline:
   libffi's Go ABI uses X18 while LLGo's entry ABI uses `swiftself`/X20, so the
   public `ffi_call` path needs TLS to carry `{fn, env}` to its final target.
 
-The build obtains both headers and linker flags from `pkg-config libffi`. x86
-requires `FFI_GO_CLOSURES`; a libffi implementation without that API is
-rejected rather than silently selecting a second x86 FFI final-hop
-implementation. No Homebrew-specific libffi path is required. Apple AArch64
-remains on the X20 TLS trampoline because libffi's Go ABI uses X18 while LLGo's
-selected entry ABI uses `swiftself`/X20 there.
+The build obtains both headers and linker flags from `pkg-config libffi`; no
+Homebrew-specific libffi path is required. Apple AArch64 remains on the X20 TLS
+trampoline because libffi's Go ABI uses X18 while LLGo's selected entry ABI
+uses `swiftself`/X20 there.
 
 Every architecture that selects a hidden env must select exactly one native
 FFI final hop: direct `ffi_call_go`, `ffi_call_go` plus a register bridge, or
