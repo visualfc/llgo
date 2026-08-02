@@ -6,7 +6,7 @@ void *llgo_ffi_closure_alloc(void **code) {
 
 /*
  * Use libffi's Go ABI directly when its static-chain register is LLGo's nest
- * register. ARM needs only a final register bridge from libffi's IP/R12 to
+ * register. ARM32 needs only a final register bridge from libffi's IP/R12 to
  * swiftself/R10. AArch64 Apple/Android use the public-ffi_call trampoline
  * because X18 is reserved and LLGo uses swiftself/X20 instead.
  *
@@ -70,6 +70,9 @@ struct llgo_ffi_call_context {
     void *saved_return;
 };
 
+/* The target must return normally through this bridge so its callee-saved
+ * registers and return address can be restored. */
+
 /*
  * ffi_call_go enters this function with the context in IP/R12 and all real
  * arguments already marshalled. Preserve the callee-saved registers used by
@@ -116,6 +119,9 @@ struct llgo_ffi_call_context {
     void *saved_self;
     void *saved_return;
 };
+
+/* Targets must return normally through ffi_call. A non-local exit would skip
+ * both the trampoline's register restore and the prior TLS-context restore. */
 
 static _Thread_local struct llgo_ffi_call_context llgo_ffi_call_current;
 

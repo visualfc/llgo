@@ -22,9 +22,9 @@ This document records the phase-one design from
   on `env != nil` and emits two exact LLVM call edges: `fn(args...)` and
   `fn(env, args...)`.
 - Native hidden env parameters use LLVM `nest` or `swiftself` parameter
-  attributes. WebAssembly and targets without a validated hidden-register FFI
-  bridge use an explicit physical env parameter, but only on env-bearing
-  entries.
+  attributes. WebAssembly and architectures without a validated LLVM
+  hidden-register mapping use an explicit physical env parameter, but only on
+  env-bearing entries.
 - Direct interface invocation remains a transient `(method entry, receiver)`
   operation. Its receiver is an ordinary ABI argument; first-class interface
   method values are lowered through the normal bound-wrapper closure path.
@@ -109,6 +109,10 @@ Every architecture that selects a hidden env must select exactly one native
 FFI final hop: direct `ffi_call_go`, `ffi_call_go` plus a register bridge, or
 public `ffi_call` plus a TLS trampoline. The wrapper rejects missing or
 ambiguous selections at compile time.
+
+Bridge calls are balanced: their targets must return normally through the
+final hop so saved registers and, where used, the prior TLS context are
+restored.
 
 Although libffi's C implementation of `ffi_call_go` is a thin wrapper, it calls
 an architecture-private `ffi_call_int(..., closure)` and matching assembly; it

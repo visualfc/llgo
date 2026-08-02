@@ -56,7 +56,6 @@ runs:
         
         # Install common dependencies
         brew install pkg-config bdw-gc openssl libffi libuv
-        brew link --overwrite libffi
         libffi_pc_path="$(brew --prefix libffi)/lib/pkgconfig"
         echo "PKG_CONFIG_PATH=${libffi_pc_path}:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
