@@ -31,35 +31,35 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func TestPackageBuildSpecAndResult(t *testing.T) {
+func TestPackageBuildTaskAndResult(t *testing.T) {
 	pkg := &aPackage{Package: &packages.Package{
 		PkgPath: "example.com/p",
 		GoFiles: []string{"p.go"},
 		Types:   types.NewPackage("example.com/p", "p"),
 	}, NeedRt: true, NeedPyInit: true}
-	spec := newPackageBuildSpec(pkg)
-	if spec.isDeclOnly() || spec.isLinkOnly() || !spec.hasSource() || spec.runtime || !spec.needsRuntimeSignals() {
-		t.Fatalf("unexpected normal package spec: %+v", spec)
+	task := newPackageBuildTask(pkg)
+	if task.isDeclOnly() || task.isLinkOnly() || !task.hasSource() || task.isRuntime() || !task.needsRuntimeSignals() {
+		t.Fatalf("unexpected normal package task: %+v", task)
 	}
-	result := packageBuildResultFor(spec)
+	result := packageBuildResultFor(task)
 	if !result.needRuntime || !result.needPyInit {
 		t.Fatalf("unexpected package result: %+v", result)
 	}
 }
 
-func TestPackageBuildSpecSpecialKinds(t *testing.T) {
-	decl := newPackageBuildSpec(&aPackage{Package: &packages.Package{
+func TestPackageBuildTaskSpecialKinds(t *testing.T) {
+	decl := newPackageBuildTask(&aPackage{Package: &packages.Package{
 		PkgPath: "unsafe",
 		Types:   types.Unsafe,
 	}})
 	if !decl.isDeclOnly() || decl.needsRuntimeSignals() {
-		t.Fatalf("unexpected declaration-only spec: %+v", decl)
+		t.Fatalf("unexpected declaration-only task: %+v", decl)
 	}
-	runtime := newPackageBuildSpec(&aPackage{Package: &packages.Package{
+	runtime := newPackageBuildTask(&aPackage{Package: &packages.Package{
 		PkgPath: env.LLGoRuntimePkg,
 		Types:   types.NewPackage(env.LLGoRuntimePkg, "runtime"),
 	}})
-	if !runtime.runtime {
+	if !runtime.isRuntime() {
 		t.Fatalf("runtime package was not marked runtime: %+v", runtime)
 	}
 }
@@ -131,13 +131,13 @@ var content string
 		built:     make(map[string]none),
 	}
 
-	_, err = buildOnePackage(ctx, newPackageBuildSpec(pkg), false)
+	_, err = buildOnePackage(ctx, newPackageBuildTask(pkg), false)
 	if err == nil || !strings.Contains(err.Error(), "only allowed in Go files that import") {
 		t.Fatalf("buildOnePackage frontend error = %v", err)
 	}
 }
 
-func TestPreflightPackageBuildErrorsAndCacheHit(t *testing.T) {
+func TestPrePackageBuildErrorsAndCacheHit(t *testing.T) {
 	t.Run("fingerprint error", func(t *testing.T) {
 		pkg := &aPackage{Package: &packages.Package{
 			ID:      "example.com/missing-source",
@@ -150,12 +150,13 @@ func TestPreflightPackageBuildErrorsAndCacheHit(t *testing.T) {
 			built:       make(map[string]none),
 			llvmVersion: "test",
 		}
-		skip, err := preflightPackageBuild(ctx, newPackageBuildSpec(pkg), false)
+		task := newPackageBuildTask(pkg)
+		err := prePackageBuild(ctx, task, false)
 		if err == nil || !strings.Contains(err.Error(), "digest go files") {
-			t.Fatalf("preflight fingerprint error = %v", err)
+			t.Fatalf("pre fingerprint error = %v", err)
 		}
-		if skip {
-			t.Fatal("preflight skipped package after fingerprint error")
+		if task.skip {
+			t.Fatal("pre skipped package after fingerprint error")
 		}
 	})
 
@@ -173,12 +174,13 @@ func TestPreflightPackageBuildErrorsAndCacheHit(t *testing.T) {
 			CacheHit:    true,
 		}
 		ctx := &context{buildConf: &Config{}, built: make(map[string]none)}
-		skip, err := preflightPackageBuild(ctx, newPackageBuildSpec(pkg), true)
+		task := newPackageBuildTask(pkg)
+		err := prePackageBuild(ctx, task, true)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if skip || !pkg.CacheHit {
-			t.Fatalf("preflight cache hit = skip %v, cache hit %v", skip, pkg.CacheHit)
+		if task.skip || !pkg.CacheHit {
+			t.Fatalf("pre cache hit = skip %v, cache hit %v", task.skip, pkg.CacheHit)
 		}
 	})
 }
@@ -192,7 +194,7 @@ func TestBuildOnePackageSkipsAlreadyBuiltPackage(t *testing.T) {
 	}, NeedRt: true}
 	ctx := &context{built: map[string]none{pkg.ID: {}}}
 
-	result, err := buildOnePackage(ctx, newPackageBuildSpec(pkg), false)
+	result, err := buildOnePackage(ctx, newPackageBuildTask(pkg), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +203,7 @@ func TestBuildOnePackageSkipsAlreadyBuiltPackage(t *testing.T) {
 	}
 }
 
-func TestPreflightPackageBuildSkipsDeclarationOnlyPackage(t *testing.T) {
+func TestPrePackageBuildSkipsDeclarationOnlyPackage(t *testing.T) {
 	pkg := &aPackage{Package: &packages.Package{
 		ID:         "unsafe",
 		PkgPath:    "unsafe",
@@ -210,11 +212,12 @@ func TestPreflightPackageBuildSkipsDeclarationOnlyPackage(t *testing.T) {
 	}}
 	ctx := &context{built: make(map[string]none)}
 
-	skip, err := preflightPackageBuild(ctx, newPackageBuildSpec(pkg), false)
+	task := newPackageBuildTask(pkg)
+	err := prePackageBuild(ctx, task, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !skip {
+	if !task.skip {
 		t.Fatal("declaration-only package was not skipped")
 	}
 	if pkg.ExportFile != "" {
@@ -225,7 +228,7 @@ func TestPreflightPackageBuildSkipsDeclarationOnlyPackage(t *testing.T) {
 	}
 }
 
-func TestPreflightPackageBuildSkipsExternalLinkOnlyPackage(t *testing.T) {
+func TestPrePackageBuildSkipsExternalLinkOnlyPackage(t *testing.T) {
 	pkg := &aPackage{Package: &packages.Package{
 		ID:         "example.com/linkonly",
 		PkgPath:    "example.com/linkonly",
@@ -234,13 +237,13 @@ func TestPreflightPackageBuildSkipsExternalLinkOnlyPackage(t *testing.T) {
 		ExportFile: "stale.a",
 	}}
 	ctx := &context{buildConf: &Config{}, built: make(map[string]none)}
-	spec := packageBuildSpec{pkg: pkg, kind: cl.PkgLinkExtern, kindParam: "-lexample"}
-	skip, err := preflightPackageBuild(ctx, spec, false)
+	task := &packageBuildTask{pkg: pkg, kind: cl.PkgLinkExtern, kindParam: "-lexample"}
+	err := prePackageBuild(ctx, task, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !skip || pkg.ExportFile != "" {
-		t.Fatalf("external link-only preflight = skip %v, export %q", skip, pkg.ExportFile)
+	if !task.skip || pkg.ExportFile != "" {
+		t.Fatalf("external link-only pre = skip %v, export %q", task.skip, pkg.ExportFile)
 	}
 	if len(pkg.LinkArgs) != 1 || pkg.LinkArgs[0] != "-lexample" {
 		t.Fatalf("external link args = %q, want [-lexample]", pkg.LinkArgs)
@@ -254,7 +257,7 @@ func TestFinalizePackageBuildReturnsCachedResult(t *testing.T) {
 		Types:   types.NewPackage("example.com/cached", "cached"),
 	}, CacheHit: true, NeedPyInit: true}
 
-	result, err := finalizePackageBuild(&context{}, newPackageBuildSpec(pkg), false)
+	result, err := finalizePackageBuild(&context{}, newPackageBuildTask(pkg), false)
 	if err != nil {
 		t.Fatal(err)
 	}

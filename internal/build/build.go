@@ -981,22 +981,22 @@ func normalizeToArchive(ctx *context, aPkg *aPackage, verbose bool) error {
 
 func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, error) {
 	// Split packages into runtime tree vs others so we can defer runtime build.
-	var runtimePkgs []packageBuildSpec
-	var normalPkgs []packageBuildSpec
+	var runtimePkgs []*packageBuildTask
+	var normalPkgs []*packageBuildTask
 	for _, p := range pkgs {
-		spec := newPackageBuildSpec(p)
-		if spec.runtime {
-			runtimePkgs = append(runtimePkgs, spec)
+		task := newPackageBuildTask(p)
+		if task.isRuntime() {
+			runtimePkgs = append(runtimePkgs, task)
 		} else {
-			normalPkgs = append(normalPkgs, spec)
+			normalPkgs = append(normalPkgs, task)
 		}
 	}
 
 	var needRuntime, needPyInit bool
 
 	// Build non-runtime packages first, so we know whether runtime is actually needed.
-	for _, spec := range normalPkgs {
-		result, err := buildOnePackage(ctx, spec, verbose)
+	for _, task := range normalPkgs {
+		result, err := buildOnePackage(ctx, task, verbose)
 		if err != nil {
 			return nil, err
 		}
@@ -1006,8 +1006,8 @@ func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, er
 
 	// Only build runtime packages when required (or host build with empty Target).
 	if needRuntime || needPyInit || ctx.buildConf.Target == "" {
-		for _, spec := range runtimePkgs {
-			if _, err := buildOnePackage(ctx, spec, verbose); err != nil {
+		for _, task := range runtimePkgs {
+			if _, err := buildOnePackage(ctx, task, verbose); err != nil {
 				return nil, err
 			}
 		}
@@ -1019,39 +1019,41 @@ func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, er
 // buildOnePackage is the serial package pipeline. Its explicit stages are the
 // contract used by later package workers; this commit deliberately preserves
 // serial LLVM execution.
-func buildOnePackage(ctx *context, spec packageBuildSpec, verbose bool) (packageBuildResult, error) {
-	skip, err := preflightPackageBuild(ctx, spec, verbose)
-	if err != nil || skip {
-		return packageBuildResultFor(spec), err
+func buildOnePackage(ctx *context, task *packageBuildTask, verbose bool) (packageBuildResult, error) {
+	if err := prePackageBuild(ctx, task, verbose); err != nil || task.skip {
+		return packageBuildResultFor(task), err
 	}
-	if err := executePackageBuild(ctx, spec, verbose); err != nil {
-		return packageBuildResultFor(spec), err
+	if err := executePackageBuild(ctx, task, verbose); err != nil {
+		return packageBuildResultFor(task), err
 	}
-	return finalizePackageBuild(ctx, spec, verbose)
+	return finalizePackageBuild(ctx, task, verbose)
 }
 
-// preflightPackageBuild performs classification, fingerprinting, and cache
+// prePackageBuild performs classification, fingerprinting, and cache
 // lookup without creating or transforming an LLVM module.
-func preflightPackageBuild(ctx *context, spec packageBuildSpec, verbose bool) (skip bool, err error) {
-	aPkg := spec.pkg
+func prePackageBuild(ctx *context, task *packageBuildTask, verbose bool) error {
+	aPkg := task.pkg
 	pkg := aPkg.Package
 	if _, ok := ctx.built[pkg.ID]; ok {
-		return true, nil
+		task.skip = true
+		return nil
 	}
 	ctx.built[pkg.ID] = none{}
-	if spec.isDeclOnly() {
+	if task.isDeclOnly() {
 		pkg.ExportFile = ""
-		return true, nil
+		task.skip = true
+		return nil
 	}
-	if spec.isLinkOnly() && !spec.hasSource() {
+	if task.isLinkOnly() && !task.hasSource() {
 		pkg.ExportFile = ""
-		if spec.kind == cl.PkgLinkExtern {
-			appendExternalLinkArgs(ctx, aPkg, spec.kindParam)
+		if task.kind == cl.PkgLinkExtern {
+			appendExternalLinkArgs(ctx, aPkg, task.kindParam)
 		}
-		return true, nil
+		task.skip = true
+		return nil
 	}
 	if err := ctx.collectFingerprint(aPkg); err != nil {
-		return false, err
+		return err
 	}
 	ctx.tryLoadFromCache(aPkg)
 	if verbose {
@@ -1061,16 +1063,16 @@ func preflightPackageBuild(ctx *context, spec packageBuildSpec, verbose bool) (s
 		}
 		fmt.Fprintf(os.Stderr, "CACHE %s: %s\n", status, pkg.PkgPath)
 	}
-	return false, nil
+	return nil
 }
 
 // executePackageBuild creates the package module and runs its LLVM backend.
-func executePackageBuild(ctx *context, spec packageBuildSpec, verbose bool) error {
-	aPkg := spec.pkg
+func executePackageBuild(ctx *context, task *packageBuildTask, verbose bool) error {
+	aPkg := task.pkg
 	if err := buildPkg(ctx, aPkg, verbose); err != nil {
 		return err
 	}
-	if spec.needsRuntimeSignals() {
+	if task.needsRuntimeSignals() {
 		aPkg.setNeedRuntimeOrPyInit(aPkg.LPkg.NeedRuntime, aPkg.LPkg.NeedPyInit)
 	}
 	return nil
@@ -1078,21 +1080,21 @@ func executePackageBuild(ctx *context, spec packageBuildSpec, verbose bool) erro
 
 // finalizePackageBuild publishes the archive and cache metadata. Cache hits
 // already carry both and therefore require no publication.
-func finalizePackageBuild(ctx *context, spec packageBuildSpec, verbose bool) (packageBuildResult, error) {
-	aPkg := spec.pkg
+func finalizePackageBuild(ctx *context, task *packageBuildTask, verbose bool) (packageBuildResult, error) {
+	aPkg := task.pkg
 	if aPkg.CacheHit {
-		return packageBuildResultFor(spec), nil
+		return packageBuildResultFor(task), nil
 	}
 	if err := normalizeToArchive(ctx, aPkg, verbose); err != nil {
-		return packageBuildResultFor(spec), err
+		return packageBuildResultFor(task), err
 	}
-	if spec.kind == cl.PkgLinkExtern {
-		appendExternalLinkArgs(ctx, aPkg, spec.kindParam)
+	if task.kind == cl.PkgLinkExtern {
+		appendExternalLinkArgs(ctx, aPkg, task.kindParam)
 	}
 	if err := ctx.saveToCache(aPkg); err != nil && verbose {
 		fmt.Fprintf(os.Stderr, "warning: failed to save cache for %s: %v\n", aPkg.PkgPath, err)
 	}
-	return packageBuildResultFor(spec), nil
+	return packageBuildResultFor(task), nil
 }
 
 func appendExternalLinkArgs(ctx *context, aPkg *aPackage, spec string) {

@@ -18,37 +18,40 @@ package build
 
 import "github.com/goplus/llgo/cl"
 
-type packageBuildSpec struct {
+type packageBuildTask struct {
 	pkg       *aPackage
 	kind      int
 	kindParam string
-	runtime   bool
+	skip      bool
 }
 
-func newPackageBuildSpec(pkg *aPackage) packageBuildSpec {
+func newPackageBuildTask(pkg *aPackage) *packageBuildTask {
 	kind, kindParam := cl.PkgKindOf(pkg.Types)
-	return packageBuildSpec{
+	return &packageBuildTask{
 		pkg:       pkg,
 		kind:      kind,
 		kindParam: kindParam,
-		runtime:   isRuntimePkg(pkg.PkgPath),
 	}
 }
 
-func (s packageBuildSpec) isDeclOnly() bool {
-	return s.kind == cl.PkgDeclOnly
+func (t *packageBuildTask) isRuntime() bool {
+	return isRuntimePkg(t.pkg.PkgPath)
 }
 
-func (s packageBuildSpec) isLinkOnly() bool {
-	return s.kind == cl.PkgLinkIR || s.kind == cl.PkgLinkExtern || s.kind == cl.PkgPyModule
+func (t *packageBuildTask) isDeclOnly() bool {
+	return t.kind == cl.PkgDeclOnly
 }
 
-func (s packageBuildSpec) hasSource() bool {
-	return len(s.pkg.GoFiles) > 0
+func (t *packageBuildTask) isLinkOnly() bool {
+	return t.kind == cl.PkgLinkIR || t.kind == cl.PkgLinkExtern || t.kind == cl.PkgPyModule
 }
 
-func (s packageBuildSpec) needsRuntimeSignals() bool {
-	return !s.isLinkOnly() && !s.isDeclOnly()
+func (t *packageBuildTask) hasSource() bool {
+	return len(t.pkg.GoFiles) > 0
+}
+
+func (t *packageBuildTask) needsRuntimeSignals() bool {
+	return !t.isLinkOnly() && !t.isDeclOnly()
 }
 
 type packageBuildResult struct {
@@ -56,9 +59,9 @@ type packageBuildResult struct {
 	needPyInit  bool
 }
 
-func packageBuildResultFor(spec packageBuildSpec) packageBuildResult {
+func packageBuildResultFor(task *packageBuildTask) packageBuildResult {
 	return packageBuildResult{
-		needRuntime: spec.pkg.NeedRt,
-		needPyInit:  spec.pkg.NeedPyInit,
+		needRuntime: task.pkg.NeedRt,
+		needPyInit:  task.pkg.NeedPyInit,
 	}
 }
