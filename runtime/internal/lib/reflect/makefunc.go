@@ -39,10 +39,6 @@ type funcData struct {
 }
 
 func MakeFunc(typ Type, fn func(args []Value) (results []Value)) Value {
-	return makeFunc(typ, fn)
-}
-
-func makeFunc(typ Type, fn func(args []Value) (results []Value)) Value {
 	if typ.Kind() != Func {
 		panic("reflect: call of MakeFunc with non-Func type")
 	}
@@ -279,7 +275,7 @@ func makeMethodValue(op string, v Value) Value {
 	if method.Type().(*rtype).t.FuncType().Variadic() {
 		callOp = "CallSlice"
 	}
-	ret := makeFunc(v.Type(), func(args []Value) []Value {
+	ret := MakeFunc(v.Type(), func(args []Value) []Value {
 		return method.call(callOp, args)
 	})
 	// Cause panic if method is not appropriate.
