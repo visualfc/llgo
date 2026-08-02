@@ -120,6 +120,10 @@ func TestPackageArchiveEdgeCases(t *testing.T) {
 	if err := ctx.createPackageArchiveFile(filepath.Join(blocker, "archive.a"), pkg, false); err == nil {
 		t.Fatal("createPackageArchiveFile succeeded below a regular file")
 	}
+	tooLong := filepath.Join(t.TempDir(), strings.Repeat("a", 300)+".a")
+	if err := ctx.createPackageArchiveFile(tooLong, pkg, false); err == nil {
+		t.Fatal("createPackageArchiveFile succeeded with an overlong temporary-file prefix")
+	}
 
 	archiveDir := filepath.Join(t.TempDir(), "archive.a")
 	if err := os.Mkdir(archiveDir, 0o755); err != nil {
@@ -153,9 +157,9 @@ func TestNormalizeToArchiveFailsWithoutObjectFallback(t *testing.T) {
 			buffer: memoryBuf,
 		}},
 	}
-	err := normalizeToArchive(ctx, pkg, false)
+	_, err := finalizePackageBuild(ctx, packageBuildSpec{pkg: pkg}, false)
 	if err == nil {
-		t.Fatal("normalizeToArchive succeeded with a missing member")
+		t.Fatal("finalizePackageBuild succeeded with a missing member")
 	}
 	if !strings.Contains(err.Error(), "missing.o") {
 		t.Fatalf("normalizeToArchive error = %v, want missing member", err)

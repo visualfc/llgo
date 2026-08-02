@@ -102,6 +102,87 @@ var content string
 	}
 }
 
+func TestBuildOnePackageReturnsFrontendError(t *testing.T) {
+	t.Setenv(llgoBuildCache, "off")
+	fset := token.NewFileSet()
+	filename := filepath.Join(t.TempDir(), "p.go")
+	file, err := parser.ParseFile(fset, filename, `package p
+
+//go:embed missing.txt
+var content string
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := &aPackage{
+		Package: &packages.Package{
+			ID:      "example.com/frontend-error",
+			PkgPath: "example.com/frontend-error",
+			GoFiles: []string{filename},
+			Syntax:  []*ast.File{file},
+			Types:   types.NewPackage("example.com/frontend-error", "p"),
+		},
+		Manifest:    "already fingerprinted",
+		Fingerprint: "frontend-error",
+	}
+	ctx := &context{
+		conf:      &packages.Config{Fset: fset},
+		buildConf: &Config{},
+		built:     make(map[string]none),
+	}
+
+	_, err = buildOnePackage(ctx, newPackageBuildSpec(pkg), false)
+	if err == nil || !strings.Contains(err.Error(), "only allowed in Go files that import") {
+		t.Fatalf("buildOnePackage frontend error = %v", err)
+	}
+}
+
+func TestPreflightPackageBuildErrorsAndCacheHit(t *testing.T) {
+	t.Run("fingerprint error", func(t *testing.T) {
+		pkg := &aPackage{Package: &packages.Package{
+			ID:      "example.com/missing-source",
+			PkgPath: "example.com/missing-source",
+			GoFiles: []string{filepath.Join(t.TempDir(), "missing.go")},
+			Types:   types.NewPackage("example.com/missing-source", "missing"),
+		}}
+		ctx := &context{
+			buildConf:   &Config{},
+			built:       make(map[string]none),
+			llvmVersion: "test",
+		}
+		skip, err := preflightPackageBuild(ctx, newPackageBuildSpec(pkg), false)
+		if err == nil || !strings.Contains(err.Error(), "digest go files") {
+			t.Fatalf("preflight fingerprint error = %v", err)
+		}
+		if skip {
+			t.Fatal("preflight skipped package after fingerprint error")
+		}
+	})
+
+	t.Run("cache hit", func(t *testing.T) {
+		t.Setenv(llgoBuildCache, "off")
+		pkg := &aPackage{
+			Package: &packages.Package{
+				ID:      "example.com/cache-hit",
+				PkgPath: "example.com/cache-hit",
+				GoFiles: []string{"cached.go"},
+				Types:   types.NewPackage("example.com/cache-hit", "cached"),
+			},
+			Manifest:    "already fingerprinted",
+			Fingerprint: "cache-hit",
+			CacheHit:    true,
+		}
+		ctx := &context{buildConf: &Config{}, built: make(map[string]none)}
+		skip, err := preflightPackageBuild(ctx, newPackageBuildSpec(pkg), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if skip || !pkg.CacheHit {
+			t.Fatalf("preflight cache hit = skip %v, cache hit %v", skip, pkg.CacheHit)
+		}
+	})
+}
+
 func TestBuildOnePackageSkipsAlreadyBuiltPackage(t *testing.T) {
 	pkg := &aPackage{Package: &packages.Package{
 		ID:      "example.com/already-built",
