@@ -26,8 +26,8 @@
   },
   %"runtime/abi.UncommonType" { %"runtime.String" { ptr @task.pkg, i64 4 }, i16 2, i16 2, i32 24 },
   [2 x %"github.com/goplus/llgo/runtime/abi.Method"] [
-    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.drop, i64 4 }, ptr @_llgo_func$run, ptr @"main.(*Task).Drop", ptr @"__llgo_stub.main.Task.Drop" },
-    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.run, i64 3 }, ptr @_llgo_func$run, ptr @"main.(*Task).Run", ptr @"__llgo_stub.main.Task.Run" }
+    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.drop, i64 4 }, ptr @_llgo_func$run, ptr @"main.(*Task).Drop", ptr @"main.Task.Drop" },
+    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.run, i64 3 }, ptr @_llgo_func$run, ptr @"main.(*Task).Run", ptr @"main.Task.Run" }
   ]
 }, align 8
 
@@ -38,8 +38,8 @@
   },
   %"runtime/abi.UncommonType" { %"runtime.String" { ptr @task.pkg, i64 4 }, i16 2, i16 2, i32 24 },
   [2 x %"github.com/goplus/llgo/runtime/abi.Method"] [
-    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.drop, i64 4 }, ptr @_llgo_func$run, ptr @"main.(*Task).Drop", ptr @"__llgo_stub.main.(*Task).Drop" },
-    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.run, i64 3 }, ptr @_llgo_func$run, ptr @"main.(*Task).Run", ptr @"__llgo_stub.main.(*Task).Run" }
+    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.drop, i64 4 }, ptr @_llgo_func$run, ptr @"main.(*Task).Drop", ptr @"main.(*Task).Drop" },
+    %"github.com/goplus/llgo/runtime/abi.Method" { %"runtime.String" { ptr @method.run, i64 3 }, ptr @_llgo_func$run, ptr @"main.(*Task).Run", ptr @"main.(*Task).Run" }
   ]
 }, align 8
 
@@ -76,9 +76,7 @@ declare i1 @memequal0(ptr, ptr, ptr)
 declare i1 @memequalptr(ptr, ptr, ptr)
 declare i1 @memequal64(ptr, ptr, ptr)
 declare i1 @interequal(ptr, ptr, ptr)
+declare i64 @"main.Task.Drop"(%Task)
+declare i64 @"main.Task.Run"(%Task)
 declare i64 @"main.(*Task).Drop"(ptr)
 declare i64 @"main.(*Task).Run"(ptr)
-declare i64 @"__llgo_stub.main.Task.Drop"(ptr, %Task)
-declare i64 @"__llgo_stub.main.Task.Run"(ptr, %Task)
-declare i64 @"__llgo_stub.main.(*Task).Drop"(ptr, ptr)
-declare i64 @"__llgo_stub.main.(*Task).Run"(ptr, ptr)

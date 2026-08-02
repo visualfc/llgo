@@ -34,7 +34,7 @@ void *llgo_ffi_closure_alloc(void **code) {
 
 #if defined(__APPLE__) && (defined(__x86_64__) || defined(__i386__)) &&     \
     !defined(FFI_GO_CLOSURES)
-#error "LLGo macOS x86 requires pkg-config to resolve Homebrew libffi with Go closures, not Apple SDK libffi"
+#error "LLGo macOS x86 requires libffi with FFI_GO_CLOSURES"
 #elif defined(LLGO_FFI_CALL_GO_ARM_BRIDGE) && !defined(FFI_GO_CLOSURES)
 #error "LLGo hidden closure environments require libffi Go closures on ARM"
 #elif !defined(FFI_GO_CLOSURES) &&                                        \

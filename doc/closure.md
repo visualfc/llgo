@@ -92,18 +92,15 @@ returns or lowers its C ABI.
   ordinary leading argument rather than a hidden static chain, so it cannot
   replace this `swiftself` bridge.
 - Apple/Android AArch64 use stock `ffi_call` plus the TLS final-hop trampoline:
-  libffi's X18 Go ABI is unavailable or incompatible there, so the trampoline
-  installs `swiftself`/X20. In particular, Homebrew libffi does not export
-  `ffi_call_go` on Apple AArch64, so there is no incoming context register for
-  an ARM32-style register-only bridge; public `ffi_call` needs TLS to carry
-  `{fn, env}` to its final target.
+  libffi's Go ABI uses X18 while LLGo's entry ABI uses `swiftself`/X20, so the
+  public `ffi_call` path needs TLS to carry `{fn, env}` to its final target.
 
 The build obtains both headers and linker flags from `pkg-config libffi`. x86
-requires `FFI_GO_CLOSURES`; a system libffi without that API is rejected rather
-than retaining a second x86 FFI final-hop implementation. macOS CI installs
-Homebrew libffi and pkg-config explicitly. Apple AArch64 remains on the X20 TLS
-trampoline because upstream/Homebrew libffi intentionally disables its X18 Go
-ABI there.
+requires `FFI_GO_CLOSURES`; a libffi implementation without that API is
+rejected rather than silently selecting a second x86 FFI final-hop
+implementation. No Homebrew-specific libffi path is required. Apple AArch64
+remains on the X20 TLS trampoline because libffi's Go ABI uses X18 while LLGo's
+selected entry ABI uses `swiftself`/X20 there.
 
 Every architecture that selects a hidden env must select exactly one native
 FFI final hop: direct `ffi_call_go`, `ffi_call_go` plus a register bridge, or
