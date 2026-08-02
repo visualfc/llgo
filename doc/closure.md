@@ -65,10 +65,10 @@ The physical env parameter is:
 - `swiftself` on ARM and platforms where AArch64 X18 is reserved;
 - an ordinary leading parameter on the explicit fallback.
 
-Windows currently uses the explicit fallback because this phase does not add a
-Windows final-hop FFI bridge. This is not an LLVM `nest` limitation: for
-example, x86-64 Win64 can use its static-chain register once the corresponding
-bridge is available and tested.
+Windows currently uses the explicit fallback because LLGo does not support the
+target. TODO: select its transport by architecture once it is supported. The
+x86 libffi Go ABI already matches LLVM `nest`; AArch64 reserves X18 and needs a
+validated public-FFI TLS trampoline for `swiftself`/X20.
 
 LLVM parameter attributes are preserved when LLGo rewrites large aggregate
 returns or lowers its C ABI.
@@ -80,15 +80,17 @@ returns or lowers its C ABI.
 - explicit env target: add the env type/value only when `env != nil`; otherwise
   use the semantic signature. This is the only `env != nil` decision in the
   reflection/FFI path;
-- native hidden env target: x86, RISC-V, and non-Apple/non-Android AArch64 use
-  libffi's `ffi_call_go` directly when its headers expose `FFI_GO_CLOSURES`,
-  because its static-chain register is LLGo's `nest` register. ARM also uses
-  `ffi_call_go`; a short final-hop bridge moves libffi's IP/R12 context to
-  `swiftself`/R10 without saving argument registers or using TLS.
+- native hidden env target: x86, RISC-V, and
+  non-Apple/non-Android/non-Windows AArch64 use libffi's `ffi_call_go` directly
+  when its headers expose `FFI_GO_CLOSURES`, because its static-chain register
+  is LLGo's `nest` register. ARM also uses `ffi_call_go`; a short final-hop
+  bridge moves libffi's IP/R12 context to `swiftself`/R10 without saving
+  argument registers or using TLS.
 - Some x86 system libffi builds, including Apple's SDK libffi, omit the Go ABI.
   They use stock `ffi_call` plus the TLS final-hop trampoline. Apple/Android
-  AArch64 use the same fallback because libffi disables its X18 Go ABI there;
-  their trampoline installs `swiftself`/X20.
+  AArch64 use the same fallback: Apple libffi disables its X18 Go ABI, while
+  Android's X18 ABI is incompatible with LLGo. Their trampoline installs
+  `swiftself`/X20.
 
 Although libffi's C implementation of `ffi_call_go` is a thin wrapper, it calls
 an architecture-private `ffi_call_int(..., closure)` and matching assembly; it
