@@ -664,7 +664,11 @@ type siteSectionInfo struct {
 }
 
 var (
-	entrySiteSectionInfo  = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__DATA,__llgo_fie"}
+	// Keep the disposable funcinfo entry carrier in its own Mach-O segment.
+	// pclnpost rewrites its prefix into the compact runtime table and then
+	// physically removes the unused segment tail. PC-line sites stay in
+	// __DATA because embedded mode still consumes those records.
+	entrySiteSectionInfo  = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__LLGO,__llgo_fie"}
 	pcLineSiteSectionInfo = siteSectionInfo{elf: "llgo_pcline", machO: "__DATA,__llgo_pcl"}
 )
 
