@@ -10,9 +10,11 @@ import (
 
 const ClosureEnvExplicit = false
 
-// CallWithEnv uses the runtime's libffi trampoline to preserve env across
-// argument marshalling and place it in swiftself's register at the final call.
-// Nil is written as well so native dynamic calls have one uniform path.
+// CallWithEnv invokes fn with a semantic CIF that does not contain env. The
+// native final hop passes env separately in LLVM's swiftself register: ARM32
+// bridges libffi's R12 static chain to R10, while AArch64 targets that reserve
+// X18 use a TLS trampoline to install X20. Nil is installed as well so native
+// dynamic calls keep one uniform path.
 func CallWithEnv(cif *Signature, fn, env, ret unsafe.Pointer, args ...unsafe.Pointer) {
 	var avalues *unsafe.Pointer
 	if len(args) > 0 {

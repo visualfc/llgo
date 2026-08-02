@@ -10,8 +10,9 @@ import (
 
 const ClosureEnvExplicit = false
 
-// CallWithEnv uses the runtime's libffi trampoline to place env in LLVM's nest
-// register at the final call without changing the user-visible signature.
+// CallWithEnv invokes fn with a semantic CIF that does not contain env. The
+// native final hop passes env separately in LLVM's nest register, using
+// ffi_call_go directly when libffi selects the same physical register.
 func CallWithEnv(cif *Signature, fn, env, ret unsafe.Pointer, args ...unsafe.Pointer) {
 	var avalues *unsafe.Pointer
 	if len(args) > 0 {

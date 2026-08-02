@@ -55,8 +55,10 @@ runs:
         fi
         
         # Install common dependencies
-        brew install bdw-gc openssl libffi libuv
+        brew install pkg-config bdw-gc openssl libffi libuv
         brew link --overwrite libffi
+        libffi_pc_path="$(brew --prefix libffi)/lib/pkgconfig"
+        echo "PKG_CONFIG_PATH=${libffi_pc_path}:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
         # Install optional deps for demos.
         #
@@ -97,3 +99,18 @@ runs:
           python3.12-dev # for github.com/goplus/lib/py
         )
         sudo apt-get install -y "${opt_deps[@]}"
+
+    - name: Verify libffi pkg-config metadata
+      shell: bash
+      run: |
+        pkg-config --modversion libffi
+        pkg-config --cflags --libs libffi
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+          resolved_prefix="$(cd "$(pkg-config --variable=prefix libffi)" && pwd -P)"
+          homebrew_prefix="$(cd "$(brew --prefix libffi)" && pwd -P)"
+          echo "resolved libffi prefix: ${resolved_prefix}"
+          if [[ "${resolved_prefix}" != "${homebrew_prefix}" ]]; then
+            echo "pkg-config did not resolve Homebrew libffi" >&2
+            exit 1
+          fi
+        fi

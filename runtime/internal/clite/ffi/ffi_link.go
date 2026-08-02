@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	LLGoPackage = "link: $(pkg-config --libs libffi); -lffi"
+	LLGoPackage = "link: $(pkg-config --libs libffi)"
 	LLGoFiles   = "$(pkg-config --cflags libffi): _wrap/libffi.c"
 )
 
@@ -42,6 +42,9 @@ void ffi_call(ffi_cif *cif,
 //go:linkname Call C.ffi_call
 func Call(cif *Cif, fn unsafe.Pointer, rvalue unsafe.Pointer, avalue *unsafe.Pointer)
 
+// CallWithEnv calls a native hidden-env entry. cif and avalue contain only the
+// semantic arguments; env is installed by the architecture-specific final hop.
+//
 //go:linkname CallWithEnv C.llgo_ffi_call_with_env
 func CallWithEnv(cif *Cif, fn unsafe.Pointer, rvalue unsafe.Pointer, avalue *unsafe.Pointer, env unsafe.Pointer)
 

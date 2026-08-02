@@ -7,9 +7,9 @@ import "unsafe"
 // ClosureEnvExplicit is a compile-time target property.
 const ClosureEnvExplicit = true
 
-// CallWithEnv calls fn through libffi. On explicit-context targets the signature
-// passed by the caller already contains the leading env type; this function
-// supplies the corresponding value before reaching this final call helper.
+// CallWithEnv calls fn through ordinary libffi on an explicit-context target.
+// When env is required, the caller has already prepended its type and value to
+// cif and args; the separately supplied env is therefore intentionally unused.
 func CallWithEnv(cif *Signature, fn, _ unsafe.Pointer, ret unsafe.Pointer, args ...unsafe.Pointer) {
 	Call(cif, fn, ret, args...)
 }

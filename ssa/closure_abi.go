@@ -21,15 +21,9 @@ const (
 func closureEnvABIForTarget(triple string) closureEnvABI {
 	triple = strings.ToLower(triple)
 	arch, _, _ := strings.Cut(triple, "-")
-	// LLGo does not currently support Windows, so keep its closure ABI on the
-	// typed fallback rather than adding untestable target-specific paths here.
-	// TODO: classify Windows by architecture when the target is supported.
-	// Upstream libffi's x86 Go ABI matches LLVM nest/R10; AArch64 instead needs
-	// a validated public-ffi TLS trampoline for swiftself/X20 because Windows
-	// reserves X18.
-	if strings.Contains(triple, "windows") || strings.Contains(triple, "win32") || strings.Contains(triple, "mingw") {
-		return closureEnvExplicit
-	}
+	// Select the long-term machine ABI by physical target even when LLGo does
+	// not yet support the target OS. FFI final-hop support may follow later
+	// without changing compiled closure entries.
 	switch {
 	case arch == "arm64", arch == "arm64_32", arch == "aarch64", arch == "aarch64_be":
 		// Keep a stable runtime ABI across LLVM versions on platforms which
@@ -58,11 +52,14 @@ func closureEnvABIForTarget(triple string) closureEnvABI {
 }
 
 func aarch64UsesSwiftSelf(triple string) bool {
-	// Windows was already classified as explicit above. Apple and Android
-	// reserve X18, so LLGo uses LLVM's swiftself/X20 transport there.
+	// Apple, Android, and Windows reserve X18, so LLGo uses LLVM's
+	// swiftself/X20 transport there.
 	return strings.Contains(triple, "apple") ||
 		strings.Contains(triple, "darwin") ||
-		strings.Contains(triple, "android")
+		strings.Contains(triple, "android") ||
+		strings.Contains(triple, "windows") ||
+		strings.Contains(triple, "win32") ||
+		strings.Contains(triple, "mingw")
 }
 
 func (p *Target) closureEnvABI() closureEnvABI {
