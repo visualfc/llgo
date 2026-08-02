@@ -80,24 +80,24 @@ returns or lowers its C ABI.
 - explicit env target: add the env type/value only when `env != nil`; otherwise
   use the semantic signature. This is the only `env != nil` decision in the
   reflection/FFI path;
-- native hidden env target: when libffi's headers expose `FFI_GO_CLOSURES` and
-  its Go static-chain register matches LLGo's `nest` ABI, `ffi.CallWithEnv`
-  compiles to a direct `ffi_call_go` call without the TLS trampoline. Other
-  native targets use stock `ffi_call` to marshal the semantic arguments into a
-  small runtime final-hop trampoline. The trampoline preserves those arguments,
-  obtains `{fn, env}` from thread-local call state, installs the target's
-  `nest` or `swiftself` register (including nil), and enters fn with the original
-  stack pointer. Transports in caller-saved registers tail-jump; ARM `swiftself`
-  returns through a continuation that restores its callee-saved self register.
+- native hidden env target: x86, RISC-V, and non-Apple/non-Android AArch64 call
+  stock libffi's `ffi_call_go` directly because its static-chain register is
+  LLGo's `nest` register. ARM also uses `ffi_call_go`; a short final-hop bridge
+  moves libffi's IP/R12 context to `swiftself`/R10 without saving argument
+  registers or using TLS. These targets require the upstream
+  `FFI_GO_CLOSURES` support enabled by their standard libffi configurations.
+- Apple/Android AArch64 libffi disables its X18 Go ABI. Those targets alone use
+  stock `ffi_call` plus the TLS final-hop trampoline to install
+  `swiftself`/X20 while preserving the already-marshalled arguments.
 
 Although libffi's C implementation of `ffi_call_go` is a thin wrapper, it calls
 an architecture-private `ffi_call_int(..., closure)` and matching assembly; it
 cannot be reproduced outside libffi by wrapping public `ffi_call` alone. The
 compile-time direct path and the public-API fallback require neither a patched
 libffi nor rebuilding it. AArch64 libffi's Go ABI writes X18, so Apple/Android
-`swiftself`/X20 deliberately uses the fallback. `reflect.MakeFunc` remains a
-normal libffi C closure: its funcval has `env == nil`, while libffi userdata owns
-the callback state separately.
+`swiftself`/X20 deliberately uses the public-call fallback. `reflect.MakeFunc`
+remains a normal libffi C closure: its funcval has `env == nil`, while libffi
+userdata owns the callback state separately.
 
 ## Scope
 
