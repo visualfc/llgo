@@ -21,9 +21,12 @@ const (
 func closureEnvABIForTarget(triple string) closureEnvABI {
 	triple = strings.ToLower(triple)
 	arch, _, _ := strings.Cut(triple, "-")
-	// The current public-libffi final-hop bridge is not implemented for
-	// Windows. This is a bridge capability, not an LLVM or Win64 restriction:
-	// x86-64 Win64 can use nest/r10 once that bridge is added.
+	// LLGo does not currently support Windows, so keep its closure ABI on the
+	// typed fallback rather than adding untestable target-specific paths here.
+	// TODO: classify Windows by architecture when the target is supported.
+	// Upstream libffi's x86 Go ABI matches LLVM nest/R10; AArch64 instead needs
+	// a validated public-ffi TLS trampoline for swiftself/X20 because Windows
+	// reserves X18.
 	if strings.Contains(triple, "windows") || strings.Contains(triple, "win32") || strings.Contains(triple, "mingw") {
 		return closureEnvExplicit
 	}
