@@ -7,12 +7,12 @@ if [[ $# -ne 3 ]]; then
   exit 2
 fi
 
-source_root="$1"
-llgo_output="$2"
-result_directory="$3"
 harness_root="$(cd "$(dirname "$0")/../.." && pwd)"
 
-mkdir -p "$(dirname "$llgo_output")" "$result_directory"
+source_root="$(cd "$1" && pwd)"
+mkdir -p "$(dirname "$2")" "$3"
+llgo_output="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+result_directory="$(cd "$3" && pwd)"
 
 (
   cd "$source_root"
@@ -21,6 +21,8 @@ mkdir -p "$(dirname "$llgo_output")" "$result_directory"
 
 (
   cd "$harness_root"
+  # Keep one current-checkout harness for both source revisions. Benchmark
+  # suite changes must therefore remain executable against the PR base.
   LLGO_ROOT="$source_root" go run ./benchmark/baseline \
     -root "$source_root" \
     -llgo "$llgo_output" \
@@ -28,16 +30,17 @@ mkdir -p "$(dirname "$llgo_output")" "$result_directory"
 )
 
 go_results="$result_directory/go.txt"
+: > "$go_results"
 (
   cd "$source_root"
   GOMAXPROCS=1 LLGO_ROOT="$source_root" go test \
     -run '^$' \
     -bench '^(BenchmarkMergeCompilerFlags|BenchmarkMergeLinkerFlags|BenchmarkLookupPCRandom)$' \
     -benchtime=250ms \
-    -count=1 \
+    -count=3 \
     -cpu=1 \
     ./internal/clang ./internal/build/funcinfo
-) | tee "$go_results"
+) | tee -a "$go_results"
 
 (
   cd "$source_root"
@@ -45,7 +48,7 @@ go_results="$result_directory/go.txt"
     -run '^$' \
     -bench '^(BenchmarkRuntimeGetG|BenchmarkGlobal(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
     -benchtime=250ms \
-    -count=1 \
+    -count=3 \
     ./test/llgoext
 ) | tee -a "$go_results"
 
@@ -58,7 +61,7 @@ go_results="$result_directory/go.txt"
     -run '^$' \
     -bench '^BenchmarkGoroutine$' \
     -benchtime=100x \
-    -count=1 \
+    -count=3 \
     ./test/llgoext
 ) | tee -a "$go_results"
 
