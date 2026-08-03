@@ -74,7 +74,7 @@ var expectedGoBenchmarks = []string{
 	"BenchmarkRuntimeGetG",
 }
 
-const goBenchmarkSamples = 3
+const goBenchmarkSamples = 5
 
 type footprint struct {
 	file uint64

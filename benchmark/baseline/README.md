@@ -18,7 +18,7 @@ For each workload, the collector performs an unmeasured warm build, then records
 median build time, median process time, file size, executable-code bytes,
 allocated non-executable data, and zero-filled data. On ELF, read-only constants
 are included in the data bucket; on Mach-O, `__TEXT` constants are included in
-the text bucket. The Go benchmark stream records three samples of selected
+the text bucket. The Go benchmark stream records five samples of selected
 compiler helpers and LLGo-generated core-language operations: direct/interface
 calls, defer, goroutine creation, channels, `getg`, and global access.
 
@@ -64,15 +64,15 @@ results=.benchmark/results/go.txt
 GOMAXPROCS=1 go test \
   -run '^$' \
   -bench '^(BenchmarkMergeCompilerFlags|BenchmarkMergeLinkerFlags|BenchmarkLookupPCRandom)$' \
-  -benchtime=250ms -count=3 -cpu=1 \
+  -benchtime=250ms -count=5 -cpu=1 \
   ./internal/clang ./internal/build/funcinfo | tee "$results"
 GOMAXPROCS=1 .benchmark/llgo test \
   -run '^$' \
   -bench '^(BenchmarkRuntimeGetG|BenchmarkGlobal(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
-  -benchtime=250ms -count=3 \
+  -benchtime=250ms -count=5 \
   ./test/llgoext | tee -a "$results"
 GOMAXPROCS=1 .benchmark/llgo test \
-  -run '^$' -bench '^BenchmarkGoroutine$' -benchtime=100x -count=3 \
+  -run '^$' -bench '^BenchmarkGoroutine$' -benchtime=100x -count=5 \
   ./test/llgoext | tee -a "$results"
 ```
 

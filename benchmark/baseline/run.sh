@@ -37,7 +37,7 @@ go_results="$result_directory/go.txt"
     -run '^$' \
     -bench '^(BenchmarkMergeCompilerFlags|BenchmarkMergeLinkerFlags|BenchmarkLookupPCRandom)$' \
     -benchtime=250ms \
-    -count=3 \
+    -count=5 \
     -cpu=1 \
     ./internal/clang ./internal/build/funcinfo
 ) | tee -a "$go_results"
@@ -48,7 +48,7 @@ go_results="$result_directory/go.txt"
     -run '^$' \
     -bench '^(BenchmarkRuntimeGetG|BenchmarkGlobal(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
     -benchtime=250ms \
-    -count=3 \
+    -count=5 \
     ./test/llgoext
 ) | tee -a "$go_results"
 
@@ -61,7 +61,7 @@ go_results="$result_directory/go.txt"
     -run '^$' \
     -bench '^BenchmarkGoroutine$' \
     -benchtime=100x \
-    -count=3 \
+    -count=5 \
     ./test/llgoext
 ) | tee -a "$go_results"
 
