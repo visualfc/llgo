@@ -22,10 +22,17 @@ stream adds selected compiler helpers and LLGo-generated core-language
 operations: direct/interface calls, defer, goroutine creation, channels,
 `getg`, and global access.
 
-The trusted publisher compares each platform against the latest matching
-`main` data and commits the history and generated site to the `pages` branch of
-the configured data repository. Every LLGo repository defaults to
-`<owner>/llgo-benchmark-data`:
+For pull requests, each platform job checks out the recorded base commit and
+runs the base and current suites sequentially on the same runner. The pull
+request comment compares that pair, avoiding differences between runner
+machines. Dependency setup is shared, and Go's build cache can be reused by
+unchanged packages; main pushes still run the suite only once. If a workflow
+does not provide a paired result, the publisher falls back to the latest
+matching `main` data.
+
+The trusted publisher commits the current result history and generated site to
+the `pages` branch of the configured data repository. Every LLGo repository
+defaults to `<owner>/llgo-benchmark-data`:
 
 ```text
 llgo/baseline/series/main/main
