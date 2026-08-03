@@ -97,11 +97,16 @@ func setAutoG(gp *g) c.Int {
 	return 0
 }
 
+func currentGUsesLifecycle() bool {
+	return currentGHasLifecycle
+}
+
 func destroyG(ptr c.Pointer) {
 	gp := (*g)(ptr)
 	if gp == nil {
 		return
 	}
+	releaseGAndCheckDeadlock()
 	if gp.panic_ != nil {
 		c.Free(gp.panic_)
 	}

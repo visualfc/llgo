@@ -20,6 +20,11 @@ package runtime
 
 import "github.com/goplus/llgo/runtime/internal/clite/sync/atomic"
 
+const (
+	mainExitedBit = uint64(1) << 63
+	gCountMask    = mainExitedBit - 1
+)
+
 func nextGoid(gp *g) uint64 {
 	return atomic.Add(&sched.goidgen, uint64(1))
 }
@@ -30,6 +35,29 @@ func nextMid(mp *m) int64 {
 
 func nextPid(pp *p) int32 {
 	return atomic.Add(&sched.pidgen, int32(1)) - 1
+}
+
+func retainG() {
+	atomic.Add(&sched.gstate, uint64(1))
+}
+
+// releaseG drops one registered context and returns the remaining count and
+// main-exited state from the same atomic result.
+func releaseG() (remaining uint64, mainExited bool) {
+	// llgo.atomicSub follows LLVM atomicrmw and returns the value before the
+	// subtraction, unlike sync/atomic.Add. Convert it to the post-release
+	// state before deciding whether this was the last context.
+	state := atomic.Sub(&sched.gstate, uint64(1)) - 1
+	return state & gCountMask, state&mainExitedBit != 0
+}
+
+func markMainExited() {
+	atomic.Or(&sched.gstate, mainExitedBit)
+}
+
+func gStateForTesting() (count uint64, mainExited bool) {
+	state := atomic.Load(&sched.gstate)
+	return state & gCountMask, state&mainExitedBit != 0
 }
 
 func readgstatus(gp *g) uint32 {

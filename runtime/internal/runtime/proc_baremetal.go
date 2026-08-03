@@ -35,6 +35,23 @@ func nextPid(pp *p) int32 {
 	return int32((uintptr(unsafe.Pointer(pp)) >> 2) & 0x7fffffff)
 }
 
+func retainG() {
+}
+
+// Bare-metal has no atomic goroutine counter. Returning one remaining
+// goroutine intentionally disables native pthread main-Goexit deadlock
+// detection for this single-context backend.
+func releaseG() (remaining uint64, mainExited bool) {
+	return 1, false
+}
+
+// Bare-metal keeps its existing single-context behavior.
+func markMainExited() {}
+
+func gStateForTesting() (count uint64, mainExited bool) {
+	return 1, false
+}
+
 // Each bare-metal G owns its status transitions in the current backend.
 func readgstatus(gp *g) uint32 {
 	return gp.atomicstatus
