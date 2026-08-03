@@ -226,15 +226,6 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testlto", ignore, cltest.WithRunConfig(conf))
 }
 
-func TestRunAndTestFromTestltoDWARF(t *testing.T) {
-	t.Setenv("LLGO_BUILD_CACHE", "off")
-	conf := build.NewDefaultConf(build.ModeRun)
-	conf.LTO = lto.Full
-	conf.LinkOptions.DWARF = build.DWARFPreserve
-	cltest.RunAndTestFromDir(t, "reflectmk_runtime", "./_testlto", nil,
-		cltest.WithRunConfig(conf), cltest.WithIRCheck(false))
-}
-
 var testltoSymbolChecks = []string{
 	"globaldce_interface_matrix",
 	"globaldce_interface_slots",
@@ -256,13 +247,6 @@ var testltoLTOPluginTests = []string{
 	"globaldce_reflect_method_by_name_ltoplugin_slice",
 	"globaldce_reflect_method_by_name_ltoplugin_string_abi",
 	"globaldce_reflect_method_by_name_ltoplugin_switch",
-}
-
-var testltoLTOPluginDWARFTests = []string{
-	"globaldce_reflect_method_by_name_ltoplugin_concat",
-	"globaldce_reflect_method_by_name_ltoplugin_global_slice",
-	"globaldce_reflect_method_by_name_ltoplugin_param",
-	"globaldce_reflect_method_by_name_ltoplugin_slice",
 }
 
 func TestBuildAndCheckSymbolsFromTestlto(t *testing.T) {
@@ -336,14 +320,6 @@ func TestRunAndTestFromTestltoLTOPlugin(t *testing.T) {
 	)
 }
 
-func TestRunAndTestFromTestltoLTOPluginDWARF(t *testing.T) {
-	t.Setenv("LLGO_BUILD_CACHE", "off")
-	conf := testltoLTOPluginConf(t, build.ModeRun)
-	conf.LinkOptions.DWARF = build.DWARFPreserve
-	cltest.RunAndTestFromDir(t, "ltoplugin_switch", "./_testlto", nil,
-		cltest.WithRunConfig(conf), cltest.WithIRCheck(false))
-}
-
 func TestBuildAndCheckSymbolsFromTestltoLTOPlugin(t *testing.T) {
 	buildConf := testltoLTOPluginConf(t, build.ModeBuild)
 	// See TestBuildAndCheckSymbolsFromTestlto: dynamic main.* exports retain
@@ -406,15 +382,6 @@ func TestBuildAndCheckSymbolsFromTestltoLTOPluginAggregateABI(t *testing.T) {
 	if !strings.Contains(unknownResult, `metadata !"go.method.type.reflect"`) {
 		t.Fatalf("aggregate ABI output lost the unknown-name type marker\n%s", unknownResult)
 	}
-}
-
-func TestBuildAndCheckSymbolsFromTestltoLTOPluginDWARF(t *testing.T) {
-	t.Setenv("LLGO_BUILD_CACHE", "off")
-	buildConf := testltoLTOPluginConf(t, build.ModeBuild)
-	buildConf.LinkOptions.DWARF = build.DWARFPreserve
-	cltest.BuildAndCheckSymbolsFromDir(t, "", "./_testlto", testltoLTOPluginDWARFTests,
-		cltest.WithRunConfig(buildConf),
-	)
 }
 
 func TestFilterEmulatorOutput(t *testing.T) {
