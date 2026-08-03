@@ -1,3 +1,1 @@
-# Wasm named targets currently use GOOS/GOARCH for toolchain selection.
-GOOS=js GOARCH=wasm
 -target=wasm
