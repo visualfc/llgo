@@ -275,7 +275,7 @@ func (b Builder) initDeferState(procBlk, rethrowBlk BasicBlock) (*aDefer, Expr, 
 	zero := prog.Val(uintptr(0))
 	link := b.Call(b.Pkg.rtFunc("GetThreadDefer"))
 	jb := b.AllocaSigjmpBuf()
-	// Reth selector 0 is reserved for procBlk; Rund is zero-initialized.
+	// Reth selector 0 is reserved for procBlk; Rund selector 0 is rethrowBlk.
 	ptr := b.aggregateAllocU(prog.Defer(), jb.impl, zero.impl, link.impl, zero.impl)
 	deferData := Expr{ptr, prog.DeferPtr()}
 	b.Call(b.Pkg.rtFunc("SetThreadDefer"), deferData)
@@ -283,6 +283,7 @@ func (b Builder) initDeferState(procBlk, rethrowBlk BasicBlock) (*aDefer, Expr, 
 	rethPtr := b.FieldAddr(deferData, deferRethrow)
 	rundPtr := b.FieldAddr(deferData, deferRunDefers)
 	argsPtr := b.FieldAddr(deferData, deferArgs)
+	b.Store(rundPtr, zero)
 	// Initialize the args list so later guards (e.g. DeferAlways/DeferInLoop)
 	// can safely detect an empty chain without a prior push.
 	b.Store(argsPtr, prog.Nil(prog.VoidPtr()))
@@ -614,7 +615,10 @@ func (p Function) endDefer(b Builder) {
 	stmts := self.stmts
 	n := len(stmts)
 	rethChain := make([]deferTarget, n+1)
-	blks := p.MakeBlocks(n - 1)
+	var blks []BasicBlock
+	if n > 1 {
+		blks = p.MakeBlocks(n - 1)
+	}
 	// Reth selector 0 must remain procBlk because initDeferState installs it
 	// before the final number of deferred statements is known. Selector 1 is
 	// the terminal rethrow, followed by the intermediate continuation blocks.

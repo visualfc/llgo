@@ -44,6 +44,7 @@ import "C"
 // CHECK-NEXT:   %16 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 3
 // CHECK-NEXT:   %17 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 4
 // CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 5
+// CHECK-NEXT:   store i64 0, ptr %17, align 8
 // CHECK-NEXT:   store ptr null, ptr %18, align 8
 // CHECK-NEXT:   %19 = call i32 @{{.*}}sigsetjmp(ptr %9, i32 0)
 // CHECK-NEXT:   %20 = icmp eq i32 %19, 0

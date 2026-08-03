@@ -136,6 +136,7 @@ import (
 // CHECK-NEXT:   %11 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 3
 // CHECK-NEXT:   %12 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 4
 // CHECK-NEXT:   %13 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %5, i32 0, i32 5
+// CHECK-NEXT:   store i64 0, ptr %12, align 8
 // CHECK-NEXT:   store ptr null, ptr %13, align 8
 // CHECK-NEXT:   %14 = call i32 @{{.*}}sigsetjmp(ptr %4, i32 0)
 // CHECK-NEXT:   %15 = icmp eq i32 %14, 0
