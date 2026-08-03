@@ -2,11 +2,6 @@ package build
 
 import "strings"
 
-const (
-	llgoStubsCategory = "llgo-stubs"
-	llgoPrefix        = "llgo"
-)
-
 // nameResolver maps symbol names to aggregation buckets based on the requested level.
 type nameResolver struct {
 	level       string
@@ -53,9 +48,6 @@ func (r *nameResolver) resolve(sym string) string {
 		if mod := r.matchModule(symbol); mod != "" {
 			return mod
 		}
-	}
-	if strings.Contains(symbol, llgoPrefix) {
-		return llgoStubsCategory
 	}
 	return base
 }

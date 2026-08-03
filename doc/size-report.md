@@ -28,9 +28,9 @@ document captures the parsing strategy and new aggregation controls.
 | `module`* | Default. Groups by `pkg.Module.Path` (or `pkg.PkgPath` if the module is nil). |
 
 Matching is performed by checking whether the demangled symbol name begins with
-`pkg.PkgPath + "."`. Symbols that do not match any package and contain `llgo` are
-bucketed into `llgo-stubs`; other unmatched entries keep their original owner
-names so we can inspect them later.
+`pkg.PkgPath + "."`. Unmatched entries keep the owner derived from their symbol
+name so compiler-generated functions remain visible as ordinary functions
+rather than being grouped by an implementation-specific category.
 
 Defaults:
 

@@ -38,7 +38,7 @@ func (p Program) FuncInfoMetadataEnabled() bool {
 }
 
 // EnableFuncInfoSites controls emission of the per-function site records
-// (entry/stub/pc-line inline-asm fragments inside function bodies). They are
+// (entry and PC-line inline-asm fragments inside function bodies). They are
 // gated separately from the funcinfo metadata tables because the
 // body-embedded anchors shift instruction/scope layout enough to confuse
 // debuggers; debug builds keep the tables (FuncForPC name/FileLine fidelity

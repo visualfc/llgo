@@ -31,7 +31,6 @@ func sampleData(t *testing.T) Data {
 		Table:       table,
 		SymbolIndex: []SymbolIndexEntry{{SymbolID: 11, FuncIndex: 1}},
 		EntrySites:  []Site{{PCOffset: 0x1010, ID: 11}},
-		StubSites:   []Site{{PCOffset: 0x1008, ID: 11}},
 		PCSites:     []Site{{PCOffset: 0x1020, ID: 7}},
 	}
 }
@@ -57,19 +56,25 @@ func TestEncodeParse(t *testing.T) {
 	if got := view.Sections[descPCSites].Count; got != 1 {
 		t.Fatalf("pcsite count = %d", got)
 	}
-	if got := view.Sections[descStubSites].Count; got != 1 {
-		t.Fatalf("stub-site count = %d", got)
-	}
-	stub := raw[view.Sections[descStubSites].Offset:]
-	if pc, id := binary.LittleEndian.Uint64(stub), binary.LittleEndian.Uint64(stub[8:]); pc != 0x1008 || id != 11 {
-		t.Fatalf("stub site = {%#x, %d}, want {%#x, %d}", pc, id, uint64(0x1008), 11)
-	}
 	raw2, err := Encode(sampleData(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(raw, raw2) {
 		t.Fatal("encoding is not deterministic")
+	}
+}
+
+func TestVersion4FunctionCentricDescriptorLayout(t *testing.T) {
+	if Version != 4 {
+		t.Fatalf("format version = %d, want 4", Version)
+	}
+	if descRecords != 0 || descPCLines != 1 || descStrings != 2 ||
+		descStringOffsets != 3 || descHash != 4 || descSymbolIndex != 5 ||
+		descEntrySites != 6 || descPCSites != 7 || descCount != 8 {
+		t.Fatalf("unexpected v4 descriptor layout: records=%d pclines=%d strings=%d offsets=%d hash=%d symbols=%d entries=%d pcsites=%d count=%d",
+			descRecords, descPCLines, descStrings, descStringOffsets, descHash,
+			descSymbolIndex, descEntrySites, descPCSites, descCount)
 	}
 }
 
@@ -144,29 +149,6 @@ func TestParseRejectsMisalignedSections(t *testing.T) {
 	binary.LittleEndian.PutUint64(raw[pclineDescriptor:], offset+1)
 	if _, err := Parse(raw); err == nil {
 		t.Fatal("Parse accepted a misaligned pcline section")
-	}
-}
-
-func TestParseRejectsInvalidStubSection(t *testing.T) {
-	raw, err := Encode(sampleData(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	stubDescriptor := headerDescriptors + descStubSites*16
-	offset := binary.LittleEndian.Uint64(raw[stubDescriptor:])
-	binary.LittleEndian.PutUint64(raw[stubDescriptor:], offset+1)
-	if _, err := Parse(raw); err == nil {
-		t.Fatal("Parse accepted a misaligned stub-site section")
-	}
-
-	raw, err = Encode(sampleData(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	binary.LittleEndian.PutUint64(raw[stubDescriptor:], uint64(len(raw)))
-	binary.LittleEndian.PutUint64(raw[stubDescriptor+8:], 1)
-	if _, err := Parse(raw); err == nil {
-		t.Fatal("Parse accepted an out-of-bounds stub-site section")
 	}
 }
 

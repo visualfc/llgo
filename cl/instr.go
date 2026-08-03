@@ -599,6 +599,7 @@ var llgoInstrs = map[string]int{
 	"skip":        llgoSkip,
 	"syscall":     llgoSyscall,
 	"boolToUint8": llgoBoolToUint8,
+	"closureEnv":  llgoClosureEnv,
 	"pystr":       llgoPyStr,
 	"pyList":      llgoPyList,
 	"pyTuple":     llgoPyTuple,
@@ -665,6 +666,8 @@ func (p *context) funcOf(fn *ssa.Function) (aFn llssa.Function, pyFn llssa.PyObj
 				return nil, nil, ignoredFunc
 			}
 			sig := p.patchType(fn.Signature).(*types.Signature)
+			// Source env-bearing bodies are created by compileFuncDecl before
+			// lowering. Imported declarations cannot reconstruct //llgo:env.
 			aFn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), false, p.needsLinkOnce(fn))
 			if disableInline {
 				aFn.Inline(llssa.NoInline)
@@ -2072,6 +2075,11 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 			ret = b.Do(act, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 				return p.boolToUint8(b, args)
 			}, args...)
+		case llgoClosureEnv:
+			if len(args) != 0 || p.fn == nil || !p.fn.NeedsEnv() {
+				panic("closureEnv(): called outside an env-bearing function")
+			}
+			ret = p.fn.Env()
 		case llgoUnreachable: // func unreachable()
 			b.Unreachable()
 		case llgoAtomicLoad:
@@ -2111,10 +2119,32 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 		}
 	default:
 		fn := p.compileValue(b, cv)
-		args := p.compileValues(b, args, kind)
+		args := p.compileDynamicCallValues(b, call, kind)
 		ret = p.emitDo(b, act, ds, fn, llssa.Builder.Call, args...)
 	}
 	return
+}
+
+func (p *context) compileDynamicCallValues(b llssa.Builder, call *ssa.CallCommon, hasVArg int) []llssa.Expr {
+	args := p.compileValues(b, call.Args, hasVArg)
+	params := call.Signature().Params()
+	n := min(len(call.Args)-hasVArg, params.Len())
+	for i, arg := range call.Args[:n] {
+		want := params.At(i).Type()
+		if needsNamedClosureChange(arg.Type(), want) {
+			args[i] = b.ChangeType(p.type_(want, llssa.InGo), args[i])
+		}
+	}
+	return args
+}
+
+func needsNamedClosureChange(got, want types.Type) bool {
+	if types.Identical(got, want) {
+		return false
+	}
+	_, gotIsFunc := got.Underlying().(*types.Signature)
+	_, wantIsFunc := want.Underlying().(*types.Signature)
+	return gotIsFunc && wantIsFunc && types.Identical(got.Underlying(), want.Underlying())
 }
 
 func (p *context) reflectTypeMethodCheck(call *ssa.CallCommon, method *types.Func) (check llssa.ReflectMethodCheck) {

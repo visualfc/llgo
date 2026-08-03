@@ -27,6 +27,10 @@ func init() {
 }
 
 func compileWithRewrites(t *testing.T, src string, rewrites map[string]string) string {
+	return compileWithRewritesTarget(t, src, rewrites, nil)
+}
+
+func compileWithRewritesTarget(t *testing.T, src string, rewrites map[string]string, target *llssa.Target) string {
 	t.Helper()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "rewrite.go", src, parser.ParseComments)
@@ -40,13 +44,88 @@ func compileWithRewrites(t *testing.T, src string, rewrites map[string]string) s
 	if err != nil {
 		t.Fatalf("build package failed: %v", err)
 	}
-	prog := ssatest.NewProgramEx(t, nil, importer)
-	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog := ssatest.NewProgramEx(t, target, importer)
+	goarch := runtime.GOARCH
+	if target != nil && target.GOARCH != "" {
+		goarch = target.GOARCH
+	}
+	prog.TypeSizes(types.SizesFor("gc", goarch))
 	ret, _, err := NewPackageEx(prog, nil, rewrites, pkg, []*ast.File{file})
 	if err != nil {
 		t.Fatalf("NewPackageEx failed: %v", err)
 	}
 	return ret.String()
+}
+
+func TestClosureEnvIntrinsicRequiresEnvBearingEntry(t *testing.T) {
+	valid := `package closureenv
+
+import "unsafe"
+
+//go:linkname closureEnv llgo.closureEnv
+func closureEnv() unsafe.Pointer
+
+DIRECTIVE
+func use() unsafe.Pointer { return closureEnv() }
+`
+	for _, spelling := range []string{"//llgo:env", "// llgo:env"} {
+		t.Run(spelling, func(t *testing.T) {
+			ir := compileWithRewrites(t, strings.Replace(valid, "DIRECTIVE", spelling, 1), nil)
+			if !strings.Contains(ir, `define ptr @closureenv.use(ptr `) ||
+				!strings.Contains(ir, `ret ptr %0`) ||
+				(!strings.Contains(ir, `ptr nest %0`) && !strings.Contains(ir, `ptr swiftself %0`)) {
+				t.Fatalf("closureEnv intrinsic did not return the physical environment:\n%s", ir)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "plain entry",
+			src: `package closureenv
+import "unsafe"
+//go:linkname closureEnv llgo.closureEnv
+func closureEnv() unsafe.Pointer
+func use() unsafe.Pointer { return closureEnv() }
+`,
+		},
+		{
+			name: "arguments",
+			src: `package closureenv
+import "unsafe"
+//go:linkname closureEnv llgo.closureEnv
+func closureEnv(int) unsafe.Pointer
+//llgo:env
+func use() unsafe.Pointer { return closureEnv(1) }
+`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mustPanic(t, "invalid closureEnv intrinsic", func() {
+				compileWithRewrites(t, test.src, nil)
+			})
+		})
+	}
+}
+
+func TestClosureEnvRejectsConflictingEntryABI(t *testing.T) {
+	const src = `package closureenv
+
+import _ "unsafe"
+
+//go:linkname plain closureenv.entry
+func plain() {}
+
+//go:linkname withEnv closureenv.entry
+//llgo:env
+func withEnv() {}
+`
+	mustPanic(t, "conflicting closure environment ABI", func() {
+		compileWithRewrites(t, src, nil)
+	})
 }
 
 func assertNoStoreToGlobal(t *testing.T, ir, global string) {

@@ -169,6 +169,7 @@ the filesystem is never probed repeatedly.
 The initial implementation uses one bounded read, capped at 512 MiB, instead
 of `mmap`; read-only mapping remains a possible follow-up optimization.
 
-The initial format is intentionally private to LLGo and versioned. It may grow
-additional independently removable symbol classes after the PCLN path has
-proved stable on ELF and Mach-O.
+The format is intentionally private to LLGo and versioned. Its unit is a
+physical function: compiler-generated wrappers and adapters use ordinary
+function records, while calling conventions and closure environment transport
+remain outside PCLN.

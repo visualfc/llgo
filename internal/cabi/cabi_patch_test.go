@@ -76,6 +76,165 @@ func TestDevLTOGlobalDCEFuncNoUnwindCreatesNounwindAttribute(t *testing.T) {
 	}
 }
 
+func TestClosureEnvAttributeRemappedByCABI(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Value = type { ptr, ptr, i64 }
+
+define %Value @callee(ptr %g, ptr %out, ptr nest %env, %Value %value) {
+entry:
+  ret %Value %value
+}
+
+define %Value @caller(ptr %g, ptr %out, ptr nest %env, %Value %value) {
+entry:
+  %result = call %Value @callee(ptr %g, ptr %out, ptr nest %env, %Value %value)
+  ret %Value %result
+}
+`
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "closure_env.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+	defer prog.Dispose()
+	tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
+	tr.TransformModule("test", mod)
+
+	nest := llvm.AttributeKindID("nest")
+	callee := mod.NamedFunction("callee")
+	if attr := callee.GetEnumAttributeAtIndex(4, nest); attr.IsNil() {
+		t.Fatalf("C ABI lowering lost/remapped nest on the definition:\n%s", callee.String())
+	}
+	if attr := callee.GetEnumAttributeAtIndex(3, nest); !attr.IsNil() {
+		t.Fatalf("C ABI lowering left nest on the old definition parameter:\n%s", callee.String())
+	}
+
+	caller := mod.NamedFunction("caller")
+	var nestedCall llvm.Value
+	for block := caller.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue().Name() == "callee" {
+				nestedCall = call
+			}
+		}
+	}
+	if nestedCall.IsNil() {
+		t.Fatalf("transformed caller has no callee call:\n%s", caller.String())
+	}
+	if attr := nestedCall.GetCallSiteEnumAttribute(4, nest); attr.IsNil() {
+		t.Fatalf("C ABI lowering lost/remapped nest on the call:\n%s", caller.String())
+	}
+	if attr := nestedCall.GetCallSiteEnumAttribute(3, nest); !attr.IsNil() {
+		t.Fatalf("C ABI lowering left nest on the old call parameter:\n%s", caller.String())
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("C ABI closure-env module is invalid: %v\n%s", err, mod.String())
+	}
+}
+
+func TestClosureEnvAttributePreservedByCallbackWrapper(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Value = type { ptr, ptr, i64 }
+
+define RETURN @callback(ptr ATTR %env, %Value %value) {
+entry:
+  RET
+}
+`
+	returnCases := []struct {
+		name string
+		typ  string
+		ret  string
+	}{
+		{name: "aggregate", typ: "%Value", ret: "ret %Value %value"},
+		{name: "void", typ: "void", ret: "ret void"},
+		{name: "scalar", typ: "i64", ret: "ret i64 7"},
+	}
+	for _, returnCase := range returnCases {
+		t.Run(returnCase.name, func(t *testing.T) {
+			for _, attrName := range []string{"nest", "swiftself"} {
+				t.Run(attrName, func(t *testing.T) {
+					ctx := llvm.NewContext()
+					defer ctx.Dispose()
+					path := filepath.Join(t.TempDir(), "closure_env_callback.ll")
+					ir := strings.NewReplacer(
+						"RETURN", returnCase.typ,
+						"RET", returnCase.ret,
+						"ATTR", attrName,
+					).Replace(testIR)
+					if err := os.WriteFile(path, []byte(ir), 0o644); err != nil {
+						t.Fatal(err)
+					}
+					buf, err := llvm.NewMemoryBufferFromFile(path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					mod, err := ctx.ParseIR(buf)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer mod.Dispose()
+
+					prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+					defer prog.Dispose()
+					tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
+					callback := mod.NamedFunction("callback")
+					wrapper, ok := tr.transformCallbackFunc(mod, callback)
+					if !ok {
+						t.Fatalf("callback wrapper was not required:\n%s", mod.String())
+					}
+
+					kind := llvm.AttributeKindID(attrName)
+					var wrapperHasAttr bool
+					for i := 1; i <= wrapper.GlobalValueType().ParamTypesCount(); i++ {
+						if !wrapper.GetEnumAttributeAtIndex(i, kind).IsNil() {
+							wrapperHasAttr = true
+							break
+						}
+					}
+					if !wrapperHasAttr {
+						t.Fatalf("callback wrapper lost/remapped %s:\n%s", attrName, wrapper.String())
+					}
+					var callbackCall llvm.Value
+					for block := wrapper.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+						for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+							if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue() == callback {
+								callbackCall = call
+							}
+						}
+					}
+					if callbackCall.IsNil() || callbackCall.GetCallSiteEnumAttribute(1, kind).IsNil() {
+						t.Fatalf("callback wrapper call lost %s:\n%s", attrName, wrapper.String())
+					}
+					if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+						t.Fatalf("C ABI callback closure-env module is invalid: %v\n%s", err, mod.String())
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSetSkipFuncsAndShouldSkipCall(t *testing.T) {
 	tr := &Transformer{}
 	tr.SetSkipFuncs([]string{" foo ", "", "bar"})

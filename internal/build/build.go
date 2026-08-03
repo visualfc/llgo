@@ -404,7 +404,14 @@ func Build(inv Invocation) ([]Package, error) {
 	}
 	verbose := conf.Verbose
 	patterns := slices.Clone(inv.Args)
-	tags := defaultBuildTags(conf.Goarch, conf.Target)
+	target := &llssa.Target{
+		GOOS:       conf.Goos,
+		GOARCH:     conf.Goarch,
+		Target:     conf.Target,
+		LLVMTarget: export.LLVMTarget,
+		OptLevel:   conf.OptLevel,
+	}
+	tags := defaultBuildTags(conf.Goarch, conf.Target) + "," + target.ClosureEnvBuildTag()
 	if conf.PCLNMode == PCLNExternal {
 		// Select the optional runtime loader as part of the normal package
 		// cache key. Embedded and none builds do not compile any loader or
@@ -444,13 +451,6 @@ func Build(inv Invocation) ([]Package, error) {
 	llssaInitOnce.Do(func() {
 		llssa.Initialize(llssa.InitAll)
 	})
-
-	target := &llssa.Target{
-		GOOS:     conf.Goos,
-		GOARCH:   conf.Goarch,
-		Target:   conf.Target,
-		OptLevel: conf.OptLevel,
-	}
 
 	prog := llssa.NewProgram(target)
 	prog.DisableBoundsChecks(conf.DisableBoundsChecks)
@@ -1388,11 +1388,9 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	// Use a stable synthetic name to avoid confusing it with the real main package in traces/logs.
 	var funcInfo []funcInfoRecord
 	var pcLineInfo []pcLineRecord
-	var funcInfoStubs []funcInfoStubRecord
 	if ctx.buildConf.PCLNMode != PCLNNone {
 		funcInfo = prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
 		pcLineInfo = collectPCLineInfo(linkedOrder)
-		funcInfoStubs = collectFuncInfoStubRecords(linkedOrder, funcInfo)
 	}
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
 		rtInit:        needRuntime,
@@ -1403,7 +1401,6 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		abiSymbols:    linkedModuleGlobals(linkedOrder),
 		funcInfo:      funcInfo,
 		pcLineInfo:    pcLineInfo,
-		funcInfoStubs: funcInfoStubs,
 	})
 	if ctx.buildConf.deadcodeDropEnabled() {
 		if err := applyDeadcodeDropOverrides(linkedOrder, entryPkg, needRuntime, verbose); err != nil {
@@ -1889,7 +1886,6 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 	}
 	emitFuncInfoEntrySites(ctx, ret)
-	emitFuncInfoStubSites(ctx, ret)
 
 	printCmds := ctx.shouldPrintCommands(verbose)
 	cgoLLFiles, cgoLdflags, err := buildCgo(ctx, aPkg, aPkg.Package.Syntax, externs, printCmds)
@@ -2586,7 +2582,7 @@ func IsFuncInfoEnabled() bool {
 
 // IsFuncInfoSitesEnabled controls the body-embedded site records
 // independently of the funcinfo tables (LLGO_FUNCINFO_SITES=0 keeps the
-// metadata but drops entry/stub/pc-line inline-asm sites). Useful for
+// metadata but drops entry and PC-line inline-asm sites). Useful for
 // isolating codegen perturbation caused by the in-body asm anchors.
 func IsFuncInfoSitesEnabled() bool {
 	return isEnvOn(llgoFuncInfoSites, true)

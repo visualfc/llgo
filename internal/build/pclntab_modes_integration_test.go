@@ -37,9 +37,9 @@ import (
 	"github.com/goplus/llgo/internal/pclnmap"
 )
 
-// The fixture obtains both a closure ABI stub entry PC and a real target
-// mid-function PC. Together those lookups and the stack APIs exercise the
-// full metadata contract, including its deliberate absence in pclntab=none.
+// The fixture obtains both a function-value entry PC and a target mid-function
+// PC. Together those lookups and the stack APIs exercise the full metadata
+// contract, including its deliberate absence in pclntab=none.
 const pclntabModesFixture = `package main
 
 import (
@@ -60,8 +60,7 @@ func pclnTarget() uintptr {
 	}
 	// Keep the target body comfortably larger than the entry-anchor slack.
 	// This makes the returned mid-function PC unambiguously belong to the
-	// target on both fixed-width arm64 and byte-aligned amd64, while the
-	// function value below still exposes the separate closure ABI stub.
+	// target on both fixed-width arm64 and byte-aligned amd64.
 	value := pc
 	for i := uintptr(0); i < 64; i++ {
 		value = value*33 + i
@@ -101,16 +100,16 @@ func pclnClosurePCState(fn *runtime.Func, pc uintptr) string {
 }
 
 func pclnClosureState() string {
-	stubPC := reflect.ValueOf(pclnTarget).Pointer()
+	funcvalPC := reflect.ValueOf(pclnTarget).Pointer()
 	targetPC := pclnTarget()
-	stubFn := runtime.FuncForPC(stubPC)
+	funcvalFn := runtime.FuncForPC(funcvalPC)
 	targetFn := runtime.FuncForPC(targetPC)
-	separate := stubFn != nil && targetFn != nil &&
-		stubFn.Name() == targetFn.Name() &&
-		stubFn.Entry() == stubPC && targetFn.Entry() != 0 &&
-		targetFn.Entry() != stubFn.Entry() && targetFn.Entry() <= targetPC
-	return fmt.Sprintf("target=%s stub=%s separate=%t",
-		pclnClosurePCState(targetFn, targetPC), pclnClosurePCState(stubFn, stubPC), separate)
+	sameEntry := funcvalFn != nil && targetFn != nil &&
+		funcvalFn.Name() == targetFn.Name() &&
+		funcvalFn.Entry() == funcvalPC && targetFn.Entry() == funcvalFn.Entry() &&
+		targetFn.Entry() <= targetPC
+	return fmt.Sprintf("target=%s funcval=%s same-entry=%t",
+		pclnClosurePCState(targetFn, targetPC), pclnClosurePCState(funcvalFn, funcvalPC), sameEntry)
 }
 
 //go:noinline
@@ -269,7 +268,7 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				bin := buildPCLNIntegrationBinaryAt(t, source, tt.mode, LinkOptions{}, filepath.Join(packagingDir, "pclntab-modes-"+tt.name))
+				bin := buildPCLNIntegrationBinaryAt(t, source, tt.mode, LinkOptions{}, filepath.Join(packagingDir, "pclntab-modes-"+tt.name), false)
 				binaries[tt.mode] = bin
 				if tt.mode == PCLNExternal {
 					verifyPCLNIntegrationSignature(t, bin)
@@ -317,8 +316,8 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 		if got := runPCLNIntegrationBinary(t, bin, "once"); got != "FULL\n" {
 			t.Fatalf("runtime metadata state = %q, want FULL", got)
 		}
-		if got := runPCLNIntegrationBinary(t, bin, "closure"); got != "target=FULL stub=FULL separate=true\n" {
-			t.Fatalf("closure target/stub metadata = %q", got)
+		if got := runPCLNIntegrationBinary(t, bin, "closure"); got != "target=FULL funcval=FULL same-entry=true\n" {
+			t.Fatalf("closure target/funcval metadata = %q", got)
 		}
 	})
 
@@ -361,7 +360,7 @@ func TestPCLNModeNativeIntegration(t *testing.T) {
 			{name: "wrong-ABI", mutate: mismatchPCLNIntegrationABI},
 			{name: "wrong-architecture", mutate: mismatchPCLNIntegrationArchitecture},
 			{name: "overlapping-sections", mutate: overlapPCLNIntegrationSections},
-			{name: "misaligned-stub-section", mutate: misalignPCLNIntegrationStubSection},
+			{name: "misaligned-pc-site-section", mutate: misalignPCLNIntegrationPCSiteSection},
 			{name: "unterminated-string-pool", mutate: unterminatePCLNIntegrationStringPool},
 		}
 		for _, failure := range failures {
@@ -398,7 +397,11 @@ func TestPCLNExternalPureCLibraryIdentityRetentionIntegration(t *testing.T) {
 	requireNativePCLNSidecars(t)
 	setPCLNIntegrationEnv(t)
 	source := writePCLNIntegrationSource(t, pclntabPureCLibraryFixture)
-	bin := buildPCLNIntegrationBinary(t, source, PCLNExternal, LinkOptions{})
+	// Exercise the external-sidecar summary as part of a real detach rather
+	// than mocking the final publication path.
+	bin := buildPCLNIntegrationBinaryAt(
+		t, source, PCLNExternal, LinkOptions{}, filepath.Join(t.TempDir(), "pclntab-pure-c"), true,
+	)
 	verifyPCLNIntegrationSignature(t, bin)
 	if got := runPCLNIntegrationBinary(t, bin); got != "pure-c-pclntab\n" {
 		t.Fatalf("pure lib/c output = %q", got)
@@ -584,10 +587,10 @@ func pclnIntegrationBinaryIdentity(t *testing.T, path string) [32]byte {
 
 func buildPCLNIntegrationBinary(t *testing.T, source string, mode PCLNMode, options LinkOptions) string {
 	t.Helper()
-	return buildPCLNIntegrationBinaryAt(t, source, mode, options, filepath.Join(t.TempDir(), "pclntab-modes"))
+	return buildPCLNIntegrationBinaryAt(t, source, mode, options, filepath.Join(t.TempDir(), "pclntab-modes"), false)
 }
 
-func buildPCLNIntegrationBinaryAt(t *testing.T, source string, mode PCLNMode, options LinkOptions, bin string) string {
+func buildPCLNIntegrationBinaryAt(t *testing.T, source string, mode PCLNMode, options LinkOptions, bin string, verbose bool) string {
 	t.Helper()
 	started := time.Now()
 	conf := &Config{
@@ -597,6 +600,7 @@ func buildPCLNIntegrationBinaryAt(t *testing.T, source string, mode PCLNMode, op
 		PCLNMode:    mode,
 		PCLNModeSet: true,
 		LinkOptions: options,
+		Verbose:     verbose,
 	}
 	if _, err := Do([]string{source}, conf); err != nil {
 		t.Fatalf("build %s PCLN fixture with LinkOptions %+v: %v", mode, options, err)
@@ -778,14 +782,14 @@ func overlapPCLNIntegrationSections(t *testing.T, path string) {
 	})
 }
 
-func misalignPCLNIntegrationStubSection(t *testing.T, path string) {
+func misalignPCLNIntegrationPCSiteSection(t *testing.T, path string) {
 	t.Helper()
 	mutatePCLNIntegrationHeader(t, path, func(raw []byte) {
-		// v3 descriptor order: records, pclines, strings, string offsets,
-		// hash, symbol index, entries, stubs, pc sites.
-		stub := pclnIntegrationHeaderSections + 7*pclnIntegrationSectionSize
-		off := binary.LittleEndian.Uint64(raw[stub:])
-		binary.LittleEndian.PutUint64(raw[stub:], off+1)
+		// v4 descriptor order: records, pclines, strings, string offsets,
+		// hash, symbol index, entries, pc sites.
+		pcSites := pclnIntegrationHeaderSections + 7*pclnIntegrationSectionSize
+		off := binary.LittleEndian.Uint64(raw[pcSites:])
+		binary.LittleEndian.PutUint64(raw[pcSites:], off+1)
 	})
 }
 

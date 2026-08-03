@@ -221,12 +221,13 @@ type aProgram struct {
 
 	printfTy *types.Signature
 
-	paramObjPtr_ *types.Var
-	linknameMu   sync.RWMutex
-	linkname     map[string]string // pkgPath.nameInPkg => linkname
-	localities   *localityInfos
-	noInterface  map[string]none       // pkgPath.T.method or pkgPath.(*T).method
-	abiSymbol    map[string]*AbiSymbol // abi symbol name => AbiSymbol
+	paramObjPtr_         *types.Var
+	linknameMu           sync.RWMutex
+	linkname             map[string]string // pkgPath.nameInPkg => linkname
+	closureEnvDirectives sync.Map          // closureEnvDirectiveKey => none
+	localities           *localityInfos
+	noInterface          map[string]none       // pkgPath.T.method or pkgPath.(*T).method
+	abiSymbol            map[string]*AbiSymbol // abi symbol name => AbiSymbol
 
 	ptrSize int
 
@@ -423,6 +424,28 @@ func (p Program) Linkname(name string) (link string, ok bool) {
 	link, ok = p.linkname[name]
 	p.linknameMu.RUnlock()
 	return
+}
+
+type closureEnvDirectiveKey struct {
+	fset *token.FileSet
+	name string
+	pos  token.Pos
+}
+
+// SetClosureEnvDirective records that a source function declaration has the
+// llgo:env directive. name and pos identify the source declaration rather
+// than its resolved linker symbol, so aliases retain independent ABI metadata.
+func (p Program) SetClosureEnvDirective(fset *token.FileSet, name string, pos token.Pos) {
+	key := closureEnvDirectiveKey{fset: fset, name: name, pos: pos}
+	p.closureEnvDirectives.Store(key, none{})
+}
+
+// HasClosureEnvDirective reports whether a source function declaration has the
+// cached llgo:env directive.
+func (p Program) HasClosureEnvDirective(fset *token.FileSet, name string, pos token.Pos) bool {
+	key := closureEnvDirectiveKey{fset: fset, name: name, pos: pos}
+	_, ok := p.closureEnvDirectives.Load(key)
+	return ok
 }
 
 func (p Program) runtime() *types.Package {
@@ -900,6 +923,21 @@ func (p Package) rtFunc(fnName string) Expr {
 	return p.NewFunc(name, sig, InGo).Expr
 }
 
+// rtEnvFunc returns a runtime entry whose source-level signature excludes its
+// compiler-owned environment. Runtime type algorithms use this form when a
+// type descriptor supplies the hidden type context.
+func (p Package) rtEnvFunc(fnName string) Expr {
+	p.NeedRuntime = true
+	fn := p.Prog.runtime().Scope().Lookup(fnName).(*types.Func)
+	name := FullName(fn.Pkg(), fnName)
+	if p.fnlink != nil {
+		name = p.fnlink(name)
+	}
+	sig := fn.Type().(*types.Signature)
+	env := types.NewVar(token.NoPos, nil, "$env", types.Typ[types.UnsafePointer])
+	return p.NewEnvFunc(name, sig, InGo, env, false).Expr
+}
+
 // RuntimeFunc returns a declaration for a function in LLGo's internal runtime.
 func (p Package) RuntimeFunc(fnName string) Expr {
 	return p.rtFunc(fnName)
@@ -907,30 +945,6 @@ func (p Package) RuntimeFunc(fnName string) Expr {
 
 func (p Package) cFunc(fullName string, sig *types.Signature) Expr {
 	return p.NewFunc(fullName, sig, InC).Expr
-}
-
-const (
-	closureCtx  = "__llgo_ctx"
-	closureStub = "__llgo_stub."
-)
-
-// closureStub creates or reuses a wrapper for function values that lack closure ctx.
-// It stays on Package to match the original placement of closure stubs.
-func (p Package) closureStub(b Builder, fn Expr, sig *types.Signature, origKind valueKind) (Expr, Expr) {
-	prog := b.Prog
-	switch origKind {
-	case vkFuncDecl:
-		wrap := p.closureWrapDecl(fn, sig)
-		return wrap.Expr, prog.Nil(prog.VoidPtr())
-	case vkFuncPtr:
-		wrap := p.closureWrapPtr(sig)
-		ptr := b.AllocU(prog.rawType(sig))
-		b.Store(ptr, fn)
-		data := b.Convert(prog.VoidPtr(), ptr)
-		return wrap.Expr, data
-	default:
-		return fn, prog.Nil(prog.VoidPtr())
-	}
 }
 
 // -----------------------------------------------------------------------------

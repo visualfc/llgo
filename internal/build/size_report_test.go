@@ -185,8 +185,8 @@ func TestNameResolver(t *testing.T) {
 	if full != symbol {
 		t.Fatalf("full level unexpected: %q", full)
 	}
-	if got := newNameResolver("package", nil).resolve("_llgo_stub.foo"); got != "llgo-stubs" {
-		t.Fatalf("llgo default grouping failed: %q", got)
+	if got := newNameResolver("package", nil).resolve("_llgo_helper.foo"); got != "llgo_helper" {
+		t.Fatalf("unmatched symbol grouping failed: %q", got)
 	}
 	generic := "_slices.SortFunc[[]io/fs.DirEntry,io/fs.DirEntry]"
 	if got := newNameResolver("module", nil).resolve(generic); got != "slices" {

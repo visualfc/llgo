@@ -36,12 +36,20 @@ clang/lld and a plugin would need to be maintained per linker flavor
 (ld64.lld, ld.lld) and per LTO mode. Editing the linked artifact is
 linker-agnostic.
 
+### Function identity contract
+
+PCLN is indexed by physical text functions, following Go's linker model.
+Source functions and compiler-generated wrappers or adapters all contribute
+ordinary function records and entry sites. The symbol names the physical
+function; its display name may describe the corresponding Go operation.
+Calling conventions, closure environments, and their transport mechanism are
+not PCLN properties and must not introduce function-class-specific sections.
+
 ### Data flow
 
 1. **Parse** the linked binary's metadata sections (`debug/elf`,
    `debug/macho` from the Go stdlib — the tool runs on the host):
    - `llgo_funcinfo_entry` / `__DATA,__llgo_fie`: `{pc, symbolID}` records.
-   - `llgo_funcinfo_stubsite` / `__DATA,__llgo_stub`: same layout.
    - Zero records are skipped, as in the runtime today.
 2. **Dedup by symbolID**: LTO inline copies register the same symbolID at
    several PCs. The true entry is the record whose PC lies inside the text
@@ -55,24 +63,19 @@ linker-agnostic.
    faithful port of `cmd/link`'s algorithm that has been sitting unwired
    since #2012. Delta overflow is a hard error here, mirroring Go's linker;
    if it ever fires, fall back to leaving the prebuilt table absent.
-5. **Write back** into a reserved section:
-   - The main module already emits `__llgo_funcinfo_*` globals; add a
-     `__llgo_pclntab_prebuilt` global sized from the collected package data
-     (entry-record count is known at main-module emission time; LTO can only
-     shrink it after dedup) plus a header {magic, version, count, anchorOff}.
-   - The tool rewrites the section contents in place (same size or smaller;
-     unused tail is zeroed) and flips the header magic to "valid".
+5. **Write back** into the entry-site section:
+   - The tool replaces the raw entry records in place with a versioned prebuilt
+     functab/findfunctab blob; unused tail bytes are zeroed.
+   - If the blob does not fit, the binary is left unchanged and the runtime
+     uses its first-use construction fallback. No other class of function is
+     used as overflow storage.
 
 ### ASLR
 
-Stored PCs must survive load-time slide. Store **offsets relative to an
-anchor symbol** (`__llgo_pclntab_anchor`, placed in the same section). At
-startup the runtime computes `slide = &anchor_runtime - anchorOff_stored`
-and adds it during lookup (one add on the hot path, same as Go's
-`datap.text` bias). Note the entry-site records themselves are already
-rebased by the loader (they hold absolute pointers with relocations); the
-prebuilt table deliberately holds offsets so the tool does not need to
-emit relocations.
+Stored table entries are offsets from the first function PC. The header keeps
+that base as a runtime address: Mach-O rewrites its slot into the dyld chained
+fixup chain, while supported non-PIE ELF outputs already use their runtime
+address. The lookup hot path therefore only adds the stored entry offset.
 
 ### Runtime integration
 
@@ -93,9 +96,8 @@ change is strictly additive and safe to land incrementally.
   platforms; assert `llgo funcinfo: ... entries= prebuilt` via
   LLGO_FUNCINFO_DEBUG.
 - **P3** (done) Mach-O bind-record resolution: pointer slots naming exported
-  functions — every `__llgo_stub.*` and any exported Go function — are
-  chained-fixup BIND nodes, not rebases; without decoding them through the
-  imports table, all stub records miss the prebuilt ftab and function-value
+  Go functions are chained-fixup BIND nodes, not rebases; without decoding
+  them through the imports table, exported records miss the prebuilt ftab and
   `FuncForPC` silently pays a dladdr per fresh pc (~6µs). Also: the prebuilt
   header's base slot is spliced back into the fixup chain as a live rebase
   node, so the runtime reads a dyld-slid runtime PC directly (no slide

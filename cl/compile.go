@@ -463,7 +463,40 @@ func makeClosureCtx(pkg *types.Package, vars []*ssa.FreeVar) *types.Var {
 		flds[i] = types.NewField(token.NoPos, pkg, name, v.Type(), false)
 	}
 	t := types.NewPointer(types.NewStruct(flds, nil))
-	return types.NewParam(token.NoPos, pkg, "__llgo_ctx", t)
+	return types.NewParam(token.NoPos, pkg, "$env", t)
+}
+
+// canElideZeroSizedClosureEnv reports whether a source closure can recreate
+// all of its captured variables from the module's zero-sized sentinel. Go SSA
+// represents a lexical capture as a pointer to the captured variable. Captured
+// zero-sized variables are heap allocated, and LLGo already gives every such
+// allocation the same permitted non-nil sentinel address.
+//
+// A non-synthetic function with a lexical parent is a source closure.
+// Synthetic wrappers are deliberately excluded: a zero-sized method receiver
+// can still carry a semantically significant nil/non-nil pointer value.
+func (p *context) canElideZeroSizedClosureEnv(f *ssa.Function) bool {
+	if f == nil || f.Parent() == nil || f.Synthetic != "" || len(f.FreeVars) == 0 {
+		return false
+	}
+	for _, freeVar := range f.FreeVars {
+		if !p.isElidableZeroSizedFreeVar(freeVar) {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *context) isElidableZeroSizedFreeVar(freeVar *ssa.FreeVar) bool {
+	ptr, ok := types.Unalias(p.patchType(freeVar.Type())).Underlying().(*types.Pointer)
+	return ok && p.prog.SizeOf(p.type_(ptr.Elem(), llssa.InGo)) == 0
+}
+
+func (p *context) elidedZeroSizedFreeVar(b llssa.Builder, freeVar *ssa.FreeVar) llssa.Expr {
+	typ := p.type_(freeVar.Type(), llssa.InGo)
+	ptr := types.Unalias(p.patchType(freeVar.Type())).Underlying().(*types.Pointer)
+	addr := b.Alloc(p.type_(ptr.Elem(), llssa.InGo), true)
+	return b.Convert(typ, addr)
 }
 
 func isCgoExternSymbol(f *ssa.Function) bool {
@@ -582,20 +615,42 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	}
 
 	fn := pkg.FuncOf(name)
-	if fn != nil && fn.HasBody() {
-		return fn, nil, goFunc
+	hasFreeVars := len(f.FreeVars) > 0
+	elideFreeVarEnv := p.canElideZeroSizedClosureEnv(f)
+	hasExplicitEnv := false
+	// ParsePkgSyntax is the sole //llgo:env extractor. Lowering only consumes
+	// its source-declaration cache; imported env entries use NewEnvFunc.
+	if decl, ok := f.Syntax().(*ast.FuncDecl); ok {
+		fullName, _ := astFuncName(llssa.PathOf(pkgTypes), decl)
+		hasExplicitEnv = p.prog.HasClosureEnvDirective(p.goProg.Fset, fullName, decl.Pos())
 	}
-
-	var hasCtx = len(f.FreeVars) > 0
-	if hasCtx {
+	hasCtx := hasFreeVars && !elideFreeVarEnv || hasExplicitEnv
+	var ctx *types.Var
+	if elideFreeVarEnv {
+		dbgInstrln("==> NewZeroSizedClosure", name, "type:", sig)
+	} else if hasFreeVars {
 		dbgInstrln("==> NewClosure", name, "type:", sig)
-		ctx := makeClosureCtx(pkgTypes, f.FreeVars)
-		sig = llssa.FuncAddCtx(ctx, sig)
+		ctx = makeClosureCtx(pkgTypes, f.FreeVars)
+	} else if hasExplicitEnv {
+		dbgInstrln("==> NewEnvFunc", name, "type:", sig)
+		ctx = types.NewVar(token.NoPos, nil, "$env", types.Typ[types.UnsafePointer])
 	} else {
 		dbgInstrln("==> NewFunc", name, "type:", sig.Recv(), sig, "ftype:", ftype)
 	}
+	if fn != nil {
+		if fn.NeedsEnv() != hasCtx {
+			panic("conflicting closure environment ABI for " + name)
+		}
+		if fn.HasBody() {
+			return fn, nil, goFunc
+		}
+	}
 	if fn == nil {
-		fn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), hasCtx, p.needsLinkOnce(f))
+		if hasCtx {
+			fn = pkg.NewEnvFunc(name, sig, llssa.Background(ftype), ctx, p.needsLinkOnce(f))
+		} else {
+			fn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), false, p.needsLinkOnce(f))
+		}
 	}
 	noInlineDirective := hasNoInlineDirective(f)
 	runtimeStackNoInline := needsRuntimeStackNoInline(pkgTypes, f)
@@ -1481,7 +1536,11 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		ret = b.MakeMap(t, nReserve)
 	case *ssa.MakeClosure:
 		fn := p.compileValue(b, v.Fn)
-		bindings := p.compileValues(b, v.Bindings, 0)
+		var bindings []llssa.Expr
+		goFn, _ := v.Fn.(*ssa.Function)
+		if !p.canElideZeroSizedClosureEnv(goFn) {
+			bindings = p.compileValues(b, v.Bindings, 0)
+		}
 		ret = b.MakeClosure(fn, bindings)
 	case *ssa.TypeAssert:
 		x := p.compileValue(b, v.X)
@@ -1873,6 +1932,9 @@ func (p *context) compileValue(b llssa.Builder, v ssa.Value) llssa.Expr {
 		fn := v.Parent()
 		for idx, freeVar := range fn.FreeVars {
 			if freeVar == v {
+				if p.canElideZeroSizedClosureEnv(fn) {
+					return p.elidedZeroSizedFreeVar(b, v)
+				}
 				return p.fn.FreeVar(b, idx)
 			}
 		}
