@@ -329,6 +329,33 @@ func TestPanicCrossTwoFunctionsRecover(t *testing.T) {
 	}
 }
 
+func runLoopDeferPanicDuringDrain() (order []int, recovered any) {
+	defer func() { recovered = recover() }()
+	func() {
+		for i := 0; i < 3; i++ {
+			value := i
+			defer func() {
+				order = append(order, value)
+				if value == 1 {
+					panic("loop-defer-boom")
+				}
+			}()
+		}
+	}()
+	return
+}
+
+func TestPanicWhileDrainingLoopDefers(t *testing.T) {
+	order, recovered := runLoopDeferPanicDuringDrain()
+	if recovered != "loop-defer-boom" {
+		t.Fatalf("unexpected recovered value: got %v, want %q", recovered, "loop-defer-boom")
+	}
+	wantOrder := []int{2, 1, 0}
+	if !reflect.DeepEqual(order, wantOrder) {
+		t.Fatalf("unexpected loop defer order: got %v, want %v", order, wantOrder)
+	}
+}
+
 // Test for issue #1488: Deferred method literal stub uses undefined value
 type emitRecorder struct {
 	last func(int)

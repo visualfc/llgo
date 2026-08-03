@@ -1886,6 +1886,11 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 	}
 	emitFuncInfoEntrySites(ctx, ret)
+	// ModeGen callers consume the in-memory LLVM module directly. They do not
+	// need cgo/link objects or a package archive for a later link step.
+	if ctx.mode == ModeGen {
+		return nil
+	}
 
 	printCmds := ctx.shouldPrintCommands(verbose)
 	cgoLLFiles, cgoLdflags, err := buildCgo(ctx, aPkg, aPkg.Package.Syntax, externs, printCmds)

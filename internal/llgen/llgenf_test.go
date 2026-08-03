@@ -26,21 +26,24 @@ import (
 	"github.com/goplus/llgo/internal/optlevel"
 )
 
-func TestApplyGoBuildFlagsFile(t *testing.T) {
+func TestApplyFlagsFile(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing.txt")
-	if err := applyGoBuildFlagsFile(new(build.Config), missing); err != nil {
+	if err := applyFlagsFile(new(build.Config), missing); err != nil {
 		t.Fatalf("missing flags file: %v", err)
 	}
 
 	path := filepath.Join(dir, "flags.txt")
-	data := "--gcflags 'all=-N -l'\n-ldflags=--s --w=false # keep DWARF\n"
+	data := "-target=wasm\n--gcflags 'all=-N -l'\n-ldflags=--s --w=false # keep DWARF\n"
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	conf := new(build.Config)
-	if err := applyGoBuildFlagsFile(conf, path); err != nil {
+	if err := applyFlagsFile(conf, path); err != nil {
 		t.Fatal(err)
+	}
+	if conf.Goos != "js" || conf.Goarch != "wasm" || conf.Target != "wasm" {
+		t.Fatalf("target config = %s/%s, target %q", conf.Goos, conf.Goarch, conf.Target)
 	}
 	if conf.OptLevel != optlevel.O0 {
 		t.Fatalf("OptLevel = %v, want O0", conf.OptLevel)
@@ -50,15 +53,45 @@ func TestApplyGoBuildFlagsFile(t *testing.T) {
 	}
 }
 
-func TestApplyGoBuildFlagsFileErrorIncludesPath(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "flags.txt")
-	data := "-ldflags='unterminated\n"
-	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
-		t.Fatal(err)
+func TestApplyFlagsFileErrorIncludesPath(t *testing.T) {
+	tests := []string{
+		"-ldflags='unterminated\n",
+		"-ldflags=-w=invalid\n",
+		"-target\n",
+		"-target=does-not-exist\n",
 	}
-	err := applyGoBuildFlagsFile(new(build.Config), path)
-	if err == nil || !strings.Contains(err.Error(), path) {
-		t.Fatalf("applyGoBuildFlagsFile(%q) error = %v, want path", data, err)
+	for _, data := range tests {
+		t.Run(strings.TrimSpace(data), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "flags.txt")
+			if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			conf := &build.Config{Target: "original"}
+			err := applyFlagsFile(conf, path)
+			if err == nil || !strings.Contains(err.Error(), path) {
+				t.Fatalf("applyFlagsFile(%q) error = %v, want path", data, err)
+			}
+			if conf.Target != "original" {
+				t.Fatalf("failed application changed target to %q", conf.Target)
+			}
+		})
+	}
+}
+
+func TestApplyFlagsFileTargetForms(t *testing.T) {
+	for _, data := range []string{"-target wasi", "--target wasi", "--target=wasi"} {
+		t.Run(data, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "flags.txt")
+			if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			conf := new(build.Config)
+			if err := applyFlagsFile(conf, path); err != nil {
+				t.Fatal(err)
+			}
+			if conf.Target != "wasi" {
+				t.Fatalf("Target = %q, want wasi", conf.Target)
+			}
+		})
 	}
 }

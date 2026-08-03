@@ -30,8 +30,8 @@ type Defer struct {
 	Addr unsafe.Pointer // sigjmpbuf
 	Bits uintptr
 	Link *Defer
-	Reth unsafe.Pointer // block address after Rethrow
-	Rund unsafe.Pointer // block address after RunDefers
+	Reth unsafe.Pointer // native block address or wasm continuation selector
+	Rund unsafe.Pointer // native block address or wasm continuation selector
 	Args unsafe.Pointer // defer func and args links
 }
 

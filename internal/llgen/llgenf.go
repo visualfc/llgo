@@ -25,6 +25,7 @@ import (
 
 	"github.com/goplus/llgo/internal/build"
 	"github.com/goplus/llgo/internal/goflags"
+	"github.com/goplus/llgo/internal/targets"
 )
 
 func GenFrom(fileOrPkg string) string {
@@ -44,7 +45,7 @@ func genFrom(pkgPath string, abiMode build.AbiMode) (build.Package, error) {
 		AbiMode: abiMode,
 		GenLL:   true,
 	}
-	if err := applyGoBuildFlagsFile(conf, filepath.Join(pkgPath, "flags.txt")); err != nil {
+	if err := applyFlagsFile(conf, filepath.Join(pkgPath, "flags.txt")); err != nil {
 		return nil, err
 	}
 	pkgs, err := build.Do([]string{pkgPath}, conf)
@@ -60,7 +61,7 @@ func DoFile(fileOrPkg, outFile string) {
 	check(err)
 }
 
-func readGoBuildFlags(flagsFile string) ([]string, error) {
+func readFlags(flagsFile string) ([]string, error) {
 	data, err := os.ReadFile(flagsFile)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -75,14 +76,46 @@ func readGoBuildFlags(flagsFile string) ([]string, error) {
 	return flags, nil
 }
 
-func applyGoBuildFlagsFile(conf *build.Config, flagsFile string) error {
-	flags, err := readGoBuildFlags(flagsFile)
+func applyFlagsFile(conf *build.Config, flagsFile string) error {
+	flags, err := readFlags(flagsFile)
 	if err != nil {
 		return err
 	}
-	if err := goflags.ApplyBuildFlags(conf, flags); err != nil {
+	next := *conf
+	goFlags := make([]string, 0, len(flags))
+	for i := 0; i < len(flags); i++ {
+		flag := flags[i]
+		switch {
+		case strings.HasPrefix(flag, "GOOS="):
+			next.Goos = strings.TrimPrefix(flag, "GOOS=")
+		case strings.HasPrefix(flag, "GOARCH="):
+			next.Goarch = strings.TrimPrefix(flag, "GOARCH=")
+		case flag == "-target" || flag == "--target":
+			if i+1 == len(flags) {
+				return fmt.Errorf("apply %s: %s requires a value", flagsFile, flag)
+			}
+			i++
+			next.Target = flags[i]
+		case strings.HasPrefix(flag, "-target="):
+			next.Target = strings.TrimPrefix(flag, "-target=")
+		case strings.HasPrefix(flag, "--target="):
+			next.Target = strings.TrimPrefix(flag, "--target=")
+		default:
+			goFlags = append(goFlags, flag)
+		}
+	}
+	if next.Target != "" {
+		target, err := targets.NewDefaultResolver().Resolve(next.Target)
+		if err != nil {
+			return fmt.Errorf("apply %s: %w", flagsFile, err)
+		}
+		next.Goos = target.GOOS
+		next.Goarch = target.GOARCH
+	}
+	if err := goflags.ApplyBuildFlags(&next, goFlags); err != nil {
 		return fmt.Errorf("apply %s: %w", flagsFile, err)
 	}
+	*conf = next
 	return nil
 }
 
