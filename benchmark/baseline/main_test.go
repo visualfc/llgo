@@ -23,6 +23,7 @@ import (
 	"debug/macho"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -157,8 +158,10 @@ func TestValidateMetricsRejectsInvalidData(t *testing.T) {
 func TestValidateGoBenchmarks(t *testing.T) {
 	var input strings.Builder
 	for _, name := range expectedGoBenchmarks {
-		input.WriteString(name)
-		input.WriteString("-1 100 12.5 ns/op\n")
+		for range goBenchmarkSamples {
+			input.WriteString(name)
+			input.WriteString("-1 100 12.5 ns/op\n")
+		}
 	}
 	if err := validateGoBenchmarks(strings.NewReader(input.String())); err != nil {
 		t.Fatal(err)
@@ -170,7 +173,9 @@ func TestValidateGoBenchmarksRejectsInvalidData(t *testing.T) {
 		var input strings.Builder
 		for _, name := range expectedGoBenchmarks {
 			if name != skip {
-				input.WriteString(name + "-1 100 12.5 ns/op\n")
+				for range goBenchmarkSamples {
+					input.WriteString(name + "-1 100 12.5 ns/op\n")
+				}
 			}
 		}
 		return input.String()
@@ -182,7 +187,8 @@ func TestValidateGoBenchmarksRejectsInvalidData(t *testing.T) {
 	}{
 		{"missing", valid(expectedGoBenchmarks[0]), "missing Go benchmarks"},
 		{"unknown", valid("") + "BenchmarkUnknown-1 1 1 ns/op\n", `unexpected Go benchmark "BenchmarkUnknown"`},
-		{"duplicate", valid("") + expectedGoBenchmarks[0] + "-1 1 1 ns/op\n", "duplicate Go benchmark"},
+		{"too many samples", valid("") + expectedGoBenchmarks[0] + "-1 1 1 ns/op\n", "too many samples"},
+		{"too few samples", strings.Replace(valid(""), expectedGoBenchmarks[0]+"-1 100 12.5 ns/op\n", "", 1), fmt.Sprintf("has %d samples, want %d", goBenchmarkSamples-1, goBenchmarkSamples)},
 		{"malformed", strings.Replace(valid(""), " 100 12.5 ns/op", " bad", 1), "malformed Go benchmark"},
 		{"iterations", strings.Replace(valid(""), " 100 ", " bad ", 1), "invalid iteration count"},
 		{"value", strings.Replace(valid(""), "12.5", "bad", 1), "invalid value"},
@@ -523,7 +529,9 @@ func writeValidArtifact(t *testing.T, dir string) {
 func makeGoBenchmarkText() string {
 	var input strings.Builder
 	for _, name := range expectedGoBenchmarks {
-		input.WriteString(name + "-1 100 12.5 ns/op\n")
+		for range goBenchmarkSamples {
+			input.WriteString(name + "-1 100 12.5 ns/op\n")
+		}
 	}
 	return input.String()
 }

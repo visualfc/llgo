@@ -74,6 +74,8 @@ var expectedGoBenchmarks = []string{
 	"BenchmarkRuntimeGetG",
 }
 
+const goBenchmarkSamples = 5
+
 type footprint struct {
 	file uint64
 	text uint64
@@ -221,6 +223,11 @@ func collect(ctx context.Context, root, llgo, out string, buildRuns, runRuns int
 	var sizes, timings []metric
 	for _, item := range workloads {
 		binary := filepath.Join(binDir, item.name)
+		// Keep first-use toolchain and filesystem caches out of the measured
+		// median so the first revision is not systematically disadvantaged.
+		if err := run(ctx, env, io.Discard, llgo, "build", "-o", binary, filepath.Join(root, item.source)); err != nil {
+			return fmt.Errorf("warm build %s: %w", item.name, err)
+		}
 		buildDurations := make([]time.Duration, 0, buildRuns)
 		for range buildRuns {
 			start := time.Now()
@@ -433,9 +440,9 @@ func validateMetrics(path string, expected map[string]string) error {
 }
 
 func validateGoBenchmarks(r io.Reader) error {
-	expected := make(map[string]bool, len(expectedGoBenchmarks))
+	expected := make(map[string]int, len(expectedGoBenchmarks))
 	for _, name := range expectedGoBenchmarks {
-		expected[name] = false
+		expected[name] = 0
 	}
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
@@ -444,12 +451,12 @@ func validateGoBenchmarks(r io.Reader) error {
 			continue
 		}
 		name := cpuSuffix.ReplaceAllString(fields[0], "")
-		seen, ok := expected[name]
+		samples, ok := expected[name]
 		if !ok {
 			return fmt.Errorf("unexpected Go benchmark %q", name)
 		}
-		if seen {
-			return fmt.Errorf("duplicate Go benchmark %q", name)
+		if samples >= goBenchmarkSamples {
+			return fmt.Errorf("too many samples for Go benchmark %q", name)
 		}
 		if len(fields) < 4 || (len(fields)-2)%2 != 0 {
 			return fmt.Errorf("malformed Go benchmark line %q", scanner.Text())
@@ -474,20 +481,25 @@ func validateGoBenchmarks(r io.Reader) error {
 		if !hasTime {
 			return fmt.Errorf("benchmark %q has no ns/op result", name)
 		}
-		expected[name] = true
+		expected[name] = samples + 1
 	}
 	if err := scanner.Err(); err != nil {
 		return err
 	}
 	var missing []string
-	for name, seen := range expected {
-		if !seen {
+	for name, samples := range expected {
+		if samples == 0 {
 			missing = append(missing, name)
 		}
 	}
 	slices.Sort(missing)
 	if len(missing) != 0 {
 		return fmt.Errorf("missing Go benchmarks: %s", strings.Join(missing, ", "))
+	}
+	for name, samples := range expected {
+		if samples != goBenchmarkSamples {
+			return fmt.Errorf("Go benchmark %q has %d samples, want %d", name, samples, goBenchmarkSamples)
+		}
 	}
 	return nil
 }
