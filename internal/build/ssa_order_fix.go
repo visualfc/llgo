@@ -215,7 +215,7 @@ func includeDebugRefsForMovedValues(instrs []ssa.Instruction, move map[int]struc
 			moved[v] = struct{}{}
 		}
 	}
-	for i := 0; i <= through && i < len(instrs); i++ {
+	for i := 0; i < through && i < len(instrs); i++ {
 		if _, moving := move[i]; moving {
 			continue
 		}
@@ -421,7 +421,8 @@ func valueDependsOn(v, target ssa.Value, seen map[ssa.Value]struct{}) bool {
 }
 
 // moveInstrsAfter moves selected instructions as a stable group immediately
-// after anchor.
+// after anchor. It returns instrs unchanged when moving is empty or anchor is
+// nil or absent.
 func moveInstrsAfter(instrs []ssa.Instruction, moving map[ssa.Instruction]struct{}, anchor ssa.Instruction) []ssa.Instruction {
 	if len(moving) == 0 || anchor == nil {
 		return instrs
