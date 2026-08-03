@@ -189,8 +189,9 @@ func moveAssignDepsAfterRecv(b *ssa.BasicBlock, roots []ssa.Value, recv ssa.Valu
 	}
 	// Metadata uses must follow the definitions they describe rather than
 	// blocking an otherwise safe source-order repair.
-	includeDebugRefsForMovedValues(b.Instrs, move, recvIdx)
-	if moveWouldBreakSSA(b.Instrs, move, recvIdx) {
+	moved := movedValuesForIndices(b.Instrs, move)
+	includeDebugRefsForMovedValues(b.Instrs, move, moved, 0, recvIdx)
+	if moveWouldBreakSSA(b.Instrs, move, recvIdx, moved) {
 		return false
 	}
 	deps := make([]ssa.Instruction, 0, len(move))
@@ -209,14 +210,30 @@ func moveAssignDepsAfterRecv(b *ssa.BasicBlock, roots []ssa.Value, recv ssa.Valu
 	return true
 }
 
-func includeDebugRefsForMovedValues(instrs []ssa.Instruction, move map[int]struct{}, through int) {
+func movedValuesForIndices(instrs []ssa.Instruction, move map[int]struct{}) map[ssa.Value]struct{} {
 	moved := make(map[ssa.Value]struct{}, len(move))
 	for i := range move {
+		if i < 0 || i >= len(instrs) {
+			continue
+		}
 		if v, ok := instrs[i].(ssa.Value); ok && v != nil {
 			moved[v] = struct{}{}
 		}
 	}
-	for i := 0; i < through && i < len(instrs); i++ {
+	return moved
+}
+
+// includeDebugRefsForMovedValues adds metadata-only uses of moved values to
+// move. The moved value set is supplied by the caller so the same set can be
+// reused by the subsequent SSA safety check without rescanning move.
+func includeDebugRefsForMovedValues(instrs []ssa.Instruction, move map[int]struct{}, moved map[ssa.Value]struct{}, from, through int) {
+	if from < 0 {
+		from = 0
+	}
+	if through > len(instrs) {
+		through = len(instrs)
+	}
+	for i := from; i < through; i++ {
 		if _, moving := move[i]; moving {
 			continue
 		}
@@ -233,13 +250,7 @@ func includeDebugRefsForMovedValues(instrs []ssa.Instruction, move map[int]struc
 	}
 }
 
-func moveWouldBreakSSA(instrs []ssa.Instruction, move map[int]struct{}, recvIdx int) bool {
-	moved := make(map[ssa.Value]struct{}, len(move))
-	for i := range move {
-		if v, ok := instrs[i].(ssa.Value); ok && v != nil {
-			moved[v] = struct{}{}
-		}
-	}
+func moveWouldBreakSSA(instrs []ssa.Instruction, move map[int]struct{}, recvIdx int, moved map[ssa.Value]struct{}) bool {
 	for i := 0; i <= recvIdx && i < len(instrs); i++ {
 		if _, moving := move[i]; moving {
 			continue
@@ -332,11 +343,16 @@ func fixSSAOrderBlock(b *ssa.BasicBlock) {
 
 		// DebugRefs are metadata-only and move with the value they describe. Any
 		// executable use before Return still makes reordering unsafe.
-		moving := map[ssa.Instruction]struct{}{u: {}}
+		movingIndices := map[int]struct{}{loadIdx: {}}
+		moved := movedValuesForIndices(b.Instrs, movingIndices)
+		includeDebugRefsForMovedValues(b.Instrs, movingIndices, moved, loadIdx+1, retIdx)
+		moving := make(map[ssa.Instruction]struct{}, len(movingIndices))
+		for i := range movingIndices {
+			moving[b.Instrs[i]] = struct{}{}
+		}
 		usedBeforeReturn := false
 		for i := loadIdx + 1; i < retIdx; i++ {
-			if ref, ok := b.Instrs[i].(*ssa.DebugRef); ok && instrUsesValue(ref, u) {
-				moving[ref] = struct{}{}
+			if _, moving := movingIndices[i]; moving {
 				continue
 			}
 			if instrUsesValue(b.Instrs[i], u) {
