@@ -38,13 +38,12 @@ import "C"
 // CHECK-NEXT:   %13 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 2
 // CHECK-NEXT:   store ptr %8, ptr %13, align 8
 // CHECK-NEXT:   %14 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 3
-// CHECK-NEXT:   store i64 0, ptr %14, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_2), ptr %14, align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %10)
 // CHECK-NEXT:   %15 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 1
 // CHECK-NEXT:   %16 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 3
 // CHECK-NEXT:   %17 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 4
 // CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 5
-// CHECK-NEXT:   store i64 0, ptr %17, align 8
 // CHECK-NEXT:   store ptr null, ptr %18, align 8
 // CHECK-NEXT:   %19 = call i32 @{{.*}}sigsetjmp(ptr %9, i32 0)
 // CHECK-NEXT:   %20 = icmp eq i32 %19, 0
@@ -54,7 +53,7 @@ import "C"
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
-// CHECK-NEXT:   store i64 1, ptr %16, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %16, align 8
 // CHECK-NEXT:   %21 = load i64, ptr %15, align 8
 // CHECK-NEXT:   %22 = load ptr, ptr %18, align 8
 // CHECK-NEXT:   %23 = icmp ne ptr %22, null
@@ -74,16 +73,13 @@ import "C"
 // CHECK-NEXT:   %28 = getelementptr inbounds { ptr, i64, { ptr, ptr } }, ptr %25, i32 0, i32 2
 // CHECK-NEXT:   store { ptr, ptr } %7, ptr %28, align 8
 // CHECK-NEXT:   store ptr %25, ptr %18, align 8
-// CHECK-NEXT:   store i64 1, ptr %17, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_6), ptr %17, align 8
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i64 0, ptr %17, align 8
-// CHECK-NEXT:   %29 = load i64, ptr %16, align 8
-// CHECK-NEXT:   switch i64 %29, label %_llgo_10 [
-// CHECK-NEXT:     i64 0, label %_llgo_2
-// CHECK-NEXT:     i64 1, label %_llgo_3
-// CHECK-NEXT:   ]
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %17, align 8
+// CHECK-NEXT:   %29 = load ptr, ptr %16, align 8
+// CHECK-NEXT:   indirectbr ptr %29, [label %_llgo_3, label %_llgo_2]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_8
 // CHECK-NEXT:   ret void
@@ -105,17 +101,8 @@ import "C"
 // CHECK-NEXT:   %36 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, align 8
 // CHECK-NEXT:   %37 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %36, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %37)
-// CHECK-NEXT:   %38 = load i64, ptr %17, align 8
-// CHECK-NEXT:   switch i64 %38, label %_llgo_9 [
-// CHECK-NEXT:     i64 0, label %_llgo_3
-// CHECK-NEXT:     i64 1, label %_llgo_6
-// CHECK-NEXT:   ]
-// CHECK-EMPTY:
-// CHECK-NEXT: _llgo_9:                                          ; preds = %_llgo_8
-// CHECK-NEXT:   unreachable
-// CHECK-EMPTY:
-// CHECK-NEXT: _llgo_10:                                         ; preds = %_llgo_5
-// CHECK-NEXT:   unreachable
+// CHECK-NEXT:   %38 = load ptr, ptr %17, align 8
+// CHECK-NEXT:   indirectbr ptr %38, [label %_llgo_3, label %_llgo_6]
 // CHECK-NEXT: }
 func main() {
 	// CHECK-LABEL: define { ptr, ptr } @"main.main$1"(ptr {{(nest|swiftself)}} %0){{.*}} {

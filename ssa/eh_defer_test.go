@@ -157,22 +157,23 @@ func TestConditionalDeferIR(t *testing.T) {
 	}
 }
 
-func TestDeferContinuationSelectors(t *testing.T) {
+func TestDeferContinuationDispatch(t *testing.T) {
 	tests := []struct {
 		name        string
 		target      *ssa.Target
 		switchWidth string
+		wasm        bool
 	}{
 		{name: "linux-amd64", target: &ssa.Target{GOOS: "linux", GOARCH: "amd64"}, switchWidth: "i64"},
 		{name: "darwin-arm64", target: &ssa.Target{GOOS: "darwin", GOARCH: "arm64"}, switchWidth: "i64"},
-		{name: "wasip1-wasm", target: &ssa.Target{GOOS: "wasip1", GOARCH: "wasm"}, switchWidth: "i32"},
+		{name: "wasip1-wasm", target: &ssa.Target{GOOS: "wasip1", GOARCH: "wasm"}, switchWidth: "i32", wasm: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			prog := ssatest.NewProgram(t, tt.target)
 			for _, field := range []int{3, 4} {
-				if got := prog.Field(prog.Defer(), field); got != prog.Uintptr() {
-					t.Fatalf("runtime.Defer field %d type = %v, want uintptr", field, got)
+				if got := prog.Field(prog.Defer(), field); got != prog.VoidPtr() {
+					t.Fatalf("runtime.Defer field %d type = %v, want unsafe.Pointer", field, got)
 				}
 			}
 			pkg := prog.NewPackage("foo", "foo")
@@ -193,14 +194,26 @@ func TestDeferContinuationSelectors(t *testing.T) {
 			b.EndBuild()
 
 			ir := pkg.Module().String()
-			if strings.Contains(ir, "blockaddress") || strings.Contains(ir, "indirectbr") {
-				t.Fatalf("defer continuations must not expose block addresses:\n%s", ir)
-			}
-			if got := strings.Count(ir, "switch "+tt.switchWidth); got != 2 {
-				t.Fatalf("got %d %s switches, want RunDefers and Rethrow dispatch:\n%s", got, tt.switchWidth, ir)
-			}
-			if got := strings.Count(ir, "unreachable"); got < 2 {
-				t.Fatalf("got %d unreachable defaults, want one per defer dispatch:\n%s", got, ir)
+			if tt.wasm {
+				if strings.Contains(ir, "blockaddress") || strings.Contains(ir, "indirectbr") {
+					t.Fatalf("wasm defer continuations must not expose block addresses:\n%s", ir)
+				}
+				if got := strings.Count(ir, "switch "+tt.switchWidth); got != 2 {
+					t.Fatalf("got %d %s switches, want wasm RunDefers and Rethrow dispatch:\n%s", got, tt.switchWidth, ir)
+				}
+				if got := strings.Count(ir, "unreachable"); got < 2 {
+					t.Fatalf("got %d unreachable defaults, want one per wasm defer dispatch:\n%s", got, ir)
+				}
+			} else {
+				if !strings.Contains(ir, "blockaddress") {
+					t.Fatalf("native defer continuations must retain block addresses:\n%s", ir)
+				}
+				if got := strings.Count(ir, "indirectbr"); got != 2 {
+					t.Fatalf("got %d indirect branches, want native RunDefers and Rethrow dispatch:\n%s", got, ir)
+				}
+				if strings.Contains(ir, "switch "+tt.switchWidth) {
+					t.Fatalf("native defer continuations must not use selector switches:\n%s", ir)
+				}
 			}
 
 			// RunDefers can establish defer state before any defer statement has

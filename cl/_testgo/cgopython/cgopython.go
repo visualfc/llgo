@@ -63,13 +63,12 @@ import "C"
 // CHECK-NEXT:   %6 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 2
 // CHECK-NEXT:   store ptr %1, ptr %6, align 8
 // CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 3
-// CHECK-NEXT:   store i64 0, ptr %7, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_2), ptr %7, align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %3)
 // CHECK-NEXT:   %8 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 1
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 3
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 4
 // CHECK-NEXT:   %11 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 5
-// CHECK-NEXT:   store i64 0, ptr %10, align 8
 // CHECK-NEXT:   store ptr null, ptr %11, align 8
 // CHECK-NEXT:   %12 = call i32 @{{.*}}sigsetjmp(ptr %2, i32 0)
 // CHECK-NEXT:   %13 = icmp eq i32 %12, 0
@@ -79,17 +78,14 @@ import "C"
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
-// CHECK-NEXT:   store i64 1, ptr %9, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %9, align 8
 // CHECK-NEXT:   %14 = load i64, ptr %8, align 8
 // CHECK-NEXT:   %15 = call [0 x i8] @main._Cfunc_Py_Finalize()
 // CHECK-NEXT:   %16 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, align 8
 // CHECK-NEXT:   %17 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %16, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %17)
-// CHECK-NEXT:   %18 = load i64, ptr %10, align 8
-// CHECK-NEXT:   switch i64 %18, label %_llgo_7 [
-// CHECK-NEXT:     i64 0, label %_llgo_3
-// CHECK-NEXT:     i64 1, label %_llgo_6
-// CHECK-NEXT:   ]
+// CHECK-NEXT:   %18 = load ptr, ptr %10, align 8
+// CHECK-NEXT:   indirectbr ptr %18, [label %_llgo_3, label %_llgo_6]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_5, %_llgo_2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Rethrow"(ptr %1)
@@ -98,25 +94,16 @@ import "C"
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %19 = call ptr @"{{.*}}/runtime/internal/runtime.CString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 23 })
 // CHECK-NEXT:   %20 = call i32 @main._Cfunc_PyRun_SimpleString(ptr %19)
-// CHECK-NEXT:   store i64 1, ptr %10, align 8
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_6), ptr %10, align 8
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   store i64 0, ptr %10, align 8
-// CHECK-NEXT:   %21 = load i64, ptr %9, align 8
-// CHECK-NEXT:   switch i64 %21, label %_llgo_8 [
-// CHECK-NEXT:     i64 0, label %_llgo_2
-// CHECK-NEXT:     i64 1, label %_llgo_3
-// CHECK-NEXT:   ]
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %10, align 8
+// CHECK-NEXT:   %21 = load ptr, ptr %9, align 8
+// CHECK-NEXT:   indirectbr ptr %21, [label %_llgo_3, label %_llgo_2]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   ret void
-// CHECK-EMPTY:
-// CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   unreachable
-// CHECK-EMPTY:
-// CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_5
-// CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 func main() {
 	C.Py_Initialize()

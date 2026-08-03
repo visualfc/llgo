@@ -147,8 +147,8 @@ type aDefer struct {
 	nextBit     int        // next defer bit
 	data        Expr       // pointer to runtime.Defer
 	bitsPtr     Expr       // pointer to defer bits
-	rethPtr     Expr       // Rethrow continuation selector
-	rundPtr     Expr       // RunDefers continuation selector
+	rethPtr     Expr       // native block address or wasm Rethrow selector
+	rundPtr     Expr       // native block address or wasm RunDefers selector
 	argsPtr     Expr       // func and args links
 	procBlk     BasicBlock // deferProc block
 	panicBlk    BasicBlock // panic block (runDefers and rethrow)
@@ -161,9 +161,9 @@ type aDefer struct {
 	stmts                []func(bits Expr, resume deferTarget)
 }
 
-// deferTarget pairs the integer stored in runtime.Defer with its local block.
-// Selectors are dense within each dispatch so LLVM can choose the target's
-// preferred switch lowering without exposing block addresses.
+// deferTarget pairs a wasm selector with the corresponding local block.
+// Native targets store the block address directly; wasm selectors are dense
+// within each dispatch so LLVM can lower them efficiently.
 type deferTarget struct {
 	index int
 	block BasicBlock
@@ -184,8 +184,8 @@ const (
 	// 0: addr sigjmpbuf
 	// 1: bits uintptr
 	// 2: link *Defer
-	// 3: reth uintptr: continuation selector after Rethrow
-	// 4: rund uintptr: continuation selector after RunDefers
+	// 3: reth voidptr: native block address or wasm Rethrow selector
+	// 4: rund voidptr: native block address or wasm RunDefers selector
 	// 5: func and args links
 	deferSigjmpbuf = iota
 	deferBits
@@ -275,15 +275,19 @@ func (b Builder) initDeferState(procBlk, rethrowBlk BasicBlock) (*aDefer, Expr, 
 	zero := prog.Val(uintptr(0))
 	link := b.Call(b.Pkg.rtFunc("GetThreadDefer"))
 	jb := b.AllocaSigjmpBuf()
-	// Reth selector 0 is reserved for procBlk; Rund selector 0 is rethrowBlk.
-	ptr := b.aggregateAllocU(prog.Defer(), jb.impl, zero.impl, link.impl, zero.impl)
+	// Wasm Reth selector 0 is reserved for procBlk; Rund selector 0 is
+	// rethrowBlk. Native targets store the corresponding block addresses.
+	initialReth := deferTarget{index: 0, block: procBlk}
+	ptr := b.aggregateAllocU(prog.Defer(), jb.impl, zero.impl, link.impl, b.deferTargetValue(initialReth).impl)
 	deferData := Expr{ptr, prog.DeferPtr()}
 	b.Call(b.Pkg.rtFunc("SetThreadDefer"), deferData)
 	bitsPtr := b.FieldAddr(deferData, deferBits)
 	rethPtr := b.FieldAddr(deferData, deferRethrow)
 	rundPtr := b.FieldAddr(deferData, deferRunDefers)
 	argsPtr := b.FieldAddr(deferData, deferArgs)
-	b.Store(rundPtr, zero)
+	if prog.target.GOARCH == "wasm" {
+		b.storeDeferTarget(rundPtr, deferTarget{index: 0, block: rethrowBlk})
+	}
 	// Initialize the args list so later guards (e.g. DeferAlways/DeferInLoop)
 	// can safely detect an empty chain without a prior push.
 	b.Store(argsPtr, prog.Nil(prog.VoidPtr()))
@@ -427,11 +431,6 @@ func (b Builder) loopDeferDrainer(self *aDefer, resume deferTarget) {
 	self.loopDrainerGenerated = true
 	if len(self.loopCases) == 0 {
 		return
-	}
-
-	drainEntry := b.blk
-	if drainEntry != resume.block {
-		panic("loop defer resume target does not match the drainer entry")
 	}
 
 	prog := b.Prog
@@ -580,11 +579,28 @@ func (b Builder) RunDefers() {
 }
 
 func (b Builder) storeDeferTarget(ptr Expr, target deferTarget) {
-	b.Store(ptr, b.Prog.Val(uintptr(target.index)))
+	b.Store(ptr, b.deferTargetValue(target))
+}
+
+func (b Builder) deferTargetValue(target deferTarget) Expr {
+	if b.Prog.target.GOARCH == "wasm" {
+		return b.PtrCast(b.Prog.VoidPtr(), b.Prog.Val(uintptr(target.index)))
+	}
+	return target.block.Addr()
 }
 
 func (b Builder) jumpDeferTarget(ptr Expr, targets []deferTarget) {
-	selector := b.Load(ptr)
+	target := b.Load(ptr)
+	if b.Prog.target.GOARCH != "wasm" {
+		blocks := make([]BasicBlock, len(targets))
+		for i, target := range targets {
+			blocks[i] = target.block
+		}
+		b.IndirectJump(target, blocks)
+		return
+	}
+
+	selector := b.Convert(b.Prog.Uintptr(), target)
 	invalid := b.Func.MakeBlock()
 	sw := b.impl.CreateSwitch(selector.impl, invalid.first, len(targets))
 	for _, target := range targets {
@@ -614,7 +630,6 @@ func (p Function) endDefer(b Builder) {
 
 	stmts := self.stmts
 	n := len(stmts)
-	rethChain := make([]deferTarget, n+1)
 	var blks []BasicBlock
 	if n > 1 {
 		blks = p.MakeBlocks(n - 1)
@@ -622,21 +637,19 @@ func (p Function) endDefer(b Builder) {
 	// Reth selector 0 must remain procBlk because initDeferState installs it
 	// before the final number of deferred statements is known. Selector 1 is
 	// the terminal rethrow, followed by the intermediate continuation blocks.
+	// Keep the slice in native continuation order; wasm dispatch uses index.
 	rethTargets := make([]deferTarget, n+1)
-	rethTargets[0] = deferTarget{index: 0, block: procBlk}
 	if n > 0 {
-		rethTargets[1] = deferTarget{index: 1, block: rethrowBlk}
+		rethTargets[0] = deferTarget{index: 1, block: rethrowBlk}
 		for i, blk := range blks {
-			rethTargets[i+2] = deferTarget{index: i + 2, block: blk}
+			rethTargets[i+1] = deferTarget{index: i + 2, block: blk}
 		}
-		rethChain[0] = rethTargets[1]
-		copy(rethChain[1:], rethTargets[2:])
 	}
-	rethChain[n] = rethTargets[0]
+	rethTargets[n] = deferTarget{index: 0, block: procBlk}
 
 	for i := n - 1; i >= 0; i-- {
-		rethNext := rethChain[i]
-		resume := rethChain[i+1]
+		rethNext := rethTargets[i]
+		resume := rethTargets[i+1]
 		b.SetBlockEx(resume.block, AtEnd, true)
 		b.storeDeferTarget(rethPtr, rethNext)
 		stmts[i](b.Load(bitsPtr), resume)
