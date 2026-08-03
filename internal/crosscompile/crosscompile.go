@@ -718,8 +718,21 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 // Use extends the original Use function to support target-based configuration
 // If targetName is provided, it takes precedence over goos/goarch
 func Use(goos, goarch, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
-	if targetName != "" && !strings.HasPrefix(targetName, "wasm") && !strings.HasPrefix(targetName, "wasi") {
+	if targetName == "" {
+		return use(goos, goarch, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+	}
+
+	config, err := targets.NewDefaultResolver().Resolve(targetName)
+	if err != nil {
+		return export, fmt.Errorf("failed to resolve target %s: %w", targetName, err)
+	}
+	if config.GOARCH != "wasm" {
 		return UseTarget(targetName, level, ltoMode)
 	}
-	return use(goos, goarch, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+	export, err = use(config.GOOS, config.GOARCH, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+	if err == nil {
+		export.GOOS = config.GOOS
+		export.GOARCH = config.GOARCH
+	}
+	return
 }

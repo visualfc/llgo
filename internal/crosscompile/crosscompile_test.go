@@ -333,6 +333,19 @@ func TestUseWithTarget(t *testing.T) {
 		t.Errorf("Expected CPU generic in CCFLAGS, got %v", export.CCFLAGS)
 	}
 
+	// Named WebAssembly targets use the GOOS/GOARCH from their target configuration
+	// with the standard WebAssembly toolchain setup.
+	export, err = Use("linux", "amd64", "wasm", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatalf("Use(wasm) failed: %v", err)
+	}
+	if export.GOOS != "js" || export.GOARCH != "wasm" {
+		t.Fatalf("wasm target platform = %s/%s, want js/wasm", export.GOOS, export.GOARCH)
+	}
+	if !hasFlagValue(export.CCFLAGS, "-target", "wasm32-unknown-emscripten") {
+		t.Fatalf("wasm target CCFLAGS = %v, want emscripten target", export.CCFLAGS)
+	}
+
 	// Test fallback to goos/goarch when no target specified
 	export, err = Use(runtime.GOOS, runtime.GOARCH, "", false, false, optlevel.O2, lto.Thin, false)
 	if err != nil {
