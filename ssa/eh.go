@@ -590,17 +590,17 @@ func (b Builder) deferTargetValue(target deferTarget) Expr {
 }
 
 func (b Builder) jumpDeferTarget(ptr Expr, targets []deferTarget) {
-	target := b.Load(ptr)
+	loaded := b.Load(ptr)
 	if b.Prog.target.GOARCH != "wasm" {
 		blocks := make([]BasicBlock, len(targets))
 		for i, target := range targets {
 			blocks[i] = target.block
 		}
-		b.IndirectJump(target, blocks)
+		b.IndirectJump(loaded, blocks)
 		return
 	}
 
-	selector := b.Convert(b.Prog.Uintptr(), target)
+	selector := b.Convert(b.Prog.Uintptr(), loaded)
 	invalid := b.Func.MakeBlock()
 	sw := b.impl.CreateSwitch(selector.impl, invalid.first, len(targets))
 	for _, target := range targets {
@@ -616,10 +616,11 @@ func (p Function) endDefer(b Builder) {
 		return
 	}
 	rundTargets := self.rundTargets
+	// A partially constructed defer state has no dispatch target yet.
+	// initDeferState seeds selector 0 with the terminal rethrow target.
 	if len(rundTargets) == 0 {
 		return
 	}
-
 	rethrowTarget := rundTargets[0]
 	rethrowBlk := rethrowTarget.block
 	procBlk := self.procBlk
