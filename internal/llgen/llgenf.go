@@ -25,6 +25,7 @@ import (
 
 	"github.com/goplus/llgo/internal/build"
 	"github.com/goplus/llgo/internal/goflags"
+	"github.com/goplus/llgo/internal/targets"
 )
 
 func GenFrom(fileOrPkg string) string {
@@ -102,6 +103,14 @@ func applyFlagsFile(conf *build.Config, flagsFile string) error {
 		default:
 			goFlags = append(goFlags, flag)
 		}
+	}
+	if next.Target != "" {
+		target, err := targets.NewDefaultResolver().Resolve(next.Target)
+		if err != nil {
+			return fmt.Errorf("apply %s: %w", flagsFile, err)
+		}
+		next.Goos = target.GOOS
+		next.Goarch = target.GOARCH
 	}
 	if err := goflags.ApplyBuildFlags(&next, goFlags); err != nil {
 		return fmt.Errorf("apply %s: %w", flagsFile, err)

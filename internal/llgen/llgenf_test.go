@@ -34,7 +34,7 @@ func TestApplyFlagsFile(t *testing.T) {
 	}
 
 	path := filepath.Join(dir, "flags.txt")
-	data := "GOOS=wasip1 GOARCH=wasm\n-target=wasm\n--gcflags 'all=-N -l'\n-ldflags=--s --w=false # keep DWARF\n"
+	data := "-target=wasm\n--gcflags 'all=-N -l'\n-ldflags=--s --w=false # keep DWARF\n"
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestApplyFlagsFile(t *testing.T) {
 	if err := applyFlagsFile(conf, path); err != nil {
 		t.Fatal(err)
 	}
-	if conf.Goos != "wasip1" || conf.Goarch != "wasm" || conf.Target != "wasm" {
+	if conf.Goos != "js" || conf.Goarch != "wasm" || conf.Target != "wasm" {
 		t.Fatalf("target config = %s/%s, target %q", conf.Goos, conf.Goarch, conf.Target)
 	}
 	if conf.OptLevel != optlevel.O0 {
@@ -58,6 +58,7 @@ func TestApplyFlagsFileErrorIncludesPath(t *testing.T) {
 		"-ldflags='unterminated\n",
 		"-ldflags=-w=invalid\n",
 		"-target\n",
+		"-target=does-not-exist\n",
 	}
 	for _, data := range tests {
 		t.Run(strings.TrimSpace(data), func(t *testing.T) {
