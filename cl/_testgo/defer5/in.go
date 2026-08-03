@@ -4,12 +4,12 @@ package main
 // CHECK-LABEL: define void @main.main(){{.*}} {
 func main() {
 	// CHECK: GetThreadDefer
-	// CHECK: blockaddress(@main.main, %_llgo_2)
-	// CHECK: blockaddress(@main.main, %_llgo_8)
+	// CHECK: switch i{{(32|64)}}
 	// CHECK: call void @"main.main$1"()
 	// CHECK: call void @"main.main$2"()
 	// CHECK: FreeDeferNode
 	// CHECK: FreeDeferNode
+	// CHECK: switch i{{(32|64)}}
 	defer println("A")
 	defer func() {
 		if e := recover(); e != nil {

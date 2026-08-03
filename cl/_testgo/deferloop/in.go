@@ -5,10 +5,11 @@ package main
 func main() {
 	// CHECK: GetThreadDefer
 	for i := 0; i < 3; i++ {
-		// CHECK: blockaddress(@main.main, %_llgo_6)
+		// CHECK: switch i{{(32|64)}}
 		defer println("loop", i)
 	}
+	// CHECK: switch i{{(32|64)}}
+	// CHECK: FreeDeferNode
 	// CHECK: PrintString
 	// CHECK: PrintInt
-	// CHECK: FreeDeferNode
 }
