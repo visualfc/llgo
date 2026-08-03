@@ -205,7 +205,7 @@ func TestRuntimeStatementLineInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
 	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", file)
 	cmd.Dir = repoRoot

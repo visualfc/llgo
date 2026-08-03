@@ -61,7 +61,7 @@ var (
 
 func largeArrayLLGo(t *testing.T) string {
 	t.Helper()
-	root := findStringConversionRepoRoot(t)
+	root := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", root)
 	largeArrayLLGoOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "llgo-large-array-bin")

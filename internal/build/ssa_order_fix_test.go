@@ -198,6 +198,10 @@ func f() {
 		moving := map[ssa.Instruction]struct{}{instrs[0]: {}}
 		assertOrder(t, moveInstrsAfter(instrs, moving, &ssa.Return{}), instrs)
 	})
+	t.Run("anchor-in-moving", func(t *testing.T) {
+		moving := map[ssa.Instruction]struct{}{instrs[1]: {}}
+		assertOrder(t, moveInstrsAfter(instrs, moving, instrs[1]), instrs)
+	})
 	t.Run("stable", func(t *testing.T) {
 		moving := map[ssa.Instruction]struct{}{
 			instrs[0]: {},

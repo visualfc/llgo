@@ -36,7 +36,7 @@ func main() {
 `
 
 func TestDWARFReturnOrderSemantics(t *testing.T) {
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	source := filepath.Join(t.TempDir(), "main.go")
 	if err := os.WriteFile(source, []byte(dwarfReturnOrderProbe), 0o600); err != nil {
 		t.Fatal(err)

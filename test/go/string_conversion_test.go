@@ -98,7 +98,7 @@ func TestStringConversionFromWideIntegers(t *testing.T) {
 	if err := os.WriteFile(file, []byte(stringConversionProbe), 0644); err != nil {
 		t.Fatal(err)
 	}
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	runStringConversionProbe(t, repoRoot, "go", "run", file)
 	t.Setenv("LLGO_ROOT", repoRoot)
 	runStringConversionProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)
@@ -110,7 +110,7 @@ func TestEmptyStringToByteRuneSlicesNonNil(t *testing.T) {
 	if err := os.WriteFile(file, []byte(emptyStringConversionProbe), 0644); err != nil {
 		t.Fatal(err)
 	}
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	runStringConversionProbe(t, repoRoot, "go", "run", file)
 	t.Setenv("LLGO_ROOT", repoRoot)
 	runStringConversionProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)
@@ -127,7 +127,7 @@ func runStringConversionProbe(t *testing.T, dir, name string, args ...string) {
 	}
 }
 
-func findStringConversionRepoRoot(t *testing.T) string {
+func findRepoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
 	if err != nil {

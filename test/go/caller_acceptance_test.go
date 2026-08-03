@@ -384,7 +384,7 @@ func runLLGoProbe(t *testing.T, dir string) (string, error) {
 
 func runLLGoProbeWithFlags(t *testing.T, dir string, flags ...string) (string, error) {
 	t.Helper()
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
 	args := append([]string{"run", "./cmd/llgo", "run", "-a"}, flags...)
 	cmd := exec.Command("go", append(args, filepath.Join(dir, "main.go"))...)
@@ -599,7 +599,7 @@ var (
 // its own module).
 func runLLGoInModule(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
 	acceptanceLLGoOnce.Do(func() {
 		tmp, err := os.MkdirTemp("", "llgo-acceptance-bin")

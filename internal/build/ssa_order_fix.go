@@ -21,9 +21,10 @@ import (
 // the first return value as a load before the call, which makes o appear unchanged
 // to the return value in our backend.
 //
-// This pass moves loads of local allocs used only for the final Return results
-// to after any intervening calls that use the same alloc pointer, matching the
-// behavior of the Go compiler for the stdlib cases we rely on (e.g. crypto/x509.ParseOID).
+// This pass moves loads of local allocs that feed a Return result and have no
+// intervening executable use before that Return to after any intervening calls
+// that use the same alloc pointer, matching the behavior of the Go compiler for
+// the stdlib cases we rely on (e.g. crypto/x509.ParseOID).
 func fixSSAOrder(pkg *ssa.Package, files []*ast.File) {
 	if pkg == nil {
 		return
@@ -421,10 +422,14 @@ func valueDependsOn(v, target ssa.Value, seen map[ssa.Value]struct{}) bool {
 }
 
 // moveInstrsAfter moves selected instructions as a stable group immediately
-// after anchor. It returns instrs unchanged when moving is empty or anchor is
-// nil or absent.
+// after anchor. The anchor must not be in moving; callers use an instruction
+// that remains in the block. It returns instrs unchanged when moving is empty,
+// anchor is nil or absent, or the precondition is violated.
 func moveInstrsAfter(instrs []ssa.Instruction, moving map[ssa.Instruction]struct{}, anchor ssa.Instruction) []ssa.Instruction {
 	if len(moving) == 0 || anchor == nil {
+		return instrs
+	}
+	if _, ok := moving[anchor]; ok {
 		return instrs
 	}
 	moved := make([]ssa.Instruction, 0, len(moving))
