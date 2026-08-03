@@ -257,6 +257,20 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 		return // not a source package, don't get syntax trees
 	}
 
+	// go list has already captured cmd/compile's authoritative diagnostics in
+	// this block. For example, an unexpected else stops gc before recovery AST
+	// errors are reported, so do not append the local parser/type follow-ons.
+	hasCompilerSyntaxError := false
+	for _, err := range lpkg.Errors {
+		if err.Kind != packages.ListError || !strings.HasPrefix(err.Msg, "# ") {
+			continue
+		}
+		if _, diagnostics, ok := strings.Cut(err.Msg, "\n"); ok && strings.Contains(diagnostics, ": syntax error: ") {
+			hasCompilerSyntaxError = true
+			break
+		}
+	}
+
 	appendError := func(err error) {
 		// Convert various error types into the one true Error.
 		var errs []packages.Error
@@ -275,6 +289,9 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 
 		case scanner.ErrorList:
 			// from parser
+			if hasCompilerSyntaxError {
+				return
+			}
 			for _, err := range err {
 				errs = append(errs, packages.Error{
 					Pos:  err.Pos.String(),
@@ -285,6 +302,9 @@ func loadPackageEx(dedup Deduper, ld *loader, lpkg *loaderPackage) {
 
 		case types.Error:
 			// from type checker
+			if hasCompilerSyntaxError {
+				return
+			}
 			lpkg.TypeErrors = append(lpkg.TypeErrors, err)
 			errs = append(errs, packages.Error{
 				Pos:  err.Fset.Position(err.Pos).String(),
