@@ -3023,10 +3023,6 @@ xfails:
     reason: llgo initializes independent imported packages in reverse source order
   - version: go1.26
     directive: rundir
-    case: fixedbugs/issue9608.go
-    reason: llgo does not eliminate unreachable references to a bodyless function before linking
-  - version: go1.26
-    directive: rundir
     case: fixedbugs/issue24693.go
     reason: llgo constructs cross-package itabs incorrectly for unexported interface methods
   - version: go1.26

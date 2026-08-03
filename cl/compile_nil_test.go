@@ -7,6 +7,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 
 	llssa "github.com/goplus/llgo/ssa"
@@ -154,6 +155,94 @@ func iface(v int) any {
 	makeInterface.X = untypedNil
 	if ret := ctx.compileInstrOrValue(b, makeInterface, false); ret.IsNil() {
 		t.Fatal("MakeInterface untyped nil lowered to an empty expression")
+	}
+}
+
+func TestFoldConstComparison(t *testing.T) {
+	a := gossa.NewConst(constant.MakeString("a"), types.Typ[types.String])
+	b := gossa.NewConst(constant.MakeString("b"), types.Typ[types.String])
+	for _, tt := range []struct {
+		op   token.Token
+		want bool
+	}{
+		{token.EQL, false},
+		{token.NEQ, true},
+		{token.LSS, true},
+		{token.LEQ, true},
+		{token.GTR, false},
+		{token.GEQ, false},
+	} {
+		if got, ok := foldConstComparison(&gossa.BinOp{Op: tt.op, X: a, Y: b}); !ok || got != tt.want {
+			t.Errorf("foldConstComparison(%s) = %v, %v; want %v, true", tt.op, got, ok, tt.want)
+		}
+	}
+	if _, ok := foldConstComparison(&gossa.BinOp{Op: token.ADD, X: a, Y: b}); ok {
+		t.Fatal("non-comparison operation was folded")
+	}
+	if _, ok := foldConstComparison(&gossa.BinOp{Op: token.EQL, X: &gossa.Parameter{}, Y: b}); ok {
+		t.Fatal("non-constant operand was folded")
+	}
+	if _, ok := foldConstComparison(&gossa.BinOp{
+		Op: token.EQL,
+		X:  gossa.NewConst(nil, types.NewPointer(types.Typ[types.Int])),
+		Y:  gossa.NewConst(nil, types.NewPointer(types.Typ[types.Int])),
+	}); ok {
+		t.Fatal("nil comparison was folded through go/constant")
+	}
+
+	for _, tt := range []struct {
+		name string
+		x, y constant.Value
+	}{
+		{"integer", constant.MakeInt64(0), constant.MakeInt64(1)},
+		{"string", constant.MakeString("a"), constant.MakeString("b")},
+		{"rune", constant.MakeInt64('☃'), constant.MakeInt64('☀')},
+		{"float", constant.MakeFloat64(0), constant.MakeFloat64(1)},
+		{
+			"complex",
+			constant.MakeFromLiteral("1i", token.IMAG, 0),
+			constant.MakeFromLiteral("-1i", token.IMAG, 0),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			typ := types.Typ[types.UntypedInt]
+			if tt.name == "string" {
+				typ = types.Typ[types.UntypedString]
+			}
+			if got, ok := foldConstComparison(&gossa.BinOp{
+				Op: token.EQL,
+				X:  gossa.NewConst(tt.x, typ),
+				Y:  gossa.NewConst(tt.y, typ),
+			}); !ok || got {
+				t.Fatalf("foldConstComparison(%s equality) = %v, %v; want false, true", tt.name, got, ok)
+			}
+		})
+	}
+}
+
+func TestCompileFoldsConstComparisons(t *testing.T) {
+	_, mod := mustCompileLLPkgFromSrc(t, `
+package foo
+
+func intEqual() bool     { return 0 == 1 }
+func stringEqual() bool  { return "a" == "b" }
+func runeEqual() bool    { return '☃' == '☀' }
+func floatEqual() bool   { return 0.0 == 1.0 }
+func complexEqual() bool { return 1i == -1i }
+func stringLess() bool   { return "a" < "b" }
+`)
+	ir := mod.String()
+	if strings.Contains(ir, "StringEqual") {
+		t.Fatalf("constant string comparison called the runtime helper:\n%s", ir)
+	}
+	for _, name := range []string{"intEqual", "stringEqual", "runeEqual", "floatEqual", "complexEqual"} {
+		fn := llvmFunction(t, ir, "foo."+name)
+		if !strings.Contains(fn, "ret i1 false") {
+			t.Fatalf("%s was not folded to false:\n%s", name, fn)
+		}
+	}
+	if fn := llvmFunction(t, ir, "foo.stringLess"); !strings.Contains(fn, "ret i1 true") {
+		t.Fatalf("stringLess was not folded to true:\n%s", fn)
 	}
 }
 
