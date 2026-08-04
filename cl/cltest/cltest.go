@@ -17,6 +17,7 @@
 package cltest
 
 import (
+	"archive/zip"
 	"bytes"
 	"errors"
 	"fmt"
@@ -96,7 +97,7 @@ func WithOutputCheck(enabled bool) RunOption {
 	}
 }
 
-// WithIRCheck enables or disables source-embedded IR checks in RunAndTestFromDir.
+// WithIRCheck enables or disables IR golden checks in RunAndTestFromDir.
 func WithIRCheck(enabled bool) RunOption {
 	return func(opts *runOptions) {
 		opts.checkIR = enabled
@@ -127,8 +128,9 @@ func FilterEmulatorOutput(output string) string {
 	return output
 }
 
-// RunAndTestFromDir executes tests under relDir and validates runtime output
-// goldens and source-embedded IR checks when present.
+// RunAndTestFromDir executes tests under relDir and validates both runtime
+// output and the pre-transform package IR snapshot when the corresponding
+// golden files exist.
 func RunAndTestFromDir(t *testing.T, sel, relDir string, ignore []string, opts ...RunOption) {
 	rootDir, err := os.Getwd()
 	if err != nil {
@@ -202,6 +204,42 @@ func BuildAndCheckSymbolsFromDir(t *testing.T, sel, relDir string, names []strin
 	}
 }
 
+// *.ll => *.lla
+func decodeLinkFile(llFile string) (data []byte, err error) {
+	zipFile := llFile + "a"
+	zipf, err := zip.OpenReader(zipFile)
+	if err != nil {
+		return
+	}
+	defer zipf.Close()
+	f, err := zipf.Open(filepath.Base(llFile))
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	data, err = io.ReadAll(f)
+	if err == nil {
+		os.WriteFile(llFile, data, 0644)
+	}
+	return
+}
+
+func Pkg(t *testing.T, pkgPath, outFile string) {
+	b, err := os.ReadFile(outFile)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			t.Fatal("ReadFile failed:", err)
+		}
+		if b, err = decodeLinkFile(outFile); err != nil {
+			t.Fatal("decodeLinkFile failed:", err)
+		}
+	}
+	expected := string(b)
+	if v := llgen.GenFrom(pkgPath); v != expected {
+		t.Fatalf("\n==> got:\n%s\n==> expected:\n%s\n", v, expected)
+	}
+}
+
 func testFrom(t *testing.T, pkgDir, sel string) {
 	t.Helper()
 	if sel != "" && !strings.Contains(pkgDir, sel) {
@@ -211,13 +249,22 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 	if err != nil {
 		t.Fatal("LoadSpec failed:", err)
 	}
+	if spec.Mode == littest.ModeSkip {
+		return
+	}
 	var v string
 	withFuncInfoDisabled(func() {
 		v = llgen.GenFrom(pkgDir)
 	})
-	if err := littest.Check(spec, v); err != nil {
-		_ = os.WriteFile(pkgDir+"/result.txt", []byte(v), 0644)
-		t.Fatal(err)
+	if spec.Mode == littest.ModeFileCheck {
+		if err := littest.Check(spec, v); err != nil {
+			_ = os.WriteFile(pkgDir+"/result.txt", []byte(v), 0644)
+			t.Fatal(err)
+		}
+		return
+	}
+	if test.Diff(t, pkgDir+"/result.txt", []byte(v), []byte(spec.Text)) {
+		t.Fatal("llgen.GenFrom: unexpected result")
 	}
 }
 
@@ -238,8 +285,8 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 		}
 	}
 	if !checkOutput {
-		// IR-only mode: when expect.txt is not checked, use the source-embedded
-		// FileCheck directives for this package.
+		// IR-only mode: when expect.txt is not checked, use llgen.GenFrom via
+		// testFrom to compare this package's generated IR against out.ll.
 		if opts.checkIR {
 			testFrom(t, pkgDir, sel)
 		}
@@ -657,7 +704,8 @@ func symbolTable(bin string) (string, error) {
 func readIRSpec(pkgDir string) (littest.Spec, bool, error) {
 	spec, err := littest.LoadSpec(pkgDir)
 	if err != nil {
-		if errors.Is(err, littest.ErrSpecNotFound) {
+		var pathErr *os.PathError
+		if errors.Is(err, os.ErrNotExist) && errors.As(err, &pathErr) && filepath.Clean(pathErr.Path) == filepath.Join(pkgDir, "out.ll") {
 			return littest.Spec{}, false, nil
 		}
 		return littest.Spec{}, false, err
@@ -754,7 +802,7 @@ func CompileIREx(t *testing.T, src any, fname string, dbg bool, configure func(l
 func TestCompileEx(t *testing.T, src any, fname, expected string, dbg bool) {
 	t.Helper()
 	v := CompileIREx(t, src, fname, dbg, nil)
-	if llssa.StripModuleTarget(v) != expected && expected != ";" { // expected == ";" skips this inline comparison
+	if llssa.StripModuleTarget(v) != expected && expected != ";" { // expected == ";" means skipping out.ll
 		t.Fatalf("\n==> got:\n%s\n==> expected:\n%s\n", v, expected)
 	}
 }

@@ -61,22 +61,3 @@ func TestReadGoldenReturnsVersionedReadError(t *testing.T) {
 		t.Fatal("readGolden() succeeded for a versioned golden directory")
 	}
 }
-
-func TestReadIRSpecRequiresSourceMarker(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "in.go")
-	if err := os.WriteFile(path, []byte("package main\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok, err := readIRSpec(dir); err != nil || ok {
-		t.Fatalf("readIRSpec(unmarked) = (_, %v, %v), want (_, false, nil)", ok, err)
-	}
-
-	if err := os.WriteFile(path, []byte("// LITTEST\npackage main\n// CHECK: define\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	spec, ok, err := readIRSpec(dir)
-	if err != nil || !ok || spec.Path != path {
-		t.Fatalf("readIRSpec(marked) = (%q, %v, %v), want (%q, true, nil)", spec.Path, ok, err, path)
-	}
-}

@@ -31,6 +31,7 @@ import (
 	"github.com/goplus/llgo/internal/build"
 	"github.com/goplus/llgo/internal/buildenv"
 	"github.com/goplus/llgo/internal/cabi"
+	"github.com/goplus/llgo/internal/llgen"
 	"github.com/goplus/llgo/internal/lto"
 	llvmenv "github.com/goplus/llgo/xtool/env/llvm"
 )
@@ -562,6 +563,16 @@ func TestRunAndTestFromTestrt(t *testing.T) {
 
 func TestRunAndTestFromTestdata(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testdata", nil)
+}
+
+func TestCgofullGeneratesC2func(t *testing.T) {
+	ir := llgen.GenFrom("./_testgo/cgofull")
+	if !strings.Contains(ir, "_C2func_test_structs") {
+		t.Fatal("missing _C2func_test_structs in cgofull IR")
+	}
+	if !strings.Contains(ir, "cliteErrno") {
+		t.Fatal("missing cliteErrno call in cgofull IR")
+	}
 }
 
 func TestGoPkgMath(t *testing.T) {

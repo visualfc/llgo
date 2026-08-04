@@ -22,8 +22,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/goplus/llgo/internal/llgen"
 )
 
 const recoverThenDeferredPanicProbe = `package main
@@ -104,7 +102,12 @@ func llgoIRFromProbe(t *testing.T, name, src string) string {
 		t.Fatal(err)
 	}
 
-	return llgen.GenFrom(filepath.ToSlash(dir))
+	runGoCmd(t, root, "run", "./chore/llgen", filepath.ToSlash(dir))
+	data, err := os.ReadFile(filepath.Join(dir, "llgo_autogen.ll"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 func assertNoInstructionsAfterUnreachable(t *testing.T, ir string) {

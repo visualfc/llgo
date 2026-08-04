@@ -18,6 +18,7 @@ package littest
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -27,28 +28,71 @@ import (
 	"github.com/goplus/llgo/internal/filecheck"
 )
 
+type Mode int
+
+const (
+	ModeSkip Mode = iota
+	ModeLiteral
+	ModeFileCheck
+)
+
 type Spec struct {
 	Path string
+	Text string
+	Mode Mode
 }
 
 const Marker = "LITTEST"
 
-// ErrSpecNotFound reports that a package has no source file marked LITTEST.
-var ErrSpecNotFound = errors.New("IR check spec not found")
-
 func LoadSpec(pkgDir string) (Spec, error) {
-	marked, ok, err := FindMarkedSourceFile(pkgDir)
+	if spec, ok, err := loadSourceSpec(pkgDir); err != nil {
+		return Spec{}, err
+	} else if ok {
+		return spec, nil
+	}
+
+	path := filepath.Join(pkgDir, "out.ll")
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return Spec{}, err
 	}
-	if !ok {
-		return Spec{}, fmt.Errorf("%w: %s", ErrSpecNotFound, pkgDir)
+	if bytes.Equal(data, []byte{';'}) {
+		return Spec{Path: path, Mode: ModeSkip}, nil
 	}
-	return Spec{Path: marked}, nil
+	return Spec{Path: path, Text: string(data), Mode: ModeLiteral}, nil
 }
 
 func Check(spec Spec, actual string) error {
-	return filecheck.Match(spec.Path, actual)
+	switch spec.Mode {
+	case ModeSkip:
+		return nil
+	case ModeFileCheck:
+		return filecheck.Match(spec.Path, actual)
+	case ModeLiteral:
+		if actual != spec.Text {
+			return fmt.Errorf("%s: literal LLVM IR mismatch", spec.Path)
+		}
+		return nil
+	default:
+		return errors.New("unknown lit spec mode")
+	}
+}
+
+func loadSourceSpec(pkgDir string) (Spec, bool, error) {
+	marked, ok, err := FindMarkedSourceFile(pkgDir)
+	if err != nil {
+		return Spec{}, false, err
+	}
+	if !ok {
+		return Spec{}, false, nil
+	}
+	if marked == "" {
+		return Spec{}, false, nil
+	}
+	return Spec{
+		Path: marked,
+		Mode: ModeFileCheck,
+	}, true, nil
 }
 
 func FindMarkedSourceFile(dir string) (string, bool, error) {

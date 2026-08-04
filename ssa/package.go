@@ -278,7 +278,7 @@ func is32Bits(arch string) bool {
 // (and with it every module built in it), the target machine and the
 // target data. The Program and everything created from it must not be
 // used afterwards. In-process drivers that compile many packages
-// sequentially (IR checks and the cltest run harness) call this between
+// sequentially (llgen goldens, the cltest run harness) call this between
 // compiles; without it each compile's C++-side memory lives until the
 // process exits.
 func (p Program) Dispose() {
