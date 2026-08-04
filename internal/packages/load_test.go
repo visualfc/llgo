@@ -229,6 +229,34 @@ func TestEmbedDiagnosticHelperBoundaries(t *testing.T) {
 }
 
 func TestLoadExNormalizesFrontendDiagnostics(t *testing.T) {
+	t.Run("compiler syntax errors are authoritative", func(t *testing.T) {
+		dir := t.TempDir()
+		writeLoadTestFile(t, filepath.Join(dir, "go.mod"), "module example.com/syntaxerror\ngo 1.24\n")
+		writeLoadTestFile(t, filepath.Join(dir, "load.go"), `package syntaxerror
+func f() {
+	if missing {}
+	else {}
+}
+`)
+		cfg := loadTestConfig(dir)
+		cfg.BuildFlags = []string{"-gcflags=all=-e"}
+		cfg.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+			return parser.ParseFile(fset, filename, src, parser.AllErrors|parser.ParseComments)
+		}
+		pkgs, err := LoadExWithGoVersion(nil, nil, cfg, "go1.24", ".")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pkgs) != 1 {
+			t.Fatalf("load returned %d packages, want 1", len(pkgs))
+		}
+		pkg := pkgs[0]
+		assertPackageError(t, pkg, "syntax error:")
+		for _, secondary := range []string{"expected statement", "found 'EOF'", "undefined: missing"} {
+			assertPackageErrorAbsent(t, pkg, secondary)
+		}
+	})
+
 	t.Run("embed local var", func(t *testing.T) {
 		dir := t.TempDir()
 		writeLoadTestFile(t, filepath.Join(dir, "go.mod"), "module example.com/embedlocal\ngo 1.24\n")
