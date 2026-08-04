@@ -1,4 +1,8 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call {{.*}}sync{{.*}}Once{{.*}}Do{{.*}}
+// CHECK-DAG: define void @"main.f$1"(ptr {{((nest|swiftself) )?}}%{{.*}}){{.*}} {
 
 import (
 	"sync"

@@ -1,4 +1,9 @@
+// LITTEST
 package main
+
+// CHECK-DAG: define void @main.FuncWithAllTypeStructParam({{.*}}){{.*}} !dbg !{{[0-9]+}}
+// CHECK-DAG: !DICompileUnit({{.*}}producer: "LLGo"{{.*}}emissionKind: FullDebug{{.*}})
+// CHECK-DAG: !DILocalVariable(name: "s"{{.*}}arg: 1{{.*}})
 
 import "errors"
 

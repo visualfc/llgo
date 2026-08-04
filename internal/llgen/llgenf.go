@@ -19,7 +19,6 @@ package llgen
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -29,21 +28,20 @@ import (
 )
 
 func GenFrom(fileOrPkg string) string {
-	pkg, err := genFrom(fileOrPkg, 0)
+	pkg, err := genFrom(fileOrPkg)
 	check(err)
 	out := pkg.LPkg.String()
-	// Release the compile's LLVM context: golden suites call GenFrom for
+	// Release the compile's LLVM context: IR-check suites call GenFrom for
 	// every test dir inside one process, and undisposed contexts
 	// accumulate C++-side memory for the whole run.
 	pkg.LPkg.Prog.Dispose()
 	return out
 }
 
-func genFrom(pkgPath string, abiMode build.AbiMode) (build.Package, error) {
+func genFrom(pkgPath string) (build.Package, error) {
 	conf := &build.Config{
-		Mode:    build.ModeGen,
-		AbiMode: abiMode,
-		GenLL:   true,
+		Mode:  build.ModeGen,
+		GenLL: true,
 	}
 	if err := applyFlagsFile(conf, filepath.Join(pkgPath, "flags.txt")); err != nil {
 		return nil, err
@@ -53,12 +51,6 @@ func genFrom(pkgPath string, abiMode build.AbiMode) (build.Package, error) {
 		return nil, err
 	}
 	return pkgs[0], nil
-}
-
-func DoFile(fileOrPkg, outFile string) {
-	ret := GenFrom(fileOrPkg)
-	err := os.WriteFile(outFile, []byte(ret), 0644)
-	check(err)
 }
 
 func readFlags(flagsFile string) ([]string, error) {
@@ -117,47 +109,4 @@ func applyFlagsFile(conf *build.Config, flagsFile string) error {
 	}
 	*conf = next
 	return nil
-}
-
-func SmartDoFile(pkgPath string) {
-	SmartDoFileEx(pkgPath, 0)
-}
-
-func SmartDoFileEx(pkgPath string, abiMode build.AbiMode) {
-	pkg, err := genFrom(pkgPath, abiMode)
-	check(err)
-
-	const autgenFile = "llgo_autogen.ll"
-	dir, _ := filepath.Split(pkg.GoFiles[0])
-	absDir, _ := filepath.Abs(dir)
-	absDir = filepath.ToSlash(absDir)
-	fname := autgenFile
-	if inCompilerDir(absDir) {
-		fname = "out.ll"
-	}
-	outFile := dir + fname
-
-	b, err := os.ReadFile(outFile)
-	if err == nil && len(b) == 1 && b[0] == ';' {
-		return // skip to gen
-	}
-
-	if err = os.WriteFile(outFile, []byte(pkg.LPkg.String()), 0644); err != nil {
-		panic(err)
-	}
-	if false && fname == autgenFile {
-		genZip(absDir, "llgo_autogen.lla", autgenFile)
-	}
-}
-
-func genZip(dir string, outFile, inFile string) {
-	cmd := exec.Command("zip", outFile, inFile)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-}
-
-func inCompilerDir(dir string) bool {
-	return strings.Contains(dir, "/cl/_test")
 }

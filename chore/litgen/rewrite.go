@@ -120,9 +120,9 @@ func genIR(target string) (ret string, err error) {
 		if r := recover(); r != nil {
 			switch v := r.(type) {
 			case error:
-				err = fmt.Errorf("llgen failed for %s: %w", target, v)
+				err = fmt.Errorf("IR generation failed for %s: %w", target, v)
 			case string:
-				err = fmt.Errorf("llgen failed for %s: %s", target, v)
+				err = fmt.Errorf("IR generation failed for %s: %s", target, v)
 			default:
 				_, _ = os.Stderr.Write(debug.Stack())
 				panic(r)

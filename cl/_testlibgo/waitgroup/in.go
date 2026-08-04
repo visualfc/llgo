@@ -1,4 +1,10 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call {{.*}}sync{{.*}}WaitGroup{{.*}}Add{{.*}}
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.NewProc"({{.*}})
+// CHECK-DAG: call {{.*}}sync{{.*}}WaitGroup{{.*}}Done{{.*}}
+// CHECK-DAG: call {{.*}}sync{{.*}}WaitGroup{{.*}}Wait{{.*}}
 
 import (
 	"sync"

@@ -1,4 +1,9 @@
+// LITTEST
 package main
+
+// CHECK-DAG: @main.VarName = global %"{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, {{(i32|i64)}} 12 }
+// CHECK-DAG: @main.VarPlain = global %"{{.*}}/runtime/internal/runtime.String" zeroinitializer
+// CHECK-DAG: call void @"{{.*}}/cl/_testgo/rewrite/dep.PrintVar"()
 
 import (
 	"fmt"

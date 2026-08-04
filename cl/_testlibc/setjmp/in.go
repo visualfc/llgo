@@ -1,4 +1,8 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call i32 @{{.*}}sigsetjmp(ptr %{{.*}}, i32 0)
+// CHECK-DAG: call void @{{.*}}siglongjmp(ptr %{{.*}}, i32 1)
 
 import (
 	"github.com/goplus/lib/c"

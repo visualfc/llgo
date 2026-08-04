@@ -1,4 +1,9 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call {{.*}}sync{{.*}}Map{{.*}}Store{{.*}}
+// CHECK-DAG: call {{.*}}sync{{.*}}Map{{.*}}Load{{.*}}
+// CHECK-DAG: call {{.*}}sync{{.*}}Map{{.*}}Range{{.*}}
 
 import (
 	"fmt"

@@ -1,4 +1,8 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call float @cabsf({{.*}})
+// CHECK-DAG: call void @main.f({{.*}}, ptr @main.f)
 
 import (
 	"github.com/goplus/lib/c"

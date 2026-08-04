@@ -1,4 +1,9 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call i1 @reflect.Value.CanConvert({{.*}})
+// CHECK-DAG: call %reflect.Value @reflect.Value.Convert({{.*}})
+// CHECK-DAG: call void @reflect.Value.Set({{.*}})
 
 import (
 	"bytes"

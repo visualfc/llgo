@@ -1,4 +1,10 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %{{.*}})
+// CHECK-DAG: define void @"main.complexOrder$1"(ptr {{((nest|swiftself) )?}}%{{.*}}, %"{{.*}}/runtime/internal/runtime.String" %{{.*}}){{.*}} {
+// CHECK-DAG: call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.SliceAppend"({{.*}})
 
 func main() {
 	for _, label := range complexOrder() {

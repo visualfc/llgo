@@ -1,4 +1,10 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call ptr @"{{.*}}/runtime/internal/runtime.NewChan"({{.*}})
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.NewProc"({{.*}})
+// CHECK-DAG: call i1 @"{{.*}}/runtime/internal/runtime.ChanRecv"({{.*}})
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.ChanClose"({{.*}})
 
 func main() {
 	ch := make(chan int, 10)

@@ -1,4 +1,9 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
+// CHECK-DAG: call i32 @{{.*}}setjmp(ptr %{{.*}}{{.*}})
+// CHECK-DAG: call i32 (ptr, ...) @printf({{.*}})
 
 import "github.com/goplus/lib/c"
 

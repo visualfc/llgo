@@ -1,4 +1,9 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call ptr @"{{.*}}/runtime/internal/runtime.NewChan"({{.*}})
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.NewProc"({{.*}})
+// CHECK-DAG: call { {{(i32|i64)}}, i1 } @"{{.*}}/runtime/internal/runtime.Select"({{.*}})
 
 func main() {
 	send()

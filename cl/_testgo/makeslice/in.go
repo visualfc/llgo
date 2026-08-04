@@ -1,4 +1,8 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.MakeSlice"({{.*}})
+// CHECK-DAG: call %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/runtime/internal/runtime.Recover"()
 
 func main() {
 }

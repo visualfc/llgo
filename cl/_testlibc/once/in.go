@@ -1,4 +1,8 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call i32 @pthread_once({{.*}})
+// CHECK-DAG: define void @"main.f$1"(){{.*}} {
 
 import (
 	"github.com/goplus/lib/c"

@@ -1,4 +1,10 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call ptr @"{{.*}}/runtime/internal/runtime.NewChan"({{.*}})
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.NewProc"({{.*}})
+// CHECK-DAG: call void @runtime.Goexit()
+// CHECK-DAG: call %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/runtime/internal/runtime.Recover"()
 
 import (
 	"runtime"

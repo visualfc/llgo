@@ -1,4 +1,10 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
+// CHECK-DAG: define void @"main.testDeferClosureValue$1"(ptr {{((nest|swiftself) )?}}%{{.*}}){{.*}} {
+// CHECK-DAG: define void @"main.testDeferStructClosure$1"(ptr {{((nest|swiftself) )?}}%{{.*}}, %"{{.*}}/runtime/internal/runtime.String" %{{.*}}){{.*}} {
+// CHECK-DAG: call void %{{.*}}(ptr {{((nest|swiftself) )?}}%{{.*}})
 
 // Test deferred closure and method-value lowering.
 

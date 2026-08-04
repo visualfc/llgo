@@ -455,7 +455,7 @@ func Build(inv Invocation) ([]Package, error) {
 	prog := llssa.NewProgram(target)
 	prog.DisableBoundsChecks(conf.DisableBoundsChecks)
 	if conf.Mode != ModeGen {
-		// ModeGen callers (llgen and the golden suites) read LPkg.String()
+		// ModeGen callers (IR generation and IR-check suites) read LPkg.String()
 		// after Do returns and dispose the program themselves; every other
 		// mode's outputs are files or a spawned process, so the compile's
 		// LLVM context can be released when Do finishes. In-process

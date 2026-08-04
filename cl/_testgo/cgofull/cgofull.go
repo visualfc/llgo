@@ -1,4 +1,9 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call {{.*}}_C2func_test_structs{{.*}}
+// CHECK-DAG: call {{.*}}cliteErrno{{.*}}
+// CHECK-DAG: define i32 @go_callback(i32 %{{.*}}){{.*}} {
 
 /*
 #cgo windows,!amd64 CFLAGS: -D_WIN32

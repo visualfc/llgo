@@ -1,4 +1,8 @@
+// LITTEST
 package main
+
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"({{.*}}i1 true{{.*}})
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"({{.*}}i1 false{{.*}})
 
 func main() {
 }
