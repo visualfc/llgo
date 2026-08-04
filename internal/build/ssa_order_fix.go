@@ -440,13 +440,13 @@ func valueDependsOn(v, target ssa.Value, seen map[ssa.Value]struct{}) bool {
 // moveInstrsAfter moves selected instructions as a stable group immediately
 // after anchor. The anchor must not be in moving; callers use an instruction
 // that remains in the block. It returns instrs unchanged when moving is empty,
-// anchor is nil or absent, or the precondition is violated.
+// or anchor is nil or absent.
 func moveInstrsAfter(instrs []ssa.Instruction, moving map[ssa.Instruction]struct{}, anchor ssa.Instruction) []ssa.Instruction {
 	if len(moving) == 0 || anchor == nil {
 		return instrs
 	}
 	if _, ok := moving[anchor]; ok {
-		return instrs
+		panic("moveInstrsAfter: anchor is in moving set")
 	}
 	moved := make([]ssa.Instruction, 0, len(moving))
 	remaining := make([]ssa.Instruction, 0, len(instrs))
