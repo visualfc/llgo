@@ -162,6 +162,34 @@ func TestFixSSAOrderCryptoX509ParseOID(t *testing.T) {
 	checkReturnLoadAfterMutation(t, pkg.Func("ParseOID"), "unmarshalOIDText")
 }
 
+func TestDebugRefMoveHelpers(t *testing.T) {
+	movedValue := &ssa.BinOp{}
+	instrs := []ssa.Instruction{
+		movedValue,
+		&ssa.DebugRef{X: movedValue},
+		&ssa.Return{Results: []ssa.Value{movedValue}},
+	}
+
+	moved := movedValuesForIndices(instrs, map[int]struct{}{
+		-1:          {},
+		0:           {},
+		2:           {},
+		len(instrs): {},
+	})
+	if len(moved) != 1 {
+		t.Fatalf("moved values = %d, want 1", len(moved))
+	}
+	if _, ok := moved[movedValue]; !ok {
+		t.Fatal("moved values do not contain the selected SSA value")
+	}
+
+	move := map[int]struct{}{0: {}}
+	includeDebugRefsForMovedValues(instrs, move, moved, -1, len(instrs)+1)
+	if _, ok := move[1]; !ok {
+		t.Fatal("DebugRef for the moved value was not included")
+	}
+}
+
 func TestMoveInstrsAfter(t *testing.T) {
 	const src = `package p
 func f() {
