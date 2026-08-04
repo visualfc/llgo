@@ -171,6 +171,48 @@ func TestDIGlobalIgnoresStorageLessFrontendVariable(t *testing.T) {
 	builder.DIGlobal(pyVarExpr(Nil, "attribute"), "module.attribute", token.Position{})
 }
 
+func TestDeferInitBuilderInheritsDebugLocation(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "defer.go", `package p
+func f() {}
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	typesPkg, err := (&types.Config{}).Check("example.com/p", fset, []*ast.File{file}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prog := NewProgram(&Target{OptLevel: optlevel.O0})
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	pkg := prog.NewPackage("p", "example.com/p")
+	pkg.InitDebug("p", "example.com/p", fset)
+	decl := file.Decls[0].(*ast.FuncDecl)
+	object := typesPkg.Scope().Lookup("f").(*types.Func)
+	fn := pkg.NewFunc("example.com/p.f", object.Type().(*types.Signature), InGo)
+	builder := fn.MakeBody(1)
+	defer builder.Dispose()
+	bodyPos := fset.Position(decl.Body.Lbrace)
+	builder.DebugFunction(fn, object.Scope(), fset.Position(object.Pos()), bodyPos)
+	builder.DISetCurrentDebugLocation(fn, bodyPos)
+	builder.Return()
+
+	deferBuilder, next := fn.deferInitBuilder(builder)
+	defer deferBuilder.Dispose()
+	loc := deferBuilder.impl.GetCurrentDebugLocation()
+	if loc.Line != uint(bodyPos.Line) || loc.Col != uint(bodyPos.Column) || loc.Scope != fn.diFunc.ll {
+		t.Fatalf("defer debug location = %+v, want %s:%d:%d", loc, bodyPos.Filename, bodyPos.Line, bodyPos.Column)
+	}
+	deferBuilder.Jump(next)
+
+	pkg.FinalizeDebug()
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("defer debug metadata is invalid: %v\n%s", err, pkg.Module().String())
+	}
+}
+
 func newDebugRuntimePackage() *types.Package {
 	pkg := types.NewPackage(PkgRuntime, "runtime")
 	unsafePointer := types.Typ[types.UnsafePointer]

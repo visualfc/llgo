@@ -69,7 +69,7 @@ func TestNewExpressionInitializesAllocatedValue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	runStringConversionProbe(t, repoRoot, "go", "run", file)
 	t.Setenv("LLGO_ROOT", repoRoot)
 	runStringConversionProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)

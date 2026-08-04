@@ -21,9 +21,10 @@ import (
 // the first return value as a load before the call, which makes o appear unchanged
 // to the return value in our backend.
 //
-// This pass moves loads of local allocs used only for the final Return results
-// to after any intervening calls that use the same alloc pointer, matching the
-// behavior of the Go compiler for the stdlib cases we rely on (e.g. crypto/x509.ParseOID).
+// This pass moves loads of local allocs that feed a Return result and have no
+// intervening executable use before that Return to after any intervening calls
+// that use the same alloc pointer, matching the behavior of the Go compiler for
+// the stdlib cases we rely on (e.g. crypto/x509.ParseOID).
 func fixSSAOrder(pkg *ssa.Package, files []*ast.File) {
 	if pkg == nil {
 		return
@@ -186,7 +187,11 @@ func moveAssignDepsAfterRecv(b *ssa.BasicBlock, roots []ssa.Value, recv ssa.Valu
 	if len(move) == 0 {
 		return false
 	}
-	if moveWouldBreakSSA(b.Instrs, move, recvIdx) {
+	// Metadata uses must follow the definitions they describe rather than
+	// blocking an otherwise safe source-order repair.
+	moved := movedValuesForIndices(b.Instrs, move)
+	includeDebugRefsForMovedValues(b.Instrs, move, moved, 0, recvIdx)
+	if moveWouldBreakSSA(b.Instrs, move, recvIdx, moved) {
 		return false
 	}
 	deps := make([]ssa.Instruction, 0, len(move))
@@ -205,13 +210,47 @@ func moveAssignDepsAfterRecv(b *ssa.BasicBlock, roots []ssa.Value, recv ssa.Valu
 	return true
 }
 
-func moveWouldBreakSSA(instrs []ssa.Instruction, move map[int]struct{}, recvIdx int) bool {
+func movedValuesForIndices(instrs []ssa.Instruction, move map[int]struct{}) map[ssa.Value]struct{} {
 	moved := make(map[ssa.Value]struct{}, len(move))
 	for i := range move {
+		if i < 0 || i >= len(instrs) {
+			continue
+		}
 		if v, ok := instrs[i].(ssa.Value); ok && v != nil {
 			moved[v] = struct{}{}
 		}
 	}
+	return moved
+}
+
+// includeDebugRefsForMovedValues adds metadata-only uses of moved values to
+// move. The moved value set is supplied by the caller so the same set can be
+// reused by the subsequent SSA safety check without rescanning move.
+func includeDebugRefsForMovedValues(instrs []ssa.Instruction, move map[int]struct{}, moved map[ssa.Value]struct{}, from, through int) {
+	if from < 0 {
+		from = 0
+	}
+	if through > len(instrs) {
+		through = len(instrs)
+	}
+	for i := from; i < through; i++ {
+		if _, moving := move[i]; moving {
+			continue
+		}
+		ref, ok := instrs[i].(*ssa.DebugRef)
+		if !ok {
+			continue
+		}
+		for v := range moved {
+			if instrUsesValue(ref, v) {
+				move[i] = struct{}{}
+				break
+			}
+		}
+	}
+}
+
+func moveWouldBreakSSA(instrs []ssa.Instruction, move map[int]struct{}, recvIdx int, moved map[ssa.Value]struct{}) bool {
 	for i := 0; i <= recvIdx && i < len(instrs); i++ {
 		if _, moving := move[i]; moving {
 			continue
@@ -302,11 +341,20 @@ func fixSSAOrderBlock(b *ssa.BasicBlock) {
 			continue
 		}
 
-		// If the loaded value is used by any instruction between its current
-		// position and the return (excluding return itself), moving it may place
-		// its definition after one of those uses and break SSA form.
+		// DebugRefs are metadata-only and move with the value they describe. Any
+		// executable use before Return still makes reordering unsafe.
+		movingIndices := map[int]struct{}{loadIdx: {}}
+		moved := movedValuesForIndices(b.Instrs, movingIndices)
+		includeDebugRefsForMovedValues(b.Instrs, movingIndices, moved, loadIdx+1, retIdx)
+		moving := make(map[ssa.Instruction]struct{}, len(movingIndices))
+		for i := range movingIndices {
+			moving[b.Instrs[i]] = struct{}{}
+		}
 		usedBeforeReturn := false
 		for i := loadIdx + 1; i < retIdx; i++ {
+			if _, moving := movingIndices[i]; moving {
+				continue
+			}
 			if instrUsesValue(b.Instrs[i], u) {
 				usedBeforeReturn = true
 				break
@@ -316,9 +364,7 @@ func fixSSAOrderBlock(b *ssa.BasicBlock) {
 			continue
 		}
 
-		// Move the load right after the last call (but before Return).
-		b.Instrs = moveInstr(b.Instrs, loadIdx, lastCallIdx+1)
-		// Adjust retIdx for subsequent moves in this block.
+		b.Instrs = moveInstrsAfter(b.Instrs, moving, b.Instrs[lastCallIdx])
 		retIdx = indexOfInstr(b.Instrs, ret)
 	}
 }
@@ -391,41 +437,34 @@ func valueDependsOn(v, target ssa.Value, seen map[ssa.Value]struct{}) bool {
 	return false
 }
 
-// moveInstr moves instrs[from] to position to (like inserting before to),
-// preserving relative order of other elements.
-func moveInstr(instrs []ssa.Instruction, from, to int) []ssa.Instruction {
-	if from < 0 || from >= len(instrs) {
+// moveInstrsAfter moves selected instructions as a stable group immediately
+// after anchor. The anchor must not be in moving; callers use an instruction
+// that remains in the block. It returns instrs unchanged when moving is empty,
+// or anchor is nil or absent.
+func moveInstrsAfter(instrs []ssa.Instruction, moving map[ssa.Instruction]struct{}, anchor ssa.Instruction) []ssa.Instruction {
+	if len(moving) == 0 || anchor == nil {
 		return instrs
 	}
-	if to < 0 {
-		to = 0
+	if _, ok := moving[anchor]; ok {
+		panic("moveInstrsAfter: anchor is in moving set")
 	}
-	if to > len(instrs) {
-		to = len(instrs)
+	moved := make([]ssa.Instruction, 0, len(moving))
+	remaining := make([]ssa.Instruction, 0, len(instrs))
+	for _, instr := range instrs {
+		if _, ok := moving[instr]; ok {
+			moved = append(moved, instr)
+			continue
+		}
+		remaining = append(remaining, instr)
 	}
-	if from == to || from+1 == to {
-		return instrs
+	for i, instr := range remaining {
+		if instr == anchor {
+			ret := make([]ssa.Instruction, 0, len(instrs))
+			ret = append(ret, remaining[:i+1]...)
+			ret = append(ret, moved...)
+			ret = append(ret, remaining[i+1:]...)
+			return ret
+		}
 	}
-
-	ins := instrs[from]
-	// Remove.
-	copy(instrs[from:], instrs[from+1:])
-	instrs = instrs[:len(instrs)-1]
-
-	// Recompute insertion index after removal.
-	if to > from {
-		to--
-	}
-	if to < 0 {
-		to = 0
-	}
-	if to > len(instrs) {
-		to = len(instrs)
-	}
-
-	// Insert.
-	instrs = append(instrs, nil)
-	copy(instrs[to+1:], instrs[to:])
-	instrs[to] = ins
 	return instrs
 }

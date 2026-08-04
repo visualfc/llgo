@@ -31,6 +31,15 @@ func compileWithRewrites(t *testing.T, src string, rewrites map[string]string) s
 }
 
 func compileWithRewritesTarget(t *testing.T, src string, rewrites map[string]string, target *llssa.Target) string {
+	return compileWithRewritesModeTarget(t, src, rewrites,
+		ssa.SanityCheckFunctions|ssa.InstantiateGenerics, target)
+}
+
+func compileWithRewritesMode(t *testing.T, src string, rewrites map[string]string, mode ssa.BuilderMode) string {
+	return compileWithRewritesModeTarget(t, src, rewrites, mode, nil)
+}
+
+func compileWithRewritesModeTarget(t *testing.T, src string, rewrites map[string]string, mode ssa.BuilderMode, target *llssa.Target) string {
 	t.Helper()
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "rewrite.go", src, parser.ParseComments)
@@ -38,7 +47,6 @@ func compileWithRewritesTarget(t *testing.T, src string, rewrites map[string]str
 		t.Fatalf("parse failed: %v", err)
 	}
 	importer := gpackages.NewImporter(fset)
-	mode := ssa.SanityCheckFunctions | ssa.InstantiateGenerics
 	pkg, _, err := ssautil.BuildPackage(&types.Config{Importer: importer}, fset,
 		types.NewPackage(file.Name.Name, file.Name.Name), []*ast.File{file}, mode)
 	if err != nil {
@@ -231,6 +239,75 @@ func Use() callbackType { return CallbackTypes[1] }
 	assertNoStoreToGlobal(t, ir, "@staticinit.CallbackTypes")
 	if strings.Contains(ir, "runtime.AllocZ") {
 		t.Fatalf("static slice initializer still allocates at runtime:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalSliceLiteralInitWithDebugRefs(t *testing.T) {
+	const src = `package staticinit
+
+var CallbackTypes = []string{"BeforeCreate", "AfterCreate"}
+
+func Use() string { return CallbackTypes[1] }
+`
+	ir := compileWithRewritesMode(t, src, nil,
+		ssa.SanityCheckFunctions|ssa.InstantiateGenerics|ssa.GlobalDebug)
+	for _, want := range []string{
+		`@"staticinit.CallbackTypes$data" = global [2 x %"github.com/goplus/llgo/runtime/internal/runtime.String"]`,
+		`@staticinit.CallbackTypes = global %"github.com/goplus/llgo/runtime/internal/runtime.Slice" { ptr @"staticinit.CallbackTypes$data", i64 2, i64 2 }`,
+		`c"BeforeCreate"`,
+		`c"AfterCreate"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static slice initializer %q with debug refs:\n%s", want, ir)
+		}
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.CallbackTypes")
+	if strings.Contains(ir, "runtime.AllocZ") {
+		t.Fatalf("static slice initializer allocates at runtime with debug refs:\n%s", ir)
+	}
+}
+
+func TestStaticSliceInitRejectsExecutableReferrers(t *testing.T) {
+	const src = `package foo
+
+var Values []int
+
+func useSlice([]int) {}
+func usePointer(*int) {}
+
+func sliceUser() {
+	backing := [2]int{1, 2}
+	values := backing[:]
+	Values = values
+	useSlice(values)
+}
+
+func elementUser() {
+	var backing [2]int
+	elem := &backing[0]
+	*elem = 1
+	usePointer(elem)
+	Values = backing[:]
+}
+`
+	ssapkg := buildSSAPackage(t, src)
+	global := ssapkg.Members["Values"].(*ssa.Global)
+	for _, name := range []string{"sliceUser", "elementUser"} {
+		fn := ssapkg.Func(name)
+		var globalStore *ssa.Store
+		for _, block := range fn.Blocks {
+			for _, instr := range block.Instrs {
+				if store, ok := instr.(*ssa.Store); ok && store.Addr == global {
+					globalStore = store
+				}
+			}
+		}
+		if globalStore == nil {
+			t.Fatalf("%s: store to Values not found", name)
+		}
+		if _, ok := staticSliceInitOf(globalStore); ok {
+			t.Fatalf("%s: static slice init accepted an executable referrer", name)
+		}
 	}
 }
 

@@ -106,7 +106,7 @@ func TestFloatToIntegerConversionSemantics(t *testing.T) {
 	if err := os.WriteFile(file, []byte(floatIntConversionProbe), 0644); err != nil {
 		t.Fatal(err)
 	}
-	repoRoot := findStringConversionRepoRoot(t)
+	repoRoot := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
 	runStringConversionProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)
 }

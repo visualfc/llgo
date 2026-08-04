@@ -382,6 +382,12 @@ func (p Program) EnableLTOPluginMarkers(enable bool) {
 	p.enableLTOPluginMarker = enable
 }
 
+// SetDebugInfoOptimized records whether DWARF should mark generated code as
+// optimized. It never selects compiler passes.
+func (p Program) SetDebugInfoOptimized(enable bool) {
+	p.debugInfoOptimized = enable
+}
+
 func (p Program) SetNoInterfaceMethod(fullName string) {
 	p.noInterface[fullName] = none{}
 }
