@@ -170,6 +170,9 @@ func TestTypeConversionRequirementShapes(t *testing.T) {
 			if got := cvt.needsTypeConversion(test.typ, query); got != test.want {
 				t.Fatalf("needsTypeConversion(%v) = %v, want %v", test.typ, got, test.want)
 			}
+			if _, got := newGoTypes().cvtType(test.typ); got != test.want {
+				t.Fatalf("cvtType(%v) changed = %v, want %v", test.typ, got, test.want)
+			}
 		})
 	}
 }
