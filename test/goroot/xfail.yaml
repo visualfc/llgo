@@ -1885,48 +1885,12 @@ xfails:
     reason: llgo parser recovery emits additional malformed-statement diagnostics
   - version: go1.26
     directive: errorcheck
-    case: syntax/semi4.go
-    reason: llgo parser recovery emits additional semicolon and brace diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue13273.go
-    reason: llgo parser and type checker emit additional channel-direction diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/semi3.go
-    reason: llgo parser recovery emits additional semicolon and end-of-file diagnostics
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue13266.go
     reason: llgo parser uses a different malformed-package-clause diagnostic
   - version: go1.26
     directive: errorcheck
-    case: fixedbugs/issue19667.go
-    reason: llgo parser recovery emits additional malformed-call diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/semi2.go
-    reason: llgo parser recovery emits additional semicolon and brace diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue13248.go
-    reason: llgo parser recovery emits additional malformed-expression diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue17328.go
-    reason: llgo parser recovery emits additional end-of-file diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/semi1.go
-    reason: llgo parser recovery emits additional semicolon and end-of-file diagnostics
-  - version: go1.26
-    directive: errorcheck
     case: fixedbugs/issue20789.go
     reason: llgo parser does not emit the expected malformed-name diagnostic
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/initvar.go
-    reason: llgo parser recovery emits additional invalid-initializer diagnostics
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/bug050.go
@@ -1935,54 +1899,6 @@ xfails:
     directive: errorcheck
     case: bombad.go
     reason: llgo parser recovery emits additional byte-order-mark diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/bug435.go
-    reason: llgo parser recovery emits additional end-of-file diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue14006.go
-    reason: llgo parser recovery emits additional malformed-label diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue22581.go
-    reason: llgo parser recovery emits additional malformed-control-clause diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/ddd.go
-    reason: llgo parser recovery emits additional malformed-selector diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/bug121.go
-    reason: llgo parser recovery emits additional malformed-declaration diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/bug228.go
-    reason: llgo parser emits an additional malformed-parameter diagnostic
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/chan1.go
-    reason: llgo parser recovery emits additional malformed-channel diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue18747.go
-    reason: llgo parser recovery emits additional undefined-name diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue11610.go
-    reason: llgo parser reports additional illegal-character diagnostics
-  - version: go1.26
-    directive: errorcheck
-    case: fixedbugs/issue22164.go
-    reason: llgo parser recovery emits additional diagnostics for a malformed argument list
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/vareq1.go
-    reason: llgo parser recovery emits an additional diagnostic after the expected syntax error
-  - version: go1.26
-    directive: errorcheck
-    case: syntax/vareq.go
-    reason: llgo parser recovery emits additional diagnostics after the expected syntax error
   - platform: darwin/arm64
     directive: run
     case: inline_caller.go
@@ -2015,11 +1931,23 @@ xfails:
     directive: run
     case: fixedbugs/issue31546.go
     reason: reflection exposes the initializer value of a blank struct field instead of zero on linux/amd64
-  - platform: darwin/arm64
+  - version: go1.24
+    platform: darwin/arm64
     directive: run
     case: fixedbugs/issue72063.go
     reason: generic Y-combinator build exits successfully without producing a binary on darwin/arm64
-  - platform: linux/amd64
+  - version: go1.25
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue72063.go
+    reason: generic Y-combinator build exits successfully without producing a binary on darwin/arm64
+  - version: go1.24
+    platform: linux/amd64
+    directive: run
+    case: fixedbugs/issue72063.go
+    reason: generic Y-combinator build exits successfully without producing a binary on linux/amd64
+  - version: go1.25
+    platform: linux/amd64
     directive: run
     case: fixedbugs/issue72063.go
     reason: generic Y-combinator build exits successfully without producing a binary on linux/amd64
@@ -2278,7 +2206,6 @@ xfails:
     directive: run
     case: stackobj3.go
     reason: go1.25 goroot run failure on linux/amd64
-
   - version: go1.24
     platform: linux/amd64
     directive: run
