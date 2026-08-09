@@ -440,22 +440,12 @@ not_applicable:
     directive: run
     case: maymorestack.go
     reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
-  - version: go1.25
-    platform: linux/amd64
-    directive: run
-    case: maymorestack.go
-    reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
   - version: go1.26
     platform: linux/amd64
     directive: run
     case: maymorestack.go
     reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
   - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: maymorestack.go
-    reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
-  - version: go1.25
     platform: darwin/arm64
     directive: run
     case: maymorestack.go
