@@ -612,10 +612,11 @@ func Build(inv Invocation) ([]Package, error) {
 	output := conf.OutFile != ""
 	ctx := &context{conf: cfg, progSSA: progSSA, prog: prog, dedup: dedup,
 		patches: patches, callerTracking: cl.NewCallerTracking(),
-		built: make(map[string]none), initial: initial, mode: mode,
+		initial: initial, mode: mode,
 		fingerprinting:  make(map[string]bool),
 		pkgs:            map[*packages.Package]Package{},
 		pkgByID:         map[string]Package{},
+		cacheManager:    newCacheManager(),
 		output:          output,
 		passOpt:         passOpt,
 		buildConf:       conf,
@@ -626,6 +627,10 @@ func Build(inv Invocation) ([]Package, error) {
 	}
 	defer ctx.closePackageMetas()
 	defer ctx.closePackageArchiveBuffers()
+	// Isolated backends use independent LLVM contexts. Keep Programs needed by
+	// whole-program consumers alive through deadcode analysis and strong ABI type
+	// override emission, then release them on every normal, error, or panic path.
+	defer ctx.disposeBackendPrograms()
 
 	// default runtime globals must be registered before packages are built
 	addGlobalString(conf, "runtime.defaultGOROOT="+runtime.GOROOT(), nil)
@@ -743,6 +748,7 @@ func Build(inv Invocation) ([]Package, error) {
 			}
 		}
 	}
+	ctx.disposeBackendPrograms()
 
 	if mode == ModeTest && ctx.testFail {
 		mockable.Exit(1)
@@ -870,7 +876,6 @@ type context struct {
 	dedup          packages.Deduper
 	patches        cl.Patches
 	callerTracking *cl.CallerTracking
-	built          map[string]none
 	fingerprinting map[string]bool
 	cacheDisabled  map[string]none
 	initial        []*packages.Package
@@ -895,16 +900,62 @@ type context struct {
 	llvmVersion  string
 
 	// go list derived file lists (SFiles, etc.)
-	sfilesCache map[string][]string // pkg.ID -> absolute .s/.S file paths
+	sfilesCache  map[string][]string // pkg.ID -> absolute .s/.S file paths
+	sfilesFrozen bool
 
 	// plan9asm package policy parsed from env.
-	plan9asmOnce sync.Once
-	plan9asmMode plan9asmPkgsEnvMode
-	plan9asmPkgs map[string]bool
+	plan9asmOnce  sync.Once
+	plan9asmReady bool
+	plan9asmMode  plan9asmPkgsEnvMode
+	plan9asmPkgs  map[string]bool
 
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
 	pclnExternal *pclnmap.Data
+}
+
+// backendAbiTypes returns Go-owned type identities from isolated Programs in
+// stable linked-package order. The Programs remain alive while the entry
+// module recreates target-local declarations, but no LLVM value crosses a
+// Context boundary.
+func (c *context) backendAbiTypes(pkgs []Package) []llssa.AbiTypeInfo {
+	seen := make(map[llssa.Program]none)
+	var infos []llssa.AbiTypeInfo
+	for _, pkg := range pkgs {
+		if pkg == nil || pkg.LPkg == nil {
+			continue
+		}
+		prog := pkg.LPkg.Prog
+		if prog == nil || prog == c.prog {
+			continue
+		}
+		if _, ok := seen[prog]; ok {
+			continue
+		}
+		seen[prog] = none{}
+		infos = append(infos, prog.AbiTypes()...)
+	}
+	return infos
+}
+
+func (c *context) disposeBackendPrograms() {
+	programs := make(map[llssa.Program]none)
+	// Clear every package reference before destroying any LLVM context so no
+	// later observer can retain a dangling cross-context module.
+	for _, pkg := range c.pkgs {
+		if pkg == nil || pkg.LPkg == nil {
+			continue
+		}
+		prog := pkg.LPkg.Prog
+		if prog == nil || prog == c.prog {
+			continue
+		}
+		programs[prog] = none{}
+		pkg.LPkg = nil
+	}
+	for prog := range programs {
+		prog.Dispose()
+	}
 }
 
 // closePackageMetas releases metadata mappings owned by this build. Metadata
@@ -1033,53 +1084,35 @@ func normalizeToArchive(ctx *context, aPkg *aPackage, verbose bool) error {
 }
 
 func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, error) {
-	// Split packages into runtime tree vs others so we can defer runtime build.
-	var runtimePkgs []*packageBuildTask
-	var normalPkgs []*packageBuildTask
+	// Split packages into runtime tree vs others so runtime preparation remains
+	// deferred until ordinary package results show that it is needed.
+	var runtimeTasks []*packageBuildTask
+	var normalTasks []*packageBuildTask
 	for _, p := range pkgs {
 		task := newPackageBuildTask(p)
 		if task.isRuntime() {
-			runtimePkgs = append(runtimePkgs, task)
+			runtimeTasks = append(runtimeTasks, task)
 		} else {
-			normalPkgs = append(normalPkgs, task)
+			normalTasks = append(normalTasks, task)
 		}
 	}
-
-	var needRuntime, needPyInit bool
+	// Resolve the lazy Plan 9 policy before workers start.
+	_ = ctx.plan9asmEnabled("")
 
 	// Build non-runtime packages first, so we know whether runtime is actually needed.
-	for _, task := range normalPkgs {
-		result, err := buildOnePackage(ctx, task, verbose)
-		if err != nil {
-			return nil, err
-		}
-		needRuntime = needRuntime || result.needRuntime
-		needPyInit = needPyInit || result.needPyInit
+	if err := buildPackageGroup(ctx, normalTasks, verbose); err != nil {
+		return nil, err
 	}
+	needRuntime, needPyInit := packageRuntimeNeeds(normalTasks)
 
 	// Only build runtime packages when required (or host build with empty Target).
 	if needRuntime || needPyInit || ctx.buildConf.Target == "" {
-		for _, task := range runtimePkgs {
-			if _, err := buildOnePackage(ctx, task, verbose); err != nil {
-				return nil, err
-			}
+		if err := buildPackageGroup(ctx, runtimeTasks, verbose); err != nil {
+			return nil, err
 		}
 	}
 
 	return pkgs, nil
-}
-
-// buildOnePackage is the serial package pipeline. Its explicit stages are the
-// contract used by later package workers; this commit deliberately preserves
-// serial LLVM execution.
-func buildOnePackage(ctx *context, task *packageBuildTask, verbose bool) (packageBuildResult, error) {
-	if err := prePackageBuild(ctx, task, verbose); err != nil || task.skip {
-		return packageBuildResultFor(task), err
-	}
-	if err := executePackageBuild(ctx, task, verbose); err != nil {
-		return packageBuildResultFor(task), err
-	}
-	return finalizePackageBuild(ctx, task, verbose)
 }
 
 // prePackageBuild performs classification, fingerprinting, and cache
@@ -1087,11 +1120,6 @@ func buildOnePackage(ctx *context, task *packageBuildTask, verbose bool) (packag
 func prePackageBuild(ctx *context, task *packageBuildTask, verbose bool) error {
 	aPkg := task.pkg
 	pkg := aPkg.Package
-	if _, ok := ctx.built[pkg.ID]; ok {
-		task.skip = true
-		return nil
-	}
-	ctx.built[pkg.ID] = none{}
 	if task.isDeclOnly() {
 		pkg.ExportFile = ""
 		task.skip = true
@@ -1125,7 +1153,7 @@ func executePackageBuild(ctx *context, task *packageBuildTask, verbose bool) err
 	if err := buildPkg(ctx, aPkg, verbose); err != nil {
 		return err
 	}
-	if task.needsRuntimeSignals() {
+	if task.needsRuntimeSignals() && aPkg.LPkg != nil {
 		aPkg.setNeedRuntimeOrPyInit(aPkg.LPkg.NeedRuntime, aPkg.LPkg.NeedPyInit)
 	}
 	return nil
@@ -1133,13 +1161,13 @@ func executePackageBuild(ctx *context, task *packageBuildTask, verbose bool) err
 
 // finalizePackageBuild publishes the archive and cache metadata. Cache hits
 // already carry both and therefore require no publication.
-func finalizePackageBuild(ctx *context, task *packageBuildTask, verbose bool) (packageBuildResult, error) {
+func finalizePackageBuild(ctx *context, task *packageBuildTask, verbose bool) error {
 	aPkg := task.pkg
 	if aPkg.CacheHit {
-		return packageBuildResultFor(task), nil
+		return nil
 	}
 	if err := normalizeToArchive(ctx, aPkg, verbose); err != nil {
-		return packageBuildResultFor(task), err
+		return err
 	}
 	if task.kind == cl.PkgLinkExtern {
 		appendExternalLinkArgs(ctx, aPkg, task.kindParam)
@@ -1147,7 +1175,7 @@ func finalizePackageBuild(ctx *context, task *packageBuildTask, verbose bool) (p
 	if err := ctx.saveToCache(aPkg); err != nil && verbose {
 		fmt.Fprintf(os.Stderr, "warning: failed to save cache for %s: %v\n", aPkg.PkgPath, err)
 	}
-	return packageBuildResultFor(task), nil
+	return nil
 }
 
 func appendExternalLinkArgs(ctx *context, aPkg *aPackage, spec string) {
@@ -1159,7 +1187,7 @@ func appendExternalLinkArgs(ctx *context, aPkg *aPackage, spec string) {
 	for _, alt := range altParts {
 		alt = strings.TrimSpace(alt)
 		if strings.ContainsRune(alt, '$') {
-			expdArgs = append(expdArgs, xenv.ExpandEnvToArgs(alt)...)
+			expdArgs = append(expdArgs, xenv.ExpandEnvToArgsWith(alt, ctx.commands.dir, ctx.commands.environ)...)
 			atomic.AddInt32(&ctx.nLibdir, 1)
 		} else {
 			fields := strings.Fields(alt)
@@ -1457,6 +1485,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		methodByIndex: methodByIndex,
 		methodByName:  methodByName,
 		abiSymbols:    linkedModuleGlobals(linkedOrder),
+		abiTypes:      ctx.backendAbiTypes(linkedOrder),
 		funcInfo:      funcInfo,
 		pcLineInfo:    pcLineInfo,
 	})
@@ -2721,7 +2750,7 @@ func clFiles(ctx *context, files string, pkg *packages.Package, procFile func(li
 	args := make([]string, 0, 16)
 	if strings.HasPrefix(files, "$") { // has cflags
 		if pos := strings.IndexByte(files, ':'); pos > 0 {
-			cflags := xenv.ExpandEnvToArgs(files[:pos])
+			cflags := xenv.ExpandEnvToArgsWith(files[:pos], ctx.commands.dir, ctx.commands.environ)
 			files = files[pos+1:]
 			args = append(args, cflags...)
 		}
