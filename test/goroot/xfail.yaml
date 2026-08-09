@@ -1851,11 +1851,25 @@ flakes:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the 1m run timeout on linux/amd64
+  - version: go1.24
+    platform: linux/amd64
+    directive: run
+    case: fixedbugs/issue27695.go
+    reason: concurrent GC can either preserve reflect-call results or expose incomplete result scanning on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
     case: fixedbugs/issue27695.go
     reason: concurrent GC can either preserve reflect-call results or expose incomplete result scanning on linux/amd64
+  - version: go1.26
+    platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue27695.go
+    reason: concurrent GC can either preserve reflect-call results or expose incomplete result scanning on darwin/arm64
+  - platform: linux/amd64
+    directive: run
+    case: typeparam/chans.go
+    reason: select over the unbuffered channel can either complete or miss the final receive and time out on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: run
