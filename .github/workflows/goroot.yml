@@ -6,9 +6,12 @@ on:
     # 02:00 Asia/Shanghai (18:00 UTC on the previous day).
     - cron: "0 18 * * *"
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   goroot:
@@ -99,7 +102,7 @@ jobs:
           skipped=$(grep -Ec -- '--- SKIP: TestGoRootRunCases/' "$log" || true)
           passed=$((observed - failed - skipped))
           if [[ -z "$selected" ]]; then
-            selected=$observed
+            selected='?'
           fi
 
           report_id="${platform//\//-}-${GO_VERSION}-${SHARD_INDEX}"
@@ -120,7 +123,7 @@ jobs:
             echo '|---:|---:|---:|---:|---:|'
             echo "| $selected | $observed | $passed | $failed | $skipped |"
             echo
-            echo '_Passed means the runner classification succeeded; expected xfails and not-applicable cases are not reported as failures._'
+            echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
             echo
             echo '**Failed case paths**'
             if [[ "$failed" -eq 0 ]]; then
@@ -155,6 +158,8 @@ jobs:
           merge-multiple: true
 
       - name: Publish GOROOT run summary
+        env:
+          GOROOT_RESULT: ${{ needs.goroot.result }}
         run: |
           summary_tsv="$RUNNER_TEMP/goroot-summary.tsv"
           failure_tsv="$RUNNER_TEMP/goroot-failures.tsv"
@@ -174,15 +179,20 @@ jobs:
               -v expected="$expected_shards" '
                 $1 == platform && (version == "" || $2 == version) {
                   shards++
-                  selected += $4
+                  if ($4 ~ /^[0-9]+$/) {
+                    selected += $4
+                  } else {
+                    selected_unknown = 1
+                  }
                   observed += $5
                   passed += $6
                   failed += $7
                   skipped += $8
                 }
                 END {
-                  printf "| %s | %d/%d | %d | %d | %d | %d | %d |\n", \
-                    label, shards, expected, selected, observed, passed, failed, skipped
+                  selected_text = selected_unknown ? "?" : selected
+                  printf "| %s | %d/%d | %s | %d | %d | %d | %d |\n", \
+                    label, shards, expected, selected_text, observed, passed, failed, skipped
                 }
               ' "$summary_tsv"
           }
@@ -201,7 +211,7 @@ jobs:
             write_row 'Linux · Go 1.26.5' linux/amd64 1.26.5 4
             write_row '**Linux total**' linux/amd64 '' 8
             echo
-            echo '_Passed means the runner classification succeeded; expected xfails and not-applicable cases are not reported as failures._'
+            echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
             echo
             echo '### Failed case paths'
             if [[ -s "$failure_tsv" ]]; then
@@ -216,5 +226,9 @@ jobs:
 
           if [[ "$report_count" -ne 16 ]]; then
             echo "error: expected 16 shard reports, got $report_count" >&2
+            exit 1
+          fi
+          if [[ "$GOROOT_RESULT" != success ]]; then
+            echo "error: one or more GOROOT shards did not succeed" >&2
             exit 1
           fi
