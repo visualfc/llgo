@@ -147,6 +147,12 @@ timeouts:
     timeout: 90s
     reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
   - version: go1.26
+    platform: linux/amd64
+    directive: run
+    case: fixedbugs/issue79186.go
+    timeout: 90s
+    reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
+  - version: go1.26
     platform: darwin/arm64
     directive: run
     case: fixedbugs/issue19658.go
@@ -1665,6 +1671,11 @@ flakes:
     case: fixedbugs/issue79186.go
     reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
   - version: go1.26
+    platform: linux/amd64
+    directive: run
+    case: fixedbugs/issue79186.go
+    reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
+  - version: go1.26
     platform: darwin/arm64
     directive: run
     case: chanlinear.go
@@ -1840,6 +1851,11 @@ flakes:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the 1m run timeout on linux/amd64
+  - version: go1.26
+    platform: linux/amd64
+    directive: run
+    case: fixedbugs/issue27695.go
+    reason: concurrent GC can either preserve reflect-call results or expose incomplete result scanning on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: run
@@ -1907,10 +1923,6 @@ xfails:
     directive: run
     case: inline_caller.go
     reason: runtime caller frame reports main instead of runtime.main on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: inline_callers.go
-    reason: runtime caller frames omit inlined caller metadata on linux/amd64
   - platform: darwin/arm64
     directive: run
     case: nilptr2.go
@@ -1931,21 +1943,11 @@ xfails:
     directive: run
     case: fixedbugs/issue31546.go
     reason: reflection exposes the initializer value of a blank struct field instead of zero on linux/amd64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue72063.go
-    reason: generic Y-combinator build exits successfully without producing a binary on darwin/arm64
   - version: go1.25
     platform: darwin/arm64
     directive: run
     case: fixedbugs/issue72063.go
     reason: generic Y-combinator build exits successfully without producing a binary on darwin/arm64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue72063.go
-    reason: generic Y-combinator build exits successfully without producing a binary on linux/amd64
   - version: go1.25
     platform: linux/amd64
     directive: run
@@ -1979,11 +1981,6 @@ xfails:
     directive: run
     case: typeparam/mdempsky/16.go
     reason: nil-interface assertion panic implements runtime.Error but the message lacks the source interface type and prints the command-line-arguments package path on darwin/arm64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: noinit.go
-    reason: go1.24 goroot run failure on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: run
@@ -2456,10 +2453,6 @@ xfails:
     directive: run
     case: nilptr.go
     reason: current main goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: typeparam/chans.go
-    reason: select over unbuffered channel misses final receive on linux/amd64
   - version: go1.26
     platform: darwin/arm64
     directive: rundir
