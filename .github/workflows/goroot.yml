@@ -2,15 +2,20 @@ name: GOROOT
 
 on:
   workflow_dispatch:
+  schedule:
+    # 02:00 Asia/Shanghai (18:00 UTC on the previous day).
+    - cron: "0 18 * * *"
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   goroot:
     name: GOROOT (${{ matrix.lane }}, ${{ matrix.os }}, Go ${{ matrix.go-version }}, shard ${{ matrix.shard-index }}/4)
-    continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: 180
     env:
       GOPROXY: https://proxy.golang.org,direct
@@ -57,8 +62,173 @@ jobs:
 
       - name: Run GOROOT runner
         run: |
+          min_swap_free_mib=512
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            # macOS manages swap dynamically; a low instantaneous free value
+            # does not mean the runner cannot make forward progress.
+            min_swap_free_mib=0
+          fi
+          set +e
           bash dev/test_goroot.sh -- \
             -directive-mode ci \
+            -min-swap-free-mib "$min_swap_free_mib" \
             -progress 60s \
             -shard-index "${{ matrix.shard-index }}" \
-            -shard-total "4"
+            -shard-total "4" 2>&1 | tee "$RUNNER_TEMP/goroot.log"
+          runner_status=${PIPESTATUS[0]}
+          set -e
+          exit "$runner_status"
+
+      - name: Summarize GOROOT shard
+        if: always()
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+          GO_VERSION: ${{ matrix.go-version }}
+          SHARD_INDEX: ${{ matrix.shard-index }}
+        run: |
+          log="$RUNNER_TEMP/goroot.log"
+          report_dir="$RUNNER_TEMP/goroot-report"
+          mkdir -p "$report_dir"
+          touch "$log"
+
+          platform=linux/amd64
+          if [[ "$MATRIX_OS" == "macos-latest" ]]; then
+            platform=darwin/arm64
+          fi
+
+          selected=$(sed -nE 's/.* shard=[^ ]+ cases=([0-9]+) directive_mode=.*/\1/p' "$log" | tail -1)
+          observed=$(grep -Ec -- '--- (PASS|FAIL|SKIP): TestGoRootRunCases/' "$log" || true)
+          failed=$(grep -Ec -- '--- FAIL: TestGoRootRunCases/' "$log" || true)
+          skipped=$(grep -Ec -- '--- SKIP: TestGoRootRunCases/' "$log" || true)
+          passed=$((observed - failed - skipped))
+          if [[ -z "$selected" ]]; then
+            selected='?'
+          fi
+
+          report_id="${platform//\//-}-${GO_VERSION}-${SHARD_INDEX}"
+          printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$platform" "$GO_VERSION" "$SHARD_INDEX" "$selected" \
+            "$observed" "$passed" "$failed" "$skipped" \
+            >"$report_dir/summary-$report_id.tsv"
+          sed -nE 's|.*--- FAIL: TestGoRootRunCases/([^ ]+).*|\1|p' "$log" |
+            while IFS= read -r case_path; do
+              printf '%s\t%s\t%s\t%s\n' \
+                "$platform" "$GO_VERSION" "$SHARD_INDEX" "$case_path"
+            done >"$report_dir/failures-$report_id.tsv"
+
+          {
+            echo "### GOROOT $platform · Go $GO_VERSION · shard $SHARD_INDEX/4"
+            echo
+            echo '| Selected | Observed | Passed | Failed | Skipped |'
+            echo '|---:|---:|---:|---:|---:|'
+            echo "| $selected | $observed | $passed | $failed | $skipped |"
+            echo
+            echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
+            echo
+            echo '**Failed case paths**'
+            if [[ "$failed" -eq 0 ]]; then
+              echo
+              echo '- none'
+            else
+              # shellcheck disable=SC2016 # The backreference is expanded by sed.
+              sed -nE 's|.*--- FAIL: TestGoRootRunCases/([^ ]+).*|- `\1`|p' "$log"
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload GOROOT shard statistics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: goroot-stat-${{ matrix.os }}-${{ matrix.go-version }}-${{ matrix.shard-index }}
+          path: ${{ runner.temp }}/goroot-report
+          if-no-files-found: error
+          retention-days: 7
+
+  goroot-summary:
+    name: GOROOT summary
+    if: always()
+    needs: goroot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download shard statistics
+        uses: actions/download-artifact@v8
+        with:
+          pattern: goroot-stat-*
+          path: reports
+          merge-multiple: true
+
+      - name: Publish GOROOT run summary
+        env:
+          GOROOT_RESULT: ${{ needs.goroot.result }}
+        run: |
+          summary_tsv="$RUNNER_TEMP/goroot-summary.tsv"
+          failure_tsv="$RUNNER_TEMP/goroot-failures.tsv"
+          find reports -type f -name 'summary-*.tsv' -exec cat {} + >"$summary_tsv"
+          find reports -type f -name 'failures-*.tsv' -exec cat {} + >"$failure_tsv"
+
+          report_count=$(wc -l <"$summary_tsv" | tr -d ' ')
+          write_row() {
+            local label=$1
+            local platform=$2
+            local version=${3:-}
+            local expected_shards=$4
+            awk -F '\t' \
+              -v label="$label" \
+              -v platform="$platform" \
+              -v version="$version" \
+              -v expected="$expected_shards" '
+                $1 == platform && (version == "" || $2 == version) {
+                  shards++
+                  if ($4 ~ /^[0-9]+$/) {
+                    selected += $4
+                  } else {
+                    selected_unknown = 1
+                  }
+                  observed += $5
+                  passed += $6
+                  failed += $7
+                  skipped += $8
+                }
+                END {
+                  selected_text = selected_unknown ? "?" : selected
+                  printf "| %s | %d/%d | %s | %d | %d | %d | %d |\n", \
+                    label, shards, expected, selected_text, observed, passed, failed, skipped
+                }
+              ' "$summary_tsv"
+          }
+
+          {
+            echo '## GOROOT run summary'
+            echo
+            echo "Received $report_count/16 shard reports."
+            echo
+            echo '| Platform / toolchain | Shards | Selected | Observed | Passed | Failed | Skipped |'
+            echo '|---|---:|---:|---:|---:|---:|---:|'
+            write_row 'Darwin · Go 1.24.11' darwin/arm64 1.24.11 4
+            write_row 'Darwin · Go 1.26.5' darwin/arm64 1.26.5 4
+            write_row '**Darwin total**' darwin/arm64 '' 8
+            write_row 'Linux · Go 1.24.11' linux/amd64 1.24.11 4
+            write_row 'Linux · Go 1.26.5' linux/amd64 1.26.5 4
+            write_row '**Linux total**' linux/amd64 '' 8
+            echo
+            echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
+            echo
+            echo '### Failed case paths'
+            if [[ -s "$failure_tsv" ]]; then
+              sort -u "$failure_tsv" |
+                while IFS=$'\t' read -r platform version shard case_path; do
+                  echo "- \`$case_path\` — $platform, Go $version, shard $shard/4"
+                done
+            else
+              echo '- none'
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          if [[ "$report_count" -ne 16 ]]; then
+            echo "error: expected 16 shard reports, got $report_count" >&2
+            exit 1
+          fi
+          if [[ "$GOROOT_RESULT" != success ]]; then
+            echo "error: one or more GOROOT shards did not succeed" >&2
+            exit 1
+          fi
