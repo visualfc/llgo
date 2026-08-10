@@ -266,6 +266,78 @@ func FuncForPC(pc uintptr) uintptr { return 0 }
 	}
 }
 
+func TestRuntimeCallerFuncSetKeepsRecoverObservableCallees(t *testing.T) {
+	ssapkg, _ := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
+import "runtime"
+
+func inspect() {
+	recover()
+	runtime.Caller(0)
+}
+
+func staticOwner() {
+	defer inspect()
+	staticLeaf()
+}
+
+func staticLeaf() { staticNested() }
+func staticNested() {}
+
+func dynamicOwner(fn func()) {
+	defer inspect()
+	fn()
+}
+
+func dynamicEntry() { dynamicOwner(dynamicLeaf) }
+func dynamicLeaf() {}
+func unrelated() {}
+`)
+	set := runtimeCallerFuncSet(NewCallerTracking(), ssapkg)
+	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "dynamicOwner", "dynamicEntry", "dynamicLeaf"} {
+		if !set[ssapkg.Func(name)] {
+			t.Fatalf("%s must keep a frame because a recovering defer can inspect its panic pc", name)
+		}
+	}
+	if set[ssapkg.Func("unrelated")] {
+		t.Fatal("an unrelated function must not be pinned by recover-visible frame tracking")
+	}
+}
+
+func TestCompileRuntimeCallerPanicPCLineMetadata(t *testing.T) {
+	ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
+import "runtime"
+
+func inspect() {
+	recover()
+	runtime.Caller(0)
+}
+
+func owner() {
+	defer inspect()
+	panicLeaf()
+}
+
+func panicLeaf() {
+	var p *int
+//line panic_site.go:123
+	_ = *p
+}
+`)
+	prog := newLLSSAProgForTarget(t, &llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	pkg, err := NewPackage(prog, ssapkg, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir := pkg.Module().String()
+	for _, want := range []string{`!"example.com/foo.panicLeaf"`, `!"panic_site.go"`, `i32 123`} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("recover-visible nil dereference is missing panic-site metadata %q:\n%s", want, ir)
+		}
+	}
+}
+
 func TestRuntimeCallerAnalysisEdgeCases(t *testing.T) {
 	callerCaches := NewCallerTracking()
 	if fnUsesRuntimeCaller(callerCaches, nil) {

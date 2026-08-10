@@ -49,6 +49,8 @@ func main() {
 	checkClosureIndirectCaller()
 	checkAdjacentRuntimeStack()
 	checkRecoveredDebugStackBounds()
+	checkRecoveredStaticPanicLine()
+	checkRecoveredIndirectPanicLine()
 }
 
 //go:noinline
@@ -167,6 +169,40 @@ func checkRecoveredDebugStackBounds() {
 	_ = foo.Get(3) // BOUNDS_MARK
 }
 
+func checkRecoveredStaticPanicLine() {
+	defer expectRecoveredPanicLine("main.staticNilPanic", STATIC_NIL_PANIC_LINE)
+	staticNilPanic()
+}
+
+func staticNilPanic() {
+	var p *int
+	_ = *p // STATIC_NIL_PANIC_MARK
+}
+
+func checkRecoveredIndirectPanicLine() {
+	runRecoveredPanic("main.indirectBoundsPanic", INDIRECT_BOUNDS_PANIC_LINE, indirectBoundsPanic)
+}
+
+func runRecoveredPanic(name string, want int, fn func()) {
+	defer expectRecoveredPanicLine(name, want)
+	fn()
+}
+
+func indirectBoundsPanic() {
+	v := []int{0}
+	_ = v[1] // INDIRECT_BOUNDS_PANIC_MARK
+}
+
+func expectRecoveredPanicLine(name string, want int) {
+	if recover() == nil {
+		panic("missing panic for " + name)
+	}
+	stack := string(debug.Stack())
+	if got := stackLineFor(stack, name); got != want {
+		panic("bad recovered panic line for " + name + ": " + strconv.Itoa(got) + ", want " + strconv.Itoa(want) + "\n" + stack)
+	}
+}
+
 func stackLineFor(stack, fn string) int {
 	lines := strings.Split(stack, "\n")
 	for i := 0; i+1 < len(lines); i++ {
@@ -198,6 +234,8 @@ func TestRuntimeStatementLineInfo(t *testing.T) {
 	source = strings.ReplaceAll(source, "STACK_ONE_LINE", strconv.Itoa(markerLine(source, "STACK_ONE_MARK")))
 	source = strings.ReplaceAll(source, "STACK_TWO_LINE", strconv.Itoa(markerLine(source, "STACK_TWO_MARK")))
 	source = strings.ReplaceAll(source, "BOUNDS_LINE", strconv.Itoa(markerLine(source, "BOUNDS_MARK")))
+	source = strings.ReplaceAll(source, "STATIC_NIL_PANIC_LINE", strconv.Itoa(markerLine(source, "STATIC_NIL_PANIC_MARK")))
+	source = strings.ReplaceAll(source, "INDIRECT_BOUNDS_PANIC_LINE", strconv.Itoa(markerLine(source, "INDIRECT_BOUNDS_PANIC_MARK")))
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.go")
