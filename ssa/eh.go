@@ -596,7 +596,11 @@ func (b Builder) callRecoverScopedDefer(fn Expr, mayRecover bool, call func()) {
 	}
 	prev := b.Call(b.Pkg.rtFunc("StartRecoverFrame"), token)
 	call()
-	b.Call(b.Pkg.rtFunc("EndRecoverFrame"), prev)
+	b.Call(
+		b.Pkg.rtFunc("EndRecoverFrame"),
+		b.getField(prev, 0),
+		b.getField(prev, 1),
+	)
 }
 
 // CallRecoverAlias invokes fn through a compiler-generated wrapper while
@@ -612,7 +616,7 @@ func (b Builder) CallRecoverAlias(from Expr, mayRecover bool, fn Expr, buildCall
 		token,
 	)
 	ret := buildCall(b, fn, args...)
-	b.Call(b.Pkg.rtFunc("EndRecoverFrame"), prev)
+	b.Call(b.Pkg.rtFunc("EndRecoverFrameAlias"), prev)
 	return ret
 }
 

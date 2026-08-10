@@ -19,6 +19,9 @@ var (
 func Rethrow(link *Defer) {
 	gp := getg()
 	if ptr := gp.panic_; ptr != nil {
+		if gp.panicIsSuspended(ptr) {
+			return
+		}
 		if link == nil {
 			node := (*panicNode)(ptr)
 			TracePanic(node.arg)

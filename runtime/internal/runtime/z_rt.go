@@ -45,12 +45,16 @@ type panicNode struct {
 // unwinding that frame has been replaced by this newer panic and must not
 // resume if the newer panic is recovered farther down the defer chain.
 func (node *panicNode) moveToDefer(link *Defer) {
+	gp := getg()
 	for node.prev != nil {
 		prev := (*panicNode)(node.prev)
 		if prev.defer_ != link {
 			break
 		}
 		node.prev = prev.prev
+		if gp.recoverPanic == unsafe.Pointer(prev) {
+			gp.recoverPanic = nil
+		}
 		c.Free(unsafe.Pointer(prev))
 	}
 	node.defer_ = link
@@ -62,14 +66,12 @@ func Recover(token unsafe.Pointer) (ret any) {
 	if token == nil || token != gp.recoverFrame {
 		return nil
 	}
-	ptr := gp.panic_
-	if ptr != nil {
+	ptr := gp.recoverPanic
+	if ptr != nil && ptr == gp.panic_ {
 		node := (*panicNode)(ptr)
-		if node.defer_ != gp.defer_ {
-			return nil
-		}
 		gp.panic_ = node.prev
 		gp.recoverFrame = nil
+		gp.recoverPanic = nil
 		ret = node.arg
 		c.Free(unsafe.Pointer(node))
 		if PanicRecovered != nil {
@@ -91,17 +93,28 @@ func Recover(token unsafe.Pointer) (ret any) {
 }
 
 // StartRecoverFrame enables direct recover calls made by the deferred function
-// currently being invoked from frame.
-func StartRecoverFrame(frame unsafe.Pointer) unsafe.Pointer {
+// currently being invoked from frame. The eligible panic is captured here,
+// while the runtime is still executing the defer frame that selected it. A
+// nested defer frame can then distinguish its own panic from an outer panic
+// suspended in the direct deferred activation. This is LLGo's explicit-defer
+// counterpart to gorecover locating the matching _panic through stack frames.
+func StartRecoverFrame(frame unsafe.Pointer) (oldFrame, oldPanic unsafe.Pointer) {
 	gp := getg()
-	old := gp.recoverFrame
+	oldFrame = gp.recoverFrame
+	oldPanic = gp.recoverPanic
 	gp.recoverFrame = frame
-	return old
+	gp.recoverPanic = nil
+	if ptr := gp.panic_; ptr != nil && (*panicNode)(ptr).defer_ == gp.defer_ {
+		gp.recoverPanic = ptr
+	}
+	return
 }
 
 // EndRecoverFrame restores direct recover permission after a deferred call.
-func EndRecoverFrame(frame unsafe.Pointer) {
-	getg().recoverFrame = frame
+func EndRecoverFrame(frame, panic_ unsafe.Pointer) {
+	gp := getg()
+	gp.recoverFrame = frame
+	gp.recoverPanic = panic_
 }
 
 // BindRecoverFrame replaces a deferred function's code token with the unique
@@ -123,6 +136,21 @@ func StartRecoverFrameAlias(from, to unsafe.Pointer) unsafe.Pointer {
 		gp.recoverFrame = to
 	}
 	return old
+}
+
+// EndRecoverFrameAlias restores only the direct-call token. Transparent
+// wrappers share their caller's eligible panic rather than opening a nested
+// defer scope.
+func EndRecoverFrameAlias(frame unsafe.Pointer) {
+	getg().recoverFrame = frame
+}
+
+// panicIsSuspended reports whether ptr belongs to an outer panic whose direct
+// deferred function is still running. It must not resume from one of that
+// function's nested defer frames; the outer dispatcher resumes it after the
+// direct call returns and restores its caller's recover scope.
+func (gp *g) panicIsSuspended(ptr unsafe.Pointer) bool {
+	return ptr != nil && ptr == gp.recoverPanic
 }
 
 // RecoverMark, set by the public runtime package, records the recovering

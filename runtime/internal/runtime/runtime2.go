@@ -42,6 +42,7 @@ type g struct {
 	panic_       unsafe.Pointer
 	panicPCs     panicPCStore
 	recoverFrame unsafe.Pointer
+	recoverPanic unsafe.Pointer
 	m            *m
 
 	atomicstatus uint32

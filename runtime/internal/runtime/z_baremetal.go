@@ -15,13 +15,16 @@ var (
 
 // Rethrow rethrows a panic.
 // In baremetal single-threaded environment, we use longjmp to execute defers.
-// Note: recover() will return nil for now (panic value not stored).
 func Rethrow(link *Defer) {
+	gp := getg()
+	if ptr := gp.panic_; gp.panicIsSuspended(ptr) {
+		return
+	}
 	if link == nil {
 		c.Printf(c.Str("fatal error\n"))
 		c.Exit(2)
 	} else {
-		if ptr := getg().panic_; ptr != nil && link == GetThreadDefer() {
+		if ptr := gp.panic_; ptr != nil && link == GetThreadDefer() {
 			node := (*panicNode)(ptr)
 			node.moveToDefer(link)
 		}
