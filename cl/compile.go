@@ -1335,7 +1335,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				if skipUnusedArrayDeref(v) {
 					x := p.compileValue(b, v.X)
 					if effectfulArrayDeref {
-						p.recordPanicLocation(b, v.Pos())
+						p.recordPanicSite(b, v.Pos())
 						b.AssertNilDeref(x)
 					}
 					return
@@ -1343,14 +1343,14 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				// Elide the unused load, but keep an explicit nil check so the
 				// Go dereference still panics instead of relying on a trapping load.
 				x := p.compileValue(b, v.X)
-				p.recordPanicLocation(b, v.Pos())
+				p.recordPanicSite(b, v.Pos())
 				p.assertNilDerefBase(b, v.X)
 				b.AssertNilDeref(x)
 				return
 			}
 			if effectfulArrayDeref {
 				x := p.compileValue(b, v.X)
-				p.recordPanicLocation(b, v.Pos())
+				p.recordPanicSite(b, v.Pos())
 				b.AssertNilDeref(x)
 			}
 			if refs, ok := nonDebugReferrers(v); ok && len(refs) == 1 {
@@ -1379,7 +1379,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 		x := p.compileValue(b, v.X)
 		if v.Op != token.ARROW {
-			p.recordPanicLocation(b, v.Pos())
+			p.recordPanicSite(b, v.Pos())
 		}
 		if shouldAssertDirectNilDeref(v) {
 			b.AssertNilDeref(x)
@@ -1419,7 +1419,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		ret = b.Convert(p.type_(t, llssa.InGo), x)
 	case *ssa.FieldAddr:
 		x := p.compileValue(b, v.X)
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		if p.isAddressOfFieldAddr(v) {
 			b.AssertNilDeref(x)
 		}
@@ -1446,12 +1446,12 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 		x := p.compileValue(b, vx)
 		idx := p.compileValue(b, v.Index)
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		ret = b.IndexAddr(x, idx)
 	case *ssa.Index:
 		x := p.compileValue(b, v.X)
 		idx := p.compileValue(b, v.Index)
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		ret = b.Index(x, idx, func() (addr llssa.Expr, zero bool) {
 			switch n := v.X.(type) {
 			case *ssa.Const:
@@ -1485,7 +1485,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		if v.Max != nil {
 			max = p.compileValue(b, v.Max)
 		}
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		ret = b.Slice(x, low, high, max)
 		ret.Type = p.type_(v.Type(), llssa.InGo)
 	case *ssa.MakeInterface:
@@ -1546,7 +1546,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	case *ssa.TypeAssert:
 		x := p.compileValue(b, v.X)
 		t := p.type_(v.AssertedType, llssa.InGo)
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		ret = b.TypeAssert(x, t, v.CommaOk)
 	case *ssa.Extract:
 		x := p.compileValue(b, v.Tuple)
@@ -1587,7 +1587,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	case *ssa.SliceToArrayPointer:
 		t := p.type_(v.Type(), llssa.InGo)
 		x := p.compileValue(b, v.X)
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		ret = b.SliceToArrayPointer(x, t)
 	default:
 		panic(fmt.Sprintf("compileInstrAndValue: unknown instr - %T\n", iv))
@@ -1846,7 +1846,7 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		m := p.compileValue(b, v.Map)
 		key := p.compileValue(b, v.Key)
 		val := p.compileValue(b, v.Value)
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		b.MapUpdate(m, key, val)
 	case *ssa.Defer:
 		if v.DeferStack != nil {
@@ -1872,7 +1872,7 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 	case *ssa.Send:
 		ch := p.compileValue(b, v.Chan)
 		x := p.compileValue(b, v.X)
-		p.recordPanicLocation(b, v.Pos())
+		p.recordPanicSite(b, v.Pos())
 		b.Send(ch, x)
 	case *ssa.DebugRef:
 		if p.options.DebugSymbols && v.Parent().Origin() == nil {

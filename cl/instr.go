@@ -916,6 +916,9 @@ func fnUsesRuntimeCaller(c *CallerTracking, fn *ssa.Function) bool {
 //     what the callee's fixed Caller depth attributes, so inlining it
 //     would both mis-attribute the location and, on ELF, drop the
 //     function symbol its pcline sections are link-ordered to.
+//  5. the function can run below a defer that consumes panic pcs — recover
+//     exposes the panicked call chain after longjmp has removed those physical
+//     frames, so the compiler must keep and annotate the possible callees.
 //
 // Criterion 2 tests membership against the callee package's *base* set
 // (criterion 1 alone), so tracking extends exactly one call level past a
@@ -932,15 +935,15 @@ func runtimeCallerFuncSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function
 		panic("caller-tracking function set was not precomputed")
 	}
 	base := runtimeCallerBaseSet(c, pkg)
-	_, trackable := collectRuntimeCallerFunctions(pkg)
-	out := computeRuntimeCallerFuncSet(pkg, base, trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
+	funcs, trackable := collectRuntimeCallerFunctions(pkg)
+	out := computeRuntimeCallerFuncSet(pkg, funcs, base, trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
 		return runtimeCallerBaseSet(c, dep)
 	})
 	c.extended[pkg] = out
 	return out
 }
 
-func computeRuntimeCallerFuncSet(pkg *ssa.Package, base, trackable map[*ssa.Function]bool, baseSet func(*ssa.Package) map[*ssa.Function]bool) map[*ssa.Function]bool {
+func computeRuntimeCallerFuncSet(pkg *ssa.Package, funcs, base, trackable map[*ssa.Function]bool, baseSet func(*ssa.Package) map[*ssa.Function]bool) map[*ssa.Function]bool {
 	out := make(map[*ssa.Function]bool, len(base))
 	for fn := range base {
 		out[fn] = true
@@ -978,10 +981,101 @@ func computeRuntimeCallerFuncSet(pkg *ssa.Package, base, trackable map[*ssa.Func
 			}
 		})
 	}
+	addRecoverObservableCallees(c.recoverAnalysis(), pkg, funcs, base, out, trackable)
 	if len(out) == 0 {
 		out = nil
 	}
 	return out
+}
+
+// addRecoverObservableCallees keeps the same-package call subtree below a
+// defer that can inspect caller pcs. These frames are no longer physically
+// live when the deferred function runs after recover; runtime reconstructs
+// them from the panic snapshot, so allowing LLVM to inline them would lose the
+// function identity and its panic-site line.
+func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs, base, out, trackable map[*ssa.Function]bool) {
+	if pkg == nil || len(base) == 0 || len(trackable) == 0 {
+		return
+	}
+	analysis := &runtimeCallerAnalysis{
+		pkg:       pkg,
+		funcs:     funcs,
+		trackable: trackable,
+		callsites: collectRuntimeCallerCallsites(funcs),
+	}
+	queue := make([]*ssa.Function, 0)
+	seen := make(map[*ssa.Function]bool)
+	add := func(fn *ssa.Function) {
+		if !trackable[fn] || seen[fn] {
+			return
+		}
+		seen[fn] = true
+		out[fn] = true
+		queue = append(queue, fn)
+	}
+	for fn := range trackable {
+		for _, block := range fn.Blocks {
+			for _, instr := range block.Instrs {
+				deferInstr, ok := instr.(*ssa.Defer)
+				if !ok {
+					continue
+				}
+				targets, resolved := analysis.callTargets(fn, &deferInstr.Call)
+				if !resolved {
+					continue
+				}
+				for target := range targets {
+					if (isRuntimeCallerFrameFunc(target) || base[target]) && recover.needsRecoverScope(target) {
+						add(fn)
+						break
+					}
+				}
+			}
+		}
+	}
+	for len(queue) != 0 {
+		fn := queue[0]
+		queue = queue[1:]
+		for _, block := range fn.Blocks {
+			for _, instr := range block.Instrs {
+				callInstr, ok := instr.(*ssa.Call)
+				if !ok {
+					continue
+				}
+				if _, builtin := callInstr.Call.Value.(*ssa.Builtin); builtin {
+					continue
+				}
+				targets, resolved := analysis.callTargets(fn, &callInstr.Call)
+				if !resolved {
+					// The call can target any same-package function compatible
+					// with the value. Retaining the package-local candidates is
+					// conservative; cross-package callees keep their own policy.
+					for candidate := range trackable {
+						if types.Identical(callInstr.Call.Signature(), candidate.Signature) {
+							add(candidate)
+						}
+					}
+					continue
+				}
+				for target := range targets {
+					add(target)
+				}
+			}
+		}
+	}
+}
+
+func (a *runtimeCallerAnalysis) callTargets(fn *ssa.Function, call *ssa.CallCommon) (map[*ssa.Function]bool, bool) {
+	if call == nil {
+		return nil, false
+	}
+	if callee := call.StaticCallee(); callee != nil {
+		return map[*ssa.Function]bool{callee: true}, true
+	}
+	if call.Method != nil {
+		return a.interfaceMethodTargets(fn, call.Value, call.Method)
+	}
+	return a.functionValueTargets(fn, call.Value)
 }
 
 // CallerTracking memoizes frontend analyses for one compilation. Like Patches,
@@ -1049,7 +1143,7 @@ func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 		base[i] = analyses[i].base
 	}
 	for i := range pkgs {
-		extended[i] = computeRuntimeCallerFuncSet(pkgs[i], base[i], analyses[i].trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
+		extended[i] = computeRuntimeCallerFuncSet(pkgs[i], analyses[i].funcs, base[i], analyses[i].trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
 			j, ok := index[dep]
 			if !ok {
 				panic("caller-tracking dependency was not precomputed")
@@ -1068,6 +1162,7 @@ func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 }
 
 type callerTrackingPackageAnalysis struct {
+	funcs     map[*ssa.Function]bool
 	base      map[*ssa.Function]bool
 	trackable map[*ssa.Function]bool
 }
@@ -1083,6 +1178,7 @@ func analyzeCallerTrackingPackage(pkg *ssa.Package, methods []*ssa.Function) cal
 		visiting:  make(map[*ssa.Function]bool),
 	}
 	return callerTrackingPackageAnalysis{
+		funcs:     funcs,
 		base:      computeRuntimeCallerBaseSetFromAnalysis(analysis),
 		trackable: trackable,
 	}
@@ -1709,6 +1805,11 @@ func (p *context) recordCallerLocation(b llssa.Builder, pos token.Pos) {
 
 func (p *context) recordPanicLocation(b llssa.Builder, pos token.Pos) {
 	p.recordRuntimeLocation(b, pos, "RecordPanicLocation")
+}
+
+func (p *context) recordPanicSite(b llssa.Builder, pos token.Pos) {
+	p.recordPanicLocation(b, pos)
+	p.emitPCLineLabel(b, pos)
 }
 
 func (p *context) recordRuntimeLocation(b llssa.Builder, pos token.Pos, fn string) {

@@ -278,10 +278,12 @@ func inspect() {
 func staticOwner() {
 	defer inspect()
 	staticLeaf()
+	go goroutineLeaf()
 }
 
 func staticLeaf() { staticNested() }
 func staticNested() {}
+func goroutineLeaf() {}
 
 func dynamicOwner(fn func()) {
 	defer inspect()
@@ -290,16 +292,41 @@ func dynamicOwner(fn func()) {
 
 func dynamicEntry() { dynamicOwner(dynamicLeaf) }
 func dynamicLeaf() {}
+
+func unresolvedOwner(fn func(int)) {
+	defer inspect()
+	fn(1)
+}
+func unresolvedCandidate(int) {}
+func unresolvedWrong(string) {}
+
+func directCallerOwner() {
+	runtime.Caller(0)
+	directCallerLeaf()
+}
+func directCallerLeaf() {}
+
+func noRecoverInspect() { runtime.Caller(0) }
+func noRecoverOwner() {
+	defer noRecoverInspect()
+	noRecoverLeaf()
+}
+func noRecoverLeaf() {}
 func unrelated() {}
 `)
 	set := runtimeCallerFuncSet(NewCallerTracking(), ssapkg)
-	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "dynamicOwner", "dynamicEntry", "dynamicLeaf"} {
+	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "dynamicOwner", "dynamicEntry", "dynamicLeaf", "unresolvedOwner", "unresolvedCandidate"} {
 		if !set[ssapkg.Func(name)] {
 			t.Fatalf("%s must keep a frame because a recovering defer can inspect its panic pc", name)
 		}
 	}
 	if set[ssapkg.Func("unrelated")] {
 		t.Fatal("an unrelated function must not be pinned by recover-visible frame tracking")
+	}
+	for _, name := range []string{"goroutineLeaf", "directCallerLeaf", "noRecoverLeaf", "unresolvedWrong"} {
+		if set[ssapkg.Func(name)] {
+			t.Fatalf("%s must not be pinned without a recover-visible synchronous call path", name)
+		}
 	}
 }
 
