@@ -41,6 +41,11 @@ type panicNode struct {
 	defer_ *Defer
 }
 
+type recoverState struct {
+	frame  unsafe.Pointer
+	panic_ unsafe.Pointer
+}
+
 // moveToDefer advances a panic to the next defer frame. A panic already
 // unwinding that frame has been replaced by this newer panic and must not
 // resume if the newer panic is recovered farther down the defer chain.
@@ -98,23 +103,22 @@ func Recover(token unsafe.Pointer) (ret any) {
 // nested defer frame can then distinguish its own panic from an outer panic
 // suspended in the direct deferred activation. This is LLGo's explicit-defer
 // counterpart to gorecover locating the matching _panic through stack frames.
-func StartRecoverFrame(frame unsafe.Pointer) (oldFrame, oldPanic unsafe.Pointer) {
+func StartRecoverFrame(frame unsafe.Pointer) recoverState {
 	gp := getg()
-	oldFrame = gp.recoverFrame
-	oldPanic = gp.recoverPanic
+	old := recoverState{frame: gp.recoverFrame, panic_: gp.recoverPanic}
 	gp.recoverFrame = frame
 	gp.recoverPanic = nil
 	if ptr := gp.panic_; ptr != nil && (*panicNode)(ptr).defer_ == gp.defer_ {
 		gp.recoverPanic = ptr
 	}
-	return
+	return old
 }
 
 // EndRecoverFrame restores direct recover permission after a deferred call.
-func EndRecoverFrame(frame, panic_ unsafe.Pointer) {
+func EndRecoverFrame(state recoverState) {
 	gp := getg()
-	gp.recoverFrame = frame
-	gp.recoverPanic = panic_
+	gp.recoverFrame = state.frame
+	gp.recoverPanic = state.panic_
 }
 
 // BindRecoverFrame replaces a deferred function's code token with the unique
