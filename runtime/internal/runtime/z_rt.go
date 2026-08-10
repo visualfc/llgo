@@ -104,6 +104,16 @@ func EndRecoverFrame(frame unsafe.Pointer) {
 	getg().recoverFrame = frame
 }
 
+// BindRecoverFrame replaces a deferred function's code token with the unique
+// stack token for this invocation. A recursive invocation of the same function
+// sees the already-bound outer token and is therefore not allowed to recover.
+func BindRecoverFrame(function, activation unsafe.Pointer) {
+	gp := getg()
+	if gp.recoverFrame == function {
+		gp.recoverFrame = activation
+	}
+}
+
 // StartRecoverFrameAlias maps a direct deferred closure wrapper to the wrapped
 // function while the wrapper calls into it.
 func StartRecoverFrameAlias(from, to unsafe.Pointer) unsafe.Pointer {

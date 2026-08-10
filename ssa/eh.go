@@ -751,10 +751,31 @@ func (b Builder) Unreachable() {
 	b.impl.CreateUnreachable()
 }
 
+// BindRecoverFrame gives this invocation a stack-local identity. The runtime
+// replaces a pending deferred-function token with this activation token only
+// when this invocation is the direct deferred call. Recursive calls to the
+// same function therefore cannot recover the caller's panic.
+func (b Builder) BindRecoverFrame() {
+	token := b.AllocaT(b.Prog.Byte())
+	token = b.PtrCast(b.Prog.VoidPtr(), token)
+	b.Func.recoverToken = token
+	b.Call(
+		b.Pkg.rtFunc("BindRecoverFrame"),
+		b.PtrCast(b.Prog.VoidPtr(), b.Func.Expr),
+		token,
+	)
+}
+
 // Recover emits a recover instruction.
 func (b Builder) Recover() Expr {
 	dbgInstrln("Recover")
-	return b.Call(b.Pkg.rtFunc("Recover"), b.PtrCast(b.Prog.VoidPtr(), b.Func.Expr))
+	token := b.Func.recoverToken
+	if token.IsNil() {
+		// Keep the lower-level Builder API usable for callers that emit recover
+		// without the Go frontend's function-entry binding.
+		token = b.PtrCast(b.Prog.VoidPtr(), b.Func.Expr)
+	}
+	return b.Call(b.Pkg.rtFunc("Recover"), token)
 }
 
 // Panic emits a panic instruction.

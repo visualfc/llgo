@@ -86,6 +86,34 @@ func TestRecoverFixedbugReturnedDeferredFuncValue(t *testing.T) {
 	}
 }
 
+var fixedbugRecursiveRecover any
+
+func fixedbugRecursiveDeferredRecover(depth int) {
+	if depth > 0 {
+		fixedbugRecursiveDeferredRecover(depth - 1)
+		return
+	}
+	fixedbugRecursiveRecover = recover()
+}
+
+func TestRecoverRecursiveDeferredActivationDoesNotRecover(t *testing.T) {
+	fixedbugRecursiveRecover = "unset"
+	var outer any
+	func() {
+		defer func() {
+			outer = recover()
+		}()
+		defer fixedbugRecursiveDeferredRecover(1)
+		panic("recursive deferred activation")
+	}()
+	if fixedbugRecursiveRecover != nil {
+		t.Fatalf("recursive recover = %v, want nil", fixedbugRecursiveRecover)
+	}
+	if outer != "recursive deferred activation" {
+		t.Fatalf("outer recover = %v, want panic value", outer)
+	}
+}
+
 func fixedbug8047bNilDeferredCall() {
 	var fn func()
 	defer fn()

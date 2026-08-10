@@ -662,7 +662,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	if disableInline || noInlineDirective || runtimeStackNoInline || pcLineNoInline || functionUsesRecover(f) {
 		fn.Inline(llssa.NoInline)
 	}
-	if noInlineDirective || runtimeStackNoInline || pcLineNoInline {
+	if noInlineDirective || runtimeStackNoInline || pcLineNoInline || functionUsesRecover(f) {
 		fn.DisableTailCalls()
 	}
 	if functionUsesRecover(f) {
@@ -950,6 +950,9 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 	var instrs = block.Instrs[n:]
 	var ret = fn.Block(block.Index)
 	b.SetBlock(ret)
+	if block.Index == 0 && functionUsesRecover(block.Parent()) {
+		b.BindRecoverFrame()
+	}
 	if block.Index == 0 {
 		p.enterExportedLocalContext(b)
 	}
