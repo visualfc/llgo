@@ -161,6 +161,24 @@ func (gp *g) panicIsSuspended(ptr unsafe.Pointer) bool {
 	return ptr != nil && ptr == gp.recoverPanic
 }
 
+// abortPanics discards panics superseded by Goexit. The standard runtime
+// represents Goexit by a goexit _panic that aborts the linked panic records
+// while unwinding. LLGo stores Goexit separately on g, so it performs the
+// equivalent state transition before starting its longjmp unwind.
+func (gp *g) abortPanics() {
+	discarded := gp.panic_ != nil
+	for gp.panic_ != nil {
+		node := (*panicNode)(gp.panic_)
+		gp.panic_ = node.prev
+		c.Free(unsafe.Pointer(node))
+	}
+	gp.recoverFrame = nil
+	gp.recoverPanic = nil
+	if discarded && PanicRecovered != nil {
+		PanicRecovered()
+	}
+}
+
 // RecoverMark, set by the public runtime package, records the recovering
 // frame for panic-snapshot splicing.
 var RecoverMark func()
@@ -191,6 +209,7 @@ func Panic(v any) {
 }
 func Goexit() {
 	gp := getg()
+	gp.abortPanics()
 	gp.goexit = true
 	Rethrow(gp.defer_)
 }
