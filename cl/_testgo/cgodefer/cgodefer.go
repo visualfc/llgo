@@ -6,6 +6,11 @@ package main
 */
 import "C"
 
+func main() {
+	p := C.malloc(1024)
+	defer C.free(p)
+}
+
 // CHECK-LABEL: define [0 x i8] @main._Cfunc_free(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
@@ -13,6 +18,27 @@ import "C"
 // CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
 // CHECK-NEXT:   %4 = call [0 x i8] %3(ptr %0)
 // CHECK-NEXT:   ret [0 x i8] %4
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define ptr @main._Cgo_ptr(ptr %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   ret ptr %0
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define void @main.init(){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %0 = load i1, ptr @"main.init$guard", align 1
+// CHECK-NEXT:   br i1 %0, label %_llgo_2, label %_llgo_1
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
+// CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
+// CHECK-NEXT:   call void @syscall.init()
+// CHECK-NEXT:   store ptr @_cgo_{{.*}}_Cfunc_free, ptr @main._cgo_{{.*}}_Cfunc_free, align 8
+// CHECK-NEXT:   store ptr @_cgo_{{.*}}_Cfunc__Cmalloc, ptr @main._cgo_{{.*}}_Cfunc__Cmalloc, align 8
+// CHECK-NEXT:   br label %_llgo_2
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
+// CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
@@ -45,7 +71,7 @@ import "C"
 // CHECK-NEXT:   %17 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 4
 // CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %18, align 8
-// CHECK-NEXT:   %19 = call i32 @{{.*}}sigsetjmp(ptr %9, i32 0)
+// CHECK-NEXT:   %19 = call i32 @{{(__)?}}sigsetjmp(ptr %9, i32 0)
 // CHECK-NEXT:   %20 = icmp eq i32 %19, 0
 // CHECK-NEXT:   br i1 %20, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:
@@ -91,44 +117,45 @@ import "C"
 // CHECK-NEXT:   store ptr %32, ptr %18, align 8
 // CHECK-NEXT:   %33 = extractvalue { ptr, i64, { ptr, ptr } } %31, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %30)
-// CHECK-NEXT:   %34 = extractvalue { ptr, ptr } %33, 1
-// CHECK-NEXT:   %35 = extractvalue { ptr, ptr } %33, 0
-// CHECK-NEXT:   %__llgo_funcval_code1 = call ptr asm "", "=r,0"(ptr %35)
-// CHECK-NEXT:   call void %__llgo_funcval_code1(ptr {{(nest|swiftself)}} %34)
+// CHECK-NEXT:   %34 = extractvalue { ptr, ptr } %33, 0
+// CHECK-NEXT:   %35 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr %34)
+// CHECK-NEXT:   %36 = extractvalue { ptr, ptr } %33, 1
+// CHECK-NEXT:   %37 = extractvalue { ptr, ptr } %33, 0
+// CHECK-NEXT:   %__llgo_funcval_code1 = call ptr asm "", "=r,0"(ptr %37)
+// CHECK-NEXT:   call void %__llgo_funcval_code1(ptr {{(nest|swiftself)}} %36)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %35)
 // CHECK-NEXT:   br label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_7, %_llgo_2
-// CHECK-NEXT:   %36 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, align 8
-// CHECK-NEXT:   %37 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %36, 2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %37)
-// CHECK-NEXT:   %38 = load ptr, ptr %17, align 8
-// CHECK-NEXT:   indirectbr ptr %38, [label %_llgo_3, label %_llgo_6]
+// CHECK-NEXT:   %38 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %10, align 8
+// CHECK-NEXT:   %39 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %38, 2
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %39)
+// CHECK-NEXT:   %40 = load ptr, ptr %17, align 8
+// CHECK-NEXT:   indirectbr ptr %40, [label %_llgo_3, label %_llgo_6]
 // CHECK-NEXT: }
-func main() {
-	// CHECK-LABEL: define { ptr, ptr } @"main.main$1"(ptr {{(nest|swiftself)}} %0){{.*}} {
-	// CHECK-NEXT: _llgo_0:
-	// CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-	// CHECK-NEXT:   %2 = load { ptr }, ptr %0, align 8
-	// CHECK-NEXT:   %3 = extractvalue { ptr } %2, 0
-	// CHECK-NEXT:   %4 = load ptr, ptr %3, align 8
-	// CHECK-NEXT:   store ptr %4, ptr %1, align 8
-	// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
-	// CHECK-NEXT:   %6 = getelementptr inbounds { ptr }, ptr %5, i32 0, i32 0
-	// CHECK-NEXT:   store ptr %1, ptr %6, align 8
-	// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } { ptr @"main.main$1$1", ptr undef }, ptr %5, 1
-	// CHECK-NEXT:   ret { ptr, ptr } %7
-	// CHECK-NEXT: }
-	p := C.malloc(1024)
-	// CHECK-LABEL: define void @"main.main$1$1"(ptr {{(nest|swiftself)}} %0){{.*}} {
-	// CHECK-NEXT: _llgo_0:
-	// CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
-	// CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
-	// CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
-	// CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_Pointer, ptr undef }, ptr %3, 1
-	// CHECK-NEXT:   %5 = extractvalue { ptr } %1, 0
-	// CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
-	// CHECK-NEXT:   %7 = call [0 x i8] @main._Cfunc_free(ptr %6)
-	// CHECK-NEXT:   ret void
-	// CHECK-NEXT: }
-	defer C.free(p)
-}
+
+// CHECK-LABEL: define { ptr, ptr } @"main.main$1"(ptr {{(nest|swiftself)}} %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
+// CHECK-NEXT:   %2 = load { ptr }, ptr %0, align 8
+// CHECK-NEXT:   %3 = extractvalue { ptr } %2, 0
+// CHECK-NEXT:   %4 = load ptr, ptr %3, align 8
+// CHECK-NEXT:   store ptr %4, ptr %1, align 8
+// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
+// CHECK-NEXT:   %6 = getelementptr inbounds { ptr }, ptr %5, i32 0, i32 0
+// CHECK-NEXT:   store ptr %1, ptr %6, align 8
+// CHECK-NEXT:   %7 = insertvalue { ptr, ptr } { ptr @"main.main$1$1", ptr undef }, ptr %5, 1
+// CHECK-NEXT:   ret { ptr, ptr } %7
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define void @"main.main$1$1"(ptr {{(nest|swiftself)}} %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
+// CHECK-NEXT:   %2 = extractvalue { ptr } %1, 0
+// CHECK-NEXT:   %3 = load ptr, ptr %2, align 8
+// CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_Pointer, ptr undef }, ptr %3, 1
+// CHECK-NEXT:   %5 = extractvalue { ptr } %1, 0
+// CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
+// CHECK-NEXT:   %7 = call [0 x i8] @main._Cfunc_free(ptr %6)
+// CHECK-NEXT:   ret void
+// CHECK-NEXT: }

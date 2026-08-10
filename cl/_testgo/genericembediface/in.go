@@ -5,18 +5,39 @@ import (
 	"github.com/goplus/llgo/cl/_testgo/genericembediface/streamlib"
 )
 
-// CHECK: {{^}}@2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1{{$}}
-// CHECK: {{^}}@5 = private unnamed_addr constant [7 x i8] c"Context", align 1{{$}}
-// CHECK: {{^}}@11 = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1{{$}}
-// CHECK: {{^}}@19 = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
-// CHECK: {{^}}@20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1{{$}}
-// CHECK: {{^}}@21 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1{{$}}
+// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1{{$}}
+// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [7 x i8] c"Context", align 1{{$}}
+// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1{{$}}
+// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
+// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1{{$}}
+// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1{{$}}
 
 type Request struct{}
 type Response struct{}
 
 type ReflectionServer interface {
 	ServerReflectionInfo(streamlib.BidiStreamingServer[Request, Response]) error
+}
+
+func handler(srv any, stream streamlib.ServerStream) error {
+	return srv.(ReflectionServer).ServerReflectionInfo(&streamlib.GenericServerStream[Request, Response]{ServerStream: stream})
+}
+
+type server struct{}
+
+func (server) ServerReflectionInfo(streamlib.BidiStreamingServer[Request, Response]) error {
+	return nil
+}
+
+type stream struct{}
+
+func (stream) Context() string {
+	return "Context"
+}
+
+func main() {
+	_ = handler(server{}, stream{})
+	println("pass")
 }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @main.handler(%"{{.*}}/runtime/internal/runtime.eface" %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
@@ -48,7 +69,7 @@ type ReflectionServer interface {
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %21
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @11, i64 68 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 68 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 20 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -66,22 +87,6 @@ type ReflectionServer interface {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-func handler(srv any, stream streamlib.ServerStream) error {
-	return srv.(ReflectionServer).ServerReflectionInfo(&streamlib.GenericServerStream[Request, Response]{ServerStream: stream})
-}
-
-type server struct{}
-
-func (server) ServerReflectionInfo(streamlib.BidiStreamingServer[Request, Response]) error {
-	return nil
-}
-
-type stream struct{}
-
-func (stream) Context() string {
-	return "Context"
-}
-
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 0)
@@ -93,7 +98,7 @@ func (stream) Context() string {
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %3, 0
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %4, ptr %2, 1
 // CHECK-NEXT:   %6 = call %"{{.*}}/runtime/internal/runtime.iface" @main.handler(%"{{.*}}/runtime/internal/runtime.eface" %1, %"{{.*}}/runtime/internal/runtime.iface" %5)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @19, i64 4 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -103,15 +108,10 @@ func (stream) Context() string {
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" zeroinitializer
 // CHECK-NEXT: }
 
-func main() {
-	_ = handler(server{}, stream{})
-	println("pass")
-}
-
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"main.(*server).ServerReflectionInfo"(ptr %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @20, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 20 })
 // CHECK-NEXT:   %3 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %3)
 // CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.server.ServerReflectionInfo(%main.server zeroinitializer, %"{{.*}}/runtime/internal/runtime.iface" %1)
@@ -120,13 +120,13 @@ func main() {
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @main.stream.Context(%main.stream %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 7 }
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 }
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.(*stream).Context"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @21, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 7 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 })
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
 // CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @main.stream.Context(%main.stream zeroinitializer)
@@ -143,10 +143,13 @@ func main() {
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
 // CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
-// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
-// CHECK-NEXT:   %11 = call %"{{.*}}/runtime/internal/runtime.String" %10(ptr %9)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %11
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"{{.*}}/cl/_testgo/genericembediface/streamlib.(*GenericServerStream[main.Request,main.Response]).Context", ptr %9)
+// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" %12(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %10)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %13
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testgo/genericembediface/streamlib.GenericServerStream[main.Request,main.Response].Context"(%"{{.*}}/cl/_testgo/genericembediface/streamlib.GenericServerStream[main.Request,main.Response]" %0){{.*}} {
@@ -162,8 +165,11 @@ func main() {
 // CHECK-NEXT:   %7 = load ptr, ptr %6, align 8
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue { ptr, ptr } %8, ptr %4, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 1
-// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %9, 0
-// CHECK-NEXT:   %12 = call %"{{.*}}/runtime/internal/runtime.String" %11(ptr %10)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %12
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %11 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"{{.*}}/cl/_testgo/genericembediface/streamlib.GenericServerStream[main.Request,main.Response].Context", ptr %10)
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
+// CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.String" %13(ptr %12)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %11)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %14
 // CHECK-NEXT: }
