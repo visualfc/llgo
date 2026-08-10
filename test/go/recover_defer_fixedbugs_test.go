@@ -1,6 +1,7 @@
 package gotest
 
 import (
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -64,6 +65,154 @@ func TestRecoverFixedbugNestedDeferInDeferredFuncDoesNotRecover(t *testing.T) {
 	}()
 	if nested != nil {
 		t.Fatalf("nested recover = %v, want nil", nested)
+	}
+}
+
+func fixedbugCaptureRecover(dst *any) {
+	*dst = recover()
+}
+
+func TestRecoverNestedDeferredBuiltinRecoversOuterPanic(t *testing.T) {
+	outer := any("unset")
+	func() {
+		defer fixedbugCaptureRecover(&outer)
+		defer func() {
+			defer recover()
+		}()
+		panic("outer")
+	}()
+	if outer != nil {
+		t.Fatalf("outer recover = %v, want nil after nested deferred recover", outer)
+	}
+}
+
+func TestRecoverNestedDeferredBuiltinAfterInnerRecover(t *testing.T) {
+	outer := any("unset")
+	inner := any("unset")
+	func() {
+		defer fixedbugCaptureRecover(&outer)
+		defer func() {
+			defer recover()
+			defer fixedbugCaptureRecover(&inner)
+			panic("inner")
+		}()
+		panic("outer")
+	}()
+	if inner != "inner" {
+		t.Fatalf("inner recover = %v, want inner", inner)
+	}
+	if outer != nil {
+		t.Fatalf("outer recover = %v, want nil after nested deferred recover", outer)
+	}
+}
+
+func TestRecoverNestedDeferredBuiltinBeforeInnerRecover(t *testing.T) {
+	outer := any("unset")
+	inner := any("unset")
+	func() {
+		defer fixedbugCaptureRecover(&outer)
+		defer func() {
+			defer fixedbugCaptureRecover(&inner)
+			defer recover()
+			panic("inner")
+		}()
+		panic("outer")
+	}()
+	if inner != "inner" {
+		t.Fatalf("inner recover = %v, want inner", inner)
+	}
+	if outer != "outer" {
+		t.Fatalf("outer recover = %v, want outer", outer)
+	}
+}
+
+type fixedbugNestedPanicInterface interface {
+	panicInner()
+}
+
+type fixedbugNestedPanicValue struct{}
+
+func (fixedbugNestedPanicValue) panicInner() {
+	panic("inner")
+}
+
+var fixedbugNestedPanicRecover any
+
+func fixedbugRecoverNestedPanic() {
+	defer func() {
+		fixedbugNestedPanicRecover = recover()
+	}()
+	var v fixedbugNestedPanicInterface = fixedbugNestedPanicValue{}
+	v.panicInner()
+}
+
+type fixedbugOuterRecoverInterface interface {
+	recoverOuter()
+}
+
+type fixedbugOuterRecoverValue struct{}
+
+var fixedbugOuterPanicRecover any
+
+func (fixedbugOuterRecoverValue) recoverOuter() {
+	fixedbugRecoverNestedPanic()
+	fixedbugOuterPanicRecover = recover()
+}
+
+func TestRecoverOuterPanicAfterNestedPanicIsRecovered(t *testing.T) {
+	fixedbugNestedPanicRecover = nil
+	fixedbugOuterPanicRecover = nil
+	func() {
+		var v fixedbugOuterRecoverInterface = fixedbugOuterRecoverValue{}
+		defer v.recoverOuter()
+		panic("outer")
+	}()
+	if fixedbugNestedPanicRecover != "inner" {
+		t.Fatalf("nested recover = %v, want inner", fixedbugNestedPanicRecover)
+	}
+	if fixedbugOuterPanicRecover != "outer" {
+		t.Fatalf("outer recover = %v, want outer", fixedbugOuterPanicRecover)
+	}
+}
+
+type fixedbugReflectRecoverValue struct{}
+
+var fixedbugReflectMethodRecover any
+
+func (*fixedbugReflectRecoverValue) RecoverValue() {
+	fixedbugReflectMethodRecover = recover()
+}
+
+func TestRecoverDeferredReflectMethodWrappers(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(*fixedbugReflectRecoverValue)
+	}{
+		{
+			name: "method value",
+			run: func(v *fixedbugReflectRecoverValue) {
+				f := reflect.ValueOf(v).Method(0).Interface().(func())
+				defer f()
+				panic("method value")
+			},
+		},
+		{
+			name: "method expression",
+			run: func(v *fixedbugReflectRecoverValue) {
+				f := reflect.TypeOf(v).Method(0).Func.Interface().(func(*fixedbugReflectRecoverValue))
+				defer f(v)
+				panic("method expression")
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixedbugReflectMethodRecover = nil
+			test.run(&fixedbugReflectRecoverValue{})
+			if fixedbugReflectMethodRecover != test.name {
+				t.Fatalf("reflect recover = %v, want %q", fixedbugReflectMethodRecover, test.name)
+			}
+		})
 	}
 }
 
