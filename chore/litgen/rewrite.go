@@ -218,10 +218,16 @@ func collectAnchors(src string, fset *token.FileSet, file *ast.File) (map[string
 
 func topInsertPos(src string, fset *token.FileSet, file *ast.File) int {
 	for _, decl := range file.Decls {
-		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.IMPORT {
-			continue
+		// Insert before declaration docs so compiler directives stay attached.
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			return declInsertPos(src, fset, d.Pos(), d.Doc)
+		case *ast.GenDecl:
+			if d.Tok == token.IMPORT {
+				continue
+			}
+			return declInsertPos(src, fset, d.Pos(), d.Doc)
 		}
-		return lineStart(src, offsetOf(fset, decl.Pos()))
 	}
 	return len(src)
 }

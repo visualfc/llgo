@@ -173,6 +173,62 @@ _llgo_0:
 	}
 }
 
+func TestRewriteSource_PreservesDeclarationDirectiveAdjacency(t *testing.T) {
+	const src = `// LITTEST
+package main
+
+import _ "unsafe"
+
+//go:linkname cSqrt C.sqrt
+func cSqrt(float64) float64
+
+func callSqrt(x float64) float64 {
+	println("sqrt")
+	return cSqrt(x)
+}
+`
+	const ir = `@0 = private unnamed_addr constant [4 x i8] c"sqrt"
+
+declare double @sqrt(double)
+
+define double @"example.com/p.callSqrt"(double %0) {
+_llgo_0:
+  call void @"example.com/runtime/internal/runtime.PrintString"(ptr @0)
+  %1 = call double @sqrt(double %0)
+  ret double %1
+}
+`
+	got, err := rewriteSource(src, "in.go", "example.com/p", "example.com", ir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `// LITTEST
+package main
+
+import _ "unsafe"
+
+// CHECK: {{^}}@0 = private unnamed_addr constant [4 x i8] c"sqrt"{{$}}
+
+//go:linkname cSqrt C.sqrt
+func cSqrt(float64) float64
+
+// CHECK-LABEL: define double @"{{.*}}/p.callSqrt"(double %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(ptr @0)
+// CHECK-NEXT:   %1 = call double @sqrt(double %0)
+// CHECK-NEXT:   ret double %1
+// CHECK-NEXT: }
+
+func callSqrt(x float64) float64 {
+	println("sqrt")
+	return cSqrt(x)
+}
+`
+	if got != want {
+		t.Fatalf("rewriteSource mismatch:\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
 func TestRewriteSource_SharesInitClosureCountsAcrossDecls(t *testing.T) {
 	const src = `// LITTEST
 package main
