@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fixedbug4066Panic struct{}
@@ -246,6 +247,29 @@ func TestRecoverReflectCallRemainsIndirect(t *testing.T) {
 	}()
 	if fixedbugReflectMethodRecover != "outer" {
 		t.Fatalf("outer recover = %v, want outer", fixedbugReflectMethodRecover)
+	}
+}
+
+func TestRecoverGoexitSupersedesSuspendedPanic(t *testing.T) {
+	result := make(chan any, 2)
+	go func() {
+		defer func() {
+			result <- recover()
+		}()
+		defer func() {
+			runtime.Goexit()
+			result <- "runtime.Goexit returned"
+		}()
+		panic("outer")
+	}()
+
+	select {
+	case got := <-result:
+		if got != nil {
+			t.Fatalf("recover during Goexit = %v, want nil", got)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Goexit did not run the remaining defer")
 	}
 }
 
