@@ -16,10 +16,10 @@ type Nested struct {
 	Right int
 }
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testgo/blankfield.main"()
-// CHECK: call i64 @"{{.*}}/cl/_testgo/blankfield.sideEffect"()
-// CHECK: call i64 @"{{.*}}/cl/_testgo/blankfield.sideEffect"()
-// CHECK: call i64 @"{{.*}}/cl/_testgo/blankfield.sideEffect"()
+// CHECK-LABEL: define void @{{(".*blankfield\.main"|main\.main)}}()
+// CHECK: call i64 @{{(".*blankfield\.sideEffect"|main\.sideEffect)}}()
+// CHECK: call i64 @{{(".*blankfield\.sideEffect"|main\.sideEffect)}}()
+// CHECK: call i64 @{{(".*blankfield\.sideEffect"|main\.sideEffect)}}()
 
 func main() {
 	value := struct {
