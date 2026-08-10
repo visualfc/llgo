@@ -216,6 +216,39 @@ func TestRecoverDeferredReflectMethodWrappers(t *testing.T) {
 	}
 }
 
+func TestRecoverDeferredReflectMakeFunc(t *testing.T) {
+	got := any("unset")
+	f := reflect.MakeFunc(reflect.TypeOf((func())(nil)), func([]reflect.Value) []reflect.Value {
+		got = recover()
+		return nil
+	}).Interface().(func())
+	func() {
+		defer f()
+		panic("make func")
+	}()
+	if got != "make func" {
+		t.Fatalf("reflect MakeFunc recover = %v, want make func", got)
+	}
+}
+
+func fixedbugReflectIndirectRecover() {
+	fixedbugReflectMethodRecover = recover()
+}
+
+func TestRecoverReflectCallRemainsIndirect(t *testing.T) {
+	fixedbugReflectMethodRecover = any("unset")
+	func() {
+		defer fixedbugCaptureRecover(&fixedbugReflectMethodRecover)
+		defer func() {
+			reflect.ValueOf(fixedbugReflectIndirectRecover).Call(nil)
+		}()
+		panic("outer")
+	}()
+	if fixedbugReflectMethodRecover != "outer" {
+		t.Fatalf("outer recover = %v, want outer", fixedbugReflectMethodRecover)
+	}
+}
+
 var fixedbugReturnedRecover any
 
 func fixedbugReturnedRecoverFunc() func() {
