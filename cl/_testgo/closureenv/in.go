@@ -252,6 +252,6 @@ func main() {
 // CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
 // CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
 // CHECK-NEXT:   %13 = call i1 %12(ptr %11)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %10)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %10)
 // CHECK-NEXT:   ret i1 %13
 // CHECK-NEXT: }

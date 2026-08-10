@@ -262,6 +262,6 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
 // CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
 // CHECK-NEXT:   %14 = call i64 %13(ptr %12, i64 %1)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %11)
 // CHECK-NEXT:   ret i64 %14
 // CHECK-NEXT: }

@@ -73,9 +73,9 @@ func main() {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5
 // CHECK-NEXT:   store ptr blockaddress(@main.fail, %_llgo_6), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.fail$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.fail$1")
 // CHECK-NEXT:   call void @"main.fail$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   br label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_5, %_llgo_8

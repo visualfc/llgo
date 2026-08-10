@@ -594,7 +594,7 @@ func main() {
 // CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %10, 1
 // CHECK-NEXT:   %14 = extractvalue { ptr, ptr } %10, 0
 // CHECK-NEXT:   %15 = call { i64, %"{{.*}}/runtime/internal/runtime.iface" } %14(ptr %13, %"{{.*}}/runtime/internal/runtime.Slice" %1)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %12)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %12)
 // CHECK-NEXT:   %16 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %15, 0
 // CHECK-NEXT:   %17 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %15, 1
 // CHECK-NEXT:   %18 = insertvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } undef, i64 %16, 0
@@ -626,7 +626,7 @@ func main() {
 // CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
 // CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
 // CHECK-NEXT:   %14 = call { i64, %"{{.*}}/runtime/internal/runtime.iface" } %13(ptr %12, %"{{.*}}/runtime/internal/runtime.Slice" %1)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %11)
 // CHECK-NEXT:   %15 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %14, 0
 // CHECK-NEXT:   %16 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %14, 1
 // CHECK-NEXT:   %17 = insertvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } undef, i64 %15, 0
@@ -657,7 +657,7 @@ func main() {
 // CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %10, 1
 // CHECK-NEXT:   %14 = extractvalue { ptr, ptr } %10, 0
 // CHECK-NEXT:   %15 = call { i64, %"{{.*}}/runtime/internal/runtime.iface" } %14(ptr %13, %"{{.*}}/runtime/internal/runtime.Slice" %1)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %12)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %12)
 // CHECK-NEXT:   %16 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %15, 0
 // CHECK-NEXT:   %17 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %15, 1
 // CHECK-NEXT:   %18 = insertvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } undef, i64 %16, 0
@@ -725,7 +725,7 @@ func main() {
 // CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
 // CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
 // CHECK-NEXT:   %14 = call { i64, %"{{.*}}/runtime/internal/runtime.iface" } %13(ptr %12, %"{{.*}}/runtime/internal/runtime.Slice" %1)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %11)
 // CHECK-NEXT:   %15 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %14, 0
 // CHECK-NEXT:   %16 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %14, 1
 // CHECK-NEXT:   %17 = insertvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } undef, i64 %15, 0

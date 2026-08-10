@@ -147,7 +147,7 @@ func main() {
 // CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
 // CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
 // CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" %12(ptr %11)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %10)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %10)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %13
 // CHECK-NEXT: }
 
@@ -169,6 +169,6 @@ func main() {
 // CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
 // CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
 // CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.String" %13(ptr %12)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %11)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %14
 // CHECK-NEXT: }

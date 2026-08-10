@@ -118,12 +118,12 @@ func main() {
 // CHECK-NEXT:   %33 = extractvalue { ptr, i64, { ptr, ptr } } %31, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %30)
 // CHECK-NEXT:   %34 = extractvalue { ptr, ptr } %33, 0
-// CHECK-NEXT:   %35 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr %34)
+// CHECK-NEXT:   %35 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr %34)
 // CHECK-NEXT:   %36 = extractvalue { ptr, ptr } %33, 1
 // CHECK-NEXT:   %37 = extractvalue { ptr, ptr } %33, 0
 // CHECK-NEXT:   %__llgo_funcval_code1 = call ptr asm "", "=r,0"(ptr %37)
 // CHECK-NEXT:   call void %__llgo_funcval_code1(ptr {{(nest|swiftself)}} %36)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %35)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %35)
 // CHECK-NEXT:   br label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_7, %_llgo_2

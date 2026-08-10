@@ -163,9 +163,9 @@ func main() {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5
 // CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @main.End)
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @main.End)
 // CHECK-NEXT:   call void @main.End()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)

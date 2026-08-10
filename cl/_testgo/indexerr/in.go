@@ -241,9 +241,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#1", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#1$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#1$1")
 // CHECK-NEXT:   call void @"main.init#1$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -316,9 +316,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#10", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#10$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#10$1")
 // CHECK-NEXT:   call void @"main.init#10$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -407,9 +407,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#11", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#11$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#11$1")
 // CHECK-NEXT:   call void @"main.init#11$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -497,9 +497,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#12", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#12$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#12$1")
 // CHECK-NEXT:   call void @"main.init#12$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -587,9 +587,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#2", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#2$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#2$1")
 // CHECK-NEXT:   call void @"main.init#2$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -662,9 +662,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#3", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#3$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#3$1")
 // CHECK-NEXT:   call void @"main.init#3$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -737,9 +737,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#4", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#4$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#4$1")
 // CHECK-NEXT:   call void @"main.init#4$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -812,9 +812,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#5", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#5$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#5$1")
 // CHECK-NEXT:   call void @"main.init#5$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -887,9 +887,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#6", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#6$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#6$1")
 // CHECK-NEXT:   call void @"main.init#6$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -962,9 +962,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#7", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#7$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#7$1")
 // CHECK-NEXT:   call void @"main.init#7$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -1048,9 +1048,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#8", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#8$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#8$1")
 // CHECK-NEXT:   call void @"main.init#8$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
@@ -1134,9 +1134,9 @@ func slice2(n int) {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5, %_llgo_4
 // CHECK-NEXT:   store ptr blockaddress(@"main.init#9", %_llgo_3), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#9$1")
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.init#9$1")
 // CHECK-NEXT:   call void @"main.init#9$1"()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(ptr %14)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   %15 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
 // CHECK-NEXT:   %16 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %15, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %16)
