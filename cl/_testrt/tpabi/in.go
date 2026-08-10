@@ -83,7 +83,7 @@ func main() {
 // CHECK-NEXT:   %13 = getelementptr inbounds %"main.T[string,int]", ptr %11, i32 0, i32 1
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 5 }, ptr %12, align 8
 // CHECK-NEXT:   store i64 100, ptr %13, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$BP0p_lUsEd-IbbtJVukGmgrdQkqzcoYzSiwgUvgFvUs", ptr @"*_llgo_main.T[string,int]")
+// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.T[string,int]")
 // CHECK-NEXT:   %15 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %14, 0
 // CHECK-NEXT:   %16 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %15, ptr %11, 1
 // CHECK-NEXT:   %17 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %16)

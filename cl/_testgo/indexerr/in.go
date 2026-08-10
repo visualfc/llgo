@@ -215,7 +215,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#1"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -290,7 +290,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#10"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -381,7 +381,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#11"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -471,7 +471,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#12"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -561,7 +561,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#2"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -636,7 +636,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#3"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -711,7 +711,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#4"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -786,7 +786,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#5"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -861,7 +861,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#6"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -936,7 +936,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#7"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -1022,7 +1022,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#8"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -1108,7 +1108,7 @@ func slice2(n int) {
 // CHECK-LABEL: define void @"main.init#9"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8

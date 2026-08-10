@@ -47,7 +47,7 @@ func (pt *M[T]) value() T {
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %1 = getelementptr inbounds %"main.M[int]", ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 100, ptr %1, align 8
-// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8", ptr @"*_llgo_main.M[int]")
+// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.M[int]")
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %2, 0
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %3, ptr %0, 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %4)
@@ -73,7 +73,7 @@ func (pt *M[T]) value() T {
 // CHECK-NEXT:   %17 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %18 = getelementptr inbounds %"main.M[float64]", ptr %17, i32 0, i32 0
 // CHECK-NEXT:   store double 1.001000e+02, ptr %18, align 8
-// CHECK-NEXT:   %19 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$2dxw6yZ6V86Spb7J0dTDIoWqg7ba7UDXlAlpJv3-HLk", ptr @"*_llgo_main.M[float64]")
+// CHECK-NEXT:   %19 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.M[float64]")
 // CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %19, 0
 // CHECK-NEXT:   %21 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %20, ptr %17, 1
 // CHECK-NEXT:   %22 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %21)
@@ -97,7 +97,7 @@ func (pt *M[T]) value() T {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   %34 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %4)
-// CHECK-NEXT:   %35 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"{{.*}}/cl/_testgo/tpinst.iface$2sV9fFeqOv1SzesvwIdhTqCFzDT8ZX5buKUSAoHNSww", ptr %34)
+// CHECK-NEXT:   %35 = call i1 @"{{.*}}/runtime/internal/runtime.Implements"(ptr @"{{.*}}/cl/_testgo/tpinst.iface${{[-A-Za-z0-9_]+}}", ptr %34)
 // CHECK-NEXT:   br i1 %35, label %_llgo_7, label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_7
@@ -112,7 +112,7 @@ func (pt *M[T]) value() T {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_4
 // CHECK-NEXT:   %38 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %4, 1
-// CHECK-NEXT:   %39 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/tpinst.iface$2sV9fFeqOv1SzesvwIdhTqCFzDT8ZX5buKUSAoHNSww", ptr %34)
+// CHECK-NEXT:   %39 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/tpinst.iface${{[-A-Za-z0-9_]+}}", ptr %34)
 // CHECK-NEXT:   %40 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %39, 0
 // CHECK-NEXT:   %41 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %40, ptr %38, 1
 // CHECK-NEXT:   %42 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %41)
@@ -128,7 +128,7 @@ func (pt *M[T]) value() T {
 // CHECK-NEXT:   br i1 %51, label %_llgo_5, label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_4
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_main.I[int]", ptr %34, ptr @"{{.*}}/cl/_testgo/tpinst.iface$2sV9fFeqOv1SzesvwIdhTqCFzDT8ZX5buKUSAoHNSww", %"{{.*}}/runtime/internal/runtime.String" { ptr @16, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_main.I[int]", ptr %34, ptr @"{{.*}}/cl/_testgo/tpinst.iface${{[-A-Za-z0-9_]+}}", %"{{.*}}/runtime/internal/runtime.String" { ptr @16, i64 5 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

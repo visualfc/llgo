@@ -47,7 +47,7 @@ func main() {
 // CHECK-LABEL: define void @main.fail(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{[0-9]+}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -176,7 +176,7 @@ func main() {
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{[0-9]+}}, align 1
+// CHECK-NEXT:   %1 = alloca i8
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8

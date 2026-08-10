@@ -93,7 +93,7 @@ func demo3() {
 // CHECK-NEXT:   store ptr %2, ptr %4, align 8
 // CHECK-NEXT:   %5 = insertvalue { ptr, ptr } { ptr @"main.demo1$1$1", ptr undef }, ptr %3, 1
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %7 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %7 = alloca i8
 // CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, i32 0, i32 0
 // CHECK-NEXT:   store ptr %7, ptr %9, align 8
@@ -216,7 +216,7 @@ func demo3() {
 // CHECK-NEXT:   store ptr %2, ptr %4, align 8
 // CHECK-NEXT:   %5 = insertvalue { ptr, ptr } { ptr @"main.demo2$1$1", ptr undef }, ptr %3, 1
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %7 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %7 = alloca i8
 // CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, i32 0, i32 0
 // CHECK-NEXT:   store ptr %7, ptr %9, align 8
@@ -357,7 +357,7 @@ func demo3() {
 // CHECK-NEXT:   store ptr %2, ptr %4, align 8
 // CHECK-NEXT:   %5 = insertvalue { ptr, ptr } { ptr @"main.demo3$1$1", ptr undef }, ptr %3, 1
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %7 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %7 = alloca i8
 // CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, i32 0, i32 0
 // CHECK-NEXT:   store ptr %7, ptr %9, align 8

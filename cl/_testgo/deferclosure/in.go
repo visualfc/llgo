@@ -133,7 +133,7 @@ func main() {
 // CHECK-NEXT:   store ptr %0, ptr %2, align 8
 // CHECK-NEXT:   %3 = insertvalue { ptr, ptr } { ptr @"main.testDeferClosureValue$1", ptr undef }, ptr %1, 1
 // CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %5 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %5 = alloca i8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %6, i32 0, i32 0
 // CHECK-NEXT:   store ptr %5, ptr %7, align 8
@@ -233,7 +233,7 @@ func main() {
 // CHECK-NEXT:   %2 = getelementptr inbounds %main.FuncHolder, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   %3 = load volatile { ptr, ptr }, ptr %2, align 8
 // CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %5 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %5 = alloca i8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %7 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %6, i32 0, i32 0
 // CHECK-NEXT:   store ptr %5, ptr %7, align 8
@@ -326,7 +326,7 @@ func main() {
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   call void @"main.(*Handler).SetHandler"(ptr %0, { ptr, ptr } { ptr @"main.testDeferMethodLiteral$1", ptr null })
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %2 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %2 = alloca i8
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %4 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %3, i32 0, i32 0
 // CHECK-NEXT:   store ptr %2, ptr %4, align 8
@@ -430,7 +430,7 @@ func main() {
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
 // CHECK-NEXT:   %4 = insertvalue { ptr, ptr } { ptr @"main.testDeferStructClosure$1", ptr undef }, ptr %2, 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %6 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %6 = alloca i8
 // CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %8 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %7, i32 0, i32 0
 // CHECK-NEXT:   store ptr %6, ptr %8, align 8

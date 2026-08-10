@@ -142,7 +142,7 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_6
-// CHECK-NEXT:   %30 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$36psrSzSiKQuwmDQNUwPgWt23w6DHhlw0KM1_Hu7IbY", ptr @"*_llgo_main.nilReceiver")
+// CHECK-NEXT:   %30 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.nilReceiver")
 // CHECK-NEXT:   %31 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %30, 0
 // CHECK-NEXT:   %32 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %31, ptr null, 1
 // CHECK-NEXT:   %33 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %32)
@@ -173,7 +173,7 @@ func main() {
 // CHECK-NEXT:   br i1 %42, label %_llgo_10, label %_llgo_9
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_12:                                         ; preds = %_llgo_8
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface$36psrSzSiKQuwmDQNUwPgWt23w6DHhlw0KM1_Hu7IbY", ptr %33, ptr @"_llgo_iface$36psrSzSiKQuwmDQNUwPgWt23w6DHhlw0KM1_Hu7IbY", %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %33, ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

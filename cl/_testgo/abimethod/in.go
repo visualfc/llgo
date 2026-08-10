@@ -299,7 +299,7 @@ type I2 interface {
 // CHECK-NEXT:   store i64 100, ptr %4, align 8
 // CHECK-NEXT:   store i64 10, ptr %1, align 8
 // CHECK-NEXT:   store ptr %3, ptr %2, align 8
-// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$WkyTd7mXEW0USaC6FIo7OG9IdUUyjAJl_h3PFrMEtHc", ptr @"*{{.*}}/cl/_testgo/abimethod.struct$uZOBdiU3hXPUbVo89Hd5Yu-O7H5aW05rvCsBARpyejU")
+// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5, 0
 // CHECK-NEXT:   %7 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %6, ptr %0, 1
 // CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %7)
@@ -339,7 +339,7 @@ type I2 interface {
 // CHECK-NEXT:   %5 = load { i64, ptr }, ptr %0, align 8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { i64, ptr } %5, ptr %6, align 8
-// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$WkyTd7mXEW0USaC6FIo7OG9IdUUyjAJl_h3PFrMEtHc", ptr @"{{.*}}/cl/_testgo/abimethod.struct$uZOBdiU3hXPUbVo89Hd5Yu-O7H5aW05rvCsBARpyejU")
+// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %8 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %8, ptr %6, 1
 // CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
@@ -377,7 +377,7 @@ type I2 interface {
 // CHECK-NEXT:   %4 = load { i64, %main.T }, ptr %0, align 8
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { i64, %main.T } %4, ptr %5, align 8
-// CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$WkyTd7mXEW0USaC6FIo7OG9IdUUyjAJl_h3PFrMEtHc", ptr @"{{.*}}/cl/_testgo/abimethod.struct$wV1HLSFXt7Wv7h73sIB8bnWmKRl_W0D4YiEDGTV0x6E")
+// CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %7 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %6, 0
 // CHECK-NEXT:   %8 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %7, ptr %5, 1
 // CHECK-NEXT:   %9 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %8)
@@ -411,7 +411,7 @@ type I2 interface {
 // CHECK-NEXT:   %3 = getelementptr inbounds %main.T, ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store i64 10, ptr %1, align 8
 // CHECK-NEXT:   store i64 100, ptr %3, align 8
-// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$WkyTd7mXEW0USaC6FIo7OG9IdUUyjAJl_h3PFrMEtHc", ptr @"*{{.*}}/cl/_testgo/abimethod.struct$wV1HLSFXt7Wv7h73sIB8bnWmKRl_W0D4YiEDGTV0x6E")
+// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %4, 0
 // CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5, ptr %0, 1
 // CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %6)
@@ -445,7 +445,7 @@ type I2 interface {
 // CHECK-NEXT:   %3 = getelementptr inbounds %main.T, ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store i64 10, ptr %1, align 8
 // CHECK-NEXT:   store i64 100, ptr %3, align 8
-// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$GIQLduxo5T_xLwYbboAKy8LzikHgsGzb7WxrkOH3Lr4", ptr @"*{{.*}}/cl/_testgo/abimethod.struct$wV1HLSFXt7Wv7h73sIB8bnWmKRl_W0D4YiEDGTV0x6E")
+// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %4, 0
 // CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5, ptr %0, 1
 // CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %6)
@@ -485,7 +485,7 @@ type I2 interface {
 // CHECK-NEXT:   %5 = load { i64, ptr }, ptr %0, align 8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { i64, ptr } %5, ptr %6, align 8
-// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$GIQLduxo5T_xLwYbboAKy8LzikHgsGzb7WxrkOH3Lr4", ptr @"{{.*}}/cl/_testgo/abimethod.struct$uZOBdiU3hXPUbVo89Hd5Yu-O7H5aW05rvCsBARpyejU")
+// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %8 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %8, ptr %6, 1
 // CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
@@ -525,7 +525,7 @@ type I2 interface {
 // CHECK-NEXT:   %5 = load { i64, ptr }, ptr %0, align 8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { i64, ptr } %5, ptr %6, align 8
-// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$58AxoxqQ6sGUOM73FOqFrXsMlgxkU4HGd-S1Wl-ssYw", ptr @"{{.*}}/cl/_testgo/abimethod.struct$uZOBdiU3hXPUbVo89Hd5Yu-O7H5aW05rvCsBARpyejU")
+// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %8 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %8, ptr %6, 1
 // CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
@@ -585,7 +585,7 @@ type I2 interface {
 // CHECK-NEXT:   %5 = load { i64, ptr }, ptr %0, align 8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { i64, ptr } %5, ptr %6, align 8
-// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/abimethod.iface$kT5SIXt45Cspjl04Bof3DZVSOIltlDo-njpk6KqtZvA", ptr @"{{.*}}/cl/_testgo/abimethod.struct$uZOBdiU3hXPUbVo89Hd5Yu-O7H5aW05rvCsBARpyejU")
+// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"{{.*}}/cl/_testgo/abimethod.iface${{[-A-Za-z0-9_]+}}", ptr @"{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %8 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %8, ptr %6, 1
 // CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %9)
@@ -659,7 +659,7 @@ type I2 interface {
 // CHECK-NEXT:   %3 = call ptr @bytes.NewBufferString(%"{{.*}}/runtime/internal/runtime.String" { ptr @26, i64 5 })
 // CHECK-NEXT:   store i64 10, ptr %1, align 8
 // CHECK-NEXT:   store ptr %3, ptr %2, align 8
-// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$O6rEVxIuA5O1E0KWpQBCgGx26X5gYhJ_nnJnHVL8_7U", ptr @"*{{.*}}/cl/_testgo/abimethod.struct$RGW016k7zllXgGPm1CvD5-IBe-9lphOOTCFtYyDGLjY")
+// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*{{.*}}/cl/_testgo/abimethod.struct${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %4, 0
 // CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5, ptr %0, 1
 // CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %6)
@@ -689,7 +689,7 @@ type I2 interface {
 // CHECK-LABEL: define void @main.testGeneric(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$uinGjIxPTfzB5e5h5gH-0VIvLl5rQdJ_yx2UsrxQqds", ptr @"*_llgo_main.Pointer[any]")
+// CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.Pointer[any]")
 // CHECK-NEXT:   %2 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %1, 0
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %2, ptr %0, 1
 // CHECK-NEXT:   %4 = call ptr @"main.testGeneric$1"()
@@ -752,7 +752,7 @@ type I2 interface {
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %1 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 100, ptr %1, align 8
-// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$WkyTd7mXEW0USaC6FIo7OG9IdUUyjAJl_h3PFrMEtHc", ptr @"*_llgo_main.T")
+// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.T")
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %2, 0
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %3, ptr %0, 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %4)
@@ -787,7 +787,7 @@ type I2 interface {
 // CHECK-NEXT:   %2 = load %main.T, ptr %0, align 8
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store %main.T %2, ptr %3, align 8
-// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$WkyTd7mXEW0USaC6FIo7OG9IdUUyjAJl_h3PFrMEtHc", ptr @_llgo_main.T)
+// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @_llgo_main.T)
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %4, 0
 // CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5, ptr %3, 1
 // CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %6)
@@ -818,7 +818,7 @@ type I2 interface {
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %1 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 100, ptr %1, align 8
-// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$GIQLduxo5T_xLwYbboAKy8LzikHgsGzb7WxrkOH3Lr4", ptr @"*_llgo_main.T")
+// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.T")
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %2, 0
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %3, ptr %0, 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %4)

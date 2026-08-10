@@ -8204,7 +8204,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4588 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4589 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4589, align 8
-// CHECK-NEXT:   %4590 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4589, 1
+// CHECK-NEXT:   %4590 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4589, 1
 // CHECK-NEXT:   %4591 = extractvalue { ptr, ptr } %4588, 1
 // CHECK-NEXT:   %4592 = extractvalue { ptr, ptr } %4588, 0
 // CHECK-NEXT:   %__llgo_funcval_code592 = call ptr asm "", "=r,0"(ptr %4592)
@@ -8213,7 +8213,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4595 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4596 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4596, align 8
-// CHECK-NEXT:   %4597 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4596, 1
+// CHECK-NEXT:   %4597 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4596, 1
 // CHECK-NEXT:   %4598 = extractvalue { ptr, ptr } %4595, 1
 // CHECK-NEXT:   %4599 = extractvalue { ptr, ptr } %4595, 0
 // CHECK-NEXT:   %__llgo_funcval_code593 = call ptr asm "", "=r,0"(ptr %4599)
@@ -8225,7 +8225,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4603 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4604 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4604, align 8
-// CHECK-NEXT:   %4605 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4604, 1
+// CHECK-NEXT:   %4605 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4604, 1
 // CHECK-NEXT:   %4606 = extractvalue { ptr, ptr } %4603, 1
 // CHECK-NEXT:   %4607 = extractvalue { ptr, ptr } %4603, 0
 // CHECK-NEXT:   %__llgo_funcval_code594 = call ptr asm "", "=r,0"(ptr %4607)
@@ -8234,7 +8234,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4610 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4611 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4611, align 8
-// CHECK-NEXT:   %4612 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4611, 1
+// CHECK-NEXT:   %4612 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4611, 1
 // CHECK-NEXT:   %4613 = extractvalue { ptr, ptr } %4610, 1
 // CHECK-NEXT:   %4614 = extractvalue { ptr, ptr } %4610, 0
 // CHECK-NEXT:   %__llgo_funcval_code595 = call ptr asm "", "=r,0"(ptr %4614)
@@ -8255,7 +8255,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4625 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4626 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4626, align 8
-// CHECK-NEXT:   %4627 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4626, 1
+// CHECK-NEXT:   %4627 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4626, 1
 // CHECK-NEXT:   %4628 = extractvalue { ptr, ptr } %4625, 1
 // CHECK-NEXT:   %4629 = extractvalue { ptr, ptr } %4625, 0
 // CHECK-NEXT:   %__llgo_funcval_code597 = call ptr asm "", "=r,0"(ptr %4629)
@@ -8267,7 +8267,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4633 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4634 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4634, align 8
-// CHECK-NEXT:   %4635 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4634, 1
+// CHECK-NEXT:   %4635 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4634, 1
 // CHECK-NEXT:   %4636 = extractvalue { ptr, ptr } %4633, 1
 // CHECK-NEXT:   %4637 = extractvalue { ptr, ptr } %4633, 0
 // CHECK-NEXT:   %__llgo_funcval_code598 = call ptr asm "", "=r,0"(ptr %4637)
@@ -8297,7 +8297,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4655 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4656 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4656, align 8
-// CHECK-NEXT:   %4657 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4656, 1
+// CHECK-NEXT:   %4657 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4656, 1
 // CHECK-NEXT:   %4658 = extractvalue { ptr, ptr } %4655, 1
 // CHECK-NEXT:   %4659 = extractvalue { ptr, ptr } %4655, 0
 // CHECK-NEXT:   %__llgo_funcval_code601 = call ptr asm "", "=r,0"(ptr %4659)
@@ -8309,7 +8309,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4663 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4664 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4664, align 8
-// CHECK-NEXT:   %4665 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4664, 1
+// CHECK-NEXT:   %4665 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4664, 1
 // CHECK-NEXT:   %4666 = extractvalue { ptr, ptr } %4663, 1
 // CHECK-NEXT:   %4667 = extractvalue { ptr, ptr } %4663, 0
 // CHECK-NEXT:   %__llgo_funcval_code602 = call ptr asm "", "=r,0"(ptr %4667)
@@ -9414,7 +9414,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5471 = call %reflect.Value %__llgo_funcval_code734(ptr {{(nest|swiftself)}} %5469, %"{{.*}}/runtime/internal/runtime.eface" %5468)
 // CHECK-NEXT:   %5472 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5464, i32 0, i32 1
 // CHECK-NEXT:   %5473 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5474 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5474 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5475 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5474, 0
 // CHECK-NEXT:   %5476 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5475, ptr %5473, 1
 // CHECK-NEXT:   %5477 = call %reflect.Value @main.ReaderV(%"{{.*}}/runtime/internal/runtime.iface" %5476)
@@ -9423,13 +9423,13 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5478 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 369
 // CHECK-NEXT:   %5479 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5478, i32 0, i32 0
 // CHECK-NEXT:   %5480 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5481 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Zutt7i_AwOTtBOIzyS7ZA5vhcNcbk0kRAoRC98HJDos", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5481 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5482 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5481, 0
 // CHECK-NEXT:   %5483 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5482, ptr %5480, 1
 // CHECK-NEXT:   %5484 = call %reflect.Value @main.ReadWriterV(%"{{.*}}/runtime/internal/runtime.iface" %5483)
 // CHECK-NEXT:   %5485 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5478, i32 0, i32 1
 // CHECK-NEXT:   %5486 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5487 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5487 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5488 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5487, 0
 // CHECK-NEXT:   %5489 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5488, ptr %5486, 1
 // CHECK-NEXT:   %5490 = call %reflect.Value @main.ReaderV(%"{{.*}}/runtime/internal/runtime.iface" %5489)
@@ -9446,7 +9446,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5498 = call %reflect.Value %__llgo_funcval_code735(ptr {{(nest|swiftself)}} %5496, %"{{.*}}/runtime/internal/runtime.eface" %5495)
 // CHECK-NEXT:   %5499 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5491, i32 0, i32 1
 // CHECK-NEXT:   %5500 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5501 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Zutt7i_AwOTtBOIzyS7ZA5vhcNcbk0kRAoRC98HJDos", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5501 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5502 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5501, 0
 // CHECK-NEXT:   %5503 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5502, ptr %5500, 1
 // CHECK-NEXT:   %5504 = call %reflect.Value @main.ReadWriterV(%"{{.*}}/runtime/internal/runtime.iface" %5503)
@@ -9480,7 +9480,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   store ptr %2, ptr %4, align 8
 // CHECK-NEXT:   %5 = insertvalue { ptr, ptr } { ptr @"main.shouldPanic$1", ptr undef }, ptr %3, 1
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %7 = alloca i8, i64 {{[0-9]+}}, align 1
+// CHECK-NEXT:   %7 = alloca i8
 // CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, i32 0, i32 0
 // CHECK-NEXT:   store ptr %7, ptr %9, align 8
