@@ -599,6 +599,23 @@ func (b Builder) callRecoverScopedDefer(fn Expr, mayRecover bool, call func()) {
 	b.Call(b.Pkg.rtFunc("EndRecoverFrame"), prev)
 }
 
+// CallRecoverAlias invokes fn through a compiler-generated wrapper while
+// preserving the wrapped function as the direct deferred call for recover.
+func (b Builder) CallRecoverAlias(from Expr, mayRecover bool, fn Expr, buildCall func(Builder, Expr, ...Expr) Expr, args ...Expr) Expr {
+	token := b.recoverDeferToken(fn, mayRecover)
+	if from.IsNil() || token.IsNil() {
+		return buildCall(b, fn, args...)
+	}
+	prev := b.Call(
+		b.Pkg.rtFunc("StartRecoverFrameAlias"),
+		b.PtrCast(b.Prog.VoidPtr(), from),
+		token,
+	)
+	ret := buildCall(b, fn, args...)
+	b.Call(b.Pkg.rtFunc("EndRecoverFrame"), prev)
+	return ret
+}
+
 func (b Builder) recoverDeferToken(fn Expr, mayRecover bool) Expr {
 	switch fn.kind {
 	case vkClosure, vkIfaceMethod:

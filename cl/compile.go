@@ -659,13 +659,14 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	noInlineDirective := hasNoInlineDirective(f)
 	runtimeStackNoInline := needsRuntimeStackNoInline(pkgTypes, f)
 	pcLineNoInline := p.needsPCLineNoInline(f)
-	if disableInline || noInlineDirective || runtimeStackNoInline || pcLineNoInline || functionUsesRecover(f) {
+	usesRecover := functionUsesRecover(f)
+	if disableInline || noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
 		fn.Inline(llssa.NoInline)
 	}
-	if noInlineDirective || runtimeStackNoInline || pcLineNoInline || functionUsesRecover(f) {
+	if noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
 		fn.DisableTailCalls()
 	}
-	if functionUsesRecover(f) {
+	if functionMayRecover(f) {
 		fn.Expr = fn.Expr.MarkMayRecover()
 	}
 	p.funcs[f] = fn
@@ -1957,6 +1958,49 @@ func functionUsesRecover(fn *ssa.Function) bool {
 			}
 			builtin, ok := call.Common().Value.(*ssa.Builtin)
 			if ok && builtin.Name() == "recover" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isRecoverTransparentWrapper(fn *ssa.Function) bool {
+	if fn == nil {
+		return false
+	}
+	return strings.HasPrefix(fn.Synthetic, "wrapper for ") ||
+		strings.HasPrefix(fn.Synthetic, "thunk for ") ||
+		strings.HasPrefix(fn.Synthetic, "bound method wrapper for ")
+}
+
+func functionMayRecover(fn *ssa.Function) bool {
+	return functionMayRecoverSeen(fn, make(map[*ssa.Function]bool))
+}
+
+func functionMayRecoverSeen(fn *ssa.Function, seen map[*ssa.Function]bool) bool {
+	if fn == nil || seen[fn] {
+		return false
+	}
+	seen[fn] = true
+	if functionUsesRecover(fn) {
+		return true
+	}
+	if !isRecoverTransparentWrapper(fn) {
+		return false
+	}
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			call, ok := instr.(ssa.CallInstruction)
+			if !ok {
+				continue
+			}
+			common := call.Common()
+			if common.Method != nil {
+				// An interface wrapper can dispatch to a recover-capable method.
+				return true
+			}
+			if functionMayRecoverSeen(common.StaticCallee(), seen) {
 				return true
 			}
 		}

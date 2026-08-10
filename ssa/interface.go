@@ -64,6 +64,16 @@ func iMethodOf(rawIntf *types.Interface, name string) int {
 
 // Imethod returns closure of an interface method.
 func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
+	return b.imethod(intf, method, false)
+}
+
+// ImethodWithRecoverToken returns an interface method invocation whose code
+// pointer may also be used as recover-frame bookkeeping data.
+func (b Builder) ImethodWithRecoverToken(intf Expr, method *types.Func) Expr {
+	return b.imethod(intf, method, true)
+}
+
+func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr {
 	prog := b.Prog
 	intfType := types.Unalias(intf.raw.Type)
 	patchedIntfType := prog.patch(intfType)
@@ -84,11 +94,11 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 	i := iMethodOf(rawIntf, method.Name())
 	b.recordUseIfaceMethod(rawIntf, i)
 	data := b.InlineCall(b.Pkg.rtFunc("IfacePtrData"), intf)
-	var fn Expr
 	impl := intf.impl
 	itab := Expr{b.faceItab(impl), prog.VoidPtrPtr()}
 	pfn := b.Advance(itab, prog.IntVal(uint64(i+3), prog.Int()))
-	if prog.enableGoGlobalDCE {
+	var fn Expr
+	if prog.enableGoGlobalDCE && !recoverToken {
 		fnType := prog.Elem(pfn.Type)
 		fn = Expr{
 			prog.methodCheckedLoad(b.impl, pfn.impl, methodCapabilityKey(method)),
@@ -96,6 +106,13 @@ func (b Builder) Imethod(intf Expr, method *types.Func) Expr {
 		}
 	} else {
 		fn = b.Load(pfn)
+		if prog.enableGoGlobalDCE {
+			// A type.checked.load result is a virtual-call capability, not a
+			// general-purpose pointer. Recover bookkeeping needs the same code
+			// address as ordinary data, so retain the capability check while
+			// carrying the raw itab load into the transient invocation pair.
+			prog.methodCheckedLoad(b.impl, pfn.impl, methodCapabilityKey(method))
+		}
 	}
 	// This is a transient interface invocation pair, not a first-class
 	// funcval. The method receiver remains an ordinary ABI parameter.

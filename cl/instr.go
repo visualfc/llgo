@@ -1812,6 +1812,9 @@ func (p *context) emitDo(b llssa.Builder, act llssa.DoAction, ds *explicitDeferS
 	}
 	switch act {
 	case llssa.Call, llssa.Go:
+		if act == llssa.Call && isRecoverTransparentWrapper(p.goFn) {
+			return b.CallRecoverAlias(p.fn.Expr, mayRecover, fn, buildCall, args...)
+		}
 		return b.Do(act, fn, buildCall, args...)
 	default:
 		b.DeferRecover(act, mayRecover, fn, buildCall, args...)
@@ -1824,10 +1827,10 @@ func (p *context) callMayRecover(v ssa.Value) bool {
 	case *ssa.Builtin:
 		return false
 	case *ssa.Function:
-		return functionUsesRecover(v)
+		return functionMayRecover(v)
 	case *ssa.MakeClosure:
 		if fn, ok := v.Fn.(*ssa.Function); ok {
-			return functionUsesRecover(fn)
+			return functionMayRecover(fn)
 		}
 		return true
 	case *ssa.Call:
@@ -1993,7 +1996,16 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 	if mthd := call.Method; mthd != nil {
 		reflectCheck := p.reflectTypeMethodCheck(call, mthd)
 		o := p.compileValue(b, cv)
-		fn := b.Imethod(o, mthd)
+		var fn llssa.Expr
+		needsRecoverToken := act != llssa.Call && act != llssa.Go
+		if act == llssa.Call && isRecoverTransparentWrapper(p.goFn) {
+			needsRecoverToken = true
+		}
+		if needsRecoverToken {
+			fn = b.ImethodWithRecoverToken(o, mthd)
+		} else {
+			fn = b.Imethod(o, mthd)
+		}
 		hasVArg := fnNormal
 		if llssa.HasNameValist(call.Signature()) {
 			hasVArg = fnHasVArg

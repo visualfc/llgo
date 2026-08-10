@@ -86,6 +86,54 @@ func TestRecoverFixedbugReturnedDeferredFuncValue(t *testing.T) {
 	}
 }
 
+type fixedbugRecoverMethod int
+
+var fixedbugMethodRecover any
+
+func (fixedbugRecoverMethod) recoverValue() {
+	fixedbugMethodRecover = recover()
+}
+
+func TestRecoverDirectDeferredMethod(t *testing.T) {
+	fixedbugMethodRecover = nil
+	func() {
+		defer fixedbugRecoverMethod(0).recoverValue()
+		panic("direct deferred method")
+	}()
+	if fixedbugMethodRecover != "direct deferred method" {
+		t.Fatalf("direct deferred method recover = %v, want panic value", fixedbugMethodRecover)
+	}
+}
+
+type fixedbugRecoverInterface interface {
+	recoverValue()
+}
+
+func TestRecoverDirectDeferredInterfaceMethod(t *testing.T) {
+	fixedbugMethodRecover = nil
+	func() {
+		var v fixedbugRecoverInterface = fixedbugRecoverMethod(0)
+		defer v.recoverValue()
+		panic("direct deferred interface method")
+	}()
+	if fixedbugMethodRecover != "direct deferred interface method" {
+		t.Fatalf("direct deferred interface method recover = %v, want panic value", fixedbugMethodRecover)
+	}
+}
+
+func TestRecoverDirectDeferredMethodValue(t *testing.T) {
+	fixedbugMethodRecover = nil
+	func() {
+		var v fixedbugRecoverInterface = fixedbugRecoverMethod(0)
+		f := v.recoverValue
+		defer f()
+		panic("direct deferred method value")
+	}()
+	if fixedbugMethodRecover != "direct deferred method value" {
+		t.Fatalf("direct deferred method value recover = %v, want panic value", fixedbugMethodRecover)
+	}
+}
+
 var fixedbugRecursiveRecover any
 
 func fixedbugRecursiveDeferredRecover(depth int) {
