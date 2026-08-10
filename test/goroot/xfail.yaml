@@ -1233,22 +1233,6 @@ flakes:
     reason: linux/amd64 goroot run can either pass or expose incomplete runtime initialization
   - platform: darwin/arm64
     directive: run
-    case: recover2.go
-    reason: darwin/arm64 goroot run can either pass or expose incomplete recover semantics
-  - platform: linux/amd64
-    directive: run
-    case: recover2.go
-    reason: linux/amd64 goroot run can either pass or expose incomplete recover semantics
-  - platform: darwin/arm64
-    directive: run
-    case: zerodivide.go
-    reason: darwin/arm64 goroot run can either pass or expose incomplete integer divide panic semantics
-  - platform: linux/amd64
-    directive: run
-    case: zerodivide.go
-    reason: linux/amd64 goroot run can either pass or expose incomplete integer divide panic semantics
-  - platform: darwin/arm64
-    directive: run
     case: deferfin.go
     reason: darwin/arm64 goroot run can either pass or expose incomplete defer and finalizer semantics
   - platform: linux/amd64
@@ -1401,10 +1385,6 @@ xfails:
     reason: latest main goroot run failure on darwin/arm64
   - platform: darwin/arm64
     directive: run
-    case: recover4.go
-    reason: latest main goroot run failure on darwin/arm64
-  - platform: darwin/arm64
-    directive: run
     case: stackobj.go
     reason: latest main goroot run failure on darwin/arm64
   - platform: darwin/arm64
@@ -1545,11 +1525,6 @@ xfails:
     directive: run
     case: fixedbugs/issue4562.go
     reason: panic/fault statement-line granularity in untracked functions (P4b prebuilt pcline)
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: recover4.go
-    reason: go1.24 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -1559,11 +1534,6 @@ xfails:
     platform: linux/amd64
     directive: run
     case: recover1.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: recover4.go
     reason: go1.26 goroot run failure on linux/amd64
   - version: go1.26
     platform: linux/amd64
@@ -1649,26 +1619,6 @@ xfails:
     directive: run
     case: fixedbugs/issue38496.go
     reason: current main goroot run failure on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue73917.go
-    reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue73920.go
-    reason: go1.26 goroot run failure on darwin/arm64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue73917.go
-    reason: go1.26 goroot run failure on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue73920.go
-    reason: go1.26 goroot run failure on linux/amd64
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue38496.go
@@ -1686,6 +1636,3 @@ xfails:
     directive: rundir
     case: fixedbugs/issue24693.go
     reason: llgo constructs cross-package itabs incorrectly for unexported interface methods
-  - directive: run
-    case: fixedbugs/issue52072.go
-    reason: llgo loses the named return value when a deferred nil-receiver method panic is recovered
