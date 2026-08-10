@@ -6,22 +6,21 @@ import (
 	"unsafe"
 )
 
-// CHECK: @0 = private unnamed_addr constant [11 x i8] c"call.method", align 1
-// CHECK: @2 = private unnamed_addr constant [3 x i8] c"int", align 1
-// CHECK: @6 = private unnamed_addr constant [7 x i8] c"closure", align 1
-// CHECK: @7 = private unnamed_addr constant [5 x i8] c"error", align 1
-// CHECK: @9 = private unnamed_addr constant [12 x i8] c"call.closure", align 1
-// CHECK: @10 = private unnamed_addr constant [4 x i8] c"func", align 1
-// CHECK: @11 = private unnamed_addr constant [9 x i8] c"call.func", align 1
-// CHECK: @17 = private unnamed_addr constant [7 x i8] c"imethod", align 1
-// CHECK: @18 = private unnamed_addr constant [6 x i8] c"method", align 1
-// CHECK: @22 = private unnamed_addr constant [10 x i8] c"call.slice", align 1
-// CHECK: @36 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK: @37 = private unnamed_addr constant [5 x i8] c"world", align 1
-// CHECK: @38 = private unnamed_addr constant [14 x i8] c"MapIndex error", align 1
-// CHECK: @39 = private unnamed_addr constant [4 x i8] c"todo", align 1
-// CHECK: @40 = private unnamed_addr constant [12 x i8] c"must invalid", align 1
-// CHECK: @41 = private unnamed_addr constant [13 x i8] c"MapIter error", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [11 x i8] c"call.method", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [7 x i8] c"closure", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
+// CHECK: {{^}}@9 = private unnamed_addr constant [12 x i8] c"call.closure", align 1{{$}}
+// CHECK: {{^}}@10 = private unnamed_addr constant [4 x i8] c"func", align 1{{$}}
+// CHECK: {{^}}@11 = private unnamed_addr constant [9 x i8] c"call.func", align 1{{$}}
+// CHECK: {{^}}@17 = private unnamed_addr constant [7 x i8] c"imethod", align 1{{$}}
+// CHECK: {{^}}@18 = private unnamed_addr constant [6 x i8] c"method", align 1{{$}}
+// CHECK: {{^}}@22 = private unnamed_addr constant [10 x i8] c"call.slice", align 1{{$}}
+// CHECK: {{^}}@36 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+// CHECK: {{^}}@37 = private unnamed_addr constant [5 x i8] c"world", align 1{{$}}
+// CHECK: {{^}}@38 = private unnamed_addr constant [14 x i8] c"MapIndex error", align 1{{$}}
+// CHECK: {{^}}@39 = private unnamed_addr constant [4 x i8] c"todo", align 1{{$}}
+// CHECK: {{^}}@40 = private unnamed_addr constant [12 x i8] c"must invalid", align 1{{$}}
+// CHECK: {{^}}@41 = private unnamed_addr constant [13 x i8] c"MapIter error", align 1{{$}}
 
 func main() {
 	callSlice()
@@ -89,6 +88,115 @@ type T struct {
 	n int
 }
 
+func (t *T) Add(n int) int {
+	println("call.method")
+	t.n += n
+	return t.n
+}
+
+type I interface {
+	Add(n int) int
+}
+
+type abi struct {
+	typ  unsafe.Pointer
+	data unsafe.Pointer
+}
+
+func callMethod() {
+	t := &T{1}
+	v := reflect.ValueOf(t)
+	fn := v.Method(0)
+	println("method", fn.Kind(), fn.Type().String())
+	r := fn.Call([]reflect.Value{reflect.ValueOf(100)})
+	println(r[0].Int())
+	ifn, ok := fn.Interface().(func(int) int)
+	if !ok {
+		panic("error")
+	}
+	ifn(1)
+	v2 := reflect.ValueOf(fn.Interface())
+	r2 := v2.Call([]reflect.Value{reflect.ValueOf(100)})
+	println(r2[0].Int())
+}
+
+func callIMethod() {
+	var i I = &T{1}
+	v := reflect.ValueOf(i)
+	fn := v.Method(0)
+	println("imethod", fn.Kind(), fn.Type().String())
+	r := fn.Call([]reflect.Value{reflect.ValueOf(100)})
+	println(r[0].Int())
+	ifn, ok := fn.Interface().(func(int) int)
+	if !ok {
+		panic("error")
+	}
+	ifn(1)
+	v2 := reflect.ValueOf(fn.Interface())
+	r2 := v2.Call([]reflect.Value{reflect.ValueOf(100)})
+	println(r2[0].Int())
+}
+
+func mapDemo1() {
+	m := map[int]string{
+		1: "hello",
+		2: "world",
+	}
+	v := reflect.ValueOf(m)
+	if v.Len() != 2 || len(v.MapKeys()) != 2 {
+		panic("error")
+	}
+	if v.MapIndex(reflect.ValueOf(2)).String() != "world" {
+		panic("MapIndex error")
+	}
+	v.SetMapIndex(reflect.ValueOf(2), reflect.ValueOf("todo"))
+	if v.MapIndex(reflect.ValueOf(2)).String() != "todo" {
+		panic("MapIndex error")
+	}
+	if v.MapIndex(reflect.ValueOf(0)).IsValid() {
+		println("must invalid")
+	}
+	key := reflect.New(v.Type().Key()).Elem()
+	value := reflect.New(v.Type().Elem()).Elem()
+	iter := v.MapRange()
+	for iter.Next() {
+		key.SetIterKey(iter)
+		value.SetIterValue(iter)
+		if key.Int() != iter.Key().Int() || value.String() != iter.Value().String() {
+			panic("MapIter error")
+		}
+	}
+}
+
+func mapDemo2() {
+	v := reflect.MakeMap(reflect.MapOf(reflect.TypeOf(0), reflect.TypeOf("")))
+	v.SetMapIndex(reflect.ValueOf(1), reflect.ValueOf("hello"))
+	v.SetMapIndex(reflect.ValueOf(2), reflect.ValueOf("world"))
+	if v.Len() != 2 || len(v.MapKeys()) != 2 {
+		panic("error")
+	}
+	if v.MapIndex(reflect.ValueOf(2)).String() != "world" {
+		panic("MapIndex error")
+	}
+	v.SetMapIndex(reflect.ValueOf(2), reflect.ValueOf("todo"))
+	if v.MapIndex(reflect.ValueOf(2)).String() != "todo" {
+		panic("MapIndex error")
+	}
+	if v.MapIndex(reflect.ValueOf(0)).IsValid() {
+		println("must invalid")
+	}
+	key := reflect.New(v.Type().Key()).Elem()
+	value := reflect.New(v.Type().Elem()).Elem()
+	iter := v.MapRange()
+	for iter.Next() {
+		key.SetIterKey(iter)
+		value.SetIterValue(iter)
+		if key.Int() != iter.Key().Int() || value.String() != iter.Value().String() {
+			panic("MapIter error")
+		}
+	}
+}
+
 // CHECK-LABEL: define i64 @"main.(*T).Add"(ptr %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 11 })
@@ -113,13 +221,13 @@ type T struct {
 // CHECK-NEXT:   %3 = insertvalue { ptr, ptr } { ptr @"main.callClosure$1", ptr undef }, ptr %1, 1
 // CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { ptr, ptr } %3, ptr %4, align 8
-// CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4, 1
+// CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr undef }, ptr %4, 1
 // CHECK-NEXT:   %6 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %5)
 // CHECK-NEXT:   %7 = call i64 @reflect.Value.Kind(%reflect.Value %6)
 // CHECK-NEXT:   %8 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %6)
 // CHECK-NEXT:   %9 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %8)
 // CHECK-NEXT:   %10 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %8, 0
-// CHECK-NEXT:   %11 = getelementptr ptr, ptr %10, i64 {{(37|41)}}
+// CHECK-NEXT:   %11 = getelementptr ptr, ptr %10, i64 41
 // CHECK-NEXT:   %12 = load ptr, ptr %11, align 8
 // CHECK-NEXT:   %13 = insertvalue { ptr, ptr } undef, ptr %12, 0
 // CHECK-NEXT:   %14 = insertvalue { ptr, ptr } %13, ptr %9, 1
@@ -155,7 +263,7 @@ type T struct {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %34 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %6)
 // CHECK-NEXT:   %35 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %34, 0
-// CHECK-NEXT:   %36 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %35)
+// CHECK-NEXT:   %36 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %35)
 // CHECK-NEXT:   br i1 %36, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -205,13 +313,13 @@ type T struct {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { ptr, ptr } { ptr @"main.callFunc$1", ptr null }, ptr %0, align 8
-// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %0, 1
+// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %2 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %1)
 // CHECK-NEXT:   %3 = call i64 @reflect.Value.Kind(%reflect.Value %2)
 // CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %2)
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %4)
 // CHECK-NEXT:   %6 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %4, 0
-// CHECK-NEXT:   %7 = getelementptr ptr, ptr %6, i64 {{(37|41)}}
+// CHECK-NEXT:   %7 = getelementptr ptr, ptr %6, i64 41
 // CHECK-NEXT:   %8 = load ptr, ptr %7, align 8
 // CHECK-NEXT:   %9 = insertvalue { ptr, ptr } undef, ptr %8, 0
 // CHECK-NEXT:   %10 = insertvalue { ptr, ptr } %9, ptr %5, 1
@@ -247,7 +355,7 @@ type T struct {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %30 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %2)
 // CHECK-NEXT:   %31 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %30, 0
-// CHECK-NEXT:   %32 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %31)
+// CHECK-NEXT:   %32 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %31)
 // CHECK-NEXT:   br i1 %32, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -289,44 +397,12 @@ type T struct {
 // CHECK-NEXT:   ret i64 %1
 // CHECK-NEXT: }
 
-func (t *T) Add(n int) int {
-	println("call.method")
-	t.n += n
-	return t.n
-}
-
-type I interface {
-	Add(n int) int
-}
-
-type abi struct {
-	typ  unsafe.Pointer
-	data unsafe.Pointer
-}
-
-func callMethod() {
-	t := &T{1}
-	v := reflect.ValueOf(t)
-	fn := v.Method(0)
-	println("method", fn.Kind(), fn.Type().String())
-	r := fn.Call([]reflect.Value{reflect.ValueOf(100)})
-	println(r[0].Int())
-	ifn, ok := fn.Interface().(func(int) int)
-	if !ok {
-		panic("error")
-	}
-	ifn(1)
-	v2 := reflect.ValueOf(fn.Interface())
-	r2 := v2.Call([]reflect.Value{reflect.ValueOf(100)})
-	println(r2[0].Int())
-}
-
 // CHECK-LABEL: define void @main.callIMethod(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %1 = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
 // CHECK-NEXT:   store i64 1, ptr %1, align 8
-// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.T")
+// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$VdBKYV8-gcMjZtZfcf-u2oKoj9Lu3VXwuG8TGCW2S4A", ptr @"*_llgo_main.T")
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %2, 0
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %3, ptr %0, 1
 // CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %4)
@@ -339,7 +415,7 @@ func callMethod() {
 // CHECK-NEXT:   %12 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %10)
 // CHECK-NEXT:   %13 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %12)
 // CHECK-NEXT:   %14 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %12, 0
-// CHECK-NEXT:   %15 = getelementptr ptr, ptr %14, i64 {{(37|41)}}
+// CHECK-NEXT:   %15 = getelementptr ptr, ptr %14, i64 41
 // CHECK-NEXT:   %16 = load ptr, ptr %15, align 8
 // CHECK-NEXT:   %17 = insertvalue { ptr, ptr } undef, ptr %16, 0
 // CHECK-NEXT:   %18 = insertvalue { ptr, ptr } %17, ptr %13, 1
@@ -375,7 +451,7 @@ func callMethod() {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %38 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %10)
 // CHECK-NEXT:   %39 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %38, 0
-// CHECK-NEXT:   %40 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %39)
+// CHECK-NEXT:   %40 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %39)
 // CHECK-NEXT:   br i1 %40, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -444,7 +520,7 @@ func callMethod() {
 // CHECK-NEXT:   %6 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %4)
 // CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %6)
 // CHECK-NEXT:   %8 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %6, 0
-// CHECK-NEXT:   %9 = getelementptr ptr, ptr %8, i64 {{(37|41)}}
+// CHECK-NEXT:   %9 = getelementptr ptr, ptr %8, i64 41
 // CHECK-NEXT:   %10 = load ptr, ptr %9, align 8
 // CHECK-NEXT:   %11 = insertvalue { ptr, ptr } undef, ptr %10, 0
 // CHECK-NEXT:   %12 = insertvalue { ptr, ptr } %11, ptr %7, 1
@@ -480,7 +556,7 @@ func callMethod() {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %32 = call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %4)
 // CHECK-NEXT:   %33 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %32, 0
-// CHECK-NEXT:   %34 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr %33)
+// CHECK-NEXT:   %34 = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %33)
 // CHECK-NEXT:   br i1 %34, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_5
@@ -541,7 +617,7 @@ func callMethod() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store { ptr, ptr } { ptr @main.demo, ptr null }, ptr %0, align 8
-// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %0, 1
+// CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"_llgo_closure$FjMjjQr3-2iTiWyZP1IIQFOz0hUCa0OS6pEm5uVV6Pk", ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %2 = call %reflect.Value @reflect.ValueOf(%"{{.*}}/runtime/internal/runtime.eface" %1)
 // CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store i64 1, ptr %3, align 8
@@ -728,7 +804,7 @@ func callMethod() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %22, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %22, ptr @_llgo_int, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -757,23 +833,6 @@ func callMethod() {
 // CHECK-NEXT:   call void @main.mapDemo2()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-
-func callIMethod() {
-	var i I = &T{1}
-	v := reflect.ValueOf(i)
-	fn := v.Method(0)
-	println("imethod", fn.Kind(), fn.Type().String())
-	r := fn.Call([]reflect.Value{reflect.ValueOf(100)})
-	println(r[0].Int())
-	ifn, ok := fn.Interface().(func(int) int)
-	if !ok {
-		panic("error")
-	}
-	ifn(1)
-	v2 := reflect.ValueOf(fn.Interface())
-	r2 := v2.Call([]reflect.Value{reflect.ValueOf(100)})
-	println(r2[0].Int())
-}
 
 // CHECK-LABEL: define void @main.mapDemo1(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -868,7 +927,7 @@ func callIMethod() {
 // CHECK-NEXT:   %43 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %6)
 // CHECK-NEXT:   %44 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %43)
 // CHECK-NEXT:   %45 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %43, 0
-// CHECK-NEXT:   %46 = getelementptr ptr, ptr %45, i64 {{(20|22)}}
+// CHECK-NEXT:   %46 = getelementptr ptr, ptr %45, i64 22
 // CHECK-NEXT:   %47 = load ptr, ptr %46, align 8
 // CHECK-NEXT:   %48 = insertvalue { ptr, ptr } undef, ptr %47, 0
 // CHECK-NEXT:   %49 = insertvalue { ptr, ptr } %48, ptr %44, 1
@@ -923,37 +982,6 @@ func callIMethod() {
 // CHECK-NEXT:   %79 = xor i1 %78, true
 // CHECK-NEXT:   br i1 %79, label %_llgo_13, label %_llgo_12
 // CHECK-NEXT: }
-
-func mapDemo1() {
-	m := map[int]string{
-		1: "hello",
-		2: "world",
-	}
-	v := reflect.ValueOf(m)
-	if v.Len() != 2 || len(v.MapKeys()) != 2 {
-		panic("error")
-	}
-	if v.MapIndex(reflect.ValueOf(2)).String() != "world" {
-		panic("MapIndex error")
-	}
-	v.SetMapIndex(reflect.ValueOf(2), reflect.ValueOf("todo"))
-	if v.MapIndex(reflect.ValueOf(2)).String() != "todo" {
-		panic("MapIndex error")
-	}
-	if v.MapIndex(reflect.ValueOf(0)).IsValid() {
-		println("must invalid")
-	}
-	key := reflect.New(v.Type().Key()).Elem()
-	value := reflect.New(v.Type().Elem()).Elem()
-	iter := v.MapRange()
-	for iter.Next() {
-		key.SetIterKey(iter)
-		value.SetIterValue(iter)
-		if key.Int() != iter.Key().Int() || value.String() != iter.Value().String() {
-			panic("MapIter error")
-		}
-	}
-}
 
 // CHECK-LABEL: define void @main.mapDemo2(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -1065,7 +1093,7 @@ func mapDemo1() {
 // CHECK-NEXT:   %56 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %7)
 // CHECK-NEXT:   %57 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %56)
 // CHECK-NEXT:   %58 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %56, 0
-// CHECK-NEXT:   %59 = getelementptr ptr, ptr %58, i64 {{(20|22)}}
+// CHECK-NEXT:   %59 = getelementptr ptr, ptr %58, i64 22
 // CHECK-NEXT:   %60 = load ptr, ptr %59, align 8
 // CHECK-NEXT:   %61 = insertvalue { ptr, ptr } undef, ptr %60, 0
 // CHECK-NEXT:   %62 = insertvalue { ptr, ptr } %61, ptr %57, 1
@@ -1120,32 +1148,3 @@ func mapDemo1() {
 // CHECK-NEXT:   %92 = xor i1 %91, true
 // CHECK-NEXT:   br i1 %92, label %_llgo_13, label %_llgo_12
 // CHECK-NEXT: }
-
-func mapDemo2() {
-	v := reflect.MakeMap(reflect.MapOf(reflect.TypeOf(0), reflect.TypeOf("")))
-	v.SetMapIndex(reflect.ValueOf(1), reflect.ValueOf("hello"))
-	v.SetMapIndex(reflect.ValueOf(2), reflect.ValueOf("world"))
-	if v.Len() != 2 || len(v.MapKeys()) != 2 {
-		panic("error")
-	}
-	if v.MapIndex(reflect.ValueOf(2)).String() != "world" {
-		panic("MapIndex error")
-	}
-	v.SetMapIndex(reflect.ValueOf(2), reflect.ValueOf("todo"))
-	if v.MapIndex(reflect.ValueOf(2)).String() != "todo" {
-		panic("MapIndex error")
-	}
-	if v.MapIndex(reflect.ValueOf(0)).IsValid() {
-		println("must invalid")
-	}
-	key := reflect.New(v.Type().Key()).Elem()
-	value := reflect.New(v.Type().Elem()).Elem()
-	iter := v.MapRange()
-	for iter.Next() {
-		key.SetIterKey(iter)
-		value.SetIterValue(iter)
-		if key.Int() != iter.Key().Int() || value.String() != iter.Value().String() {
-			panic("MapIter error")
-		}
-	}
-}

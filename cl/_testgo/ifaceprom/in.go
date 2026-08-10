@@ -5,11 +5,10 @@ package main
 // struct.  In particular, this test exercises that the correct
 // method is called.
 
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [3 x i8] c"two", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [48 x i8] c"{{.*}}/cl/_testgo/ifaceprom.impl", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [3 x i8] c"one", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/ifaceprom.I", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
+// CHECK: {{^}}@0 = private unnamed_addr constant [3 x i8] c"two", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [48 x i8] c"{{.*}}/cl/_testgo/ifaceprom.impl", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [3 x i8] c"one", align 1{{$}}
+// CHECK: {{^}}@13 = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
 
 type I interface {
 	one() int
@@ -155,13 +154,13 @@ func main() {
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @main.impl.two(%main.impl %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 }
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define i64 @"main.(*impl).one"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
 // CHECK-NEXT:   %3 = call i64 @main.impl.one(%main.impl zeroinitializer)
@@ -171,7 +170,7 @@ func main() {
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.(*impl).two"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 48 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 })
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
 // CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @main.impl.two(%main.impl zeroinitializer)
@@ -285,7 +284,7 @@ func main() {
 // CHECK-NEXT:   %54 = extractvalue { ptr, ptr } %53, 1
 // CHECK-NEXT:   %55 = extractvalue { ptr, ptr } %53, 0
 // CHECK-NEXT:   %56 = call %"{{.*}}/runtime/internal/runtime.String" %55(ptr %54)
-// CHECK-NEXT:   %57 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %56, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   %57 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %56, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 })
 // CHECK-NEXT:   %58 = xor i1 %57, true
 // CHECK-NEXT:   br i1 %58, label %_llgo_9, label %_llgo_10
 // CHECK-EMPTY:
@@ -308,7 +307,7 @@ func main() {
 // CHECK-NEXT:   %69 = extractvalue { ptr, ptr } %68, 1
 // CHECK-NEXT:   %70 = extractvalue { ptr, ptr } %68, 0
 // CHECK-NEXT:   %71 = call %"{{.*}}/runtime/internal/runtime.String" %70(ptr %69)
-// CHECK-NEXT:   %72 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %71, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   %72 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %71, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 })
 // CHECK-NEXT:   %73 = xor i1 %72, true
 // CHECK-NEXT:   br i1 %73, label %_llgo_11, label %_llgo_12
 // CHECK-EMPTY:
@@ -348,7 +347,7 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_23
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 4 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
@@ -365,7 +364,7 @@ func main() {
 // CHECK-NEXT:   br i1 %94, label %_llgo_5, label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_4
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %36, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %36, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_19:                                         ; preds = %_llgo_6
@@ -381,7 +380,7 @@ func main() {
 // CHECK-NEXT:   br i1 %101, label %_llgo_7, label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_20:                                         ; preds = %_llgo_6
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %42, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %42, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_21:                                         ; preds = %_llgo_12
@@ -393,12 +392,12 @@ func main() {
 // CHECK-NEXT:   %106 = extractvalue { ptr, ptr } %104, 0
 // CHECK-NEXT:   %__llgo_funcval_code2 = call ptr asm "", "=r,0"(ptr %106)
 // CHECK-NEXT:   %107 = call %"{{.*}}/runtime/internal/runtime.String" %__llgo_funcval_code2(ptr {{(nest|swiftself)}} %105)
-// CHECK-NEXT:   %108 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %107, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   %108 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %107, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 })
 // CHECK-NEXT:   %109 = xor i1 %108, true
 // CHECK-NEXT:   br i1 %109, label %_llgo_13, label %_llgo_14
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_22:                                         ; preds = %_llgo_12
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %78, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %78, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_23:                                         ; preds = %_llgo_14
@@ -410,12 +409,12 @@ func main() {
 // CHECK-NEXT:   %114 = extractvalue { ptr, ptr } %112, 0
 // CHECK-NEXT:   %__llgo_funcval_code3 = call ptr asm "", "=r,0"(ptr %114)
 // CHECK-NEXT:   %115 = call %"{{.*}}/runtime/internal/runtime.String" %__llgo_funcval_code3(ptr {{(nest|swiftself)}} %113)
-// CHECK-NEXT:   %116 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %115, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   %116 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %115, %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 })
 // CHECK-NEXT:   %117 = xor i1 %116, true
 // CHECK-NEXT:   br i1 %117, label %_llgo_15, label %_llgo_16
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_24:                                         ; preds = %_llgo_14
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %84, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %84, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

@@ -1,16 +1,13 @@
 // LITTEST
 package main
 
-// CHECK: @16 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK: @17 = private unnamed_addr constant [5 x i8] c"world", align 1
-// CHECK: @18 = private unnamed_addr constant [4 x i8] c"llgo", align 1
-// CHECK: @19 = private unnamed_addr constant [1 x i8] c":", align 1
-// CHECK: @22 = private unnamed_addr constant [2 x i8] c"go", align 1
-// CHECK: @23 = private unnamed_addr constant [7 x i8] c"bad key", align 1
-// CHECK: @24 = private unnamed_addr constant [7 x i8] c"bad len", align 1
-// CHECK: @31 = private unnamed_addr constant [7 x i8] c"main.N1", align 1
-// CHECK: @33 = private unnamed_addr constant [6 x i8] c"main.K", align 1
-// CHECK: @40 = private unnamed_addr constant [7 x i8] c"main.K2", align 1
+// CHECK: {{^}}@16 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+// CHECK: {{^}}@17 = private unnamed_addr constant [5 x i8] c"world", align 1{{$}}
+// CHECK: {{^}}@18 = private unnamed_addr constant [4 x i8] c"llgo", align 1{{$}}
+// CHECK: {{^}}@19 = private unnamed_addr constant [1 x i8] c":", align 1{{$}}
+// CHECK: {{^}}@22 = private unnamed_addr constant [2 x i8] c"go", align 1{{$}}
+// CHECK: {{^}}@23 = private unnamed_addr constant [7 x i8] c"bad key", align 1{{$}}
+// CHECK: {{^}}@24 = private unnamed_addr constant [7 x i8] c"bad len", align 1{{$}}
 
 func main() {
 	make1()
@@ -50,6 +47,93 @@ func make1() {
 	if len(s) != 2 {
 		panic("bad len")
 	}
+}
+
+type N1 [1]int
+
+func make2() {
+	m2 := make(map[int]string)
+	println(m2, len(m2), m2 == nil, m2 != nil)
+	var m3 map[int]string
+	println(m3, len(m3), m3 == nil, m3 != nil)
+
+	n := make(map[any]int)
+	n[N1{1}] = 100
+	n[N1{2}] = 200
+	n[N1{3}] = 300
+	n[N1{2}] = -200
+	for k, v := range n {
+		println(k.(N1)[0], v)
+	}
+}
+
+type N struct {
+	n1 int8
+	n2 int8
+}
+type K [1]N
+type K2 [1]*N
+
+func make3() {
+	var a any = K{N{1, 2}}
+	var b any = K{N{1, 2}}
+	println(a == b)
+
+	m := make(map[any]int)
+	m[K{N{1, 2}}] = 100
+	m[K{N{3, 4}}] = 200
+	for k, v := range m {
+		println(k.(K)[0].n1, v)
+	}
+}
+
+func make4() {
+	var a any = K2{&N{1, 2}}
+	var b any = K2{&N{1, 2}}
+	println(a == b)
+
+	m := make(map[any]int)
+	m[K2{&N{1, 2}}] = 100
+	m[K2{&N{3, 4}}] = 200
+	for k, v := range m {
+		println(k.(K2)[0].n1, v)
+	}
+}
+
+func make5() {
+	ch := make(chan int)
+	var a any = ch
+	var b any = ch
+	println(a == b)
+	m := make(map[chan int]int)
+	m[ch] = 100
+	m[ch] = 200
+	for k, v := range m {
+		println(k, v)
+	}
+}
+
+type M map[int]string
+
+func make6() {
+	var m M
+	m = make(map[int]string)
+	m[1] = "hello"
+	for k, v := range m {
+		println(k, v)
+	}
+}
+
+func make7() {
+	type N int
+	m := map[N]string{
+		1: "hello",
+		2: "world",
+	}
+	for k, v := range m {
+		println(k, v)
+	}
+	println(m[1])
 }
 
 // CHECK-LABEL: define void @main.init(){{.*}} {
@@ -253,8 +337,6 @@ func make1() {
 // CHECK-NEXT:   br i1 %77, label %_llgo_5, label %_llgo_6
 // CHECK-NEXT: }
 
-type N1 [1]int
-
 // CHECK-LABEL: define void @main.make2(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.MakeMap"(ptr @"map[_llgo_int]_llgo_string", i64 0)
@@ -377,32 +459,9 @@ type N1 [1]int
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %39, %"{{.*}}/runtime/internal/runtime.String" { ptr @32, i64 44 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %39, ptr @_llgo_main.N1, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
-
-func make2() {
-	m2 := make(map[int]string)
-	println(m2, len(m2), m2 == nil, m2 != nil)
-	var m3 map[int]string
-	println(m3, len(m3), m3 == nil, m3 != nil)
-
-	n := make(map[any]int)
-	n[N1{1}] = 100
-	n[N1{2}] = 200
-	n[N1{3}] = 300
-	n[N1{2}] = -200
-	for k, v := range n {
-		println(k.(N1)[0], v)
-	}
-}
-
-type N struct {
-	n1 int8
-	n2 int8
-}
-type K [1]N
-type K2 [1]*N
 
 // CHECK-LABEL: define void @main.make3(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -514,22 +573,9 @@ type K2 [1]*N
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %39, %"{{.*}}/runtime/internal/runtime.String" { ptr @39, i64 43 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %39, ptr @_llgo_main.K, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
-
-func make3() {
-	var a any = K{N{1, 2}}
-	var b any = K{N{1, 2}}
-	println(a == b)
-
-	m := make(map[any]int)
-	m[K{N{1, 2}}] = 100
-	m[K{N{3, 4}}] = 200
-	for k, v := range m {
-		println(k.(K)[0].n1, v)
-	}
-}
 
 // CHECK-LABEL: define void @main.make4(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -646,22 +692,9 @@ func make3() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %43, %"{{.*}}/runtime/internal/runtime.String" { ptr @42, i64 44 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %43, ptr @_llgo_main.K2, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
-
-func make4() {
-	var a any = K2{&N{1, 2}}
-	var b any = K2{&N{1, 2}}
-	println(a == b)
-
-	m := make(map[any]int)
-	m[K2{&N{1, 2}}] = 100
-	m[K2{&N{3, 4}}] = 200
-	for k, v := range m {
-		println(k.(K2)[0].n1, v)
-	}
-}
 
 // CHECK-LABEL: define void @main.make5(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -718,21 +751,6 @@ func make4() {
 // CHECK-NEXT:   br i1 %21, label %_llgo_2, label %_llgo_3
 // CHECK-NEXT: }
 
-func make5() {
-	ch := make(chan int)
-	var a any = ch
-	var b any = ch
-	println(a == b)
-	m := make(map[chan int]int)
-	m[ch] = 100
-	m[ch] = 200
-	for k, v := range m {
-		println(k, v)
-	}
-}
-
-type M map[int]string
-
 // CHECK-LABEL: define void @main.make6(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.MakeMap"(ptr @"map[_llgo_int]_llgo_string", i64 0)
@@ -777,15 +795,6 @@ type M map[int]string
 // CHECK-NEXT:   %15 = extractvalue { i1, i64, %"{{.*}}/runtime/internal/runtime.String" } %14, 0
 // CHECK-NEXT:   br i1 %15, label %_llgo_2, label %_llgo_3
 // CHECK-NEXT: }
-
-func make6() {
-	var m M
-	m = make(map[int]string)
-	m[1] = "hello"
-	for k, v := range m {
-		println(k, v)
-	}
-}
 
 // CHECK-LABEL: define void @main.make7(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -841,15 +850,3 @@ func make6() {
 // CHECK-NEXT:   %20 = extractvalue { i1, i64, %"{{.*}}/runtime/internal/runtime.String" } %19, 0
 // CHECK-NEXT:   br i1 %20, label %_llgo_2, label %_llgo_3
 // CHECK-NEXT: }
-
-func make7() {
-	type N int
-	m := map[N]string{
-		1: "hello",
-		2: "world",
-	}
-	for k, v := range m {
-		println(k, v)
-	}
-	println(m[1])
-}

@@ -1,14 +1,13 @@
 // LITTEST
 package main
 
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [3 x i8] c"bye", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [13 x i8] c"panic message", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [6 x i8] c"string", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [8 x i8] c"recover:", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [9 x i8] c"reachable", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [5 x i8] c"world", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [2 x i8] c"hi", align 1{{$}}
+// CHECK: {{^}}@0 = private unnamed_addr constant [3 x i8] c"bye", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [13 x i8] c"panic message", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [8 x i8] c"recover:", align 1{{$}}
+// CHECK: {{^}}@4 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [9 x i8] c"reachable", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [5 x i8] c"world", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [2 x i8] c"hi", align 1{{$}}
 
 func f(s string) bool {
 	return len(s) > 2
@@ -48,7 +47,7 @@ func main() {
 // CHECK-LABEL: define void @main.fail(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8, i64 {{[0-9]+}}, align 1
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -64,7 +63,7 @@ func main() {
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 4
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %10, align 8
-// CHECK-NEXT:   %11 = call i32 @{{(__)?}}sigsetjmp(ptr %1, i32 0)
+// CHECK-NEXT:   %11 = call i32 @{{(__)?sigsetjmp}}(ptr %1, i32 0)
 // CHECK-NEXT:   %12 = icmp eq i32 %11, 0
 // CHECK-NEXT:   br i1 %12, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:
@@ -91,10 +90,10 @@ func main() {
 // CHECK-NEXT:   %18 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 1
 // CHECK-NEXT:   store i64 0, ptr %18, align 8
 // CHECK-NEXT:   %19 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 2
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %19, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 }, ptr %19, align 8
 // CHECK-NEXT:   store ptr %16, ptr %10, align 8
 // CHECK-NEXT:   %20 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 13 }, ptr %20, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 13 }, ptr %20, align 8
 // CHECK-NEXT:   %21 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %20, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %21)
 // CHECK-NEXT:   unreachable
@@ -150,14 +149,14 @@ func main() {
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
 // CHECK-NEXT:   %6 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %1, 1
 // CHECK-NEXT:   %7 = load %"{{.*}}/runtime/internal/runtime.String", ptr %6, align 8
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 8 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %7)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %4, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %4, ptr @_llgo_string, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -177,7 +176,7 @@ func main() {
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
-// CHECK-NEXT:   %1 = alloca i8, i64 {{.*}}, align 1
+// CHECK-NEXT:   %1 = alloca i8, i64 {{[0-9]+}}, align 1
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
 // CHECK-NEXT:   %3 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 0
 // CHECK-NEXT:   store ptr %1, ptr %3, align 8
@@ -193,7 +192,7 @@ func main() {
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 4
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %10, align 8
-// CHECK-NEXT:   %11 = call i32 @{{(__)?}}sigsetjmp(ptr %1, i32 0)
+// CHECK-NEXT:   %11 = call i32 @{{(__)?sigsetjmp}}(ptr %1, i32 0)
 // CHECK-NEXT:   %12 = icmp eq i32 %11, 0
 // CHECK-NEXT:   br i1 %12, label %_llgo_6, label %_llgo_7
 // CHECK-EMPTY:
@@ -211,10 +210,10 @@ func main() {
 // CHECK-NEXT:   %18 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 1
 // CHECK-NEXT:   store i64 1, ptr %18, align 8
 // CHECK-NEXT:   %19 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 2
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %19, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 5 }, ptr %19, align 8
 // CHECK-NEXT:   store ptr %16, ptr %10, align 8
 // CHECK-NEXT:   call void @main.fail()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 9 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 9 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_8), ptr %9, align 8
 // CHECK-NEXT:   br label %_llgo_4
@@ -230,7 +229,7 @@ func main() {
 // CHECK-NEXT:   %25 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %23, i32 0, i32 1
 // CHECK-NEXT:   store i64 2, ptr %25, align 8
 // CHECK-NEXT:   %26 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %23, i32 0, i32 2
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %26, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 }, ptr %26, align 8
 // CHECK-NEXT:   store ptr %23, ptr %10, align 8
 // CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_9), ptr %9, align 8
 // CHECK-NEXT:   br label %_llgo_4
@@ -247,7 +246,7 @@ func main() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %30 = call i1 @main.f(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 })
+// CHECK-NEXT:   %30 = call i1 @main.f(%"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 5 })
 // CHECK-NEXT:   br i1 %30, label %_llgo_2, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_0
@@ -325,7 +324,7 @@ func main() {
 
 // CHECK-LABEL: define void @"main.main$1"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 2 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 2 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

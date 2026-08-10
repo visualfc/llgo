@@ -5,21 +5,20 @@ import (
 	"unicode/utf8"
 )
 
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [7 x i8] c"WriteTo", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [5 x i8] c"Close", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [3 x i8] c"EOF", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [11 x i8] c"short write", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [11 x i8] c"hello world", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [50 x i8] c"{{.*}}/cl/_testgo/reader.nopCloser", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [49 x i8] c"{{.*}}/cl/_testgo/reader.WriterTo", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/reader.nopCloserWriterTo", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [37 x i8] c"stringsReader.ReadAt: negative offset", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [34 x i8] c"stringsReader.Seek: invalid whence", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [37 x i8] c"stringsReader.Seek: negative position", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [48 x i8] c"stringsReader.UnreadByte: at beginning of string", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [49 x i8] c"strings.Reader.UnreadRune: at beginning of string", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [62 x i8] c"strings.Reader.UnreadRune: previous operation was not ReadRune", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [48 x i8] c"stringsReader.WriteTo: invalid WriteString count", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [7 x i8] c"WriteTo", align 1{{$}}
+// CHECK: {{^}}@17 = private unnamed_addr constant [5 x i8] c"Close", align 1{{$}}
+// CHECK: {{^}}@28 = private unnamed_addr constant [3 x i8] c"EOF", align 1{{$}}
+// CHECK: {{^}}@29 = private unnamed_addr constant [11 x i8] c"short write", align 1{{$}}
+// CHECK: {{^}}@30 = private unnamed_addr constant [11 x i8] c"hello world", align 1{{$}}
+// CHECK: {{^}}@53 = private unnamed_addr constant [50 x i8] c"{{.*}}/cl/_testgo/reader.nopCloser", align 1{{$}}
+// CHECK: {{^}}@54 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/reader.nopCloserWriterTo", align 1{{$}}
+// CHECK: {{^}}@55 = private unnamed_addr constant [37 x i8] c"stringsReader.ReadAt: negative offset", align 1{{$}}
+// CHECK: {{^}}@56 = private unnamed_addr constant [34 x i8] c"stringsReader.Seek: invalid whence", align 1{{$}}
+// CHECK: {{^}}@57 = private unnamed_addr constant [37 x i8] c"stringsReader.Seek: negative position", align 1{{$}}
+// CHECK: {{^}}@58 = private unnamed_addr constant [48 x i8] c"stringsReader.UnreadByte: at beginning of string", align 1{{$}}
+// CHECK: {{^}}@59 = private unnamed_addr constant [49 x i8] c"strings.Reader.UnreadRune: at beginning of string", align 1{{$}}
+// CHECK: {{^}}@60 = private unnamed_addr constant [62 x i8] c"strings.Reader.UnreadRune: previous operation was not ReadRune", align 1{{$}}
+// CHECK: {{^}}@61 = private unnamed_addr constant [48 x i8] c"stringsReader.WriteTo: invalid WriteString count", align 1{{$}}
 
 type Reader interface {
 	Read(p []byte) (n int, err error)
@@ -337,7 +336,7 @@ func main() {
 // CHECK-NEXT:   %5 = load %main.nopCloserWriterTo, ptr %3, align 8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store %main.nopCloserWriterTo %5, ptr %6, align 8
-// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @_llgo_main.nopCloserWriterTo)
+// CHECK-NEXT:   %7 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$2bmbYDBStAIdmbXPPn7qIaCcpVcj2I5k6AqgqwAfh84", ptr @_llgo_main.nopCloserWriterTo)
 // CHECK-NEXT:   %8 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %8, ptr %6, 1
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %9
@@ -350,14 +349,14 @@ func main() {
 // CHECK-NEXT:   %12 = load %main.nopCloser, ptr %10, align 8
 // CHECK-NEXT:   %13 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
 // CHECK-NEXT:   store %main.nopCloser %12, ptr %13, align 8
-// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @_llgo_main.nopCloser)
+// CHECK-NEXT:   %14 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$2bmbYDBStAIdmbXPPn7qIaCcpVcj2I5k6AqgqwAfh84", ptr @_llgo_main.nopCloser)
 // CHECK-NEXT:   %15 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %14, 0
 // CHECK-NEXT:   %16 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %15, ptr %13, 1
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %16
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %17 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %0, 1
-// CHECK-NEXT:   %18 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %1)
+// CHECK-NEXT:   %18 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$eN81k1zqixGTyagHw_4nqH4mGfwwehTOCTXUlbT9kzk", ptr %1)
 // CHECK-NEXT:   %19 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %18, 0
 // CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %19, ptr %17, 1
 // CHECK-NEXT:   %21 = insertvalue { %"{{.*}}/runtime/internal/runtime.iface", i1 } undef, %"{{.*}}/runtime/internal/runtime.iface" %20, 0
@@ -500,7 +499,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %31 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %0, 1
-// CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %2)
+// CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Ly4zXiUMEac-hYAMw6b6miJ1JEhGfLyBWyBOhpsRZcU", ptr %2)
 // CHECK-NEXT:   %33 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %32, 0
 // CHECK-NEXT:   %34 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %33, ptr %31, 1
 // CHECK-NEXT:   %35 = insertvalue { %"{{.*}}/runtime/internal/runtime.iface", i1 } undef, %"{{.*}}/runtime/internal/runtime.iface" %34, 0
@@ -532,9 +531,9 @@ func main() {
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   call void @"unicode/utf8.init"()
-// CHECK-NEXT:   %1 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
+// CHECK-NEXT:   %1 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @28, i64 3 })
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.iface" %1, ptr @main.EOF, align 8
-// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 11 })
+// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @29, i64 11 })
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.iface" %2, ptr @main.ErrShortWrite, align 8
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
@@ -546,8 +545,8 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
 // CHECK-NEXT:   %1 = getelementptr inbounds %main.stringReader, ptr %0, i32 0, i32 0
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 11 }, ptr %1, align 8
-// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.stringReader")
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @30, i64 11 }, ptr %1, align 8
+// CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw", ptr @"*_llgo_main.stringReader")
 // CHECK-NEXT:   %3 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %2, 0
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %3, ptr %0, 1
 // CHECK-NEXT:   %5 = call { %"{{.*}}/runtime/internal/runtime.Slice", %"{{.*}}/runtime/internal/runtime.iface" } @main.ReadAll(%"{{.*}}/runtime/internal/runtime.iface" %4)
@@ -566,7 +565,7 @@ func main() {
 // CHECK-NEXT:   %1 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   %2 = getelementptr inbounds %main.errorString, ptr %1, i32 0, i32 0
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %0, ptr %2, align 8
-// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.errorString")
+// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Fh8eUJ-Gw4e6TYuajcFIOSCuqSPKAt5nS4ow7xeGXEU", ptr @"*_llgo_main.errorString")
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %3, 0
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %4, ptr %1, 1
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %5
@@ -606,7 +605,7 @@ func main() {
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"main.(*nopCloser).Close"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 50 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @53, i64 50 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @17, i64 5 })
 // CHECK-NEXT:   %2 = load %main.nopCloser, ptr %0, align 8
 // CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.iface" @main.nopCloser.Close(%main.nopCloser %2)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %3
@@ -679,7 +678,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %7 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %4, 1
-// CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %5)
+// CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$eN81k1zqixGTyagHw_4nqH4mGfwwehTOCTXUlbT9kzk", ptr %5)
 // CHECK-NEXT:   %9 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %8, 0
 // CHECK-NEXT:   %10 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %9, ptr %7, 1
 // CHECK-NEXT:   %11 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %10)
@@ -698,14 +697,14 @@ func main() {
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %23
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %5, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 49 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.Reader, ptr %5, ptr @_llgo_main.WriterTo, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 7 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"main.(*nopCloserWriterTo).Close"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @54, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @17, i64 5 })
 // CHECK-NEXT:   %2 = load %main.nopCloserWriterTo, ptr %0, align 8
 // CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.iface" @main.nopCloserWriterTo.Close(%main.nopCloserWriterTo %2)
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %3
@@ -737,7 +736,7 @@ func main() {
 // CHECK-LABEL: define { i64, %"{{.*}}/runtime/internal/runtime.iface" } @"main.(*nopCloserWriterTo).WriteTo"(ptr %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @54, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 7 })
 // CHECK-NEXT:   %3 = load %main.nopCloserWriterTo, ptr %0, align 8
 // CHECK-NEXT:   %4 = call { i64, %"{{.*}}/runtime/internal/runtime.iface" } @main.nopCloserWriterTo.WriteTo(%main.nopCloserWriterTo %3, %"{{.*}}/runtime/internal/runtime.iface" %1)
 // CHECK-NEXT:   %5 = extractvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } %4, 0
@@ -813,7 +812,7 @@ func main() {
 // CHECK-NEXT:   br i1 %3, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 37 })
+// CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @55, i64 37 })
 // CHECK-NEXT:   %5 = insertvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } { i64 0, %"{{.*}}/runtime/internal/runtime.iface" undef }, %"{{.*}}/runtime/internal/runtime.iface" %4, 1
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %5
 // CHECK-EMPTY:
@@ -999,12 +998,12 @@ func main() {
 // CHECK-NEXT:   br i1 %15, label %_llgo_5, label %_llgo_7
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_6
-// CHECK-NEXT:   %16 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 34 })
+// CHECK-NEXT:   %16 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @56, i64 34 })
 // CHECK-NEXT:   %17 = insertvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } { i64 0, %"{{.*}}/runtime/internal/runtime.iface" undef }, %"{{.*}}/runtime/internal/runtime.iface" %16, 1
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %17
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   %18 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 37 })
+// CHECK-NEXT:   %18 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @57, i64 37 })
 // CHECK-NEXT:   %19 = insertvalue { i64, %"{{.*}}/runtime/internal/runtime.iface" } { i64 0, %"{{.*}}/runtime/internal/runtime.iface" undef }, %"{{.*}}/runtime/internal/runtime.iface" %18, 1
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %19
 // CHECK-EMPTY:
@@ -1032,7 +1031,7 @@ func main() {
 // CHECK-NEXT:   br i1 %3, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 48 })
+// CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @58, i64 48 })
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
@@ -1054,7 +1053,7 @@ func main() {
 // CHECK-NEXT:   br i1 %3, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 49 })
+// CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @59, i64 49 })
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
@@ -1064,7 +1063,7 @@ func main() {
 // CHECK-NEXT:   br i1 %7, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   %8 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 62 })
+// CHECK-NEXT:   %8 = call %"{{.*}}/runtime/internal/runtime.iface" @main.newError(%"{{.*}}/runtime/internal/runtime.String" { ptr @60, i64 62 })
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_2
@@ -1108,7 +1107,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_2
 // CHECK-NEXT:   %20 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 48 }, ptr %20, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @61, i64 48 }, ptr %20, align 8
 // CHECK-NEXT:   %21 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %20, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %21)
 // CHECK-NEXT:   unreachable

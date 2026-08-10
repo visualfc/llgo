@@ -5,12 +5,11 @@ import (
 	"github.com/goplus/llgo/cl/_testgo/genericembediface/streamlib"
 )
 
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [7 x i8] c"Context", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [68 x i8] c"{{.*}}/cl/_testgo/genericembediface.ReflectionServer", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [20 x i8] c"ServerReflectionInfo", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [7 x i8] c"Context", align 1{{$}}
+// CHECK: {{^}}@18 = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
+// CHECK: {{^}}@19 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.server", align 1{{$}}
+// CHECK: {{^}}@20 = private unnamed_addr constant [58 x i8] c"{{.*}}/cl/_testgo/genericembediface.stream", align 1{{$}}
 
 type Request struct{}
 type Response struct{}
@@ -48,13 +47,13 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   %4 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %0, 1
-// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %2)
+// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$BvNBaULAPv8d6dMcw84Vo_vBubLQ8fAehPBYVHY6m7g", ptr %2)
 // CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5, 0
 // CHECK-NEXT:   %7 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %6, ptr %4, 1
 // CHECK-NEXT:   %8 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/cl/_testgo/genericembediface/streamlib.GenericServerStream[main.Request,main.Response]", ptr %8, i32 0, i32 0
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.iface" %1, ptr %9, align 8
-// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_{{.*}}/cl/_testgo/genericembediface/streamlib.GenericServerStream[main.Request,main.Response]")
+// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$v_XV1q3uiNvAZy1sSF5r_9UE2XfxcttHV0UKe3XpAeo", ptr @"*_llgo_{{.*}}/cl/_testgo/genericembediface/streamlib.GenericServerStream[main.Request,main.Response]")
 // CHECK-NEXT:   %11 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %10, 0
 // CHECK-NEXT:   %12 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %11, ptr %8, 1
 // CHECK-NEXT:   %13 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %7)
@@ -69,7 +68,7 @@ func main() {
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %21
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 68 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 20 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %2, ptr @_llgo_main.ReflectionServer, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -94,11 +93,11 @@ func main() {
 // CHECK-NEXT:   %1 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.server, ptr undef }, ptr %0, 1
 // CHECK-NEXT:   %2 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 0)
 // CHECK-NEXT:   store %main.stream zeroinitializer, ptr %2, align 1
-// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @_llgo_main.stream)
+// CHECK-NEXT:   %3 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$v_XV1q3uiNvAZy1sSF5r_9UE2XfxcttHV0UKe3XpAeo", ptr @_llgo_main.stream)
 // CHECK-NEXT:   %4 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %3, 0
 // CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %4, ptr %2, 1
 // CHECK-NEXT:   %6 = call %"{{.*}}/runtime/internal/runtime.iface" @main.handler(%"{{.*}}/runtime/internal/runtime.eface" %1, %"{{.*}}/runtime/internal/runtime.iface" %5)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 4 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @18, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -111,7 +110,7 @@ func main() {
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.iface" @"main.(*server).ServerReflectionInfo"(ptr %0, %"{{.*}}/runtime/internal/runtime.iface" %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 20 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @19, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 20 })
 // CHECK-NEXT:   %3 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %3)
 // CHECK-NEXT:   %4 = call %"{{.*}}/runtime/internal/runtime.iface" @main.server.ServerReflectionInfo(%main.server zeroinitializer, %"{{.*}}/runtime/internal/runtime.iface" %1)
@@ -120,13 +119,13 @@ func main() {
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @main.stream.Context(%main.stream %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 }
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 7 }
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.(*stream).Context"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = icmp eq ptr %0, null
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 %1, %"{{.*}}/runtime/internal/runtime.String" { ptr @20, i64 58 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 7 })
 // CHECK-NEXT:   %2 = icmp eq ptr %0, null
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %2)
 // CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.String" @main.stream.Context(%main.stream zeroinitializer)
