@@ -1969,6 +1969,9 @@ func isRecoverTransparentWrapper(fn *ssa.Function) bool {
 	if fn == nil {
 		return false
 	}
+	// These are the Go SSA forms of compiler-generated forwarding frames.
+	// Treating them as transparent mirrors the standard runtime's
+	// abi.FuncIDWrapper rule in gorecover.
 	return strings.HasPrefix(fn.Synthetic, "wrapper for ") ||
 		strings.HasPrefix(fn.Synthetic, "thunk for ") ||
 		strings.HasPrefix(fn.Synthetic, "bound method wrapper for ")

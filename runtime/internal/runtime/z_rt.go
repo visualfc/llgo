@@ -35,6 +35,9 @@ type Defer struct {
 	Args unsafe.Pointer // defer func and args links
 }
 
+// panicNode is LLGo's longjmp-backed counterpart of the standard runtime's
+// _panic record. prev is the _panic.link equivalent; defer_ records the
+// explicit defer frame currently owning the unwind.
 type panicNode struct {
 	prev   unsafe.Pointer
 	arg    any
@@ -131,8 +134,9 @@ func BindRecoverFrame(function, activation unsafe.Pointer) {
 	}
 }
 
-// StartRecoverFrameAlias maps a direct deferred closure wrapper to the wrapped
-// function while the wrapper calls into it.
+// StartRecoverFrameAlias maps a direct deferred transparent wrapper to the
+// wrapped function while the wrapper calls into it. This is the explicit-defer
+// analogue of gorecover ignoring abi.FuncIDWrapper frames.
 func StartRecoverFrameAlias(from, to unsafe.Pointer) unsafe.Pointer {
 	gp := getg()
 	old := gp.recoverFrame
