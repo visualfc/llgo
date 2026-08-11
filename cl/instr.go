@@ -927,6 +927,9 @@ func runtimeCallerFuncSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function
 	if set, ok := c.extended[pkg]; ok {
 		return set
 	}
+	if c.precomputed {
+		panic("caller-tracking function set was not precomputed")
+	}
 	base := runtimeCallerBaseSet(c, pkg)
 	out := make(map[*ssa.Function]bool, len(base))
 	for fn := range base {
@@ -983,14 +986,18 @@ func runtimeCallerFuncSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function
 // Precompute before workers start; recover facts also synchronize lazy queries
 // for nested and synthetic functions that are not package members.
 type CallerTracking struct {
-	base     map[*ssa.Package]map[*ssa.Function]bool
-	extended map[*ssa.Package]map[*ssa.Function]bool
-	recover  *recoverFacts
+	base        map[*ssa.Package]map[*ssa.Function]bool
+	extended    map[*ssa.Package]map[*ssa.Function]bool
+	recover     *recoverFacts
+	precomputed bool
 }
 
 // Precompute resolves caller-tracking and recover data before package backends
 // start. Once it returns, callers may share c for concurrent lookups as long as
-// pkgs contains every package that can be passed to this compilation.
+// pkgs contains every package that can be passed to this compilation. A later
+// caller-tracking lookup miss panics instead of mutating the shared maps;
+// recover facts retain their own synchronization for nested and synthetic
+// functions that are not package members.
 func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 	if c == nil {
 		return
@@ -1006,6 +1013,7 @@ func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 			runtimeCallerFuncSet(c, pkg)
 		}
 	}
+	c.precomputed = true
 }
 
 // NewCallerTracking creates the frontend-analysis caches for one compilation.
@@ -1034,6 +1042,9 @@ func runtimeCallerBaseSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function
 	}
 	if set, ok := c.base[pkg]; ok {
 		return set
+	}
+	if c.precomputed {
+		panic("caller-tracking base set was not precomputed")
 	}
 	set := computeRuntimeCallerBaseSet(pkg)
 	c.base[pkg] = set
