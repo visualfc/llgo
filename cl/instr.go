@@ -907,7 +907,7 @@ func fnUsesRuntimeCaller(c *CallerTracking, fn *ssa.Function) bool {
 
 // runtimeCallerFuncSet is the per-package tracking set: functions that
 // must keep physical frames (noinline, no tail calls) and get statement
-// anchors at their call sites. Two criteria feed it:
+// anchors at their call sites. Five criteria feed it:
 //
 //  1. the function (transitively, within the package) reaches a
 //     runtime.Caller/Callers call — it consumes caller pcs itself;
@@ -916,6 +916,10 @@ func fnUsesRuntimeCaller(c *CallerTracking, fn *ssa.Function) bool {
 //     what the callee's fixed Caller depth attributes, so inlining it
 //     would both mis-attribute the location and, on ELF, drop the
 //     function symbol its pcline sections are link-ordered to.
+//  3. program-unique functions (main.main and package init functions)
+//     already have one logical instance, so retaining their frame is free;
+//  4. //go:noinline functions already retain their frame, so emitting
+//     statement anchors adds no further inlining cost;
 //  5. the function can run below a defer that consumes panic pcs — recover
 //     exposes the panicked call chain after longjmp has removed those physical
 //     frames, so the compiler must keep and annotate the possible callees.
