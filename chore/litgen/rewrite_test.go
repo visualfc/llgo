@@ -173,6 +173,144 @@ _llgo_0:
 	}
 }
 
+func TestRewriteSource_PreservesDeclarationDirectiveAdjacency(t *testing.T) {
+	const src = `// LITTEST
+package main
+
+import _ "unsafe"
+
+//go:linkname cSqrt C.sqrt
+func cSqrt(float64) float64
+
+func callSqrt(x float64) float64 {
+	println("sqrt")
+	return cSqrt(x)
+}
+`
+	const ir = `@0 = private unnamed_addr constant [4 x i8] c"sqrt"
+
+declare double @sqrt(double)
+
+define double @"example.com/p.callSqrt"(double %0) {
+_llgo_0:
+  call void @"example.com/runtime/internal/runtime.PrintString"(ptr @0)
+  %1 = call double @sqrt(double %0)
+  ret double %1
+}
+`
+	got, err := rewriteSource(src, "in.go", "example.com/p", "example.com", ir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `// LITTEST
+package main
+
+import _ "unsafe"
+
+// CHECK: {{^}}@0 = private unnamed_addr constant [4 x i8] c"sqrt"{{$}}
+
+//go:linkname cSqrt C.sqrt
+func cSqrt(float64) float64
+
+// CHECK-LABEL: define double @"{{.*}}/p.callSqrt"(double %0){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(ptr @0)
+// CHECK-NEXT:   %1 = call double @sqrt(double %0)
+// CHECK-NEXT:   ret double %1
+// CHECK-NEXT: }
+
+func callSqrt(x float64) float64 {
+	println("sqrt")
+	return cSqrt(x)
+}
+`
+	if got != want {
+		t.Fatalf("rewriteSource mismatch:\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
+func TestRewriteSource_PreservesDirectiveBeforeInlineClosure(t *testing.T) {
+	const funcIR = `define ptr @"example.com/p.makeFn"() {
+_llgo_0:
+  ret ptr @"example.com/p.makeFn$1"
+}
+
+define void @"example.com/p.makeFn$1"() {
+_llgo_0:
+  ret void
+}
+`
+	const initIR = `@0 = private unnamed_addr constant [3 x i8] c"fn"
+
+define void @"example.com/p.init"() {
+_llgo_0:
+  store ptr @"example.com/p.init$1", ptr null
+  ret void
+}
+
+define void @"example.com/p.init$1"() {
+_llgo_0:
+  ret void
+}
+`
+	tests := []struct {
+		name      string
+		src       string
+		ir        string
+		adjacency string
+	}{
+		{
+			name: "function declaration",
+			src: `// LITTEST
+package main
+
+//go:noinline
+func makeFn() func() { return func() {} }
+`,
+			ir:        funcIR,
+			adjacency: "//go:noinline\nfunc makeFn",
+		},
+		{
+			name: "variable declaration",
+			src: `// LITTEST
+package main
+
+//llgo:tls
+var fn = func() {}
+`,
+			ir:        initIR,
+			adjacency: "//llgo:tls\nvar fn",
+		},
+		{
+			name: "variable specification",
+			src: `// LITTEST
+package main
+
+var (
+	//llgo:tls
+	fn = func() {}
+)
+`,
+			ir:        initIR,
+			adjacency: "\t//llgo:tls\n\tfn =",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := rewriteSource(test.src, "in.go", "example.com/p", "example.com", test.ir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(got, test.adjacency) {
+				t.Fatalf("declaration directive separated from declaration:\n%s", got)
+			}
+			if !strings.Contains(got, "$1") {
+				t.Fatalf("closure checks not inserted:\n%s", got)
+			}
+		})
+	}
+}
+
 func TestRewriteSource_SharesInitClosureCountsAcrossDecls(t *testing.T) {
 	const src = `// LITTEST
 package main

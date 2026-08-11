@@ -205,12 +205,12 @@ func collectAnchors(src string, fset *token.FileSet, file *ast.File) (map[string
 		case *ast.FuncDecl:
 			name := inPkgFuncName(d)
 			anchors[name] = declInsertPos(src, fset, d.Pos(), d.Doc)
-			collectFuncLitAnchors(src, fset, d.Body, name, anchors, counts)
+			collectFuncLitAnchors(src, fset, d.Body, name, anchors, counts, declDocAnchors(src, fset, d))
 		case *ast.GenDecl:
 			if d.Tok == token.IMPORT {
 				continue
 			}
-			collectFuncLitAnchors(src, fset, d, "init", anchors, counts)
+			collectFuncLitAnchors(src, fset, d, "init", anchors, counts, declDocAnchors(src, fset, d))
 		}
 	}
 	return anchors, topPos
@@ -218,10 +218,16 @@ func collectAnchors(src string, fset *token.FileSet, file *ast.File) (map[string
 
 func topInsertPos(src string, fset *token.FileSet, file *ast.File) int {
 	for _, decl := range file.Decls {
-		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.IMPORT {
-			continue
+		// Insert before declaration docs so compiler directives stay attached.
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			return declInsertPos(src, fset, d.Pos(), d.Doc)
+		case *ast.GenDecl:
+			if d.Tok == token.IMPORT {
+				continue
+			}
+			return declInsertPos(src, fset, d.Pos(), d.Doc)
 		}
-		return lineStart(src, offsetOf(fset, decl.Pos()))
 	}
 	return len(src)
 }
@@ -249,7 +255,32 @@ func declInsertPos(src string, fset *token.FileSet, pos token.Pos, doc *ast.Comm
 	return lineStart(src, offsetOf(fset, pos))
 }
 
-func collectFuncLitAnchors(src string, fset *token.FileSet, node ast.Node, parent string, anchors map[string]int, counts map[string]int) {
+func declDocAnchors(src string, fset *token.FileSet, decl ast.Decl) map[int]int {
+	var anchors map[int]int
+	add := func(pos token.Pos, doc *ast.CommentGroup) {
+		if doc == nil {
+			return
+		}
+		if anchors == nil {
+			anchors = make(map[int]int)
+		}
+		anchors[lineStart(src, offsetOf(fset, pos))] = declInsertPos(src, fset, pos, doc)
+	}
+	switch d := decl.(type) {
+	case *ast.FuncDecl:
+		add(d.Pos(), d.Doc)
+	case *ast.GenDecl:
+		add(d.Pos(), d.Doc)
+		for _, spec := range d.Specs {
+			if s, ok := spec.(*ast.ValueSpec); ok {
+				add(s.Pos(), s.Doc)
+			}
+		}
+	}
+	return anchors
+}
+
+func collectFuncLitAnchors(src string, fset *token.FileSet, node ast.Node, parent string, anchors map[string]int, counts map[string]int, docAnchors map[int]int) {
 	if isNilNode(node) {
 		return
 	}
@@ -265,7 +296,12 @@ func collectFuncLitAnchors(src string, fset *token.FileSet, node ast.Node, paren
 			}
 			counts[current]++
 			name := fmt.Sprintf("%s$%d", current, counts[current])
-			anchors[name] = lineStart(src, offsetOf(fset, lit.Pos()))
+			pos := lineStart(src, offsetOf(fset, lit.Pos()))
+			// Keep declaration docs attached when a closure shares the declaration line.
+			if docPos, ok := docAnchors[pos]; ok {
+				pos = docPos
+			}
+			anchors[name] = pos
 			walk(lit.Body, name)
 			return false
 		})
