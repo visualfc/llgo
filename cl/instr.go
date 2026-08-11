@@ -670,6 +670,9 @@ func (p *context) funcOf(fn *ssa.Function) (aFn llssa.Function, pyFn llssa.PyObj
 			// Source env-bearing bodies are created by compileFuncDecl before
 			// lowering. Imported declarations cannot reconstruct //llgo:env.
 			aFn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), false, p.needsLinkOnce(fn))
+			if disableInline {
+				aFn.Inline(llssa.NoInline)
+			}
 		}
 	}
 	return

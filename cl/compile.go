@@ -51,8 +51,9 @@ const (
 )
 
 var (
-	debugInstr bool
-	debugGoSSA bool
+	debugInstr    bool
+	debugGoSSA    bool
+	disableInline bool
 )
 
 // Options contains frontend behavior for one package compilation.
@@ -606,7 +607,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	runtimeStackNoInline := needsRuntimeStackNoInline(pkgTypes, f)
 	pcLineNoInline := p.needsPCLineNoInline(f)
 	usesRecover := p.functionUsesRecover(f)
-	if noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
+	if disableInline || noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
 		fn.Inline(llssa.NoInline)
 	}
 	if noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
