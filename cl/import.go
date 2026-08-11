@@ -152,7 +152,7 @@ func (p *context) importPkg(pkg *types.Package, i *pkgInfo) {
 	}
 start:
 	i.kind = kind
-	if p.frontendOptions().PreloadedSyntax {
+	if p.options.PreloadedSyntax {
 		return
 	}
 	fset := p.fset
@@ -186,7 +186,7 @@ start:
 }
 
 func (p *context) initFiles(pkgPath string, files []*ast.File, cPkg bool) {
-	preloaded := p.frontendOptions().PreloadedSyntax
+	preloaded := p.options.PreloadedSyntax
 	for _, file := range files {
 		for _, decl := range file.Decls {
 			switch decl := decl.(type) {
@@ -302,7 +302,7 @@ func (p *context) collectSkip(line string, prefix int) {
 // collectDeclarationDirectives caches source metadata needed after the syntax
 // pass. funcPos is token.NoPos for non-function declarations.
 func collectDeclarationDirectives(prog llssa.Program, fset *token.FileSet, doc *ast.CommentGroup, fullName, inPkgName string, funcPos token.Pos) {
-	_, _ = collectDeclarationDirectivesWithOptions(prog, fset, doc, fullName, inPkgName, funcPos, legacyOptions())
+	_, _ = collectDeclarationDirectivesWithOptions(prog, fset, doc, fullName, inPkgName, funcPos, Options{})
 }
 
 func collectDeclarationDirectivesWithOptions(prog llssa.Program, fset *token.FileSet, doc *ast.CommentGroup, fullName, inPkgName string, funcPos token.Pos, options Options) (bool, error) {
@@ -348,7 +348,7 @@ func (p *context) processLinknameByDoc(doc *ast.CommentGroup, fullName, inPkgNam
 		for n := len(doc.List) - 1; n >= 0; n-- {
 			line := doc.List[n].Text
 			ret := p.initLinkname(line, allowExport, func(name string, isExport bool) (_ string, _, ok bool) {
-				return fullName, isVar, name == inPkgName || (isExport && p.frontendOptions().ExportRename)
+				return fullName, isVar, name == inPkgName || (isExport && p.options.ExportRename)
 			})
 			if ret != unknownDirective {
 				return ret == hasLinkname
@@ -422,7 +422,7 @@ func (p *context) initLink(line string, prefix int, export bool, f func(inPkgNam
 			}
 		} else {
 			// Export with different names already processed by initLinknameByDoc
-			if export && p.frontendOptions().ExportRename {
+			if export && p.options.ExportRename {
 				return
 			}
 			if export {
@@ -804,9 +804,9 @@ func (p *context) initPyModule() {
 }
 
 // ParsePkgSyntax collects declaration directives in one syntax pass before SSA
-// creation using the legacy frontend options.
+// creation using default frontend options.
 func ParsePkgSyntax(prog llssa.Program, fset *token.FileSet, pkg *types.Package, files []*ast.File) error {
-	return ParsePkgSyntaxWithOptions(prog, fset, pkg, files, legacyOptions())
+	return ParsePkgSyntaxWithOptions(prog, fset, pkg, files, Options{})
 }
 
 // ParsePkgSyntaxWithOptions collects all Program-side declaration metadata.
@@ -818,7 +818,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 	if prog.PackageSyntaxParsed(pkg) {
 		return nil
 	}
-	ctx := &context{prog: prog, options: options, optionsSet: true}
+	ctx := &context{prog: prog, options: options}
 	pkgPath := llssa.PathOf(pkg)
 	for _, file := range files {
 		for _, decl := range file.Decls {

@@ -670,9 +670,6 @@ func (p *context) funcOf(fn *ssa.Function) (aFn llssa.Function, pyFn llssa.PyObj
 			// Source env-bearing bodies are created by compileFuncDecl before
 			// lowering. Imported declarations cannot reconstruct //llgo:env.
 			aFn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), false, p.needsLinkOnce(fn))
-			if disableInline {
-				aFn.Inline(llssa.NoInline)
-			}
 		}
 	}
 	return
@@ -1686,7 +1683,7 @@ func (p *context) runtimeCallerFrameName() string {
 }
 
 func (p *context) pushCallerLocationFrame(b llssa.Builder, fn *ssa.Function) {
-	if !p.frontendOptions().ShadowStack {
+	if !p.options.ShadowStack {
 		return
 	}
 	if fn == nil {
@@ -1712,7 +1709,7 @@ func (p *context) recordPanicLocation(b llssa.Builder, pos token.Pos) {
 }
 
 func (p *context) recordRuntimeLocation(b llssa.Builder, pos token.Pos, fn string) {
-	if !p.frontendOptions().ShadowStack || !p.shouldTrackCallerFrames() {
+	if !p.options.ShadowStack || !p.shouldTrackCallerFrames() {
 		return
 	}
 	position := p.fset.Position(pos)
