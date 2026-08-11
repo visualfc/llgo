@@ -20,6 +20,11 @@ func Rethrow(link *Defer) {
 	if ptr := gp.panic_; gp.panicIsSuspended(ptr) {
 		return
 	}
+	if ptr := gp.panic_; ptr != nil {
+		gp.movePanicToDefer((*panicNode)(ptr), link)
+	} else {
+		gp.defer_ = link
+	}
 	if link == nil {
 		// Bare-metal has one execution context and no goroutine-exit
 		// transition. Goexit still drains every defer through the longjmp
@@ -27,10 +32,6 @@ func Rethrow(link *Defer) {
 		c.Printf(c.Str("fatal error\n"))
 		c.Exit(2)
 	} else {
-		if ptr := gp.panic_; ptr != nil && link == GetThreadDefer() {
-			node := (*panicNode)(ptr)
-			node.moveToDefer(link)
-		}
 		setjmp.Longjmp((*setjmp.JmpBuf)(link.Addr), 1)
 	}
 }

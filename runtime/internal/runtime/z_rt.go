@@ -49,11 +49,13 @@ type recoverState struct {
 	panic_ unsafe.Pointer
 }
 
-// moveToDefer advances a panic to the next defer frame. A panic already
-// unwinding that frame has been replaced by this newer panic and must not
-// resume if the newer panic is recovered farther down the defer chain.
-func (node *panicNode) moveToDefer(link *Defer) {
-	gp := getg()
+// movePanicToDefer advances a panic and the goroutine's unwind cursor to the
+// next defer frame. A longjmp can reach a parent's rethrow block before the
+// child's normal defer cleanup restores gp.defer_, so both cursors are updated
+// here. A panic already unwinding that frame has been replaced by this newer
+// panic and must not resume if the newer panic is recovered farther down the
+// defer chain.
+func (gp *g) movePanicToDefer(node *panicNode, link *Defer) {
 	for node.prev != nil {
 		prev := (*panicNode)(node.prev)
 		if prev.defer_ != link {
@@ -66,6 +68,7 @@ func (node *panicNode) moveToDefer(link *Defer) {
 		c.Free(unsafe.Pointer(prev))
 	}
 	node.defer_ = link
+	gp.defer_ = link
 }
 
 // Recover recovers a panic.

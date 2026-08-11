@@ -92,6 +92,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/selects",     // timeout: emulator did not auto-exit
 				"./_testgo/sigsegv",     // unexpected output: got "0/main", expected recover nil-pointer message
 				"./_testgo/syncmap",     // llgo panic: unsatisfied import internal/runtime/sys
+				// Baremetal terminates after an outermost panic is recovered.
+				"./_testgo/nesteddeferpanic",
 			},
 			"./_testlibc": {
 				"./_testlibc/argv",     // timeout: emulator panic (Load access fault), no auto-exit
@@ -138,6 +140,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/select",    // timeout: emulator did not auto-exit
 				"./_testgo/sigsegv",   // unexpected output
 				"./_testgo/struczero", // timeout: emulator did not auto-exit
+				// Baremetal terminates after an outermost panic is recovered.
+				"./_testgo/nesteddeferpanic",
 			},
 			"./_testlibc": {
 				"./_testlibc/atomic",   // unexpected output

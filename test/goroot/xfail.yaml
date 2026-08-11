@@ -1150,11 +1150,6 @@ flakes:
   - version: go1.24
     platform: linux/amd64
     directive: run
-    case: fixedbugs/issue43942.go
-    reason: go1.24 goroot run can either pass or fail on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
     case: fixedbugs/issue48898.go
     reason: go1.24 goroot run can either pass or fail on linux/amd64
   - version: go1.26
@@ -1177,11 +1172,6 @@ flakes:
     directive: run
     case: stack.go
     reason: go1.24 goroot run can either pass or fail on darwin/arm64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue43942.go
-    reason: go1.26 goroot run can either pass or fail on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -1214,10 +1204,6 @@ flakes:
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue48898.go
-    reason: darwin/arm64 goroot run can either pass or fail
-  - platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue43942.go
     reason: darwin/arm64 goroot run can either pass or fail
   - platform: darwin/arm64
     directive: run
