@@ -51,23 +51,12 @@ const (
 )
 
 var (
-	debugInstr bool
-	debugGoSSA bool
-
-	enableCallTracing bool
-	enableDbg         bool
-	enableDbgSyms     bool
-	disableInline     bool
-
-	// enableExportRename enables //export to use different C symbol names than Go function names.
-	// This is for TinyGo compatibility when using -target flag for embedded targets.
-	// Currently, using -target implies TinyGo embedded target mode.
-	enableExportRename bool
+	debugInstr    bool
+	debugGoSSA    bool
+	disableInline bool
 )
 
-// Options contains frontend behavior for one package compilation. Drivers that
-// may host multiple builds in one process should pass Options explicitly
-// instead of changing the legacy package-level Enable* settings.
+// Options contains frontend behavior for one package compilation.
 type Options struct {
 	Debug        bool
 	DebugSymbols bool
@@ -77,16 +66,6 @@ type Options struct {
 	// PreloadedSyntax means all Program-side source metadata was collected
 	// before lowering and is now shared read-only by backend Programs.
 	PreloadedSyntax bool
-}
-
-func legacyOptions() Options {
-	return Options{
-		Debug:        enableDbg,
-		DebugSymbols: enableDbgSyms,
-		Trace:        enableCallTracing,
-		ExportRename: enableExportRename,
-		ShadowStack:  os.Getenv("LLGO_SHADOW_STACK") == "1",
-	}
 }
 
 // SetDebug sets debug flags.
@@ -139,31 +118,6 @@ func dbgGoSSAln(args ...any) {
 	}
 }
 
-// EnableDebug changes the legacy process-wide default.
-// Deprecated: pass Options to NewPackageExWithEmbedMetaOptions.
-func EnableDebug(b bool) {
-	enableDbg = b
-}
-
-// EnableDbgSyms changes the legacy process-wide default.
-// Deprecated: pass Options to NewPackageExWithEmbedMetaOptions.
-func EnableDbgSyms(b bool) {
-	enableDbgSyms = b
-}
-
-// EnableTrace changes the legacy process-wide default.
-// Deprecated: pass Options to NewPackageExWithEmbedMetaOptions.
-func EnableTrace(b bool) {
-	enableCallTracing = b
-}
-
-// EnableExportRename enables or disables //export with different C symbol names.
-// This is enabled when using -target flag for TinyGo compatibility.
-// Deprecated: pass Options to NewPackageExWithEmbedMetaOptions.
-func EnableExportRename(b bool) {
-	enableExportRename = b
-}
-
 // -----------------------------------------------------------------------------
 
 type instrOrValue interface {
@@ -213,7 +167,6 @@ type context struct {
 	runtimeCallerFuncs   map[*ssa.Function]bool
 	pcLineSeq            uint64
 	options              Options
-	optionsSet           bool
 	recoverSlots         map[*ssa.Alloc]none
 
 	patches          Patches
@@ -246,13 +199,6 @@ type context struct {
 	staticInitStores  map[*ssa.Store]none
 	staticInitInstrs  map[ssa.Instruction]none
 	locality          localityLowering
-}
-
-func (p *context) frontendOptions() Options {
-	if p != nil && p.optionsSet {
-		return p.options
-	}
-	return legacyOptions()
 }
 
 func (p *context) rewriteValue(name string) (string, bool) {
@@ -699,8 +645,8 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		if f.Recover != nil { // set recover block
 			fn.SetRecover(fn.Block(f.Recover.Index))
 		}
-		dbgEnabled := p.frontendOptions().Debug
-		dbgSymsEnabled := p.frontendOptions().DebugSymbols && (f == nil || f.Origin() == nil)
+		dbgEnabled := p.options.Debug
+		dbgSymsEnabled := p.options.DebugSymbols && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
 			oldLocalityFunction := p.locality.function
@@ -958,11 +904,11 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 	if block.Index == 0 && p.shouldTrackCallerFrames() {
 		p.pushCallerLocationFrame(b, block.Parent())
 	}
-	if block.Index == 0 && p.frontendOptions().Trace && !strings.HasPrefix(fn.Name(), "github.com/goplus/llgo/runtime/internal/runtime.Print") {
+	if block.Index == 0 && p.options.Trace && !strings.HasPrefix(fn.Name(), "github.com/goplus/llgo/runtime/internal/runtime.Print") {
 		b.Printf("call " + fn.Name() + "\n\x00")
 	}
 	// place here to avoid wrong current-block
-	if p.frontendOptions().DebugSymbols && block.Parent().Origin() == nil && block.Index == 0 {
+	if p.options.DebugSymbols && block.Parent().Origin() == nil && block.Index == 0 {
 		p.debugParams(b, block.Parent())
 	}
 
@@ -1800,7 +1746,7 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 	if _, ok := p.staticInitInstrs[instr]; ok {
 		return
 	}
-	if p.frontendOptions().Debug && instr.Parent().Origin() == nil {
+	if p.options.Debug && instr.Parent().Origin() == nil {
 		if _, isDebugRef := instr.(*ssa.DebugRef); !isDebugRef {
 			scope := p.getDebugLocScope(instr.Parent(), instr.Pos())
 			if scope != nil {
@@ -1920,7 +1866,7 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		p.recordPanicLocation(b, v.Pos())
 		b.Send(ch, x)
 	case *ssa.DebugRef:
-		if p.frontendOptions().DebugSymbols && v.Parent().Origin() == nil {
+		if p.options.DebugSymbols && v.Parent().Origin() == nil {
 			p.debugRef(b, v)
 		}
 	default:
@@ -1983,7 +1929,7 @@ func (p *context) compileValue(b llssa.Builder, v ssa.Value) llssa.Expr {
 		if isCgoVar(varName) {
 			p.cgoSymbols = append(p.cgoSymbols, val.Name())
 		}
-		if p.frontendOptions().DebugSymbols && p.localityAllowsGlobalDebug(v) {
+		if p.options.DebugSymbols && p.localityAllowsGlobalDebug(v) {
 			pos := p.fset.Position(v.Pos())
 			b.DIGlobal(val, v.Name(), pos)
 		}
@@ -2242,7 +2188,7 @@ func NewPackage(prog llssa.Program, pkg *ssa.Package, files []*ast.File) (ret ll
 // only affects string-typed globals defined in the current package.
 // Deprecated: use NewPackageExWithEmbedMetaOptions with explicit Options.
 func NewPackageEx(prog llssa.Program, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File) (ret llssa.Package, externs []string, err error) {
-	return newPackageEx(prog, nil, patches, rewrites, pkg, files, nil, false, legacyOptions())
+	return newPackageEx(prog, nil, patches, rewrites, pkg, files, nil, false, Options{})
 }
 
 // NewPackageExWithEmbed compiles a package using pre-loaded go:embed metadata.
@@ -2254,13 +2200,13 @@ func NewPackageEx(prog llssa.Program, patches Patches, rewrites map[string]strin
 // instance is created for this call.
 // Deprecated: use NewPackageExWithEmbedMetaOptions with explicit Options.
 func NewPackageExWithEmbed(prog llssa.Program, ct *CallerTracking, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap goembed.VarMap) (ret llssa.Package, externs []string, err error) {
-	return newPackageEx(prog, ct, patches, rewrites, pkg, files, &embedMap, false, legacyOptions())
+	return newPackageEx(prog, ct, patches, rewrites, pkg, files, &embedMap, false, Options{})
 }
 
 // NewPackageExWithEmbedMeta compiles a package and optionally collects metadata.
 // Deprecated: use NewPackageExWithEmbedMetaOptions with explicit Options.
 func NewPackageExWithEmbedMeta(prog llssa.Program, ct *CallerTracking, patches Patches, rewrites map[string]string, pkg *ssa.Package, files []*ast.File, embedMap goembed.VarMap, metaCollect bool) (ret llssa.Package, externs []string, err error) {
-	return newPackageEx(prog, ct, patches, rewrites, pkg, files, &embedMap, metaCollect, legacyOptions())
+	return newPackageEx(prog, ct, patches, rewrites, pkg, files, &embedMap, metaCollect, Options{})
 }
 
 // NewPackageExWithEmbedMetaOptions is NewPackageExWithEmbedMeta with explicit
@@ -2312,7 +2258,6 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 		goPkg:            pkg,
 		patches:          patches,
 		options:          options,
-		optionsSet:       true,
 		skips:            make(map[string]none),
 		vargs:            make(map[*ssa.Alloc][]llssa.Expr),
 		funcs:            make(map[*ssa.Function]llssa.Function),
