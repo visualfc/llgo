@@ -258,17 +258,17 @@ func identicalFuncType(T, V *abi.Type) bool {
 	return true
 }
 
-func missingInterfaceMethod(T, V *abi.Type) string {
-	if T == nil || T.Kind() != abi.Interface {
-		return ""
+// interfaceImplementation reports whether V implements the interface T. On
+// failure, missing is the first unmatched method in T's sorted method table,
+// when such a method exists.
+func interfaceImplementation(T, V *abi.Type) (missing *abi.Imethod, ok bool) {
+	if T == nil || V == nil || T.Kind() != abi.Interface {
+		return nil, false
 	}
 	t := (*abi.InterfaceType)(unsafe.Pointer(T))
 
 	if len(t.Methods) == 0 {
-		return ""
-	}
-	if V == nil {
-		return t.Methods[0].Name()
+		return nil, true
 	}
 
 	// The same algorithm applies in both cases, but the
@@ -291,16 +291,16 @@ func missingInterfaceMethod(T, V *abi.Type) string {
 			vm := &v.Methods[j]
 			if vm.Name_ == tm.Name_ && vm.Typ_ == tm.Typ_ {
 				if i++; i >= len(t.Methods) {
-					return ""
+					return nil, true
 				}
 			}
 		}
-		return t.Methods[i].Name()
+		return &t.Methods[i], false
 	}
 
 	v := V.Uncommon()
 	if v == nil {
-		return t.Methods[0].Name()
+		return &t.Methods[0], false
 	}
 	i := 0
 	vmethods := v.Methods()
@@ -309,16 +309,17 @@ func missingInterfaceMethod(T, V *abi.Type) string {
 		vm := vmethods[j]
 		if vm.Name_ == tm.Name_ && vm.Mtyp_ == tm.Typ_ {
 			if i++; i >= len(t.Methods) {
-				return ""
+				return nil, true
 			}
 		}
 	}
-	return t.Methods[i].Name()
+	return &t.Methods[i], false
 }
 
 // Implements reports whether the type V implements the interface type T.
 func Implements(T, V *abi.Type) bool {
-	return T != nil && V != nil && T.Kind() == abi.Interface && missingInterfaceMethod(T, V) == ""
+	_, ok := interfaceImplementation(T, V)
+	return ok
 }
 
 func EfaceEqual(v, u eface) bool {
@@ -405,10 +406,15 @@ func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
 	if canfail {
 		return nil
 	}
+	missing, _ := interfaceImplementation(&inter.Type, typ)
+	missingMethod := ""
+	if missing != nil {
+		missingMethod = missing.Name()
+	}
 	panic(&TypeAssertionError{
 		concrete:      typ,
 		asserted:      &inter.Type,
-		missingMethod: missingInterfaceMethod(&inter.Type, typ),
+		missingMethod: missingMethod,
 	})
 }
 

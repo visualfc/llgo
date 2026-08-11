@@ -167,7 +167,9 @@ func (*TypeAssertionError) RuntimeError() {}
 func PanicTypeAssert(source, concrete, asserted *_type) {
 	missingMethod := ""
 	if concrete != nil {
-		missingMethod = missingInterfaceMethod(asserted, concrete)
+		if missing, _ := interfaceImplementation(asserted, concrete); missing != nil {
+			missingMethod = missing.Name()
+		}
 	}
 	panic(&TypeAssertionError{
 		_interface:    source,
