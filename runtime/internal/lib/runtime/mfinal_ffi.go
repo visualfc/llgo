@@ -99,14 +99,12 @@ func finalizerFFIReturnType(results []*abi.Type) *ffi.Type {
 	}
 }
 
-func newFinalizerFFISignature(ft *abi.FuncType, explicitEnv bool) (*ffi.Signature, []*ffi.Type, uintptr) {
+func newFinalizerFFISignature(ft *abi.FuncType, explicitEnv bool, argType *ffi.Type) (*ffi.Signature, []*ffi.Type, uintptr) {
 	paramTypes := make([]*ffi.Type, 0, 2)
 	if explicitEnv {
 		paramTypes = append(paramTypes, ffi.TypePointer)
 	}
-	// SetFinalizer currently requires the finalizer argument to have the
-	// object's pointer type exactly.
-	paramTypes = append(paramTypes, ffi.TypePointer)
+	paramTypes = append(paramTypes, argType)
 	sig, err := ffi.NewSignature(finalizerFFIReturnType(ft.Out), paramTypes...)
 	if err != nil {
 		panic(err)

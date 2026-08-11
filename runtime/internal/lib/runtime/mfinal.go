@@ -24,18 +24,24 @@ type finalizerClosure struct {
 	env unsafe.Pointer
 }
 
+type finalizerInterfaceArg struct {
+	typeOrItab unsafe.Pointer
+	data       unsafe.Pointer
+}
+
 type finalizerEntry struct {
-	fn          any
-	sig         *ffi.Signature // retains the conservatively allocated return-type graph
-	argTypes    []*ffi.Type    // owns the backing storage referenced by sig.ArgTypes
-	retSize     uintptr
-	obj         unsafe.Pointer
-	key         uintptr
-	next        *finalizerEntry
-	prevFn      bdwgc.FinalizerFunc
-	prevCb      unsafe.Pointer
-	stop        int32
-	explicitEnv bool
+	fn                  any
+	sig                 *ffi.Signature // retains the conservatively allocated return-type graph
+	argTypes            []*ffi.Type    // owns the backing storage referenced by sig.ArgTypes
+	retSize             uintptr
+	interfaceTypeOrItab unsafe.Pointer
+	obj                 unsafe.Pointer
+	key                 uintptr
+	next                *finalizerEntry
+	prevFn              bdwgc.FinalizerFunc
+	prevCb              unsafe.Pointer
+	stop                int32
+	explicitEnv         bool
 }
 
 var finalizerState struct {
@@ -83,19 +89,35 @@ func SetFinalizer(obj any, finalizer any) {
 	if ft == nil {
 		throw("runtime.SetFinalizer: second argument is " + finalizerFace._type.String() + ", not a function")
 	}
-	if len(ft.In) != 1 || ft.In[0] != objFace._type {
+	if ft.Variadic() {
+		throw("runtime.SetFinalizer: cannot pass " + objFace._type.String() + " to finalizer " + finalizerFace._type.String() + " because dotdotdot")
+	}
+	if len(ft.In) != 1 || !finalizerArgAssignable(objFace._type, ft.In[0]) {
 		throw("runtime.SetFinalizer: cannot pass " + objFace._type.String() + " to finalizer " + finalizerFace._type.String())
+	}
+	argType := ft.In[0]
+	argFFIType := ffi.TypePointer
+	var interfaceTypeOrItab unsafe.Pointer
+	if argType.Kind() == abi.Interface {
+		argFFIType = ffi.TypeInterface
+		interfaceType := argType.InterfaceType()
+		if len(interfaceType.Methods) == 0 {
+			interfaceTypeOrItab = unsafe.Pointer(objFace._type)
+		} else {
+			interfaceTypeOrItab = unsafe.Pointer(llruntime.NewItab(interfaceType, objFace._type))
+		}
 	}
 	c := (*finalizerClosure)(finalizerFace.data)
 	explicitEnv := c.env != nil && ffi.ClosureEnvExplicit
-	sig, argTypes, retSize := newFinalizerFFISignature(ft, explicitEnv)
+	sig, argTypes, retSize := newFinalizerFFISignature(ft, explicitEnv, argFFIType)
 	entry := &finalizerEntry{
-		fn:          finalizer,
-		sig:         sig,
-		argTypes:    argTypes,
-		explicitEnv: explicitEnv,
-		retSize:     retSize,
-		key:         key,
+		fn:                  finalizer,
+		sig:                 sig,
+		argTypes:            argTypes,
+		explicitEnv:         explicitEnv,
+		retSize:             retSize,
+		interfaceTypeOrItab: interfaceTypeOrItab,
+		key:                 key,
 	}
 	var oldFn bdwgc.FinalizerFunc
 	var oldCb unsafe.Pointer
@@ -106,6 +128,19 @@ func SetFinalizer(obj any, finalizer any) {
 	finalizerState.mu.Lock()
 	finalizerState.m[key] = entry
 	finalizerState.mu.Unlock()
+}
+
+func finalizerArgAssignable(objType, argType *abi.Type) bool {
+	if argType == objType {
+		return true
+	}
+	switch argType.Kind() {
+	case abi.Pointer:
+		return (argType.Uncommon() == nil || objType.Uncommon() == nil) && argType.Elem() == objType.Elem()
+	case abi.Interface:
+		return llruntime.Implements(argType, objType)
+	}
+	return false
 }
 
 func ifacePointerData(e *eface) unsafe.Pointer {
@@ -134,10 +169,17 @@ func callFinalizer(entry *finalizerEntry) {
 		ret = llruntime.AllocU(entry.retSize)
 	}
 	ptr := entry.obj
+	arg := unsafe.Pointer(&ptr)
+	var interfaceArg finalizerInterfaceArg
+	if entry.interfaceTypeOrItab != nil {
+		interfaceArg.typeOrItab = entry.interfaceTypeOrItab
+		interfaceArg.data = ptr
+		arg = unsafe.Pointer(&interfaceArg)
+	}
 	if entry.explicitEnv {
-		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&c.env), unsafe.Pointer(&ptr))
+		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&c.env), arg)
 	} else {
-		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&ptr))
+		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, arg)
 	}
 	KeepAlive(entry.fn)
 	KeepAlive(entry.sig)
