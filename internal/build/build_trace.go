@@ -17,7 +17,6 @@
 package build
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -48,11 +47,10 @@ type buildTraceEvent struct {
 // so overlapping worker-lane events visualize the same concurrency budget
 // used by SSA and isolated LLVM backend work.
 type buildTracer struct {
-	mu       sync.Mutex
-	file     *os.File
-	writer   *bufio.Writer
-	first    bool
-	writeErr error
+	mu     sync.Mutex
+	file   *os.File
+	events []buildTraceEvent
+	closed bool
 
 	lanes chan int
 	// ssaSpans connects each completed Go SSA build to the corresponding
@@ -91,17 +89,11 @@ func startBuildTrace(path, dir string, parallelism int) (*buildTracer, error) {
 	}
 	tracer := &buildTracer{
 		file:     file,
-		writer:   bufio.NewWriter(file),
-		first:    true,
 		lanes:    make(chan int, max(1, parallelism)),
 		ssaSpans: make(map[string]*buildTraceSpan),
 	}
 	for lane := 1; lane <= cap(tracer.lanes); lane++ {
 		tracer.lanes <- lane
-	}
-	if _, err := tracer.writer.WriteString("[\n"); err != nil {
-		_ = file.Close()
-		return nil, err
 	}
 	tracer.writeEvent(buildTraceEvent{
 		Name:  "process_name",
@@ -262,26 +254,12 @@ func (t *buildTracer) writeEvent(event buildTraceEvent) {
 	if t == nil {
 		return
 	}
-	data, err := json.Marshal(event)
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.writeErr != nil {
+	if t.closed {
 		return
 	}
-	if err != nil {
-		t.writeErr = err
-		return
-	}
-	if !t.first {
-		if _, err := t.writer.WriteString(",\n"); err != nil {
-			t.writeErr = err
-			return
-		}
-	}
-	t.first = false
-	if _, err := t.writer.Write(data); err != nil {
-		t.writeErr = err
-	}
+	t.events = append(t.events, event)
 }
 
 func (t *buildTracer) close() error {
@@ -290,17 +268,17 @@ func (t *buildTracer) close() error {
 	}
 	t.closeOnce.Do(func() {
 		t.mu.Lock()
-		defer t.mu.Unlock()
-		if t.writeErr == nil {
-			_, t.writeErr = t.writer.WriteString("\n]\n")
+		t.closed = true
+		events := t.events
+		t.events = nil
+		t.mu.Unlock()
+
+		if err := json.NewEncoder(t.file).Encode(events); err != nil {
+			t.closeErr = err
 		}
-		if err := t.writer.Flush(); t.writeErr == nil {
-			t.writeErr = err
+		if err := t.file.Close(); t.closeErr == nil {
+			t.closeErr = err
 		}
-		if err := t.file.Close(); t.writeErr == nil {
-			t.writeErr = err
-		}
-		t.closeErr = t.writeErr
 	})
 	return t.closeErr
 }

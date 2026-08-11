@@ -48,6 +48,10 @@ func TestBuildTraceWritesChromeEvents(t *testing.T) {
 	if err := tracer.close(); err != nil {
 		t.Fatal(err)
 	}
+	tracer.writeEvent(buildTraceEvent{Name: "late", Phase: "X"})
+	if err := tracer.close(); err != nil {
+		t.Fatal(err)
+	}
 
 	data, err := os.ReadFile(filepath.Join(dir, "trace.json"))
 	if err != nil {
@@ -59,6 +63,9 @@ func TestBuildTraceWritesChromeEvents(t *testing.T) {
 	}
 	var metadata, complete, packageCoordinator, flowStart, flowEnd bool
 	for _, event := range events {
+		if event.Name == "late" {
+			t.Fatal("trace contains an event written after close")
+		}
 		switch event.Phase {
 		case "M":
 			metadata = true
