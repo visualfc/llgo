@@ -5,10 +5,9 @@ package main
 // CHECK: {{^}}@2 = private unnamed_addr constant [26 x i8] c"zero-sized capture address", align 1{{$}}
 // CHECK: {{^}}@3 = private unnamed_addr constant [26 x i8] c"zero-sized pointer capture", align 1{{$}}
 // CHECK: {{^}}@6 = private unnamed_addr constant [5 x i8] c"IsNil", align 1{{$}}
-// CHECK: {{^}}@10 = private unnamed_addr constant [23 x i8] c"interface{IsNil() bool}", align 1{{$}}
-// CHECK: {{^}}@11 = private unnamed_addr constant [25 x i8] c"nil receiver method value", align 1{{$}}
-// CHECK: {{^}}@12 = private unnamed_addr constant [2 x i8] c"ok", align 1{{$}}
-// CHECK: {{^}}@13 = private unnamed_addr constant [32 x i8] c"typed-nil interface method value", align 1{{$}}
+// CHECK: {{^}}@10 = private unnamed_addr constant [25 x i8] c"nil receiver method value", align 1{{$}}
+// CHECK: {{^}}@11 = private unnamed_addr constant [2 x i8] c"ok", align 1{{$}}
+// CHECK: {{^}}@12 = private unnamed_addr constant [32 x i8] c"typed-nil interface method value", align 1{{$}}
 
 type nilReceiver struct{}
 
@@ -137,13 +136,13 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_6
 // CHECK-NEXT:   %28 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @11, i64 25 }, ptr %28, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 25 }, ptr %28, align 8
 // CHECK-NEXT:   %29 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %28, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %29)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_6
-// CHECK-NEXT:   %30 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$36psrSzSiKQuwmDQNUwPgWt23w6DHhlw0KM1_Hu7IbY", ptr @"*_llgo_main.nilReceiver")
+// CHECK-NEXT:   %30 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.nilReceiver")
 // CHECK-NEXT:   %31 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %30, 0
 // CHECK-NEXT:   %32 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %31, ptr null, 1
 // CHECK-NEXT:   %33 = call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" %32)
@@ -152,13 +151,13 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_9:                                          ; preds = %_llgo_11
 // CHECK-NEXT:   %35 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 32 }, ptr %35, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 32 }, ptr %35, align 8
 // CHECK-NEXT:   %36 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %35, 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %36)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_10:                                         ; preds = %_llgo_11
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @12, i64 2 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @11, i64 2 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
@@ -174,7 +173,7 @@ func main() {
 // CHECK-NEXT:   br i1 %42, label %_llgo_10, label %_llgo_9
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_12:                                         ; preds = %_llgo_8
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %33, %"{{.*}}/runtime/internal/runtime.String" { ptr @10, i64 23 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %33, ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -248,8 +247,11 @@ func main() {
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
 // CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
-// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
-// CHECK-NEXT:   %11 = call i1 %10(ptr %9)
-// CHECK-NEXT:   ret i1 %11
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"main.interface{IsNil() bool}.IsNil$bound", ptr %9)
+// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %13 = call i1 %12(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %10)
+// CHECK-NEXT:   ret i1 %13
 // CHECK-NEXT: }

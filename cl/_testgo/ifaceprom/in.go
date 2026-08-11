@@ -5,11 +5,10 @@ package main
 // struct.  In particular, this test exercises that the correct
 // method is called.
 
-// CHECK: @0 = private unnamed_addr constant [3 x i8] c"two", align 1
-// CHECK: @1 = private unnamed_addr constant [48 x i8] c"{{.*}}/cl/_testgo/ifaceprom.impl", align 1
-// CHECK: @2 = private unnamed_addr constant [3 x i8] c"one", align 1
-// CHECK: @13 = private unnamed_addr constant [45 x i8] c"{{.*}}/cl/_testgo/ifaceprom.I", align 1
-// CHECK: @14 = private unnamed_addr constant [4 x i8] c"pass", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [3 x i8] c"two", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [48 x i8] c"{{.*}}/cl/_testgo/ifaceprom.impl", align 1{{$}}
+// CHECK: {{^}}@2 = private unnamed_addr constant [3 x i8] c"one", align 1{{$}}
+// CHECK: {{^}}@13 = private unnamed_addr constant [4 x i8] c"pass", align 1{{$}}
 
 type I interface {
 	one() int
@@ -79,10 +78,13 @@ func main() {
 // CHECK-NEXT:   %7 = load ptr, ptr %6, align 8
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue { ptr, ptr } %8, ptr %4, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 1
-// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %9, 0
-// CHECK-NEXT:   %12 = call i64 %11(ptr %10)
-// CHECK-NEXT:   ret i64 %12
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %11 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @main.S.one, ptr %10)
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
+// CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %14 = call i64 %13(ptr %12)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %11)
+// CHECK-NEXT:   ret i64 %14
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @main.S.two(%main.S %0){{.*}} {
@@ -98,10 +100,13 @@ func main() {
 // CHECK-NEXT:   %7 = load ptr, ptr %6, align 8
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue { ptr, ptr } %8, ptr %4, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 1
-// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %9, 0
-// CHECK-NEXT:   %12 = call %"{{.*}}/runtime/internal/runtime.String" %11(ptr %10)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %12
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %11 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @main.S.two, ptr %10)
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
+// CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.String" %13(ptr %12)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %11)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %14
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define i64 @"main.(*S).one"(ptr %0){{.*}} {
@@ -114,10 +119,13 @@ func main() {
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
 // CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
-// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
-// CHECK-NEXT:   %11 = call i64 %10(ptr %9)
-// CHECK-NEXT:   ret i64 %11
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"main.(*S).one", ptr %9)
+// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %13 = call i64 %12(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %10)
+// CHECK-NEXT:   ret i64 %13
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.(*S).two"(ptr %0){{.*}} {
@@ -130,10 +138,13 @@ func main() {
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
 // CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
-// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
-// CHECK-NEXT:   %11 = call %"{{.*}}/runtime/internal/runtime.String" %10(ptr %9)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %11
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"main.(*S).two", ptr %9)
+// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" %12(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %10)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %13
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define i64 @main.impl.one(%main.impl %0){{.*}} {
@@ -336,7 +347,7 @@ func main() {
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_23
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @14, i64 4 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
@@ -353,7 +364,7 @@ func main() {
 // CHECK-NEXT:   br i1 %94, label %_llgo_5, label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_4
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %36, %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %36, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_19:                                         ; preds = %_llgo_6
@@ -369,7 +380,7 @@ func main() {
 // CHECK-NEXT:   br i1 %101, label %_llgo_7, label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_20:                                         ; preds = %_llgo_6
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %42, %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %42, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_21:                                         ; preds = %_llgo_12
@@ -386,7 +397,7 @@ func main() {
 // CHECK-NEXT:   br i1 %109, label %_llgo_13, label %_llgo_14
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_22:                                         ; preds = %_llgo_12
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %78, %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %78, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_23:                                         ; preds = %_llgo_14
@@ -403,7 +414,7 @@ func main() {
 // CHECK-NEXT:   br i1 %117, label %_llgo_15, label %_llgo_16
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_24:                                         ; preds = %_llgo_14
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %84, %"{{.*}}/runtime/internal/runtime.String" { ptr @13, i64 45 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %84, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -417,10 +428,13 @@ func main() {
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
 // CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
-// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
-// CHECK-NEXT:   %11 = call i64 %10(ptr %9)
-// CHECK-NEXT:   ret i64 %11
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"main.I.one$bound", ptr %9)
+// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %13 = call i64 %12(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %10)
+// CHECK-NEXT:   ret i64 %13
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.I.two$bound"(ptr {{(nest|swiftself)}} %0){{.*}} {
@@ -433,8 +447,11 @@ func main() {
 // CHECK-NEXT:   %6 = load ptr, ptr %5, align 8
 // CHECK-NEXT:   %7 = insertvalue { ptr, ptr } undef, ptr %6, 0
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } %7, ptr %3, 1
-// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %8, 0
-// CHECK-NEXT:   %11 = call %"{{.*}}/runtime/internal/runtime.String" %10(ptr %9)
-// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %11
+// CHECK-NEXT:   %9 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %10 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"main.I.two$bound", ptr %9)
+// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %8, 1
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %8, 0
+// CHECK-NEXT:   %13 = call %"{{.*}}/runtime/internal/runtime.String" %12(ptr %11)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %10)
+// CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %13
 // CHECK-NEXT: }

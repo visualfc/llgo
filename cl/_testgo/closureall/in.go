@@ -5,10 +5,9 @@ import _ "unsafe" // for go:linkname
 
 import "github.com/goplus/lib/c"
 
-// CHECK: @0 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/closureall.S", align 1
-// CHECK: @1 = private unnamed_addr constant [3 x i8] c"Inc", align 1
-// CHECK: @7 = private unnamed_addr constant [3 x i8] c"Add", align 1
-// CHECK: @9 = private unnamed_addr constant [23 x i8] c"interface{Add(int) int}", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [46 x i8] c"{{.*}}/cl/_testgo/closureall.S", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [3 x i8] c"Inc", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [3 x i8] c"Add", align 1{{$}}
 
 //go:linkname cSqrt C.sqrt
 func cSqrt(x c.Double) c.Double
@@ -30,28 +29,9 @@ type S struct {
 	v int
 }
 
-// CHECK-LABEL: define i64 @main.S.Inc(%main.S %0, i64 %1){{.*}} {
-// CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = alloca %main.S, align 8
-// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %2, i8 0, i64 8, i1 false)
-// CHECK-NEXT:   store %main.S %0, ptr %2, align 8
-// CHECK-NEXT:   %3 = getelementptr inbounds %main.S, ptr %2, i32 0, i32 0
-// CHECK-NEXT:   %4 = load i64, ptr %3, align 8
-// CHECK-NEXT:   %5 = add i64 %4, %1
-// CHECK-NEXT:   ret i64 %5
-// CHECK-NEXT: }
-
 func (s S) Inc(x int) int {
 	return s.v + x
 }
-
-// CHECK-LABEL: define i64 @"main.(*S).Add"(ptr %0, i64 %1){{.*}} {
-// CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %2 = getelementptr inbounds %main.S, ptr %0, i32 0, i32 0
-// CHECK-NEXT:   %3 = load i64, ptr %2, align 8
-// CHECK-NEXT:   %4 = add i64 %3, %1
-// CHECK-NEXT:   ret i64 %4
-// CHECK-NEXT: }
 
 func (s *S) Add(x int) int {
 	return s.v + x
@@ -99,6 +79,25 @@ func makeNoFree() Fn {
 func makeWithFree(base int) Fn {
 	return func(x int) int { return x + base }
 }
+
+// CHECK-LABEL: define i64 @main.S.Inc(%main.S %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = alloca %main.S, align 8
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %2, i8 0, i64 8, i1 false)
+// CHECK-NEXT:   store %main.S %0, ptr %2, align 8
+// CHECK-NEXT:   %3 = getelementptr inbounds %main.S, ptr %2, i32 0, i32 0
+// CHECK-NEXT:   %4 = load i64, ptr %3, align 8
+// CHECK-NEXT:   %5 = add i64 %4, %1
+// CHECK-NEXT:   ret i64 %5
+// CHECK-NEXT: }
+
+// CHECK-LABEL: define i64 @"main.(*S).Add"(ptr %0, i64 %1){{.*}} {
+// CHECK-NEXT: _llgo_0:
+// CHECK-NEXT:   %2 = getelementptr inbounds %main.S, ptr %0, i32 0, i32 0
+// CHECK-NEXT:   %3 = load i64, ptr %2, align 8
+// CHECK-NEXT:   %4 = add i64 %3, %1
+// CHECK-NEXT:   ret i64 %4
+// CHECK-NEXT: }
 
 // CHECK-LABEL: define i64 @"main.(*S).Inc"(ptr %0, i64 %1){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -190,7 +189,7 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %21, %"{{.*}}/runtime/internal/runtime.String" { ptr @9, i64 23 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %21, ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -258,8 +257,11 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   %7 = load ptr, ptr %6, align 8
 // CHECK-NEXT:   %8 = insertvalue { ptr, ptr } undef, ptr %7, 0
 // CHECK-NEXT:   %9 = insertvalue { ptr, ptr } %8, ptr %4, 1
-// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 1
-// CHECK-NEXT:   %11 = extractvalue { ptr, ptr } %9, 0
-// CHECK-NEXT:   %12 = call i64 %11(ptr %10, i64 %1)
-// CHECK-NEXT:   ret i64 %12
+// CHECK-NEXT:   %10 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %11 = call ptr @"{{.*}}/runtime/internal/runtime.StartRecoverFrameAlias"(ptr @"main.interface{Add(int) int}.Add$bound", ptr %10)
+// CHECK-NEXT:   %12 = extractvalue { ptr, ptr } %9, 1
+// CHECK-NEXT:   %13 = extractvalue { ptr, ptr } %9, 0
+// CHECK-NEXT:   %14 = call i64 %13(ptr %12, i64 %1)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrameAlias"(ptr %11)
+// CHECK-NEXT:   ret i64 %14
 // CHECK-NEXT: }

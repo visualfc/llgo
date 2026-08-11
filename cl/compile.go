@@ -207,12 +207,14 @@ type context struct {
 	linkOnceFns          map[*ssa.Function]none
 	stackDefers          map[*ssa.Function]bool
 	anonDefers           map[*ssa.Function]bool
+	recoverFacts         *recoverFacts
 	debugDIVars          map[*types.Var]llssa.DIVar
 	debugAllocVars       map[*ssa.Alloc]*types.Var
 	runtimeCallerFuncs   map[*ssa.Function]bool
 	pcLineSeq            uint64
 	options              Options
 	optionsSet           bool
+	recoverSlots         map[*ssa.Alloc]none
 
 	patches          Patches
 	blkInfos         []blocks.Info
@@ -658,10 +660,11 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	noInlineDirective := hasNoInlineDirective(f)
 	runtimeStackNoInline := needsRuntimeStackNoInline(pkgTypes, f)
 	pcLineNoInline := p.needsPCLineNoInline(f)
-	if disableInline || noInlineDirective || runtimeStackNoInline || pcLineNoInline {
+	usesRecover := p.functionUsesRecover(f)
+	if disableInline || noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
 		fn.Inline(llssa.NoInline)
 	}
-	if noInlineDirective || runtimeStackNoInline || pcLineNoInline {
+	if noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
 		fn.DisableTailCalls()
 	}
 	p.funcs[f] = fn
@@ -701,14 +704,21 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
 			oldLocalityFunction := p.locality.function
+			oldRecoverSlots := p.recoverSlots
 			p.fn = fn
 			p.goFn = f
 			p.callerFrameMark = llssa.Nil
 			p.locality.function = localityFunction{}
 			p.state = state // restore pkgState when compiling funcBody
+			if f.Recover != nil {
+				p.recoverSlots = make(map[*ssa.Alloc]none)
+			} else {
+				p.recoverSlots = nil
+			}
 			defer func() {
 				p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark = oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark
 				p.locality.function = oldLocalityFunction
+				p.recoverSlots = oldRecoverSlots
 			}()
 			p.phis = nil
 			if dbgSymsEnabled {
@@ -939,6 +949,9 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 	var instrs = block.Instrs[n:]
 	var ret = fn.Block(block.Index)
 	b.SetBlock(ret)
+	if block.Index == 0 && p.functionUsesRecover(block.Parent()) {
+		b.BindRecoverFrame()
+	}
 	if block.Index == 0 {
 		p.enterExportedLocalContext(b)
 	}
@@ -1221,6 +1234,29 @@ func (p *context) syntheticMakeSliceCap(v *ssa.Slice) (llssa.Expr, bool) {
 	return p.prog.IntVal(uint64(arr.Len()), p.prog.Int()), true
 }
 
+func (p *context) markRecoverSlot(v *ssa.Alloc) {
+	if p.recoverSlots == nil || v.Heap {
+		return
+	}
+	p.recoverSlots[v] = none{}
+}
+
+func (p *context) isRecoverSlotAddr(v ssa.Value) bool {
+	if p.recoverSlots == nil {
+		return false
+	}
+	switch v := v.(type) {
+	case *ssa.Alloc:
+		_, ok := p.recoverSlots[v]
+		return ok
+	case *ssa.FieldAddr:
+		return p.isRecoverSlotAddr(v.X)
+	case *ssa.IndexAddr:
+		return p.isRecoverSlotAddr(v.X)
+	}
+	return false
+}
+
 func isAllocVargs(ctx *context, v *ssa.Alloc) bool {
 	refs, ok := nonDebugReferrers(v)
 	if !ok || len(refs) == 0 {
@@ -1410,6 +1446,9 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				}
 			}
 			ret = b.UnOp(v.Op, x)
+			if v.Op == token.MUL && p.isRecoverSlotAddr(v.X) {
+				ret = ret.SetVolatile(true)
+			}
 		}
 	case *ssa.ChangeType:
 		t := v.Type()
@@ -1445,6 +1484,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		elem := p.type_(t.Elem(), llssa.InGo)
 		ret = b.Alloc(elem, v.Heap)
 		p.debugAlloc(b, v, ret)
+		p.markRecoverSlot(v)
+		if p.isRecoverSlotAddr(v) {
+			b.Store(ret, p.prog.Zero(elem)).SetVolatile(true)
+		}
 	case *ssa.IndexAddr:
 		vx := v.X
 		if _, ok := p.isVArgs(vx); ok { // varargs: this is a varargs index
@@ -1801,7 +1844,10 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		}
 		ptr := p.compileValue(b, va)
 		val := p.compileValue(b, v.Val)
-		b.Store(ptr, val)
+		store := b.Store(ptr, val)
+		if p.isRecoverSlotAddr(va) {
+			store.SetVolatile(true)
+		}
 	case *ssa.Jump:
 		jmpb := p.jumpTo(v)
 		b.Jump(jmpb)
@@ -2271,6 +2317,7 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 		vargs:            make(map[*ssa.Alloc][]llssa.Expr),
 		funcs:            make(map[*ssa.Function]llssa.Function),
 		linkOnceFns:      make(map[*ssa.Function]none),
+		recoverFacts:     ct.recoverAnalysis(),
 		addrOfFieldAddrs: collectAddrOfFieldSelectors(files),
 		loaded: map[*types.Package]*pkgInfo{
 			types.Unsafe: {kind: PkgDeclOnly}, // TODO(xsw): PkgNoInit or PkgDeclOnly?

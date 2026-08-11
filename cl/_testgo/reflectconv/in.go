@@ -11,44 +11,43 @@ import (
 	"unsafe"
 )
 
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [7 x i8] c"reflect", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [58 x i8] c"ValueOf(%T(%[1]v)).Convert(%s) = %T(%[3]v), want %T(%[4]v)", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [59 x i8] c"ValueOf(%T(%[1]v)).Convert(%s) has internal kind %v want %v", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [63 x i8] c"Set(ValueOf(%T(%[1]v)).Convert(%s)) = %T(%[3]v), want %T(%[4]v)", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [35 x i8] c"table entry %v is RO, should not be", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [46 x i8] c"self-conversion output %v is RO, should not be", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [41 x i8] c"conversion output %v is RO, should not be", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [46 x i8] c"set(conversion output) %v is RO, should not be", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [41 x i8] c"(%s).ConvertibleTo(%s) = false, want true", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [52 x i8] c"ValueOf(%T(%[1]v)).CanConvert(%s) = false, want true", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [53 x i8] c" ValueOf(%T(%[1]v)).CanConvert(%s) = false, want true", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [49 x i8] c"RO self-conversion output %v is not RO, should be", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [44 x i8] c"RO conversion output %v is not RO, should be", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [41 x i8] c"@(%s).ConvertibleTo(%s) = %v, want %v: %v", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [47 x i8] c"store/load of sNaN not faithful, got %x want %x", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [7 x i8] c"float32", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [40 x i8] c"signaling nan conversion got %x, want %x", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [40 x i8] c"[]byte should be convertible to *[8]byte", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [57 x i8] c"slice with length 4 should not be convertible to *[8]byte", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [77 x i8] c"reflect: cannot convert slice with length 4 to pointer to array with length 8", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [56 x i8] c"slice with length 4 should not be convertible to [8]byte", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [66 x i8] c"reflect: cannot convert slice with length 4 to array with length 8", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [65 x i8] c"convert slice to non-empty array returns a addressable copy array", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [52 x i8] c"slice (%v) mutation visible in converted result (%v)", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [6 x i8] c"bytes1", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [6 x i8] c"bytes2", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [6 x i8] c"bytes3", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [8 x i8] c"runes\E2\99\9D", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [8 x i8] c"runes\E2\99\95", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [17 x i8] c"runes\F0\9F\99\88\F0\9F\99\89\F0\9F\99\8A", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [1 x i8] c"a", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [3 x i8] c"\EF\BF\BD", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [13 x i8] c"did not panic", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [32 x i8] c"panicked with unexpected type %T", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [44 x i8] c"panic string does not start with \22reflect\22: ", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [31 x i8] c"panic string does not contain \22", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [3 x i8] c"\22: ", align 1{{$}}
+// CHECK: {{^}}@30 = private unnamed_addr constant [7 x i8] c"reflect", align 1{{$}}
+// CHECK: {{^}}@391 = private unnamed_addr constant [58 x i8] c"ValueOf(%T(%[1]v)).Convert(%s) = %T(%[3]v), want %T(%[4]v)", align 1{{$}}
+// CHECK: {{^}}@392 = private unnamed_addr constant [59 x i8] c"ValueOf(%T(%[1]v)).Convert(%s) has internal kind %v want %v", align 1{{$}}
+// CHECK: {{^}}@393 = private unnamed_addr constant [63 x i8] c"Set(ValueOf(%T(%[1]v)).Convert(%s)) = %T(%[3]v), want %T(%[4]v)", align 1{{$}}
+// CHECK: {{^}}@394 = private unnamed_addr constant [35 x i8] c"table entry %v is RO, should not be", align 1{{$}}
+// CHECK: {{^}}@395 = private unnamed_addr constant [46 x i8] c"self-conversion output %v is RO, should not be", align 1{{$}}
+// CHECK: {{^}}@396 = private unnamed_addr constant [41 x i8] c"conversion output %v is RO, should not be", align 1{{$}}
+// CHECK: {{^}}@397 = private unnamed_addr constant [46 x i8] c"set(conversion output) %v is RO, should not be", align 1{{$}}
+// CHECK: {{^}}@398 = private unnamed_addr constant [41 x i8] c"(%s).ConvertibleTo(%s) = false, want true", align 1{{$}}
+// CHECK: {{^}}@399 = private unnamed_addr constant [52 x i8] c"ValueOf(%T(%[1]v)).CanConvert(%s) = false, want true", align 1{{$}}
+// CHECK: {{^}}@400 = private unnamed_addr constant [53 x i8] c" ValueOf(%T(%[1]v)).CanConvert(%s) = false, want true", align 1{{$}}
+// CHECK: {{^}}@401 = private unnamed_addr constant [49 x i8] c"RO self-conversion output %v is not RO, should be", align 1{{$}}
+// CHECK: {{^}}@402 = private unnamed_addr constant [44 x i8] c"RO conversion output %v is not RO, should be", align 1{{$}}
+// CHECK: {{^}}@403 = private unnamed_addr constant [41 x i8] c"@(%s).ConvertibleTo(%s) = %v, want %v: %v", align 1{{$}}
+// CHECK: {{^}}@404 = private unnamed_addr constant [47 x i8] c"store/load of sNaN not faithful, got %x want %x", align 1{{$}}
+// CHECK: {{^}}@407 = private unnamed_addr constant [40 x i8] c"signaling nan conversion got %x, want %x", align 1{{$}}
+// CHECK: {{^}}@408 = private unnamed_addr constant [40 x i8] c"[]byte should be convertible to *[8]byte", align 1{{$}}
+// CHECK: {{^}}@409 = private unnamed_addr constant [57 x i8] c"slice with length 4 should not be convertible to *[8]byte", align 1{{$}}
+// CHECK: {{^}}@410 = private unnamed_addr constant [77 x i8] c"reflect: cannot convert slice with length 4 to pointer to array with length 8", align 1{{$}}
+// CHECK: {{^}}@411 = private unnamed_addr constant [56 x i8] c"slice with length 4 should not be convertible to [8]byte", align 1{{$}}
+// CHECK: {{^}}@412 = private unnamed_addr constant [66 x i8] c"reflect: cannot convert slice with length 4 to array with length 8", align 1{{$}}
+// CHECK: {{^}}@414 = private unnamed_addr constant [65 x i8] c"convert slice to non-empty array returns a addressable copy array", align 1{{$}}
+// CHECK: {{^}}@415 = private unnamed_addr constant [52 x i8] c"slice (%v) mutation visible in converted result (%v)", align 1{{$}}
+// CHECK: {{^}}@420 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+// CHECK: {{^}}@421 = private unnamed_addr constant [6 x i8] c"bytes1", align 1{{$}}
+// CHECK: {{^}}@422 = private unnamed_addr constant [6 x i8] c"bytes2", align 1{{$}}
+// CHECK: {{^}}@423 = private unnamed_addr constant [6 x i8] c"bytes3", align 1{{$}}
+// CHECK: {{^}}@424 = private unnamed_addr constant [8 x i8] c"runes\E2\99\9D", align 1{{$}}
+// CHECK: {{^}}@425 = private unnamed_addr constant [8 x i8] c"runes\E2\99\95", align 1{{$}}
+// CHECK: {{^}}@426 = private unnamed_addr constant [17 x i8] c"runes\F0\9F\99\88\F0\9F\99\89\F0\9F\99\8A", align 1{{$}}
+// CHECK: {{^}}@427 = private unnamed_addr constant [1 x i8] c"a", align 1{{$}}
+// CHECK: {{^}}@428 = private unnamed_addr constant [3 x i8] c"\EF\BF\BD", align 1{{$}}
+// CHECK: {{^}}@535 = private unnamed_addr constant [13 x i8] c"did not panic", align 1{{$}}
+// CHECK: {{^}}@537 = private unnamed_addr constant [32 x i8] c"panicked with unexpected type %T", align 1{{$}}
+// CHECK: {{^}}@538 = private unnamed_addr constant [44 x i8] c"panic string does not start with \22reflect\22: ", align 1{{$}}
+// CHECK: {{^}}@539 = private unnamed_addr constant [31 x i8] c"panic string does not contain \22", align 1{{$}}
+// CHECK: {{^}}@540 = private unnamed_addr constant [3 x i8] c"\22: ", align 1{{$}}
 
 type Value struct {
 	typ_ unsafe.Pointer
@@ -915,7 +914,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %40 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %29, 0
 // CHECK-NEXT:   %41 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %40, i64 2, 1
 // CHECK-NEXT:   %42 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %41, i64 2, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %42)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @398, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %42)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_2
@@ -950,7 +949,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %66 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %55, 0
 // CHECK-NEXT:   %67 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %66, i64 2, 1
 // CHECK-NEXT:   %68 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %67, i64 2, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %68)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @398, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %68)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_5
@@ -994,7 +993,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %92 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %85, 0
 // CHECK-NEXT:   %93 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %92, i64 2, 1
 // CHECK-NEXT:   %94 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %93, i64 2, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 52 }, %"{{.*}}/runtime/internal/runtime.Slice" %94)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @399, i64 52 }, %"{{.*}}/runtime/internal/runtime.Slice" %94)
 // CHECK-NEXT:   br label %_llgo_9
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_9:                                          ; preds = %_llgo_8, %_llgo_7
@@ -1039,7 +1038,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %126 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %117, 0
 // CHECK-NEXT:   %127 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %126, i64 4, 1
 // CHECK-NEXT:   %128 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %127, i64 4, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.Slice" %128)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @391, i64 58 }, %"{{.*}}/runtime/internal/runtime.Slice" %128)
 // CHECK-NEXT:   br label %_llgo_11
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_11:                                         ; preds = %_llgo_12, %_llgo_10
@@ -1069,7 +1068,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %144 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %137, 0
 // CHECK-NEXT:   %145 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %144, i64 2, 1
 // CHECK-NEXT:   %146 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %145, i64 2, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 53 }, %"{{.*}}/runtime/internal/runtime.Slice" %146)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @400, i64 53 }, %"{{.*}}/runtime/internal/runtime.Slice" %146)
 // CHECK-NEXT:   br label %_llgo_14
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_14:                                         ; preds = %_llgo_13, %_llgo_11
@@ -1114,7 +1113,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %178 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %169, 0
 // CHECK-NEXT:   %179 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %178, i64 4, 1
 // CHECK-NEXT:   %180 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %179, i64 4, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 58 }, %"{{.*}}/runtime/internal/runtime.Slice" %180)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @391, i64 58 }, %"{{.*}}/runtime/internal/runtime.Slice" %180)
 // CHECK-NEXT:   br label %_llgo_16
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_17, %_llgo_15
@@ -1122,7 +1121,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %182 = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value %147)
 // CHECK-NEXT:   %183 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %182)
 // CHECK-NEXT:   %184 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %182, 0
-// CHECK-NEXT:   %185 = getelementptr ptr, ptr %184, i64 {{(21|23)}}
+// CHECK-NEXT:   %185 = getelementptr ptr, ptr %184, i64 23
 // CHECK-NEXT:   %186 = load ptr, ptr %185, align 8
 // CHECK-NEXT:   %187 = insertvalue { ptr, ptr } undef, ptr %186, 0
 // CHECK-NEXT:   %188 = insertvalue { ptr, ptr } %187, ptr %183, 1
@@ -1165,7 +1164,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %213 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %200, 0
 // CHECK-NEXT:   %214 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %213, i64 4, 1
 // CHECK-NEXT:   %215 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %214, i64 4, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 59 }, %"{{.*}}/runtime/internal/runtime.Slice" %215)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @392, i64 59 }, %"{{.*}}/runtime/internal/runtime.Slice" %215)
 // CHECK-NEXT:   br label %_llgo_19
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_19:                                         ; preds = %_llgo_18, %_llgo_16
@@ -1212,7 +1211,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %248 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %239, 0
 // CHECK-NEXT:   %249 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %248, i64 4, 1
 // CHECK-NEXT:   %250 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %249, i64 4, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 63 }, %"{{.*}}/runtime/internal/runtime.Slice" %250)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @393, i64 63 }, %"{{.*}}/runtime/internal/runtime.Slice" %250)
 // CHECK-NEXT:   br label %_llgo_21
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_21:                                         ; preds = %_llgo_22, %_llgo_20
@@ -1236,7 +1235,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %260 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %256, 0
 // CHECK-NEXT:   %261 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %260, i64 1, 1
 // CHECK-NEXT:   %262 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %261, i64 1, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 35 }, %"{{.*}}/runtime/internal/runtime.Slice" %262)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @394, i64 35 }, %"{{.*}}/runtime/internal/runtime.Slice" %262)
 // CHECK-NEXT:   br label %_llgo_24
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_24:                                         ; preds = %_llgo_23, %_llgo_21
@@ -1253,7 +1252,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %268 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %264, 0
 // CHECK-NEXT:   %269 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %268, i64 1, 1
 // CHECK-NEXT:   %270 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %269, i64 1, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 46 }, %"{{.*}}/runtime/internal/runtime.Slice" %270)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @395, i64 46 }, %"{{.*}}/runtime/internal/runtime.Slice" %270)
 // CHECK-NEXT:   br label %_llgo_26
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_26:                                         ; preds = %_llgo_25, %_llgo_24
@@ -1270,7 +1269,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %276 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %272, 0
 // CHECK-NEXT:   %277 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %276, i64 1, 1
 // CHECK-NEXT:   %278 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %277, i64 1, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %278)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @396, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %278)
 // CHECK-NEXT:   br label %_llgo_28
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_28:                                         ; preds = %_llgo_27, %_llgo_26
@@ -1287,7 +1286,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %284 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %280, 0
 // CHECK-NEXT:   %285 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %284, i64 1, 1
 // CHECK-NEXT:   %286 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %285, i64 1, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 46 }, %"{{.*}}/runtime/internal/runtime.Slice" %286)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @397, i64 46 }, %"{{.*}}/runtime/internal/runtime.Slice" %286)
 // CHECK-NEXT:   br label %_llgo_30
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_30:                                         ; preds = %_llgo_29, %_llgo_28
@@ -1306,7 +1305,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %294 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %290, 0
 // CHECK-NEXT:   %295 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %294, i64 1, 1
 // CHECK-NEXT:   %296 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %295, i64 1, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 49 }, %"{{.*}}/runtime/internal/runtime.Slice" %296)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @401, i64 49 }, %"{{.*}}/runtime/internal/runtime.Slice" %296)
 // CHECK-NEXT:   br label %_llgo_32
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_32:                                         ; preds = %_llgo_31, %_llgo_30
@@ -1325,7 +1324,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %304 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %300, 0
 // CHECK-NEXT:   %305 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %304, i64 1, 1
 // CHECK-NEXT:   %306 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %305, i64 1, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 44 }, %"{{.*}}/runtime/internal/runtime.Slice" %306)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @402, i64 44 }, %"{{.*}}/runtime/internal/runtime.Slice" %306)
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_34:                                         ; preds = %_llgo_50, %_llgo_3
@@ -1362,7 +1361,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT: _llgo_39:                                         ; preds = %_llgo_41
 // CHECK-NEXT:   %323 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %313)
 // CHECK-NEXT:   %324 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %313, 0
-// CHECK-NEXT:   %325 = getelementptr ptr, ptr %324, i64 {{(21|23)}}
+// CHECK-NEXT:   %325 = getelementptr ptr, ptr %324, i64 23
 // CHECK-NEXT:   %326 = load ptr, ptr %325, align 8
 // CHECK-NEXT:   %327 = insertvalue { ptr, ptr } undef, ptr %326, 0
 // CHECK-NEXT:   %328 = insertvalue { ptr, ptr } %327, ptr %323, 1
@@ -1403,7 +1402,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT: _llgo_42:                                         ; preds = %_llgo_39
 // CHECK-NEXT:   %351 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %313)
 // CHECK-NEXT:   %352 = extractvalue %"{{.*}}/runtime/internal/runtime.iface" %313, 0
-// CHECK-NEXT:   %353 = getelementptr ptr, ptr %352, i64 {{(28|31)}}
+// CHECK-NEXT:   %353 = getelementptr ptr, ptr %352, i64 31
 // CHECK-NEXT:   %354 = load ptr, ptr %353, align 8
 // CHECK-NEXT:   %355 = insertvalue { ptr, ptr } undef, ptr %354, 0
 // CHECK-NEXT:   %356 = insertvalue { ptr, ptr } %355, ptr %351, 1
@@ -1460,7 +1459,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %389 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %369, 0
 // CHECK-NEXT:   %390 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %389, i64 5, 1
 // CHECK-NEXT:   %391 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %390, i64 5, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %391)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @403, i64 41 }, %"{{.*}}/runtime/internal/runtime.Slice" %391)
 // CHECK-NEXT:   br label %_llgo_37
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_45:                                         ; preds = %_llgo_34
@@ -1522,7 +1521,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %12 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %5, 0
 // CHECK-NEXT:   %13 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %12, i64 2, 1
 // CHECK-NEXT:   %14 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %13, i64 2, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 47 }, %"{{.*}}/runtime/internal/runtime.Slice" %14)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @404, i64 47 }, %"{{.*}}/runtime/internal/runtime.Slice" %14)
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -1560,7 +1559,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %36 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %29, 0
 // CHECK-NEXT:   %37 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %36, i64 2, 1
 // CHECK-NEXT:   %38 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %37, i64 2, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 40 }, %"{{.*}}/runtime/internal/runtime.Slice" %38)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @407, i64 40 }, %"{{.*}}/runtime/internal/runtime.Slice" %38)
 // CHECK-NEXT:   br label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_3, %_llgo_5
@@ -1574,7 +1573,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   br i1 %42, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %27, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %27, ptr @_llgo_float32)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -1608,7 +1607,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   br i1 %22, label %_llgo_2, label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 40 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @408, i64 40 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -1618,7 +1617,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   br i1 %25, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 57 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @409, i64 57 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
 // CHECK-NEXT:   br label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_3, %_llgo_2
@@ -1628,7 +1627,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %28 = getelementptr inbounds { ptr, ptr }, ptr %26, i32 0, i32 1
 // CHECK-NEXT:   store ptr %8, ptr %28, align 8
 // CHECK-NEXT:   %29 = insertvalue { ptr, ptr } { ptr @"main.TestConvertPanic$1", ptr undef }, ptr %26, 1
-// CHECK-NEXT:   call void @main.shouldPanic(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 77 }, { ptr, ptr } %29)
+// CHECK-NEXT:   call void @main.shouldPanic(%"{{.*}}/runtime/internal/runtime.String" { ptr @410, i64 77 }, { ptr, ptr } %29)
 // CHECK-NEXT:   %30 = load %reflect.Value, ptr %4, align 8
 // CHECK-NEXT:   %31 = load %"{{.*}}/runtime/internal/runtime.iface", ptr %8, align 8
 // CHECK-NEXT:   %32 = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}/runtime/internal/runtime.iface" %31)
@@ -1644,7 +1643,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   br i1 %41, label %_llgo_5, label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_4
-// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 56 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
+// CHECK-NEXT:   call void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @411, i64 56 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
 // CHECK-NEXT:   br label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_5, %_llgo_4
@@ -1654,7 +1653,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %44 = getelementptr inbounds { ptr, ptr }, ptr %42, i32 0, i32 1
 // CHECK-NEXT:   store ptr %8, ptr %44, align 8
 // CHECK-NEXT:   %45 = insertvalue { ptr, ptr } { ptr @"main.TestConvertPanic$2", ptr undef }, ptr %42, 1
-// CHECK-NEXT:   call void @main.shouldPanic(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 66 }, { ptr, ptr } %45)
+// CHECK-NEXT:   call void @main.shouldPanic(%"{{.*}}/runtime/internal/runtime.String" { ptr @412, i64 66 }, { ptr, ptr } %45)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -1708,7 +1707,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   br i1 %10, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"main.(*testingT).Fatalf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 65 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
+// CHECK-NEXT:   call void @"main.(*testingT).Fatalf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @414, i64 65 }, %"{{.*}}/runtime/internal/runtime.Slice" zeroinitializer)
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
@@ -1765,7 +1764,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %34 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %27, 0
 // CHECK-NEXT:   %35 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %34, i64 2, 1
 // CHECK-NEXT:   %36 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %35, i64 2, 2
-// CHECK-NEXT:   call void @"main.(*testingT).Fatalf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 52 }, %"{{.*}}/runtime/internal/runtime.Slice" %36)
+// CHECK-NEXT:   call void @"main.(*testingT).Fatalf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" { ptr @415, i64 52 }, %"{{.*}}/runtime/internal/runtime.Slice" %36)
 // CHECK-NEXT:   br label %_llgo_6
 // CHECK-NEXT: }
 
@@ -5463,7 +5462,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2628 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2627, i32 0, i32 0
 // CHECK-NEXT:   %2629 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2630 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %2630, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %2630, align 8
 // CHECK-NEXT:   %2631 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2630, 1
 // CHECK-NEXT:   %2632 = extractvalue { ptr, ptr } %2629, 1
 // CHECK-NEXT:   %2633 = extractvalue { ptr, ptr } %2629, 0
@@ -5472,7 +5471,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2635 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2627, i32 0, i32 1
 // CHECK-NEXT:   %2636 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2637 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %2637, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %2637, align 8
 // CHECK-NEXT:   %2638 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2637, 1
 // CHECK-NEXT:   %2639 = extractvalue { ptr, ptr } %2636, 1
 // CHECK-NEXT:   %2640 = extractvalue { ptr, ptr } %2636, 0
@@ -5484,7 +5483,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2643 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2642, i32 0, i32 0
 // CHECK-NEXT:   %2644 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2645 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %2645, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 }, ptr %2645, align 8
 // CHECK-NEXT:   %2646 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2645, 1
 // CHECK-NEXT:   %2647 = extractvalue { ptr, ptr } %2644, 1
 // CHECK-NEXT:   %2648 = extractvalue { ptr, ptr } %2644, 0
@@ -5492,7 +5491,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2649 = call %reflect.Value %__llgo_funcval_code352(ptr {{(nest|swiftself)}} %2647, %"{{.*}}/runtime/internal/runtime.eface" %2646)
 // CHECK-NEXT:   %2650 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2642, i32 0, i32 1
 // CHECK-NEXT:   %2651 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2652 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %2652 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 })
 // CHECK-NEXT:   %2653 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2652, ptr %2653, align 8
 // CHECK-NEXT:   %2654 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %2653, 1
@@ -5505,7 +5504,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2658 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 177
 // CHECK-NEXT:   %2659 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2658, i32 0, i32 0
 // CHECK-NEXT:   %2660 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2661 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %2661 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 })
 // CHECK-NEXT:   %2662 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2661, ptr %2662, align 8
 // CHECK-NEXT:   %2663 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %2662, 1
@@ -5516,7 +5515,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2667 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2658, i32 0, i32 1
 // CHECK-NEXT:   %2668 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2669 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %2669, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 }, ptr %2669, align 8
 // CHECK-NEXT:   %2670 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2669, 1
 // CHECK-NEXT:   %2671 = extractvalue { ptr, ptr } %2668, 1
 // CHECK-NEXT:   %2672 = extractvalue { ptr, ptr } %2668, 0
@@ -5527,7 +5526,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2674 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 178
 // CHECK-NEXT:   %2675 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2674, i32 0, i32 0
 // CHECK-NEXT:   %2676 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2677 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %2677 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @423, i64 6 })
 // CHECK-NEXT:   %2678 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2677, ptr %2678, align 8
 // CHECK-NEXT:   %2679 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %2678, 1
@@ -5537,7 +5536,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2682 = call %reflect.Value %__llgo_funcval_code356(ptr {{(nest|swiftself)}} %2680, %"{{.*}}/runtime/internal/runtime.eface" %2679)
 // CHECK-NEXT:   %2683 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2674, i32 0, i32 1
 // CHECK-NEXT:   %2684 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2685 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %2685 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @423, i64 6 })
 // CHECK-NEXT:   %2686 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2685, ptr %2686, align 8
 // CHECK-NEXT:   %2687 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %2686, 1
@@ -5551,7 +5550,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2692 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2691, i32 0, i32 0
 // CHECK-NEXT:   %2693 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2694 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %2694, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 }, ptr %2694, align 8
 // CHECK-NEXT:   %2695 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2694, 1
 // CHECK-NEXT:   %2696 = extractvalue { ptr, ptr } %2693, 1
 // CHECK-NEXT:   %2697 = extractvalue { ptr, ptr } %2693, 0
@@ -5559,7 +5558,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2698 = call %reflect.Value %__llgo_funcval_code358(ptr {{(nest|swiftself)}} %2696, %"{{.*}}/runtime/internal/runtime.eface" %2695)
 // CHECK-NEXT:   %2699 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2691, i32 0, i32 1
 // CHECK-NEXT:   %2700 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2701 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %2701 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 })
 // CHECK-NEXT:   %2702 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2701, ptr %2702, align 8
 // CHECK-NEXT:   %2703 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %2702, 1
@@ -5572,7 +5571,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2707 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 180
 // CHECK-NEXT:   %2708 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2707, i32 0, i32 0
 // CHECK-NEXT:   %2709 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2710 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %2710 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 })
 // CHECK-NEXT:   %2711 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2710, ptr %2711, align 8
 // CHECK-NEXT:   %2712 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %2711, 1
@@ -5583,7 +5582,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2716 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2707, i32 0, i32 1
 // CHECK-NEXT:   %2717 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2718 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %2718, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 }, ptr %2718, align 8
 // CHECK-NEXT:   %2719 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2718, 1
 // CHECK-NEXT:   %2720 = extractvalue { ptr, ptr } %2717, 1
 // CHECK-NEXT:   %2721 = extractvalue { ptr, ptr } %2717, 0
@@ -5594,7 +5593,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2723 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 181
 // CHECK-NEXT:   %2724 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2723, i32 0, i32 0
 // CHECK-NEXT:   %2725 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2726 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %2726 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %2727 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2726, ptr %2727, align 8
 // CHECK-NEXT:   %2728 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %2727, 1
@@ -5604,7 +5603,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2731 = call %reflect.Value %__llgo_funcval_code362(ptr {{(nest|swiftself)}} %2729, %"{{.*}}/runtime/internal/runtime.eface" %2728)
 // CHECK-NEXT:   %2732 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2723, i32 0, i32 1
 // CHECK-NEXT:   %2733 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %2734 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %2734 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %2735 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %2734, ptr %2735, align 8
 // CHECK-NEXT:   %2736 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %2735, 1
@@ -5627,7 +5626,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2748 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2740, i32 0, i32 1
 // CHECK-NEXT:   %2749 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2750 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2750, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2750, align 8
 // CHECK-NEXT:   %2751 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2750, 1
 // CHECK-NEXT:   %2752 = extractvalue { ptr, ptr } %2749, 1
 // CHECK-NEXT:   %2753 = extractvalue { ptr, ptr } %2749, 0
@@ -5648,7 +5647,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2763 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2755, i32 0, i32 1
 // CHECK-NEXT:   %2764 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2765 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2765, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2765, align 8
 // CHECK-NEXT:   %2766 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2765, 1
 // CHECK-NEXT:   %2767 = extractvalue { ptr, ptr } %2764, 1
 // CHECK-NEXT:   %2768 = extractvalue { ptr, ptr } %2764, 0
@@ -5669,7 +5668,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2778 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2770, i32 0, i32 1
 // CHECK-NEXT:   %2779 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2780 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2780, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2780, align 8
 // CHECK-NEXT:   %2781 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2780, 1
 // CHECK-NEXT:   %2782 = extractvalue { ptr, ptr } %2779, 1
 // CHECK-NEXT:   %2783 = extractvalue { ptr, ptr } %2779, 0
@@ -5690,7 +5689,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2793 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2785, i32 0, i32 1
 // CHECK-NEXT:   %2794 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2795 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2795, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2795, align 8
 // CHECK-NEXT:   %2796 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2795, 1
 // CHECK-NEXT:   %2797 = extractvalue { ptr, ptr } %2794, 1
 // CHECK-NEXT:   %2798 = extractvalue { ptr, ptr } %2794, 0
@@ -5711,7 +5710,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2808 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2800, i32 0, i32 1
 // CHECK-NEXT:   %2809 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2810 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2810, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2810, align 8
 // CHECK-NEXT:   %2811 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2810, 1
 // CHECK-NEXT:   %2812 = extractvalue { ptr, ptr } %2809, 1
 // CHECK-NEXT:   %2813 = extractvalue { ptr, ptr } %2809, 0
@@ -5732,7 +5731,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2823 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2815, i32 0, i32 1
 // CHECK-NEXT:   %2824 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2825 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2825, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2825, align 8
 // CHECK-NEXT:   %2826 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2825, 1
 // CHECK-NEXT:   %2827 = extractvalue { ptr, ptr } %2824, 1
 // CHECK-NEXT:   %2828 = extractvalue { ptr, ptr } %2824, 0
@@ -5753,7 +5752,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2838 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2830, i32 0, i32 1
 // CHECK-NEXT:   %2839 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2840 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2840, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2840, align 8
 // CHECK-NEXT:   %2841 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2840, 1
 // CHECK-NEXT:   %2842 = extractvalue { ptr, ptr } %2839, 1
 // CHECK-NEXT:   %2843 = extractvalue { ptr, ptr } %2839, 0
@@ -5774,7 +5773,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2853 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2845, i32 0, i32 1
 // CHECK-NEXT:   %2854 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2855 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2855, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2855, align 8
 // CHECK-NEXT:   %2856 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2855, 1
 // CHECK-NEXT:   %2857 = extractvalue { ptr, ptr } %2854, 1
 // CHECK-NEXT:   %2858 = extractvalue { ptr, ptr } %2854, 0
@@ -5795,7 +5794,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2868 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2860, i32 0, i32 1
 // CHECK-NEXT:   %2869 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2870 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2870, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2870, align 8
 // CHECK-NEXT:   %2871 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2870, 1
 // CHECK-NEXT:   %2872 = extractvalue { ptr, ptr } %2869, 1
 // CHECK-NEXT:   %2873 = extractvalue { ptr, ptr } %2869, 0
@@ -5816,7 +5815,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2883 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2875, i32 0, i32 1
 // CHECK-NEXT:   %2884 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2885 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2885, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2885, align 8
 // CHECK-NEXT:   %2886 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2885, 1
 // CHECK-NEXT:   %2887 = extractvalue { ptr, ptr } %2884, 1
 // CHECK-NEXT:   %2888 = extractvalue { ptr, ptr } %2884, 0
@@ -5837,7 +5836,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2898 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2890, i32 0, i32 1
 // CHECK-NEXT:   %2899 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2900 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %2900, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %2900, align 8
 // CHECK-NEXT:   %2901 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2900, 1
 // CHECK-NEXT:   %2902 = extractvalue { ptr, ptr } %2899, 1
 // CHECK-NEXT:   %2903 = extractvalue { ptr, ptr } %2899, 0
@@ -5858,7 +5857,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2913 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2905, i32 0, i32 1
 // CHECK-NEXT:   %2914 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2915 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %2915, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %2915, align 8
 // CHECK-NEXT:   %2916 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2915, 1
 // CHECK-NEXT:   %2917 = extractvalue { ptr, ptr } %2914, 1
 // CHECK-NEXT:   %2918 = extractvalue { ptr, ptr } %2914, 0
@@ -5879,7 +5878,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2928 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2920, i32 0, i32 1
 // CHECK-NEXT:   %2929 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2930 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %2930, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %2930, align 8
 // CHECK-NEXT:   %2931 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2930, 1
 // CHECK-NEXT:   %2932 = extractvalue { ptr, ptr } %2929, 1
 // CHECK-NEXT:   %2933 = extractvalue { ptr, ptr } %2929, 0
@@ -5900,7 +5899,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2943 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2935, i32 0, i32 1
 // CHECK-NEXT:   %2944 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2945 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %2945, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %2945, align 8
 // CHECK-NEXT:   %2946 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2945, 1
 // CHECK-NEXT:   %2947 = extractvalue { ptr, ptr } %2944, 1
 // CHECK-NEXT:   %2948 = extractvalue { ptr, ptr } %2944, 0
@@ -5921,7 +5920,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2958 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2950, i32 0, i32 1
 // CHECK-NEXT:   %2959 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2960 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %2960, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %2960, align 8
 // CHECK-NEXT:   %2961 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2960, 1
 // CHECK-NEXT:   %2962 = extractvalue { ptr, ptr } %2959, 1
 // CHECK-NEXT:   %2963 = extractvalue { ptr, ptr } %2959, 0
@@ -5942,7 +5941,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2973 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2965, i32 0, i32 1
 // CHECK-NEXT:   %2974 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2975 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %2975, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %2975, align 8
 // CHECK-NEXT:   %2976 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2975, 1
 // CHECK-NEXT:   %2977 = extractvalue { ptr, ptr } %2974, 1
 // CHECK-NEXT:   %2978 = extractvalue { ptr, ptr } %2974, 0
@@ -5963,7 +5962,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %2988 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2980, i32 0, i32 1
 // CHECK-NEXT:   %2989 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %2990 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %2990, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %2990, align 8
 // CHECK-NEXT:   %2991 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %2990, 1
 // CHECK-NEXT:   %2992 = extractvalue { ptr, ptr } %2989, 1
 // CHECK-NEXT:   %2993 = extractvalue { ptr, ptr } %2989, 0
@@ -5984,7 +5983,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3003 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %2995, i32 0, i32 1
 // CHECK-NEXT:   %3004 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3005 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3005, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3005, align 8
 // CHECK-NEXT:   %3006 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3005, 1
 // CHECK-NEXT:   %3007 = extractvalue { ptr, ptr } %3004, 1
 // CHECK-NEXT:   %3008 = extractvalue { ptr, ptr } %3004, 0
@@ -6005,7 +6004,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3018 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3010, i32 0, i32 1
 // CHECK-NEXT:   %3019 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3020 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3020, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3020, align 8
 // CHECK-NEXT:   %3021 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3020, 1
 // CHECK-NEXT:   %3022 = extractvalue { ptr, ptr } %3019, 1
 // CHECK-NEXT:   %3023 = extractvalue { ptr, ptr } %3019, 0
@@ -6026,7 +6025,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3033 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3025, i32 0, i32 1
 // CHECK-NEXT:   %3034 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3035 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3035, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3035, align 8
 // CHECK-NEXT:   %3036 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3035, 1
 // CHECK-NEXT:   %3037 = extractvalue { ptr, ptr } %3034, 1
 // CHECK-NEXT:   %3038 = extractvalue { ptr, ptr } %3034, 0
@@ -6047,7 +6046,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3048 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3040, i32 0, i32 1
 // CHECK-NEXT:   %3049 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3050 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3050, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3050, align 8
 // CHECK-NEXT:   %3051 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3050, 1
 // CHECK-NEXT:   %3052 = extractvalue { ptr, ptr } %3049, 1
 // CHECK-NEXT:   %3053 = extractvalue { ptr, ptr } %3049, 0
@@ -6068,7 +6067,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3063 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3055, i32 0, i32 1
 // CHECK-NEXT:   %3064 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3065 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3065, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3065, align 8
 // CHECK-NEXT:   %3066 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3065, 1
 // CHECK-NEXT:   %3067 = extractvalue { ptr, ptr } %3064, 1
 // CHECK-NEXT:   %3068 = extractvalue { ptr, ptr } %3064, 0
@@ -6089,7 +6088,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3078 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3070, i32 0, i32 1
 // CHECK-NEXT:   %3079 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3080 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3080, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3080, align 8
 // CHECK-NEXT:   %3081 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3080, 1
 // CHECK-NEXT:   %3082 = extractvalue { ptr, ptr } %3079, 1
 // CHECK-NEXT:   %3083 = extractvalue { ptr, ptr } %3079, 0
@@ -6101,7 +6100,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3086 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3085, i32 0, i32 0
 // CHECK-NEXT:   %3087 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3088 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3088, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3088, align 8
 // CHECK-NEXT:   %3089 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3088, 1
 // CHECK-NEXT:   %3090 = extractvalue { ptr, ptr } %3087, 1
 // CHECK-NEXT:   %3091 = extractvalue { ptr, ptr } %3087, 0
@@ -6110,7 +6109,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3093 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3085, i32 0, i32 1
 // CHECK-NEXT:   %3094 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3095 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3095, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3095, align 8
 // CHECK-NEXT:   %3096 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3095, 1
 // CHECK-NEXT:   %3097 = extractvalue { ptr, ptr } %3094, 1
 // CHECK-NEXT:   %3098 = extractvalue { ptr, ptr } %3094, 0
@@ -6122,7 +6121,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3101 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3100, i32 0, i32 0
 // CHECK-NEXT:   %3102 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3103 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3103, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3103, align 8
 // CHECK-NEXT:   %3104 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3103, 1
 // CHECK-NEXT:   %3105 = extractvalue { ptr, ptr } %3102, 1
 // CHECK-NEXT:   %3106 = extractvalue { ptr, ptr } %3102, 0
@@ -6131,7 +6130,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3108 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3100, i32 0, i32 1
 // CHECK-NEXT:   %3109 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3110 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3110, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3110, align 8
 // CHECK-NEXT:   %3111 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3110, 1
 // CHECK-NEXT:   %3112 = extractvalue { ptr, ptr } %3109, 1
 // CHECK-NEXT:   %3113 = extractvalue { ptr, ptr } %3109, 0
@@ -6143,7 +6142,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3116 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3115, i32 0, i32 0
 // CHECK-NEXT:   %3117 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3118 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3118, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3118, align 8
 // CHECK-NEXT:   %3119 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3118, 1
 // CHECK-NEXT:   %3120 = extractvalue { ptr, ptr } %3117, 1
 // CHECK-NEXT:   %3121 = extractvalue { ptr, ptr } %3117, 0
@@ -6152,7 +6151,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3123 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3115, i32 0, i32 1
 // CHECK-NEXT:   %3124 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3125 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3125, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3125, align 8
 // CHECK-NEXT:   %3126 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3125, 1
 // CHECK-NEXT:   %3127 = extractvalue { ptr, ptr } %3124, 1
 // CHECK-NEXT:   %3128 = extractvalue { ptr, ptr } %3124, 0
@@ -6164,7 +6163,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3131 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3130, i32 0, i32 0
 // CHECK-NEXT:   %3132 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3133 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3133, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3133, align 8
 // CHECK-NEXT:   %3134 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3133, 1
 // CHECK-NEXT:   %3135 = extractvalue { ptr, ptr } %3132, 1
 // CHECK-NEXT:   %3136 = extractvalue { ptr, ptr } %3132, 0
@@ -6173,7 +6172,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3138 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3130, i32 0, i32 1
 // CHECK-NEXT:   %3139 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3140 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %3140, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %3140, align 8
 // CHECK-NEXT:   %3141 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3140, 1
 // CHECK-NEXT:   %3142 = extractvalue { ptr, ptr } %3139, 1
 // CHECK-NEXT:   %3143 = extractvalue { ptr, ptr } %3139, 0
@@ -6185,7 +6184,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3146 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3145, i32 0, i32 0
 // CHECK-NEXT:   %3147 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3148 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %3148, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 }, ptr %3148, align 8
 // CHECK-NEXT:   %3149 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3148, 1
 // CHECK-NEXT:   %3150 = extractvalue { ptr, ptr } %3147, 1
 // CHECK-NEXT:   %3151 = extractvalue { ptr, ptr } %3147, 0
@@ -6193,7 +6192,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3152 = call %reflect.Value %__llgo_funcval_code418(ptr {{(nest|swiftself)}} %3150, %"{{.*}}/runtime/internal/runtime.eface" %3149)
 // CHECK-NEXT:   %3153 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3145, i32 0, i32 1
 // CHECK-NEXT:   %3154 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3155 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3155 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 })
 // CHECK-NEXT:   %3156 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3155, ptr %3156, align 8
 // CHECK-NEXT:   %3157 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %3156, 1
@@ -6206,7 +6205,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3161 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 210
 // CHECK-NEXT:   %3162 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3161, i32 0, i32 0
 // CHECK-NEXT:   %3163 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3164 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3164 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 })
 // CHECK-NEXT:   %3165 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3164, ptr %3165, align 8
 // CHECK-NEXT:   %3166 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %3165, 1
@@ -6217,7 +6216,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3170 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3161, i32 0, i32 1
 // CHECK-NEXT:   %3171 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3172 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %3172, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 }, ptr %3172, align 8
 // CHECK-NEXT:   %3173 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3172, 1
 // CHECK-NEXT:   %3174 = extractvalue { ptr, ptr } %3171, 1
 // CHECK-NEXT:   %3175 = extractvalue { ptr, ptr } %3171, 0
@@ -6228,7 +6227,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3177 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 211
 // CHECK-NEXT:   %3178 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3177, i32 0, i32 0
 // CHECK-NEXT:   %3179 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3180 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3180 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @423, i64 6 })
 // CHECK-NEXT:   %3181 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3180, ptr %3181, align 8
 // CHECK-NEXT:   %3182 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %3181, 1
@@ -6238,7 +6237,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3185 = call %reflect.Value %__llgo_funcval_code422(ptr {{(nest|swiftself)}} %3183, %"{{.*}}/runtime/internal/runtime.eface" %3182)
 // CHECK-NEXT:   %3186 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3177, i32 0, i32 1
 // CHECK-NEXT:   %3187 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3188 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3188 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @423, i64 6 })
 // CHECK-NEXT:   %3189 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3188, ptr %3189, align 8
 // CHECK-NEXT:   %3190 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_uint8", ptr undef }, ptr %3189, 1
@@ -6252,7 +6251,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3195 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3194, i32 0, i32 0
 // CHECK-NEXT:   %3196 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3197 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %3197, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 }, ptr %3197, align 8
 // CHECK-NEXT:   %3198 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3197, 1
 // CHECK-NEXT:   %3199 = extractvalue { ptr, ptr } %3196, 1
 // CHECK-NEXT:   %3200 = extractvalue { ptr, ptr } %3196, 0
@@ -6260,7 +6259,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3201 = call %reflect.Value %__llgo_funcval_code424(ptr {{(nest|swiftself)}} %3199, %"{{.*}}/runtime/internal/runtime.eface" %3198)
 // CHECK-NEXT:   %3202 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3194, i32 0, i32 1
 // CHECK-NEXT:   %3203 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3204 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %3204 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 })
 // CHECK-NEXT:   %3205 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3204, ptr %3205, align 8
 // CHECK-NEXT:   %3206 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %3205, 1
@@ -6273,7 +6272,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3210 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 213
 // CHECK-NEXT:   %3211 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3210, i32 0, i32 0
 // CHECK-NEXT:   %3212 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3213 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %3213 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 })
 // CHECK-NEXT:   %3214 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3213, ptr %3214, align 8
 // CHECK-NEXT:   %3215 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %3214, 1
@@ -6284,7 +6283,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3219 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3210, i32 0, i32 1
 // CHECK-NEXT:   %3220 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3221 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %3221, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 }, ptr %3221, align 8
 // CHECK-NEXT:   %3222 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3221, 1
 // CHECK-NEXT:   %3223 = extractvalue { ptr, ptr } %3220, 1
 // CHECK-NEXT:   %3224 = extractvalue { ptr, ptr } %3220, 0
@@ -6295,7 +6294,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3226 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 214
 // CHECK-NEXT:   %3227 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3226, i32 0, i32 0
 // CHECK-NEXT:   %3228 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3229 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3229 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3230 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3229, ptr %3230, align 8
 // CHECK-NEXT:   %3231 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %3230, 1
@@ -6305,7 +6304,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3234 = call %reflect.Value %__llgo_funcval_code428(ptr {{(nest|swiftself)}} %3232, %"{{.*}}/runtime/internal/runtime.eface" %3231)
 // CHECK-NEXT:   %3235 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3226, i32 0, i32 1
 // CHECK-NEXT:   %3236 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3237 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3237 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3238 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3237, ptr %3238, align 8
 // CHECK-NEXT:   %3239 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %3238, 1
@@ -6318,7 +6317,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3243 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 215
 // CHECK-NEXT:   %3244 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3243, i32 0, i32 0
 // CHECK-NEXT:   %3245 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3246 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3246 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3247 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3246, ptr %3247, align 8
 // CHECK-NEXT:   %3248 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %3247, 1
@@ -6328,7 +6327,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3251 = call %reflect.Value %__llgo_funcval_code430(ptr {{(nest|swiftself)}} %3249, %"{{.*}}/runtime/internal/runtime.eface" %3248)
 // CHECK-NEXT:   %3252 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3243, i32 0, i32 1
 // CHECK-NEXT:   %3253 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3254 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3254 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3255 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3254, ptr %3255, align 8
 // CHECK-NEXT:   %3256 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3255, 1
@@ -6341,7 +6340,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3260 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 216
 // CHECK-NEXT:   %3261 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3260, i32 0, i32 0
 // CHECK-NEXT:   %3262 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3263 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3263 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3264 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3263, ptr %3264, align 8
 // CHECK-NEXT:   %3265 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3264, 1
@@ -6351,7 +6350,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3268 = call %reflect.Value %__llgo_funcval_code432(ptr {{(nest|swiftself)}} %3266, %"{{.*}}/runtime/internal/runtime.eface" %3265)
 // CHECK-NEXT:   %3269 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3260, i32 0, i32 1
 // CHECK-NEXT:   %3270 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3271 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3271 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3272 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3271, ptr %3272, align 8
 // CHECK-NEXT:   %3273 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"[]_llgo_int32", ptr undef }, ptr %3272, 1
@@ -6374,7 +6373,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3285 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3277, i32 0, i32 1
 // CHECK-NEXT:   %3286 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3287 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3287, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3287, align 8
 // CHECK-NEXT:   %3288 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3287, 1
 // CHECK-NEXT:   %3289 = extractvalue { ptr, ptr } %3286, 1
 // CHECK-NEXT:   %3290 = extractvalue { ptr, ptr } %3286, 0
@@ -6395,7 +6394,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3300 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3292, i32 0, i32 1
 // CHECK-NEXT:   %3301 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3302 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3302, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3302, align 8
 // CHECK-NEXT:   %3303 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3302, 1
 // CHECK-NEXT:   %3304 = extractvalue { ptr, ptr } %3301, 1
 // CHECK-NEXT:   %3305 = extractvalue { ptr, ptr } %3301, 0
@@ -6416,7 +6415,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3315 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3307, i32 0, i32 1
 // CHECK-NEXT:   %3316 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3317 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3317, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3317, align 8
 // CHECK-NEXT:   %3318 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3317, 1
 // CHECK-NEXT:   %3319 = extractvalue { ptr, ptr } %3316, 1
 // CHECK-NEXT:   %3320 = extractvalue { ptr, ptr } %3316, 0
@@ -6437,7 +6436,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3330 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3322, i32 0, i32 1
 // CHECK-NEXT:   %3331 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3332 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3332, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3332, align 8
 // CHECK-NEXT:   %3333 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3332, 1
 // CHECK-NEXT:   %3334 = extractvalue { ptr, ptr } %3331, 1
 // CHECK-NEXT:   %3335 = extractvalue { ptr, ptr } %3331, 0
@@ -6458,7 +6457,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3345 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3337, i32 0, i32 1
 // CHECK-NEXT:   %3346 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3347 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3347, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3347, align 8
 // CHECK-NEXT:   %3348 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3347, 1
 // CHECK-NEXT:   %3349 = extractvalue { ptr, ptr } %3346, 1
 // CHECK-NEXT:   %3350 = extractvalue { ptr, ptr } %3346, 0
@@ -6479,7 +6478,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3360 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3352, i32 0, i32 1
 // CHECK-NEXT:   %3361 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3362 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3362, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3362, align 8
 // CHECK-NEXT:   %3363 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3362, 1
 // CHECK-NEXT:   %3364 = extractvalue { ptr, ptr } %3361, 1
 // CHECK-NEXT:   %3365 = extractvalue { ptr, ptr } %3361, 0
@@ -6500,7 +6499,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3375 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3367, i32 0, i32 1
 // CHECK-NEXT:   %3376 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3377 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3377, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3377, align 8
 // CHECK-NEXT:   %3378 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3377, 1
 // CHECK-NEXT:   %3379 = extractvalue { ptr, ptr } %3376, 1
 // CHECK-NEXT:   %3380 = extractvalue { ptr, ptr } %3376, 0
@@ -6521,7 +6520,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3390 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3382, i32 0, i32 1
 // CHECK-NEXT:   %3391 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3392 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3392, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3392, align 8
 // CHECK-NEXT:   %3393 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3392, 1
 // CHECK-NEXT:   %3394 = extractvalue { ptr, ptr } %3391, 1
 // CHECK-NEXT:   %3395 = extractvalue { ptr, ptr } %3391, 0
@@ -6542,7 +6541,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3405 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3397, i32 0, i32 1
 // CHECK-NEXT:   %3406 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3407 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3407, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3407, align 8
 // CHECK-NEXT:   %3408 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3407, 1
 // CHECK-NEXT:   %3409 = extractvalue { ptr, ptr } %3406, 1
 // CHECK-NEXT:   %3410 = extractvalue { ptr, ptr } %3406, 0
@@ -6563,7 +6562,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3420 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3412, i32 0, i32 1
 // CHECK-NEXT:   %3421 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3422 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3422, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3422, align 8
 // CHECK-NEXT:   %3423 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3422, 1
 // CHECK-NEXT:   %3424 = extractvalue { ptr, ptr } %3421, 1
 // CHECK-NEXT:   %3425 = extractvalue { ptr, ptr } %3421, 0
@@ -6584,7 +6583,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3435 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3427, i32 0, i32 1
 // CHECK-NEXT:   %3436 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3437 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 1 }, ptr %3437, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @427, i64 1 }, ptr %3437, align 8
 // CHECK-NEXT:   %3438 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3437, 1
 // CHECK-NEXT:   %3439 = extractvalue { ptr, ptr } %3436, 1
 // CHECK-NEXT:   %3440 = extractvalue { ptr, ptr } %3436, 0
@@ -6605,7 +6604,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3450 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3442, i32 0, i32 1
 // CHECK-NEXT:   %3451 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3452 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3452, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3452, align 8
 // CHECK-NEXT:   %3453 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3452, 1
 // CHECK-NEXT:   %3454 = extractvalue { ptr, ptr } %3451, 1
 // CHECK-NEXT:   %3455 = extractvalue { ptr, ptr } %3451, 0
@@ -6626,7 +6625,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3465 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3457, i32 0, i32 1
 // CHECK-NEXT:   %3466 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3467 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3467, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3467, align 8
 // CHECK-NEXT:   %3468 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3467, 1
 // CHECK-NEXT:   %3469 = extractvalue { ptr, ptr } %3466, 1
 // CHECK-NEXT:   %3470 = extractvalue { ptr, ptr } %3466, 0
@@ -6647,7 +6646,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3480 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3472, i32 0, i32 1
 // CHECK-NEXT:   %3481 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3482 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3482, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3482, align 8
 // CHECK-NEXT:   %3483 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3482, 1
 // CHECK-NEXT:   %3484 = extractvalue { ptr, ptr } %3481, 1
 // CHECK-NEXT:   %3485 = extractvalue { ptr, ptr } %3481, 0
@@ -6668,7 +6667,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3495 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3487, i32 0, i32 1
 // CHECK-NEXT:   %3496 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3497 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3497, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3497, align 8
 // CHECK-NEXT:   %3498 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3497, 1
 // CHECK-NEXT:   %3499 = extractvalue { ptr, ptr } %3496, 1
 // CHECK-NEXT:   %3500 = extractvalue { ptr, ptr } %3496, 0
@@ -6689,7 +6688,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3510 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3502, i32 0, i32 1
 // CHECK-NEXT:   %3511 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3512 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3512, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3512, align 8
 // CHECK-NEXT:   %3513 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3512, 1
 // CHECK-NEXT:   %3514 = extractvalue { ptr, ptr } %3511, 1
 // CHECK-NEXT:   %3515 = extractvalue { ptr, ptr } %3511, 0
@@ -6710,7 +6709,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3525 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3517, i32 0, i32 1
 // CHECK-NEXT:   %3526 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3527 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3527, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3527, align 8
 // CHECK-NEXT:   %3528 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3527, 1
 // CHECK-NEXT:   %3529 = extractvalue { ptr, ptr } %3526, 1
 // CHECK-NEXT:   %3530 = extractvalue { ptr, ptr } %3526, 0
@@ -6731,7 +6730,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3540 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3532, i32 0, i32 1
 // CHECK-NEXT:   %3541 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3542 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3542, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3542, align 8
 // CHECK-NEXT:   %3543 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3542, 1
 // CHECK-NEXT:   %3544 = extractvalue { ptr, ptr } %3541, 1
 // CHECK-NEXT:   %3545 = extractvalue { ptr, ptr } %3541, 0
@@ -6752,7 +6751,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3555 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3547, i32 0, i32 1
 // CHECK-NEXT:   %3556 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3557 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3557, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3557, align 8
 // CHECK-NEXT:   %3558 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3557, 1
 // CHECK-NEXT:   %3559 = extractvalue { ptr, ptr } %3556, 1
 // CHECK-NEXT:   %3560 = extractvalue { ptr, ptr } %3556, 0
@@ -6773,7 +6772,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3570 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3562, i32 0, i32 1
 // CHECK-NEXT:   %3571 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3572 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %3572, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @428, i64 3 }, ptr %3572, align 8
 // CHECK-NEXT:   %3573 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3572, 1
 // CHECK-NEXT:   %3574 = extractvalue { ptr, ptr } %3571, 1
 // CHECK-NEXT:   %3575 = extractvalue { ptr, ptr } %3571, 0
@@ -6785,7 +6784,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3578 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3577, i32 0, i32 0
 // CHECK-NEXT:   %3579 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3580 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %3580, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 }, ptr %3580, align 8
 // CHECK-NEXT:   %3581 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3580, 1
 // CHECK-NEXT:   %3582 = extractvalue { ptr, ptr } %3579, 1
 // CHECK-NEXT:   %3583 = extractvalue { ptr, ptr } %3579, 0
@@ -6793,7 +6792,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3584 = call %reflect.Value %__llgo_funcval_code474(ptr {{(nest|swiftself)}} %3582, %"{{.*}}/runtime/internal/runtime.eface" %3581)
 // CHECK-NEXT:   %3585 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3577, i32 0, i32 1
 // CHECK-NEXT:   %3586 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3587 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3587 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 })
 // CHECK-NEXT:   %3588 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3587, ptr %3588, align 8
 // CHECK-NEXT:   %3589 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyBytes, ptr undef }, ptr %3588, 1
@@ -6806,7 +6805,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3593 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 238
 // CHECK-NEXT:   %3594 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3593, i32 0, i32 0
 // CHECK-NEXT:   %3595 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3596 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3596 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 })
 // CHECK-NEXT:   %3597 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3596, ptr %3597, align 8
 // CHECK-NEXT:   %3598 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyBytes, ptr undef }, ptr %3597, 1
@@ -6817,7 +6816,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3602 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3593, i32 0, i32 1
 // CHECK-NEXT:   %3603 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3604 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %3604, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 }, ptr %3604, align 8
 // CHECK-NEXT:   %3605 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3604, 1
 // CHECK-NEXT:   %3606 = extractvalue { ptr, ptr } %3603, 1
 // CHECK-NEXT:   %3607 = extractvalue { ptr, ptr } %3603, 0
@@ -6828,7 +6827,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3609 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 239
 // CHECK-NEXT:   %3610 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3609, i32 0, i32 0
 // CHECK-NEXT:   %3611 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3612 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3612 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @423, i64 6 })
 // CHECK-NEXT:   %3613 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3612, ptr %3613, align 8
 // CHECK-NEXT:   %3614 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyBytes, ptr undef }, ptr %3613, 1
@@ -6838,7 +6837,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3617 = call %reflect.Value %__llgo_funcval_code478(ptr {{(nest|swiftself)}} %3615, %"{{.*}}/runtime/internal/runtime.eface" %3614)
 // CHECK-NEXT:   %3618 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3609, i32 0, i32 1
 // CHECK-NEXT:   %3619 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3620 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3620 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @423, i64 6 })
 // CHECK-NEXT:   %3621 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3620, ptr %3621, align 8
 // CHECK-NEXT:   %3622 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyBytes, ptr undef }, ptr %3621, 1
@@ -6852,7 +6851,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3627 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3626, i32 0, i32 0
 // CHECK-NEXT:   %3628 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3629 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %3629, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 }, ptr %3629, align 8
 // CHECK-NEXT:   %3630 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3629, 1
 // CHECK-NEXT:   %3631 = extractvalue { ptr, ptr } %3628, 1
 // CHECK-NEXT:   %3632 = extractvalue { ptr, ptr } %3628, 0
@@ -6860,7 +6859,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3633 = call %reflect.Value %__llgo_funcval_code480(ptr {{(nest|swiftself)}} %3631, %"{{.*}}/runtime/internal/runtime.eface" %3630)
 // CHECK-NEXT:   %3634 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3626, i32 0, i32 1
 // CHECK-NEXT:   %3635 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3636 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3636 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @421, i64 6 })
 // CHECK-NEXT:   %3637 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3636, ptr %3637, align 8
 // CHECK-NEXT:   %3638 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyBytes, ptr undef }, ptr %3637, 1
@@ -6873,7 +6872,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3642 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 241
 // CHECK-NEXT:   %3643 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3642, i32 0, i32 0
 // CHECK-NEXT:   %3644 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3645 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })
+// CHECK-NEXT:   %3645 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToBytes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 })
 // CHECK-NEXT:   %3646 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3645, ptr %3646, align 8
 // CHECK-NEXT:   %3647 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyBytes, ptr undef }, ptr %3646, 1
@@ -6884,7 +6883,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3651 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3642, i32 0, i32 1
 // CHECK-NEXT:   %3652 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3653 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, ptr %3653, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @422, i64 6 }, ptr %3653, align 8
 // CHECK-NEXT:   %3654 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3653, 1
 // CHECK-NEXT:   %3655 = extractvalue { ptr, ptr } %3652, 1
 // CHECK-NEXT:   %3656 = extractvalue { ptr, ptr } %3652, 0
@@ -6896,7 +6895,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3659 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3658, i32 0, i32 0
 // CHECK-NEXT:   %3660 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3661 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %3661, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 }, ptr %3661, align 8
 // CHECK-NEXT:   %3662 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3661, 1
 // CHECK-NEXT:   %3663 = extractvalue { ptr, ptr } %3660, 1
 // CHECK-NEXT:   %3664 = extractvalue { ptr, ptr } %3660, 0
@@ -6904,7 +6903,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3665 = call %reflect.Value %__llgo_funcval_code484(ptr {{(nest|swiftself)}} %3663, %"{{.*}}/runtime/internal/runtime.eface" %3662)
 // CHECK-NEXT:   %3666 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3658, i32 0, i32 1
 // CHECK-NEXT:   %3667 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3668 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %3668 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 })
 // CHECK-NEXT:   %3669 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3668, ptr %3669, align 8
 // CHECK-NEXT:   %3670 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3669, 1
@@ -6917,7 +6916,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3674 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 243
 // CHECK-NEXT:   %3675 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3674, i32 0, i32 0
 // CHECK-NEXT:   %3676 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3677 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %3677 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 })
 // CHECK-NEXT:   %3678 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3677, ptr %3678, align 8
 // CHECK-NEXT:   %3679 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3678, 1
@@ -6928,7 +6927,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3683 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3674, i32 0, i32 1
 // CHECK-NEXT:   %3684 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3685 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %3685, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 }, ptr %3685, align 8
 // CHECK-NEXT:   %3686 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %3685, 1
 // CHECK-NEXT:   %3687 = extractvalue { ptr, ptr } %3684, 1
 // CHECK-NEXT:   %3688 = extractvalue { ptr, ptr } %3684, 0
@@ -6939,7 +6938,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3690 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 244
 // CHECK-NEXT:   %3691 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3690, i32 0, i32 0
 // CHECK-NEXT:   %3692 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3693 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3693 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3694 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3693, ptr %3694, align 8
 // CHECK-NEXT:   %3695 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3694, 1
@@ -6949,7 +6948,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3698 = call %reflect.Value %__llgo_funcval_code488(ptr {{(nest|swiftself)}} %3696, %"{{.*}}/runtime/internal/runtime.eface" %3695)
 // CHECK-NEXT:   %3699 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3690, i32 0, i32 1
 // CHECK-NEXT:   %3700 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3701 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 17 })
+// CHECK-NEXT:   %3701 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @426, i64 17 })
 // CHECK-NEXT:   %3702 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3701, ptr %3702, align 8
 // CHECK-NEXT:   %3703 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3702, 1
@@ -6963,7 +6962,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3708 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3707, i32 0, i32 0
 // CHECK-NEXT:   %3709 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3710 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %3710, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 }, ptr %3710, align 8
 // CHECK-NEXT:   %3711 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3710, 1
 // CHECK-NEXT:   %3712 = extractvalue { ptr, ptr } %3709, 1
 // CHECK-NEXT:   %3713 = extractvalue { ptr, ptr } %3709, 0
@@ -6971,7 +6970,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3714 = call %reflect.Value %__llgo_funcval_code490(ptr {{(nest|swiftself)}} %3712, %"{{.*}}/runtime/internal/runtime.eface" %3711)
 // CHECK-NEXT:   %3715 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3707, i32 0, i32 1
 // CHECK-NEXT:   %3716 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3717 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %3717 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @424, i64 8 })
 // CHECK-NEXT:   %3718 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3717, ptr %3718, align 8
 // CHECK-NEXT:   %3719 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3718, 1
@@ -6984,7 +6983,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3723 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 246
 // CHECK-NEXT:   %3724 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3723, i32 0, i32 0
 // CHECK-NEXT:   %3725 = load { ptr, ptr }, ptr @main.V, align 8
-// CHECK-NEXT:   %3726 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %3726 = call %"{{.*}}/runtime/internal/runtime.Slice" @"{{.*}}/runtime/internal/runtime.StringToRunes"(%"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 })
 // CHECK-NEXT:   %3727 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 24)
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.Slice" %3726, ptr %3727, align 8
 // CHECK-NEXT:   %3728 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyRunes, ptr undef }, ptr %3727, 1
@@ -6995,7 +6994,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %3732 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %3723, i32 0, i32 1
 // CHECK-NEXT:   %3733 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %3734 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 }, ptr %3734, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @425, i64 8 }, ptr %3734, align 8
 // CHECK-NEXT:   %3735 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_main.MyString, ptr undef }, ptr %3734, 1
 // CHECK-NEXT:   %3736 = extractvalue { ptr, ptr } %3733, 1
 // CHECK-NEXT:   %3737 = extractvalue { ptr, ptr } %3733, 0
@@ -8205,7 +8204,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4588 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4589 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4589, align 8
-// CHECK-NEXT:   %4590 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4589, 1
+// CHECK-NEXT:   %4590 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4589, 1
 // CHECK-NEXT:   %4591 = extractvalue { ptr, ptr } %4588, 1
 // CHECK-NEXT:   %4592 = extractvalue { ptr, ptr } %4588, 0
 // CHECK-NEXT:   %__llgo_funcval_code592 = call ptr asm "", "=r,0"(ptr %4592)
@@ -8214,7 +8213,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4595 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4596 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4596, align 8
-// CHECK-NEXT:   %4597 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4596, 1
+// CHECK-NEXT:   %4597 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4596, 1
 // CHECK-NEXT:   %4598 = extractvalue { ptr, ptr } %4595, 1
 // CHECK-NEXT:   %4599 = extractvalue { ptr, ptr } %4595, 0
 // CHECK-NEXT:   %__llgo_funcval_code593 = call ptr asm "", "=r,0"(ptr %4599)
@@ -8226,7 +8225,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4603 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4604 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4604, align 8
-// CHECK-NEXT:   %4605 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4604, 1
+// CHECK-NEXT:   %4605 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4604, 1
 // CHECK-NEXT:   %4606 = extractvalue { ptr, ptr } %4603, 1
 // CHECK-NEXT:   %4607 = extractvalue { ptr, ptr } %4603, 0
 // CHECK-NEXT:   %__llgo_funcval_code594 = call ptr asm "", "=r,0"(ptr %4607)
@@ -8235,7 +8234,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4610 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4611 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4611, align 8
-// CHECK-NEXT:   %4612 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4611, 1
+// CHECK-NEXT:   %4612 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4611, 1
 // CHECK-NEXT:   %4613 = extractvalue { ptr, ptr } %4610, 1
 // CHECK-NEXT:   %4614 = extractvalue { ptr, ptr } %4610, 0
 // CHECK-NEXT:   %__llgo_funcval_code595 = call ptr asm "", "=r,0"(ptr %4614)
@@ -8256,7 +8255,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4625 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4626 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4626, align 8
-// CHECK-NEXT:   %4627 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4626, 1
+// CHECK-NEXT:   %4627 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4626, 1
 // CHECK-NEXT:   %4628 = extractvalue { ptr, ptr } %4625, 1
 // CHECK-NEXT:   %4629 = extractvalue { ptr, ptr } %4625, 0
 // CHECK-NEXT:   %__llgo_funcval_code597 = call ptr asm "", "=r,0"(ptr %4629)
@@ -8268,7 +8267,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4633 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4634 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4634, align 8
-// CHECK-NEXT:   %4635 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$qCYMduDqkoVspSDbQftiUv7WF_sipKSWG3oLt28TNlI", ptr undef }, ptr %4634, 1
+// CHECK-NEXT:   %4635 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4634, 1
 // CHECK-NEXT:   %4636 = extractvalue { ptr, ptr } %4633, 1
 // CHECK-NEXT:   %4637 = extractvalue { ptr, ptr } %4633, 0
 // CHECK-NEXT:   %__llgo_funcval_code598 = call ptr asm "", "=r,0"(ptr %4637)
@@ -8298,7 +8297,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4655 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4656 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4656, align 8
-// CHECK-NEXT:   %4657 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4656, 1
+// CHECK-NEXT:   %4657 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4656, 1
 // CHECK-NEXT:   %4658 = extractvalue { ptr, ptr } %4655, 1
 // CHECK-NEXT:   %4659 = extractvalue { ptr, ptr } %4655, 0
 // CHECK-NEXT:   %__llgo_funcval_code601 = call ptr asm "", "=r,0"(ptr %4659)
@@ -8310,7 +8309,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %4663 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %4664 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
 // CHECK-NEXT:   store { i64 } zeroinitializer, ptr %4664, align 8
-// CHECK-NEXT:   %4665 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct$8xdZyDeCx3tqPdt33CJnJ-JMAObkKtPXr9OL-lBc3yU", ptr undef }, ptr %4664, 1
+// CHECK-NEXT:   %4665 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"{{.*}}/cl/_testgo/reflectconv.struct${{[-A-Za-z0-9_]+}}", ptr undef }, ptr %4664, 1
 // CHECK-NEXT:   %4666 = extractvalue { ptr, ptr } %4663, 1
 // CHECK-NEXT:   %4667 = extractvalue { ptr, ptr } %4663, 0
 // CHECK-NEXT:   %__llgo_funcval_code602 = call ptr asm "", "=r,0"(ptr %4667)
@@ -9391,7 +9390,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5453 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5452, i32 0, i32 0
 // CHECK-NEXT:   %5454 = load { ptr, ptr }, ptr @main.V, align 8
 // CHECK-NEXT:   %5455 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %5455, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %5455, align 8
 // CHECK-NEXT:   %5456 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %5455, 1
 // CHECK-NEXT:   %5457 = extractvalue { ptr, ptr } %5454, 1
 // CHECK-NEXT:   %5458 = extractvalue { ptr, ptr } %5454, 0
@@ -9399,7 +9398,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5459 = call %reflect.Value %__llgo_funcval_code733(ptr {{(nest|swiftself)}} %5457, %"{{.*}}/runtime/internal/runtime.eface" %5456)
 // CHECK-NEXT:   %5460 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5452, i32 0, i32 1
 // CHECK-NEXT:   %5461 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %5461, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @420, i64 5 }, ptr %5461, align 8
 // CHECK-NEXT:   %5462 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %5461, 1
 // CHECK-NEXT:   %5463 = call %reflect.Value @main.EmptyInterfaceV(%"{{.*}}/runtime/internal/runtime.eface" %5462)
 // CHECK-NEXT:   store %reflect.Value %5459, ptr %5453, align 8
@@ -9415,7 +9414,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5471 = call %reflect.Value %__llgo_funcval_code734(ptr {{(nest|swiftself)}} %5469, %"{{.*}}/runtime/internal/runtime.eface" %5468)
 // CHECK-NEXT:   %5472 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5464, i32 0, i32 1
 // CHECK-NEXT:   %5473 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5474 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5474 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5475 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5474, 0
 // CHECK-NEXT:   %5476 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5475, ptr %5473, 1
 // CHECK-NEXT:   %5477 = call %reflect.Value @main.ReaderV(%"{{.*}}/runtime/internal/runtime.iface" %5476)
@@ -9424,13 +9423,13 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5478 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %1, i64 369
 // CHECK-NEXT:   %5479 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5478, i32 0, i32 0
 // CHECK-NEXT:   %5480 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5481 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Zutt7i_AwOTtBOIzyS7ZA5vhcNcbk0kRAoRC98HJDos", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5481 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5482 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5481, 0
 // CHECK-NEXT:   %5483 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5482, ptr %5480, 1
 // CHECK-NEXT:   %5484 = call %reflect.Value @main.ReadWriterV(%"{{.*}}/runtime/internal/runtime.iface" %5483)
 // CHECK-NEXT:   %5485 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5478, i32 0, i32 1
 // CHECK-NEXT:   %5486 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5487 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5487 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5488 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5487, 0
 // CHECK-NEXT:   %5489 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5488, ptr %5486, 1
 // CHECK-NEXT:   %5490 = call %reflect.Value @main.ReaderV(%"{{.*}}/runtime/internal/runtime.iface" %5489)
@@ -9447,7 +9446,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %5498 = call %reflect.Value %__llgo_funcval_code735(ptr {{(nest|swiftself)}} %5496, %"{{.*}}/runtime/internal/runtime.eface" %5495)
 // CHECK-NEXT:   %5499 = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %5491, i32 0, i32 1
 // CHECK-NEXT:   %5500 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 40)
-// CHECK-NEXT:   %5501 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$Zutt7i_AwOTtBOIzyS7ZA5vhcNcbk0kRAoRC98HJDos", ptr @"*_llgo_bytes.Buffer")
+// CHECK-NEXT:   %5501 = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_bytes.Buffer")
 // CHECK-NEXT:   %5502 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %5501, 0
 // CHECK-NEXT:   %5503 = insertvalue %"{{.*}}/runtime/internal/runtime.iface" %5502, ptr %5500, 1
 // CHECK-NEXT:   %5504 = call %reflect.Value @main.ReadWriterV(%"{{.*}}/runtime/internal/runtime.iface" %5503)
@@ -9497,7 +9496,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   %15 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, i32 0, i32 4
 // CHECK-NEXT:   %16 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %16, align 8
-// CHECK-NEXT:   %17 = call i32 @{{(__)?}}sigsetjmp(ptr %7, i32 0)
+// CHECK-NEXT:   %17 = call i32 @{{(__)?sigsetjmp}}(ptr %7, i32 0)
 // CHECK-NEXT:   %18 = icmp eq i32 %17, 0
 // CHECK-NEXT:   br i1 %18, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:
@@ -9547,136 +9546,141 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   store ptr %32, ptr %16, align 8
 // CHECK-NEXT:   %33 = extractvalue { ptr, i64, { ptr, ptr } } %31, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %30)
-// CHECK-NEXT:   %34 = extractvalue { ptr, ptr } %33, 1
-// CHECK-NEXT:   %35 = extractvalue { ptr, ptr } %33, 0
-// CHECK-NEXT:   %__llgo_funcval_code1 = call ptr asm "", "=r,0"(ptr %35)
-// CHECK-NEXT:   call void %__llgo_funcval_code1(ptr {{(nest|swiftself)}} %34)
+// CHECK-NEXT:   %34 = extractvalue { ptr, ptr } %33, 0
+// CHECK-NEXT:   %35 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr %34)
+// CHECK-NEXT:   %36 = extractvalue { ptr, ptr } %33, 1
+// CHECK-NEXT:   %37 = extractvalue { ptr, ptr } %33, 0
+// CHECK-NEXT:   %__llgo_funcval_code1 = call ptr asm "", "=r,0"(ptr %37)
+// CHECK-NEXT:   call void %__llgo_funcval_code1(ptr {{(nest|swiftself)}} %36)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %35)
 // CHECK-NEXT:   br label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_7, %_llgo_2
-// CHECK-NEXT:   %36 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, align 8
-// CHECK-NEXT:   %37 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %36, 2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %37)
-// CHECK-NEXT:   %38 = load ptr, ptr %15, align 8
-// CHECK-NEXT:   indirectbr ptr %38, [label %_llgo_3, label %_llgo_6]
+// CHECK-NEXT:   %38 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %8, align 8
+// CHECK-NEXT:   %39 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %38, 2
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %39)
+// CHECK-NEXT:   %40 = load ptr, ptr %15, align 8
+// CHECK-NEXT:   indirectbr ptr %40, [label %_llgo_3, label %_llgo_6]
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"main.shouldPanic$1"(ptr {{(nest|swiftself)}} %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %1 = load { ptr }, ptr %0, align 8
-// CHECK-NEXT:   %2 = call %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/runtime/internal/runtime.Recover"()
-// CHECK-NEXT:   %3 = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"(%"{{.*}}/runtime/internal/runtime.eface" %2, %"{{.*}}/runtime/internal/runtime.eface" zeroinitializer)
-// CHECK-NEXT:   br i1 %3, label %_llgo_1, label %_llgo_2
+// CHECK-NEXT:   %2 = alloca i8, align 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.BindRecoverFrame"(ptr @"main.shouldPanic$1", ptr %2)
+// CHECK-NEXT:   %3 = call %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/runtime/internal/runtime.Recover"(ptr %2)
+// CHECK-NEXT:   %4 = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"(%"{{.*}}/runtime/internal/runtime.eface" %3, %"{{.*}}/runtime/internal/runtime.eface" zeroinitializer)
+// CHECK-NEXT:   br i1 %4, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 13 }, ptr %4, align 8
-// CHECK-NEXT:   %5 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %4, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %5)
+// CHECK-NEXT:   %5 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @535, i64 13 }, ptr %5, align 8
+// CHECK-NEXT:   %6 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %5, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %6)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %6 = extractvalue { ptr } %1, 0
-// CHECK-NEXT:   %7 = load %"{{.*}}/runtime/internal/runtime.String", ptr %6, align 8
-// CHECK-NEXT:   %8 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %7, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
-// CHECK-NEXT:   %9 = xor i1 %8, true
-// CHECK-NEXT:   br i1 %9, label %_llgo_3, label %_llgo_4
+// CHECK-NEXT:   %7 = extractvalue { ptr } %1, 0
+// CHECK-NEXT:   %8 = load %"{{.*}}/runtime/internal/runtime.String", ptr %7, align 8
+// CHECK-NEXT:   %9 = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %8, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   %10 = xor i1 %9, true
+// CHECK-NEXT:   br i1 %10, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   %10 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %2, 0
-// CHECK-NEXT:   %11 = icmp eq ptr %10, @_llgo_string
-// CHECK-NEXT:   br i1 %11, label %_llgo_13, label %_llgo_14
+// CHECK-NEXT:   %11 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %3, 0
+// CHECK-NEXT:   %12 = icmp eq ptr %11, @_llgo_string
+// CHECK-NEXT:   br i1 %12, label %_llgo_13, label %_llgo_14
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_11, %_llgo_2
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_8, %_llgo_6
-// CHECK-NEXT:   %12 = phi %"{{.*}}/runtime/internal/runtime.String" [ %43, %_llgo_6 ], [ %16, %_llgo_8 ]
-// CHECK-NEXT:   %13 = call i1 @strings.HasPrefix(%"{{.*}}/runtime/internal/runtime.String" %12, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 7 })
-// CHECK-NEXT:   br i1 %13, label %_llgo_11, label %_llgo_10
+// CHECK-NEXT:   %13 = phi %"{{.*}}/runtime/internal/runtime.String" [ %44, %_llgo_6 ], [ %17, %_llgo_8 ]
+// CHECK-NEXT:   %14 = call i1 @strings.HasPrefix(%"{{.*}}/runtime/internal/runtime.String" %13, %"{{.*}}/runtime/internal/runtime.String" { ptr @30, i64 7 })
+// CHECK-NEXT:   br i1 %14, label %_llgo_11, label %_llgo_10
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_15
 // CHECK-NEXT:   br label %_llgo_5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_15
-// CHECK-NEXT:   %14 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %2, 0
-// CHECK-NEXT:   %15 = icmp eq ptr %14, @"*_llgo_reflect.ValueError"
-// CHECK-NEXT:   br i1 %15, label %_llgo_16, label %_llgo_17
+// CHECK-NEXT:   %15 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %3, 0
+// CHECK-NEXT:   %16 = icmp eq ptr %15, @"*_llgo_reflect.ValueError"
+// CHECK-NEXT:   br i1 %16, label %_llgo_16, label %_llgo_17
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_18
-// CHECK-NEXT:   %16 = call %"{{.*}}/runtime/internal/runtime.String" @"reflect.(*ValueError).Error"(ptr %49)
+// CHECK-NEXT:   %17 = call %"{{.*}}/runtime/internal/runtime.String" @"reflect.(*ValueError).Error"(ptr %50)
 // CHECK-NEXT:   br label %_llgo_5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_9:                                          ; preds = %_llgo_18
-// CHECK-NEXT:   %17 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   %18 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %17, i64 0
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.eface" %2, ptr %18, align 8
-// CHECK-NEXT:   %19 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %17, 0
-// CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %19, i64 1, 1
-// CHECK-NEXT:   %21 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %20, i64 1, 2
-// CHECK-NEXT:   %22 = call %"{{.*}}/runtime/internal/runtime.String" @fmt.Sprintf(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 32 }, %"{{.*}}/runtime/internal/runtime.Slice" %21)
-// CHECK-NEXT:   %23 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %22, ptr %23, align 8
-// CHECK-NEXT:   %24 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %23, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %24)
+// CHECK-NEXT:   %18 = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
+// CHECK-NEXT:   %19 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.eface", ptr %18, i64 0
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.eface" %3, ptr %19, align 8
+// CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" undef, ptr %18, 0
+// CHECK-NEXT:   %21 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %20, i64 1, 1
+// CHECK-NEXT:   %22 = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %21, i64 1, 2
+// CHECK-NEXT:   %23 = call %"{{.*}}/runtime/internal/runtime.String" @fmt.Sprintf(%"{{.*}}/runtime/internal/runtime.String" { ptr @537, i64 32 }, %"{{.*}}/runtime/internal/runtime.Slice" %22)
+// CHECK-NEXT:   %24 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %23, ptr %24, align 8
+// CHECK-NEXT:   %25 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %24, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %25)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_10:                                         ; preds = %_llgo_5
-// CHECK-NEXT:   %25 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 44 }, %"{{.*}}/runtime/internal/runtime.String" %12)
-// CHECK-NEXT:   %26 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %25, ptr %26, align 8
-// CHECK-NEXT:   %27 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %26, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %27)
+// CHECK-NEXT:   %26 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" { ptr @538, i64 44 }, %"{{.*}}/runtime/internal/runtime.String" %13)
+// CHECK-NEXT:   %27 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %26, ptr %27, align 8
+// CHECK-NEXT:   %28 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %27, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %28)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_11:                                         ; preds = %_llgo_5
-// CHECK-NEXT:   %28 = extractvalue { ptr } %1, 0
-// CHECK-NEXT:   %29 = load %"{{.*}}/runtime/internal/runtime.String", ptr %28, align 8
-// CHECK-NEXT:   %30 = call i1 @strings.Contains(%"{{.*}}/runtime/internal/runtime.String" %12, %"{{.*}}/runtime/internal/runtime.String" %29)
-// CHECK-NEXT:   br i1 %30, label %_llgo_4, label %_llgo_12
+// CHECK-NEXT:   %29 = extractvalue { ptr } %1, 0
+// CHECK-NEXT:   %30 = load %"{{.*}}/runtime/internal/runtime.String", ptr %29, align 8
+// CHECK-NEXT:   %31 = call i1 @strings.Contains(%"{{.*}}/runtime/internal/runtime.String" %13, %"{{.*}}/runtime/internal/runtime.String" %30)
+// CHECK-NEXT:   br i1 %31, label %_llgo_4, label %_llgo_12
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_12:                                         ; preds = %_llgo_11
-// CHECK-NEXT:   %31 = extractvalue { ptr } %1, 0
-// CHECK-NEXT:   %32 = load %"{{.*}}/runtime/internal/runtime.String", ptr %31, align 8
-// CHECK-NEXT:   %33 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 31 }, %"{{.*}}/runtime/internal/runtime.String" %32)
-// CHECK-NEXT:   %34 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" %33, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 })
-// CHECK-NEXT:   %35 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" %34, %"{{.*}}/runtime/internal/runtime.String" %12)
-// CHECK-NEXT:   %36 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %35, ptr %36, align 8
-// CHECK-NEXT:   %37 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %36, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %37)
+// CHECK-NEXT:   %32 = extractvalue { ptr } %1, 0
+// CHECK-NEXT:   %33 = load %"{{.*}}/runtime/internal/runtime.String", ptr %32, align 8
+// CHECK-NEXT:   %34 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" { ptr @539, i64 31 }, %"{{.*}}/runtime/internal/runtime.String" %33)
+// CHECK-NEXT:   %35 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" %34, %"{{.*}}/runtime/internal/runtime.String" { ptr @540, i64 3 })
+// CHECK-NEXT:   %36 = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/runtime/internal/runtime.StringCat"(%"{{.*}}/runtime/internal/runtime.String" %35, %"{{.*}}/runtime/internal/runtime.String" %13)
+// CHECK-NEXT:   %37 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" %36, ptr %37, align 8
+// CHECK-NEXT:   %38 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %37, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %38)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_13:                                         ; preds = %_llgo_3
-// CHECK-NEXT:   %38 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %2, 1
-// CHECK-NEXT:   %39 = load %"{{.*}}/runtime/internal/runtime.String", ptr %38, align 8
-// CHECK-NEXT:   %40 = insertvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } undef, %"{{.*}}/runtime/internal/runtime.String" %39, 0
-// CHECK-NEXT:   %41 = insertvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } %40, i1 true, 1
+// CHECK-NEXT:   %39 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %3, 1
+// CHECK-NEXT:   %40 = load %"{{.*}}/runtime/internal/runtime.String", ptr %39, align 8
+// CHECK-NEXT:   %41 = insertvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } undef, %"{{.*}}/runtime/internal/runtime.String" %40, 0
+// CHECK-NEXT:   %42 = insertvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } %41, i1 true, 1
 // CHECK-NEXT:   br label %_llgo_15
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_14:                                         ; preds = %_llgo_3
 // CHECK-NEXT:   br label %_llgo_15
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_15:                                         ; preds = %_llgo_14, %_llgo_13
-// CHECK-NEXT:   %42 = phi { %"{{.*}}/runtime/internal/runtime.String", i1 } [ %41, %_llgo_13 ], [ zeroinitializer, %_llgo_14 ]
-// CHECK-NEXT:   %43 = extractvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } %42, 0
-// CHECK-NEXT:   %44 = extractvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } %42, 1
-// CHECK-NEXT:   br i1 %44, label %_llgo_6, label %_llgo_7
+// CHECK-NEXT:   %43 = phi { %"{{.*}}/runtime/internal/runtime.String", i1 } [ %42, %_llgo_13 ], [ zeroinitializer, %_llgo_14 ]
+// CHECK-NEXT:   %44 = extractvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } %43, 0
+// CHECK-NEXT:   %45 = extractvalue { %"{{.*}}/runtime/internal/runtime.String", i1 } %43, 1
+// CHECK-NEXT:   br i1 %45, label %_llgo_6, label %_llgo_7
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_7
-// CHECK-NEXT:   %45 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %2, 1
-// CHECK-NEXT:   %46 = insertvalue { ptr, i1 } undef, ptr %45, 0
-// CHECK-NEXT:   %47 = insertvalue { ptr, i1 } %46, i1 true, 1
+// CHECK-NEXT:   %46 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %3, 1
+// CHECK-NEXT:   %47 = insertvalue { ptr, i1 } undef, ptr %46, 0
+// CHECK-NEXT:   %48 = insertvalue { ptr, i1 } %47, i1 true, 1
 // CHECK-NEXT:   br label %_llgo_18
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_17:                                         ; preds = %_llgo_7
 // CHECK-NEXT:   br label %_llgo_18
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_17, %_llgo_16
-// CHECK-NEXT:   %48 = phi { ptr, i1 } [ %47, %_llgo_16 ], [ zeroinitializer, %_llgo_17 ]
-// CHECK-NEXT:   %49 = extractvalue { ptr, i1 } %48, 0
-// CHECK-NEXT:   %50 = extractvalue { ptr, i1 } %48, 1
-// CHECK-NEXT:   br i1 %50, label %_llgo_8, label %_llgo_9
+// CHECK-NEXT:   %49 = phi { ptr, i1 } [ %48, %_llgo_16 ], [ zeroinitializer, %_llgo_17 ]
+// CHECK-NEXT:   %50 = extractvalue { ptr, i1 } %49, 0
+// CHECK-NEXT:   %51 = extractvalue { ptr, i1 } %49, 1
+// CHECK-NEXT:   br i1 %51, label %_llgo_8, label %_llgo_9
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"main.(*testingT).Errorf"(ptr %0, %"{{.*}}/runtime/internal/runtime.String" %1, %"{{.*}}/runtime/internal/runtime.Slice" %2){{.*}} {

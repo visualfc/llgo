@@ -32,6 +32,8 @@ func TestCallerTrackingPrecomputeSupportsConcurrentReads(t *testing.T) {
 		"example.com/dep", `package dep
 import "runtime"
 func Where() { runtime.Caller(0) }
+func Recovering() any { return recover() }
+func Plain() {}
 `,
 		"example.com/root", `package root
 import "example.com/dep"
@@ -45,6 +47,14 @@ func Logs() { dep.Where() }
 	if !runtimeCallerFuncSet(tracking, root)[root.Func("Logs")] {
 		t.Fatal("precomputed extended set lost cross-package caller")
 	}
+	recovering := dep.Func("Recovering")
+	plain := dep.Func("Plain")
+	if needs, ok := tracking.recover.scopes[recovering]; !ok || !needs {
+		t.Fatal("precompute did not cache the dependency's recover scope")
+	}
+	if needs, ok := tracking.recover.scopes[plain]; !ok || needs {
+		t.Fatal("precompute did not cache the dependency's plain function")
+	}
 
 	var wg sync.WaitGroup
 	for range 32 {
@@ -52,7 +62,9 @@ func Logs() { dep.Where() }
 		go func() {
 			defer wg.Done()
 			if !runtimeCallerBaseSet(tracking, dep)[dep.Func("Where")] ||
-				!runtimeCallerFuncSet(tracking, root)[root.Func("Logs")] {
+				!runtimeCallerFuncSet(tracking, root)[root.Func("Logs")] ||
+				!tracking.recover.needsRecoverScope(recovering) ||
+				tracking.recover.needsRecoverScope(plain) {
 				t.Error("concurrent read lost precomputed caller tracking data")
 			}
 		}()

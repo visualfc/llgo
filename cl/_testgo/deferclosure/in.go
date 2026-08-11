@@ -227,10 +227,11 @@ func main() {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   %0 = alloca %main.FuncHolder, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %0, i8 0, i64 16, i1 false)
+// CHECK-NEXT:   store volatile %main.FuncHolder zeroinitializer, ptr %0, align 8
 // CHECK-NEXT:   %1 = getelementptr inbounds %main.FuncHolder, ptr %0, i32 0, i32 0
-// CHECK-NEXT:   store { ptr, ptr } { ptr @"main.testDeferFieldAccess$1", ptr null }, ptr %1, align 8
+// CHECK-NEXT:   store volatile { ptr, ptr } { ptr @"main.testDeferFieldAccess$1", ptr null }, ptr %1, align 8
 // CHECK-NEXT:   %2 = getelementptr inbounds %main.FuncHolder, ptr %0, i32 0, i32 0
-// CHECK-NEXT:   %3 = load { ptr, ptr }, ptr %2, align 8
+// CHECK-NEXT:   %3 = load volatile { ptr, ptr }, ptr %2, align 8
 // CHECK-NEXT:   %4 = call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
 // CHECK-NEXT:   %5 = alloca i8
 // CHECK-NEXT:   %6 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 48)
@@ -296,18 +297,21 @@ func main() {
 // CHECK-NEXT:   store ptr %28, ptr %14, align 8
 // CHECK-NEXT:   %29 = extractvalue { ptr, i64, { ptr, ptr } } %27, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %26)
-// CHECK-NEXT:   %30 = extractvalue { ptr, ptr } %29, 1
-// CHECK-NEXT:   %31 = extractvalue { ptr, ptr } %29, 0
-// CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %31)
-// CHECK-NEXT:   call void %__llgo_funcval_code(ptr {{(nest|swiftself)}} %30)
+// CHECK-NEXT:   %30 = extractvalue { ptr, ptr } %29, 0
+// CHECK-NEXT:   %31 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr %30)
+// CHECK-NEXT:   %32 = extractvalue { ptr, ptr } %29, 1
+// CHECK-NEXT:   %33 = extractvalue { ptr, ptr } %29, 0
+// CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %33)
+// CHECK-NEXT:   call void %__llgo_funcval_code(ptr {{(nest|swiftself)}} %32)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %31)
 // CHECK-NEXT:   br label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_7, %_llgo_2
-// CHECK-NEXT:   %32 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %6, align 8
-// CHECK-NEXT:   %33 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %32, 2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %33)
-// CHECK-NEXT:   %34 = load ptr, ptr %13, align 8
-// CHECK-NEXT:   indirectbr ptr %34, [label %_llgo_3, label %_llgo_6]
+// CHECK-NEXT:   %34 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %6, align 8
+// CHECK-NEXT:   %35 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %34, 2
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %35)
+// CHECK-NEXT:   %36 = load ptr, ptr %13, align 8
+// CHECK-NEXT:   indirectbr ptr %36, [label %_llgo_3, label %_llgo_6]
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"main.testDeferFieldAccess$1"(){{.*}} {

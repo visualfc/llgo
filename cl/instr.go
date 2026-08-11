@@ -973,27 +973,29 @@ func runtimeCallerFuncSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function
 	return out
 }
 
-// CallerTracking memoizes the per-package caller-tracking sets for one
-// compilation. Like Patches, it is compilation-scoped state owned by the
-// driver: create one per compilation and pass it to every
-// NewPackageExWithEmbed call of that compilation, so cross-package
-// queries (criterion 2 below) hit the memoization. It must not outlive
-// the compilation — the maps are keyed by *ssa.Package with
-// *ssa.Function values, so anything longer-lived would pin every
+// CallerTracking memoizes frontend analyses for one compilation. Like Patches,
+// it is compilation-scoped state owned by the driver: create one per
+// compilation and pass it to every NewPackageExWithEmbed call of that
+// compilation, so cross-package queries hit the same caller-tracking and
+// recover facts. It must not outlive the compilation — the caches are keyed by
+// *ssa.Package and *ssa.Function, so anything longer-lived would pin every
 // compiled package's go/types and go/ssa graphs. Concurrent drivers call
-// Precompute before workers start and then share the plain maps read-only.
+// Precompute before workers start; recover facts also synchronize lazy queries
+// for nested and synthetic functions that are not package members.
 type CallerTracking struct {
 	base     map[*ssa.Package]map[*ssa.Function]bool
 	extended map[*ssa.Package]map[*ssa.Function]bool
+	recover  *recoverFacts
 }
 
-// Precompute resolves caller-tracking data before package backends start.
-// Once it returns, callers may share c for concurrent read-only lookups as long
-// as pkgs contains every package that can be passed to this compilation.
+// Precompute resolves caller-tracking and recover data before package backends
+// start. Once it returns, callers may share c for concurrent lookups as long as
+// pkgs contains every package that can be passed to this compilation.
 func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 	if c == nil {
 		return
 	}
+	c.recoverAnalysis().precompute(pkgs)
 	for _, pkg := range pkgs {
 		if pkg != nil {
 			runtimeCallerBaseSet(c, pkg)
@@ -1006,12 +1008,12 @@ func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 	}
 }
 
-// NewCallerTracking creates the caller-tracking memoization for one
-// compilation.
+// NewCallerTracking creates the frontend-analysis caches for one compilation.
 func NewCallerTracking() *CallerTracking {
 	return &CallerTracking{
 		base:     make(map[*ssa.Package]map[*ssa.Function]bool),
 		extended: make(map[*ssa.Package]map[*ssa.Function]bool),
+		recover:  newRecoverFacts(),
 	}
 }
 
@@ -1805,12 +1807,39 @@ func (p *context) deferStackOwner(fn *ssa.Function) llssa.Function {
 	return owner
 }
 
-func (p *context) emitDo(b llssa.Builder, act llssa.DoAction, ds *explicitDeferStack, fn llssa.Expr, buildCall func(llssa.Builder, llssa.Expr, ...llssa.Expr) llssa.Expr, args ...llssa.Expr) llssa.Expr {
+func (p *context) emitDo(b llssa.Builder, act llssa.DoAction, ds *explicitDeferStack, mayRecover bool, fn llssa.Expr, buildCall func(llssa.Builder, llssa.Expr, ...llssa.Expr) llssa.Expr, args ...llssa.Expr) llssa.Expr {
 	if ds != nil {
-		b.DeferTo(ds.owner, ds.stack, fn, buildCall, args...)
+		b.DeferToRecover(ds.owner, ds.stack, mayRecover, fn, buildCall, args...)
 		return llssa.Nil
 	}
-	return b.Do(act, fn, buildCall, args...)
+	switch act {
+	case llssa.Call, llssa.Go:
+		if act == llssa.Call && isRecoverTransparentWrapper(p.goFn) {
+			return b.CallRecoverAlias(p.fn.Expr, mayRecover, fn, buildCall, args...)
+		}
+		return b.Do(act, fn, buildCall, args...)
+	default:
+		b.DeferRecover(act, mayRecover, fn, buildCall, args...)
+		return llssa.Nil
+	}
+}
+
+func (p *context) callMayRecover(v ssa.Value) bool {
+	switch v := v.(type) {
+	case *ssa.Builtin:
+		return false
+	case *ssa.Function:
+		return p.needsRecoverScope(v)
+	case *ssa.MakeClosure:
+		if fn, ok := v.Fn.(*ssa.Function); ok {
+			return p.needsRecoverScope(fn)
+		}
+		return true
+	case *ssa.Call:
+		// The deferred callee is the call result, not the factory function.
+		return true
+	}
+	return true
 }
 
 func (p *context) staticArrayLenBuiltinArg(b llssa.Builder, arg ssa.Value) (llssa.Expr, bool) {
@@ -1965,16 +1994,26 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 	p.recordCallerLocationForCall(b, call)
 	p.emitPCLineLabel(b, call.Pos())
 	cv := call.Value
+	mayRecover := p.callMayRecover(cv)
 	if mthd := call.Method; mthd != nil {
 		reflectCheck := p.reflectTypeMethodCheck(call, mthd)
 		o := p.compileValue(b, cv)
-		fn := b.Imethod(o, mthd)
+		var fn llssa.Expr
+		needsRecoverToken := act != llssa.Call && act != llssa.Go
+		if act == llssa.Call && isRecoverTransparentWrapper(p.goFn) {
+			needsRecoverToken = true
+		}
+		if needsRecoverToken {
+			fn = b.ImethodWithRecoverToken(o, mthd)
+		} else {
+			fn = b.Imethod(o, mthd)
+		}
 		hasVArg := fnNormal
 		if llssa.HasNameValist(call.Signature()) {
 			hasVArg = fnHasVArg
 		}
 		args := p.compileValues(b, call.Args, hasVArg)
-		ret = p.emitDo(b, act, ds, fn, llssa.Builder.Call, args...)
+		ret = p.emitDo(b, act, ds, true, fn, llssa.Builder.Call, args...)
 		if reflectCheck.Kind&llssa.ReflectTypeMethodByName != 0 && reflectCheck.Name == "" {
 			b.MarkReflectTypeMethodByNameExpr(ret, 1)
 		}
@@ -2008,7 +2047,7 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 			}
 		}
 		args := p.compileValues(b, args, kind)
-		ret = p.emitDo(b, act, ds, llssa.Builtin(fn), llssa.Builder.Call, args...)
+		ret = p.emitDo(b, act, ds, false, llssa.Builtin(fn), llssa.Builder.Call, args...)
 	case *ssa.Function:
 		aFn, pyFn, ftype := p.compileFunction(cv)
 		// TODO(xsw): check ca != llssa.Call
@@ -2017,13 +2056,13 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 			p.inCFunc = true
 			args := p.compileValues(b, args, kind)
 			p.inCFunc = false
-			ret = p.emitDo(b, act, ds, aFn.Expr, llssa.Builder.Call, args...)
+			ret = p.emitDo(b, act, ds, mayRecover, aFn.Expr, llssa.Builder.Call, args...)
 		case goFunc:
 			args := p.compileValues(b, args, kind)
-			ret = p.emitDo(b, act, ds, aFn.Expr, llssa.Builder.Call, args...)
+			ret = p.emitDo(b, act, ds, mayRecover, aFn.Expr, llssa.Builder.Call, args...)
 		case pyFunc:
 			args := p.compileValues(b, args, kind)
-			ret = p.emitDo(b, act, ds, pyFn.Expr, llssa.Builder.Call, args...)
+			ret = p.emitDo(b, act, ds, mayRecover, pyFn.Expr, llssa.Builder.Call, args...)
 		case llgoPyList:
 			args := p.compileValues(b, args, fnHasVArg)
 			ret = b.PyList(args...)
@@ -2102,33 +2141,33 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 			b.Unreachable()
 		case llgoAtomicLoad:
 			args := p.compileValues(b, args, kind)
-			ret = p.emitDo(b, act, ds, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
+			ret = p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 				return p.atomicLoad(b, args)
 			}, args...)
 		case llgoAtomicStore:
 			args := p.compileValues(b, args, kind)
-			p.emitDo(b, act, ds, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
+			p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 				return p.atomicStore(b, args)
 			}, args...)
 		case llgoAtomicCmpXchg:
 			args := p.compileValues(b, args, kind)
-			ret = p.emitDo(b, act, ds, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
+			ret = p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 				return p.atomicCmpXchg(b, args)
 			}, args...)
 		case llgoAtomicCmpXchgOK:
 			args := p.compileValues(b, args, kind)
-			ret = p.emitDo(b, act, ds, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
+			ret = p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 				return p.atomicCmpXchgOK(b, args)
 			}, args...)
 		case llgoAtomicAddReturnNew:
 			args := p.compileValues(b, args, kind)
-			ret = p.emitDo(b, act, ds, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
+			ret = p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 				return b.BinOp(token.ADD, p.atomic(b, llssa.OpAdd, args), args[1])
 			}, args...)
 		default:
 			if ftype >= llgoAtomicOpBase && ftype <= llgoAtomicOpLast {
 				args := p.compileValues(b, args, kind)
-				ret = p.emitDo(b, act, ds, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
+				ret = p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 					return p.atomic(b, llssa.AtomicOp(ftype-llgoAtomicOpBase), args)
 				}, args...)
 			} else {
@@ -2138,7 +2177,7 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 	default:
 		fn := p.compileValue(b, cv)
 		args := p.compileDynamicCallValues(b, call, kind)
-		ret = p.emitDo(b, act, ds, fn, llssa.Builder.Call, args...)
+		ret = p.emitDo(b, act, ds, mayRecover, fn, llssa.Builder.Call, args...)
 	}
 	return
 }

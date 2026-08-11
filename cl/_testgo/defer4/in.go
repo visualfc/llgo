@@ -1,14 +1,13 @@
 // LITTEST
 package main
 
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [3 x i8] c"bye", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [13 x i8] c"panic message", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [6 x i8] c"string", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [8 x i8] c"recover:", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [9 x i8] c"reachable", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [5 x i8] c"world", align 1{{$}}
-// CHECK: {{^}}@{{[0-9]+}} = private unnamed_addr constant [2 x i8] c"hi", align 1{{$}}
+// CHECK: {{^}}@0 = private unnamed_addr constant [3 x i8] c"bye", align 1{{$}}
+// CHECK: {{^}}@1 = private unnamed_addr constant [13 x i8] c"panic message", align 1{{$}}
+// CHECK: {{^}}@3 = private unnamed_addr constant [8 x i8] c"recover:", align 1{{$}}
+// CHECK: {{^}}@4 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [9 x i8] c"reachable", align 1{{$}}
+// CHECK: {{^}}@6 = private unnamed_addr constant [5 x i8] c"world", align 1{{$}}
+// CHECK: {{^}}@7 = private unnamed_addr constant [2 x i8] c"hi", align 1{{$}}
 
 func f(s string) bool {
 	return len(s) > 2
@@ -64,7 +63,7 @@ func main() {
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 4
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %10, align 8
-// CHECK-NEXT:   %11 = call i32 @{{(__)?}}sigsetjmp(ptr %1, i32 0)
+// CHECK-NEXT:   %11 = call i32 @{{(__)?sigsetjmp}}(ptr %1, i32 0)
 // CHECK-NEXT:   %12 = icmp eq i32 %11, 0
 // CHECK-NEXT:   br i1 %12, label %_llgo_4, label %_llgo_5
 // CHECK-EMPTY:
@@ -74,7 +73,9 @@ func main() {
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_5
 // CHECK-NEXT:   store ptr blockaddress(@main.fail, %_llgo_6), ptr %8, align 8
 // CHECK-NEXT:   %13 = load i64, ptr %7, align 8
+// CHECK-NEXT:   %14 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @"main.fail$1")
 // CHECK-NEXT:   call void @"main.fail$1"()
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %14)
 // CHECK-NEXT:   br label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_5, %_llgo_8
@@ -82,78 +83,80 @@ func main() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %14 = load ptr, ptr %10, align 8
-// CHECK-NEXT:   %15 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 32)
-// CHECK-NEXT:   %16 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %15, i32 0, i32 0
-// CHECK-NEXT:   store ptr %14, ptr %16, align 8
-// CHECK-NEXT:   %17 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %15, i32 0, i32 1
-// CHECK-NEXT:   store i64 0, ptr %17, align 8
-// CHECK-NEXT:   %18 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %15, i32 0, i32 2
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 3 }, ptr %18, align 8
-// CHECK-NEXT:   store ptr %15, ptr %10, align 8
-// CHECK-NEXT:   %19 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 13 }, ptr %19, align 8
-// CHECK-NEXT:   %20 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %19, 1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %20)
+// CHECK-NEXT:   %15 = load ptr, ptr %10, align 8
+// CHECK-NEXT:   %16 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 32)
+// CHECK-NEXT:   %17 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 0
+// CHECK-NEXT:   store ptr %15, ptr %17, align 8
+// CHECK-NEXT:   %18 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 1
+// CHECK-NEXT:   store i64 0, ptr %18, align 8
+// CHECK-NEXT:   %19 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 2
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @0, i64 3 }, ptr %19, align 8
+// CHECK-NEXT:   store ptr %16, ptr %10, align 8
+// CHECK-NEXT:   %20 = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @1, i64 13 }, ptr %20, align 8
+// CHECK-NEXT:   %21 = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @_llgo_string, ptr undef }, ptr %20, 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Panic"(%"{{.*}}/runtime/internal/runtime.eface" %21)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_5:                                          ; preds = %_llgo_0
 // CHECK-NEXT:   store ptr blockaddress(@main.fail, %_llgo_3), ptr %9, align 8
-// CHECK-NEXT:   %21 = load ptr, ptr %8, align 8
-// CHECK-NEXT:   indirectbr ptr %21, [label %_llgo_3, label %_llgo_6, label %_llgo_2]
+// CHECK-NEXT:   %22 = load ptr, ptr %8, align 8
+// CHECK-NEXT:   indirectbr ptr %22, [label %_llgo_3, label %_llgo_6, label %_llgo_2]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_5, %_llgo_2
 // CHECK-NEXT:   store ptr blockaddress(@main.fail, %_llgo_3), ptr %8, align 8
-// CHECK-NEXT:   %22 = load i64, ptr %7, align 8
-// CHECK-NEXT:   %23 = load ptr, ptr %10, align 8
-// CHECK-NEXT:   %24 = icmp ne ptr %23, null
-// CHECK-NEXT:   br i1 %24, label %_llgo_7, label %_llgo_8
+// CHECK-NEXT:   %23 = load i64, ptr %7, align 8
+// CHECK-NEXT:   %24 = load ptr, ptr %10, align 8
+// CHECK-NEXT:   %25 = icmp ne ptr %24, null
+// CHECK-NEXT:   br i1 %25, label %_llgo_7, label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_6
-// CHECK-NEXT:   %25 = load ptr, ptr %10, align 8
-// CHECK-NEXT:   %26 = load { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %25, align 8
-// CHECK-NEXT:   %27 = extractvalue { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" } %26, 0
-// CHECK-NEXT:   store ptr %27, ptr %10, align 8
-// CHECK-NEXT:   %28 = extractvalue { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" } %26, 2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %25)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %28)
+// CHECK-NEXT:   %26 = load ptr, ptr %10, align 8
+// CHECK-NEXT:   %27 = load { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %26, align 8
+// CHECK-NEXT:   %28 = extractvalue { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" } %27, 0
+// CHECK-NEXT:   store ptr %28, ptr %10, align 8
+// CHECK-NEXT:   %29 = extractvalue { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" } %27, 2
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %26)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %29)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   br label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_7, %_llgo_6
-// CHECK-NEXT:   %29 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
-// CHECK-NEXT:   %30 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %29, 2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %30)
-// CHECK-NEXT:   %31 = load ptr, ptr %9, align 8
-// CHECK-NEXT:   indirectbr ptr %31, [label %_llgo_3]
+// CHECK-NEXT:   %30 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, align 8
+// CHECK-NEXT:   %31 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %30, 2
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %31)
+// CHECK-NEXT:   %32 = load ptr, ptr %9, align 8
+// CHECK-NEXT:   indirectbr ptr %32, [label %_llgo_3]
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"main.fail$1"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   %0 = call %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/runtime/internal/runtime.Recover"()
-// CHECK-NEXT:   %1 = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"(%"{{.*}}/runtime/internal/runtime.eface" %0, %"{{.*}}/runtime/internal/runtime.eface" zeroinitializer)
-// CHECK-NEXT:   %2 = xor i1 %1, true
-// CHECK-NEXT:   br i1 %2, label %_llgo_1, label %_llgo_2
+// CHECK-NEXT:   %0 = alloca i8, align 1
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.BindRecoverFrame"(ptr @"main.fail$1", ptr %0)
+// CHECK-NEXT:   %1 = call %"{{.*}}/runtime/internal/runtime.eface" @"{{.*}}/runtime/internal/runtime.Recover"(ptr %0)
+// CHECK-NEXT:   %2 = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"(%"{{.*}}/runtime/internal/runtime.eface" %1, %"{{.*}}/runtime/internal/runtime.eface" zeroinitializer)
+// CHECK-NEXT:   %3 = xor i1 %2, true
+// CHECK-NEXT:   br i1 %3, label %_llgo_1, label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_1:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %3 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %0, 0
-// CHECK-NEXT:   %4 = icmp eq ptr %3, @_llgo_string
-// CHECK-NEXT:   br i1 %4, label %_llgo_3, label %_llgo_4
+// CHECK-NEXT:   %4 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %1, 0
+// CHECK-NEXT:   %5 = icmp eq ptr %4, @_llgo_string
+// CHECK-NEXT:   br i1 %5, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_3, %_llgo_0
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   %5 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %0, 1
-// CHECK-NEXT:   %6 = load %"{{.*}}/runtime/internal/runtime.String", ptr %5, align 8
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 8 })
+// CHECK-NEXT:   %6 = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %1, 1
+// CHECK-NEXT:   %7 = load %"{{.*}}/runtime/internal/runtime.String", ptr %6, align 8
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 8 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %6)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" %7)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   br label %_llgo_2
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %3, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %4, ptr @_llgo_string)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -189,7 +192,7 @@ func main() {
 // CHECK-NEXT:   %9 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 4
 // CHECK-NEXT:   %10 = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.Defer", ptr %2, i32 0, i32 5
 // CHECK-NEXT:   store ptr null, ptr %10, align 8
-// CHECK-NEXT:   %11 = call i32 @{{(__)?}}sigsetjmp(ptr %1, i32 0)
+// CHECK-NEXT:   %11 = call i32 @{{(__)?sigsetjmp}}(ptr %1, i32 0)
 // CHECK-NEXT:   %12 = icmp eq i32 %11, 0
 // CHECK-NEXT:   br i1 %12, label %_llgo_6, label %_llgo_7
 // CHECK-EMPTY:
@@ -207,10 +210,10 @@ func main() {
 // CHECK-NEXT:   %18 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 1
 // CHECK-NEXT:   store i64 1, ptr %18, align 8
 // CHECK-NEXT:   %19 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %16, i32 0, i32 2
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %19, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 5 }, ptr %19, align 8
 // CHECK-NEXT:   store ptr %16, ptr %10, align 8
 // CHECK-NEXT:   call void @main.fail()
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 9 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 9 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_8), ptr %9, align 8
 // CHECK-NEXT:   br label %_llgo_4
@@ -226,7 +229,7 @@ func main() {
 // CHECK-NEXT:   %25 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %23, i32 0, i32 1
 // CHECK-NEXT:   store i64 2, ptr %25, align 8
 // CHECK-NEXT:   %26 = getelementptr inbounds { ptr, i64, %"{{.*}}/runtime/internal/runtime.String" }, ptr %23, i32 0, i32 2
-// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 }, ptr %26, align 8
+// CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 }, ptr %26, align 8
 // CHECK-NEXT:   store ptr %23, ptr %10, align 8
 // CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_9), ptr %9, align 8
 // CHECK-NEXT:   br label %_llgo_4
@@ -243,7 +246,7 @@ func main() {
 // CHECK-NEXT:   br label %_llgo_1
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   %30 = call i1 @main.f(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 5 })
+// CHECK-NEXT:   %30 = call i1 @main.f(%"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 5 })
 // CHECK-NEXT:   br i1 %30, label %_llgo_2, label %_llgo_3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_7:                                          ; preds = %_llgo_0
@@ -321,7 +324,7 @@ func main() {
 
 // CHECK-LABEL: define void @"main.main$1"(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 2 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 2 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

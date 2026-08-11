@@ -5,9 +5,38 @@ import (
 	"unsafe"
 )
 
-// CHECK: @4 = private unnamed_addr constant [39 x i8] c"struct{$f func(); $data unsafe.Pointer}", align 1
-// CHECK: @5 = private unnamed_addr constant [4 x i8] c"demo", align 1
-// CHECK: @6 = private unnamed_addr constant [5 x i8] c"hello", align 1
+// CHECK: {{^}}@4 = private unnamed_addr constant [4 x i8] c"demo", align 1{{$}}
+// CHECK: {{^}}@5 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+
+func check(fn func()) {
+	var a any = demo
+	var b any = fn
+	fn1 := a.(func())
+	fn2 := b.(func())
+	println(a, b, fn, fn1, fn2, demo)
+	println(closurePtr(a) == closurePtr(b))
+}
+
+func closurePtr(a any) unsafe.Pointer {
+	return (*rtype)(unsafe.Pointer(&a)).ptr.fn
+}
+
+type rtype struct {
+	typ unsafe.Pointer
+	ptr *struct {
+		fn  unsafe.Pointer
+		env unsafe.Pointer
+	}
+}
+
+func demo() {
+	println("demo")
+}
+
+func main() {
+	println("hello")
+	check(demo)
+}
 
 // CHECK-LABEL: define void @main.check({ ptr, ptr } %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -29,7 +58,7 @@ import (
 // CHECK-NEXT:   br i1 %10, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %5, %"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 39 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %5, ptr @"_llgo_closure$b7Su1hWaFih-M0M9hMk6nO_RD1K_GQu5WjIXQp6Q2e8")
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
@@ -58,18 +87,9 @@ import (
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_4:                                          ; preds = %_llgo_1
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %9, %"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 39 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %9, ptr @"_llgo_closure$b7Su1hWaFih-M0M9hMk6nO_RD1K_GQu5WjIXQp6Q2e8")
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
-
-func check(fn func()) {
-	var a any = demo
-	var b any = fn
-	fn1 := a.(func())
-	fn2 := b.(func())
-	println(a, b, fn, fn1, fn2, demo)
-	println(closurePtr(a) == closurePtr(b))
-}
 
 // CHECK-LABEL: define ptr @main.closurePtr(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -82,21 +102,9 @@ func check(fn func()) {
 // CHECK-NEXT:   ret ptr %5
 // CHECK-NEXT: }
 
-func closurePtr(a any) unsafe.Pointer {
-	return (*rtype)(unsafe.Pointer(&a)).ptr.fn
-}
-
-type rtype struct {
-	typ unsafe.Pointer
-	ptr *struct {
-		fn  unsafe.Pointer
-		env unsafe.Pointer
-	}
-}
-
 // CHECK-LABEL: define void @main.demo(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 4 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @4, i64 4 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -114,19 +122,10 @@ type rtype struct {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-func demo() {
-	println("demo")
-}
-
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}/runtime/internal/runtime.String" { ptr @5, i64 5 })
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   call void @main.check({ ptr, ptr } { ptr @main.demo, ptr null })
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-
-func main() {
-	println("hello")
-	check(demo)
-}

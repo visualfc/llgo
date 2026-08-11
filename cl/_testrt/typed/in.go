@@ -1,8 +1,21 @@
 // LITTEST
 package main
 
-// CHECK: @0 = private unnamed_addr constant [5 x i8] c"hello", align 1
-// CHECK: @1 = private unnamed_addr constant [6 x i8] c"main.T", align 1
+// CHECK: {{^}}@0 = private unnamed_addr constant [5 x i8] c"hello", align 1{{$}}
+
+type T string
+type A [2]int
+
+func main() {
+	var v any = T("hello")
+	println(v.(T))
+	s, ok := v.(string)
+	println(s, ok)
+
+	var a any = A{1, 2}
+	ar, ok := a.(A)
+	println(ar[0], ar[1], ok)
+}
 
 // CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -16,9 +29,6 @@ package main
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_1, %_llgo_0
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-
-type T string
-type A [2]int
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
@@ -39,7 +49,7 @@ type A [2]int
 // CHECK-NEXT:   br i1 %7, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %2, %"{{.*}}/runtime/internal/runtime.String" { ptr @3, i64 41 }, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %2, ptr @_llgo_main.T)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_3:                                          ; preds = %_llgo_1
@@ -103,14 +113,3 @@ type A [2]int
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-
-func main() {
-	var v any = T("hello")
-	println(v.(T))
-	s, ok := v.(string)
-	println(s, ok)
-
-	var a any = A{1, 2}
-	ar, ok := a.(A)
-	println(ar[0], ar[1], ok)
-}

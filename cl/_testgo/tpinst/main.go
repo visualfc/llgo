@@ -1,11 +1,7 @@
 // LITTEST
 package main
 
-// CHECK-NOT: @6 = private unnamed_addr constant [5 x i8] c"value", align 1
-// CHECK: @6 = private unnamed_addr constant [10 x i8] c"main.value", align 1
 // CHECK: {{^}}@8 = private unnamed_addr constant [5 x i8] c"error", align 1{{$}}
-// CHECK: {{^}}@15 = private unnamed_addr constant [22 x i8] c"interface{value() int}", align 1{{$}}
-// CHECK: {{^}}@16 = private unnamed_addr constant [5 x i8] c"value", align 1{{$}}
 
 type M[T interface{}] struct {
 	v T
@@ -13,6 +9,36 @@ type M[T interface{}] struct {
 
 type I[T interface{}] interface {
 	Value() T
+}
+
+func demo() {
+	var v1 I[int] = &M[int]{100}
+
+	if v1.Value() != 100 {
+		panic("error")
+	}
+
+	var v2 I[float64] = &M[float64]{100.1}
+
+	if v2.Value() != 100.1 {
+		panic("error")
+	}
+
+	if v1.(interface{ value() int }).value() != 100 {
+		panic("error")
+	}
+}
+
+func main() {
+	demo()
+}
+
+func (pt *M[T]) Value() T {
+	return pt.v
+}
+
+func (pt *M[T]) value() T {
+	return pt.v
 }
 
 // CHECK-LABEL: define void @main.demo(){{.*}} {
@@ -101,7 +127,7 @@ type I[T interface{}] interface {
 // CHECK-NEXT:   br i1 %51, label %_llgo_5, label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_8:                                          ; preds = %_llgo_4
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr %34, %"{{.*}}/runtime/internal/runtime.String" { ptr @15, i64 22 }, %"{{.*}}/runtime/internal/runtime.String" { ptr @16, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_main.I[int]", ptr %34, ptr @"{{.*}}/cl/_testgo/tpinst.iface${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -118,41 +144,11 @@ type I[T interface{}] interface {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
-func demo() {
-	var v1 I[int] = &M[int]{100}
-
-	if v1.Value() != 100 {
-		panic("error")
-	}
-
-	var v2 I[float64] = &M[float64]{100.1}
-
-	if v2.Value() != 100.1 {
-		panic("error")
-	}
-
-	if v1.(interface{ value() int }).value() != 100 {
-		panic("error")
-	}
-}
-
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_0:
 // CHECK-NEXT:   call void @main.demo()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-
-func main() {
-	demo()
-}
-
-func (pt *M[T]) Value() T {
-	return pt.v
-}
-
-func (pt *M[T]) value() T {
-	return pt.v
-}
 
 // CHECK-LABEL: define linkonce i64 @"main.(*M[int]).Value"(ptr %0){{.*}} {
 // CHECK-NEXT: _llgo_0:
