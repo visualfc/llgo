@@ -2570,7 +2570,10 @@ func (p *context) patchLocalGenericNamed(t *types.Named) (*types.Named, bool) {
 	if isPatchedLocalGenericName(t.Obj().Name()) {
 		return nil, false
 	}
-	obj := types.NewTypeName(t.Obj().Pos(), t.Obj().Pkg(), p.localNamedName(t, false), nil)
+	// The generated name already carries the local type's complete identity.
+	// Keep this detached object positionless so ABI naming does not append a
+	// loader-relative token.Pos that changes between package-cache processes.
+	obj := types.NewTypeName(token.NoPos, t.Obj().Pkg(), p.localNamedName(t, false), nil)
 	return types.NewNamed(obj, t.Underlying(), nil), true
 }
 

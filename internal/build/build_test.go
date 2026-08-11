@@ -321,6 +321,49 @@ func TestDeadcodeBuildColdAndHotPackageCache(t *testing.T) {
 	}
 }
 
+func TestGenericLocalTypeColdAndHotPackageCache(t *testing.T) {
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join(repoRoot, "internal", "build", "testdata", "genericlocalcache")
+	const (
+		cacheRootEnv  = "LLGO_TEST_GENERIC_LOCAL_CACHE_ROOT"
+		cachePhaseEnv = "LLGO_TEST_GENERIC_LOCAL_CACHE_PHASE"
+	)
+	if cacheRoot := os.Getenv(cacheRootEnv); cacheRoot != "" {
+		cacheRootFunc = func() string { return cacheRoot }
+		t.Setenv("LLGO_ROOT", repoRoot)
+		t.Setenv(llgoBuildCache, "1")
+
+		conf := NewDefaultConf(ModeTest)
+		conf.OutFile = filepath.Join(t.TempDir(), os.Getenv(cachePhaseEnv))
+		conf.RunArgs = []string{"-test.run=^TestLocalRuntimeType$"}
+		pkgs, err := Build(Invocation{Args: []string{"."}, Config: conf, Dir: fixture})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if os.Getenv(cachePhaseEnv) == "hot" {
+			for _, pkg := range pkgs {
+				if pkg.CacheHit {
+					return
+				}
+			}
+			t.Fatal("hot build did not reuse any package archives")
+		}
+		return
+	}
+
+	cacheRoot := t.TempDir()
+	for _, phase := range []string{"cold", "hot"} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestGenericLocalTypeColdAndHotPackageCache$", "-test.count=1")
+		cmd.Env = append(os.Environ(), cacheRootEnv+"="+cacheRoot, cachePhaseEnv+"="+phase)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%s cache build: %v\n%s", phase, err, out)
+		}
+	}
+}
+
 func TestResolveOutputsUsesInvocationDirectory(t *testing.T) {
 	dir := t.TempDir()
 	out := &OutFmtDetails{

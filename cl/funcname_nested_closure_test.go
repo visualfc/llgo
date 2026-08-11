@@ -102,6 +102,9 @@ func localType[T any]() any {
 	if !ok {
 		t.Fatalf("patchLocalGenericNamed(%v) was not patched", local)
 	}
+	if pos := patched.Obj().Pos(); pos.IsValid() {
+		t.Fatalf("patched local generic type position = %v, want token.NoPos", pos)
+	}
 	name := patched.Obj().Name()
 	if !strings.Contains(name, "[") || strings.Contains(name, "·") {
 		t.Fatalf("patched local generic name = %q, want type args without ordinal suffix", name)
