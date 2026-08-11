@@ -29,6 +29,11 @@ type finalizerInterfaceArg struct {
 	data       unsafe.Pointer
 }
 
+const (
+	finalizerStopped        int32 = 1
+	finalizerInterfaceState       = 2
+)
+
 type finalizerEntry struct {
 	fn          any
 	sig         *ffi.Signature // retains the conservatively allocated return-type graph
@@ -39,7 +44,7 @@ type finalizerEntry struct {
 	next        *finalizerEntry
 	prevFn      bdwgc.FinalizerFunc
 	prevCb      unsafe.Pointer
-	stop        int32
+	state       int32
 	explicitEnv bool
 }
 
@@ -74,7 +79,7 @@ func SetFinalizer(obj any, finalizer any) {
 
 	finalizerState.mu.Lock()
 	if old := finalizerState.m[key]; old != nil {
-		atomic.Store(&old.stop, 1)
+		atomic.Store(&old.state, finalizerStopped)
 		delete(finalizerState.m, key)
 		restoreFinalizer(objPtr, old)
 	}
@@ -106,6 +111,7 @@ func SetFinalizer(obj any, finalizer any) {
 		retSize: retSize, key: key,
 	}
 	if interfaceTypeOrItab != nil {
+		entry.state = finalizerInterfaceState
 		entry.arg = unsafe.Pointer(&finalizerInterfaceArg{typeOrItab: interfaceTypeOrItab})
 	}
 	var oldFn bdwgc.FinalizerFunc
@@ -148,10 +154,6 @@ func ifacePointerData(e *eface) unsafe.Pointer {
 	return *(*unsafe.Pointer)(e.data)
 }
 
-func (entry *finalizerEntry) hasInterfaceArg() bool {
-	return entry.argTypes[len(entry.argTypes)-1] == ffi.TypeInterface
-}
-
 func finalizerFuncType(t *abi.Type) *abi.FuncType {
 	if !t.IsClosure() {
 		return nil
@@ -163,7 +165,7 @@ func finalizerFuncType(t *abi.Type) *abi.FuncType {
 	return st.Fields[0].Typ.FuncType()
 }
 
-func callFinalizer(entry *finalizerEntry) {
+func callFinalizer(entry *finalizerEntry, hasInterfaceArg bool) {
 	face := (*eface)(unsafe.Pointer(&entry.fn))
 	c := (*finalizerClosure)(face.data)
 	var ret unsafe.Pointer
@@ -171,7 +173,7 @@ func callFinalizer(entry *finalizerEntry) {
 		ret = llruntime.AllocU(entry.retSize)
 	}
 	arg := entry.arg
-	if !entry.hasInterfaceArg() {
+	if !hasInterfaceArg {
 		ptr := entry.arg
 		arg = unsafe.Pointer(&ptr)
 	}
@@ -190,13 +192,14 @@ func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
 	if entry.prevFn != nil {
 		entry.prevFn(ptr, entry.prevCb)
 	}
-	if atomic.Load(&entry.stop) == 1 {
+	state := atomic.Load(&entry.state)
+	if state == finalizerStopped {
 		return
 	}
 
 	// Keep the object alive until runFinalizers invokes the Go finalizer.
 	// Do not allocate or lock here; BDWGC calls this while collecting.
-	if entry.hasInterfaceArg() {
+	if state == finalizerInterfaceState {
 		(*finalizerInterfaceArg)(entry.arg).data = ptr
 	} else {
 		entry.arg = ptr
@@ -239,8 +242,9 @@ func runFinalizers() {
 		}
 		finalizerState.mu.Unlock()
 
-		if atomic.Load(&entry.stop) != 1 {
-			callFinalizer(entry)
+		state := atomic.Load(&entry.state)
+		if state != finalizerStopped {
+			callFinalizer(entry, state == finalizerInterfaceState)
 		}
 		entry.arg = nil
 	}
