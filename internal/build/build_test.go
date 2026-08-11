@@ -343,13 +343,22 @@ func TestGenericLocalTypeColdAndHotPackageCache(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if os.Getenv(cachePhaseEnv) == "hot" {
+		switch phase := os.Getenv(cachePhaseEnv); phase {
+		case "cold":
+			for _, pkg := range pkgs {
+				if pkg.CacheHit {
+					t.Fatalf("cold build unexpectedly hit package cache for %s", pkg.PkgPath)
+				}
+			}
+		case "hot":
 			for _, pkg := range pkgs {
 				if pkg.CacheHit {
 					return
 				}
 			}
 			t.Fatal("hot build did not reuse any package archives")
+		default:
+			t.Fatalf("unknown cache phase %q", phase)
 		}
 		return
 	}
