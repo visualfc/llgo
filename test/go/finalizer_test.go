@@ -94,6 +94,33 @@ func TestRuntimeSetFinalizerCancel(t *testing.T) {
 	}
 }
 
+func TestRuntimeSetFinalizerWithLargeResult(t *testing.T) {
+	finalized := make(chan int, 1)
+	func() {
+		x := new(int)
+		*x = 42
+		runtime.SetFinalizer(x, func(p *int) (unused [250]int) {
+			finalized <- *p
+			return
+		})
+	}()
+
+	deadline := time.After(3 * time.Second)
+	for {
+		runGCWithTimeout(t)
+		select {
+		case got := <-finalized:
+			if got != 42 {
+				t.Fatalf("finalizer got %d, want 42", got)
+			}
+			return
+		case <-deadline:
+			t.Fatal("finalizer with large result did not run")
+		default:
+		}
+	}
+}
+
 func runGCWithTimeout(t *testing.T) {
 	t.Helper()
 	done := make(chan struct{})
