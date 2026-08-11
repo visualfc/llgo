@@ -96,30 +96,42 @@ func TestRuntimeSetFinalizerCancel(t *testing.T) {
 
 func TestRuntimeSetFinalizerWithLargeResult(t *testing.T) {
 	finalized := make(chan int, 1)
-	func() {
+	registerFinalizerForTest(func() {
 		x := new(int)
 		*x = 42
 		runtime.SetFinalizer(x, func(p *int) (unused [250]int) {
 			finalized <- *p
 			return
 		})
-	}()
+	})
 
 	waitForFinalizerValue(t, finalized, 42)
 }
 
 func TestRuntimeSetFinalizerWithNarrowResult(t *testing.T) {
 	finalized := make(chan int, 1)
-	func() {
+	registerFinalizerForTest(func() {
 		x := new(int)
 		*x = 42
 		runtime.SetFinalizer(x, func(p *int) bool {
 			finalized <- *p
 			return true
 		})
-	}()
+	})
 
 	waitForFinalizerValue(t, finalized, 42)
+}
+
+func registerFinalizerForTest(register func()) {
+	// Let the registration stack disappear before forcing collection. BDWGC
+	// conservatively scans live stacks and may otherwise retain a stale pointer
+	// to the object under test.
+	registered := make(chan struct{})
+	go func() {
+		register()
+		close(registered)
+	}()
+	<-registered
 }
 
 func waitForFinalizerValue(t *testing.T, finalized <-chan int, want int) {
