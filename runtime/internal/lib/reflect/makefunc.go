@@ -54,7 +54,7 @@ func makeFunc(typ Type, fn func(args []Value) (results []Value), recoverTo unsaf
 	t := typ.common()
 	ftyp := (*funcType)(unsafe.Pointer(t))
 	ins := ftyp.In
-	sig, err := toFFISig(ins, ftyp.Out)
+	sig, err := ffi.NewGoSignature(ins, ftyp.Out)
 	if err != nil {
 		panic(err)
 	}

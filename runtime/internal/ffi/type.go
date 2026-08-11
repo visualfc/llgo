@@ -3,6 +3,7 @@ package ffi
 import (
 	"unsafe"
 
+	"github.com/goplus/llgo/runtime/abi"
 	c "github.com/goplus/llgo/runtime/internal/clite"
 	"github.com/goplus/llgo/runtime/internal/clite/ffi"
 )
@@ -75,6 +76,7 @@ var (
 	TypeSlice      = StructOf(TypePointer, TypeInt, TypeInt)
 	empty          = [2]*Type{TypeInt8, nil}
 	typeEmpty      = &Type{0, 0, ffi.Struct, &empty[0]}
+	typeClosure    = StructOf(TypePointer, TypePointer)
 )
 
 var Typ = []*Type{
@@ -129,4 +131,102 @@ func StructOf(fields ...*Type) *Type {
 		ffi.Struct,
 		&fs[0],
 	}
+}
+
+// TypeOf returns the libffi representation of a Go ABI type.
+func TypeOf(typ *abi.Type) *Type {
+	switch kind := typ.Kind(); kind {
+	case abi.Bool, abi.Int, abi.Int8, abi.Int16, abi.Int32, abi.Int64,
+		abi.Uint, abi.Uint8, abi.Uint16, abi.Uint32, abi.Uint64, abi.Uintptr,
+		abi.Float32, abi.Float64, abi.Complex64, abi.Complex128:
+		return Typ[kind]
+	case abi.Array:
+		at := typ.ArrayType()
+		return ArrayOf(TypeOf(at.Elem), int(at.Len))
+	case abi.Chan, abi.Map, abi.Pointer, abi.UnsafePointer:
+		return TypePointer
+	case abi.Func:
+		return typeClosure
+	case abi.Interface:
+		return TypeInterface
+	case abi.Slice:
+		return TypeSlice
+	case abi.String:
+		return TypeString
+	case abi.Struct:
+		if typ.IsClosure() {
+			return typeClosure
+		}
+		return structTypeOf(typ)
+	}
+	panic("ffi.TypeOf: unsupported Go type " + typ.String())
+}
+
+func structTypeOf(typ *abi.Type) *Type {
+	st := typ.StructType()
+	fields := make([]*Type, 0, len(st.Fields))
+	var off uintptr
+	for _, field := range st.Fields {
+		if field.Offset > off {
+			fields, off = appendPadding(fields, off, field.Offset-off)
+		}
+		if field.Typ.Size_ == 0 {
+			continue
+		}
+		fields = append(fields, TypeOf(field.Typ))
+		off = field.Offset + field.Typ.Size_
+	}
+	// Do not pad to typ.Size_: trailing zero-sized fields can enlarge the
+	// Go-visible size without consuming registers in llgo's callable ABI.
+	return StructOf(fields...)
+}
+
+func appendPadding(fields []*Type, off, size uintptr) ([]*Type, uintptr) {
+	for size > 0 {
+		switch {
+		case off%8 == 0 && size >= 8:
+			fields = append(fields, TypeUint64)
+			off += 8
+			size -= 8
+		case off%4 == 0 && size >= 4:
+			fields = append(fields, TypeUint32)
+			off += 4
+			size -= 4
+		case off%2 == 0 && size >= 2:
+			fields = append(fields, TypeUint16)
+			off += 2
+			size -= 2
+		default:
+			fields = append(fields, TypeUint8)
+			off++
+			size--
+		}
+	}
+	return fields, off
+}
+
+// ReturnTypeOf returns the libffi representation of a Go function's results.
+func ReturnTypeOf(results []*abi.Type) *Type {
+	switch len(results) {
+	case 0:
+		return TypeVoid
+	case 1:
+		return TypeOf(results[0])
+	default:
+		fields := make([]*Type, len(results))
+		for i, result := range results {
+			fields[i] = TypeOf(result)
+		}
+		return StructOf(fields...)
+	}
+}
+
+// NewGoSignature prepares a libffi signature for Go ABI parameter and result
+// types.
+func NewGoSignature(params, results []*abi.Type) (*Signature, error) {
+	args := make([]*Type, len(params))
+	for i, param := range params {
+		args[i] = TypeOf(param)
+	}
+	return NewSignature(ReturnTypeOf(results), args...)
 }
