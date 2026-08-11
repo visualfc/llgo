@@ -38,7 +38,7 @@ func finalizerFFIType(typ *abi.Type) *ffi.Type {
 		}
 		return finalizerFFIStructType(typ)
 	}
-	panic("runtime.callFinalizer: unsupported result type " + typ.String())
+	panic("runtime.SetFinalizer: unsupported result type " + typ.String())
 }
 
 func finalizerFFIStructType(typ *abi.Type) *ffi.Type {
@@ -99,9 +99,9 @@ func finalizerFFIReturnType(results []*abi.Type) *ffi.Type {
 	}
 }
 
-func newFinalizerFFISignature(ft *abi.FuncType, hasEnv bool) (*ffi.Signature, []*ffi.Type, uintptr) {
+func newFinalizerFFISignature(ft *abi.FuncType, explicitEnv bool) (*ffi.Signature, []*ffi.Type, uintptr) {
 	paramTypes := make([]*ffi.Type, 0, 2)
-	if hasEnv && ffi.ClosureEnvExplicit {
+	if explicitEnv {
 		paramTypes = append(paramTypes, ffi.TypePointer)
 	}
 	// SetFinalizer currently requires the finalizer argument to have the
@@ -116,8 +116,8 @@ func newFinalizerFFISignature(ft *abi.FuncType, hasEnv bool) (*ffi.Signature, []
 	}
 	retSize := sig.RType.Size
 	if argSize := unsafe.Sizeof(uintptr(0)); retSize < argSize {
-		// libffi widens sub-register scalar results to ffi_arg when writing
-		// the caller-provided result buffer.
+		// Conservatively reserve one word for every non-void result. In
+		// particular, libffi writes sub-register scalar results as ffi_arg.
 		retSize = argSize
 	}
 	return sig, paramTypes, retSize

@@ -25,16 +25,17 @@ type finalizerClosure struct {
 }
 
 type finalizerEntry struct {
-	fn       any
-	sig      *ffi.Signature
-	argTypes []*ffi.Type // owns the backing storage referenced by sig.ArgTypes
-	retSize  uintptr
-	obj      unsafe.Pointer
-	key      uintptr
-	next     *finalizerEntry
-	prevFn   bdwgc.FinalizerFunc
-	prevCb   unsafe.Pointer
-	stop     int32
+	fn          any
+	sig         *ffi.Signature // retains the conservatively allocated return-type graph
+	argTypes    []*ffi.Type    // owns the backing storage referenced by sig.ArgTypes
+	explicitEnv bool
+	retSize     uintptr
+	obj         unsafe.Pointer
+	key         uintptr
+	next        *finalizerEntry
+	prevFn      bdwgc.FinalizerFunc
+	prevCb      unsafe.Pointer
+	stop        int32
 }
 
 var finalizerState struct {
@@ -86,8 +87,16 @@ func SetFinalizer(obj any, finalizer any) {
 		throw("runtime.SetFinalizer: cannot pass " + objFace._type.String() + " to finalizer " + finalizerFace._type.String())
 	}
 	c := (*finalizerClosure)(finalizerFace.data)
-	sig, argTypes, retSize := newFinalizerFFISignature(ft, c.env != nil)
-	entry := &finalizerEntry{fn: finalizer, sig: sig, argTypes: argTypes, retSize: retSize, key: key}
+	explicitEnv := c.env != nil && ffi.ClosureEnvExplicit
+	sig, argTypes, retSize := newFinalizerFFISignature(ft, explicitEnv)
+	entry := &finalizerEntry{
+		fn:          finalizer,
+		sig:         sig,
+		argTypes:    argTypes,
+		explicitEnv: explicitEnv,
+		retSize:     retSize,
+		key:         key,
+	}
 	var oldFn bdwgc.FinalizerFunc
 	var oldCb unsafe.Pointer
 	bdwgc.RegisterFinalizer(objPtr, setFinalizerCallback, unsafe.Pointer(entry), &oldFn, &oldCb)
@@ -122,15 +131,16 @@ func callFinalizer(entry *finalizerEntry) {
 	c := (*finalizerClosure)(face.data)
 	var ret unsafe.Pointer
 	if entry.retSize != 0 {
-		ret = llruntime.AllocZ(entry.retSize)
+		ret = llruntime.AllocU(entry.retSize)
 	}
 	ptr := entry.obj
-	if c.env != nil && ffi.ClosureEnvExplicit {
+	if entry.explicitEnv {
 		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&c.env), unsafe.Pointer(&ptr))
 	} else {
 		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&ptr))
 	}
 	KeepAlive(entry.fn)
+	KeepAlive(entry.sig)
 	KeepAlive(entry.argTypes)
 }
 
