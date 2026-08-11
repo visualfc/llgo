@@ -22,7 +22,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 type finalizerAssignableValue struct {
@@ -92,30 +91,19 @@ func TestRuntimeSetFinalizerAssignableArgumentTypes(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// BDWGC conservatively scans stacks and registers, so a stale
+			// pointer can keep any one object reachable. Register several
+			// objects and require one real finalizer call to verify the ABI.
+			const registrations = 8
 			const wantBase = 97531
 			want := wantBase + i
-			done := make(chan int, 1)
-			created := make(chan struct{})
-			go func() {
-				tt.register(done, want)
-				close(created)
-			}()
-			<-created
-
-			deadline := time.After(3 * time.Second)
-			for {
-				runGCWithTimeout(t)
-				select {
-				case got := <-done:
-					if got != want {
-						t.Fatalf("finalizer got %d, want %d", got, want)
-					}
-					return
-				case <-deadline:
-					t.Fatal("finalizer did not run")
-				default:
+			done := make(chan int, registrations)
+			registerFinalizerForTest(func() {
+				for range registrations {
+					tt.register(done, want)
 				}
-			}
+			})
+			waitForFinalizerValue(t, done, want)
 		})
 	}
 }
