@@ -30,18 +30,17 @@ type finalizerInterfaceArg struct {
 }
 
 type finalizerEntry struct {
-	fn                  any
-	sig                 *ffi.Signature // retains the conservatively allocated return-type graph
-	argTypes            []*ffi.Type    // owns the backing storage referenced by sig.ArgTypes
-	retSize             uintptr
-	interfaceTypeOrItab unsafe.Pointer
-	obj                 unsafe.Pointer
-	key                 uintptr
-	next                *finalizerEntry
-	prevFn              bdwgc.FinalizerFunc
-	prevCb              unsafe.Pointer
-	stop                int32
-	explicitEnv         bool
+	fn          any
+	sig         *ffi.Signature // retains the conservatively allocated return-type graph
+	argTypes    []*ffi.Type    // owns the backing storage referenced by sig.ArgTypes
+	retSize     uintptr
+	arg         unsafe.Pointer // object pointer or preallocated interface header
+	key         uintptr
+	next        *finalizerEntry
+	prevFn      bdwgc.FinalizerFunc
+	prevCb      unsafe.Pointer
+	stop        int32
+	explicitEnv bool
 }
 
 var finalizerState struct {
@@ -92,32 +91,22 @@ func SetFinalizer(obj any, finalizer any) {
 	if ft.Variadic() {
 		throw("runtime.SetFinalizer: cannot pass " + objFace._type.String() + " to finalizer " + finalizerFace._type.String() + " because dotdotdot")
 	}
-	if len(ft.In) != 1 || !finalizerArgAssignable(objFace._type, ft.In[0]) {
+	if len(ft.In) != 1 {
 		throw("runtime.SetFinalizer: cannot pass " + objFace._type.String() + " to finalizer " + finalizerFace._type.String())
 	}
-	argType := ft.In[0]
-	argFFIType := ffi.TypePointer
-	var interfaceTypeOrItab unsafe.Pointer
-	if argType.Kind() == abi.Interface {
-		argFFIType = ffi.TypeInterface
-		interfaceType := argType.InterfaceType()
-		if len(interfaceType.Methods) == 0 {
-			interfaceTypeOrItab = unsafe.Pointer(objFace._type)
-		} else {
-			interfaceTypeOrItab = unsafe.Pointer(llruntime.NewItab(interfaceType, objFace._type))
-		}
+	argFFIType, interfaceTypeOrItab, ok := prepareFinalizerArgument(objFace._type, ft.In[0])
+	if !ok {
+		throw("runtime.SetFinalizer: cannot pass " + objFace._type.String() + " to finalizer " + finalizerFace._type.String())
 	}
 	c := (*finalizerClosure)(finalizerFace.data)
 	explicitEnv := c.env != nil && ffi.ClosureEnvExplicit
 	sig, argTypes, retSize := newFinalizerFFISignature(ft, explicitEnv, argFFIType)
 	entry := &finalizerEntry{
-		fn:                  finalizer,
-		sig:                 sig,
-		argTypes:            argTypes,
-		explicitEnv:         explicitEnv,
-		retSize:             retSize,
-		interfaceTypeOrItab: interfaceTypeOrItab,
-		key:                 key,
+		fn: finalizer, sig: sig, argTypes: argTypes, explicitEnv: explicitEnv,
+		retSize: retSize, key: key,
+	}
+	if interfaceTypeOrItab != nil {
+		entry.arg = unsafe.Pointer(&finalizerInterfaceArg{typeOrItab: interfaceTypeOrItab})
 	}
 	var oldFn bdwgc.FinalizerFunc
 	var oldCb unsafe.Pointer
@@ -130,17 +119,26 @@ func SetFinalizer(obj any, finalizer any) {
 	finalizerState.mu.Unlock()
 }
 
-func finalizerArgAssignable(objType, argType *abi.Type) bool {
+func prepareFinalizerArgument(objType, argType *abi.Type) (*ffi.Type, unsafe.Pointer, bool) {
 	if argType == objType {
-		return true
+		return ffi.TypePointer, nil, true
 	}
 	switch argType.Kind() {
 	case abi.Pointer:
-		return (argType.Uncommon() == nil || objType.Uncommon() == nil) && argType.Elem() == objType.Elem()
+		if (argType.Uncommon() == nil || objType.Uncommon() == nil) && argType.Elem() == objType.Elem() {
+			return ffi.TypePointer, nil, true
+		}
 	case abi.Interface:
-		return llruntime.Implements(argType, objType)
+		if llruntime.Implements(argType, objType) {
+			interfaceType := argType.InterfaceType()
+			typeOrItab := unsafe.Pointer(objType)
+			if len(interfaceType.Methods) != 0 {
+				typeOrItab = unsafe.Pointer(llruntime.NewItab(interfaceType, objType))
+			}
+			return ffi.TypeInterface, typeOrItab, true
+		}
 	}
-	return false
+	return nil, nil, false
 }
 
 func ifacePointerData(e *eface) unsafe.Pointer {
@@ -148,6 +146,10 @@ func ifacePointerData(e *eface) unsafe.Pointer {
 		return e.data
 	}
 	return *(*unsafe.Pointer)(e.data)
+}
+
+func (entry *finalizerEntry) hasInterfaceArg() bool {
+	return entry.argTypes[len(entry.argTypes)-1] == ffi.TypeInterface
 }
 
 func finalizerFuncType(t *abi.Type) *abi.FuncType {
@@ -168,13 +170,10 @@ func callFinalizer(entry *finalizerEntry) {
 	if entry.retSize != 0 {
 		ret = llruntime.AllocU(entry.retSize)
 	}
-	ptr := entry.obj
-	arg := unsafe.Pointer(&ptr)
-	var interfaceArg finalizerInterfaceArg
-	if entry.interfaceTypeOrItab != nil {
-		interfaceArg.typeOrItab = entry.interfaceTypeOrItab
-		interfaceArg.data = ptr
-		arg = unsafe.Pointer(&interfaceArg)
+	arg := entry.arg
+	if !entry.hasInterfaceArg() {
+		ptr := entry.arg
+		arg = unsafe.Pointer(&ptr)
 	}
 	if entry.explicitEnv {
 		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&c.env), arg)
@@ -197,7 +196,11 @@ func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
 
 	// Keep the object alive until runFinalizers invokes the Go finalizer.
 	// Do not allocate or lock here; BDWGC calls this while collecting.
-	entry.obj = ptr
+	if entry.hasInterfaceArg() {
+		(*finalizerInterfaceArg)(entry.arg).data = ptr
+	} else {
+		entry.arg = ptr
+	}
 	entry.next = nil
 	if finalizerState.tail == nil {
 		finalizerState.head = entry
@@ -239,7 +242,7 @@ func runFinalizers() {
 		if atomic.Load(&entry.stop) != 1 {
 			callFinalizer(entry)
 		}
-		entry.obj = nil
+		entry.arg = nil
 	}
 }
 
