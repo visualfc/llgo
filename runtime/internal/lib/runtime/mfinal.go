@@ -25,13 +25,16 @@ type finalizerClosure struct {
 }
 
 type finalizerEntry struct {
-	fn     any
-	obj    unsafe.Pointer
-	key    uintptr
-	next   *finalizerEntry
-	prevFn bdwgc.FinalizerFunc
-	prevCb unsafe.Pointer
-	stop   int32
+	fn       any
+	sig      *ffi.Signature
+	argTypes []*ffi.Type // owns the backing storage referenced by sig.ArgTypes
+	retSize  uintptr
+	obj      unsafe.Pointer
+	key      uintptr
+	next     *finalizerEntry
+	prevFn   bdwgc.FinalizerFunc
+	prevCb   unsafe.Pointer
+	stop     int32
 }
 
 var finalizerState struct {
@@ -82,7 +85,9 @@ func SetFinalizer(obj any, finalizer any) {
 	if len(ft.In) != 1 || ft.In[0] != objFace._type {
 		throw("runtime.SetFinalizer: cannot pass " + objFace._type.String() + " to finalizer " + finalizerFace._type.String())
 	}
-	entry := &finalizerEntry{fn: finalizer, key: key}
+	c := (*finalizerClosure)(finalizerFace.data)
+	sig, argTypes, retSize := newFinalizerFFISignature(ft, c.env != nil)
+	entry := &finalizerEntry{fn: finalizer, sig: sig, argTypes: argTypes, retSize: retSize, key: key}
 	var oldFn bdwgc.FinalizerFunc
 	var oldCb unsafe.Pointer
 	bdwgc.RegisterFinalizer(objPtr, setFinalizerCallback, unsafe.Pointer(entry), &oldFn, &oldCb)
@@ -102,41 +107,31 @@ func ifacePointerData(e *eface) unsafe.Pointer {
 }
 
 func finalizerFuncType(t *abi.Type) *abi.FuncType {
-	if t.IsClosure() {
-		st := t.StructType()
-		if st == nil || len(st.Fields) == 0 {
-			return nil
-		}
-		return st.Fields[0].Typ.FuncType()
+	if !t.IsClosure() {
+		return nil
 	}
-	return t.FuncType()
+	st := t.StructType()
+	if st == nil || len(st.Fields) == 0 {
+		return nil
+	}
+	return st.Fields[0].Typ.FuncType()
 }
 
-func callFinalizer(fn any, ptr unsafe.Pointer) {
-	face := (*eface)(unsafe.Pointer(&fn))
-	ft := finalizerFuncType(face._type)
+func callFinalizer(entry *finalizerEntry) {
+	face := (*eface)(unsafe.Pointer(&entry.fn))
 	c := (*finalizerClosure)(face.data)
-
-	paramTypes := make([]*ffi.Type, 0, 2)
-	args := make([]unsafe.Pointer, 0, 2)
-	if c.env != nil && ffi.ClosureEnvExplicit {
-		paramTypes = append(paramTypes, ffi.TypePointer)
-		args = append(args, unsafe.Pointer(&c.env))
-	}
-	// SetFinalizer currently requires the finalizer argument to have the
-	// object's pointer type exactly.
-	paramTypes = append(paramTypes, ffi.TypePointer)
-	args = append(args, unsafe.Pointer(&ptr))
-
-	sig, err := ffi.NewSignature(finalizerFFIReturnType(ft.Out), paramTypes...)
-	if err != nil {
-		panic(err)
-	}
 	var ret unsafe.Pointer
-	if sig.RType != ffi.TypeVoid {
-		ret = llruntime.AllocZ(sig.RType.Size)
+	if entry.retSize != 0 {
+		ret = llruntime.AllocZ(entry.retSize)
 	}
-	ffi.CallWithEnv(sig, c.fn, c.env, ret, args...)
+	ptr := entry.obj
+	if c.env != nil && ffi.ClosureEnvExplicit {
+		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&c.env), unsafe.Pointer(&ptr))
+	} else {
+		ffi.CallWithEnv(entry.sig, c.fn, c.env, ret, unsafe.Pointer(&ptr))
+	}
+	KeepAlive(entry.fn)
+	KeepAlive(entry.argTypes)
 }
 
 func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
@@ -190,7 +185,7 @@ func runFinalizers() {
 		finalizerState.mu.Unlock()
 
 		if atomic.Load(&entry.stop) != 1 {
-			callFinalizer(entry.fn, entry.obj)
+			callFinalizer(entry)
 		}
 		entry.obj = nil
 	}

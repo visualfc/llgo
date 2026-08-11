@@ -3,6 +3,8 @@
 package runtime
 
 import (
+	"unsafe"
+
 	"github.com/goplus/llgo/runtime/abi"
 	"github.com/goplus/llgo/runtime/internal/ffi"
 )
@@ -95,4 +97,28 @@ func finalizerFFIReturnType(results []*abi.Type) *ffi.Type {
 		}
 		return ffi.StructOf(fields...)
 	}
+}
+
+func newFinalizerFFISignature(ft *abi.FuncType, hasEnv bool) (*ffi.Signature, []*ffi.Type, uintptr) {
+	paramTypes := make([]*ffi.Type, 0, 2)
+	if hasEnv && ffi.ClosureEnvExplicit {
+		paramTypes = append(paramTypes, ffi.TypePointer)
+	}
+	// SetFinalizer currently requires the finalizer argument to have the
+	// object's pointer type exactly.
+	paramTypes = append(paramTypes, ffi.TypePointer)
+	sig, err := ffi.NewSignature(finalizerFFIReturnType(ft.Out), paramTypes...)
+	if err != nil {
+		panic(err)
+	}
+	if sig.RType == ffi.TypeVoid {
+		return sig, paramTypes, 0
+	}
+	retSize := sig.RType.Size
+	if argSize := unsafe.Sizeof(uintptr(0)); retSize < argSize {
+		// libffi widens sub-register scalar results to ffi_arg when writing
+		// the caller-provided result buffer.
+		retSize = argSize
+	}
+	return sig, paramTypes, retSize
 }

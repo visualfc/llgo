@@ -105,17 +105,36 @@ func TestRuntimeSetFinalizerWithLargeResult(t *testing.T) {
 		})
 	}()
 
+	waitForFinalizerValue(t, finalized, 42)
+}
+
+func TestRuntimeSetFinalizerWithNarrowResult(t *testing.T) {
+	finalized := make(chan int, 1)
+	func() {
+		x := new(int)
+		*x = 42
+		runtime.SetFinalizer(x, func(p *int) bool {
+			finalized <- *p
+			return true
+		})
+	}()
+
+	waitForFinalizerValue(t, finalized, 42)
+}
+
+func waitForFinalizerValue(t *testing.T, finalized <-chan int, want int) {
+	t.Helper()
 	deadline := time.After(3 * time.Second)
 	for {
 		runGCWithTimeout(t)
 		select {
 		case got := <-finalized:
-			if got != 42 {
-				t.Fatalf("finalizer got %d, want 42", got)
+			if got != want {
+				t.Fatalf("finalizer got %d, want %d", got, want)
 			}
 			return
 		case <-deadline:
-			t.Fatal("finalizer with large result did not run")
+			t.Fatal("finalizer did not run")
 		default:
 		}
 	}
