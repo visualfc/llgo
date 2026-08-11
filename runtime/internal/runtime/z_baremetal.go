@@ -21,6 +21,9 @@ func Rethrow(link *Defer) {
 		return
 	}
 	if link == nil {
+		// Bare-metal has one execution context and no goroutine-exit
+		// transition. Goexit still drains every defer through the longjmp
+		// path, then retains the backend's existing fatal termination here.
 		c.Printf(c.Str("fatal error\n"))
 		c.Exit(2)
 	} else {

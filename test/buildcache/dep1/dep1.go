@@ -12,3 +12,8 @@ func Add(a, b int) int {
 func Msg() string {
 	return "dep1"
 }
+
+// Recover stores the panic value seen by a directly deferred dependency call.
+func Recover(dst *any) {
+	*dst = recover()
+}

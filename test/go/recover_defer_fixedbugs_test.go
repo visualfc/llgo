@@ -6,7 +6,20 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/goplus/llgo/test/go/recoverpkg"
 )
+
+func TestRecoverCrossPackageDeferredFunction(t *testing.T) {
+	var recovered any
+	func() {
+		defer recoverpkg.Store(&recovered)
+		panic("cross-package")
+	}()
+	if recovered != "cross-package" {
+		t.Fatalf("cross-package recover = %v, want cross-package", recovered)
+	}
+}
 
 type fixedbug4066Panic struct{}
 

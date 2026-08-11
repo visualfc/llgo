@@ -189,7 +189,7 @@ func makeWithFree(base int) Fn {
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %21, ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", %"{{.*}}/runtime/internal/runtime.String" { ptr @7, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %21, ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

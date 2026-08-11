@@ -31,7 +31,7 @@ func main() {
 // CHECK-NEXT:   ret ptr %3
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %1, ptr @"*_llgo_int8", %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %1, ptr @"*_llgo_int8")
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 
@@ -48,7 +48,7 @@ func main() {
 // CHECK-NEXT:   ret i64 %5
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %1, ptr @_llgo_int, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %1, ptr @_llgo_int)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

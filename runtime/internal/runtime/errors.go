@@ -164,7 +164,11 @@ type TypeAssertionError struct {
 
 func (*TypeAssertionError) RuntimeError() {}
 
-func PanicTypeAssert(source, concrete, asserted *_type, missingMethod string) {
+func PanicTypeAssert(source, concrete, asserted *_type) {
+	missingMethod := ""
+	if concrete != nil {
+		missingMethod = missingInterfaceMethod(asserted, concrete)
+	}
 	panic(&TypeAssertionError{
 		_interface:    source,
 		concrete:      concrete,

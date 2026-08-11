@@ -364,7 +364,7 @@ func main() {
 // CHECK-NEXT:   br i1 %94, label %_llgo_5, label %_llgo_6
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_4
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %36, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %36, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_19:                                         ; preds = %_llgo_6
@@ -380,7 +380,7 @@ func main() {
 // CHECK-NEXT:   br i1 %101, label %_llgo_7, label %_llgo_8
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_20:                                         ; preds = %_llgo_6
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %42, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %42, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_21:                                         ; preds = %_llgo_12
@@ -397,7 +397,7 @@ func main() {
 // CHECK-NEXT:   br i1 %109, label %_llgo_13, label %_llgo_14
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_22:                                         ; preds = %_llgo_12
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %78, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %78, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_23:                                         ; preds = %_llgo_14
@@ -414,7 +414,7 @@ func main() {
 // CHECK-NEXT:   br i1 %117, label %_llgo_15, label %_llgo_16
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_24:                                         ; preds = %_llgo_14
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %84, ptr @_llgo_main.I, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 3 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.I, ptr %84, ptr @_llgo_main.I)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

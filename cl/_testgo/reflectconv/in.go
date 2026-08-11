@@ -1573,7 +1573,7 @@ func shouldPanic(expect string, f func()) {
 // CHECK-NEXT:   br i1 %42, label %_llgo_3, label %_llgo_4
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_6:                                          ; preds = %_llgo_2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %27, ptr @_llgo_float32, %"{{.*}}/runtime/internal/runtime.String" zeroinitializer)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr null, ptr %27, ptr @_llgo_float32)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

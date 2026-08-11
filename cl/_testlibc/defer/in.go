@@ -160,54 +160,60 @@ func main() {
 // CHECK-NEXT:   store ptr %49, ptr %12, align 8
 // CHECK-NEXT:   %50 = extractvalue { ptr, i64, ptr } %48, 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %47)
-// CHECK-NEXT:   %51 = call i32 (ptr, ...) @printf(ptr %50)
+// CHECK-NEXT:   %51 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @printf)
+// CHECK-NEXT:   %52 = call i32 (ptr, ...) @printf(ptr %50)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %51)
 // CHECK-NEXT:   br label %_llgo_13
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_13:                                         ; preds = %_llgo_12, %_llgo_6
 // CHECK-NEXT:   br label %_llgo_11
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_14:                                         ; preds = %_llgo_11
-// CHECK-NEXT:   %52 = load ptr, ptr %12, align 8
-// CHECK-NEXT:   %53 = icmp ne ptr %52, null
-// CHECK-NEXT:   br i1 %53, label %_llgo_16, label %_llgo_17
+// CHECK-NEXT:   %53 = load ptr, ptr %12, align 8
+// CHECK-NEXT:   %54 = icmp ne ptr %53, null
+// CHECK-NEXT:   br i1 %54, label %_llgo_16, label %_llgo_17
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_15:                                         ; preds = %_llgo_17, %_llgo_11
 // CHECK-NEXT:   br label %_llgo_10
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_16:                                         ; preds = %_llgo_14
-// CHECK-NEXT:   %54 = load ptr, ptr %12, align 8
-// CHECK-NEXT:   %55 = load { ptr, i64, ptr }, ptr %54, align 8
-// CHECK-NEXT:   %56 = extractvalue { ptr, i64, ptr } %55, 0
-// CHECK-NEXT:   store ptr %56, ptr %12, align 8
-// CHECK-NEXT:   %57 = extractvalue { ptr, i64, ptr } %55, 2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %54)
-// CHECK-NEXT:   %58 = call i32 (ptr, ...) @printf(ptr %57)
+// CHECK-NEXT:   %55 = load ptr, ptr %12, align 8
+// CHECK-NEXT:   %56 = load { ptr, i64, ptr }, ptr %55, align 8
+// CHECK-NEXT:   %57 = extractvalue { ptr, i64, ptr } %56, 0
+// CHECK-NEXT:   store ptr %57, ptr %12, align 8
+// CHECK-NEXT:   %58 = extractvalue { ptr, i64, ptr } %56, 2
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %55)
+// CHECK-NEXT:   %59 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @printf)
+// CHECK-NEXT:   %60 = call i32 (ptr, ...) @printf(ptr %58)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %59)
 // CHECK-NEXT:   br label %_llgo_17
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_17:                                         ; preds = %_llgo_16, %_llgo_14
 // CHECK-NEXT:   br label %_llgo_15
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_18:                                         ; preds = %_llgo_10
-// CHECK-NEXT:   %59 = load ptr, ptr %12, align 8
-// CHECK-NEXT:   %60 = icmp ne ptr %59, null
-// CHECK-NEXT:   br i1 %60, label %_llgo_20, label %_llgo_21
+// CHECK-NEXT:   %61 = load ptr, ptr %12, align 8
+// CHECK-NEXT:   %62 = icmp ne ptr %61, null
+// CHECK-NEXT:   br i1 %62, label %_llgo_20, label %_llgo_21
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_19:                                         ; preds = %_llgo_21, %_llgo_10
-// CHECK-NEXT:   %61 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %4, align 8
-// CHECK-NEXT:   %62 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %61, 2
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %62)
-// CHECK-NEXT:   %63 = load ptr, ptr %11, align 8
-// CHECK-NEXT:   indirectbr ptr %63, [label %_llgo_7, label %_llgo_9]
+// CHECK-NEXT:   %63 = load %"{{.*}}/runtime/internal/runtime.Defer", ptr %4, align 8
+// CHECK-NEXT:   %64 = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %63, 2
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %64)
+// CHECK-NEXT:   %65 = load ptr, ptr %11, align 8
+// CHECK-NEXT:   indirectbr ptr %65, [label %_llgo_7, label %_llgo_9]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_20:                                         ; preds = %_llgo_18
-// CHECK-NEXT:   %64 = load ptr, ptr %12, align 8
-// CHECK-NEXT:   %65 = load { ptr, i64, ptr, ptr }, ptr %64, align 8
-// CHECK-NEXT:   %66 = extractvalue { ptr, i64, ptr, ptr } %65, 0
-// CHECK-NEXT:   store ptr %66, ptr %12, align 8
-// CHECK-NEXT:   %67 = extractvalue { ptr, i64, ptr, ptr } %65, 2
-// CHECK-NEXT:   %68 = extractvalue { ptr, i64, ptr, ptr } %65, 3
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %64)
-// CHECK-NEXT:   %69 = call i32 (ptr, ...) @printf(ptr %67, ptr %68)
+// CHECK-NEXT:   %66 = load ptr, ptr %12, align 8
+// CHECK-NEXT:   %67 = load { ptr, i64, ptr, ptr }, ptr %66, align 8
+// CHECK-NEXT:   %68 = extractvalue { ptr, i64, ptr, ptr } %67, 0
+// CHECK-NEXT:   store ptr %68, ptr %12, align 8
+// CHECK-NEXT:   %69 = extractvalue { ptr, i64, ptr, ptr } %67, 2
+// CHECK-NEXT:   %70 = extractvalue { ptr, i64, ptr, ptr } %67, 3
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.FreeDeferNode"(ptr %66)
+// CHECK-NEXT:   %71 = call %"{{.*}}/runtime/internal/runtime.recoverState" @"{{.*}}/runtime/internal/runtime.StartRecoverFrame"(ptr @printf)
+// CHECK-NEXT:   %72 = call i32 (ptr, ...) @printf(ptr %69, ptr %70)
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.EndRecoverFrame"(%"{{.*}}/runtime/internal/runtime.recoverState" %71)
 // CHECK-NEXT:   br label %_llgo_21
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_21:                                         ; preds = %_llgo_20, %_llgo_18

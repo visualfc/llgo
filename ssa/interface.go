@@ -394,18 +394,11 @@ func (b Builder) TypeAssert(x Expr, assertedTyp Type, commaOk bool) Expr {
 	} else {
 		source = b.Prog.Nil(b.Prog.AbiTypePtr())
 	}
-	b.Call(b.Pkg.rtFunc("PanicTypeAssert"), source, tx, tabi, b.Str(typeAssertMissingMethod(assertedTyp)))
+	b.Call(b.Pkg.rtFunc("PanicTypeAssert"), source, tx, tabi)
 	b.Unreachable()
 	b.SetBlockEx(blks[0], AtEnd, false)
 	b.blk.last = blks[0].last
 	return val()
-}
-
-func typeAssertMissingMethod(assertedTyp Type) string {
-	if rawIntf, ok := assertedTyp.RawType().Underlying().(*types.Interface); ok && rawIntf.NumMethods() > 0 {
-		return rawIntf.Method(0).Name()
-	}
-	return ""
 }
 
 // ChangeInterface constructs a value of one interface type from a

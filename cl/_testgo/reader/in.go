@@ -697,7 +697,7 @@ func main() {
 // CHECK-NEXT:   ret { i64, %"{{.*}}/runtime/internal/runtime.iface" } %23
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_2:                                          ; preds = %_llgo_0
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.Reader, ptr %5, ptr @_llgo_main.WriterTo, %"{{.*}}/runtime/internal/runtime.String" { ptr @2, i64 7 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @_llgo_main.Reader, ptr %5, ptr @_llgo_main.WriterTo)
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

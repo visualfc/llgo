@@ -973,27 +973,29 @@ func runtimeCallerFuncSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function
 	return out
 }
 
-// CallerTracking memoizes the per-package caller-tracking sets for one
-// compilation. Like Patches, it is compilation-scoped state owned by the
-// driver: create one per compilation and pass it to every
-// NewPackageExWithEmbed call of that compilation, so cross-package
-// queries (criterion 2 below) hit the memoization. It must not outlive
-// the compilation — the maps are keyed by *ssa.Package with
-// *ssa.Function values, so anything longer-lived would pin every
+// CallerTracking memoizes frontend analyses for one compilation. Like Patches,
+// it is compilation-scoped state owned by the driver: create one per
+// compilation and pass it to every NewPackageExWithEmbed call of that
+// compilation, so cross-package queries hit the same caller-tracking and
+// recover facts. It must not outlive the compilation — the caches are keyed by
+// *ssa.Package and *ssa.Function, so anything longer-lived would pin every
 // compiled package's go/types and go/ssa graphs. Concurrent drivers call
-// Precompute before workers start and then share the plain maps read-only.
+// Precompute before workers start; recover facts also synchronize lazy queries
+// for nested and synthetic functions that are not package members.
 type CallerTracking struct {
 	base     map[*ssa.Package]map[*ssa.Function]bool
 	extended map[*ssa.Package]map[*ssa.Function]bool
+	recover  *recoverFacts
 }
 
-// Precompute resolves caller-tracking data before package backends start.
-// Once it returns, callers may share c for concurrent read-only lookups as long
-// as pkgs contains every package that can be passed to this compilation.
+// Precompute resolves caller-tracking and recover data before package backends
+// start. Once it returns, callers may share c for concurrent lookups as long as
+// pkgs contains every package that can be passed to this compilation.
 func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 	if c == nil {
 		return
 	}
+	c.recoverAnalysis().precompute(pkgs)
 	for _, pkg := range pkgs {
 		if pkg != nil {
 			runtimeCallerBaseSet(c, pkg)
@@ -1006,12 +1008,12 @@ func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 	}
 }
 
-// NewCallerTracking creates the caller-tracking memoization for one
-// compilation.
+// NewCallerTracking creates the frontend-analysis caches for one compilation.
 func NewCallerTracking() *CallerTracking {
 	return &CallerTracking{
 		base:     make(map[*ssa.Package]map[*ssa.Function]bool),
 		extended: make(map[*ssa.Package]map[*ssa.Function]bool),
+		recover:  newRecoverFacts(),
 	}
 }
 
@@ -1827,10 +1829,10 @@ func (p *context) callMayRecover(v ssa.Value) bool {
 	case *ssa.Builtin:
 		return false
 	case *ssa.Function:
-		return functionMayRecover(v)
+		return p.needsRecoverScope(v)
 	case *ssa.MakeClosure:
 		if fn, ok := v.Fn.(*ssa.Function); ok {
-			return functionMayRecover(fn)
+			return p.needsRecoverScope(fn)
 		}
 		return true
 	case *ssa.Call:

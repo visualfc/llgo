@@ -173,7 +173,7 @@ func main() {
 // CHECK-NEXT:   br i1 %42, label %_llgo_10, label %_llgo_9
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_12:                                         ; preds = %_llgo_8
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %33, ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", %"{{.*}}/runtime/internal/runtime.String" { ptr @6, i64 5 })
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicTypeAssert"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr %33, ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}")
 // CHECK-NEXT:   unreachable
 // CHECK-NEXT: }
 

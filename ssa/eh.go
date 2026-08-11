@@ -639,9 +639,10 @@ func deferMayRecover(fn Expr) bool {
 		return false
 	}
 	switch fn.kind {
-	case vkClosure, vkFuncDecl:
-		return fn.mayRecover()
-	case vkIfaceMethod, vkFuncPtr:
+	case vkClosure, vkFuncDecl, vkIfaceMethod, vkFuncPtr:
+		// The lower-level Builder API has no Go SSA or compilation-wide
+		// analysis cache. Conservatively scope every callable value; the Go
+		// frontend uses DeferRecover/DeferToRecover with its precise result.
 		return true
 	}
 	return false

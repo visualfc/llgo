@@ -208,7 +208,8 @@ func findStaticCall(t *testing.T, fn *gossa.Function, name string) *gossa.Call {
 }
 
 func TestRecoverCallClassificationHelpers(t *testing.T) {
-	if functionUsesRecover(nil) {
+	ctx := &context{}
+	if ctx.functionUsesRecover(nil) {
 		t.Fatal("nil function should not report recover use")
 	}
 
@@ -223,12 +224,10 @@ func plain() {}
 `)
 	usesRecover := ssaPkg.Members["usesRecover"].(*gossa.Function)
 	plain := ssaPkg.Members["plain"].(*gossa.Function)
-	ctx := &context{}
-
-	if !functionUsesRecover(usesRecover) {
+	if !ctx.functionUsesRecover(usesRecover) {
 		t.Fatal("usesRecover should report direct recover use")
 	}
-	if functionUsesRecover(plain) {
+	if ctx.functionUsesRecover(plain) {
 		t.Fatal("plain should not report recover use")
 	}
 	if !ctx.callMayRecover(usesRecover) {
@@ -245,6 +244,9 @@ func plain() {}
 	}
 	if !ctx.callMayRecover(nil) {
 		t.Fatal("unknown call value should conservatively be recover-capable")
+	}
+	if !ctx.callMayRecover(&gossa.Function{}) {
+		t.Fatal("bodyless function should conservatively be recover-capable")
 	}
 }
 

@@ -207,6 +207,7 @@ type context struct {
 	linkOnceFns          map[*ssa.Function]none
 	stackDefers          map[*ssa.Function]bool
 	anonDefers           map[*ssa.Function]bool
+	recoverFacts         *recoverFacts
 	debugDIVars          map[*types.Var]llssa.DIVar
 	debugAllocVars       map[*ssa.Alloc]*types.Var
 	runtimeCallerFuncs   map[*ssa.Function]bool
@@ -659,15 +660,12 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 	noInlineDirective := hasNoInlineDirective(f)
 	runtimeStackNoInline := needsRuntimeStackNoInline(pkgTypes, f)
 	pcLineNoInline := p.needsPCLineNoInline(f)
-	usesRecover := functionUsesRecover(f)
+	usesRecover := p.functionUsesRecover(f)
 	if disableInline || noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
 		fn.Inline(llssa.NoInline)
 	}
 	if noInlineDirective || runtimeStackNoInline || pcLineNoInline || usesRecover {
 		fn.DisableTailCalls()
-	}
-	if functionMayRecover(f) {
-		fn.Expr = fn.Expr.MarkMayRecover()
 	}
 	p.funcs[f] = fn
 	isCgo := isCgoExternSymbol(f)
@@ -951,7 +949,7 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 	var instrs = block.Instrs[n:]
 	var ret = fn.Block(block.Index)
 	b.SetBlock(ret)
-	if block.Index == 0 && functionUsesRecover(block.Parent()) {
+	if block.Index == 0 && p.functionUsesRecover(block.Parent()) {
 		b.BindRecoverFrame()
 	}
 	if block.Index == 0 {
@@ -1946,71 +1944,6 @@ func (p *context) getLocalVariable(b llssa.Builder, fn *ssa.Function, v *types.V
 	return div
 }
 
-func functionUsesRecover(fn *ssa.Function) bool {
-	if fn == nil {
-		return false
-	}
-	for _, block := range fn.Blocks {
-		for _, instr := range block.Instrs {
-			call, ok := instr.(ssa.CallInstruction)
-			if !ok {
-				continue
-			}
-			builtin, ok := call.Common().Value.(*ssa.Builtin)
-			if ok && builtin.Name() == "recover" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func isRecoverTransparentWrapper(fn *ssa.Function) bool {
-	if fn == nil {
-		return false
-	}
-	// These are the Go SSA forms of compiler-generated forwarding frames.
-	// Treating them as transparent mirrors the standard runtime's
-	// abi.FuncIDWrapper rule in gorecover.
-	return strings.HasPrefix(fn.Synthetic, "wrapper for ") ||
-		strings.HasPrefix(fn.Synthetic, "thunk for ") ||
-		strings.HasPrefix(fn.Synthetic, "bound method wrapper for ")
-}
-
-func functionMayRecover(fn *ssa.Function) bool {
-	return functionMayRecoverSeen(fn, make(map[*ssa.Function]bool))
-}
-
-func functionMayRecoverSeen(fn *ssa.Function, seen map[*ssa.Function]bool) bool {
-	if fn == nil || seen[fn] {
-		return false
-	}
-	seen[fn] = true
-	if functionUsesRecover(fn) {
-		return true
-	}
-	if !isRecoverTransparentWrapper(fn) {
-		return false
-	}
-	for _, block := range fn.Blocks {
-		for _, instr := range block.Instrs {
-			call, ok := instr.(ssa.CallInstruction)
-			if !ok {
-				continue
-			}
-			common := call.Common()
-			if common.Method != nil {
-				// An interface wrapper can dispatch to a recover-capable method.
-				return true
-			}
-			if functionMayRecoverSeen(common.StaticCallee(), seen) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func (p *context) compileFunction(v *ssa.Function) (goFn llssa.Function, pyFn llssa.PyObjRef, kind int) {
 	// TODO(xsw) v.Pkg == nil: means auto generated function?
 	if v.Pkg == p.goPkg || v.Pkg == nil {
@@ -2384,6 +2317,7 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 		vargs:            make(map[*ssa.Alloc][]llssa.Expr),
 		funcs:            make(map[*ssa.Function]llssa.Function),
 		linkOnceFns:      make(map[*ssa.Function]none),
+		recoverFacts:     ct.recoverAnalysis(),
 		addrOfFieldAddrs: collectAddrOfFieldSelectors(files),
 		loaded: map[*types.Package]*pkgInfo{
 			types.Unsafe: {kind: PkgDeclOnly}, // TODO(xsw): PkgNoInit or PkgDeclOnly?

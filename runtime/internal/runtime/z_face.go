@@ -258,18 +258,17 @@ func identicalFuncType(T, V *abi.Type) bool {
 	return true
 }
 
-// Implements reports whether the type V implements the interface type T.
-func Implements(T, V *abi.Type) bool {
-	if V == nil {
-		return false
-	}
-	if T.Kind() != abi.Interface {
-		return false
+func missingInterfaceMethod(T, V *abi.Type) string {
+	if T == nil || T.Kind() != abi.Interface {
+		return ""
 	}
 	t := (*abi.InterfaceType)(unsafe.Pointer(T))
 
 	if len(t.Methods) == 0 {
-		return true
+		return ""
+	}
+	if V == nil {
+		return t.Methods[0].Name()
 	}
 
 	// The same algorithm applies in both cases, but the
@@ -292,16 +291,16 @@ func Implements(T, V *abi.Type) bool {
 			vm := &v.Methods[j]
 			if vm.Name_ == tm.Name_ && vm.Typ_ == tm.Typ_ {
 				if i++; i >= len(t.Methods) {
-					return true
+					return ""
 				}
 			}
 		}
-		return false
+		return t.Methods[i].Name()
 	}
 
 	v := V.Uncommon()
 	if v == nil {
-		return false
+		return t.Methods[0].Name()
 	}
 	i := 0
 	vmethods := v.Methods()
@@ -310,11 +309,16 @@ func Implements(T, V *abi.Type) bool {
 		vm := vmethods[j]
 		if vm.Name_ == tm.Name_ && vm.Mtyp_ == tm.Typ_ {
 			if i++; i >= len(t.Methods) {
-				return true
+				return ""
 			}
 		}
 	}
-	return false
+	return t.Methods[i].Name()
+}
+
+// Implements reports whether the type V implements the interface type T.
+func Implements(T, V *abi.Type) bool {
+	return T != nil && V != nil && T.Kind() == abi.Interface && missingInterfaceMethod(T, V) == ""
 }
 
 func EfaceEqual(v, u eface) bool {
@@ -401,7 +405,11 @@ func getitab(inter *interfacetype, typ *_type, canfail bool) *itab {
 	if canfail {
 		return nil
 	}
-	panic(&TypeAssertionError{concrete: typ, asserted: &inter.Type, missingMethod: ""})
+	panic(&TypeAssertionError{
+		concrete:      typ,
+		asserted:      &inter.Type,
+		missingMethod: missingInterfaceMethod(&inter.Type, typ),
+	})
 }
 
 // -----------------------------------------------------------------------------

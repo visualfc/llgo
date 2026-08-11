@@ -4,40 +4,9 @@ package ssa
 
 import (
 	"go/types"
+	"strings"
 	"testing"
 )
-
-func TestRecoverMetadataHandlesNonFunctions(t *testing.T) {
-	prog := NewProgram(nil)
-	values := []Expr{
-		Nil,
-		{Type: prog.Int()},
-		prog.Val(1),
-	}
-	for i, value := range values {
-		if got := value.MarkMayRecover(); got.Type != value.Type {
-			t.Fatalf("value %d: MarkMayRecover changed the expression type", i)
-		}
-		if value.mayRecover() {
-			t.Fatalf("value %d: non-function marked as recover-capable", i)
-		}
-	}
-
-	pkg := prog.NewPackage("p", "example.com/p")
-	fn := pkg.NewFunc("recovering", NoArgsNoRet, InGo)
-	if fn.Expr.mayRecover() {
-		t.Fatal("new function unexpectedly marked as recover-capable")
-	}
-	fn.Expr.MarkMayRecover()
-	if !fn.Expr.mayRecover() {
-		t.Fatal("marked function is not recover-capable")
-	}
-	// Marking a function twice must preserve the existing attribute.
-	fn.Expr.MarkMayRecover()
-	if !fn.Expr.mayRecover() {
-		t.Fatal("re-marked function lost recover capability")
-	}
-}
 
 func TestRecoverDeferClassificationFallbacks(t *testing.T) {
 	prog := NewProgram(nil)
@@ -47,6 +16,7 @@ func TestRecoverDeferClassificationFallbacks(t *testing.T) {
 	b := caller.MakeBody(1)
 
 	fnPtr := b.ChangeType(prog.rawType(NoArgsNoRet), callee.Expr)
+	closure := b.MakeClosure(callee.Expr, nil)
 	ifaceMethod := Expr{Type: &aType{kind: vkIfaceMethod}}
 	ordinary := prog.Val(1)
 
@@ -57,7 +27,8 @@ func TestRecoverDeferClassificationFallbacks(t *testing.T) {
 	}{
 		{name: "nil", fn: Nil, want: false},
 		{name: "ordinary", fn: ordinary, want: false},
-		{name: "function declaration", fn: callee.Expr, want: false},
+		{name: "function declaration", fn: callee.Expr, want: true},
+		{name: "closure", fn: closure, want: true},
 		{name: "function pointer", fn: fnPtr, want: true},
 		{name: "interface method", fn: ifaceMethod, want: true},
 	} {
@@ -68,10 +39,6 @@ func TestRecoverDeferClassificationFallbacks(t *testing.T) {
 		})
 	}
 
-	callee.Expr.MarkMayRecover()
-	if !deferMayRecover(callee.Expr) {
-		t.Fatal("marked function declaration is not recover-capable")
-	}
 	if token := b.recoverDeferToken(fnPtr, false); token.IsNil() {
 		t.Fatal("function pointer did not produce a recover token")
 	}
@@ -95,4 +62,34 @@ func TestRecoverDeferClassificationFallbacks(t *testing.T) {
 
 	b.Return()
 	b.EndBuild()
+}
+
+func TestDefaultDeferConservativelyScopesRecoveringClosure(t *testing.T) {
+	prog := NewProgram(nil)
+	setTestRuntime(t, prog)
+	pkg := prog.NewPackage("p", "example.com/p")
+
+	callee := pkg.NewFunc("recovering", NoArgsNoRet, InGo)
+	cb := callee.MakeBody(1)
+	cb.BindRecoverFrame()
+	_ = cb.Recover()
+	cb.Return()
+	cb.EndBuild()
+
+	caller := pkg.NewFunc("caller", NoArgsNoRet, InGo)
+	b := caller.MakeBody(1)
+	caller.SetRecover(caller.MakeBlock())
+	closure := b.MakeClosure(callee.Expr, nil)
+	b.Defer(DeferAlways, closure, Builder.Call)
+	b.RunDefers()
+	b.Return()
+	b.EndBuild()
+
+	ir := pkg.String()
+	if !strings.Contains(ir, "StartRecoverFrame") {
+		t.Fatalf("default closure defer did not open a recover scope:\n%s", ir)
+	}
+	if strings.Contains(ir, "llgo.may-recover") {
+		t.Fatalf("recover classification leaked into an LLVM attribute:\n%s", ir)
+	}
 }

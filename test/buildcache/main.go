@@ -12,6 +12,15 @@ import (
 )
 
 func main() {
+	var recovered any
+	func() {
+		defer dep1.Recover(&recovered)
+		panic("cached recover")
+	}()
+	if recovered != "cached recover" {
+		panic("dependency recover failed after cache lookup")
+	}
+
 	c.Printf(c.Str("dep1.Add(1,2) = %d\n"), dep1.Add(1, 2))
 	c.Printf(c.Str("dep2.Double(1,2) = %d\n"), dep2.Double(1, 2))
 	c.Printf(c.Str("dep3.Triple(1,2) = %d\n"), dep3.Triple(1, 2))
