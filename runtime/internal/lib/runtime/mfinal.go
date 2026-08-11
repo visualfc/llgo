@@ -15,6 +15,8 @@ import (
 	"github.com/goplus/llgo/runtime/internal/clite/bdwgc"
 	psync "github.com/goplus/llgo/runtime/internal/clite/pthread/sync"
 	"github.com/goplus/llgo/runtime/internal/clite/sync/atomic"
+	"github.com/goplus/llgo/runtime/internal/ffi"
+	llruntime "github.com/goplus/llgo/runtime/internal/runtime"
 )
 
 type finalizerClosure struct {
@@ -111,9 +113,28 @@ func finalizerFuncType(t *abi.Type) *abi.FuncType {
 }
 
 func callFinalizer(fn any, ptr unsafe.Pointer) {
-	c := (*finalizerClosure)((*eface)(unsafe.Pointer(&fn)).data)
-	f := *(*func(unsafe.Pointer))(unsafe.Pointer(c))
-	f(ptr)
+	face := (*eface)(unsafe.Pointer(&fn))
+	ft := finalizerFuncType(face._type)
+	c := (*finalizerClosure)(face.data)
+
+	paramTypes := make([]*ffi.Type, 0, 2)
+	args := make([]unsafe.Pointer, 0, 2)
+	if c.env != nil && ffi.ClosureEnvExplicit {
+		paramTypes = append(paramTypes, ffi.TypePointer)
+		args = append(args, unsafe.Pointer(&c.env))
+	}
+	paramTypes = append(paramTypes, ffi.TypeOf(ft.In[0]))
+	args = append(args, unsafe.Pointer(&ptr))
+
+	sig, err := ffi.NewSignature(ffi.ReturnTypeOf(ft.Out), paramTypes...)
+	if err != nil {
+		panic(err)
+	}
+	var ret unsafe.Pointer
+	if sig.RType != ffi.TypeVoid {
+		ret = llruntime.AllocZ(sig.RType.Size)
+	}
+	ffi.CallWithEnv(sig, c.fn, c.env, ret, args...)
 }
 
 func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
