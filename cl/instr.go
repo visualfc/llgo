@@ -1009,6 +1009,32 @@ func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs,
 	}
 	queue := make([]*ssa.Function, 0)
 	seen := make(map[*ssa.Function]bool)
+	type signatureCandidates struct {
+		signature  *types.Signature
+		candidates []*ssa.Function
+	}
+	candidatesBySignature := make(map[string][]signatureCandidates)
+	compatibleCandidates := func(signature *types.Signature) []*ssa.Function {
+		key := types.TypeString(signature, func(pkg *types.Package) string {
+			return pkg.Path()
+		})
+		for _, cached := range candidatesBySignature[key] {
+			if types.Identical(signature, cached.signature) {
+				return cached.candidates
+			}
+		}
+		candidates := make([]*ssa.Function, 0)
+		for candidate := range trackable {
+			if types.Identical(signature, candidate.Signature) {
+				candidates = append(candidates, candidate)
+			}
+		}
+		candidatesBySignature[key] = append(candidatesBySignature[key], signatureCandidates{
+			signature:  signature,
+			candidates: candidates,
+		})
+		return candidates
+	}
 	add := func(fn *ssa.Function) {
 		if !trackable[fn] || seen[fn] {
 			return
@@ -1054,10 +1080,8 @@ func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs,
 					// The call can target any same-package function compatible
 					// with the value. Retaining the package-local candidates is
 					// conservative; cross-package callees keep their own policy.
-					for candidate := range trackable {
-						if types.Identical(callInstr.Call.Signature(), candidate.Signature) {
-							add(candidate)
-						}
+					for _, candidate := range compatibleCandidates(callInstr.Call.Signature()) {
+						add(candidate)
 					}
 					continue
 				}

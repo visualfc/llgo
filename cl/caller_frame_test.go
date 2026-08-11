@@ -296,6 +296,7 @@ func dynamicLeaf() {}
 func unresolvedOwner(fn func(int)) {
 	defer inspect()
 	fn(1)
+	fn(2)
 }
 func unresolvedCandidate(int) {}
 func unresolvedWrong(string) {}
