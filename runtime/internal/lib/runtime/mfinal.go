@@ -123,10 +123,12 @@ func callFinalizer(fn any, ptr unsafe.Pointer) {
 		paramTypes = append(paramTypes, ffi.TypePointer)
 		args = append(args, unsafe.Pointer(&c.env))
 	}
-	paramTypes = append(paramTypes, ffi.TypeOf(ft.In[0]))
+	// SetFinalizer currently requires the finalizer argument to have the
+	// object's pointer type exactly.
+	paramTypes = append(paramTypes, ffi.TypePointer)
 	args = append(args, unsafe.Pointer(&ptr))
 
-	sig, err := ffi.NewSignature(ffi.ReturnTypeOf(ft.Out), paramTypes...)
+	sig, err := ffi.NewSignature(finalizerFFIReturnType(ft.Out), paramTypes...)
 	if err != nil {
 		panic(err)
 	}
