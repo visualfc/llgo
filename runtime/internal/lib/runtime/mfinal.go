@@ -28,7 +28,6 @@ type finalizerEntry struct {
 	fn          any
 	sig         *ffi.Signature // retains the conservatively allocated return-type graph
 	argTypes    []*ffi.Type    // owns the backing storage referenced by sig.ArgTypes
-	explicitEnv bool
 	retSize     uintptr
 	obj         unsafe.Pointer
 	key         uintptr
@@ -36,6 +35,7 @@ type finalizerEntry struct {
 	prevFn      bdwgc.FinalizerFunc
 	prevCb      unsafe.Pointer
 	stop        int32
+	explicitEnv bool
 }
 
 var finalizerState struct {
