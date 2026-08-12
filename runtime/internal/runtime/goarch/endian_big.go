@@ -3,5 +3,5 @@
 
 package goarch
 
-const BigEndian = false
-const LittleEndian = true
+const BigEndian = true
+const LittleEndian = false
