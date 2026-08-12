@@ -1,8 +1,12 @@
 // LITTEST
 package main
 
-// CHECK-DAG: %"{{.*}}internal[{{.*}},int,int;{{.*}},int,int]" = type { ptr, ptr }
-// CHECK-DAG: %"{{.*}}internal[{{.*}},string,string;{{.*}},string,string]" = type { ptr, ptr }
+// CHECK-LABEL: define linkonce { ptr, ptr } @"{{.*}}Y[{{.*}}int,int]"(
+// CHECK: call { ptr, ptr } %{{.*}}(ptr {{(nest|swiftself)}} %{{.*}}, [[INT_INTERNAL:%"[^"]+"]] %{{.*}})
+// CHECK: define linkonce { ptr, ptr } @"{{.*}}Y$1[{{.*}}int,int]"(ptr {{(nest|swiftself)}} %{{.*}}, [[INT_INTERNAL]] %{{.*}})
+// CHECK-LABEL: define linkonce { ptr, ptr } @"{{.*}}Y[{{.*}}string,string]"(
+// CHECK: call { ptr, ptr } %{{.*}}(ptr {{(nest|swiftself)}} %{{.*}}, [[STRING_INTERNAL:%"[^"]+"]] %{{.*}})
+// CHECK: define linkonce { ptr, ptr } @"{{.*}}Y$1[{{.*}}string,string]"(ptr {{(nest|swiftself)}} %{{.*}}, [[STRING_INTERNAL]] %{{.*}})
 
 func Y[Endo ~func(RecFct) RecFct, RecFct ~func(T) R, T, R any](f Endo) RecFct {
 	type internal[RecFct ~func(T) R, T, R any] func(internal[RecFct, T, R]) RecFct
