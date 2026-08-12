@@ -450,11 +450,11 @@ func (m *Map) getWithKeySmall(typ *abi.SwissMapType, hash uintptr, key unsafe.Po
 		data: m.dirPtr,
 	}
 
-	want := ctrl(h2(hash))
-	for i := uintptr(0); i < abi.MapGroupSlots; i++ {
-		if g.ctrls().get(i) != want {
-			continue
-		}
+	match := g.ctrls().matchH2(h2(hash))
+
+	for match != 0 {
+		i := match.first()
+
 		slotKey := g.key(typ, i)
 		if typ.IndirectKey() {
 			slotKey = *((*unsafe.Pointer)(slotKey))
@@ -467,6 +467,8 @@ func (m *Map) getWithKeySmall(typ *abi.SwissMapType, hash uintptr, key unsafe.Po
 			}
 			return slotKey, slotElem, true
 		}
+
+		match = match.removeFirst()
 	}
 
 	// No match here means key is not in the map.
@@ -538,12 +540,12 @@ func (m *Map) putSlotSmall(typ *abi.SwissMapType, hash uintptr, key unsafe.Point
 		data: m.dirPtr,
 	}
 
+	match := g.ctrls().matchH2(h2(hash))
+
 	// Look for an existing slot containing this key.
-	want := ctrl(h2(hash))
-	for i := uintptr(0); i < abi.MapGroupSlots; i++ {
-		if g.ctrls().get(i) != want {
-			continue
-		}
+	for match != 0 {
+		i := match.first()
+
 		slotKey := g.key(typ, i)
 		if typ.IndirectKey() {
 			slotKey = *((*unsafe.Pointer)(slotKey))
@@ -560,22 +562,19 @@ func (m *Map) putSlotSmall(typ *abi.SwissMapType, hash uintptr, key unsafe.Point
 
 			return slotElem
 		}
+		match = match.removeFirst()
 	}
 
 	// There can't be deleted slots, small maps can't have them
 	// (see deleteSmall). Use matchEmptyOrDeleted as it is a bit
 	// more efficient than matchEmpty.
-	i := uintptr(abi.MapGroupSlots)
-	for j := uintptr(0); j < abi.MapGroupSlots; j++ {
-		if g.ctrls().get(j)&ctrlEmpty != 0 {
-			i = j
-			break
-		}
-	}
-	if i == abi.MapGroupSlots {
+	match = g.ctrls().matchEmptyOrDeleted()
+	if match == 0 {
 		fatal("small map with no empty slot (concurrent map writes?)")
 		return nil
 	}
+
+	i := match.first()
 
 	slotKey := g.key(typ, i)
 	if typ.IndirectKey() {
@@ -692,11 +691,10 @@ func (m *Map) deleteSmall(typ *abi.SwissMapType, hash uintptr, key unsafe.Pointe
 		data: m.dirPtr,
 	}
 
-	want := ctrl(h2(hash))
-	for i := uintptr(0); i < abi.MapGroupSlots; i++ {
-		if g.ctrls().get(i) != want {
-			continue
-		}
+	match := g.ctrls().matchH2(h2(hash))
+
+	for match != 0 {
+		i := match.first()
 		slotKey := g.key(typ, i)
 		origSlotKey := slotKey
 		if typ.IndirectKey() {
@@ -731,6 +729,7 @@ func (m *Map) deleteSmall(typ *abi.SwissMapType, hash uintptr, key unsafe.Pointe
 			g.ctrls().set(i, ctrlEmpty)
 			return
 		}
+		match = match.removeFirst()
 	}
 }
 

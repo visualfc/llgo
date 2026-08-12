@@ -4,6 +4,6 @@
 package goarch
 
 const (
-	BigEndian    = false
-	LittleEndian = true
+	BigEndian    = true
+	LittleEndian = false
 )
