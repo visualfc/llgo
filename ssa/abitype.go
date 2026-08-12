@@ -291,21 +291,35 @@ func (b Builder) abiExtendedFields(t types.Type, name string, global llvm.Value)
 			prog.IntVal(uint64(t.Len()), prog.Uintptr()).impl,
 		}
 	case *types.Map:
-		bucket := prog.abi.MapBucket(t)
-		flags := prog.abi.MapFlags(t)
 		hash := b.Pkg.rtEnvFunc("typehash")
 		b.Pkg.recordAbiTypeFakeUse(global, hash.impl)
 		env := b.abiType(t.Key())
 		hasher := b.aggregateValue(prog.Type(hashFunc, InGo), hash.impl, env.impl)
-		fields = []llvm.Value{
-			b.abiType(abi.PublicType(t.Key())).impl,
-			b.abiType(abi.PublicType(t.Elem())).impl,
-			b.abiType(bucket).impl,
-			hasher.impl,
-			prog.IntVal(uint64(prog.abi.Size(t.Key())), prog.Byte()).impl,
-			prog.IntVal(uint64(prog.abi.Size(t.Elem())), prog.Byte()).impl,
-			prog.IntVal(uint64(prog.abi.Size(bucket)), prog.Uint16()).impl,
-			prog.IntVal(uint64(flags), prog.Uint32()).impl,
+		if prog.swissMapABI() {
+			group := abi.SwissMapGroupType(t, prog.abi.Sizes)
+			slotSize, elemOff := abi.SwissMapSlotLayout(group, prog.abi.Sizes)
+			fields = []llvm.Value{
+				b.abiType(abi.PublicType(t.Key())).impl,
+				b.abiType(abi.PublicType(t.Elem())).impl,
+				b.abiType(group).impl,
+				hasher.impl,
+				prog.IntVal(uint64(prog.abi.Size(group)), prog.Uintptr()).impl,
+				prog.IntVal(uint64(slotSize), prog.Uintptr()).impl,
+				prog.IntVal(uint64(elemOff), prog.Uintptr()).impl,
+				prog.IntVal(uint64(abi.SwissMapTypeFlags(t, prog.abi.Sizes)), prog.Uint32()).impl,
+			}
+		} else {
+			bucket := prog.abi.MapBucket(t)
+			fields = []llvm.Value{
+				b.abiType(abi.PublicType(t.Key())).impl,
+				b.abiType(abi.PublicType(t.Elem())).impl,
+				b.abiType(bucket).impl,
+				hasher.impl,
+				prog.IntVal(uint64(prog.abi.Size(t.Key())), prog.Byte()).impl,
+				prog.IntVal(uint64(prog.abi.Size(t.Elem())), prog.Byte()).impl,
+				prog.IntVal(uint64(prog.abi.Size(bucket)), prog.Uint16()).impl,
+				prog.IntVal(uint64(prog.abi.MapFlags(t)), prog.Uint32()).impl,
+			}
 		}
 	case *types.Signature:
 		name, _ := prog.abi.TypeName(t)

@@ -523,6 +523,19 @@ func (p Program) rtNamed(name string) *types.Named {
 	panic(fmt.Errorf("runtime type (%s) not found, install from pre-built package or set LLGO_ROOT", name))
 }
 
+func (p Program) swissMapABI() bool {
+	st, ok := p.rtNamed("maptype").Underlying().(*types.Struct)
+	if !ok {
+		return false
+	}
+	for i := 0; i < st.NumFields(); i++ {
+		if st.Field(i).Name() == "GroupSize" {
+			return true
+		}
+	}
+	return false
+}
+
 func (p Program) rtType(name string) Type {
 	return p.rawType(p.rtNamed(name))
 }
