@@ -1590,7 +1590,3 @@ xfails:
     directive: rundir
     case: fixedbugs/issue29919.go
     reason: runtime CallersFrames reports llgo package names and initialization line metadata differently
-  - version: go1.26
-    directive: rundir
-    case: fixedbugs/issue24693.go
-    reason: llgo constructs cross-package itabs incorrectly for unexported interface methods
