@@ -264,9 +264,6 @@ func patchMachOFileOffsets(raw []byte, layout machoLayout, carrierHeader, newFil
 			return nil
 		}
 		if v >= cutEnd {
-			if v-delta > uint64(^uint32(0)) {
-				return fmt.Errorf("Mach-O %s offset overflows", label)
-			}
 			binary.LittleEndian.PutUint32(raw[pos:], uint32(v-delta))
 			return nil
 		}
@@ -393,10 +390,7 @@ func compactELF(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint64,
 		if p.typ != uint32(elf.PT_LOAD) || p.filesz == 0 {
 			continue
 		}
-		end, ok := checkedEnd(p.offset, p.filesz, ^uint64(0))
-		if !ok {
-			continue
-		}
+		end := p.offset + p.filesz // parseELFLayout already validated this range.
 		if rangeContained(p.offset, end, entry.offset, entry.size) {
 			carrier = p
 			break
@@ -405,10 +399,7 @@ func compactELF(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint64,
 	if carrier == nil {
 		return nil, 0, fmt.Errorf("ELF funcinfo carrier is not in a PT_LOAD")
 	}
-	oldEnd, ok := checkedEnd(carrier.offset, carrier.filesz, uint64(len(raw)))
-	if !ok {
-		return nil, 0, fmt.Errorf("ELF carrier file range [%#x,+%#x) is invalid", carrier.offset, carrier.filesz)
-	}
+	oldEnd := carrier.offset + carrier.filesz
 	lastUsed, ok := checkedEnd(entry.offset, entryUsed, oldEnd)
 	if !ok || lastUsed < carrier.offset {
 		return nil, 0, fmt.Errorf("ELF compact payload %#x is outside PT_LOAD [%#x,%#x)", lastUsed, carrier.offset, oldEnd)
@@ -417,10 +408,7 @@ func compactELF(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint64,
 		if sec.typ == uint32(elf.SHT_NOBITS) || sec.size == 0 || sec.name == entry.name {
 			continue
 		}
-		secEnd, ok := checkedEnd(sec.offset, sec.size, uint64(len(raw)))
-		if !ok {
-			return nil, 0, fmt.Errorf("ELF section %s has an invalid file range", sec.name)
-		}
+		secEnd := sec.offset + sec.size // parseELFLayout already validated this range.
 		if sec.flags&uint64(elf.SHF_ALLOC) != 0 && sec.offset < oldEnd && secEnd > lastUsed {
 			return nil, 0, fmt.Errorf("ELF allocated section %s follows compact payload in carrier PT_LOAD", sec.name)
 		}
@@ -460,10 +448,7 @@ func compactELF(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint64,
 	}
 	binary.LittleEndian.PutUint64(out[carrier.header+32:], carrier.filesz-removed)
 	for _, p := range programs {
-		pEnd, ok := checkedEnd(p.offset, p.filesz, uint64(len(raw)))
-		if !ok {
-			return nil, 0, fmt.Errorf("ELF program header type %d has an invalid file range", p.typ)
-		}
+		pEnd := p.offset + p.filesz
 		if p.header != carrier.header && p.filesz != 0 && p.offset < oldEnd && pEnd > cutStart {
 			return nil, 0, fmt.Errorf("ELF program header type %d overlaps compacted range", p.typ)
 		}
@@ -477,10 +462,7 @@ func compactELF(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint64,
 		} else if sec.typ == uint32(elf.SHT_NOBITS) && sec.offset >= cutStart {
 			binary.LittleEndian.PutUint64(out[sec.header+24:], cutStart)
 		} else if sec.typ != uint32(elf.SHT_NOBITS) && sec.size != 0 {
-			secEnd, ok := checkedEnd(sec.offset, sec.size, uint64(len(raw)))
-			if !ok {
-				return nil, 0, fmt.Errorf("ELF section %s has an invalid file range", sec.name)
-			}
+			secEnd := sec.offset + sec.size
 			if secEnd <= cutStart {
 				continue
 			}

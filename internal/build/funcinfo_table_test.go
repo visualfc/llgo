@@ -136,6 +136,52 @@ func TestFuncInfoSiteLayoutArgs(t *testing.T) {
 	cleanup()
 }
 
+func TestFuncInfoSiteLayoutArgsEligibilityAndCreateFailure(t *testing.T) {
+	newContext := func() (*context, func()) {
+		prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+		prog.EnableFuncInfoSites(true)
+		return &context{prog: prog, buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "linux",
+			Goarch:    "amd64",
+		}}, prog.Dispose
+	}
+	tests := []struct {
+		name string
+		edit func(*context)
+	}{
+		{"nil context", func(*context) {}},
+		{"nil config", func(ctx *context) { ctx.buildConf = nil }},
+		{"cross target", func(ctx *context) { ctx.buildConf.Target = "wasm32-wasi" }},
+		{"non executable", func(ctx *context) { ctx.buildConf.BuildMode = BuildModeCArchive }},
+		{"sites disabled", func(ctx *context) { ctx.prog.EnableFuncInfoSites(false) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, dispose := newContext()
+			defer dispose()
+			if test.name == "nil context" {
+				ctx = nil
+			} else {
+				test.edit(ctx)
+			}
+			args, cleanup, err := funcInfoSiteLayoutArgs(ctx, filepath.Join(t.TempDir(), "app"))
+			defer cleanup()
+			if err != nil || len(args) != 0 {
+				t.Fatalf("layout args = %#v, %v", args, err)
+			}
+		})
+	}
+
+	ctx, dispose := newContext()
+	defer dispose()
+	missing := filepath.Join(t.TempDir(), "missing", "app")
+	if _, cleanup, err := funcInfoSiteLayoutArgs(ctx, missing); err == nil {
+		cleanup()
+		t.Fatal("layout script was created in a missing directory")
+	}
+}
+
 func TestFuncInfoTableMaterializesEntrySites(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	src := prog.NewPackage("example.com/p", "example.com/p")

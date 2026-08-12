@@ -185,15 +185,7 @@ func writeBack(path string, info *binaryInfo, kept []siteRecord) (ftabCount, buc
 	if err := replaceBinary(path, raw, info.format == ExternalFormatMachO && info.hasCodeSignature, verify); err != nil {
 		return 0, 0, 0, err
 	}
-	st, err := os.Stat(path)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	physicalRemoved := int64(len(info.raw)) - st.Size()
-	if physicalRemoved < 0 {
-		physicalRemoved = 0
-	}
-	return count, len(buckets) / bucketBytes, uint64(physicalRemoved), nil
+	return count, len(buckets) / bucketBytes, removed, nil
 }
 
 // metaRecordMagic marks the entry-section meta record ("LLGOMET1" LE); keep

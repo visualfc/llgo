@@ -403,3 +403,70 @@ func TestRewriteErrorPaths(t *testing.T) {
 		t.Fatal("expected no-survivors error")
 	}
 }
+
+func TestWriteBackRejectsInvalidInputs(t *testing.T) {
+	path := buildELF(t, fixtureFns(), fixtureEntry, 4096)
+	info, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := []siteRecord{{pc: info.textStart + 4, symbolID: fnv64("example.com/p.A")}}
+
+	t.Run("missing symbol index", func(t *testing.T) {
+		bad := *info
+		bad.entrySec = nil
+		if _, _, _, err := writeBack(path, &bad, kept); err == nil {
+			t.Fatal("writeBack accepted a missing symbol index")
+		}
+	})
+	t.Run("no resolvable rows", func(t *testing.T) {
+		records := []siteRecord{{pc: 0, symbolID: 1}, {pc: info.textStart + 4, symbolID: 0xdeadbeef}}
+		if _, _, _, err := writeBack(path, info, records); err == nil || !strings.Contains(err.Error(), "no resolvable") {
+			t.Fatalf("writeBack error = %v", err)
+		}
+	})
+	t.Run("table exceeds carrier", func(t *testing.T) {
+		bad := *info
+		bad.entryVMSize = 64
+		if _, _, _, err := writeBack(path, &bad, kept); err == nil || !strings.Contains(err.Error(), "prebuilt blob") {
+			t.Fatalf("writeBack error = %v", err)
+		}
+	})
+	t.Run("unsupported compaction format", func(t *testing.T) {
+		bad := *info
+		bad.format = "unknown"
+		if _, _, _, err := writeBack(path, &bad, kept); err == nil || !strings.Contains(err.Error(), "unsupported binary format") {
+			t.Fatalf("writeBack error = %v", err)
+		}
+	})
+}
+
+func TestWriteBackRejectsMachOWithoutFixupCarrier(t *testing.T) {
+	path := machoRewriteFixture(t, 65536)
+	info, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := *info
+	bad.raw = append([]byte(nil), info.raw...)
+	ncmds := binary.LittleEndian.Uint32(bad.raw[16:])
+	off := uint64(32)
+	found := false
+	for i := uint32(0); i < ncmds; i++ {
+		cmd := binary.LittleEndian.Uint32(bad.raw[off:])
+		cmdsz := uint64(binary.LittleEndian.Uint32(bad.raw[off+4:]))
+		if cmd == 0x80000034 { // LC_DYLD_CHAINED_FIXUPS
+			binary.LittleEndian.PutUint32(bad.raw[off:], 0x3) // offset-free LC_THREAD shape
+			found = true
+			break
+		}
+		off += cmdsz
+	}
+	if !found {
+		t.Fatal("fixture has no chained-fixups command")
+	}
+	kept := []siteRecord{{pc: info.textStart + 0x14, symbolID: fnv64("example.com/p.A")}}
+	if _, _, _, err := writeBack(path, &bad, kept); err == nil || !strings.Contains(err.Error(), "chained fixups") {
+		t.Fatalf("writeBack error = %v", err)
+	}
+}
