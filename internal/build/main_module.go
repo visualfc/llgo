@@ -274,9 +274,11 @@ type entryFunctions struct {
 // "main" for standard targets, or "__main_argc_argv" with hidden visibility
 // for WASM targets that don't require _start.
 //
-// The entry stores argc/argv, optionally disables stdio buffering, runs
-// initialization hooks (Python, runtime, package init), calls main.main,
-// finalizes Python if it was initialized, and returns 0.
+// The entry stores argc/argv, optionally disables stdio buffering, and manages
+// the local context. Native PCLN builds run the common startup sequence through
+// runtime.main; other builds run it inline. That sequence initializes Python,
+// the runtime stub/package, ABI types, and packages, calls main.main, and then
+// finalizes Python. The entry leaves the local context and returns 0.
 func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa.Global, argvType llssa.Type, fns entryFunctions) llssa.Function {
 	prog := pkg.Prog
 	entryName := processEntrySymbol
