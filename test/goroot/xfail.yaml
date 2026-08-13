@@ -1241,8 +1241,24 @@ flakes:
 xfails:
   - version: go1.26
     directive: errorcheck
+    case: fixedbugs/issue4776.go
+    reason: llgo parser uses a different missing-package-clause diagnostic
+  - version: go1.26
+    directive: errorcheck
     case: fixedbugs/issue4405.go
     reason: llgo parser recovery emits additional malformed-statement diagnostics
+  - version: go1.26
+    directive: errorcheck
+    case: fixedbugs/issue13266.go
+    reason: llgo parser uses a different malformed-package-clause diagnostic
+  - version: go1.26
+    directive: errorcheck
+    case: fixedbugs/issue20789.go
+    reason: llgo parser does not emit the expected malformed-name diagnostic
+  - version: go1.26
+    directive: errorcheck
+    case: fixedbugs/bug050.go
+    reason: llgo parser emits an additional malformed-declaration diagnostic
   - version: go1.26
     directive: errorcheck
     case: bombad.go
@@ -1255,14 +1271,6 @@ xfails:
     directive: run
     case: inline_caller.go
     reason: runtime caller frame reports main instead of runtime.main on linux/amd64
-  - platform: darwin/arm64
-    directive: run
-    case: nilptr2.go
-    reason: address-of a dereferenced nil pointer does not panic and the run hangs on darwin/arm64
-  - platform: linux/amd64
-    directive: run
-    case: nilptr2.go
-    reason: address-of a dereferenced nil pointer does not panic and the run hangs on linux/amd64
   - platform: linux/amd64
     directive: runoutput
     case: convinline.go
@@ -1390,10 +1398,6 @@ xfails:
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue38496.go
-    reason: current main goroot run failure on linux/amd64
-  - platform: linux/amd64
-    directive: run
-    case: nilptr.go
     reason: current main goroot run failure on linux/amd64
   - version: go1.26
     platform: darwin/arm64
