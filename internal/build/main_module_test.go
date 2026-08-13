@@ -43,12 +43,11 @@ func TestGenMainModuleExecutable(t *testing.T) {
 	}
 	ir := mod.LPkg.String()
 	checks := []string{
-		"define i32 @main(",
+		"define i32 @" + processEntrySymbol + "(",
 		"define void @runtime.main()",
-		`runtime\00goexit\00main`,
 		".pushsection llgo_funcinfo_entry",
 		".quad " + uint64Hex(funcInfoSymbolID(runtimeMainSymbol)),
-		".quad " + uint64Hex(funcInfoSymbolID("main")),
+		".quad " + uint64Hex(funcInfoSymbolID(processEntrySymbol)),
 		"call void @Py_Initialize()",
 		"call void @Py_Finalize()",
 		"call void @\"example.com/foo.init\"()",
@@ -58,6 +57,18 @@ func TestGenMainModuleExecutable(t *testing.T) {
 	for _, want := range checks {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("main module IR missing %q:\n%s", want, ir)
+		}
+	}
+	funcNames := make(map[string]string)
+	for _, rec := range readFuncInfo(mod.LPkg.Module()) {
+		funcNames[rec.symbol] = rec.name
+	}
+	for symbol, want := range map[string]string{
+		processEntrySymbol: runtimeGoexitName,
+		runtimeMainSymbol:  runtimeMainSymbol,
+	} {
+		if got := funcNames[symbol]; got != want {
+			t.Fatalf("funcinfo name for %q = %q, want %q", symbol, got, want)
 		}
 	}
 	assertInOrder(t, ir,

@@ -48,7 +48,11 @@ type genConfig struct {
 	pcLineInfo    []pcLineRecord
 }
 
-const runtimeMainSymbol = "runtime.main"
+const (
+	processEntrySymbol = "main"
+	runtimeMainSymbol  = "runtime.main"
+	runtimeGoexitName  = "runtime.goexit"
+)
 
 func needsRuntimeMainFrame(ctx *context) bool {
 	conf := ctx.buildConf
@@ -75,15 +79,17 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		// The native process entry is the physical frame below runtime.main,
 		// which is runtime.goexit in a Go traceback. Keep the required C symbol
 		// while giving both generated frames their logical Go names.
-		funcInfo = append(funcInfo,
-			funcInfoRecord{symbol: runtimeMainSymbol, name: runtimeMainSymbol},
-			funcInfoRecord{symbol: "main", name: "runtime.goexit"},
-		)
+		tailRecords := []funcInfoRecord{
+			{symbol: runtimeMainSymbol, name: runtimeMainSymbol},
+			{symbol: processEntrySymbol, name: runtimeGoexitName},
+		}
+		funcInfo = append(funcInfo, tailRecords...)
 		// Entry sites are emitted after these generated functions have bodies.
 		// Keep matching metadata in this module so the generic site emitter can
 		// attach the symbol IDs without adding a special PCLN path.
-		mainPkg.EmitFuncInfo(runtimeMainSymbol, runtimeMainSymbol, "", 0, 0)
-		mainPkg.EmitFuncInfo("main", "runtime.goexit", "", 0, 0)
+		for _, rec := range tailRecords {
+			mainPkg.EmitFuncInfo(rec.symbol, rec.name, "", 0, 0)
+		}
 	}
 	emitFuncInfoTable(ctx, mainPkg, funcInfo, cfg.pcLineInfo)
 
@@ -273,14 +279,14 @@ type entryFunctions struct {
 // finalizes Python if it was initialized, and returns 0.
 func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa.Global, argvType llssa.Type, fns entryFunctions) llssa.Function {
 	prog := pkg.Prog
-	entryName := "main"
+	entryName := processEntrySymbol
 	if !needStart(ctx) && isWasmTarget(ctx.buildConf.Goos) {
 		entryName = "__main_argc_argv"
 	}
 	sig := newEntrySignature(argvType.RawType())
 	fn := pkg.NewFunc(entryName, sig, llssa.InC)
 	fnVal := pkg.Module().NamedFunction(entryName)
-	if entryName != "main" {
+	if entryName != processEntrySymbol {
 		fnVal.SetVisibility(llvm.HiddenVisibility)
 		fnVal.SetUnnamedAddr(true)
 	}
