@@ -1004,6 +1004,22 @@ func lifted() (result int) { return }
 	}
 }
 
+func TestImplicitDeferResultSlotRejectsMissingSlot(t *testing.T) {
+	for _, ctx := range []*context{
+		{},
+		{implicitDeferResults: make([]llssa.Expr, 1)},
+	} {
+		func() {
+			defer func() {
+				if got := recover(); got != "missing implicit defer result slot 0" {
+					t.Fatalf("implicitDeferResultSlot panic = %v", got)
+				}
+			}()
+			ctx.implicitDeferResultSlot(0)
+		}()
+	}
+}
+
 func TestDeferStackOwnerUsesEnclosingSourceFunction(t *testing.T) {
 	const src = `package foo
 

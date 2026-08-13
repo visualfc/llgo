@@ -1820,16 +1820,17 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		if n := len(v.Results); n > 0 {
 			results = make([]llssa.Expr, n)
 			for i, r := range v.Results {
-				// A deferred call may change a named result independently of
-				// the SSA value in Return.Results. Reload the result's storage
-				// in the RunDefers continuation instead of depending on the
-				// particular SSA node used to form the return tuple.
+				// A deferred call may change a named result independently of the
+				// SSA value in Return.Results. An unnamed result, conversely,
+				// must retain its pre-defer SSA value even though that value may
+				// not dominate the shared RunDefers continuation. Reload either
+				// kind from its entry-block storage after RunDefers.
 				if runDefers {
 					if slot := p.namedResultSlot(i); slot != nil {
 						results[i] = b.Load(p.compileValue(b, slot))
 						continue
 					}
-					results[i] = b.Load(p.implicitDeferResults[i])
+					results[i] = b.Load(p.implicitDeferResultSlot(i))
 					continue
 				}
 				results[i] = p.compileValue(b, r)
@@ -2071,12 +2072,28 @@ func (p *context) prepareImplicitDeferResults(b llssa.Builder, fn *ssa.Function)
 	}
 }
 
+// spillImplicitDeferResults stores unnamed return values before RunDefers so
+// its continuation can reload the pre-defer values from entry-block slots.
 func (p *context) spillImplicitDeferResults(b llssa.Builder, ret *ssa.Return) {
 	for i, result := range ret.Results {
 		if p.namedResultSlot(i) == nil {
-			b.Store(p.implicitDeferResults[i], p.compileValue(b, result))
+			b.Store(p.implicitDeferResultSlot(i), p.compileValue(b, result))
 		}
 	}
+}
+
+// implicitDeferResultSlot makes the entry-block preparation invariant explicit:
+// compileBlock visits block 0 before any return block and reserves every unnamed
+// result slot needed by the same memoized defer predicate used at the return.
+func (p *context) implicitDeferResultSlot(index int) llssa.Expr {
+	if index < 0 || index >= len(p.implicitDeferResults) {
+		panic(fmt.Sprintf("missing implicit defer result slot %d", index))
+	}
+	slot := p.implicitDeferResults[index]
+	if slot.IsNil() {
+		panic(fmt.Sprintf("missing implicit defer result slot %d", index))
+	}
+	return slot
 }
 
 func (p *context) returnNeedsImplicitRunDefers(ret *ssa.Return) bool {
