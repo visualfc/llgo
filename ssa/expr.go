@@ -1088,6 +1088,9 @@ func castInt(b Builder, x llvm.Value, xtyp Type, typ Type) llvm.Value {
 
 func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 	dstSize := b.Prog.td.TypeAllocSize(typ.ll)
+	if b.Prog.Target().GOARCH == "amd64" {
+		return castFloatToIntAMD64(b, x, typ, dstSize)
+	}
 	if typ.kind == vkUnsigned {
 		if dstSize < 4 {
 			tmp := castFloatToSignedInt(b, x, b.Prog.Int32(), 32)
@@ -1107,6 +1110,56 @@ func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 		return tmp
 	}
 	return castFloatToSignedInt(b, x, typ, 64)
+}
+
+// castFloatToIntAMD64 reproduces gc's legacy SSE conversion semantics without
+// exposing LLVM fptosi/fptoui to out-of-range inputs (which would be poison).
+// Signed CVTT conversions return the minimum integer for NaN or overflow;
+// unsigned 8/16/32-bit conversions truncate a wider signed conversion, while
+// uint64 uses gc's split-at-2^63 sequence.
+func castFloatToIntAMD64(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm.Value {
+	if typ.kind == vkUnsigned {
+		if dstSize < 4 {
+			tmp := castFloatToSignedIntAMD64(b, x, b.Prog.Int32(), 32)
+			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		}
+		if dstSize == 4 {
+			tmp := castFloatToSignedIntAMD64(b, x, b.Prog.Int64(), 64)
+			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		}
+
+		cutoff := llvm.ConstFloat(x.Type(), floatPow2(63))
+		high := llvm.CreateFCmp(b.impl, llvm.FloatOGE, x, cutoff)
+		adjusted := b.impl.CreateFSub(x, cutoff, "")
+		input := llvm.CreateSelect(b.impl, high, adjusted, x)
+		ret := castFloatToSignedIntAMD64(b, input, b.Prog.Int64(), 64)
+		highBit := llvm.ConstInt(typ.ll, uint64(1)<<63, false)
+		zero := llvm.ConstNull(typ.ll)
+		return b.impl.CreateOr(ret, llvm.CreateSelect(b.impl, high, highBit, zero), "")
+	}
+	if dstSize < 8 {
+		tmp := castFloatToSignedIntAMD64(b, x, b.Prog.Int32(), 32)
+		if dstSize < 4 {
+			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		}
+		return tmp
+	}
+	return castFloatToSignedIntAMD64(b, x, typ, 64)
+}
+
+func castFloatToSignedIntAMD64(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {
+	bound := floatPow2(bits - 1)
+	lower := llvm.ConstFloat(x.Type(), -bound)
+	upper := llvm.ConstFloat(x.Type(), bound)
+	tooLow := llvm.CreateFCmp(b.impl, llvm.FloatOLT, x, lower)
+	tooHigh := llvm.CreateFCmp(b.impl, llvm.FloatOGE, x, upper)
+	isNaN := llvm.CreateFCmp(b.impl, llvm.FloatUNO, x, x)
+	invalid := b.impl.CreateOr(tooLow, tooHigh, "")
+	invalid = b.impl.CreateOr(invalid, isNaN, "")
+	safe := llvm.CreateSelect(b.impl, invalid, llvm.ConstNull(x.Type()), x)
+	ret := llvm.CreateFPToSI(b.impl, safe, typ.ll)
+	minInt := llvm.ConstInt(typ.ll, uint64(1)<<(bits-1), false)
+	return llvm.CreateSelect(b.impl, invalid, minInt, ret)
 }
 
 func castFloatToSignedInt(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {

@@ -1271,10 +1271,6 @@ xfails:
     directive: run
     case: inline_caller.go
     reason: runtime caller frame reports main instead of runtime.main on linux/amd64
-  - platform: linux/amd64
-    directive: runoutput
-    case: convinline.go
-    reason: generated conversion checks produce incorrect results on linux/amd64
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue31546.go
