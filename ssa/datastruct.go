@@ -568,15 +568,16 @@ func (b Builder) Lookup(x, key Expr, commaOk bool) (ret Expr) {
 	prog := b.Prog
 	typ := b.abiType(x.raw.Type)
 	vtyp := prog.Elem(x.Type)
-	ptr := b.mapKeyPtr(key)
+	kind := mapKeyFastKind(x.raw.Type, prog.PointerSize())
+	arg := b.mapKeyAccessArg(key, kind)
 	if commaOk {
-		vals := b.Call(b.Pkg.rtFunc("MapAccess2"), typ, x, ptr)
+		vals := b.Call(b.Pkg.rtFunc(kind.accessName(true)), typ, x, arg)
 		val := b.Load(Expr{b.impl.CreateExtractValue(vals.impl, 0, ""), prog.Pointer(vtyp)})
 		ok := b.impl.CreateExtractValue(vals.impl, 1, "")
 		t := prog.Struct(vtyp, prog.Bool())
 		return b.aggregateValue(t, val.impl, ok)
 	} else {
-		val := b.Call(b.Pkg.rtFunc("MapAccess1"), typ, x, ptr)
+		val := b.Call(b.Pkg.rtFunc(kind.accessName(false)), typ, x, arg)
 		val.Type = prog.Pointer(vtyp)
 		ret = b.Load(val)
 	}
@@ -602,10 +603,136 @@ func (b Builder) MapUpdate(m, k, v Expr) {
 	}
 	dbgInstrf("MapUpdate %v[%v] = %v\n", m.impl, k.impl, v.impl)
 	typ := b.abiType(m.raw.Type)
-	ptr := b.mapKeyPtr(k)
-	ret := b.Call(b.Pkg.rtFunc("MapAssign"), typ, m, ptr)
+	kind := mapKeyFastKind(m.raw.Type, b.Prog.PointerSize())
+	arg := b.mapKeyAssignArg(k, kind)
+	ret := b.Call(b.Pkg.rtFunc(kind.assignName()), typ, m, arg)
 	ret.Type = b.Prog.Pointer(v.Type)
 	b.Store(ret, v)
+}
+
+type mapFastKind uint8
+
+const (
+	mapFastNone mapFastKind = iota
+	mapFast32
+	mapFast64
+	mapFast32Ptr
+	mapFast64Ptr
+	mapFastStr
+)
+
+func mapKeyFastKind(mapType types.Type, ptrSize int) mapFastKind {
+	m, ok := types.Unalias(mapType).Underlying().(*types.Map)
+	if !ok {
+		return mapFastNone
+	}
+	key := types.Unalias(m.Key()).Underlying()
+	switch key := key.(type) {
+	case *types.Basic:
+		switch key.Kind() {
+		case types.Int32, types.Uint32:
+			return mapFast32
+		case types.Int64, types.Uint64:
+			return mapFast64
+		case types.Int, types.Uint, types.Uintptr:
+			if ptrSize == 4 {
+				return mapFast32
+			}
+			if ptrSize == 8 {
+				return mapFast64
+			}
+		case types.String:
+			return mapFastStr
+		case types.UnsafePointer:
+			if ptrSize == 4 {
+				return mapFast32Ptr
+			}
+			if ptrSize == 8 {
+				return mapFast64Ptr
+			}
+		}
+	case *types.Pointer, *types.Chan:
+		if ptrSize == 4 {
+			return mapFast32Ptr
+		}
+		if ptrSize == 8 {
+			return mapFast64Ptr
+		}
+	}
+	return mapFastNone
+}
+
+func (k mapFastKind) accessName(commaOK bool) string {
+	suffix := "1"
+	if commaOK {
+		suffix = "2"
+	}
+	switch k {
+	case mapFast32, mapFast32Ptr:
+		return "MapAccess" + suffix + "Fast32"
+	case mapFast64, mapFast64Ptr:
+		return "MapAccess" + suffix + "Fast64"
+	case mapFastStr:
+		return "MapAccess" + suffix + "FastStr"
+	default:
+		return "MapAccess" + suffix
+	}
+}
+
+func (k mapFastKind) assignName() string {
+	switch k {
+	case mapFast32:
+		return "MapAssignFast32"
+	case mapFast64:
+		return "MapAssignFast64"
+	case mapFast32Ptr:
+		return "MapAssignFast32Ptr"
+	case mapFast64Ptr:
+		return "MapAssignFast64Ptr"
+	case mapFastStr:
+		return "MapAssignFastStr"
+	default:
+		return "MapAssign"
+	}
+}
+
+func (k mapFastKind) deleteName() string {
+	switch k {
+	case mapFast32, mapFast32Ptr:
+		return "MapDeleteFast32"
+	case mapFast64, mapFast64Ptr:
+		return "MapDeleteFast64"
+	case mapFastStr:
+		return "MapDeleteFastStr"
+	default:
+		return "MapDelete"
+	}
+}
+
+func (b Builder) mapKeyAccessArg(key Expr, kind mapFastKind) Expr {
+	switch kind {
+	case mapFast32:
+		return b.Convert(b.Prog.Uint32(), key)
+	case mapFast64:
+		return b.Convert(b.Prog.Uint64(), key)
+	case mapFast32Ptr:
+		return Expr{llvm.CreatePtrToInt(b.impl, key.impl, b.Prog.Uint32().ll), b.Prog.Uint32()}
+	case mapFast64Ptr:
+		return Expr{llvm.CreatePtrToInt(b.impl, key.impl, b.Prog.Uint64().ll), b.Prog.Uint64()}
+	case mapFastStr:
+		return key
+	default:
+		return b.mapKeyPtr(key)
+	}
+}
+
+func (b Builder) mapKeyAssignArg(key Expr, kind mapFastKind) Expr {
+	switch kind {
+	case mapFast32Ptr, mapFast64Ptr:
+		return Expr{castPtr(b.impl, key.impl, b.Prog.VoidPtr().ll), b.Prog.VoidPtr()}
+	default:
+		return b.mapKeyAccessArg(key, kind)
+	}
 }
 
 // key => unsafe.Pointer
