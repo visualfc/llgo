@@ -5,6 +5,22 @@
 not_applicable:
   - version: go1.26
     directive: errorcheck
+    case: fixedbugs/issue4776.go
+    reason: "not applicable: this case asserts cmd/compile's exact missing-package-clause diagnostic; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic text; matching this toolchain-specific output is not an LLGo compatibility goal"
+  - version: go1.26
+    directive: errorcheck
+    case: fixedbugs/issue13266.go
+    reason: "not applicable: this case asserts cmd/compile's exact malformed-package-clause diagnostic; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic text; matching this toolchain-specific output is not an LLGo compatibility goal"
+  - version: go1.26
+    directive: errorcheck
+    case: fixedbugs/issue20789.go
+    reason: "not applicable: this case asserts cmd/compile's exact malformed-name diagnostic; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic text; matching this toolchain-specific output is not an LLGo compatibility goal"
+  - version: go1.26
+    directive: errorcheck
+    case: fixedbugs/bug050.go
+    reason: "not applicable: this case asserts cmd/compile's exact malformed-declaration diagnostics; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic count and text; matching this toolchain-specific output is not an LLGo compatibility goal"
+  - version: go1.26
+    directive: errorcheck
     case: escape_array.go
     reason: "not applicable: this case asserts cmd/compile-specific -m escape-analysis diagnostics; LLGo uses go/types plus LLVM and does not reproduce gc compiler diagnostic output; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
   - version: go1.26
