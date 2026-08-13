@@ -1325,23 +1325,28 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			if _, ok := p.methodNilDerefChecks[v]; ok {
 				return p.compileCheckedDeref(b, v)
 			}
-			if isEffectfulArrayPointerDeref(v) {
-				x := p.compileValue(b, v.X)
-				p.recordPanicLocation(b, v.Pos())
-				b.AssertNilDeref(x)
-			}
+			effectfulArrayDeref := isEffectfulArrayPointerDeref(v)
 			if refs, ok := nonDebugReferrers(v); ok && len(refs) == 0 {
 				if skipUnusedArrayDeref(v) {
-					p.compileValue(b, v.X)
+					x := p.compileValue(b, v.X)
+					if effectfulArrayDeref {
+						p.recordPanicLocation(b, v.Pos())
+						b.AssertNilDeref(x)
+					}
 					return
 				}
-				// LLVM may eliminate an unused load, but evaluating a Go
-				// dereference must still panic when its pointer is nil.
+				// Elide the unused load, but keep an explicit nil check so the
+				// Go dereference still panics instead of relying on a trapping load.
 				x := p.compileValue(b, v.X)
 				p.recordPanicLocation(b, v.Pos())
 				p.assertNilDerefBase(b, v.X)
 				b.AssertNilDeref(x)
 				return
+			}
+			if effectfulArrayDeref {
+				x := p.compileValue(b, v.X)
+				p.recordPanicLocation(b, v.Pos())
+				b.AssertNilDeref(x)
 			}
 			if refs, ok := nonDebugReferrers(v); ok && len(refs) == 1 {
 				if _, ok := refs[0].(*ssa.MakeInterface); ok {

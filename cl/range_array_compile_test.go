@@ -143,8 +143,8 @@ func rangeArrayReceive(ch <-chan *[3]int) {
 
 	for _, name := range []string{"rangeArrayCall", "rangeArrayReceive"} {
 		ir := mustNamedFunction(t, m, "foo."+name).String()
-		if !strings.Contains(ir, "AssertNilDeref") {
-			t.Fatalf("%s should preserve its required array pointer nil check:\n%s", name, ir)
+		if got := strings.Count(ir, "AssertNilDeref"); got != 1 {
+			t.Fatalf("%s nil-check count = %d, want 1:\n%s", name, got, ir)
 		}
 	}
 }
