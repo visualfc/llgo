@@ -251,3 +251,49 @@ func TestRuntimeStatementLineInfo(t *testing.T) {
 		t.Fatalf("llgo statement line probe failed: %v\n%s", err, out)
 	}
 }
+
+const runtimeDeferredPanicLineProbe = `package main
+
+import "runtime/debug"
+
+func main() {
+	defer func() {
+		recover()
+		println(string(debug.Stack()))
+	}()
+	defer deferredPanic()
+	panic("start unwinding")
+}
+
+func deferredPanic() {
+	var p *int
+	_ = *p // DEFERRED_PANIC_MARK
+}
+`
+
+func TestRuntimeDeferredPanicLine(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(file, []byte(runtimeDeferredPanicLineProbe), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repoRoot := findRepoRoot(t)
+	t.Setenv("LLGO_ROOT", repoRoot)
+	cmd := exec.Command("go", "run", "./cmd/llgo", "run", "-a", file)
+	cmd.Dir = repoRoot
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("llgo deferred panic line probe failed: %v\n%s", err, out)
+	}
+	stack := string(out)
+	frame := strings.Index(stack, "main.deferredPanic()")
+	want := "main.go:" + strconv.Itoa(markerLine(runtimeDeferredPanicLineProbe, "DEFERRED_PANIC_MARK"))
+	if frame < 0 {
+		t.Fatalf("deferred panic stack is missing main.deferredPanic:\n%s", stack)
+	}
+	lines := strings.SplitN(stack[frame:], "\n", 3)
+	if len(lines) < 2 || !strings.Contains(lines[1], want) {
+		t.Fatalf("deferred panic stack is missing %s:\n%s", want, stack)
+	}
+}

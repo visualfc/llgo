@@ -42,7 +42,13 @@ func Plain() {}
 		"example.com/root", `package root
 import "example.com/dep"
 func Logs() { dep.Where() }
+func CrossOwner() { defer dep.Inspect(); CrossLeaf() }
+func CrossLeaf() {}
 `)
+	lazyCrossPackageSites := recoverPanicSiteFuncSet(NewCallerTracking(), root)
+	if !lazyCrossPackageSites[root.Func("CrossOwner")] || !lazyCrossPackageSites[root.Func("CrossLeaf")] {
+		t.Fatal("lazy analysis lost the subtree below a cross-package recovering defer")
+	}
 	tracking := NewCallerTracking()
 	tracking.Precompute([]*gossa.Package{dep, root})
 	if !runtimeCallerBaseSet(tracking, dep)[dep.Func("Where")] {
@@ -57,6 +63,10 @@ func Logs() { dep.Where() }
 	}
 	if panicSites[dep.Func("Where")] {
 		t.Fatal("ordinary caller-tracked function entered recover panic-site set")
+	}
+	rootPanicSites := recoverPanicSiteFuncSet(tracking, root)
+	if !rootPanicSites[root.Func("CrossOwner")] || !rootPanicSites[root.Func("CrossLeaf")] {
+		t.Fatal("precomputed analysis lost the subtree below a cross-package recovering defer")
 	}
 	recovering := dep.Func("Recovering")
 	plain := dep.Func("Plain")
@@ -75,6 +85,7 @@ func Logs() { dep.Where() }
 			if !runtimeCallerBaseSet(tracking, dep)[dep.Func("Where")] ||
 				!runtimeCallerFuncSet(tracking, root)[root.Func("Logs")] ||
 				!recoverPanicSiteFuncSet(tracking, dep)[dep.Func("Leaf")] ||
+				!recoverPanicSiteFuncSet(tracking, root)[root.Func("CrossLeaf")] ||
 				!tracking.recover.needsRecoverScope(recovering) ||
 				tracking.recover.needsRecoverScope(plain) {
 				t.Error("concurrent read lost precomputed caller tracking data")

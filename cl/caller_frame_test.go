@@ -277,13 +277,25 @@ func inspect() {
 
 func staticOwner() {
 	defer inspect()
+	defer deferredLeaf()
 	staticLeaf()
 	go goroutineLeaf()
 }
 
 func staticLeaf() { staticNested() }
 func staticNested() {}
+func deferredLeaf() { deferredNested() }
+func deferredNested() {}
 func goroutineLeaf() {}
+
+func closureObserverOwner() {
+	defer func() {
+		recover()
+		runtime.Caller(0)
+	}()
+	defer closureDeferredLeaf()
+}
+func closureDeferredLeaf() {}
 
 func dynamicOwner(fn func()) {
 	defer inspect()
@@ -293,12 +305,15 @@ func dynamicOwner(fn func()) {
 func dynamicEntry() { dynamicOwner(dynamicLeaf) }
 func dynamicLeaf() {}
 
-func unresolvedOwner(fn func(int)) {
+type unresolvedArg int
+
+func unresolvedOwner(fn func(unresolvedArg)) {
 	defer inspect()
 	fn(1)
 	fn(2)
 }
-func unresolvedCandidate(int) {}
+func unresolvedCandidate(unresolvedArg) {}
+func unresolvedCandidate2(unresolvedArg) {}
 func unresolvedWrong(string) {}
 
 func directCallerOwner() {
@@ -321,7 +336,7 @@ func unrelated() {}
 `)
 	tracking := NewCallerTracking()
 	set := runtimeCallerFuncSet(tracking, ssapkg)
-	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "dynamicOwner", "dynamicEntry", "dynamicLeaf", "unresolvedOwner", "unresolvedCandidate"} {
+	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "deferredLeaf", "deferredNested", "closureObserverOwner", "closureDeferredLeaf", "dynamicOwner", "dynamicEntry", "dynamicLeaf", "unresolvedOwner", "unresolvedCandidate", "unresolvedCandidate2"} {
 		if !set[ssapkg.Func(name)] {
 			t.Fatalf("%s must keep a frame because a recovering defer can inspect its panic pc", name)
 		}
@@ -339,7 +354,7 @@ func unrelated() {}
 	}
 
 	panicSites := recoverPanicSiteFuncSet(tracking, ssapkg)
-	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "dynamicOwner", "dynamicLeaf", "unresolvedOwner", "unresolvedCandidate"} {
+	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "deferredLeaf", "deferredNested", "closureObserverOwner", "closureDeferredLeaf", "dynamicOwner", "dynamicLeaf", "unresolvedOwner", "unresolvedCandidate", "unresolvedCandidate2"} {
 		if !panicSites[ssapkg.Func(name)] {
 			t.Fatalf("%s needs implicit panic-site anchors below a recovering defer", name)
 		}
@@ -362,12 +377,19 @@ func inspect() {
 
 func owner() {
 	defer inspect()
+	defer deferredPanicLeaf()
 	panicLeaf()
 }
 
 func panicLeaf() {
 	var p *int
 //line panic_site.go:123
+	_ = *p
+}
+
+func deferredPanicLeaf() {
+	var p *int
+//line deferred_panic_site.go:234
 	_ = *p
 }
 
@@ -386,7 +408,10 @@ func pinnedPanicSite() {
 		t.Fatal(err)
 	}
 	ir := pkg.Module().String()
-	for _, want := range []string{`!"example.com/foo.panicLeaf"`, `!"panic_site.go"`, `i32 123`} {
+	for _, want := range []string{
+		`!"example.com/foo.panicLeaf"`, `!"panic_site.go"`, `i32 123`,
+		`!"example.com/foo.deferredPanicLeaf"`, `!"deferred_panic_site.go"`, `i32 234`,
+	} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("recover-visible nil dereference is missing panic-site metadata %q:\n%s", want, ir)
 		}
@@ -409,6 +434,10 @@ func TestRuntimeCallerAnalysisEdgeCases(t *testing.T) {
 	}
 	if recoverPanicSiteFuncSet(callerCaches, nil) != nil {
 		t.Fatal("nil package should have no recover panic-site set")
+	}
+	emptySignature := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	if candidates := newRecoverPanicCandidateIndex(nil).compatible(emptySignature); candidates != nil {
+		t.Fatal("empty recover panic candidate index should have no compatible functions")
 	}
 	if fnHasDirectRuntimeCaller(nil) {
 		t.Fatal("nil function should not have direct runtime caller use")

@@ -1002,21 +1002,23 @@ func computeRuntimeCallerFuncSets(recover *recoverFacts, pkg *ssa.Package, funcs
 			}
 		})
 	}
-	recoverPanicSites := addRecoverObservableCallees(recover, pkg, funcs, base, frames, trackable)
+	recoverPanicSites := addRecoverObservableCallees(recover, pkg, funcs, base, frames, trackable, baseSet)
 	if len(frames) == 0 {
 		frames = nil
 	}
 	return callerTrackingFuncSets{frames: frames, recoverPanicSites: recoverPanicSites}
 }
 
-// addRecoverObservableCallees keeps the same-package call subtree below a
-// defer that can inspect caller pcs. These frames are no longer physically
-// live when the deferred function runs after recover; runtime reconstructs
-// them from the panic snapshot, so allowing LLVM to inline them would lose the
-// function identity and its panic-site line. The returned set is kept separate
-// from out: only these functions need anchors at implicit panic instructions.
-func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs, base, out, trackable map[*ssa.Function]bool) map[*ssa.Function]bool {
-	if pkg == nil || len(base) == 0 || len(trackable) == 0 {
+// addRecoverObservableCallees keeps the same-package synchronous call/defer
+// subtree below a defer that can inspect caller pcs. These frames are no
+// longer physically live when the deferred function runs after recover;
+// runtime reconstructs them from the panic snapshot, so allowing LLVM to
+// inline them would lose the function identity and its panic-site line. These
+// functions are added to frames and also returned as a distinct set: only the
+// returned set needs
+// anchors at implicit panic instructions.
+func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs, base, frames, trackable map[*ssa.Function]bool, baseSet func(*ssa.Package) map[*ssa.Function]bool) map[*ssa.Function]bool {
+	if pkg == nil || len(trackable) == 0 {
 		return nil
 	}
 	analysis := &runtimeCallerAnalysis{
@@ -1027,39 +1029,34 @@ func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs,
 	}
 	queue := make([]*ssa.Function, 0)
 	seen := make(map[*ssa.Function]bool)
-	type signatureCandidates struct {
-		signature  *types.Signature
-		candidates []*ssa.Function
-	}
-	candidatesBySignature := make(map[string][]signatureCandidates)
-	compatibleCandidates := func(signature *types.Signature) []*ssa.Function {
-		key := types.TypeString(signature, func(pkg *types.Package) string {
-			return pkg.Path()
-		})
-		for _, cached := range candidatesBySignature[key] {
-			if types.Identical(signature, cached.signature) {
-				return cached.candidates
-			}
+	isRecoverObserver := func(target *ssa.Function) bool {
+		if target == nil || !recover.needsRecoverScope(target) {
+			return false
 		}
-		candidates := make([]*ssa.Function, 0)
-		for candidate := range trackable {
-			if types.Identical(signature, candidate.Signature) {
-				candidates = append(candidates, candidate)
-			}
+		if isRuntimeCallerFrameFunc(target) {
+			return true
 		}
-		candidatesBySignature[key] = append(candidatesBySignature[key], signatureCandidates{
-			signature:  signature,
-			candidates: candidates,
-		})
-		return candidates
+		targetBase := base
+		if target.Pkg != nil && target.Pkg != pkg {
+			targetBase = baseSet(target.Pkg)
+		}
+		return targetBase[target]
 	}
 	add := func(fn *ssa.Function) {
 		if !trackable[fn] || seen[fn] {
 			return
 		}
 		seen[fn] = true
-		out[fn] = true
+		frames[fn] = true
 		queue = append(queue, fn)
+	}
+	addCallee := func(fn *ssa.Function, deferred bool) {
+		// A recovering defer is the observer at the edge of this subtree,
+		// not another possible panic site below itself.
+		if deferred && isRecoverObserver(fn) {
+			return
+		}
+		add(fn)
 	}
 	for fn := range trackable {
 		for _, block := range fn.Blocks {
@@ -1073,7 +1070,7 @@ func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs,
 					continue
 				}
 				for target := range targets {
-					if (isRuntimeCallerFrameFunc(target) || base[target]) && recover.needsRecoverScope(target) {
+					if isRecoverObserver(target) {
 						add(fn)
 						break
 					}
@@ -1081,38 +1078,104 @@ func addRecoverObservableCallees(recover *recoverFacts, pkg *ssa.Package, funcs,
 			}
 		}
 	}
+	if len(queue) == 0 {
+		return nil
+	}
+
+	candidateIndex := newRecoverPanicCandidateIndex(trackable)
 	for len(queue) != 0 {
 		fn := queue[0]
 		queue = queue[1:]
 		for _, block := range fn.Blocks {
 			for _, instr := range block.Instrs {
-				callInstr, ok := instr.(*ssa.Call)
-				if !ok {
+				var call *ssa.CallCommon
+				isDefer := false
+				switch instr := instr.(type) {
+				case *ssa.Call:
+					call = &instr.Call
+				case *ssa.Defer:
+					// Non-observing deferred calls still run synchronously in
+					// this goroutine while the panic unwinds. Their panic sites
+					// can therefore be seen by a later recovering defer.
+					call = &instr.Call
+					isDefer = true
+				case *ssa.Go:
+					// A go edge starts an independent goroutine with its own
+					// panic/recover chain and cannot be observed by this defer.
+					continue
+				default:
 					continue
 				}
-				if _, builtin := callInstr.Call.Value.(*ssa.Builtin); builtin {
+				if _, builtin := call.Value.(*ssa.Builtin); builtin {
 					continue
 				}
-				targets, resolved := analysis.callTargets(fn, &callInstr.Call)
+				targets, resolved := analysis.callTargets(fn, call)
 				if !resolved {
 					// The call can target any same-package function compatible
 					// with the value. Retaining the package-local candidates is
 					// conservative; cross-package callees keep their own policy.
-					for _, candidate := range compatibleCandidates(callInstr.Call.Signature()) {
-						add(candidate)
+					for _, candidate := range candidateIndex.compatible(call.Signature()) {
+						addCallee(candidate, isDefer)
 					}
 					continue
 				}
 				for target := range targets {
-					add(target)
+					addCallee(target, isDefer)
 				}
 			}
 		}
 	}
-	if len(seen) == 0 {
-		return nil
-	}
 	return seen
+}
+
+type recoverPanicCandidateGroup struct {
+	signature  *types.Signature
+	candidates []*ssa.Function
+}
+
+type recoverPanicCandidateIndex map[string][]recoverPanicCandidateGroup
+
+// newRecoverPanicCandidateIndex scans trackable once and buckets candidates by
+// fully qualified structural signature. The identical-signature groups retain
+// a collision guard without making each unresolved call rescan the package.
+func newRecoverPanicCandidateIndex(trackable map[*ssa.Function]bool) recoverPanicCandidateIndex {
+	index := make(recoverPanicCandidateIndex)
+	for candidate := range trackable {
+		signature := candidate.Signature
+		key := recoverPanicSignatureKey(signature)
+		groups := index[key]
+		matched := false
+		for i := range groups {
+			if types.Identical(signature, groups[i].signature) {
+				groups[i].candidates = append(groups[i].candidates, candidate)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			groups = append(groups, recoverPanicCandidateGroup{
+				signature:  signature,
+				candidates: []*ssa.Function{candidate},
+			})
+		}
+		index[key] = groups
+	}
+	return index
+}
+
+func (index recoverPanicCandidateIndex) compatible(signature *types.Signature) []*ssa.Function {
+	for _, group := range index[recoverPanicSignatureKey(signature)] {
+		if types.Identical(signature, group.signature) {
+			return group.candidates
+		}
+	}
+	return nil
+}
+
+func recoverPanicSignatureKey(signature *types.Signature) string {
+	return types.TypeString(signature, func(pkg *types.Package) string {
+		return pkg.Path()
+	})
 }
 
 func (a *runtimeCallerAnalysis) callTargets(fn *ssa.Function, call *ssa.CallCommon) (map[*ssa.Function]bool, bool) {
