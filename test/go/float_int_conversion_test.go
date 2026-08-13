@@ -65,8 +65,6 @@ func TestFloatToIntegerConversionSemantics(t *testing.T) {
 	if err := os.WriteFile(file, []byte(floatIntConversionProbe), 0644); err != nil {
 		t.Fatal(err)
 	}
-	repoRoot := findRepoRoot(t)
-	t.Setenv("LLGO_ROOT", repoRoot)
 	run := func(dir, name string, args ...string) []byte {
 		t.Helper()
 		cmd := exec.Command(name, args...)
@@ -83,7 +81,7 @@ func TestFloatToIntegerConversionSemantics(t *testing.T) {
 		return out
 	}
 	want := run(filepath.Dir(file), "go", "run", file)
-	got := run(repoRoot, "go", "run", "./cmd/llgo", "run", file)
+	got := run(dir, acceptanceLLGoBinary(t), "run", file)
 	if !bytes.Equal(got, want) {
 		t.Fatalf("float-to-integer conversions differ from gc\ngc:\n%s\nllgo:\n%s", want, got)
 	}

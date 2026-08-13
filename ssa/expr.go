@@ -1088,7 +1088,7 @@ func castInt(b Builder, x llvm.Value, xtyp Type, typ Type) llvm.Value {
 
 func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 	dstSize := b.Prog.td.TypeAllocSize(typ.ll)
-	if b.Prog.Target().GOARCH == "amd64" {
+	if b.Prog.Target().effectiveGOARCH() == "amd64" {
 		return castFloatToIntAMD64(b, x, typ, dstSize)
 	}
 	if typ.kind == vkUnsigned {
@@ -1162,6 +1162,8 @@ func castFloatToSignedIntAMD64(b Builder, x llvm.Value, typ Type, bits uint64) l
 	return llvm.CreateSelect(b.impl, invalid, minInt, ret)
 }
 
+// Unlike the amd64 CVTT path above, other targets use Go's implementation-
+// specific saturating behavior: clamp low/high values and map NaN to zero.
 func castFloatToSignedInt(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {
 	bound := floatPow2(bits - 1)
 	lower := llvm.ConstFloat(x.Type(), -bound)
