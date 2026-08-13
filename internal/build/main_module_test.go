@@ -33,6 +33,8 @@ func TestGenMainModuleExecutable(t *testing.T) {
 			Goarch:    "amd64",
 		},
 	}
+	ctx.prog.EnableFuncInfoMetadata(true)
+	ctx.prog.EnableFuncInfoSites(true)
 	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
 	mod := genMainModule(ctx, llssa.PkgRuntime, pkg,
 		&genConfig{rtInit: true, pyInit: true, packageInits: []string{"example.com/b.init", "example.com/z.init", "example.com/a.init"}})
@@ -42,6 +44,11 @@ func TestGenMainModuleExecutable(t *testing.T) {
 	ir := mod.LPkg.String()
 	checks := []string{
 		"define i32 @main(",
+		"define void @runtime.main()",
+		`runtime\00goexit\00main`,
+		".pushsection llgo_funcinfo_entry",
+		".quad " + uint64Hex(funcInfoSymbolID(runtimeMainSymbol)),
+		".quad " + uint64Hex(funcInfoSymbolID("main")),
 		"call void @Py_Initialize()",
 		"call void @Py_Finalize()",
 		"call void @\"example.com/foo.init\"()",
@@ -328,8 +335,7 @@ func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
 	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{}).LPkg.String()
 	assertInOrder(t, ir,
 		"EnterLocalContext",
-		`call void @"example.com/foo.init"()`,
-		`call void @"example.com/foo.main"()`,
+		"call void @runtime.main()",
 		"LeaveLocalContext",
 	)
 }
