@@ -343,7 +343,7 @@ type UncommonType struct {
 }
 
 func (t *UncommonType) Methods() []Method {
-	if t == nil || t.Mcount == 0 {
+	if t.Mcount == 0 {
 		return nil
 	}
 	methodsPtr := addChecked(unsafe.Pointer(t), uintptr(t.Moff), "t.mcount > 0")
@@ -357,7 +357,7 @@ func (t *UncommonType) Methods() []Method {
 }
 
 func (t *UncommonType) ExportedMethods() []Method {
-	if t == nil || t.Xcount == 0 {
+	if t.Xcount == 0 {
 		return nil
 	}
 	mthdsPtr := addChecked(unsafe.Pointer(t), uintptr(t.Moff), "t.xcount > 0")

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"go/types"
 
+	"github.com/goplus/llgo/ssa/abi"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -568,7 +569,7 @@ func (b Builder) Lookup(x, key Expr, commaOk bool) (ret Expr) {
 	prog := b.Prog
 	typ := b.abiType(x.raw.Type)
 	vtyp := prog.Elem(x.Type)
-	kind := mapKeyFastKind(x.raw.Type, prog.PointerSize())
+	kind := mapKeyFastKind(prog, x.raw.Type)
 	arg := b.mapKeyAccessArg(x, key, kind)
 	if commaOk {
 		vals := b.Call(b.Pkg.rtFunc(kind.accessName(true)), typ, x, arg)
@@ -603,7 +604,7 @@ func (b Builder) MapUpdate(m, k, v Expr) {
 	}
 	dbgInstrf("MapUpdate %v[%v] = %v\n", m.impl, k.impl, v.impl)
 	typ := b.abiType(m.raw.Type)
-	kind := mapKeyFastKind(m.raw.Type, b.Prog.PointerSize())
+	kind := mapKeyFastKind(b.Prog, m.raw.Type)
 	arg := b.mapKeyAssignArg(m, k, kind)
 	ret := b.Call(b.Pkg.rtFunc(kind.assignName()), typ, m, arg)
 	ret.Type = b.Prog.Pointer(v.Type)
@@ -621,11 +622,18 @@ const (
 	mapFastStr
 )
 
-func mapKeyFastKind(mapType types.Type, ptrSize int) mapFastKind {
+func mapKeyFastKind(prog Program, mapType types.Type) mapFastKind {
 	m, ok := types.Unalias(mapType).Underlying().(*types.Map)
 	if !ok {
 		return mapFastNone
 	}
+	// The specialized runtime map operations return direct bucket storage.
+	// Large values are stored indirectly by the map implementation, so use
+	// the generic operations to preserve their pointer indirection semantics.
+	if prog.SizeOf(prog.rawType(m.Elem())) > abi.MAXELEMSIZE {
+		return mapFastNone
+	}
+	ptrSize := prog.PointerSize()
 	key := types.Unalias(m.Key()).Underlying()
 	switch key := key.(type) {
 	case *types.Basic:
@@ -637,8 +645,7 @@ func mapKeyFastKind(mapType types.Type, ptrSize int) mapFastKind {
 		case types.Int, types.Uint, types.Uintptr:
 			if ptrSize == 4 {
 				return mapFast32
-			}
-			if ptrSize == 8 {
+			} else if ptrSize == 8 {
 				return mapFast64
 			}
 		case types.String:
@@ -646,16 +653,14 @@ func mapKeyFastKind(mapType types.Type, ptrSize int) mapFastKind {
 		case types.UnsafePointer:
 			if ptrSize == 4 {
 				return mapFast32Ptr
-			}
-			if ptrSize == 8 {
+			} else if ptrSize == 8 {
 				return mapFast64Ptr
 			}
 		}
 	case *types.Pointer, *types.Chan:
 		if ptrSize == 4 {
 			return mapFast32Ptr
-		}
-		if ptrSize == 8 {
+		} else if ptrSize == 8 {
 			return mapFast64Ptr
 		}
 	}
@@ -712,8 +717,14 @@ func (k mapFastKind) deleteName() string {
 func (b Builder) mapKeyAccessArg(m, key Expr, kind mapFastKind) Expr {
 	switch kind {
 	case mapFast32:
+		if key.Type == b.Prog.Uint32() {
+			return key
+		}
 		return b.Convert(b.Prog.Uint32(), key)
 	case mapFast64:
+		if key.Type == b.Prog.Uint64() {
+			return key
+		}
 		return b.Convert(b.Prog.Uint64(), key)
 	case mapFast32Ptr:
 		return Expr{llvm.CreatePtrToInt(b.impl, key.impl, b.Prog.Uint32().ll), b.Prog.Uint32()}

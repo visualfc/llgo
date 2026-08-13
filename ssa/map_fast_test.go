@@ -3,10 +3,15 @@ package ssa
 import (
 	"go/token"
 	"go/types"
+	"strings"
 	"testing"
 )
 
 func TestMapKeyFastKind(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	ptrSize := prog.PointerSize()
+
 	namedUint32 := types.NewNamed(
 		types.NewTypeName(token.NoPos, nil, "ID", nil),
 		types.Typ[types.Uint32],
@@ -25,39 +30,112 @@ func TestMapKeyFastKind(t *testing.T) {
 	chanKey := types.NewChan(types.SendRecv, types.Typ[types.Int])
 
 	tests := []struct {
-		name    string
-		key     types.Type
-		ptrSize int
-		want    mapFastKind
+		name string
+		key  types.Type
+		want mapFastKind
 	}{
-		{"uint32", types.Typ[types.Uint32], 8, mapFast32},
-		{"named uint32", namedUint32, 8, mapFast32},
-		{"int32", types.Typ[types.Int32], 8, mapFast32},
-		{"uint64", types.Typ[types.Uint64], 8, mapFast64},
-		{"int64", types.Typ[types.Int64], 8, mapFast64},
-		{"int on 32-bit", types.Typ[types.Int], 4, mapFast32},
-		{"int on 64-bit", types.Typ[types.Int], 8, mapFast64},
-		{"uintptr on 32-bit", types.Typ[types.Uintptr], 4, mapFast32},
-		{"uintptr on 64-bit", types.Typ[types.Uintptr], 8, mapFast64},
-		{"string", types.Typ[types.String], 8, mapFastStr},
-		{"named string", namedString, 8, mapFastStr},
-		{"unsafe pointer on 32-bit", types.Typ[types.UnsafePointer], 4, mapFast32Ptr},
-		{"unsafe pointer on 64-bit", types.Typ[types.UnsafePointer], 8, mapFast64Ptr},
-		{"pointer on 32-bit", ptrKey, 4, mapFast32Ptr},
-		{"pointer on 64-bit", ptrKey, 8, mapFast64Ptr},
-		{"channel on 64-bit", chanKey, 8, mapFast64Ptr},
-		{"float32 fallback", types.Typ[types.Float32], 8, mapFastNone},
-		{"float64 fallback", types.Typ[types.Float64], 8, mapFastNone},
-		{"struct fallback", structKey, 8, mapFastNone},
+		{"uint32", types.Typ[types.Uint32], mapFast32},
+		{"named uint32", namedUint32, mapFast32},
+		{"int32", types.Typ[types.Int32], mapFast32},
+		{"uint64", types.Typ[types.Uint64], mapFast64},
+		{"int64", types.Typ[types.Int64], mapFast64},
+		{"int", types.Typ[types.Int], mapFast64},
+		{"uintptr", types.Typ[types.Uintptr], mapFast64},
+		{"string", types.Typ[types.String], mapFastStr},
+		{"named string", namedString, mapFastStr},
+		{"unsafe pointer", types.Typ[types.UnsafePointer], mapFast64Ptr},
+		{"pointer", ptrKey, mapFast64Ptr},
+		{"channel", chanKey, mapFast64Ptr},
+		{"float32 fallback", types.Typ[types.Float32], mapFastNone},
+		{"float64 fallback", types.Typ[types.Float64], mapFastNone},
+		{"struct fallback", structKey, mapFastNone},
+	}
+	if ptrSize == 4 {
+		for i := range tests {
+			switch tests[i].want {
+			case mapFast64:
+				if tests[i].key == types.Typ[types.Int] || tests[i].key == types.Typ[types.Uintptr] {
+					tests[i].want = mapFast32
+				}
+			case mapFast64Ptr:
+				tests[i].want = mapFast32Ptr
+			}
+		}
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			mapType := types.NewMap(test.key, types.Typ[types.Int])
-			if got := mapKeyFastKind(mapType, test.ptrSize); got != test.want {
-				t.Fatalf("mapKeyFastKind(map[%v]int, %d) = %v, want %v", test.key, test.ptrSize, got, test.want)
+			if got := mapKeyFastKind(prog, mapType); got != test.want {
+				t.Fatalf("mapKeyFastKind(map[%v]int) = %v, want %v", test.key, got, test.want)
 			}
 		})
+	}
+}
+
+func TestMapKeyFastKindLargeElemFallback(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+
+	largeElem := types.NewArray(types.Typ[types.Uint64], 17)
+	for _, key := range []types.Type{
+		types.Typ[types.Uint32],
+		types.Typ[types.Uint64],
+		types.Typ[types.String],
+		types.NewPointer(types.Typ[types.Int]),
+	} {
+		mapType := types.NewMap(key, largeElem)
+		if got := mapKeyFastKind(prog, mapType); got != mapFastNone {
+			t.Errorf("mapKeyFastKind(map[%v][17]uint64) = %v, want mapFastNone", key, got)
+		}
+	}
+}
+
+func TestMapKeyFastKind32BitTarget(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "wasip1", GOARCH: "wasm"})
+	defer prog.Dispose()
+	if got := prog.PointerSize(); got != 4 {
+		t.Fatalf("PointerSize() = %d, want 4", got)
+	}
+
+	for _, test := range []struct {
+		name string
+		key  types.Type
+		want mapFastKind
+	}{
+		{"int", types.Typ[types.Int], mapFast32},
+		{"uintptr", types.Typ[types.Uintptr], mapFast32},
+		{"unsafe pointer", types.Typ[types.UnsafePointer], mapFast32Ptr},
+		{"pointer", types.NewPointer(types.Typ[types.Int]), mapFast32Ptr},
+		{"channel", types.NewChan(types.SendRecv, types.Typ[types.Int]), mapFast32Ptr},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			mapType := types.NewMap(test.key, types.Typ[types.Int])
+			if got := mapKeyFastKind(prog, mapType); got != test.want {
+				t.Fatalf("mapKeyFastKind(map[%v]int) = %v, want %v", test.key, got, test.want)
+			}
+		})
+	}
+
+	pkg := prog.NewPackage("p", "example.com/p")
+	params := types.NewTuple(types.NewVar(token.NoPos, nil, "key", types.NewPointer(types.Typ[types.Int])))
+	fn := pkg.NewFunc("access", types.NewSignatureType(nil, nil, nil, params, nil, false), InGo)
+	b := fn.MakeBody(1)
+	arg := b.mapKeyAccessArg(Expr{}, fn.Param(0), mapFast32Ptr)
+	if arg.Type != prog.Uint32() {
+		t.Fatalf("32-bit pointer access argument type = %v, want uint32", arg.Type)
+	}
+	b.Return()
+	if ir := pkg.String(); !strings.Contains(ir, "ptrtoint ptr %0 to i32") {
+		t.Fatalf("32-bit pointer access did not emit ptrtoint:\n%s", ir)
+	}
+}
+
+func TestMapKeyFastKindNonMapFallback(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	if got := mapKeyFastKind(prog, types.Typ[types.Int]); got != mapFastNone {
+		t.Fatalf("mapKeyFastKind(int) = %v, want mapFastNone", got)
 	}
 }
 
