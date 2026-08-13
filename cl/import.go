@@ -343,6 +343,25 @@ func collectDeclarationDirectivesWithOptions(prog llssa.Program, fset *token.Fil
 	return linkCollected, nil
 }
 
+// collectGoLinknames follows cmd/compile's package-scoped go:linkname behavior.
+func collectGoLinknames(prog llssa.Program, comments []*ast.CommentGroup, syms map[string]string) {
+	const prefix = "//go:linkname "
+	for _, group := range comments {
+		for _, comment := range group.List {
+			if !strings.HasPrefix(comment.Text, prefix) {
+				continue
+			}
+			fields := strings.Fields(comment.Text[len(prefix):])
+			if len(fields) < 2 {
+				continue
+			}
+			if fullName, ok := syms[fields[0]]; ok {
+				prog.SetLinkname(fullName, strings.Join(fields[1:], " "))
+			}
+		}
+	}
+}
+
 func (p *context) processLinknameByDoc(doc *ast.CommentGroup, fullName, inPkgName string, isVar, allowExport bool) bool {
 	if doc != nil {
 		for n := len(doc.List) - 1; n >= 0; n-- {
@@ -832,7 +851,15 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 	}
 	ctx := &context{prog: prog, options: options}
 	pkgPath := llssa.PathOf(pkg)
+	syms := make(map[string]string)
+	var fileComments []*ast.CommentGroup
 	for _, file := range files {
+		for _, imp := range file.Imports {
+			if imp.Path.Value == `"unsafe"` {
+				fileComments = append(fileComments, file.Comments...)
+				break
+			}
+		}
 		for _, decl := range file.Decls {
 			switch decl := decl.(type) {
 			case *ast.FuncDecl:
@@ -843,6 +870,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 					return err
 				}
 				fullName, inPkgName := astFuncName(pkgPath, decl)
+				syms[inPkgName] = fullName
 				hasLinkname, err := collectDeclarationDirectivesWithOptions(prog, fset, decl.Doc, fullName, inPkgName, decl.Pos(), options)
 				if err != nil {
 					return err
@@ -855,6 +883,11 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 				ctx.processNoInterfaceByDoc(decl.Doc, fullName)
 			case *ast.GenDecl:
 				if decl.Tok == token.VAR {
+					for _, spec := range decl.Specs {
+						for _, name := range spec.(*ast.ValueSpec).Names {
+							syms[name.Name] = pkgPath + "." + name.Name
+						}
+					}
 					if len(decl.Specs) == 1 {
 						if names := decl.Specs[0].(*ast.ValueSpec).Names; len(names) == 1 {
 							inPkgName := names[0].Name
@@ -881,6 +914,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 			}
 		}
 	}
+	collectGoLinknames(prog, fileComments, syms)
 	prog.MarkPackageSyntaxParsed(pkg)
 	return nil
 }
