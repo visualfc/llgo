@@ -940,14 +940,14 @@ func runtimeCallerFuncSet(c *CallerTracking, pkg *ssa.Package) map[*ssa.Function
 	}
 	base := runtimeCallerBaseSet(c, pkg)
 	funcs, trackable := collectRuntimeCallerFunctions(pkg)
-	out := computeRuntimeCallerFuncSet(pkg, funcs, base, trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
+	out := computeRuntimeCallerFuncSet(c.recoverAnalysis(), pkg, funcs, base, trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
 		return runtimeCallerBaseSet(c, dep)
 	})
 	c.extended[pkg] = out
 	return out
 }
 
-func computeRuntimeCallerFuncSet(pkg *ssa.Package, funcs, base, trackable map[*ssa.Function]bool, baseSet func(*ssa.Package) map[*ssa.Function]bool) map[*ssa.Function]bool {
+func computeRuntimeCallerFuncSet(recover *recoverFacts, pkg *ssa.Package, funcs, base, trackable map[*ssa.Function]bool, baseSet func(*ssa.Package) map[*ssa.Function]bool) map[*ssa.Function]bool {
 	out := make(map[*ssa.Function]bool, len(base))
 	for fn := range base {
 		out[fn] = true
@@ -985,7 +985,7 @@ func computeRuntimeCallerFuncSet(pkg *ssa.Package, funcs, base, trackable map[*s
 			}
 		})
 	}
-	addRecoverObservableCallees(c.recoverAnalysis(), pkg, funcs, base, out, trackable)
+	addRecoverObservableCallees(recover, pkg, funcs, base, out, trackable)
 	if len(out) == 0 {
 		out = nil
 	}
@@ -1171,7 +1171,7 @@ func (c *CallerTracking) Precompute(pkgs []*ssa.Package) {
 		base[i] = analyses[i].base
 	}
 	for i := range pkgs {
-		extended[i] = computeRuntimeCallerFuncSet(pkgs[i], analyses[i].funcs, base[i], analyses[i].trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
+		extended[i] = computeRuntimeCallerFuncSet(c.recoverAnalysis(), pkgs[i], analyses[i].funcs, base[i], analyses[i].trackable, func(dep *ssa.Package) map[*ssa.Function]bool {
 			j, ok := index[dep]
 			if !ok {
 				panic("caller-tracking dependency was not precomputed")
