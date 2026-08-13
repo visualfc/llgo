@@ -168,6 +168,7 @@ type context struct {
 	pcLineSeq            uint64
 	options              Options
 	recoverSlots         map[*ssa.Alloc]none
+	implicitDeferResults []llssa.Expr
 
 	patches          Patches
 	blkInfos         []blocks.Info
@@ -656,7 +657,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
 			oldLocalityFunction := p.locality.function
-			oldRecoverSlots := p.recoverSlots
+			oldRecoverSlots, oldImplicitDeferResults := p.recoverSlots, p.implicitDeferResults
 			p.fn = fn
 			p.goFn = f
 			p.callerFrameMark = llssa.Nil
@@ -671,6 +672,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 				p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark = oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark
 				p.locality.function = oldLocalityFunction
 				p.recoverSlots = oldRecoverSlots
+				p.implicitDeferResults = oldImplicitDeferResults
 			}()
 			p.phis = nil
 			if dbgSymsEnabled {
@@ -901,6 +903,9 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 	var instrs = block.Instrs[n:]
 	var ret = fn.Block(block.Index)
 	b.SetBlock(ret)
+	if block.Index == 0 {
+		p.prepareImplicitDeferResults(b, block.Parent())
+	}
 	if block.Index == 0 && p.functionUsesRecover(block.Parent()) {
 		b.BindRecoverFrame()
 	}
@@ -1806,6 +1811,7 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 	case *ssa.Return:
 		runDefers := p.returnNeedsImplicitRunDefers(v)
 		if runDefers {
+			p.spillImplicitDeferResults(b, v)
 			p.recordPanicLocation(b, v.Pos())
 			p.emitPCLineLabel(b, p.deferRunPos(v.Pos()))
 			b.RunDefers()
@@ -1823,6 +1829,8 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 						results[i] = b.Load(p.compileValue(b, slot))
 						continue
 					}
+					results[i] = b.Load(p.implicitDeferResults[i])
+					continue
 				}
 				results[i] = p.compileValue(b, r)
 			}
@@ -2044,6 +2052,31 @@ func (p *context) deferRunPos(fallback token.Pos) token.Pos {
 		}
 	}
 	return fallback
+}
+
+// prepareImplicitDeferResults reserves entry-block storage for unnamed return
+// values that must survive the shared range-defer dispatcher. Named results
+// already have source-level slots that deferred calls are allowed to update.
+func (p *context) prepareImplicitDeferResults(b llssa.Builder, fn *ssa.Function) {
+	p.implicitDeferResults = nil
+	if !p.functionHasExplicitStackDeferInAnon(fn) {
+		return
+	}
+	results := fn.Signature.Results()
+	p.implicitDeferResults = make([]llssa.Expr, results.Len())
+	for i := 0; i < results.Len(); i++ {
+		if p.namedResultSlot(i) == nil {
+			p.implicitDeferResults[i] = b.Alloc(p.type_(results.At(i).Type(), llssa.InGo), false)
+		}
+	}
+}
+
+func (p *context) spillImplicitDeferResults(b llssa.Builder, ret *ssa.Return) {
+	for i, result := range ret.Results {
+		if p.namedResultSlot(i) == nil {
+			b.Store(p.implicitDeferResults[i], p.compileValue(b, result))
+		}
+	}
 }
 
 func (p *context) returnNeedsImplicitRunDefers(ret *ssa.Return) bool {

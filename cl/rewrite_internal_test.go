@@ -938,6 +938,16 @@ func namedResult(stop bool) (result *int) {
 	}
 	return nil
 }
+
+func unnamedResult(stop bool) int {
+	if stop {
+		return 1
+	}
+	for v := range seq {
+		defer func() { _ = v }()
+	}
+	return 2
+}
 `)
 
 	ir := m.String()
