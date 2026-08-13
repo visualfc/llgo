@@ -165,6 +165,7 @@ type context struct {
 	debugDIVars          map[*types.Var]llssa.DIVar
 	debugAllocVars       map[*ssa.Alloc]*types.Var
 	runtimeCallerFuncs   map[*ssa.Function]bool
+	panicSiteFuncs       map[*ssa.Function]bool
 	pcLineSeq            uint64
 	options              Options
 	recoverSlots         map[*ssa.Alloc]none
@@ -2322,6 +2323,7 @@ func newPackageEx(prog llssa.Program, ct *CallerTracking, patches Patches, rewri
 
 		trackCallerFrames:  filesUseRuntimeCaller(files) || packageUsesRuntimeCaller(ct, pkg),
 		runtimeCallerFuncs: runtimeCallerFuncSet(ct, pkg),
+		panicSiteFuncs:     recoverPanicSiteFuncSet(ct, pkg),
 	}
 	if embedMap != nil {
 		ctx.embedMap = *embedMap

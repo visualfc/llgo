@@ -313,13 +313,21 @@ func noRecoverOwner() {
 	noRecoverLeaf()
 }
 func noRecoverLeaf() {}
+
+//go:noinline
+func pinned() {}
+
 func unrelated() {}
 `)
-	set := runtimeCallerFuncSet(NewCallerTracking(), ssapkg)
+	tracking := NewCallerTracking()
+	set := runtimeCallerFuncSet(tracking, ssapkg)
 	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "dynamicOwner", "dynamicEntry", "dynamicLeaf", "unresolvedOwner", "unresolvedCandidate"} {
 		if !set[ssapkg.Func(name)] {
 			t.Fatalf("%s must keep a frame because a recovering defer can inspect its panic pc", name)
 		}
+	}
+	if !set[ssapkg.Func("pinned")] {
+		t.Fatal("//go:noinline function must keep its frame")
 	}
 	if set[ssapkg.Func("unrelated")] {
 		t.Fatal("an unrelated function must not be pinned by recover-visible frame tracking")
@@ -327,6 +335,18 @@ func unrelated() {}
 	for _, name := range []string{"goroutineLeaf", "directCallerLeaf", "noRecoverLeaf", "unresolvedWrong"} {
 		if set[ssapkg.Func(name)] {
 			t.Fatalf("%s must not be pinned without a recover-visible synchronous call path", name)
+		}
+	}
+
+	panicSites := recoverPanicSiteFuncSet(tracking, ssapkg)
+	for _, name := range []string{"staticOwner", "staticLeaf", "staticNested", "dynamicOwner", "dynamicLeaf", "unresolvedOwner", "unresolvedCandidate"} {
+		if !panicSites[ssapkg.Func(name)] {
+			t.Fatalf("%s needs implicit panic-site anchors below a recovering defer", name)
+		}
+	}
+	for _, name := range []string{"inspect", "dynamicEntry", "goroutineLeaf", "directCallerOwner", "directCallerLeaf", "noRecoverInspect", "noRecoverOwner", "noRecoverLeaf", "pinned", "unrelated", "unresolvedWrong"} {
+		if panicSites[ssapkg.Func(name)] {
+			t.Fatalf("%s must not get implicit panic-site anchors outside a recover-visible synchronous call subtree", name)
 		}
 	}
 }
@@ -350,6 +370,13 @@ func panicLeaf() {
 //line panic_site.go:123
 	_ = *p
 }
+
+//go:noinline
+func pinnedPanicSite() {
+	var p *int
+//line non_recover_site.go:321
+	_ = *p
+}
 `)
 	prog := newLLSSAProgForTarget(t, &llssa.Target{GOOS: "linux", GOARCH: "amd64"})
 	prog.EnableFuncInfoMetadata(true)
@@ -364,6 +391,9 @@ func panicLeaf() {
 			t.Fatalf("recover-visible nil dereference is missing panic-site metadata %q:\n%s", want, ir)
 		}
 	}
+	if strings.Contains(ir, `!"non_recover_site.go"`) {
+		t.Fatalf("ordinary pinned function unexpectedly received implicit panic-site metadata:\n%s", ir)
+	}
 }
 
 func TestRuntimeCallerAnalysisEdgeCases(t *testing.T) {
@@ -376,6 +406,9 @@ func TestRuntimeCallerAnalysisEdgeCases(t *testing.T) {
 	}
 	if runtimeCallerFuncSet(callerCaches, nil) != nil {
 		t.Fatal("nil package should have no runtime caller set")
+	}
+	if recoverPanicSiteFuncSet(callerCaches, nil) != nil {
+		t.Fatal("nil package should have no recover panic-site set")
 	}
 	if fnHasDirectRuntimeCaller(nil) {
 		t.Fatal("nil function should not have direct runtime caller use")

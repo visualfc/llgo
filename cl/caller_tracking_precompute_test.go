@@ -34,6 +34,9 @@ func TestCallerTrackingPrecomputeSupportsConcurrentReads(t *testing.T) {
 import "runtime"
 func Where() { runtime.Caller(0) }
 func Recovering() any { return recover() }
+func Inspect() { recover(); runtime.Caller(0) }
+func Owner() { defer Inspect(); Leaf() }
+func Leaf() {}
 func Plain() {}
 `,
 		"example.com/root", `package root
@@ -47,6 +50,13 @@ func Logs() { dep.Where() }
 	}
 	if !runtimeCallerFuncSet(tracking, root)[root.Func("Logs")] {
 		t.Fatal("precomputed extended set lost cross-package caller")
+	}
+	panicSites := recoverPanicSiteFuncSet(tracking, dep)
+	if !panicSites[dep.Func("Owner")] || !panicSites[dep.Func("Leaf")] {
+		t.Fatal("precomputed recover panic-site set lost synchronous callees")
+	}
+	if panicSites[dep.Func("Where")] {
+		t.Fatal("ordinary caller-tracked function entered recover panic-site set")
 	}
 	recovering := dep.Func("Recovering")
 	plain := dep.Func("Plain")
@@ -64,6 +74,7 @@ func Logs() { dep.Where() }
 			defer wg.Done()
 			if !runtimeCallerBaseSet(tracking, dep)[dep.Func("Where")] ||
 				!runtimeCallerFuncSet(tracking, root)[root.Func("Logs")] ||
+				!recoverPanicSiteFuncSet(tracking, dep)[dep.Func("Leaf")] ||
 				!tracking.recover.needsRecoverScope(recovering) ||
 				tracking.recover.needsRecoverScope(plain) {
 				t.Error("concurrent read lost precomputed caller tracking data")
@@ -123,6 +134,9 @@ func Logs() { dep.Where() }
 		}},
 		{name: "extended", lookup: func(c *CallerTracking, pkg *gossa.Package) {
 			runtimeCallerFuncSet(c, pkg)
+		}},
+		{name: "recover-panic-sites", lookup: func(c *CallerTracking, pkg *gossa.Package) {
+			recoverPanicSiteFuncSet(c, pkg)
 		}},
 	}
 	for _, test := range tests {
