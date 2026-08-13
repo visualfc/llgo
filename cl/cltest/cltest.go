@@ -249,22 +249,20 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 	if err != nil {
 		t.Fatal("LoadSpec failed:", err)
 	}
-	if spec.Mode == littest.ModeSkip {
-		return
-	}
 	var v string
+	var prefixes []string
 	withFuncInfoDisabled(func() {
-		v = llgen.GenFrom(pkgDir)
-	})
-	if spec.Mode == littest.ModeFileCheck {
-		if err := littest.Check(spec, v); err != nil {
-			_ = os.WriteFile(pkgDir+"/result.txt", []byte(v), 0644)
-			t.Fatal(err)
+		if spec.PostABI {
+			generated := llgen.GeneratePostABI(pkgDir)
+			v = generated.Text
+			prefixes = filecheck.TargetPrefixes(generated.GOOS, generated.GOARCH, generated.Target)
+		} else {
+			v = llgen.GenFrom(pkgDir)
 		}
-		return
-	}
-	if test.Diff(t, pkgDir+"/result.txt", []byte(v), []byte(spec.Text)) {
-		t.Fatal("llgen.GenFrom: unexpected result")
+	})
+	if err := littest.Check(spec, v, prefixes...); err != nil {
+		_ = os.WriteFile(filepath.Join(pkgDir, "result.txt"), []byte(v), 0644)
+		t.Fatal(err)
 	}
 }
 
@@ -285,8 +283,8 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 		}
 	}
 	if !checkOutput {
-		// IR-only mode: when expect.txt is not checked, use llgen.GenFrom via
-		// testFrom to compare this package's generated IR against out.ll.
+		// IR-only mode: when expect.txt is not checked, validate the
+		// source-embedded FileCheck directives via testFrom.
 		if opts.checkIR {
 			testFrom(t, pkgDir, sel)
 		}
@@ -316,7 +314,7 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 		if err != nil {
 			t.Fatal("LoadSpec failed:", err)
 		}
-		if checkIR {
+		if checkIR && !irSpec.PostABI {
 			conf, capturedIR, capturedMeta = withModuleCapture(opts.conf, pkgDir)
 		}
 	}
@@ -325,7 +323,7 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 	}
 
 	var output []byte
-	if checkIR {
+	if checkIR && !irSpec.PostABI {
 		withFuncInfoDisabled(func() {
 			output, err = runWithConf(relPkg, pkgDir, conf)
 		})
@@ -344,11 +342,24 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 	if !checkIR {
 		return
 	}
-	if capturedIR == nil || *capturedIR == "" {
-		t.Fatalf("module snapshot missing for file %s", irSpec.Path)
+	var ir string
+	var prefixes []string
+	if irSpec.PostABI {
+		// Keep the runtime build and the existing pre-ABI ModuleHook contract
+		// unchanged; obtain the opt-in stage through a separate IR-only compile.
+		withFuncInfoDisabled(func() {
+			generated := llgen.GeneratePostABIWithConf(pkgDir, opts.conf)
+			ir = generated.Text
+			prefixes = filecheck.TargetPrefixes(generated.GOOS, generated.GOARCH, generated.Target)
+		})
+	} else {
+		if capturedIR == nil || *capturedIR == "" {
+			t.Fatalf("module snapshot missing for file %s", irSpec.Path)
+		}
+		ir = *capturedIR
 	}
-	if err := littest.Check(irSpec, *capturedIR); err != nil {
-		_ = os.WriteFile(filepath.Join(pkgDir, "result.txt"), []byte(*capturedIR), 0644)
+	if err := littest.Check(irSpec, ir, prefixes...); err != nil {
+		_ = os.WriteFile(filepath.Join(pkgDir, "result.txt"), []byte(ir), 0644)
 		t.Fatal(err)
 	}
 }
@@ -702,15 +713,7 @@ func symbolTable(bin string) (string, error) {
 }
 
 func readIRSpec(pkgDir string) (littest.Spec, bool, error) {
-	spec, err := littest.LoadSpec(pkgDir)
-	if err != nil {
-		var pathErr *os.PathError
-		if errors.Is(err, os.ErrNotExist) && errors.As(err, &pathErr) && filepath.Clean(pathErr.Path) == filepath.Join(pkgDir, "out.ll") {
-			return littest.Spec{}, false, nil
-		}
-		return littest.Spec{}, false, err
-	}
-	return spec, true, nil
+	return littest.FindSpec(pkgDir)
 }
 
 func withFuncInfoDisabled(fn func()) {
@@ -798,7 +801,7 @@ func CompileIREx(t *testing.T, src any, fname string, dbg bool, configure func(l
 func TestCompileEx(t *testing.T, src any, fname, expected string, dbg bool) {
 	t.Helper()
 	v := CompileIREx(t, src, fname, dbg, nil)
-	if llssa.StripModuleTarget(v) != expected && expected != ";" { // expected == ";" means skipping out.ll
+	if llssa.StripModuleTarget(v) != expected {
 		t.Fatalf("\n==> got:\n%s\n==> expected:\n%s\n", v, expected)
 	}
 }

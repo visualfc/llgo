@@ -29,7 +29,20 @@ func Match(filename, input string) error {
 }
 
 func MatchWithPrefixes(filename, input string, prefixes ...string) error {
-	args := make([]string, 0, len(prefixes)+1)
+	return match(filename, input, false, prefixes...)
+}
+
+// MatchWithTargetPrefixes allows a target-specific prefix to be absent while
+// still checking portable CHECK directives.
+func MatchWithTargetPrefixes(filename, input string, prefixes ...string) error {
+	return match(filename, input, true, prefixes...)
+}
+
+func match(filename, input string, allowUnusedPrefixes bool, prefixes ...string) error {
+	args := make([]string, 0, len(prefixes)+2)
+	if allowUnusedPrefixes {
+		args = append(args, "--allow-unused-prefixes")
+	}
 	for _, prefix := range prefixes {
 		args = append(args, "--check-prefix="+prefix)
 	}
@@ -48,4 +61,21 @@ func MatchWithPrefixes(filename, input string, prefixes ...string) error {
 		return err
 	}
 	return nil
+}
+
+// TargetPrefixes returns CHECK plus the most specific compile-target prefix.
+// A named target produces TARGET-<TARGET>; otherwise GOOS and GOARCH produce
+// <GOOS>-<GOARCH>.
+func TargetPrefixes(goos, goarch, target string) []string {
+	prefixes := []string{"CHECK"}
+	if target != "" {
+		return append(prefixes, "TARGET-"+strings.ToUpper(target))
+	}
+	if (goos == "") != (goarch == "") {
+		panic("filecheck: GOOS and GOARCH must be provided together")
+	}
+	if goos != "" && goarch != "" {
+		return append(prefixes, strings.ToUpper(goos+"-"+goarch))
+	}
+	return prefixes
 }

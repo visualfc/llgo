@@ -18,8 +18,6 @@ package littest
 
 import (
 	"bufio"
-	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,79 +26,46 @@ import (
 	"github.com/xgo-dev/llgo/internal/filecheck"
 )
 
-type Mode int
+type Spec struct {
+	Path    string
+	PostABI bool
+}
 
 const (
-	ModeSkip Mode = iota
-	ModeLiteral
-	ModeFileCheck
+	Marker        = "LITTEST"
+	PostABIMarker = "LITTEST: POST-ABI"
 )
 
-type Spec struct {
-	Path string
-	Text string
-	Mode Mode
-}
-
-const Marker = "LITTEST"
-
 func LoadSpec(pkgDir string) (Spec, error) {
-	if spec, ok, err := loadSourceSpec(pkgDir); err != nil {
-		return Spec{}, err
-	} else if ok {
-		return spec, nil
-	}
-
-	path := filepath.Join(pkgDir, "out.ll")
-	data, err := os.ReadFile(path)
+	spec, ok, err := FindSpec(pkgDir)
 	if err != nil {
 		return Spec{}, err
-	}
-	if bytes.Equal(data, []byte{';'}) {
-		return Spec{Path: path, Mode: ModeSkip}, nil
-	}
-	return Spec{Path: path, Text: string(data), Mode: ModeLiteral}, nil
-}
-
-func Check(spec Spec, actual string) error {
-	switch spec.Mode {
-	case ModeSkip:
-		return nil
-	case ModeFileCheck:
-		return filecheck.Match(spec.Path, actual)
-	case ModeLiteral:
-		if actual != spec.Text {
-			return fmt.Errorf("%s: literal LLVM IR mismatch", spec.Path)
-		}
-		return nil
-	default:
-		return errors.New("unknown lit spec mode")
-	}
-}
-
-func loadSourceSpec(pkgDir string) (Spec, bool, error) {
-	marked, ok, err := FindMarkedSourceFile(pkgDir)
-	if err != nil {
-		return Spec{}, false, err
 	}
 	if !ok {
-		return Spec{}, false, nil
+		return Spec{}, fmt.Errorf("%s: missing // %s source lit spec", pkgDir, Marker)
 	}
-	if marked == "" {
-		return Spec{}, false, nil
+	return spec, nil
+}
+
+func Check(spec Spec, actual string, targetPrefixes ...string) error {
+	if len(targetPrefixes) == 0 {
+		return filecheck.Match(spec.Path, actual)
 	}
-	return Spec{
-		Path: marked,
-		Mode: ModeFileCheck,
-	}, true, nil
+	return filecheck.MatchWithTargetPrefixes(spec.Path, actual, targetPrefixes...)
 }
 
 func FindMarkedSourceFile(dir string) (string, bool, error) {
+	spec, ok, err := FindSpec(dir)
+	return spec.Path, ok, err
+}
+
+// FindSpec finds the source-embedded IR check in dir without requiring one.
+func FindSpec(dir string) (Spec, bool, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "", false, err
+		return Spec{}, false, err
 	}
-	var marked string
+	var spec Spec
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -110,40 +75,55 @@ func FindMarkedSourceFile(dir string) (string, bool, error) {
 			continue
 		}
 		path := filepath.Join(dir, name)
-		ok, err := HasMarker(path)
+		candidatePostABI, ok, err := ReadMarker(path)
 		if err != nil {
-			return "", false, err
+			return Spec{}, false, err
 		}
 		if !ok {
 			continue
 		}
-		if marked != "" {
-			return "", false, fmt.Errorf("%s: multiple source lit specs found: %s, %s", dir, filepath.Base(marked), filepath.Base(path))
+		if spec.Path != "" {
+			return Spec{}, false, fmt.Errorf("%s: multiple source lit specs found: %s, %s", dir, filepath.Base(spec.Path), filepath.Base(path))
 		}
-		marked = path
+		spec = Spec{Path: path, PostABI: candidatePostABI}
 	}
-	if marked == "" {
-		return "", false, nil
+	if spec.Path == "" {
+		return Spec{}, false, nil
 	}
-	return marked, true, nil
+	return spec, true, nil
 }
 
 func HasMarker(path string) (bool, error) {
+	_, ok, err := ReadMarker(path)
+	return ok, err
+}
+
+// ReadMarker reports whether the source's first-line marker selects post-ABI IR.
+// Plain // LITTEST retains the existing check behavior; the POST-ABI form is
+// an explicit opt-in to target-ABI-lowered, pre-optimization IR.
+func ReadMarker(path string) (postABI, found bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {
-		return false, scanner.Err()
+		return false, false, scanner.Err()
 	}
 	line := strings.TrimSpace(scanner.Text())
 	if !strings.HasPrefix(line, "//") {
-		return false, nil
+		return false, false, nil
 	}
-	return strings.TrimSpace(strings.TrimPrefix(line, "//")) == Marker, nil
+	switch strings.TrimSpace(strings.TrimPrefix(line, "//")) {
+	case Marker:
+		return false, true, nil
+	case PostABIMarker:
+		return true, true, nil
+	default:
+		return false, false, nil
+	}
 }
 
 func IsSourceSpecFile(name string) bool {

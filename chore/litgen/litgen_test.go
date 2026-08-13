@@ -112,6 +112,65 @@ func TestProcessPath_UpdateOnlyPreservesManualChecks(t *testing.T) {
 	}
 }
 
+func TestProcessPathDoesNotRewritePostABIChecks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "in.go")
+	if err := os.WriteFile(path, []byte("// LITTEST: POST-ABI\npackage main\n\nfunc main() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err := processPath(path, commandOptions{allFuncs: true, globals: "smart"})
+	if err == nil || !strings.Contains(err.Error(), "maintain // LITTEST: POST-ABI checks by hand") {
+		t.Fatalf("processPath error = %v, want explicit post-ABI rejection", err)
+	}
+}
+
+func TestProcessTreeSkipsPostABIChecks(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(wd, "postabi-tree-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+
+	defaultDir := filepath.Join(root, "default")
+	postABIDir := filepath.Join(root, "postabi")
+	if err := os.Mkdir(defaultDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(postABIDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defaultPath := filepath.Join(defaultDir, "in.go")
+	postABIPath := filepath.Join(postABIDir, "in.go")
+	if err := os.WriteFile(defaultPath, []byte("// LITTEST\npackage main\n\nfunc value() int { return 1 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	postABISource := "// LITTEST: POST-ABI\npackage main\n\n// CHECK: ret void\nfunc main() {}\n"
+	if err := os.WriteFile(postABIPath, []byte(postABISource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := processPath(root, commandOptions{functions: []string{"value"}, globals: "none"}); err != nil {
+		t.Fatal(err)
+	}
+	generated, err := os.ReadFile(defaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(generated), "// CHECK-LABEL: define i64 @main.value()") {
+		t.Fatalf("default-stage sibling was not generated:\n%s", generated)
+	}
+	postABI, err := os.ReadFile(postABIPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(postABI) != postABISource {
+		t.Fatalf("post-ABI source changed:\n%s", postABI)
+	}
+}
+
 func TestProcessPath_UpdateOnlyWalksUnderscoreSuites(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {
