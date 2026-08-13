@@ -14,11 +14,11 @@ not_applicable:
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue20789.go
-    reason: "not applicable: this case asserts cmd/compile's exact malformed-name diagnostic; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic text; matching this toolchain-specific output is not an LLGo compatibility goal"
+    reason: "not applicable: this case asserts cmd/compile's exact unexpected-name parse diagnostic; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic text; matching this toolchain-specific output is not an LLGo compatibility goal"
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/bug050.go
-    reason: "not applicable: this case asserts cmd/compile's exact malformed-declaration diagnostics; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic count and text; matching this toolchain-specific output is not an LLGo compatibility goal"
+    reason: "not applicable: this case asserts cmd/compile's exact missing-package-clause diagnostic; LLGo uses its own parser and diagnostic pipeline and does not reproduce cmd/compile diagnostic text; matching this toolchain-specific output is not an LLGo compatibility goal"
   - directive: run
     case: fixedbugs/issue15277.go
     reason: "not applicable: this case requires precise PC-specific stack and register liveness after a value's last use; LLGo uses conservative BDWGC roots, so exact GC liveness is not currently an LLGo compatibility goal"
