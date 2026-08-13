@@ -92,7 +92,10 @@ func newSliceUnchecked(base unsafe.Pointer, eltSize, i, j, k int) (s Slice) {
 func SliceAppend(src Slice, data unsafe.Pointer, num, etSize int) Slice {
 	oldLen := src.len
 	src = GrowSlice(src, num, etSize)
-	if etSize == 0 {
+	// Avoid calling libc with a nil pointer for a zero-byte copy. Go permits
+	// zero-length appends with a nil source, while some libc implementations
+	// still require both memcpy arguments to be valid addresses.
+	if num == 0 || etSize == 0 {
 		return src
 	}
 	c.Memcpy(c.Advance(src.data, oldLen*etSize), data, uintptr(num*etSize))
