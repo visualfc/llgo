@@ -1137,16 +1137,6 @@ flakes:
     directive: run
     case: fixedbugs/issue13160.go
     reason: go1.26 goroot run can either pass or panic in GC_call_with_stack_base on linux/amd64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue29362.go
-    reason: go1.26 goroot run can either pass or panic in GC_call_with_stack_base on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue29362.go
-    reason: go1.24 goroot run can either pass or panic in GC_call_with_stack_base on linux/amd64
   - version: go1.24
     platform: linux/amd64
     directive: run
@@ -1217,14 +1207,6 @@ flakes:
     directive: run
     case: init1.go
     reason: linux/amd64 goroot run can either pass or expose incomplete runtime initialization
-  - platform: darwin/arm64
-    directive: run
-    case: deferfin.go
-    reason: darwin/arm64 goroot run can either pass or expose incomplete defer and finalizer semantics
-  - platform: linux/amd64
-    directive: run
-    case: deferfin.go
-    reason: linux/amd64 goroot run can either pass or expose incomplete defer and finalizer semantics
   - platform: linux/amd64
     directive: run
     case: fixedbugs/issue5493.go
@@ -1252,26 +1234,6 @@ flakes:
     directive: run
     case: typeparam/chans.go
     reason: select over the unbuffered channel can either complete or miss the final receive and time out on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue45045.go
-    reason: replaced map keys are not reliably finalized on linux/amd64, so the run can pass or time out waiting for the old key
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue45045.go
-    reason: replaced map keys are not reliably finalized on linux/amd64, so the run can pass or time out waiting for the old key
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue54343.go
-    reason: the bound-method receiver is not reliably finalized after its method value is cleared on linux/amd64, so the run can pass or report never GC'd
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue54343.go
-    reason: the bound-method receiver is not reliably finalized after its method value is cleared on linux/amd64, so the run can pass or report never GC'd
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue25897a.go

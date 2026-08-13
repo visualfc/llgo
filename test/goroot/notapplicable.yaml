@@ -46,6 +46,18 @@ not_applicable:
   - directive: run
     case: stackobj3.go
     reason: "not applicable: this case requires precise liveness for ambiguous by-value stack objects across calls; LLGo uses conservative BDWGC roots, so precise stack-object GC is not currently an LLGo compatibility goal"
+  - directive: run
+    case: deferfin.go
+    reason: "not applicable: this case requires deferred closures to stop retaining objects at gc's exact liveness boundary and observes exact finalizer timing; LLGo uses conservative BDWGC roots, so this is not currently an LLGo compatibility goal"
+  - directive: run
+    case: fixedbugs/issue29362.go
+    reason: "not applicable: this case requires typed stack maps that exclude non-pointer uintptr arguments from GC roots; LLGo uses conservative BDWGC roots, so excluding pointer-shaped integer values is not currently an LLGo compatibility goal"
+  - directive: run
+    case: fixedbugs/issue45045.go
+    reason: "not applicable: this case observes the exact finalization boundary of a replaced map key while the equal replacement remains live; LLGo uses conservative BDWGC roots, so exact finalizer timing is not currently an LLGo compatibility goal"
+  - directive: run
+    case: fixedbugs/issue54343.go
+    reason: "not applicable: this case observes the exact receiver lifetime of a cleared bound method through a finalizer; LLGo uses conservative BDWGC roots, so exact finalizer timing is not currently an LLGo compatibility goal"
   - version: go1.26
     directive: errorcheck
     case: escape_array.go
