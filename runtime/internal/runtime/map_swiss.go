@@ -99,6 +99,51 @@ func mapaccess1(t *abi.MapType, m *maps.Map, key unsafe.Pointer) unsafe.Pointer
 //go:linkname mapaccess2
 func mapaccess2(t *abi.MapType, m *maps.Map, key unsafe.Pointer) (unsafe.Pointer, bool)
 
+// Fast map operations are implemented in internal/runtime/maps and linked
+// directly into this package to avoid an extra runtime call layer.
+
+//go:linkname mapaccess1_fast32
+func mapaccess1_fast32(t *abi.MapType, m *maps.Map, key uint32) unsafe.Pointer
+
+//go:linkname mapaccess2_fast32
+func mapaccess2_fast32(t *abi.MapType, m *maps.Map, key uint32) (unsafe.Pointer, bool)
+
+//go:linkname mapassign_fast32
+func mapassign_fast32(t *abi.MapType, m *maps.Map, key uint32) unsafe.Pointer
+
+//go:linkname mapassign_fast32ptr
+func mapassign_fast32ptr(t *abi.MapType, m *maps.Map, key unsafe.Pointer) unsafe.Pointer
+
+//go:linkname mapdelete_fast32
+func mapdelete_fast32(t *abi.MapType, m *maps.Map, key uint32)
+
+//go:linkname mapaccess1_fast64
+func mapaccess1_fast64(t *abi.MapType, m *maps.Map, key uint64) unsafe.Pointer
+
+//go:linkname mapaccess2_fast64
+func mapaccess2_fast64(t *abi.MapType, m *maps.Map, key uint64) (unsafe.Pointer, bool)
+
+//go:linkname mapassign_fast64
+func mapassign_fast64(t *abi.MapType, m *maps.Map, key uint64) unsafe.Pointer
+
+//go:linkname mapassign_fast64ptr
+func mapassign_fast64ptr(t *abi.MapType, m *maps.Map, key unsafe.Pointer) unsafe.Pointer
+
+//go:linkname mapdelete_fast64
+func mapdelete_fast64(t *abi.MapType, m *maps.Map, key uint64)
+
+//go:linkname mapaccess1_faststr
+func mapaccess1_faststr(t *abi.MapType, m *maps.Map, key string) unsafe.Pointer
+
+//go:linkname mapaccess2_faststr
+func mapaccess2_faststr(t *abi.MapType, m *maps.Map, key string) (unsafe.Pointer, bool)
+
+//go:linkname mapassign_faststr
+func mapassign_faststr(t *abi.MapType, m *maps.Map, key string) unsafe.Pointer
+
+//go:linkname mapdelete_faststr
+func mapdelete_faststr(t *abi.MapType, m *maps.Map, key string)
+
 func mapaccess1_fat(t *abi.MapType, m *maps.Map, key, zero unsafe.Pointer) unsafe.Pointer {
 	e := mapaccess1(t, m, key)
 	if e == unsafe.Pointer(&zeroVal[0]) {

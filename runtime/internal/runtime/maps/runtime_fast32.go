@@ -10,6 +10,7 @@ import (
 	"github.com/goplus/llgo/runtime/abi"
 )
 
+//go:linkname runtime_mapaccess1_fast32 github.com/goplus/llgo/runtime/internal/runtime.mapaccess1_fast32
 func runtime_mapaccess1_fast32(typ *abi.SwissMapType, m *Map, key uint32) unsafe.Pointer {
 	// if race.Enabled && m != nil {
 	// 	callerpc := sys.GetCallerPC()
@@ -79,6 +80,7 @@ func runtime_mapaccess1_fast32(typ *abi.SwissMapType, m *Map, key uint32) unsafe
 	}
 }
 
+//go:linkname runtime_mapaccess2_fast32 github.com/goplus/llgo/runtime/internal/runtime.mapaccess2_fast32
 func runtime_mapaccess2_fast32(typ *abi.SwissMapType, m *Map, key uint32) (unsafe.Pointer, bool) {
 	// if race.Enabled && m != nil {
 	// 	callerpc := sys.GetCallerPC()
@@ -188,6 +190,7 @@ func (m *Map) putSlotSmallFast32(typ *abi.SwissMapType, hash uintptr, key uint32
 	return slotElem
 }
 
+//go:linkname runtime_mapassign_fast32 github.com/goplus/llgo/runtime/internal/runtime.mapassign_fast32
 func runtime_mapassign_fast32(typ *abi.SwissMapType, m *Map, key uint32) unsafe.Pointer {
 	if m == nil {
 		panic(errNilAssign)
@@ -326,6 +329,8 @@ outer:
 // Key is a 32-bit pointer (only called on 32-bit GOARCH). This source is identical to fast64ptr.
 //
 // TODO(prattmic): With some compiler refactoring we could avoid duplication of this function.
+//
+//go:linkname runtime_mapassign_fast32ptr github.com/goplus/llgo/runtime/internal/runtime.mapassign_fast32ptr
 func runtime_mapassign_fast32ptr(typ *abi.SwissMapType, m *Map, key unsafe.Pointer) unsafe.Pointer {
 	if m == nil {
 		panic(errNilAssign)
@@ -455,6 +460,7 @@ outer:
 	return slotElem
 }
 
+//go:linkname runtime_mapdelete_fast32 github.com/goplus/llgo/runtime/internal/runtime.mapdelete_fast32
 func runtime_mapdelete_fast32(typ *abi.SwissMapType, m *Map, key uint32) {
 	// if race.Enabled {
 	// 	callerpc := sys.GetCallerPC()

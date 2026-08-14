@@ -10,6 +10,7 @@ import (
 	"github.com/goplus/llgo/runtime/abi"
 )
 
+//go:linkname runtime_mapaccess1_fast64 github.com/goplus/llgo/runtime/internal/runtime.mapaccess1_fast64
 func runtime_mapaccess1_fast64(typ *abi.SwissMapType, m *Map, key uint64) unsafe.Pointer {
 	// if race.Enabled && m != nil {
 	// 	callerpc := sys.GetCallerPC()
@@ -79,6 +80,7 @@ func runtime_mapaccess1_fast64(typ *abi.SwissMapType, m *Map, key uint64) unsafe
 	}
 }
 
+//go:linkname runtime_mapaccess2_fast64 github.com/goplus/llgo/runtime/internal/runtime.mapaccess2_fast64
 func runtime_mapaccess2_fast64(typ *abi.SwissMapType, m *Map, key uint64) (unsafe.Pointer, bool) {
 	// if race.Enabled && m != nil {
 	// 	callerpc := sys.GetCallerPC()
@@ -189,6 +191,7 @@ func (m *Map) putSlotSmallFast64(typ *abi.SwissMapType, hash uintptr, key uint64
 	return slotElem
 }
 
+//go:linkname runtime_mapassign_fast64 github.com/goplus/llgo/runtime/internal/runtime.mapassign_fast64
 func runtime_mapassign_fast64(typ *abi.SwissMapType, m *Map, key uint64) unsafe.Pointer {
 	if m == nil {
 		panic(errNilAssign)
@@ -365,6 +368,8 @@ func (m *Map) putSlotSmallFastPtr(typ *abi.SwissMapType, hash uintptr, key unsaf
 }
 
 // Key is a 64-bit pointer (only called on 64-bit GOARCH).
+//
+//go:linkname runtime_mapassign_fast64ptr github.com/goplus/llgo/runtime/internal/runtime.mapassign_fast64ptr
 func runtime_mapassign_fast64ptr(typ *abi.SwissMapType, m *Map, key unsafe.Pointer) unsafe.Pointer {
 	if m == nil {
 		panic(errNilAssign)
@@ -495,6 +500,7 @@ outer:
 	return slotElem
 }
 
+//go:linkname runtime_mapdelete_fast64 github.com/goplus/llgo/runtime/internal/runtime.mapdelete_fast64
 func runtime_mapdelete_fast64(typ *abi.SwissMapType, m *Map, key uint64) {
 	// if race.Enabled {
 	// 	callerpc := sys.GetCallerPC()

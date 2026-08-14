@@ -98,6 +98,7 @@ func stringPtr(s string) unsafe.Pointer {
 	return (*stringStruct)(unsafe.Pointer(&s)).ptr
 }
 
+//go:linkname runtime_mapaccess1_faststr github.com/goplus/llgo/runtime/internal/runtime.mapaccess1_faststr
 func runtime_mapaccess1_faststr(typ *abi.SwissMapType, m *Map, key string) unsafe.Pointer {
 	// if race.Enabled && m != nil {
 	// 	callerpc := sys.GetCallerPC()
@@ -157,6 +158,7 @@ func runtime_mapaccess1_faststr(typ *abi.SwissMapType, m *Map, key string) unsaf
 	}
 }
 
+//go:linkname runtime_mapaccess2_faststr github.com/goplus/llgo/runtime/internal/runtime.mapaccess2_faststr
 func runtime_mapaccess2_faststr(typ *abi.SwissMapType, m *Map, key string) (unsafe.Pointer, bool) {
 	// if race.Enabled && m != nil {
 	// 	callerpc := sys.GetCallerPC()
@@ -258,6 +260,7 @@ func (m *Map) putSlotSmallFastStr(typ *abi.SwissMapType, hash uintptr, key strin
 	return slotElem
 }
 
+//go:linkname runtime_mapassign_faststr github.com/goplus/llgo/runtime/internal/runtime.mapassign_faststr
 func runtime_mapassign_faststr(typ *abi.SwissMapType, m *Map, key string) unsafe.Pointer {
 	if m == nil {
 		panic(errNilAssign)
@@ -396,6 +399,7 @@ outer:
 	return slotElem
 }
 
+//go:linkname runtime_mapdelete_faststr github.com/goplus/llgo/runtime/internal/runtime.mapdelete_faststr
 func runtime_mapdelete_faststr(typ *abi.SwissMapType, m *Map, key string) {
 	// if race.Enabled {
 	// 	callerpc := sys.GetCallerPC()

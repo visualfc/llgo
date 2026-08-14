@@ -656,7 +656,7 @@ func (b Builder) abiType(t types.Type) Expr {
 			methods = b.abiInterfaceMethods(mset)
 		}
 		methodCount := len(methods)
-		rt := prog.rtNamed(prog.abi.RuntimeName(t))
+		rt := prog.abiRuntimeType(t)
 		var typ types.Type = rt
 		if hasUncommon {
 			ut := prog.rtNamed("uncommonType")
@@ -743,7 +743,7 @@ func (p Package) RegisterAbiTypes(infos []AbiTypeInfo) {
 		if hasUncommon {
 			methods = builder.abiInterfaceMethods(mset)
 		}
-		rt := p.Prog.rtNamed(p.Prog.abi.RuntimeName(t))
+		rt := p.Prog.abiRuntimeType(t)
 		var typ types.Type = rt
 		if hasUncommon {
 			ut := p.Prog.rtNamed("uncommonType")
