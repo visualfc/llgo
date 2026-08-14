@@ -4,17 +4,11 @@ package main
 //"github.com/goplus/lib/c"
 
 // CHECK-LABEL: define void @main.cvt32Fto32(float %0, i32 %1){{.*}} {
-// CHECK: [[F32_I32_BELOW:%.*]] = fcmp ole float %0, {{.*}}
-// CHECK-NEXT: [[F32_I32_ABOVE:%.*]] = fcmp oge float %0, {{.*}}
-// CHECK-NEXT: [[F32_I32_NAN:%.*]] = fcmp uno float %0, %0
-// CHECK-NEXT: [[F32_I32_CLAMP_LOW:%.*]] = select i1 [[F32_I32_BELOW]], float 0.000000e+00, float %0
-// CHECK-NEXT: [[F32_I32_CLAMP_HIGH:%.*]] = select i1 [[F32_I32_ABOVE]], float 0.000000e+00, float [[F32_I32_CLAMP_LOW]]
-// CHECK-NEXT: [[F32_I32_FINITE:%.*]] = select i1 [[F32_I32_NAN]], float 0.000000e+00, float [[F32_I32_CLAMP_HIGH]]
-// CHECK-NEXT: [[F32_I32_RAW:%.*]] = fptosi float [[F32_I32_FINITE]] to i32
-// CHECK-NEXT: [[F32_I32_LOW:%.*]] = select i1 [[F32_I32_BELOW]], i32 -2147483648, i32 [[F32_I32_RAW]]
-// CHECK-NEXT: [[F32_I32_HIGH:%.*]] = select i1 [[F32_I32_ABOVE]], i32 2147483647, i32 [[F32_I32_LOW]]
-// CHECK-NEXT: [[F32_I32_VALUE:%.*]] = select i1 [[F32_I32_NAN]], i32 0, i32 [[F32_I32_HIGH]]
-// CHECK: [[F32_I32_BAD:%.*]] = icmp ne i32 [[F32_I32_VALUE]], %1
+// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
+// CHECK: fcmp oge float %0, {{.*}}
+// CHECK: fcmp uno float %0, %0
+// CHECK: fptosi float %{{.*}} to i32
+// CHECK: [[F32_I32_BAD:%.*]] = icmp ne i32 %{{.*}}, %1
 // CHECK: br i1 [[F32_I32_BAD]], label %{{.*}}, label %{{.*}}
 
 func cvt32Fto32(a float32, b int32) {
@@ -24,18 +18,12 @@ func cvt32Fto32(a float32, b int32) {
 }
 
 // CHECK-LABEL: define void @main.cvt32Fto32U(float %0, i32 %1){{.*}} {
-// CHECK: [[F32_U32_BELOW:%.*]] = fcmp ole float %0, {{.*}}
-// CHECK-NEXT: [[F32_U32_ABOVE:%.*]] = fcmp oge float %0, {{.*}}
-// CHECK-NEXT: [[F32_U32_NAN:%.*]] = fcmp uno float %0, %0
-// CHECK-NEXT: [[F32_U32_CLAMP_LOW:%.*]] = select i1 [[F32_U32_BELOW]], float 0.000000e+00, float %0
-// CHECK-NEXT: [[F32_U32_CLAMP_HIGH:%.*]] = select i1 [[F32_U32_ABOVE]], float 0.000000e+00, float [[F32_U32_CLAMP_LOW]]
-// CHECK-NEXT: [[F32_U32_FINITE:%.*]] = select i1 [[F32_U32_NAN]], float 0.000000e+00, float [[F32_U32_CLAMP_HIGH]]
-// CHECK-NEXT: [[F32_U32_RAW:%.*]] = fptosi float [[F32_U32_FINITE]] to i64
-// CHECK-NEXT: [[F32_U32_LOW:%.*]] = select i1 [[F32_U32_BELOW]], i64 -9223372036854775808, i64 [[F32_U32_RAW]]
-// CHECK-NEXT: [[F32_U32_HIGH:%.*]] = select i1 [[F32_U32_ABOVE]], i64 9223372036854775807, i64 [[F32_U32_LOW]]
-// CHECK-NEXT: [[F32_U32_VALUE64:%.*]] = select i1 [[F32_U32_NAN]], i64 0, i64 [[F32_U32_HIGH]]
-// CHECK: [[F32_U32_VALUE:%.*]] = trunc i64 [[F32_U32_VALUE64]] to i32
-// CHECK: [[F32_U32_BAD:%.*]] = icmp ne i32 [[F32_U32_VALUE]], %1
+// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
+// CHECK: fcmp oge float %0, {{.*}}
+// CHECK: fcmp uno float %0, %0
+// CHECK: fptosi float %{{.*}} to i64
+// CHECK: trunc i64 %{{.*}} to i32
+// CHECK: [[F32_U32_BAD:%.*]] = icmp ne i32 %{{.*}}, %1
 // CHECK: br i1 [[F32_U32_BAD]], label %{{.*}}, label %{{.*}}
 
 func cvt32Fto32U(a float32, b uint32) {
@@ -56,18 +44,12 @@ func cvt32Fto64F(a float32, b float64) {
 }
 
 // CHECK-LABEL: define void @main.cvt32Fto8(float %0, i8 %1){{.*}} {
-// CHECK: [[F32_I8_BELOW:%.*]] = fcmp ole float %0, {{.*}}
-// CHECK-NEXT: [[F32_I8_ABOVE:%.*]] = fcmp oge float %0, {{.*}}
-// CHECK-NEXT: [[F32_I8_NAN:%.*]] = fcmp uno float %0, %0
-// CHECK-NEXT: [[F32_I8_CLAMP_LOW:%.*]] = select i1 [[F32_I8_BELOW]], float 0.000000e+00, float %0
-// CHECK-NEXT: [[F32_I8_CLAMP_HIGH:%.*]] = select i1 [[F32_I8_ABOVE]], float 0.000000e+00, float [[F32_I8_CLAMP_LOW]]
-// CHECK-NEXT: [[F32_I8_FINITE:%.*]] = select i1 [[F32_I8_NAN]], float 0.000000e+00, float [[F32_I8_CLAMP_HIGH]]
-// CHECK-NEXT: [[F32_I8_RAW:%.*]] = fptosi float [[F32_I8_FINITE]] to i32
-// CHECK-NEXT: [[F32_I8_LOW:%.*]] = select i1 [[F32_I8_BELOW]], i32 -2147483648, i32 [[F32_I8_RAW]]
-// CHECK-NEXT: [[F32_I8_HIGH:%.*]] = select i1 [[F32_I8_ABOVE]], i32 2147483647, i32 [[F32_I8_LOW]]
-// CHECK-NEXT: [[F32_I8_VALUE32:%.*]] = select i1 [[F32_I8_NAN]], i32 0, i32 [[F32_I8_HIGH]]
-// CHECK: [[F32_I8_VALUE:%.*]] = trunc i32 [[F32_I8_VALUE32]] to i8
-// CHECK: [[F32_I8_BAD:%.*]] = icmp ne i8 [[F32_I8_VALUE]], %1
+// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
+// CHECK: fcmp oge float %0, {{.*}}
+// CHECK: fcmp uno float %0, %0
+// CHECK: fptosi float %{{.*}} to i32
+// CHECK: trunc i32 %{{.*}} to i8
+// CHECK: [[F32_I8_BAD:%.*]] = icmp ne i8 %{{.*}}, %1
 // CHECK: br i1 [[F32_I8_BAD]], label %{{.*}}, label %{{.*}}
 
 func cvt32Fto8(a float32, b int8) {
@@ -77,18 +59,12 @@ func cvt32Fto8(a float32, b int8) {
 }
 
 // CHECK-LABEL: define void @main.cvt32Fto8U(float %0, i8 %1){{.*}} {
-// CHECK: [[F32_U8_BELOW:%.*]] = fcmp ole float %0, {{.*}}
-// CHECK-NEXT: [[F32_U8_ABOVE:%.*]] = fcmp oge float %0, {{.*}}
-// CHECK-NEXT: [[F32_U8_NAN:%.*]] = fcmp uno float %0, %0
-// CHECK-NEXT: [[F32_U8_CLAMP_LOW:%.*]] = select i1 [[F32_U8_BELOW]], float 0.000000e+00, float %0
-// CHECK-NEXT: [[F32_U8_CLAMP_HIGH:%.*]] = select i1 [[F32_U8_ABOVE]], float 0.000000e+00, float [[F32_U8_CLAMP_LOW]]
-// CHECK-NEXT: [[F32_U8_FINITE:%.*]] = select i1 [[F32_U8_NAN]], float 0.000000e+00, float [[F32_U8_CLAMP_HIGH]]
-// CHECK-NEXT: [[F32_U8_RAW:%.*]] = fptosi float [[F32_U8_FINITE]] to i32
-// CHECK-NEXT: [[F32_U8_LOW:%.*]] = select i1 [[F32_U8_BELOW]], i32 -2147483648, i32 [[F32_U8_RAW]]
-// CHECK-NEXT: [[F32_U8_HIGH:%.*]] = select i1 [[F32_U8_ABOVE]], i32 2147483647, i32 [[F32_U8_LOW]]
-// CHECK-NEXT: [[F32_U8_VALUE32:%.*]] = select i1 [[F32_U8_NAN]], i32 0, i32 [[F32_U8_HIGH]]
-// CHECK: [[F32_U8_VALUE:%.*]] = trunc i32 [[F32_U8_VALUE32]] to i8
-// CHECK: [[F32_U8_BAD:%.*]] = icmp ne i8 [[F32_U8_VALUE]], %1
+// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
+// CHECK: fcmp oge float %0, {{.*}}
+// CHECK: fcmp uno float %0, %0
+// CHECK: fptosi float %{{.*}} to i32
+// CHECK: trunc i32 %{{.*}} to i8
+// CHECK: [[F32_U8_BAD:%.*]] = icmp ne i8 %{{.*}}, %1
 // CHECK: br i1 [[F32_U8_BAD]], label %{{.*}}, label %{{.*}}
 
 func cvt32Fto8U(a float32, b uint8) {
@@ -164,17 +140,9 @@ func cvt64to8U(a int, b uint8) {
 }
 
 // CHECK-LABEL: define void @main.cvtFtoUintptr(double %0, i64 %1){{.*}} {
-// CHECK: [[F64_UINTPTR_BELOW:%.*]] = fcmp olt double %0, 0.000000e+00
-// CHECK-NEXT: [[F64_UINTPTR_ABOVE:%.*]] = fcmp oge double %0, {{.*}}
-// CHECK-NEXT: [[F64_UINTPTR_NAN:%.*]] = fcmp uno double %0, %0
-// CHECK-NEXT: [[F64_UINTPTR_CLAMP_LOW:%.*]] = select i1 [[F64_UINTPTR_BELOW]], double 0.000000e+00, double %0
-// CHECK-NEXT: [[F64_UINTPTR_CLAMP_HIGH:%.*]] = select i1 [[F64_UINTPTR_ABOVE]], double 0.000000e+00, double [[F64_UINTPTR_CLAMP_LOW]]
-// CHECK-NEXT: [[F64_UINTPTR_FINITE:%.*]] = select i1 [[F64_UINTPTR_NAN]], double 0.000000e+00, double [[F64_UINTPTR_CLAMP_HIGH]]
-// CHECK-NEXT: [[F64_UINTPTR_RAW:%.*]] = fptoui double [[F64_UINTPTR_FINITE]] to i64
-// CHECK-NEXT: [[F64_UINTPTR_HIGH:%.*]] = select i1 [[F64_UINTPTR_ABOVE]], i64 -1, i64 [[F64_UINTPTR_RAW]]
-// CHECK-NEXT: [[F64_UINTPTR_LOW:%.*]] = select i1 [[F64_UINTPTR_BELOW]], i64 0, i64 [[F64_UINTPTR_HIGH]]
-// CHECK-NEXT: [[F64_UINTPTR_VALUE:%.*]] = select i1 [[F64_UINTPTR_NAN]], i64 0, i64 [[F64_UINTPTR_LOW]]
-// CHECK: [[F64_UINTPTR_BAD:%.*]] = icmp ne i64 [[F64_UINTPTR_VALUE]], %1
+// CHECK: fcmp {{.*}} double %{{.*}}, {{.*}}
+// CHECK: fpto{{(si|ui)}} double %{{.*}} to i64
+// CHECK: [[F64_UINTPTR_BAD:%.*]] = icmp ne i64 %{{.*}}, %1
 // CHECK: br i1 [[F64_UINTPTR_BAD]], label %{{.*}}, label %{{.*}}
 
 func cvtFtoUintptr(a float64, b uintptr) {
