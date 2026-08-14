@@ -364,6 +364,53 @@ func TestLinkObjFilesReportsOutputDirectoryError(t *testing.T) {
 	}
 }
 
+func TestRewritePrebuiltFuncTabEligibilityAndDiagnostic(t *testing.T) {
+	rewritePrebuiltFuncTab(nil, "missing", true)
+	rewritePrebuiltFuncTab(&context{}, "missing", true)
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+	defer prog.Dispose()
+	ctx := &context{prog: prog, buildConf: &Config{
+		BuildMode: BuildModeExe,
+		Goos:      "linux",
+		Goarch:    "amd64",
+	}}
+	rewritePrebuiltFuncTab(ctx, "missing", true) // sites disabled
+
+	prog.EnableFuncInfoSites(true)
+	ctx.buildConf.Target = "wasi"
+	rewritePrebuiltFuncTab(ctx, "missing", true)
+	ctx.buildConf.Target = ""
+	ctx.buildConf.BuildMode = BuildModeCShared
+	rewritePrebuiltFuncTab(ctx, "missing", true)
+	ctx.buildConf.BuildMode = BuildModeExe
+
+	t.Setenv("LLGO_PCLNPOST", "0")
+	rewritePrebuiltFuncTab(ctx, "missing", true)
+	t.Setenv("LLGO_PCLNPOST", "1")
+	rewritePrebuiltFuncTab(ctx, "missing", false)
+
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = stderr
+	t.Cleanup(func() { os.Stderr = oldStderr })
+	rewritePrebuiltFuncTab(ctx, filepath.Join(t.TempDir(), "missing"), true)
+	os.Stderr = oldStderr
+	if err := stderr.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(stderr.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(got, []byte("prebuilt functab rewrite skipped")) {
+		t.Fatalf("rewrite diagnostic = %q", got)
+	}
+}
+
 func TestWithEnvLastValueWins(t *testing.T) {
 	got := withEnv([]string{"A=old", "B=keep", "malformed", "A=older"}, "A=new", "C=value")
 	want := []string{"B=keep", "A=new", "C=value"}
