@@ -671,16 +671,23 @@ var (
 	pcLineSiteSectionInfo       = siteSectionInfo{elf: "llgo_pcline", machO: "__DATA,__llgo_pcl"}
 )
 
-// runtimeEntrySiteSectionInfo isolates the disposable Mach-O carrier only for
-// LTO builds, where cross-package inlining can produce a page-scale duplicate
-// tail. A dedicated segment costs at least one 16 KiB file page on
-// Darwin/arm64, so keeping non-LTO sites in __DATA avoids making small default
-// builds larger when the fixed page cost would dominate.
+// runtimeEntrySiteSectionInfo isolates the disposable Mach-O carrier only when
+// the linked image will actually pass through the embedded-executable rewrite.
+// Cross-package LTO inlining can then produce a page-scale duplicate tail worth
+// removing. External PCLN and library build modes do not run that rewrite, so
+// they keep the carrier in __DATA instead of paying for an unused __LLGO page.
 func runtimeEntrySiteSectionInfo(ctx *context) siteSectionInfo {
-	if shouldEmitRuntimeMachOSites(ctx) && ctx.buildConf.ltoEnabled() {
+	if shouldCompactRuntimeMachOSites(ctx) {
 		return compactEntrySiteSectionInfo
 	}
 	return entrySiteSectionInfo
+}
+
+func shouldCompactRuntimeMachOSites(ctx *context) bool {
+	return shouldEmitRuntimeMachOSites(ctx) &&
+		ctx.buildConf.BuildMode == BuildModeExe &&
+		ctx.buildConf.PCLNMode == PCLNEmbedded &&
+		ctx.buildConf.ltoEnabled()
 }
 
 func (s siteSectionInfo) push(machO bool, anchor string) string {

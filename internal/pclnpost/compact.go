@@ -25,12 +25,12 @@ import (
 )
 
 // compactCarrier removes the unused file-backed suffix of an isolated entry
-// carrier while preserving its original virtual address range. Non-LTO Mach-O
-// images deliberately keep the carrier in __DATA and retain their physical
-// layout after the logical table rewrite. Only these deliberately constrained
-// LLGo layouts are accepted; unfamiliar shapes fail before the caller publishes
-// any bytes. raw must be an owned staging buffer and may be modified even when
-// compaction returns an error.
+// carrier while preserving its original virtual address range. Mach-O images
+// that are not embedded LTO executables deliberately keep the carrier in
+// __DATA and retain their physical layout after the logical table rewrite.
+// Only these deliberately constrained LLGo layouts are accepted; unfamiliar
+// shapes fail before the caller publishes any bytes. raw must be an owned
+// staging buffer and may be modified even when compaction returns an error.
 func compactCarrier(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint64, error) {
 	if entryUsed > info.entryVMSize {
 		return nil, 0, fmt.Errorf("compact size entry=%#x/%#x", entryUsed, info.entryVMSize)

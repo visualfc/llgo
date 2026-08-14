@@ -30,7 +30,10 @@ type Stats struct {
 	NoSymbol     int
 	FtabEntries  int
 	Buckets      int
-	BytesRemoved uint64
+	// CarrierBytesRemoved is the number of bytes cut from the metadata carrier
+	// before an existing Mach-O code signature is regenerated. It is not the
+	// signed output file's net size change.
+	CarrierBytesRemoved uint64
 }
 
 // Rewrite parses the linked binary's funcinfo site sections, deduplicates
@@ -65,6 +68,6 @@ func Rewrite(path string) (Stats, error) {
 	if err != nil {
 		return st, err
 	}
-	st.FtabEntries, st.Buckets, st.BytesRemoved = ftab, buckets, removed
+	st.FtabEntries, st.Buckets, st.CarrierBytesRemoved = ftab, buckets, removed
 	return st, nil
 }

@@ -28,8 +28,8 @@ import (
 // buildMachO fabricates a minimal 64-bit Mach-O that debug/macho can Open:
 // one __TEXT segment (__text) and one data segment carrying __llgo_fie plus
 // optional pcline data, LC_SYMTAB, and LC_DYLD_CHAINED_FIXUPS. Rewrite fixtures
-// isolate the disposable entry carrier in __LLGO; external-mode fixtures keep
-// their metadata together in __DATA.
+// isolate the disposable entry carrier in __LLGO; fixtures for modes without
+// physical compaction keep their metadata together in __DATA.
 func buildMachO(t *testing.T, entry []byte, syms []elfFn) string {
 	return buildMachOFixture(t, entry, nil, nil, syms, true)
 }
@@ -320,14 +320,14 @@ func TestRewriteMachOInPlace(t *testing.T) {
 	if st.Format != "macho" || st.FtabEntries != 3 {
 		t.Fatalf("stats %+v", st)
 	}
-	if st.BytesRemoved == 0 {
+	if st.CarrierBytesRemoved == 0 {
 		t.Fatalf("rewrite did not physically compact: %+v", st)
 	}
 	after, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.Size()-after.Size() != int64(st.BytesRemoved) {
+	if before.Size()-after.Size() != int64(st.CarrierBytesRemoved) {
 		t.Fatalf("physical shrink before=%d after=%d stats=%+v", before.Size(), after.Size(), st)
 	}
 	info, err := load(path)
@@ -378,7 +378,7 @@ func TestRewriteMachOSharedDataCarrierKeepsFileSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.BytesRemoved != 0 || len(after) != len(raw) {
+	if st.CarrierBytesRemoved != 0 || len(after) != len(raw) {
 		t.Fatalf("shared carrier changed file size: stats=%+v sizes=%d/%d", st, len(raw), len(after))
 	}
 	info, err := load(path)

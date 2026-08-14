@@ -1421,8 +1421,8 @@ func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
 		return
 	}
 	if verbose {
-		fmt.Fprintf(os.Stderr, "llgo: prebuilt functab: %d entries (%d LTO inline copies removed), %d buckets, %d file bytes removed\n",
-			st.FtabEntries, st.InlineCopies, st.Buckets, st.BytesRemoved)
+		fmt.Fprintf(os.Stderr, "llgo: prebuilt functab: %d entries (%d LTO inline copies removed), %d buckets, %d carrier bytes removed\n",
+			st.FtabEntries, st.InlineCopies, st.Buckets, st.CarrierBytesRemoved)
 	}
 }
 

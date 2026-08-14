@@ -240,7 +240,7 @@ func TestRewriteELFInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.BytesRemoved == 0 || before.Size()-after.Size() != int64(st.BytesRemoved) {
+	if st.CarrierBytesRemoved == 0 || before.Size()-after.Size() != int64(st.CarrierBytesRemoved) {
 		t.Fatalf("physical shrink before=%d after=%d stats=%+v", before.Size(), after.Size(), st)
 	}
 	// Idempotence guard.
@@ -300,10 +300,10 @@ func TestRewriteELFDedupShrinksInlineCopies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.InlineCopies != copies || st.FtabEntries != 3 || st.BytesRemoved == 0 {
+	if st.InlineCopies != copies || st.FtabEntries != 3 || st.CarrierBytesRemoved == 0 {
 		t.Fatalf("dedup stats = %+v", st)
 	}
-	if before.Size()-after.Size() != int64(st.BytesRemoved) {
+	if before.Size()-after.Size() != int64(st.CarrierBytesRemoved) {
 		t.Fatalf("dedup did not physically shrink: before=%d after=%d stats=%+v", before.Size(), after.Size(), st)
 	}
 	info, err := load(path)

@@ -19,8 +19,8 @@
 // binary's funcinfo site section, deduplicates LTO inline copies against the
 // symbol table, sorts the entries, builds the Go-layout findfunctab via
 // internal/pclntab, and transactionally replaces the linked image. Isolated
-// LTO carriers are physically compacted; shared non-LTO Mach-O carriers retain
-// their file layout.
+// LTO carriers in embedded Mach-O executables are physically compacted; shared
+// carriers in other Mach-O build modes retain their file layout.
 package pclnpost
 
 import (

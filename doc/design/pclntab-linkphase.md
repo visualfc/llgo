@@ -49,8 +49,9 @@ not PCLN properties and must not introduce function-class-specific sections.
 
 1. **Parse** the linked binary's metadata sections (`debug/elf`,
    `debug/macho` from the Go stdlib — the tool runs on the host):
-   - `llgo_funcinfo_entry` / `__DATA,__llgo_fie` (non-LTO Mach-O) /
-     `__LLGO,__llgo_fie` (LTO Mach-O): `{pc, symbolID}` records.
+   - `llgo_funcinfo_entry` / `__DATA,__llgo_fie` (Mach-O without physical
+     compaction) / `__LLGO,__llgo_fie` (embedded executable LTO Mach-O):
+     `{pc, symbolID}` records.
    - Zero records are skipped, as in the runtime today.
 2. **Dedup by symbolID**: LTO inline copies register the same symbolID at
    several PCs. The true entry is the record whose PC lies inside the text
@@ -68,12 +69,13 @@ not PCLN properties and must not introduce function-class-specific sections.
    - The compact table replaces the prefix of `llgo_funcinfo_entry`; if it
      does not fit, the binary is left unchanged and the runtime uses its
      first-use construction fallback.
-   - LTO Mach-O puts the entry carrier in a dedicated `__LLGO` segment. A
-     non-LTO Mach-O keeps it in `__DATA`: without page-scale cross-package LTO
-     duplication, an isolated carrier can make small arm64 executables pay for
-     an otherwise-unused 16 KiB file page. ELF links the carrier immediately
-     before `.bss`, at the file-backed tail of the final writable `PT_LOAD`.
-     PC-line sites remain outside the disposable range.
+   - Embedded executable LTO Mach-O puts the entry carrier in a dedicated
+     `__LLGO` segment. Non-LTO, external-PCLN, c-shared, and c-archive Mach-O
+     keep it in `__DATA`: without a physical post-link compaction step, an
+     isolated carrier makes arm64 output pay for an otherwise-unused 16 KiB
+     file page. ELF links the carrier immediately before `.bss`, at the
+     file-backed tail of the final writable `PT_LOAD`. PC-line sites remain
+     outside the disposable range.
    - ELF compaction rejects an image with a program segment after the carrier;
      only non-loaded sections and the section-header table may be shifted.
    - After fixing Mach-O chained pointers, section sizes, load commands,

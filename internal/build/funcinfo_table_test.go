@@ -189,10 +189,13 @@ func TestRuntimeEntrySiteSectionInfo(t *testing.T) {
 		want string
 	}{
 		{name: "nil context", want: "__DATA,__llgo_fie"},
-		{name: "darwin without LTO", ctx: &context{buildConf: &Config{Goos: "darwin", LTO: lto.Off}}, want: "__DATA,__llgo_fie"},
-		{name: "darwin full LTO", ctx: &context{buildConf: &Config{Goos: "darwin", LTO: lto.Full}}, want: "__LLGO,__llgo_fie"},
-		{name: "darwin thin LTO", ctx: &context{buildConf: &Config{Goos: "darwin", LTO: lto.Thin}}, want: "__LLGO,__llgo_fie"},
-		{name: "linux full LTO", ctx: &context{buildConf: &Config{Goos: "linux", LTO: lto.Full}}, want: "__DATA,__llgo_fie"},
+		{name: "darwin without LTO", ctx: &context{buildConf: &Config{Goos: "darwin", BuildMode: BuildModeExe, PCLNMode: PCLNEmbedded, LTO: lto.Off}}, want: "__DATA,__llgo_fie"},
+		{name: "darwin embedded executable full LTO", ctx: &context{buildConf: &Config{Goos: "darwin", BuildMode: BuildModeExe, PCLNMode: PCLNEmbedded, LTO: lto.Full}}, want: "__LLGO,__llgo_fie"},
+		{name: "darwin embedded executable thin LTO", ctx: &context{buildConf: &Config{Goos: "darwin", BuildMode: BuildModeExe, PCLNMode: PCLNEmbedded, LTO: lto.Thin}}, want: "__LLGO,__llgo_fie"},
+		{name: "darwin external full LTO", ctx: &context{buildConf: &Config{Goos: "darwin", BuildMode: BuildModeExe, PCLNMode: PCLNExternal, LTO: lto.Full}}, want: "__DATA,__llgo_fie"},
+		{name: "darwin c-shared full LTO", ctx: &context{buildConf: &Config{Goos: "darwin", BuildMode: BuildModeCShared, PCLNMode: PCLNEmbedded, LTO: lto.Full}}, want: "__DATA,__llgo_fie"},
+		{name: "darwin c-archive full LTO", ctx: &context{buildConf: &Config{Goos: "darwin", BuildMode: BuildModeCArchive, PCLNMode: PCLNEmbedded, LTO: lto.Full}}, want: "__DATA,__llgo_fie"},
+		{name: "linux full LTO", ctx: &context{buildConf: &Config{Goos: "linux", BuildMode: BuildModeExe, PCLNMode: PCLNEmbedded, LTO: lto.Full}}, want: "__DATA,__llgo_fie"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -781,7 +784,7 @@ func TestExternalFuncInfoTableKeepsPayloadOutOfIR(t *testing.T) {
 	}{
 		{name: "linux", goos: "linux", goarch: "amd64", identitySect: "llgo_pclntab_id", entryBoundary: "__start_llgo_funcinfo_entry"},
 		{name: "darwin/no-lto", goos: "darwin", goarch: "arm64", identitySect: "__llgo_pid", entryBoundary: "section$start$__DATA$__llgo_fie"},
-		{name: "darwin/full-lto", goos: "darwin", goarch: "arm64", lto: lto.Full, identitySect: "__llgo_pid", entryBoundary: "section$start$__LLGO$__llgo_fie"},
+		{name: "darwin/full-lto", goos: "darwin", goarch: "arm64", lto: lto.Full, identitySect: "__llgo_pid", entryBoundary: "section$start$__DATA$__llgo_fie"},
 	} {
 		t.Run(target.name, func(t *testing.T) {
 			prog := llssa.NewProgram(&llssa.Target{GOOS: target.goos, GOARCH: target.goarch})
