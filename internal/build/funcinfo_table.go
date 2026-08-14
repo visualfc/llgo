@@ -424,11 +424,12 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 		}
 	}
 	machOSites := shouldEmitRuntimeMachOSites(ctx)
+	entrySiteInfo := runtimeEntrySiteSectionInfo(ctx)
 	emitSites := shouldEmitRuntimeSites(ctx)
 	emitEntrySites := shouldEmitRuntimeEntryELFSites(ctx) && len(encoded.Records) != 0
-	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machOSites, emitSites && len(pcLineValues) != 0, emitEntrySites)
+	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machOSites, entrySiteInfo, emitSites && len(pcLineValues) != 0, emitEntrySites)
 	if emitEntrySites {
-		startName, endName := entrySiteSectionInfo.boundary(machOSites)
+		startName, endName := entrySiteInfo.boundary(machOSites)
 		entryStart := llvm.AddGlobal(mod, funcEntryRecordType, startName)
 		entryEnd := llvm.AddGlobal(mod, funcEntryRecordType, endName)
 		entryStartPtr.SetInitializer(entryStart)
@@ -601,10 +602,11 @@ func emitExternalFuncInfoTable(ctx *context, mod llvm.Module, records []funcInfo
 	used.SetSection("llvm.metadata")
 
 	machO := shouldEmitRuntimeMachOSites(ctx)
+	entrySiteInfo := runtimeEntrySiteSectionInfo(ctx)
 	emitSites := shouldEmitRuntimeSites(ctx)
 	emitPCSites := emitSites && len(encoded.PCLines) != 0
 	emitEntrySites := shouldEmitRuntimeEntryELFSites(ctx) && len(encoded.Records) != 0
-	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machO, emitPCSites, emitEntrySites)
+	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machO, entrySiteInfo, emitPCSites, emitEntrySites)
 	if emitPCSites {
 		start, end := pcLineSiteSectionInfo.boundary(machO)
 		startGlobal := llvm.AddGlobal(mod, typ.pcSiteRecord, start)
@@ -613,7 +615,7 @@ func emitExternalFuncInfoTable(ctx *context, mod llvm.Module, records []funcInfo
 		g.pcSiteEndPtr.SetInitializer(endGlobal)
 	}
 	if emitEntrySites {
-		start, end := entrySiteSectionInfo.boundary(machO)
+		start, end := entrySiteInfo.boundary(machO)
 		startGlobal := llvm.AddGlobal(mod, typ.entryRecord, start)
 		endGlobal := llvm.AddGlobal(mod, typ.entryRecord, end)
 		g.entryStartPtr.SetInitializer(startGlobal)
@@ -664,13 +666,22 @@ type siteSectionInfo struct {
 }
 
 var (
-	// Keep the disposable funcinfo entry carrier in its own Mach-O segment.
-	// pclnpost rewrites its prefix into the compact runtime table and then
-	// physically removes the unused segment tail. PC-line sites stay in
-	// __DATA because embedded mode still consumes those records.
-	entrySiteSectionInfo  = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__LLGO,__llgo_fie"}
-	pcLineSiteSectionInfo = siteSectionInfo{elf: "llgo_pcline", machO: "__DATA,__llgo_pcl"}
+	entrySiteSectionInfo        = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__DATA,__llgo_fie"}
+	compactEntrySiteSectionInfo = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__LLGO,__llgo_fie"}
+	pcLineSiteSectionInfo       = siteSectionInfo{elf: "llgo_pcline", machO: "__DATA,__llgo_pcl"}
 )
+
+// runtimeEntrySiteSectionInfo isolates the disposable Mach-O carrier only for
+// LTO builds, where cross-package inlining can produce a page-scale duplicate
+// tail. A dedicated segment costs at least one 16 KiB file page on
+// Darwin/arm64, so keeping non-LTO sites in __DATA avoids making small default
+// builds larger when the fixed page cost would dominate.
+func runtimeEntrySiteSectionInfo(ctx *context) siteSectionInfo {
+	if shouldEmitRuntimeMachOSites(ctx) && ctx.buildConf.ltoEnabled() {
+		return compactEntrySiteSectionInfo
+	}
+	return entrySiteSectionInfo
+}
 
 func (s siteSectionInfo) push(machO bool, anchor string) string {
 	if machO {
@@ -771,6 +782,7 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 	// blocks inlining outright. Deduplicating the section is therefore
 	// link-phase work and lands together with the final ftab generation.
 	machO := shouldEmitRuntimeMachOSites(ctx)
+	entrySiteInfo := runtimeEntrySiteSectionInfo(ctx)
 	llvmCtx := mod.Context()
 	builder := llvmCtx.NewBuilder()
 	defer builder.Dispose()
@@ -802,9 +814,9 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 		}
 		anchor := siteAnchorLabel(machO, "funcinfo_entry")
 		instruction := anchor + ":\n" +
-			entrySiteSectionInfo.push(machO, anchor) + "\n" +
+			entrySiteInfo.push(machO, anchor) + "\n" +
 			".p2align " + align + "\n" +
-			entrySiteSectionInfo.recordSymbol(machO, "funcinfo_entry") +
+			entrySiteInfo.recordSymbol(machO, "funcinfo_entry") +
 			ptrDirective + " " + anchor + "\n" +
 			".quad " + uint64Hex(symbolID) + "\n" +
 			".popsection"
@@ -848,7 +860,7 @@ func uint64Hex(v uint64) string {
 // internal/pclnpost ("LLGOMET1" little-endian).
 const funcInfoMetaRecordMagic = uint64(0x3154454D4F474C4C)
 
-func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, pcSite bool, entrySite bool) {
+func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, entrySiteInfo siteSectionInfo, pcSite bool, entrySite bool) {
 	if !pcSite && !entrySite {
 		return
 	}
@@ -870,7 +882,7 @@ func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, pcSi
 		writeZeroRecord(pcLineSiteSectionInfo, "pcline")
 	}
 	if entrySite {
-		writeZeroRecord(entrySiteSectionInfo, "funcinfo_entry")
+		writeZeroRecord(entrySiteInfo, "funcinfo_entry")
 		// Meta records for the link-phase tool: relocations carrying the
 		// addresses of the symbol-index pointer global and its count global.
 		// Relocations are resolved by the linker regardless of what LTO

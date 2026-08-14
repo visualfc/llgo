@@ -182,6 +182,27 @@ func TestFuncInfoSiteLayoutArgsEligibilityAndCreateFailure(t *testing.T) {
 	}
 }
 
+func TestRuntimeEntrySiteSectionInfo(t *testing.T) {
+	tests := []struct {
+		name string
+		ctx  *context
+		want string
+	}{
+		{name: "nil context", want: "__DATA,__llgo_fie"},
+		{name: "darwin without LTO", ctx: &context{buildConf: &Config{Goos: "darwin", LTO: lto.Off}}, want: "__DATA,__llgo_fie"},
+		{name: "darwin full LTO", ctx: &context{buildConf: &Config{Goos: "darwin", LTO: lto.Full}}, want: "__LLGO,__llgo_fie"},
+		{name: "darwin thin LTO", ctx: &context{buildConf: &Config{Goos: "darwin", LTO: lto.Thin}}, want: "__LLGO,__llgo_fie"},
+		{name: "linux full LTO", ctx: &context{buildConf: &Config{Goos: "linux", LTO: lto.Full}}, want: "__DATA,__llgo_fie"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := runtimeEntrySiteSectionInfo(test.ctx).machO; got != test.want {
+				t.Fatalf("Mach-O entry site section = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestFuncInfoTableMaterializesEntrySites(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	src := prog.NewPackage("example.com/p", "example.com/p")
@@ -510,17 +531,23 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 	cases := []struct {
 		goos, goarch string
 		empty        bool
+		lto          lto.Mode
+		entrySection string
 	}{
-		{"linux", "amd64", false},
-		{"darwin", "arm64", false},
-		{"linux", "386", false},
-		{"linux", "amd64", true},
-		{"darwin", "arm64", true},
+		{goos: "linux", goarch: "amd64"},
+		{goos: "darwin", goarch: "arm64", entrySection: "__DATA,__llgo_fie"},
+		{goos: "darwin", goarch: "arm64", lto: lto.Full, entrySection: "__LLGO,__llgo_fie"},
+		{goos: "linux", goarch: "386"},
+		{goos: "linux", goarch: "amd64", empty: true},
+		{goos: "darwin", goarch: "arm64", empty: true, entrySection: "__DATA,__llgo_fie"},
 	}
 	for _, c := range cases {
 		name := c.goos + "/" + c.goarch
 		if c.empty {
 			name += "/empty"
+		}
+		if c.lto.Enabled() {
+			name += "/" + c.lto.String()
 		}
 		t.Run(name, func(t *testing.T) {
 			prog := llssa.NewProgram(&llssa.Target{GOOS: c.goos, GOARCH: c.goarch})
@@ -540,6 +567,7 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 					BuildMode: BuildModeExe,
 					Goos:      c.goos,
 					Goarch:    c.goarch,
+					LTO:       c.lto,
 				},
 			}
 			records := collectFuncInfo([]Package{{LPkg: src}})
@@ -558,6 +586,9 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 			}
 			if c.goos == "darwin" && !strings.Contains(ir, "live_support") {
 				t.Fatalf("darwin sections must be live_support:\n%s", ir)
+			}
+			if c.entrySection != "" && !strings.Contains(ir, c.entrySection) {
+				t.Fatalf("missing Mach-O entry section %q:\n%s", c.entrySection, ir)
 			}
 			if c.goos == "linux" && !strings.Contains(ir, "pushsection llgo_funcinfo_entry") {
 				t.Fatalf("missing elf entry section:\n%s", ir)
@@ -743,14 +774,16 @@ func TestFuncInfoTableEmptyEncodedInitializers(t *testing.T) {
 
 func TestExternalFuncInfoTableKeepsPayloadOutOfIR(t *testing.T) {
 	for _, target := range []struct {
-		goos, goarch  string
-		identitySect  string
-		entryBoundary string
+		name, goos, goarch string
+		lto                lto.Mode
+		identitySect       string
+		entryBoundary      string
 	}{
-		{goos: "linux", goarch: "amd64", identitySect: "llgo_pclntab_id", entryBoundary: "__start_llgo_funcinfo_entry"},
-		{goos: "darwin", goarch: "arm64", identitySect: "__llgo_pid", entryBoundary: "section$start$__LLGO$__llgo_fie"},
+		{name: "linux", goos: "linux", goarch: "amd64", identitySect: "llgo_pclntab_id", entryBoundary: "__start_llgo_funcinfo_entry"},
+		{name: "darwin/no-lto", goos: "darwin", goarch: "arm64", identitySect: "__llgo_pid", entryBoundary: "section$start$__DATA$__llgo_fie"},
+		{name: "darwin/full-lto", goos: "darwin", goarch: "arm64", lto: lto.Full, identitySect: "__llgo_pid", entryBoundary: "section$start$__LLGO$__llgo_fie"},
 	} {
-		t.Run(target.goos+"/"+target.goarch, func(t *testing.T) {
+		t.Run(target.name, func(t *testing.T) {
 			prog := llssa.NewProgram(&llssa.Target{GOOS: target.goos, GOARCH: target.goarch})
 			prog.EnableFuncInfoMetadata(true)
 			prog.EnableFuncInfoSites(true)
@@ -765,6 +798,7 @@ func TestExternalFuncInfoTableKeepsPayloadOutOfIR(t *testing.T) {
 					BuildMode: BuildModeExe,
 					Goos:      target.goos,
 					Goarch:    target.goarch,
+					LTO:       target.lto,
 					PCLNMode:  PCLNExternal,
 				},
 			}

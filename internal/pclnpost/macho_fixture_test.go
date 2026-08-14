@@ -339,24 +339,70 @@ func TestRewriteMachOInPlace(t *testing.T) {
 	}
 }
 
+func renameMachOCarrierSegment(t *testing.T, raw []byte, name string) []byte {
+	t.Helper()
+	marker := append([]byte("__LLGO"), make([]byte, 10)...)
+	replacement := append([]byte(name), make([]byte, 16-len(name))...)
+	found := 0
+	for off := 0; off < len(raw); {
+		i := bytes.Index(raw[off:], marker)
+		if i < 0 {
+			break
+		}
+		i += off
+		copy(raw[i:i+16], replacement)
+		found++
+		off = i + 16
+	}
+	if found == 0 {
+		t.Fatal("fixture has no __LLGO segment")
+	}
+	return raw
+}
+
+func TestRewriteMachOSharedDataCarrierKeepsFileSize(t *testing.T) {
+	path := machoRewriteFixture(t, 65536)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = renameMachOCarrierSegment(t, raw, "__DATA")
+	if err := os.WriteFile(path, raw, 0755); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Rewrite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.BytesRemoved != 0 || len(after) != len(raw) {
+		t.Fatalf("shared carrier changed file size: stats=%+v sizes=%d/%d", st, len(raw), len(after))
+	}
+	info, err := load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint64(info.entrySec); got != prebuiltMagic {
+		t.Fatalf("shared carrier magic = %#x, want %#x", got, prebuiltMagic)
+	}
+}
+
 func TestRewriteMachOUnsupportedLayoutPreservesFile(t *testing.T) {
 	path := machoRewriteFixture(t, 65536)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	marker := append([]byte("__LLGO"), make([]byte, 10)...)
-	i := bytes.Index(raw, marker)
-	if i < 0 {
-		t.Fatal("fixture has no __LLGO segment")
-	}
-	copy(raw[i:i+16], append([]byte("__DATA"), make([]byte, 10)...))
+	raw = renameMachOCarrierSegment(t, raw, "__OTHER")
 	if err := os.WriteFile(path, raw, 0755); err != nil {
 		t.Fatal(err)
 	}
 	before := append([]byte(nil), raw...)
 	if _, err := Rewrite(path); err == nil {
-		t.Fatal("rewrite accepted a non-isolated carrier")
+		t.Fatal("rewrite accepted an unsupported carrier")
 	}
 	after, err := os.ReadFile(path)
 	if err != nil {

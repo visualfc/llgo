@@ -24,12 +24,13 @@ import (
 	"fmt"
 )
 
-// compactCarrier removes the unused file-backed suffix of the entry carrier
-// while preserving its original virtual address range. The omitted
-// suffix consequently loads as zero-fill memory. Only the deliberately
-// constrained LLGo layouts are accepted; unfamiliar shapes fail before the
-// caller publishes any bytes. raw must be an owned staging buffer and may be
-// modified even when compaction returns an error.
+// compactCarrier removes the unused file-backed suffix of an isolated entry
+// carrier while preserving its original virtual address range. Non-LTO Mach-O
+// images deliberately keep the carrier in __DATA and retain their physical
+// layout after the logical table rewrite. Only these deliberately constrained
+// LLGo layouts are accepted; unfamiliar shapes fail before the caller publishes
+// any bytes. raw must be an owned staging buffer and may be modified even when
+// compaction returns an error.
 func compactCarrier(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint64, error) {
 	if entryUsed > info.entryVMSize {
 		return nil, 0, fmt.Errorf("compact size entry=%#x/%#x", entryUsed, info.entryVMSize)
@@ -88,21 +89,27 @@ func compactMachO(raw []byte, info *binaryInfo, entryUsed uint64) ([]byte, uint6
 			}
 		}
 	}
-	if carrier == nil || entry == nil || carrier.name != "__LLGO" {
-		return nil, 0, fmt.Errorf("Mach-O funcinfo carrier is not isolated in __LLGO")
+	if carrier == nil || entry == nil {
+		return nil, 0, fmt.Errorf("missing Mach-O funcinfo carrier")
+	}
+	oldEnd, ok := checkedEnd(carrier.fileoff, carrier.filesize, uint64(len(raw)))
+	if carrier.filesize == 0 || !ok {
+		return nil, 0, fmt.Errorf("Mach-O %s file range [%#x,+%#x) is invalid", carrier.name, carrier.fileoff, carrier.filesize)
+	}
+	if !rangeContained(carrier.fileoff, oldEnd, entry.offset, entry.size) {
+		return nil, 0, fmt.Errorf("Mach-O entry carrier is outside %s", carrier.name)
+	}
+	if carrier.name == "__DATA" {
+		return raw, 0, nil
+	}
+	if carrier.name != "__LLGO" {
+		return nil, 0, fmt.Errorf("Mach-O funcinfo carrier is in unsupported segment %s", carrier.name)
 	}
 	for i := range carrier.sections {
 		sec := &carrier.sections[i]
 		if sec.name != "__llgo_fie" && sec.size != 0 {
 			return nil, 0, fmt.Errorf("Mach-O __LLGO contains unexpected section %s", sec.name)
 		}
-	}
-	oldEnd, ok := checkedEnd(carrier.fileoff, carrier.filesize, uint64(len(raw)))
-	if carrier.filesize == 0 || !ok {
-		return nil, 0, fmt.Errorf("Mach-O __LLGO file range [%#x,+%#x) is invalid", carrier.fileoff, carrier.filesize)
-	}
-	if !rangeContained(carrier.fileoff, oldEnd, entry.offset, entry.size) {
-		return nil, 0, fmt.Errorf("Mach-O entry carrier is outside __LLGO")
 	}
 	for i := range layout.segments {
 		seg := &layout.segments[i]
