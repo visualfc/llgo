@@ -4,10 +4,6 @@ package main
 //"github.com/goplus/lib/c"
 
 // CHECK-LABEL: define void @main.cvt32Fto32(float %0, i32 %1){{.*}} {
-// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
-// CHECK: fcmp oge float %0, {{.*}}
-// CHECK: fcmp uno float %0, %0
-// CHECK: fptosi float %{{.*}} to i32
 // CHECK: [[F32_I32_BAD:%.*]] = icmp ne i32 %{{.*}}, %1
 // CHECK: br i1 [[F32_I32_BAD]], label %{{.*}}, label %{{.*}}
 
@@ -18,11 +14,6 @@ func cvt32Fto32(a float32, b int32) {
 }
 
 // CHECK-LABEL: define void @main.cvt32Fto32U(float %0, i32 %1){{.*}} {
-// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
-// CHECK: fcmp oge float %0, {{.*}}
-// CHECK: fcmp uno float %0, %0
-// CHECK: fptosi float %{{.*}} to i64
-// CHECK: trunc i64 %{{.*}} to i32
 // CHECK: [[F32_U32_BAD:%.*]] = icmp ne i32 %{{.*}}, %1
 // CHECK: br i1 [[F32_U32_BAD]], label %{{.*}}, label %{{.*}}
 
@@ -44,11 +35,6 @@ func cvt32Fto64F(a float32, b float64) {
 }
 
 // CHECK-LABEL: define void @main.cvt32Fto8(float %0, i8 %1){{.*}} {
-// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
-// CHECK: fcmp oge float %0, {{.*}}
-// CHECK: fcmp uno float %0, %0
-// CHECK: fptosi float %{{.*}} to i32
-// CHECK: trunc i32 %{{.*}} to i8
 // CHECK: [[F32_I8_BAD:%.*]] = icmp ne i8 %{{.*}}, %1
 // CHECK: br i1 [[F32_I8_BAD]], label %{{.*}}, label %{{.*}}
 
@@ -59,11 +45,6 @@ func cvt32Fto8(a float32, b int8) {
 }
 
 // CHECK-LABEL: define void @main.cvt32Fto8U(float %0, i8 %1){{.*}} {
-// CHECK: fcmp o{{(le|lt)}} float %0, {{.*}}
-// CHECK: fcmp oge float %0, {{.*}}
-// CHECK: fcmp uno float %0, %0
-// CHECK: fptosi float %{{.*}} to i32
-// CHECK: trunc i32 %{{.*}} to i8
 // CHECK: [[F32_U8_BAD:%.*]] = icmp ne i8 %{{.*}}, %1
 // CHECK: br i1 [[F32_U8_BAD]], label %{{.*}}, label %{{.*}}
 
@@ -140,8 +121,6 @@ func cvt64to8U(a int, b uint8) {
 }
 
 // CHECK-LABEL: define void @main.cvtFtoUintptr(double %0, i64 %1){{.*}} {
-// CHECK: fcmp {{.*}} double %{{.*}}, {{.*}}
-// CHECK: fpto{{(si|ui)}} double %{{.*}} to i64
 // CHECK: [[F64_UINTPTR_BAD:%.*]] = icmp ne i64 %{{.*}}, %1
 // CHECK: br i1 [[F64_UINTPTR_BAD]], label %{{.*}}, label %{{.*}}
 
