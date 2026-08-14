@@ -59,3 +59,21 @@ func TestAMD64MapIntrinsics(t *testing.T) {
 		t.Fatalf("ordinary maps runtime call was incorrectly replaced:\n%s", ir)
 	}
 }
+
+func TestARM64MapIntrinsics(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "darwin", GOARCH: "arm64", BuildTags: "llgo,swissmap"})
+	defer prog.Dispose()
+	pkg := prog.NewPackage("maps", "maps")
+	u64 := types.Typ[types.Uint64]
+	params := types.NewTuple(types.NewParam(0, nil, "group", u64))
+	results := types.NewTuple(types.NewParam(0, nil, "", u64))
+	sig := types.NewSignatureType(nil, nil, nil, params, results, false)
+	match := pkg.NewFunc(mapsRuntimePackage+"ctrlGroupMatchEmpty", sig, InGo)
+	caller := pkg.NewFunc("match", sig, InGo)
+	b := caller.MakeBody(1)
+	b.Return(b.Call(match.Expr, caller.Param(0)))
+	ir := pkg.String()
+	if !strings.Contains(ir, "and i64") || strings.Contains(ir, "call i64 @\""+mapsRuntimePackage+"ctrlGroupMatchEmpty\"") {
+		t.Fatalf("arm64 map intrinsic was not lowered:\n%s", ir)
+	}
+}
