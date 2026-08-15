@@ -87,9 +87,14 @@ jobs:
             -covermode=atomic -coverprofile=coverage-windows-comdat.txt \
             ./ssa
 
+          go test -count=1 -timeout=10m \
+            -run '^(TestTargetArchAndNewTransformerArchSelection|TestMSVC.*)$' \
+            -covermode=atomic -coverprofile=coverage-windows-cabi.txt \
+            ./internal/cabi
+
       - name: Upload Windows coverage
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt
+          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-cabi.txt
           flags: windows-native
