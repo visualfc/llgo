@@ -394,6 +394,28 @@ package bytealg
 	}
 }
 
+func TestSourcePatchSourceMatchError(t *testing.T) {
+	for _, directive := range []string{"//llgo:skipall", "//llgo:skip Target"} {
+		t.Run(directive, func(t *testing.T) {
+			goroot := t.TempDir()
+			runtimeDir := t.TempDir()
+			const pkgPath = "demo"
+			srcDir := filepath.Join(goroot, "src", pkgPath)
+			patchDir := filepath.Join(runtimeDir, "_patch", pkgPath)
+			mustWriteFile(t, filepath.Join(srcDir, "bad_linux.go"), "//go:build (\n")
+			mustWriteFile(t, filepath.Join(patchDir, "patch.go"), "package demo\n\n"+directive+"\nfunc Target() {}\n")
+
+			_, _, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
+				goos:   "linux",
+				goarch: "amd64",
+			})
+			if err == nil || !strings.Contains(err.Error(), "match stdlib source file") {
+				t.Fatalf("applySourcePatchForPkg error = %v, want source match error", err)
+			}
+		})
+	}
+}
+
 func TestBuildSourcePatchOverlayForIter(t *testing.T) {
 	overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), runtime.GOROOT(), sourcePatchBuildContext{})
 	if err != nil {
@@ -599,10 +621,17 @@ func Target() string { return "linux" }
 
 func Target() string { return "windows" }
 `)
+	mustWriteFile(t, filepath.Join(srcDir, "demo_experiment.go"), `//go:build goexperiment.future
+
+package demo
+
+func Experiment() string { return "experiment" }
+`)
 	mustWriteFile(t, filepath.Join(patchDir, "patch.go"), `package demo
 
-//llgo:skip Target
+//llgo:skip Target Experiment
 func Target() string { return "patched" }
+func Experiment() string { return "patched" }
 `)
 
 	changed, overlay, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
@@ -618,8 +647,67 @@ func Target() string { return "patched" }
 	if _, ok := overlay[filepath.Join(srcDir, "demo_linux.go")]; !ok {
 		t.Fatal("active target source was not filtered")
 	}
+	if _, ok := overlay[filepath.Join(srcDir, "demo_experiment.go")]; !ok {
+		t.Fatal("target source with a different tool tag was not filtered")
+	}
 	if _, ok := overlay[filepath.Join(srcDir, "demo_windows.go")]; ok {
-		t.Fatal("inactive target source should not be parsed or overlaid")
+		t.Fatal("source for a different target should not be parsed or overlaid")
+	}
+}
+
+func TestApplySourcePatchForPkg_SkipAllFiltersTargetFiles(t *testing.T) {
+	goroot := t.TempDir()
+	runtimeDir := t.TempDir()
+	const pkgPath = "demo"
+	srcDir := filepath.Join(goroot, "src", pkgPath)
+	patchDir := filepath.Join(runtimeDir, "_patch", pkgPath)
+	mustWriteFile(t, filepath.Join(srcDir, "demo_linux.go"), "package demo\n")
+	mustWriteFile(t, filepath.Join(srcDir, "demo_windows.go"), "package demo\n")
+	mustWriteFile(t, filepath.Join(patchDir, "patch.go"), `package demo
+
+//llgo:skipall
+`)
+
+	changed, overlay, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
+		goos:   "linux",
+		goarch: "amd64",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected source patch overlay to change package")
+	}
+	if _, ok := overlay[filepath.Join(srcDir, "demo_linux.go")]; !ok {
+		t.Fatal("active target source was not stubbed")
+	}
+	if _, ok := overlay[filepath.Join(srcDir, "demo_windows.go")]; ok {
+		t.Fatal("source for a different target should not be stubbed")
+	}
+}
+
+func TestSourcePatchMayContainSkip(t *testing.T) {
+	tests := []struct {
+		name  string
+		src   string
+		skips []string
+		want  bool
+	}{
+		{"function", "package p\nfunc Target() {}\n", []string{"Target"}, true},
+		{"qualified function", "package p\nfunc Target() {}\n", []string{"p.Target"}, true},
+		{"method", "package p\nfunc (*T) Method() {}\n", []string{"(*T).Method"}, true},
+		{"absent", "package p\nfunc Other() {}\n", []string{"Target"}, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			skips := make(map[string]struct{}, len(test.skips))
+			for _, name := range test.skips {
+				skips[name] = struct{}{}
+			}
+			if got := sourcePatchMayContainSkip([]byte(test.src), skips); got != test.want {
+				t.Fatalf("sourcePatchMayContainSkip() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
