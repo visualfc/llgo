@@ -199,6 +199,12 @@ jobs:
             .\_test\windowsruntime
           $buildExitCode = $LASTEXITCODE
           if ($buildExitCode -eq 0) {
+            ..\llgo-windows-smoke.exe build -tags=nogc `
+              -o ..\windows-stdlib-smoke.exe `
+              .\_test\windowsstdlib
+            $buildExitCode = $LASTEXITCODE
+          }
+          if ($buildExitCode -eq 0) {
             ..\llgo-windows-smoke.exe build `
               -o ..\windows-ffi-smoke.exe `
               .\_test\windowsffi
@@ -230,6 +236,7 @@ jobs:
             -ReadObj $readObjExe `
             -Artifacts @(
               ".\windows-runtime-smoke.exe",
+              ".\windows-stdlib-smoke.exe",
               ".\windows-ffi-smoke.exe",
               ".\windows-empty-smoke.exe",
               ".\windows-core-fault-smoke.exe"
@@ -238,7 +245,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-
           $env:LLGO_TEST_UNRECOVERED_FAULT = "1"
           # This process is expected to write a panic to stderr and fail.
           # Temporarily keep native stderr non-terminating so it can be
@@ -267,6 +273,10 @@ jobs:
           }
           if ($faultOutput.Contains("github.com/xgo-dev/llgo/runtime/internal/clite/tls.init")) {
             throw "unrecovered Windows fault traceback continued past runtime.goexit"
+          }
+          .\windows-stdlib-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
           }
           .\windows-ffi-smoke.exe
           if ($LASTEXITCODE -ne 0) {
