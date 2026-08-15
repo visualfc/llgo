@@ -177,6 +177,15 @@ assertions under `CHECK` and use the target prefix only on lines that really
 differ. `litgen` continues to maintain only the default marker; post-ABI checks
 are handwritten.
 
+A post-ABI fixture can request several GOOS/GOARCH configurations on the same
+marker. The harness generates IR once per listed target while the target
+prefixes keep the differing assertions in one file. Runtime output, when
+present, is still executed once with the fixture's normal run configuration.
+
+```go
+// LITTEST: POST-ABI linux/amd64 linux/arm64
+```
+
 Example:
 
 - [cl/_testrt/litdemo/in.go](../cl/_testrt/litdemo/in.go) is a minimal `_testrt` case that demonstrates `litgen` output.

@@ -249,6 +249,10 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 	if err != nil {
 		t.Fatal("LoadSpec failed:", err)
 	}
+	if len(spec.Targets) != 0 {
+		testPostABITargets(t, pkgDir, spec)
+		return
+	}
 	var v string
 	var prefixes []string
 	withFuncInfoDisabled(func() {
@@ -263,6 +267,25 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 	if err := littest.Check(spec, v, prefixes...); err != nil {
 		_ = os.WriteFile(filepath.Join(pkgDir, "result.txt"), []byte(v), 0644)
 		t.Fatal(err)
+	}
+}
+
+func testPostABITargets(t *testing.T, pkgDir string, spec littest.Spec) {
+	t.Helper()
+	for _, target := range spec.Targets {
+		t.Run(target.String(), func(t *testing.T) {
+			conf := &build.Config{Goos: target.GOOS, Goarch: target.GOARCH}
+			var generated llgen.GeneratedIR
+			withFuncInfoDisabled(func() {
+				generated = llgen.GeneratePostABIWithConf(pkgDir, conf)
+			})
+			prefixes := filecheck.TargetPrefixes(generated.GOOS, generated.GOARCH, generated.Target)
+			if err := littest.Check(spec, generated.Text, prefixes...); err != nil {
+				result := "result." + strings.ReplaceAll(target.String(), "/", "-") + ".txt"
+				_ = os.WriteFile(filepath.Join(pkgDir, result), []byte(generated.Text), 0644)
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -345,6 +368,10 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 	var ir string
 	var prefixes []string
 	if irSpec.PostABI {
+		if len(irSpec.Targets) != 0 {
+			testPostABITargets(t, pkgDir, irSpec)
+			return
+		}
 		// Keep the runtime build and the existing pre-ABI ModuleHook contract
 		// unchanged; obtain the opt-in stage through a separate IR-only compile.
 		withFuncInfoDisabled(func() {

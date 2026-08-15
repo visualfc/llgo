@@ -52,6 +52,52 @@ func main() {}
 	}
 }
 
+func TestLoadSpecSelectsPostABITargets(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "in.go"), `// LITTEST: POST-ABI linux/amd64 linux/arm64
+package main
+
+// CHECK: ret void
+func main() {}
+`)
+
+	spec, err := LoadSpec(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !spec.PostABI {
+		t.Fatal("target matrix did not select post-ABI IR")
+	}
+	got := make([]string, len(spec.Targets))
+	for i, target := range spec.Targets {
+		got[i] = target.String()
+	}
+	if strings.Join(got, ",") != "linux/amd64,linux/arm64" {
+		t.Fatalf("targets = %v, want [linux/amd64 linux/arm64]", got)
+	}
+}
+
+func TestLoadSpecRejectsInvalidPostABITargets(t *testing.T) {
+	tests := []struct {
+		marker string
+		want   string
+	}{
+		{marker: "// LITTEST: POST-ABI amd64", want: `invalid POST-ABI target "amd64"`},
+		{marker: "// LITTEST: POST-ABI linux/amd64 linux/amd64", want: `duplicate POST-ABI target "linux/amd64"`},
+	}
+	for _, test := range tests {
+		t.Run(test.want, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, filepath.Join(dir, "in.go"), test.marker+"\npackage main\n")
+
+			_, err := LoadSpec(dir)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("LoadSpec error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func TestLoadSpecReportsMissingDirectory(t *testing.T) {
 	_, err := LoadSpec(filepath.Join(t.TempDir(), "missing"))
 	if err == nil {
@@ -145,6 +191,7 @@ func TestHasMarker(t *testing.T) {
 		{name: "plain", contents: "package main\n"},
 		{name: "marker", contents: "// LITTEST\npackage main\n", want: true},
 		{name: "post abi", contents: "// LITTEST: POST-ABI\npackage main\n", want: true},
+		{name: "post abi targets", contents: "// LITTEST: POST-ABI linux/amd64 linux/arm64\npackage main\n", want: true},
 		{name: "not first line", contents: "\n// LITTEST\npackage main\n"},
 		{name: "wrong comment", contents: "# LITTEST\npackage main\n"},
 		{name: "unknown marker", contents: "// LITTEST: UNKNOWN\npackage main\n"},

@@ -29,6 +29,17 @@ import (
 type Spec struct {
 	Path    string
 	PostABI bool
+	Targets []Target
+}
+
+// Target selects one GOOS/GOARCH pair for a post-ABI IR check.
+type Target struct {
+	GOOS   string
+	GOARCH string
+}
+
+func (t Target) String() string {
+	return t.GOOS + "/" + t.GOARCH
 }
 
 const (
@@ -75,7 +86,7 @@ func FindSpec(dir string) (Spec, bool, error) {
 			continue
 		}
 		path := filepath.Join(dir, name)
-		candidatePostABI, ok, err := ReadMarker(path)
+		candidate, ok, err := readMarker(path)
 		if err != nil {
 			return Spec{}, false, err
 		}
@@ -85,7 +96,8 @@ func FindSpec(dir string) (Spec, bool, error) {
 		if spec.Path != "" {
 			return Spec{}, false, fmt.Errorf("%s: multiple source lit specs found: %s, %s", dir, filepath.Base(spec.Path), filepath.Base(path))
 		}
-		spec = Spec{Path: path, PostABI: candidatePostABI}
+		candidate.Path = path
+		spec = candidate
 	}
 	if spec.Path == "" {
 		return Spec{}, false, nil
@@ -100,30 +112,62 @@ func HasMarker(path string) (bool, error) {
 
 // ReadMarker reports whether the source's first-line marker selects post-ABI IR.
 // Plain // LITTEST retains the existing check behavior; the POST-ABI form is
-// an explicit opt-in to target-ABI-lowered, pre-optimization IR.
+// an explicit opt-in to target-ABI-lowered, pre-optimization IR and may carry
+// a space-separated GOOS/GOARCH target matrix.
 func ReadMarker(path string) (postABI, found bool, err error) {
+	spec, found, err := readMarker(path)
+	return spec.PostABI, found, err
+}
+
+func readMarker(path string) (spec Spec, found bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return false, false, err
+		return Spec{}, false, err
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
 	if !scanner.Scan() {
-		return false, false, scanner.Err()
+		return Spec{}, false, scanner.Err()
 	}
 	line := strings.TrimSpace(scanner.Text())
 	if !strings.HasPrefix(line, "//") {
-		return false, false, nil
+		return Spec{}, false, nil
 	}
-	switch strings.TrimSpace(strings.TrimPrefix(line, "//")) {
+	marker := strings.TrimSpace(strings.TrimPrefix(line, "//"))
+	switch marker {
 	case Marker:
-		return false, true, nil
+		return Spec{}, true, nil
 	case PostABIMarker:
-		return true, true, nil
-	default:
-		return false, false, nil
+		return Spec{PostABI: true}, true, nil
 	}
+	if !strings.HasPrefix(marker, PostABIMarker+" ") {
+		return Spec{}, false, nil
+	}
+
+	targets, err := parseTargets(strings.TrimSpace(strings.TrimPrefix(marker, PostABIMarker)))
+	if err != nil {
+		return Spec{}, false, fmt.Errorf("%s: %w", path, err)
+	}
+	return Spec{PostABI: true, Targets: targets}, true, nil
+}
+
+func parseTargets(text string) ([]Target, error) {
+	fields := strings.Fields(text)
+	targets := make([]Target, 0, len(fields))
+	seen := make(map[string]struct{}, len(fields))
+	for _, field := range fields {
+		goos, goarch, ok := strings.Cut(field, "/")
+		if !ok || goos == "" || goarch == "" || strings.Contains(goarch, "/") {
+			return nil, fmt.Errorf("invalid POST-ABI target %q; want GOOS/GOARCH", field)
+		}
+		if _, ok := seen[field]; ok {
+			return nil, fmt.Errorf("duplicate POST-ABI target %q", field)
+		}
+		seen[field] = struct{}{}
+		targets = append(targets, Target{GOOS: goos, GOARCH: goarch})
+	}
+	return targets, nil
 }
 
 func IsSourceSpecFile(name string) bool {
