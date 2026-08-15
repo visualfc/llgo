@@ -30,7 +30,7 @@ LLGo is compatible with the C ecosystem through the C **Application Binary Inter
 
 Go language support is broadly complete and is continuously checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases. CI currently exercises pinned Go 1.24 and Go 1.26 toolchains; remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml), while gc-specific compiler diagnostics and runtime mechanisms outside LLGo's compatibility goals are documented separately in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
 
-LLGo fully supports the Go standard library on supported native platforms. CI covers the public package and exported-symbol surface of the primary Go toolchain, while compatibility tests run against both supported toolchains in [`test/std`](test/std/README.md).
+LLGo fully supports the Go standard library on supported native platforms; see [Go standard library support](#go-standard-library-support) for validation and target-specific details.
 
 LLGo uses a different runtime from the standard Go toolchain. Native goroutines currently use one OS thread each with fixed native stacks, and the default garbage collector is conservative BDWGC. These differences matter for scheduler, stack, GC, and toolchain-specific behavior even when Go source semantics match.
 
