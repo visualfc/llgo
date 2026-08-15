@@ -1,4 +1,4 @@
-llgo - A Go compiler based on LLVM
+LLGo - An LLVM-based Go compiler
 =====
 
 [![Build Status](https://github.com/xgo-dev/llgo/actions/workflows/go.yml/badge.svg)](https://github.com/xgo-dev/llgo/actions/workflows/go.yml)
@@ -7,7 +7,7 @@ llgo - A Go compiler based on LLVM
 [![GoDoc](https://pkg.go.dev/badge/github.com/xgo-dev/llgo.svg)](https://pkg.go.dev/github.com/xgo-dev/llgo)
 [![XGo](https://img.shields.io/badge/project-XGo-blue.svg)](https://github.com/goplus/xgo)
 
-LLGo is a Go compiler based on LLVM in order to better integrate Go with the C ecosystem including Python and JavaScript. It's a subproject of [the XGo project](https://github.com/goplus/xgo).
+LLGo is an LLVM-based Go compiler designed for direct interoperability with the C ecosystem. It compiles ordinary Go and cgo packages, and supports C/C++, Python, WebAssembly/JavaScript, and embedded development through C ABI bindings and target-specific runtimes. It is a subproject of [the XGo project](https://github.com/goplus/xgo).
 
 LLGo aims to expand the boundaries of Go/XGo, providing limitless possibilities such as:
 
@@ -23,12 +23,28 @@ How can these be achieved?
 LLGo := Go * C ecosystem
 ```
 
-LLGo is compatible with C ecosystem through the language's **Application Binary Interface (ABI)**, while LLGo is compatible with Go through its **syntax (source code)**. C ecosystem includes all languages that are ABI compatible with C (eg. C/C++, Python, JavaScript, Objective-C, Swift, etc).
+LLGo is compatible with the C ecosystem through the C **Application Binary Interface (ABI)**, while LLGo is compatible with Go at the **source-code level**. The C ecosystem includes languages and runtimes that expose C-compatible interfaces (e.g. C/C++, Python, JavaScript, Objective-C, and Swift).
 
 
-## C/C++ standard libary support
+## Project status
 
-You can import a C/C++ standard library in LLGo!
+Go language support is broadly complete and is continuously checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases. CI currently exercises pinned Go 1.24 and Go 1.26 toolchains; remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml), while gc-specific compiler diagnostics and runtime mechanisms outside LLGo's compatibility goals are documented separately in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
+
+LLGo fully supports the Go standard library on supported native platforms. CI covers the public package and exported-symbol surface of the primary Go toolchain, while compatibility tests run against both supported toolchains in [`test/std`](test/std/README.md).
+
+LLGo uses a different runtime from the standard Go toolchain. Native goroutines currently use one OS thread each with fixed native stacks, and the default garbage collector is conservative BDWGC. These differences matter for scheduler, stack, GC, and toolchain-specific behavior even when Go source semantics match.
+
+| Target | Current coverage |
+| --- | --- |
+| Native | Linux amd64/arm64 and macOS amd64/arm64 [release artifacts](https://github.com/xgo-dev/llgo/releases); primary CI on Linux amd64 and macOS arm64 |
+| WebAssembly | `js/wasm` and `wasip1/wasm` builds; WASI and Emscripten CI coverage |
+| Embedded | [`-target`](doc/Embedded_Cmd.md) configurations for supported boards and MCUs, with selected QEMU/emulator smoke tests |
+| Windows | Not currently supported as a host platform |
+
+
+## C/C++ library bindings
+
+Prebuilt C/C++ bindings from [`github.com/goplus/lib`](https://github.com/goplus/lib) include:
 
 * [c](https://pkg.go.dev/github.com/goplus/lib/c)
 * [c/syscall](https://pkg.go.dev/github.com/goplus/lib/c/syscall)
@@ -58,9 +74,9 @@ func main() {
 }
 ```
 
-This is a simple example of calling the C `printf` function to print `Hello world`. Here, `c.Str` is not a function for converting a Go string to a C string, but a built-in instruction supported by `llgo` for generating a C string constant.
+This is a simple example of calling the C `printf` function to print `Hello world`. Here, `c.Str` is not a function for converting a Go string to a C string, but an LLGo intrinsic that generates a C string constant.
 
-The `_demo` directory contains some C standard libary related demos (it start with `_` to prevent the `go` command from compiling it):
+The `_demo` directory contains C library demos (it starts with `_` to prevent the `go` command from compiling it):
 
 * [hello](_demo/c/hello/hello.go): call C `printf` to print `Hello world`
 * [concat](_demo/c/concat/concat.go): call C `fprintf` with `stderr`
@@ -74,9 +90,9 @@ llgo run .
 ```
 
 
-## How to support C/C++ and Python
+## C/C++ interoperability
 
-LLGo use `go:linkname` to link an extern symbol througth its ABI:
+LLGo supports regular cgo packages and direct C ABI bindings. A direct binding can use `go:linkname` to name an external symbol without a cgo call trampoline:
 
 <!-- embedme doc/_readme/llgo_call_c/call_c.go#L3-L6 -->
 
@@ -121,9 +137,9 @@ func main() {
 
 ## Python support
 
-You can import a Python library in LLGo!
+You can use Python libraries from LLGo.
 
-And you can import any Python library into `llgo` through a program called `llpyg` (see [Development tools](#development-tools)). The following libraries have been included in `llgo`:
+The `llpyg` tool generates Go bindings for Python libraries (see [Development tools](#development-tools)). Bindings available from [`github.com/goplus/lib`](https://github.com/goplus/lib) include:
 
 * [py](https://pkg.go.dev/github.com/goplus/lib/py) (abi)
 * [py/std](https://pkg.go.dev/github.com/goplus/lib/py/std) (builtins)
@@ -203,7 +219,7 @@ func main() {
 
 Here we define two 3x3 matrices a and b, add them to get x, and then print the result.
 
-The `_demo/py/` directory contains some python related demos:
+The `_demo/py/` directory contains Python-related demos:
 
 * [callpy](_demo/py/callpy/callpy.go): call Python standard library function `math.sqrt`
 * [pi](_demo/py/pi/pi.go): print python constants `math.pi`
@@ -220,7 +236,7 @@ llgo run .
 
 ## Other frequently used libraries
 
-LLGo can easily import any libraries from the C ecosystem. Currently, this import process is still manual, but in the future, it will be automated similar to Python library imports.
+LLGo can bind libraries that expose a C ABI. Most C/C++ bindings are currently maintained manually, while Python bindings can be generated with `llpyg`.
 
 The currently supported libraries include:
 
@@ -247,9 +263,9 @@ Here are some examples related to them:
 * [tetris](https://github.com/goplus/lib/tree/main/c/raylib/_demo/tetris/tetris.go): a tetris game based on raylib
 
 
-## Go syntax support
+## Go language compatibility
 
-All Go syntax (including `cgo`) is already supported. Here are some examples:
+LLGo supports the Go language, including generics, closures, interfaces, `defer`/`panic`/`recover`, goroutines, and cgo. Compatibility is measured by executable tests rather than an unchecked feature list; see [Project status](#project-status) for the current test scope and tracked differences. Here are some examples:
 
 * [concat](_demo/c/concat/concat.go): define a variadic function
 * [genints](_demo/c/genints/genints.go): various forms of closure usage (including C function, recv.method and anonymous function)
@@ -257,15 +273,9 @@ All Go syntax (including `cgo`) is already supported. Here are some examples:
 * [defer](_cmptest/defer/defer.go): defer demo
 * [goroutine](_demo/go/goroutine/goroutine.go): goroutine demo
 
-
-### Defer
-
-LLGo now supports `defer` within loops, matching Go's semantics of executing defers in LIFO order for every iteration. The usual caveat from Go still applies: be mindful of loop-heavy defer usage because it allocates per iteration.
-
-
 ### Garbage Collection (GC)
 
-By default, LLGo implements `gc` based on [bdwgc](https://www.hboehm.info/gc/) (also known as [libgc](https://www.hboehm.info/gc/)).
+By default, LLGo uses the conservative [BDWGC](https://www.hboehm.info/gc/) collector (also known as libgc).
 
 However, you can disable gc by specifying the `nogc` tag. For example:
 
@@ -274,87 +284,37 @@ llgo run -tags nogc .
 ```
 
 
-## Go packages support
+## Go standard library support
 
-Here are the Go packages that can be imported correctly:
+LLGo fully supports the public Go standard library on supported native platforms. CI requires every public standard-library package in the primary Go toolchain to have a compatibility-test package under [`test/std`](test/std/README.md), checks that its exported API is covered, and runs the suite with both supported toolchains.
 
-* [unsafe](https://pkg.go.dev/unsafe)
-* [unicode](https://pkg.go.dev/unicode)
-* [unicode/utf8](https://pkg.go.dev/unicode/utf8)
-* [unicode/utf16](https://pkg.go.dev/unicode/utf16)
-* [math](https://pkg.go.dev/math)
-* [math/big](https://pkg.go.dev/math/big) (partially)
-* [math/bits](https://pkg.go.dev/math/bits)
-* [math/cmplx](https://pkg.go.dev/math/cmplx)
-* [math/rand](https://pkg.go.dev/math/rand)
-* [net/url](https://pkg.go.dev/net/url)
-* [errors](https://pkg.go.dev/errors)
-* [context](https://pkg.go.dev/context)
-* [io](https://pkg.go.dev/io)
-* [io/fs](https://pkg.go.dev/io/fs)
-* [io/ioutil](https://pkg.go.dev/io/ioutil)
-* [log](https://pkg.go.dev/log)
-* [flag](https://pkg.go.dev/flag)
-* [sort](https://pkg.go.dev/sort)
-* [bytes](https://pkg.go.dev/bytes)
-* [bufio](https://pkg.go.dev/bufio)
-* [strings](https://pkg.go.dev/strings)
-* [strconv](https://pkg.go.dev/strconv)
-* [path](https://pkg.go.dev/path)
-* [path/filepath](https://pkg.go.dev/path/filepath)
-* [sync/atomic](https://pkg.go.dev/sync/atomic)
-* [sync](https://pkg.go.dev/sync) (partially)
-* [syscall](https://pkg.go.dev/syscall) (partially)
-* [runtime](https://pkg.go.dev/runtime) (partially)
-* [os](https://pkg.go.dev/os) (partially)
-* [os/exec](https://pkg.go.dev/os/exec) (partially)
-* [fmt](https://pkg.go.dev/fmt) (partially)
-* [reflect](https://pkg.go.dev/reflect) (partially)
-* [time](https://pkg.go.dev/time) (partially)
-* [encoding](https://pkg.go.dev/encoding)
-* [encoding/binary](https://pkg.go.dev/encoding/binary)
-* [encoding/hex](https://pkg.go.dev/encoding/hex)
-* [encoding/base32](https://pkg.go.dev/encoding/base32)
-* [encoding/base64](https://pkg.go.dev/encoding/base64)
-* [encoding/csv](https://pkg.go.dev/encoding/csv)
-* [net/textproto](https://pkg.go.dev/net/textproto)
-* [hash](https://pkg.go.dev/hash)
-* [hash/adler32](https://pkg.go.dev/hash/adler32)
-* [hash/crc32](https://pkg.go.dev/hash/crc32) (partially)
-* [hash/crc64](https://pkg.go.dev/hash/crc64)
-* [hash/maphash](https://pkg.go.dev/hash/maphash) (partially)
-* [crypto](https://pkg.go.dev/crypto)
-* [crypto/md5](https://pkg.go.dev/crypto/md5)
-* [crypto/sha1](https://pkg.go.dev/crypto/sha1)
-* [crypto/sha256](https://pkg.go.dev/crypto/sha256)
-* [crypto/sha512](https://pkg.go.dev/crypto/sha512) (partially)
-* [crypto/hmac](https://pkg.go.dev/crypto/hmac) (partially)
-* [crypto/rand](https://pkg.go.dev/crypto/rand) (partially)
-* [crypto/subtle](https://pkg.go.dev/crypto/subtle) (partially)
-* [regexp](https://pkg.go.dev/regexp)
-* [regexp/syntax](https://pkg.go.dev/regexp/syntax)
-* [go/token](https://pkg.go.dev/go/token)
-* [go/scanner](https://pkg.go.dev/go/scanner)
-* [go/parser](https://pkg.go.dev/go/parser)
+API presence does not imply that every OS service or implementation-specific runtime behavior is available on every target. Run the relevant package with both toolchains when relying on target-specific behavior:
+
+```sh
+go test ./test/std/<package>
+llgo test ./test/std/<package>
+```
 
 
 ## Dependencies
 
-- [Go 1.25+](https://go.dev)
-- [LLVM 18](https://llvm.org)
-- [Clang 18](https://clang.llvm.org)
-- [LLD 18](https://lld.llvm.org)
+- [Go 1.25+](https://go.dev) (to build LLGo; CI also validates user packages with pinned Go 1.25 and Go 1.26 toolchains)
+- [LLVM 19](https://llvm.org)
+- [Clang 19](https://clang.llvm.org)
+- [LLD 19](https://lld.llvm.org)
 - [pkg-config 0.29+](https://gitlab.freedesktop.org/pkg-config/pkg-config)
 - [bdwgc/libgc 8.0+](https://www.hboehm.info/gc/)
+- [libffi](https://sourceware.org/libffi/)
+- [libuv](https://libuv.org/)
 - [OpenSSL 3.0+](https://www.openssl.org/)
 - [zlib 1.2+](https://github.com/madler/zlib)
 - [Python 3.12+](https://www.python.org) (optional, for [github.com/goplus/lib/py](https://pkg.go.dev/github.com/goplus/lib/py))
 
 ## How to install
 
-Follow these steps to generate the `llgo` command (its usage is the same as the `go` command):
+LLGo provides Go-like `build`, `run`, `test`, and `install` commands. Install the native dependencies, then build LLGo from source with `./install.sh`.
 
-### on macOS
+### On macOS
 
 <!-- embedme doc/_readme/scripts/install_macos.sh#L2-L1000 -->
 
@@ -367,7 +327,7 @@ brew link --overwrite llvm@19 lld@19 libffi
 ./install.sh
 ```
 
-### on Linux
+### On Linux
 
 #### Debian/Ubuntu
 
@@ -403,9 +363,9 @@ export LDFLAGS="-L$GCC_ROOT_DIR -B$GCC_ROOT_DIR -Wl,-dynamic-linker,/lib/ld-musl
 llgo run .
 ```
 
-### on Windows
+### On Windows
 
-TODO
+Windows is not currently supported as an LLGo host. Use Linux or macOS, or contribute Windows runtime and toolchain support through a tracked proposal.
 
 ### Install from source
 
