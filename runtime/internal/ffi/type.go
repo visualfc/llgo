@@ -64,8 +64,8 @@ var (
 	TypeUint64     = &Type{8, 8, ffi.Uint64, nil}
 	TypeFloat32    = &Type{4, 4, ffi.Float, nil}
 	TypeFloat64    = &Type{8, 8, ffi.Double, nil}
-	TypeComplex64  = &Type{8, 4, ffi.Complex, &[]*Type{TypeFloat32, nil}[0]}
-	TypeComplex128 = &Type{16, 8, ffi.Complex, &[]*Type{TypeFloat64, nil}[0]}
+	TypeComplex64  = newComplexType(TypeFloat32, 8, 4)
+	TypeComplex128 = newComplexType(TypeFloat64, 16, 8)
 	TypeInt        = &Type{_sizei, _aligni, _Int, nil}
 	TypeUint       = &Type{_sizei, _aligni, _Uint, nil}
 	TypeUintptr    = &Type{_sizei, _aligni, _Uint, nil}
