@@ -2,8 +2,6 @@
 
 package maps
 
-//llgo:skip typeString
-
 import (
 	"internal/abi"
 	_ "unsafe"

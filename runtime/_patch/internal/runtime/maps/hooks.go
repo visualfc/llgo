@@ -1,7 +1,5 @@
 package maps
 
-//llgo:skip fatal rand typedmemmove typedmemclr newobject newarray
-
 import (
 	"internal/abi"
 	"unsafe"

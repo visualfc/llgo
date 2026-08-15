@@ -2,8 +2,6 @@
 
 package maps
 
-//llgo:skip mapKeyError typeString
-
 import (
 	"internal/abi"
 	"unsafe"
@@ -19,6 +17,8 @@ func typeString(typ *abi.Type) string {
 //go:linkname llgoTypeString github.com/goplus/llgo/runtime/abi.(*Type).String
 func llgoTypeString(typ *abi.Type) string
 
+// LLGo's runtime hash functions report unhashable keys once hashing occurs.
+// Preserve the existing nil/empty-map behavior here.
 func mapKeyError(typ *abi.MapType, p unsafe.Pointer) error {
 	return nil
 }
