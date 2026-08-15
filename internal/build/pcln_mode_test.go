@@ -130,6 +130,7 @@ func TestShouldEnablePCLNSites(t *testing.T) {
 		{name: "embedded without debug", conf: Config{Goos: "darwin", PCLNMode: PCLNEmbedded}, funcInfo: true, want: true},
 		{name: "darwin embedded debug", conf: Config{Goos: "darwin", PCLNMode: PCLNEmbedded}, funcInfo: true, debugInfo: true},
 		{name: "linux embedded debug", conf: Config{Goos: "linux", PCLNMode: PCLNEmbedded}, funcInfo: true, debugInfo: true, want: true},
+		{name: "windows embedded debug", conf: Config{Goos: "windows", PCLNMode: PCLNEmbedded}, funcInfo: true, debugInfo: true, want: true},
 		{name: "external debug", conf: Config{Goos: "darwin", PCLNMode: PCLNExternal}, funcInfo: true, debugInfo: true, want: true},
 		{name: "metadata disabled", conf: Config{Goos: "linux", PCLNMode: PCLNEmbedded}, debugInfo: true},
 	}

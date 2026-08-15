@@ -17,7 +17,9 @@
 package build
 
 import (
+	"bytes"
 	"debug/elf"
+	"debug/pe"
 	"encoding/binary"
 	"os"
 	"os/exec"
@@ -544,6 +546,8 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 		{goos: "darwin", goarch: "arm64", entrySection: "__DATA,__llgo_fie"},
 		{goos: "darwin", goarch: "arm64", lto: lto.Full, entrySection: "__LLGO,__llgo_fie"},
 		{goos: "linux", goarch: "386"},
+		{goos: "windows", goarch: "amd64"},
+		{goos: "windows", goarch: "386"},
 		{goos: "linux", goarch: "amd64", empty: true},
 		{goos: "darwin", goarch: "arm64", empty: true, entrySection: "__DATA,__llgo_fie"},
 	}
@@ -599,6 +603,17 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 			if c.goos == "linux" && !strings.Contains(ir, "pushsection llgo_funcinfo_entry") {
 				t.Fatalf("missing elf entry section:\n%s", ir)
 			}
+			if c.goos == "windows" {
+				for _, want := range []string{
+					`.pushsection .llgofie$$m,\22dr\22,associative,`,
+					`section ".llgofie$a"`,
+					`section ".llgofie$z"`,
+				} {
+					if !strings.Contains(ir, want) {
+						t.Fatalf("missing COFF entry site %q:\n%s", want, ir)
+					}
+				}
+			}
 		})
 	}
 }
@@ -618,11 +633,65 @@ func TestAsmQuoteELFSymbol(t *testing.T) {
 }
 
 func TestELFFuncInfoSiteSectionsAllowSharedLibraryRelocations(t *testing.T) {
-	if got, want := entrySiteSectionInfo.push(false, "anchor"), `.pushsection llgo_funcinfo_entry,"awo",@progbits,anchor`; got != want {
+	if got, want := entrySiteSectionInfo.push(siteObjectELF, "anchor"), `.pushsection llgo_funcinfo_entry,"awo",@progbits,anchor`; got != want {
 		t.Fatalf("ELF site section = %q, want %q", got, want)
 	}
-	if got, want := entrySiteSectionInfo.retain(false), `.section llgo_funcinfo_entry,"awR",@progbits`; got != want {
+	if got, want := entrySiteSectionInfo.retain(siteObjectELF), `.section llgo_funcinfo_entry,"awR",@progbits`; got != want {
 		t.Fatalf("ELF retained section = %q, want %q", got, want)
+	}
+}
+
+func TestCOFFFuncInfoEntrySiteIsAssociative(t *testing.T) {
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "arm64"})
+	defer prog.Dispose()
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "windows",
+			Goarch:    "arm64",
+		},
+	}
+	src := prog.NewPackage("example.com/p", "example.com/p")
+	src.EmitFuncInfo("example.com/p.live", "example.com/p.Live", "live.go", 17, 3)
+	fn := src.NewFunc("example.com/p.live", llssa.NoArgsNoRet, llssa.InGo)
+	fn.MakeBody(1).Return()
+	emitFuncInfoEntrySites(ctx, src)
+
+	buf, err := prog.TargetMachine().EmitToMemoryBuffer(src.Module(), llvm.ObjectFile)
+	if err != nil {
+		t.Fatalf("emit COFF object: %v\n%s", err, src.String())
+	}
+	defer buf.Dispose()
+	obj, err := pe.NewFile(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("open COFF object: %v", err)
+	}
+	defer obj.Close()
+
+	found := false
+	for i := 0; i < len(obj.COFFSymbols); {
+		sym := &obj.COFFSymbols[i]
+		name, err := sym.FullName(obj.StringTable)
+		if err != nil {
+			t.Fatalf("read COFF symbol %d: %v", i, err)
+		}
+		if name == entrySiteSectionInfo.coff+"$m" {
+			aux, err := obj.COFFSymbolReadSectionDefAux(i)
+			if err != nil {
+				t.Fatalf("read %s section definition: %v", name, err)
+			}
+			if aux.Selection != pe.IMAGE_COMDAT_SELECT_ASSOCIATIVE || aux.SecNum == 0 {
+				t.Fatalf("%s COMDAT = (selection=%d, associated section=%d), want associative with a parent", name, aux.Selection, aux.SecNum)
+			}
+			found = true
+		}
+		i += 1 + int(sym.NumberOfAuxSymbols)
+	}
+	if !found {
+		t.Fatalf("COFF object is missing associative %s$m", entrySiteSectionInfo.coff)
 	}
 }
 

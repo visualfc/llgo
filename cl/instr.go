@@ -2004,12 +2004,18 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 	// latter without rewriting symbol names embedded in inline-asm strings.
 	// Mach-O uses a live_support section plus one linker-private atom symbol per
 	// record so -dead_strip keeps a record exactly when the function containing
-	// its label is live.
+	// its label is live. COFF uses an associative COMDAT tied to the function
+	// section containing the local anchor, so /OPT:REF has the same behavior.
 	pushSection := ".pushsection llgo_pcline,\"awo\",@progbits," + asmLabel
 	recordSymbol := ""
-	if target.GOOS == "darwin" {
+	switch target.GOOS {
+	case "darwin":
 		pushSection = ".pushsection __DATA,__llgo_pcl,regular,live_support"
 		recordSymbol = "l_llgo_pcline_rec_${:uid}:\n"
+	case "windows":
+		// '$' is an inline-asm escape. '$$m' reaches the COFF assembler as
+		// the '$m' subsection suffix used for lexicographic merging.
+		pushSection = ".pushsection .llgopcl$$m,\"dr\",associative," + asmLabel
 	}
 	b.InlineAsm(
 		asmLabel + ":\n" +
@@ -2030,11 +2036,10 @@ func canEmitPCLineLabelsForTarget(target *llssa.Target) bool {
 	if target.Target != "" || target.GOARCH == "wasm" {
 		return false
 	}
-	// ELF uses SHF_LINK_ORDER associated sections; Mach-O uses plain
-	// __DATA,__llgo_pcl sections (safe because LLGo's global DCE runs at the
-	// IR level). Other object formats need separate support.
+	// ELF uses SHF_LINK_ORDER associated sections; Mach-O uses live_support;
+	// COFF uses associative COMDAT sections.
 	switch target.GOOS {
-	case "linux", "darwin":
+	case "linux", "darwin", "windows":
 		return true
 	}
 	return false

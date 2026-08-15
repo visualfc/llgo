@@ -73,12 +73,13 @@ func effectivePCLNMode(conf *Config) PCLNMode {
 // required for this build. Darwin DWARF builds keep the historical site-free
 // path because inline anchors disturb LLDB lexical scopes there. ELF cannot
 // reconstruct all Go entry PCs with dlsym: most Go symbols are intentionally
-// absent from .dynsym, so Linux keeps sites even when it emits DWARF.
+// absent from .dynsym, so Linux keeps sites even when it emits DWARF. PE has no
+// dlsym fallback, so Windows likewise keeps its associative COFF sites.
 func shouldEnablePCLNSites(conf *Config, funcInfo, emitDebugInfo bool) bool {
 	if conf == nil || !funcInfo || !IsFuncInfoSitesEnabled() {
 		return false
 	}
-	return !emitDebugInfo || conf.Goos == "linux" || conf.PCLNMode == PCLNExternal
+	return !emitDebugInfo || conf.Goos == "linux" || conf.Goos == "windows" || conf.PCLNMode == PCLNExternal
 }
 
 // validatePCLNMode checks whether the selected build can produce the requested

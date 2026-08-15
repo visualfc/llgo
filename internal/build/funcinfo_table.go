@@ -51,6 +51,10 @@ const (
 	funcInfoStringOffsetsDataSymbol = "__llgo_funcinfo_string_offsets$data"
 	funcInfoHashDataSymbol          = "__llgo_funcinfo_hash$data"
 	funcInfoSymbolIndexDataSymbol   = "__llgo_funcinfo_symbol_index$data"
+	funcInfoEntryCOFFStartSymbol    = "__llgo_funcinfo_entry_coff_start"
+	funcInfoEntryCOFFEndSymbol      = "__llgo_funcinfo_entry_coff_end"
+	pcSiteCOFFStartSymbol           = "__llgo_pcsite_coff_start"
+	pcSiteCOFFEndSymbol             = "__llgo_pcsite_coff_end"
 )
 
 type funcInfoRecord struct {
@@ -394,6 +398,7 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 			llvm.ConstInt(i32Type, uint64(rec.Line), false),
 		}))
 	}
+	siteFormat := runtimeSiteObjectFormat(ctx)
 	if len(pcLineValues) == 0 {
 		pcLinePtr.SetInitializer(llvm.ConstPointerNull(pcLinePtr.GlobalValueType()))
 		pcLineCount.SetInitializer(llvm.ConstInt(countType, 0, false))
@@ -413,9 +418,10 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 		}))
 		pcLineCount.SetInitializer(llvm.ConstInt(countType, uint64(len(encoded.PCLines)), false))
 		if shouldEmitRuntimeSites(ctx) {
-			startName, endName := pcLineSiteSectionInfo.boundary(shouldEmitRuntimeMachOSites(ctx))
-			pcSiteStart := llvm.AddGlobal(mod, pcSiteRecordType, startName)
-			pcSiteEnd := llvm.AddGlobal(mod, pcSiteRecordType, endName)
+			pcSiteStart, pcSiteEnd := emitRuntimeSiteBoundaries(
+				mod, pcSiteRecordType, ctx.prog.PointerSize(), siteFormat,
+				pcLineSiteSectionInfo, pcSiteCOFFStartSymbol, pcSiteCOFFEndSymbol,
+			)
 			pcSiteStartPtr.SetInitializer(pcSiteStart)
 			pcSiteEndPtr.SetInitializer(pcSiteEnd)
 		} else {
@@ -423,15 +429,15 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 			pcSiteEndPtr.SetInitializer(llvm.ConstPointerNull(pcSiteEndPtr.GlobalValueType()))
 		}
 	}
-	machOSites := shouldEmitRuntimeMachOSites(ctx)
 	entrySiteInfo := runtimeEntrySiteSectionInfo(ctx)
 	emitSites := shouldEmitRuntimeSites(ctx)
-	emitEntrySites := shouldEmitRuntimeEntryELFSites(ctx) && len(encoded.Records) != 0
-	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machOSites, entrySiteInfo, emitSites && len(pcLineValues) != 0, emitEntrySites)
+	emitEntrySites := shouldEmitRuntimeEntrySites(ctx) && len(encoded.Records) != 0
+	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), siteFormat, entrySiteInfo, emitSites && len(pcLineValues) != 0, emitEntrySites)
 	if emitEntrySites {
-		startName, endName := entrySiteInfo.boundary(machOSites)
-		entryStart := llvm.AddGlobal(mod, funcEntryRecordType, startName)
-		entryEnd := llvm.AddGlobal(mod, funcEntryRecordType, endName)
+		entryStart, entryEnd := emitRuntimeSiteBoundaries(
+			mod, funcEntryRecordType, ctx.prog.PointerSize(), siteFormat,
+			entrySiteInfo, funcInfoEntryCOFFStartSymbol, funcInfoEntryCOFFEndSymbol,
+		)
 		entryStartPtr.SetInitializer(entryStart)
 		entryEndPtr.SetInitializer(entryEnd)
 	} else {
@@ -601,21 +607,21 @@ func emitExternalFuncInfoTable(ctx *context, mod llvm.Module, records []funcInfo
 	used.SetLinkage(llvm.AppendingLinkage)
 	used.SetSection("llvm.metadata")
 
-	machO := shouldEmitRuntimeMachOSites(ctx)
+	siteFormat := runtimeSiteObjectFormat(ctx)
 	entrySiteInfo := runtimeEntrySiteSectionInfo(ctx)
 	emitSites := shouldEmitRuntimeSites(ctx)
 	emitPCSites := emitSites && len(encoded.PCLines) != 0
-	emitEntrySites := shouldEmitRuntimeEntryELFSites(ctx) && len(encoded.Records) != 0
-	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), machO, entrySiteInfo, emitPCSites, emitEntrySites)
+	emitEntrySites := shouldEmitRuntimeEntrySites(ctx) && len(encoded.Records) != 0
+	emitRuntimeFuncInfoSites(mod, ctx.prog.PointerSize(), siteFormat, entrySiteInfo, emitPCSites, emitEntrySites)
 	if emitPCSites {
-		start, end := pcLineSiteSectionInfo.boundary(machO)
+		start, end := pcLineSiteSectionInfo.boundary(siteFormat)
 		startGlobal := llvm.AddGlobal(mod, typ.pcSiteRecord, start)
 		endGlobal := llvm.AddGlobal(mod, typ.pcSiteRecord, end)
 		g.pcSiteStartPtr.SetInitializer(startGlobal)
 		g.pcSiteEndPtr.SetInitializer(endGlobal)
 	}
 	if emitEntrySites {
-		start, end := entrySiteInfo.boundary(machO)
+		start, end := entrySiteInfo.boundary(siteFormat)
 		startGlobal := llvm.AddGlobal(mod, typ.entryRecord, start)
 		endGlobal := llvm.AddGlobal(mod, typ.entryRecord, end)
 		g.entryStartPtr.SetInitializer(startGlobal)
@@ -637,6 +643,35 @@ func shouldEmitRuntimeMachOSites(ctx *context) bool {
 		ctx.buildConf.Target == ""
 }
 
+func shouldEmitRuntimeCOFFSites(ctx *context) bool {
+	return ctx != nil &&
+		ctx.buildConf != nil &&
+		ctx.buildConf.Goos == "windows" &&
+		ctx.buildConf.Target == ""
+}
+
+type siteObjectFormat uint8
+
+const (
+	siteObjectUnsupported siteObjectFormat = iota
+	siteObjectELF
+	siteObjectMachO
+	siteObjectCOFF
+)
+
+func runtimeSiteObjectFormat(ctx *context) siteObjectFormat {
+	switch {
+	case shouldEmitRuntimeELFSites(ctx):
+		return siteObjectELF
+	case shouldEmitRuntimeMachOSites(ctx):
+		return siteObjectMachO
+	case shouldEmitRuntimeCOFFSites(ctx):
+		return siteObjectCOFF
+	default:
+		return siteObjectUnsupported
+	}
+}
+
 // shouldEmitRuntimeSites reports whether the target object format has a
 // DCE-safe section story for metadata site records. ELF uses SHF_LINK_ORDER
 // associated sections (honored by --gc-sections). The ELF sections are also
@@ -644,31 +679,34 @@ func shouldEmitRuntimeMachOSites(ctx *context) bool {
 // absolute pointers stored in each record. Mach-O uses live_support sections:
 // under ld64/lld -dead_strip a live_support atom survives only if the atom it
 // references (the anchor inside the function body) is live, which is the same
-// records-follow-function semantics. Sites are additionally gated per Program:
+// records-follow-function semantics. COFF uses associative COMDAT sections,
+// which follow the function section containing the anchor under /OPT:REF.
+// Sites are additionally gated per Program:
 // debug builds keep the funcinfo tables but drop the body-embedded site records
 // (see Program.EnableFuncInfoSites).
 func shouldEmitRuntimeSites(ctx *context) bool {
 	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() {
 		return false
 	}
-	return shouldEmitRuntimeELFSites(ctx) || shouldEmitRuntimeMachOSites(ctx)
+	return runtimeSiteObjectFormat(ctx) != siteObjectUnsupported
 }
 
-func shouldEmitRuntimeEntryELFSites(ctx *context) bool {
+func shouldEmitRuntimeEntrySites(ctx *context) bool {
 	return shouldEmitRuntimeSites(ctx)
 }
 
-// siteSectionInfo names one metadata site section in both object formats.
+// siteSectionInfo names one metadata site section in each supported object format.
 // Mach-O section names are capped at 16 characters, hence the short forms.
 type siteSectionInfo struct {
 	elf   string
 	machO string
+	coff  string
 }
 
 var (
-	entrySiteSectionInfo        = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__DATA,__llgo_fie"}
-	compactEntrySiteSectionInfo = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__LLGO,__llgo_fie"}
-	pcLineSiteSectionInfo       = siteSectionInfo{elf: "llgo_pcline", machO: "__DATA,__llgo_pcl"}
+	entrySiteSectionInfo        = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__DATA,__llgo_fie", coff: ".llgofie"}
+	compactEntrySiteSectionInfo = siteSectionInfo{elf: "llgo_funcinfo_entry", machO: "__LLGO,__llgo_fie", coff: ".llgofie"}
+	pcLineSiteSectionInfo       = siteSectionInfo{elf: "llgo_pcline", machO: "__DATA,__llgo_pcl", coff: ".llgopcl"}
 )
 
 // runtimeEntrySiteSectionInfo isolates the disposable Mach-O carrier only when
@@ -690,26 +728,32 @@ func shouldCompactRuntimeMachOSites(ctx *context) bool {
 		ctx.buildConf.ltoEnabled()
 }
 
-func (s siteSectionInfo) push(machO bool, anchor string) string {
-	if machO {
+func (s siteSectionInfo) push(format siteObjectFormat, anchor string) string {
+	switch format {
+	case siteObjectMachO:
 		return ".pushsection " + s.machO + ",regular,live_support"
+	case siteObjectCOFF:
+		// '$' is an inline-asm escape, so '$$m' reaches the COFF assembler as
+		// the '$m' subsection suffix used for lexicographic merging.
+		return ".pushsection " + s.coff + "$$m,\"dr\",associative," + anchor
+	default:
+		return ".pushsection " + s.elf + ",\"awo\",@progbits," + anchor
 	}
-	return ".pushsection " + s.elf + ",\"awo\",@progbits," + anchor
 }
 
 // recordSymbol returns the extra label line each Mach-O record needs: the
 // lowercase-l linker-private symbol splits the section into one atom per
 // record, so -dead_strip can drop records individually, and the symbol itself
-// is discarded at link time. ELF needs nothing here.
-func (s siteSectionInfo) recordSymbol(machO bool, kind string) string {
-	if !machO {
+// is discarded at link time. ELF and COFF need nothing here.
+func (s siteSectionInfo) recordSymbol(format siteObjectFormat, kind string) string {
+	if format != siteObjectMachO {
 		return ""
 	}
 	return "l_llgo_" + kind + "_rec_${:uid}:\n"
 }
 
-func (s siteSectionInfo) retain(machO bool) string {
-	if machO {
+func (s siteSectionInfo) retain(format siteObjectFormat) string {
+	if format == siteObjectMachO {
 		return ".section " + s.machO + ",regular,live_support"
 	}
 	return ".section " + s.elf + ",\"awR\",@progbits"
@@ -718,8 +762,8 @@ func (s siteSectionInfo) retain(machO bool) string {
 // retainSymbol returns the label lines that pin the zero record under
 // -dead_strip on Mach-O; nothing references the zero record, so it must be a
 // no_dead_strip atom for the section (and its boundary symbols) to survive.
-func (s siteSectionInfo) retainSymbol(machO bool, kind string) string {
-	if !machO {
+func (s siteSectionInfo) retainSymbol(format siteObjectFormat, kind string) string {
+	if format != siteObjectMachO {
 		return ""
 	}
 	sym := "l_llgo_" + kind + "_zero"
@@ -728,9 +772,9 @@ func (s siteSectionInfo) retainSymbol(machO bool, kind string) string {
 
 // boundary returns the linker-synthesized section boundary symbols: ELF
 // __start_/__stop_ for C-identifier section names, ld64 section$start$/
-// section$end$ for Mach-O.
-func (s siteSectionInfo) boundary(machO bool) (start, end string) {
-	if machO {
+// section$end$ for Mach-O. COFF uses explicit $a/$z sentinels instead.
+func (s siteSectionInfo) boundary(format siteObjectFormat) (start, end string) {
+	if format == siteObjectMachO {
 		base := strings.Replace(s.machO, ",", "$", 1)
 		// The \x01 prefix makes LLVM emit the name verbatim. Without it the
 		// Mach-O mangler prepends an underscore and the linker no longer
@@ -740,16 +784,36 @@ func (s siteSectionInfo) boundary(machO bool) (start, end string) {
 	return "__start_" + s.elf, "__stop_" + s.elf
 }
 
-func siteAnchorLabel(machO bool, kind string) string {
-	if machO {
+func siteAnchorLabel(format siteObjectFormat, kind string) string {
+	if format == siteObjectMachO {
 		// Mach-O assembler-local labels use the plain "L" prefix.
 		return "Lllgo_" + kind + "_anchor_${:uid}"
 	}
 	return ".Lllgo_" + kind + "_anchor_${:uid}"
 }
 
+func emitRuntimeSiteBoundaries(mod llvm.Module, recordType llvm.Type, pointerSize int, format siteObjectFormat, info siteSectionInfo, coffStartName, coffEndName string) (start, end llvm.Value) {
+	if format != siteObjectCOFF {
+		startName, endName := info.boundary(format)
+		return llvm.AddGlobal(mod, recordType, startName), llvm.AddGlobal(mod, recordType, endName)
+	}
+	emitSentinel := func(name, suffix string) llvm.Value {
+		global := llvm.AddGlobal(mod, recordType, name)
+		global.SetInitializer(llvm.ConstNull(recordType))
+		global.SetLinkage(llvm.PrivateLinkage)
+		global.SetGlobalConstant(true)
+		global.SetAlignment(pointerSize)
+		global.SetSection(info.coff + suffix)
+		return global
+	}
+	// lld merges COFF $-subsections after sorting their suffixes. The start
+	// sentinel is a zero record (ignored by the runtime); the end pointer names
+	// the beginning of a second zero record and therefore excludes it.
+	return emitSentinel(coffStartName, "$a"), emitSentinel(coffEndName, "$z")
+}
+
 func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
-	if !shouldEmitRuntimeEntryELFSites(ctx) || pkg == nil || !ctx.prog.FuncInfoMetadataEnabled() {
+	if !shouldEmitRuntimeEntrySites(ctx) || pkg == nil || !ctx.prog.FuncInfoMetadataEnabled() {
 		return
 	}
 	mod := pkg.Module()
@@ -788,7 +852,7 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 	// initializers pin dead functions alive; and noduplicate on the asm call
 	// blocks inlining outright. Deduplicating the section is therefore
 	// link-phase work and lands together with the final ftab generation.
-	machO := shouldEmitRuntimeMachOSites(ctx)
+	siteFormat := runtimeSiteObjectFormat(ctx)
 	entrySiteInfo := runtimeEntrySiteSectionInfo(ctx)
 	llvmCtx := mod.Context()
 	builder := llvmCtx.NewBuilder()
@@ -819,11 +883,11 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 		} else {
 			builder.SetInsertPointBefore(first)
 		}
-		anchor := siteAnchorLabel(machO, "funcinfo_entry")
+		anchor := siteAnchorLabel(siteFormat, "funcinfo_entry")
 		instruction := anchor + ":\n" +
-			entrySiteInfo.push(machO, anchor) + "\n" +
+			entrySiteInfo.push(siteFormat, anchor) + "\n" +
 			".p2align " + align + "\n" +
-			entrySiteInfo.recordSymbol(machO, "funcinfo_entry") +
+			entrySiteInfo.recordSymbol(siteFormat, "funcinfo_entry") +
 			ptrDirective + " " + anchor + "\n" +
 			".quad " + uint64Hex(symbolID) + "\n" +
 			".popsection"
@@ -867,8 +931,14 @@ func uint64Hex(v uint64) string {
 // internal/pclnpost ("LLGOMET1" little-endian).
 const funcInfoMetaRecordMagic = uint64(0x3154454D4F474C4C)
 
-func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, entrySiteInfo siteSectionInfo, pcSite bool, entrySite bool) {
+func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, format siteObjectFormat, entrySiteInfo siteSectionInfo, pcSite bool, entrySite bool) {
 	if !pcSite && !entrySite {
+		return
+	}
+	// COFF boundaries are ordinary LLVM globals in $a/$z subsections. The
+	// associative $m records are emitted in function bodies, so no module-level
+	// carrier or pclnpost metadata is needed on Windows.
+	if format == siteObjectCOFF {
 		return
 	}
 	ptrDirective := ".quad"
@@ -879,9 +949,9 @@ func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, entr
 	}
 	var asm strings.Builder
 	writeZeroRecord := func(info siteSectionInfo, kind string) {
-		asm.WriteString(info.retain(machO) + "\n")
+		asm.WriteString(info.retain(format) + "\n")
 		asm.WriteString(".p2align " + align + "\n")
-		asm.WriteString(info.retainSymbol(machO, kind))
+		asm.WriteString(info.retainSymbol(format, kind))
 		asm.WriteString(ptrDirective + " 0\n")
 		asm.WriteString(".quad 0\n")
 	}
@@ -897,7 +967,7 @@ func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, machO bool, entr
 		// reachable in +LTO binaries. The runtime skips all three rows: the
 		// first has pc==0 and the other two have symbolID==0.
 		idxSym, cntSym := funcInfoSymbolIndexSymbol, funcInfoSymbolIndexCountSymbol
-		if machO {
+		if format == siteObjectMachO {
 			idxSym, cntSym = "_"+idxSym, "_"+cntSym
 		}
 		asm.WriteString(ptrDirective + " 0\n")

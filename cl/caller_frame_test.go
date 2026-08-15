@@ -932,6 +932,40 @@ func top() {
 	}
 }
 
+func TestCompileRuntimeCallerPCLineMetadataOnWindows(t *testing.T) {
+	ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
+import "runtime"
+
+func top() {
+	runtime.Caller(0)
+}
+`)
+	prog := newLLSSAProg(t)
+	prog.Target().GOOS = "windows"
+	prog.Target().GOARCH = "arm64"
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	pkg, err := NewPackage(prog, ssapkg, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir := pkg.Module().String()
+	for _, want := range []string{
+		`!llgo.pcline`,
+		"__llgo_pcsite_",
+		`.pushsection .llgopcl$$m,\22dr\22,associative,__llgo_pcsite_`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("windows should emit associative COFF pc-site labels, missing %q:\n%s", want, ir)
+		}
+	}
+	for _, bad := range []string{`.pushsection llgo_pcline`, `.pushsection __DATA,__llgo_pcl`} {
+		if strings.Contains(ir, bad) {
+			t.Fatalf("windows must not use a non-COFF pcline section, found %q:\n%s", bad, ir)
+		}
+	}
+}
+
 func TestCompileRuntimeCallerFrameUsesGoNameForLinkname(t *testing.T) {
 	ssapkg, files := buildCallerFrameSSAPackage(t, "command-line-arguments", `package main
 import "runtime"
