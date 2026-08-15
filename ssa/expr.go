@@ -1093,10 +1093,12 @@ func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 	}
 	if typ.kind == vkUnsigned {
 		if dstSize < 4 {
+			// Go's converthash transition only changes float-to-uint32.
+			// Preserve the existing signed conversion and truncation for uint8/uint16.
 			tmp := castFloatToSignedInt(b, x, b.Prog.Int32(), 32)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
-		if dstSize == 4 {
+		if dstSize == 4 && !b.Prog.Target().SaturatingFloatToUint32 {
 			tmp := castFloatToSignedInt(b, x, b.Prog.Int64(), 64)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}

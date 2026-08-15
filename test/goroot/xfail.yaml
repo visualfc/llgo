@@ -1279,16 +1279,6 @@ xfails:
     directive: run
     case: fixedbugs/issue31546.go
     reason: reflection exposes the initializer value of a blank struct field instead of zero on linux/amd64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: convert5.go
-    reason: out-of-range float-to-uint32 conversions wrap instead of producing zero on darwin/arm64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: convert5.go
-    reason: out-of-range float-to-uint32 conversions wrap instead of producing zero on linux/amd64
   - platform: darwin/arm64
     directive: runoutput
     case: rangegen.go
