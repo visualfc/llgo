@@ -3,7 +3,6 @@
 package cl
 
 import (
-	"runtime"
 	"strings"
 	"testing"
 
@@ -27,8 +26,8 @@ func Convert(x float32) uint32 { return uint32(x) }
 		t.Run(tt.name, func(t *testing.T) {
 			ssaPkg, _, files := buildGoSSAPkg(t, src)
 			prog := newLLSSAProgForTarget(t, &llssa.Target{
-				GOOS:                    runtime.GOOS,
-				GOARCH:                  runtime.GOARCH,
+				GOOS:                    "linux",
+				GOARCH:                  "amd64",
 				SaturatingFloatToUint32: tt.saturating,
 			})
 			pkg, err := NewPackage(prog, ssaPkg, files)

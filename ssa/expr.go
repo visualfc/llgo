@@ -1088,7 +1088,11 @@ func castInt(b Builder, x llvm.Value, xtyp Type, typ Type) llvm.Value {
 
 func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 	dstSize := b.Prog.td.TypeAllocSize(typ.ll)
-	if b.Prog.Target().effectiveGOARCH() == "amd64" {
+	target := b.Prog.Target()
+	saturatingUint32 := target.SaturatingFloatToUint32 && typ.kind == vkUnsigned && dstSize == 4
+	// The amd64 lowering only models legacy CVTT semantics. Saturating uint32
+	// conversions must use the guarded unsigned conversion below.
+	if target.effectiveGOARCH() == "amd64" && !saturatingUint32 {
 		return castFloatToIntAMD64(b, x, typ, dstSize)
 	}
 	if typ.kind == vkUnsigned {
@@ -1098,7 +1102,7 @@ func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 			tmp := castFloatToSignedInt(b, x, b.Prog.Int32(), 32)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
-		if dstSize == 4 && !b.Prog.Target().SaturatingFloatToUint32 {
+		if dstSize == 4 && !saturatingUint32 {
 			tmp := castFloatToSignedInt(b, x, b.Prog.Int64(), 64)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
