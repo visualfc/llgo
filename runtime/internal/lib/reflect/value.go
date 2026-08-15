@@ -2581,7 +2581,8 @@ func (v Value) call(op string, in []Value) (out []Value) {
 	}
 	if sig.RType != ffi.TypeVoid {
 		v := runtime.AllocZ(sig.RType.Size)
-		ret = unsafe.Pointer(&v)
+		// libffi expects rvalue to point to the return value storage.
+		ret = v
 	}
 
 	ffi.CallWithEnv(sig, fn, env, ret, args...)
