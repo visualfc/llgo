@@ -53,16 +53,13 @@ func HasAdditiveAltPkgForGOARCH(path, goarch string) bool {
 }
 
 var altPkgs = map[string]altPkgSpec{
-	"internal/abi":            {mode: altPkgReplace},
-	"internal/runtime/atomic": {mode: altPkgReplace, goarchs: map[string]struct{}{"arm": {}}},
-	"internal/reflectlite":    {mode: altPkgReplace},
-	"internal/runtime/sys":    {mode: altPkgAdditive},
-	"reflect":                 {mode: altPkgReplace},
-	"runtime":                 {mode: altPkgReplace},
-	"sync":                    {mode: altPkgReplace},
-	"syscall/js":              {mode: altPkgReplace},
-	"syscall":                 {mode: altPkgReplace},
-	"unique":                  {mode: altPkgReplace},
+	"internal/abi":         {mode: altPkgReplace},
+	"internal/reflectlite": {mode: altPkgReplace},
+	"reflect":              {mode: altPkgReplace},
+	"runtime":              {mode: altPkgReplace},
+	"sync":                 {mode: altPkgReplace},
+	"syscall/js":           {mode: altPkgReplace},
+	"syscall":              {mode: altPkgReplace},
 }
 
 func HasSourcePatchPkg(path string) bool {
@@ -90,16 +87,18 @@ var sourcePatchPkgs = map[string]struct{}{
 	"internal/chacha8rand":         {},
 	"internal/runtime/atomic":      {},
 	"internal/runtime/maps":        {},
+	"internal/runtime/sys":         {},
 	"internal/sync":                {},
 	"iter":                         {},
 	"runtime":                      {},
 	"runtime/metrics":              {},
 	"sync/atomic":                  {},
+	"unique":                       {},
 }
 
 var sourcePatchAsmPkgs = map[string]map[string]struct{}{
 	"internal/bytealg":        {"wasm": {}},
 	"internal/chacha8rand":    {"wasm": {}},
-	"internal/runtime/atomic": {"wasm": {}},
+	"internal/runtime/atomic": {"arm": {}, "wasm": {}},
 	"sync/atomic":             {"*": {}},
 }

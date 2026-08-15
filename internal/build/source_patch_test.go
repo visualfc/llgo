@@ -136,9 +136,123 @@ func TestSyncAtomicSourcePatchReplacesAsm(t *testing.T) {
 	}
 }
 
+func TestArmBaremetalAtomicSourcePatchReplacesAsm(t *testing.T) {
+	const pkgPath = "internal/runtime/atomic"
+	if !llruntime.HasSourcePatchPkg(pkgPath) {
+		t.Fatal("internal/runtime/atomic should be registered as a source patch package")
+	}
+	if llruntime.HasAltPkg(pkgPath) {
+		t.Fatal("internal/runtime/atomic should not remain an alt package")
+	}
+	if !llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "arm") {
+		t.Fatal("internal/runtime/atomic ARM assembly should be replaceable by its source patch")
+	}
+
+	runtimeDir := env.LLGoRuntimeDir()
+	ctx := sourcePatchBuildContext{
+		goos:       "linux",
+		goarch:     "arm",
+		goversion:  runtime.Version(),
+		buildFlags: []string{"-tags=llgo,baremetal"},
+	}
+	changed, overlay, files, err := applySourcePatchForPkg(nil, nil, runtimeDir, runtime.GOROOT(), pkgPath, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || len(files) != 1 {
+		t.Fatalf("baremetal ARM patch changed = %v, files = %v, want one selected patch", changed, files)
+	}
+	asmFile := filepath.Join(runtime.GOROOT(), "src", "internal", "runtime", "atomic", "atomic_arm.s")
+	if got := string(overlay[asmFile]); got != "// replaced by LLGo source patch\n" {
+		t.Fatalf("overlay[%q] = %q, want assembly replacement", asmFile, got)
+	}
+
+	ctx.buildFlags = []string{"-tags=llgo"}
+	changed, _, files, err = applySourcePatchForPkg(nil, nil, runtimeDir, runtime.GOROOT(), pkgPath, ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || len(files) != 0 {
+		t.Fatalf("non-baremetal ARM patch changed = %v, files = %v, want no selected patch", changed, files)
+	}
+}
+
+func TestUniqueSourcePatchUsesStdlibDependencyGraph(t *testing.T) {
+	const pkgPath = "unique"
+	if !llruntime.HasSourcePatchPkg(pkgPath) {
+		t.Fatal("unique should be registered as a source patch package")
+	}
+	if llruntime.HasAltPkg(pkgPath) {
+		t.Fatal("unique should not remain an alt package")
+	}
+
+	for _, tc := range []struct {
+		version   string
+		wantFiles int
+	}{
+		{version: "go1.24.0", wantFiles: 1},
+		{version: "go1.25.0", wantFiles: 1},
+		{version: "go1.26.0", wantFiles: 2},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			changed, overlay, files, err := applySourcePatchForPkg(nil, nil, env.LLGoRuntimeDir(), runtime.GOROOT(), pkgPath, sourcePatchBuildContext{
+				goos:      runtime.GOOS,
+				goarch:    runtime.GOARCH,
+				goversion: tc.version,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !changed || len(files) != tc.wantFiles {
+				t.Fatalf("unique patch changed = %v, files = %v, want %d selected patches", changed, files, tc.wantFiles)
+			}
+			for _, file := range files {
+				src := string(overlay[filepath.Join(runtime.GOROOT(), "src", "unique", "z_llgo_patch_"+filepath.Base(file))])
+				if strings.Contains(src, "github.com/goplus/llgo/runtime/abi") {
+					t.Fatalf("source patch %s adds the private runtime/abi dependency", file)
+				}
+			}
+			clonePatch := filepath.Join(runtime.GOROOT(), "src", "unique", "z_llgo_patch_clone.go")
+			if got := string(overlay[clonePatch]); !strings.Contains(got, `"internal/abi"`) || !strings.Contains(got, "func clone") {
+				t.Fatalf("overlay[%q] does not contain the clone replacement:\n%s", clonePatch, got)
+			}
+			if tc.wantFiles == 2 {
+				handlePatch := filepath.Join(runtime.GOROOT(), "src", "unique", "z_llgo_patch_handle.go")
+				if got := string(overlay[handlePatch]); !strings.Contains(got, "type Handle") {
+					t.Fatalf("overlay[%q] does not contain the Handle replacement:\n%s", handlePatch, got)
+				}
+			}
+		})
+	}
+}
+
+func TestRuntimeMapsTypeStringPatchMatchesGo125(t *testing.T) {
+	const pkgPath = "internal/runtime/maps"
+	patchFile := filepath.Join(runtime.GOROOT(), "src", filepath.FromSlash(pkgPath), "z_llgo_patch_typestring_go125.go")
+	for _, version := range []string{"go1.24.0", "go1.25.0", "go1.26.0"} {
+		t.Run(version, func(t *testing.T) {
+			_, overlay, _, err := applySourcePatchForPkg(nil, nil, env.LLGoRuntimeDir(), runtime.GOROOT(), pkgPath, sourcePatchBuildContext{
+				goos:      runtime.GOOS,
+				goarch:    runtime.GOARCH,
+				goversion: version,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, got := overlay[patchFile]
+			if want := version == "go1.25.0"; got != want {
+				t.Fatalf("Go 1.25 typeString patch present = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestCompilePkgSFilesSkipsSourcePatchedAssembly(t *testing.T) {
 	got, err := compilePkgSFiles(
-		&context{buildConf: &Config{Goarch: "wasm"}},
+		&context{
+			buildConf:  &Config{Goarch: "wasm"},
+			patchFiles: map[string][]string{"internal/bytealg": {"bytealg_wasm.go"}},
+		},
 		nil,
 		&packages.Package{PkgPath: "internal/bytealg"},
 		false,
@@ -274,25 +388,13 @@ func TestGo126PayloadsUseSourcePatchInsteadOfAltPkg(t *testing.T) {
 }
 
 func TestRuntimeHooksUseSourcePatchesInsteadOfAltPkgs(t *testing.T) {
-	for _, pkgPath := range []string{"internal/runtime/maps", "sync/atomic"} {
+	for _, pkgPath := range []string{"internal/runtime/maps", "internal/runtime/sys", "sync/atomic", "unique"} {
 		if !llruntime.HasSourcePatchPkg(pkgPath) {
 			t.Fatalf("%s should be registered as a source patch package", pkgPath)
 		}
 		if llruntime.HasAltPkg(pkgPath) {
 			t.Fatalf("%s should not remain an alt package", pkgPath)
 		}
-	}
-}
-
-func TestInternalRuntimeSysRemainsAltPkg(t *testing.T) {
-	if llruntime.HasSourcePatchPkg("internal/runtime/sys") {
-		t.Fatal("internal/runtime/sys should not be registered as a source patch package")
-	}
-	if !llruntime.HasAltPkg("internal/runtime/sys") {
-		t.Fatal("internal/runtime/sys should remain an alt package")
-	}
-	if !llruntime.HasAdditiveAltPkg("internal/runtime/sys") {
-		t.Fatal("internal/runtime/sys should remain an additive alt package")
 	}
 }
 
