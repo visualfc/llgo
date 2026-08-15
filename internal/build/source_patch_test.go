@@ -136,6 +136,42 @@ func TestSyncAtomicSourcePatchReplacesAsm(t *testing.T) {
 	}
 }
 
+func TestSyncPoolSourcePatchUsesStdlibQueue(t *testing.T) {
+	const pkgPath = "sync"
+	if !llruntime.HasSourcePatchPkg(pkgPath) {
+		t.Fatal("sync should be registered as a source patch package")
+	}
+	if llruntime.HasAltPkg(pkgPath) {
+		t.Fatal("sync should not remain an alt package")
+	}
+
+	changed, overlay, files, err := applySourcePatchForPkg(nil, nil, env.LLGoRuntimeDir(), runtime.GOROOT(), pkgPath, sourcePatchBuildContext{
+		goos:      runtime.GOOS,
+		goarch:    runtime.GOARCH,
+		goversion: runtime.Version(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || len(files) != 1 {
+		t.Fatalf("sync patch changed = %v, files = %v, want one selected patch", changed, files)
+	}
+
+	patchFile := filepath.Join(runtime.GOROOT(), "src", "sync", "z_llgo_patch_pool.go")
+	patchSrc := string(overlay[patchFile])
+	if !strings.Contains(patchSrc, "func runtime_poolLocalAlloc") {
+		t.Fatalf("overlay[%q] does not contain the Pool TLS hooks:\n%s", patchFile, patchSrc)
+	}
+	if strings.Contains(patchSrc, "runtime/internal/clite/tls") {
+		t.Fatalf("overlay[%q] adds a private TLS dependency", patchFile)
+	}
+
+	queueFile := filepath.Join(runtime.GOROOT(), "src", "sync", "poolqueue.go")
+	if _, ok := overlay[queueFile]; ok {
+		t.Fatalf("official Pool queue implementation should remain unchanged: %s", queueFile)
+	}
+}
+
 func TestArmBaremetalAtomicSourcePatchReplacesAsm(t *testing.T) {
 	const pkgPath = "internal/runtime/atomic"
 	if !llruntime.HasSourcePatchPkg(pkgPath) {

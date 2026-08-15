@@ -57,7 +57,6 @@ var altPkgs = map[string]altPkgSpec{
 	"internal/reflectlite": {mode: altPkgReplace},
 	"reflect":              {mode: altPkgReplace},
 	"runtime":              {mode: altPkgReplace},
-	"sync":                 {mode: altPkgReplace},
 	"syscall/js":           {mode: altPkgReplace},
 	"syscall":              {mode: altPkgReplace},
 }
@@ -92,6 +91,7 @@ var sourcePatchPkgs = map[string]struct{}{
 	"iter":                         {},
 	"runtime":                      {},
 	"runtime/metrics":              {},
+	"sync":                         {},
 	"sync/atomic":                  {},
 	"unique":                       {},
 }
