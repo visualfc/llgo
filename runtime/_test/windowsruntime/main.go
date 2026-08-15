@@ -13,7 +13,7 @@ import (
 	_ "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
-const LLGoFiles = "_wrap/runtime.c"
+const LLGoFiles = "_wrap/runtime.c; _wrap/fault.c"
 
 //go:linkname currentThreadID C.llgo_windows_current_thread_id
 func currentThreadID() uint32
@@ -26,6 +26,63 @@ func traceClockUnitsPerSecond() uint64
 
 //go:linkname cMaxprocs C.llgo_maxprocs
 func cMaxprocs() int32
+
+//go:linkname windowsInvalidAddress C.llgo_windows_invalid_address
+func windowsInvalidAddress() uintptr
+
+//go:noinline
+func windowsNilFault() byte {
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
+}
+
+func hasSuffix(value, suffix string) bool {
+	return len(value) >= len(suffix) && value[len(value)-len(suffix):] == suffix
+}
+
+func checkNilFault() {
+	for attempt := 0; attempt < 2; attempt++ {
+		deferred := false
+		recovered := false
+		func() {
+			defer func() {
+				value := recover()
+				if value == nil {
+					panic("Windows nil fault was not recoverable")
+				}
+				err, ok := value.(error)
+				if !ok || err.Error() != "runtime error: invalid memory address or nil pointer dereference" {
+					panic("Windows nil fault returned the wrong panic value")
+				}
+				if !deferred {
+					panic("Windows nil fault skipped an earlier defer")
+				}
+
+				var pcs [32]uintptr
+				n := runtime.Callers(0, pcs[:])
+				frames := runtime.CallersFrames(pcs[:n])
+				found := false
+				for {
+					frame, more := frames.Next()
+					if hasSuffix(frame.Function, ".windowsNilFault") {
+						found = true
+					}
+					if !more {
+						break
+					}
+				}
+				if !found {
+					panic("Windows nil fault traceback lost the faulting frame")
+				}
+				recovered = true
+			}()
+			defer func() { deferred = true }()
+			_ = windowsNilFault()
+		}()
+		if !recovered || !deferred {
+			panic("Windows nil fault did not complete recovery")
+		}
+	}
+}
 
 func checkRecover() {
 	defer func() {
@@ -126,6 +183,7 @@ func main() {
 	}
 
 	checkRecover()
+	checkNilFault()
 	checkThreadSemantics()
 	checkProcessAffinityCPUCount()
 	checkTraceClock()
