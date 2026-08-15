@@ -39,7 +39,6 @@ LLGo uses a different runtime from the standard Go toolchain. Native goroutines 
 | Native | Linux amd64/arm64 and macOS amd64/arm64 [release artifacts](https://github.com/xgo-dev/llgo/releases); primary CI on Linux amd64 and macOS arm64 |
 | WebAssembly | `js/wasm` and `wasip1/wasm` builds; WASI and Emscripten CI coverage |
 | Embedded | [`-target`](doc/Embedded_Cmd.md) configurations for supported boards and MCUs, with selected QEMU/emulator smoke tests |
-| Windows | Not supported as a host platform |
 
 
 ## C/C++ standard library support
@@ -236,7 +235,7 @@ llgo run .
 
 ## Other frequently used libraries
 
-LLGo can easily import libraries from the C ecosystem. C/C++ imports use manually maintained bindings, while Python bindings can be generated with `llpyg`.
+LLGo can easily import libraries from the C ecosystem. C/C++ bindings are maintained manually, but the import process will be automated in the future, as with Python library imports.
 
 Available bindings include:
 
@@ -257,7 +256,7 @@ Available bindings include:
 
 Here are some examples related to them:
 
-* [llama2-c](_demo/c/llama2-c): inference Llama 2
+* [llama2-c](_demo/c/llama2-c): inference Llama 2 (the first LLGo AI example)
 * [mkjson](https://github.com/goplus/lib/tree/main/c/cjson/_demo/mkjson/mkjson.go): create a json object and print it
 * [sqlitedemo](https://github.com/goplus/lib/tree/main/c/sqlite/_demo/sqlitedemo/demo.go): a basic sqlite demo
 * [tetris](https://github.com/goplus/lib/tree/main/c/raylib/_demo/tetris/tetris.go): a tetris game based on raylib
@@ -276,9 +275,9 @@ LLGo supports the complete Go 1.26 language syntax and `cgo`. Here are some exam
 
 ### Garbage Collection (GC)
 
-By default, LLGo uses the conservative [BDWGC](https://www.hboehm.info/gc/) collector (also known as libgc).
+By default, LLGo implements garbage collection with [BDWGC](https://www.hboehm.info/gc/) (also known as libgc). Bare-metal embedded targets instead use a TinyGo-derived conservative mark-and-sweep collector.
 
-However, you can disable gc by specifying the `nogc` tag. For example:
+Garbage collection can be disabled with the `nogc` build tag. For example:
 
 ```sh
 llgo run -tags nogc .
@@ -361,7 +360,7 @@ llgo run .
 
 ### on Windows
 
-Windows is not supported as an LLGo host.
+TODO
 
 ### Install from source
 
@@ -375,7 +374,7 @@ cd llgo
 
 ## Development tools
 
-* [pydump](_xtool/pydump): It outputs symbol information (functions, variables, and constants) from a Python library in JSON format, preparing for the generation of corresponding packages in `llgo`.
+* [pydump](_xtool/pydump): It is the first production program compiled with `llgo` rather than `go`. It outputs symbol information (functions, variables, and constants) from a Python library in JSON format, preparing for the generation of corresponding packages in `llgo`.
 * [pysigfetch](https://github.com/goplus/hdq/tree/main/chore/pysigfetch): It generates symbol information by extracting information from Python's documentation site. This tool is not part of the `llgo` project, but we depend on it.
 * [llpyg](chore/llpyg): It is used to automatically convert Python libraries into Go packages that `llgo` can import. It depends on `pydump` and `pysigfetch` to accomplish the task.
 * [llgen](chore/llgen): It is used to compile Go packages into LLVM IR files (*.ll).
@@ -404,6 +403,6 @@ go install github.com/goplus/hdq/chore/pysigfetch@v0.8.1  # compile pysigfetch
 
 Below are the key modules for understanding the implementation principles of `llgo`:
 
-* [ssa](https://pkg.go.dev/github.com/xgo-dev/llgo/ssa): It generates LLVM IR files (LLVM SSA) using the semantics (interfaces) of Go SSA. Although `LLVM SSA` and `Go SSA` are both IR languages, they work at completely different levels. `LLVM SSA` is closer to machine code, which abstracts different instruction sets. While `Go SSA` is closer to a high-level language. We can think of it as the instruction set of the `Go computer`. `llgo/ssa` is not just limited to the `llgo` compiler. If we view it as the high-level expressive power of `LLVM`, you'll find it very useful. Its advanced SSA form lets clients use LLVM without operating directly on machine-code semantics.
+* [ssa](https://pkg.go.dev/github.com/xgo-dev/llgo/ssa): It generates LLVM IR using Go SSA semantics. LLVM SSA is closer to machine code and abstracts over instruction sets, while Go SSA is a higher-level instruction set for the `Go computer`. The package can be used independently of the LLGo compiler as a higher-level interface to LLVM, avoiding direct work with machine-code-level semantics.
 * [cl](https://pkg.go.dev/github.com/xgo-dev/llgo/cl): It is the core of the llgo compiler. It converts a Go package into LLVM IR files. It depends on `llgo/ssa`.
 * [internal/build](https://pkg.go.dev/github.com/xgo-dev/llgo/internal/build): It strings together the entire compilation process of `llgo`. It depends on `llgo/ssa` and `llgo/cl`.
