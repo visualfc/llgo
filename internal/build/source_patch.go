@@ -188,6 +188,13 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 			if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 				continue
 			}
+			match, err := buildCtx.MatchFile(srcDir, name)
+			if err != nil {
+				return false, nil, nil, fmt.Errorf("match stdlib source file %s: %w", filepath.Join(srcDir, name), err)
+			}
+			if !match {
+				continue
+			}
 			filename := filepath.Join(srcDir, name)
 			src, err := readOverlay(filename)
 			if err != nil {
@@ -208,6 +215,13 @@ func applySourcePatchForPkg(base, current map[string][]byte, runtimeDir, goroot,
 			}
 			name := entry.Name()
 			if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			match, err := buildCtx.MatchFile(srcDir, name)
+			if err != nil {
+				return false, nil, nil, fmt.Errorf("match stdlib source file %s: %w", filepath.Join(srcDir, name), err)
+			}
+			if !match {
 				continue
 			}
 			filename := filepath.Join(srcDir, name)

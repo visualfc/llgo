@@ -585,6 +585,44 @@ const Only = "patched"
 	}
 }
 
+func TestApplySourcePatchForPkg_FiltersOnlyTargetFiles(t *testing.T) {
+	goroot := t.TempDir()
+	runtimeDir := t.TempDir()
+	pkgPath := "demo"
+	srcDir := filepath.Join(goroot, "src", pkgPath)
+	patchDir := filepath.Join(runtimeDir, "_patch", pkgPath)
+	mustWriteFile(t, filepath.Join(srcDir, "demo_linux.go"), `package demo
+
+func Target() string { return "linux" }
+`)
+	mustWriteFile(t, filepath.Join(srcDir, "demo_windows.go"), `package demo
+
+func Target() string { return "windows" }
+`)
+	mustWriteFile(t, filepath.Join(patchDir, "patch.go"), `package demo
+
+//llgo:skip Target
+func Target() string { return "patched" }
+`)
+
+	changed, overlay, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
+		goos:   "linux",
+		goarch: "amd64",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("expected source patch overlay to change package")
+	}
+	if _, ok := overlay[filepath.Join(srcDir, "demo_linux.go")]; !ok {
+		t.Fatal("active target source was not filtered")
+	}
+	if _, ok := overlay[filepath.Join(srcDir, "demo_windows.go")]; ok {
+		t.Fatal("inactive target source should not be parsed or overlaid")
+	}
+}
+
 func TestApplySourcePatchForPkg_UnreadableStdlibPkg(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based permission test is Unix-only")
