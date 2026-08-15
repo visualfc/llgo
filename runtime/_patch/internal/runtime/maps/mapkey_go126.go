@@ -9,8 +9,15 @@ import (
 	"unsafe"
 )
 
-//go:linkname typeString github.com/goplus/llgo/runtime/abi.(*Type).String
-func typeString(typ *abi.Type) string
+func typeString(typ *abi.Type) string {
+	if typ == nil {
+		return "<nil>"
+	}
+	return llgoTypeString(typ)
+}
+
+//go:linkname llgoTypeString github.com/goplus/llgo/runtime/abi.(*Type).String
+func llgoTypeString(typ *abi.Type) string
 
 func mapKeyError(typ *abi.MapType, p unsafe.Pointer) error {
 	return nil

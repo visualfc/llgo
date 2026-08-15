@@ -243,6 +243,15 @@ func TestRuntimeMapsTypeStringPatchMatchesGo125(t *testing.T) {
 			if want := version == "go1.25.0"; got != want {
 				t.Fatalf("Go 1.25 typeString patch present = %v, want %v", got, want)
 			}
+			if version == "go1.25.0" && !strings.Contains(string(overlay[patchFile]), "if typ == nil") {
+				t.Fatal("Go 1.25 typeString patch should preserve the nil guard")
+			}
+			if version == "go1.26.0" {
+				mapKeyPatch := filepath.Join(runtime.GOROOT(), "src", filepath.FromSlash(pkgPath), "z_llgo_patch_mapkey_go126.go")
+				if !strings.Contains(string(overlay[mapKeyPatch]), "if typ == nil") {
+					t.Fatal("Go 1.26 typeString patch should preserve the nil guard")
+				}
+			}
 		})
 	}
 }
