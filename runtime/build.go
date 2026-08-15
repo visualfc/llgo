@@ -58,7 +58,6 @@ var altPkgs = map[string]altPkgSpec{
 	"reflect":              {mode: altPkgReplace},
 	"runtime":              {mode: altPkgReplace},
 	"syscall/js":           {mode: altPkgReplace},
-	"syscall":              {mode: altPkgReplace},
 }
 
 func HasSourcePatchPkg(path string) bool {
@@ -93,6 +92,7 @@ var sourcePatchPkgs = map[string]struct{}{
 	"runtime/metrics":              {},
 	"sync":                         {},
 	"sync/atomic":                  {},
+	"syscall":                      {},
 	"unique":                       {},
 }
 
@@ -101,4 +101,5 @@ var sourcePatchAsmPkgs = map[string]map[string]struct{}{
 	"internal/chacha8rand":    {"wasm": {}},
 	"internal/runtime/atomic": {"arm": {}, "wasm": {}},
 	"sync/atomic":             {"*": {}},
+	"syscall":                 {"*": {}},
 }

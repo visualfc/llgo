@@ -172,6 +172,65 @@ func TestSyncPoolSourcePatchUsesStdlibQueue(t *testing.T) {
 	}
 }
 
+func TestSyscallSourcePatchPreservesTargetImplementations(t *testing.T) {
+	const pkgPath = "syscall"
+	if !llruntime.HasSourcePatchPkg(pkgPath) {
+		t.Fatal("syscall should be registered as a source patch package")
+	}
+	if llruntime.HasAltPkg(pkgPath) {
+		t.Fatal("syscall should not remain an alt package")
+	}
+
+	for _, target := range []struct {
+		goos   string
+		goarch string
+		asm    []string
+	}{
+		{goos: "darwin", goarch: "amd64", asm: []string{"asm_darwin_amd64.s", "zsyscall_darwin_amd64.s"}},
+		{goos: "darwin", goarch: "arm64", asm: []string{"asm_darwin_arm64.s", "zsyscall_darwin_arm64.s"}},
+		{goos: "linux", goarch: "amd64", asm: []string{"asm_linux_amd64.s"}},
+		{goos: "linux", goarch: "arm64", asm: []string{"asm_linux_arm64.s"}},
+	} {
+		t.Run(target.goos+"-"+target.goarch, func(t *testing.T) {
+			changed, overlay, files, err := applySourcePatchForPkg(nil, nil, env.LLGoRuntimeDir(), runtime.GOROOT(), pkgPath, sourcePatchBuildContext{
+				goos:      target.goos,
+				goarch:    target.goarch,
+				goversion: runtime.Version(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !changed || len(files) != 2 {
+				t.Fatalf("syscall patch changed = %v, files = %v, want two selected patches", changed, files)
+			}
+			for _, file := range files {
+				patchFile := filepath.Join(runtime.GOROOT(), "src", "syscall", "z_llgo_patch_"+filepath.Base(file))
+				if strings.Contains(string(overlay[patchFile]), "github.com/goplus/llgo/runtime") {
+					t.Fatalf("overlay[%q] adds a private runtime dependency", patchFile)
+				}
+			}
+			for _, name := range target.asm {
+				asmFile := filepath.Join(runtime.GOROOT(), "src", "syscall", name)
+				if got := string(overlay[asmFile]); got != "// replaced by LLGo source patch\n" {
+					t.Fatalf("overlay[%q] = %q, want assembly replacement", asmFile, got)
+				}
+			}
+		})
+	}
+
+	changed, _, files, err := applySourcePatchForPkg(nil, nil, env.LLGoRuntimeDir(), runtime.GOROOT(), pkgPath, sourcePatchBuildContext{
+		goos:      "wasip1",
+		goarch:    "wasm",
+		goversion: runtime.Version(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed || len(files) != 0 {
+		t.Fatalf("wasm syscall patch changed = %v, files = %v, want official implementation", changed, files)
+	}
+}
+
 func TestArmBaremetalAtomicSourcePatchReplacesAsm(t *testing.T) {
 	const pkgPath = "internal/runtime/atomic"
 	if !llruntime.HasSourcePatchPkg(pkgPath) {
