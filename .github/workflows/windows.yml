@@ -205,6 +205,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+
+          $env:LLGO_TEST_UNRECOVERED_FAULT = "1"
+          $faultOutput = .\windows-runtime-smoke.exe 2>&1 | Out-String
+          $faultExitCode = $LASTEXITCODE
+          Remove-Item Env:LLGO_TEST_UNRECOVERED_FAULT
+          Write-Host $faultOutput
+          if ($faultExitCode -eq 0) {
+            throw "unrecovered Windows fault exited successfully"
+          }
+          foreach ($expected in @(
+            "runtime error: invalid memory address or nil pointer dereference",
+            "main.windowsNilFault",
+            "windowsruntime\main.go"
+          )) {
+            if (-not $faultOutput.Contains($expected)) {
+              throw "unrecovered Windows fault output is missing '$expected'"
+            }
+          }
           .\windows-ffi-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
