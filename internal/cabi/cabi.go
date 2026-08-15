@@ -35,6 +35,9 @@ func targetArch(llvmTarget string) string {
 	return llvmTarget
 }
 
+// isMSVCTarget treats an absent or unknown Windows environment as MSVC. This
+// matches the default target convention used for GOOS=windows; explicit GNU,
+// MinGW, and Cygwin environments retain their non-MSVC ABI.
 func isMSVCTarget(target *ssa.Target, llvmTarget string) bool {
 	if llvmTarget == "" {
 		return target != nil && target.GOOS == "windows"

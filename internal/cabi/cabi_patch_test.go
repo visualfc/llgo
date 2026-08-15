@@ -181,12 +181,20 @@ func TestMSVCAggregateClassification(t *testing.T) {
 				pair := ctx.StructType([]llvm.Type{ctx.Int32Type(), ctx.Int32Type()}, false)
 				checkTypeInfo(t, tr, pair, 0, AttrWidthType, "i64")
 				checkTypeInfo(t, tr, pair, 1, AttrExtract, pair.String())
+				// Clang 19 expands an unpadded pair of 64-bit scalar fields,
+				// but passes padded Win32 aggregates byval at stack alignment 4.
 				unpadded := ctx.StructType([]llvm.Type{ctx.Int64Type(), ctx.DoubleType()}, false)
-				checkTypeInfo(t, tr, unpadded, 1, AttrExtract, unpadded.String())
+				if info := checkTypeInfo(t, tr, unpadded, 1, AttrExtract, unpadded.String()); info.ByValAlign != 0 {
+					t.Fatalf("unpadded aggregate byval alignment = %d, want 0", info.ByValAlign)
+				}
 				internallyPadded := ctx.StructType([]llvm.Type{ctx.Int32Type(), ctx.Int64Type()}, false)
-				checkTypeInfo(t, tr, internallyPadded, 1, AttrPointer, "ptr")
+				if info := checkTypeInfo(t, tr, internallyPadded, 1, AttrPointer, "ptr"); info.ByValAlign != 4 {
+					t.Fatalf("internally padded aggregate byval alignment = %d, want 4", info.ByValAlign)
+				}
 				trailingPadded := ctx.StructType([]llvm.Type{ctx.Int64Type(), ctx.Int32Type()}, false)
-				checkTypeInfo(t, tr, trailingPadded, 1, AttrPointer, "ptr")
+				if info := checkTypeInfo(t, tr, trailingPadded, 1, AttrPointer, "ptr"); info.ByValAlign != 4 {
+					t.Fatalf("trailing padded aggregate byval alignment = %d, want 4", info.ByValAlign)
+				}
 				pointer := ctx.StructType([]llvm.Type{llvm.PointerType(ctx.Int8Type(), 0)}, false)
 				checkTypeInfo(t, tr, pointer, 0, AttrWidthType, "ptr")
 				checkTypeInfo(t, tr, pointer, 1, AttrWidthType, "ptr")
@@ -211,7 +219,7 @@ func TestMSVCAggregateClassification(t *testing.T) {
 	}
 }
 
-func checkTypeInfo(t *testing.T, tr *Transformer, typ llvm.Type, index int, kind AttrKind, type1 string) {
+func checkTypeInfo(t *testing.T, tr *Transformer, typ llvm.Type, index int, kind AttrKind, type1 string) *TypeInfo {
 	t.Helper()
 	ftyp := llvm.FunctionType(typ.Context().VoidType(), nil, false)
 	info := tr.GetTypeInfo(typ.Context(), ftyp, typ, index)
@@ -219,6 +227,7 @@ func checkTypeInfo(t *testing.T, tr *Transformer, typ llvm.Type, index int, kind
 		t.Fatalf("GetTypeInfo(%s, index %d) = kind %v, type %s; want kind %v, type %s",
 			typ, index, info.Kind, info.Type1, kind, type1)
 	}
+	return info
 }
 
 func TestMSVCCallAndCallbackLowering(t *testing.T) {

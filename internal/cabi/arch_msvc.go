@@ -46,6 +46,8 @@ func (p *TypeInfoWindowsAmd64) GetTypeInfo(ctx llvm.Context, ftyp llvm.Type, typ
 		info.Type1 = ctx.IntType(info.Size * 8)
 		return info
 	}
+	// The Microsoft x64 ABI passes larger aggregates through caller-owned
+	// temporaries. This is a plain pointer parameter, not LLVM byval.
 	info.Kind = AttrPointer
 	info.Type1 = llvm.PointerType(typ, 0)
 	return info
