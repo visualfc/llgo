@@ -108,6 +108,34 @@ func TestWasmBytealgSourcePatchReplacesAsm(t *testing.T) {
 	}
 }
 
+func TestSyncAtomicSourcePatchReplacesAsm(t *testing.T) {
+	for _, goarch := range []string{
+		"386", "amd64", "arm", "arm64", "loong64", "mips", "mips64", "mips64le",
+		"ppc64", "ppc64le", "riscv64", "s390x", "wasm",
+	} {
+		if !llruntime.SourcePatchReplacesAsmForGOARCH("sync/atomic", goarch) {
+			t.Fatalf("sync/atomic assembly should be replaced on %s", goarch)
+		}
+	}
+
+	overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), runtime.GOROOT(), sourcePatchBuildContext{
+		goos:      runtime.GOOS,
+		goarch:    runtime.GOARCH,
+		goversion: runtime.Version(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	asmFile := filepath.Join(runtime.GOROOT(), "src", "sync", "atomic", "asm.s")
+	if got := string(overlay[asmFile]); got != "// replaced by LLGo source patch\n" {
+		t.Fatalf("overlay[%q] = %q, want assembly replacement", asmFile, got)
+	}
+	patchFile := filepath.Join(runtime.GOROOT(), "src", "sync", "atomic", "z_llgo_patch_atomic.go")
+	if got := string(overlay[patchFile]); !strings.Contains(got, "//go:linkname LoadPointer llgo.atomicLoad") {
+		t.Fatalf("overlay[%q] does not contain atomic intrinsic linkname:\n%s", patchFile, got)
+	}
+}
+
 func TestCompilePkgSFilesSkipsSourcePatchedAssembly(t *testing.T) {
 	got, err := compilePkgSFiles(
 		&context{buildConf: &Config{Goarch: "wasm"}},
@@ -245,21 +273,14 @@ func TestGo126PayloadsUseSourcePatchInsteadOfAltPkg(t *testing.T) {
 	}
 }
 
-func TestSyncAtomicRemainsAltPkg(t *testing.T) {
-	if llruntime.HasSourcePatchPkg("sync/atomic") {
-		t.Fatal("sync/atomic should not be registered as a source patch package")
-	}
-	if !llruntime.HasAltPkg("sync/atomic") {
-		t.Fatal("sync/atomic should remain an alt package")
-	}
-}
-
-func TestInternalRuntimeMapsRemainsAltPkg(t *testing.T) {
-	if llruntime.HasSourcePatchPkg("internal/runtime/maps") {
-		t.Fatal("internal/runtime/maps should not be registered as a source patch package")
-	}
-	if !llruntime.HasAltPkg("internal/runtime/maps") {
-		t.Fatal("internal/runtime/maps should remain an alt package")
+func TestRuntimeHooksUseSourcePatchesInsteadOfAltPkgs(t *testing.T) {
+	for _, pkgPath := range []string{"internal/runtime/maps", "sync/atomic"} {
+		if !llruntime.HasSourcePatchPkg(pkgPath) {
+			t.Fatalf("%s should be registered as a source patch package", pkgPath)
+		}
+		if llruntime.HasAltPkg(pkgPath) {
+			t.Fatalf("%s should not remain an alt package", pkgPath)
+		}
 	}
 }
 

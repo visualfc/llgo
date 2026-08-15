@@ -35,7 +35,8 @@ func sync_runtime_procUnpin() {
 }
 
 // sync/atomic.Value expects these package-local runtime hooks.
-// In llgo they can share the same no-op pin/unpin behavior as sync.
+// LLGo serializes the first store because it cannot pin an OS-thread goroutine
+// to a Go P.
 //
 //go:linkname atomic_runtime_procPin sync/atomic.runtime_procPin
 func atomic_runtime_procPin() int {
