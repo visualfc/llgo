@@ -23,7 +23,7 @@ How can these be achieved?
 LLGo := Go * C ecosystem
 ```
 
-LLGo is compatible with the C ecosystem through the C **Application Binary Interface (ABI)**, while LLGo is compatible with Go at the **source-code level**. The C ecosystem includes languages and runtimes that expose C-compatible interfaces (e.g. C/C++, Python, JavaScript, Objective-C, and Swift).
+LLGo is compatible with the C ecosystem through the C **Application Binary Interface (ABI)**, while LLGo is compatible with Go at the **source-code level**. The C ecosystem includes languages that expose C-compatible interfaces (e.g. C/C++, Python, JavaScript, Objective-C, and Swift).
 
 
 ## Project status
@@ -32,7 +32,7 @@ LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.26 l
 
 LLGo fully supports the Go standard library on supported native platforms; see [Go standard library support](#go-standard-library-support) for validation and target-specific details.
 
-LLGo uses a different runtime from the standard Go toolchain. Native goroutines map 1:1 to OS threads with fixed native stacks, and the default garbage collector is conservative BDWGC.
+LLGo uses a different runtime from the standard Go toolchain. Native goroutines map 1:1 to OS threads with fixed native stacks, so direct C calls require no Go-to-C stack or scheduler transition, avoiding the cgo overhead that makes frequent C calls costly in standard Go. The default garbage collector is conservative BDWGC.
 
 | Target | Current coverage |
 | --- | --- |
