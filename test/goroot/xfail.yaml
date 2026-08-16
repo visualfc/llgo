@@ -1377,14 +1377,6 @@ xfails:
     directive: run
     case: fixedbugs/issue29504.go
     reason: panic/fault statement-line granularity in untracked functions (P4b prebuilt pcline)
-  - platform: darwin/arm64
-    directive: run
-    case: fixedbugs/issue38496.go
-    reason: current main goroot run failure on darwin/arm64
-  - platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue38496.go
-    reason: current main goroot run failure on linux/amd64
   - version: go1.26
     platform: darwin/arm64
     directive: rundir
