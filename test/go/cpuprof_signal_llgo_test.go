@@ -19,6 +19,9 @@ import (
 //go:linkname readCPUProfileRaw runtime/pprof.readProfile
 func readCPUProfileRaw() (data []uint64, tags []unsafe.Pointer, eof bool)
 
+//go:linkname raiseCPUProfileSignal C.raise
+func raiseCPUProfileSignal(sig int32) int32
+
 //go:noinline
 func cpuProfileSignalHotLoop(d time.Duration) uint64 {
 	deadline := time.Now().Add(d)
@@ -173,18 +176,17 @@ func TestCPUProfileSIGPROFRepeatedLifecycle(t *testing.T) {
 }
 
 func TestCPUProfileLostSamples(t *testing.T) {
-	// runtime/pprof intentionally fixes normal profiling at 100 Hz. Use the
-	// runtime entry point directly so the producer can fill the 2048-entry ring
-	// while no profile writer is draining it.
-	duration := 500 * time.Millisecond
-	if runtime.GOOS == "linux" {
-		// Linux limits effective ITIMER_PROF delivery to roughly its timer
-		// resolution, so leave enough time for more than 2048 deliveries.
-		duration = 3 * time.Second
-	}
-	runtime.SetCPUProfileRate(100000)
+	// Install the real profiling handler, then synchronously deliver more
+	// signals than the 2048-entry ring can hold while no writer drains it.
+	// Using raise instead of a high-rate timer keeps this independent of the
+	// process CPU time available on a busy CI runner.
+	runtime.SetCPUProfileRate(1)
 	defer runtime.SetCPUProfileRate(0)
-	_ = cpuProfileSignalHotLoop(duration)
+	for i := 0; i < 4096; i++ {
+		if ret := raiseCPUProfileSignal(int32(syscall.SIGPROF)); ret != 0 {
+			t.Fatalf("raise SIGPROF %d: return value %d", i, ret)
+		}
+	}
 	runtime.SetCPUProfileRate(0)
 
 	var lost uint64
