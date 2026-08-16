@@ -43,12 +43,12 @@ func windowsNilFault() byte {
 //
 //go:noinline
 func windowsNilFaultA() byte {
-	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress())) + 1
 }
 
 //go:noinline
 func windowsNilFaultB() byte {
-	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress())) + 2
 }
 
 func hasSuffix(value, suffix string) bool {
