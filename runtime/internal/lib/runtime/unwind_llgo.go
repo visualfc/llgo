@@ -21,22 +21,17 @@ func init() {
 	rtdebug.RecoverMark = recoverMark
 }
 
-// recoverMark records the recovering deferred frame (and one above, for
-// wrapper-reached recover) so the panic snapshot stays spliceable while
-// that frame is live. After siglongjmp the frame-pointer chain two levels
-// up can point into a stale/reused stack region that is sometimes
-// unmapped; probe each slot before dereferencing — an unguarded read here
-// self-faults ~7% of the time, converting to a nil-deref panic that
-// corrupts the value the recover was extracting (goroot reflectmake flake).
+// recoverMark records an opaque identity for the deferred activation that
+// recovered. Conventional targets use a frame-chain position; Win64 uses the
+// stack pointer and function entry obtained from its SEH unwind metadata.
+//
+//go:noinline
 func recoverMark() {
-	// Record this function's frame address: it sits below the recovering
-	// deferred frame, and the liveness gate tests interval containment, so
-	// the exact level does not matter.
-	fp := callerFramePointer()
-	if fp == 0 {
+	mark1, mark2 := recoverFrameMarks()
+	if mark1 == 0 && mark2 == 0 {
 		return
 	}
-	rtdebug.MarkPanicRecoverFPs(fp, 0)
+	rtdebug.MarkPanicRecoverFPs(mark1, mark2)
 }
 
 // capturePanicPCs runs at panic time, before any longjmp unwinding, and
@@ -62,30 +57,12 @@ func panicSplicePCs() []uintptr {
 	if rtdebug.PanicActive() {
 		return pcs
 	}
-	mark, _ := rtdebug.PanicRecoverFPs()
-	if mark == 0 {
+	mark1, mark2 := rtdebug.PanicRecoverFPs()
+	if mark1 == 0 && mark2 == 0 {
 		return nil
 	}
-	// The mark is a frame address recorded inside Recover's call chain;
-	// the recovering deferred frame is live iff the mark still lies
-	// within the current chain's span. Interval containment instead of
-	// exact equality: the hook's own frame depth differs across
-	// platforms (stub/wrapper layers), but any frame's [fp, parent fp)
-	// range straddling the mark proves the region is still stack, not
-	// reused heap or a dead extent.
-	fp := callerFramePointer()
-	for i := 0; fp != 0 && i < maxPanicSpliceFrames; i++ {
-		if !memReadable(fp) {
-			break
-		}
-		prev := *(*uintptr)(unsafe.Pointer(fp))
-		if fp <= mark && (prev > mark || prev == 0) {
-			return pcs
-		}
-		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
-			break
-		}
-		fp = prev
+	if recoverFrameLive(mark1, mark2) {
+		return pcs
 	}
 	return nil
 }
@@ -326,10 +303,20 @@ func fpCallers(skip int, pc []uintptr) int {
 	// The walk bound needs the frame table's text range; make sure it is
 	// built (no-op when the prebuilt table was adopted at startup).
 	initRuntimeFuncPCFrames()
+	// Capture fpCallers' own frame before entering the platform helper. This
+	// preserves the public skip contract even when that helper cannot inline.
 	fp := uintptr(c_framepointer())
+	return platformCallers(fp, skip, pc)
+}
+
+// framePointerCallers is the conventional frame-record implementation used
+// by targets whose frame register points at {parent frame, return pc}.
+// Win64 uses SEH unwind metadata instead: its frame register may be biased
+// into a large frame and is not a linked-list node.
+func framePointerCallers(fp uintptr, skip int, pc []uintptr) int {
 	n := 0
-	// The helper returns this function's frame pointer, so the first return
-	// address already represents fpCallers' caller.
+	// fp is fpCallers' frame, so the first return address already represents
+	// fpCallers' caller.
 	const maxFrames = 4096
 	for i := 0; fp != 0 && n < len(pc) && i < maxFrames; i++ {
 		prev := *(*uintptr)(unsafe.Pointer(fp))
@@ -359,6 +346,39 @@ func fpCallers(skip int, pc []uintptr) int {
 		fp = prev
 	}
 	return n
+}
+
+func framePointerRecoverMarks() (uintptr, uintptr) {
+	fp := callerFramePointer()
+	if fp == 0 {
+		return 0, 0
+	}
+	return fp, 0
+}
+
+func frameIntervalContains(fp, prev, mark uintptr) bool {
+	return mark != 0 && fp <= mark && (prev > mark || prev == 0)
+}
+
+// After siglongjmp, the frame-pointer chain can reach a stale or unmapped
+// slot. Probe every link before reading it: an unguarded read used to
+// self-fault intermittently and replace the panic value being recovered.
+func framePointerRecoverFrameLive(mark1, mark2 uintptr) bool {
+	fp := callerFramePointer()
+	for i := 0; fp != 0 && i < maxPanicSpliceFrames; i++ {
+		if !memReadable(fp) {
+			break
+		}
+		prev := *(*uintptr)(unsafe.Pointer(fp))
+		if frameIntervalContains(fp, prev, mark1) || frameIntervalContains(fp, prev, mark2) {
+			return true
+		}
+		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
+			break
+		}
+		fp = prev
+	}
+	return false
 }
 
 // runtimeFPChain is emitted next to the funcinfo table (one per binary,

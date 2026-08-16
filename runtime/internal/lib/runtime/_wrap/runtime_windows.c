@@ -66,6 +66,59 @@ __declspec(dllimport) void *LLGO_WINAPI
 GetProcAddress(void *module, const char *name);
 __declspec(dllimport) llgo_dword LLGO_WINAPI GetLastError(void);
 
+#if defined(_WIN64)
+/* RUNTIME_FUNCTION differs between AMD64 and ARM64; only its pointer is used. */
+typedef struct llgo_runtime_function llgo_runtime_function;
+
+__declspec(dllimport) void LLGO_WINAPI RtlCaptureContext(void *context);
+__declspec(dllimport) llgo_runtime_function *LLGO_WINAPI
+RtlLookupFunctionEntry(llgo_uintptr pc, llgo_uintptr *image_base,
+                       void *history_table);
+__declspec(dllimport) void *LLGO_WINAPI
+RtlVirtualUnwind(llgo_dword handler_type, llgo_uintptr image_base,
+                 llgo_uintptr pc, llgo_runtime_function *function_entry,
+                 void *context, void **handler_data,
+                 llgo_uintptr *establisher_frame, void *context_pointers);
+
+__attribute__((noinline)) void *
+llgo_windows_capture_context(void *context, llgo_size_t pc_offset)
+{
+    llgo_runtime_function *function_entry;
+    llgo_uintptr image_base;
+    llgo_uintptr pc;
+    llgo_uintptr frame;
+    void *handler_data;
+
+    RtlCaptureContext(context);
+    /* Unwind this wrapper while its captured stack frame is still live. */
+    pc = *(llgo_uintptr *)((unsigned char *)context + pc_offset);
+    function_entry = RtlLookupFunctionEntry(pc, &image_base, 0);
+    if (function_entry == 0)
+        return 0;
+    /* HandlerData is a required output on ARM64, even for a no-handler walk. */
+    RtlVirtualUnwind(0, image_base, pc, function_entry, context,
+                     &handler_data, &frame, 0);
+    return context;
+}
+
+llgo_runtime_function *
+llgo_windows_lookup_function_entry(llgo_uintptr pc, llgo_uintptr *image_base)
+{
+    return RtlLookupFunctionEntry(pc, image_base, 0);
+}
+
+void *llgo_windows_virtual_unwind(llgo_uintptr image_base, llgo_uintptr pc,
+                                  llgo_runtime_function *function_entry,
+                                  void *context,
+                                  llgo_uintptr *establisher_frame)
+{
+    void *handler_data;
+    /* HandlerData is a required output on ARM64, even for a no-handler walk. */
+    return RtlVirtualUnwind(0, image_base, pc, function_entry, context,
+                            &handler_data, establisher_frame, 0);
+}
+#endif
+
 enum {
     llgo_mem_commit = 0x1000,
     llgo_page_noaccess = 0x01,

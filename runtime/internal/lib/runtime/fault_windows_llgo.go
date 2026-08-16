@@ -62,7 +62,7 @@ func onWindowsFault(context unsafe.Pointer, signal int32) {
 		n = 1
 	}
 	if fpUnwindAvailable() && n < len(pcs) {
-		n += windowsFPWalkFrom(fp, pcs[n:])
+		n += platformFaultCallers(context, fp, pcs[n:])
 	}
 	rtdebug.StoreFaultPCs(pcs[:n])
 
