@@ -97,8 +97,6 @@ func NumGoroutine() int {
 	return 1
 }
 
-func SetCPUProfileRate(hz int) {}
-
 const funcForPCCacheSets = 1024
 const funcForPCCacheWays = 4
 
