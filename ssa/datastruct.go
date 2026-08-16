@@ -284,8 +284,19 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 		}
 	}
 	if !check.IsNil() {
-		boundsIdx, _ := b.boundsArg(idx)
-		b.InlineCall(b.Pkg.rtFunc("CheckIndexRange"), check, boundsIdx, prog.BoolVal(signed), max)
+		blks := b.Func.MakeBlocks(2)
+		b.If(check, blks[0], blks[1])
+		b.SetBlockEx(blks[0], AtEnd, false)
+		panicIndex := "PanicIndexU"
+		if signed {
+			panicIndex = "PanicIndex"
+		}
+		b.InlineCall(b.Pkg.rtFunc(panicIndex), idx, max)
+		// Keep the failure path disconnected from the successful continuation,
+		// while retaining a post-call instruction for return-address line info.
+		b.Jump(blks[0])
+		b.SetBlockEx(blks[1], AtEnd, false)
+		b.blk.last = blks[1].last
 	}
 	return idx
 }

@@ -96,12 +96,6 @@ func boundsAbove(x int64, signed bool, y int64) bool {
 	return uint64(x) > uint64(y)
 }
 
-func CheckIndexRange(b bool, x int64, signed bool, y int) {
-	if b {
-		panicBounds(x, signed, y, boundsIndex)
-	}
-}
-
 func appendIntStr(b []byte, v int64, signed bool) []byte {
 	if signed && v < 0 {
 		b = append(b, '-')

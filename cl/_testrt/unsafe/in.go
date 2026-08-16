@@ -56,8 +56,7 @@ type N struct {
 // CHECK: %[[DATA0:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[SLICE]], 0
 // CHECK: %[[LEN0:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[SLICE]], 1
 // CHECK: %[[OOB0:[0-9]+]] = icmp uge i64 0, %[[LEN0]]
-// CHECK: call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %[[OOB0]], i64 0, i1 true, i64 %[[LEN0]])
-// CHECK: getelementptr inbounds i64, ptr %[[DATA0]], i64 0
+// CHECK: br i1 %[[OOB0]], label %{{_llgo_[0-9]+}}, label %{{_llgo_[0-9]+}}
 // The remaining StringData loads may be printed in predecessor block order,
 // but must still use the captured string backing pointer.
 // CHECK: load i8, ptr getelementptr inbounds (i8, ptr @[[CSTR]], i64 2)
@@ -70,11 +69,17 @@ type N struct {
 // CHECK: %[[DATA1:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[SLICE]], 0
 // CHECK: %[[LEN1:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[SLICE]], 1
 // CHECK: %[[OOB1:[0-9]+]] = icmp uge i64 1, %[[LEN1]]
-// CHECK: call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %[[OOB1]], i64 1, i1 true, i64 %[[LEN1]])
-// CHECK: getelementptr inbounds i64, ptr %[[DATA1]], i64 1
+// CHECK: br i1 %[[OOB1]], label %{{_llgo_[0-9]+}}, label %{{_llgo_[0-9]+}}
 
 // unsafe.Add(nil, 1) remains a byte-wise pointer addition.
 // CHECK: icmp ne i64 ptrtoint (ptr getelementptr (i8, ptr null, i64 1) to i64), 1
+
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.PanicIndex"(i64 0, i64 %[[LEN0]])
+// CHECK-NEXT: br label %{{_llgo_[0-9]+}}
+// CHECK: getelementptr inbounds i64, ptr %[[DATA0]], i64 0
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.PanicIndex"(i64 1, i64 %[[LEN1]])
+// CHECK-NEXT: br label %{{_llgo_[0-9]+}}
+// CHECK: getelementptr inbounds i64, ptr %[[DATA1]], i64 1
 
 func main() {
 	if unsafe.Sizeof(*(*T)(nil)) != unsafe.Sizeof(0) {
