@@ -1758,7 +1758,7 @@ func (b Builder) BuiltinCall(fn string, args ...Expr) (ret Expr) {
 		if len(args) == 2 && args[0].kind == vkMap {
 			m := args[0]
 			t := b.abiType(m.raw.Type)
-			ptr := b.mapKeyPtr(args[1])
+			ptr := b.mapKeyPtr(m, args[1])
 			b.Call(b.Pkg.rtFunc("MapDelete"), t, m, ptr)
 			return
 		}
