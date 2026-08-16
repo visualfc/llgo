@@ -31,6 +31,9 @@ func c_installWindowsFaultHandler(cb func(unsafe.Pointer, int32)) c.Int
 //go:linkname c_windowsFaultCaptureDone C.llgo_windows_fault_capture_done
 func c_windowsFaultCaptureDone()
 
+//go:linkname c_windowsFaultPCBuf C.llgo_windows_fault_pcbuf
+func c_windowsFaultPCBuf() unsafe.Pointer
+
 //go:linkname c_memReadable C.llgo_mem_readable
 func c_memReadable(p unsafe.Pointer) c.Int
 
@@ -46,9 +49,10 @@ func init() {
 
 func onWindowsFault(context unsafe.Pointer, signal int32) {
 	// Faults are recoverable and different goroutines run on different host
-	// threads, so the capture must not use process-global scratch storage.
-	// StoreFaultPCs copies this stack-local snapshot into the current G.
-	var pcs [64]uintptr
+	// threads, so capture into the handler's thread-local scratch storage.
+	// StoreFaultPCs then copies the snapshot into the current G before panic's
+	// non-local jump unwinds the handler stack.
+	pcs := (*[64]uintptr)(c_windowsFaultPCBuf())
 	pc, fp := windowsFaultPCFP(context)
 	n := 0
 	if pc != 0 {

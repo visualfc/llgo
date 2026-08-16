@@ -44,6 +44,12 @@ enum {
 
 static llgo_fault_callback llgo_fault_go;
 static _Thread_local int llgo_in_fault;
+static _Thread_local uintptr_t llgo_fault_pcs[64];
+
+uintptr_t *llgo_windows_fault_pcbuf(void)
+{
+    return llgo_fault_pcs;
+}
 
 static llgo_long LLGO_WINAPI
 llgo_fault_handler(llgo_exception_pointers *exception)
