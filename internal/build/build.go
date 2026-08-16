@@ -650,6 +650,7 @@ func Build(inv Invocation) ([]Package, error) {
 		pkgs:            map[*packages.Package]Package{},
 		pkgByID:         map[string]Package{},
 		cacheManager:    newCacheManager(),
+		patchFiles:      llgoFiles,
 		output:          output,
 		passOpt:         passOpt,
 		buildConf:       conf,
@@ -919,6 +920,7 @@ type context struct {
 	callerTracking *cl.CallerTracking
 	fingerprinting map[string]bool
 	cacheDisabled  map[string]none
+	patchFiles     map[string][]string
 	initial        []*packages.Package
 	pkgs           map[*packages.Package]Package // cache for lookup
 	pkgByID        map[string]Package            // cache for lookup by pkg.ID
