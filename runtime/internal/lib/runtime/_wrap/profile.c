@@ -35,6 +35,10 @@ static unsigned int llgo_prof_write_index;
 static volatile int llgo_prof_lock;
 static volatile int llgo_prof_active;
 static volatile uint64_t llgo_prof_lost;
+#if defined(__APPLE__) || defined(__linux__)
+static struct sigaction llgo_prof_previous_action;
+static int llgo_prof_previous_valid;
+#endif
 
 extern int llgo_mem_readable(void *p);
 
@@ -60,20 +64,83 @@ static void llgo_prof_drop(void)
 }
 
 #if defined(__APPLE__) || defined(__linux__)
+static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx);
+
+static int llgo_prof_action_is_ours(const struct sigaction *sa)
+{
+    return (sa->sa_flags & SA_SIGINFO) != 0 &&
+           sa->sa_sigaction == llgo_prof_signal;
+}
+
+static int llgo_prof_install_signal_locked(void)
+{
+    struct sigaction current;
+    struct sigaction sa;
+
+    if (sigaction(SIGPROF, 0, &current) != 0)
+        return -1;
+    if (llgo_prof_action_is_ours(&current))
+        return 0;
+
+    /* Keep the disposition that was current immediately before this install.
+     * A default disposition is normalized to ignore, as the Go runtime does:
+     * a final pending timer signal must not terminate the process after Stop. */
+    llgo_prof_previous_action = current;
+    if ((current.sa_flags & SA_SIGINFO) == 0 &&
+        current.sa_handler == SIG_DFL)
+        llgo_prof_previous_action.sa_handler = SIG_IGN;
+    llgo_prof_previous_valid = 1;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = llgo_prof_signal;
+    sa.sa_mask = current.sa_mask;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+#ifdef SA_ONSTACK
+    sa.sa_flags |= current.sa_flags & SA_ONSTACK;
+#endif
+    return sigaction(SIGPROF, &sa, 0);
+}
+
+static void llgo_prof_restore_signal_locked(void)
+{
+    struct sigaction current;
+
+    if (!llgo_prof_previous_valid || sigaction(SIGPROF, 0, &current) != 0)
+        return;
+    /* Do not overwrite a handler installed by foreign code that did not use
+     * the coordinated os/signal path below. */
+    if (llgo_prof_action_is_ours(&current))
+        sigaction(SIGPROF, &llgo_prof_previous_action, 0);
+}
+
 static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
 {
     uintptr_t pc = 0, fp = 0;
     uintptr_t word = sizeof(uintptr_t);
     unsigned int next;
     struct llgo_prof_sample *sample;
+    int active;
     ucontext_t *uc = (ucontext_t *)uctx;
     int saved_errno = errno;
     (void)sig;
     (void)info;
     (void)uc;
 
-    if (!__atomic_load_n(&llgo_prof_active, __ATOMIC_ACQUIRE))
+    active = __atomic_load_n(&llgo_prof_active, __ATOMIC_ACQUIRE);
+    /* Like the Go runtime, the profiler owns SIGPROF while active. In
+     * particular, timer samples are not forwarded to os/signal watchers. */
+    if (!active) {
+        errno = saved_errno;
         return;
+    }
+    if (!llgo_prof_try_lock()) {
+        llgo_prof_drop();
+        errno = saved_errno;
+        return;
+    }
+    active = __atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED);
+    if (!active)
+        goto done;
 #if defined(__APPLE__) && defined(__aarch64__)
     pc = (uintptr_t)uc->uc_mcontext->__ss.__pc;
     fp = (uintptr_t)uc->uc_mcontext->__ss.__fp;
@@ -87,15 +154,9 @@ static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
     pc = (uintptr_t)uc->uc_mcontext.gregs[16 /* REG_RIP */];
     fp = (uintptr_t)uc->uc_mcontext.gregs[10 /* REG_RBP */];
 #endif
-    if (pc == 0 || !llgo_prof_try_lock()) {
+    if (pc == 0) {
         llgo_prof_drop();
-        errno = saved_errno;
-        return;
-    }
-    if (!__atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED)) {
-        llgo_prof_unlock();
-        errno = saved_errno;
-        return;
+        goto done;
     }
 
     next = llgo_prof_write_index + 1;
@@ -103,9 +164,7 @@ static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
         next = 0;
     if (next == llgo_prof_read_index) {
         llgo_prof_drop();
-        llgo_prof_unlock();
-        errno = saved_errno;
-        return;
+        goto done;
     }
 
     sample = &llgo_prof_ring[llgo_prof_write_index];
@@ -129,6 +188,7 @@ static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
         fp = prev;
     }
     llgo_prof_write_index = next;
+done:
     llgo_prof_unlock();
     errno = saved_errno;
 }
@@ -139,7 +199,6 @@ static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
 int llgo_cpu_profile_start(int hz)
 {
 #if defined(__APPLE__) || defined(__linux__)
-    struct sigaction sa;
     struct itimerval timer;
     uint64_t usec;
     int saved_errno = errno;
@@ -155,13 +214,7 @@ int llgo_cpu_profile_start(int hz)
         errno = saved_errno;
         return 0;
     }
-    /* Reinstall for every profile: user signal code may have changed the
-     * process disposition since the preceding profile stopped. */
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_sigaction = llgo_prof_signal;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_SIGINFO | SA_RESTART;
-    if (sigaction(SIGPROF, &sa, 0) != 0) {
+    if (llgo_prof_install_signal_locked() != 0) {
         llgo_prof_unlock();
         errno = saved_errno;
         return -1;
@@ -170,7 +223,6 @@ int llgo_cpu_profile_start(int hz)
     llgo_prof_write_index = 0;
     __atomic_store_n(&llgo_prof_lost, 0, __ATOMIC_RELAXED);
     __atomic_store_n(&llgo_prof_active, 1, __ATOMIC_RELEASE);
-    llgo_prof_unlock();
 
     usec = 1000000u / (unsigned int)hz;
     if (usec == 0)
@@ -181,9 +233,12 @@ int llgo_cpu_profile_start(int hz)
     timer.it_value = timer.it_interval;
     if (setitimer(ITIMER_PROF, &timer, 0) != 0) {
         __atomic_store_n(&llgo_prof_active, 0, __ATOMIC_RELEASE);
+        llgo_prof_restore_signal_locked();
+        llgo_prof_unlock();
         errno = saved_errno;
         return -1;
     }
+    llgo_prof_unlock();
     errno = saved_errno;
     return 1;
 #else
@@ -197,14 +252,36 @@ void llgo_cpu_profile_stop(void)
 #if defined(__APPLE__) || defined(__linux__)
     struct itimerval timer;
     int saved_errno = errno;
+    llgo_prof_lock_wait();
     memset(&timer, 0, sizeof(timer));
     setitimer(ITIMER_PROF, &timer, 0);
     __atomic_store_n(&llgo_prof_active, 0, __ATOMIC_RELEASE);
-    /* Wait for a handler that already owns the ring to finish. A handler
-     * interrupting this critical section only records a dropped sample. */
-    llgo_prof_lock_wait();
+    llgo_prof_restore_signal_locked();
     llgo_prof_unlock();
     errno = saved_errno;
+#endif
+}
+
+/* Serialize a libuv SIGPROF watcher update with profiler start/stop. While the
+ * lock is held, an interrupting profiling signal is dropped instead of
+ * blocking in signal context. */
+void llgo_cpu_profile_signal_update_begin(void)
+{
+#if defined(__APPLE__) || defined(__linux__)
+    llgo_prof_lock_wait();
+#endif
+}
+
+int llgo_cpu_profile_signal_update_end(void)
+{
+#if defined(__APPLE__) || defined(__linux__)
+    int ret = 0;
+    if (__atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED))
+        ret = llgo_prof_install_signal_locked();
+    llgo_prof_unlock();
+    return ret;
+#else
+    return 0;
 #endif
 }
 

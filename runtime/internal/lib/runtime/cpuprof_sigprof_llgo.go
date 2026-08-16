@@ -11,6 +11,9 @@ import (
 
 const maxCPUProfileStack = 64
 
+// SIGPROF is 27 on the native Darwin/Linux architectures supported here.
+const cpuProfileSignal = 27
+
 //go:linkname c_cpuProfileStart C.llgo_cpu_profile_start
 func c_cpuProfileStart(hz int32) int32
 
@@ -26,6 +29,12 @@ func c_cpuProfileTakeLost() uint64
 //go:linkname c_cpuProfileEmpty C.llgo_cpu_profile_empty
 func c_cpuProfileEmpty() int32
 
+//go:linkname c_cpuProfileSignalUpdateBegin C.llgo_cpu_profile_signal_update_begin
+func c_cpuProfileSignalUpdateBegin()
+
+//go:linkname c_cpuProfileSignalUpdateEnd C.llgo_cpu_profile_signal_update_end
+func c_cpuProfileSignalUpdateEnd() int32
+
 var (
 	cpuProfileRate          int32
 	cpuProfileOpen          uint32
@@ -33,6 +42,23 @@ var (
 	cpuProfilePeriodRecord  = [3]uint64{3, 0, 100}
 	cpuProfilePeriodTags    [1]unsafe.Pointer
 )
+
+func cpuProfileSignalUpdateBegin(sig uint32) bool {
+	if sig != cpuProfileSignal {
+		return false
+	}
+	c_cpuProfileSignalUpdateBegin()
+	return true
+}
+
+func cpuProfileSignalUpdateEnd(locked bool) {
+	if !locked {
+		return
+	}
+	if c_cpuProfileSignalUpdateEnd() != 0 {
+		print("runtime: failed to restore CPU profiling SIGPROF handler.\n")
+	}
+}
 
 // SetCPUProfileRate starts or stops process CPU-time sampling. The signal
 // handler and its ring buffer live in profile.c so the sampling path neither
