@@ -832,6 +832,10 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		return nil, fmt.Errorf("initial package not found")
 	}
 
+	// buildAllPkgs has already used the existing bounded package scheduler.
+	// Test-main linking still uses coordinator-owned state, so keep links
+	// sequential and collect only the finished native binaries for concurrent
+	// execution below.
 	linkMultiple := mode == ModeBuild && len(initial) > 1
 	var linkErrs []error
 	var testPrograms []testProgram
