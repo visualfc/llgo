@@ -1,4 +1,4 @@
-// LITTEST: PRE-ABI darwin/arm64 linux/amd64
+// LITTEST darwin/arm64 linux/amd64
 package main
 
 // Nested loop/branch defers must all use one function-level defer chain; the

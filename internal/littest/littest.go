@@ -44,7 +44,6 @@ func (t Target) String() string {
 
 const (
 	Marker        = "LITTEST"
-	PreABIMarker  = "LITTEST: PRE-ABI"
 	PostABIMarker = "LITTEST: POST-ABI"
 )
 
@@ -112,9 +111,9 @@ func HasMarker(path string) (bool, error) {
 }
 
 // ReadMarker reports whether the source's first-line marker selects post-ABI IR.
-// Plain // LITTEST retains the existing check behavior. PRE-ABI and POST-ABI
-// markers carry a space-separated GOOS/GOARCH target matrix; POST-ABI without
-// targets remains supported for a single effective target.
+// Plain // LITTEST retains the existing check behavior and may carry a
+// space-separated GOOS/GOARCH target matrix. POST-ABI explicitly selects the
+// target-ABI-lowered stage and may also carry a matrix.
 func ReadMarker(path string) (postABI, found bool, err error) {
 	spec, found, err := readMarker(path)
 	return spec.PostABI, found, err
@@ -139,15 +138,13 @@ func readMarker(path string) (spec Spec, found bool, err error) {
 	switch marker {
 	case Marker:
 		return Spec{}, true, nil
-	case PreABIMarker:
-		return Spec{}, false, fmt.Errorf("%s: PRE-ABI marker requires at least one GOOS/GOARCH target", path)
 	case PostABIMarker:
 		return Spec{PostABI: true}, true, nil
 	}
 	postABI := false
-	markerName := PreABIMarker
+	markerName := Marker
 	switch {
-	case strings.HasPrefix(marker, PreABIMarker+" "):
+	case strings.HasPrefix(marker, Marker+" "):
 	case strings.HasPrefix(marker, PostABIMarker+" "):
 		postABI = true
 		markerName = PostABIMarker

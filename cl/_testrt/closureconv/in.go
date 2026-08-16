@@ -1,4 +1,4 @@
-// LITTEST: PRE-ABI darwin/arm64 linux/amd64
+// LITTEST darwin/arm64 linux/amd64
 package main
 
 type Func func(a int, b int) int

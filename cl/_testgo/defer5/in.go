@@ -1,4 +1,4 @@
-// LITTEST: PRE-ABI darwin/arm64 linux/amd64
+// LITTEST darwin/arm64 linux/amd64
 package main
 
 // Bind the four messages so the checks below prove which defer/panic payload

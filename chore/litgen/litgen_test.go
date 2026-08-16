@@ -163,7 +163,7 @@ func TestProcessPathGeneratesPostABITargetMatrix(t *testing.T) {
 	}
 }
 
-func TestProcessPathGeneratesPreABITargetMatrix(t *testing.T) {
+func TestProcessPathGeneratesDefaultStageTargetMatrix(t *testing.T) {
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +174,7 @@ func TestProcessPathGeneratesPreABITargetMatrix(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(pkgDir) })
 	path := filepath.Join(pkgDir, "in.go")
-	source := "// LITTEST: PRE-ABI darwin/arm64 linux/amd64\npackage main\n\nfunc makeValue(v int) func() int { return func() int { return v } }\n"
+	source := "// LITTEST darwin/arm64 linux/amd64\npackage main\n\nfunc makeValue(v int) func() int { return func() int { return v } }\n"
 	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestProcessPathGeneratesPreABITargetMatrix(t *testing.T) {
 	}
 	generated := string(data)
 	for _, want := range []string{
-		"// LITTEST: PRE-ABI darwin/arm64 linux/amd64",
+		"// LITTEST darwin/arm64 linux/amd64",
 		"// CHECK-LABEL: define i64",
 		"// DARWIN-ARM64-SAME: ptr swiftself",
 		"// LINUX-AMD64-SAME: ptr nest",

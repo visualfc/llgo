@@ -77,9 +77,9 @@ func main() {}
 	}
 }
 
-func TestLoadSpecSelectsPreABITargets(t *testing.T) {
+func TestLoadSpecSelectsDefaultStageTargets(t *testing.T) {
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "in.go"), `// LITTEST: PRE-ABI darwin/arm64 linux/amd64
+	writeFile(t, filepath.Join(dir, "in.go"), `// LITTEST darwin/arm64 linux/amd64
 package main
 
 // CHECK: ret void
@@ -91,7 +91,7 @@ func main() {}
 		t.Fatal(err)
 	}
 	if spec.PostABI {
-		t.Fatal("PRE-ABI marker unexpectedly selected post-ABI IR")
+		t.Fatal("default marker unexpectedly selected post-ABI IR")
 	}
 	got := make([]string, len(spec.Targets))
 	for i, target := range spec.Targets {
@@ -102,14 +102,14 @@ func main() {}
 	}
 }
 
-func TestLoadSpecRejectsInvalidPostABITargets(t *testing.T) {
+func TestLoadSpecRejectsInvalidTargets(t *testing.T) {
 	tests := []struct {
 		marker string
 		want   string
 	}{
 		{marker: "// LITTEST: POST-ABI amd64", want: `invalid LITTEST target "amd64"`},
 		{marker: "// LITTEST: POST-ABI linux/amd64 linux/amd64", want: `duplicate LITTEST target "linux/amd64"`},
-		{marker: "// LITTEST: PRE-ABI amd64", want: `invalid LITTEST target "amd64"`},
+		{marker: "// LITTEST amd64", want: `invalid LITTEST target "amd64"`},
 	}
 	for _, test := range tests {
 		t.Run(test.want, func(t *testing.T) {
@@ -121,15 +121,6 @@ func TestLoadSpecRejectsInvalidPostABITargets(t *testing.T) {
 				t.Fatalf("LoadSpec error = %v, want %q", err, test.want)
 			}
 		})
-	}
-}
-
-func TestLoadSpecRequiresPreABITarget(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "in.go"), "// LITTEST: PRE-ABI\npackage main\n")
-	_, err := LoadSpec(dir)
-	if err == nil || !strings.Contains(err.Error(), "requires at least one GOOS/GOARCH target") {
-		t.Fatalf("LoadSpec error = %v, want target requirement", err)
 	}
 }
 
@@ -225,7 +216,7 @@ func TestHasMarker(t *testing.T) {
 		{name: "empty"},
 		{name: "plain", contents: "package main\n"},
 		{name: "marker", contents: "// LITTEST\npackage main\n", want: true},
-		{name: "pre abi targets", contents: "// LITTEST: PRE-ABI darwin/arm64 linux/amd64\npackage main\n", want: true},
+		{name: "default targets", contents: "// LITTEST darwin/arm64 linux/amd64\npackage main\n", want: true},
 		{name: "post abi", contents: "// LITTEST: POST-ABI\npackage main\n", want: true},
 		{name: "post abi targets", contents: "// LITTEST: POST-ABI linux/amd64 linux/arm64\npackage main\n", want: true},
 		{name: "not first line", contents: "\n// LITTEST\npackage main\n"},

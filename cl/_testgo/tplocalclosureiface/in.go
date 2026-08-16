@@ -1,4 +1,4 @@
-// LITTEST: PRE-ABI darwin/arm64 linux/amd64
+// LITTEST darwin/arm64 linux/amd64
 package main
 
 // DARWIN-ARM64-LABEL: define linkonce %"{{.*}}/runtime/internal/runtime.eface" @"main.boxFuncs$1[int]"(ptr swiftself

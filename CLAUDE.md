@@ -73,11 +73,12 @@ remain in the Go source and carry a reproducible `UTC_ARGS` note:
 ```
 
 Declare known platform differences with a target matrix and exact FileCheck
-prefixes instead of regular-expression alternatives. `PRE-ABI` checks the
-historical stage, while `POST-ABI` checks after target ABI lowering:
+prefixes instead of regular-expression alternatives. The ordinary marker uses
+the historical pre-ABI stage; only checks after target ABI lowering need an
+explicit stage:
 
 ```go
-// LITTEST: PRE-ABI darwin/arm64 linux/amd64
+// LITTEST darwin/arm64 linux/amd64
 // LITTEST: POST-ABI linux/amd64 linux/arm64
 ```
 
