@@ -56,6 +56,17 @@ func hasSuffix(value, suffix string) bool {
 }
 
 func dumpFaultSnapshot() {
+	var current [32]uintptr
+	n := runtime.Callers(0, current[:])
+	frames := runtime.CallersFrames(current[:n])
+	for i := 0; ; i++ {
+		frame, more := frames.Next()
+		println("Windows current pc:", i, frame.PC, frame.Function)
+		if !more {
+			break
+		}
+	}
+
 	pcs := rtdebug.PanicPCs()
 	mark1, mark2 := rtdebug.PanicRecoverFPs()
 	println("Windows fault snapshot:", len(pcs), "fault:", rtdebug.PanicPCsAreFault())
