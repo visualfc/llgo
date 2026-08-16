@@ -37,14 +37,19 @@ type GeneratedIR struct {
 }
 
 func GenFrom(fileOrPkg string) string {
-	pkg, err := genFrom(fileOrPkg, 0)
-	check(err)
-	out := pkg.LPkg.String()
-	// Release the compile's LLVM context: golden suites call GenFrom for
-	// every test dir inside one process, and undisposed contexts
-	// accumulate C++-side memory for the whole run.
-	pkg.LPkg.Prog.Dispose()
-	return out
+	return Generate(fileOrPkg).Text
+}
+
+// Generate returns the historical pre-target-ABI module together with its
+// effective target. GenFrom is the text-only compatibility wrapper.
+func Generate(fileOrPkg string) GeneratedIR {
+	return GenerateWithConf(fileOrPkg, nil)
+}
+
+// GenerateWithConf is Generate with caller-provided target and frontend
+// settings. It uses generation mode and does not invoke ModuleHook.
+func GenerateWithConf(fileOrPkg string, input *build.Config) GeneratedIR {
+	return generateWithConf(fileOrPkg, input, cabi.ModeNone)
 }
 
 // GeneratePostABI returns the module after aggregate and target ABI lowering
@@ -57,15 +62,19 @@ func GeneratePostABI(fileOrPkg string) GeneratedIR {
 // GeneratePostABIWithConf is GeneratePostABI with caller-provided target and
 // frontend settings. It uses generation mode and does not invoke ModuleHook.
 func GeneratePostABIWithConf(fileOrPkg string, input *build.Config) GeneratedIR {
+	return generateWithConf(fileOrPkg, input, cabi.ModeAllFunc)
+}
+
+func generateWithConf(fileOrPkg string, input *build.Config, abiMode cabi.Mode) GeneratedIR {
 	conf := &build.Config{}
 	if input != nil {
 		*conf = *input
 	}
 	conf.Mode = build.ModeGen
-	conf.AbiMode = cabi.ModeAllFunc
+	conf.AbiMode = abiMode
 	conf.GenLL = true
 	conf.ModuleHook = nil
-	// Cache hits skip compilePackageModule, including target ABI lowering.
+	// Cache hits can skip the module production needed by snapshot generation.
 	conf.ForceRebuild = true
 	pkg, err := genFromConf(fileOrPkg, conf)
 	check(err)

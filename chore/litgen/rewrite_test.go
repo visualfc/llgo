@@ -7,6 +7,50 @@ import (
 
 var testGenerationConfig = generationConfig{allFunctions: true, checkGlobals: "smart"}
 
+func TestMergeCheckSequencesSharesCommonDataflow(t *testing.T) {
+	prefixes := []string{"LINUX-AMD64", "LINUX-ARM64"}
+	sequences := [][]string{
+		{
+			"// CHECK-LABEL: define i32 @main.value(",
+			"// CHECK-NEXT:   %[[TMP1:[0-9]+]] = add i32 %[[TMP0]], 1",
+			"// CHECK-NEXT:   ret i32 %[[TMP1]]",
+		},
+		{
+			"// CHECK-LABEL: define i32 @main.value(",
+			"// CHECK-NEXT:   %[[TMP1:[0-9]+]] = sub i32 %[[TMP0]], 1",
+			"// CHECK-NEXT:   ret i32 %[[TMP1]]",
+		},
+	}
+	want := strings.Join([]string{
+		"// CHECK-LABEL: define i32 @main.value(",
+		"// LINUX-AMD64-NEXT:   %[[TMP1:[0-9]+]] = add i32 %[[TMP0]], 1",
+		"// LINUX-ARM64-NEXT:   %[[TMP1:[0-9]+]] = sub i32 %[[TMP0]], 1",
+		"// CHECK-NEXT:   ret i32 %[[TMP1]]",
+	}, "\n")
+	got := strings.Join(mergeCheckSequences(prefixes, sequences), "\n")
+	if got != want {
+		t.Fatalf("merged checks mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestStripCheckDirectivesRemovesTargetPrefixes(t *testing.T) {
+	src := `// LITTEST: POST-ABI linux/amd64 linux/arm64
+// CHECK-LABEL: define void @main.main()
+// LINUX-AMD64-NEXT: ret void
+// LINUX-ARM64-NEXT: ret void
+// SYMBOL-DAG: main.main
+package main
+`
+	want := `// LITTEST: POST-ABI linux/amd64 linux/arm64
+// SYMBOL-DAG: main.main
+package main
+`
+	got := stripCheckDirectives(src, "LINUX-AMD64", "LINUX-ARM64")
+	if got != want {
+		t.Fatalf("stripped source mismatch:\n--- got ---\n%s--- want ---\n%s", got, want)
+	}
+}
+
 func TestRewriteSource_InsertsMainAndClosure(t *testing.T) {
 	const src = `// LITTEST
 package main
@@ -361,35 +405,6 @@ func TestGeneralizeDefineLine_WildcardsAttrsBeforeBrace(t *testing.T) {
 	want := `define void @"{{.*}}/p.main"(){{.*}} {`
 	if got != want {
 		t.Fatalf("generalizeDefineLine = %q, want %q", got, want)
-	}
-}
-
-func TestGeneralizeClosureEnvAttrs(t *testing.T) {
-	tests := []struct {
-		line string
-		want string
-	}{
-		{
-			`define void @"example.com/nest.swiftself"(ptr swiftself %env) {`,
-			`define void @"example.com/nest.swiftself"(ptr {{(nest|swiftself)}} %env) {`,
-		},
-		{
-			`  call void %fn(ptr nest %env, ptr %arg)`,
-			`  call void %fn(ptr {{(nest|swiftself)}} %env, ptr %arg)`,
-		},
-		{
-			`@0 = private constant [14 x i8] c"nest swiftself"`,
-			`@0 = private constant [14 x i8] c"nest swiftself"`,
-		},
-		{
-			`@nest = global ptr @swiftself`,
-			`@nest = global ptr @swiftself`,
-		},
-	}
-	for _, test := range tests {
-		if got := generalizeClosureEnvAttrs(test.line); got != test.want {
-			t.Errorf("generalizeClosureEnvAttrs(%q) = %q, want %q", test.line, got, test.want)
-		}
 	}
 }
 

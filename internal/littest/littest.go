@@ -32,7 +32,7 @@ type Spec struct {
 	Targets []Target
 }
 
-// Target selects one GOOS/GOARCH pair for a post-ABI IR check.
+// Target selects one GOOS/GOARCH pair for an IR check.
 type Target struct {
 	GOOS   string
 	GOARCH string
@@ -44,6 +44,7 @@ func (t Target) String() string {
 
 const (
 	Marker        = "LITTEST"
+	PreABIMarker  = "LITTEST: PRE-ABI"
 	PostABIMarker = "LITTEST: POST-ABI"
 )
 
@@ -111,9 +112,9 @@ func HasMarker(path string) (bool, error) {
 }
 
 // ReadMarker reports whether the source's first-line marker selects post-ABI IR.
-// Plain // LITTEST retains the existing check behavior; the POST-ABI form is
-// an explicit opt-in to target-ABI-lowered, pre-optimization IR and may carry
-// a space-separated GOOS/GOARCH target matrix.
+// Plain // LITTEST retains the existing check behavior. PRE-ABI and POST-ABI
+// markers carry a space-separated GOOS/GOARCH target matrix; POST-ABI without
+// targets remains supported for a single effective target.
 func ReadMarker(path string) (postABI, found bool, err error) {
 	spec, found, err := readMarker(path)
 	return spec.PostABI, found, err
@@ -138,18 +139,27 @@ func readMarker(path string) (spec Spec, found bool, err error) {
 	switch marker {
 	case Marker:
 		return Spec{}, true, nil
+	case PreABIMarker:
+		return Spec{}, false, fmt.Errorf("%s: PRE-ABI marker requires at least one GOOS/GOARCH target", path)
 	case PostABIMarker:
 		return Spec{PostABI: true}, true, nil
 	}
-	if !strings.HasPrefix(marker, PostABIMarker+" ") {
+	postABI := false
+	markerName := PreABIMarker
+	switch {
+	case strings.HasPrefix(marker, PreABIMarker+" "):
+	case strings.HasPrefix(marker, PostABIMarker+" "):
+		postABI = true
+		markerName = PostABIMarker
+	default:
 		return Spec{}, false, nil
 	}
 
-	targets, err := parseTargets(strings.TrimSpace(strings.TrimPrefix(marker, PostABIMarker)))
+	targets, err := parseTargets(strings.TrimSpace(strings.TrimPrefix(marker, markerName)))
 	if err != nil {
 		return Spec{}, false, fmt.Errorf("%s: %w", path, err)
 	}
-	return Spec{PostABI: true, Targets: targets}, true, nil
+	return Spec{PostABI: postABI, Targets: targets}, true, nil
 }
 
 func parseTargets(text string) ([]Target, error) {
@@ -159,10 +169,10 @@ func parseTargets(text string) ([]Target, error) {
 	for _, field := range fields {
 		goos, goarch, ok := strings.Cut(field, "/")
 		if !ok || goos == "" || goarch == "" || strings.Contains(goarch, "/") {
-			return nil, fmt.Errorf("invalid POST-ABI target %q; want GOOS/GOARCH", field)
+			return nil, fmt.Errorf("invalid LITTEST target %q; want GOOS/GOARCH", field)
 		}
 		if _, ok := seen[field]; ok {
-			return nil, fmt.Errorf("duplicate POST-ABI target %q", field)
+			return nil, fmt.Errorf("duplicate LITTEST target %q", field)
 		}
 		seen[field] = struct{}{}
 		targets = append(targets, Target{GOOS: goos, GOARCH: goarch})
