@@ -44,28 +44,23 @@ func init() {
 	}
 }
 
-var (
-	windowsFaultPCs    [64]uintptr
-	windowsFaultN      int32
-	windowsFaultActive int32
-)
-
 func onWindowsFault(context unsafe.Pointer, signal int32) {
-	windowsFaultActive = 1
-	windowsFaultN = 0
+	// Faults are recoverable and different goroutines run on different host
+	// threads, so the capture must not use process-global scratch storage.
+	// StoreFaultPCs copies this stack-local snapshot into the current G.
+	var pcs [64]uintptr
 	pc, fp := windowsFaultPCFP(context)
 	n := 0
 	if pc != 0 {
 		// Stored PCs follow runtime.Callers' return-PC convention. Adding one
 		// keeps PC-1 on the instruction that raised the exception.
-		windowsFaultPCs[0] = pc + 1
+		pcs[0] = pc + 1
 		n = 1
 	}
-	if fpUnwindAvailable() && n < len(windowsFaultPCs) {
-		n += windowsFPWalkFrom(fp, windowsFaultPCs[n:])
+	if fpUnwindAvailable() && n < len(pcs) {
+		n += windowsFPWalkFrom(fp, pcs[n:])
 	}
-	windowsFaultN = int32(n)
-	rtdebug.StoreFaultPCs(windowsFaultPCs[:n])
+	rtdebug.StoreFaultPCs(pcs[:n])
 
 	// The panic path does not return through the vectored handler, so release
 	// its recursion guard before the non-local jump begins.
@@ -96,22 +91,24 @@ func windowsFPWalkFrom(fp uintptr, pcs []uintptr) int {
 	return n
 }
 
-func clearFaultTraceback() {
-	windowsFaultActive = 0
-	windowsFaultN = 0
+// Windows fault snapshots live in the current G. Keep a recovered snapshot
+// available while its deferred frame can still observe runtime.Callers; the
+// next panic replaces it. PanicActive supplies the separate in-flight bit.
+func clearFaultTraceback() {}
+
+func faultTracebackActive() bool {
+	return rtdebug.PanicPCsAreFault() && rtdebug.PanicActive()
 }
 
-func faultTracebackActive() bool { return windowsFaultActive != 0 }
-
 func faultTraceback(skip int) bool {
-	if windowsFaultN == 0 || !fpUnwindAvailable() {
+	pcs := rtdebug.PanicPCs()
+	if !rtdebug.PanicPCsAreFault() || len(pcs) == 0 || !fpUnwindAvailable() {
 		return false
 	}
 	initRuntimeFuncPCFrames()
 	print("goroutine 1 [running]:\n")
 	printed := 0
-	for i := 0; i < int(windowsFaultN); i++ {
-		pc := windowsFaultPCs[i]
+	for _, pc := range pcs {
 		if !prebuiltTextContains(pc) {
 			break
 		}

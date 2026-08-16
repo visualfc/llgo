@@ -33,11 +33,21 @@ func windowsInvalidAddress() uintptr
 //go:linkname windowsUnrecoveredFault C.llgo_windows_unrecovered_fault
 func windowsUnrecoveredFault() int32
 
-//go:linkname windowsUnrecoveredFault C.llgo_windows_unrecovered_fault
-func windowsUnrecoveredFault() int32
-
 //go:noinline
 func windowsNilFault() byte {
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
+}
+
+// Keep two distinct fault sites so concurrent captures cannot accidentally
+// satisfy each other's traceback checks.
+//
+//go:noinline
+func windowsNilFaultA() byte {
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
+}
+
+//go:noinline
+func windowsNilFaultB() byte {
 	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
 }
 
@@ -88,6 +98,49 @@ func checkNilFault() {
 			panic("Windows nil fault did not complete recovery")
 		}
 	}
+}
+
+func checkConcurrentNilFault() {
+	start := make(chan struct{})
+	ready := make(chan struct{}, 2)
+	done := make(chan struct{}, 2)
+
+	run := func(fault func() byte, functionSuffix string) {
+		ready <- struct{}{}
+		<-start
+		for attempt := 0; attempt < 32; attempt++ {
+			func() {
+				defer func() {
+					if recover() == nil {
+						panic("concurrent Windows nil fault was not recoverable")
+					}
+					var pcs [32]uintptr
+					n := runtime.Callers(0, pcs[:])
+					frames := runtime.CallersFrames(pcs[:n])
+					for {
+						frame, more := frames.Next()
+						if hasSuffix(frame.Function, functionSuffix) {
+							return
+						}
+						if !more {
+							break
+						}
+					}
+					panic("concurrent Windows fault traceback used another goroutine's snapshot")
+				}()
+				_ = fault()
+			}()
+		}
+		done <- struct{}{}
+	}
+
+	go run(windowsNilFaultA, ".windowsNilFaultA")
+	go run(windowsNilFaultB, ".windowsNilFaultB")
+	<-ready
+	<-ready
+	close(start)
+	<-done
+	<-done
 }
 
 func checkRecover() {
@@ -190,6 +243,7 @@ func main() {
 
 	checkRecover()
 	checkNilFault()
+	checkConcurrentNilFault()
 	if windowsUnrecoveredFault() != 0 {
 		_ = windowsNilFault()
 		panic("unrecovered Windows fault returned")
