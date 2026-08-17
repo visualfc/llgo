@@ -42,6 +42,17 @@ func syscall_runtimeUnsetenv(key string) {
 	}
 }
 
+//go:linkname os_beforeExit os.runtime_beforeExit
+func os_beforeExit(exitCode int) {}
+
+//go:linkname c_getpagesize C.llgo_getpagesize
+func c_getpagesize() int32
+
+//go:linkname syscall_Getpagesize syscall.Getpagesize
+func syscall_Getpagesize() int {
+	return int(c_getpagesize())
+}
+
 //go:linkname syscall_Exit syscall.Exit
 //go:nosplit
 func syscall_Exit(code int) {

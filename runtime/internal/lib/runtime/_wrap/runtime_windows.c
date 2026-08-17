@@ -207,3 +207,27 @@ llgo_uintptr llgo_get_proc_address(llgo_uintptr module,
     *error = proc == 0 ? GetLastError() : 0;
     return (llgo_uintptr)proc;
 }
+
+/* --- Standard library OS bridges (link_windows_llgo.go) ------------------- */
+
+typedef struct {
+    union { llgo_dword oemid; struct { llgo_word arch; llgo_word reserved; }; };
+    llgo_dword page_size;
+    void *min_app_address;
+    void *max_app_address;
+    llgo_uintptr active_processor_mask;
+    llgo_dword num_processors;
+    llgo_dword processor_type;
+    llgo_dword allocation_granularity;
+    llgo_word processor_level;
+    llgo_word processor_revision;
+} llgo_system_info;
+
+__declspec(dllimport) void LLGO_WINAPI GetSystemInfo(llgo_system_info *info);
+
+int llgo_getpagesize(void)
+{
+    llgo_system_info info;
+    GetSystemInfo(&info);
+    return (int)info.page_size;
+}
