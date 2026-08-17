@@ -23,6 +23,8 @@ _Static_assert(FFI_DEFAULT_ABI == FFI_WIN64,
 #elif defined(_WIN32) && defined(__i386__)
 _Static_assert(FFI_DEFAULT_ABI == FFI_MS_CDECL,
                "Windows x86 requires libffi's MSVC cdecl ABI");
+_Static_assert(FFI_STDCALL == 2,
+               "LLGo's Windows x86 stdcall ABI constant is stale");
 #elif defined(_WIN32) && defined(__aarch64__)
 _Static_assert(FFI_DEFAULT_ABI == FFI_WIN64,
                "Windows AArch64 requires libffi's Win64 ABI");
