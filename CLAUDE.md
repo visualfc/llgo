@@ -83,6 +83,8 @@ explicit stage:
 ```
 
 The harness cross-compiles IR for every listed target, independent of the host.
+It also always checks the fixture's current effective target; listed targets are
+additional coverage and are deduplicated against the current target.
 Fixtures that depend on cgo still require the corresponding target C toolchain
 and sysroot, so keep them on plain `// LITTEST` unless CI provides those inputs.
 

@@ -177,6 +177,12 @@ The harness generates IR once for every listed GOOS/GOARCH pair and enables
 `CHECK` and put only real differences under the target prefix. Do not hide
 known platform differences in regular-expression alternatives.
 
+The fixture's current effective target is always checked as well. Targets on
+the marker add cross-compilation coverage rather than replacing the platform
+running the test, and a listed target equal to the current target is
+deduplicated. An unlisted CI platform therefore still exercises all portable
+`CHECK` assertions; add its explicit prefix when it has a distinct IR contract.
+
 A test can instead check the module after target ABI lowering and before LLVM
 optimization:
 

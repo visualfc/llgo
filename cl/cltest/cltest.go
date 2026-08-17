@@ -249,10 +249,6 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 	if err != nil {
 		t.Fatal("LoadSpec failed:", err)
 	}
-	if len(spec.Targets) != 0 {
-		testIRTargets(t, pkgDir, spec)
-		return
-	}
 	var v string
 	var prefixes []string
 	withFuncInfoDisabled(func() {
@@ -270,11 +266,14 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 		_ = os.WriteFile(filepath.Join(pkgDir, "result.txt"), []byte(v), 0644)
 		t.Fatal(err)
 	}
+	if len(spec.Targets) != 0 {
+		testIRTargets(t, pkgDir, spec, specificTargetPrefix(t, prefixes))
+	}
 }
 
-func testIRTargets(t *testing.T, pkgDir string, spec littest.Spec) {
+func testIRTargets(t *testing.T, pkgDir string, spec littest.Spec, currentPrefix string) {
 	t.Helper()
-	for _, target := range spec.Targets {
+	for _, target := range additionalIRTargets(spec.Targets, currentPrefix) {
 		t.Run(target.String(), func(t *testing.T) {
 			conf := &build.Config{Goos: target.GOOS, Goarch: target.GOARCH}
 			var generated llgen.GeneratedIR
@@ -299,6 +298,26 @@ func testIRTargets(t *testing.T, pkgDir string, spec littest.Spec) {
 			}
 		})
 	}
+}
+
+func additionalIRTargets(targets []littest.Target, currentPrefix string) []littest.Target {
+	additional := make([]littest.Target, 0, len(targets))
+	for _, target := range targets {
+		prefixes := filecheck.TargetPrefixes(target.GOOS, target.GOARCH, "")
+		if len(prefixes) == 2 && prefixes[1] == currentPrefix {
+			continue
+		}
+		additional = append(additional, target)
+	}
+	return additional
+}
+
+func specificTargetPrefix(t *testing.T, prefixes []string) string {
+	t.Helper()
+	if len(prefixes) != 2 || prefixes[0] != "CHECK" {
+		t.Fatalf("IR target has no specific FileCheck prefix: %v", prefixes)
+	}
+	return prefixes[1]
 }
 
 func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOptions) {
@@ -350,7 +369,7 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 		if err != nil {
 			t.Fatal("LoadSpec failed:", err)
 		}
-		if checkIR && !irSpec.PostABI && len(irSpec.Targets) == 0 {
+		if checkIR && !irSpec.PostABI {
 			conf, capturedIR, capturedMeta, capturedPrefixes = withModuleCapture(opts.conf, pkgDir)
 		}
 	}
@@ -359,7 +378,7 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 	}
 
 	var output []byte
-	if checkIR && !irSpec.PostABI && len(irSpec.Targets) == 0 {
+	if checkIR && !irSpec.PostABI {
 		withFuncInfoDisabled(func() {
 			output, err = runWithConf(relPkg, pkgDir, conf)
 		})
@@ -376,10 +395,6 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 		assertExpectedMeta(t, pkgDir, relPkg, capturedMeta)
 	}
 	if !checkIR {
-		return
-	}
-	if len(irSpec.Targets) != 0 {
-		testIRTargets(t, pkgDir, irSpec)
 		return
 	}
 	var ir string
@@ -405,6 +420,9 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 	if err := littest.Check(irSpec, ir, prefixes...); err != nil {
 		_ = os.WriteFile(filepath.Join(pkgDir, "result.txt"), []byte(ir), 0644)
 		t.Fatal(err)
+	}
+	if len(irSpec.Targets) != 0 {
+		testIRTargets(t, pkgDir, irSpec, specificTargetPrefix(t, prefixes))
 	}
 }
 
