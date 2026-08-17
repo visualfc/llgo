@@ -13,8 +13,8 @@ import (
 
 	"github.com/xgo-dev/llvm"
 
-	"github.com/goplus/llgo/internal/packages"
-	llssa "github.com/goplus/llgo/ssa"
+	"github.com/xgo-dev/llgo/internal/packages"
+	llssa "github.com/xgo-dev/llgo/ssa"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -241,7 +241,7 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 			ir := mod.LPkg.String()
 			checks := []string{
 				"define internal void @__llgo_runtime_ctor()",
-				"call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()",
+				"call void @\"github.com/xgo-dev/llgo/runtime/internal/runtime.init\"()",
 				"call void @\"example.com/dep.init\"()",
 				"call void @\"example.com/foo.init\"()",
 			}
@@ -283,7 +283,7 @@ func TestGenMainModuleTestLibraryDefersMainInit(t *testing.T) {
 				packageInits: []string{"example.com/dep.init"},
 			})
 			ir := mod.LPkg.String()
-			if !strings.Contains(ir, "call void @\"github.com/goplus/llgo/runtime/internal/runtime.init\"()") {
+			if !strings.Contains(ir, "call void @\"github.com/xgo-dev/llgo/runtime/internal/runtime.init\"()") {
 				t.Fatalf("test library constructor missing runtime init:\n%s", ir)
 			}
 			if strings.Contains(ir, "call void @\"example.com/foo.init\"()") {

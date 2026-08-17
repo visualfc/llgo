@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/goplus/llgo/internal/packages"
+	"github.com/xgo-dev/llgo/internal/packages"
 )
 
 func TestSelectedSFilesSkipsTestAsm(t *testing.T) {

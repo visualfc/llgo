@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/goplus/gogen/packages"
-	"github.com/goplus/llgo/ssa"
+	"github.com/xgo-dev/llgo/ssa"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -34,7 +34,7 @@ func TestGenCHeaderExport(t *testing.T) {
 	})
 
 	// Define main package and the 'Foo' type within it
-	mainPkgPath := "github.com/goplus/llgo/test_buildmode/main"
+	mainPkgPath := "github.com/xgo-dev/llgo/test_buildmode/main"
 	mainTypesPkg := types.NewPackage(mainPkgPath, "main")
 	fooFields := []*types.Var{
 		types.NewField(token.NoPos, mainTypesPkg, "a", types.Typ[types.Int], false),
@@ -67,7 +67,7 @@ func TestGenCHeaderExport(t *testing.T) {
 	mainPkg.SetExport("runtime.llgo_runtime_signalCallback", "llgo_runtime_signalCallback")
 
 	// Create package C
-	cPkgPath := "github.com/goplus/llgo/test_buildmode/bar"
+	cPkgPath := "github.com/xgo-dev/llgo/test_buildmode/bar"
 	cPkg := prog.NewPackage("C", cPkgPath)
 	addParams := types.NewTuple(
 		types.NewVar(token.NoPos, nil, "a", types.Typ[types.Int]),
@@ -117,7 +117,7 @@ func TestGenCHeaderExport(t *testing.T) {
 
 func TestGenHeaderMissingExport(t *testing.T) {
 	prog := ssa.NewProgram(nil)
-	pkgPath := "github.com/goplus/llgo/test_buildmode/missing"
+	pkgPath := "github.com/xgo-dev/llgo/test_buildmode/missing"
 	pkg := prog.NewPackage("missing", pkgPath)
 	pkg.SetExport("Missing", "Missing")
 

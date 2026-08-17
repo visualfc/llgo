@@ -25,7 +25,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/goplus/llgo/ssa"
+	"github.com/xgo-dev/llgo/ssa"
 )
 
 // cheaderWriter handles C header generation with type definition management
