@@ -97,6 +97,30 @@ func testWindowsSyscalls() {
 	}
 }
 
+func testWindowsOS() {
+	if pid := syscall.Getpid(); pid <= 0 {
+		panic("syscall.Getpid returned invalid pid")
+	}
+
+	// Test GetCommandLineW / EscapeArg / Command Line decoding
+	cmdLinePtr := syscall.GetCommandLine()
+	if cmdLinePtr == nil {
+		panic("syscall.GetCommandLine returned nil")
+	}
+
+	// Test UTF-16 decoding & string helper APIs
+	utf16Slice := []uint16{'H', 'e', 'l', 'l', 'o', ' ', 'W', 'i', 'n', 'd', 'o', 'w', 's', 0}
+	str := syscall.UTF16ToString(utf16Slice)
+	if str != "Hello Windows" {
+		panic("syscall.UTF16ToString failed: " + str)
+	}
+
+	sPtr, err := syscall.UTF16PtrFromString("TestPath\\SubDir")
+	if err != nil || sPtr == nil {
+		panic("syscall.UTF16PtrFromString failed")
+	}
+}
+
 func testLibuvHandleSizes() {
 	tests := [...]struct {
 		typeof libuv.HandleType
@@ -130,6 +154,7 @@ func main() {
 		panic("sync.Once ran incorrectly")
 	}
 	testWindowsSyscalls()
+	testWindowsOS()
 	testLibuvHandleSizes()
 
 	start := time.Now()
@@ -139,3 +164,4 @@ func main() {
 	}
 	println("windows stdlib smoke: ok")
 }
+
