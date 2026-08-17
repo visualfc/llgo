@@ -164,4 +164,3 @@ func main() {
 	}
 	println("windows stdlib smoke: ok")
 }
-
