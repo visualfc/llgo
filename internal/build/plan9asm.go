@@ -10,11 +10,11 @@ import (
 	"strings"
 	"sync"
 
-	llabi "github.com/goplus/llgo/internal/abi"
-	"github.com/goplus/llgo/internal/cabi"
-	"github.com/goplus/llgo/internal/packages"
-	llplan9asm "github.com/goplus/llgo/internal/plan9asm"
-	llruntime "github.com/goplus/llgo/runtime"
+	llabi "github.com/xgo-dev/llgo/internal/abi"
+	"github.com/xgo-dev/llgo/internal/cabi"
+	"github.com/xgo-dev/llgo/internal/packages"
+	llplan9asm "github.com/xgo-dev/llgo/internal/plan9asm"
+	llruntime "github.com/xgo-dev/llgo/runtime"
 	gllvm "github.com/xgo-dev/llvm"
 )
 
