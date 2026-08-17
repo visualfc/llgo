@@ -93,8 +93,8 @@ type receiver struct {
 // CHECK-DAG: [[METHOD_ENV:%.*]] = extractvalue { ptr, ptr } [[METHOD_FN]], 1
 // CHECK-DAG: [[METHOD_CODE_RAW:%.*]] = extractvalue { ptr, ptr } [[METHOD_FN]], 0
 // CHECK-DAG: [[METHOD_CODE:%.*]] = call ptr asm "", "=r,0"(ptr [[METHOD_CODE_RAW]])
-// DARWIN-ARM64: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr swiftself [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
-// LINUX-AMD64: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr nest [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
+// DARWIN-ARM64-DAG: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr swiftself [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
+// LINUX-AMD64-DAG: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr nest [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
 // CHECK-DAG: [[METHOD_BAD:%.*]] = icmp ne i64 [[METHOD_GOT]], 55
 
 // CHECK-LABEL: define i64 @"main.main$1"(i64 %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8){{.*}} {
