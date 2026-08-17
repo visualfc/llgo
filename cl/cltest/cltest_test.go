@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/goplus/llgo/internal/littest"
+	"github.com/xgo-dev/llgo/internal/littest"
 )
 
 func TestAdditionalIRTargets(t *testing.T) {

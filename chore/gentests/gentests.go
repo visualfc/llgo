@@ -25,8 +25,6 @@ import (
 	"github.com/goplus/mod"
 	"github.com/xgo-dev/llgo/cl/cltest"
 	"github.com/xgo-dev/llgo/internal/build"
-	"github.com/xgo-dev/llgo/internal/littest"
-	"github.com/xgo-dev/llgo/internal/llgen"
 	"github.com/xgo-dev/llgo/internal/lto"
 	"github.com/xgo-dev/llgo/xtool/env/llvm"
 )
