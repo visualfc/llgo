@@ -1,6 +1,6 @@
 module github.com/goplus/llgo
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/goplus/cobra v1.9.12 //xgo:class
