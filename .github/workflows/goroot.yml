@@ -204,10 +204,10 @@ jobs:
             echo
             echo '| Platform / toolchain | Shards | Selected | Observed | Passed | Failed | Skipped |'
             echo '|---|---:|---:|---:|---:|---:|---:|'
-            write_row 'Darwin · Go 1.24.11' darwin/arm64 1.24.11 4
+            write_row 'Darwin · Go 1.25.0' darwin/arm64 1.25.0 4
             write_row 'Darwin · Go 1.26.5' darwin/arm64 1.26.5 4
             write_row '**Darwin total**' darwin/arm64 '' 8
-            write_row 'Linux · Go 1.24.11' linux/amd64 1.24.11 4
+            write_row 'Linux · Go 1.25.0' linux/amd64 1.25.0 4
             write_row 'Linux · Go 1.26.5' linux/amd64 1.26.5 4
             write_row '**Linux total**' linux/amd64 '' 8
             echo

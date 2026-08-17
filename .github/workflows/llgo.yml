@@ -22,7 +22,7 @@ jobs:
     strategy:
       matrix:
         # Compatibility results are tied to these exact patch releases.
-        # Keep the supported Go 1.24 and 1.26 endpoints on macOS so user
+        # Keep the supported Go 1.25 and 1.26 endpoints on macOS so user
         # projects exercise both runtime generations there. macOS Intel is
         # covered by the release artifact smoke test, avoiding a duplicate
         # 35-minute demo job.
@@ -158,7 +158,7 @@ jobs:
           - go: "1.26.5"
             lane: primary
         exclude:
-          # The full demo lane above exercises Go 1.24 user-project/runtime
+          # The full demo lane above exercises Go 1.25 user-project/runtime
           # compatibility on macOS. Keep the much larger per-package
           # compatibility matrix on Ubuntu and use one parallel primary shard
           # on macOS.
