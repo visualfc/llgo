@@ -264,6 +264,10 @@ func testLibuvHandleSizes() {
 }
 
 func main() {
+	if os.Getenv("LLGO_TEST_OS_EXIT") == "1" {
+		os.Exit(23)
+	}
+
 	var once sync.Once
 	done := make(chan struct{}, 4)
 	value := 0

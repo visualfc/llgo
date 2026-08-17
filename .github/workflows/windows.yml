@@ -278,6 +278,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+
+          $env:LLGO_TEST_OS_EXIT = "1"
+          .\windows-stdlib-smoke.exe
+          $exitCode = $LASTEXITCODE
+          Remove-Item Env:LLGO_TEST_OS_EXIT
+          if ($exitCode -ne 23) {
+            throw "os.Exit(23) returned exit code $exitCode"
+          }
+
           .\windows-ffi-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
