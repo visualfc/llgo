@@ -85,6 +85,9 @@ explicit stage:
 The harness cross-compiles IR for every listed target, independent of the host.
 It also always checks the fixture's current effective target; listed targets are
 additional coverage and are deduplicated against the current target.
+FileCheck enables `CHECK`, the GOARCH prefix, and the exact target prefix (for
+example `CHECK,ARM64,DARWIN-ARM64`). Put assertions shared by targets with the
+same architecture under `ARM64`, `AMD64`, and similar architecture prefixes.
 Fixtures that depend on cgo still require the corresponding target C toolchain
 and sysroot, so keep them on plain `// LITTEST` unless CI provides those inputs.
 

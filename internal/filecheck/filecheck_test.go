@@ -134,13 +134,21 @@ func TestMatchSupportsCRLF(t *testing.T) {
 
 func TestMatchWithTargetPrefixes(t *testing.T) {
 	spec := `// CHECK: common
+// ARM64: architecture
 // DARWIN-ARM64: combined
 // LINUX: linux
 `
-	input := "common\ncombined\n"
+	input := "common\narchitecture\ncombined\n"
 	if err := MatchWithTargetPrefixes(writeCheckFile(t, spec), input, TargetPrefixes("darwin", "arm64", "")...); err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("numeric GOARCH", func(t *testing.T) {
+		spec := "// 386: architecture\n"
+		if err := MatchWithTargetPrefixes(writeCheckFile(t, spec), "architecture\n", TargetPrefixes("linux", "386", "")...); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestMatchWithSinglePrefixRequiresDirective(t *testing.T) {
@@ -157,11 +165,11 @@ func TestMatchWithPrefixesRequiresEveryPrefix(t *testing.T) {
 
 func TestTargetPrefixes(t *testing.T) {
 	got := strings.Join(TargetPrefixes("wasip1", "wasm", "wasm"), ",")
-	if want := "CHECK,TARGET-WASM"; got != want {
+	if want := "CHECK,WASM,TARGET-WASM"; got != want {
 		t.Fatalf("TargetPrefixes = %q, want %q", got, want)
 	}
 	got = strings.Join(TargetPrefixes("linux", "386", ""), ",")
-	if want := "CHECK,LINUX-386"; got != want {
+	if want := "CHECK,386,LINUX-386"; got != want {
 		t.Fatalf("TargetPrefixes = %q, want %q", got, want)
 	}
 	got = strings.Join(TargetPrefixes("", "", ""), ",")

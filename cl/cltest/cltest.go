@@ -304,7 +304,7 @@ func additionalIRTargets(targets []littest.Target, currentPrefix string) []litte
 	additional := make([]littest.Target, 0, len(targets))
 	for _, target := range targets {
 		prefixes := filecheck.TargetPrefixes(target.GOOS, target.GOARCH, "")
-		if len(prefixes) == 2 && prefixes[1] == currentPrefix {
+		if len(prefixes) >= 2 && prefixes[len(prefixes)-1] == currentPrefix {
 			continue
 		}
 		additional = append(additional, target)
@@ -314,10 +314,10 @@ func additionalIRTargets(targets []littest.Target, currentPrefix string) []litte
 
 func specificTargetPrefix(t *testing.T, prefixes []string) string {
 	t.Helper()
-	if len(prefixes) != 2 || prefixes[0] != "CHECK" {
+	if len(prefixes) < 2 || prefixes[0] != "CHECK" {
 		t.Fatalf("IR target has no specific FileCheck prefix: %v", prefixes)
 	}
-	return prefixes[1]
+	return prefixes[len(prefixes)-1]
 }
 
 func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOptions) {

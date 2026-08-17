@@ -33,9 +33,64 @@ func TestMergeCheckSequencesSharesCommonDataflow(t *testing.T) {
 	}
 }
 
+func TestMergeVariantCheckSequencesSharesArchitectureDataflow(t *testing.T) {
+	variants := []irVariant{
+		{prefix: "DARWIN-ARM64", archPrefix: "ARM64"},
+		{prefix: "LINUX-AMD64", archPrefix: "AMD64"},
+		{prefix: "LINUX-ARM64", archPrefix: "ARM64"},
+	}
+	sequences := [][]string{
+		{
+			"// CHECK-LABEL: define i32 @main.value(",
+			"// CHECK-NEXT:   %[[TMP1:[0-9]+]] = add i32 %[[TMP0]], 1",
+			"// CHECK-NEXT:   ret i32 %[[TMP1]]",
+		},
+		{
+			"// CHECK-LABEL: define i32 @main.value(",
+			"// CHECK-NEXT:   %[[TMP1:[0-9]+]] = sub i32 %[[TMP0]], 1",
+			"// CHECK-NEXT:   ret i32 %[[TMP1]]",
+		},
+		{
+			"// CHECK-LABEL: define i32 @main.value(",
+			"// CHECK-NEXT:   %[[TMP1:[0-9]+]] = add i32 %[[TMP0]], 1",
+			"// CHECK-NEXT:   ret i32 %[[TMP1]]",
+		},
+	}
+	want := strings.Join([]string{
+		"// CHECK-LABEL: define i32 @main.value(",
+		"// ARM64-NEXT:   %[[TMP1:[0-9]+]] = add i32 %[[TMP0]], 1",
+		"// LINUX-AMD64-NEXT:   %[[TMP1:[0-9]+]] = sub i32 %[[TMP0]], 1",
+		"// CHECK-NEXT:   ret i32 %[[TMP1]]",
+	}, "\n")
+	got := strings.Join(mergeVariantCheckSequences(variants, sequences), "\n")
+	if got != want {
+		t.Fatalf("merged checks mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestMergeVariantCheckSequencesKeepsArchitectureDifferencesSpecific(t *testing.T) {
+	variants := []irVariant{
+		{prefix: "DARWIN-ARM64", archPrefix: "ARM64"},
+		{prefix: "LINUX-ARM64", archPrefix: "ARM64"},
+	}
+	sequences := [][]string{
+		{"// CHECK: darwin"},
+		{"// CHECK: linux"},
+	}
+	want := strings.Join([]string{
+		"// DARWIN-ARM64: darwin",
+		"// LINUX-ARM64: linux",
+	}, "\n")
+	got := strings.Join(mergeVariantCheckSequences(variants, sequences), "\n")
+	if got != want {
+		t.Fatalf("merged checks mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
 func TestStripCheckDirectivesRemovesTargetPrefixes(t *testing.T) {
 	src := `// LITTEST: POST-ABI linux/amd64 linux/arm64
 // CHECK-LABEL: define void @main.main()
+// ARM64-NEXT: call void @arm64()
 // LINUX-AMD64-NEXT: ret void
 // LINUX-ARM64-NEXT: ret void
 // SYMBOL-DAG: main.main
@@ -45,7 +100,7 @@ package main
 // SYMBOL-DAG: main.main
 package main
 `
-	got := stripCheckDirectives(src, "LINUX-AMD64", "LINUX-ARM64")
+	got := stripCheckDirectives(src, "ARM64", "LINUX-AMD64", "LINUX-ARM64")
 	if got != want {
 		t.Fatalf("stripped source mismatch:\n--- got ---\n%s--- want ---\n%s", got, want)
 	}
