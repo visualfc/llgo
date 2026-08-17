@@ -19,7 +19,7 @@ check_local_install() {
 
 # Function to get latest release version
 get_latest_version() {
-    curl --silent "https://api.github.com/repos/goplus/llgo/releases/latest" |
+    curl --silent "https://api.github.com/repos/xgo-dev/llgo/releases/latest" |
     grep '"tag_name":' |
     sed -E 's/.*"([^"]+)".*/\1/'
 }
