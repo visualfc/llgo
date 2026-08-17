@@ -926,7 +926,7 @@ func TestGenHeaderWithInitFunction(t *testing.T) {
 	prog := ssa.NewProgram(nil)
 
 	// Create a package
-	pkgPath := "github.com/test/mypackage"
+	pkgPath := "github.com/xgo-dev/mypackage"
 	pkg := prog.NewPackage("", pkgPath)
 
 	// Create an init function signature: func()
@@ -951,8 +951,24 @@ func TestGenHeaderWithInitFunction(t *testing.T) {
 	}
 
 	// Should contain the init function declaration with C-compatible name
-	expectedInitName := "github_com_test_mypackage_init"
+	expectedInitName := "github_com_xgo_dev_mypackage_init"
 	if !strings.Contains(got, expectedInitName) {
 		t.Errorf("genHeader() should include init function declaration with name %s, got: %s", expectedInitName, got)
+	}
+}
+
+func TestCIdentifier(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"github.com/xgo-dev/pkg.init", "github_com_xgo_dev_pkg_init"},
+		{"9pkg/☃.init", "_9pkg___init"},
+		{"_valid", "_valid"},
+	}
+	for _, test := range tests {
+		if got := cIdentifier(test.name); got != test.want {
+			t.Errorf("cIdentifier(%q) = %q, want %q", test.name, got, test.want)
+		}
 	}
 }
