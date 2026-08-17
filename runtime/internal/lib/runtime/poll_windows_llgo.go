@@ -20,13 +20,16 @@ package runtime
 
 import _ "unsafe"
 
-// internal/poll supports Windows overlapped handles that are not associated
-// with the runtime IOCP. Returning a nil context without an error selects that
-// path: internal/poll creates an event for each pending operation and waits for
-// it with WaitForSingleObject. This keeps file and pipe I/O correct until LLGo
-// has a scheduler-integrated IOCP poller.
+// LLGo does not yet have a scheduler-integrated Windows IOCP poller. Report
+// that explicitly instead of returning a context that cannot wake network I/O.
+// The os package intentionally ignores poll initialization errors for file
+// handles; non-overlapped files remain blocking, while overlapped files use
+// internal/poll's per-operation event fallback.
 
-const pollErrNotPollable = 3
+const (
+	pollErrNotPollable     = 3
+	windowsErrNotSupported = 50 // ERROR_NOT_SUPPORTED
+)
 
 //go:linkname poll_runtime_pollServerInit internal/poll.runtime_pollServerInit
 func poll_runtime_pollServerInit() {}
@@ -34,7 +37,7 @@ func poll_runtime_pollServerInit() {}
 //go:linkname poll_runtime_pollOpen internal/poll.runtime_pollOpen
 func poll_runtime_pollOpen(fd uintptr) (uintptr, int) {
 	_ = fd
-	return 0, 0
+	return 0, windowsErrNotSupported
 }
 
 // The remaining hooks are unreachable for the nil context returned above.
