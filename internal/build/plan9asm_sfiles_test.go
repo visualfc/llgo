@@ -110,6 +110,33 @@ printf '{"Dir":"%s","SFiles":["asm_amd64.s"]}\n' "$PACKAGE_DIR"
 	}
 }
 
+func TestPkgSFilesSkipsSyntheticTestMain(t *testing.T) {
+	pkgDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pkgDir, "asm.s"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := &context{
+		mode:      ModeTest,
+		buildConf: &Config{Goos: "linux", Goarch: "amd64"},
+	}
+	got, err := pkgSFiles(ctx, &packages.Package{
+		ID:      "example.com/p.test",
+		PkgPath: "example.com/p.test",
+		Name:    "main",
+		Dir:     pkgDir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("pkgSFiles = %v, want nil", got)
+	}
+	if cached, ok := ctx.sfilesCache["example.com/p.test"]; !ok || cached != nil {
+		t.Fatalf("synthetic test main cache entry = %v, %v; want nil, true", cached, ok)
+	}
+}
+
 func TestPlan9AsmEnabledInitializesSelectedPackages(t *testing.T) {
 	t.Setenv(llgoPlan9ASMPkgs, "example.com/first, example.com/second")
 	ctx := &context{buildConf: &Config{}}
