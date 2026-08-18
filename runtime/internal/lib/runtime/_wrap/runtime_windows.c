@@ -242,6 +242,40 @@ typedef struct {
 __declspec(dllimport) void LLGO_WINAPI GetSystemInfo(llgo_system_info *info);
 __declspec(dllimport) llgo_dword LLGO_WINAPI
 GetSystemDirectoryA(char *buffer, llgo_dword size);
+typedef int (LLGO_WINAPI *llgo_console_handler)(llgo_dword event);
+__declspec(dllimport) int LLGO_WINAPI
+SetConsoleCtrlHandler(llgo_console_handler handler, int add);
+
+extern int llgo_runtime_windowsSignalCallback(llgo_dword signum);
+
+enum {
+    llgo_ctrl_c_event = 0,
+    llgo_ctrl_break_event = 1,
+    llgo_ctrl_close_event = 2,
+    llgo_ctrl_logoff_event = 5,
+    llgo_ctrl_shutdown_event = 6,
+    llgo_sigint = 2,
+    llgo_sigterm = 15,
+};
+
+static int LLGO_WINAPI llgo_windows_console_handler(llgo_dword event)
+{
+    llgo_dword signum;
+    switch (event) {
+    case llgo_ctrl_c_event:
+    case llgo_ctrl_break_event:
+        signum = llgo_sigint;
+        break;
+    case llgo_ctrl_close_event:
+    case llgo_ctrl_logoff_event:
+    case llgo_ctrl_shutdown_event:
+        signum = llgo_sigterm;
+        break;
+    default:
+        return 0;
+    }
+    return llgo_runtime_windowsSignalCallback(signum);
+}
 
 int llgo_getpagesize(void)
 {
@@ -253,4 +287,9 @@ int llgo_getpagesize(void)
 llgo_dword llgo_get_system_directory(unsigned char *buffer, llgo_dword size)
 {
     return GetSystemDirectoryA((char *)buffer, size);
+}
+
+int llgo_windows_signal_init(void)
+{
+    return SetConsoleCtrlHandler(llgo_windows_console_handler, 1);
 }
