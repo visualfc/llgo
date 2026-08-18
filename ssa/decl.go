@@ -87,7 +87,17 @@ func (p Package) moduleZeroSizedAlloc(elem Type) Expr {
 		byteTy := p.Prog.Byte()
 		zerobase = llvm.AddGlobal(p.mod, byteTy.ll, moduleZeroName)
 		zerobase.SetInitializer(llvm.ConstNull(byteTy.ll))
-		p.setODRLinkage(zerobase, llvm.LinkOnceODRLinkage)
+		if p.Prog.target.effectiveGOOS() == "windows" {
+			// COFF aliases remain attached to their defining section. If the
+			// shared sentinel is COMDAT-folded, lld-link can discard the section
+			// behind an externally visible zero-sized global alias while another
+			// object still relocates against that alias. A module-local sentinel
+			// preserves the permitted Go semantics for zero-sized addresses and
+			// keeps every alias in a retained section.
+			zerobase.SetLinkage(llvm.PrivateLinkage)
+		} else {
+			p.setODRLinkage(zerobase, llvm.LinkOnceODRLinkage)
+		}
 		zerobase.SetUnnamedAddr(true)
 	}
 	return Expr{zerobase, p.Prog.Pointer(elem)}
