@@ -3,6 +3,7 @@ package goroot
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -1197,6 +1198,75 @@ func TestSplitSourceFiles(t *testing.T) {
 	}
 	if !reflect.DeepEqual(args, []string{"arg1", "arg2"}) {
 		t.Fatalf("args=%v, want [arg1 arg2]", args)
+	}
+}
+
+func TestRunSingleFileCaseExcludesUnlistedSiblings(t *testing.T) {
+	disableSystemMemoryLimits(t)
+	repoRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoRoot, "go.mod"), []byte("module example.com/llgo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "case.go"), []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "generator.c"), []byte("this is not valid C\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	llgoTool := fakeToolPath(t.TempDir(), "fake-llgo")
+	writeSiblingScanningFakeTool(t, llgoTool)
+	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
+	if runtime.GOOS == "windows" {
+		goTool += ".exe"
+	}
+	tc := testCase{RelPath: "case.go", Dir: srcDir, FileName: "case.go", Directive: "run"}
+	opts := directiveOptions{Timeout: 30 * time.Second}
+	if err := runSingleFileCase(t, repoRoot, runtime.GOROOT(), goTool, llgoTool, tc, opts, 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeSiblingScanningFakeTool(t *testing.T, path string) {
+	t.Helper()
+	sourcePath := path + ".go"
+	source := `package main
+
+import "os"
+
+func main() {
+	if len(os.Args) == 1 {
+		return
+	}
+	if _, err := os.Stat("generator.c"); err == nil {
+		os.Exit(21)
+	}
+	out := ""
+	for i := 1; i+1 < len(os.Args); i++ {
+		if os.Args[i] == "-o" {
+			out = os.Args[i+1]
+			break
+		}
+	}
+	if out == "" {
+		os.Exit(22)
+	}
+	data, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(out, data, 0755); err != nil {
+		panic(err)
+	}
+}
+`
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", path, sourcePath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build sibling-scanning fake tool: %v\n%s", err, output)
 	}
 }
 

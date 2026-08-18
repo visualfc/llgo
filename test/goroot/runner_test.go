@@ -2538,7 +2538,10 @@ func runSingleFileCase(t *testing.T, repoRoot, goroot, goCmd, llgoBin string, tc
 		}
 		buildTarget = "."
 	} else {
-		if err := overlayDir(ws.workDir, tc.Dir); err != nil {
+		// Match the go command's named-file mode: files next to the selected
+		// source are not part of the package. In particular, GOROOT/test keeps
+		// generators such as cmplxdivide.c alongside unrelated run cases.
+		if err := stageSelectedFiles(ws.workDir, tc.Dir, sourceFiles); err != nil {
 			return err
 		}
 	}
