@@ -1,4 +1,4 @@
-// LITTEST
+// LITTEST darwin/arm64 linux/amd64
 package main
 
 import (
@@ -334,7 +334,8 @@ const (
 // CHECK: [[PRE_CLOSURE:%[0-9]+]] = insertvalue { ptr, ptr } { ptr @"main.Cursor.Preorder$1", ptr undef }, ptr %{{[0-9]+}}, 1
 // CHECK: ret %"iter.Seq[main.Cursor]" %{{[0-9]+}}
 
-// CHECK-LABEL: define void @"main.Cursor.Preorder$1"(ptr {{(nest|swiftself)}} %0, { ptr, ptr } %1){{.*}} {
+// DARWIN-ARM64-LABEL: define void @"main.Cursor.Preorder$1"(ptr swiftself %0, { ptr, ptr } %1){{.*}} {
+// LINUX-AMD64-LABEL: define void @"main.Cursor.Preorder$1"(ptr nest %0, { ptr, ptr } %1){{.*}} {
 // CHECK: [[PRE_ENV:%[0-9]+]] = load { ptr, ptr }, ptr %0
 // CHECK: [[PRE_EVENTS:%[0-9]+]] = load %"{{.*}}/runtime/internal/runtime.Slice", ptr %{{[0-9]+}}
 // CHECK: [[PRE_CURSOR_PTR:%[0-9]+]] = extractvalue { ptr, ptr } [[PRE_ENV]], 0
@@ -358,7 +359,8 @@ const (
 // CHECK: store i32 [[PRE_I]], ptr %{{[0-9]+}}
 // CHECK: [[PRE_YIELD_ENV:%[0-9]+]] = extractvalue { ptr, ptr } %1, 1
 // CHECK-NEXT: [[PRE_YIELD_CODE:%[0-9]+]] = extractvalue { ptr, ptr } %1, 0
-// CHECK: [[PRE_YIELD:%[0-9]+]] = call i1 %{{[^ ]+}}(ptr {{(nest|swiftself)}} [[PRE_YIELD_ENV]], %main.Cursor %{{[0-9]+}})
+// DARWIN-ARM64: [[PRE_YIELD:%[0-9]+]] = call i1 %{{[^ ]+}}(ptr swiftself [[PRE_YIELD_ENV]], %main.Cursor %{{[0-9]+}})
+// LINUX-AMD64: [[PRE_YIELD:%[0-9]+]] = call i1 %{{[^ ]+}}(ptr nest [[PRE_YIELD_ENV]], %main.Cursor %{{[0-9]+}})
 // CHECK: br i1 [[PRE_YIELD]],
 // CHECK: [[PRE_AFTER_POP:%[0-9]+]] = add i32 [[PRE_SKIP_POP:%[0-9]+]], 1
 

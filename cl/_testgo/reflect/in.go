@@ -1,4 +1,4 @@
-// LITTEST
+// LITTEST darwin/arm64 linux/amd64
 package main
 
 import (
@@ -190,9 +190,11 @@ func mapDemo2() {
 // CHECK: %[[CLOSURE_TYPE:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.eface" %[[CLOSURE_IFACE]], 0
 // CHECK: %[[CLOSURE_MATCH:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.MatchesClosure"(ptr @"_llgo_closure$QIHBTaw1IFobr8yvWpq-2AJFm3xBNhdW_aNBicqUBGk", ptr %[[CLOSURE_TYPE]])
 // CHECK: br i1 %[[CLOSURE_MATCH]]
-// CHECK: call i64 %__llgo_funcval_code(ptr {{(nest|swiftself)}} %{{[0-9]+}}, i64 100)
+// DARWIN-ARM64: call i64 %__llgo_funcval_code(ptr swiftself %{{[0-9]+}}, i64 100)
+// LINUX-AMD64: call i64 %__llgo_funcval_code(ptr nest %{{[0-9]+}}, i64 100)
 
-// CHECK-LABEL: define i64 @"main.callClosure$1"(ptr {{(nest|swiftself)}} %0, i64 %1){{.*}} {
+// DARWIN-ARM64-LABEL: define i64 @"main.callClosure$1"(ptr swiftself %0, i64 %1){{.*}} {
+// LINUX-AMD64-LABEL: define i64 @"main.callClosure$1"(ptr nest %0, i64 %1){{.*}} {
 // CHECK: [[CC_ENV:%[0-9]+]] = load { ptr }, ptr %0
 // CHECK-NEXT: [[CC_BASE_PTR:%[0-9]+]] = extractvalue { ptr } [[CC_ENV]], 0
 // CHECK-NEXT: [[CC_BASE:%[0-9]+]] = load i64, ptr [[CC_BASE_PTR]]
@@ -212,7 +214,8 @@ func mapDemo2() {
 // CHECK: %[[IFACE_METHOD:[0-9]+]] = call %reflect.Value @reflect.Value.Method(%reflect.Value %[[IFACE_VALUE]], i64 0)
 // CHECK: %[[IFACE_RESULTS:[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.Slice" @reflect.Value.Call(%reflect.Value %[[IFACE_METHOD]],{{.*}})
 // CHECK: call %"{{.*}}/runtime/internal/runtime.eface" @reflect.Value.Interface(%reflect.Value %[[IFACE_METHOD]])
-// CHECK: call i64 %__llgo_funcval_code(ptr {{(nest|swiftself)}} %{{[0-9]+}}, i64 1)
+// DARWIN-ARM64: call i64 %__llgo_funcval_code(ptr swiftself %{{[0-9]+}}, i64 1)
+// LINUX-AMD64: call i64 %__llgo_funcval_code(ptr nest %{{[0-9]+}}, i64 1)
 
 // CHECK-LABEL: define void @main.callMethod(){{.*}} {
 // CHECK: %[[RECV_VALUE:[0-9]+]] = call %reflect.Value @reflect.ValueOf

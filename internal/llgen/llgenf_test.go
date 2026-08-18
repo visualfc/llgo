@@ -95,3 +95,21 @@ func TestApplyFlagsFileTargetForms(t *testing.T) {
 		})
 	}
 }
+
+func TestGeneratePostABIIsExplicit(t *testing.T) {
+	const pkg = "../../cl/_testgo/localitycodegen"
+	preABI := GenFrom(pkg)
+	postABI := GeneratePostABI(pkg)
+	if preABI == postABI.Text {
+		t.Fatal("post-ABI generation did not change the module")
+	}
+	if !strings.Contains(preABI, "define { i64, ptr, ptr } @main.values()") {
+		t.Fatal("GenFrom no longer exposes the historical pre-target-ABI signature")
+	}
+	if !strings.Contains(postABI.Text, "define void @main.values(ptr sret({ i64, ptr, ptr })") {
+		t.Fatal("GeneratePostABI did not expose the lowered sret signature")
+	}
+	if postABI.GOOS == "" || postABI.GOARCH == "" {
+		t.Fatalf("missing effective target: %+v", postABI)
+	}
+}

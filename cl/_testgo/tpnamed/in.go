@@ -1,4 +1,4 @@
-// LITTEST
+// LITTEST darwin/arm64 linux/amd64
 package main
 
 type Void = [0]byte
@@ -45,10 +45,12 @@ func RunIO[T any](call IO[T]) T {
 // CHECK-LABEL: define linkonce [0 x i8] @"main.RunIO{{\[\[0\]byte\]}}"(%"main.IO{{\[\[0\]byte\]}}" %0){{.*}} {
 // CHECK: [[IO_ENV:%[0-9]+]] = extractvalue %"main.IO{{\[\[0\]byte\]}}" %0, 1
 // CHECK-NEXT: [[IO_CODE:%[0-9]+]] = extractvalue %"main.IO{{\[\[0\]byte\]}}" %0, 0
-// CHECK: [[FUTURE:%[0-9]+]] = call %"main.Future{{\[\[0\]byte\]}}" %__llgo_funcval_code(ptr {{(nest|swiftself)}} [[IO_ENV]])
+// DARWIN-ARM64: [[FUTURE:%[0-9]+]] = call %"main.Future{{\[\[0\]byte\]}}" %__llgo_funcval_code(ptr swiftself [[IO_ENV]])
+// LINUX-AMD64: [[FUTURE:%[0-9]+]] = call %"main.Future{{\[\[0\]byte\]}}" %__llgo_funcval_code(ptr nest [[IO_ENV]])
 // CHECK-NEXT: [[FUTURE_ENV:%[0-9]+]] = extractvalue %"main.Future{{\[\[0\]byte\]}}" [[FUTURE]], 1
 // CHECK-NEXT: [[FUTURE_CODE:%[0-9]+]] = extractvalue %"main.Future{{\[\[0\]byte\]}}" [[FUTURE]], 0
 // CHECK-NEXT: [[FUTURE_NIL:%[0-9]+]] = icmp eq ptr [[FUTURE_CODE]], null
 // CHECK-NEXT: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[FUTURE_NIL]])
-// CHECK: [[IO_RESULT:%[0-9]+]] = call [0 x i8] %__llgo_funcval_code1(ptr {{(nest|swiftself)}} [[FUTURE_ENV]])
+// DARWIN-ARM64: [[IO_RESULT:%[0-9]+]] = call [0 x i8] %__llgo_funcval_code1(ptr swiftself [[FUTURE_ENV]])
+// LINUX-AMD64: [[IO_RESULT:%[0-9]+]] = call [0 x i8] %__llgo_funcval_code1(ptr nest [[FUTURE_ENV]])
 // CHECK-NEXT: ret [0 x i8] [[IO_RESULT]]
