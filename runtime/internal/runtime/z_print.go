@@ -34,7 +34,7 @@ func PrintBool(v bool) {
 }
 
 func PrintByte(v byte) {
-	c.Fputc(c.Int(v), c.Stderr)
+	printWrite(unsafe.Pointer(&v), 1)
 }
 
 func PrintUint(v uint64) {
@@ -64,7 +64,7 @@ func PrintPointer(p unsafe.Pointer) {
 }
 
 func PrintString(s String) {
-	c.Fwrite(s.data, 1, uintptr(s.len), c.Stderr)
+	printWrite(s.data, uintptr(s.len))
 }
 
 func PrintSlice(s Slice) {
