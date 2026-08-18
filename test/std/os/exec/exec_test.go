@@ -22,6 +22,20 @@ func helperCommand(mode string) *exec.Cmd {
 	return cmd
 }
 
+func normalizeHelperStderr(output string) string {
+	var lines []string
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		line = strings.TrimSpace(line)
+		// A coverage-enabled test binary with no non-test source emits this
+		// diagnostic when the helper intentionally exits before test teardown.
+		// It is unrelated to the os/exec stderr behavior under test.
+		if line != "program not built with -cover" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func TestExecHelperProcess(t *testing.T) {
 	mode := os.Getenv(execHelperEnv)
 	if mode == "" {
@@ -167,7 +181,7 @@ func TestCmdStderr(t *testing.T) {
 		t.Fatalf("Run error: %v", err)
 	}
 
-	output := strings.TrimSpace(buf.String())
+	output := normalizeHelperStderr(buf.String())
 	if output != "stderr test" {
 		t.Errorf("Stderr = %q, want %q", output, "stderr test")
 	}
@@ -268,7 +282,7 @@ func TestCmdStderrPipe(t *testing.T) {
 		t.Fatalf("ReadAll error: %v", err)
 	}
 
-	output := strings.TrimSpace(string(data))
+	output := normalizeHelperStderr(string(data))
 	if output != "pipe error" {
 		t.Errorf("Output = %q, want %q", output, "pipe error")
 	}
