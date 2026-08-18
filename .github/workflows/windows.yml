@@ -275,6 +275,7 @@ jobs:
           }
           Remove-Item Env:LLGO_TEST_UNRECOVERED_FAULT
           Write-Host $faultOutput
+          $normalizedFaultOutput = $faultOutput.Replace('\', '/')
           if ($faultExitCode -eq 0) {
             throw "unrecovered Windows fault exited successfully"
           }
@@ -283,7 +284,7 @@ jobs:
             "main.windowsNilFault",
             "windowsruntime/main.go"
           )) {
-            if (-not $faultOutput.Contains($expected)) {
+            if (-not $normalizedFaultOutput.Contains($expected)) {
               throw "unrecovered Windows fault output is missing '$expected'"
             }
           }
