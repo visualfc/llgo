@@ -4,6 +4,7 @@ package debuginfo
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/xgo-dev/llvm"
 )
@@ -71,6 +72,14 @@ func (b *Builder) addDebuggerMarker() {
 	marker.SetGlobalConstant(true)
 	marker.SetLinkage(llvm.LinkOnceODRLinkage)
 	marker.SetVisibility(llvm.HiddenVisibility)
+	if strings.Contains(strings.ToLower(b.module.Target()), "windows") {
+		// COFF does not turn linkonce_odr into a coalescible section on its
+		// own. Every debug-enabled package emits this marker, so associate it
+		// with an any-selection COMDAT just like other ODR definitions.
+		comdat := b.module.Comdat(debuggerMarkerSymbol)
+		comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
+		marker.SetComdat(comdat)
+	}
 
 	ptr := llvm.PointerType(i8, 0)
 	usedInit := llvm.ConstArray(ptr, []llvm.Value{llvm.ConstBitCast(marker, ptr)})
