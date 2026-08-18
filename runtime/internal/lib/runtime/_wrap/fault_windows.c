@@ -28,7 +28,8 @@ typedef struct {
 
 typedef llgo_long(LLGO_WINAPI *llgo_vectored_handler)(
     llgo_exception_pointers *exception);
-typedef void (*llgo_fault_callback)(void *context, int signal);
+typedef void (*llgo_fault_callback)(void *context, int signal,
+                                    uintptr_t address);
 
 __declspec(dllimport) void *LLGO_WINAPI AddVectoredExceptionHandler(
     llgo_dword first, llgo_vectored_handler handler);
@@ -55,6 +56,7 @@ static llgo_long LLGO_WINAPI
 llgo_fault_handler(llgo_exception_pointers *exception)
 {
     llgo_exception_record *record;
+    uintptr_t address = 0;
     int signal;
 
     if (exception == 0 || exception->record == 0 ||
@@ -64,11 +66,9 @@ llgo_fault_handler(llgo_exception_pointers *exception)
     switch (record->code) {
     case llgo_exception_access_violation:
     case llgo_exception_in_page_error:
-        /* Match the Go runtime's recoverable nil-fault boundary. Accesses
-         * elsewhere remain genuine process faults unless a later runtime
-         * implementation explicitly enables panic-on-fault semantics. */
-        if (record->parameter_count < 2 || record->information[1] >= 0x1000)
+        if (record->parameter_count < 2)
             return llgo_exception_continue_search;
+        address = record->information[1];
         signal = llgo_sigsegv;
         break;
     case llgo_exception_int_divide_by_zero:
@@ -81,7 +81,10 @@ llgo_fault_handler(llgo_exception_pointers *exception)
     llgo_in_fault = 1;
     /* The callback converts the exception to LLGo's normal panic path and
      * longjmps out. It returns only if that invariant is broken. */
-    llgo_fault_go(exception->context, signal);
+    /* The Go callback returns only when a non-nil fault is not enabled by
+     * runtime/debug.SetPanicOnFault. In that case, let Windows continue the
+     * handler chain and preserve the normal crash behavior. */
+    llgo_fault_go(exception->context, signal, address);
     llgo_in_fault = 0;
     return llgo_exception_continue_search;
 }

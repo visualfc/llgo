@@ -25,8 +25,13 @@ import (
 	rtdebug "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
+const (
+	windowsSIGSEGV                = 11
+	windowsMinPanicOnFaultAddress = 0x1000
+)
+
 //go:linkname c_installWindowsFaultHandler C.llgo_install_windows_fault_handler
-func c_installWindowsFaultHandler(cb func(unsafe.Pointer, int32)) c.Int
+func c_installWindowsFaultHandler(cb func(unsafe.Pointer, int32, uintptr)) c.Int
 
 //go:linkname c_windowsFaultCaptureDone C.llgo_windows_fault_capture_done
 func c_windowsFaultCaptureDone()
@@ -47,7 +52,11 @@ func init() {
 	}
 }
 
-func onWindowsFault(context unsafe.Pointer, signal int32) {
+func onWindowsFault(context unsafe.Pointer, signal int32, address uintptr) {
+	if signal == windowsSIGSEGV && address >= windowsMinPanicOnFaultAddress && !rtdebug.PanicOnFault() {
+		return
+	}
+
 	// Faults are recoverable and different goroutines run on different host
 	// threads, so capture into the handler's thread-local scratch storage.
 	// StoreFaultPCs then copies the snapshot into the current G before panic's
@@ -69,6 +78,9 @@ func onWindowsFault(context unsafe.Pointer, signal int32) {
 	// The panic path does not return through the vectored handler, so release
 	// its recursion guard before the non-local jump begins.
 	c_windowsFaultCaptureDone()
+	if signal == windowsSIGSEGV && address >= windowsMinPanicOnFaultAddress {
+		rtdebug.PanicSignalAddr(address)
+	}
 	rtdebug.PanicSignal(int(signal))
 }
 
