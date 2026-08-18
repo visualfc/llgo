@@ -2,7 +2,6 @@ package net_test
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -13,11 +12,13 @@ import (
 )
 
 func TestUnixConnMethodCoverage(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unix sockets not supported on windows")
+	// Keep socket addresses below the platform sockaddr path limit. In
+	// particular, Windows supports AF_UNIX streams but has a short path limit.
+	dir, err := os.MkdirTemp(".", ".llgo-unix-")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	dir := t.TempDir()
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	streamPath := filepath.Join(dir, "stream.sock")
 	streamAddr := &net.UnixAddr{Name: streamPath, Net: "unix"}
 	ln, err := net.ListenUnix("unix", streamAddr)
@@ -179,6 +180,16 @@ func TestUnixConnMethodCoverage(t *testing.T) {
 	gramPath := filepath.Join(dir, "gram.sock")
 	gramAddr := &net.UnixAddr{Name: gramPath, Net: "unixgram"}
 	gram, err := net.ListenUnixgram("unixgram", gramAddr)
+	if runtime.GOOS == "windows" {
+		// Go exposes the Unix datagram APIs on Windows, but Winsock does not
+		// implement AF_UNIX SOCK_DGRAM. Verify the documented platform behavior
+		// instead of hiding all Unix-socket coverage behind a Windows skip.
+		if err == nil {
+			gram.Close()
+			t.Fatal("ListenUnixgram unexpectedly succeeded on Windows")
+		}
+		return
+	}
 	if err != nil {
 		t.Fatalf("ListenUnixgram error: %v", err)
 	}
@@ -193,7 +204,7 @@ func TestUnixConnMethodCoverage(t *testing.T) {
 		t.Errorf("unixgram SetWriteBuffer: %v", err)
 	}
 
-	clientGramPath := filepath.Join(os.TempDir(), fmt.Sprintf("llgo-unixgram-%d.sock", time.Now().UnixNano()))
+	clientGramPath := filepath.Join(dir, "client.sock")
 	clientGramAddr := &net.UnixAddr{Name: clientGramPath, Net: "unixgram"}
 	clientGram, err := net.DialUnix("unixgram", clientGramAddr, gramAddr)
 	if err != nil {

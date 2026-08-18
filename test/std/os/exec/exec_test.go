@@ -3,16 +3,78 @@ package exec_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
+const execHelperEnv = "LLGO_TEST_EXEC_HELPER"
+
+func helperCommand(mode string) *exec.Cmd {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestExecHelperProcess$")
+	cmd.Env = append(os.Environ(), execHelperEnv+"="+mode)
+	return cmd
+}
+
+func TestExecHelperProcess(t *testing.T) {
+	mode := os.Getenv(execHelperEnv)
+	if mode == "" {
+		return
+	}
+
+	var err error
+	switch mode {
+	case "noop":
+	case "echo-hello":
+		_, err = fmt.Fprintln(os.Stdout, "hello")
+	case "echo-test":
+		_, err = fmt.Fprintln(os.Stdout, "test")
+	case "echo-stdout":
+		_, err = fmt.Fprintln(os.Stdout, "stdout test")
+	case "stderr-test":
+		_, err = fmt.Fprintln(os.Stderr, "stderr test")
+	case "pipe-output":
+		_, err = fmt.Fprintln(os.Stdout, "pipe output")
+	case "pipe-error":
+		_, err = fmt.Fprintln(os.Stderr, "pipe error")
+	case "combined":
+		if _, err = fmt.Fprintln(os.Stdout, "combined stdout"); err == nil {
+			_, err = fmt.Fprintln(os.Stderr, "combined stderr")
+		}
+	case "cat":
+		_, err = io.Copy(os.Stdout, os.Stdin)
+	case "env":
+		_, err = fmt.Fprintln(os.Stdout, os.Getenv("TEST_VAR"))
+	case "pwd":
+		var directory string
+		directory, err = os.Getwd()
+		if err == nil {
+			_, err = fmt.Fprintln(os.Stdout, directory)
+		}
+	case "sleep":
+		time.Sleep(100 * time.Millisecond)
+	case "exit-1":
+		os.Exit(1)
+	case "exit-42":
+		os.Exit(42)
+	default:
+		err = fmt.Errorf("unknown helper mode %q", mode)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
 func TestCommand(t *testing.T) {
-	cmd := exec.Command("echo", "test")
+	cmd := helperCommand("noop")
 	if cmd == nil {
 		t.Fatal("Command returned nil")
 	}
@@ -24,18 +86,14 @@ func TestCommand(t *testing.T) {
 
 func TestCommandContext(t *testing.T) {
 	ctx := context.Background()
-	cmd := exec.CommandContext(ctx, "echo", "test")
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestExecHelperProcess$")
 	if cmd == nil {
 		t.Fatal("CommandContext returned nil")
 	}
 }
 
 func TestCmdRun(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("echo", "hello")
+	cmd := helperCommand("noop")
 	err := cmd.Run()
 	if err != nil {
 		t.Fatalf("Run error: %v", err)
@@ -43,11 +101,7 @@ func TestCmdRun(t *testing.T) {
 }
 
 func TestCmdOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("echo", "hello")
+	cmd := helperCommand("echo-hello")
 	output, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Output error: %v", err)
@@ -60,27 +114,20 @@ func TestCmdOutput(t *testing.T) {
 }
 
 func TestCmdCombinedOutput(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("echo", "test")
+	cmd := helperCommand("combined")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("CombinedOutput error: %v", err)
 	}
 
-	if len(output) == 0 {
-		t.Error("CombinedOutput returned empty")
+	result := string(output)
+	if !strings.Contains(result, "combined stdout") || !strings.Contains(result, "combined stderr") {
+		t.Errorf("CombinedOutput = %q, want stdout and stderr", result)
 	}
 }
 
 func TestCmdStdin(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("cat")
+	cmd := helperCommand("cat")
 	cmd.Stdin = strings.NewReader("test input")
 
 	output, err := cmd.Output()
@@ -95,12 +142,8 @@ func TestCmdStdin(t *testing.T) {
 }
 
 func TestCmdStdout(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
 	var buf bytes.Buffer
-	cmd := exec.Command("echo", "stdout test")
+	cmd := helperCommand("echo-stdout")
 	cmd.Stdout = &buf
 
 	err := cmd.Run()
@@ -115,12 +158,8 @@ func TestCmdStdout(t *testing.T) {
 }
 
 func TestCmdStderr(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
 	var buf bytes.Buffer
-	cmd := exec.Command("sh", "-c", "echo stderr test >&2")
+	cmd := helperCommand("stderr-test")
 	cmd.Stderr = &buf
 
 	err := cmd.Run()
@@ -135,11 +174,7 @@ func TestCmdStderr(t *testing.T) {
 }
 
 func TestCmdStart(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("sleep", "0.1")
+	cmd := helperCommand("sleep")
 	err := cmd.Start()
 	if err != nil {
 		t.Fatalf("Start error: %v", err)
@@ -156,11 +191,7 @@ func TestCmdStart(t *testing.T) {
 }
 
 func TestCmdWait(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("echo", "test")
+	cmd := helperCommand("noop")
 	err := cmd.Start()
 	if err != nil {
 		t.Fatalf("Start error: %v", err)
@@ -177,11 +208,7 @@ func TestCmdWait(t *testing.T) {
 }
 
 func TestCmdStdinPipe(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("cat")
+	cmd := helperCommand("cat")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatalf("StdinPipe error: %v", err)
@@ -200,11 +227,7 @@ func TestCmdStdinPipe(t *testing.T) {
 }
 
 func TestCmdStdoutPipe(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("echo", "pipe output")
+	cmd := helperCommand("pipe-output")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatalf("StdoutPipe error: %v", err)
@@ -230,11 +253,7 @@ func TestCmdStdoutPipe(t *testing.T) {
 }
 
 func TestCmdStderrPipe(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("sh", "-c", "echo pipe error >&2")
+	cmd := helperCommand("pipe-error")
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatalf("StderrPipe error: %v", err)
@@ -260,12 +279,8 @@ func TestCmdStderrPipe(t *testing.T) {
 }
 
 func TestCmdEnv(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("sh", "-c", "echo $TEST_VAR")
-	cmd.Env = append(os.Environ(), "TEST_VAR=test_value")
+	cmd := helperCommand("env")
+	cmd.Env = append(cmd.Env, "TEST_VAR=test_value")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -279,12 +294,8 @@ func TestCmdEnv(t *testing.T) {
 }
 
 func TestCmdDir(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	tmpDir := strings.TrimSuffix(os.TempDir(), "/")
-	cmd := exec.Command("pwd")
+	tmpDir := t.TempDir()
+	cmd := helperCommand("pwd")
 	cmd.Dir = tmpDir
 
 	output, err := cmd.Output()
@@ -292,9 +303,11 @@ func TestCmdDir(t *testing.T) {
 		t.Fatalf("Output error: %v", err)
 	}
 
-	result := strings.TrimSpace(string(output))
-	if result != tmpDir {
-		t.Errorf("Output = %q, want %q", result, tmpDir)
+	result := filepath.Clean(strings.TrimSpace(string(output)))
+	wantInfo, wantErr := os.Stat(tmpDir)
+	gotInfo, gotErr := os.Stat(result)
+	if wantErr != nil || gotErr != nil || !os.SameFile(wantInfo, gotInfo) {
+		t.Errorf("working directory = %q, want %q (stat errors: %v, %v)", result, tmpDir, gotErr, wantErr)
 	}
 }
 
@@ -334,11 +347,7 @@ func TestError(t *testing.T) {
 }
 
 func TestExitError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("sh", "-c", "exit 1")
+	cmd := helperCommand("exit-1")
 	err := cmd.Run()
 	if err == nil {
 		t.Fatal("Expected error for exit code 1")
@@ -373,7 +382,7 @@ func TestErrWaitDelay(t *testing.T) {
 }
 
 func TestCmdEnviron(t *testing.T) {
-	cmd := exec.Command("echo", "test")
+	cmd := helperCommand("noop")
 	cmd.Env = []string{"VAR1=value1", "VAR2=value2"}
 
 	environ := cmd.Environ()
@@ -407,11 +416,7 @@ func TestErrorUnwrap(t *testing.T) {
 }
 
 func TestExitErrorError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	cmd := exec.Command("sh", "-c", "exit 42")
+	cmd := helperCommand("exit-42")
 	err := cmd.Run()
 	if err == nil {
 		t.Fatal("Expected error for exit code 42")
