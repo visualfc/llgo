@@ -43,6 +43,17 @@ func TestBuildOutFmtsWithTarget(t *testing.T) {
 			wantOut: "myapp",
 		},
 		{
+			name: "embedded target keeps configured output extension",
+			conf: &Config{
+				Mode:    ModeBuild,
+				Target:  "esp32",
+				OutFile: "myapp",
+				AppExt:  ".elf",
+			},
+			pkgName: "hello",
+			wantOut: "myapp.elf",
+		},
+		{
 			name: "build hex format",
 			conf: &Config{
 				Mode:    ModeBuild,
@@ -254,6 +265,16 @@ func TestBuildOutFmtsNativeTarget(t *testing.T) {
 			wantOut:  "myapp.exe",
 		},
 		{
+			name:     "build single pkg with exact extensionless outfile on windows",
+			mode:     ModeBuild,
+			multiPkg: false,
+			outFile:  "myapp",
+			appExt:   ".exe",
+			goos:     "windows",
+			pkgName:  "hello",
+			wantOut:  "myapp",
+		},
+		{
 			name:     "build multi pkg",
 			mode:     ModeBuild,
 			multiPkg: true,
@@ -317,6 +338,16 @@ func TestBuildOutFmtsNativeTarget(t *testing.T) {
 			goos:     "linux",
 			pkgName:  "hello",
 			wantOut:  "", // Should be temp file
+		},
+		{
+			name:     "test mode with exact extensionless outfile on windows",
+			mode:     ModeTest,
+			multiPkg: false,
+			outFile:  "mytest",
+			appExt:   ".exe",
+			goos:     "windows",
+			pkgName:  "hello",
+			wantOut:  "mytest",
 		},
 	}
 
