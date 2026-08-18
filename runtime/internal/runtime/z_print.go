@@ -59,10 +59,6 @@ func PrintPointer(p unsafe.Pointer) {
 	c.Fprintf(c.Stderr, printFormatPrefixHex, uintptr(p))
 }
 
-func PrintString(s String) {
-	printWrite(s.data, uintptr(s.len))
-}
-
 func PrintSlice(s Slice) {
 	print("[", s.len, "/", s.cap, "]", s.data)
 }

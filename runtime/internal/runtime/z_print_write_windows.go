@@ -16,6 +16,6 @@ func PrintByte(v byte) {
 	c_printByte(v)
 }
 
-func printWrite(data unsafe.Pointer, size uintptr) {
-	c_printWrite(data, size)
+func PrintString(s String) {
+	c_printWrite(s.data, uintptr(s.len))
 }
