@@ -25,6 +25,7 @@ func TestRuntimeAddCleanupStop(t *testing.T) {
 	const n = 32
 	stopped := make(chan int32, n)
 	active := make(chan int32, n)
+	activeHandles := make(chan runtime.Cleanup, n)
 	created := make(chan struct{})
 	go func() {
 		for i := range int32(n) {
@@ -33,10 +34,11 @@ func TestRuntimeAddCleanupStop(t *testing.T) {
 				stopped <- value
 			}, i)
 			cleanup.Stop()
+			cleanup.Stop()
 			runtime.KeepAlive(stoppedObject)
 
 			activeObject := new([64]byte)
-			runtime.AddCleanup(activeObject, func(value int32) {
+			activeHandles <- runtime.AddCleanup(activeObject, func(value int32) {
 				active <- value
 			}, i)
 		}
@@ -53,6 +55,9 @@ func TestRuntimeAddCleanupStop(t *testing.T) {
 			t.Fatalf("only %d/%d active cleanups ran", len(active), n)
 		default:
 		}
+	}
+	for range n {
+		(<-activeHandles).Stop()
 	}
 	for range 3 {
 		runGCWithTimeout(t)

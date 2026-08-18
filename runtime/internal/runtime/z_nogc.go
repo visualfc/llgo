@@ -52,3 +52,9 @@ func FreeRoot(ptr unsafe.Pointer) {
 func AddCleanupPtr(ptr unsafe.Pointer, cleanup func()) (cancel func()) {
 	return func() {} // no-op cancel
 }
+
+func AddCancelableCleanupPtr(ptr unsafe.Pointer, cleanup func()) uint64 {
+	return 0
+}
+
+func StopCleanupPtr(id uint64) {}
