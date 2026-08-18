@@ -22,6 +22,9 @@ func readCPUProfileRaw() (data []uint64, tags []unsafe.Pointer, eof bool)
 //go:linkname raiseCPUProfileSignal C.raise
 func raiseCPUProfileSignal(sig int32) int32
 
+//go:linkname testCPUProfileFaultRecovery C.llgo_cpu_profile_test_fault_recovery
+func testCPUProfileFaultRecovery() int32
+
 //go:noinline
 func cpuProfileSignalHotLoop(d time.Duration) uint64 {
 	deadline := time.Now().Add(d)
@@ -81,6 +84,12 @@ func requireNoSIGPROF(t *testing.T, c <-chan os.Signal, phase string) {
 	case got := <-c:
 		t.Fatalf("%s: SIGPROF unexpectedly reached os/signal as %v", phase, got)
 	case <-time.After(20 * time.Millisecond):
+	}
+}
+
+func TestCPUProfileFaultRecovery(t *testing.T) {
+	if got := testCPUProfileFaultRecovery(); got != 1 {
+		t.Fatalf("guarded frame walk returned %d frames, want interrupted PC only", got)
 	}
 }
 

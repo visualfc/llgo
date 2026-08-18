@@ -3,16 +3,21 @@
 package runtime
 
 import (
+	latomic "sync/atomic"
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	latomic "sync/atomic"
+	csyscall "github.com/xgo-dev/llgo/runtime/internal/clite/syscall"
 )
 
-const maxCPUProfileStack = 64
-
-// SIGPROF is 27 on the native Darwin/Linux architectures supported here.
-const cpuProfileSignal = 27
+const (
+	maxCPUProfileStack        = 64
+	maxCPUProfileDrainRecords = 256
+	maxCPUProfileDrainData    = 4 + maxCPUProfileDrainRecords*(3+maxCPUProfileStack)
+	maxCPUProfileDrainTags    = 1 + maxCPUProfileDrainRecords
+	cpuProfilePollUsec        = 10000
+	cpuProfileSignal          = uint32(csyscall.SIGPROF)
+)
 
 //go:linkname c_cpuProfileStart C.llgo_cpu_profile_start
 func c_cpuProfileStart(hz int32) int32
@@ -41,6 +46,8 @@ var (
 	cpuProfilePeriodPending uint32
 	cpuProfilePeriodRecord  = [3]uint64{3, 0, 100}
 	cpuProfilePeriodTags    [1]unsafe.Pointer
+	cpuProfileDrainData     [maxCPUProfileDrainData]uint64
+	cpuProfileDrainTags     [maxCPUProfileDrainTags]unsafe.Pointer
 )
 
 func cpuProfileSignalUpdateBegin(sig uint32) bool {
@@ -114,19 +121,22 @@ func runtime_pprof_readProfile() (data []uint64, tags []unsafe.Pointer, eof bool
 			// runtime/pprof waits 100 ms between reads on Darwin. Drain a
 			// chunk, rather than one sample, so a 100 Hz producer cannot
 			// outrun the writer.
-			data = make([]uint64, 0, 1024)
-			tags = make([]unsafe.Pointer, 0, 16)
+			// The writer consumes these package-level scratch slices before
+			// its next call, as required by readProfile's contract.
+			data = cpuProfileDrainData[:0]
+			tags = cpuProfileDrainTags[:0]
 			if lost != 0 {
 				data = append(data, 4, 0, 0, lost)
 				tags = append(tags, nil)
 			}
-			for records := 0; n != 0 && records < 256; records++ {
+			for records := 0; n != 0; records++ {
 				data = append(data, uint64(3+n), 0, 1)
 				for i := 0; i < n; i++ {
 					data = append(data, uint64(pcs[i]))
 				}
 				tags = append(tags, nil)
-				if records == 255 {
+				// Do not consume a sample that cannot be emitted in this chunk.
+				if records+1 == maxCPUProfileDrainRecords {
 					break
 				}
 				n = int(c_cpuProfileRead(unsafe.Pointer(&pcs[0]), maxCPUProfileStack))
@@ -139,8 +149,8 @@ func runtime_pprof_readProfile() (data []uint64, tags []unsafe.Pointer, eof bool
 		}
 
 		// Linux's profile writer expects readProfile to block. Keep the wait
-		// out of the signal path and poll at the 100 Hz profiler's period;
-		// Darwin already sleeps in pprof.
-		c.Usleep(10000)
+		// out of the signal path and poll every 10 ms (the default 100 Hz
+		// period); Darwin already sleeps between non-blocking reads.
+		c.Usleep(cpuProfilePollUsec)
 	}
 }

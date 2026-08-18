@@ -11,10 +11,15 @@
 #endif
 
 #include <errno.h>
+#include <pthread.h>
+#include <sched.h>
+#include <setjmp.h>
 #include <signal.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <ucontext.h>
@@ -32,30 +37,37 @@ struct llgo_prof_sample {
 static struct llgo_prof_sample llgo_prof_ring[LLGO_PROF_SAMPLES];
 static unsigned int llgo_prof_read_index;
 static unsigned int llgo_prof_write_index;
-static volatile int llgo_prof_lock;
+static volatile int llgo_prof_ring_lock;
+static pthread_mutex_t llgo_prof_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static volatile int llgo_prof_active;
 static volatile uint64_t llgo_prof_lost;
 #if defined(__APPLE__) || defined(__linux__)
 static struct sigaction llgo_prof_previous_action;
 static int llgo_prof_previous_valid;
+static sigjmp_buf llgo_prof_fault_jmp;
+static volatile uintptr_t llgo_prof_fault_owner;
+static volatile int llgo_prof_fault_active;
 #endif
 
-extern int llgo_mem_readable(void *p);
-
-static int llgo_prof_try_lock(void)
+static int llgo_prof_ring_try_lock(void)
 {
-    return __atomic_exchange_n(&llgo_prof_lock, 1, __ATOMIC_ACQUIRE) == 0;
+    return __atomic_exchange_n(&llgo_prof_ring_lock, 1, __ATOMIC_ACQUIRE) == 0;
 }
 
-static void llgo_prof_lock_wait(void)
+static void llgo_prof_ring_lock_wait(void)
 {
-    while (!llgo_prof_try_lock()) {
+    unsigned int spins = 0;
+    while (!llgo_prof_ring_try_lock()) {
+        if (++spins == 64) {
+            sched_yield();
+            spins = 0;
+        }
     }
 }
 
-static void llgo_prof_unlock(void)
+static void llgo_prof_ring_unlock(void)
 {
-    __atomic_store_n(&llgo_prof_lock, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&llgo_prof_ring_lock, 0, __ATOMIC_RELEASE);
 }
 
 static void llgo_prof_drop(void)
@@ -65,6 +77,52 @@ static void llgo_prof_drop(void)
 
 #if defined(__APPLE__) || defined(__linux__)
 static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx);
+
+/* Called first by the runtime fault handler. The global jump buffer is safe
+ * because the ring lock permits only one active profile walk; the owner check
+ * prevents a simultaneous fault on another pthread from jumping across
+ * threads. */
+int llgo_cpu_profile_fault_recover(void)
+{
+    int expected = 1;
+
+    if (!__atomic_load_n(&llgo_prof_fault_active, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&llgo_prof_fault_owner, __ATOMIC_RELAXED) !=
+            (uintptr_t)pthread_self())
+        return 0;
+    if (!__atomic_compare_exchange_n(&llgo_prof_fault_active, &expected, 0,
+                                     0, __ATOMIC_ACQ_REL,
+                                     __ATOMIC_ACQUIRE))
+        return 0;
+    siglongjmp(llgo_prof_fault_jmp, 1);
+    return 1;
+}
+
+static void llgo_prof_walk_frames(struct llgo_prof_sample *sample, uintptr_t fp)
+{
+    uintptr_t word = sizeof(uintptr_t);
+
+    __atomic_store_n(&llgo_prof_fault_owner, (uintptr_t)pthread_self(),
+                     __ATOMIC_RELAXED);
+    if (sigsetjmp(llgo_prof_fault_jmp, 1) != 0)
+        return;
+    __atomic_store_n(&llgo_prof_fault_active, 1, __ATOMIC_RELEASE);
+    while (fp != 0 && sample->n < LLGO_PROF_STACK) {
+        uintptr_t prev, ret;
+        if ((fp & (word - 1)) != 0)
+            break;
+        prev = *(uintptr_t *)fp;
+        ret = *(uintptr_t *)(fp + word);
+        if (ret < 4096)
+            break;
+        sample->pc[sample->n++] = ret;
+        if (prev <= fp || prev - fp > LLGO_PROF_MAX_FP_STRIDE ||
+            (prev & (word - 1)) != 0)
+            break;
+        fp = prev;
+    }
+    __atomic_store_n(&llgo_prof_fault_active, 0, __ATOMIC_RELEASE);
+}
 
 static int llgo_prof_action_is_ours(const struct sigaction *sa)
 {
@@ -116,7 +174,6 @@ static void llgo_prof_restore_signal_locked(void)
 static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
 {
     uintptr_t pc = 0, fp = 0;
-    uintptr_t word = sizeof(uintptr_t);
     unsigned int next;
     struct llgo_prof_sample *sample;
     int active;
@@ -133,7 +190,7 @@ static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
         errno = saved_errno;
         return;
     }
-    if (!llgo_prof_try_lock()) {
+    if (!llgo_prof_ring_try_lock()) {
         llgo_prof_drop();
         errno = saved_errno;
         return;
@@ -171,25 +228,10 @@ static void llgo_prof_signal(int sig, siginfo_t *info, void *uctx)
     sample->n = 1;
     /* runtime.CallersFrames subtracts one from every sampled PC. */
     sample->pc[0] = pc + 1;
-    while (fp != 0 && sample->n < LLGO_PROF_STACK) {
-        uintptr_t prev, ret;
-        if ((fp & (word - 1)) != 0 ||
-            !llgo_mem_readable((void *)fp) ||
-            !llgo_mem_readable((void *)(fp + word)))
-            break;
-        prev = *(uintptr_t *)fp;
-        ret = *(uintptr_t *)(fp + word);
-        if (ret < 4096)
-            break;
-        sample->pc[sample->n++] = ret;
-        if (prev <= fp || prev - fp > LLGO_PROF_MAX_FP_STRIDE ||
-            (prev & (word - 1)) != 0)
-            break;
-        fp = prev;
-    }
+    llgo_prof_walk_frames(sample, fp);
     llgo_prof_write_index = next;
 done:
-    llgo_prof_unlock();
+    llgo_prof_ring_unlock();
     errno = saved_errno;
 }
 #endif
@@ -207,15 +249,18 @@ int llgo_cpu_profile_start(int hz)
         errno = saved_errno;
         return -1;
     }
-    llgo_prof_lock_wait();
+    pthread_mutex_lock(&llgo_prof_state_lock);
+    llgo_prof_ring_lock_wait();
     if (__atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED) ||
         llgo_prof_read_index != llgo_prof_write_index) {
-        llgo_prof_unlock();
+        llgo_prof_ring_unlock();
+        pthread_mutex_unlock(&llgo_prof_state_lock);
         errno = saved_errno;
         return 0;
     }
     if (llgo_prof_install_signal_locked() != 0) {
-        llgo_prof_unlock();
+        llgo_prof_ring_unlock();
+        pthread_mutex_unlock(&llgo_prof_state_lock);
         errno = saved_errno;
         return -1;
     }
@@ -234,11 +279,13 @@ int llgo_cpu_profile_start(int hz)
     if (setitimer(ITIMER_PROF, &timer, 0) != 0) {
         __atomic_store_n(&llgo_prof_active, 0, __ATOMIC_RELEASE);
         llgo_prof_restore_signal_locked();
-        llgo_prof_unlock();
+        llgo_prof_ring_unlock();
+        pthread_mutex_unlock(&llgo_prof_state_lock);
         errno = saved_errno;
         return -1;
     }
-    llgo_prof_unlock();
+    llgo_prof_ring_unlock();
+    pthread_mutex_unlock(&llgo_prof_state_lock);
     errno = saved_errno;
     return 1;
 #else
@@ -252,23 +299,25 @@ void llgo_cpu_profile_stop(void)
 #if defined(__APPLE__) || defined(__linux__)
     struct itimerval timer;
     int saved_errno = errno;
-    llgo_prof_lock_wait();
+    pthread_mutex_lock(&llgo_prof_state_lock);
+    llgo_prof_ring_lock_wait();
     memset(&timer, 0, sizeof(timer));
     setitimer(ITIMER_PROF, &timer, 0);
     __atomic_store_n(&llgo_prof_active, 0, __ATOMIC_RELEASE);
     llgo_prof_restore_signal_locked();
-    llgo_prof_unlock();
+    llgo_prof_ring_unlock();
+    pthread_mutex_unlock(&llgo_prof_state_lock);
     errno = saved_errno;
 #endif
 }
 
-/* Serialize a libuv SIGPROF watcher update with profiler start/stop. While the
- * lock is held, an interrupting profiling signal is dropped instead of
- * blocking in signal context. */
+/* Serialize a libuv SIGPROF watcher update with profiler start/stop. This
+ * state mutex is deliberately separate from the ring lock, so reads and
+ * sampling continue while the Go timer thread performs the libuv round-trip. */
 void llgo_cpu_profile_signal_update_begin(void)
 {
 #if defined(__APPLE__) || defined(__linux__)
-    llgo_prof_lock_wait();
+    pthread_mutex_lock(&llgo_prof_state_lock);
 #endif
 }
 
@@ -278,7 +327,7 @@ int llgo_cpu_profile_signal_update_end(void)
     int ret = 0;
     if (__atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED))
         ret = llgo_prof_install_signal_locked();
-    llgo_prof_unlock();
+    pthread_mutex_unlock(&llgo_prof_state_lock);
     return ret;
 #else
     return 0;
@@ -293,9 +342,9 @@ int llgo_cpu_profile_read(uintptr_t *pc, int cap)
 
     if (pc == 0 || cap <= 0)
         return 0;
-    llgo_prof_lock_wait();
+    llgo_prof_ring_lock_wait();
     if (llgo_prof_read_index == llgo_prof_write_index) {
-        llgo_prof_unlock();
+        llgo_prof_ring_unlock();
         return 0;
     }
     sample = &llgo_prof_ring[llgo_prof_read_index];
@@ -307,7 +356,7 @@ int llgo_cpu_profile_read(uintptr_t *pc, int cap)
     llgo_prof_read_index++;
     if (llgo_prof_read_index == LLGO_PROF_SAMPLES)
         llgo_prof_read_index = 0;
-    llgo_prof_unlock();
+    llgo_prof_ring_unlock();
     return n;
 }
 
@@ -319,8 +368,38 @@ uint64_t llgo_cpu_profile_take_lost(void)
 int llgo_cpu_profile_empty(void)
 {
     int empty;
-    llgo_prof_lock_wait();
+    llgo_prof_ring_lock_wait();
     empty = llgo_prof_read_index == llgo_prof_write_index;
-    llgo_prof_unlock();
+    llgo_prof_ring_unlock();
     return empty;
+}
+
+/* Exercise the guarded frame walk against a mapped but unreadable page. This
+ * is kept as a narrow runtime test hook so a regression fails deterministically
+ * instead of depending on a corrupt frame pointer appearing in a sample. */
+int llgo_cpu_profile_test_fault_recovery(void)
+{
+#if defined(__APPLE__) || defined(__linux__)
+    struct llgo_prof_sample sample;
+    long page_size = sysconf(_SC_PAGESIZE);
+    void *page;
+    int n;
+
+    if (page_size <= 0)
+        page_size = 4096;
+    page = mmap(0, (size_t)page_size, PROT_NONE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (page == MAP_FAILED)
+        return -1;
+    sample.n = 1;
+    sample.pc[0] = 1;
+    llgo_prof_ring_lock_wait();
+    llgo_prof_walk_frames(&sample, (uintptr_t)page);
+    llgo_prof_ring_unlock();
+    n = (int)sample.n;
+    munmap(page, (size_t)page_size);
+    return n;
+#else
+    return -1;
+#endif
 }
