@@ -33,10 +33,6 @@ func PrintBool(v bool) {
 	c.Fprintf(c.Stderr, boolCStr(v))
 }
 
-func PrintByte(v byte) {
-	printByte(v)
-}
-
 func PrintUint(v uint64) {
 	c.Fprintf(c.Stderr, printFormatPrefixUInt, v)
 }

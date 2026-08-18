@@ -12,7 +12,7 @@ func c_printByte(v byte)
 //go:linkname c_printWrite C.llgo_print_write
 func c_printWrite(data unsafe.Pointer, size uintptr)
 
-func printByte(v byte) {
+func PrintByte(v byte) {
 	c_printByte(v)
 }
 

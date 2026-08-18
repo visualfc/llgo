@@ -10,7 +10,7 @@ import (
 
 const platformLLGoFiles = ""
 
-func printByte(v byte) {
+func PrintByte(v byte) {
 	c.Fputc(c.Int(v), c.Stderr)
 }
 
