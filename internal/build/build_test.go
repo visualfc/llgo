@@ -419,6 +419,28 @@ func TestWithEnvLastValueWins(t *testing.T) {
 	}
 }
 
+func TestWithResolvedGoToolchain(t *testing.T) {
+	tests := []struct {
+		name      string
+		environ   []string
+		goversion string
+		want      []string
+	}{
+		{"replace existing", []string{"PATH=/bin", "GOTOOLCHAIN=auto"}, "go1.25.0", []string{"PATH=/bin", "GOTOOLCHAIN=go1.25.0"}},
+		{"append missing", []string{"PATH=/bin"}, "go1.25.0", []string{"PATH=/bin", "GOTOOLCHAIN=go1.25.0"}},
+		{"preserve development version", []string{"PATH=/bin"}, "devel go1.26-deadbeef", []string{"PATH=/bin"}},
+		{"preserve empty version", []string{"PATH=/bin"}, "", []string{"PATH=/bin"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := withResolvedGoToolchain(tt.environ, tt.goversion)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("withResolvedGoToolchain = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClosePackageMetas(t *testing.T) {
 	b := meta.NewBuilder()
 	b.Sym("pkg.main")
