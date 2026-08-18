@@ -159,7 +159,11 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 			inits = append(inits, packageInits...)
 			inits = append(inits, mainInit)
 		}
-		defineLibraryRuntimeInit(mainPkg, initArraySection, inits...)
+		defineLibraryRuntimeInit(
+			mainPkg, initArraySection, argcVar, argvVar, argvValueType,
+			libraryConstructorReceivesProcessArgs(ctx.buildConf.Goos),
+			inits...,
+		)
 		return mainAPkg
 	}
 
@@ -182,17 +186,38 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	return mainAPkg
 }
 
+func libraryConstructorReceivesProcessArgs(goos string) bool {
+	return goos == "linux" || goos == "darwin"
+}
+
 // defineLibraryRuntimeInit arranges for the LLGo runtime to be initialized
-// before a C program calls an exported Go function. Linux shared libraries use
-// .init_array explicitly because the raw LLVM target machine lowers
-// llvm.global_ctors to legacy .ctors; other library formats use LLVM's
-// platform-specific constructor lowering.
-func defineLibraryRuntimeInit(pkg llssa.Package, initArraySection string, inits ...llssa.Function) {
+// before a C program calls an exported Go function. Linux and Darwin c-shared
+// and c-archive constructors receive the host process argc/argv; these values
+// must be stored before package initialization so os.Args sees them. Linux
+// c-shared libraries use .init_array explicitly because the raw LLVM target
+// machine lowers llvm.global_ctors to legacy .ctors. Linux c-archive and Darwin
+// library modes use LLVM's platform-specific global constructor lowering.
+func defineLibraryRuntimeInit(
+	pkg llssa.Package, initArraySection string,
+	argcVar, argvVar llssa.Global, argvType llssa.Type,
+	receivesProcessArgs bool, inits ...llssa.Function,
+) {
 	const ctorName = "__llgo_runtime_ctor"
-	ctor := pkg.NewFunc(ctorName, llssa.NoArgsNoRet, llssa.InC)
+	ctorSig := llssa.NoArgsNoRet
+	if receivesProcessArgs {
+		ctorSig = newSignature(
+			[]types.Type{types.Typ[types.Int32], argvType.RawType()},
+			nil,
+		)
+	}
+	ctor := pkg.NewFunc(ctorName, ctorSig, llssa.InC)
 	ctorValue := pkg.Module().NamedFunction(ctorName)
 	ctorValue.SetLinkage(llvm.InternalLinkage)
 	b := ctor.MakeBody(1)
+	if receivesProcessArgs {
+		b.Store(argcVar.Expr, ctor.Param(0))
+		b.Store(argvVar.Expr, ctor.Param(1))
+	}
 	for _, init := range inits {
 		if init != nil {
 			b.Call(init.Expr)

@@ -258,7 +258,9 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 			})
 			ir := mod.LPkg.String()
 			checks := []string{
-				"define internal void @__llgo_runtime_ctor()",
+				"define internal void @__llgo_runtime_ctor(i32 %0, ptr %1)",
+				"store i32 %0, ptr @__llgo_argc",
+				"store ptr %1, ptr @__llgo_argv",
 				"call void @\"github.com/xgo-dev/llgo/runtime/internal/runtime.init\"()",
 				"call void @\"example.com/dep.init\"()",
 				"call void @\"example.com/foo.init\"()",
@@ -273,8 +275,47 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 					t.Fatalf("library module IR missing %q:\n%s", want, ir)
 				}
 			}
+			assertInOrder(t, ir,
+				"store i32 %0, ptr @__llgo_argc",
+				"store ptr %1, ptr @__llgo_argv",
+				"call void @\"github.com/xgo-dev/llgo/runtime/internal/runtime.init\"()",
+				"call void @\"example.com/dep.init\"()",
+				"call void @\"example.com/foo.init\"()",
+			)
 			if strings.Contains(ir, "define i32 @main") {
 				t.Fatalf("library mode should not emit main function:\n%s", ir)
+			}
+		})
+	}
+}
+
+func TestGenMainModuleLibraryConstructorArgsByPlatform(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	for _, test := range []struct {
+		goos     string
+		wantArgs bool
+	}{
+		{goos: "linux", wantArgs: true},
+		{goos: "darwin", wantArgs: true},
+		{goos: "windows", wantArgs: false},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			ctx := &context{
+				prog: llssa.NewProgram(nil),
+				buildConf: &Config{
+					BuildMode: BuildModeCShared,
+					Goos:      test.goos,
+					Goarch:    "amd64",
+				},
+			}
+			pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+			ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{}).LPkg.String()
+			hasArgSignature := strings.Contains(ir, "define internal void @__llgo_runtime_ctor(i32 %0, ptr %1)")
+			hasArgStores := strings.Contains(ir, "store i32 %0, ptr @__llgo_argc") &&
+				strings.Contains(ir, "store ptr %1, ptr @__llgo_argv")
+			if hasArgSignature != test.wantArgs || hasArgStores != test.wantArgs {
+				t.Fatalf("constructor argument capture = (%v, %v), want %v:\n%s", hasArgSignature, hasArgStores, test.wantArgs, ir)
 			}
 		})
 	}

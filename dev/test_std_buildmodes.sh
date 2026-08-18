@@ -99,8 +99,12 @@ for mode in c-shared c-archive; do
 			test_main_pkg="${import_path}.test"
 			runner_base="${work_dir}/runner-${i}"
 			echo "==> ${test_pkgs[$i]}: run ${mode}"
+			runner_cflags=("-DGO_TEST_PACKAGE=\"${test_main_pkg}\"")
+			if [[ "${mode}" == c-shared ]]; then
+				runner_cflags+=("-DGO_C_SHARED=1")
+			fi
 			clang -x c -c "${runner_source}" \
-				"-DGO_TEST_PACKAGE=\"${test_main_pkg}\"" \
+				"${runner_cflags[@]}" \
 				-o "${runner_base}.o"
 
 			if [[ "${mode}" == c-shared ]]; then
@@ -113,7 +117,7 @@ for mode in c-shared c-archive; do
 					-L"${work_dir}" "-l${stem}" "${runtime_libs[@]}"
 				LD_LIBRARY_PATH="${work_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
 					DYLD_LIBRARY_PATH="${work_dir}${DYLD_LIBRARY_PATH:+:${DYLD_LIBRARY_PATH}}" \
-					"${runner_base}"
+					"${runner_base}" llgo-cshared-arg-one "llgo c-shared arg two"
 			else
 				library="${work_dir}/lib${stem}.a"
 				clang++ "${runner_base}.o" -o "${runner_base}" \
