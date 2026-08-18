@@ -180,6 +180,22 @@ long long llgo_nanotime(void)
            remainder * 1000000000LL / llgo_nanotime_frequency;
 }
 
+long long llgo_query_performance_counter(void)
+{
+    long long counter;
+    if (!QueryPerformanceCounter(&counter))
+        return 0;
+    return counter;
+}
+
+long long llgo_query_performance_frequency(void)
+{
+    long long frequency;
+    if (!QueryPerformanceFrequency(&frequency))
+        return 0;
+    return frequency;
+}
+
 void llgo_walltime(long long *seconds, long *nanoseconds)
 {
     llgo_filetime now;

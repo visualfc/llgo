@@ -24,6 +24,25 @@ import (
 	llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
+//go:linkname c_queryPerformanceCounter C.llgo_query_performance_counter
+func c_queryPerformanceCounter() int64
+
+//go:linkname c_queryPerformanceFrequency C.llgo_query_performance_frequency
+func c_queryPerformanceFrequency() int64
+
+// These entry points implement the runtime hooks declared by the official
+// internal/syscall/windows package.
+
+//go:linkname windows_QueryPerformanceCounter internal/syscall/windows.QueryPerformanceCounter
+func windows_QueryPerformanceCounter() int64 {
+	return c_queryPerformanceCounter()
+}
+
+//go:linkname windows_QueryPerformanceFrequency internal/syscall/windows.QueryPerformanceFrequency
+func windows_QueryPerformanceFrequency() int64 {
+	return c_queryPerformanceFrequency()
+}
+
 // syscall.Setenv and syscall.Unsetenv have already updated the Win32
 // environment before calling these hooks. LLGo only needs to propagate the
 // runtime-observed GODEBUG change.
