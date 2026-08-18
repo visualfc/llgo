@@ -34,6 +34,9 @@ func packageInitLLGo(t *testing.T) string {
 	t.Helper()
 	repoRoot := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
+	if compiler := configuredLLGoTestCompiler(t); compiler != "" {
+		return compiler
+	}
 	packageInitLLGoOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "llgo-package-init-bin")
 		if err != nil {

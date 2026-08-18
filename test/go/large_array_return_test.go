@@ -63,6 +63,9 @@ func largeArrayLLGo(t *testing.T) string {
 	t.Helper()
 	root := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", root)
+	if compiler := configuredLLGoTestCompiler(t); compiler != "" {
+		return compiler
+	}
 	largeArrayLLGoOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "llgo-large-array-bin")
 		if err != nil {

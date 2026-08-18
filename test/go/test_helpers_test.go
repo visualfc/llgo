@@ -17,9 +17,53 @@
 package gotest
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
+	"testing"
 )
+
+const llgoTestCompilerEnv = "LLGO_TEST_COMPILER"
+
+func configuredLLGoTestCompiler(t *testing.T) string {
+	t.Helper()
+	compiler := os.Getenv(llgoTestCompilerEnv)
+	if compiler == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(compiler)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", llgoTestCompilerEnv, err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		t.Fatalf("stat %s: %v", llgoTestCompilerEnv, err)
+	}
+	if info.IsDir() {
+		t.Fatalf("%s points to a directory: %s", llgoTestCompilerEnv, abs)
+	}
+	return abs
+}
+
+func TestConfiguredLLGoTestCompiler(t *testing.T) {
+	t.Setenv(llgoTestCompilerEnv, "")
+	if got := configuredLLGoTestCompiler(t); got != "" {
+		t.Fatalf("empty %s resolved to %q", llgoTestCompilerEnv, got)
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(llgoTestCompilerEnv, executable)
+	want, err := filepath.Abs(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := configuredLLGoTestCompiler(t); got != want {
+		t.Fatalf("configured compiler = %q, want %q", got, want)
+	}
+}
 
 func testExecutablePath(dir, name string) string {
 	if runtime.GOOS == "windows" {
