@@ -128,7 +128,7 @@ func (b Builder) Siglongjmp(jb, retval Expr) {
 		return
 	}
 	if b.Prog.target.effectiveGOOS() == "windows" {
-		b.Longjmp(jb, retval)
+		b.windowsLongjmp(jb, retval)
 		return
 	}
 	fn := b.Pkg.rtFunc("Siglongjmp") // TODO(xsw): mark as noreturn
@@ -154,30 +154,28 @@ func (b Builder) windowsSetjmp(jb Expr) Expr {
 			types.NewParam(token.NoPos, nil, "", prog.CInt().raw.Type),
 		)
 		args = []Expr{jb, zero}
-	case "amd64", "arm64":
+	case "amd64":
 		name = "_setjmpex"
-		var frame llvm.Value
-		if goarch == "arm64" {
-			frame = b.impl.CreateIntrinsic(
-				prog.VoidPtr().ll,
-				llvm.LookupIntrinsicID("llvm.sponentry"),
-				nil,
-				"",
-			)
-		} else {
-			zero := prog.IntVal(0, prog.CInt())
-			frame = b.impl.CreateIntrinsic(
-				prog.VoidPtr().ll,
-				llvm.LookupIntrinsicID("llvm.frameaddress"),
-				[]llvm.Value{zero.impl},
-				"",
-			)
-		}
+		zero := prog.IntVal(0, prog.CInt())
+		frame := b.impl.CreateIntrinsic(
+			prog.VoidPtr().ll,
+			llvm.LookupIntrinsicID("llvm.frameaddress"),
+			[]llvm.Value{zero.impl},
+			"",
+		)
 		params = types.NewTuple(
 			ptrParam,
 			types.NewParam(token.NoPos, nil, "", prog.VoidPtr().raw.Type),
 		)
 		args = []Expr{jb, {frame, prog.VoidPtr()}}
+	case "arm64":
+		// UCRT longjmp performs a Windows virtual unwind before restoring the
+		// saved context. That cannot cross third-party assembly without .pdata,
+		// including libffi's ARM64 closure entry. LLGo owns defer unwinding, so
+		// use the runtime's ABI-only context save/restore pair instead.
+		name = "llgo_setjmp"
+		params = types.NewTuple(ptrParam)
+		args = []Expr{jb}
 	default:
 		panic("ssa: unsupported Windows architecture for setjmp: " + goarch)
 	}
@@ -188,6 +186,15 @@ func (b Builder) windowsSetjmp(jb Expr) Expr {
 	fn := b.Pkg.cFunc(name, sig)
 	b.addReturnsTwiceAttr(fn)
 	return b.Call(fn, args...)
+}
+
+func (b Builder) windowsLongjmp(jb, retval Expr) {
+	if b.Prog.target.effectiveGOARCH() != "arm64" {
+		b.Longjmp(jb, retval)
+		return
+	}
+	fn := b.Pkg.cFunc("llgo_longjmp", b.Prog.tyLongjmp())
+	b.Call(fn, jb, retval)
 }
 
 func (b Builder) Setjmp(jb Expr) Expr {
