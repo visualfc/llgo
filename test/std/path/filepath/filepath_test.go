@@ -261,12 +261,6 @@ func TestFilepathEvalSymlinks(t *testing.T) {
 	mustWrite(t, target)
 	link := filepath.Join(root, "link.txt")
 	if err := os.Symlink("target.txt", link); err != nil {
-		if runtime.GOOS == "windows" || errors.Is(err, fs.ErrInvalid) {
-			t.Skipf("symlinks unavailable: %v", err)
-		}
-		if os.IsPermission(err) {
-			t.Skipf("symlink permissions denied: %v", err)
-		}
 		t.Fatalf("Symlink error: %v", err)
 	}
 
