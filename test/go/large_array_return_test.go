@@ -69,7 +69,7 @@ func largeArrayLLGo(t *testing.T) string {
 			largeArrayLLGoErr = err.Error()
 			return
 		}
-		largeArrayLLGoBin = filepath.Join(dir, "llgo")
+		largeArrayLLGoBin = testExecutablePath(dir, "llgo")
 		cmd := exec.Command("go", "build", "-tags", "dev", "-o", largeArrayLLGoBin, "./cmd/llgo")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {

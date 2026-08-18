@@ -116,7 +116,7 @@ func faultLLGo(t *testing.T) string {
 			faultLLGoErr = err.Error()
 			return
 		}
-		bin := filepath.Join(tmp, "llgo")
+		bin := testExecutablePath(tmp, "llgo")
 		build := exec.Command("go", "build", "-o", bin, "./cmd/llgo")
 		build.Dir = repoRoot
 		if out, berr := build.CombinedOutput(); berr != nil {

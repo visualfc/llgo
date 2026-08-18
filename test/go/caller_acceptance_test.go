@@ -677,7 +677,7 @@ func acceptanceLLGoBinary(t *testing.T) string {
 			acceptanceLLGoErr = err.Error()
 			return
 		}
-		bin := filepath.Join(tmp, "llgo")
+		bin := testExecutablePath(tmp, "llgo")
 		build := exec.Command("go", "build", "-o", bin, "./cmd/llgo")
 		build.Dir = repoRoot
 		if bout, berr := build.CombinedOutput(); berr != nil {

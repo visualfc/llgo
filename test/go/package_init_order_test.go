@@ -40,7 +40,7 @@ func packageInitLLGo(t *testing.T) string {
 			packageInitLLGoErr = err.Error()
 			return
 		}
-		packageInitLLGoBin = filepath.Join(dir, "llgo")
+		packageInitLLGoBin = testExecutablePath(dir, "llgo")
 		cmd := exec.Command("go", "build", "-tags=dev", "-o", packageInitLLGoBin, "./cmd/llgo")
 		cmd.Dir = repoRoot
 		if out, err := cmd.CombinedOutput(); err != nil {
