@@ -591,6 +591,17 @@ func TestBuildOutFmtsBuildModes(t *testing.T) {
 			expectedOut: "myapp.exe",
 		},
 		{
+			name:        "exe_build_windows_exact_outfile",
+			pkgName:     "myapp",
+			buildMode:   BuildModeExe,
+			outFile:     "custom-name",
+			mode:        ModeBuild,
+			target:      "",
+			goos:        "windows",
+			appExt:      ".exe",
+			expectedOut: "custom-name",
+		},
+		{
 			name:        "exe_remove_lib_prefix",
 			pkgName:     "libmyapp",
 			buildMode:   BuildModeExe,
