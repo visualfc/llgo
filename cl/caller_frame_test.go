@@ -4,6 +4,7 @@
 package cl
 
 import (
+	"fmt"
 	"go/ast"
 	"go/importer"
 	"go/parser"
@@ -379,6 +380,8 @@ func owner() {
 	defer inspect()
 	defer deferredPanicLeaf()
 	panicLeaf()
+	repeatedPanicLeaf(nil, 0)
+	branchPanicLeaf(nil, 0, true)
 }
 
 func panicLeaf() {
@@ -391,6 +394,16 @@ func deferredPanicLeaf() {
 	var p *int
 //line deferred_panic_site.go:234
 	_ = *p
+}
+
+func repeatedPanicLeaf(p *[1]int, i int) int {
+//line repeated_panic_site.go:345
+	return p[i] + p[i]
+}
+
+func branchPanicLeaf(p *[1]int, i int, cond bool) int {
+//line branch_panic_site.go:456
+	if cond { return p[i] }; return p[i]
 }
 
 //go:noinline
@@ -415,6 +428,21 @@ func pinnedPanicSite() {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("recover-visible nil dereference is missing panic-site metadata %q:\n%s", want, ir)
 		}
+	}
+	countPCLine := func(symbol, file string, line int) (count int) {
+		want := fmt.Sprintf(`!"%s", !"%s", i32 %d`, symbol, file, line)
+		for _, row := range strings.Split(ir, "\n") {
+			if strings.Contains(row, `!{i32 1, i64 `) && strings.Contains(row, want) {
+				count++
+			}
+		}
+		return count
+	}
+	if got := countPCLine("example.com/foo.repeatedPanicLeaf", "repeated_panic_site.go", 345); got != 1 {
+		t.Fatalf("same-line panic sites in one basic block produced %d metadata records, want 1:\n%s", got, ir)
+	}
+	if got := countPCLine("example.com/foo.branchPanicLeaf", "branch_panic_site.go", 456); got != 2 {
+		t.Fatalf("same-line panic sites in separate basic blocks produced %d metadata records, want 2:\n%s", got, ir)
 	}
 	if strings.Contains(ir, `!"non_recover_site.go"`) {
 		t.Fatalf("ordinary pinned function unexpectedly received implicit panic-site metadata:\n%s", ir)

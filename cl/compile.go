@@ -167,6 +167,11 @@ type context struct {
 	runtimeCallerFuncs   map[*ssa.Function]bool
 	panicSiteFuncs       map[*ssa.Function]bool
 	pcLineSeq            uint64
+	// The runtime PC-line table stores file and line, but not column. Keep the
+	// last emitted position within one SSA basic block so repeated checks for a
+	// single source line can share an anchor.
+	lastPCLineFile       string
+	lastPCLineLine       int
 	options              Options
 	recoverSlots         map[*ssa.Alloc]none
 	implicitDeferResults []llssa.Expr
@@ -893,6 +898,10 @@ func (p *context) debugParams(b llssa.Builder, f *ssa.Function) {
 }
 
 func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, doModInit bool) llssa.BasicBlock {
+	// A control-flow edge can enter this block without executing the preceding
+	// block's anchor, so deduplication must never cross a block boundary.
+	p.lastPCLineFile = ""
+	p.lastPCLineLine = 0
 	oldLocalBlock := p.locality.function.block
 	p.locality.function.block = block
 	defer func() { p.locality.function.block = oldLocalBlock }()

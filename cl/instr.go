@@ -1971,6 +1971,15 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 	if position.Line <= 0 || position.Filename == "" {
 		return
 	}
+	// Lookup uses the nearest preceding PC anchor. Within one basic block,
+	// another anchor for the same runtime-visible file and line cannot change
+	// the result, even when several implicit panic checks came from one Go
+	// expression.
+	if position.Filename == p.lastPCLineFile && position.Line == p.lastPCLineLine {
+		return
+	}
+	p.lastPCLineFile = position.Filename
+	p.lastPCLineLine = position.Line
 	p.pcLineSeq++
 	id := pcLineID(p.fn.Name(), p.pcLineSeq)
 	label := pcLineLabelName(id)
