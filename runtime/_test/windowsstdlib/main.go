@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -169,6 +170,32 @@ func testWindowsOS() {
 	}
 	if string(got) != string(testContent) {
 		panic("os.ReadFile content mismatch")
+	}
+
+	// Until IOCP lands, an overlapped file must use internal/poll's event
+	// fallback after runtime_pollOpen reports that it is unsupported.
+	const windowsFileFlagOverlapped = 0x40000000
+	overlappedPath := filepath.Join(testDir, "overlapped.txt")
+	overlapped, err := os.OpenFile(overlappedPath,
+		os.O_CREATE|os.O_RDWR|windowsFileFlagOverlapped, 0o644)
+	if err != nil {
+		panic("os.OpenFile(overlapped) failed: " + err.Error())
+	}
+	if _, err := overlapped.Write(testContent); err != nil {
+		panic("overlapped Write failed: " + err.Error())
+	}
+	if _, err := overlapped.Seek(0, 0); err != nil {
+		panic("overlapped Seek failed: " + err.Error())
+	}
+	overlappedContent := make([]byte, len(testContent))
+	if _, err := io.ReadFull(overlapped, overlappedContent); err != nil {
+		panic("overlapped Read failed: " + err.Error())
+	}
+	if err := overlapped.Close(); err != nil {
+		panic("overlapped Close failed: " + err.Error())
+	}
+	if string(overlappedContent) != string(testContent) {
+		panic("overlapped file content mismatch")
 	}
 
 	entries, err := os.ReadDir(testDir)
