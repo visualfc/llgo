@@ -6,17 +6,12 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"testing"
 	"time"
 )
 
 func TestNotify(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGWINCH)
 	defer signal.Stop(c)
@@ -42,10 +37,6 @@ func TestNotify(t *testing.T) {
 }
 
 func TestNotifyMultipleSignals(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, syscall.SIGWINCH, syscall.SIGCHLD)
 	defer signal.Stop(c)
@@ -75,10 +66,6 @@ func TestNotifyMultipleSignals(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGWINCH)
 	signal.Stop(c)
@@ -101,10 +88,6 @@ func TestStop(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGWINCH)
 	signal.Reset(syscall.SIGWINCH)
@@ -127,10 +110,6 @@ func TestReset(t *testing.T) {
 }
 
 func TestResetAll(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGWINCH)
 	signal.Reset()
@@ -153,10 +132,6 @@ func TestResetAll(t *testing.T) {
 }
 
 func TestIgnore(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	signal.Ignore(syscall.SIGWINCH)
 	defer signal.Reset(syscall.SIGWINCH)
 
@@ -174,10 +149,6 @@ func TestIgnore(t *testing.T) {
 }
 
 func TestIgnored(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	wasIgnored := signal.Ignored(syscall.SIGWINCH)
 
 	signal.Ignore(syscall.SIGWINCH)
@@ -196,10 +167,6 @@ func TestIgnored(t *testing.T) {
 }
 
 func TestNotifyContext(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGWINCH)
 	defer stop()
 
@@ -227,10 +194,6 @@ func TestNotifyContext(t *testing.T) {
 }
 
 func TestNotifyContextStop(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGWINCH)
 
 	stop()
@@ -243,10 +206,6 @@ func TestNotifyContextStop(t *testing.T) {
 }
 
 func TestMultipleChannels(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Skip("Skipping on Windows and Plan 9")
-	}
-
 	c1 := make(chan os.Signal, 1)
 	c2 := make(chan os.Signal, 1)
 

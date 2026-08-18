@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -75,10 +74,8 @@ func TestDialerTypedNetworkMethods(t *testing.T) {
 	})
 
 	t.Run("Unix", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("Unix-domain sockets are not supported on Windows")
-		}
-		directory, err := os.MkdirTemp("/tmp", "llgo-net-")
+		// Keep the socket address below the platform sockaddr path limit.
+		directory, err := os.MkdirTemp(".", ".llgo-net-")
 		if err != nil {
 			t.Fatal(err)
 		}
