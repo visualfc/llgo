@@ -24,10 +24,18 @@ func checkRecoveredFaultAddress(t *testing.T, err error, address *byte) {
 
 func TestNonNilFaultRequiresPanicOnFault(t *testing.T) {
 	if os.Getenv(nonNilFaultChildEnv) == "1" {
-		page, _ := protectedMemory(t, 1, 0, 1)
-		if page[0] != 0 {
-			t.Fatal("unexpected protected-page value")
-		}
+		func() {
+			defer func() {
+				_ = recover()
+			}()
+			page, _ := protectedMemory(t, 1, 0, 1)
+			if page[0] != 0 {
+				t.Fatal("unexpected protected-page value")
+			}
+		}()
+		// A runtime that incorrectly turns the access violation into a Go
+		// panic reaches here after recover and lets the child exit cleanly.
+		// The parent requires Windows to terminate the process instead.
 		return
 	}
 
