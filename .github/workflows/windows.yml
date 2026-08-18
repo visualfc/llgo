@@ -15,6 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  std-cover:
+    name: standard-library coverage (windows-amd64, Go 1.26.7)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.26.7"
+
+      - name: Check Windows standard-library coverage
+        shell: bash
+        run: bash doc/_readme/scripts/check_std_cover.sh
+
   native-compiler:
     name: native PE/COFF (windows-amd64, LLVM 19, Go 1.26.7)
     runs-on: windows-2022
