@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,9 @@ func TestPublicAPISymbols(t *testing.T) {
 }
 
 func TestHandlerServeHTTP(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test CGI fixture is a POSIX shell script")
+	}
 	dir := t.TempDir()
 	script := filepath.Join(dir, "app.sh")
 	content := "#!/bin/sh\n" +

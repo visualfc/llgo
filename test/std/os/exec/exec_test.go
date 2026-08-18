@@ -307,7 +307,11 @@ func TestCmdString(t *testing.T) {
 }
 
 func TestLookPath(t *testing.T) {
-	path, err := exec.LookPath("echo")
+	name := "echo"
+	if runtime.GOOS == "windows" {
+		name = "cmd"
+	}
+	path, err := exec.LookPath(name)
 	if err != nil {
 		t.Fatalf("LookPath error: %v", err)
 	}

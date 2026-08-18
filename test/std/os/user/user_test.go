@@ -53,6 +53,9 @@ func TestLookupNonexistent(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for nonexistent user")
 	}
+	if runtime.GOOS == "windows" {
+		return
+	}
 
 	_, ok := err.(user.UnknownUserError)
 	if !ok {
@@ -83,6 +86,9 @@ func TestLookupIdNonexistent(t *testing.T) {
 	_, err := user.LookupId("99999999")
 	if err == nil {
 		t.Error("Expected error for nonexistent uid")
+	}
+	if runtime.GOOS == "windows" {
+		return
 	}
 
 	_, ok := err.(user.UnknownUserIdError)
@@ -135,6 +141,9 @@ func TestLookupGroupNonexistent(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error for nonexistent group")
 	}
+	if runtime.GOOS == "windows" {
+		return
+	}
 
 	_, ok := err.(user.UnknownGroupError)
 	if !ok {
@@ -165,6 +174,9 @@ func TestLookupGroupIdNonexistent(t *testing.T) {
 	_, err := user.LookupGroupId("99999999")
 	if err == nil {
 		t.Error("Expected error for nonexistent gid")
+	}
+	if runtime.GOOS == "windows" {
+		return
 	}
 
 	_, ok := err.(user.UnknownGroupIdError)

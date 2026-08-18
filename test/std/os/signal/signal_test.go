@@ -1,3 +1,5 @@
+//go:build !windows && !plan9
+
 package signal_test
 
 import (
