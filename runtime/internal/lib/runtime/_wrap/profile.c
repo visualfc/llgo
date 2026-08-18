@@ -38,7 +38,6 @@ static struct llgo_prof_sample llgo_prof_ring[LLGO_PROF_SAMPLES];
 static unsigned int llgo_prof_read_index;
 static unsigned int llgo_prof_write_index;
 static volatile int llgo_prof_ring_lock;
-static pthread_mutex_t llgo_prof_state_lock = PTHREAD_MUTEX_INITIALIZER;
 static volatile int llgo_prof_active;
 static volatile uint64_t llgo_prof_lost;
 #if defined(__APPLE__) || defined(__linux__)
@@ -130,7 +129,7 @@ static int llgo_prof_action_is_ours(const struct sigaction *sa)
            sa->sa_sigaction == llgo_prof_signal;
 }
 
-static int llgo_prof_install_signal_locked(void)
+static int llgo_prof_install_signal(void)
 {
     struct sigaction current;
     struct sigaction sa;
@@ -159,7 +158,7 @@ static int llgo_prof_install_signal_locked(void)
     return sigaction(SIGPROF, &sa, 0);
 }
 
-static void llgo_prof_restore_signal_locked(void)
+static void llgo_prof_restore_signal(void)
 {
     struct sigaction current;
 
@@ -249,18 +248,15 @@ int llgo_cpu_profile_start(int hz)
         errno = saved_errno;
         return -1;
     }
-    pthread_mutex_lock(&llgo_prof_state_lock);
     llgo_prof_ring_lock_wait();
     if (__atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED) ||
         llgo_prof_read_index != llgo_prof_write_index) {
         llgo_prof_ring_unlock();
-        pthread_mutex_unlock(&llgo_prof_state_lock);
         errno = saved_errno;
         return 0;
     }
-    if (llgo_prof_install_signal_locked() != 0) {
+    if (llgo_prof_install_signal() != 0) {
         llgo_prof_ring_unlock();
-        pthread_mutex_unlock(&llgo_prof_state_lock);
         errno = saved_errno;
         return -1;
     }
@@ -278,14 +274,12 @@ int llgo_cpu_profile_start(int hz)
     timer.it_value = timer.it_interval;
     if (setitimer(ITIMER_PROF, &timer, 0) != 0) {
         __atomic_store_n(&llgo_prof_active, 0, __ATOMIC_RELEASE);
-        llgo_prof_restore_signal_locked();
+        llgo_prof_restore_signal();
         llgo_prof_ring_unlock();
-        pthread_mutex_unlock(&llgo_prof_state_lock);
         errno = saved_errno;
         return -1;
     }
     llgo_prof_ring_unlock();
-    pthread_mutex_unlock(&llgo_prof_state_lock);
     errno = saved_errno;
     return 1;
 #else
@@ -299,79 +293,60 @@ void llgo_cpu_profile_stop(void)
 #if defined(__APPLE__) || defined(__linux__)
     struct itimerval timer;
     int saved_errno = errno;
-    pthread_mutex_lock(&llgo_prof_state_lock);
     llgo_prof_ring_lock_wait();
     memset(&timer, 0, sizeof(timer));
     setitimer(ITIMER_PROF, &timer, 0);
     __atomic_store_n(&llgo_prof_active, 0, __ATOMIC_RELEASE);
-    llgo_prof_restore_signal_locked();
+    llgo_prof_restore_signal();
     llgo_prof_ring_unlock();
-    pthread_mutex_unlock(&llgo_prof_state_lock);
     errno = saved_errno;
 #endif
 }
 
-/* Serialize a libuv SIGPROF watcher update with profiler start/stop. This
- * state mutex is deliberately separate from the ring lock, so reads and
- * sampling continue while the Go timer thread performs the libuv round-trip. */
-void llgo_cpu_profile_signal_update_begin(void)
+/* A libuv SIGPROF watcher update may replace the process disposition. The Go
+ * control plane serializes that update with profile start/stop, then asks the
+ * native sampler to take ownership back while profiling is active. */
+int llgo_cpu_profile_refresh_signal(void)
 {
 #if defined(__APPLE__) || defined(__linux__)
-    pthread_mutex_lock(&llgo_prof_state_lock);
-#endif
-}
-
-int llgo_cpu_profile_signal_update_end(void)
-{
-#if defined(__APPLE__) || defined(__linux__)
-    int ret = 0;
     if (__atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED))
-        ret = llgo_prof_install_signal_locked();
-    pthread_mutex_unlock(&llgo_prof_state_lock);
-    return ret;
+        return llgo_prof_install_signal();
+    return 0;
 #else
     return 0;
 #endif
 }
 
-int llgo_cpu_profile_read(uintptr_t *pc, int cap)
+int llgo_cpu_profile_drain(uintptr_t *pc, uint32_t *lengths,
+                           int max_records, int max_stack,
+                           uint64_t *lost, int *empty)
 {
     struct llgo_prof_sample *sample;
-    unsigned int i;
-    int n;
+    unsigned int i, n;
+    int records = 0;
 
-    if (pc == 0 || cap <= 0)
+    if (pc == 0 || lengths == 0 || max_records <= 0 || max_stack <= 0 ||
+        lost == 0 || empty == 0)
         return 0;
     llgo_prof_ring_lock_wait();
-    if (llgo_prof_read_index == llgo_prof_write_index) {
-        llgo_prof_ring_unlock();
-        return 0;
+    *lost = __atomic_exchange_n(&llgo_prof_lost, 0, __ATOMIC_RELAXED);
+    while (llgo_prof_read_index != llgo_prof_write_index &&
+           records < max_records) {
+        sample = &llgo_prof_ring[llgo_prof_read_index];
+        n = sample->n;
+        if (n > (unsigned int)max_stack)
+            n = (unsigned int)max_stack;
+        lengths[records] = n;
+        for (i = 0; i < n; i++)
+            pc[(size_t)records * (size_t)max_stack + i] = sample->pc[i];
+        records++;
+        llgo_prof_read_index++;
+        if (llgo_prof_read_index == LLGO_PROF_SAMPLES)
+            llgo_prof_read_index = 0;
     }
-    sample = &llgo_prof_ring[llgo_prof_read_index];
-    n = (int)sample->n;
-    if (n > cap)
-        n = cap;
-    for (i = 0; i < (unsigned int)n; i++)
-        pc[i] = sample->pc[i];
-    llgo_prof_read_index++;
-    if (llgo_prof_read_index == LLGO_PROF_SAMPLES)
-        llgo_prof_read_index = 0;
+    *empty = llgo_prof_read_index == llgo_prof_write_index;
     llgo_prof_ring_unlock();
-    return n;
-}
-
-uint64_t llgo_cpu_profile_take_lost(void)
-{
-    return __atomic_exchange_n(&llgo_prof_lost, 0, __ATOMIC_RELAXED);
-}
-
-int llgo_cpu_profile_empty(void)
-{
-    int empty;
-    llgo_prof_ring_lock_wait();
-    empty = llgo_prof_read_index == llgo_prof_write_index;
-    llgo_prof_ring_unlock();
-    return empty;
+    return records;
 }
 
 /* Exercise the guarded frame walk against a mapped but unreadable page. This

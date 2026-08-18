@@ -4,6 +4,6 @@ package runtime
 
 func SetCPUProfileRate(hz int) {}
 
-func cpuProfileSignalUpdateBegin(sig uint32) bool { return false }
+func cpuProfileSignalLock(sig uint32) bool { return false }
 
-func cpuProfileSignalUpdateEnd(locked bool) {}
+func cpuProfileSignalUnlock(locked bool) {}

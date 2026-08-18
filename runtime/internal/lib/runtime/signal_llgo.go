@@ -89,12 +89,12 @@ func startSignalWatcher(sig uint32, st *sigState) {
 		st.inited = true
 	}
 	var code int
-	locked := cpuProfileSignalUpdateBegin(sig)
+	locked := cpuProfileSignalLock(sig)
 	submitTimerWork(func() bool {
 		code = int(libuv.SignalStartRuntime(&st.handle, c.Int(sig)))
 		return true
 	})
-	cpuProfileSignalUpdateEnd(locked)
+	cpuProfileSignalUnlock(locked)
 	checkUV("uv_signal_start", code)
 }
 
@@ -135,12 +135,12 @@ func signal_disable(sig uint32) {
 	sigMu.Unlock()
 	if doStop {
 		var code int
-		locked := cpuProfileSignalUpdateBegin(sig)
+		locked := cpuProfileSignalLock(sig)
 		submitTimerWork(func() bool {
 			code = int(st.handle.Stop())
 			return true
 		})
-		cpuProfileSignalUpdateEnd(locked)
+		cpuProfileSignalUnlock(locked)
 		checkUV("uv_signal_stop", code)
 	}
 }

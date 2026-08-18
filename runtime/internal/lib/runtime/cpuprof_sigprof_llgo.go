@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
 	csyscall "github.com/xgo-dev/llgo/runtime/internal/clite/syscall"
 )
 
@@ -25,46 +26,57 @@ func c_cpuProfileStart(hz int32) int32
 //go:linkname c_cpuProfileStop C.llgo_cpu_profile_stop
 func c_cpuProfileStop()
 
-//go:linkname c_cpuProfileRead C.llgo_cpu_profile_read
-func c_cpuProfileRead(p unsafe.Pointer, n int32) int32
+//go:linkname c_cpuProfileDrain C.llgo_cpu_profile_drain
+func c_cpuProfileDrain(pcs, lengths unsafe.Pointer, maxRecords, maxStack int32, lost *uint64, empty *int32) int32
 
-//go:linkname c_cpuProfileTakeLost C.llgo_cpu_profile_take_lost
-func c_cpuProfileTakeLost() uint64
-
-//go:linkname c_cpuProfileEmpty C.llgo_cpu_profile_empty
-func c_cpuProfileEmpty() int32
-
-//go:linkname c_cpuProfileSignalUpdateBegin C.llgo_cpu_profile_signal_update_begin
-func c_cpuProfileSignalUpdateBegin()
-
-//go:linkname c_cpuProfileSignalUpdateEnd C.llgo_cpu_profile_signal_update_end
-func c_cpuProfileSignalUpdateEnd() int32
+//go:linkname c_cpuProfileRefreshSignal C.llgo_cpu_profile_refresh_signal
+func c_cpuProfileRefreshSignal() int32
 
 var (
+	// cpuProfileStateMu is the Go control-plane lock. It serializes native
+	// sampler start/stop with libuv SIGPROF watcher changes, but is never
+	// acquired by the asynchronous signal handler.
+	cpuProfileStateOnce psync.Once
+	cpuProfileStateMu   psync.Mutex
+
 	cpuProfileRate          int32
 	cpuProfileOpen          uint32
 	cpuProfilePeriodPending uint32
 	cpuProfilePeriodRecord  = [3]uint64{3, 0, 100}
 	cpuProfilePeriodTags    [1]unsafe.Pointer
-	cpuProfileDrainData     [maxCPUProfileDrainData]uint64
-	cpuProfileDrainTags     [maxCPUProfileDrainTags]unsafe.Pointer
+
+	// The native sampler fills these fixed scratch buffers in one call. The
+	// runtime/pprof contract permits only one reader and consumes the returned
+	// slices before calling readProfile again.
+	cpuProfileDrainData    [maxCPUProfileDrainData]uint64
+	cpuProfileDrainTags    [maxCPUProfileDrainTags]unsafe.Pointer
+	cpuProfileDrainPCs     [maxCPUProfileDrainRecords * maxCPUProfileStack]uintptr
+	cpuProfileDrainLengths [maxCPUProfileDrainRecords]uint32
 )
 
-func cpuProfileSignalUpdateBegin(sig uint32) bool {
+func ensureCPUProfileState() {
+	cpuProfileStateOnce.Do(func() {
+		cpuProfileStateMu.Init(nil)
+	})
+}
+
+func cpuProfileSignalLock(sig uint32) bool {
 	if sig != cpuProfileSignal {
 		return false
 	}
-	c_cpuProfileSignalUpdateBegin()
+	ensureCPUProfileState()
+	cpuProfileStateMu.Lock()
 	return true
 }
 
-func cpuProfileSignalUpdateEnd(locked bool) {
+func cpuProfileSignalUnlock(locked bool) {
 	if !locked {
 		return
 	}
-	if c_cpuProfileSignalUpdateEnd() != 0 {
+	if c_cpuProfileRefreshSignal() != 0 {
 		print("runtime: failed to restore CPU profiling SIGPROF handler.\n")
 	}
+	cpuProfileStateMu.Unlock()
 }
 
 // SetCPUProfileRate starts or stops process CPU-time sampling. The signal
@@ -77,6 +89,10 @@ func SetCPUProfileRate(hz int) {
 	if hz > 1000000 {
 		hz = 1000000
 	}
+	ensureCPUProfileState()
+	cpuProfileStateMu.Lock()
+	defer cpuProfileStateMu.Unlock()
+
 	if hz == 0 {
 		if latomic.LoadInt32(&cpuProfileRate) != 0 {
 			c_cpuProfileStop()
@@ -113,11 +129,18 @@ func runtime_pprof_readProfile() (data []uint64, tags []unsafe.Pointer, eof bool
 		return cpuProfilePeriodRecord[:], cpuProfilePeriodTags[:], false
 	}
 
-	var pcs [maxCPUProfileStack]uintptr
 	for {
-		lost := c_cpuProfileTakeLost()
-		n := int(c_cpuProfileRead(unsafe.Pointer(&pcs[0]), maxCPUProfileStack))
-		if lost != 0 || n != 0 {
+		var lost uint64
+		var empty int32
+		records := int(c_cpuProfileDrain(
+			unsafe.Pointer(&cpuProfileDrainPCs[0]),
+			unsafe.Pointer(&cpuProfileDrainLengths[0]),
+			maxCPUProfileDrainRecords,
+			maxCPUProfileStack,
+			&lost,
+			&empty,
+		))
+		if lost != 0 || records != 0 {
 			// runtime/pprof waits 100 ms between reads on Darwin. Drain a
 			// chunk, rather than one sample, so a 100 Hz producer cannot
 			// outrun the writer.
@@ -129,21 +152,18 @@ func runtime_pprof_readProfile() (data []uint64, tags []unsafe.Pointer, eof bool
 				data = append(data, 4, 0, 0, lost)
 				tags = append(tags, nil)
 			}
-			for records := 0; n != 0; records++ {
+			for record := 0; record < records; record++ {
+				n := int(cpuProfileDrainLengths[record])
 				data = append(data, uint64(3+n), 0, 1)
+				base := record * maxCPUProfileStack
 				for i := 0; i < n; i++ {
-					data = append(data, uint64(pcs[i]))
+					data = append(data, uint64(cpuProfileDrainPCs[base+i]))
 				}
 				tags = append(tags, nil)
-				// Do not consume a sample that cannot be emitted in this chunk.
-				if records+1 == maxCPUProfileDrainRecords {
-					break
-				}
-				n = int(c_cpuProfileRead(unsafe.Pointer(&pcs[0]), maxCPUProfileStack))
 			}
 			return data, tags, false
 		}
-		if latomic.LoadInt32(&cpuProfileRate) == 0 && c_cpuProfileEmpty() != 0 {
+		if latomic.LoadInt32(&cpuProfileRate) == 0 && empty != 0 {
 			latomic.StoreUint32(&cpuProfileOpen, 0)
 			return nil, nil, true
 		}
