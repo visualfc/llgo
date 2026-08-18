@@ -83,14 +83,13 @@ func runLLGoWithoutHostCgoFlags(t *testing.T, dir, llgo string, args ...string) 
 
 func runGoCmd(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("go", args...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
+	cmd := commandForTest(t, dir, "go", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	cmd.Env = os.Environ()
+	if cmd.Env == nil {
+		cmd.Env = os.Environ()
+	}
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("go %s failed: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout.String(), stderr.String())
 	}
