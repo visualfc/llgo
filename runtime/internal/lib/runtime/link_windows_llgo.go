@@ -33,6 +33,21 @@ func c_queryPerformanceFrequency() int64
 // These entry points implement the runtime hooks declared by the official
 // internal/syscall/windows package.
 
+//go:linkname c_getSystemDirectory C.llgo_get_system_directory
+func c_getSystemDirectory(buffer *byte, size uint32) uint32
+
+//go:linkname windows_GetSystemDirectory internal/syscall/windows.GetSystemDirectory
+func windows_GetSystemDirectory() string {
+	const maxPath = 260
+	var directory [maxPath + 1]byte
+	length := c_getSystemDirectory(&directory[0], maxPath)
+	if length == 0 || length > maxPath {
+		throw("Unable to determine system directory")
+	}
+	directory[length] = '\\'
+	return string(directory[:length+1])
+}
+
 //go:linkname windows_QueryPerformanceCounter internal/syscall/windows.QueryPerformanceCounter
 func windows_QueryPerformanceCounter() int64 {
 	return c_queryPerformanceCounter()
