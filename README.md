@@ -340,7 +340,7 @@ Here are the Go packages that can be imported correctly:
 
 ## Dependencies
 
-- [Go 1.21+](https://go.dev)
+- [Go 1.25+](https://go.dev)
 - [LLVM 18](https://llvm.org)
 - [Clang 18](https://clang.llvm.org)
 - [LLD 18](https://lld.llvm.org)
