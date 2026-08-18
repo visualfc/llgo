@@ -55,7 +55,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP16:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.Defer" %[[TMP15]], 2
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.SetThreadDefer"(ptr %[[TMP16]])
 // CHECK-NEXT:   %[[TMP17:[0-9]+]] = load ptr, ptr %[[TMP9]], align 8
-// CHECK-NEXT:   indirectbr ptr %[[TMP17]], [label %_llgo_[[BB3]], label %_llgo_[[BB6:[0-9]+]]]
+// CHECK-NEXT:   indirectbr ptr %[[TMP17]], [label %_llgo_[[BB3]], label %_llgo_[[BB8:[0-9]+]]]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB3]]:
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.Rethrow"(ptr %[[TMP0]])
@@ -66,19 +66,25 @@ func main() {
 // CHECK-NEXT:   %[[TMP19:[0-9]+]] = icmp slt i64 %[[TMP18]], 0
 // CHECK-NEXT:   %[[TMP20:[0-9]+]] = icmp uge i64 %[[TMP18]], 0
 // CHECK-NEXT:   %[[TMP21:[0-9]+]] = or i1 %[[TMP20]], %[[TMP19]]
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.CheckIndexRange"(i1 %[[TMP21]], i64 %[[TMP18]], i1 true, i64 0)
-// CHECK-NEXT:   %[[TMP22:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.MapAccess1Fast64"(ptr @"map[_llgo_int]_llgo_int", ptr null, i64 0)
-// CHECK-NEXT:   %[[TMP23:[0-9]+]] = load i64, ptr %[[TMP22]], align 8
-// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %[[TMP23]])
-// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_[[BB6]]), ptr %[[TMP9]], align 8
-// CHECK-NEXT:   br label %_llgo_[[BB2]]
+// CHECK-NEXT:   br i1 %[[TMP21]], label %_llgo_[[BB6:[0-9]+]], label %_llgo_[[BB7:[0-9]+]]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB5]]:
 // CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_[[BB3]]), ptr %[[TMP9]], align 8
-// CHECK-NEXT:   %[[TMP24:[0-9]+]] = load ptr, ptr %[[TMP8]], align 8
-// CHECK-NEXT:   indirectbr ptr %[[TMP24]], [label %_llgo_[[BB3]], label %_llgo_[[BB2]]]
+// CHECK-NEXT:   %[[TMP22:[0-9]+]] = load ptr, ptr %[[TMP8]], align 8
+// CHECK-NEXT:   indirectbr ptr %[[TMP22]], [label %_llgo_[[BB3]], label %_llgo_[[BB2]]]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB6]]:
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PanicIndex"(i64 %[[TMP18]], i64 0)
+// CHECK-NEXT:   br label %_llgo_[[BB6]]
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_[[BB7]]:
+// CHECK-NEXT:   %[[TMP23:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.MapAccess1Fast64"(ptr @"map[_llgo_int]_llgo_int", ptr null, i64 0)
+// CHECK-NEXT:   %[[TMP24:[0-9]+]] = load i64, ptr %[[TMP23]], align 8
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %[[TMP24]])
+// CHECK-NEXT:   store ptr blockaddress(@main.main, %_llgo_[[BB8]]), ptr %[[TMP9]], align 8
+// CHECK-NEXT:   br label %_llgo_[[BB2]]
+// CHECK-EMPTY:
+// CHECK-NEXT: _llgo_[[BB8]]:
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 

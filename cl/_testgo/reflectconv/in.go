@@ -78,12 +78,7 @@ import (
 // CHECK: [[CAN_MAP:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.MakeMap"(ptr @"map{{\[\[2\]}}_llgo_reflect.Type]_llgo_bool", i64 0)
 // CHECK: [[ALL_MAP:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.MakeMap"(ptr @"map[_llgo_reflect.Type]_llgo_bool", i64 0)
 // CHECK: [[CONVERT_TABLE:%[0-9]+]] = load %"{{.*}}/runtime/internal/runtime.Slice", ptr @main.convertTests
-// CHECK: [[ENTRY_PTR:%[0-9]+]] = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %{{[0-9]+}}, i64 %{{[0-9]+}}
-// CHECK: [[ENTRY:%[0-9]+]] = load { %reflect.Value, %reflect.Value }, ptr [[ENTRY_PTR]]
-// CHECK: [[IN_VALUE:%[0-9]+]] = load %reflect.Value, ptr %{{[0-9]+}}
-// CHECK: [[T1:%[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value [[IN_VALUE]])
-// CHECK: [[SELF_CONVERTIBLE:%[0-9]+]] = call i1 %{{[0-9]+}}(ptr %{{[0-9]+}}, %"{{.*}}/runtime/internal/runtime.iface" [[T1]])
-// CHECK: br i1 [[SELF_CONVERTIBLE]],
+// CHECK: call ptr @"{{.*}}/runtime/internal/runtime.IfaceType"(%"{{.*}}/runtime/internal/runtime.iface" [[T1:%[0-9]+]])
 // CHECK: [[OUT_VALUE:%[0-9]+]] = load %reflect.Value, ptr %{{[0-9]+}}
 // CHECK: [[T2:%[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value [[OUT_VALUE]])
 // CHECK: [[PAIR_CONVERTIBLE:%[0-9]+]] = call i1 %{{[0-9]+}}(ptr %{{[0-9]+}}, %"{{.*}}/runtime/internal/runtime.iface" [[T2]])
@@ -132,6 +127,12 @@ import (
 // CHECK: [[BAD_MATRIX:%[0-9]+]] = icmp ne i1 [[MATRIX_OK]], %{{[0-9]+}}
 // CHECK: [[KNOWN_PAIR_PTR:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.MapAccess1"(ptr @"map{{\[\[2\]}}_llgo_reflect.Type]_llgo_bool", ptr [[CAN_MAP]],
 // CHECK: [[KNOWN_PAIR:%[0-9]+]] = load i1, ptr [[KNOWN_PAIR_PTR]]
+// CHECK: [[ENTRY_PTR:%[0-9]+]] = getelementptr inbounds { %reflect.Value, %reflect.Value }, ptr %{{[0-9]+}}, i64 %{{[0-9]+}}
+// CHECK: [[ENTRY:%[0-9]+]] = load { %reflect.Value, %reflect.Value }, ptr [[ENTRY_PTR]]
+// CHECK: [[IN_VALUE:%[0-9]+]] = load %reflect.Value, ptr %{{[0-9]+}}
+// CHECK: [[T1]] = call %"{{.*}}/runtime/internal/runtime.iface" @reflect.Value.Type(%reflect.Value [[IN_VALUE]])
+// CHECK: [[SELF_CONVERTIBLE:%[0-9]+]] = call i1 %{{[0-9]+}}(ptr %{{[0-9]+}}, %"{{.*}}/runtime/internal/runtime.iface" [[T1]])
+// CHECK: br i1 [[SELF_CONVERTIBLE]],
 
 // sNaN must survive both an ordinary store/load and a reflective named-float conversion.
 // CHECK-LABEL: define void @main.TestConvertNaNs(ptr %0){{.*}} {
