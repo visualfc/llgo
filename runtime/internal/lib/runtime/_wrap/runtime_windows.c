@@ -245,6 +245,16 @@ GetSystemDirectoryA(char *buffer, llgo_dword size);
 typedef int (LLGO_WINAPI *llgo_console_handler)(llgo_dword event);
 __declspec(dllimport) int LLGO_WINAPI
 SetConsoleCtrlHandler(llgo_console_handler handler, int add);
+typedef struct llgo_overlapped llgo_overlapped;
+__declspec(dllimport) void *LLGO_WINAPI
+CreateIoCompletionPort(void *file, void *existing_port,
+                       llgo_uintptr completion_key,
+                       llgo_dword concurrent_threads);
+__declspec(dllimport) int LLGO_WINAPI
+GetQueuedCompletionStatus(void *port, llgo_dword *bytes,
+                          llgo_uintptr *completion_key,
+                          llgo_overlapped **overlapped,
+                          llgo_dword milliseconds);
 
 extern int llgo_runtime_windowsSignalCallback(llgo_dword signum);
 
@@ -292,4 +302,36 @@ llgo_dword llgo_get_system_directory(unsigned char *buffer, llgo_dword size)
 int llgo_windows_signal_init(void)
 {
     return SetConsoleCtrlHandler(llgo_windows_console_handler, 1);
+}
+
+llgo_uintptr llgo_iocp_create(llgo_dword *error)
+{
+    void *port = CreateIoCompletionPort((void *)(llgo_uintptr)-1, 0, 0, 0);
+    *error = port == 0 ? GetLastError() : 0;
+    return (llgo_uintptr)port;
+}
+
+int llgo_iocp_associate(llgo_uintptr port, llgo_uintptr handle,
+                        llgo_uintptr key, llgo_dword *error)
+{
+    void *result = CreateIoCompletionPort((void *)handle, (void *)port, key, 0);
+    *error = result == 0 ? GetLastError() : 0;
+    return result != 0;
+}
+
+int llgo_iocp_get(llgo_uintptr port, llgo_uintptr *key,
+                  llgo_overlapped **overlapped, llgo_dword *error)
+{
+    llgo_dword bytes;
+    *overlapped = 0;
+    int ok = GetQueuedCompletionStatus((void *)port, &bytes, key, overlapped,
+                                       0xffffffffUL);
+    if (!ok && *overlapped == 0) {
+        *error = GetLastError();
+        return 0;
+    }
+    /* A failed overlapped operation still produces a completion packet. The
+     * caller obtains its operation-specific error with WSA/GetOverlappedResult. */
+    *error = ok ? 0 : GetLastError();
+    return 1;
 }
