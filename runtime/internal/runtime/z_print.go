@@ -34,7 +34,7 @@ func PrintBool(v bool) {
 }
 
 func PrintByte(v byte) {
-	printWrite(unsafe.Pointer(&v), 1)
+	printByte(v)
 }
 
 func PrintUint(v uint64) {

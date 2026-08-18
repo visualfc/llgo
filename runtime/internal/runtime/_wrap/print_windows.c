@@ -35,3 +35,8 @@ void llgo_print_write(const void *data, llgo_size_t size)
         size -= written;
     }
 }
+
+void llgo_print_byte(unsigned char value)
+{
+    llgo_print_write(&value, 1);
+}
