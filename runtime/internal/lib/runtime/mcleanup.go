@@ -36,15 +36,18 @@ func AddCleanup[T, S any](ptr *T, cleanup func(S), arg S) Cleanup {
 	fn := func() {
 		cleanup(arg)
 	}
-	_ = runtime.AddCleanupPtr(unsafe.Pointer(ptr), fn)
-	return Cleanup{}
+	return Cleanup{cancel: runtime.AddCleanupPtr(unsafe.Pointer(ptr), fn)}
 }
 
 type Cleanup struct {
-	id  uint64
-	ptr uintptr
+	// Keep the same two-word layout as Go's Cleanup. LLGo's BDWGC backend
+	// cancels through a closure instead of a heap-special id and object offset.
+	id     uint64
+	cancel func()
 }
 
 func (c Cleanup) Stop() {
-	// No-op: llgo runtime does not currently support cleanup cancellation.
+	if c.cancel != nil {
+		c.cancel()
+	}
 }
