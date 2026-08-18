@@ -1,8 +1,10 @@
 package os_test
 
 import (
+	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -10,6 +12,53 @@ import (
 	"testing"
 	"time"
 )
+
+const osHelperEnv = "LLGO_TEST_OS_HELPER"
+
+func TestOSHelperProcess(t *testing.T) {
+	mode := os.Getenv(osHelperEnv)
+	if mode == "" {
+		return
+	}
+	switch mode {
+	case "clearenv":
+		if err := os.Setenv("LLGO_CLEAR_ENV_PROBE", "set"); err != nil {
+			os.Exit(2)
+		}
+		os.Clearenv()
+		if os.Getenv("LLGO_CLEAR_ENV_PROBE") != "" || len(os.Environ()) != 0 {
+			os.Exit(2)
+		}
+	case "success":
+	case "sleep":
+		time.Sleep(time.Minute)
+	default:
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
+func osHelperCommand(mode string) *exec.Cmd {
+	cmd := exec.Command(os.Args[0], "-test.run=^TestOSHelperProcess$")
+	cmd.Env = append(os.Environ(), osHelperEnv+"="+mode)
+	return cmd
+}
+
+func startOSHelper(t *testing.T, mode string) *os.Process {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc, err := os.StartProcess(executable, []string{executable, "-test.run=^TestOSHelperProcess$"}, &os.ProcAttr{
+		Env:   append(os.Environ(), osHelperEnv+"="+mode),
+		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+	})
+	if err != nil {
+		t.Fatalf("StartProcess helper: %v", err)
+	}
+	return proc
+}
 
 func canonicalPath(p string) string {
 	resolved, err := filepath.EvalSymlinks(p)
@@ -84,12 +133,11 @@ func TestChtimes(t *testing.T) {
 }
 
 func TestClearenv(t *testing.T) {
-	os.Setenv("TEST_CLEARENV", "value")
-	os.Clearenv()
-	if val := os.Getenv("TEST_CLEARENV"); val != "" {
-		t.Errorf("After Clearenv, Getenv(TEST_CLEARENV) = %q, want empty", val)
+	// Clearenv mutates process-global state. Exercise it in a child so this test
+	// cannot erase PATH and platform runtime variables needed by later tests.
+	if output, err := osHelperCommand("clearenv").CombinedOutput(); err != nil {
+		t.Fatalf("Clearenv helper: %v\n%s", err, output)
 	}
-	os.Setenv("PATH", os.Getenv("PATH"))
 }
 
 func TestEnviron(t *testing.T) {
@@ -217,50 +265,49 @@ func TestGetppid(t *testing.T) {
 }
 
 func TestGetuid(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Getuid not meaningful on Windows")
-	}
 	uid := os.Getuid()
-	if uid < 0 {
+	if runtime.GOOS == "windows" && uid != -1 {
+		t.Errorf("Getuid() = %d, want -1 on Windows", uid)
+	} else if runtime.GOOS != "windows" && uid < 0 {
 		t.Errorf("Getuid() = %d, want >= 0", uid)
 	}
 }
 
 func TestGeteuid(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Geteuid not meaningful on Windows")
-	}
 	euid := os.Geteuid()
-	if euid < 0 {
+	if runtime.GOOS == "windows" && euid != -1 {
+		t.Errorf("Geteuid() = %d, want -1 on Windows", euid)
+	} else if runtime.GOOS != "windows" && euid < 0 {
 		t.Errorf("Geteuid() = %d, want >= 0", euid)
 	}
 }
 
 func TestGetgid(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Getgid not meaningful on Windows")
-	}
 	gid := os.Getgid()
-	if gid < 0 {
+	if runtime.GOOS == "windows" && gid != -1 {
+		t.Errorf("Getgid() = %d, want -1 on Windows", gid)
+	} else if runtime.GOOS != "windows" && gid < 0 {
 		t.Errorf("Getgid() = %d, want >= 0", gid)
 	}
 }
 
 func TestGetegid(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Getegid not meaningful on Windows")
-	}
 	egid := os.Getegid()
-	if egid < 0 {
+	if runtime.GOOS == "windows" && egid != -1 {
+		t.Errorf("Getegid() = %d, want -1 on Windows", egid)
+	} else if runtime.GOOS != "windows" && egid < 0 {
 		t.Errorf("Getegid() = %d, want >= 0", egid)
 	}
 }
 
 func TestGetgroups(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Getgroups not supported on Windows")
-	}
 	groups, err := os.Getgroups()
+	if runtime.GOOS == "windows" {
+		if err == nil || len(groups) != 0 {
+			t.Errorf("Getgroups() = %v, %v; want empty groups and unsupported error", groups, err)
+		}
+		return
+	}
 	if err != nil {
 		t.Errorf("Getgroups() failed: %v", err)
 	}
@@ -313,30 +360,30 @@ func TestTempDir(t *testing.T) {
 func TestUserCacheDir(t *testing.T) {
 	dir, err := os.UserCacheDir()
 	if err != nil {
-		t.Skipf("UserCacheDir() failed: %v", err)
+		t.Fatalf("UserCacheDir() failed: %v", err)
 	}
 	if dir == "" {
-		t.Skip("UserCacheDir() returned empty string")
+		t.Fatal("UserCacheDir() returned empty string")
 	}
 }
 
 func TestUserConfigDir(t *testing.T) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
-		t.Skipf("UserConfigDir() failed: %v", err)
+		t.Fatalf("UserConfigDir() failed: %v", err)
 	}
 	if dir == "" {
-		t.Skip("UserConfigDir() returned empty string")
+		t.Fatal("UserConfigDir() returned empty string")
 	}
 }
 
 func TestUserHomeDir(t *testing.T) {
 	dir, err := os.UserHomeDir()
 	if err != nil {
-		t.Skipf("UserHomeDir() failed: %v", err)
+		t.Fatalf("UserHomeDir() failed: %v", err)
 	}
 	if dir == "" {
-		t.Skip("UserHomeDir() returned empty string")
+		t.Fatal("UserHomeDir() returned empty string")
 	}
 }
 
@@ -596,10 +643,6 @@ func TestSameFile(t *testing.T) {
 }
 
 func TestSymlink(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Symlink requires elevated privileges on Windows")
-	}
-
 	tmpDir := t.TempDir()
 	target := filepath.Join(tmpDir, "target.txt")
 	link := filepath.Join(tmpDir, "link.txt")
@@ -631,54 +674,55 @@ func TestLink(t *testing.T) {
 	}
 
 	if err := os.Link(oldPath, newPath); err != nil {
-		if runtime.GOOS == "windows" {
-			t.Skip("Link may not be supported")
-		}
-		t.Errorf("Link failed: %v", err)
+		t.Fatalf("Link failed: %v", err)
 	}
 
-	info1, _ := os.Stat(oldPath)
-	info2, _ := os.Stat(newPath)
+	info1, err := os.Stat(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info2, err := os.Stat(newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !os.SameFile(info1, info2) {
 		t.Error("Linked files are not the same")
 	}
 }
 
 func TestChown(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Chown not supported on Windows")
-	}
-	if os.Getuid() != 0 {
-		t.Skip("Chown requires root privileges")
-	}
-
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "chown_test.txt")
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := os.Chown(testFile, os.Getuid(), os.Getgid()); err != nil {
-		t.Errorf("Chown failed: %v", err)
+	err := os.Chown(testFile, -1, -1)
+	if runtime.GOOS == "windows" {
+		var pathError *os.PathError
+		if err == nil || !errors.As(err, &pathError) {
+			t.Errorf("Chown = %v, want a PathError wrapping unsupported Windows operation", err)
+		}
+	} else if err != nil {
+		t.Errorf("Chown(-1, -1) failed: %v", err)
 	}
 }
 
 func TestLchown(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Lchown not supported on Windows")
-	}
-	if os.Getuid() != 0 {
-		t.Skip("Lchown requires root privileges")
-	}
-
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "lchown_test.txt")
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := os.Lchown(testFile, os.Getuid(), os.Getgid()); err != nil {
-		t.Errorf("Lchown failed: %v", err)
+	err := os.Lchown(testFile, -1, -1)
+	if runtime.GOOS == "windows" {
+		var pathError *os.PathError
+		if err == nil || !errors.As(err, &pathError) {
+			t.Errorf("Lchown = %v, want a PathError wrapping unsupported Windows operation", err)
+		}
+	} else if err != nil {
+		t.Errorf("Lchown(-1, -1) failed: %v", err)
 	}
 }
 
@@ -1198,13 +1242,6 @@ func TestIsTimeout(t *testing.T) {
 }
 
 func TestFileChown(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Chown not supported on Windows")
-	}
-	if os.Getuid() != 0 {
-		t.Skip("File.Chown requires root privileges")
-	}
-
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "chown_file_test.txt")
 
@@ -1214,8 +1251,14 @@ func TestFileChown(t *testing.T) {
 	}
 	defer f.Close()
 
-	if err := f.Chown(os.Getuid(), os.Getgid()); err != nil {
-		t.Errorf("File.Chown failed: %v", err)
+	err = f.Chown(-1, -1)
+	if runtime.GOOS == "windows" {
+		var pathError *os.PathError
+		if err == nil || !errors.As(err, &pathError) {
+			t.Errorf("File.Chown = %v, want a PathError wrapping unsupported Windows operation", err)
+		}
+	} else if err != nil {
+		t.Errorf("File.Chown(-1, -1) failed: %v", err)
 	}
 }
 
@@ -1275,19 +1318,14 @@ func TestFileSetDeadline(t *testing.T) {
 	defer f.Close()
 
 	deadline := time.Now().Add(time.Second)
-	err = f.SetDeadline(deadline)
-	if err != nil && err != os.ErrNoDeadline {
-		t.Logf("File.SetDeadline: %v (may not be supported)", err)
-	}
-
-	err = f.SetReadDeadline(deadline)
-	if err != nil && err != os.ErrNoDeadline {
-		t.Logf("File.SetReadDeadline: %v (may not be supported)", err)
-	}
-
-	err = f.SetWriteDeadline(deadline)
-	if err != nil && err != os.ErrNoDeadline {
-		t.Logf("File.SetWriteDeadline: %v (may not be supported)", err)
+	for name, set := range map[string]func(time.Time) error{
+		"SetDeadline":      f.SetDeadline,
+		"SetReadDeadline":  f.SetReadDeadline,
+		"SetWriteDeadline": f.SetWriteDeadline,
+	} {
+		if err := set(deadline); !errors.Is(err, os.ErrNoDeadline) {
+			t.Errorf("File.%s = %v, want ErrNoDeadline for a regular file", name, err)
+		}
 	}
 }
 
@@ -1303,113 +1341,79 @@ func TestFileSyscallConn(t *testing.T) {
 
 	conn, err := f.SyscallConn()
 	if err != nil {
-		t.Logf("File.SyscallConn: %v (may not be supported)", err)
-	} else if conn == nil {
-		t.Error("File.SyscallConn returned nil without error")
+		t.Fatalf("File.SyscallConn: %v", err)
+	}
+	if conn == nil {
+		t.Fatal("File.SyscallConn returned nil without error")
+	}
+	var descriptor uintptr
+	if err := conn.Control(func(fd uintptr) { descriptor = fd }); err != nil {
+		t.Fatalf("RawConn.Control: %v", err)
+	}
+	if descriptor != f.Fd() {
+		t.Errorf("RawConn descriptor = %d, want File.Fd %d", descriptor, f.Fd())
 	}
 }
 
 func TestStartProcess(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("StartProcess test skipped on Windows")
-	}
-
-	exePath, err := os.Executable()
+	proc := startOSHelper(t, "success")
+	state, err := proc.Wait()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Process.Wait failed: %v", err)
 	}
-
-	attr := &os.ProcAttr{
-		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+	if state == nil {
+		t.Fatal("Process.Wait returned nil state")
 	}
-
-	proc, err := os.StartProcess("/bin/echo", []string{"echo", "test"}, attr)
-	if err != nil {
-		t.Errorf("StartProcess failed: %v", err)
+	if !state.Success() || !state.Exited() || state.ExitCode() != 0 {
+		t.Errorf("process state = %v, want successful exit code 0", state)
 	}
-
-	if proc != nil {
-		state, err := proc.Wait()
-		if err != nil {
-			t.Errorf("Process.Wait failed: %v", err)
-		}
-
-		if state != nil {
-			if !state.Success() {
-				t.Error("Process did not exit successfully")
-			}
-			if !state.Exited() {
-				t.Error("Process.Exited() returned false")
-			}
-			if pid := state.Pid(); pid <= 0 {
-				t.Errorf("ProcessState.Pid() = %d, want > 0", pid)
-			}
-			if code := state.ExitCode(); code != 0 {
-				t.Logf("ProcessState.ExitCode() = %d", code)
-			}
-			if str := state.String(); str == "" {
-				t.Error("ProcessState.String() returned empty")
-			}
-			if sys := state.SystemTime(); sys < 0 {
-				t.Errorf("ProcessState.SystemTime() = %v, want >= 0", sys)
-			}
-			if user := state.UserTime(); user < 0 {
-				t.Errorf("ProcessState.UserTime() = %v, want >= 0", user)
-			}
-			if state.Sys() == nil {
-				t.Log("ProcessState.Sys() returned nil")
-			}
-			if state.SysUsage() == nil {
-				t.Log("ProcessState.SysUsage() returned nil")
-			}
-		}
-
-		err = proc.Release()
-		if err != nil {
-			t.Logf("Process.Release: %v", err)
-		}
+	if pid := state.Pid(); pid <= 0 {
+		t.Errorf("ProcessState.Pid() = %d, want > 0", pid)
 	}
-
-	_ = exePath
+	if str := state.String(); str == "" {
+		t.Error("ProcessState.String() returned empty")
+	}
+	if sys := state.SystemTime(); sys < 0 {
+		t.Errorf("ProcessState.SystemTime() = %v, want >= 0", sys)
+	}
+	if user := state.UserTime(); user < 0 {
+		t.Errorf("ProcessState.UserTime() = %v, want >= 0", user)
+	}
+	if state.Sys() == nil || state.SysUsage() == nil {
+		t.Error("ProcessState system data is nil")
+	}
 }
 
 func TestProcessSignal(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Signal test skipped on Windows")
-	}
-
 	proc, err := os.FindProcess(os.Getpid())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer proc.Release()
 
 	var sig os.Signal = syscall.Signal(0)
 	err = proc.Signal(sig)
-	if err != nil {
-		t.Logf("Process.Signal(0): %v", err)
+	if runtime.GOOS == "windows" {
+		if err == nil {
+			t.Error("Process.Signal(0) succeeded on Windows, want unsupported-operation error")
+		}
+	} else if err != nil {
+		t.Errorf("Process.Signal(0): %v", err)
 	}
 }
 
 func TestProcessKill(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Kill test skipped on Windows")
-	}
-
-	attr := &os.ProcAttr{
-		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-	}
-
-	proc, err := os.StartProcess("/bin/sleep", []string{"sleep", "60"}, attr)
-	if err != nil {
-		t.Skipf("StartProcess failed: %v", err)
-	}
-	defer proc.Kill()
-
+	proc := startOSHelper(t, "sleep")
 	if err := proc.Kill(); err != nil {
-		t.Errorf("Process.Kill failed: %v", err)
+		t.Fatalf("Process.Kill failed: %v", err)
 	}
-
-	proc.Wait()
+	state, err := proc.Wait()
+	if err != nil {
+		t.Fatalf("Process.Wait after Kill: %v", err)
+	}
+	if state == nil || state.Success() {
+		t.Errorf("ProcessState after Kill = %v, want unsuccessful exit", state)
+	}
 }
 
 func TestRoot(t *testing.T) {
@@ -1417,7 +1421,7 @@ func TestRoot(t *testing.T) {
 
 	root, err := os.OpenRoot(tmpDir)
 	if err != nil {
-		t.Skipf("OpenRoot not supported: %v", err)
+		t.Fatalf("OpenRoot: %v", err)
 	}
 	defer root.Close()
 
@@ -1521,7 +1525,7 @@ func TestOpenInRoot(t *testing.T) {
 
 	f, err := os.OpenInRoot(tmpDir, testFile)
 	if err != nil {
-		t.Skipf("OpenInRoot not supported: %v", err)
+		t.Fatalf("OpenInRoot: %v", err)
 	}
 	if f != nil {
 		defer f.Close()
