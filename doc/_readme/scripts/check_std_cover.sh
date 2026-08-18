@@ -5,21 +5,24 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "${ROOT_DIR}"
 
-go_list_flags=()
-if [[ -n "${LLGO_TEST_MODFILE:-}" ]]; then
-  go_list_flags+=("-modfile=${LLGO_TEST_MODFILE}")
-fi
+go_list() {
+  if [[ -n "${LLGO_TEST_MODFILE:-}" ]]; then
+    command go list "-modfile=${LLGO_TEST_MODFILE}" "$@"
+  else
+    command go list "$@"
+  fi
+}
 
-module_path="$(go list "${go_list_flags[@]}" -m)"
+module_path="$(go_list -m)"
 
 packages=()
 if [[ $# -eq 0 ]]; then
-  package_output="$(go list "${go_list_flags[@]}" ./test/std/... | sort)"
+  package_output="$(go_list ./test/std/... | sort)"
   while IFS= read -r pkg; do
     [[ -n "${pkg}" ]] && packages+=("${pkg}")
   done <<< "${package_output}"
 else
-  package_output="$(go list "${go_list_flags[@]}" "$@" | sort -u)"
+  package_output="$(go_list "$@" | sort -u)"
   while IFS= read -r pkg; do
     [[ -n "${pkg}" ]] && packages+=("${pkg}")
   done <<< "${package_output}"
@@ -59,7 +62,7 @@ if [[ $# -eq 0 ]]; then
   # The std pattern may also report a package whose every source file is
   # excluded by the current platform. Require coverage only for packages that
   # have buildable Go or cgo sources under the selected toolchain/modfile.
-  go list "${go_list_flags[@]}" -e \
+  go_list -e \
     -f '{{if or .GoFiles .CgoFiles}}{{.ImportPath}}{{end}}' std \
     | awk 'NF' \
     | awk '!/(^|\/)internal(\/|$)/ && !/(^|\/)vendor(\/|$)/' \

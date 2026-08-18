@@ -9,18 +9,19 @@ fi
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_pkgs=("$@")
-go_list_flags=()
-llgo_modfile_flags=()
-if [[ -n "${LLGO_TEST_MODFILE:-}" ]]; then
-	go_list_flags+=("-modfile=${LLGO_TEST_MODFILE}")
-	llgo_modfile_flags+=("-modfile=${LLGO_TEST_MODFILE}")
-fi
+go_list() {
+	if [[ -n "${LLGO_TEST_MODFILE:-}" ]]; then
+		command go list "-modfile=${LLGO_TEST_MODFILE}" "$@"
+	else
+		command go list "$@"
+	fi
+}
 import_paths=()
 stems=()
 groups=()
 max_group=0
 for test_pkg in "${test_pkgs[@]}"; do
-	package_info="$(go list "${go_list_flags[@]}" -tags=llgo -f '{{.ImportPath}} {{.Dir}}' "${test_pkg}")"
+	package_info="$(go_list -tags=llgo -f '{{.ImportPath}} {{.Dir}}' "${test_pkg}")"
 	read -r import_path package_dir <<<"${package_info}"
 	case "${import_path}" in
 		github.com/xgo-dev/llgo/test/std/*) ;;
@@ -94,7 +95,12 @@ for mode in c-shared c-archive; do
 		echo "==> ${mode}: compile ${#group_imports[@]} test package(s)"
 		(
 			cd "${work_dir}"
-			"${llgo_cmd}" test -c -buildmode="${mode}" "${llgo_modfile_flags[@]}" "${group_imports[@]}"
+			if [[ -n "${LLGO_TEST_MODFILE:-}" ]]; then
+				"${llgo_cmd}" test -c -buildmode="${mode}" \
+					"-modfile=${LLGO_TEST_MODFILE}" "${group_imports[@]}"
+			else
+				"${llgo_cmd}" test -c -buildmode="${mode}" "${group_imports[@]}"
+			fi
 		)
 
 		for i in "${!import_paths[@]}"; do
