@@ -88,10 +88,14 @@ func startSignalWatcher(sig uint32, st *sigState) {
 		})
 		st.inited = true
 	}
+	var code int
+	locked := cpuProfileSignalLock(sig)
 	submitTimerWork(func() bool {
-		checkUV("uv_signal_start", int(libuv.SignalStartRuntime(&st.handle, c.Int(sig))))
+		code = int(libuv.SignalStartRuntime(&st.handle, c.Int(sig)))
 		return true
 	})
+	cpuProfileSignalUnlock(locked)
+	checkUV("uv_signal_start", code)
 }
 
 // signal_enable enables Go signal delivery for sig.
@@ -123,16 +127,21 @@ func signal_disable(sig uint32) {
 		sigMu.Unlock()
 		return
 	}
-	if st.active && !st.ignored {
+	if st.active {
 		st.active = false
+		st.ignored = false
 		doStop = true
 	}
 	sigMu.Unlock()
 	if doStop {
+		var code int
+		locked := cpuProfileSignalLock(sig)
 		submitTimerWork(func() bool {
-			checkUV("uv_signal_stop", int(st.handle.Stop()))
+			code = int(st.handle.Stop())
 			return true
 		})
+		cpuProfileSignalUnlock(locked)
+		checkUV("uv_signal_stop", code)
 	}
 }
 
