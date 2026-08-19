@@ -520,11 +520,11 @@ func Build(inv Invocation) ([]Package, error) {
 		defer syntaxErrMu.Unlock()
 		return syntaxErr
 	}
-	dedup.SetPreload(func(pkg *types.Package, files []*ast.File) {
-		if llruntime.SkipToBuild(pkg.Path()) {
+	dedup.SetPreload(func(pkg *packages.Package) {
+		if llruntime.SkipToBuild(pkg.Types.Path()) {
 			return
 		}
-		if err := cl.ParsePkgSyntaxWithOptions(prog, cfg.Fset, pkg, files, preloadOptions); err != nil {
+		if err := cl.ParsePkgSyntaxWithOptions(prog, cfg.Fset, pkg.Types, pkg.Syntax, preloadOptions); err != nil {
 			recordSyntaxErr(err)
 		}
 	})
