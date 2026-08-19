@@ -278,6 +278,67 @@ func TestParsePkgSyntaxCollectsLinknames(t *testing.T) {
 	if got, ok := prog.Linkname("example.com/p.alias"); !ok || got != "C.alias" {
 		t.Fatalf("cross-file linkname = (%q,%v), want (C.alias,true)", got, ok)
 	}
+
+	mainSrc := []string{
+		"package main\nimport _ \"unsafe\"\n",
+		"package main\n//go:linkname demo6 main.demo\nfunc demo6()\n",
+	}
+	mainFset := token.NewFileSet()
+	mainFiles := make([]*ast.File, 0, len(mainSrc))
+	for i, src := range mainSrc {
+		file, err := parser.ParseFile(mainFset, "main"+string(rune('0'+i))+".go", src, parser.ParseComments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mainFiles = append(mainFiles, file)
+	}
+	prog = llssa.NewProgram(nil)
+	mainPkg := types.NewPackage("example.com/p", "main")
+	if err := ParsePkgSyntax(prog, mainFset, mainPkg, mainFiles); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := prog.Linkname("main.demo6"); !ok || got != "main.demo" {
+		t.Fatalf("main linkname = (%q,%v), want (main.demo,true)", got, ok)
+	}
+	if got, ok := prog.Linkname("example.com/p.demo6"); !ok || got != "example.com/p.demo" {
+		t.Fatalf("raw main linkname = (%q,%v), want (example.com/p.demo,true)", got, ok)
+	}
+
+	mainCrossSrc := []string{
+		"package main\nimport _ \"unsafe\"\n//go:linkname floating main.target\n",
+		"package main\nfunc floating()\n",
+	}
+	mainCrossFset := token.NewFileSet()
+	mainCrossFiles := make([]*ast.File, 0, len(mainCrossSrc))
+	for i, src := range mainCrossSrc {
+		file, err := parser.ParseFile(mainCrossFset, "maincross"+string(rune('0'+i))+".go", src, parser.ParseComments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mainCrossFiles = append(mainCrossFiles, file)
+	}
+	prog = llssa.NewProgram(nil)
+	mainCrossPkg := types.NewPackage("example.com/p", "main")
+	if err := ParsePkgSyntax(prog, mainCrossFset, mainCrossPkg, mainCrossFiles); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := prog.Linkname("example.com/p.floating"); !ok || got != "example.com/p.target" {
+		t.Fatalf("raw main floating linkname = (%q,%v), want (example.com/p.target,true)", got, ok)
+	}
+
+	mainTestFset := token.NewFileSet()
+	mainTestFile, err := parser.ParseFile(mainTestFset, "main_test.go", "package main\nimport _ \"unsafe\"\n//go:linkname demo6 main.demo\nfunc demo6()\n", parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog = llssa.NewProgram(nil)
+	mainTestPkg := types.NewPackage("example.com/p", "main")
+	if err := ParsePkgSyntax(prog, mainTestFset, mainTestPkg, []*ast.File{mainTestFile}); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := prog.Linkname("example.com/p.demo6"); !ok || got != "main.demo" {
+		t.Fatalf("test-source main linkname = (%q,%v), want (main.demo,true)", got, ok)
+	}
 }
 
 func TestParsePkgSyntaxCollectsClosureEnvDirectives(t *testing.T) {

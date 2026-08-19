@@ -343,8 +343,9 @@ func collectDeclarationDirectivesWithOptions(prog llssa.Program, fset *token.Fil
 	return linkCollected, nil
 }
 
-// collectGoLinknames follows cmd/compile's package-scoped go:linkname behavior.
-func collectGoLinknames(prog llssa.Program, comments []*ast.CommentGroup, syms map[string]string) {
+// collectGoLinknames follows cmd/compile's package-scoped go:linkname behavior
+// and adds raw import-path aliases for main-package test variants.
+func collectGoLinknames(prog llssa.Program, fset *token.FileSet, comments []*ast.CommentGroup, syms map[string]string, rawMainPath string) {
 	const prefix = "//go:linkname "
 	for _, group := range comments {
 		for _, comment := range group.List {
@@ -356,10 +357,45 @@ func collectGoLinknames(prog llssa.Program, comments []*ast.CommentGroup, syms m
 				continue
 			}
 			if fullName, ok := syms[fields[0]]; ok {
-				prog.SetLinkname(fullName, strings.Join(fields[1:], " "))
+				link := strings.Join(fields[1:], " ")
+				prog.SetLinkname(fullName, link)
+				if rawMainPath != "" {
+					prog.SetLinkname(rawMainPath+"."+fields[0], rewriteMainLinkname(rawMainPath, link, !isTestSource(fset, comment.Pos())))
+				}
 			}
 		}
 	}
+}
+
+// addMainPackageLinknameAlias records the raw import-path spelling used by
+// test variants. Ordinary main packages use the canonical "main" prefix,
+// while go test emits their symbols under the package import path. The target
+// remains unchanged: test variants do not define main.* symbols.
+func addMainPackageLinknameAlias(prog llssa.Program, rawMainPath, fullName, inPkgName string, rewriteMainTarget bool) {
+	if rawMainPath == "" {
+		return
+	}
+	if link, ok := prog.Linkname(fullName); ok {
+		prog.SetLinkname(rawMainPath+"."+inPkgName, rewriteMainLinkname(rawMainPath, link, rewriteMainTarget))
+	}
+}
+
+func rewriteMainLinkname(rawMainPath, link string, rewrite bool) string {
+	if rewrite && strings.HasPrefix(link, "main.") {
+		return rawMainPath + strings.TrimPrefix(link, "main")
+	}
+	return link
+}
+
+func isTestSource(fset *token.FileSet, pos token.Pos) bool {
+	return fset != nil && strings.HasSuffix(fset.Position(pos).Filename, "_test.go")
+}
+
+func rawMainPathOf(pkg *types.Package) string {
+	if pkg == nil || pkg.Name() != "main" || pkg.Path() == "" || pkg.Path() == llssa.PathOf(pkg) {
+		return ""
+	}
+	return pkg.Path()
 }
 
 func (p *context) processLinknameByDoc(doc *ast.CommentGroup, fullName, inPkgName string, isVar, allowExport bool) bool {
@@ -839,6 +875,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 	}
 	ctx := &context{prog: prog, options: options}
 	pkgPath := llssa.PathOf(pkg)
+	rawMainPath := rawMainPathOf(pkg)
 	syms := make(map[string]string)
 	var fileComments []*ast.CommentGroup
 	for _, file := range files {
@@ -863,6 +900,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 				if err != nil {
 					return err
 				}
+				addMainPackageLinknameAlias(prog, rawMainPath, fullName, inPkgName, !isTestSource(fset, decl.Pos()))
 				if !hasLinkname && pkg.Name() == "C" && decl.Recv == nil && token.IsExported(inPkgName) {
 					exportName := strings.TrimPrefix(inPkgName, "X")
 					prog.SetLinkname(fullName, exportName)
@@ -882,6 +920,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 							if _, err := collectDeclarationDirectivesWithOptions(prog, fset, decl.Doc, pkgPath+"."+inPkgName, inPkgName, token.NoPos, options); err != nil {
 								return err
 							}
+							addMainPackageLinknameAlias(prog, rawMainPath, pkgPath+"."+inPkgName, inPkgName, !isTestSource(fset, decl.Pos()))
 						}
 					}
 					vars, err := locality.ScanPackageVar(fset, decl)
@@ -902,7 +941,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 			}
 		}
 	}
-	collectGoLinknames(prog, fileComments, syms)
+	collectGoLinknames(prog, fset, fileComments, syms, rawMainPath)
 	prog.MarkPackageSyntaxParsed(pkg)
 	return nil
 }
