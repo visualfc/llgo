@@ -434,6 +434,41 @@ func Use() string { return CallbackTypes[1] }
 	}
 }
 
+func TestStaticGlobalStructSliceLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type Info struct {
+	Name    string
+	Package string
+	Changed int
+}
+
+var All = []Info{
+	{"godebug1", "runtime", 1},
+	{"godebug2", "internal/poll", 2},
+}
+
+func Use() Info { return All[0] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		`@"staticinit.All$data" = global [2 x %staticinit.Info]`,
+		`@staticinit.All = global %"github.com/xgo-dev/llgo/runtime/internal/runtime.Slice" { ptr @"staticinit.All$data", i64 2, i64 2 }`,
+		`c"godebug1"`,
+		`c"runtime"`,
+		`c"godebug2"`,
+		`c"internal/poll"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static struct slice initializer %q in IR:\n%s", want, ir)
+		}
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.All")
+	if strings.Contains(ir, "runtime.AllocZ") {
+		t.Fatalf("static struct slice initializer still allocates at runtime:\n%s", ir)
+	}
+}
+
 func TestStaticSliceInitRejectsExecutableReferrers(t *testing.T) {
 	const src = `package foo
 
