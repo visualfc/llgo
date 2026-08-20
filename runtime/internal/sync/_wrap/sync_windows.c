@@ -10,6 +10,14 @@ typedef void *llgo_srwlock;
 typedef void *llgo_condition_variable;
 typedef void *llgo_init_once;
 
+#pragma comment(lib, "synchronization.lib")
+
+#if defined(_WIN64)
+typedef unsigned long long llgo_size_t;
+#else
+typedef unsigned int llgo_size_t;
+#endif
+
 #if defined(_WIN64)
 #define LLGO_WINAPI
 #else
@@ -28,6 +36,10 @@ WakeAllConditionVariable(llgo_condition_variable *condition);
 __declspec(dllimport) llgo_bool LLGO_WINAPI SleepConditionVariableSRW(
     llgo_condition_variable *condition, llgo_srwlock *lock,
     llgo_dword milliseconds, llgo_dword flags);
+__declspec(dllimport) llgo_bool LLGO_WINAPI WaitOnAddress(
+    volatile void *address, void *compare_address,
+    llgo_size_t address_size, llgo_dword milliseconds);
+__declspec(dllimport) void LLGO_WINAPI WakeByAddressSingle(void *address);
 
 typedef llgo_bool(LLGO_WINAPI *llgo_init_once_fn)(
     llgo_init_once *once, void *parameter, void **context);
@@ -91,4 +103,17 @@ int llgo_win_cond_wait(llgo_condition_variable *condition,
     if (SleepConditionVariableSRW(condition, lock, LLGO_INFINITE, 0))
         return 0;
     return (int)GetLastError();
+}
+
+int llgo_win_wait_uint32(volatile unsigned int *address,
+                         unsigned int value)
+{
+    if (WaitOnAddress(address, &value, sizeof(value), LLGO_INFINITE))
+        return 0;
+    return (int)GetLastError();
+}
+
+void llgo_win_wake_uint32(unsigned int *address)
+{
+    WakeByAddressSingle(address);
 }

@@ -318,7 +318,8 @@ jobs:
           }
 
           # Exercise cmd/llgo's test path with testing-package behavior, cgo
-          # errno propagation, CPU profiling, and runtime trace clock hooks.
+          # errno propagation, synchronization stress, CPU profiling, and
+          # runtime trace clock hooks.
           # The runtime/FFI binaries above only cover build/run.
           .\llgo-windows-smoke.exe test `
             -p=1 `
@@ -326,6 +327,7 @@ jobs:
             -timeout=10m `
             ./runtime/_test/windowstesting `
             ./test/cgo `
+            ./test/std/sync `
             ./test/std/runtime/pprof `
             ./test/std/runtime/trace
           if ($LASTEXITCODE -ne 0) {

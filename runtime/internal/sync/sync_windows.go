@@ -111,3 +111,20 @@ func (cond *Cond) Broadcast() c.Int {
 func (cond *Cond) Wait(m *Mutex) c.Int {
 	return winCondWait(cond, m)
 }
+
+//go:linkname winWaitUint32 C.llgo_win_wait_uint32
+func winWaitUint32(addr *uint32, value uint32) c.Int
+
+//go:linkname winWakeUint32 C.llgo_win_wake_uint32
+func winWakeUint32(addr *uint32)
+
+// WaitUint32 blocks while addr still contains value. Callers must recheck the
+// value after it returns because Windows permits spurious wakeups.
+func WaitUint32(addr *uint32, value uint32) c.Int {
+	return winWaitUint32(addr, value)
+}
+
+// WakeUint32 wakes one thread waiting for addr.
+func WakeUint32(addr *uint32) {
+	winWakeUint32(addr)
+}
