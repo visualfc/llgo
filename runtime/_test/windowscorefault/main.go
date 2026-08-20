@@ -2,6 +2,12 @@
 
 package main
 
+import (
+	// Packages below the LLGo runtime root do not trigger the ordinary runtime
+	// injection, so initialize its per-thread defer state explicitly.
+	_ "github.com/xgo-dev/llgo/runtime/internal/runtime"
+)
+
 func main() {
 	var recovered any
 	func() {
