@@ -174,7 +174,7 @@ func (p Package) VarOf(name string) Global {
 func (g Global) Init(v Expr) {
 	// Zero-sized globals alias the shared moduleZeroName sentinel, which already has
 	// a null initializer under LinkOnceODRLinkage and must not be mutated.
-	if g.impl.Name() == moduleZeroName {
+	if g.impl.Name() == moduleZeroName || !g.impl.IsAGlobalAlias().IsNil() {
 		return
 	}
 	g.impl.SetInitializer(v.impl)
@@ -183,7 +183,7 @@ func (g Global) Init(v Expr) {
 func (g Global) InitNil() {
 	// Zero-sized globals alias the shared moduleZeroName sentinel, which already has
 	// a null initializer under LinkOnceODRLinkage and must not be mutated.
-	if g.impl.Name() == moduleZeroName {
+	if g.impl.Name() == moduleZeroName || !g.impl.IsAGlobalAlias().IsNil() {
 		return
 	}
 	g.impl.SetInitializer(llvm.ConstNull(g.impl.GlobalValueType()))

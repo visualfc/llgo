@@ -294,8 +294,9 @@ func appendStaticInitPath(base, sub []staticInitPathElem) []staticInitPathElem {
 	return res
 }
 
-// handleStoreVal inspects a store value, appending constant stores directly or recursing
-// into inner nested local allocs reached through pointer indirection (*ssa.UnOp).
+// handleStoreVal inspects a store value, appending constant stores directly to out (while the caller
+// tracks the store instruction in instrs for compilation suppression) or recursing into inner nested
+// local allocs reached through pointer indirection (*ssa.UnOp).
 func handleStoreVal(store *ssa.Store, fullPath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
 	if val, ok := store.Val.(*ssa.Const); ok {
 		*out = append(*out, staticInitStore{
