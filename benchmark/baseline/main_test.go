@@ -97,6 +97,7 @@ func TestExportBenchmarks(t *testing.T) {
 		"Unit file-bytes better=lower assume=exact",
 		"Unit build-ns better=lower",
 		"BenchmarkProgram/cprintf 1 1 file-bytes 1 text-bytes 1 data-bytes 1 bss-bytes 1 build-ns 1 run-ns",
+		"BenchmarkProgram/cprintf_lto 1 1 file-bytes 1 text-bytes 1 data-bytes 1 bss-bytes 1 build-ns 1 run-ns",
 		"BenchmarkRuntimeGetG-1 100 12.5 ns/op",
 	} {
 		if !strings.Contains(text, want) {
