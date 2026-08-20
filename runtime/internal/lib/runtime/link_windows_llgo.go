@@ -24,6 +24,14 @@ import (
 	llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
+// os/proc.go declares this runtime entry point on every platform. Its Windows
+// init path returns before calling it because the official os/exec_windows.go
+// parser initializes os.Args from GetCommandLineW instead. Keep the symbol so
+// unoptimized builds do not retain an unresolved reference from the dead arm.
+//
+//go:linkname os_runtime_args os.runtime_args
+func os_runtime_args() []string { return nil }
+
 //go:linkname c_queryPerformanceCounter C.llgo_query_performance_counter
 func c_queryPerformanceCounter() int64
 
