@@ -77,15 +77,6 @@ __declspec(dllimport) llgo_bool LLGO_WINAPI HeapFree(llgo_handle heap,
                                                      void *memory);
 __declspec(dllimport) llgo_bool LLGO_WINAPI SwitchToThread(void);
 
-#if defined(_WIN64)
-extern void *llgo_windows_lookup_function_entry(llgo_uintptr pc,
-                                                llgo_uintptr *image_base);
-extern void *llgo_windows_virtual_unwind(llgo_uintptr image_base,
-                                         llgo_uintptr pc, void *function_entry,
-                                         void *context,
-                                         llgo_uintptr *establisher_frame);
-#endif
-
 enum {
     llgo_snap_thread = 0x00000004UL,
     llgo_thread_suspend_resume = 0x0002UL,
@@ -101,6 +92,7 @@ enum {
 #define LLGO_SUSPEND_FAILED ((llgo_dword)0xffffffffUL)
 #define LLGO_PROF_STACK 64
 #define LLGO_PROF_SAMPLES 2048
+#define LLGO_PROF_MAX_FP_STRIDE (1u << 20)
 
 struct llgo_prof_sample {
     uint32_t n;
@@ -150,18 +142,15 @@ static void llgo_prof_drop(void)
 #if defined(_M_ARM64) || defined(__aarch64__)
 #define LLGO_PROF_CONTEXT_SIZE 912
 #define LLGO_PROF_CONTEXT_FLAGS_OFFSET 0
-#define LLGO_PROF_CONTEXT_SP_OFFSET 256
 #define LLGO_PROF_CONTEXT_PC_OFFSET 264
-#define LLGO_PROF_CONTEXT_LR_OFFSET 248
+#define LLGO_PROF_CONTEXT_FP_OFFSET 240
 #define LLGO_PROF_CONTEXT_CONTROL 0x00400003UL
-#define LLGO_PROF_CONTEXT_HAS_LR 1
 #else
 #define LLGO_PROF_CONTEXT_SIZE 1232
 #define LLGO_PROF_CONTEXT_FLAGS_OFFSET 48
-#define LLGO_PROF_CONTEXT_SP_OFFSET 152
 #define LLGO_PROF_CONTEXT_PC_OFFSET 248
+#define LLGO_PROF_CONTEXT_FP_OFFSET 160
 #define LLGO_PROF_CONTEXT_CONTROL 0x00100001UL
-#define LLGO_PROF_CONTEXT_HAS_LR 0
 #endif
 
 static llgo_uintptr llgo_prof_context_word(const unsigned char *context,
@@ -172,60 +161,34 @@ static llgo_uintptr llgo_prof_context_word(const unsigned char *context,
     return value;
 }
 
-static void llgo_prof_set_context_word(unsigned char *context, size_t offset,
-                                       llgo_uintptr value)
+static void llgo_prof_walk_frames(struct llgo_prof_sample *sample,
+                                  llgo_uintptr fp)
 {
-    memcpy(context + offset, &value, sizeof(value));
-}
+    llgo_handle process = GetCurrentProcess();
 
-static int llgo_prof_unwind_one(unsigned char *context)
-{
-    llgo_uintptr pc =
-        llgo_prof_context_word(context, LLGO_PROF_CONTEXT_PC_OFFSET);
-    llgo_uintptr sp =
-        llgo_prof_context_word(context, LLGO_PROF_CONTEXT_SP_OFFSET);
-    llgo_uintptr image_base = 0;
-    llgo_uintptr frame = 0;
-    void *entry;
-
-    if (pc < 4096)
-        return 0;
-    entry = llgo_windows_lookup_function_entry(pc, &image_base);
-    if (entry != 0) {
-        llgo_windows_virtual_unwind(image_base, pc, entry, context, &frame);
-        return llgo_prof_context_word(context, LLGO_PROF_CONTEXT_PC_OFFSET) >=
-                   4096 &&
-               (llgo_prof_context_word(context, LLGO_PROF_CONTEXT_PC_OFFSET) !=
-                    pc ||
-                llgo_prof_context_word(context, LLGO_PROF_CONTEXT_SP_OFFSET) !=
-                    sp);
-    }
-
-#if LLGO_PROF_CONTEXT_HAS_LR
-    {
-        llgo_uintptr lr =
-            llgo_prof_context_word(context, LLGO_PROF_CONTEXT_LR_OFFSET);
-        if (lr < 4096)
-            return 0;
-        llgo_prof_set_context_word(context, LLGO_PROF_CONTEXT_PC_OFFSET, lr);
-        llgo_prof_set_context_word(context, LLGO_PROF_CONTEXT_LR_OFFSET, 0);
-        return 1;
-    }
-#else
-    {
-        llgo_uintptr ret = 0;
+    /* LLGo retains frame pointers in hosted Go and C functions. Read the
+     * chain through ReadProcessMemory so a stale or foreign frame terminates
+     * the sample instead of faulting the profiler thread. */
+    while (fp != 0 && sample->n < LLGO_PROF_STACK) {
+        llgo_uintptr words[2];
+        llgo_uintptr prev;
+        llgo_uintptr ret;
         llgo_size_t read = 0;
-        if ((sp & (sizeof(llgo_uintptr) - 1)) != 0 ||
-            !ReadProcessMemory(GetCurrentProcess(), (const void *)sp, &ret,
-                               sizeof(ret), &read) ||
-            read != sizeof(ret) || ret < 4096)
-            return 0;
-        llgo_prof_set_context_word(context, LLGO_PROF_CONTEXT_SP_OFFSET,
-                                   sp + sizeof(llgo_uintptr));
-        llgo_prof_set_context_word(context, LLGO_PROF_CONTEXT_PC_OFFSET, ret);
-        return 1;
+        if ((fp & (sizeof(llgo_uintptr) - 1)) != 0 ||
+            !ReadProcessMemory(process, (const void *)fp, words, sizeof(words),
+                               &read) ||
+            read != sizeof(words))
+            break;
+        prev = words[0];
+        ret = words[1];
+        if (ret < 4096)
+            break;
+        sample->pc[sample->n++] = ret;
+        if (prev <= fp || prev - fp > LLGO_PROF_MAX_FP_STRIDE ||
+            (prev & (sizeof(llgo_uintptr) - 1)) != 0)
+            break;
+        fp = prev;
     }
-#endif
 }
 
 static int llgo_prof_capture(llgo_handle thread,
@@ -236,6 +199,7 @@ static int llgo_prof_capture(llgo_handle thread,
         (unsigned char *)(((llgo_uintptr)(storage + 15)) & ~(llgo_uintptr)15);
     llgo_dword flags = LLGO_PROF_CONTEXT_CONTROL;
     llgo_uintptr pc;
+    llgo_uintptr fp;
 
     memset(context, 0, LLGO_PROF_CONTEXT_SIZE);
     memcpy(context + LLGO_PROF_CONTEXT_FLAGS_OFFSET, &flags, sizeof(flags));
@@ -249,10 +213,8 @@ static int llgo_prof_capture(llgo_handle thread,
     /* runtime.CallersFrames subtracts one from each sampled PC. Preserve the
      * interrupted instruction rather than attributing it to its predecessor. */
     sample->pc[0] = pc + 1;
-    while (sample->n < LLGO_PROF_STACK && llgo_prof_unwind_one(context)) {
-        pc = llgo_prof_context_word(context, LLGO_PROF_CONTEXT_PC_OFFSET);
-        sample->pc[sample->n++] = pc;
-    }
+    fp = llgo_prof_context_word(context, LLGO_PROF_CONTEXT_FP_OFFSET);
+    llgo_prof_walk_frames(sample, fp);
     return 1;
 }
 #else
@@ -472,4 +434,16 @@ int llgo_cpu_profile_drain(llgo_uintptr *pc, uint32_t *lengths, int max_records,
     return records;
 }
 
-int llgo_cpu_profile_test_fault_recovery(void) { return -1; }
+int llgo_cpu_profile_test_fault_recovery(void)
+{
+#if LLGO_PROF_CONTEXT_SUPPORTED
+    struct llgo_prof_sample sample;
+
+    sample.n = 1;
+    sample.pc[0] = 1;
+    llgo_prof_walk_frames(&sample, 1);
+    return (int)sample.n;
+#else
+    return -1;
+#endif
+}
