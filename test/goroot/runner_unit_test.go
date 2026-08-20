@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -909,6 +910,32 @@ func TestNormalizeCompilerDiagnosticMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := normalizeCompilerDiagnosticMessage(tt.in); got != tt.want {
 				t.Fatalf("normalizeCompilerDiagnosticMessage(%q)=%q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesExpectedDiagnosticGoTypesAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected string
+		message  string
+	}{
+		{
+			name:     "unquoted blank struct field",
+			expected: `unknown field _ in struct literal of type T`,
+			message:  `unknown field '_' in struct literal of type T`,
+		},
+		{
+			name:     "qualified nearby field",
+			expected: `type it .* field or method floats, but does have field Floats`,
+			message:  `i1.floats undefined (type it has no field or method floats, but does have Floats)`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !matchesExpectedDiagnostic(regexp.MustCompile(tt.expected), tt.message) {
+				t.Fatalf("matchesExpectedDiagnostic(%q, %q)=false, want true", tt.expected, tt.message)
 			}
 		})
 	}
