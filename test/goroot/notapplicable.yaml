@@ -495,22 +495,10 @@ not_applicable:
     case: fixedbugs/issue69825.go
     reason: "not applicable: -d=libfuzzer selects cmd/compile instrumentation; LLGo relies on LLVM tooling rather than gc's libfuzzer backend mode; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
   - version: go1.24
-    platform: linux/amd64
     directive: run
     case: maymorestack.go
     reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
   - version: go1.26
-    platform: linux/amd64
-    directive: run
-    case: maymorestack.go
-    reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: maymorestack.go
-    reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
-  - version: go1.26
-    platform: darwin/arm64
     directive: run
     case: maymorestack.go
     reason: "not applicable: LLGo uses fixed native stacks, so gc's growable-stack maymorestack debug hook has no corresponding behavior; supporting this toolchain-specific behavior is not an LLGo compatibility goal"
