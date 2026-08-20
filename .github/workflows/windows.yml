@@ -317,14 +317,16 @@ jobs:
             exit $LASTEXITCODE
           }
 
-          # Exercise cmd/llgo's test path with both testing-package behavior
-          # and a standard-library package that depends on runtime trace
-          # clock hooks. The runtime/FFI binaries above only cover build/run.
+          # Exercise cmd/llgo's test path with testing-package behavior, cgo
+          # errno propagation, CPU profiling, and runtime trace clock hooks.
+          # The runtime/FFI binaries above only cover build/run.
           .\llgo-windows-smoke.exe test `
             -p=1 `
             -count=1 `
             -timeout=10m `
             ./runtime/_test/windowstesting `
+            ./test/cgo `
+            ./test/std/runtime/pprof `
             ./test/std/runtime/trace
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
