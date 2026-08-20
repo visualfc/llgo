@@ -212,5 +212,13 @@ func GMPForTesting() (goid, parentGoid uint64, mid int64, pid int32, gstatus, ps
 // Execution tests use it to wait until a lifecycle-owned main G has completed
 // mexit before allowing the last worker to return.
 func GStateForTesting() (count uint64, mainExited bool) {
-	return gStateForTesting()
+	return gState()
+}
+
+// NumGoroutine reports the number of live runtime contexts. A go statement
+// registers its context before the platform thread is started, matching Go's
+// guarantee that the new goroutine is visible when NewProc returns.
+func NumGoroutine() int {
+	count, _ := gState()
+	return int(count)
 }

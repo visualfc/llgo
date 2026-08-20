@@ -55,7 +55,7 @@ func markMainExited() {
 	atomic.Or(&sched.gstate, mainExitedBit)
 }
 
-func gStateForTesting() (count uint64, mainExited bool) {
+func gState() (count uint64, mainExited bool) {
 	state := atomic.Load(&sched.gstate)
 	return state & gCountMask, state&mainExitedBit != 0
 }
