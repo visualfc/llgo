@@ -1902,6 +1902,10 @@ func (p *context) pushCallerLocationFrame(b llssa.Builder, fn *ssa.Function) {
 		return
 	}
 	pos := p.fset.Position(fn.Pos())
+	pos.Filename = runtimeSourceFilename(
+		p.prog.Target(),
+		directiveFilename(p.fset, fn.Pos(), pos.Filename, p.sourceLine),
+	)
 	entry := b.Convert(p.prog.Uintptr(), p.fn.Expr)
 	p.callerFrameMark = b.Call(
 		p.runtimeFunc("PushCallerLocationFrame", pushCallerLocationFrameSig()),
@@ -1932,6 +1936,10 @@ func (p *context) recordRuntimeLocation(b llssa.Builder, pos token.Pos, fn strin
 		return
 	}
 	position := p.fset.Position(pos)
+	position.Filename = runtimeSourceFilename(
+		p.prog.Target(),
+		directiveFilename(p.fset, pos, position.Filename, p.sourceLine),
+	)
 	if position.Line <= 0 || position.Filename == "" {
 		return
 	}
@@ -1967,7 +1975,10 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 	position := p.fset.Position(pos)
 	// Normalize before the emptiness check: an empty //line directive
 	// filename must anchor as "??" (gc's spelling), not lose its anchor.
-	position.Filename = directiveFilename(p.fset, pos, position.Filename)
+	position.Filename = runtimeSourceFilename(
+		target,
+		directiveFilename(p.fset, pos, position.Filename, p.sourceLine),
+	)
 	if position.Line <= 0 || position.Filename == "" {
 		return
 	}

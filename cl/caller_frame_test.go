@@ -10,6 +10,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -1257,14 +1258,83 @@ func TestDirectiveFilename(t *testing.T) {
 			// The package loader hands cl an absolute expansion; emulate it.
 			adjusted = "/work/pkg/rel.go"
 		}
-		if got := directiveFilename(fset, c.pos, adjusted); got != c.want {
+		if got := directiveFilename(fset, c.pos, adjusted, nil); got != c.want {
 			t.Fatalf("case %d: directiveFilename(%q) = %q, want %q", i, adjusted, got, c.want)
 		}
 	}
-	if got := directiveFilename(fset, token.NoPos, "x.go"); got != "x.go" {
+	if got := directiveFilename(fset, token.NoPos, "x.go", nil); got != "x.go" {
 		t.Fatal("NoPos must pass through")
 	}
-	if got := directiveFilename(nil, pos(0), "x.go"); got != "x.go" {
+	if got := directiveFilename(nil, pos(0), "x.go", nil); got != "x.go" {
 		t.Fatal("nil fset must pass through")
+	}
+}
+func TestDirectiveFilenameWindowsRootedSlash(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows filepath semantics")
+	}
+	fset := token.NewFileSet()
+	src := "package p\n//line /foo/bar.go:123\nfunc F() {}\n"
+	file, err := parser.ParseFile(fset, `C:\work\pkg\orig.go`, src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos := file.Decls[0].Pos()
+	adjusted := fset.Position(pos).Filename
+	lines := strings.Split(src, "\n")
+	sourceLine := func(_ string, line int) (string, bool) {
+		if line <= 0 || line > len(lines) {
+			return "", false
+		}
+		return lines[line-1], true
+	}
+	got := runtimeSourceFilename(
+		&llssa.Target{GOOS: "windows"},
+		directiveFilename(fset, pos, adjusted, sourceLine),
+	)
+	if want := "/foo/bar.go"; got != want {
+		t.Fatalf("directiveFilename(%q) = %q, want %q", adjusted, got, want)
+	}
+}
+
+func TestParseLineDirectiveFilename(t *testing.T) {
+	tests := []struct {
+		text         string
+		wantFilename string
+		wantPrevious bool
+		wantOK       bool
+	}{
+		{"rel.go:20", "rel.go", false, true},
+		{"c:/foo/bar.go:987", "c:/foo/bar.go", false, true},
+		{"foo.go:12:3", "foo.go", false, true},
+		{":30", "", false, true},
+		{":30:4", "", true, true},
+		{"bad", "", false, false},
+		{"foo.go:0", "", false, false},
+		{"foo.go:1:0", "", false, false},
+		{"foo.go:not-a-line", "", false, false},
+	}
+	for _, test := range tests {
+		filename, previous, ok := parseLineDirectiveFilename(test.text)
+		if filename != test.wantFilename || previous != test.wantPrevious || ok != test.wantOK {
+			t.Errorf("parseLineDirectiveFilename(%q) = (%q, %v, %v), want (%q, %v, %v)",
+				test.text, filename, previous, ok,
+				test.wantFilename, test.wantPrevious, test.wantOK)
+		}
+	}
+}
+
+func TestRuntimeSourceFilename(t *testing.T) {
+	windows := &llssa.Target{GOOS: "windows"}
+	linux := &llssa.Target{GOOS: "linux"}
+	const native = `C:\work\pkg\main.go`
+	if got, want := runtimeSourceFilename(windows, native), "C:/work/pkg/main.go"; got != want {
+		t.Fatalf("Windows runtime filename = %q, want %q", got, want)
+	}
+	if got := runtimeSourceFilename(linux, native); got != native {
+		t.Fatalf("Unix runtime filename = %q, want unchanged %q", got, native)
+	}
+	if got := runtimeSourceFilename(nil, native); got != native {
+		t.Fatalf("nil-target runtime filename = %q, want unchanged %q", got, native)
 	}
 }

@@ -807,8 +807,23 @@ func (p *context) funcInfoPosition(f *ssa.Function) token.Position {
 		}
 	}
 	position := p.goProg.Fset.Position(pos)
-	position.Filename = directiveFilename(p.goProg.Fset, pos, position.Filename)
+	position.Filename = runtimeSourceFilename(
+		p.prog.Target(),
+		directiveFilename(p.goProg.Fset, pos, position.Filename, p.sourceLine),
+	)
 	return position
+}
+
+// runtimeSourceFilename uses the slash-separated spelling emitted by the Go
+// toolchain for Windows runtime metadata. In particular, log.Lshortfile strips
+// the last slash itself, so storing a native backslash path would expose the
+// full source path. Keep the conversion target-aware because a backslash is a
+// valid filename character on Unix.
+func runtimeSourceFilename(target *llssa.Target, filename string) string {
+	if target != nil && target.GOOS == "windows" {
+		return strings.ReplaceAll(filename, `\`, "/")
+	}
+	return filename
 }
 
 // directiveFilename normalizes a //line-directive-adjusted filename to the
@@ -817,22 +832,86 @@ func (p *context) funcInfoPosition(f *ssa.Function) token.Position {
 // file's directory, but gc reports the directive text verbatim; empty
 // directive filenames print as "??". Positions without a directive pass
 // through untouched.
-func directiveFilename(fset *token.FileSet, pos token.Pos, adjusted string) string {
+func directiveFilename(fset *token.FileSet, pos token.Pos, adjusted string, sourceLine func(string, int) (string, bool)) string {
 	if pos == token.NoPos || fset == nil {
 		return adjusted
 	}
-	original := fset.PositionFor(pos, false).Filename
+	originalPos := fset.PositionFor(pos, false)
+	original := originalPos.Filename
 	if original == "" || adjusted == original {
 		return adjusted
 	}
 	if adjusted == "" {
 		return "??"
 	}
+	// go/scanner expands a relative //line filename against the source
+	// directory. On Windows it also treats a leading slash as relative, even
+	// though cmd/compile and runtime.Caller preserve that rooted spelling.
+	// Recover the directive text before applying the path-based fallback.
+	// This is only needed for adjusted positions, so ordinary files do not pay
+	// for the backward source scan.
+	if filename, ok := precedingLineDirectiveFilename(originalPos, sourceLine); ok {
+		return filename
+	}
 	if rel, err := filepath.Rel(filepath.Dir(original), adjusted); err == nil &&
 		rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return filepath.ToSlash(rel)
 	}
 	return adjusted
+}
+
+func precedingLineDirectiveFilename(pos token.Position, sourceLine func(string, int) (string, bool)) (string, bool) {
+	if sourceLine == nil || pos.Filename == "" || pos.Line <= 1 {
+		return "", false
+	}
+	for line := pos.Line - 1; line >= 1; line-- {
+		text, ok := sourceLine(pos.Filename, line)
+		if !ok {
+			return "", false
+		}
+		text = strings.TrimSuffix(text, "\r")
+		if !strings.HasPrefix(text, "//line ") {
+			continue
+		}
+		filename, previous, ok := parseLineDirectiveFilename(text[len("//line "):])
+		if !ok {
+			continue
+		}
+		if previous {
+			// //line :line:column inherits the previous adjusted filename;
+			// the FileSet already contains the correct value.
+			return "", false
+		}
+		if filename == "" {
+			return "??", true
+		}
+		return filepath.Clean(filename), true
+	}
+	return "", false
+}
+
+func parseLineDirectiveFilename(text string) (filename string, previous, ok bool) {
+	const maxLineColumn = 1 << 30
+	last := strings.LastIndexByte(text, ':')
+	if last < 0 {
+		return "", false, false
+	}
+	lineOrColumn, err := strconv.ParseUint(text[last+1:], 10, 32)
+	if err != nil || lineOrColumn == 0 || lineOrColumn > maxLineColumn {
+		return "", false, false
+	}
+
+	filename = text[:last]
+	if second := strings.LastIndexByte(filename, ':'); second >= 0 {
+		if line, err := strconv.ParseUint(filename[second+1:], 10, 32); err == nil {
+			if line == 0 || line > maxLineColumn {
+				return "", false, false
+			}
+			filename = filename[:second]
+			previous = filename == ""
+		}
+	}
+	return filename, previous, true
 }
 
 func isGlobal(v *types.Var) bool {
