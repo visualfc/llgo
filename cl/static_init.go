@@ -210,6 +210,8 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 // recording constant stores into out and tracking intermediate instructions for suppression.
 // terminal must be the exact load or full-slice value consumed only by terminalStore;
 // any other escaping use rejects the fold. The visited map guards against cyclic pointer graphs.
+// A false result may leave partial entries in out and instrs; callers must discard the entire
+// candidate on failure.
 func collectAllocStores(alloc *ssa.Alloc, terminal ssa.Value, terminalStore *ssa.Store, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
 	if visited[alloc] {
 		return false
