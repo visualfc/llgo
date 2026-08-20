@@ -254,16 +254,39 @@ func (tc *typecheckContext) parseFile(filename string, fset *token.FileSet) (*as
 	return parser.ParseFile(fset, fullPath, src, parser.AllErrors|parser.ParseComments)
 }
 
+func (tc *typecheckContext) targetCompilerAndArch(pkg *Package) (compiler, arch string) {
+	compiler = "gc"
+	if tc.cfg != nil {
+		for _, env := range tc.cfg.Env {
+			if strings.HasPrefix(env, "GOARCH=") {
+				arch = env[len("GOARCH="):]
+			}
+		}
+	}
+	if arch == "" {
+		arch = os.Getenv("GOARCH")
+	}
+	if arch == "" {
+		arch = runtime.GOARCH
+	}
+	return compiler, arch
+}
+
 func (tc *typecheckContext) computedSizes(pkg *Package) types.Sizes {
+	compiler, arch := tc.targetCompilerAndArch(pkg)
 	s := pkg.TypesSizes
 	if s == nil {
-		s = types.SizesFor("gc", runtime.GOARCH)
+		s = types.SizesFor(compiler, arch)
 		if s == nil {
-			s = types.SizesFor("gc", "amd64")
+			if arch == "wasm" {
+				s = &types.StdSizes{WordSize: 4, MaxAlign: 4}
+			} else {
+				s = types.SizesFor("gc", "amd64")
+			}
 		}
 	}
 	if tc.sizesFn != nil {
-		s = tc.sizesFn(s, "gc", runtime.GOARCH)
+		s = tc.sizesFn(s, compiler, arch)
 	}
 	return s
 }
