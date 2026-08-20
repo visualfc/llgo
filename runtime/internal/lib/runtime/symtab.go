@@ -1683,6 +1683,11 @@ func initRuntimePCLineFramesOnce() {
 		nframes++
 	}
 	frames = frames[:nframes]
+	// Zero-byte source anchors can resolve to the same final PC. Link-order
+	// carrier sections keep anchors for one function in emission order, so
+	// collapse adjacent aliases before the unstable PC sort and let the last
+	// (nearest) source location win.
+	frames = uniqueRuntimePCLineFrames(frames)
 	sortRuntimePCLineFrames(frames)
 	frames = uniqueRuntimePCLineFrames(frames)
 	runtimePCLineFrames = frames
