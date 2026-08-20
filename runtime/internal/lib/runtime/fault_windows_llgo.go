@@ -25,17 +25,6 @@ import (
 	rtdebug "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
-const (
-	windowsSIGSEGV                = 11
-	windowsMinPanicOnFaultAddress = 0x1000
-)
-
-//go:linkname c_installWindowsFaultHandler C.llgo_install_windows_fault_handler
-func c_installWindowsFaultHandler(cb func(unsafe.Pointer, int32, uintptr)) c.Int
-
-//go:linkname c_windowsFaultCaptureDone C.llgo_windows_fault_capture_done
-func c_windowsFaultCaptureDone()
-
 //go:linkname c_windowsFaultPCBuf C.llgo_windows_fault_pcbuf
 func c_windowsFaultPCBuf() unsafe.Pointer
 
@@ -47,19 +36,13 @@ func memReadable(addr uintptr) bool {
 }
 
 func init() {
-	if c_installWindowsFaultHandler(onWindowsFault) == 0 {
-		panic("runtime: failed to install Windows fault handler")
-	}
+	rtdebug.WindowsFaultSnapshot = storeWindowsFaultSnapshot
 }
 
-func onWindowsFault(context unsafe.Pointer, signal int32, address uintptr) {
-	if signal == windowsSIGSEGV && address >= windowsMinPanicOnFaultAddress && !rtdebug.PanicOnFault() {
-		return
-	}
-
+func storeWindowsFaultSnapshot(context unsafe.Pointer) {
 	// Faults are recoverable and different goroutines run on different host
 	// threads, so capture into the handler's thread-local scratch storage.
-	// StoreFaultPCs then copies the snapshot into the current G before panic's
+	// StoreFaultPCs copies the snapshot into the current G before panic's
 	// non-local jump unwinds the handler stack.
 	pcs := (*[64]uintptr)(c_windowsFaultPCBuf())
 	pc, fp := windowsFaultPCFP(context)
@@ -74,14 +57,6 @@ func onWindowsFault(context unsafe.Pointer, signal int32, address uintptr) {
 		n += platformFaultCallers(context, fp, pcs[n:])
 	}
 	rtdebug.StoreFaultPCs(pcs[:n])
-
-	// The panic path does not return through the vectored handler, so release
-	// its recursion guard before the non-local jump begins.
-	c_windowsFaultCaptureDone()
-	if signal == windowsSIGSEGV && address >= windowsMinPanicOnFaultAddress {
-		rtdebug.PanicSignalAddr(address)
-	}
-	rtdebug.PanicSignal(int(signal))
 }
 
 func windowsFPWalkFrom(fp uintptr, pcs []uintptr) int {
