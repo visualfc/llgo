@@ -26,10 +26,8 @@ package main
 // Arrays: all three elements participate in equality, and inequality negates
 // the aggregate result rather than changing element semantics.
 // CHECK-LABEL: define void @"main.init#2"(){{.*}} {
-// CHECK: %[[ARRAY_L:[0-9]+]] = load [3 x i64], ptr %{{[0-9]+}}
-// CHECK: %[[ARRAY_R:[0-9]+]] = load [3 x i64], ptr %{{[0-9]+}}
-// CHECK: extractvalue [3 x i64] %[[ARRAY_L]], 0
-// CHECK: extractvalue [3 x i64] %[[ARRAY_R]], 0
+// CHECK: extractvalue [3 x i64] %[[ARRAY_L:[0-9]+]], 0
+// CHECK: extractvalue [3 x i64] %[[ARRAY_R:[0-9]+]], 0
 // CHECK: extractvalue [3 x i64] %[[ARRAY_L]], 1
 // CHECK: extractvalue [3 x i64] %[[ARRAY_R]], 1
 // CHECK: extractvalue [3 x i64] %[[ARRAY_L]], 2

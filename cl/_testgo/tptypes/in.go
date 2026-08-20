@@ -108,6 +108,7 @@ func main() {
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 0)
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 10)
 // CHECK-NEXT:   %[[TMP16:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 24)
+// CHECK-NEXT:   store %"main.Slice{{\[\[}}]int,int]" zeroinitializer, ptr %[[TMP16]], align 8
 // CHECK-NEXT:   %[[TMP17:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT:   %[[TMP18:[0-9]+]] = getelementptr inbounds i64, ptr %[[TMP17]], i64 0
 // CHECK-NEXT:   store i64 100, ptr %[[TMP18]], align 8
@@ -116,6 +117,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP21:[0-9]+]] = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[TMP20]], i64 1, 2
 // CHECK-NEXT:   %[[TMP22:[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.Slice" @"main.(*Slice{{\[\[}}]int,int]).Append"(ptr %[[TMP16]], %"{{.*}}/runtime/internal/runtime.Slice" %[[TMP21]])
 // CHECK-NEXT:   %[[TMP23:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 24)
+// CHECK-NEXT:   store %"main.Slice{{\[\[}}]string,string]" zeroinitializer, ptr %[[TMP23]], align 8
 // CHECK-NEXT:   %[[TMP24:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   %[[TMP25:[0-9]+]] = getelementptr inbounds %"{{.*}}/runtime/internal/runtime.String", ptr %[[TMP24]], i64 0
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.String" { ptr @[[GLOB0]], i64 5 }, ptr %[[TMP25]], align 8
@@ -124,6 +126,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP28:[0-9]+]] = insertvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[TMP27]], i64 1, 2
 // CHECK-NEXT:   %[[TMP29:[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.Slice" @"main.(*Slice{{\[\[}}]string,string]).Append"(ptr %[[TMP23]], %"{{.*}}/runtime/internal/runtime.Slice" %[[TMP28]])
 // CHECK-NEXT:   %[[TMP30:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 24)
+// CHECK-NEXT:   store %"main.Slice{{\[\[}}]int,int]" zeroinitializer, ptr %[[TMP30]], align 8
 // CHECK-NEXT:   %[[TMP31:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
 // CHECK-NEXT:   %[[TMP32:[0-9]+]] = getelementptr inbounds i64, ptr %[[TMP31]], i64 0
 // CHECK-NEXT:   store i64 1, ptr %[[TMP32]], align 8
