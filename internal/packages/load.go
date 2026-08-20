@@ -180,6 +180,9 @@ func LoadExWithGoVersion(dedup Deduper, sizes func(sizes types.Sizes, compiler, 
 	if origMode&NeedTypesSizes != 0 {
 		driverCfg.Mode |= NeedTypesSizes
 	}
+	if origMode&NeedModule != 0 || origMode&(NeedTypes|NeedTypesInfo) != 0 {
+		driverCfg.Mode |= NeedModule
+	}
 
 	initial, err := packages.Load(&driverCfg, patterns...)
 	if err != nil {
@@ -235,18 +238,20 @@ func (tc *typecheckContext) parseFile(filename string, fset *token.FileSet) (*as
 		fullPath = filepath.Join(tc.cfg.Dir, fullPath)
 	}
 	var src []byte
+	hasSrc := false
 	if tc.cfg.Overlay != nil {
 		if data, ok := tc.cfg.Overlay[fullPath]; ok {
-			src = data
+			src, hasSrc = data, true
 		} else if data, ok := tc.cfg.Overlay[filename]; ok {
-			src = data
+			src, hasSrc = data, true
 		}
 	}
-	if src == nil {
+	if !hasSrc {
 		data, err := os.ReadFile(fullPath)
-		if err == nil {
-			src = data
+		if err != nil {
+			return nil, err
 		}
+		src = data
 	}
 	if tc.cfg.ParseFile != nil {
 		return tc.cfg.ParseFile(fset, fullPath, src)
@@ -317,7 +322,7 @@ func (tc *typecheckContext) typecheckPackage(pkg *Package) {
 			return
 		}
 		defer func() {
-			if !pkg.IllTyped && pkg.Types != nil {
+			if !pkg.IllTyped && pkg.Types != nil && pkg.Types.Complete() {
 				tc.dedup.set(pkg.PkgPath, &Cached{
 					Package:   pkg,
 					Types:     pkg.Types,
@@ -337,7 +342,6 @@ func (tc *typecheckContext) typecheckPackage(pkg *Package) {
 		}
 	}
 
-	pkg.Types = types.NewPackage(pkg.PkgPath, pkg.Name)
 	pkg.Fset = fset
 	pkg.TypesSizes = tc.computedSizes(pkg)
 
@@ -415,6 +419,8 @@ func (tc *typecheckContext) typecheckPackage(pkg *Package) {
 	if tc.origMode&NeedTypes == 0 && tc.origMode&NeedTypesInfo == 0 {
 		return
 	}
+
+	pkg.Types = types.NewPackage(pkg.PkgPath, pkg.Name)
 
 	pkg.TypesInfo = &types.Info{
 		Types:        make(map[ast.Expr]types.TypeAndValue),
