@@ -231,6 +231,10 @@ func collectAllocStores(alloc *ssa.Alloc, basePath []staticInitPathElem, out *[]
 			if !ok || len(unopRefs) != 1 {
 				return false
 			}
+			elemStore, ok := unopRefs[0].(*ssa.Store)
+			if !ok || elemStore.Val != ref {
+				return false
+			}
 			*instrs = append(*instrs, ref)
 		case *ssa.FieldAddr:
 			subPath, ok := staticInitStorePathToAlloc(ref, alloc)

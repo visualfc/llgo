@@ -83,3 +83,23 @@ func TestNewBackendProgramSharesPreparedGoState(t *testing.T) {
 		t.Fatal("backend Program did not preserve coordinator configuration")
 	}
 }
+
+func TestZeroSizedGlobalInitGuards(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	pkg := prog.NewPackage("example.com/p", "p")
+
+	// 1. Zero-sized global
+	zeroElem := types.NewArray(types.Typ[types.Int], 0)
+	zeroPtr := types.NewPointer(zeroElem)
+	zeroGlobal := pkg.NewVar("zeroVar", zeroPtr, InGo)
+	zeroGlobal.Init(pkg.Prog.Zero(pkg.Prog.Type(zeroElem, InGo)))
+	zeroGlobal.InitNil()
+
+	// 2. Normal global
+	intElem := types.Typ[types.Int]
+	intPtr := types.NewPointer(intElem)
+	normalGlobal := pkg.NewVar("normalVar", intPtr, InGo)
+	normalGlobal.Init(pkg.Prog.IntVal(42, pkg.Prog.Type(intElem, InGo)))
+	normalGlobal.InitNil()
+}

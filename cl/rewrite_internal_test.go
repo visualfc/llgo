@@ -1769,3 +1769,68 @@ func Use() float64 { return float64(GFloat.F32) + GFloat.F64 }
 	assertNoStoreToGlobal(t, ir, "@staticinit.GFloat")
 }
 
+func TestStaticSliceInitOfEdgeCases(t *testing.T) {
+	// 1. Non-slice store value
+	intStore := &ssa.Store{
+		Addr: new(ssa.Global),
+		Val:  ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]),
+	}
+	if _, ok := staticSliceInitOf(intStore); ok {
+		t.Fatal("expected non-slice store to fail staticSliceInitOf")
+	}
+
+	// 2. Slice with Low / High / Max bounds
+	c0 := ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])
+	alloc := &ssa.Alloc{Comment: "arr"}
+	boundedSlice := &ssa.Slice{
+		X:    alloc,
+		Low:  c0,
+		High: c0,
+	}
+	boundedStore := &ssa.Store{
+		Addr: new(ssa.Global),
+		Val:  boundedSlice,
+	}
+	if _, ok := staticSliceInitOf(boundedStore); ok {
+		t.Fatal("expected bounded slice to fail staticSliceInitOf")
+	}
+
+	// 3. Slice whose X is not an Alloc
+	nonAllocSlice := &ssa.Slice{
+		X: new(ssa.Global),
+	}
+	nonAllocStore := &ssa.Store{
+		Addr: new(ssa.Global),
+		Val:  nonAllocSlice,
+	}
+	if _, ok := staticSliceInitOf(nonAllocStore); ok {
+		t.Fatal("expected non-alloc slice source to fail staticSliceInitOf")
+	}
+}
+
+func TestCollectAllocStoresBranchEdgeCases(t *testing.T) {
+	alloc := new(ssa.Alloc)
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+
+	// 1. Cycle detection
+	visited := map[*ssa.Alloc]bool{alloc: true}
+	if collectAllocStores(alloc, nil, &stores, &instrs, visited) {
+		t.Fatal("expected visited alloc to fail collectAllocStores")
+	}
+
+	// 2. handleStoreVal on UnOp with heap alloc
+	heapAlloc := &ssa.Alloc{Heap: true}
+	unopHeap := &ssa.UnOp{Op: token.MUL, X: heapAlloc}
+	storeHeap := &ssa.Store{Addr: alloc, Val: unopHeap}
+	if handleStoreVal(storeHeap, nil, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+		t.Fatal("expected heap alloc unop to fail handleStoreVal")
+	}
+
+	// 3. handleStoreVal on non-MUL UnOp
+	unopNotMul := &ssa.UnOp{Op: token.NOT, X: alloc}
+	storeNotMul := &ssa.Store{Addr: alloc, Val: unopNotMul}
+	if handleStoreVal(storeNotMul, nil, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+		t.Fatal("expected non-MUL unop to fail handleStoreVal")
+	}
+}
