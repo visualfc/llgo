@@ -56,11 +56,11 @@ type workload struct {
 
 var workloads = []workload{
 	{name: "cprintf", source: "benchmark/binary_size/cprintf/main.go", output: "Hello, world\n"},
-	{name: "cprintf_lto", source: "benchmark/binary_size/cprintf/main.go", output: "Hello, world\n", flags: []string{"-lto=full"}},
+	{name: "cprintf-lto", source: "benchmark/binary_size/cprintf/main.go", output: "Hello, world\n", flags: []string{"-lto=full"}},
 	{name: "println", source: "benchmark/binary_size/println/main.go", output: "Hello, world\n"},
-	{name: "println_lto", source: "benchmark/binary_size/println/main.go", output: "Hello, world\n", flags: []string{"-lto=full"}},
+	{name: "println-lto", source: "benchmark/binary_size/println/main.go", output: "Hello, world\n", flags: []string{"-lto=full"}},
 	{name: "fmtprintf", source: "benchmark/binary_size/fmtprintf/main.go", output: "Hello, world\n"},
-	{name: "fmtprintf_lto", source: "benchmark/binary_size/fmtprintf/main.go", output: "Hello, world\n", flags: []string{"-lto=full"}},
+	{name: "fmtprintf-lto", source: "benchmark/binary_size/fmtprintf/main.go", output: "Hello, world\n", flags: []string{"-lto=full"}},
 }
 
 var expectedGoBenchmarks = []string{
