@@ -206,13 +206,31 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 	}
 }
 
-// collectAllocStores recursively traces store instructions made to a local stack alloc,
+// collectAllocStores recursively traces store instructions made to an alloc,
 // recording constant stores into out and tracking intermediate instructions for suppression.
-// resultLoad and resultStore identify the one load that transfers the completed aggregate to
-// its destination; rejecting any other load keeps unrelated consumers executable. The visited
-// map guards against cyclic pointer graphs.
-func collectAllocStores(alloc *ssa.Alloc, resultLoad *ssa.UnOp, resultStore *ssa.Store, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
+// terminal must be the exact load or full-slice value consumed only by terminalStore;
+// any other escaping use rejects the fold. The visited map guards against cyclic pointer graphs.
+func collectAllocStores(alloc *ssa.Alloc, terminal ssa.Value, terminalStore *ssa.Store, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
 	if visited[alloc] {
+		return false
+	}
+	switch terminal := terminal.(type) {
+	case *ssa.UnOp:
+		if terminal.Op != token.MUL || terminal.X != alloc {
+			return false
+		}
+	case *ssa.Slice:
+		if terminal.X != alloc || terminal.Low != nil || terminal.High != nil || terminal.Max != nil {
+			return false
+		}
+	default:
+		return false
+	}
+	if terminalStore == nil || terminalStore.Val != terminal {
+		return false
+	}
+	terminalRefs, ok := nonDebugReferrers(terminal)
+	if !ok || len(terminalRefs) != 1 || terminalRefs[0] != terminalStore {
 		return false
 	}
 	visited[alloc] = true
@@ -222,30 +240,20 @@ func collectAllocStores(alloc *ssa.Alloc, resultLoad *ssa.UnOp, resultStore *ssa
 	if !ok {
 		return false
 	}
-	seenResultLoad := false
+	seenTerminal := false
 	for _, ref := range refs {
 		switch ref := ref.(type) {
 		case *ssa.Slice:
-			if ref.Low != nil || ref.High != nil || ref.Max != nil {
+			if ref != terminal || seenTerminal {
 				return false
 			}
-			sliceRefs, ok := nonDebugReferrers(ref)
-			if !ok || len(sliceRefs) != 1 {
-				return false
-			}
-			elemStore, ok := sliceRefs[0].(*ssa.Store)
-			if !ok || elemStore.Val != ref {
-				return false
-			}
+			seenTerminal = true
+			*instrs = append(*instrs, ref)
 		case *ssa.UnOp:
-			if ref != resultLoad || seenResultLoad || ref.Op != token.MUL {
+			if ref != terminal || seenTerminal {
 				return false
 			}
-			unopRefs, ok := nonDebugReferrers(ref)
-			if !ok || len(unopRefs) != 1 || resultStore == nil || unopRefs[0] != resultStore || resultStore.Val != ref {
-				return false
-			}
-			seenResultLoad = true
+			seenTerminal = true
 			*instrs = append(*instrs, ref)
 		case *ssa.FieldAddr:
 			if !collectAddrStores(ref, alloc, basePath, out, instrs, visited) {
@@ -269,16 +277,26 @@ func collectAllocStores(alloc *ssa.Alloc, resultLoad *ssa.UnOp, resultStore *ssa
 			return false
 		}
 	}
-	return seenResultLoad
+	return seenTerminal
 }
 
 // collectAddrStores recursively visits field/index address projections derived from rootAlloc,
 // recording constant stores and intermediate instructions.
 func collectAddrStores(addr ssa.Value, rootAlloc *ssa.Alloc, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
+	switch addr := addr.(type) {
+	case *ssa.FieldAddr:
+	case *ssa.IndexAddr:
+		if _, ok := staticInitConstIndex(addr.Index); !ok {
+			return false
+		}
+	default:
+		return false
+	}
 	refs, ok := nonDebugReferrers(addr)
 	if !ok {
 		return false
 	}
+	seenStore := false
 	for _, ref := range refs {
 		switch ref := ref.(type) {
 		case *ssa.FieldAddr:
@@ -292,9 +310,10 @@ func collectAddrStores(addr ssa.Value, rootAlloc *ssa.Alloc, basePath []staticIn
 			}
 			*instrs = append(*instrs, ref)
 		case *ssa.Store:
-			if ref.Addr != addr {
+			if ref.Addr != addr || seenStore {
 				return false
 			}
+			seenStore = true
 			subPath, ok := staticInitStorePathToAlloc(addr, rootAlloc)
 			if !ok {
 				return false
@@ -353,7 +372,7 @@ func staticInitStorePathToAlloc(addr ssa.Value, target *ssa.Alloc) ([]staticInit
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: addr.Field}}), true
+		return append(path, staticInitPathElem{index: addr.Field}), true
 	case *ssa.IndexAddr:
 		path, ok := staticInitStorePathToAlloc(addr.X, target)
 		if !ok {
@@ -363,7 +382,7 @@ func staticInitStorePathToAlloc(addr ssa.Value, target *ssa.Alloc) ([]staticInit
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: index}}), true
+		return append(path, staticInitPathElem{index: index}), true
 	default:
 		return nil, false
 	}
@@ -387,18 +406,13 @@ func staticSliceInitOf(store *ssa.Store) (*staticSliceInit, bool) {
 		return nil, false
 	}
 
-	sliceRefs, ok := nonDebugReferrers(slice)
-	if !ok || len(sliceRefs) != 1 || sliceRefs[0] != store {
-		return nil, false
-	}
-
 	ret := &staticSliceInit{
 		store: store, slice: slice, alloc: alloc, array: array,
-		instrs: []ssa.Instruction{slice, store},
+		instrs: []ssa.Instruction{store},
 	}
 
 	visited := make(map[*ssa.Alloc]bool)
-	if !collectAllocStores(alloc, nil, &ret.stores, &ret.instrs, visited) {
+	if !collectAllocStores(alloc, slice, store, nil, &ret.stores, &ret.instrs, visited) {
 		return nil, false
 	}
 	return ret, true
@@ -479,7 +493,7 @@ func staticInitStorePath(addr ssa.Value) ([]staticInitPathElem, bool) {
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: addr.Field}}), true
+		return append(path, staticInitPathElem{index: addr.Field}), true
 	case *ssa.IndexAddr:
 		path, ok := staticInitStorePath(addr.X)
 		if !ok {
@@ -489,7 +503,7 @@ func staticInitStorePath(addr ssa.Value) ([]staticInitPathElem, bool) {
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: index}}), true
+		return append(path, staticInitPathElem{index: index}), true
 	default:
 		return nil, false
 	}
