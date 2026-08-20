@@ -821,6 +821,12 @@ func TestStaticInitHelperRejectsNestedUnsupportedPaths(t *testing.T) {
 	if _, ok := staticInitStorePathToAlloc(&ssa.FieldAddr{X: foreign, Field: 0}, target); ok {
 		t.Fatal("field path rooted at a different alloc should be rejected")
 	}
+	if _, ok := staticInitStorePathToAlloc(&ssa.IndexAddr{
+		X:     foreign,
+		Index: ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
+	}, target); ok {
+		t.Fatal("index path rooted at a different alloc should be rejected")
+	}
 }
 
 func TestStaticInitHelperBuildAdditionalFailures(t *testing.T) {
