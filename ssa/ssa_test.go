@@ -2559,8 +2559,10 @@ func TestZeroSizedGlobalEmitsAliasSymbol(t *testing.T) {
 		return pkg
 	})
 	pkg := prog.NewPackage("bar", "foo/bar")
-	typ := types.NewPointer(types.NewArray(types.Typ[types.Int], 0))
+	elem := types.NewArray(types.Typ[types.Int], 0)
+	typ := types.NewPointer(elem)
 	a := pkg.NewVar("foo/bar.a", typ, InGo)
+	a.Init(prog.Zero(prog.Type(elem, InGo)))
 	a.InitNil()
 	pkg.NewVar("other/pkg.a", typ, InGo)
 	assertPkg(t, pkg, `; ModuleID = 'foo/bar'

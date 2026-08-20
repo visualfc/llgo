@@ -125,7 +125,11 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 
 			candidate := candidateOf(global)
 			path, ok := staticInitStorePath(store.Addr)
-			if ok && len(path) == 0 {
+			if !ok {
+				candidate.invalid = true
+				continue
+			}
+			if len(path) == 0 {
 				if slice, ok := staticSliceInitOf(store); ok {
 					if candidate.slice != nil || len(candidate.stores) != 0 {
 						candidate.invalid = true
@@ -143,16 +147,11 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 				})
 			} else if unop, ok := store.Val.(*ssa.UnOp); ok && unop.Op == token.MUL {
 				if alloc, ok := unop.X.(*ssa.Alloc); ok && !alloc.Heap {
-					unopRefs, ok := nonDebugReferrers(unop)
-					if !ok || len(unopRefs) != 1 || unopRefs[0] != store {
+					if !collectAllocStores(alloc, unop, store, path, &candidate.stores, &candidate.instrs, make(map[*ssa.Alloc]bool)) {
 						candidate.invalid = true
 						continue
 					}
-					if !collectAllocStores(alloc, path, &candidate.stores, &candidate.instrs, make(map[*ssa.Alloc]bool)) {
-						candidate.invalid = true
-						continue
-					}
-					candidate.instrs = append(candidate.instrs, unop, store)
+					candidate.instrs = append(candidate.instrs, store)
 				} else {
 					candidate.invalid = true
 					continue
@@ -209,8 +208,10 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 
 // collectAllocStores recursively traces store instructions made to a local stack alloc,
 // recording constant stores into out and tracking intermediate instructions for suppression.
-// The visited map guards against cyclic pointer graphs.
-func collectAllocStores(alloc *ssa.Alloc, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
+// resultLoad and resultStore identify the one load that transfers the completed aggregate to
+// its destination; rejecting any other load keeps unrelated consumers executable. The visited
+// map guards against cyclic pointer graphs.
+func collectAllocStores(alloc *ssa.Alloc, resultLoad *ssa.UnOp, resultStore *ssa.Store, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
 	if visited[alloc] {
 		return false
 	}
@@ -221,49 +222,31 @@ func collectAllocStores(alloc *ssa.Alloc, basePath []staticInitPathElem, out *[]
 	if !ok {
 		return false
 	}
+	seenResultLoad := false
 	for _, ref := range refs {
 		switch ref := ref.(type) {
 		case *ssa.UnOp:
-			if ref.Op != token.MUL {
+			if ref != resultLoad || seenResultLoad || ref.Op != token.MUL {
 				return false
 			}
 			unopRefs, ok := nonDebugReferrers(ref)
-			if !ok || len(unopRefs) != 1 {
+			if !ok || len(unopRefs) != 1 || resultStore == nil || unopRefs[0] != resultStore || resultStore.Val != ref {
 				return false
 			}
-			elemStore, ok := unopRefs[0].(*ssa.Store)
-			if !ok || elemStore.Val != ref {
-				return false
-			}
+			seenResultLoad = true
 			*instrs = append(*instrs, ref)
-		case *ssa.FieldAddr:
-			subPath, ok := staticInitStorePathToAlloc(ref, alloc)
+		case *ssa.FieldAddr, *ssa.IndexAddr:
+			addr := ref.(ssa.Value)
+			subPath, ok := staticInitStorePathToAlloc(addr, alloc)
 			if !ok {
 				return false
 			}
-			fieldRefs, ok := nonDebugReferrers(ref)
-			if !ok || len(fieldRefs) != 1 {
+			addrRefs, ok := nonDebugReferrers(addr)
+			if !ok || len(addrRefs) != 1 {
 				return false
 			}
-			elemStore, ok := fieldRefs[0].(*ssa.Store)
-			if !ok || elemStore.Addr != ref {
-				return false
-			}
-			if !handleStoreVal(elemStore, appendStaticInitPath(basePath, subPath), out, instrs, visited) {
-				return false
-			}
-			*instrs = append(*instrs, ref, elemStore)
-		case *ssa.IndexAddr:
-			subPath, ok := staticInitStorePathToAlloc(ref, alloc)
-			if !ok {
-				return false
-			}
-			indexRefs, ok := nonDebugReferrers(ref)
-			if !ok || len(indexRefs) != 1 {
-				return false
-			}
-			elemStore, ok := indexRefs[0].(*ssa.Store)
-			if !ok || elemStore.Addr != ref {
+			elemStore, ok := addrRefs[0].(*ssa.Store)
+			if !ok || elemStore.Addr != addr {
 				return false
 			}
 			if !handleStoreVal(elemStore, appendStaticInitPath(basePath, subPath), out, instrs, visited) {
@@ -282,7 +265,7 @@ func collectAllocStores(alloc *ssa.Alloc, basePath []staticInitPathElem, out *[]
 			return false
 		}
 	}
-	return true
+	return seenResultLoad
 }
 
 // appendStaticInitPath concatenates base and sub paths into a newly allocated slice
@@ -308,11 +291,7 @@ func handleStoreVal(store *ssa.Store, fullPath []staticInitPathElem, out *[]stat
 	}
 	if unop, ok := store.Val.(*ssa.UnOp); ok && unop.Op == token.MUL {
 		if innerAlloc, ok := unop.X.(*ssa.Alloc); ok && !innerAlloc.Heap {
-			unopRefs, ok := nonDebugReferrers(unop)
-			if !ok || len(unopRefs) != 1 || unopRefs[0] != store {
-				return false
-			}
-			return collectAllocStores(innerAlloc, fullPath, out, instrs, visited)
+			return collectAllocStores(innerAlloc, unop, store, fullPath, out, instrs, visited)
 		}
 	}
 	return false
