@@ -2134,6 +2134,121 @@ func TestCollectAllocStoresBranchEdgeCases(t *testing.T) {
 	}
 }
 
+func TestCollectAllocStoresRejectsInvalidTerminalContract(t *testing.T) {
+	validLoad := func(alloc *ssa.Alloc) *ssa.UnOp {
+		return &ssa.UnOp{Op: token.MUL, X: alloc}
+	}
+	constValue := func() *ssa.Const {
+		return ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])
+	}
+	tests := []struct {
+		name  string
+		build func(*ssa.Alloc) (ssa.Value, *ssa.Store)
+	}{
+		{
+			name: "load with wrong operation",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := &ssa.UnOp{Op: token.NOT, X: alloc}
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "load from foreign alloc",
+			build: func(_ *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := validLoad(new(ssa.Alloc))
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "slice from foreign alloc",
+			build: func(_ *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := &ssa.Slice{X: new(ssa.Alloc)}
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "bounded slice",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := &ssa.Slice{X: alloc, Low: constValue()}
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "unsupported terminal",
+			build: func(_ *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := constValue()
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "missing destination store",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				return validLoad(alloc), nil
+			},
+		},
+		{
+			name: "destination store has another value",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				return validLoad(alloc), &ssa.Store{Val: constValue()}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			alloc := new(ssa.Alloc)
+			terminal, terminalStore := test.build(alloc)
+			var stores []staticInitStore
+			var instrs []ssa.Instruction
+			if collectAllocStores(
+				alloc, terminal, terminalStore, nil,
+				&stores, &instrs, make(map[*ssa.Alloc]bool),
+			) {
+				t.Fatal("accepted an invalid alloc terminal contract")
+			}
+			if len(stores) != 0 || len(instrs) != 0 {
+				t.Fatalf("invalid terminal collected stores or instructions: stores=%v instrs=%v", stores, instrs)
+			}
+		})
+	}
+}
+
+func TestCollectAllocStoresRejectsNestedDynamicIndex(t *testing.T) {
+	setRefs := func(value ssa.Value, refs ...ssa.Instruction) {
+		t.Helper()
+		referrers := value.Referrers()
+		if referrers == nil {
+			t.Fatalf("%T does not track referrers", value)
+		}
+		*referrers = refs
+	}
+
+	alloc := new(ssa.Alloc)
+	field := &ssa.FieldAddr{X: alloc}
+	dynamicIndex := &ssa.IndexAddr{X: field, Index: alloc}
+	resultLoad := &ssa.UnOp{Op: token.MUL, X: alloc}
+	resultStore := &ssa.Store{Val: resultLoad}
+	setRefs(alloc, field, resultLoad)
+	setRefs(field, dynamicIndex)
+	setRefs(resultLoad, resultStore)
+
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if collectAllocStores(
+		alloc, resultLoad, resultStore, nil,
+		&stores, &instrs, make(map[*ssa.Alloc]bool),
+	) {
+		t.Fatal("accepted a nested address with a dynamic index")
+	}
+}
+
+func TestStaticInitStorePathToAllocRejectsDynamicIndex(t *testing.T) {
+	target := new(ssa.Alloc)
+	if _, ok := staticInitStorePathToAlloc(&ssa.IndexAddr{X: target, Index: target}, target); ok {
+		t.Fatal("dynamic index produced a static alloc path")
+	}
+}
+
 func TestCollectAllocStoresNestedPaths(t *testing.T) {
 	setRefs := func(value ssa.Value, refs ...ssa.Instruction) {
 		t.Helper()
