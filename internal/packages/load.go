@@ -259,7 +259,7 @@ func (tc *typecheckContext) parseFile(filename string, fset *token.FileSet) (*as
 	return parser.ParseFile(fset, fullPath, src, parser.AllErrors|parser.ParseComments)
 }
 
-func (tc *typecheckContext) targetCompilerAndArch(pkg *Package) (compiler, arch string) {
+func (tc *typecheckContext) targetCompilerAndArch() (compiler, arch string) {
 	compiler = "gc"
 	if tc.cfg != nil {
 		for _, env := range tc.cfg.Env {
@@ -277,8 +277,13 @@ func (tc *typecheckContext) targetCompilerAndArch(pkg *Package) (compiler, arch 
 	return compiler, arch
 }
 
+// computedSizes determines the appropriate types.Sizes for the target package.
+// When cross-compiling for WebAssembly (wasm), types.SizesFor("gc", "wasm") may
+// return nil on certain Go toolchain configurations; we explicitly fall back to
+// 32-bit word size and 4-byte alignment (&types.StdSizes{WordSize: 4, MaxAlign: 4})
+// matching the wasm32 ABI.
 func (tc *typecheckContext) computedSizes(pkg *Package) types.Sizes {
-	compiler, arch := tc.targetCompilerAndArch(pkg)
+	compiler, arch := tc.targetCompilerAndArch()
 	s := pkg.TypesSizes
 	if s == nil {
 		s = types.SizesFor(compiler, arch)
