@@ -762,6 +762,19 @@ var G = 1
 		t.Fatal("alloc-backed initializer store was not recorded")
 	}
 
+	// A second executable load makes ownership of the temporary alloc
+	// ambiguous. Verify the package-level collector preserves the dynamic
+	// initializer instead of only testing the helper's rejection in isolation.
+	*allocRefs = append(*allocRefs, &ssa.UnOp{Op: token.MUL, X: alloc})
+	fallbackCtx := &context{prog: loweringProg, pkg: loweringProg.NewPackage("foo-fallback", "foo-fallback")}
+	fallbackCtx.collectStaticGlobalInits(allocBacked)
+	if fallbackCtx.staticGlobalInits != nil {
+		t.Fatalf("alloc with an extra load produced static initializers: %+v", fallbackCtx.staticGlobalInits)
+	}
+	if fallbackCtx.staticInitInstrs != nil || fallbackCtx.staticInitStores != nil {
+		t.Fatal("rejected alloc-backed initializer suppressed executable instructions")
+	}
+
 	invalidPath := buildSSAPackage(t, `package foo
 var G = 1
 `)
@@ -801,6 +814,12 @@ func TestStaticInitHelperRejectsNestedUnsupportedPaths(t *testing.T) {
 		Index: ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
 	}); ok {
 		t.Fatal("index path with unsupported base should be rejected")
+	}
+
+	target := new(ssa.Alloc)
+	foreign := new(ssa.Alloc)
+	if _, ok := staticInitStorePathToAlloc(&ssa.FieldAddr{X: foreign, Field: 0}, target); ok {
+		t.Fatal("field path rooted at a different alloc should be rejected")
 	}
 }
 
