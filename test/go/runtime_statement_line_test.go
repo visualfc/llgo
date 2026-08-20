@@ -50,6 +50,7 @@ func main() {
 	checkAdjacentRuntimeStack()
 	checkRecoveredDebugStackBounds()
 	checkRecoveredStaticPanicLine()
+	checkRecoveredStorePanicLine()
 	checkRecoveredIndirectPanicLine()
 }
 
@@ -179,6 +180,16 @@ func staticNilPanic() {
 	_ = *p // STATIC_NIL_PANIC_MARK
 }
 
+func checkRecoveredStorePanicLine() {
+	defer expectRecoveredPanicLine("main.storeNilPanic", STORE_NIL_PANIC_LINE)
+	storeNilPanic()
+}
+
+func storeNilPanic() {
+	var p *int
+	*p = 1 // STORE_NIL_PANIC_MARK
+}
+
 func checkRecoveredIndirectPanicLine() {
 	runRecoveredPanic("main.indirectBoundsPanic", INDIRECT_BOUNDS_PANIC_LINE, indirectBoundsPanic)
 }
@@ -235,6 +246,7 @@ func TestRuntimeStatementLineInfo(t *testing.T) {
 	source = strings.ReplaceAll(source, "STACK_TWO_LINE", strconv.Itoa(markerLine(source, "STACK_TWO_MARK")))
 	source = strings.ReplaceAll(source, "BOUNDS_LINE", strconv.Itoa(markerLine(source, "BOUNDS_MARK")))
 	source = strings.ReplaceAll(source, "STATIC_NIL_PANIC_LINE", strconv.Itoa(markerLine(source, "STATIC_NIL_PANIC_MARK")))
+	source = strings.ReplaceAll(source, "STORE_NIL_PANIC_LINE", strconv.Itoa(markerLine(source, "STORE_NIL_PANIC_MARK")))
 	source = strings.ReplaceAll(source, "INDIRECT_BOUNDS_PANIC_LINE", strconv.Itoa(markerLine(source, "INDIRECT_BOUNDS_PANIC_MARK")))
 
 	dir := t.TempDir()

@@ -1805,6 +1805,9 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		}
 		ptr := p.compileValue(b, va)
 		val := p.compileValue(b, v.Val)
+		if !isKnownNonNilAddr(va) && !isWrapNilCheckCall(va) {
+			p.recordPanicSite(b, v.Pos())
+		}
 		store := b.Store(ptr, val)
 		if p.isRecoverSlotAddr(va) {
 			store.SetVolatile(true)
