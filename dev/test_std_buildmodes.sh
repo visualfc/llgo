@@ -96,10 +96,12 @@ for mode in c-shared c-archive; do
 			fi
 			import_path="${import_paths[$i]}"
 			stem="${stems[$i]}"
-			test_main_pkg="${import_path}.test"
 			runner_base="${work_dir}/runner-${i}"
 			echo "==> ${test_pkgs[$i]}: run ${mode}"
-			runner_cflags=("-DGO_TEST_PACKAGE=\"${test_main_pkg}\"")
+			# Test-main packages keep the Go package identity "main". The
+			# output library is still named after its import path (for example,
+			# libtar.test), but its entry points are main.init and main.main.
+			runner_cflags=("-DGO_TEST_MAIN_PACKAGE=\"main\"")
 			if [[ "${mode}" == c-shared ]]; then
 				runner_cflags+=("-DGO_C_SHARED=1")
 			fi

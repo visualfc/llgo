@@ -520,11 +520,14 @@ func Build(inv Invocation) ([]Package, error) {
 		defer syntaxErrMu.Unlock()
 		return syntaxErr
 	}
-	dedup.SetPreload(func(pkg *types.Package, files []*ast.File) {
-		if llruntime.SkipToBuild(pkg.Path()) {
+	dedup.SetPreload(func(pkg *packages.Package) {
+		if llruntime.SkipToBuild(pkg.PkgPath) {
 			return
 		}
-		if err := cl.ParsePkgSyntaxWithOptions(prog, cfg.Fset, pkg, files, preloadOptions); err != nil {
+		if pkg.Name == "main" && pkg.ForTest != "" {
+			pkg.Types.Scope().Insert(types.NewConst(0, pkg.Types, abi.ForTestMarker, types.Typ[types.UntypedBool], constant.MakeBool(true)))
+		}
+		if err := cl.ParsePkgSyntaxWithOptions(prog, cfg.Fset, pkg.Types, pkg.Syntax, preloadOptions); err != nil {
 			recordSyntaxErr(err)
 		}
 	})
@@ -887,9 +890,6 @@ func filterTestPackages(initial []*packages.Package, outFile string) ([]*package
 	for _, pkg := range initial {
 		if needLink(pkg, ModeTest) {
 			filtered = append(filtered, pkg)
-		}
-		if pkg.Types != nil && pkg.Types.Name() == "main" {
-			pkg.Types.SetName("main.test")
 		}
 	}
 	if len(filtered) > 1 && outFile != "" {
@@ -1784,8 +1784,8 @@ func cSharedExportArgs(ctx *context, pkgs []*aPackage) []string {
 			}
 		}
 		if ctx.mode == ModeTest && pkg.Package != nil && pkg.Name == "main" && strings.HasSuffix(pkg.PkgPath, ".test") {
-			exports[pkg.PkgPath+".init"] = none{}
-			exports[pkg.PkgPath+".main"] = none{}
+			exports["main.init"] = none{}
+			exports["main.main"] = none{}
 		}
 	}
 	names := make([]string, 0, len(exports))

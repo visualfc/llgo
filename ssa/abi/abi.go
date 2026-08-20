@@ -286,6 +286,7 @@ func typeArgString(t types.Type) string {
 
 const (
 	PatchPathPrefix = env.LLGoRuntimePkg + "/internal/lib/"
+	ForTestMarker   = "@ForTest"
 )
 
 // PathOf returns the package path of the specified package.
@@ -293,7 +294,7 @@ func PathOf(pkg *types.Package) string {
 	if pkg == nil {
 		return ""
 	}
-	if pkg.Name() == "main" {
+	if pkg.Name() == "main" && pkg.Scope().Lookup(ForTestMarker) == nil {
 		return "main"
 	}
 	return strings.TrimPrefix(pkg.Path(), PatchPathPrefix)

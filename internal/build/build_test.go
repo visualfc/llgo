@@ -811,25 +811,6 @@ func TestFilterTestPackages(t *testing.T) {
 		}
 	})
 
-	t.Run("rename main package", func(t *testing.T) {
-		mainPkg := pkg("example.com/cmd")
-		mainPkg.Types = types.NewPackage(mainPkg.ID, "main")
-		initial := []*packages.Package{
-			mainPkg,
-			pkg("example.com/cmd.test"),
-		}
-		filtered, err := filterTestPackages(initial, "")
-		if err != nil {
-			t.Fatalf("filterTestPackages returned unexpected error: %v", err)
-		}
-		if len(filtered) != 1 || filtered[0].ID != "example.com/cmd.test" {
-			t.Fatalf("filtered = %#v, want only example.com/cmd.test", filtered)
-		}
-		if got := mainPkg.Types.Name(); got != "main.test" {
-			t.Fatalf("main package name = %q, want %q", got, "main.test")
-		}
-	})
-
 	t.Run("multiple test packages with output file", func(t *testing.T) {
 		initial := []*packages.Package{
 			pkg("a.test"),
@@ -1378,7 +1359,7 @@ func TestCSharedExportArgsKeepsTestMain(t *testing.T) {
 		mode:      ModeTest,
 		buildConf: &Config{BuildMode: BuildModeCShared, Goos: "linux"},
 	}
-	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,--undefined=example.com/p.test.init -Wl,--undefined=example.com/p.test.main"; got != want {
+	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,--undefined=main.init -Wl,--undefined=main.main"; got != want {
 		t.Fatalf("test main cSharedExportArgs = %q, want %q", got, want)
 	}
 }

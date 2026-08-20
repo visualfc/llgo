@@ -1,5 +1,5 @@
-#ifndef GO_TEST_PACKAGE
-#error GO_TEST_PACKAGE must name the generated Go test main package
+#ifndef GO_TEST_MAIN_PACKAGE
+#error GO_TEST_MAIN_PACKAGE must name the generated Go test main package
 #endif
 
 #include <string.h>
@@ -10,8 +10,8 @@
 #define GO_SYMBOL(name) __asm__(name)
 #endif
 
-extern void llgo_test_init(void) GO_SYMBOL(GO_TEST_PACKAGE ".init");
-extern void llgo_test_run(void) GO_SYMBOL(GO_TEST_PACKAGE ".main");
+extern void llgo_test_init(void) GO_SYMBOL(GO_TEST_MAIN_PACKAGE ".init");
+extern void llgo_test_run(void) GO_SYMBOL(GO_TEST_MAIN_PACKAGE ".main");
 extern int __llgo_argc;
 extern char **__llgo_argv;
 
