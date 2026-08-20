@@ -1,5 +1,6 @@
 /* Keep the runtime shim independent of Windows SDK headers. Clang still
  * applies the target's MSVC ABI and emits ordinary Kernel32 imports. */
+#include <errno.h>
 #include <stdint.h>
 
 typedef __SIZE_TYPE__ llgo_size_t;
@@ -52,6 +53,13 @@ __declspec(dllimport) int LLGO_WINAPI
 QueryPerformanceFrequency(long long *frequency);
 
 static long long llgo_nanotime_frequency;
+
+/* C2func wrappers read the calling thread's CRT errno through this common
+ * runtime entry point. Unix provides the same symbol from clite/os. */
+int cliteErrno(void)
+{
+    return errno;
+}
 
 typedef struct {
     llgo_dword low;
