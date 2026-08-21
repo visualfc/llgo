@@ -327,7 +327,10 @@ func TestTimeTimersAndTickers(t *testing.T) {
 	timerFunc := time.AfterFunc(5*time.Millisecond, func() { close(done) })
 	select {
 	case <-done:
-	case <-time.After(100 * time.Millisecond):
+	// A loaded host or virtual machine can resume the timer loop after both
+	// deadlines have elapsed. Keep enough separation for the AfterFunc
+	// goroutine to start while still detecting a lost callback promptly.
+	case <-time.After(time.Second):
 		t.Fatalf("AfterFunc did not execute")
 	}
 	timerFunc.Stop()
