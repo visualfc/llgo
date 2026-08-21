@@ -2245,6 +2245,7 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 			return fmt.Errorf("run LLVM passes failed for %v: %w", pkgPath, err)
 		}
 	}
+	dropUnusedWindowsTestMain(ctx, aPkg, ret.Module())
 	emitFuncInfoEntrySites(ctx, ret)
 	// ModeGen callers consume the in-memory LLVM module directly. They do not
 	// need cgo/link objects or a package archive for a later link step.
@@ -2308,6 +2309,37 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 	}
 	return nil
+}
+
+// dropUnusedWindowsTestMain mirrors cmd/link's treatment of a command package
+// under `go test`. The tested package still contains its source main function,
+// now named <import-path>.main, but the executable entry is the synthetic test
+// main. cmd/link computes Go reachability before diagnosing unresolved symbols,
+// so it can discard an unreferenced source main even when that body contains a
+// one-sided //go:linkname call. lld-link instead resolves every COFF relocation
+// before /OPT:REF section GC and reports the dead call as undefined.
+//
+// Do not rewrite //go:linkname or weaken undefined symbols: either would also
+// hide an error when the source main is genuinely reachable. Remove only this
+// test-specific entry candidate while it is LLVM IR and only after proving that
+// it has no local use, no //go:linkname reference from any loaded test package,
+// and no //export root. Ordinary builds, synthetic test mains, and non-Windows
+// object formats keep their existing behavior.
+func dropUnusedWindowsTestMain(ctx *context, pkg *aPackage, mod gllvm.Module) {
+	if ctx == nil || ctx.prog == nil || ctx.buildConf == nil || pkg == nil || pkg.Package == nil ||
+		ctx.mode != ModeTest || ctx.buildConf.Goos != "windows" || ctx.buildConf.BuildMode != BuildModeExe ||
+		pkg.Name != "main" || pkg.ForTest == "" || mod.IsNil() {
+		return
+	}
+	symbol := pkg.PkgPath + ".main"
+	fn := mod.NamedFunction(symbol)
+	if fn.IsNil() || fn.IsDeclaration() || !fn.FirstUse().IsNil() || ctx.prog.HasLinknameTarget(symbol) {
+		return
+	}
+	if _, exported := ctx.prog.PackageExport(symbol); exported {
+		return
+	}
+	fn.EraseFromParentAsFunction()
 }
 
 func printCompiledPackage(conf *Config, pkg *aPackage) {

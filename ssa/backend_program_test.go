@@ -62,6 +62,9 @@ func TestNewBackendProgramSharesPreparedGoState(t *testing.T) {
 	if link, ok := backend.Linkname("example.com/p.Entry"); !ok || link != "entry" {
 		t.Fatalf("Linkname = (%q, %v), want (entry, true)", link, ok)
 	}
+	if !backend.HasLinknameTarget("entry") || backend.HasLinknameTarget("missing") {
+		t.Fatal("backend Program did not preserve linkname target lookup")
+	}
 	if export, ok := backend.PackageExport("example.com/p.Entry"); !ok || export != "entry" {
 		t.Fatalf("PackageExport = (%q, %v), want (entry, true)", export, ok)
 	}

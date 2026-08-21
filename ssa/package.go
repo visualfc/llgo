@@ -470,6 +470,20 @@ func (p Program) Linkname(name string) (link string, ok bool) {
 	return
 }
 
+// HasLinknameTarget reports whether a declaration aliases target. It lets
+// build-time dead-code decisions preserve symbols that another package can
+// reference only through //go:linkname.
+func (p Program) HasLinknameTarget(target string) bool {
+	p.packageSyntax.mu.RLock()
+	defer p.packageSyntax.mu.RUnlock()
+	for _, link := range p.packageSyntax.linknames {
+		if link == target {
+			return true
+		}
+	}
+	return false
+}
+
 type closureEnvDirectiveKey struct {
 	fset *token.FileSet
 	name string
