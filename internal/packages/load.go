@@ -90,7 +90,7 @@ type aDeduper struct {
 	cache     sync.Map
 	checked   sync.Map
 	setpath   func(path string, name string) string
-	preload   func(pkg *types.Package, syntax []*ast.File)
+	preload   func(pkg *packages.Package)
 	llgoFiles map[string][]string
 }
 
@@ -100,7 +100,7 @@ func NewDeduper() Deduper {
 	return &aDeduper{}
 }
 
-func (p Deduper) SetPreload(fn func(pkg *types.Package, syntax []*ast.File)) {
+func (p Deduper) SetPreload(fn func(pkg *packages.Package)) {
 	p.preload = fn
 }
 
@@ -458,7 +458,7 @@ func (tc *typecheckContext) typecheckPackage(pkg *Package) {
 	})
 
 	if tc.dedup != nil && tc.dedup.preload != nil {
-		tc.dedup.preload(pkg.Types, pkg.Syntax)
+		tc.dedup.preload(pkg)
 	}
 
 	typeConf := &types.Config{
