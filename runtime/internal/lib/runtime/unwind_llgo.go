@@ -112,8 +112,10 @@ func trimPlumbingPCs(pcs []uintptr) []uintptr {
 		// Fault snapshots come from a genuine interrupted context and the
 		// chain-discipline guards already bounded the walk; keep unnamed
 		// frames (linux dladdr cannot name non-dynamic C symbols — they
-		// display as raw pcs, like gc does for unknown frames).
-		return pcs
+		// display as raw pcs, like gc does for unknown frames). The platform
+		// walker may continue through process-startup frames, so retain the
+		// logical runtime.goexit frame but nothing below it.
+		return trimLogicalGoTail(pcs)
 	}
 	for i := 0; i < len(pcs); i++ {
 		if prebuiltTextContains(pcs[i]) {
@@ -125,6 +127,15 @@ func trimPlumbingPCs(pcs []uintptr) []uintptr {
 		// FP-disciplined frame).
 		if frameSymbol(pcs[i]-1).function == "" {
 			return pcs[:i]
+		}
+	}
+	return pcs
+}
+
+func trimLogicalGoTail(pcs []uintptr) []uintptr {
+	for i, pc := range pcs {
+		if frameSymbol(pc-1).function == "runtime.goexit" {
+			return pcs[:i+1]
 		}
 	}
 	return pcs

@@ -232,6 +232,9 @@ jobs:
               throw "unrecovered Windows fault output is missing '$expected'"
             }
           }
+          if ($faultOutput.Contains("github.com/xgo-dev/llgo/runtime/internal/clite/tls.init")) {
+            throw "unrecovered Windows fault traceback continued past runtime.goexit"
+          }
           .\windows-ffi-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE

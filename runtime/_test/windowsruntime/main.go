@@ -80,10 +80,17 @@ func checkNilFault() {
 				n := runtime.Callers(0, pcs[:])
 				frames := runtime.CallersFrames(pcs[:n])
 				found := false
+				seenGoexit := false
 				for {
 					frame, more := frames.Next()
+					if seenGoexit {
+						panic("Windows nil fault traceback continued past runtime.goexit")
+					}
 					if hasSuffix(frame.Function, ".windowsNilFault") {
 						found = true
+					}
+					if frame.Function == "runtime.goexit" {
+						seenGoexit = true
 					}
 					if !more {
 						break
@@ -91,6 +98,9 @@ func checkNilFault() {
 				}
 				if !found {
 					panic("Windows nil fault traceback lost the faulting frame")
+				}
+				if !seenGoexit {
+					panic("Windows nil fault traceback lost runtime.goexit")
 				}
 				recovered = true
 			}()

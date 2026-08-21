@@ -108,6 +108,7 @@ func faultTraceback(skip int) bool {
 		return false
 	}
 	initRuntimeFuncPCFrames()
+	pcs = trimLogicalGoTail(pcs)
 	print("goroutine 1 [running]:\n")
 	printed := 0
 	for _, pc := range pcs {
