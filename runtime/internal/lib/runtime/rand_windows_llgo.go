@@ -1,19 +1,20 @@
-//go:build !windows
+//go:build windows
 
 package runtime
 
 import (
 	_ "unsafe"
 
-	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
 	"github.com/xgo-dev/llgo/runtime/internal/runtime/math"
 )
 
-//go:linkname c_rand C.rand
-func c_rand() c.Int
-
+// Keep the compatibility wrappers in this Windows-selected file parallel with
+// rand.go. Moving the non-Windows functions into a new shared source file
+// changes their recorded pclntab source ownership and therefore grows existing
+// binaries even when the generated instructions are identical.
 func fastrand() uint32 {
-	return uint32(c_rand())
+	return llruntime.Fastrand()
 }
 
 func rand() uint64 {

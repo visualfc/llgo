@@ -28,10 +28,14 @@ import (
 	"github.com/xgo-dev/llgo/runtime/internal/thread"
 )
 
-// mOS is intentionally empty for the current detached 1:1 backend. As in the
-// Go runtime, CreateThread owns the thread lifetime; LLGo does not retain a
-// closed HANDLE in the scheduler object.
-type mOS struct{}
+// mOS holds only state whose lifetime follows a Windows M. As in the Go
+// runtime, CreateThread owns the thread itself, so LLGo does not retain a
+// closed HANDLE in the scheduler object. randomState is per-M for the same
+// reason as runtime.rand in Go: a concurrently callable runtime random source
+// must not share or repeat a C-library generator's thread-local sequence.
+type mOS struct {
+	randomState uint64
+}
 
 // processExiting is non-zero after runtime.exit or syscall.Exit starts
 // terminating the process. It serves the same purpose as exiting in the Go
