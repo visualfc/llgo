@@ -262,16 +262,9 @@ Here are some examples related to them:
 * [tetris](https://github.com/goplus/lib/tree/main/c/raylib/_demo/tetris/tetris.go): a tetris game based on raylib
 
 
-## Go syntax support
+## Go support
 
-LLGo supports the complete Go 1.26 language syntax and `cgo`. Here are some examples:
-
-* [concat](_demo/c/concat/concat.go): define a variadic function
-* [genints](_demo/c/genints/genints.go): various forms of closure usage (including C function, recv.method and anonymous function)
-* [errors](_cmptest/errors/errors.go): demo to implement error interface
-* [defer](_cmptest/defer/defer.go): defer demo
-* [goroutine](_demo/go/goroutine/goroutine.go): goroutine demo
-
+LLGo supports the complete Go 1.26 language syntax and `cgo`.
 
 ### Garbage Collection (GC)
 
@@ -283,8 +276,7 @@ Garbage collection can be disabled with the `nogc` build tag. For example:
 llgo run -tags nogc .
 ```
 
-
-## Go standard library support
+### Standard libraries
 
 LLGo fully supports the Go standard library on supported native platforms. CI requires compatibility coverage for every public package and exported symbol in the primary Go toolchain, and runs [`test/std`](test/std/README.md) with both supported toolchains.
 
