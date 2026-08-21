@@ -434,10 +434,109 @@ func Use() string { return CallbackTypes[1] }
 	}
 }
 
+func TestStaticGlobalStructSliceLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type Info struct {
+	Name    string
+	Package string
+	Changed int
+}
+
+var All = []Info{
+	{"godebug1", "runtime", 1},
+	{"godebug2", "internal/poll", 2},
+}
+
+func Use() Info { return All[0] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		`@"staticinit.All$data" = global [2 x %staticinit.Info]`,
+		`@staticinit.All = global %"github.com/xgo-dev/llgo/runtime/internal/runtime.Slice" { ptr @"staticinit.All$data", i64 2, i64 2 }`,
+		`c"godebug1"`,
+		`c"runtime"`,
+		`c"godebug2"`,
+		`c"internal/poll"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static struct slice initializer %q in IR:\n%s", want, ir)
+		}
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.All")
+	if strings.Contains(ir, "runtime.AllocZ") {
+		t.Fatalf("static struct slice initializer still allocates at runtime:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalNestedStructSliceLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type Point struct {
+	X, Y int
+}
+
+type Entry struct {
+	Points [2]Point
+	Label  string
+}
+
+var Entries = []Entry{
+	{Points: [2]Point{{X: 1, Y: 2}, {X: 3}}, Label: "first"},
+	{},
+}
+
+func Use() int { return Entries[0].Points[1].X + len(Entries[0].Label) }
+`
+	ir := compileWithRewrites(t, src, nil)
+	var dataInit string
+	for _, line := range strings.Split(ir, "\n") {
+		if strings.Contains(line, `@"staticinit.Entries$data" = global`) {
+			dataInit = line
+			break
+		}
+	}
+	if dataInit == "" {
+		t.Fatalf("missing nested struct slice backing global:\n%s", ir)
+	}
+	for _, want := range []string{"i64 1", "i64 2", "i64 3", "%staticinit.Entry zeroinitializer"} {
+		if !strings.Contains(dataInit, want) {
+			t.Fatalf("nested struct slice initializer missing %q:\n%s", want, ir)
+		}
+	}
+	if !strings.Contains(ir, `c"first"`) {
+		t.Fatalf("nested struct slice initializer missing string data:\n%s", ir)
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.Entries")
+	if strings.Contains(ir, "runtime.AllocZ") {
+		t.Fatalf("nested struct slice initializer still allocates at runtime:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalStructSliceDynamicFieldFallsBack(t *testing.T) {
+	const src = `package staticinit
+
+type Entry struct {
+	Value int
+}
+
+func next() int { return 1 }
+
+var Entries = []Entry{{Value: next()}}
+
+func Use() int { return Entries[0].Value }
+`
+	ir := compileWithRewrites(t, src, nil)
+	if strings.Contains(ir, `@"staticinit.Entries$data"`) {
+		t.Fatalf("dynamic struct slice unexpectedly used static backing storage:\n%s", ir)
+	}
+	assertStoreToGlobal(t, ir, "@staticinit.Entries")
+}
+
 func TestStaticSliceInitRejectsExecutableReferrers(t *testing.T) {
 	const src = `package foo
 
-var Values []int
+var Values, Other []int
 
 func useSlice([]int) {}
 func usePointer(*int) {}
@@ -456,10 +555,21 @@ func elementUser() {
 	usePointer(elem)
 	Values = backing[:]
 }
+
+func sharedBackingStores() {
+	backing := [2]int{1, 2}
+	Values = backing[:]
+	Other = backing[:]
+}
+
+func boundedSlice() {
+	backing := [2]int{1, 2}
+	Values = backing[1:]
+}
 `
 	ssapkg := buildSSAPackage(t, src)
 	global := ssapkg.Members["Values"].(*ssa.Global)
-	for _, name := range []string{"sliceUser", "elementUser"} {
+	for _, name := range []string{"sliceUser", "elementUser", "sharedBackingStores", "boundedSlice"} {
 		fn := ssapkg.Func(name)
 		var globalStore *ssa.Store
 		for _, block := range fn.Blocks {
@@ -475,6 +585,83 @@ func elementUser() {
 		if _, ok := staticSliceInitOf(globalStore); ok {
 			t.Fatalf("%s: static slice init accepted an executable referrer", name)
 		}
+	}
+}
+
+func TestCollectAllocStoresRejectsExtraLoad(t *testing.T) {
+	const src = `package foo
+
+type Point struct {
+	X, Y int
+}
+
+var First, Second Point
+
+func sharedLoad() {
+	point := Point{X: 1, Y: 2}
+	First = point
+	Second = point
+}
+`
+	ssapkg := buildSSAPackage(t, src)
+	first := ssapkg.Members["First"].(*ssa.Global)
+	fn := ssapkg.Func("sharedLoad")
+	var resultStore *ssa.Store
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			if store, ok := instr.(*ssa.Store); ok && store.Addr == first {
+				resultStore = store
+			}
+		}
+	}
+	if resultStore == nil {
+		t.Fatal("store to First not found")
+	}
+	resultLoad, ok := resultStore.Val.(*ssa.UnOp)
+	if !ok || resultLoad.Op != token.MUL {
+		t.Fatalf("store to First does not load a composite alloc: %T", resultStore.Val)
+	}
+	alloc, ok := resultLoad.X.(*ssa.Alloc)
+	if !ok {
+		t.Fatalf("First load does not read an alloc: %T", resultLoad.X)
+	}
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if collectAllocStores(alloc, resultLoad, resultStore, nil, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+		t.Fatal("alloc with an additional load was accepted for static folding")
+	}
+}
+
+func TestBuildStaticSliceInitRejectsMalformedStores(t *testing.T) {
+	prog := ssatest.NewProgram(t, nil)
+	ctx := &context{prog: prog, pkg: prog.NewPackage("staticinit", "staticinit")}
+	value := ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int])
+	store := func(path ...int) staticInitStore {
+		ret := staticInitStore{value: value}
+		for _, index := range path {
+			ret.path = append(ret.path, staticInitPathElem{index: index})
+		}
+		return ret
+	}
+
+	for _, test := range []struct {
+		name   string
+		stores []staticInitStore
+	}{
+		{name: "missing element index", stores: []staticInitStore{store()}},
+		{name: "element index out of range", stores: []staticInitStore{store(1)}},
+		{name: "duplicate element store", stores: []staticInitStore{store(0), store(0)}},
+		{name: "path below scalar element", stores: []staticInitStore{store(0, 0)}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			init := &staticSliceInit{
+				array:  types.NewArray(types.Typ[types.Int], 1),
+				stores: test.stores,
+			}
+			if _, ok := ctx.buildStaticSliceInit(nil, init); ok {
+				t.Fatal("malformed static slice stores were accepted")
+			}
+		})
 	}
 }
 
@@ -1944,6 +2131,121 @@ func TestCollectAllocStoresBranchEdgeCases(t *testing.T) {
 	storeNotMul := &ssa.Store{Addr: alloc, Val: unopNotMul}
 	if handleStoreVal(storeNotMul, nil, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
 		t.Fatal("expected non-MUL unop to fail handleStoreVal")
+	}
+}
+
+func TestCollectAllocStoresRejectsInvalidTerminalContract(t *testing.T) {
+	validLoad := func(alloc *ssa.Alloc) *ssa.UnOp {
+		return &ssa.UnOp{Op: token.MUL, X: alloc}
+	}
+	constValue := func() *ssa.Const {
+		return ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])
+	}
+	tests := []struct {
+		name  string
+		build func(*ssa.Alloc) (ssa.Value, *ssa.Store)
+	}{
+		{
+			name: "load with wrong operation",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := &ssa.UnOp{Op: token.NOT, X: alloc}
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "load from foreign alloc",
+			build: func(_ *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := validLoad(new(ssa.Alloc))
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "slice from foreign alloc",
+			build: func(_ *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := &ssa.Slice{X: new(ssa.Alloc)}
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "bounded slice",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := &ssa.Slice{X: alloc, Low: constValue()}
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "unsupported terminal",
+			build: func(_ *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				terminal := constValue()
+				return terminal, &ssa.Store{Val: terminal}
+			},
+		},
+		{
+			name: "missing destination store",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				return validLoad(alloc), nil
+			},
+		},
+		{
+			name: "destination store has another value",
+			build: func(alloc *ssa.Alloc) (ssa.Value, *ssa.Store) {
+				return validLoad(alloc), &ssa.Store{Val: constValue()}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			alloc := new(ssa.Alloc)
+			terminal, terminalStore := test.build(alloc)
+			var stores []staticInitStore
+			var instrs []ssa.Instruction
+			if collectAllocStores(
+				alloc, terminal, terminalStore, nil,
+				&stores, &instrs, make(map[*ssa.Alloc]bool),
+			) {
+				t.Fatal("accepted an invalid alloc terminal contract")
+			}
+			if len(stores) != 0 || len(instrs) != 0 {
+				t.Fatalf("invalid terminal collected stores or instructions: stores=%v instrs=%v", stores, instrs)
+			}
+		})
+	}
+}
+
+func TestCollectAllocStoresRejectsNestedDynamicIndex(t *testing.T) {
+	setRefs := func(value ssa.Value, refs ...ssa.Instruction) {
+		t.Helper()
+		referrers := value.Referrers()
+		if referrers == nil {
+			t.Fatalf("%T does not track referrers", value)
+		}
+		*referrers = refs
+	}
+
+	alloc := new(ssa.Alloc)
+	field := &ssa.FieldAddr{X: alloc}
+	dynamicIndex := &ssa.IndexAddr{X: field, Index: alloc}
+	resultLoad := &ssa.UnOp{Op: token.MUL, X: alloc}
+	resultStore := &ssa.Store{Val: resultLoad}
+	setRefs(alloc, field, resultLoad)
+	setRefs(field, dynamicIndex)
+	setRefs(resultLoad, resultStore)
+
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if collectAllocStores(
+		alloc, resultLoad, resultStore, nil,
+		&stores, &instrs, make(map[*ssa.Alloc]bool),
+	) {
+		t.Fatal("accepted a nested address with a dynamic index")
+	}
+}
+
+func TestStaticInitStorePathToAllocRejectsDynamicIndex(t *testing.T) {
+	target := new(ssa.Alloc)
+	if _, ok := staticInitStorePathToAlloc(&ssa.IndexAddr{X: target, Index: target}, target); ok {
+		t.Fatal("dynamic index produced a static alloc path")
 	}
 }
 

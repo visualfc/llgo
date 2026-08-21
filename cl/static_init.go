@@ -53,7 +53,7 @@ type staticSliceInit struct {
 	slice  *ssa.Slice
 	alloc  *ssa.Alloc
 	array  *types.Array
-	values map[int]*ssa.Const
+	stores []staticInitStore
 	instrs []ssa.Instruction
 }
 
@@ -206,13 +206,31 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 	}
 }
 
-// collectAllocStores recursively traces store instructions made to a local stack alloc,
+// collectAllocStores recursively traces store instructions made to an alloc,
 // recording constant stores into out and tracking intermediate instructions for suppression.
-// resultLoad and resultStore identify the one load that transfers the completed aggregate to
-// its destination; rejecting any other load keeps unrelated consumers executable. The visited
-// map guards against cyclic pointer graphs.
-func collectAllocStores(alloc *ssa.Alloc, resultLoad *ssa.UnOp, resultStore *ssa.Store, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
+// terminal must be the exact load or full-slice value consumed only by terminalStore;
+// any other escaping use rejects the fold. The visited map guards against cyclic pointer graphs.
+func collectAllocStores(alloc *ssa.Alloc, terminal ssa.Value, terminalStore *ssa.Store, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
 	if visited[alloc] {
+		return false
+	}
+	switch terminal := terminal.(type) {
+	case *ssa.UnOp:
+		if terminal.Op != token.MUL || terminal.X != alloc {
+			return false
+		}
+	case *ssa.Slice:
+		if terminal.X != alloc || terminal.Low != nil || terminal.High != nil || terminal.Max != nil {
+			return false
+		}
+	default:
+		return false
+	}
+	if terminalStore == nil || terminalStore.Val != terminal {
+		return false
+	}
+	terminalRefs, ok := nonDebugReferrers(terminal)
+	if !ok || len(terminalRefs) != 1 || terminalRefs[0] != terminalStore {
 		return false
 	}
 	visited[alloc] = true
@@ -222,37 +240,31 @@ func collectAllocStores(alloc *ssa.Alloc, resultLoad *ssa.UnOp, resultStore *ssa
 	if !ok {
 		return false
 	}
-	seenResultLoad := false
+	seenTerminal := false
 	for _, ref := range refs {
 		switch ref := ref.(type) {
-		case *ssa.UnOp:
-			if ref != resultLoad || seenResultLoad || ref.Op != token.MUL {
+		case *ssa.Slice:
+			if ref != terminal || seenTerminal {
 				return false
 			}
-			unopRefs, ok := nonDebugReferrers(ref)
-			if !ok || len(unopRefs) != 1 || resultStore == nil || unopRefs[0] != resultStore || resultStore.Val != ref {
-				return false
-			}
-			seenResultLoad = true
+			seenTerminal = true
 			*instrs = append(*instrs, ref)
-		case *ssa.FieldAddr, *ssa.IndexAddr:
-			addr := ref.(ssa.Value)
-			subPath, ok := staticInitStorePathToAlloc(addr, alloc)
-			if !ok {
+		case *ssa.UnOp:
+			if ref != terminal || seenTerminal {
 				return false
 			}
-			addrRefs, ok := nonDebugReferrers(addr)
-			if !ok || len(addrRefs) != 1 {
+			seenTerminal = true
+			*instrs = append(*instrs, ref)
+		case *ssa.FieldAddr:
+			if !collectAddrStores(ref, alloc, basePath, out, instrs, visited) {
 				return false
 			}
-			elemStore, ok := addrRefs[0].(*ssa.Store)
-			if !ok || elemStore.Addr != addr {
+			*instrs = append(*instrs, ref)
+		case *ssa.IndexAddr:
+			if !collectAddrStores(ref, alloc, basePath, out, instrs, visited) {
 				return false
 			}
-			if !handleStoreVal(elemStore, appendStaticInitPath(basePath, subPath), out, instrs, visited) {
-				return false
-			}
-			*instrs = append(*instrs, ref, elemStore)
+			*instrs = append(*instrs, ref)
 		case *ssa.Store:
 			if ref.Addr != alloc {
 				return false
@@ -265,7 +277,56 @@ func collectAllocStores(alloc *ssa.Alloc, resultLoad *ssa.UnOp, resultStore *ssa
 			return false
 		}
 	}
-	return seenResultLoad
+	return seenTerminal
+}
+
+// collectAddrStores recursively visits field/index address projections derived from rootAlloc,
+// recording constant stores and intermediate instructions.
+func collectAddrStores(addr ssa.Value, rootAlloc *ssa.Alloc, basePath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
+	switch addr := addr.(type) {
+	case *ssa.FieldAddr:
+	case *ssa.IndexAddr:
+		if _, ok := staticInitConstIndex(addr.Index); !ok {
+			return false
+		}
+	default:
+		return false
+	}
+	refs, ok := nonDebugReferrers(addr)
+	if !ok {
+		return false
+	}
+	seenStore := false
+	for _, ref := range refs {
+		switch ref := ref.(type) {
+		case *ssa.FieldAddr:
+			if !collectAddrStores(ref, rootAlloc, basePath, out, instrs, visited) {
+				return false
+			}
+			*instrs = append(*instrs, ref)
+		case *ssa.IndexAddr:
+			if !collectAddrStores(ref, rootAlloc, basePath, out, instrs, visited) {
+				return false
+			}
+			*instrs = append(*instrs, ref)
+		case *ssa.Store:
+			if ref.Addr != addr || seenStore {
+				return false
+			}
+			seenStore = true
+			subPath, ok := staticInitStorePathToAlloc(addr, rootAlloc)
+			if !ok {
+				return false
+			}
+			if !handleStoreVal(ref, appendStaticInitPath(basePath, subPath), out, instrs, visited) {
+				return false
+			}
+			*instrs = append(*instrs, ref)
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // appendStaticInitPath concatenates base and sub paths into a newly allocated slice
@@ -311,7 +372,7 @@ func staticInitStorePathToAlloc(addr ssa.Value, target *ssa.Alloc) ([]staticInit
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: addr.Field}}), true
+		return append(path, staticInitPathElem{index: addr.Field}), true
 	case *ssa.IndexAddr:
 		path, ok := staticInitStorePathToAlloc(addr.X, target)
 		if !ok {
@@ -321,7 +382,7 @@ func staticInitStorePathToAlloc(addr ssa.Value, target *ssa.Alloc) ([]staticInit
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: index}}), true
+		return append(path, staticInitPathElem{index: index}), true
 	default:
 		return nil, false
 	}
@@ -347,55 +408,14 @@ func staticSliceInitOf(store *ssa.Store) (*staticSliceInit, bool) {
 
 	ret := &staticSliceInit{
 		store: store, slice: slice, alloc: alloc, array: array,
-		values: make(map[int]*ssa.Const),
-		instrs: []ssa.Instruction{alloc, slice, store},
+		instrs: []ssa.Instruction{store},
 	}
-	sliceRefs, ok := nonDebugReferrers(slice)
-	if !ok || len(sliceRefs) != 1 || sliceRefs[0] != store {
+
+	visited := make(map[*ssa.Alloc]bool)
+	if !collectAllocStores(alloc, slice, store, nil, &ret.stores, &ret.instrs, visited) {
 		return nil, false
 	}
-	refs, ok := nonDebugReferrers(alloc)
-	if !ok {
-		return nil, false
-	}
-	seenSlice := false
-	for _, ref := range refs {
-		switch ref := ref.(type) {
-		case *ssa.Slice:
-			if ref != slice || seenSlice {
-				return nil, false
-			}
-			seenSlice = true
-		case *ssa.IndexAddr:
-			if ref.X != alloc {
-				return nil, false
-			}
-			index, ok := staticInitConstIndex(ref.Index)
-			if !ok || index >= int(array.Len()) {
-				return nil, false
-			}
-			indexRefs, ok := nonDebugReferrers(ref)
-			if !ok || len(indexRefs) != 1 {
-				return nil, false
-			}
-			elemStore, ok := indexRefs[0].(*ssa.Store)
-			if !ok || elemStore.Addr != ref {
-				return nil, false
-			}
-			value, ok := elemStore.Val.(*ssa.Const)
-			if !ok {
-				return nil, false
-			}
-			if _, exists := ret.values[index]; exists {
-				return nil, false
-			}
-			ret.values[index] = value
-			ret.instrs = append(ret.instrs, ref, elemStore)
-		default:
-			return nil, false
-		}
-	}
-	return ret, seenSlice
+	return ret, true
 }
 
 func staticInitZeroSized(typ types.Type) bool {
@@ -416,14 +436,33 @@ func staticInitZeroSized(typ types.Type) bool {
 
 func (p *context) buildStaticSliceInit(global *ssa.Global, init *staticSliceInit) (llssa.Expr, bool) {
 	n := int(init.array.Len())
+	elemType := init.array.Elem()
+	elemStores := make(map[int][]staticInitStore, n)
+	for _, s := range init.stores {
+		if len(s.path) == 0 {
+			return llssa.Expr{}, false
+		}
+		idx := s.path[0].index
+		if idx < 0 || idx >= n {
+			return llssa.Expr{}, false
+		}
+		elemStores[idx] = append(elemStores[idx], staticInitStore{
+			store: s.store,
+			path:  s.path[1:],
+			value: s.value,
+		})
+	}
 	values := make([]llssa.Expr, n)
 	for i := range values {
-		var node *staticInitNode
-		if value := init.values[i]; value != nil {
-			node = &staticInitNode{value: value}
+		stores := elemStores[i]
+		root := new(staticInitNode)
+		for _, store := range stores {
+			if !root.add(store.path, store.value) {
+				return llssa.Expr{}, false
+			}
 		}
 		var ok bool
-		values[i], ok = p.buildStaticInitExpr(init.array.Elem(), node)
+		values[i], ok = p.buildStaticInitExpr(elemType, root)
 		if !ok {
 			return llssa.Expr{}, false
 		}
@@ -454,7 +493,7 @@ func staticInitStorePath(addr ssa.Value) ([]staticInitPathElem, bool) {
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: addr.Field}}), true
+		return append(path, staticInitPathElem{index: addr.Field}), true
 	case *ssa.IndexAddr:
 		path, ok := staticInitStorePath(addr.X)
 		if !ok {
@@ -464,7 +503,7 @@ func staticInitStorePath(addr ssa.Value) ([]staticInitPathElem, bool) {
 		if !ok {
 			return nil, false
 		}
-		return appendStaticInitPath(path, []staticInitPathElem{{index: index}}), true
+		return append(path, staticInitPathElem{index: index}), true
 	default:
 		return nil, false
 	}
