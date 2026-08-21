@@ -78,6 +78,7 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/cgomacro",    // fast fail: build constraints exclude all Go files (cgo)
 				"./_testgo/cgopython",   // fast fail: build constraints exclude all Go files (cgo)
 				"./_testgo/chan",        // timeout: emulator did not auto-exit
+				"./_testgo/complitnil",  // baremetal terminates on the nil-pointer panic before deferred recovery
 				"./_testgo/cursor",      // panic: internal/bytealg: selected .s files require plan9asm translation
 				"./_testgo/defer4",      // unexpected output: got "fatal error", expected "recover: panic message"
 				"./_testgo/goexit",      // llgo panic: unsatisfied import internal/runtime/sys
@@ -132,6 +133,7 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/alias",       // unexpected output
 				"./_testgo/cgodefer",    // panic: cannot build SSA for packages
 				"./_testgo/cgopython",   // panic: cannot build SSA for packages
+				"./_testgo/complitnil",  // baremetal terminates on the nil-pointer panic before deferred recovery
 				"./_testgo/cursor",      // panic: internal/bytealg: selected .s files require plan9asm translation
 				"./_testgo/defer4",      // runtime output: fatal error
 				"./_testgo/indexerr",    // runtime output: fatal error
