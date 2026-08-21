@@ -1,10 +1,14 @@
-name: Notify binary-size benchmarks
+name: Notify benchmarks
 
 on:
   # A push to main is the authoritative post-merge state, including squash and
   # rebase merges. The dispatched SHA is the exact LLGo version to measure.
   push:
     branches: [main]
+  # Compatibility is intentionally release-based: publishing a stable release
+  # or prerelease records one durable open-source test result for that tag.
+  release:
+    types: [published]
 
 permissions: {}
 
@@ -17,8 +21,9 @@ jobs:
       # before the migration, then remove it to use xgo-dev/benchmarks.
       BENCHMARKS_REPOSITORY: ${{ vars.BENCHMARKS_REPOSITORY || 'xgo-dev/benchmarks' }}
       BENCHMARKS_DISPATCH_TOKEN: ${{ secrets.BENCHMARKS_DISPATCH_TOKEN }}
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
-      - name: Request a binary-size build for this LLGo revision
+      - name: Request benchmarks for this LLGo revision
         run: |
           set -euo pipefail
           if [[ -z "$BENCHMARKS_DISPATCH_TOKEN" ]]; then
@@ -26,12 +31,36 @@ jobs:
             exit 1
           fi
 
+          if [[ "$GITHUB_EVENT_NAME" == "release" ]]; then
+            if [[ -z "$RELEASE_TAG" ]] || ! git check-ref-format "refs/tags/$RELEASE_TAG"; then
+              echo "invalid release tag: ${RELEASE_TAG:-missing}" >&2
+              exit 1
+            fi
+            tag_ref="refs/tags/$RELEASE_TAG"
+            tag_rows="$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" \
+              "$tag_ref" "$tag_ref^{}")"
+            llgo_commit="$(awk -v ref="$tag_ref^{}" '$2 == ref { print $1; exit }' <<<"$tag_rows")"
+            if [[ -z "$llgo_commit" ]]; then
+              llgo_commit="$(awk -v ref="$tag_ref" '$2 == ref { print $1; exit }' <<<"$tag_rows")"
+            fi
+            event_type=llgo-tag-released
+          else
+            llgo_commit="$GITHUB_SHA"
+            event_type=llgo-main-updated
+          fi
+          if [[ ! "$llgo_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "invalid LLGo commit for ${RELEASE_TAG:-$GITHUB_REF}: ${llgo_commit:-missing}" >&2
+            exit 1
+          fi
+
           payload="$(jq -cn \
+            --arg event_type "$event_type" \
             --arg source_repository "$GITHUB_REPOSITORY" \
             --arg llgo_repository "$GITHUB_REPOSITORY" \
-            --arg llgo_commit "$GITHUB_SHA" \
+            --arg llgo_commit "$llgo_commit" \
+            --arg llgo_tag "$RELEASE_TAG" \
             --arg source_run_url "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            '{event_type: "llgo-main-updated", client_payload: {source_repository: $source_repository, llgo_repository: $llgo_repository, llgo_commit: $llgo_commit, source_run_url: $source_run_url}}')"
+            '{event_type: $event_type, client_payload: {source_repository: $source_repository, llgo_repository: $llgo_repository, llgo_commit: $llgo_commit, llgo_tag: $llgo_tag, source_run_url: $source_run_url}}')"
 
           curl --fail-with-body --location --request POST \
             --header 'Accept: application/vnd.github+json' \
