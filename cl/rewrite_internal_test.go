@@ -205,6 +205,12 @@ func Use() string {
 	if strings.Contains(ir, "@staticinit.MethodNames = global %staticinit.Names zeroinitializer") {
 		t.Fatalf("MethodNames still uses a zero initializer:\n%s", ir)
 	}
+	if !strings.Contains(ir, `[%"github.com/xgo-dev/llgo/runtime/internal/runtime.String" { ptr @0, i64 9 }, %"github.com/xgo-dev/llgo/runtime/internal/runtime.String" { ptr @1, i64 12 }]`) {
+		t.Fatalf("unexpected MethodNames.Value initializer:\n%s", ir)
+	}
+	if !strings.Contains(ir, `%staticinit.Nested { [2 x %"github.com/xgo-dev/llgo/runtime/internal/runtime.String"] [%"github.com/xgo-dev/llgo/runtime/internal/runtime.String" { ptr @2, i64 8 }, %"github.com/xgo-dev/llgo/runtime/internal/runtime.String" { ptr @3, i64 11 }] }`) {
+		t.Fatalf("unexpected MethodNames.Nested initializer:\n%s", ir)
+	}
 	for _, want := range []string{`c"KeepValue"`, `c"KeepValueAlt"`, `c"KeepType"`, `c"KeepTypeAlt"`} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("missing %s in IR:\n%s", want, ir)
@@ -320,9 +326,8 @@ var Value = Outer{
 	}
 
 	var (
-		blankSliceField                   *ssa.FieldAddr
-		sawDirectBlank, sawNestedBlank    bool
-		sawBlankArray, sawNonBlankSibling bool
+		blankSliceField                    *ssa.FieldAddr
+		sawDirectBlank, sawNonBlankSibling bool
 	)
 	initFn := pkg.Func("init")
 	for _, block := range initFn.Blocks {
@@ -353,21 +358,15 @@ var Value = Outer{
 			switch {
 			case len(fields) == 1 && fields[0] == "_":
 				sawDirectBlank = true
-			case len(fields) > 1 && want && !indexed:
-				sawNestedBlank = true
-			case want && indexed:
-				sawBlankArray = true
-			case !want:
+			case !want && !indexed:
 				sawNonBlankSibling = true
 			}
 		}
 	}
-	if !sawDirectBlank || !sawNestedBlank || !sawBlankArray || !sawNonBlankSibling {
+	if !sawDirectBlank || !sawNonBlankSibling {
 		t.Fatalf(
-			"missing SSA classification coverage: direct=%v nested=%v array=%v sibling=%v",
+			"missing SSA classification coverage: direct=%v sibling=%v",
 			sawDirectBlank,
-			sawNestedBlank,
-			sawBlankArray,
 			sawNonBlankSibling,
 		)
 	}
@@ -714,6 +713,95 @@ var G int
 	}, initFn.Blocks[0].Instrs...)
 	ctx = &context{prog: ssatest.NewProgram(t, nil)}
 	ctx.collectStaticGlobalInits(nonGlobalStore)
+
+	allocBacked := buildSSAPackage(t, `package foo
+var G = 1
+`)
+	allocGlobal, ok := allocBacked.Members["G"].(*ssa.Global)
+	if !ok {
+		t.Fatalf("missing G global: %T", allocBacked.Members["G"])
+	}
+	var allocGlobalStore *ssa.Store
+	for _, block := range allocBacked.Func("init").Blocks {
+		for _, instr := range block.Instrs {
+			if store, ok := instr.(*ssa.Store); ok && store.Addr == allocGlobal {
+				allocGlobalStore = store
+			}
+		}
+	}
+	if allocGlobalStore == nil {
+		t.Fatal("missing store to alloc-backed G")
+	}
+	value, ok := allocGlobalStore.Val.(*ssa.Const)
+	if !ok {
+		t.Fatalf("G initializer = %T, want *ssa.Const", allocGlobalStore.Val)
+	}
+	alloc := new(ssa.Alloc)
+	allocStore := &ssa.Store{Addr: alloc, Val: value}
+	resultLoad := &ssa.UnOp{Op: token.MUL, X: alloc}
+	allocGlobalStore.Val = resultLoad
+	allocRefs := alloc.Referrers()
+	loadRefs := resultLoad.Referrers()
+	if allocRefs == nil || loadRefs == nil {
+		t.Fatal("expected alloc-backed initializer values to track referrers")
+	}
+	*allocRefs = []ssa.Instruction{allocStore, resultLoad}
+	*loadRefs = []ssa.Instruction{allocGlobalStore}
+	loweringProg := ssatest.NewProgram(t, nil)
+	ctx = &context{prog: loweringProg, pkg: loweringProg.NewPackage("foo", "foo")}
+	ctx.collectStaticGlobalInits(allocBacked)
+	if _, ok := ctx.staticGlobalInits[allocGlobal]; !ok {
+		t.Fatal("alloc-backed constant initializer was not folded")
+	}
+	for _, instr := range []ssa.Instruction{alloc, allocStore, resultLoad, allocGlobalStore} {
+		if _, ok := ctx.staticInitInstrs[instr]; !ok {
+			t.Fatalf("alloc-backed initializer did not suppress %T", instr)
+		}
+	}
+	if _, ok := ctx.staticInitStores[allocStore]; !ok {
+		t.Fatal("alloc-backed initializer store was not recorded")
+	}
+
+	// A second executable load makes ownership of the temporary alloc
+	// ambiguous. Verify the package-level collector preserves the dynamic
+	// initializer instead of only testing the helper's rejection in isolation.
+	*allocRefs = append(*allocRefs, &ssa.UnOp{Op: token.MUL, X: alloc})
+	fallbackCtx := &context{prog: loweringProg, pkg: loweringProg.NewPackage("foo-fallback", "foo-fallback")}
+	fallbackCtx.collectStaticGlobalInits(allocBacked)
+	if fallbackCtx.staticGlobalInits != nil {
+		t.Fatalf("alloc with an extra load produced static initializers: %+v", fallbackCtx.staticGlobalInits)
+	}
+	if fallbackCtx.staticInitInstrs != nil || fallbackCtx.staticInitStores != nil {
+		t.Fatal("rejected alloc-backed initializer suppressed executable instructions")
+	}
+
+	invalidPath := buildSSAPackage(t, `package foo
+var G = 1
+`)
+	global, ok := invalidPath.Members["G"].(*ssa.Global)
+	if !ok {
+		t.Fatalf("missing G global: %T", invalidPath.Members["G"])
+	}
+	var globalStore *ssa.Store
+	for _, block := range invalidPath.Func("init").Blocks {
+		for _, instr := range block.Instrs {
+			if store, ok := instr.(*ssa.Store); ok && store.Addr == global {
+				globalStore = store
+			}
+		}
+	}
+	if globalStore == nil {
+		t.Fatal("missing store to G")
+	}
+	// Keep a recognizable root global but make its index non-constant. A malformed
+	// or future SSA address shape must make the whole candidate fall back, rather
+	// than treating the failed path as a store to the root scalar.
+	globalStore.Addr = &ssa.IndexAddr{X: global, Index: global}
+	ctx = &context{prog: ssatest.NewProgram(t, nil)}
+	ctx.collectStaticGlobalInits(invalidPath)
+	if ctx.staticGlobalInits != nil {
+		t.Fatalf("unsupported store path produced static initializers: %+v", ctx.staticGlobalInits)
+	}
 }
 
 func TestStaticInitHelperRejectsNestedUnsupportedPaths(t *testing.T) {
@@ -726,6 +814,18 @@ func TestStaticInitHelperRejectsNestedUnsupportedPaths(t *testing.T) {
 		Index: ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
 	}); ok {
 		t.Fatal("index path with unsupported base should be rejected")
+	}
+
+	target := new(ssa.Alloc)
+	foreign := new(ssa.Alloc)
+	if _, ok := staticInitStorePathToAlloc(&ssa.FieldAddr{X: foreign, Field: 0}, target); ok {
+		t.Fatal("field path rooted at a different alloc should be rejected")
+	}
+	if _, ok := staticInitStorePathToAlloc(&ssa.IndexAddr{
+		X:     foreign,
+		Index: ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
+	}, target); ok {
+		t.Fatal("index path rooted at a different alloc should be rejected")
 	}
 }
 
@@ -1380,5 +1480,657 @@ func f() {}
 	}
 	if ctx.funcs[root] != owner {
 		t.Fatal("compiled owner should be cached")
+	}
+}
+
+func TestCollectAllocStoresFromSSA(t *testing.T) {
+	const src = `package allocstore
+
+type Point struct {
+	X, Y int
+}
+
+type Nested struct {
+	P   Point
+	Arr [2]int
+	Tag string
+}
+
+func testConstNested() Nested {
+	return Nested{
+		P:   Point{10, 20},
+		Arr: [2]int{30, 40},
+		Tag: "hello",
+	}
+}
+
+func testConstPoint() Point {
+	return Point{100, 200}
+}
+
+func testDynamic() Point {
+	return Point{next(), 200}
+}
+
+func testCall(p Point) {}
+
+func testEscape() {
+	var p = Point{1, 2}
+	testCall(p)
+	var n = Nested{P: Point{3, 4}}
+	pRef := &n.P
+	pRef.X = 99
+}
+
+func testArrayInit() [2]int {
+	var a [2]int
+	a[0] = 10
+	a[1] = 20
+	return a
+}
+
+func testDirectStore() int {
+	var x int
+	x = 42
+	return x
+}
+
+func testArrayDynamic() [2]int {
+	var a [2]int
+	a[0] = next()
+	return a
+}
+
+func next() int { return 1 }
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "allocstore.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	importer := gpackages.NewImporter(fset)
+	pkg, _, err := ssautil.BuildPackage(
+		&types.Config{Importer: importer},
+		fset,
+		types.NewPackage("allocstore", "allocstore"),
+		[]*ast.File{file},
+		ssa.SanityCheckFunctions,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var foundAllocs []*ssa.Alloc
+	var foundStores []*ssa.Store
+	var foundFields []*ssa.FieldAddr
+	var foundIndices []*ssa.IndexAddr
+
+	for _, member := range pkg.Members {
+		fn, ok := member.(*ssa.Function)
+		if !ok {
+			continue
+		}
+		for _, block := range fn.Blocks {
+			for _, instr := range block.Instrs {
+				switch instr := instr.(type) {
+				case *ssa.Alloc:
+					if !instr.Heap {
+						foundAllocs = append(foundAllocs, instr)
+					}
+				case *ssa.Store:
+					foundStores = append(foundStores, instr)
+				case *ssa.FieldAddr:
+					foundFields = append(foundFields, instr)
+				case *ssa.IndexAddr:
+					foundIndices = append(foundIndices, instr)
+				}
+			}
+		}
+	}
+
+	if len(foundAllocs) == 0 {
+		t.Fatal("expected to find local allocs in SSA")
+	}
+
+	targetAlloc := foundAllocs[0]
+
+	// 1. Cycle detection
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	visited := map[*ssa.Alloc]bool{targetAlloc: true}
+	if collectAllocStores(targetAlloc, nil, nil, nil, &stores, &instrs, visited) {
+		t.Fatal("expected cycle protection to return false")
+	}
+
+	// 2. appendStaticInitPath
+	p1 := []staticInitPathElem{{index: 1}, {index: 2}}
+	p2 := []staticInitPathElem{{index: 3}}
+	merged := appendStaticInitPath(p1, p2)
+	if len(merged) != 3 || merged[0].index != 1 || merged[1].index != 2 || merged[2].index != 3 {
+		t.Fatalf("unexpected appendStaticInitPath result: %+v", merged)
+	}
+
+	// 3. handleStoreVal branches
+	if len(foundStores) > 0 {
+		store := foundStores[0]
+		// Test Const store
+		cStore := &ssa.Store{Addr: store.Addr, Val: ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int])}
+		stores = nil
+		if !handleStoreVal(cStore, p1, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+			t.Fatal("handleStoreVal failed on const")
+		}
+		if len(stores) != 1 || len(stores[0].path) != 2 {
+			t.Fatalf("unexpected handleStoreVal result: %+v", stores)
+		}
+
+		// Test non-const non-unop store
+		badStore := &ssa.Store{Addr: store.Addr, Val: store.Addr}
+		if handleStoreVal(badStore, p1, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+			t.Fatal("expected handleStoreVal to fail on non-const, non-alloc Val")
+		}
+
+		// Test Heap alloc
+		heapAlloc := &ssa.Alloc{Heap: true, Comment: "heap"}
+		heapUnOp := &ssa.UnOp{Op: token.MUL, X: heapAlloc}
+		heapStore := &ssa.Store{Addr: store.Addr, Val: heapUnOp}
+		if handleStoreVal(heapStore, p1, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+			t.Fatal("expected handleStoreVal to fail on heap alloc")
+		}
+	}
+
+	// 4. staticInitStorePathToAlloc edge cases
+	if _, ok := staticInitStorePathToAlloc(nil, targetAlloc); ok {
+		t.Fatal("expected nil addr to fail")
+	}
+	if path, ok := staticInitStorePathToAlloc(targetAlloc, targetAlloc); !ok || len(path) != 0 {
+		t.Fatalf("expected exact alloc to return empty path, got %+v, %v", path, ok)
+	}
+	if len(foundAllocs) > 1 {
+		if _, ok := staticInitStorePathToAlloc(foundAllocs[1], targetAlloc); ok {
+			t.Fatal("expected different alloc to fail")
+		}
+	}
+	if len(foundFields) > 0 {
+		field := foundFields[0]
+		_, _ = staticInitStorePathToAlloc(field, targetAlloc)
+	}
+	if len(foundIndices) > 0 {
+		index := foundIndices[0]
+		_, _ = staticInitStorePathToAlloc(index, targetAlloc)
+	}
+}
+
+func TestStaticGlobalPointerIndirectionLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type Inner struct {
+	A [2]int
+	B string
+}
+
+type Outer struct {
+	I Inner
+	Val int
+}
+
+var G = Outer{
+	I: Inner{
+		A: [2]int{10, 20},
+		B: "hello",
+	},
+	Val: 99,
+}
+
+func Use() int {
+	return G.I.A[0] + G.I.A[1] + len(G.I.B) + G.Val
+}
+`
+	ir := compileWithRewrites(t, src, nil)
+	if strings.Contains(ir, "@staticinit.G = global %staticinit.Outer zeroinitializer") {
+		t.Fatalf("G still uses a zero initializer:\n%s", ir)
+	}
+	if !strings.Contains(ir, `c"hello"`) {
+		t.Fatalf("missing hello in IR:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalZeroCompositeLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type Zero struct {
+	Value int
+	Array [2]int
+}
+
+var G = Zero{}
+
+func Use() int { return G.Value + G.Array[1] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	if !strings.Contains(ir, "@staticinit.G = global %staticinit.Zero zeroinitializer") {
+		t.Fatalf("missing zero static initializer:\n%s", ir)
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.G")
+}
+
+func TestStaticInitNodeAddEdgeCases(t *testing.T) {
+	c1 := &ssa.Const{Value: constant.MakeInt64(1)}
+	c2 := &ssa.Const{Value: constant.MakeInt64(2)}
+
+	// 1. Setting value on empty path
+	root := new(staticInitNode)
+	if !root.add(nil, c1) {
+		t.Fatal("expected add to succeed")
+	}
+	// 2. Overwriting existing leaf value should fail
+	if root.add(nil, c2) {
+		t.Fatal("expected duplicate leaf add to fail")
+	}
+	// 3. Adding child path when node already has a leaf value should fail
+	if root.add([]staticInitPathElem{{index: 0}}, c2) {
+		t.Fatal("expected adding child to leaf to fail")
+	}
+
+	// 4. Adding leaf to a node with children should fail
+	root2 := new(staticInitNode)
+	if !root2.add([]staticInitPathElem{{index: 0}}, c1) {
+		t.Fatal("expected child add to succeed")
+	}
+	if root2.add(nil, c2) {
+		t.Fatal("expected leaf add to branch node to fail")
+	}
+}
+
+func TestStaticInitPathHelperEdgeCases(t *testing.T) {
+	// staticInitRootGlobal
+	if g := staticInitRootGlobal(nil); g != nil {
+		t.Fatalf("expected nil root global, got %v", g)
+	}
+
+	// staticInitStorePath
+	if _, ok := staticInitStorePath(nil); ok {
+		t.Fatal("expected nil addr to fail store path")
+	}
+
+	// staticInitConstIndex
+	if _, ok := staticInitConstIndex(nil); ok {
+		t.Fatal("expected nil index to fail")
+	}
+	negConst := &ssa.Const{Value: constant.MakeInt64(-1)}
+	if _, ok := staticInitConstIndex(negConst); ok {
+		t.Fatal("expected negative index to fail")
+	}
+	strConst := &ssa.Const{Value: constant.MakeString("not an int")}
+	if _, ok := staticInitConstIndex(strConst); ok {
+		t.Fatal("expected string index to fail")
+	}
+	validConst := &ssa.Const{Value: constant.MakeInt64(5)}
+	if idx, ok := staticInitConstIndex(validConst); !ok || idx != 5 {
+		t.Fatalf("expected index 5, got %d, %v", idx, ok)
+	}
+
+	// staticInitStorePathToAlloc
+	targetAlloc := new(ssa.Alloc)
+	otherAlloc := new(ssa.Alloc)
+	if _, ok := staticInitStorePathToAlloc(nil, targetAlloc); ok {
+		t.Fatal("expected nil to fail")
+	}
+	if _, ok := staticInitStorePathToAlloc(otherAlloc, targetAlloc); ok {
+		t.Fatal("expected different alloc to fail")
+	}
+	if path, ok := staticInitStorePathToAlloc(targetAlloc, targetAlloc); !ok || len(path) != 0 {
+		t.Fatalf("expected empty path for matching alloc, got %v, %v", path, ok)
+	}
+}
+
+func TestStaticInitZeroSizedPredicates(t *testing.T) {
+	// Zero-sized array
+	arrZero := types.NewArray(types.Typ[types.Int], 0)
+	if !staticInitZeroSized(arrZero) {
+		t.Fatal("expected [0]int to be zero sized")
+	}
+
+	// Non-zero sized array
+	arrNonZero := types.NewArray(types.Typ[types.Int], 5)
+	if staticInitZeroSized(arrNonZero) {
+		t.Fatal("expected [5]int to not be zero sized")
+	}
+
+	// Zero-sized struct (empty struct)
+	structEmpty := types.NewStruct(nil, nil)
+	if !staticInitZeroSized(structEmpty) {
+		t.Fatal("expected empty struct to be zero sized")
+	}
+
+	// Array of zero-sized struct
+	arrEmptyStruct := types.NewArray(structEmpty, 10)
+	if !staticInitZeroSized(arrEmptyStruct) {
+		t.Fatal("expected [10]struct{} to be zero sized")
+	}
+
+	// Non-zero sized struct
+	field := types.NewField(0, nil, "X", types.Typ[types.Int], false)
+	structNonEmpty := types.NewStruct([]*types.Var{field}, nil)
+	if staticInitZeroSized(structNonEmpty) {
+		t.Fatal("expected struct with int field to not be zero sized")
+	}
+}
+
+func TestStaticInitChildrenInRange(t *testing.T) {
+	node := &staticInitNode{
+		children: map[int]*staticInitNode{
+			0: {},
+			1: {},
+		},
+	}
+	if !staticInitChildrenInRange(node, 2) {
+		t.Fatal("expected 2 children in range 2 to return true")
+	}
+	if staticInitChildrenInRange(node, 1) {
+		t.Fatal("expected child at index 1 to be out of range 1")
+	}
+	negNode := &staticInitNode{
+		children: map[int]*staticInitNode{-1: {}},
+	}
+	if staticInitChildrenInRange(negNode, 5) {
+		t.Fatal("expected negative index child to fail")
+	}
+}
+
+func TestStaticInitCycleDetection(t *testing.T) {
+	alloc := new(ssa.Alloc)
+	visited := map[*ssa.Alloc]bool{
+		alloc: true,
+	}
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if collectAllocStores(alloc, nil, nil, nil, &stores, &instrs, visited) {
+		t.Fatal("expected visited alloc to be rejected")
+	}
+}
+
+func TestStaticGlobalSliceWithBoundsRejects(t *testing.T) {
+	const src = `package staticinit
+var backing = [4]int{1, 2, 3, 4}
+var SliceSub = backing[1:3]
+func Use() int { return SliceSub[0] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	assertStoreToGlobal(t, ir, "@staticinit.SliceSub")
+}
+
+func TestStaticGlobalScalarNumericTypes(t *testing.T) {
+	const src = `package staticinit
+type FloatStruct struct {
+	F32 float32
+	F64 float64
+	U8  uint8
+	U64 uint64
+	B   bool
+}
+var GFloat = FloatStruct{
+	F32: 1.5,
+	F64: 3.14159,
+	U8:  255,
+	U64: 18446744073709551615,
+	B:   true,
+}
+func Use() float64 { return float64(GFloat.F32) + GFloat.F64 }
+`
+	ir := compileWithRewrites(t, src, nil)
+	assertNoStoreToGlobal(t, ir, "@staticinit.GFloat")
+}
+
+func TestStaticSliceInitOfEdgeCases(t *testing.T) {
+	// 1. Non-slice store value
+	intStore := &ssa.Store{
+		Addr: new(ssa.Global),
+		Val:  ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]),
+	}
+	if _, ok := staticSliceInitOf(intStore); ok {
+		t.Fatal("expected non-slice store to fail staticSliceInitOf")
+	}
+
+	// 2. Slice with Low / High / Max bounds
+	c0 := ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])
+	alloc := &ssa.Alloc{Comment: "arr"}
+	boundedSlice := &ssa.Slice{
+		X:    alloc,
+		Low:  c0,
+		High: c0,
+	}
+	boundedStore := &ssa.Store{
+		Addr: new(ssa.Global),
+		Val:  boundedSlice,
+	}
+	if _, ok := staticSliceInitOf(boundedStore); ok {
+		t.Fatal("expected bounded slice to fail staticSliceInitOf")
+	}
+
+	// 3. Slice whose X is not an Alloc
+	nonAllocSlice := &ssa.Slice{
+		X: new(ssa.Global),
+	}
+	nonAllocStore := &ssa.Store{
+		Addr: new(ssa.Global),
+		Val:  nonAllocSlice,
+	}
+	if _, ok := staticSliceInitOf(nonAllocStore); ok {
+		t.Fatal("expected non-alloc slice source to fail staticSliceInitOf")
+	}
+}
+
+func TestCollectAllocStoresBranchEdgeCases(t *testing.T) {
+	alloc := new(ssa.Alloc)
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+
+	// 1. Cycle detection
+	visited := map[*ssa.Alloc]bool{alloc: true}
+	if collectAllocStores(alloc, nil, nil, nil, &stores, &instrs, visited) {
+		t.Fatal("expected visited alloc to fail collectAllocStores")
+	}
+
+	// 2. handleStoreVal on UnOp with heap alloc
+	heapAlloc := &ssa.Alloc{Heap: true}
+	unopHeap := &ssa.UnOp{Op: token.MUL, X: heapAlloc}
+	storeHeap := &ssa.Store{Addr: alloc, Val: unopHeap}
+	if handleStoreVal(storeHeap, nil, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+		t.Fatal("expected heap alloc unop to fail handleStoreVal")
+	}
+
+	// 3. handleStoreVal on non-MUL UnOp
+	unopNotMul := &ssa.UnOp{Op: token.NOT, X: alloc}
+	storeNotMul := &ssa.Store{Addr: alloc, Val: unopNotMul}
+	if handleStoreVal(storeNotMul, nil, &stores, &instrs, make(map[*ssa.Alloc]bool)) {
+		t.Fatal("expected non-MUL unop to fail handleStoreVal")
+	}
+}
+
+func TestCollectAllocStoresNestedPaths(t *testing.T) {
+	setRefs := func(value ssa.Value, refs ...ssa.Instruction) {
+		t.Helper()
+		referrers := value.Referrers()
+		if referrers == nil {
+			t.Fatalf("%T does not track referrers", value)
+		}
+		*referrers = refs
+	}
+
+	leafValue := ssa.NewConst(constant.MakeInt64(42), types.Typ[types.Int])
+	outerAlloc := new(ssa.Alloc)
+	innerAlloc := new(ssa.Alloc)
+	outerField := &ssa.FieldAddr{X: outerAlloc, Field: 1}
+	innerIndex := &ssa.IndexAddr{
+		X:     innerAlloc,
+		Index: ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int]),
+	}
+	leafStore := &ssa.Store{Addr: innerIndex, Val: leafValue}
+	innerLoad := &ssa.UnOp{Op: token.MUL, X: innerAlloc}
+	nestedStore := &ssa.Store{Addr: outerField, Val: innerLoad}
+	resultLoad := &ssa.UnOp{Op: token.MUL, X: outerAlloc}
+	resultStore := &ssa.Store{Val: resultLoad}
+
+	setRefs(outerAlloc, outerField, resultLoad)
+	setRefs(outerField, nestedStore)
+	setRefs(innerAlloc, innerIndex, innerLoad)
+	setRefs(innerIndex, leafStore)
+	setRefs(innerLoad, nestedStore)
+	setRefs(resultLoad, resultStore)
+
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if !collectAllocStores(
+		outerAlloc, resultLoad, resultStore, []staticInitPathElem{{index: 3}},
+		&stores, &instrs, make(map[*ssa.Alloc]bool),
+	) {
+		t.Fatal("rejected a fully owned nested aggregate")
+	}
+	if len(stores) != 1 || stores[0].store != leafStore || stores[0].value != leafValue {
+		t.Fatalf("unexpected collected stores: %+v", stores)
+	}
+	wantPath := []int{3, 1, 0}
+	if len(stores[0].path) != len(wantPath) {
+		t.Fatalf("collected path = %+v, want %v", stores[0].path, wantPath)
+	}
+	for i, want := range wantPath {
+		if stores[0].path[i].index != want {
+			t.Fatalf("collected path = %+v, want %v", stores[0].path, wantPath)
+		}
+	}
+	for _, want := range []ssa.Instruction{
+		outerAlloc, outerField, nestedStore, innerAlloc, innerIndex, leafStore, innerLoad, resultLoad,
+	} {
+		found := false
+		for _, instr := range instrs {
+			found = found || instr == want
+		}
+		if !found {
+			t.Fatalf("missing suppressed instruction %T", want)
+		}
+	}
+}
+
+func TestCollectAllocStoresRejectsUnrelatedLoadConsumer(t *testing.T) {
+	alloc := new(ssa.Alloc)
+	resultLoad := &ssa.UnOp{Op: token.MUL, X: alloc}
+	resultStore := &ssa.Store{Val: resultLoad}
+	unrelatedStore := &ssa.Store{Val: resultLoad}
+	allocRefs := alloc.Referrers()
+	loadRefs := resultLoad.Referrers()
+	if allocRefs == nil || loadRefs == nil {
+		t.Fatal("expected alloc and load to track referrers")
+	}
+	*allocRefs = []ssa.Instruction{resultLoad}
+	*loadRefs = []ssa.Instruction{unrelatedStore}
+
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if collectAllocStores(
+		alloc, resultLoad, resultStore, nil,
+		&stores, &instrs, make(map[*ssa.Alloc]bool),
+	) {
+		t.Fatal("accepted a result load consumed by a store outside the fold")
+	}
+}
+
+func TestCollectAllocStoresRejectsUnsafeReferrers(t *testing.T) {
+	setRefs := func(t *testing.T, value ssa.Value, refs ...ssa.Instruction) {
+		t.Helper()
+		referrers := value.Referrers()
+		if referrers == nil {
+			t.Fatalf("%T does not track referrers", value)
+		}
+		*referrers = refs
+	}
+	constValue := func() *ssa.Const {
+		return ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int])
+	}
+	constIndex := func() *ssa.Const {
+		return ssa.NewConst(constant.MakeInt64(0), types.Typ[types.Int])
+	}
+
+	tests := []struct {
+		name string
+		bad  func(*testing.T, *ssa.Alloc) ssa.Instruction
+	}{
+		{
+			name: "extra load",
+			bad: func(t *testing.T, alloc *ssa.Alloc) ssa.Instruction {
+				load := &ssa.UnOp{Op: token.MUL, X: alloc}
+				setRefs(t, load, &ssa.Store{Val: load})
+				return load
+			},
+		},
+		{
+			name: "field with multiple consumers",
+			bad: func(t *testing.T, alloc *ssa.Alloc) ssa.Instruction {
+				field := &ssa.FieldAddr{X: alloc}
+				setRefs(t, field,
+					&ssa.Store{Addr: field, Val: constValue()},
+					&ssa.Store{Addr: field, Val: constValue()},
+				)
+				return field
+			},
+		},
+		{
+			name: "field with dynamic value",
+			bad: func(t *testing.T, alloc *ssa.Alloc) ssa.Instruction {
+				field := &ssa.FieldAddr{X: alloc}
+				setRefs(t, field, &ssa.Store{Addr: field, Val: field})
+				return field
+			},
+		},
+		{
+			name: "index with dynamic subscript",
+			bad: func(t *testing.T, alloc *ssa.Alloc) ssa.Instruction {
+				return &ssa.IndexAddr{X: alloc, Index: alloc}
+			},
+		},
+		{
+			name: "index with foreign consumer",
+			bad: func(t *testing.T, alloc *ssa.Alloc) ssa.Instruction {
+				index := &ssa.IndexAddr{X: alloc, Index: constIndex()}
+				setRefs(t, index, &ssa.Store{Addr: new(ssa.Alloc), Val: constValue()})
+				return index
+			},
+		},
+		{
+			name: "direct store to foreign address",
+			bad: func(_ *testing.T, _ *ssa.Alloc) ssa.Instruction {
+				return &ssa.Store{Addr: new(ssa.Alloc), Val: constValue()}
+			},
+		},
+		{
+			name: "direct store with dynamic value",
+			bad: func(_ *testing.T, alloc *ssa.Alloc) ssa.Instruction {
+				return &ssa.Store{Addr: alloc, Val: alloc}
+			},
+		},
+		{
+			name: "unsupported referrer",
+			bad: func(_ *testing.T, _ *ssa.Alloc) ssa.Instruction {
+				return new(ssa.Call)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			alloc := new(ssa.Alloc)
+			resultLoad := &ssa.UnOp{Op: token.MUL, X: alloc}
+			resultStore := &ssa.Store{Val: resultLoad}
+			setRefs(t, resultLoad, resultStore)
+			setRefs(t, alloc, test.bad(t, alloc), resultLoad)
+
+			var stores []staticInitStore
+			var instrs []ssa.Instruction
+			if collectAllocStores(
+				alloc, resultLoad, resultStore, nil,
+				&stores, &instrs, make(map[*ssa.Alloc]bool),
+			) {
+				t.Fatal("accepted an unsafe alloc referrer")
+			}
+		})
 	}
 }
