@@ -893,21 +893,11 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 			builder.SetInsertPointBefore(first)
 		}
 		anchor := siteAnchorLabel(siteFormat, "funcinfo_entry")
-		recordPC := anchor
-		if siteFormat == siteObjectCOFF && (ctx.buildConf.Goarch == "amd64" || ctx.buildConf.Goarch == "arm64") {
-			// Win64 has no link-phase table rewrite, while the inline-asm
-			// anchor lands after the backend prologue. Recording that anchor
-			// makes a PC near the end of the preceding function ambiguous with
-			// the next function's entry slack. COFF associative COMDAT keeps
-			// this record tied to the function, so its exact symbol start is
-			// both DCE-safe and the unambiguous address needed by FuncForPC.
-			recordPC = asmQuoteSymbol(symbol)
-		}
 		instruction := anchor + ":\n" +
 			entrySiteInfo.push(siteFormat, anchor) + "\n" +
 			".p2align " + align + "\n" +
 			entrySiteInfo.recordSymbol(siteFormat, "funcinfo_entry") +
-			ptrDirective + " " + recordPC + "\n" +
+			ptrDirective + " " + anchor + "\n" +
 			".quad " + uint64Hex(symbolID) + "\n" +
 			".popsection"
 		asm := llvm.InlineAsm(asmType, instruction, "", true, false, llvm.InlineAsmDialectATT, false)
@@ -999,7 +989,7 @@ func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, format siteObjec
 	mod.SetInlineAsm(asm.String())
 }
 
-func asmQuoteSymbol(symbol string) string {
+func asmQuoteELFSymbol(symbol string) string {
 	var b strings.Builder
 	b.Grow(len(symbol) + 2)
 	b.WriteByte('"')

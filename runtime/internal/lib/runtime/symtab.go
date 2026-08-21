@@ -1450,7 +1450,7 @@ func init() {
 }
 
 func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
-	if pc == 0 || prebuiltFuncPCTablePresent() {
+	if pc == 0 || prebuiltFuncPCTablePresent() || !runtimeFuncPCMayUseEntrySlack(pc) {
 		return pcSymbol{}, false
 	}
 	bestDelta := uintptr(runtimeFuncPCEntrySlack) + 1
@@ -1520,8 +1520,10 @@ func funcPCFrameForEntryPC(pc uintptr) (pcSymbol, bool) {
 		return pcSymbol{}, false
 	}
 	frame := frames[lo]
-	if frame.entry != pc && frame.entry-pc > runtimeFuncPCEntrySlack {
-		return pcSymbol{}, false
+	if frame.entry != pc {
+		if !runtimeFuncPCMayUseEntrySlack(pc) || frame.entry-pc > runtimeFuncPCEntrySlack {
+			return pcSymbol{}, false
+		}
 	}
 	return pcSymbolForFuncInfoIndex(pc, pc, frame.funcIndex)
 }
