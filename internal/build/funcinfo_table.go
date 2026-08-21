@@ -63,6 +63,7 @@ type funcInfoRecord struct {
 	file   string
 	line   uint32
 	column uint32
+	flags  uint32
 }
 
 type pcLineRecord struct {
@@ -201,19 +202,27 @@ func readFuncInfo(mod llvm.Module) []funcInfoRecord {
 	out := make([]funcInfoRecord, 0, len(rows))
 	for _, row := range rows {
 		fields := row.MDNodeOperands()
-		if len(fields) != 6 || fields[0].ZExtValue() != 1 {
+		if len(fields) == 0 {
+			continue
+		}
+		version := fields[0].ZExtValue()
+		if (version != 1 || len(fields) != 6) && (version != 2 || len(fields) != 7) {
 			continue
 		}
 		if !fields[1].IsAMDString() || !fields[2].IsAMDString() || !fields[3].IsAMDString() {
 			continue
 		}
-		out = append(out, funcInfoRecord{
+		rec := funcInfoRecord{
 			symbol: fields[1].MDString(),
 			name:   fields[2].MDString(),
 			file:   fields[3].MDString(),
 			line:   uint32(fields[4].ZExtValue()),
 			column: uint32(fields[5].ZExtValue()),
-		})
+		}
+		if version == 2 {
+			rec.flags = uint32(fields[6].ZExtValue())
+		}
+		out = append(out, rec)
 	}
 	return out
 }
@@ -884,11 +893,21 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 			builder.SetInsertPointBefore(first)
 		}
 		anchor := siteAnchorLabel(siteFormat, "funcinfo_entry")
+		recordPC := anchor
+		if siteFormat == siteObjectCOFF && (ctx.buildConf.Goarch == "amd64" || ctx.buildConf.Goarch == "arm64") {
+			// Win64 has no link-phase table rewrite, while the inline-asm
+			// anchor lands after the backend prologue. Recording that anchor
+			// makes a PC near the end of the preceding function ambiguous with
+			// the next function's entry slack. COFF associative COMDAT keeps
+			// this record tied to the function, so its exact symbol start is
+			// both DCE-safe and the unambiguous address needed by FuncForPC.
+			recordPC = asmQuoteSymbol(symbol)
+		}
 		instruction := anchor + ":\n" +
 			entrySiteInfo.push(siteFormat, anchor) + "\n" +
 			".p2align " + align + "\n" +
 			entrySiteInfo.recordSymbol(siteFormat, "funcinfo_entry") +
-			ptrDirective + " " + anchor + "\n" +
+			ptrDirective + " " + recordPC + "\n" +
 			".quad " + uint64Hex(symbolID) + "\n" +
 			".popsection"
 		asm := llvm.InlineAsm(asmType, instruction, "", true, false, llvm.InlineAsmDialectATT, false)
@@ -980,7 +999,7 @@ func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, format siteObjec
 	mod.SetInlineAsm(asm.String())
 }
 
-func asmQuoteELFSymbol(symbol string) string {
+func asmQuoteSymbol(symbol string) string {
 	var b strings.Builder
 	b.Grow(len(symbol) + 2)
 	b.WriteByte('"')
@@ -1006,6 +1025,7 @@ func toFuncInfoRecords(records []funcInfoRecord) []buildfuncinfo.Record {
 			File:   rec.file,
 			Line:   rec.line,
 			Column: rec.column,
+			Flags:  rec.flags,
 		}
 	}
 	return out

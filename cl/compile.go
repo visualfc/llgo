@@ -635,7 +635,11 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 				goName = funcName(pkgTypes, f, false)
 			}
 			pos := p.funcInfoPosition(f)
-			pkg.EmitFuncInfo(fn.Name(), funcInfoDisplayName(goName), pos.Filename, pos.Line, pos.Column)
+			if isRecoverTransparentWrapper(f) {
+				pkg.EmitFuncInfoFlags(fn.Name(), funcInfoDisplayName(goName), pos.Filename, pos.Line, pos.Column, llssa.FuncInfoFlagWrapper)
+			} else {
+				pkg.EmitFuncInfo(fn.Name(), funcInfoDisplayName(goName), pos.Filename, pos.Line, pos.Column)
+			}
 		}
 		var childInits []func()
 		if len(f.AnonFuncs) > 0 {

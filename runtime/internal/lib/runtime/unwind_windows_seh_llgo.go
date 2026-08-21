@@ -69,22 +69,54 @@ func windowsUnwindOne(context *windowsFaultContext) bool {
 
 func windowsContextCallers(context *windowsFaultContext, skip int, pc []uintptr, boundToGoText bool) int {
 	n := 0
+	var callee pcSymbol
+	if current := context.pc(); current >= minLegalPC {
+		callee = frameSymbol(current - 1)
+	}
 	for i := 0; n < len(pc) && i < maxPanicSpliceFrames; i++ {
 		if !windowsUnwindOne(context) {
 			break
 		}
 		ret := context.pc()
-		if skip > 0 {
-			skip--
-			continue
-		}
 		if boundToGoText && !prebuiltTextContains(ret) {
 			break
 		}
+		caller := frameSymbol(ret - 1)
+		if caller.wrapper && elideWrapperCalling(callee.function) {
+			callee = caller
+			continue
+		}
+		if skip > 0 {
+			skip--
+			callee = caller
+			continue
+		}
 		pc[n] = ret
 		n++
+		// RtlVirtualUnwind can continue through the Windows CRT after the C
+		// process entry. The entry is deliberately published as the logical
+		// runtime.goexit frame, which is also the end of a Go caller chain.
+		// Stop there instead of letting a nearby COFF function entry make the
+		// CRT return address look like another Go frame.
+		if boundToGoText && caller.function == "runtime.goexit" {
+			break
+		}
+		callee = caller
 	}
 	return n
+}
+
+// elideWrapperCalling mirrors Go's runtime.elideWrapperCalling. A generated
+// wrapper normally has no logical stack frame, but must remain visible when
+// its own receiver/conversion check called a panic helper instead of the
+// wrapped method.
+func elideWrapperCalling(callee string) bool {
+	switch callee {
+	case "runtime.gopanic", "runtime.sigpanic", "runtime.panicwrap",
+		"github.com/xgo-dev/llgo/runtime/internal/runtime.PanicWrapNilPointer":
+		return false
+	}
+	return true
 }
 
 //go:noinline

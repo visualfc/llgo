@@ -516,12 +516,13 @@ func TestFuncInfoTableIgnoresInvalidMetadata(t *testing.T) {
 	add(mdint(2), mdstr("bad.version"), mdstr("bad.version"), mdstr("bad.go"), mdint(1), mdint(1))
 	add(mdint(1), mdint(0), mdstr("bad.symbol"), mdstr("bad.go"), mdint(1), mdint(1))
 	add(mdint(1), mdstr(""), mdstr("empty.symbol"), mdstr("empty.go"), mdint(1), mdint(1))
+	add(mdint(2), mdstr("wrapper"), mdstr("wrapper"), mdstr("wrapper.go"), mdint(2), mdint(1), mdint(1))
 
-	if got := readFuncInfo(mod); len(got) != 1 || got[0].symbol != "" {
-		t.Fatalf("readFuncInfo invalid rows = %+v, want one empty-symbol row", got)
+	if got := readFuncInfo(mod); len(got) != 2 || got[0].symbol != "" || got[1].symbol != "wrapper" || got[1].flags != 1 {
+		t.Fatalf("readFuncInfo rows = %+v, want empty-symbol v1 and flagged wrapper v2", got)
 	}
-	if got := collectFuncInfo([]Package{nil, {}, {LPkg: pkg}}); len(got) != 0 {
-		t.Fatalf("collectFuncInfo invalid rows = %+v, want none", got)
+	if got := collectFuncInfo([]Package{nil, {}, {LPkg: pkg}}); len(got) != 1 || got[0].symbol != "wrapper" || got[0].flags != 1 {
+		t.Fatalf("collectFuncInfo rows = %+v, want flagged wrapper", got)
 	}
 
 	empty := ctx.NewModule("empty")
@@ -618,7 +619,7 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 	}
 }
 
-func TestAsmQuoteELFSymbol(t *testing.T) {
+func TestAsmQuoteSymbol(t *testing.T) {
 	cases := map[string]string{
 		`plain`:      `"plain"`,
 		`we$ird`:     `"we$$ird"`,
@@ -626,7 +627,7 @@ func TestAsmQuoteELFSymbol(t *testing.T) {
 		`back\slash`: `"back\\slash"`,
 	}
 	for in, want := range cases {
-		if got := asmQuoteELFSymbol(in); got != want {
+		if got := asmQuoteSymbol(in); got != want {
 			t.Fatalf("quote(%q) = %q, want %q", in, got, want)
 		}
 	}
@@ -659,6 +660,10 @@ func TestCOFFFuncInfoEntrySiteIsAssociative(t *testing.T) {
 	fn := src.NewFunc("example.com/p.live", llssa.NoArgsNoRet, llssa.InGo)
 	fn.MakeBody(1).Return()
 	emitFuncInfoEntrySites(ctx, src)
+	ir := src.String()
+	if want := `.quad \22example.com/p.live\22`; !strings.Contains(ir, want) {
+		t.Fatalf("COFF entry site must record the exact function symbol %q:\n%s", want, ir)
+	}
 
 	buf, err := prog.TargetMachine().EmitToMemoryBuffer(src.Module(), llvm.ObjectFile)
 	if err != nil {
