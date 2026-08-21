@@ -243,6 +243,12 @@ jobs:
               .\_test\windowscorefault
             $buildExitCode = $LASTEXITCODE
           }
+          if ($buildExitCode -eq 0) {
+            ..\llgo-windows-smoke.exe build `
+              -o ..\windows-network-smoke.exe `
+              .\_test\windowsnetwork
+            $buildExitCode = $LASTEXITCODE
+          }
           Pop-Location
           if ($buildExitCode -ne 0) {
             exit $buildExitCode
@@ -255,7 +261,8 @@ jobs:
               ".\windows-stdlib-smoke.exe",
               ".\windows-ffi-smoke.exe",
               ".\windows-empty-smoke.exe",
-              ".\windows-core-fault-smoke.exe"
+              ".\windows-core-fault-smoke.exe",
+              ".\windows-network-smoke.exe"
             )
           .\windows-runtime-smoke.exe
           if ($LASTEXITCODE -ne 0) {
@@ -313,6 +320,10 @@ jobs:
             exit $LASTEXITCODE
           }
           .\windows-core-fault-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          .\windows-network-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
