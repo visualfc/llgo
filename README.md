@@ -26,19 +26,35 @@ LLGo := Go * C ecosystem
 LLGo is compatible with the C ecosystem through the C **Application Binary Interface (ABI)**, while LLGo is compatible with Go at the **source-code level**. The C ecosystem includes languages that expose C-compatible interfaces (e.g. C/C++, Python, JavaScript, Objective-C, and Swift).
 
 
-## Project status
+## Go support
 
-LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.26 language syntax. Compatibility is checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases using pinned Go 1.25 and Go 1.26 toolchains. Remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml); gc-specific mechanisms outside LLGo's compatibility goals are documented in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
+LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.26 language syntax including `cgo`.
 
-LLGo fully supports the Go standard library on supported native platforms; see [Go standard library support](#go-standard-library-support) for validation and target-specific details.
-
-LLGo uses a different runtime from the standard Go toolchain. Native goroutines map 1:1 to OS threads with fixed native stacks, so direct C calls require no Go-to-C stack or scheduler transition, avoiding the cgo overhead that makes frequent C calls costly in standard Go. The default garbage collector is conservative BDWGC.
+Compatibility is checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases using pinned Go 1.25 and Go 1.26 toolchains. Remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml); gc-specific mechanisms outside LLGo's compatibility goals are documented in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
 
 | Target | Current coverage |
 | --- | --- |
 | Native | Linux amd64/arm64 and macOS amd64/arm64 [release artifacts](https://github.com/xgo-dev/llgo/releases); primary CI on Linux amd64 and macOS arm64 |
 | WebAssembly | `js/wasm` and `wasip1/wasm` builds; WASI and Emscripten CI coverage |
 | Embedded | [`-target`](doc/Embedded_Cmd.md) configurations for supported boards and MCUs, with selected QEMU/emulator smoke tests |
+
+### Runtime
+
+LLGo uses a different runtime from the standard Go toolchain. Native goroutines map 1:1 to OS threads with fixed native stacks, so direct C calls require no Go-to-C stack or scheduler transition, avoiding the cgo overhead that makes frequent C calls costly in standard Go.
+
+The default garbage collector is conservative [BDWGC](https://www.hboehm.info/gc/) (also known as libgc). Bare-metal embedded targets instead use a TinyGo-derived conservative mark-and-sweep collector.
+
+Garbage collection can be disabled with the `nogc` build tag. For example:
+
+```sh
+llgo run -tags nogc .
+```
+
+### Standard libraries
+
+LLGo fully supports the Go standard library on supported native platforms. CI requires compatibility coverage for every public package and exported symbol in the primary Go toolchain, and runs [`test/std`](test/std/README.md) with both supported toolchains.
+
+Other targets may not provide every OS service or implementation-specific runtime behavior.
 
 
 ## C/C++ standard library support
@@ -260,27 +276,6 @@ Here are some examples related to them:
 * [mkjson](https://github.com/goplus/lib/tree/main/c/cjson/_demo/mkjson/mkjson.go): create a json object and print it
 * [sqlitedemo](https://github.com/goplus/lib/tree/main/c/sqlite/_demo/sqlitedemo/demo.go): a basic sqlite demo
 * [tetris](https://github.com/goplus/lib/tree/main/c/raylib/_demo/tetris/tetris.go): a tetris game based on raylib
-
-
-## Go support
-
-LLGo supports the complete Go 1.26 language syntax and `cgo`.
-
-### Garbage Collection (GC)
-
-By default, LLGo implements garbage collection with [BDWGC](https://www.hboehm.info/gc/) (also known as libgc). Bare-metal embedded targets instead use a TinyGo-derived conservative mark-and-sweep collector.
-
-Garbage collection can be disabled with the `nogc` build tag. For example:
-
-```sh
-llgo run -tags nogc .
-```
-
-### Standard libraries
-
-LLGo fully supports the Go standard library on supported native platforms. CI requires compatibility coverage for every public package and exported symbol in the primary Go toolchain, and runs [`test/std`](test/std/README.md) with both supported toolchains.
-
-Other targets may not provide every OS service or implementation-specific runtime behavior.
 
 
 ## Dependencies
