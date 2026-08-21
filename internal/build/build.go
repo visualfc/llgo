@@ -2296,6 +2296,23 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 	}
 	applySizeOptimizationAttributes(ret.Module(), ctx.buildConf.OptLevel)
+	printCmds := ctx.shouldPrintCommands(verbose)
+	if ctx.mode != ModeGen {
+		if aPkg.AltPkg == nil || llruntime.HasAdditiveAltPkg(pkgPath) {
+			asmObjFiles, err := compilePkgSFiles(ctx, aPkg, pkg, printCmds)
+			if err != nil {
+				return err
+			}
+			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
+		}
+		if aPkg.AltPkg != nil {
+			asmObjFiles, err := compilePkgSFiles(ctx, aPkg, aPkg.AltPkg.Package, printCmds)
+			if err != nil {
+				return err
+			}
+			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
+		}
+	}
 
 	// Run the default LLVM optimization pipeline selected by the requested -O level.
 	if ctx.passOpt {
@@ -2319,20 +2336,12 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		return nil
 	}
 
-	printCmds := ctx.shouldPrintCommands(verbose)
 	cgoLLFiles, cgoLdflags, err := buildCgo(ctx, aPkg, aPkg.Package.Syntax, externs, printCmds)
 	if err != nil {
 		return fmt.Errorf("build cgo of %v failed: %v", pkgPath, err)
 	}
 	aPkg.ObjFiles = append(aPkg.ObjFiles, cgoLLFiles...)
 	aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, pkg, printCmds)...)
-	if aPkg.AltPkg == nil || llruntime.HasAdditiveAltPkg(pkgPath) {
-		if asmObjFiles, err := compilePkgSFiles(ctx, aPkg, pkg, printCmds); err != nil {
-			return err
-		} else {
-			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
-		}
-	}
 	if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.Package.Syntax, printCmds); err != nil {
 		return err
 	} else {
@@ -2347,11 +2356,6 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 		aPkg.ObjFiles = append(aPkg.ObjFiles, altLLFiles...)
 		aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, aPkg.AltPkg.Package, printCmds)...)
-		if asmObjFiles, err := compilePkgSFiles(ctx, aPkg, aPkg.AltPkg.Package, printCmds); err != nil {
-			return err
-		} else {
-			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
-		}
 		if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.AltPkg.Syntax, printCmds); err != nil {
 			return err
 		} else {
