@@ -7,7 +7,7 @@ LLGo - A Go compiler based on LLVM
 [![GoDoc](https://pkg.go.dev/badge/github.com/xgo-dev/llgo.svg)](https://pkg.go.dev/github.com/xgo-dev/llgo)
 [![XGo](https://img.shields.io/badge/project-XGo-blue.svg)](https://github.com/goplus/xgo)
 
-LLGo is a Go compiler based on LLVM in order to better integrate Go with the C ecosystem, including Python and JavaScript. It's a subproject of [the XGo project](https://github.com/goplus/gop).
+LLGo is a Go compiler based on LLVM in order to better integrate Go with the C ecosystem, including Python and JavaScript. It's a subproject of [the XGo project](https://github.com/goplus/xgo).
 
 LLGo aims to expand the boundaries of Go/XGo, providing limitless possibilities such as:
 
@@ -28,7 +28,7 @@ LLGo is compatible with the C ecosystem through the C **Application Binary Inter
 
 ## Project status
 
-LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.26 language syntax. Compatibility is checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases using pinned Go 1.24 and Go 1.26 toolchains. Remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml); gc-specific mechanisms outside LLGo's compatibility goals are documented in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
+LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.26 language syntax. Compatibility is checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases using pinned Go 1.25 and Go 1.26 toolchains. Remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml); gc-specific mechanisms outside LLGo's compatibility goals are documented in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
 
 LLGo fully supports the Go standard library on supported native platforms; see [Go standard library support](#go-standard-library-support) for validation and target-specific details.
 
