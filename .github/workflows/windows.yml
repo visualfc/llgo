@@ -325,7 +325,7 @@ jobs:
             -p=1 `
             -count=1 `
             -timeout=10m `
-            ./runtime/_test/windowstesting `
+            ./test/windows `
             ./test/cgo `
             ./test/std/sync `
             ./test/std/runtime/pprof `
