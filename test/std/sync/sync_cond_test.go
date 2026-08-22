@@ -40,28 +40,34 @@ func TestCondBasic(t *testing.T) {
 func TestCondBroadcast(t *testing.T) {
 	var mu sync.Mutex
 	cond := sync.NewCond(&mu)
+	ready := make(chan struct{}, 3)
+	var done sync.WaitGroup
+	done.Add(3)
 
 	// Start multiple waiting goroutines
 	wokenUp := 0
 	for i := 0; i < 3; i++ {
-		go func(id int) {
+		go func() {
+			defer done.Done()
 			mu.Lock()
+			ready <- struct{}{}
 			cond.Wait()
 			wokenUp++
 			mu.Unlock()
-		}(i)
+		}()
 	}
 
-	// Wait for goroutines to start waiting
-	time.Sleep(10 * time.Millisecond)
+	// Wait until every goroutine has acquired the lock immediately before
+	// Wait. Taking the lock below then guarantees they have all entered Wait.
+	for i := 0; i < 3; i++ {
+		<-ready
+	}
 
 	// Broadcast to wake all
 	mu.Lock()
 	cond.Broadcast()
 	mu.Unlock()
-
-	// Wait for all goroutines to wake up
-	time.Sleep(100 * time.Millisecond)
+	done.Wait()
 
 	mu.Lock()
 	finalWoken := wokenUp

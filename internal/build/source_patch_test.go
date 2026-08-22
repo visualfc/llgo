@@ -431,7 +431,8 @@ func TestBuildSourcePatchOverlayForIter(t *testing.T) {
 	if !strings.Contains(string(patchSrc), "func Pull[V any]") {
 		t.Fatalf("source patch file %s does not contain iter replacement", patchFile)
 	}
-	if !strings.HasPrefix(string(patchSrc), sourcePatchLineDirective(filepath.Join(env.LLGoRuntimeDir(), "_patch", "iter", "iter.go"))) {
+	normalizedPatchSrc := strings.ReplaceAll(string(patchSrc), "\r\n", "\n")
+	if !strings.HasPrefix(normalizedPatchSrc, sourcePatchLineDirective(filepath.Join(env.LLGoRuntimeDir(), "_patch", "iter", "iter.go"))) {
 		t.Fatalf("source patch file %s is missing line directive, got:\n%s", patchFile, patchSrc)
 	}
 
