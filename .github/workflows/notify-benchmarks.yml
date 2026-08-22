@@ -2,9 +2,40 @@ name: Notify benchmarks
 
 on:
   # A push to main is the authoritative post-merge state, including squash and
-  # rebase merges. The dispatched SHA is the exact LLGo version to measure.
+  # rebase merges. Only changes that can affect the compiler, generated
+  # binaries, or the LTO plugin should start the expensive binary-size and
+  # compile-time benchmarks. Documentation, CI, release metadata, and tests do
+  # not change those measurements.
   push:
     branches: [main]
+    paths:
+      - cl/**
+      - cmd/llgo/*.go
+      - cmd/internal/base/**
+      - cmd/internal/build/**
+      - cmd/internal/compile/**
+      - cmd/internal/compilerhash/**
+      - cmd/internal/flags/**
+      - internal/**
+      - ltoplugin/**
+      - runtime/**
+      - ssa/**
+      - xtool/**
+      - go.mod
+      - go.sum
+      - '!**/*.md'
+      - '!**/*_test.go'
+      - '!**/testdata/**'
+      - '!cl/_test*/**'
+      - '!cl/cltest/**'
+      - '!internal/filecheck/**'
+      - '!internal/littest/**'
+      - '!internal/llgen/**'
+      - '!runtime/_test/**'
+      - '!runtime/internal/test/**'
+      - '!ssa/ssatest/**'
+      - '!**/LICENSE'
+      - '!**/LICENSES/**'
   # Compatibility is intentionally release-based: publishing a stable release
   # or prerelease records one durable open-source test result for that tag.
   release:
