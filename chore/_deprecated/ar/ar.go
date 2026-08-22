@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+// Portions of this file are derived from tinygo/builder/ar.go.
+// Copyright (c) 2018-2025 The TinyGo Authors. All rights reserved.
+// See ../../../LICENSES/TinyGo-BSD-3-Clause.txt for license terms.
+
 package ar
 
 import (
