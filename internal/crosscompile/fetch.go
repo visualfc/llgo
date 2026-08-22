@@ -45,7 +45,7 @@ func checkDownloadAndExtractWasiSDK(dir string) (wasiSdkRoot string, err error) 
 }
 
 // checkDownloadAndExtractESPClang downloads and extracts ESP Clang binaries and libraries
-func checkDownloadAndExtractESPClang(platformSuffix, dir string) error {
+func checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, dir string) error {
 	// Check if already exists
 	if _, err := os.Stat(dir); err == nil {
 		return nil
@@ -64,8 +64,8 @@ func checkDownloadAndExtractESPClang(platformSuffix, dir string) error {
 		return nil
 	}
 
-	clangUrl := fmt.Sprintf("%s/clang-esp-%s-%s.tar.xz", espClangBaseUrl, espClangVersion, platformSuffix)
-	description := fmt.Sprintf("ESP Clang %s-%s", espClangVersion, platformSuffix)
+	clangUrl := fmt.Sprintf("%s/clang-esp-%s-%s.tar.xz", baseURL, version, platformSuffix)
+	description := fmt.Sprintf("ESP Clang %s-%s", version, platformSuffix)
 
 	// Use temporary extraction directory for ESP Clang special handling
 	tempExtractDir := dir + ".extract"

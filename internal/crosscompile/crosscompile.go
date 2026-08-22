@@ -153,8 +153,10 @@ var (
 )
 
 var (
-	espClangBaseUrl = "https://github.com/goplus/espressif-llvm-project-prebuilt/releases/download/19.1.2_20250905-3"
-	espClangVersion = "19.1.2_20250905-3"
+	espClangBaseUrl        = "https://github.com/goplus/espressif-llvm-project-prebuilt/releases/download/19.1.2_20250905-3"
+	espClangVersion        = "19.1.2_20250905-3"
+	espClangWindowsBaseUrl = "https://github.com/espressif/llvm-project/releases/download/esp-19.1.2_20250312"
+	espClangWindowsVersion = "19.1.2_20250312"
 )
 
 // cacheRoot can be overridden for testing
@@ -226,13 +228,14 @@ func getESPClangRoot(forceEspClang bool) (clangRoot string, err error) {
 	// Try to download ESP Clang if platform is supported
 	platformSuffix := getESPClangPlatform(runtime.GOOS, runtime.GOARCH)
 	if platformSuffix != "" {
-		cacheClangDir := filepath.Join(cacheRoot(), "crosscompile", "esp-clang-"+espClangVersion)
+		baseURL, version := espClangDownload(platformSuffix)
+		cacheClangDir := filepath.Join(cacheRoot(), "crosscompile", "esp-clang-"+version)
 		if _, err = os.Stat(cacheClangDir); err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
 				return
 			}
 			fmt.Fprintln(os.Stderr, "ESP Clang not found in LLGO_ROOT or cache, will download.")
-			if err = checkDownloadAndExtractESPClang(platformSuffix, cacheClangDir); err != nil {
+			if err = checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, cacheClangDir); err != nil {
 				return
 			}
 		}
@@ -265,11 +268,23 @@ func getESPClangPlatform(goos, goarch string) string {
 		}
 	case "windows":
 		switch goarch {
-		case "amd64":
+		case "amd64", "arm64":
+			// Espressif publishes an x86-64 Windows host toolchain. Windows on
+			// ARM64 runs it through the system's x64 emulation layer.
 			return "x86_64-w64-mingw32"
 		}
 	}
 	return ""
+}
+
+func espClangDownload(platformSuffix string) (baseURL, version string) {
+	if platformSuffix == "x86_64-w64-mingw32" {
+		// The LLGo-hosted 20250905 build does not publish a Windows archive.
+		// Use Espressif's official LLVM 19 Windows build instead of constructing
+		// a URL that can only return 404.
+		return espClangWindowsBaseUrl, espClangWindowsVersion
+	}
+	return espClangBaseUrl, espClangVersion
 }
 
 // ldFlagsFromFileName extracts the library name from a filename for use in linker flags

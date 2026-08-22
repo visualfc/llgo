@@ -52,6 +52,42 @@ func createTestTarGz(t *testing.T, files map[string]string) string {
 	return tempFile.Name()
 }
 
+func createTestTarXz(t *testing.T, files map[string]string) string {
+	t.Helper()
+	tarFile, err := os.CreateTemp("", "test*.tar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(tarFile)
+	for name, content := range files {
+		hdr := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(content))}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarFile.Close(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(tarFile.Name()) })
+
+	compressed, err := exec.Command("xz", "-c", tarFile.Name()).Output()
+	if err != nil {
+		t.Fatalf("compress test tar.xz: %v", err)
+	}
+	xzFile := tarFile.Name() + ".xz"
+	if err := os.WriteFile(xzFile, compressed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(xzFile) })
+	return xzFile
+}
+
 // Helper function to create a test HTTP server
 func createTestServer(t *testing.T, files map[string]string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +292,6 @@ func TestExtractTarGz(t *testing.T) {
 	}
 
 	archivePath := createTestTarGz(t, files)
-	defer os.Remove(archivePath)
 
 	// Extract to temp directory
 	tempDir := t.TempDir()
@@ -596,7 +631,7 @@ func TestESPClangExtractionLogic(t *testing.T) {
 	}
 
 	// Test that function skips download for existing directory
-	err = checkDownloadAndExtractESPClang("linux", espClangDir)
+	err = checkDownloadAndExtractESPClang(espClangBaseUrl, espClangVersion, "linux", espClangDir)
 	if err != nil {
 		t.Fatalf("checkDownloadAndExtractESPClang failed: %v", err)
 	}
@@ -678,8 +713,7 @@ func TestESPClangDownloadWhenNotExists(t *testing.T) {
 		"esp-clang/include/esp32.h": "#define ESP32 1",
 	}
 
-	archivePath := createTestTarGz(t, files)
-	defer os.Remove(archivePath)
+	archivePath := createTestTarXz(t, files)
 
 	// Read the archive content
 	archiveContent, err := os.ReadFile(archivePath)
@@ -707,7 +741,7 @@ func TestESPClangDownloadWhenNotExists(t *testing.T) {
 	espClangDir := filepath.Join(tempCacheRoot, "esp-clang-test")
 
 	// Test download and extract when directory doesn't exist
-	err = checkDownloadAndExtractESPClang("linux", espClangDir)
+	err = checkDownloadAndExtractESPClang(espClangBaseUrl, espClangVersion, "linux", espClangDir)
 	if err != nil {
 		t.Fatalf("checkDownloadAndExtractESPClang failed: %v", err)
 	}
@@ -899,22 +933,22 @@ func TestExtractZip(t *testing.T) {
 		}
 	})
 
-	// 3. Test non-writable destination
-	t.Run("UnwritableDestination", func(t *testing.T) {
+	// 3. Test a destination that cannot contain extracted files. Unlike Unix
+	// permission bits, this remains deterministic on Windows and as root.
+	t.Run("NonDirectoryDestination", func(t *testing.T) {
 		// Create test ZIP file
 		if err := createTestZip(zipPath); err != nil {
 			t.Fatal(err)
 		}
 
-		// Create read-only destination directory
-		readOnlyDir := filepath.Join(tempDir, "readonly")
-		if err := os.MkdirAll(readOnlyDir, 0400); err != nil {
+		notDirectory := filepath.Join(tempDir, "not-a-directory")
+		if err := os.WriteFile(notDirectory, nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
 
 		// Execute extraction and expect error
-		if err := extractZip(zipPath, readOnlyDir); err == nil {
-			t.Error("Expected error for unwritable destination, got nil")
+		if err := extractZip(zipPath, notDirectory); err == nil {
+			t.Error("Expected error for non-directory destination, got nil")
 		}
 	})
 }

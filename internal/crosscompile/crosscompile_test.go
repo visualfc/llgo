@@ -22,6 +22,30 @@ const (
 	libPrefix         = "-L"
 )
 
+func TestESPClangHostDownload(t *testing.T) {
+	tests := []struct {
+		goos, goarch string
+		wantPlatform string
+		wantVersion  string
+	}{
+		{"darwin", "arm64", "aarch64-apple-darwin", espClangVersion},
+		{"linux", "amd64", "x86_64-linux-gnu", espClangVersion},
+		{"windows", "amd64", "x86_64-w64-mingw32", espClangWindowsVersion},
+		{"windows", "arm64", "x86_64-w64-mingw32", espClangWindowsVersion},
+	}
+	for _, test := range tests {
+		platform := getESPClangHostPlatform(test.goos, test.goarch)
+		if platform != test.wantPlatform {
+			t.Errorf("getESPClangHostPlatform(%q, %q) = %q, want %q", test.goos, test.goarch, platform, test.wantPlatform)
+			continue
+		}
+		_, version := espClangDownload(platform)
+		if version != test.wantVersion {
+			t.Errorf("espClangDownload(%q) version = %q, want %q", platform, version, test.wantVersion)
+		}
+	}
+}
+
 func TestUseCrossCompileSDK(t *testing.T) {
 	// Skip long-running tests unless explicitly enabled
 	if testing.Short() {
