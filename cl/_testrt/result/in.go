@@ -64,15 +64,15 @@ func main() {
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP0]], 1
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP0]], 0
 // CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %[[TMP2]])
-// DARWIN-ARM64-NEXT:   %[[TMP3:[0-9]+]] = call i64 %__llgo_funcval_code(ptr swiftself %[[TMP1]], i64 100, i64 200)
-// LINUX-AMD64-NEXT:   %[[TMP3:[0-9]+]] = call i64 %__llgo_funcval_code(ptr nest %[[TMP1]], i64 100, i64 200)
+// ARM64-NEXT:   %[[TMP3:[0-9]+]] = call i64 %__llgo_funcval_code(ptr swiftself %[[TMP1]], i64 100, i64 200)
+// AMD64-NEXT:   %[[TMP3:[0-9]+]] = call i64 %__llgo_funcval_code(ptr nest %[[TMP1]], i64 100, i64 200)
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = call i32 (ptr, ...) @printf(ptr @[[GLOB0]], i64 %[[TMP3]])
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = call { ptr, ptr } @main.add()
 // CHECK-NEXT:   %[[TMP6:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP5]], 1
 // CHECK-NEXT:   %[[TMP7:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP5]], 0
 // CHECK-NEXT:   %__llgo_funcval_code1 = call ptr asm "", "=r,0"(ptr %[[TMP7]])
-// DARWIN-ARM64-NEXT:   %[[TMP8:[0-9]+]] = call i64 %__llgo_funcval_code1(ptr swiftself %[[TMP6]], i64 100, i64 200)
-// LINUX-AMD64-NEXT:   %[[TMP8:[0-9]+]] = call i64 %__llgo_funcval_code1(ptr nest %[[TMP6]], i64 100, i64 200)
+// ARM64-NEXT:   %[[TMP8:[0-9]+]] = call i64 %__llgo_funcval_code1(ptr swiftself %[[TMP6]], i64 100, i64 200)
+// AMD64-NEXT:   %[[TMP8:[0-9]+]] = call i64 %__llgo_funcval_code1(ptr nest %[[TMP6]], i64 100, i64 200)
 // CHECK-NEXT:   %[[TMP9:[0-9]+]] = call i32 (ptr, ...) @printf(ptr @[[GLOB1]], i64 %[[TMP8]])
 // CHECK-NEXT:   %[[TMP10:[0-9]+]] = call { { ptr, ptr }, i64 } @main.add2()
 // CHECK-NEXT:   %[[TMP11:[0-9]+]] = extractvalue { { ptr, ptr }, i64 } %[[TMP10]], 0
@@ -81,8 +81,8 @@ func main() {
 // CHECK-NEXT:   %[[TMP14:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP13]], 1
 // CHECK-NEXT:   %[[TMP15:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP13]], 0
 // CHECK-NEXT:   %__llgo_funcval_code2 = call ptr asm "", "=r,0"(ptr %[[TMP15]])
-// DARWIN-ARM64-NEXT:   %[[TMP16:[0-9]+]] = call i64 %__llgo_funcval_code2(ptr swiftself %[[TMP14]], i64 100, i64 200)
-// LINUX-AMD64-NEXT:   %[[TMP16:[0-9]+]] = call i64 %__llgo_funcval_code2(ptr nest %[[TMP14]], i64 100, i64 200)
+// ARM64-NEXT:   %[[TMP16:[0-9]+]] = call i64 %__llgo_funcval_code2(ptr swiftself %[[TMP14]], i64 100, i64 200)
+// AMD64-NEXT:   %[[TMP16:[0-9]+]] = call i64 %__llgo_funcval_code2(ptr nest %[[TMP14]], i64 100, i64 200)
 // CHECK-NEXT:   %[[TMP17:[0-9]+]] = call i32 (ptr, ...) @printf(ptr @[[GLOB2]], i64 %[[TMP16]], i64 %[[TMP12]])
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

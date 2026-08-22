@@ -33,8 +33,8 @@ import (
 // CHECK-NEXT: %[[DECL_EFACE2:[0-9]+]] = insertvalue %"{{.*}}runtime.eface" { ptr @{{.*}}, ptr undef }, ptr %[[DECL_BOX2]], 1
 // CHECK-NEXT: %[[DECL_REFLECT2:[0-9]+]] = call %reflect.Value @reflect.ValueOf(%"{{.*}}runtime.eface" %[[DECL_EFACE2]])
 // CHECK-NEXT: %[[DECL_PTR2:[0-9]+]] = call ptr @reflect.Value.UnsafePointer(%reflect.Value %[[DECL_REFLECT2]])
-// DARWIN-ARM64-LABEL: define void @"main.main$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.main$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.main$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.main$1"(ptr nest %0){{.*}} {
 // CHECK: %[[ENV_VALUE:[0-9]+]] = load { ptr }, ptr %0
 // CHECK-NEXT: %[[VALUE_PTR:[0-9]+]] = extractvalue { ptr } %[[ENV_VALUE]], 0
 // CHECK-NEXT: %[[VALUE:[0-9]+]] = load i64, ptr %[[VALUE_PTR]]

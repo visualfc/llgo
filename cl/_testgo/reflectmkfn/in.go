@@ -18,8 +18,8 @@ import (
 // CHECK: %[[CALL_DATA:[0-9]+]] = extractvalue { ptr, ptr } %[[FUNC_PAIR]], 1
 // CHECK: %[[CALL_PTR:[0-9]+]] = extractvalue { ptr, ptr } %[[FUNC_PAIR]], 0
 // CHECK: %[[CALL_CODE:__llgo_funcval_code]] = call ptr asm "", "=r,0"(ptr %[[CALL_PTR]])
-// DARWIN-ARM64: %[[RESULT:[0-9]+]] = call %"g{{.*}}/runtime/internal/runtime.String" %[[CALL_CODE]](ptr swiftself %[[CALL_DATA]], %"g{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 3 }, i64 2)
-// LINUX-AMD64: %[[RESULT:[0-9]+]] = call %"g{{.*}}/runtime/internal/runtime.String" %[[CALL_CODE]](ptr nest %[[CALL_DATA]], %"g{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 3 }, i64 2)
+// ARM64: %[[RESULT:[0-9]+]] = call %"g{{.*}}/runtime/internal/runtime.String" %[[CALL_CODE]](ptr swiftself %[[CALL_DATA]], %"g{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 3 }, i64 2)
+// AMD64: %[[RESULT:[0-9]+]] = call %"g{{.*}}/runtime/internal/runtime.String" %[[CALL_CODE]](ptr nest %[[CALL_DATA]], %"g{{.*}}/runtime/internal/runtime.String" { ptr @{{.*}}, i64 3 }, i64 2)
 // CHECK: %[[EQUAL:[0-9]+]] = call i1 @"g{{.*}}/runtime/internal/runtime.StringEqual"(%"g{{.*}}/runtime/internal/runtime.String" %[[RESULT]],{{.*}})
 // CHECK: %[[NOT_EQUAL:[0-9]+]] = xor i1 %[[EQUAL]], true
 // CHECK: br i1 %[[NOT_EQUAL]]

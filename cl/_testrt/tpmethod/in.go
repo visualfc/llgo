@@ -62,8 +62,8 @@ func main() {
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP0]], 1
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP0]], 0
 // CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %[[TMP5]])
-// DARWIN-ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]], %"main.Tuple[error]" %[[TMP3]])
-// LINUX-AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]], %"main.Tuple[error]" %[[TMP3]])
+// ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]], %"main.Tuple[error]" %[[TMP3]])
+// AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]], %"main.Tuple[error]" %[[TMP3]])
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -122,8 +122,8 @@ func main() {
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 1
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 0
 // CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %[[TMP5]])
-// DARWIN-ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]], { ptr, ptr } %[[TMP1]])
-// LINUX-AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]], { ptr, ptr } %[[TMP1]])
+// ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]], { ptr, ptr } %[[TMP1]])
+// AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]], { ptr, ptr } %[[TMP1]])
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 

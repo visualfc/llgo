@@ -31,8 +31,8 @@ func (t *Tree) Ascend(iterator Iterator) {
 func main() {
 	var got int
 	tree := (*Tree)(new(TreeG[int]))
-	// DARWIN-ARM64-LABEL: define i1 @"main.main$1"(ptr swiftself %0, i64 %1){{.*}} {
-	// LINUX-AMD64-LABEL: define i1 @"main.main$1"(ptr nest %0, i64 %1){{.*}} {
+	// ARM64-LABEL: define i1 @"main.main$1"(ptr swiftself %0, i64 %1){{.*}} {
+	// AMD64-LABEL: define i1 @"main.main$1"(ptr nest %0, i64 %1){{.*}} {
 	// CHECK: [[ITER_VALUE:%[0-9]+]] = add i64 %1, 1
 	// CHECK: [[ITER_ENV:%[0-9]+]] = load { ptr }, ptr %0
 	// CHECK-NEXT: [[ITER_GOT:%[0-9]+]] = extractvalue { ptr } [[ITER_ENV]], 0
@@ -52,5 +52,5 @@ func main() {
 // CHECK-LABEL: define linkonce void @"main.(*TreeG[int]).Ascend"(ptr %0, %"main.IteratorG[int]" %1){{.*}} {
 // CHECK: [[GENERIC_ENV:%[0-9]+]] = extractvalue %"main.IteratorG[int]" %1, 1
 // CHECK-NEXT: [[GENERIC_CODE:%[0-9]+]] = extractvalue %"main.IteratorG[int]" %1, 0
-// DARWIN-ARM64: call i1 %__llgo_funcval_code(ptr swiftself [[GENERIC_ENV]], i64 0)
-// LINUX-AMD64: call i1 %__llgo_funcval_code(ptr nest [[GENERIC_ENV]], i64 0)
+// ARM64: call i1 %__llgo_funcval_code(ptr swiftself [[GENERIC_ENV]], i64 0)
+// AMD64: call i1 %__llgo_funcval_code(ptr nest [[GENERIC_ENV]], i64 0)

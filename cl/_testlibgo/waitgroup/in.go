@@ -23,8 +23,8 @@ import (
 
 // Each worker stores its captured WaitGroup in a defer node and calls Done only
 // after its work body, using the value recovered from that same node.
-// DARWIN-ARM64-LABEL: define void @"main.main$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.main$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.main$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.main$1"(ptr nest %0){{.*}} {
 // CHECK: [[WG1_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK-NEXT: [[WG1_VALUE:%.*]] = extractvalue { ptr } [[WG1_CAPTURE]], 0
 // CHECK: [[WG1_HEAD:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr {{%.*}}, i32 0, i32 5
@@ -39,8 +39,8 @@ import (
 // CHECK-NEXT: call void @"{{.*}}FreeDeferNode"(ptr [[WG1_ACTIVE]])
 // CHECK-NEXT: call void @"sync.(*WaitGroup).Done"(ptr [[WG1_DONE_VALUE]])
 
-// DARWIN-ARM64-LABEL: define void @"main.main$2"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.main$2"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.main$2"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.main$2"(ptr nest %0){{.*}} {
 // CHECK: [[WG2_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK-NEXT: [[WG2_VALUE:%.*]] = extractvalue { ptr } [[WG2_CAPTURE]], 0
 // CHECK: [[WG2_HEAD:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr {{%.*}}, i32 0, i32 5
