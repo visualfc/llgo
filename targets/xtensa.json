@@ -15,6 +15,7 @@
 		"-fshort-enums",
 		"-Wno-macro-redefined",
 		"-fno-exceptions",
+		"-fno-rtti",
 		"-fno-unwind-tables",
 		"-fno-asynchronous-unwind-tables",
 		"-ffunction-sections",

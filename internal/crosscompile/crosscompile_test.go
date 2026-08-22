@@ -205,6 +205,7 @@ func TestUseTarget(t *testing.T) {
 		expectLLVM  string
 		expectCPU   string
 		expectMarch string
+		expectCFlag string
 	}{
 		// FIXME(MeteorsLiu): wasi in useTarget
 		// {
@@ -242,6 +243,14 @@ func TestUseTarget(t *testing.T) {
 			expectLLVM:  "riscv32-unknown-none",
 			expectCPU:   "generic-rv32",
 			expectMarch: "-march=rv32imac", // Generic RISC-V32 uses rv32imac (with A extension)
+		},
+		{
+			name:        "ESP32 Target (Xtensa)",
+			targetName:  "esp32",
+			expectError: false,
+			expectLLVM:  "xtensa",
+			expectCPU:   "esp32",
+			expectCFlag: "-fno-rtti",
 		},
 		{
 			name:        "ESP32-C3 Target (ESP RISC-V)",
@@ -337,10 +346,33 @@ func TestUseTarget(t *testing.T) {
 					t.Errorf("Expected %s in CCFLAGS, got %v", tc.expectMarch, export.CCFLAGS)
 				}
 			}
+			if tc.expectCFlag != "" && !slices.Contains(export.CFLAGS, tc.expectCFlag) {
+				t.Errorf("Expected %s in CFLAGS, got %v", tc.expectCFlag, export.CFLAGS)
+			}
 
 			t.Logf("Target %s: BuildTags=%v, CFlags=%v, CCFlags=%v, LDFlags=%v",
 				tc.targetName, export.BuildTags, export.CFLAGS, export.CCFLAGS, export.LDFLAGS)
 		})
+	}
+}
+
+func TestUseSystemClangForTarget(t *testing.T) {
+	for _, test := range []struct {
+		goos      string
+		target    string
+		buildTags []string
+		want      bool
+	}{
+		{goos: "windows", target: "thumbv6m-unknown-unknown-eabi", want: true},
+		{goos: "windows", target: "avr", want: true},
+		{goos: "windows", target: "riscv32-esp-elf", buildTags: []string{"esp"}, want: false},
+		{goos: "windows", target: "xtensa", buildTags: []string{"esp32", "esp"}, want: false},
+		{goos: "windows", target: "xtensa", want: false},
+		{goos: "linux", target: "thumbv6m-unknown-unknown-eabi", want: false},
+	} {
+		if got := useSystemClangForTarget(test.goos, test.target, test.buildTags); got != test.want {
+			t.Errorf("useSystemClangForTarget(%q, %q, %v) = %v, want %v", test.goos, test.target, test.buildTags, got, test.want)
+		}
 	}
 }
 

@@ -643,15 +643,23 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 		return export, fmt.Errorf("target '%s' does not have a valid CPU configuration", targetName)
 	}
 
-	// Check for ESP Clang support for target-based builds
-	clangRoot, err := getESPClangRoot(true)
-	if err != nil {
-		return
+	// Espressif's Windows toolchain only ships the ESP backends. Use the
+	// full MSYS2 LLVM distribution for other embedded targets (for example
+	// ARM and AVR), while retaining the established ESP toolchain selection
+	// on Unix hosts and for ESP targets.
+	var clangRoot string
+	if useSystemClangForTarget(runtime.GOOS, target, config.BuildTags) {
+		export.CC = "clang++"
+	} else {
+		var clangErr error
+		clangRoot, clangErr = getESPClangRoot(true)
+		if clangErr != nil {
+			err = clangErr
+			return
+		}
+		export.ClangRoot = clangRoot
+		export.CC = filepath.Join(clangRoot, "bin", "clang++")
 	}
-
-	// Set ClangRoot and CC if clang is available
-	export.ClangRoot = clangRoot
-	export.CC = filepath.Join(clangRoot, "bin", "clang++")
 
 	// Convert target config to Export - only export necessary fields
 	export.BuildTags = config.BuildTags
@@ -809,7 +817,10 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 
 	// Handle Linker - keep it for external usage
 	if config.Linker != "" {
-		export.Linker = filepath.Join(clangRoot, "bin", config.Linker)
+		export.Linker = config.Linker
+		if clangRoot != "" {
+			export.Linker = filepath.Join(clangRoot, "bin", config.Linker)
+		}
 	}
 	if config.LinkerScript != "" {
 		ldflags = append(ldflags, "-T", config.LinkerScript)
@@ -874,6 +885,18 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	export.LDFLAGS = append(ldflags, expandedLDFlags...)
 
 	return export, nil
+}
+
+func useSystemClangForTarget(hostGOOS, targetTriple string, buildTags []string) bool {
+	if hostGOOS != "windows" || strings.HasPrefix(targetTriple, "xtensa") {
+		return false
+	}
+	for _, tag := range buildTags {
+		if tag == "esp" {
+			return false
+		}
+	}
+	return true
 }
 
 // Use extends the original Use function to support target-based configuration
