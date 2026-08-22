@@ -57,57 +57,13 @@ Other targets may not provide every OS service or implementation-specific runtim
 | Embedded | [`-target`](doc/Embedded_Cmd.md) configurations for supported boards and MCUs, with selected QEMU/emulator smoke tests |
 
 
-## C/C++ standard library support
+## C/C++ support
 
-You can import a C/C++ standard library in LLGo!
+LLGo lets you import and call C/C++ libraries directly, without wrappers or cgo overhead.
 
-* [c](https://pkg.go.dev/github.com/goplus/lib/c)
-* [c/syscall](https://pkg.go.dev/github.com/goplus/lib/c/syscall)
-* [c/sys](https://pkg.go.dev/github.com/goplus/lib/c/sys)
-* [c/os](https://pkg.go.dev/github.com/goplus/lib/c/os)
-* [c/math](https://pkg.go.dev/github.com/goplus/lib/c/math)
-* [c/math/cmplx](https://pkg.go.dev/github.com/goplus/lib/c/math/cmplx)
-* [c/math/rand](https://pkg.go.dev/github.com/goplus/lib/c/math/rand)
-* [c/pthread](https://pkg.go.dev/github.com/goplus/lib/c/pthread)
-* [c/pthread/sync](https://pkg.go.dev/github.com/goplus/lib/c/pthread/sync)
-* [c/sync/atomic](https://pkg.go.dev/github.com/goplus/lib/c/sync/atomic)
-* [c/time](https://pkg.go.dev/github.com/goplus/lib/c/time)
-* [c/net](https://pkg.go.dev/github.com/goplus/lib/c/net)
-* [cpp/std](https://pkg.go.dev/github.com/goplus/lib/cpp/std)
+### Interop mechanism
 
-Here is a simple example:
-
-<!-- embedme doc/_readme/llgo_simple/simple.go -->
-
-```go
-package main
-
-import "github.com/goplus/lib/c"
-
-func main() {
-	c.Printf(c.Str("Hello world\n"))
-}
-```
-
-This is a simple example of calling the C `printf` function to print `Hello world`. Here, `c.Str` is not a function for converting a Go string to a C string, but a built-in instruction supported by `llgo` for generating a C string constant.
-
-The `_demo` directory contains C library demos (it starts with `_` to prevent the `go` command from compiling it):
-
-* [hello](_demo/c/hello/hello.go): call C `printf` to print `Hello world`
-* [concat](_demo/c/concat/concat.go): call C `fprintf` with `stderr`
-* [qsort](_demo/c/qsort/qsort.go): call C function with a callback (eg. `qsort`)
-
-To run these demos (If you haven't installed `llgo` yet, please refer to [How to install](#how-to-install)):
-
-```sh
-cd <demo-directory>  # eg. cd _demo/c/hello
-llgo run .
-```
-
-
-## How to support C/C++ and Python
-
-LLGo uses `go:linkname` to link an external symbol through the C ABI:
+LLGo uses `go:linkname` to bind a Go declaration directly to a C ABI symbol:
 
 <!-- embedme doc/_readme/llgo_call_c/call_c.go#L3-L6 -->
 
@@ -118,7 +74,7 @@ import _ "unsafe" // for go:linkname
 func Sqrt(x float64) float64
 ```
 
-You can directly integrate it into [your own code](_demo/c/linkname/linkname.go):
+You can use this directly in your own code:
 
 <!-- embedme doc/_readme/llgo_call_c/call_c.go -->
 
@@ -135,7 +91,7 @@ func main() {
 }
 ```
 
-Or put it into a package (see [c/math](https://github.com/goplus/lib/tree/main/c/math/math.go)):
+Or organize such bindings into a package, as [c/math](https://github.com/goplus/lib/tree/main/c/math/math.go) does:
 
 <!-- embedme doc/_readme/llgo_call_cmath/call_cmath.go -->
 
@@ -148,6 +104,85 @@ func main() {
 	println("sqrt(2) =", math.Sqrt(2))
 }
 ```
+
+Because calls into C compile to native calls against the C ABI, there is no Go-to-C stack or scheduler transition, so frequent C calls stay cheap.
+
+### Standard libraries
+
+LLGo provides Go bindings for the C/C++ standard library:
+
+| Package | Description |
+| --- | --- |
+| [c](https://pkg.go.dev/github.com/goplus/lib/c) | C standard library core |
+| [c/syscall](https://pkg.go.dev/github.com/goplus/lib/c/syscall) | System calls |
+| [c/sys](https://pkg.go.dev/github.com/goplus/lib/c/sys) | System headers |
+| [c/os](https://pkg.go.dev/github.com/goplus/lib/c/os) | OS interfaces |
+| [c/math](https://pkg.go.dev/github.com/goplus/lib/c/math) | Math functions |
+| [c/math/cmplx](https://pkg.go.dev/github.com/goplus/lib/c/math/cmplx) | Complex math |
+| [c/math/rand](https://pkg.go.dev/github.com/goplus/lib/c/math/rand) | Random number generation |
+| [c/pthread](https://pkg.go.dev/github.com/goplus/lib/c/pthread) | POSIX threads |
+| [c/pthread/sync](https://pkg.go.dev/github.com/goplus/lib/c/pthread/sync) | Thread synchronization |
+| [c/sync/atomic](https://pkg.go.dev/github.com/goplus/lib/c/sync/atomic) | Atomic operations |
+| [c/time](https://pkg.go.dev/github.com/goplus/lib/c/time) | Time functions |
+| [c/net](https://pkg.go.dev/github.com/goplus/lib/c/net) | Networking |
+| [cpp/std](https://pkg.go.dev/github.com/goplus/lib/cpp/std) | C++ standard library core |
+
+Here is a simple example calling the C `printf` function:
+
+<!-- embedme doc/_readme/llgo_simple/simple.go -->
+
+```go
+package main
+
+import "github.com/goplus/lib/c"
+
+func main() {
+	c.Printf(c.Str("Hello world\n"))
+}
+```
+
+`c.Str` is not a runtime conversion from a Go string to a C string — it is a built-in instruction that `llgo` recognizes and compiles directly into a C string constant.
+
+Additional demos are available in the `_demo` directory (prefixed with `_` so the `go` command skips them):
+
+* [hello](_demo/c/hello/hello.go): call C `printf` to print `Hello world`
+* [concat](_demo/c/concat/concat.go): call C `fprintf` with `stderr`
+* [qsort](_demo/c/qsort/qsort.go): call a C function that takes a callback (e.g. `qsort`)
+
+To run a demo (see [How to install](#how-to-install) if `llgo` isn't installed yet):
+
+```sh
+cd <demo-directory>  # e.g. cd _demo/c/hello
+llgo run .
+```
+
+### Other frequently used libraries
+
+Beyond the standard library, LLGo can import libraries from across the C/C++ ecosystem. Bindings are currently maintained by hand; automating this process, as is already done for Python library imports, is planned for the future.
+
+Available bindings include:
+
+* [c/bdwgc](https://pkg.go.dev/github.com/goplus/lib/c/bdwgc)
+* [c/cjson](https://pkg.go.dev/github.com/goplus/lib/c/cjson)
+* [c/clang](https://pkg.go.dev/github.com/goplus/lib/c/clang)
+* [c/ffi](https://pkg.go.dev/github.com/goplus/lib/c/ffi)
+* [c/libuv](https://pkg.go.dev/github.com/goplus/lib/c/libuv)
+* [c/llama2](https://pkg.go.dev/github.com/goplus/lib/c/llama2)
+* [c/lua](https://pkg.go.dev/github.com/goplus/lib/c/lua)
+* [c/neco](https://pkg.go.dev/github.com/goplus/lib/c/neco)
+* [c/openssl](https://pkg.go.dev/github.com/goplus/lib/c/openssl)
+* [c/raylib](https://pkg.go.dev/github.com/goplus/lib/c/raylib)
+* [c/sqlite](https://pkg.go.dev/github.com/goplus/lib/c/sqlite)
+* [c/zlib](https://pkg.go.dev/github.com/goplus/lib/c/zlib)
+* [cpp/inih](https://pkg.go.dev/github.com/goplus/lib/cpp/inih)
+* [cpp/llvm](https://pkg.go.dev/github.com/goplus/lib/cpp/llvm)
+
+Examples built on these bindings:
+
+* [llama2-c](_demo/c/llama2-c): inference Llama 2 (the first LLGo AI example)
+* [mkjson](https://github.com/goplus/lib/tree/main/c/cjson/_demo/mkjson/mkjson.go): create a JSON object and print it
+* [sqlitedemo](https://github.com/goplus/lib/tree/main/c/sqlite/_demo/sqlitedemo/demo.go): a basic SQLite demo
+* [tetris](https://github.com/goplus/lib/tree/main/c/raylib/_demo/tetris/tetris.go): a Tetris game based on raylib
 
 
 ## Python support
@@ -247,36 +282,6 @@ To run these demos (If you haven't installed `llgo` yet, please refer to [How to
 cd <demo-directory>  # eg. cd _demo/py/callpy
 llgo run .
 ```
-
-
-## Other frequently used libraries
-
-LLGo can easily import libraries from the C ecosystem. C/C++ bindings are maintained manually, but the import process will be automated in the future, as with Python library imports.
-
-Available bindings include:
-
-* [c/bdwgc](https://pkg.go.dev/github.com/goplus/lib/c/bdwgc)
-* [c/cjson](https://pkg.go.dev/github.com/goplus/lib/c/cjson)
-* [c/clang](https://pkg.go.dev/github.com/goplus/lib/c/clang)
-* [c/ffi](https://pkg.go.dev/github.com/goplus/lib/c/ffi)
-* [c/libuv](https://pkg.go.dev/github.com/goplus/lib/c/libuv)
-* [c/llama2](https://pkg.go.dev/github.com/goplus/lib/c/llama2)
-* [c/lua](https://pkg.go.dev/github.com/goplus/lib/c/lua)
-* [c/neco](https://pkg.go.dev/github.com/goplus/lib/c/neco)
-* [c/openssl](https://pkg.go.dev/github.com/goplus/lib/c/openssl)
-* [c/raylib](https://pkg.go.dev/github.com/goplus/lib/c/raylib)
-* [c/sqlite](https://pkg.go.dev/github.com/goplus/lib/c/sqlite)
-* [c/zlib](https://pkg.go.dev/github.com/goplus/lib/c/zlib)
-* [cpp/inih](https://pkg.go.dev/github.com/goplus/lib/cpp/inih)
-* [cpp/llvm](https://pkg.go.dev/github.com/goplus/lib/cpp/llvm)
-
-Here are some examples related to them:
-
-* [llama2-c](_demo/c/llama2-c): inference Llama 2 (the first LLGo AI example)
-* [mkjson](https://github.com/goplus/lib/tree/main/c/cjson/_demo/mkjson/mkjson.go): create a json object and print it
-* [sqlitedemo](https://github.com/goplus/lib/tree/main/c/sqlite/_demo/sqlitedemo/demo.go): a basic sqlite demo
-* [tetris](https://github.com/goplus/lib/tree/main/c/raylib/_demo/tetris/tetris.go): a tetris game based on raylib
-
 
 ## Dependencies
 
