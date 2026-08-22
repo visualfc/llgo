@@ -180,7 +180,7 @@ func TestNewFuncExLLVMUsed(t *testing.T) {
 	// Mark the exported name before function creation so NewFuncEx can protect it via llvm.compiler.used.
 	pkg.SetExport("main.Foo", "Foo")
 	pkg.SetExport("main.Bar", "Bar")
-	pkg.NewFunc("main.Foo", sig, InGo)
+	pkg.NewFunc("Foo", sig, InGo)
 	pkg.NewFunc("Bar", sig, InGo)
 	pkg.NewFunc("Baz", sig, InGo)
 	pkg.MaterializePreserveSyms()
@@ -195,7 +195,7 @@ func TestNewFuncExLLVMUsed(t *testing.T) {
 	if got := used.Section(); got != "llvm.metadata" {
 		t.Fatalf("llvm.compiler.used section = %q, want %q", got, "llvm.metadata")
 	}
-	if got := pkg.String(); !strings.Contains(got, `@llvm.compiler.used = appending global [2 x ptr] [ptr @main.Foo, ptr @Bar], section "llvm.metadata"`) {
+	if got := pkg.String(); !strings.Contains(got, `@llvm.compiler.used = appending global [2 x ptr] [ptr @Foo, ptr @Bar], section "llvm.metadata"`) {
 		t.Fatalf("module missing llvm.compiler.used entry:\n%s", got)
 	}
 }

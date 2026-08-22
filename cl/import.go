@@ -203,9 +203,7 @@ func (p *context) initFiles(pkgPath string, files []*ast.File, cPkg bool) {
 					// package C (https://github.com/xgo-dev/llgo/issues/1165)
 					if decl.Recv == nil && token.IsExported(inPkgName) {
 						exportName := strings.TrimPrefix(inPkgName, "X")
-						if !needsCExportWrapper(p.options, fullName) {
-							p.prog.SetLinkname(fullName, exportName)
-						}
+						p.prog.SetLinkname(fullName, exportName)
 						p.pkg.SetExport(fullName, exportName)
 					}
 				}
@@ -330,9 +328,7 @@ func collectDeclarationDirectivesWithOptions(prog llssa.Program, fset *token.Fil
 			if item.Args != inPkgName && !options.ExportRename {
 				return false, fmt.Errorf("export comment has wrong name %q", item.Args)
 			}
-			if !needsCExportWrapper(options, fullName) {
-				prog.SetLinkname(fullName, item.Args)
-			}
+			prog.SetLinkname(fullName, item.Args)
 			prog.SetPackageExport(fullName, item.Args)
 			linkCollected = true
 		case "llgo:env":
@@ -439,9 +435,7 @@ func (p *context) initLink(line string, prefix int, export bool, f func(inPkgNam
 		inPkgName := text[:idx]
 		if fullName, _, ok := f(inPkgName, export); ok {
 			link := strings.TrimLeft(text[idx+1:], " ")
-			if !export || !needsCExportWrapper(p.options, fullName) {
-				p.prog.SetLinkname(fullName, link)
-			}
+			p.prog.SetLinkname(fullName, link)
 			if export {
 				p.pkg.SetExport(fullName, link)
 			}
@@ -730,6 +724,11 @@ func (p *context) funcName(fn *ssa.Function) (*types.Package, string, int) {
 		orgName = funcName(pkg, fn, false)
 	}
 	if v, ok := p.prog.Linkname(orgName); ok {
+		if p.options.CExportWrappers {
+			if export, ok := p.pkg.ExportFuncs()[orgName]; ok && export == v {
+				return pkg, funcName(pkg, fn, false), goFunc
+			}
+		}
 		if strings.HasPrefix(v, "C.") {
 			return nil, v[2:], cFunc
 		}
@@ -870,9 +869,7 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 				}
 				if !hasLinkname && pkg.Name() == "C" && decl.Recv == nil && token.IsExported(inPkgName) {
 					exportName := strings.TrimPrefix(inPkgName, "X")
-					if !needsCExportWrapper(options, fullName) {
-						prog.SetLinkname(fullName, exportName)
-					}
+					prog.SetLinkname(fullName, exportName)
 					prog.SetPackageExport(fullName, exportName)
 				}
 				ctx.processNoInterfaceByDoc(decl.Doc, fullName)
@@ -912,19 +909,6 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 	collectGoLinknames(prog, fileComments, syms)
 	prog.MarkPackageSyntaxParsed(pkg)
 	return nil
-}
-
-// needsCExportWrapper leaves runtime callbacks under their existing C symbols:
-// they may run while the runtime itself is initializing and need no public
-// initialization wrapper. User exports retain their Go implementation symbols
-// so the final, uncached link module can provide build-mode-specific wrappers.
-func needsCExportWrapper(options Options, fullName string) bool {
-	if !options.CExportWrappers {
-		return false
-	}
-	return !strings.HasPrefix(fullName, "runtime.") &&
-		!strings.HasPrefix(fullName, env.LLGoRuntimePkg+".") &&
-		!strings.HasPrefix(fullName, env.LLGoRuntimePkg+"/")
 }
 
 func handleTypeDecl(prog llssa.Program, pkg *types.Package, decl *ast.GenDecl) {

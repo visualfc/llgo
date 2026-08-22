@@ -539,12 +539,11 @@ func Build(inv Invocation) ([]Package, error) {
 	}
 	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
 	frontendOptions := cl.Options{
-		Debug:           emitDebugInfo,
-		DebugSymbols:    emitDebugInfo,
-		Trace:           IsTraceEnabled(),
-		ExportRename:    conf.Target != "",
-		CExportWrappers: conf.Goos == "windows" && conf.Target == "",
-		ShadowStack:     isEnvOn(llgoShadowStack, false),
+		Debug:        emitDebugInfo,
+		DebugSymbols: emitDebugInfo,
+		Trace:        IsTraceEnabled(),
+		ExportRename: conf.Target != "",
+		ShadowStack:  isEnvOn(llgoShadowStack, false),
 	}
 	preloadOptions := frontendOptions
 	llssaInitOnce.Do(func() {
@@ -1758,16 +1757,10 @@ func dceEntryRootCandidates(pkgs []Package, needRuntime bool) []string {
 }
 
 func linkedCExports(ctx *context, pkgs []Package) ([]cExport, error) {
-	if ctx == nil || !ctx.frontendOptions.CExportWrappers {
-		return nil, nil
-	}
 	seen := make(map[string]string)
 	var exports []cExport
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
-			continue
-		}
-		if pkg.LPkg.Path() == "runtime" || isRuntimePkg(pkg.LPkg.Path()) {
+		if !needsWindowsCExportWrappers(ctx, pkg) || pkg.LPkg == nil {
 			continue
 		}
 		for goName, cName := range pkg.LPkg.ExportFuncs() {
@@ -1803,6 +1796,12 @@ func linkedCExports(ctx *context, pkgs []Package) ([]cExport, error) {
 		return strings.Compare(a.goName, b.goName)
 	})
 	return exports, nil
+}
+
+func needsWindowsCExportWrappers(ctx *context, pkg *aPackage) bool {
+	return ctx != nil && ctx.buildConf != nil && pkg != nil && pkg.Package != nil &&
+		ctx.buildConf.Goos == "windows" && ctx.buildConf.Target == "" &&
+		ctx.buildConf.BuildMode == BuildModeCShared && pkg.Name == "main"
 }
 
 func linkedModuleGlobals(pkgs []Package) map[string]none {
@@ -2252,9 +2251,14 @@ func preparePackageModule(ctx *context, aPkg *aPackage, verbose bool) ([]string,
 	if err != nil {
 		return nil, fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
+	options := ctx.frontendOptions
+	// A Windows DLL cannot initialize the Go runtime while holding the loader
+	// lock. Only the command package needs alternate export symbols, and command
+	// packages are deliberately excluded from the package cache.
+	options.CExportWrappers = needsWindowsCExportWrappers(ctx, aPkg)
 	ret, externs, err := cl.NewPackageExWithEmbedMetaOptions(
 		ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars,
-		aPkg.SSA, syntax, embedMap, needMeta, ctx.frontendOptions)
+		aPkg.SSA, syntax, embedMap, needMeta, options)
 	check(err)
 
 	aPkg.LPkg = ret

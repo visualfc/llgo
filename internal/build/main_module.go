@@ -159,7 +159,6 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	defineRootInitTask(mainPkg, pkgPath)
 
 	if ctx.buildConf.BuildMode != BuildModeExe {
-		var ensureInit llssa.Function
 		initArraySection := ""
 		if ctx.buildConf.BuildMode == BuildModeCShared && ctx.buildConf.Goos == "linux" {
 			initArraySection = ".init_array"
@@ -172,17 +171,16 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 			inits = append(inits, mainInit)
 		}
 		if ctx.buildConf.BuildMode == BuildModeCShared && ctx.buildConf.Goos == "windows" {
-			ensureInit = defineWindowsSharedRuntimeInit(mainPkg, ctx.buildConf.Goarch, inits...)
+			ensureInit := defineWindowsSharedRuntimeInit(mainPkg, ctx.buildConf.Goarch, inits...)
+			defineCExportWrappers(mainPkg, cfg.cExports, ensureInit)
 		} else {
 			defineLibraryRuntimeInit(
 				mainPkg, initArraySection, argcVar, argvVar, argvValueType,
 				libraryConstructorReceivesProcessArgs(ctx.buildConf.Goos), inits...,
 			)
 		}
-		defineCExportWrappers(mainPkg, cfg.cExports, ensureInit)
 		return mainAPkg
 	}
-	defineCExportWrappers(mainPkg, cfg.cExports, nil)
 
 	entryFn := defineEntryFunction(ctx, mainPkg, argcVar, argvVar, argvValueType, entryFunctions{
 		runtimeStub:  runtimeStub,
@@ -335,9 +333,7 @@ func defineCExportWrappers(pkg llssa.Package, exports []cExport, ensureInit llss
 		implementation := pkg.NewFunc(export.goName, export.sig, llssa.InGo)
 		wrapper := pkg.NewFunc(export.cName, export.sig, llssa.InGo)
 		b := wrapper.MakeBody(1)
-		if ensureInit != nil {
-			b.Call(ensureInit.Expr)
-		}
+		b.Call(ensureInit.Expr)
 		args := make([]llssa.Expr, export.sig.Params().Len())
 		for i := range args {
 			args[i] = wrapper.Param(i)

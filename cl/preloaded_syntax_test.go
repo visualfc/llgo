@@ -63,37 +63,26 @@ func XDefault() {}
 	ssaPkg.Build()
 	compiled, _, err := NewPackageExWithEmbedMetaOptions(
 		backend, nil, nil, nil, ssaPkg, files, goembed.VarMap{}, false,
-		Options{ExportRename: true, PreloadedSyntax: true},
+		Options{ExportRename: true, CExportWrappers: true, PreloadedSyntax: true},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	exports := map[string]string{
+	for fullName, want := range map[string]string{
 		"example.com/C.Callback": "callback",
 		"example.com/C.XDefault": "Default",
-	}
-	for fullName, want := range exports {
+	} {
 		if link, ok := backend.Linkname(fullName); !ok || link != want {
 			t.Errorf("Linkname(%q) = (%q, %v), want (%q, true)", fullName, link, ok, want)
 		}
 		if export, ok := compiled.ExportFuncs()[fullName]; !ok || export != want {
 			t.Errorf("ExportFuncs()[%q] = (%q, %v), want (%q, true)", fullName, export, ok, want)
 		}
-	}
-
-	preserved := ssatest.NewProgramEx(t, nil, imp)
-	if err := ParsePkgSyntaxWithOptions(preserved, fset, pkg, files, Options{
-		ExportRename:    true,
-		CExportWrappers: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for fullName, want := range exports {
-		if got, ok := preserved.PackageExport(fullName); !ok || got != want {
-			t.Errorf("PackageExport(%q) = (%q, %v), want (%q, true)", fullName, got, ok, want)
+		if fn := compiled.FuncOf(fullName); fn == nil {
+			t.Errorf("FuncOf(%q) = nil, want wrapped implementation", fullName)
 		}
-		if got, ok := preserved.Linkname(fullName); ok {
-			t.Errorf("Linkname(%q) = (%q, true), want no direct rename", fullName, got)
+		if fn := compiled.FuncOf(want); fn != nil {
+			t.Errorf("FuncOf(%q) = %q, want final-link wrapper only", want, fn.Name())
 		}
 	}
 }
