@@ -889,7 +889,10 @@ func precedingLineDirectiveFilename(pos token.Position, sourceLine func(string, 
 		if filename == "" {
 			return "??", true
 		}
-		return filepath.Clean(filename), true
+		// cmd/compile and runtime.Caller preserve the spelling in the //line
+		// directive. In particular, filepath.Clean would turn a rooted slash
+		// path into a backslash path on Windows.
+		return filename, true
 	}
 	return "", false
 }
