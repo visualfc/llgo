@@ -1,0 +1,4 @@
+**/expect.txt text eol=lf
+**/out.txt text eol=lf
+*.ll text eol=lf
+_demo/go/export/libexport.h.want text eol=lf
