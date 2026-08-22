@@ -66,8 +66,12 @@ func (g CompileGroup) Compile(
 
 	for _, file := range g.Files {
 		var tempObjFile *os.File
-		tempObjFile, err = os.CreateTemp(tmpCompileDir, fmt.Sprintf("%s*.o", strings.ReplaceAll(file, string(os.PathSeparator), "-")))
+		tempObjFile, err = os.CreateTemp(tmpCompileDir, objectFilePattern(file))
 		if err != nil {
+			return
+		}
+		tempObjName := tempObjFile.Name()
+		if err = tempObjFile.Close(); err != nil {
 			return
 		}
 
@@ -75,12 +79,12 @@ func (g CompileGroup) Compile(
 		if filepath.Ext(file) == ".S" {
 			lang = "assembler-with-cpp"
 		}
-		err = compiler.Compile("-o", tempObjFile.Name(), "-x", lang, "-c", file)
+		err = compiler.Compile("-o", tempObjName, "-x", lang, "-c", file)
 		if err != nil {
 			return
 		}
 
-		objFiles = append(objFiles, tempObjFile.Name())
+		objFiles = append(objFiles, tempObjName)
 	}
 
 	args := []string{"rcs", archive}
@@ -95,6 +99,19 @@ func (g CompileGroup) Compile(
 	// cmd.Stderr = os.Stderr
 	err = cmd.Run()
 	return
+}
+
+func objectFilePattern(source string) string {
+	name := filepath.Base(source)
+	name = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, name)
+	return fmt.Sprintf("%s-*.o", name)
 }
 
 // CompileConfig represents compilation configuration

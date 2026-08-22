@@ -209,6 +209,12 @@ func TestCompile(t *testing.T) {
 	})
 }
 
+func TestObjectFilePattern(t *testing.T) {
+	if got, want := objectFilePattern(filepath.Join("source tree", "foo:bar.c")), "foo-bar.c-*.o"; got != want {
+		t.Fatalf("objectFilePattern = %q, want %q", got, want)
+	}
+}
+
 func TestLibConfig_String(t *testing.T) {
 	tests := []struct {
 		name     string
