@@ -449,6 +449,25 @@ func TestBuildSourcePatchOverlayForIter(t *testing.T) {
 	}
 }
 
+func TestBuildInjectedSourcePatchFilePreservesNewlines(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		src     string
+		newline string
+	}{
+		{name: "LF", src: "package demo\n", newline: "\n"},
+		{name: "CRLF", src: "package demo\r\n", newline: "\r\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := buildInjectedSourcePatchFile("patch.go", []byte(test.src))
+			want := "//line patch.go:1" + test.newline + test.src
+			if string(got) != want {
+				t.Fatalf("buildInjectedSourcePatchFile() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestIterUsesSourcePatchInsteadOfAltPkg(t *testing.T) {
 	if !llruntime.HasSourcePatchPkg("iter") {
 		t.Fatal("iter should be registered as a source patch package")
