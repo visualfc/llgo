@@ -217,23 +217,32 @@ func TestObjectFilePattern(t *testing.T) {
 }
 
 func TestWriteArchiveResponseFile(t *testing.T) {
-	dir := t.TempDir()
-	objFiles := []string{
-		filepath.Join(dir, "first.o"),
-		filepath.Join(dir, "directory with spaces", "second.o"),
-	}
-	responseFile, err := writeArchiveResponseFile(dir, objFiles)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.ReadFile(responseFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := fmt.Sprintf("\"%s\"\n\"%s\"\n", filepath.ToSlash(objFiles[0]), filepath.ToSlash(objFiles[1]))
-	if string(got) != want {
-		t.Fatalf("response file = %q, want %q", got, want)
-	}
+	t.Run("quoted object paths", func(t *testing.T) {
+		dir := t.TempDir()
+		objFiles := []string{
+			filepath.Join(dir, "first.o"),
+			filepath.Join(dir, "directory with spaces", "second.o"),
+		}
+		responseFile, err := writeArchiveResponseFile(dir, objFiles)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(responseFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprintf("\"%s\"\n\"%s\"\n", filepath.ToSlash(objFiles[0]), filepath.ToSlash(objFiles[1]))
+		if string(got) != want {
+			t.Fatalf("response file = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("write error", func(t *testing.T) {
+		missingDir := filepath.Join(t.TempDir(), "missing")
+		if _, err := writeArchiveResponseFile(missingDir, []string{"object.o"}); err == nil {
+			t.Fatal("writeArchiveResponseFile succeeded in a missing directory")
+		}
+	})
 }
 
 func TestLibConfig_String(t *testing.T) {
