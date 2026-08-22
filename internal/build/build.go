@@ -539,11 +539,12 @@ func Build(inv Invocation) ([]Package, error) {
 	}
 	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
 	frontendOptions := cl.Options{
-		Debug:        emitDebugInfo,
-		DebugSymbols: emitDebugInfo,
-		Trace:        IsTraceEnabled(),
-		ExportRename: conf.Target != "",
-		ShadowStack:  isEnvOn(llgoShadowStack, false),
+		Debug:           emitDebugInfo,
+		DebugSymbols:    emitDebugInfo,
+		Trace:           IsTraceEnabled(),
+		ExportRename:    conf.Target != "",
+		CExportWrappers: conf.Goos == "windows" && conf.Target == "",
+		ShadowStack:     isEnvOn(llgoShadowStack, false),
 	}
 	preloadOptions := frontendOptions
 	llssaInitOnce.Do(func() {
@@ -1625,6 +1626,10 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	if err != nil {
 		return err
 	}
+	cExports, err := linkedCExports(ctx, linkedOrder)
+	if err != nil {
+		return err
+	}
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
 		rtInit:        needRuntime,
 		pyInit:        needPyInit,
@@ -1636,7 +1641,12 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		abiTypes:      ctx.backendAbiTypes(linkedOrder),
 		funcInfo:      funcInfo,
 		pcLineInfo:    pcLineInfo,
+		cExports:      cExports,
 	})
+	if len(cExports) != 0 {
+		llabi.LowerLargeAggregates(ctx.prog.TargetData(), entryPkg.LPkg.Module())
+		ctx.cTransformer.TransformModule(entryPkg.LPkg.Path(), entryPkg.LPkg.Module())
+	}
 	if ctx.buildConf.deadcodeDropEnabled() {
 		if err := applyDeadcodeDropOverrides(linkedOrder, entryPkg, needRuntime, verbose); err != nil {
 			return err
@@ -1731,7 +1741,11 @@ func dceEntryRootCandidates(pkgs []Package, needRuntime bool) []string {
 	// root, so their final linker names must seed the analysis explicitly.
 	var exports []string
 	for _, pkg := range pkgs {
-		for _, name := range pkg.LPkg.ExportFuncs() {
+		for goName, cName := range pkg.LPkg.ExportFuncs() {
+			name := cName
+			if fn := pkg.LPkg.FuncOf(goName); fn != nil && fn.Name() == goName {
+				name = goName
+			}
 			exports = append(exports, name)
 		}
 	}
@@ -1741,6 +1755,54 @@ func dceEntryRootCandidates(pkgs []Package, needRuntime bool) []string {
 		roots = append(roots, llssa.PkgRuntime+".init")
 	}
 	return roots
+}
+
+func linkedCExports(ctx *context, pkgs []Package) ([]cExport, error) {
+	if ctx == nil || !ctx.frontendOptions.CExportWrappers {
+		return nil, nil
+	}
+	seen := make(map[string]string)
+	var exports []cExport
+	for _, pkg := range pkgs {
+		if pkg == nil || pkg.LPkg == nil {
+			continue
+		}
+		if pkg.LPkg.Path() == "runtime" || isRuntimePkg(pkg.LPkg.Path()) {
+			continue
+		}
+		for goName, cName := range pkg.LPkg.ExportFuncs() {
+			if strings.Contains(goName, ".") && !strings.HasPrefix(goName, pkg.LPkg.Path()+".") {
+				continue
+			}
+			if previous, ok := seen[cName]; ok {
+				if previous != goName {
+					return nil, fmt.Errorf("C export %q is provided by both %q and %q", cName, previous, goName)
+				}
+				continue
+			}
+			fn := pkg.LPkg.FuncOf(goName)
+			if fn == nil {
+				return nil, fmt.Errorf("C export implementation %q not found", goName)
+			}
+			sig, ok := fn.RawType().(*types.Signature)
+			if !ok || sig.Recv() != nil || sig.Variadic() || sig.Results().Len() > 1 {
+				return nil, fmt.Errorf("C export %q has an unsupported signature", goName)
+			}
+			seen[cName] = goName
+			exports = append(exports, cExport{
+				goName: goName,
+				cName:  cName,
+				sig:    sig,
+			})
+		}
+	}
+	slices.SortFunc(exports, func(a, b cExport) int {
+		if n := strings.Compare(a.cName, b.cName); n != 0 {
+			return n
+		}
+		return strings.Compare(a.goName, b.goName)
+	})
+	return exports, nil
 }
 
 func linkedModuleGlobals(pkgs []Package) map[string]none {

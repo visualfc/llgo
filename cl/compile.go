@@ -62,7 +62,10 @@ type Options struct {
 	DebugSymbols bool
 	Trace        bool
 	ExportRename bool
-	ShadowStack  bool
+	// CExportWrappers keeps //export implementations under their Go symbols;
+	// the final-link module supplies the public C entry points.
+	CExportWrappers bool
+	ShadowStack     bool
 	// PreloadedSyntax means all Program-side source metadata was collected
 	// before lowering and is now shared read-only by backend Programs.
 	PreloadedSyntax bool

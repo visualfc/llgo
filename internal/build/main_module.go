@@ -46,6 +46,13 @@ type genConfig struct {
 	abiTypes      []llssa.AbiTypeInfo
 	funcInfo      []funcInfoRecord
 	pcLineInfo    []pcLineRecord
+	cExports      []cExport
+}
+
+type cExport struct {
+	goName string
+	cName  string
+	sig    *types.Signature
 }
 
 const (
@@ -63,7 +70,7 @@ func needsRuntimeMainFrame(ctx *context) bool {
 //
 // The module contains argc/argv globals and, for executable build modes,
 // the entry function that wires initialization and main. C archive and shared
-// library modes also get a constructor when the LLGo runtime is linked.
+// library modes also arrange runtime initialization before exported Go code.
 func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *genConfig) Package {
 	prog := ctx.prog
 	mainPkg := prog.NewPackage("", pkg.ID+".main")
@@ -152,6 +159,7 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	defineRootInitTask(mainPkg, pkgPath)
 
 	if ctx.buildConf.BuildMode != BuildModeExe {
+		var ensureInit llssa.Function
 		initArraySection := ""
 		if ctx.buildConf.BuildMode == BuildModeCShared && ctx.buildConf.Goos == "linux" {
 			initArraySection = ".init_array"
@@ -163,13 +171,18 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 			inits = append(inits, packageInits...)
 			inits = append(inits, mainInit)
 		}
-		defineLibraryRuntimeInit(
-			mainPkg, initArraySection, argcVar, argvVar, argvValueType,
-			libraryConstructorReceivesProcessArgs(ctx.buildConf.Goos),
-			inits...,
-		)
+		if ctx.buildConf.BuildMode == BuildModeCShared && ctx.buildConf.Goos == "windows" {
+			ensureInit = defineWindowsSharedRuntimeInit(mainPkg, ctx.buildConf.Goarch, inits...)
+		} else {
+			defineLibraryRuntimeInit(
+				mainPkg, initArraySection, argcVar, argvVar, argvValueType,
+				libraryConstructorReceivesProcessArgs(ctx.buildConf.Goos), inits...,
+			)
+		}
+		defineCExportWrappers(mainPkg, cfg.cExports, ensureInit)
 		return mainAPkg
 	}
+	defineCExportWrappers(mainPkg, cfg.cExports, nil)
 
 	entryFn := defineEntryFunction(ctx, mainPkg, argcVar, argvVar, argvValueType, entryFunctions{
 		runtimeStub:  runtimeStub,
@@ -250,6 +263,92 @@ func defineLibraryRuntimeInit(
 	ctors := llvm.AddGlobal(mod, init.Type(), "llvm.global_ctors")
 	ctors.SetInitializer(init)
 	ctors.SetLinkage(llvm.AppendingLinkage)
+}
+
+// defineWindowsSharedRuntimeInit defers hosted runtime and package
+// initialization until a C export is called. Running it from a PE global
+// constructor would hold the Windows loader lock while Go loads DLLs or starts
+// threads. The generated public wrappers live in this uncached link module and
+// call the returned InitOnce-backed guard before entering Go.
+func defineWindowsSharedRuntimeInit(pkg llssa.Package, goarch string, inits ...llssa.Function) llssa.Function {
+	const (
+		initializeName = "__llgo_runtime_initialize"
+		ensureName     = "__llgo_runtime_ensure_initialized"
+		callbackName   = "__llgo_runtime_init_once_callback"
+	)
+
+	initialize := pkg.NewFunc(initializeName, llssa.NoArgsNoRet, llssa.InC)
+	initializeValue := pkg.Module().NamedFunction(initializeName)
+	initializeValue.SetLinkage(llvm.InternalLinkage)
+	b := initialize.MakeBody(1)
+	for _, init := range inits {
+		if init != nil {
+			b.Call(init.Expr)
+		}
+	}
+	b.Return()
+
+	mod := pkg.Module()
+	llvmCtx := mod.Context()
+	voidType := llvmCtx.VoidType()
+	ptrType := llvm.PointerType(voidType, 0)
+	i32Type := llvmCtx.Int32Type()
+	once := llvm.AddGlobal(mod, ptrType, "__llgo_runtime_init_once")
+	once.SetInitializer(llvm.ConstNull(ptrType))
+	once.SetLinkage(llvm.InternalLinkage)
+
+	callbackType := llvm.FunctionType(i32Type, []llvm.Type{ptrType, ptrType, ptrType}, false)
+	callback := llvm.AddFunction(mod, callbackName, callbackType)
+	callback.SetLinkage(llvm.InternalLinkage)
+	initOnceType := llvm.FunctionType(i32Type, []llvm.Type{ptrType, ptrType, ptrType, ptrType}, false)
+	initOnce := llvm.AddFunction(mod, "InitOnceExecuteOnce", initOnceType)
+	initOnce.SetDLLStorageClass(llvm.DLLImportStorageClass)
+	if goarch == "386" {
+		callback.SetFunctionCallConv(llvm.X86StdcallCallConv)
+		initOnce.SetFunctionCallConv(llvm.X86StdcallCallConv)
+	}
+
+	builder := llvmCtx.NewBuilder()
+	defer builder.Dispose()
+	callbackBlock := llvmCtx.AddBasicBlock(callback, "entry")
+	builder.SetInsertPointAtEnd(callbackBlock)
+	builder.CreateCall(llvm.FunctionType(voidType, nil, false), initializeValue, nil, "")
+	builder.CreateRet(llvm.ConstInt(i32Type, 1, false))
+
+	ensure := pkg.NewFunc(ensureName, llssa.NoArgsNoRet, llssa.InC)
+	ensureValue := mod.NamedFunction(ensureName)
+	ensureValue.SetVisibility(llvm.HiddenVisibility)
+	block := llvmCtx.AddBasicBlock(ensureValue, "entry")
+	builder.SetInsertPointAtEnd(block)
+	call := builder.CreateCall(initOnceType, initOnce, []llvm.Value{
+		once, callback, llvm.ConstNull(ptrType), llvm.ConstNull(ptrType),
+	}, "")
+	if goarch == "386" {
+		call.SetInstructionCallConv(llvm.X86StdcallCallConv)
+	}
+	builder.CreateRetVoid()
+	return ensure
+}
+
+func defineCExportWrappers(pkg llssa.Package, exports []cExport, ensureInit llssa.Function) {
+	for _, export := range exports {
+		implementation := pkg.NewFunc(export.goName, export.sig, llssa.InGo)
+		wrapper := pkg.NewFunc(export.cName, export.sig, llssa.InGo)
+		b := wrapper.MakeBody(1)
+		if ensureInit != nil {
+			b.Call(ensureInit.Expr)
+		}
+		args := make([]llssa.Expr, export.sig.Params().Len())
+		for i := range args {
+			args[i] = wrapper.Param(i)
+		}
+		result := b.Call(implementation.Expr, args...)
+		if export.sig.Results().Len() == 0 {
+			b.Return()
+		} else {
+			b.Return(result)
+		}
+	}
 }
 
 func filterAbiSymbol(abiInit int, sym *llssa.AbiSymbol) bool {

@@ -78,11 +78,35 @@ func TestDCEEntryRootCandidatesIncludesCExports(t *testing.T) {
 	lpkg := prog.NewPackage("pkg", "pkg")
 	lpkg.SetExport("main.Z", "Zed")
 	lpkg.SetExport("main.A", "Add")
+	lpkg.NewFunc("main.A", llssa.NoArgsNoRet, llssa.InGo)
 	pkgs := []Package{&aPackage{LPkg: lpkg}}
 
-	want := []string{"main.init", "main.main", "Add", "Zed"}
+	want := []string{"main.init", "main.main", "Zed", "main.A"}
 	if got := dceEntryRootCandidates(pkgs, false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("dceEntryRootCandidates() = %v, want %v", got, want)
+	}
+}
+
+func TestLinkedCExportsExcludesRuntimeCallbacks(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	newExport := func(path, goName, cName string) Package {
+		pkg := prog.NewPackage(path, path)
+		pkg.SetExport(goName, cName)
+		pkg.NewFunc(goName, llssa.NoArgsNoRet, llssa.InGo)
+		return &aPackage{LPkg: pkg}
+	}
+	ctx := &context{}
+	ctx.frontendOptions.CExportWrappers = true
+	exports, err := linkedCExports(ctx, []Package{
+		newExport("example.com/p", "example.com/p.Exported", "Exported"),
+		newExport(llssa.PkgRuntime, llssa.PkgRuntime+".callback", "runtime_callback"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exports) != 1 || exports[0].goName != "example.com/p.Exported" {
+		t.Fatalf("linked C exports = %+v, want user export only", exports)
 	}
 }
 

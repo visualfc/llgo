@@ -945,6 +945,7 @@ func (p Package) FinishMetaCollection() error {
 
 func (p Package) SetExport(name, export string) {
 	p.export[name] = export
+	p.preserveSyms[name] = struct{}{}
 	p.preserveSyms[export] = struct{}{}
 }
 
