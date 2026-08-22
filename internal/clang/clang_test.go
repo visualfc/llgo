@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -94,6 +95,34 @@ func TestWriteGNUResponseArg(t *testing.T) {
 				t.Fatalf("quoted response argument = %q, want %q", got.String(), tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveMSVCImportLibraries(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"first", "second"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clangImport := filepath.Join(root, "first", "libclang.dll.a")
+	for _, file := range []string{
+		clangImport,
+		filepath.Join(root, "first", "libnative.dll.a"),
+		filepath.Join(root, "second", "native.lib"),
+	} {
+		if err := os.WriteFile(file, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	args := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", "-lclang", "-lnative", "-lmissing", "-l:exact.a"}
+	want := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", clangImport, "-lnative", "-lmissing", "-l:exact.a"}
+	if got := resolveMSVCImportLibraries(root, args); !slices.Equal(got, want) {
+		t.Fatalf("resolved libraries = %q, want %q", got, want)
+	}
+	args[1] = "x86_64-w64-windows-gnu"
+	if got := resolveMSVCImportLibraries(root, args); !slices.Equal(got, args) {
+		t.Fatalf("GNU target libraries changed to %q", got)
 	}
 }
 

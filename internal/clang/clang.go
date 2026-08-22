@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/xgo-dev/llgo/xtool/safesplit"
@@ -123,7 +124,61 @@ func (c *Cmd) Link(args ...string) error {
 	allArgs := make([]string, 0, len(flags)+len(args))
 	allArgs = append(allArgs, flags...)
 	allArgs = append(allArgs, args...)
+	allArgs = resolveMSVCImportLibraries(c.Dir, allArgs)
 	return c.exec(allArgs...)
+}
+
+// resolveMSVCImportLibraries lets clang's MSVC driver consume GNU-named COFF
+// import archives installed by environments such as MSYS2. Prefer name.lib
+// anywhere on the explicit search path; only replace -lname when
+// libname.dll.a is the sole available spelling.
+func resolveMSVCImportLibraries(baseDir string, args []string) []string {
+	if !slices.ContainsFunc(args, func(arg string) bool {
+		return strings.Contains(arg, "-windows-msvc")
+	}) {
+		return args
+	}
+	var dirs []string
+	for i, arg := range args {
+		switch {
+		case arg == "-L" && i+1 < len(args):
+			dirs = append(dirs, args[i+1])
+		case strings.HasPrefix(arg, "-L") && len(arg) > 2:
+			dirs = append(dirs, arg[2:])
+		}
+	}
+	resolved := args
+	changed := false
+	for i, arg := range args {
+		if !strings.HasPrefix(arg, "-l") || len(arg) <= 2 || arg[2] == ':' {
+			continue
+		}
+		name := arg[2:]
+		if findLibrary(baseDir, dirs, name+".lib") != "" {
+			continue
+		}
+		if archive := findLibrary(baseDir, dirs, "lib"+name+".dll.a"); archive != "" {
+			if !changed {
+				resolved = slices.Clone(args)
+				changed = true
+			}
+			resolved[i] = archive
+		}
+	}
+	return resolved
+}
+
+func findLibrary(baseDir string, dirs []string, name string) string {
+	for _, dir := range dirs {
+		path := filepath.Join(dir, name)
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(baseDir, path)
+		}
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path
+		}
+	}
+	return ""
 }
 
 // mergeCompilerFlags merges environment CCFLAGS/CFLAGS with config flags.
