@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -57,13 +58,13 @@ func TestExpandEnvToArgsWithConfiguresSubprocess(t *testing.T) {
 		dir,
 		[]string{"PATH=" + dir, "LLGO_ENV_TEST=request", helperEnvironment + "=1"},
 	)
-	resolvedDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatal(err)
+	if len(got) != 2 || got[0] != "-Lrequest" || !strings.HasPrefix(got[1], "-I") {
+		t.Fatalf("ExpandEnvToArgsWith = %q, want -Lrequest and one include directory", got)
 	}
-	want := []string{"-Lrequest", "-I" + resolvedDir}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("ExpandEnvToArgsWith = %q, want %q", got, want)
+	gotInfo, gotErr := os.Stat(strings.TrimPrefix(got[1], "-I"))
+	wantInfo, wantErr := os.Stat(dir)
+	if gotErr != nil || wantErr != nil || !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("subprocess working directory = %q, want same directory as %q", got[1][2:], dir)
 	}
 }
 
