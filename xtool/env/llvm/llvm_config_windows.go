@@ -1,4 +1,4 @@
-//go:build !byollvm && windows && !llvm14 && !llvm15 && !llvm16 && !llvm17 && !llvm18 && !llvm19
+//go:build !byollvm && windows
 
 /*
  * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.
@@ -18,4 +18,7 @@
 
 package llvm
 
+// MSYS2 installs the selected LLVM version as an unversioned executable in
+// the active environment's bin directory. Unlike Unix package layouts, the
+// executable name is therefore independent of LLGo's llvmNN build tag.
 const ldLLVMConfigBin = `llvm-config.exe`
