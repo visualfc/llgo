@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -696,7 +697,98 @@ func TestCOFFFuncInfoEntrySiteIsAssociative(t *testing.T) {
 	}
 }
 
-func TestELFFuncInfoMetadataLinksIntoSharedLibrary(t *testing.T) {
+func TestFuncInfoMetadataLinksIntoSharedLibrary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		testCOFFFuncInfoMetadataLinksIntoDLL(t)
+		return
+	}
+	testELFFuncInfoMetadataLinksIntoSharedLibrary(t)
+}
+
+func testCOFFFuncInfoMetadataLinksIntoDLL(t *testing.T) {
+	linker, err := exec.LookPath("lld-link")
+	if err != nil {
+		t.Fatal("lld-link is required for the PE shared-library regression test")
+	}
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: runtime.GOARCH})
+	defer prog.Dispose()
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeCShared,
+			Goos:      "windows",
+			Goarch:    runtime.GOARCH,
+		},
+	}
+
+	src := prog.NewPackage("example.com/p", "example.com/p")
+	src.EmitFuncInfo("example.com/p.live", "example.com/p.Live", "live.go", 17, 3)
+	fn := src.NewFunc("example.com/p.live", llssa.NoArgsNoRet, llssa.InGo)
+	fn.MakeBody(1).Return()
+	records := collectFuncInfo([]Package{{LPkg: src}})
+	emitFuncInfoEntrySites(ctx, src)
+
+	metadata := prog.NewPackage("example.com/runtime", "example.com/runtime")
+	emitFuncInfoTable(ctx, metadata, records, nil)
+
+	dir := t.TempDir()
+	writeObject := func(name string, mod llvm.Module) string {
+		t.Helper()
+		buf, err := prog.TargetMachine().EmitToMemoryBuffer(mod, llvm.ObjectFile)
+		if err != nil {
+			t.Fatalf("emit %s: %v", name, err)
+		}
+		defer buf.Dispose()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		return path
+	}
+	srcObj := writeObject("src.obj", src.Module())
+	metadataObj := writeObject("metadata.obj", metadata.Module())
+	shared := filepath.Join(dir, "funcinfo.dll")
+	cmd := exec.Command(linker,
+		"/dll", "/noentry", "/nodefaultlib", "/opt:ref",
+		"/include:example.com/p.live",
+		"/include:"+funcInfoEntryStartPtrSymbol,
+		"/include:"+funcInfoEntryEndPtrSymbol,
+		"/out:"+shared, srcObj, metadataObj,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("link PE shared library: %v\n%s", err, out)
+	}
+
+	pf, err := pe.Open(shared)
+	if err != nil {
+		t.Fatalf("open linked PE: %v", err)
+	}
+	defer pf.Close()
+	entry := pf.Section(entrySiteSectionInfo.coff)
+	if entry == nil {
+		t.Fatalf("linked PE is missing %s", entrySiteSectionInfo.coff)
+	}
+	data, err := entry.Data()
+	if err != nil {
+		t.Fatalf("read %s: %v", entry.Name, err)
+	}
+	recordSize := 8 + prog.PointerSize()
+	if len(data) < 3*recordSize {
+		t.Fatalf("%s size = %d, want at least three %d-byte records", entry.Name, len(data), recordSize)
+	}
+	middle := data[recordSize : 2*recordSize]
+	if bytes.Equal(middle, make([]byte, recordSize)) {
+		t.Fatalf("%s live-function record is zero", entry.Name)
+	}
+	if pf.Section(".reloc") == nil {
+		t.Fatal("linked PE is missing base relocations for funcinfo pointers")
+	}
+}
+
+func testELFFuncInfoMetadataLinksIntoSharedLibrary(t *testing.T) {
 	linker, err := exec.LookPath("ld.lld")
 	if err != nil {
 		t.Skip("ld.lld is required for the ELF shared-library regression test")
