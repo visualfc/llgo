@@ -107,7 +107,7 @@ func main() {
 
 Because calls into C compile to native calls against the C ABI, there is no Go-to-C stack or scheduler transition, so frequent C calls stay cheap.
 
-### Standard libraries
+### C/C++ standard libraries
 
 LLGo provides Go bindings for the C/C++ standard library:
 
