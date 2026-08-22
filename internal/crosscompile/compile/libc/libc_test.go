@@ -72,7 +72,7 @@ func TestGetPicolibcConfig_LibConfig(t *testing.T) {
 }
 
 func TestGetPicolibcCompileConfig(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "test-target"
 
 	config := GetPicolibcCompileConfig(baseDir, target)
@@ -187,7 +187,7 @@ func TestGetPicolibcConfig_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("EmptyTarget", func(t *testing.T) {
-		config := GetPicolibcCompileConfig("/test/base", "")
+		config := GetPicolibcCompileConfig(filepath.FromSlash("/test/base"), "")
 
 		// Check output file name formatting
 		expectedOutput := "libc-.a"
@@ -198,7 +198,7 @@ func TestGetPicolibcConfig_EdgeCases(t *testing.T) {
 }
 
 func TestPicolibcFileStructure(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "test-target"
 
 	config := GetPicolibcCompileConfig(baseDir, target)
@@ -217,11 +217,11 @@ func TestPicolibcFileStructure(t *testing.T) {
 	tinystdioFiles := 0
 
 	for _, file := range group.Files {
-		if strings.Contains(file, "/string/") {
+		if strings.Contains(file, string(filepath.Separator)+"string"+string(filepath.Separator)) {
 			stringFiles++
-		} else if strings.Contains(file, "/stdlib/") {
+		} else if strings.Contains(file, string(filepath.Separator)+"stdlib"+string(filepath.Separator)) {
 			stdlibFiles++
-		} else if strings.Contains(file, "/tinystdio/") {
+		} else if strings.Contains(file, string(filepath.Separator)+"tinystdio"+string(filepath.Separator)) {
 			tinystdioFiles++
 		}
 	}
@@ -245,7 +245,7 @@ func TestPicolibcFileStructure(t *testing.T) {
 }
 
 func TestPicolibcCompilerFlags(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "test-target"
 
 	config := GetPicolibcCompileConfig(baseDir, target)
@@ -311,7 +311,7 @@ func TestPicolibcCompilerFlags(t *testing.T) {
 }
 
 func TestGetNewlibESP32ConfigRISCV(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "riscv32-unknown-elf"
 
 	config := getNewlibESP32ConfigRISCV(baseDir, target)
@@ -535,7 +535,7 @@ func TestGetNewlibESP32ConfigRISCV(t *testing.T) {
 }
 
 func TestGetNewlibESP32ConfigXtensa(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "xtensa-esp32-elf"
 
 	config := getNewlibESP32ConfigXtensa(baseDir, target)
@@ -654,7 +654,7 @@ func TestEdgeCases(t *testing.T) {
 	})
 
 	t.Run("EmptyTarget_RISCV", func(t *testing.T) {
-		config := getNewlibESP32ConfigRISCV("/test/base", "")
+		config := getNewlibESP32ConfigRISCV(filepath.FromSlash("/test/base"), "")
 
 		// Check output file name formatting (first group is libsemihost)
 		expectedOutput := "libsemihost-.a"
@@ -675,7 +675,7 @@ func TestEdgeCases(t *testing.T) {
 	})
 
 	t.Run("EmptyTarget_Xtensa", func(t *testing.T) {
-		config := getNewlibESP32ConfigXtensa("/test/base", "")
+		config := getNewlibESP32ConfigXtensa(filepath.FromSlash("/test/base"), "")
 
 		// Check output file name formatting
 		expectedOutput := "libcrt0-.a"
@@ -686,7 +686,7 @@ func TestEdgeCases(t *testing.T) {
 }
 
 func TestGroupConfiguration(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "test-target"
 
 	t.Run("RISCV_GroupCount", func(t *testing.T) {
@@ -740,7 +740,7 @@ func TestGroupConfiguration(t *testing.T) {
 }
 
 func TestCompilerFlags(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "test-target"
 
 	t.Run("RISCV_CFlags", func(t *testing.T) {

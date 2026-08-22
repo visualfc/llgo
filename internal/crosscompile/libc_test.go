@@ -14,7 +14,7 @@ import (
 )
 
 func TestGetLibcCompileConfigByName(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "armv7"
 	mcpu := "cortex-m4"
 
@@ -79,7 +79,7 @@ func TestGetLibcCompileConfigByName(t *testing.T) {
 }
 
 func TestGetRTCompileConfigByName(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "wasm32"
 	needSkipDownload = true
 
@@ -127,33 +127,33 @@ func TestCompilerRTCompileConfigPaths(t *testing.T) {
 	}{
 		{
 			name:     "RISC-V 32",
-			baseDir:  "/test/base/dir",
+			baseDir:  filepath.FromSlash("/test/base/dir"),
 			target:   "riscv32-unknown-elf",
-			expected: "riscv/mulsi3.S", // Expected platform file for RISC-V 32
+			expected: filepath.FromSlash("riscv/mulsi3.S"), // Expected platform file for RISC-V 32
 		},
 		{
 			name:     "RISC-V 64",
-			baseDir:  "/another/dir",
+			baseDir:  filepath.FromSlash("/another/dir"),
 			target:   "riscv64-unknown-elf",
 			expected: "addtf3.c", // Expected platform file for RISC-V 64
 		},
 		{
 			name:     "ARM",
-			baseDir:  "/arm/dir",
+			baseDir:  filepath.FromSlash("/arm/dir"),
 			target:   "armv7-unknown-linux-gnueabihf",
-			expected: "arm/aeabi_cdcmp.S", // Expected platform file for ARM
+			expected: filepath.FromSlash("arm/aeabi_cdcmp.S"), // Expected platform file for ARM
 		},
 		{
 			name:     "AVR",
-			baseDir:  "/avr/dir",
+			baseDir:  filepath.FromSlash("/avr/dir"),
 			target:   "avr",
-			expected: "avr/divmodhi4.S", // Expected platform file for AVR
+			expected: filepath.FromSlash("avr/divmodhi4.S"), // Expected platform file for AVR
 		},
 		{
 			name:     "XTENSA",
-			baseDir:  "/xtensa/dir",
+			baseDir:  filepath.FromSlash("/xtensa/dir"),
 			target:   "xtensa",
-			expected: "xtensa/ieee754_sqrtf.S", // Expected platform file for XTENSA
+			expected: filepath.FromSlash("xtensa/ieee754_sqrtf.S"), // Expected platform file for XTENSA
 		},
 	}
 	needSkipDownload = true
@@ -209,7 +209,7 @@ func TestCompilerRTCompileConfigPaths(t *testing.T) {
 // TestCompilerRTCompileConfigPathRelations tests the general path relationships
 // in the CompileConfig for a specific target.
 func TestCompilerRTCompileConfigPathRelations(t *testing.T) {
-	baseDir := "/test/base/dir"
+	baseDir := filepath.FromSlash("/test/base/dir")
 	target := "riscv64-unknown-elf"
 
 	// Get the compile configuration
@@ -254,18 +254,18 @@ func TestGetPicolibcCompileConfigPaths(t *testing.T) {
 		target  string
 	}{
 		{
-			name:    "Unix-like path",
-			baseDir: "/test/base/dir",
+			name:    "Absolute path",
+			baseDir: filepath.FromSlash("/test/base/dir"),
 			target:  "riscv64-unknown-elf",
 		},
 		{
-			name:    "Windows-like path",
-			baseDir: "C:\\test\\base\\dir",
+			name:    "Cleaned path",
+			baseDir: filepath.Join(filepath.FromSlash("/test/base"), "parent", "..", "dir"),
 			target:  "x86_64-pc-windows-msvc",
 		},
 		{
 			name:    "Relative path",
-			baseDir: "test/base/dir",
+			baseDir: filepath.FromSlash("test/base/dir"),
 			target:  "armv7-unknown-linux-gnueabihf",
 		},
 	}
@@ -332,7 +332,7 @@ func TestGetPicolibcCompileConfigPaths(t *testing.T) {
 // TestGetPicolibcCompileConfigSpecificPaths tests specific path constructions
 // in the CompileConfig for a given baseDir and target.
 func TestGetPicolibcCompileConfigSpecificPaths(t *testing.T) {
-	baseDir := "/test/base/dir"
+	baseDir := filepath.FromSlash("/test/base/dir")
 	target := "riscv64-unknown-elf"
 	needSkipDownload = true
 
