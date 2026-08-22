@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/xgo-dev/llgo/xtool/safesplit"
@@ -127,11 +128,34 @@ func lookPathInEnvironment(name, dir string, environ []string) string {
 			entry = filepath.Join(dir, entry)
 		}
 		candidate := filepath.Join(entry, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-			return candidate
+		for _, path := range executableCandidates(candidate, environ) {
+			if info, err := os.Stat(path); err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
+				return path
+			}
 		}
 	}
 	return name
+}
+
+func executableCandidates(path string, environ []string) []string {
+	if runtime.GOOS != "windows" || filepath.Ext(path) != "" {
+		return []string{path}
+	}
+	extensions := ".COM;.EXE;.BAT;.CMD"
+	for i := len(environ) - 1; i >= 0; i-- {
+		key, value, ok := strings.Cut(environ[i], "=")
+		if ok && strings.EqualFold(key, "PATHEXT") {
+			extensions = value
+			break
+		}
+	}
+	paths := make([]string, 0, 4)
+	for _, ext := range filepath.SplitList(extensions) {
+		if ext != "" {
+			paths = append(paths, path+ext)
+		}
+	}
+	return paths
 }
 
 func parseSubcmd(s string) []string {
