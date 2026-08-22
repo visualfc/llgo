@@ -1,6 +1,7 @@
 package cltest
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -9,6 +10,14 @@ import (
 
 	"github.com/xgo-dev/llgo/internal/littest"
 )
+
+func TestNormalizeGoldenNewlines(t *testing.T) {
+	got := normalizeGoldenNewlines([]byte("first\r\nsecond\n"))
+	want := []byte("first\nsecond\n")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("normalizeGoldenNewlines() = %q, want %q", got, want)
+	}
+}
 
 func TestAdditionalIRTargets(t *testing.T) {
 	targets := []littest.Target{

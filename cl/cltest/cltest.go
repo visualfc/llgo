@@ -438,7 +438,7 @@ func assertExpectedMeta(t *testing.T, pkgDir, relPkg string, capturedMeta *strin
 	if capturedMeta == nil {
 		t.Fatalf("metadata snapshot missing for %s", relPkg)
 	}
-	if test.Diff(t, filepath.Join(pkgDir, "meta-expect.txt.new"), []byte(*capturedMeta), expectedMeta) {
+	if test.Diff(t, filepath.Join(pkgDir, "meta-expect.txt.new"), normalizeGoldenNewlines([]byte(*capturedMeta)), normalizeGoldenNewlines(expectedMeta)) {
 		t.Fatal("metadata: unexpected result")
 	}
 }
@@ -719,9 +719,16 @@ func assertExpectedOutput(t *testing.T, pkgDir string, expectedOutput, output []
 	if opts.filter != nil {
 		output = []byte(opts.filter(string(output)))
 	}
-	if test.Diff(t, filepath.Join(pkgDir, "expect.txt.new"), output, expectedOutput) {
+	if test.Diff(t, filepath.Join(pkgDir, "expect.txt.new"), normalizeGoldenNewlines(output), normalizeGoldenNewlines(expectedOutput)) {
 		t.Fatal("unexpected output")
 	}
+}
+
+// normalizeGoldenNewlines makes golden comparisons independent of Git's
+// checkout newline setting. Program output and generated metadata use LF,
+// while text files may be checked out with CRLF on Windows.
+func normalizeGoldenNewlines(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 }
 
 func readGolden(file string) ([]byte, bool, error) {
