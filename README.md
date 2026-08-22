@@ -28,7 +28,7 @@ LLGo is compatible with the C ecosystem through the C **Application Binary Inter
 
 ## Go support
 
-LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.26 language syntax including `cgo`.
+LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.26 language syntax, as well as `cgo`.
 
 Compatibility is checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases using pinned Go 1.25 and Go 1.26 toolchains. Remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml); gc-specific mechanisms outside LLGo's compatibility goals are documented in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
 
