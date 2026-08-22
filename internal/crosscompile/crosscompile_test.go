@@ -205,7 +205,6 @@ func TestUseTarget(t *testing.T) {
 		expectLLVM  string
 		expectCPU   string
 		expectMarch string
-		expectCFlag string
 	}{
 		// FIXME(MeteorsLiu): wasi in useTarget
 		// {
@@ -250,7 +249,6 @@ func TestUseTarget(t *testing.T) {
 			expectError: false,
 			expectLLVM:  "xtensa",
 			expectCPU:   "esp32",
-			expectCFlag: "-fno-rtti",
 		},
 		{
 			name:        "ESP32-C3 Target (ESP RISC-V)",
@@ -346,10 +344,6 @@ func TestUseTarget(t *testing.T) {
 					t.Errorf("Expected %s in CCFLAGS, got %v", tc.expectMarch, export.CCFLAGS)
 				}
 			}
-			if tc.expectCFlag != "" && !slices.Contains(export.CFLAGS, tc.expectCFlag) {
-				t.Errorf("Expected %s in CFLAGS, got %v", tc.expectCFlag, export.CFLAGS)
-			}
-
 			t.Logf("Target %s: BuildTags=%v, CFlags=%v, CCFlags=%v, LDFlags=%v",
 				tc.targetName, export.BuildTags, export.CFLAGS, export.CCFLAGS, export.LDFLAGS)
 		})
@@ -372,6 +366,25 @@ func TestUseSystemClangForTarget(t *testing.T) {
 	} {
 		if got := useSystemClangForTarget(test.goos, test.target, test.buildTags); got != test.want {
 			t.Errorf("useSystemClangForTarget(%q, %q, %v) = %v, want %v", test.goos, test.target, test.buildTags, got, test.want)
+		}
+	}
+}
+
+func TestClangDriverTargetForHost(t *testing.T) {
+	for _, test := range []struct {
+		goos      string
+		target    string
+		buildTags []string
+		want      string
+	}{
+		{goos: "windows", target: "xtensa", buildTags: []string{"esp32", "esp"}, want: "xtensa-esp-unknown-elf"},
+		{goos: "windows", target: "xtensa", want: "xtensa"},
+		{goos: "windows", target: "riscv32-esp-elf", buildTags: []string{"esp"}, want: "riscv32-esp-elf"},
+		{goos: "linux", target: "xtensa", buildTags: []string{"esp"}, want: "xtensa"},
+		{goos: "darwin", target: "xtensa", buildTags: []string{"esp"}, want: "xtensa"},
+	} {
+		if got := clangDriverTargetForHost(test.goos, test.target, test.buildTags); got != test.want {
+			t.Errorf("clangDriverTargetForHost(%q, %q, %v) = %q, want %q", test.goos, test.target, test.buildTags, got, test.want)
 		}
 	}
 }

@@ -701,9 +701,10 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	ldflags := []string{"-S", "--icf=none"}
 	ccflags := []string{level.Flag()}
 	cflags := []string{"-Wno-override-module", "-Qunused-arguments", "-Wno-unused-command-line-argument"}
-	if config.LLVMTarget != "" {
-		cflags = append(cflags, "--target="+config.LLVMTarget)
-		ccflags = append(ccflags, "--target="+config.LLVMTarget)
+	clangTarget := clangDriverTargetForHost(runtime.GOOS, config.LLVMTarget, config.BuildTags)
+	if clangTarget != "" {
+		cflags = append(cflags, "--target="+clangTarget)
+		ccflags = append(ccflags, "--target="+clangTarget)
 	}
 	// Expand template variables in cflags
 	expandedCFlags := env.ExpandEnvSlice(config.CFlags, envs)
@@ -897,6 +898,21 @@ func useSystemClangForTarget(hostGOOS, targetTriple string, buildTags []string) 
 		}
 	}
 	return true
+}
+
+// clangDriverTargetForHost returns the target spelling accepted by the host
+// Clang driver. LLGo's Unix ESP toolchains use the historical "xtensa"
+// spelling, but Espressif's official Windows distribution selects its Xtensa
+// multilibs using the canonical GCC-compatible triple.
+func clangDriverTargetForHost(hostGOOS, llvmTarget string, buildTags []string) string {
+	if hostGOOS == "windows" && llvmTarget == "xtensa" {
+		for _, tag := range buildTags {
+			if tag == "esp" {
+				return "xtensa-esp-unknown-elf"
+			}
+		}
+	}
+	return llvmTarget
 }
 
 // Use extends the original Use function to support target-based configuration
