@@ -364,7 +364,6 @@ func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
 	switch toolchain.ObjectFormat {
 	case ObjectFormatMachO:
 		return nil, []string{"-Xlinker", "-dead_strip"}
-<<<<<<< HEAD
 	case ObjectFormatCOFF:
 		return []string{"-fdata-sections", "-ffunction-sections"}, []string{
 			"-fdata-sections",
