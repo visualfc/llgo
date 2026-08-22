@@ -1,3 +1,7 @@
+// Portions of this file are derived from tinygo/main.go.
+// Copyright (c) 2018-2025 The TinyGo Authors. All rights reserved.
+// See ../../LICENSES/TinyGo-BSD-3-Clause.txt for license terms.
+
 package flash
 
 import (

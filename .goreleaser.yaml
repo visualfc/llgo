@@ -95,7 +95,9 @@ archives:
       {{- if .Arm}}v{{.Arm}}{{end}}
     files:
       - LICENSE
+      - LICENSES
       - README.md
+      - THIRD_PARTY_NOTICES.md
       - runtime
       - targets
       - src: ".sysroot/{{.Os}}/{{.Arch}}/crosscompile/clang"
@@ -129,6 +131,14 @@ nfpms:
       {{.ProjectName}}{{.Version}}.{{.Os}}-{{.Arch}}
       {{- if .Arm}}v{{.Arm}}{{end}}
     bindir: /usr/local/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/llgo/LICENSE
+      - src: THIRD_PARTY_NOTICES.md
+        dst: /usr/share/doc/llgo/THIRD_PARTY_NOTICES.md
+      - src: LICENSES/
+        dst: /usr/share/doc/llgo/LICENSES
+        type: tree
 
 snapcrafts:
   - name: llgo
@@ -147,6 +157,13 @@ snapcrafts:
       - ...
     license: Apache-2.0
     confinement: classic
+    extra_files:
+      - source: LICENSE
+        destination: usr/share/doc/llgo/LICENSE
+      - source: THIRD_PARTY_NOTICES.md
+        destination: usr/share/doc/llgo/THIRD_PARTY_NOTICES.md
+      - source: LICENSES
+        destination: usr/share/doc/llgo/LICENSES
     name_template: >-
       {{.ProjectName}}{{.Version}}.{{.Os}}-{{.Arch}}
       {{- if .Arm}}v{{.Arm}}{{end}}
