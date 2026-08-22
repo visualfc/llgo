@@ -76,12 +76,13 @@ run_case_and_compare() {
     return 1
 }
 
-# Check if esptool.py is installed
-# esptool.py is required to parse ESP32-C3 BIN file format and verify
+# Check if esptool is installed. Invoke its Python module so the test does not
+# depend on the platform-specific console-script name.
+# esptool is required to parse ESP32-C3 BIN file format and verify
 # that constructor-related data is included in the firmware
-if ! command -v esptool.py &> /dev/null; then
-    echo "✗ FAIL: esptool.py not found"
-    echo "Please install: pip3 install esptool==5.1.0"
+if ! python -c 'import esptool' &> /dev/null; then
+    echo "✗ FAIL: esptool not found"
+    echo "Please install: python -m pip install esptool==5.1.0"
     exit 1
 fi
 
@@ -167,11 +168,11 @@ echo ".init_array section size: $INIT_ARRAY_SIZE"
 echo ""
 echo "=== Test 3: Verify __init_array_start included in BIN file ==="
 
-# Get BIN file segment information using esptool.py
+# Get BIN file segment information using esptool
 # ESP32-C3 BIN files contain multiple segments with load addresses.
 # We need to verify the __init_array_start address is covered by one segment.
 #
-# Real output from: esptool.py --chip esp32c3 image_info test.bin
+# Real output from: python -m esptool --chip esp32c3 image_info test.bin
 #
 # Segments Information
 # ====================
@@ -193,8 +194,8 @@ echo "=== Test 3: Verify __init_array_start included in BIN file ==="
 #   $5+ = IRAM       (memory type)
 #
 # We extract $2 (length) and $3 (load addr) to verify __init_array_start is within bounds
-if ! BIN_INFO=$(esptool.py --chip esp32c3 image_info "$TEST_BIN" 2>&1); then
-    echo "✗ FAIL: esptool.py failed to parse BIN file"
+if ! BIN_INFO=$(python -m esptool --chip esp32c3 image_info "$TEST_BIN" 2>&1); then
+    echo "✗ FAIL: esptool failed to parse BIN file"
     echo "$BIN_INFO"
     exit 1
 fi
