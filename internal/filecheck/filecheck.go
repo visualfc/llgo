@@ -63,16 +63,16 @@ func match(filename, input string, allowUnusedPrefixes bool, prefixes ...string)
 	return nil
 }
 
-// TargetPrefixes returns CHECK plus the applicable architecture and specific
-// compile-target prefixes. A named target produces TARGET-<TARGET>; otherwise
-// GOOS and GOARCH produce <GOOS>-<GOARCH>.
+// TargetPrefixes returns CHECK plus the applicable operating-system,
+// architecture, and specific compile-target prefixes. A named target produces
+// TARGET-<TARGET>; otherwise GOOS and GOARCH produce <GOOS>-<GOARCH>.
 func TargetPrefixes(goos, goarch, target string) []string {
 	prefixes := []string{"CHECK"}
 	if (goos == "") != (goarch == "") {
 		panic("filecheck: GOOS and GOARCH must be provided together")
 	}
 	if goos != "" && goarch != "" {
-		prefixes = append(prefixes, ArchitecturePrefix(goarch))
+		prefixes = append(prefixes, strings.ToUpper(goos), ArchitecturePrefix(goarch))
 	}
 	if target != "" {
 		return append(prefixes, "TARGET-"+strings.ToUpper(target))

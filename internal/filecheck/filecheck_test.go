@@ -134,11 +134,12 @@ func TestMatchSupportsCRLF(t *testing.T) {
 
 func TestMatchWithTargetPrefixes(t *testing.T) {
 	spec := `// CHECK: common
+// DARWIN: operating system
 // ARM64: architecture
 // DARWIN-ARM64: combined
 // LINUX: linux
 `
-	input := "common\narchitecture\ncombined\n"
+	input := "common\noperating system\narchitecture\ncombined\n"
 	if err := MatchWithTargetPrefixes(writeCheckFile(t, spec), input, TargetPrefixes("darwin", "arm64", "")...); err != nil {
 		t.Fatal(err)
 	}
@@ -165,11 +166,11 @@ func TestMatchWithPrefixesRequiresEveryPrefix(t *testing.T) {
 
 func TestTargetPrefixes(t *testing.T) {
 	got := strings.Join(TargetPrefixes("wasip1", "wasm", "wasm"), ",")
-	if want := "CHECK,WASM,TARGET-WASM"; got != want {
+	if want := "CHECK,WASIP1,WASM,TARGET-WASM"; got != want {
 		t.Fatalf("TargetPrefixes = %q, want %q", got, want)
 	}
 	got = strings.Join(TargetPrefixes("linux", "386", ""), ",")
-	if want := "CHECK,386,LINUX-386"; got != want {
+	if want := "CHECK,LINUX,386,LINUX-386"; got != want {
 		t.Fatalf("TargetPrefixes = %q, want %q", got, want)
 	}
 	got = strings.Join(TargetPrefixes("", "", ""), ",")

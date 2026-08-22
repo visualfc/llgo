@@ -83,6 +83,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB1]]:
 // CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
+// WINDOWS-NEXT: call void @"github.com/goplus/lib/c.init"()
 // CHECK-NEXT:   call void @"{{.*}}/runtime/abi.init"()
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = alloca [25 x ptr], align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP1]], i8 0, i64 200, i1 false)
