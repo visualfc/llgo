@@ -80,7 +80,9 @@ runs:
           "${urls[@]}"
         pacman --noconfirm -S --needed \
           --assume-installed "$assumed_cc_runtime" \
-          "$prefix-pkgconf"
+          "$prefix-pkgconf" \
+          "$prefix-sqlite3" \
+          make
 
         for package in clang clang-libs compiler-rt llvm llvm-libs lld libc++ libunwind; do
           installed="$(pacman -Q "$prefix-$package" | awk '{print $2}')"

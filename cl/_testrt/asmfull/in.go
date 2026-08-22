@@ -9,7 +9,8 @@ func asmFull(instruction string, regs map[string]any) uintptr
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: call void asm sideeffect "nop", ""()
 // CHECK: call void asm sideeffect "# test value ${0}", "r"(i64 42)
-// CHECK: [[ASM_RESULT:%[0-9]+]] = call i64 asm sideeffect "mov $0, ${1}", "=&r,r"(i64 42)
+// ARM64: [[ASM_RESULT:%[0-9]+]] = call i64 asm sideeffect "mov $0, ${1}", "=&r,r"(i64 42)
+// AMD64: [[ASM_RESULT:%[0-9]+]] = call i64 asm sideeffect "movq ${1}, $0", "=&r,r"(i64 42)
 // CHECK: call void @"{{.*}}.PrintUint"(i64 [[ASM_RESULT]])
 // CHECK: [[ASM_UNUSED:%[0-9]+]] = call i64 asm sideeffect "# calc ${1} + ${2} -> $0", "=&r,r,r"(i64 25, i64 17)
 // CHECK-NEXT: ret void
@@ -19,7 +20,7 @@ func main() {
 	// input only,no return value
 	asmFull("# test value {value}", map[string]any{"value": 42})
 	// input with return value
-	res1 := asmFull("mov {}, {value}", map[string]any{
+	res1 := asmFull(moveInstruction, map[string]any{
 		"value": 42,
 	})
 	println("Result:", res1)
