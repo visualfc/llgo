@@ -424,38 +424,61 @@ func defineWeakNoArgStub(pkg llssa.Package, name string) llssa.Function {
 }
 
 const (
-	// ioNoBuf represents the _IONBF flag for setvbuf (no buffering)
-	ioNoBuf = 2
+	// The Universal CRT assigns _IONBF a different value from the Unix
+	// runtimes. Passing the Unix value invokes UCRT's invalid-parameter
+	// handler instead of disabling buffering.
+	ioNoBufUnix    = 2
+	ioNoBufWindows = 4
 )
 
 // emitStdioNobuf generates code to disable buffering on stdout and stderr
-// when the LLGO_STDIO_NOBUF environment variable is set. Only Darwin uses
-// the alternate `__stdoutp`/`__stderrp` symbols; other targets rely on the
-// standard `stdout`/`stderr` globals.
+// when the LLGO_STDIO_NOBUF environment variable is set. Darwin exposes
+// pointer globals with alternate names, while the Universal CRT exposes
+// standard streams only through __acrt_iob_func.
 func emitStdioNobuf(b llssa.Builder, pkg llssa.Package, goos string) {
 	prog := pkg.Prog
 	streamType := prog.VoidPtr()
 	streamPtrType := prog.Pointer(streamType)
 
-	stdoutName := "stdout"
-	stderrName := "stderr"
-	if goos == "darwin" {
-		stdoutName = "__stdoutp"
-		stderrName = "__stderrp"
+	var stdoutPtr, stderrPtr llssa.Expr
+	if goos == "windows" {
+		indexType := prog.Uint32()
+		iob := declareAcrtIobFunc(pkg, streamPtrType, indexType)
+		stdoutPtr = b.Call(iob.Expr, prog.IntVal(1, indexType))
+		stderrPtr = b.Call(iob.Expr, prog.IntVal(2, indexType))
+	} else {
+		stdoutName := "stdout"
+		stderrName := "stderr"
+		if goos == "darwin" {
+			stdoutName = "__stdoutp"
+			stderrName = "__stderrp"
+		}
+		stdout := declareExternalPtrGlobal(pkg, stdoutName, streamPtrType)
+		stderr := declareExternalPtrGlobal(pkg, stderrName, streamPtrType)
+		stdoutPtr = b.Load(stdout)
+		stderrPtr = b.Load(stderr)
 	}
-	stdout := declareExternalPtrGlobal(pkg, stdoutName, streamPtrType)
-	stderr := declareExternalPtrGlobal(pkg, stderrName, streamPtrType)
-	stdoutPtr := b.Load(stdout)
-	stderrPtr := b.Load(stderr)
 	sizeType := prog.Uintptr()
 	setvbuf := declareSetvbuf(pkg, streamPtrType, prog.CStr(), prog.Int32(), sizeType)
 
-	noBufMode := prog.IntVal(ioNoBuf, prog.Int32())
+	noBufModeValue := uint64(ioNoBufUnix)
+	if goos == "windows" {
+		noBufModeValue = ioNoBufWindows
+	}
+	noBufMode := prog.IntVal(noBufModeValue, prog.Int32())
 	zeroSize := prog.Zero(sizeType)
 	nullBuf := prog.Nil(prog.CStr())
 
 	b.Call(setvbuf.Expr, stdoutPtr, nullBuf, noBufMode, zeroSize)
 	b.Call(setvbuf.Expr, stderrPtr, nullBuf, noBufMode, zeroSize)
+}
+
+func declareAcrtIobFunc(pkg llssa.Package, streamPtrType, indexType llssa.Type) llssa.Function {
+	sig := newSignature(
+		[]types.Type{indexType.RawType()},
+		[]types.Type{streamPtrType.RawType()},
+	)
+	return pkg.NewFunc("__acrt_iob_func", sig, llssa.InC)
 }
 
 func declareExternalPtrGlobal(pkg llssa.Package, name string, valueType llssa.Type) llssa.Expr {

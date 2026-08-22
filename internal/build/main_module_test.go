@@ -101,6 +101,38 @@ func TestGenMainModuleWindowsExitsAfterMain(t *testing.T) {
 	)
 }
 
+func TestGenMainModuleWindowsStdioNobufUsesUCRTStreams(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "1")
+	ctx := &context{
+		prog: llssa.NewProgram(nil),
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "windows",
+			Goarch:    "arm64",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{}).LPkg.String()
+	for _, want := range []string{
+		"call ptr @__acrt_iob_func(i32 1)",
+		"call ptr @__acrt_iob_func(i32 2)",
+		"call i32 @setvbuf(",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("Windows stdio setup IR missing %q:\n%s", want, ir)
+		}
+	}
+	if got := strings.Count(ir, "i32 4, i64 0)"); got != 2 {
+		t.Fatalf("Windows stdio setup used _IONBF=4 %d times, want 2:\n%s", got, ir)
+	}
+	for _, unwanted := range []string{"@stdout =", "@stderr ="} {
+		if strings.Contains(ir, unwanted) {
+			t.Fatalf("Windows stdio setup IR contains unavailable UCRT global %q:\n%s", unwanted, ir)
+		}
+	}
+}
+
 func TestPackageInitOrderUsesLexicalReadyPackage(t *testing.T) {
 	newPackage := func(path string, imports ...*packages.Package) *packages.Package {
 		pkg := &packages.Package{ID: path, PkgPath: path, Imports: make(map[string]*packages.Package)}
