@@ -529,12 +529,31 @@ func selectOutputLines(output string) []string {
 	var lines []string
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
-		switch line {
-		case "100", "200", "ch1", "ch2", "exit":
+		switch {
+		case line == "100" || line == "200":
 			lines = append(lines, line)
+		case strings.Contains(line, "ch1"):
+			lines = append(lines, "ch1")
+		case strings.Contains(line, "ch2"):
+			lines = append(lines, "ch2")
+		case strings.Contains(line, "exit"):
+			// The sender and receiver print from different native threads.
+			// Integer printing may therefore be split around the receiver's
+			// string even though the receiver token itself remains contiguous.
+			lines = append(lines, "exit")
 		}
 	}
 	return lines
+}
+
+func TestSelectOutputLinesAllowsSplitIntegerPrint(t *testing.T) {
+	// This is a real Windows output observed after the runtime stopped giving
+	// every native goroutine thread the same pseudo-random stream. The logical
+	// outputs are "100", "exit", and "exit".
+	lines := selectOutputLines("1exit\nexit\n00\n")
+	if len(lines) != 2 || lines[0] != "exit" || lines[1] != "exit" {
+		t.Fatalf("selectOutputLines() = %q, want [exit exit]", lines)
+	}
 }
 
 func TestRunAndTestFromTestpy(t *testing.T) {
