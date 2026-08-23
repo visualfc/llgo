@@ -164,6 +164,20 @@ func TestAnalyze(t *testing.T) {
 				"_llgo_pkg.T":     {0},
 			},
 		},
+		{
+			name:  "stops at type child without metadata facts",
+			roots: []string{"pkg.main"},
+			summary: buildPackage(func(b *pkgBuilder) {
+				main := b.sym("pkg.main")
+				typ := b.sym("_llgo_pkg.T")
+				leaf := b.sym("_llgo_int")
+
+				b.b.AddTypeChild(typ, leaf)
+				b.addEdge(main, typ)
+				b.addUseIface(main, typ)
+			}),
+			want: map[string][]int{},
+		},
 		// type I interface{ M() }
 		// type T struct{}
 		// func (*T) M() {}
