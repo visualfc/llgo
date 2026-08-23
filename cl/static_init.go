@@ -153,36 +153,10 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 					continue
 				}
 			}
-			if value, isConst := store.Val.(*ssa.Const); isConst {
-				candidate.stores = append(candidate.stores, staticInitStore{
-					store: store,
-					path:  path,
-					value: value,
-				})
-			} else if function, ok := staticInitFunctionOf(store.Val, store); ok {
-				candidate.stores = append(candidate.stores, staticInitStore{
-					store:    store,
-					path:     path,
-					function: function,
-				})
-				if closure, ok := store.Val.(*ssa.MakeClosure); ok {
-					candidate.instrs = append(candidate.instrs, closure)
-				}
-			} else if slice, ok := staticSliceInitOfVisited(store, make(map[*ssa.Alloc]bool)); ok {
-				candidate.stores = append(candidate.stores, staticInitStore{
-					store: store,
-					path:  path,
-					slice: slice,
-				})
-				candidate.instrs = append(candidate.instrs, slice.instrs...)
-			} else if pointer, ok := staticPointerInitOfVisited(store, make(map[*ssa.Alloc]bool)); ok {
-				candidate.stores = append(candidate.stores, staticInitStore{
-					store:   store,
-					path:    path,
-					pointer: pointer,
-				})
-				candidate.instrs = append(candidate.instrs, pointer.instrs...)
-			} else if unop, ok := store.Val.(*ssa.UnOp); ok && unop.Op == token.MUL {
+			if collectStaticInitLeaf(store, path, &candidate.stores, &candidate.instrs, nil) {
+				continue
+			}
+			if unop, ok := store.Val.(*ssa.UnOp); ok && unop.Op == token.MUL {
 				if alloc, ok := unop.X.(*ssa.Alloc); ok && !alloc.Heap {
 					if !collectAllocStores(alloc, unop, store, path, &candidate.stores, &candidate.instrs, make(map[*ssa.Alloc]bool)) {
 						candidate.invalid = true
@@ -193,10 +167,9 @@ func (p *context) collectStaticGlobalInits(pkg *ssa.Package) {
 					candidate.invalid = true
 					continue
 				}
-			} else {
-				candidate.invalid = true
 				continue
 			}
+			candidate.invalid = true
 		}
 	}
 
@@ -381,6 +354,18 @@ func appendStaticInitPath(base, sub []staticInitPathElem) []staticInitPathElem {
 // tracks the store instruction in instrs for compilation suppression) or recursing into inner nested
 // local allocs reached through pointer indirection (*ssa.UnOp).
 func handleStoreVal(store *ssa.Store, fullPath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
+	if collectStaticInitLeaf(store, fullPath, out, instrs, visited) {
+		return true
+	}
+	if unop, ok := store.Val.(*ssa.UnOp); ok && unop.Op == token.MUL {
+		if innerAlloc, ok := unop.X.(*ssa.Alloc); ok && !innerAlloc.Heap {
+			return collectAllocStores(innerAlloc, unop, store, fullPath, out, instrs, visited)
+		}
+	}
+	return false
+}
+
+func collectStaticInitLeaf(store *ssa.Store, fullPath []staticInitPathElem, out *[]staticInitStore, instrs *[]ssa.Instruction, visited map[*ssa.Alloc]bool) bool {
 	if val, ok := store.Val.(*ssa.Const); ok {
 		*out = append(*out, staticInitStore{
 			store: store,
@@ -418,11 +403,6 @@ func handleStoreVal(store *ssa.Store, fullPath []staticInitPathElem, out *[]stat
 		*instrs = append(*instrs, pointer.instrs...)
 		return true
 	}
-	if unop, ok := store.Val.(*ssa.UnOp); ok && unop.Op == token.MUL {
-		if innerAlloc, ok := unop.X.(*ssa.Alloc); ok && !innerAlloc.Heap {
-			return collectAllocStores(innerAlloc, unop, store, fullPath, out, instrs, visited)
-		}
-	}
 	return false
 }
 
@@ -431,7 +411,13 @@ func staticPointerInitOfVisited(store *ssa.Store, visited map[*ssa.Alloc]bool) (
 		return nil, false
 	}
 	alloc, ok := store.Val.(*ssa.Alloc)
-	if !ok || alloc.Parent() != store.Parent() || visited[alloc] {
+	if !ok || alloc.Parent() != store.Parent() {
+		return nil, false
+	}
+	if visited == nil {
+		visited = make(map[*ssa.Alloc]bool)
+	}
+	if visited[alloc] {
 		return nil, false
 	}
 	ptr, ok := alloc.Type().Underlying().(*types.Pointer)
@@ -549,12 +535,15 @@ func staticSliceInitOfVisited(store *ssa.Store, visited map[*ssa.Alloc]bool) (*s
 	if !ok || alloc.Parent() != store.Parent() {
 		return nil, false
 	}
+	if visited == nil {
+		visited = make(map[*ssa.Alloc]bool)
+	}
 	ptr, ok := alloc.Type().Underlying().(*types.Pointer)
 	if !ok {
 		return nil, false
 	}
 	array, ok := ptr.Elem().Underlying().(*types.Array)
-	if !ok || array.Len() == 0 || !staticInitArraySizeAllowed(array) || staticInitZeroSized(array.Elem()) {
+	if !ok || array.Len() == 0 || array.Len() > maxStaticInitArrayElements || staticInitZeroSized(array.Elem()) {
 		return nil, false
 	}
 

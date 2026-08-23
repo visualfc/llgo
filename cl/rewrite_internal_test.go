@@ -585,6 +585,25 @@ func Use(v int) int { return Handlers[0].Call(v) }
 	}
 }
 
+func TestStaticGlobalPointerArrayInit(t *testing.T) {
+	const src = `package staticinit
+
+var Values = []*[2]int{{1, 2}}
+
+func Use() int { return Values[0][1] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		`@"staticinit.Values$data" = global [1 x ptr] [ptr @"staticinit.Values$data$0"]`,
+		`@"staticinit.Values$data$0" = global [2 x i64] [i64 1, i64 2]`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static pointer-array initializer %q in IR:\n%s", want, ir)
+		}
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.Values")
+}
+
 func TestStaticGlobalExplicitEnvFunctionFallsBack(t *testing.T) {
 	const src = `package staticinit
 
@@ -925,6 +944,21 @@ func Use() byte { return Large[%d] }
 	assertNoStoreToGlobal(t, ir, "@staticinit.Large")
 }
 
+func TestStaticGlobalInitSkipsLargeByteSlice(t *testing.T) {
+	length := maxStaticInitArrayElements + 1
+	src := fmt.Sprintf(`package staticinit
+
+var Large = []byte{%d: 1}
+
+func Use() byte { return Large[%d] }
+`, length-1, length-1)
+	ir := compileWithRewrites(t, src, nil)
+	if strings.Contains(ir, `@"staticinit.Large$data"`) {
+		t.Fatal("large byte slice should retain runtime backing allocation")
+	}
+	assertStoreToGlobal(t, ir, "@staticinit.Large")
+}
+
 func TestStaticInitHelperRejectsUnsupportedPaths(t *testing.T) {
 	if _, ok := staticInitConstIndex(nil); ok {
 		t.Fatal("nil index should not be accepted")
@@ -1203,6 +1237,117 @@ var G int
 	}
 	if _, ok := ctx.buildStaticInitExpr(types.NewPointer(types.Typ[types.Int]), new(staticInitNode)); !ok {
 		t.Fatal("empty unsupported scalar node should build a zero initializer")
+	}
+
+	if new(staticInitNode).addStore(staticInitStore{}) {
+		t.Fatal("store without a static leaf should be rejected")
+	}
+
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	if _, ok := ctx.buildStaticInitExpr(types.Typ[types.Int], &staticInitNode{
+		function: &ssa.Function{Signature: sig},
+	}); ok {
+		t.Fatal("function leaf for a non-signature type should be rejected")
+	}
+	if _, ok := ctx.buildStaticInitExpr(
+		types.NewArray(types.Typ[types.Int], maxStaticInitArrayElements+1),
+		new(staticInitNode),
+	); ok {
+		t.Fatal("large non-byte array should be rejected")
+	}
+
+	array := types.NewArray(types.Typ[types.Int], 1)
+	if _, ok := ctx.buildStaticSliceValue("data", types.Typ[types.Int], &staticSliceInit{array: array}); ok {
+		t.Fatal("non-slice type should be rejected by static slice builder")
+	}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.String]), &staticSliceInit{array: array}); ok {
+		t.Fatal("mismatched slice element type should be rejected")
+	}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.Int]), &staticSliceInit{
+		array:  array,
+		stores: []staticInitStore{{value: c}},
+	}); ok {
+		t.Fatal("slice element store without an index path should be rejected")
+	}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.Int]), &staticSliceInit{
+		array: array,
+		stores: []staticInitStore{{
+			path:  []staticInitPathElem{{index: 1}},
+			value: c,
+		}},
+	}); ok {
+		t.Fatal("out-of-range slice element store should be rejected")
+	}
+	duplicate := staticInitStore{path: []staticInitPathElem{{index: 0}}, value: c}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.Int]), &staticSliceInit{
+		array:  array,
+		stores: []staticInitStore{duplicate, duplicate},
+	}); ok {
+		t.Fatal("duplicate slice element stores should be rejected")
+	}
+	if _, ok := ctx.buildStaticPointerValue("data", types.Typ[types.Int], nil); ok {
+		t.Fatal("non-pointer type should be rejected by static pointer builder")
+	}
+
+	byteArray := types.NewArray(types.Typ[types.Uint8], 1)
+	if _, ok := staticInitByteArray(&staticInitNode{children: map[int]*staticInitNode{
+		0: {value: ssa.NewConst(constant.MakeString("x"), types.Typ[types.String])},
+	}}, byteArray); ok {
+		t.Fatal("non-integer byte array element should be rejected")
+	}
+	if _, ok := staticInitByteArray(&staticInitNode{children: map[int]*staticInitNode{
+		0: {value: ssa.NewConst(constant.MakeInt64(256), types.Typ[types.Uint8])},
+	}}, byteArray); ok {
+		t.Fatal("out-of-range byte array element should be rejected")
+	}
+}
+
+func TestStaticInitFunctionLeafVariants(t *testing.T) {
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	function := &ssa.Function{Signature: sig}
+	terminal := new(ssa.Store)
+	closure := &ssa.MakeClosure{Fn: function}
+	terminal.Val = closure
+	refs := closure.Referrers()
+	if refs == nil {
+		t.Fatal("closure referrers unavailable")
+	}
+	*refs = []ssa.Instruction{terminal}
+
+	if got, ok := staticInitFunctionOf(function, terminal); !ok || got != function {
+		t.Fatalf("direct function leaf = (%v, %v), want (%v, true)", got, ok, function)
+	}
+	if got, ok := staticInitFunctionOf(closure, terminal); !ok || got != function {
+		t.Fatalf("closure function leaf = (%v, %v), want (%v, true)", got, ok, function)
+	}
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if !handleStoreVal(terminal, nil, &stores, &instrs, nil) {
+		t.Fatal("valid closure leaf was rejected")
+	}
+	if len(stores) != 1 || stores[0].function != function || len(instrs) != 1 || instrs[0] != closure {
+		t.Fatalf("closure leaf collection = (%+v, %+v)", stores, instrs)
+	}
+
+	bound := &ssa.MakeClosure{Fn: function, Bindings: []ssa.Value{
+		ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]),
+	}}
+	if _, ok := staticInitFunctionOf(bound, terminal); ok {
+		t.Fatal("closure with bindings should be rejected")
+	}
+	if _, ok := staticInitFunctionOf(&ssa.MakeClosure{
+		Fn: ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]),
+	}, terminal); ok {
+		t.Fatal("closure with non-function code should be rejected")
+	}
+	if _, ok := staticInitFunctionOf(&ssa.MakeClosure{
+		Fn: &ssa.Function{Signature: sig, FreeVars: []*ssa.FreeVar{new(ssa.FreeVar)}},
+	}, terminal); ok {
+		t.Fatal("closure with free variables should be rejected")
+	}
+	*refs = append(*refs, new(ssa.Store))
+	if _, ok := staticInitFunctionOf(closure, terminal); ok {
+		t.Fatal("closure with an additional executable referrer should be rejected")
 	}
 }
 
