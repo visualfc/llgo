@@ -239,6 +239,7 @@ GetSystemDirectoryA(char *buffer, llgo_dword size);
 typedef int (LLGO_WINAPI *llgo_console_handler)(llgo_dword event);
 __declspec(dllimport) int LLGO_WINAPI
 SetConsoleCtrlHandler(llgo_console_handler handler, int add);
+__declspec(dllimport) void LLGO_WINAPI Sleep(llgo_dword milliseconds);
 typedef struct llgo_overlapped llgo_overlapped;
 __declspec(dllimport) void *LLGO_WINAPI
 CreateIoCompletionPort(void *file, void *existing_port,
@@ -265,6 +266,7 @@ enum {
 static int LLGO_WINAPI llgo_windows_console_handler(llgo_dword event)
 {
     llgo_dword signum;
+    int handled;
     switch (event) {
     case llgo_ctrl_c_event:
     case llgo_ctrl_break_event:
@@ -278,7 +280,19 @@ static int LLGO_WINAPI llgo_windows_console_handler(llgo_dword event)
     default:
         return 0;
     }
-    return llgo_runtime_windowsSignalCallback(signum);
+    handled = llgo_runtime_windowsSignalCallback(signum);
+    if (!handled)
+        return 0;
+    if (signum == llgo_sigterm) {
+        /* Windows terminates the process after a close, logoff, or shutdown
+         * handler returns. Match Go's ctrlHandler by parking this dedicated
+         * callback thread after SIGTERM has been accepted, leaving the other
+         * LLGo native threads free to run os/signal cleanup until the process
+         * exits. */
+        for (;;)
+            Sleep(0xffffffffUL);
+    }
+    return 1;
 }
 
 int llgo_getpagesize(void)
