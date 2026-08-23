@@ -35,6 +35,8 @@ import "C"
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[DEFER]])
 // DARWIN-ARM64: [[JMP_RESULT:%[0-9]+]] = call i32 @sigsetjmp
 // LINUX-AMD64: [[JMP_RESULT:%[0-9]+]] = call i32 @__sigsetjmp
+// WINDOWS-ARM64: [[JMP_RESULT:%[0-9]+]] = call i32 @llgo_setjmp(ptr %{{[0-9]+}})
+// WINDOWS-AMD64: [[JMP_RESULT:%[0-9]+]] = call i32 @_setjmpex(ptr %{{[0-9]+}}, ptr null)
 // CHECK-NEXT: [[JMP_NORMAL:%[0-9]+]] = icmp eq i32 [[JMP_RESULT]], 0
 // CHECK-NEXT: br i1 [[JMP_NORMAL]], label %{{[^,]+}}, label %{{[^ ]+}}
 // CHECK: call [0 x i8] @main._Cfunc_Py_Finalize()

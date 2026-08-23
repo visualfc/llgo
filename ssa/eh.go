@@ -155,19 +155,15 @@ func (b Builder) windowsSetjmp(jb Expr) Expr {
 		)
 		args = []Expr{jb, zero}
 	case "amd64":
+		// A nil frame tells longjmp to restore the saved context directly.
+		// LLGo owns Go defer unwinding, and RtlUnwind cannot leave a vectored
+		// exception handler that interrupted generated Go code reliably.
 		name = "_setjmpex"
-		zero := prog.IntVal(0, prog.CInt())
-		frame := b.impl.CreateIntrinsic(
-			prog.VoidPtr().ll,
-			llvm.LookupIntrinsicID("llvm.frameaddress"),
-			[]llvm.Value{zero.impl},
-			"",
-		)
 		params = types.NewTuple(
 			ptrParam,
 			types.NewParam(token.NoPos, nil, "", prog.VoidPtr().raw.Type),
 		)
-		args = []Expr{jb, {frame, prog.VoidPtr()}}
+		args = []Expr{jb, prog.Nil(prog.VoidPtr())}
 	case "arm64":
 		// UCRT longjmp performs a Windows virtual unwind before restoring the
 		// saved context. That cannot cross third-party assembly without .pdata,

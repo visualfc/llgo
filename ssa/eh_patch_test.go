@@ -78,13 +78,12 @@ func TestWindowsSigjmpBufferAlignment(t *testing.T) {
 
 func TestWindowsSetjmpABI(t *testing.T) {
 	tests := []struct {
-		arch      string
-		setjmp    string
-		longjmp   string
-		frameInfo string
+		arch    string
+		setjmp  string
+		longjmp string
 	}{
 		{arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
-		{arch: "amd64", setjmp: "@_setjmpex", longjmp: "@longjmp", frameInfo: "@llvm.frameaddress"},
+		{arch: "amd64", setjmp: "@_setjmpex", longjmp: "@longjmp"},
 		{arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
 	}
 	for _, test := range tests {
@@ -106,17 +105,17 @@ func TestWindowsSetjmpABI(t *testing.T) {
 			if !strings.Contains(ir, test.setjmp) {
 				t.Fatalf("Windows/%s IR does not call %s:\n%s", test.arch, test.setjmp, ir)
 			}
-			if test.frameInfo != "" && !strings.Contains(ir, test.frameInfo) {
-				t.Fatalf("Windows/%s IR does not obtain %s:\n%s", test.arch, test.frameInfo, ir)
-			}
 			if !strings.Contains(ir, "returns_twice") {
 				t.Fatalf("Windows/%s setjmp declaration is not marked returns_twice:\n%s", test.arch, ir)
 			}
 			if !strings.Contains(ir, test.longjmp) {
 				t.Fatalf("Windows/%s IR does not call %s:\n%s", test.arch, test.longjmp, ir)
 			}
-			if test.arch == "arm64" && (strings.Contains(ir, "@_setjmpex") || strings.Contains(ir, "@llvm.sponentry")) {
-				t.Fatalf("Windows/arm64 IR unexpectedly uses the UCRT unwind path:\n%s", ir)
+			if test.arch == "amd64" && !strings.Contains(ir, "ptr null") {
+				t.Fatalf("Windows/amd64 setjmp does not disable UCRT unwinding:\n%s", ir)
+			}
+			if (test.arch == "amd64" || test.arch == "arm64") && (strings.Contains(ir, "@llvm.frameaddress") || strings.Contains(ir, "@llvm.sponentry")) {
+				t.Fatalf("Windows/%s IR unexpectedly captures a UCRT unwind frame:\n%s", test.arch, ir)
 			}
 			if strings.Contains(ir, "sigsetjmp") || strings.Contains(ir, "siglongjmp") {
 				t.Fatalf("Windows/%s IR unexpectedly uses POSIX sigjmp symbols:\n%s", test.arch, ir)
