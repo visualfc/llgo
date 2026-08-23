@@ -158,9 +158,15 @@ func windowsPollDeadline(pd *windowsPollDesc, mode int) int64 {
 
 func windowsWallDeadline(after int64) ctime.Timespec {
 	seconds, nanoseconds := walltime()
-	nsec := int64(nanoseconds) + after
-	seconds += nsec / 1e9
-	nsec %= 1e9
+	// Split before adding so a saturated monotonic deadline cannot overflow
+	// while it is converted to the absolute wall-clock form expected by the
+	// native condition variable.
+	seconds += after / 1e9
+	nsec := int64(nanoseconds) + after%1e9
+	if nsec >= 1e9 {
+		seconds++
+		nsec -= 1e9
+	}
 	return ctime.Timespec{Sec: ctime.TimeT(seconds), Nsec: c.Long(nsec)}
 }
 
@@ -275,6 +281,12 @@ func poll_runtime_pollSetDeadline(ctx uintptr, d int64, mode int) {
 	var deadline int64
 	if d != 0 {
 		deadline = runtimeNano() + d
+		if d > 0 && deadline <= 0 {
+			// Match Go's netpoll deadline saturation. A far-future wall
+			// deadline can produce a duration close to MaxInt64; adding the
+			// monotonic clock must not wrap it into an already-expired value.
+			deadline = 1<<63 - 1
+		}
 	}
 	pd.mu.Lock()
 	switch mode {

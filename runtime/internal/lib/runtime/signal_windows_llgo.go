@@ -26,6 +26,7 @@ var (
 	windowsSignalCond      psync.Cond
 	windowsSignalStates    [windowsSignalCount]windowsSignalState
 	windowsSignalPending   [(windowsSignalCount + 31) / 32]uint32
+	windowsSignalReceiving bool
 )
 
 //go:linkname c_windowsSignalInit C.llgo_windows_signal_init
@@ -125,11 +126,17 @@ func signal_recv() uint32 {
 			bit := uint32(1) << (sig & 31)
 			if *word&bit != 0 {
 				*word &^= bit
+				windowsSignalReceiving = false
 				windowsSignalMu.Unlock()
 				return sig
 			}
 		}
+		// Match the receiving state in Go's signal queue. Stop needs to know
+		// that the os/signal loop finished processing the previously dequeued
+		// signal, not merely that the pending bit has been cleared.
+		windowsSignalReceiving = true
 		windowsSignalCond.Wait(&windowsSignalMu)
+		windowsSignalReceiving = false
 	}
 }
 
@@ -141,8 +148,9 @@ func signalWaitUntilIdle() {
 		for _, word := range windowsSignalPending {
 			pending = pending || word != 0
 		}
+		idle := !pending && windowsSignalReceiving
 		windowsSignalMu.Unlock()
-		if !pending {
+		if idle {
 			return
 		}
 		c.Usleep(1)

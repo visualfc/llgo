@@ -119,6 +119,42 @@ func testTCPReadDeadline() {
 	}
 }
 
+func testTCPFarFutureDeadline() {
+	listener := mustTCPListener()
+	defer listener.Close()
+
+	serverErr := make(chan error, 1)
+	go func() {
+		conn, err := listener.AcceptTCP()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		defer conn.Close()
+		_, err = conn.Write([]byte{42})
+		serverErr <- err
+	}()
+
+	client, err := net.DialTimeout("tcp4", listener.Addr().String(), operationTimeout)
+	if err != nil {
+		panic("far-future deadline TCP dial failed: " + err.Error())
+	}
+	defer client.Close()
+	if err := client.SetReadDeadline(time.Now().Add(time.Duration(1<<63 - 1))); err != nil {
+		panic("far-future TCP SetReadDeadline failed: " + err.Error())
+	}
+	var value [1]byte
+	if _, err := io.ReadFull(client, value[:]); err != nil {
+		panic("far-future TCP deadline expired immediately: " + err.Error())
+	}
+	if value[0] != 42 {
+		panic("far-future TCP read returned the wrong payload")
+	}
+	if err := <-serverErr; err != nil {
+		panic("far-future TCP server failed: " + err.Error())
+	}
+}
+
 func testTCPListenerClose() {
 	listener := mustTCPListener()
 	acceptErr := make(chan error, 1)
@@ -200,6 +236,7 @@ func testLocalhostLookup() {
 func main() {
 	testTCPRoundTrip()
 	testTCPReadDeadline()
+	testTCPFarFutureDeadline()
 	testTCPListenerClose()
 	testUDP()
 	testLocalhostLookup()

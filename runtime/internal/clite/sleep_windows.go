@@ -20,7 +20,9 @@ package c
 
 import _ "unsafe"
 
-//go:linkname winSleep C.Sleep
+const LLGoFiles = "_wrap/sleep_windows.c"
+
+//go:linkname winSleep C.llgo_windows_sleep
 func winSleep(milliseconds Uint)
 
 func Usleep(useconds Uint) Int {
