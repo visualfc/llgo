@@ -1810,6 +1810,9 @@ func (a *runtimeCallerAnalysis) methodTargetsForType(typ types.Type, method *typ
 		if sel.Obj().Name() != method.Name() {
 			continue
 		}
+		if genmethod.SupportsGenericMethods && genmethod.IsGenericMethod(sel.Type()) {
+			continue
+		}
 		fn := a.pkg.Prog.MethodValue(sel)
 		if fn == nil {
 			return nil, false
