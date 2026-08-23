@@ -1,0 +1,175 @@
+/*
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package build
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/xgo-dev/llgo/internal/optlevel"
+	"github.com/xgo-dev/llgo/xtool/safesplit"
+)
+
+type darwinSizeSymbolPlan struct {
+	linkerArgs     []string
+	stripLTOLocals bool
+}
+
+func planDarwinSizeSymbols(ctx *context, pkgs []*aPackage, linkArgs []string) darwinSizeSymbolPlan {
+	return planDarwinSizeSymbolsFor(ctx, pkgs, linkArgs, runtime.GOOS == "darwin")
+}
+
+func planDarwinSizeSymbolsFor(ctx *context, pkgs []*aPackage, linkArgs []string, nativeDarwin bool) darwinSizeSymbolPlan {
+	if ctx == nil || ctx.buildConf == nil {
+		return darwinSizeSymbolPlan{}
+	}
+	conf := ctx.buildConf
+	if !nativeDarwin || conf.Goos != "darwin" || conf.Target != "" ||
+		conf.BuildMode != BuildModeExe || !isSizeOptLevel(conf.OptLevel) ||
+		shouldEmitDebugInfo(conf, &ctx.crossCompile) {
+		return darwinSizeSymbolPlan{}
+	}
+	// Without either the prebuilt table or site records, Darwin symbolization
+	// falls back to dlsym. Keep the exports available in that escape-hatch
+	// configuration.
+	if conf.PCLNMode != PCLNNone && (ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled()) {
+		return darwinSizeSymbolPlan{}
+	}
+	if mainPackageHasExports(pkgs) {
+		return darwinSizeSymbolPlan{}
+	}
+	allLinkArgs := append([]string(nil), linkArgs...)
+	allLinkArgs = append(allLinkArgs, safesplit.SplitPkgConfigFlags(os.Getenv("LDFLAGS"))...)
+	if hasDarwinExportControl(allLinkArgs) {
+		return darwinSizeSymbolPlan{}
+	}
+
+	if conf.ltoEnabled() {
+		// LTO internalizes ordinary Go definitions. Keep those local symbols
+		// through pclnpost, then remove them from the final signed executable.
+		return darwinSizeSymbolPlan{stripLTOLocals: true}
+	}
+	// A main executable does not need to publish every package definition to
+	// dyld. Keeping them as private externs preserves the Mach-O symbol table
+	// for pclnpost and offline tools while eliminating the large export trie.
+	return darwinSizeSymbolPlan{linkerArgs: []string{"-Wl,-no_exported_symbols"}}
+}
+
+func isSizeOptLevel(level optlevel.Level) bool {
+	return level == optlevel.Os || level == optlevel.Oz
+}
+
+func mainPackageHasExports(pkgs []*aPackage) bool {
+	for _, pkg := range pkgs {
+		// Executable-level dynamic exports are declared by the root main
+		// package. Runtime and standard-library //export callbacks are static
+		// implementation links and must not turn every Go symbol into a dyld
+		// export.
+		if pkg != nil && pkg.Package != nil && pkg.Name == "main" && hasLocalCExports(pkg.LPkg) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDarwinExportControl(args []string) bool {
+	for _, arg := range args {
+		arg = strings.ToLower(arg)
+		if strings.Contains(arg, "exported_symbol") ||
+			strings.Contains(arg, "export_dynamic") ||
+			strings.Contains(arg, "dynamic_lookup") {
+			return true
+		}
+	}
+	return false
+}
+
+func finalizeDarwinSizeExecutable(ctx *context, path string, verbose bool) error {
+	if ctx == nil || !ctx.stripDarwinLTOLocals {
+		return nil
+	}
+	if err := stripAndSignDarwinLocals(path, verbose); err != nil {
+		return fmt.Errorf("compact Darwin LTO symbols: %w", err)
+	}
+	return nil
+}
+
+// stripAndSignDarwinLocals stages the mutation beside the output so a failed
+// strip or signature never replaces the successfully linked executable.
+func stripAndSignDarwinLocals(path string, verbose bool) error {
+	st, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	source, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".strip-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
+	if err := tmp.Chmod(st.Mode()); err != nil {
+		return err
+	}
+	if _, err := io.Copy(tmp, source); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	if verbose {
+		fmt.Fprintf(os.Stderr, "strip -x %s\n", tmpPath)
+	}
+	if output, err := exec.Command("strip", "-x", tmpPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("strip -x: %v: %s", err, output)
+	}
+	if verbose {
+		fmt.Fprintf(os.Stderr, "codesign -f -s - %s\n", tmpPath)
+	}
+	if output, err := exec.Command("codesign", "-f", "-s", "-", tmpPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("codesign: %v: %s", err, output)
+	}
+	signed, err := os.OpenFile(tmpPath, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	if err := signed.Sync(); err != nil {
+		_ = signed.Close()
+		return err
+	}
+	if err := signed.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}

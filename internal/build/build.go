@@ -728,6 +728,9 @@ func Build(inv Invocation) ([]Package, error) {
 			if err := finalizeRuntimePCLN(ctx, outFmts, verbose); err != nil {
 				return nil, err
 			}
+			if err := finalizeDarwinSizeExecutable(ctx, outFmts.Out, verbose); err != nil {
+				return nil, err
+			}
 			if conf.Mode == ModeBuild && conf.SizeReport {
 				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
@@ -957,6 +960,11 @@ type context struct {
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
 	pclnExternal *pclnmap.Data
+
+	// stripDarwinLTOLocals is set by the final executable link plan. LTO has
+	// already internalized ordinary Go symbols, but pclnpost still needs them
+	// until the runtime tables have been rewritten.
+	stripDarwinLTOLocals bool
 
 	buildTrace *buildTracer
 }
@@ -1436,6 +1444,7 @@ func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
 
 func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPath string, verbose bool) error {
 	ctx.pclnExternal = nil
+	ctx.stripDarwinLTOLocals = false
 	needRuntime := false
 	needPyInit := false
 	var needAbiInit int
@@ -1579,6 +1588,9 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		}
 	}
 	linkArgs = append(linkArgs, cSharedExportArgs(ctx, linkedOrder)...)
+	darwinSymbols := planDarwinSizeSymbols(ctx, linkedOrder, linkArgs)
+	linkArgs = append(linkArgs, darwinSymbols.linkerArgs...)
+	ctx.stripDarwinLTOLocals = darwinSymbols.stripLTOLocals
 
 	err = linkObjFiles(ctx, outputPath, linkInputs, linkArgs, verbose)
 	if err != nil {
