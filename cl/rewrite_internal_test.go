@@ -513,6 +513,162 @@ func Use() int { return Entries[0].Points[1].X + len(Entries[0].Label) }
 	}
 }
 
+func TestStaticGlobalNestedSliceLiteralInit(t *testing.T) {
+	const src = `package staticinit
+
+type EventSpec struct {
+	Name     string
+	Args     []string
+	StackIDs []int
+}
+
+var specs = [2]EventSpec{
+	{Name: "first", Args: []string{"time", "stack"}, StackIDs: []int{1}},
+	{Name: "second", Args: []string{"id"}},
+}
+
+func Use() int { return len(specs[0].Args) + specs[0].StackIDs[0] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		`@staticinit.specs = global [2 x %staticinit.EventSpec]`,
+		`@"staticinit.specs$data$0$1" = global [2 x %"github.com/xgo-dev/llgo/runtime/internal/runtime.String"]`,
+		`@"staticinit.specs$data$0$2" = global [1 x i64]`,
+		`@"staticinit.specs$data$1$1" = global [1 x %"github.com/xgo-dev/llgo/runtime/internal/runtime.String"]`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing nested slice initializer %q in IR:\n%s", want, ir)
+		}
+	}
+	if strings.Contains(ir, `@staticinit.specs = global [2 x %staticinit.EventSpec] zeroinitializer`) {
+		t.Fatalf("nested slices left the root global zero-initialized:\n%s", ir)
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.specs")
+	if strings.Contains(ir, "runtime.AllocZ") {
+		t.Fatalf("nested slice initializer still allocates at runtime:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalFunctionTableInit(t *testing.T) {
+	const src = `package staticinit
+
+type Handler struct {
+	Name string
+	Call func(int) int
+}
+
+func plusOne(v int) int { return v + 1 }
+func timesTwo(v int) int { return v * 2 }
+
+var Handlers = []*Handler{
+	{Name: "plus", Call: plusOne},
+	{Name: "times", Call: timesTwo},
+}
+
+func Use(v int) int { return Handlers[0].Call(v) }
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		`@"staticinit.Handlers$data" = global [2 x ptr] [ptr @"staticinit.Handlers$data$0", ptr @"staticinit.Handlers$data$1"]`,
+		`@"staticinit.Handlers$data$0" = global %staticinit.Handler`,
+		`@"staticinit.Handlers$data$1" = global %staticinit.Handler`,
+		`{ ptr @staticinit.plusOne, ptr null }`,
+		`{ ptr @staticinit.timesTwo, ptr null }`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static function table initializer %q in IR:\n%s", want, ir)
+		}
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.Handlers")
+	if strings.Contains(ir, "runtime.AllocZ") {
+		t.Fatalf("static function table still allocates at runtime:\n%s", ir)
+	}
+}
+
+func TestStaticGlobalPointerArrayInit(t *testing.T) {
+	const src = `package staticinit
+
+var Values = []*[2]int{{1, 2}}
+
+func Use() int { return Values[0][1] }
+`
+	ir := compileWithRewrites(t, src, nil)
+	for _, want := range []string{
+		`@"staticinit.Values$data" = global [1 x ptr] [ptr @"staticinit.Values$data$0"]`,
+		`@"staticinit.Values$data$0" = global [2 x i64] [i64 1, i64 2]`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing static pointer-array initializer %q in IR:\n%s", want, ir)
+		}
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.Values")
+}
+
+func TestStaticGlobalExplicitEnvFunctionFallsBack(t *testing.T) {
+	const src = `package staticinit
+
+//llgo:env
+func withEnv(v int) int { return v }
+
+var Handlers = []func(int) int{withEnv}
+
+func Use(v int) int { return Handlers[0](v) }
+`
+	ir := compileWithRewrites(t, src, nil)
+	if strings.Contains(ir, `@"staticinit.Handlers$data"`) {
+		t.Fatalf("explicit-env function unexpectedly used a static function table:\n%s", ir)
+	}
+	assertStoreToGlobal(t, ir, "@staticinit.Handlers")
+}
+
+func TestStaticGlobalZeroSizedPointerLiteralFallsBack(t *testing.T) {
+	const src = `package foo
+
+var Values = []*struct{}{{}}
+`
+	ssapkg := buildSSAPackage(t, src)
+	global := ssapkg.Members["Values"].(*ssa.Global)
+	initFn := ssapkg.Func("init")
+	var globalStore *ssa.Store
+	for _, block := range initFn.Blocks {
+		for _, instr := range block.Instrs {
+			if store, ok := instr.(*ssa.Store); ok && store.Addr == global {
+				globalStore = store
+			}
+		}
+	}
+	if globalStore == nil {
+		t.Fatal("store to Values not found")
+	}
+	if _, ok := staticSliceInitOf(globalStore); ok {
+		t.Fatal("zero-sized pointer values unexpectedly accepted by static slice folding")
+	}
+}
+
+func TestStaticGlobalInterfaceLiteralFallsBack(t *testing.T) {
+	const src = `package foo
+
+var Values = []any{1, "two"}
+`
+	ssapkg := buildSSAPackage(t, src)
+	global := ssapkg.Members["Values"].(*ssa.Global)
+	initFn := ssapkg.Func("init")
+	var globalStore *ssa.Store
+	for _, block := range initFn.Blocks {
+		for _, instr := range block.Instrs {
+			if store, ok := instr.(*ssa.Store); ok && store.Addr == global {
+				globalStore = store
+			}
+		}
+	}
+	if globalStore == nil {
+		t.Fatal("store to Values not found")
+	}
+	if _, ok := staticSliceInitOf(globalStore); ok {
+		t.Fatal("interface values unexpectedly accepted by static slice folding")
+	}
+}
+
 func TestStaticGlobalStructSliceDynamicFieldFallsBack(t *testing.T) {
 	const src = `package staticinit
 
@@ -769,7 +925,7 @@ func Use() string { return Zulu + Alpha }
 	}
 }
 
-func TestStaticGlobalInitSkipsLargeArray(t *testing.T) {
+func TestStaticGlobalInitFoldsLargeByteArray(t *testing.T) {
 	length := maxStaticInitArrayElements + 1
 	src := fmt.Sprintf(`package staticinit
 
@@ -778,9 +934,27 @@ var Large = [%d]byte{%d: 1}
 func Use() byte { return Large[%d] }
 `, length, length-1, length-1)
 	ir := compileWithRewrites(t, src, nil)
-	want := fmt.Sprintf("@staticinit.Large = global [%d x i8] zeroinitializer", length)
+	want := fmt.Sprintf("@staticinit.Large = global [%d x i8] c\"", length)
 	if !strings.Contains(ir, want) {
-		t.Fatalf("large array should keep a zero initializer:\n%s", ir)
+		t.Fatalf("large byte array should use a compact static initializer")
+	}
+	if strings.Contains(ir, fmt.Sprintf("@staticinit.Large = global [%d x i8] zeroinitializer", length)) {
+		t.Fatal("large byte array still uses a zero initializer")
+	}
+	assertNoStoreToGlobal(t, ir, "@staticinit.Large")
+}
+
+func TestStaticGlobalInitSkipsLargeByteSlice(t *testing.T) {
+	length := maxStaticInitArrayElements + 1
+	src := fmt.Sprintf(`package staticinit
+
+var Large = []byte{%d: 1}
+
+func Use() byte { return Large[%d] }
+`, length-1, length-1)
+	ir := compileWithRewrites(t, src, nil)
+	if strings.Contains(ir, `@"staticinit.Large$data"`) {
+		t.Fatal("large byte slice should retain runtime backing allocation")
 	}
 	assertStoreToGlobal(t, ir, "@staticinit.Large")
 }
@@ -1063,6 +1237,163 @@ var G int
 	}
 	if _, ok := ctx.buildStaticInitExpr(types.NewPointer(types.Typ[types.Int]), new(staticInitNode)); !ok {
 		t.Fatal("empty unsupported scalar node should build a zero initializer")
+	}
+
+	if new(staticInitNode).addStore(staticInitStore{}) {
+		t.Fatal("store without a static leaf should be rejected")
+	}
+
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	if _, ok := ctx.buildStaticInitExpr(types.Typ[types.Int], &staticInitNode{
+		function: &ssa.Function{Signature: sig},
+	}); ok {
+		t.Fatal("function leaf for a non-signature type should be rejected")
+	}
+	if _, ok := ctx.buildStaticInitExpr(
+		types.NewArray(types.Typ[types.Int], maxStaticInitArrayElements+1),
+		new(staticInitNode),
+	); ok {
+		t.Fatal("large non-byte array should be rejected")
+	}
+
+	array := types.NewArray(types.Typ[types.Int], 1)
+	if _, ok := ctx.buildStaticSliceValue("data", types.Typ[types.Int], &staticSliceInit{array: array}); ok {
+		t.Fatal("non-slice type should be rejected by static slice builder")
+	}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.String]), &staticSliceInit{array: array}); ok {
+		t.Fatal("mismatched slice element type should be rejected")
+	}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.Int]), &staticSliceInit{
+		array:  array,
+		stores: []staticInitStore{{value: c}},
+	}); ok {
+		t.Fatal("slice element store without an index path should be rejected")
+	}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.Int]), &staticSliceInit{
+		array: array,
+		stores: []staticInitStore{{
+			path:  []staticInitPathElem{{index: 1}},
+			value: c,
+		}},
+	}); ok {
+		t.Fatal("out-of-range slice element store should be rejected")
+	}
+	duplicate := staticInitStore{path: []staticInitPathElem{{index: 0}}, value: c}
+	if _, ok := ctx.buildStaticSliceValue("data", types.NewSlice(types.Typ[types.Int]), &staticSliceInit{
+		array:  array,
+		stores: []staticInitStore{duplicate, duplicate},
+	}); ok {
+		t.Fatal("duplicate slice element stores should be rejected")
+	}
+	if _, ok := ctx.buildStaticPointerValue("data", types.Typ[types.Int], nil); ok {
+		t.Fatal("non-pointer type should be rejected by static pointer builder")
+	}
+
+	pointerPkg := buildSSAPackage(t, `package foo
+var P = &[1]int{1}
+`)
+	pointerGlobal, ok := pointerPkg.Members["P"].(*ssa.Global)
+	if !ok {
+		t.Fatalf("missing P global: %T", pointerPkg.Members["P"])
+	}
+	var pointerStore *ssa.Store
+	for _, block := range pointerPkg.Func("init").Blocks {
+		for _, instr := range block.Instrs {
+			if store, ok := instr.(*ssa.Store); ok && store.Addr == pointerGlobal {
+				pointerStore = store
+			}
+		}
+	}
+	if pointerStore == nil {
+		t.Fatal("missing store to P")
+	}
+	pointerInit, ok := staticPointerInitOfVisited(pointerStore, nil)
+	if !ok {
+		t.Fatal("valid pointer initializer was rejected")
+	}
+	if _, ok := staticPointerInitOfVisited(pointerStore, map[*ssa.Alloc]bool{pointerInit.alloc: true}); ok {
+		t.Fatal("cyclic pointer initializer should be rejected")
+	}
+	if _, ok := ctx.buildStaticPointerValue("data", types.NewPointer(types.Typ[types.Int]), pointerInit); ok {
+		t.Fatal("mismatched pointer element type should be rejected")
+	}
+	if len(pointerInit.stores) == 0 {
+		t.Fatal("pointer initializer has no element stores")
+	}
+	duplicatePointer := *pointerInit
+	duplicatePointer.stores = append(append([]staticInitStore(nil), pointerInit.stores...), pointerInit.stores[0])
+	pointerType := pointerGlobal.Type().Underlying().(*types.Pointer).Elem()
+	if _, ok := ctx.buildStaticPointerValue("data", pointerType, &duplicatePointer); ok {
+		t.Fatal("duplicate pointer element stores should be rejected")
+	}
+	invalidPointer := *pointerInit
+	invalidPointer.stores = []staticInitStore{{
+		path:  []staticInitPathElem{{index: 1}},
+		value: c,
+	}}
+	if _, ok := ctx.buildStaticPointerValue("data", pointerType, &invalidPointer); ok {
+		t.Fatal("invalid pointer element initializer should be rejected")
+	}
+
+	byteArray := types.NewArray(types.Typ[types.Uint8], 1)
+	if _, ok := staticInitByteArray(&staticInitNode{children: map[int]*staticInitNode{
+		0: {value: ssa.NewConst(constant.MakeString("x"), types.Typ[types.String])},
+	}}, byteArray); ok {
+		t.Fatal("non-integer byte array element should be rejected")
+	}
+	if _, ok := staticInitByteArray(&staticInitNode{children: map[int]*staticInitNode{
+		0: {value: ssa.NewConst(constant.MakeInt64(256), types.Typ[types.Uint8])},
+	}}, byteArray); ok {
+		t.Fatal("out-of-range byte array element should be rejected")
+	}
+}
+
+func TestStaticInitFunctionLeafVariants(t *testing.T) {
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	function := &ssa.Function{Signature: sig}
+	terminal := new(ssa.Store)
+	closure := &ssa.MakeClosure{Fn: function}
+	terminal.Val = closure
+	refs := closure.Referrers()
+	if refs == nil {
+		t.Fatal("closure referrers unavailable")
+	}
+	*refs = []ssa.Instruction{terminal}
+
+	if got, ok := staticInitFunctionOf(function, terminal); !ok || got != function {
+		t.Fatalf("direct function leaf = (%v, %v), want (%v, true)", got, ok, function)
+	}
+	if got, ok := staticInitFunctionOf(closure, terminal); !ok || got != function {
+		t.Fatalf("closure function leaf = (%v, %v), want (%v, true)", got, ok, function)
+	}
+	var stores []staticInitStore
+	var instrs []ssa.Instruction
+	if !handleStoreVal(terminal, nil, &stores, &instrs, nil) {
+		t.Fatal("valid closure leaf was rejected")
+	}
+	if len(stores) != 1 || stores[0].function != function || len(instrs) != 1 || instrs[0] != closure {
+		t.Fatalf("closure leaf collection = (%+v, %+v)", stores, instrs)
+	}
+
+	bound := &ssa.MakeClosure{Fn: function, Bindings: []ssa.Value{
+		ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]),
+	}}
+	if _, ok := staticInitFunctionOf(bound, terminal); ok {
+		t.Fatal("closure with bindings should be rejected")
+	}
+	if _, ok := staticInitFunctionOf(&ssa.MakeClosure{
+		Fn: ssa.NewConst(constant.MakeInt64(1), types.Typ[types.Int]),
+	}, terminal); ok {
+		t.Fatal("closure with non-function code should be rejected")
+	}
+	if _, ok := staticInitFunctionOf(&ssa.MakeClosure{
+		Fn: &ssa.Function{Signature: sig, FreeVars: []*ssa.FreeVar{new(ssa.FreeVar)}},
+	}, terminal); ok {
+		t.Fatal("closure with free variables should be rejected")
+	}
+	*refs = append(*refs, new(ssa.Store))
+	if _, ok := staticInitFunctionOf(closure, terminal); ok {
+		t.Fatal("closure with an additional executable referrer should be rejected")
 	}
 }
 
