@@ -1289,6 +1289,52 @@ var G int
 		t.Fatal("non-pointer type should be rejected by static pointer builder")
 	}
 
+	pointerPkg := buildSSAPackage(t, `package foo
+var P = &[1]int{1}
+`)
+	pointerGlobal, ok := pointerPkg.Members["P"].(*ssa.Global)
+	if !ok {
+		t.Fatalf("missing P global: %T", pointerPkg.Members["P"])
+	}
+	var pointerStore *ssa.Store
+	for _, block := range pointerPkg.Func("init").Blocks {
+		for _, instr := range block.Instrs {
+			if store, ok := instr.(*ssa.Store); ok && store.Addr == pointerGlobal {
+				pointerStore = store
+			}
+		}
+	}
+	if pointerStore == nil {
+		t.Fatal("missing store to P")
+	}
+	pointerInit, ok := staticPointerInitOfVisited(pointerStore, nil)
+	if !ok {
+		t.Fatal("valid pointer initializer was rejected")
+	}
+	if _, ok := staticPointerInitOfVisited(pointerStore, map[*ssa.Alloc]bool{pointerInit.alloc: true}); ok {
+		t.Fatal("cyclic pointer initializer should be rejected")
+	}
+	if _, ok := ctx.buildStaticPointerValue("data", types.NewPointer(types.Typ[types.Int]), pointerInit); ok {
+		t.Fatal("mismatched pointer element type should be rejected")
+	}
+	if len(pointerInit.stores) == 0 {
+		t.Fatal("pointer initializer has no element stores")
+	}
+	duplicatePointer := *pointerInit
+	duplicatePointer.stores = append(append([]staticInitStore(nil), pointerInit.stores...), pointerInit.stores[0])
+	pointerType := pointerGlobal.Type().Underlying().(*types.Pointer).Elem()
+	if _, ok := ctx.buildStaticPointerValue("data", pointerType, &duplicatePointer); ok {
+		t.Fatal("duplicate pointer element stores should be rejected")
+	}
+	invalidPointer := *pointerInit
+	invalidPointer.stores = []staticInitStore{{
+		path:  []staticInitPathElem{{index: 1}},
+		value: c,
+	}}
+	if _, ok := ctx.buildStaticPointerValue("data", pointerType, &invalidPointer); ok {
+		t.Fatal("invalid pointer element initializer should be rejected")
+	}
+
 	byteArray := types.NewArray(types.Typ[types.Uint8], 1)
 	if _, ok := staticInitByteArray(&staticInitNode{children: map[int]*staticInitNode{
 		0: {value: ssa.NewConst(constant.MakeString("x"), types.Typ[types.String])},
