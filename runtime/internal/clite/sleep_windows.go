@@ -18,13 +18,6 @@
 
 package c
 
-import _ "unsafe"
-
-const LLGoFiles = "_wrap/sleep_windows.c"
-
-//go:linkname winSleep C.llgo_windows_sleep
-func winSleep(milliseconds Uint)
-
 func Usleep(useconds Uint) Int {
 	milliseconds := useconds / 1000
 	if useconds%1000 != 0 {
