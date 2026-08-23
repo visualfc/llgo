@@ -46,6 +46,22 @@ func storeWindowsFaultSnapshot(context unsafe.Pointer) bool {
 	// non-local jump unwinds the handler stack.
 	pcs := (*[64]uintptr)(c_windowsFaultPCBuf())
 	pc, fp := windowsFaultPCFP(context)
+	originPC := pc
+	textPC := pc
+	if originPC == 0 {
+		// A call through a nil function value faults while fetching the target
+		// instruction at address zero. Recover the return PC installed by the
+		// call instruction so the fault is still attributed to its Go caller.
+		// This keeps native faults out without breaking Go's nil-call panic.
+		originPC = windowsFaultCallerPC(context)
+		if originPC == 0 {
+			return false
+		}
+		textPC = originPC
+		// originPC is the instruction after the call. Attribute it to the
+		// call itself, including when the return PC is exactly at etext.
+		textPC--
+	}
 	// Do not construct the first-use table in exception context. Normal linked
 	// binaries adopt their prebuilt table during runtime init, and external
 	// metadata is fully constructed before it is published. If neither has
@@ -53,7 +69,7 @@ func storeWindowsFaultSnapshot(context unsafe.Pointer) bool {
 	// exception rather than risking an allocation here.
 	if runtimeFuncPCFramesBuilt() &&
 		(len(runtimePrebuiltFtab) != 0 || len(runtimeFuncPCFrames) != 0) &&
-		!prebuiltTextContains(pc) {
+		!prebuiltTextContains(textPC) {
 		return false
 	}
 	n := 0
@@ -62,12 +78,34 @@ func storeWindowsFaultSnapshot(context unsafe.Pointer) bool {
 		// keeps PC-1 on the instruction that raised the exception.
 		pcs[0] = pc + 1
 		n = 1
+	} else if originPC != 0 {
+		// originPC is already a return PC, which is the convention expected by
+		// CallersFrames and avoids leaving a recovered nil-call trace empty.
+		pcs[0] = originPC
+		n = 1
 	}
 	if fpUnwindAvailable() && n < len(pcs) {
 		n += platformFaultCallers(context, fp, pcs[n:])
 	}
 	rtdebug.StoreFaultPCs(pcs[:n])
 	return true
+}
+
+func windowsFaultCallerPC(raw unsafe.Pointer) uintptr {
+	return (*windowsFaultContext)(raw).faultCallerPC()
+}
+
+func windowsFaultStackCallerPC(sp uintptr) uintptr {
+	const ptrSize = unsafe.Sizeof(uintptr(0))
+	if sp < minLegalPC || sp > ^uintptr(0)-ptrSize ||
+		!memReadable(sp) || !memReadable(sp+ptrSize-1) {
+		return 0
+	}
+	pc := *(*uintptr)(unsafe.Pointer(sp))
+	if pc < minLegalPC {
+		return 0
+	}
+	return pc
 }
 
 func windowsFPWalkFrom(fp uintptr, pcs []uintptr) int {

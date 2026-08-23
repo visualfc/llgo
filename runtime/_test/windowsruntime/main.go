@@ -262,6 +262,7 @@ func main() {
 
 	checkRecover()
 	checkForeignFaultOnGoThread()
+	checkNilFunctionFaultOrigin()
 	checkNilFault()
 	checkConcurrentNilFault()
 	if windowsUnrecoveredFault() != 0 {

@@ -138,6 +138,16 @@ func platformFaultCallers(raw unsafe.Pointer, _ uintptr, pc []uintptr) int {
 	var storage windowsFaultContextStorage
 	context := storage.context()
 	*context = *(*windowsFaultContext)(raw)
+	if context.pc() == 0 {
+		originPC := windowsFaultCallerPC(unsafe.Pointer(context))
+		if originPC == 0 {
+			return 0
+		}
+		// The snapshot already records originPC as its first frame. Resume
+		// unwinding at the caller's call site so this walk begins with the
+		// next frame and preserves the complete panic/recover caller chain.
+		context.prepareNilCallUnwind(originPC)
+	}
 	// A fault can be the first operation that needs caller information. The
 	// Go PC table is deliberately not initialized from the exception handler,
 	// so do not use it to bound this OS-backed walk. RtlVirtualUnwind supplies

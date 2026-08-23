@@ -92,6 +92,18 @@ func (context *windowsFaultContext) setSP(sp uintptr) {
 }
 func (context *windowsFaultContext) setLR(uintptr) {}
 
+func (context *windowsFaultContext) faultCallerPC() uintptr {
+	return windowsFaultStackCallerPC(context.sp())
+}
+
+func (context *windowsFaultContext) prepareNilCallUnwind(originPC uintptr) {
+	// CALL pushed originPC before fetching the nil instruction target. Drop
+	// that transient callee return slot so RtlVirtualUnwind sees the caller's
+	// stack pointer at the call site.
+	context.setPC(originPC)
+	context.setSP(context.sp() + unsafe.Sizeof(uintptr(0)))
+}
+
 func windowsFaultPCFP(raw unsafe.Pointer) (pc, fp uintptr) {
 	context := (*windowsFaultContext)(raw)
 	return context.pc(), uintptr(context.Rbp)

@@ -43,6 +43,10 @@ type windowsFaultContext struct {
 	Esp              uint32
 }
 
+func (context *windowsFaultContext) faultCallerPC() uintptr {
+	return windowsFaultStackCallerPC(uintptr(context.Esp))
+}
+
 func windowsFaultPCFP(raw unsafe.Pointer) (pc, fp uintptr) {
 	context := (*windowsFaultContext)(raw)
 	return uintptr(context.Eip), uintptr(context.Ebp)

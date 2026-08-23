@@ -56,6 +56,21 @@ func (context *windowsFaultContext) setLR(lr uintptr) {
 	context.X[30] = uint64(lr)
 }
 
+func (context *windowsFaultContext) faultCallerPC() uintptr {
+	pc := context.lr()
+	if pc < minLegalPC {
+		return 0
+	}
+	return pc
+}
+
+func (context *windowsFaultContext) prepareNilCallUnwind(originPC uintptr) {
+	// BLR records originPC in LR without changing SP. Continue the virtual
+	// unwind from that call site; the function's unwind data restores its
+	// caller LR when it walks the frame.
+	context.setPC(originPC)
+}
+
 func windowsFaultPCFP(raw unsafe.Pointer) (pc, fp uintptr) {
 	context := (*windowsFaultContext)(raw)
 	return context.pc(), uintptr(context.X[29])
