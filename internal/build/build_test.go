@@ -101,8 +101,8 @@ func TestResolveBuildConfigDefaultsAndValidation(t *testing.T) {
 	if resolved.SizeFormat != "text" || resolved.SizeLevel != "module" {
 		t.Fatalf("size report defaults = %q, %q", resolved.SizeFormat, resolved.SizeLevel)
 	}
-	if resolved.OptLevel != optlevel.Oz {
-		t.Fatalf("default optimization level = %v, want %v", resolved.OptLevel, optlevel.Oz)
+	if resolved.OptLevel != optlevel.Os {
+		t.Fatalf("default optimization level = %v, want %v", resolved.OptLevel, optlevel.Os)
 	}
 	if _, err := resolveBuildConfig(&Config{SizeReport: true, SizeLevel: "invalid"}); err == nil {
 		t.Fatal("invalid size-reporting level succeeded")

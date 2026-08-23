@@ -51,8 +51,8 @@ func TestTargetCodeGenOptLevel(t *testing.T) {
 }
 
 func TestTargetDefaultOptLevel(t *testing.T) {
-	if got := (&Target{}).effectiveOptLevel(); got != optlevel.Oz {
-		t.Fatalf("host default opt level = %v, want %v", got, optlevel.Oz)
+	if got := (&Target{}).effectiveOptLevel(); got != optlevel.Os {
+		t.Fatalf("host default opt level = %v, want %v", got, optlevel.Os)
 	}
 	if got := (&Target{Target: "rp2040"}).effectiveOptLevel(); got != optlevel.Oz {
 		t.Fatalf("target default opt level = %v, want %v", got, optlevel.Oz)

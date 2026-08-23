@@ -2797,6 +2797,9 @@ func effectiveOptLevel(conf *Config) optlevel.Level {
 	if conf != nil && conf.OptLevel.IsValid() {
 		return conf.OptLevel
 	}
+	if conf != nil && conf.Target != "" {
+		return optlevel.TargetDefault
+	}
 	return optlevel.Default
 }
 

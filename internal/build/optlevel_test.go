@@ -10,8 +10,8 @@ import (
 
 func TestEffectiveOptLevelDefaults(t *testing.T) {
 	t.Setenv(llgoOptimize, "")
-	if got := effectiveOptLevel(&Config{}); got != optlevel.Oz {
-		t.Fatalf("host default opt level = %v, want %v", got, optlevel.Oz)
+	if got := effectiveOptLevel(&Config{}); got != optlevel.Os {
+		t.Fatalf("host default opt level = %v, want %v", got, optlevel.Os)
 	}
 	if got := effectiveOptLevel(&Config{Target: "rp2040"}); got != optlevel.Oz {
 		t.Fatalf("target default opt level = %v, want %v", got, optlevel.Oz)
@@ -29,13 +29,13 @@ func TestEffectiveOptLevelOverride(t *testing.T) {
 
 func TestEffectiveOptLevelIgnoresLegacyEnv(t *testing.T) {
 	t.Setenv(llgoOptimize, "off")
-	if got := effectiveOptLevel(&Config{}); got != optlevel.Oz {
-		t.Fatalf("LLGO_OPTIMIZE=off opt level = %v, want %v", got, optlevel.Oz)
+	if got := effectiveOptLevel(&Config{}); got != optlevel.Os {
+		t.Fatalf("LLGO_OPTIMIZE=off opt level = %v, want %v", got, optlevel.Os)
 	}
 
 	t.Setenv(llgoOptimize, "on")
-	if got := effectiveOptLevel(&Config{}); got != optlevel.Oz {
-		t.Fatalf("LLGO_OPTIMIZE=on opt level = %v, want %v", got, optlevel.Oz)
+	if got := effectiveOptLevel(&Config{}); got != optlevel.Os {
+		t.Fatalf("LLGO_OPTIMIZE=on opt level = %v, want %v", got, optlevel.Os)
 	}
 }
 

@@ -75,6 +75,9 @@ func (p *Target) effectiveOptLevel() optlevel.Level {
 	if p != nil && p.OptLevel.IsValid() {
 		return p.OptLevel
 	}
+	if p != nil && p.Target != "" {
+		return optlevel.TargetDefault
+	}
 	return optlevel.Default
 }
 
