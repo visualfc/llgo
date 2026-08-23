@@ -1498,21 +1498,22 @@ func TestNewFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "newfile_test.txt")
 
-	f1, err := os.Create(testFile)
+	fd, err := openNewFileDescriptor(testFile)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("open raw file descriptor: %v", err)
 	}
-
-	fd := f1.Fd()
 	f2 := os.NewFile(fd, testFile)
 	if f2 == nil {
-		t.Error("NewFile returned nil")
+		t.Fatal("NewFile returned nil")
 	}
+	// NewFile takes sole ownership of the raw descriptor. In particular, do
+	// not create it from another *os.File: two owners for one Windows HANDLE
+	// leave the second finalizer able to close a runtime event after the
+	// numeric value is reused.
+	defer f2.Close()
 	if f2.Name() != testFile {
 		t.Errorf("NewFile().Name() = %q, want %q", f2.Name(), testFile)
 	}
-
-	f1.Close()
 }
 
 func TestOpenInRoot(t *testing.T) {
