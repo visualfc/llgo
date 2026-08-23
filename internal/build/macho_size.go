@@ -34,6 +34,26 @@ type darwinSizeSymbolPlan struct {
 	stripLTOLocals bool
 }
 
+type darwinSizeCommand func(name string, args ...string) ([]byte, error)
+
+type darwinSizeFileOps struct {
+	stat       func(string) (os.FileInfo, error)
+	open       func(string) (*os.File, error)
+	createTemp func(string, string) (*os.File, error)
+	openFile   func(string, int, os.FileMode) (*os.File, error)
+	rename     func(string, string) error
+}
+
+func darwinSizeOSFileOps() darwinSizeFileOps {
+	return darwinSizeFileOps{
+		stat:       os.Stat,
+		open:       os.Open,
+		createTemp: os.CreateTemp,
+		openFile:   os.OpenFile,
+		rename:     os.Rename,
+	}
+}
+
 func planDarwinSizeSymbols(ctx *context, pkgs []*aPackage, linkArgs []string) darwinSizeSymbolPlan {
 	return planDarwinSizeSymbolsFor(ctx, pkgs, linkArgs, runtime.GOOS == "darwin")
 }
@@ -116,17 +136,27 @@ func finalizeDarwinSizeExecutable(ctx *context, path string, verbose bool) error
 // stripAndSignDarwinLocals stages the mutation beside the output so a failed
 // strip or signature never replaces the successfully linked executable.
 func stripAndSignDarwinLocals(path string, verbose bool) error {
-	st, err := os.Stat(path)
+	return stripAndSignDarwinLocalsWith(path, verbose, func(name string, args ...string) ([]byte, error) {
+		return exec.Command(name, args...).CombinedOutput()
+	})
+}
+
+func stripAndSignDarwinLocalsWith(path string, verbose bool, run darwinSizeCommand) error {
+	return stripAndSignDarwinLocalsUsing(path, verbose, run, darwinSizeOSFileOps())
+}
+
+func stripAndSignDarwinLocalsUsing(path string, verbose bool, run darwinSizeCommand, files darwinSizeFileOps) error {
+	st, err := files.stat(path)
 	if err != nil {
 		return err
 	}
-	source, err := os.Open(path)
+	source, err := files.open(path)
 	if err != nil {
 		return err
 	}
 	defer source.Close()
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".strip-*")
+	tmp, err := files.createTemp(filepath.Dir(path), "."+filepath.Base(path)+".strip-*")
 	if err != nil {
 		return err
 	}
@@ -151,16 +181,16 @@ func stripAndSignDarwinLocals(path string, verbose bool) error {
 	if verbose {
 		fmt.Fprintf(os.Stderr, "strip -x %s\n", tmpPath)
 	}
-	if output, err := exec.Command("strip", "-x", tmpPath).CombinedOutput(); err != nil {
+	if output, err := run("strip", "-x", tmpPath); err != nil {
 		return fmt.Errorf("strip -x: %v: %s", err, output)
 	}
 	if verbose {
 		fmt.Fprintf(os.Stderr, "codesign -f -s - %s\n", tmpPath)
 	}
-	if output, err := exec.Command("codesign", "-f", "-s", "-", tmpPath).CombinedOutput(); err != nil {
+	if output, err := run("codesign", "-f", "-s", "-", tmpPath); err != nil {
 		return fmt.Errorf("codesign: %v: %s", err, output)
 	}
-	signed, err := os.OpenFile(tmpPath, os.O_RDWR, 0)
+	signed, err := files.openFile(tmpPath, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
@@ -171,5 +201,5 @@ func stripAndSignDarwinLocals(path string, verbose bool) error {
 	if err := signed.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpPath, path)
+	return files.rename(tmpPath, path)
 }
