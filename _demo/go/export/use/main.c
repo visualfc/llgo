@@ -4,6 +4,9 @@
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "../libexport.h"
 
 static int go_string_equals(GoString got, const char *want) {
@@ -30,6 +33,59 @@ static int void_callback_count;
 static void void_callback(void) {
     void_callback_count++;
 }
+
+#ifdef _WIN32
+static volatile LONG foreign_fault_count;
+
+static LONG CALLBACK continue_foreign_fault(EXCEPTION_POINTERS *exception) {
+    EXCEPTION_RECORD *record = exception->ExceptionRecord;
+    if (record->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+        record->NumberParameters >= 2 && record->ExceptionInformation[1] == 0) {
+        InterlockedIncrement(&foreign_fault_count);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static DWORD WINAPI call_go_export_from_foreign_thread(LPVOID arg) {
+    intptr_t value = (intptr_t)arg;
+    ULONG_PTR fault_information[2] = {0, 0};
+    // The LLGo DLL installs a process-wide vectored exception handler. A
+    // fault on a thread that has not entered Go must continue to the next
+    // native handler instead of being converted into a Go panic.
+    RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 2, fault_information);
+    for (int i = 0; i < 32; i++) {
+        GoString formatted = FormatValue((GoString){"thread", 6}, value + i);
+        if (formatted.n < 8 || memcmp(formatted.p, "thread:", 7) != 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void test_foreign_thread_exports(void) {
+    enum { thread_count = 8 };
+    HANDLE threads[thread_count];
+    PVOID fault_handler = AddVectoredExceptionHandler(0, continue_foreign_fault);
+    assert(fault_handler != NULL);
+    foreign_fault_count = 0;
+    for (intptr_t i = 0; i < thread_count; i++) {
+        threads[i] = CreateThread(NULL, 0, call_go_export_from_foreign_thread,
+                                  (LPVOID)i, 0, NULL);
+        assert(threads[i] != NULL);
+    }
+    assert(WaitForMultipleObjects(thread_count, threads, TRUE, INFINITE) ==
+           WAIT_OBJECT_0);
+    for (int i = 0; i < thread_count; i++) {
+        DWORD result;
+        assert(GetExitCodeThread(threads[i], &result));
+        assert(result == 0);
+        assert(CloseHandle(threads[i]));
+    }
+    assert(foreign_fault_count == thread_count);
+    assert(RemoveVectoredExceptionHandler(fault_handler));
+}
+#endif
 
 int main() {
     printf("=== C Export Demo ===\n");
@@ -64,6 +120,9 @@ int main() {
     // that depend on the runtime hooks supplied by LLGo.
     GoString formatted = FormatValue((GoString){"answer", 6}, 42);
     assert(go_string_equals(formatted, "answer:42"));
+#ifdef _WIN32
+    test_foreign_thread_exports();
+#endif
 #ifdef __linux__
     assert(AllThreadsSyscallStatus() == ENOTSUP);
 #else
@@ -71,17 +130,17 @@ int main() {
 #endif
 
     // Test small struct
-    main_SmallStruct small = CreateSmallStruct(5, 1);  // 1 for true
-    assert(small.ID == 5);
-    assert(small.Flag == 1);
-    printf("Small struct: %d %d\n", small.ID, small.Flag);
+    main_SmallStruct small_value = CreateSmallStruct(5, 1);  // 1 for true
+    assert(small_value.ID == 5);
+    assert(small_value.Flag == 1);
+    printf("Small struct: %d %d\n", small_value.ID, small_value.Flag);
 
-    main_SmallStruct processed = ProcessSmallStruct(small);
+    main_SmallStruct processed = ProcessSmallStruct(small_value);
     assert(processed.ID == 6);
     assert(processed.Flag == 0);
     printf("Processed small: %d %d\n", processed.ID, processed.Flag);
 
-    main_SmallStruct* ptrSmall = ProcessSmallStructPtr(&small);
+    main_SmallStruct* ptrSmall = ProcessSmallStructPtr(&small_value);
     if (ptrSmall != NULL) {
         printf("Ptr small: %d %d\n", ptrSmall->ID, ptrSmall->Flag);
     }
@@ -140,13 +199,13 @@ int main() {
     printf("Uint64: %" PRIu64 "\n", ProcessUint64(10));
     
     assert(ProcessInt(10) == 110);  // ProcessInt(x) returns x * 11
-    printf("Int: %ld\n", ProcessInt(10));
+    printf("Int: %" PRIdPTR "\n", ProcessInt(10));
     
     assert(ProcessUint(10) == 210);  // ProcessUint(x) returns x * 21
-    printf("Uint: %lu\n", ProcessUint(10));
+    printf("Uint: %" PRIuPTR "\n", ProcessUint(10));
     
     assert(ProcessUintptr(0x1000) == 4396);  // ProcessUintptr(x) returns x + 300 = 4096 + 300
-    printf("Uintptr: %lu\n", ProcessUintptr(0x1000));
+    printf("Uintptr: %" PRIuPTR "\n", ProcessUintptr(0x1000));
     
     // Float comparisons with tolerance
     float f32_result = ProcessFloat32(3.14f);
@@ -209,10 +268,10 @@ int main() {
 
     // Test various parameter counts
     assert(NoParams() == 42);  // NoParams() always returns 42
-    printf("NoParams: %ld\n", NoParams());
+    printf("NoParams: %" PRIdPTR "\n", NoParams());
     
     assert(OneParam(5) == 10);  // OneParam(x) returns x * 2
-    printf("OneParam: %ld\n", OneParam(5));
+    printf("OneParam: %" PRIdPTR "\n", OneParam(5));
     
     assert(ThreeParams(10, 2.5, 1) == 25.0);  // ThreeParams calculates result
     printf("ThreeParams: %f\n", ThreeParams(10, 2.5, 1));  // 1 for true

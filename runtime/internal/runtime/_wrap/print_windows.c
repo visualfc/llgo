@@ -13,9 +13,14 @@ typedef unsigned long llgo_dword;
 #endif
 
 __declspec(dllimport) void *LLGO_WINAPI GetStdHandle(llgo_dword handle);
+__declspec(dllimport) int LLGO_WINAPI GetConsoleMode(void *console,
+                                                     llgo_dword *mode);
 __declspec(dllimport) int LLGO_WINAPI WriteFile(
     void *file, const void *buffer, llgo_dword size, llgo_dword *written,
     void *overlapped);
+__declspec(dllimport) int LLGO_WINAPI WriteConsoleW(
+    void *console, const uint16_t *buffer, llgo_dword size,
+    llgo_dword *written, void *reserved);
 
 #define LLGO_STD_ERROR_HANDLE ((llgo_dword)-12)
 
@@ -32,6 +37,30 @@ void llgo_print_write(const void *data, llgo_size_t size)
         if (!WriteFile(file, p, chunk, &written, 0) || written == 0)
             return;
         p += written;
+        size -= written;
+    }
+}
+
+int llgo_print_stderr_is_console(void)
+{
+    void *file = GetStdHandle(LLGO_STD_ERROR_HANDLE);
+    llgo_dword mode;
+    return file != 0 && file != (void *)(intptr_t)-1 &&
+           GetConsoleMode(file, &mode);
+}
+
+void llgo_print_write_console(const uint16_t *data, llgo_size_t size)
+{
+    void *file = GetStdHandle(LLGO_STD_ERROR_HANDLE);
+
+    if (file == 0 || file == (void *)(intptr_t)-1)
+        return;
+    while (size != 0) {
+        llgo_dword chunk = size > UINT32_MAX ? UINT32_MAX : (llgo_dword)size;
+        llgo_dword written = 0;
+        if (!WriteConsoleW(file, data, chunk, &written, 0) || written == 0)
+            return;
+        data += written;
         size -= written;
     }
 }

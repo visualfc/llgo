@@ -1,9 +1,12 @@
 /* CPU profiling for native Windows LLGo executables.
  *
- * This follows the Go runtime's Windows model: a dedicated native thread
- * periodically suspends the other process threads, snapshots their CONTEXT,
- * and resumes them immediately. Sample collection stays entirely in C so it
- * does not enter Go or allocate GC-managed memory from the profiler thread.
+ * This uses the same suspend/CONTEXT mechanism as the Go runtime's Windows
+ * profiler. LLGo does not yet maintain Go's allm list or per-M blocked state,
+ * so the sampler currently enumerates every process thread. Consequently,
+ * foreign and blocked threads can contribute samples; keep that limitation
+ * explicit until the 1:1 runtime exposes a profiler-owned thread registry.
+ * Sample collection stays entirely in C so it does not enter Go or allocate
+ * GC-managed memory from the profiler thread.
  *
  * Keep the declarations independent of Windows SDK headers, like the rest of
  * the Windows runtime shim, so cross compilation only needs the import libs. */

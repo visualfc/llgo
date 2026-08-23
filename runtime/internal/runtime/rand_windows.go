@@ -11,7 +11,7 @@ const windowsRandIncrement = uint64(0xa0761d6478bd642f)
 
 var windowsRandProcessSeed = uint64(clitetime.Time(nil))
 
-// Fastrand returns random data from the current M, following the ownership
+// fastrand returns random data from the current M, following the ownership
 // model used by Go's runtime.rand. LLGo cannot use UCRT rand here: srand seeds
 // only the calling Windows thread, while LLGo currently maps each goroutine to
 // a separate native thread. New threads would therefore all start with UCRT's
@@ -22,7 +22,7 @@ var windowsRandProcessSeed = uint64(clitetime.Time(nil))
 // The M id separates the streams created during one process. Mixing it with a
 // process seed, rather than merely offsetting one linear sequence, prevents
 // adjacent M ids from producing the same sequence shifted by one call.
-func Fastrand() uint32 {
+func fastrand() uint32 {
 	mp := getg().m
 	state := mp.os.randomState
 	if state == 0 {
@@ -34,6 +34,12 @@ func Fastrand() uint32 {
 	state += windowsRandIncrement
 	mp.os.randomState = state
 	return uint32(mixWindowsRand(state))
+}
+
+// Fastrand exposes the core random source to the public runtime compatibility
+// package. Compiler-lowered maps and channels call fastrand directly.
+func Fastrand() uint32 {
+	return fastrand()
 }
 
 func mixWindowsRand(state uint64) uint64 {
