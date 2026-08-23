@@ -526,33 +526,61 @@ func TestValidSelectOutputLines(t *testing.T) {
 }
 
 func selectOutputLines(output string) []string {
+	// Builtin print operations from different native goroutine threads can be
+	// interleaved: an integer may be split around another token, and two string
+	// tokens may share one physical line. Extract every complete logical token
+	// in order and leave incomplete integer fragments unclassified.
+	tokens := [...]string{"100", "200", "ch1", "ch2", "exit"}
 	var lines []string
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimSpace(line)
-		switch {
-		case line == "100" || line == "200":
-			lines = append(lines, line)
-		case strings.Contains(line, "ch1"):
-			lines = append(lines, "ch1")
-		case strings.Contains(line, "ch2"):
-			lines = append(lines, "ch2")
-		case strings.Contains(line, "exit"):
-			// The sender and receiver print from different native threads.
-			// Integer printing may therefore be split around the receiver's
-			// string even though the receiver token itself remains contiguous.
-			lines = append(lines, "exit")
+		for len(line) != 0 {
+			index := len(line)
+			token := ""
+			for _, candidate := range tokens {
+				if candidateIndex := strings.Index(line, candidate); candidateIndex >= 0 && candidateIndex < index {
+					index = candidateIndex
+					token = candidate
+				}
+			}
+			if token == "" {
+				break
+			}
+			lines = append(lines, token)
+			line = line[index+len(token):]
 		}
 	}
 	return lines
 }
 
-func TestSelectOutputLinesAllowsSplitIntegerPrint(t *testing.T) {
-	// This is a real Windows output observed after the runtime stopped giving
-	// every native goroutine thread the same pseudo-random stream. The logical
-	// outputs are "100", "exit", and "exit".
-	lines := selectOutputLines("1exit\nexit\n00\n")
-	if len(lines) != 2 || lines[0] != "exit" || lines[1] != "exit" {
-		t.Fatalf("selectOutputLines() = %q, want [exit exit]", lines)
+func TestSelectOutputLinesAllowsConcurrentPrints(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{
+			name:   "split integer print",
+			output: "1exit\nexit\n00\n",
+			want:   "exit exit",
+		},
+		{
+			name:   "coalesced string prints",
+			output: "ch1exit\n",
+			want:   "ch1 exit",
+		},
+		{
+			name:   "coalesced integer and string prints",
+			output: "100ch2\n",
+			want:   "100 ch2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := strings.Join(selectOutputLines(tt.output), " "); got != tt.want {
+				t.Fatalf("selectOutputLines() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
