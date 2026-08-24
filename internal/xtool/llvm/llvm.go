@@ -22,7 +22,12 @@ func GetTargetTripleWithGOARM(goos, goarch, goarm string) string {
 	}
 	switch goarch {
 	case "386":
-		llvmarch = "i386"
+		if goos == "windows" {
+			// LLVM's 32-bit MSVC target spelling uses i686.
+			llvmarch = "i686"
+		} else {
+			llvmarch = "i386"
+		}
 	case "amd64":
 		llvmarch = "x86_64"
 	case "arm64":
@@ -57,13 +62,18 @@ func GetTargetTripleWithGOARM(goos, goarch, goarm string) string {
 		llvmvendor = "apple"
 	case "wasip1":
 		llvmos = "wasip1"
+	case "windows":
+		// GOOS=windows defaults to the native Microsoft ABI. MinGW is a
+		// separate target toolchain and must not be inferred from the host
+		// shell.
+		llvmvendor = "pc"
 	}
 	// Target triples (which actually have four components, but are called
 	// triples for historical reasons) have the form:
 	//   arch-vendor-os-environment
 	triple := llvmarch + "-" + llvmvendor + "-" + llvmos
 	if llvmos == "windows" {
-		triple += "-gnu"
+		triple += "-msvc"
 	} else if goarch == "arm" {
 		arm, _ := archcfg.ParseARM(goarm)
 		triple += "-gnueabi"

@@ -2706,6 +2706,22 @@ func TestARMTargetSpec(t *testing.T) {
 	}
 }
 
+func TestWindowsTargetTriple(t *testing.T) {
+	for _, test := range []struct {
+		goarch string
+		want   string
+	}{
+		{"386", "i686-pc-windows-msvc"},
+		{"amd64", "x86_64-pc-windows-msvc"},
+		{"arm64", "aarch64-pc-windows-msvc"},
+	} {
+		target := &Target{GOOS: "windows", GOARCH: test.goarch}
+		if got := target.Spec().Triple; got != test.want {
+			t.Errorf("windows/%s target triple = %q, want %q", test.goarch, got, test.want)
+		}
+	}
+}
+
 func TestAbiTables(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.sizes = types.SizesFor("gc", runtime.GOARCH)
