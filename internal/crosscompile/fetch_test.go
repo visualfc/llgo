@@ -782,10 +782,6 @@ func TestESPClangDownloadLicenseFailure(t *testing.T) {
 	})
 	defer server.Close()
 
-	originalESPClangBaseURL := espClangBaseUrl
-	espClangBaseUrl = server.URL
-	defer func() { espClangBaseUrl = originalESPClangBaseURL }()
-
 	llgoRoot := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(llgoRoot, "runtime"), 0o755); err != nil {
 		t.Fatal(err)
@@ -799,7 +795,7 @@ func TestESPClangDownloadLicenseFailure(t *testing.T) {
 	t.Setenv("LLGO_ROOT", llgoRoot)
 
 	destDir := filepath.Join(t.TempDir(), "esp-clang")
-	err = checkDownloadAndExtractESPClang("linux", destDir)
+	err = checkDownloadAndExtractESPClang(server.URL, espClangVersion, "linux", destDir)
 	if err == nil || !strings.Contains(err.Error(), "read ESP Clang license") {
 		t.Fatalf("checkDownloadAndExtractESPClang() error = %v, want license read error", err)
 	}
