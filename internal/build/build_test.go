@@ -1576,6 +1576,22 @@ func TestCreateMergedArchiveFileFlattensInputs(t *testing.T) {
 	}
 }
 
+func TestIsArchiveInput(t *testing.T) {
+	for _, test := range []struct {
+		path string
+		want bool
+	}{
+		{path: "package.a", want: true},
+		{path: "package.LIB", want: true},
+		{path: "package.o"},
+		{path: "archive.a.tmp"},
+	} {
+		if got := isArchiveInput(test.path); got != test.want {
+			t.Errorf("isArchiveInput(%q) = %v, want %v", test.path, got, test.want)
+		}
+	}
+}
+
 func TestCreateMergedArchiveFileErrors(t *testing.T) {
 	ctx := &context{buildConf: &Config{}}
 	if err := ctx.createMergedArchiveFile(filepath.Join(t.TempDir(), "empty.a"), nil); err == nil {

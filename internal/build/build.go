@@ -2047,7 +2047,7 @@ func (c *context) createMergedArchiveFile(archivePath string, inputs []string, v
 	fmt.Fprintf(&script, "CREATE %s\n", strconv.Quote(tmpName))
 	for _, input := range inputs {
 		command := "ADDMOD"
-		if strings.HasSuffix(strings.ToLower(input), ".a") {
+		if isArchiveInput(input) {
 			command = "ADDLIB"
 		}
 		fmt.Fprintf(&script, "%s %s\n", command, strconv.Quote(input))
@@ -2073,6 +2073,15 @@ func (c *context) createMergedArchiveFile(archivePath string, inputs []string, v
 		return fmt.Errorf("publish archive %s: %w", archivePath, err)
 	}
 	return nil
+}
+
+func isArchiveInput(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".a", ".lib":
+		return true
+	default:
+		return false
+	}
 }
 
 // createArchiveFile builds an archive at archivePath atomically to avoid races when
