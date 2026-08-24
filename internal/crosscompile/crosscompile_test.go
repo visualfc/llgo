@@ -34,9 +34,9 @@ func TestESPClangHostDownload(t *testing.T) {
 		{"windows", "arm64", "x86_64-w64-mingw32", espClangWindowsVersion},
 	}
 	for _, test := range tests {
-		platform := getESPClangHostPlatform(test.goos, test.goarch)
+		platform := getESPClangPlatform(test.goos, test.goarch)
 		if platform != test.wantPlatform {
-			t.Errorf("getESPClangHostPlatform(%q, %q) = %q, want %q", test.goos, test.goarch, platform, test.wantPlatform)
+			t.Errorf("getESPClangPlatform(%q, %q) = %q, want %q", test.goos, test.goarch, platform, test.wantPlatform)
 			continue
 		}
 		_, version := espClangDownload(platform)
