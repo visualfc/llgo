@@ -19,9 +19,6 @@ jobs:
     name: target configuration (windows-amd64, LLVM 19, Go 1.26.7)
     runs-on: windows-2022
     timeout-minutes: 30
-    env:
-      LLVM_VERSION: "19.1.7"
-      MSYS2_LLVM_PACKAGE_VERSION: "19.1.7-1"
     steps:
       - uses: actions/checkout@v7
 
@@ -30,97 +27,15 @@ jobs:
         with:
           go-version: "1.26.7"
 
-      - name: Set up Windows LLVM environment
-        # CLANG64 supplies the Windows-hosted LLVM library used to compile the
-        # Go binding. LLGo target selection remains independent and defaults
-        # official GOOS=windows targets to the MSVC ABI.
-        uses: msys2/setup-msys2@v2
+      - name: Set up dependencies
+        uses: ./.github/actions/setup-deps
         with:
-          msystem: CLANG64
-          path-type: inherit
-          update: true
-
-      - name: Install LLVM 19
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-
-          repo=https://repo.msys2.org/mingw/clang64
-          prefix=mingw-w64-clang-x86_64
-          packages=(
-            "clang-$MSYS2_LLVM_PACKAGE_VERSION"
-            "clang-libs-$MSYS2_LLVM_PACKAGE_VERSION"
-            "compiler-rt-$MSYS2_LLVM_PACKAGE_VERSION"
-            "llvm-$MSYS2_LLVM_PACKAGE_VERSION"
-            "llvm-libs-$MSYS2_LLVM_PACKAGE_VERSION"
-            "lld-$MSYS2_LLVM_PACKAGE_VERSION"
-            "libc++-$MSYS2_LLVM_PACKAGE_VERSION"
-            "libunwind-$MSYS2_LLVM_PACKAGE_VERSION"
-            "gettext-runtime-0.22.5-2"
-            "libffi-3.4.6-1"
-            "libiconv-1.17-4"
-            "libxml2-2.12.9-2"
-            "xz-5.6.3-3"
-            "zlib-1.3.1-1"
-            "zstd-1.5.6-2"
-          )
-          urls=()
-          for package in "${packages[@]}"; do
-            urls+=("$repo/$prefix-$package-any.pkg.tar.zst")
-          done
-
-          # LLVM 19 packages predate MSYS2's compiler-runtime dependency
-          # rename from gcc-libs to cc-libs. libc++ 19 already supplies the
-          # runtime, so satisfy only the renamed package metadata.
-          assumed_cc_runtime="$prefix-cc-libs=$LLVM_VERSION"
-          pacman --noconfirm -U \
-            --assume-installed "$assumed_cc_runtime" \
-            "${urls[@]}"
-          pacman --noconfirm -S --needed \
-            --assume-installed "$assumed_cc_runtime" \
-            "$prefix-pkgconf"
-
-          for package in clang clang-libs compiler-rt llvm llvm-libs lld libc++ libunwind; do
-            installed="$(pacman -Q "$prefix-$package" | awk '{print $2}')"
-            if [[ "$installed" != "$MSYS2_LLVM_PACKAGE_VERSION" ]]; then
-              echo "expected $package $MSYS2_LLVM_PACKAGE_VERSION, got $installed" >&2
-              exit 1
-            fi
-          done
+          llvm-version: 19
 
       - name: Test Windows target configuration
         shell: msys2 {0}
         run: |
           set -euo pipefail
-
-          export CC=clang
-          export CXX=clang++
-          export CGO_ENABLED=1
-
-          llvm_version="$(llvm-config --version)"
-          if [[ "$llvm_version" != "$LLVM_VERSION" ]]; then
-            echo "expected LLVM $LLVM_VERSION, got $llvm_version" >&2
-            exit 1
-          fi
-
-          # github.com/xgo-dev/llvm v0.9.7 deliberately keeps host LLVM flags
-          # scoped to the binding through versioned pkg-config metadata.
-          cflags="$(llvm-config --cflags)"
-          ldflags="$(llvm-config --ldflags --libs all --system-libs)"
-          cflags="${cflags//$'\r'/}"
-          cflags="${cflags//$'\n'/ }"
-          ldflags="${ldflags//$'\r'/}"
-          ldflags="${ldflags//$'\n'/ }"
-          pc_dir="$(cygpath -u "$RUNNER_TEMP")/llgo-pkgconfig"
-          mkdir -p "$pc_dir"
-          printf '%s\n' \
-            'Name: LLVM 19' \
-            'Description: LLVM 19 host compiler and linker flags' \
-            "Version: $llvm_version" \
-            "Cflags: $cflags" \
-            "Libs: $ldflags" \
-            > "$pc_dir/llvm-19.pc"
-          export PKG_CONFIG_PATH="$pc_dir"
 
           go version
           clang --version
