@@ -32,7 +32,7 @@ import (
 	"github.com/xgo-dev/llgo/xtool/env/llvm"
 )
 
-func TestDwarfLinkerArgs(t *testing.T) {
+func TestDebugInfoLinkerArgs(t *testing.T) {
 	tests := []struct {
 		name   string
 		conf   Config
@@ -48,12 +48,16 @@ func TestDwarfLinkerArgs(t *testing.T) {
 		{name: "w", conf: Config{LinkOptions: LinkOptions{DWARF: DWARFOmit}}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
 		{name: "s implies w", conf: Config{LinkOptions: LinkOptions{OmitSymbolTable: true}}, target: configurableDebugInfo(), want: []string{"-Wl,-S"}},
 		{name: "explicit w false", conf: Config{LinkOptions: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}}},
+		{name: "windows safe default", conf: Config{BuildMode: BuildModeExe, OmitDWARFByDefault: true}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:none"}},
+		{name: "windows explicit w", conf: Config{BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFOmit}}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:none"}},
+		{name: "windows explicit w false", conf: Config{BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:dwarf"}},
+		{name: "windows c-archive", conf: Config{BuildMode: BuildModeCArchive, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, target: windowsDebugInfo()},
 		{name: "target linker already suppresses DWARF", conf: Config{Target: "rp2040", LinkOptions: LinkOptions{DWARF: DWARFOmit}}, target: alwaysOmitDebugInfo()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := dwarfLinkerArgs(&tt.conf, &tt.target); !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("dwarfLinkerArgs(%+v) = %v, want %v", tt.conf.LinkOptions, got, tt.want)
+			if got := debugInfoLinkerArgs(&tt.conf, &tt.target); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("debugInfoLinkerArgs(%+v) = %v, want %v", tt.conf.LinkOptions, got, tt.want)
 			}
 		})
 	}
@@ -126,6 +130,9 @@ func TestValidateLinkOptions(t *testing.T) {
 		{name: "c-shared safe default", conf: Config{Goos: "linux", BuildMode: BuildModeCShared, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
 		{name: "c-archive safe default", conf: Config{Goos: "linux", BuildMode: BuildModeCArchive, OmitDWARFByDefault: true}, target: configurableDebugInfo()},
 		{name: "unsupported native OS", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: w}, wantErr: true},
+		{name: "windows safe default", conf: Config{Goos: "windows", BuildMode: BuildModeExe, OmitDWARFByDefault: true}, target: windowsDebugInfo()},
+		{name: "windows omit", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: w}, target: windowsDebugInfo()},
+		{name: "windows preserve", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: wFalse}, target: windowsDebugInfo()},
 		{name: "c-shared omit", conf: Config{Goos: "linux", BuildMode: BuildModeCShared, LinkOptions: w}, target: configurableDebugInfo()},
 		{name: "c-archive omit", conf: Config{Goos: "linux", BuildMode: BuildModeCArchive, LinkOptions: w}, target: configurableDebugInfo()},
 		{name: "c-shared preserve", conf: Config{Goos: "linux", BuildMode: BuildModeCShared, LinkOptions: wFalse}, target: configurableDebugInfo()},
@@ -170,7 +177,7 @@ func TestDwarfLinkerArgsSuppressNativeInputDWARF(t *testing.T) {
 
 	conf := &Config{Goos: "linux", BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFOmit}}
 	target := configurableDebugInfo()
-	args := append(dwarfLinkerArgs(conf, &target), "-o", bin, object)
+	args := append(debugInfoLinkerArgs(conf, &target), "-o", bin, object)
 	if out, err := exec.Command(clang, args...).CombinedOutput(); err != nil {
 		t.Fatalf("link native fixture with DWARF omission: %v\n%s", err, out)
 	}
@@ -184,6 +191,13 @@ func TestDwarfLinkerArgsSuppressNativeInputDWARF(t *testing.T) {
 
 func configurableDebugInfo() crosscompile.Export {
 	return crosscompile.Export{DebugInfo: crosscompile.DebugInfoPolicy{OmitLinkFlags: []string{"-Wl,-S"}}}
+}
+
+func windowsDebugInfo() crosscompile.Export {
+	return crosscompile.Export{DebugInfo: crosscompile.DebugInfoPolicy{
+		OmitLinkFlags:     []string{"-Wl,/debug:none"},
+		PreserveLinkFlags: []string{"-Wl,/debug:dwarf"},
+	}}
 }
 
 func alwaysOmitDebugInfo() crosscompile.Export {

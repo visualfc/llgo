@@ -130,6 +130,10 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	}
 	m.common.Target = c.buildConf.Target
 	m.common.TargetABI = c.crossCompile.TargetABI
+	m.common.PlatformABI = string(c.crossCompile.Toolchain.ABI)
+	m.common.ObjectFormat = string(c.crossCompile.Toolchain.ObjectFormat)
+	m.common.DriverFlavor = string(c.crossCompile.Toolchain.Driver)
+	m.common.LinkerFlavor = string(c.crossCompile.Toolchain.Linker)
 	m.common.GoGlobalDCE = c.buildConf.goGlobalDCEEnabled()
 	m.common.EnableLTOPlugin = c.buildConf.LTOPlugin.Enabled()
 	m.common.EmitDWARF = shouldEmitDebugInfo(c.buildConf, &c.crossCompile)

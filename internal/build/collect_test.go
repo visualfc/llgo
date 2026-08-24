@@ -54,6 +54,12 @@ func TestCollectFingerprint(t *testing.T) {
 		},
 		crossCompile: crosscompile.Export{
 			LLVMTarget: "arm64-apple-darwin",
+			Toolchain: crosscompile.NativeToolchain{
+				ABI:          crosscompile.PlatformABIDarwin,
+				ObjectFormat: crosscompile.ObjectFormatMachO,
+				Driver:       crosscompile.DriverFlavorClangGNU,
+				Linker:       crosscompile.LinkerFlavorMachO,
+			},
 		},
 	}
 
@@ -88,6 +94,11 @@ func TestCollectFingerprint(t *testing.T) {
 	}
 	if data.Package.PkgPath != "example.com/test" {
 		t.Error("manifest should contain PKG_PATH")
+	}
+	if data.Common.PlatformABI != "darwin" || data.Common.ObjectFormat != "macho" ||
+		data.Common.DriverFlavor != "clang" || data.Common.LinkerFlavor != "ld64.lld" {
+		t.Fatalf("manifest toolchain = ABI %q, object %q, driver %q, linker %q",
+			data.Common.PlatformABI, data.Common.ObjectFormat, data.Common.DriverFlavor, data.Common.LinkerFlavor)
 	}
 }
 

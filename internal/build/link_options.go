@@ -115,18 +115,20 @@ func validateLinkOptions(conf *Config, target *crosscompile.Export) error {
 	return nil
 }
 
-// dwarfLinkerArgs asks the native linker not to copy debug information from
-// input objects into the final artifact. LLGo-generated DWARF is disabled
-// earlier; this handles debug sections in native and prebuilt inputs without
-// rewriting the linked binary afterward.
-func dwarfLinkerArgs(conf *Config, target *crosscompile.Export) []string {
-	if target.DebugInfo.AlwaysOmit || !effectiveOmitDWARF(conf, target) {
+// debugInfoLinkerArgs asks the native linker to preserve or omit debug
+// information consistently with the compile-time policy. Some linkers, such
+// as lld-link, discard DWARF unless preservation is requested explicitly.
+func debugInfoLinkerArgs(conf *Config, target *crosscompile.Export) []string {
+	if target.DebugInfo.AlwaysOmit {
 		return nil
 	}
-	// c-archive has no final native link step. Omitting generated DWARF is
-	// sufficient; consumers decide how to link the archive later.
+	// c-archive has no final native link step. Consumers decide how to link
+	// debug information from archive members later.
 	if conf.BuildMode == BuildModeCArchive {
 		return nil
 	}
-	return slices.Clone(target.DebugInfo.OmitLinkFlags)
+	if effectiveOmitDWARF(conf, target) {
+		return slices.Clone(target.DebugInfo.OmitLinkFlags)
+	}
+	return slices.Clone(target.DebugInfo.PreserveLinkFlags)
 }
