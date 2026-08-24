@@ -119,6 +119,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testrt/unreachable", // timeout: emulator panic (Instruction access fault), no auto-exit
 
 				"./_testrt/reflectclosureenv", // baseline embedded runtime cannot build this reflect path
+				"./_testrt/ptrtothislazy",     // baseline embedded runtime cannot build this reflect path
+				"./_testrt/ptrtothislazynew",  // baseline embedded runtime cannot build this reflect path
 			},
 			"./_testdata": {
 				"./_testdata/debug", // llgo panic: unsatisfied import internal/runtime/sys
@@ -167,6 +169,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testrt/typalias", // panic: runtime index out of range
 
 				"./_testrt/reflectclosureenv", // baseline embedded runtime cannot build this reflect path
+				"./_testrt/ptrtothislazy",     // baseline embedded runtime cannot build this reflect path
+				"./_testrt/ptrtothislazynew",  // baseline embedded runtime cannot build this reflect path
 			},
 			"./_testdata": {
 				"./_testdata/cpkgimp", // unexpected output
