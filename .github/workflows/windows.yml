@@ -108,6 +108,30 @@ jobs:
             -covermode=atomic -coverprofile=coverage-windows-cabi.txt \
             ./internal/cabi
 
+          # R5 compiler and metadata paths are ordinary Go code even though
+          # their output is exercised by the native LLGo smokes below. Keep
+          # them in the Windows coverage upload as well as executing the
+          # generated Windows IR fixtures.
+          go test -count=1 -timeout=10m \
+            -run '^(TestSetjmpLongjmpIRPaths|TestSigjmpUsesSetjmpOnExplicitTarget|TestWindowsSigjmpBufferAlignment|TestWindowsSetjmpABI|TestNeedsFramePointer|TestSetjmpReturnsTwice|TestDeferInitBuilderInheritsDebugLocation)$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-ssa.txt \
+            ./ssa
+          go test -count=1 -timeout=10m \
+            -run '^(TestCompileRuntimeCallerPanicPCLineMetadata|TestCompileRuntimeCallerPCLineMetadataOnWindows|TestFuncInfoDisplayName|TestDirectiveFilename|TestDirectiveFilenameWindowsRootedSlash|TestParseLineDirectiveFilename|TestRuntimeSourceFilename|TestCompileRuntimeCallerFrameUsesGoNameForLinkname|TestErrBuiltin)$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-cl.txt \
+            ./cl
+          go test -count=1 -timeout=10m \
+            -run '^(TestFuncInfo.*|TestCOFFFuncInfoEntrySiteIsAssociative|TestExternalFuncInfoTableKeepsPayloadOutOfIR)$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-build.txt \
+            ./internal/build ./internal/build/funcinfo
+          go test -count=1 -timeout=10m \
+            -run '^TestBuilderWindowsDebuggerMarkerUsesComdat$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-debug.txt \
+            ./internal/debuginfo
+          go test -count=1 -timeout=10m -run '^TestFromTestlibc$/^setjmp$' ./ssa
+          go test -count=1 -timeout=10m -run '^TestFromTestgo$/^(cgopython|defer5)$' ./ssa
+          go test -count=1 -timeout=10m -run '^TestFromTestlibgo$/^mapzero$' ./ssa
+
           (
             cd runtime
             go test -count=1 -timeout=10m \
@@ -129,7 +153,7 @@ jobs:
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-build-runtime.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-ssa-eh.txt,coverage-windows-cabi.txt,coverage-windows-ffi.txt
+          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-build-runtime.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-ssa-eh.txt,coverage-windows-cabi.txt,coverage-windows-execution-ssa.txt,coverage-windows-execution-cl.txt,coverage-windows-execution-build.txt,coverage-windows-execution-debug.txt,coverage-windows-ffi.txt
           flags: windows-native
 
       - name: Build and run the native Windows runtime and FFI smoke tests
