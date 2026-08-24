@@ -33,6 +33,9 @@ func windowsInvalidAddress() uintptr
 //go:linkname windowsUnrecoveredFault C.llgo_windows_unrecovered_fault
 func windowsUnrecoveredFault() int32
 
+//go:linkname windowsForeignFaultOnGoThread C.llgo_windows_foreign_fault_on_go_thread
+func windowsForeignFaultOnGoThread() int32
+
 //go:noinline
 func windowsNilFault() byte {
 	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
@@ -143,6 +146,12 @@ func checkConcurrentNilFault() {
 	<-done
 }
 
+func checkForeignFaultOnGoThread() {
+	if got := windowsForeignFaultOnGoThread(); got != 1 {
+		panic("native Windows fault did not continue through the handler chain")
+	}
+}
+
 func checkRecover() {
 	defer func() {
 		if value := recover(); value != "windows panic smoke" {
@@ -242,6 +251,7 @@ func main() {
 	}
 
 	checkRecover()
+	checkForeignFaultOnGoThread()
 	checkNilFault()
 	checkConcurrentNilFault()
 	if windowsUnrecoveredFault() != 0 {

@@ -39,13 +39,23 @@ func init() {
 	rtdebug.WindowsFaultSnapshot = storeWindowsFaultSnapshot
 }
 
-func storeWindowsFaultSnapshot(context unsafe.Pointer) {
+func storeWindowsFaultSnapshot(context unsafe.Pointer) bool {
 	// Faults are recoverable and different goroutines run on different host
 	// threads, so capture into the handler's thread-local scratch storage.
 	// StoreFaultPCs copies the snapshot into the current G before panic's
 	// non-local jump unwinds the handler stack.
 	pcs := (*[64]uintptr)(c_windowsFaultPCBuf())
 	pc, fp := windowsFaultPCFP(context)
+	// Do not construct the first-use table in exception context. Normal linked
+	// binaries adopt their prebuilt table during runtime init, and external
+	// metadata is fully constructed before it is published. If neither has
+	// completed, preserve the historical fallback and let the core handle the
+	// exception rather than risking an allocation here.
+	if runtimeFuncPCFramesBuilt() &&
+		(len(runtimePrebuiltFtab) != 0 || len(runtimeFuncPCFrames) != 0) &&
+		!prebuiltTextContains(pc) {
+		return false
+	}
 	n := 0
 	if pc != 0 {
 		// Stored PCs follow runtime.Callers' return-PC convention. Adding one
@@ -57,6 +67,7 @@ func storeWindowsFaultSnapshot(context unsafe.Pointer) {
 		n += platformFaultCallers(context, fp, pcs[n:])
 	}
 	rtdebug.StoreFaultPCs(pcs[:n])
+	return true
 }
 
 func windowsFPWalkFrom(fp uintptr, pcs []uintptr) int {
