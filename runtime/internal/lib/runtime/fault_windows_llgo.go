@@ -140,6 +140,22 @@ func faultTracebackActive() bool {
 	return rtdebug.PanicPCsAreFault() && rtdebug.PanicActive()
 }
 
+func trimWindowsFaultPCs(pcs []uintptr) []uintptr {
+	if !rtdebug.PanicPCsAreFault() {
+		return pcs
+	}
+	return trimLogicalGoTail(pcs)
+}
+
+func trimLogicalGoTail(pcs []uintptr) []uintptr {
+	for i, pc := range pcs {
+		if frameSymbol(pc-1).function == "runtime.goexit" {
+			return pcs[:i+1]
+		}
+	}
+	return pcs
+}
+
 func faultTraceback(skip int) bool {
 	pcs := rtdebug.PanicPCs()
 	if !rtdebug.PanicPCsAreFault() || len(pcs) == 0 || !fpUnwindAvailable() {

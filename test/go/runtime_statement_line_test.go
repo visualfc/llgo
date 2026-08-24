@@ -50,7 +50,9 @@ func main() {
 	checkAdjacentRuntimeStack()
 	checkRecoveredDebugStackBounds()
 	checkRecoveredStaticPanicLine()
-	checkRecoveredStorePanicLine()
+	if runtime.GOOS == "windows" {
+		checkRecoveredStorePanicLine()
+	}
 	checkRecoveredIndirectPanicLine()
 }
 

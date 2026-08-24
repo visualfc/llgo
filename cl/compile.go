@@ -635,7 +635,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 				goName = funcName(pkgTypes, f, false)
 			}
 			pos := p.funcInfoPosition(f)
-			if isRecoverTransparentWrapper(f) {
+			if p.prog.Target().GOOS == "windows" && isRecoverTransparentWrapper(f) {
 				pkg.EmitFuncInfoFlags(fn.Name(), funcInfoDisplayName(goName), pos.Filename, pos.Line, pos.Column, llssa.FuncInfoFlagWrapper)
 			} else {
 				pkg.EmitFuncInfo(fn.Name(), funcInfoDisplayName(goName), pos.Filename, pos.Line, pos.Column)
@@ -1891,7 +1891,11 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		}
 		ptr := p.compileValue(b, va)
 		val := p.compileValue(b, v.Val)
-		if !isKnownNonNilAddr(va) && !isWrapNilCheckCall(va) {
+		// Windows access violations report the faulting store PC. Preserve that
+		// exact source site for the SEH fault bridge without adding one carrier
+		// record per potential pointer store to ELF and Mach-O binaries, whose
+		// existing fault paths do not require this Windows-specific metadata.
+		if p.prog.Target().GOOS == "windows" && !isKnownNonNilAddr(va) && !isWrapNilCheckCall(va) {
 			p.recordPanicSite(b, v.Pos())
 		}
 		store := b.Store(ptr, val)

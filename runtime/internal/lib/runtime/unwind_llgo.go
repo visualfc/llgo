@@ -21,19 +21,6 @@ func init() {
 	rtdebug.RecoverMark = recoverMark
 }
 
-// recoverMark records an opaque identity for the deferred activation that
-// recovered. Conventional targets use a frame-chain position; Win64 uses the
-// stack pointer and function entry obtained from its SEH unwind metadata.
-//
-//go:noinline
-func recoverMark() {
-	mark1, mark2 := recoverFrameMarks()
-	if mark1 == 0 && mark2 == 0 {
-		return
-	}
-	rtdebug.MarkPanicRecoverFPs(mark1, mark2)
-}
-
 // capturePanicPCs runs at panic time, before any longjmp unwinding, and
 // stores the physical pc chain for later splicing (see spliceCallers).
 func capturePanicPCs() {
@@ -43,28 +30,6 @@ func capturePanicPCs() {
 	var pcs [64]uintptr
 	n := fpCallers(0, pcs[:])
 	rtdebug.StorePanicPCs(pcs[:n])
-}
-
-// panicSplicePCs returns the snapshot when it is observable: either the
-// panic is still in flight, or the deferred frame that recovered it is
-// still live on the physical chain (gc keeps panic frames on the stack
-// exactly that long).
-func panicSplicePCs() []uintptr {
-	pcs := rtdebug.PanicPCs()
-	if len(pcs) == 0 {
-		return nil
-	}
-	if rtdebug.PanicActive() {
-		return pcs
-	}
-	mark1, mark2 := rtdebug.PanicRecoverFPs()
-	if mark1 == 0 && mark2 == 0 {
-		return nil
-	}
-	if recoverFrameLive(mark1, mark2) {
-		return pcs
-	}
-	return nil
 }
 
 const maxPanicSpliceFrames = 4096
@@ -112,10 +77,8 @@ func trimPlumbingPCs(pcs []uintptr) []uintptr {
 		// Fault snapshots come from a genuine interrupted context and the
 		// chain-discipline guards already bounded the walk; keep unnamed
 		// frames (linux dladdr cannot name non-dynamic C symbols — they
-		// display as raw pcs, like gc does for unknown frames). The platform
-		// walker may continue through process-startup frames, so retain the
-		// logical runtime.goexit frame but nothing below it.
-		return trimLogicalGoTail(pcs)
+		// display as raw pcs, like gc does for unknown frames).
+		return pcs
 	}
 	for i := 0; i < len(pcs); i++ {
 		if prebuiltTextContains(pcs[i]) {
@@ -127,15 +90,6 @@ func trimPlumbingPCs(pcs []uintptr) []uintptr {
 		// FP-disciplined frame).
 		if frameSymbol(pcs[i]-1).function == "" {
 			return pcs[:i]
-		}
-	}
-	return pcs
-}
-
-func trimLogicalGoTail(pcs []uintptr) []uintptr {
-	for i, pc := range pcs {
-		if frameSymbol(pc-1).function == "runtime.goexit" {
-			return pcs[:i+1]
 		}
 	}
 	return pcs
@@ -292,105 +246,6 @@ func panicTraceback(skip int) bool {
 // A slot whose decoded parent is further away than any plausible frame is a
 // corrupt chain, not a giant frame; stop rather than walk off the stack.
 const maxFPStride = 1 << 20
-
-// fpCallers walks the frame-pointer chain and fills pc with return
-// addresses, Go-style: pc[0] is the return address in the frame `skip`
-// levels above the caller of fpCallers. Every LLGo-compiled function keeps
-// x29/rbp chained ("frame-pointer"="non-leaf" is set on all Go functions),
-// so unlike the shadow stack this sees every physical frame; the walk stops
-// at the first frame that breaks the chain discipline (e.g. foreign C code
-// compiled without frame pointers).
-//
-// The clite walker (runtime/internal/clite/debug/_wrap/debug.c
-// llgo_stacktrace) implements the same chain discipline and guards for the
-// pre-table paths (unrecovered-panic dump, last-resort Callers fallback);
-// keep the two in sync when changing the walk rules.
-//
-//go:noinline
-func fpCallers(skip int, pc []uintptr) int {
-	if len(pc) == 0 {
-		return 0
-	}
-	// The walk bound needs the frame table's text range; make sure it is
-	// built (no-op when the prebuilt table was adopted at startup).
-	initRuntimeFuncPCFrames()
-	// Capture fpCallers' own frame before entering the platform helper. This
-	// preserves the public skip contract even when that helper cannot inline.
-	fp := uintptr(c_framepointer())
-	return platformCallers(fp, skip, pc)
-}
-
-// framePointerCallers is the conventional frame-record implementation used
-// by targets whose frame register points at {parent frame, return pc}.
-// Win64 uses SEH unwind metadata instead: its frame register may be biased
-// into a large frame and is not a linked-list node.
-func framePointerCallers(fp uintptr, skip int, pc []uintptr) int {
-	n := 0
-	// fp is fpCallers' frame, so the first return address already represents
-	// fpCallers' caller.
-	const maxFrames = 4096
-	for i := 0; fp != 0 && n < len(pc) && i < maxFrames; i++ {
-		prev := *(*uintptr)(unsafe.Pointer(fp))
-		ret := *(*uintptr)(unsafe.Pointer(fp + unsafe.Sizeof(uintptr(0))))
-		if ret < minLegalPC {
-			break
-		}
-		// Beyond main the chain runs into libc frames without FP
-		// discipline; their slots decode as wild pcs that nearest-below
-		// symbolization would map to arbitrary functions. Bound the walk
-		// to the program's own text (Go tracebacks stop at runtime.main
-		// for the same reason).
-		if !prebuiltTextContains(ret) {
-			break
-		}
-		if skip > 0 {
-			skip--
-		} else {
-			pc[n] = ret
-			n++
-		}
-		// Stacks grow down, so the chain must strictly increase; bound the
-		// stride so a corrupt slot cannot walk off the stack.
-		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
-			break
-		}
-		fp = prev
-	}
-	return n
-}
-
-func framePointerRecoverMarks() (uintptr, uintptr) {
-	fp := callerFramePointer()
-	if fp == 0 {
-		return 0, 0
-	}
-	return fp, 0
-}
-
-func frameIntervalContains(fp, prev, mark uintptr) bool {
-	return mark != 0 && fp <= mark && (prev > mark || prev == 0)
-}
-
-// After siglongjmp, the frame-pointer chain can reach a stale or unmapped
-// slot. Probe every link before reading it: an unguarded read used to
-// self-fault intermittently and replace the panic value being recovered.
-func framePointerRecoverFrameLive(mark1, mark2 uintptr) bool {
-	fp := callerFramePointer()
-	for i := 0; fp != 0 && i < maxPanicSpliceFrames; i++ {
-		if !memReadable(fp) {
-			break
-		}
-		prev := *(*uintptr)(unsafe.Pointer(fp))
-		if frameIntervalContains(fp, prev, mark1) || frameIntervalContains(fp, prev, mark2) {
-			return true
-		}
-		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
-			break
-		}
-		fp = prev
-	}
-	return false
-}
 
 // runtimeFPChain is emitted next to the funcinfo table (one per binary,
 // internal/build emitFuncInfoTable) and records whether this binary's Go

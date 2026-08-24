@@ -381,7 +381,6 @@ func owner() {
 	defer inspect()
 	defer deferredPanicLeaf()
 	panicLeaf()
-	storePanicLeaf(nil)
 	repeatedPanicLeaf(nil, 0)
 	branchPanicLeaf(nil, 0, true)
 }
@@ -390,11 +389,6 @@ func panicLeaf() {
 	var p *int
 //line panic_site.go:123
 	_ = *p
-}
-
-func storePanicLeaf(p *int) {
-//line store_panic_site.go:167
-	*p = 1
 }
 
 func deferredPanicLeaf() {
@@ -430,7 +424,6 @@ func pinnedPanicSite() {
 	ir := pkg.Module().String()
 	for _, want := range []string{
 		`!"example.com/foo.panicLeaf"`, `!"panic_site.go"`, `i32 123`,
-		`!"example.com/foo.storePanicLeaf"`, `!"store_panic_site.go"`, `i32 167`,
 		`!"example.com/foo.deferredPanicLeaf"`, `!"deferred_panic_site.go"`, `i32 234`,
 	} {
 		if !strings.Contains(ir, want) {
@@ -454,6 +447,57 @@ func pinnedPanicSite() {
 	}
 	if strings.Contains(ir, `!"non_recover_site.go"`) {
 		t.Fatalf("ordinary pinned function unexpectedly received implicit panic-site metadata:\n%s", ir)
+	}
+}
+
+func TestCompileRuntimeCallerStorePanicPCLineMetadataIsWindowsOnly(t *testing.T) {
+	const source = `package foo
+import "runtime"
+
+func inspect() {
+	recover()
+	runtime.Caller(0)
+}
+
+func owner() {
+	defer inspect()
+	storePanicLeaf(nil)
+}
+
+func storePanicLeaf(p *int) {
+//line store_panic_site.go:167
+	*p = 1
+}
+`
+	for _, test := range []struct {
+		goos string
+		want bool
+	}{
+		{goos: "linux", want: false},
+		{goos: "windows", want: true},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", source)
+			prog := newLLSSAProgForTarget(t, &llssa.Target{GOOS: test.goos, GOARCH: "amd64"})
+			prog.EnableFuncInfoMetadata(true)
+			prog.EnableFuncInfoSites(true)
+			pkg, err := NewPackage(prog, ssapkg, files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ir := pkg.Module().String()
+			got := false
+			for _, row := range strings.Split(ir, "\n") {
+				if strings.Contains(row, `!{i32 1, i64 `) &&
+					strings.Contains(row, `!"example.com/foo.storePanicLeaf", !"store_panic_site.go", i32 167`) {
+					got = true
+					break
+				}
+			}
+			if got != test.want {
+				t.Fatalf("store panic-site metadata present = %v, want %v for %s:\n%s", got, test.want, test.goos, ir)
+			}
+		})
 	}
 }
 

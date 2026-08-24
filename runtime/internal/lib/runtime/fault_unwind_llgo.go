@@ -42,16 +42,76 @@ func memReadable(addr uintptr) bool {
 	return c_memReadable(unsafe.Pointer(addr)) != 0
 }
 
-func platformCallers(fp uintptr, skip int, pc []uintptr) int {
-	return framePointerCallers(fp, skip, pc)
+// recoverMark records the recovering deferred frame so the panic snapshot
+// stays spliceable while that frame is live. After siglongjmp the chain can
+// reach stale storage, so panicSplicePCs probes each slot before reading it.
+func recoverMark() {
+	fp := callerFramePointer()
+	if fp == 0 {
+		return
+	}
+	rtdebug.MarkPanicRecoverFPs(fp, 0)
 }
 
-func recoverFrameMarks() (uintptr, uintptr) {
-	return framePointerRecoverMarks()
+func panicSplicePCs() []uintptr {
+	pcs := rtdebug.PanicPCs()
+	if len(pcs) == 0 {
+		return nil
+	}
+	if rtdebug.PanicActive() {
+		return pcs
+	}
+	mark, _ := rtdebug.PanicRecoverFPs()
+	if mark == 0 {
+		return nil
+	}
+	fp := callerFramePointer()
+	for i := 0; fp != 0 && i < maxPanicSpliceFrames; i++ {
+		if !memReadable(fp) {
+			break
+		}
+		prev := *(*uintptr)(unsafe.Pointer(fp))
+		if fp <= mark && (prev > mark || prev == 0) {
+			return pcs
+		}
+		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
+			break
+		}
+		fp = prev
+	}
+	return nil
 }
 
-func recoverFrameLive(mark1, mark2 uintptr) bool {
-	return framePointerRecoverFrameLive(mark1, mark2)
+// fpCallers walks conventional frame records. Win64 has a separate SEH
+// implementation because its frame register may be biased into the frame.
+//
+//go:noinline
+func fpCallers(skip int, pc []uintptr) int {
+	if len(pc) == 0 {
+		return 0
+	}
+	initRuntimeFuncPCFrames()
+	fp := uintptr(c_framepointer())
+	n := 0
+	const maxFrames = 4096
+	for i := 0; fp != 0 && n < len(pc) && i < maxFrames; i++ {
+		prev := *(*uintptr)(unsafe.Pointer(fp))
+		ret := *(*uintptr)(unsafe.Pointer(fp + unsafe.Sizeof(uintptr(0))))
+		if ret < minLegalPC || !prebuiltTextContains(ret) {
+			break
+		}
+		if skip > 0 {
+			skip--
+		} else {
+			pc[n] = ret
+			n++
+		}
+		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
+			break
+		}
+		fp = prev
+	}
+	return n
 }
 
 func init() {

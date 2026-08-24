@@ -2,7 +2,11 @@
 
 package runtime
 
-import "unsafe"
+import (
+	"unsafe"
+
+	rtdebug "github.com/xgo-dev/llgo/runtime/internal/runtime"
+)
 
 // Win64 frame registers are addressing bases, not conventional linked frame
 // records: UNWIND_INFO may establish RBP/X29 at a non-zero offset into the
@@ -11,9 +15,6 @@ import "unsafe"
 
 //go:linkname c_windowsCaptureContext C.llgo_windows_capture_context
 func c_windowsCaptureContext(context *windowsFaultContext, pcOffset uintptr) unsafe.Pointer
-
-//go:linkname c_windowsLookupFunctionEntry C.llgo_windows_lookup_function_entry
-func c_windowsLookupFunctionEntry(pc uintptr, imageBase *uintptr) unsafe.Pointer
 
 //go:linkname c_windowsVirtualUnwind C.llgo_windows_virtual_unwind
 func c_windowsVirtualUnwind(imageBase, pc uintptr, functionEntry unsafe.Pointer, context *windowsFaultContext, establisherFrame *uintptr) unsafe.Pointer
@@ -82,7 +83,7 @@ func windowsContextCallers(context *windowsFaultContext, skip int, pc []uintptr,
 			break
 		}
 		caller := frameSymbol(ret - 1)
-		if caller.wrapper && elideWrapperCalling(callee.function) {
+		if pcSymbolIsWrapper(caller) && elideWrapperCalling(callee.function) {
 			callee = caller
 			continue
 		}
@@ -106,6 +107,10 @@ func windowsContextCallers(context *windowsFaultContext, skip int, pc []uintptr,
 	return n
 }
 
+func pcSymbolIsWrapper(sym pcSymbol) bool {
+	return uint32(sym.startLine)&runtimeFuncInfoLineWrapper != 0
+}
+
 // elideWrapperCalling mirrors Go's runtime.elideWrapperCalling. A generated
 // wrapper normally has no logical stack frame, but must remain visible when
 // its own receiver/conversion check called a panic helper instead of the
@@ -120,15 +125,19 @@ func elideWrapperCalling(callee string) bool {
 }
 
 //go:noinline
-func platformCallers(_ uintptr, skip int, pc []uintptr) int {
+func fpCallers(skip int, pc []uintptr) int {
+	if len(pc) == 0 {
+		return 0
+	}
+	initRuntimeFuncPCFrames()
 	var storage windowsFaultContextStorage
 	context := storage.context()
 	if c_windowsCaptureContext(context, windowsFaultContextPCOffset) == nil {
 		return 0
 	}
-	// The capture wrapper already unwound itself. Drop platformCallers and the
-	// return into fpCallers, matching framePointerCallers' first entry.
-	return windowsContextCallers(context, skip+1, pc, true)
+	// The capture wrapper already unwound itself. The next unwind reaches
+	// fpCallers' caller, matching runtime.Callers' public skip contract.
+	return windowsContextCallers(context, skip, pc, true)
 }
 
 func platformFaultCallers(raw unsafe.Pointer, _ uintptr, pc []uintptr) int {
@@ -178,6 +187,14 @@ func recoverFrameMarks() (uintptr, uintptr) {
 	return context.sp(), entry
 }
 
+func recoverMark() {
+	mark1, mark2 := recoverFrameMarks()
+	if mark1 == 0 && mark2 == 0 {
+		return
+	}
+	rtdebug.MarkPanicRecoverFPs(mark1, mark2)
+}
+
 //go:noinline
 func recoverFrameLive(stack, entry uintptr) bool {
 	if stack == 0 || entry == 0 {
@@ -197,4 +214,19 @@ func recoverFrameLive(stack, entry uintptr) bool {
 		}
 	}
 	return false
+}
+
+func panicSplicePCs() []uintptr {
+	pcs := rtdebug.PanicPCs()
+	if len(pcs) == 0 {
+		return nil
+	}
+	if rtdebug.PanicActive() {
+		return trimWindowsFaultPCs(pcs)
+	}
+	stack, entry := rtdebug.PanicRecoverFPs()
+	if stack == 0 || entry == 0 || !recoverFrameLive(stack, entry) {
+		return nil
+	}
+	return trimWindowsFaultPCs(pcs)
 }
