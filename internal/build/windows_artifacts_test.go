@@ -44,6 +44,7 @@ func TestWindowsConsumesMSVCLibrary(t *testing.T) {
 		t.Skip("Visual Studio C++ tools are not installed")
 	}
 
+	t.Run("native CRT hello", testWindowsCRTHello)
 	t.Run("consume cl static library", func(t *testing.T) {
 		testWindowsConsumesCLLibrary(t, cl, lib)
 	})
@@ -53,6 +54,28 @@ func TestWindowsConsumesMSVCLibrary(t *testing.T) {
 	t.Run("link consumes LLGo DLL", func(t *testing.T) {
 		testMSVCConsumesWindowsDLL(t, cl, link)
 	})
+}
+
+func testWindowsCRTHello(t *testing.T) {
+	dir := t.TempDir()
+	ctx := newWindowsArtifactContext(t, BuildModeExe)
+	object := compileWindowsArtifact(t, ctx, dir, "hello.c", `
+int puts(const char *);
+int main(void) { return puts("hello from native COFF") < 0; }
+`)
+	executable := filepath.Join(dir, "hello.exe")
+	if err := linkObjFiles(ctx, executable, []string{object}, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	checkPEArtifact(t, executable, false)
+	cmd := exec.Command(executable)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run native CRT hello: %v\n%s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "hello from native COFF" {
+		t.Fatalf("native CRT hello output = %q", got)
+	}
 }
 
 func testWindowsConsumesCLLibrary(t *testing.T, cl, lib string) {
