@@ -76,9 +76,9 @@ func (p *Target) effectiveOptLevel() optlevel.Level {
 		return p.OptLevel
 	}
 	if p != nil && p.Target != "" {
-		return optlevel.Oz
+		return optlevel.TargetDefault
 	}
-	return optlevel.O2
+	return optlevel.Default
 }
 
 func (p *Target) codeGenOptLevel() llvm.CodeGenOptLevel {

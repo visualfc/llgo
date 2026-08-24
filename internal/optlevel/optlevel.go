@@ -17,6 +17,11 @@ const (
 	Oz
 )
 
+const (
+	Default       = Os
+	TargetDefault = Oz
+)
+
 func Parse(level string) (Level, error) {
 	normalized := strings.TrimSpace(strings.ToLower(level))
 	normalized = strings.TrimPrefix(normalized, "-")

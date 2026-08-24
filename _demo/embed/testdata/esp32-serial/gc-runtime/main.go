@@ -976,6 +976,11 @@ func testNestedStructPointers() bool {
 	}
 
 	globalNested = nil
+	// This collector scans stack words conservatively. On Xtensa, a dead
+	// register-window spill can keep the deepest nested pointer alive for one
+	// cycle. The first collection also overwrites that spill, so verify complete
+	// reclamation after a settling cycle instead of requiring precise-GC behavior.
+	collectAndPrint("nested-drop-first")
 	_, afterDrop := collectAndPrint("nested-drop")
 	// 3 nested + 3 node = 6 objects (at minimum)
 	if afterDrop.Frees < after.Frees+6 {
