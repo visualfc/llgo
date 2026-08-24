@@ -96,7 +96,11 @@ runs:
         cflags="${cflags//$'\n'/ }"
         ldflags="${ldflags//$'\r'/}"
         ldflags="${ldflags//$'\n'/ }"
-        pc_dir="$(cygpath -u "$RUNNER_TEMP")/llgo-pkgconfig"
+        # Install the metadata in CLANG64's standard pkg-config tree. This
+        # keeps discovery stable for both MSYS2 shells and native Go/CGO
+        # subprocesses without passing shell-specific temporary paths between
+        # workflow steps.
+        pc_dir="$MINGW_PREFIX/lib/pkgconfig"
         mkdir -p "$pc_dir"
         printf '%s\n' \
           "Name: LLVM $llvm_major" \
@@ -106,17 +110,10 @@ runs:
           "Libs: $ldflags" \
           > "$pc_dir/llvm-$llvm_major.pc"
 
-        # GITHUB_ENV applies to later steps; export the path as well so this
-        # installation step can verify the generated metadata immediately.
-        export PKG_CONFIG_PATH="$pc_dir"
-        pc_dir_windows="$(cygpath -m "$pc_dir")"
         {
           echo "CC=clang"
           echo "CXX=clang++"
           echo "CGO_ENABLED=1"
-          # Later Go and pkg-config processes are native Windows executables,
-          # so persist a Windows path rather than this shell's /d/... form.
-          echo "PKG_CONFIG_PATH=$pc_dir_windows"
         } >> "$GITHUB_ENV"
 
         if [[ "$(llvm-config --version)" != "$llvm_version" ]]; then
