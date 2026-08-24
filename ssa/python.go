@@ -310,7 +310,7 @@ func (p Package) PyNewModVar(name string, doInit bool) Global {
 	g := p.NewVar(name, objPtr, InC)
 	if doInit {
 		g.InitNil()
-		g.impl.SetLinkage(llvm.LinkOnceAnyLinkage)
+		p.setODRLinkage(g.impl, llvm.LinkOnceAnyLinkage)
 	}
 	p.pymods[name] = g
 	return g
@@ -591,7 +591,7 @@ func (p Package) PyNewFunc(name string, sig *types.Signature, doInit bool) PyObj
 	if doInit {
 		p.NeedPyInit = true
 		obj.InitNil()
-		obj.impl.SetLinkage(llvm.LinkOnceAnyLinkage)
+		p.setODRLinkage(obj.impl, llvm.LinkOnceAnyLinkage)
 	}
 	ty := &aType{obj.ll, rawType{types.NewPointer(sig)}, vkPyFuncRef}
 	expr := Expr{obj.impl, ty}
