@@ -11,9 +11,9 @@ import (
 	"time"
 	"unsafe"
 
-	c "github.com/goplus/llgo/runtime/internal/clite"
-	"github.com/goplus/llgo/runtime/internal/clite/libuv"
-	_ "github.com/goplus/llgo/runtime/internal/runtime"
+	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	"github.com/xgo-dev/llgo/runtime/internal/clite/libuv"
+	_ "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
 const LLGoFiles = "_wrap/syscall.c"
