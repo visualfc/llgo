@@ -33,13 +33,19 @@ func TestWindowsConsumesMSVCLibrary(t *testing.T) {
 		t.Skip("native MSVC interoperability test")
 	}
 	cl, clErr := exec.LookPath("cl.exe")
+	if clErr != nil {
+		if os.Getenv("LLGO_REQUIRE_MSVC") == "1" {
+			t.Fatalf("Visual Studio cl.exe is required: %v", clErr)
+		}
+		t.Skip("Visual Studio C++ tools are not installed")
+	}
 	lib := filepath.Join(filepath.Dir(cl), "lib.exe")
 	link := filepath.Join(filepath.Dir(cl), "link.exe")
 	_, libErr := os.Stat(lib)
 	_, linkErr := os.Stat(link)
-	if clErr != nil || libErr != nil || linkErr != nil {
+	if libErr != nil || linkErr != nil {
 		if os.Getenv("LLGO_REQUIRE_MSVC") == "1" {
-			t.Fatalf("Visual Studio cl.exe/lib.exe/link.exe are required: cl=%v, lib=%v, link=%v", clErr, libErr, linkErr)
+			t.Fatalf("Visual Studio lib.exe/link.exe are required next to %s: lib=%v, link=%v", cl, libErr, linkErr)
 		}
 		t.Skip("Visual Studio C++ tools are not installed")
 	}
@@ -155,7 +161,7 @@ func testWindowsExecutableArtifact(t *testing.T) {
 	ctx := newWindowsArtifactContext(t, BuildModeExe)
 	object := compileWindowsArtifact(t, ctx, dir, "entry.c", `
 int mainCRTStartup(void) { return 0; }
-	`)
+`)
 	// An explicit -o name is exact even without the conventional suffix.
 	executable := filepath.Join(dir, "native-exact-output")
 	if err := os.WriteFile(executable, []byte("stale output"), 0o666); err != nil {
