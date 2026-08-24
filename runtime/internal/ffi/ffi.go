@@ -57,7 +57,7 @@ func NewSignatureVar(ret *Type, fixed int, args ...*Type) (*Signature, error) {
 	if len(args) > 0 {
 		atype = &args[0]
 	}
-	status := ffi.PrepCifVar(&cif, ffi.DefaultAbi, c.Uint(fixed), c.Uint(len(args)), ret, atype)
+	status := ffi.PrepCifVar(&cif, DefaultABI, c.Uint(fixed), c.Uint(len(args)), ret, atype)
 	if status == ffi.OK {
 		return &cif, nil
 	}
