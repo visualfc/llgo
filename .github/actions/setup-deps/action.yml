@@ -15,6 +15,7 @@ runs:
   steps:
     - name: Set up Windows MSYS2
       if: runner.os == 'Windows' && inputs.install-llvm == 'true'
+      id: msys2
       # CLANG64 provides a native Windows LLVM build. It is only the host
       # library used by github.com/xgo-dev/llvm; LLGo's target configuration
       # independently selects the requested Go target ABI.
@@ -121,6 +122,69 @@ runs:
           exit 1
         fi
         pkg-config --modversion "llvm-$llvm_major"
+
+    - name: Configure Windows SDK and MSVC tools
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true'
+      shell: pwsh
+      env:
+        MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        # LLVM 19 predates the Visual Studio 18 STL compatibility floor. Keep
+        # this pinned lane on VS 2022 instead of selecting a newer toolset
+        # merely because the runner image also happens to contain one.
+        $installPath = & $vswhere -latest -products * -version '[17.0,18.0)' `
+          -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+          -property installationPath
+        if (-not $installPath) {
+          throw "Visual Studio 2022 C++ tools required by LLVM 19 were not found"
+        }
+        Import-Module "$installPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+        Enter-VsDevShell -VsInstallPath $installPath `
+          -SkipAutomaticLocation `
+          -DevCmdArguments "-arch=x64 -host_arch=x64"
+
+        # Clang emits the MSVC ABI but uses the SDK/UCRT selected by the
+        # Visual Studio developer environment. Persist only the target search
+        # variables and native tools needed by later composite-action callers.
+        foreach ($name in @(
+          "INCLUDE",
+          "LIB",
+          "LIBPATH",
+          "UCRTVersion",
+          "UniversalCRTSdkDir",
+          "VCINSTALLDIR",
+          "VCToolsInstallDir",
+          "WindowsSdkDir",
+          "WindowsSDKVersion"
+        )) {
+          $value = [Environment]::GetEnvironmentVariable($name)
+          if ($value) {
+            Add-Content -Encoding utf8 $env:GITHUB_ENV "$name=$value"
+          }
+        }
+        @("cl.exe", "lib.exe", "link.exe", "rc.exe", "mt.exe") |
+          ForEach-Object { Split-Path (Get-Command $_).Source } |
+          Select-Object -Unique |
+          ForEach-Object { Add-Content -Encoding utf8 $env:GITHUB_PATH $_ }
+
+        # MSYS2 stores compiler-rt under its GNU archive name. Clang's MSVC
+        # target searches the equivalent target-specific COFF layout, so make
+        # the same archive visible there without changing its ABI or contents.
+        $clang = Join-Path $env:MSYS2_LOCATION "clang64\bin\clang.exe"
+        if (-not (Test-Path $clang)) {
+          throw "LLVM 19 clang was not found at $clang"
+        }
+        $resourceDir = (& $clang -print-resource-dir).Trim()
+        $gnuBuiltins = Join-Path $resourceDir "lib\windows\libclang_rt.builtins-x86_64.a"
+        if (-not (Test-Path $gnuBuiltins)) {
+          throw "LLVM 19 compiler-rt archive was not found at $gnuBuiltins"
+        }
+        $msvcRuntimeDir = Join-Path $resourceDir "lib\x86_64-pc-windows-msvc"
+        New-Item -ItemType Directory -Force $msvcRuntimeDir | Out-Null
+        Copy-Item -Force $gnuBuiltins (Join-Path $msvcRuntimeDir "clang_rt.builtins.lib")
 
     - name: Install macOS dependencies
       if: runner.os == 'macOS'
