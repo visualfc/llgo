@@ -21,7 +21,7 @@ views:
     title: Program measurements
     select:
       groups: "^programs$"
-      metrics: "^(file-bytes|build-ns|run-ns)$"
+      metrics: "^(file-bytes|text-bytes|build-ns|run-ns)$"
     table:
       rows: [platform, benchmark]
       columns: [metric]
@@ -34,6 +34,9 @@ views:
       metrics:
         file-bytes:
           title: File size
+          format: bytes
+        text-bytes:
+          title: Text size
           format: bytes
         build-ns:
           title: Build
