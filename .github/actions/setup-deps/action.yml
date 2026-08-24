@@ -106,6 +106,9 @@ runs:
           "Libs: $ldflags" \
           > "$pc_dir/llvm-$llvm_major.pc"
 
+        # GITHUB_ENV applies to later steps; export the path as well so this
+        # installation step can verify the generated metadata immediately.
+        export PKG_CONFIG_PATH="$pc_dir"
         {
           echo "CC=clang"
           echo "CXX=clang++"
