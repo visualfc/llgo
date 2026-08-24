@@ -153,7 +153,7 @@ func TestMSVCAggregateClassification(t *testing.T) {
 			goarch: "arm64",
 			triple: "aarch64-pc-windows-msvc",
 			check: func(t *testing.T, ctx llvm.Context, tr *Transformer) {
-				checkTypeInfo(t, tr, ctx.StructType(nil, false), 0, AttrNone, "{}")
+				checkTypeInfo(t, tr, ctx.StructType(nil, false), 0, AttrVoid, "void")
 				checkTypeInfo(t, tr, ctx.StructType(nil, false), 1, AttrVoid, "void")
 				odd := ctx.StructType([]llvm.Type{ctx.Int8Type(), ctx.Int8Type(), ctx.Int8Type()}, false)
 				checkTypeInfo(t, tr, odd, 0, AttrWidthType, "i24")
@@ -241,6 +241,7 @@ func TestMSVCCallAndCallbackLowering(t *testing.T) {
 
 declare %Odd @cOdd(%Odd)
 declare void @registerCallback(ptr)
+declare void @cVararg(%Padded, ...)
 
 define %Padded @cPadded(%Padded %value) {
 entry:
@@ -264,6 +265,12 @@ entry:
 define void @"main.passCallback"() {
 entry:
   call void @registerCallback(ptr @"main.callback")
+  ret void
+}
+
+define void @"main.vararg"(%Padded %value) {
+entry:
+  call void (%Padded, ...) @cVararg(%Padded %value, i32 17, double 2.500000e+00)
   ret void
 }
 `
@@ -330,6 +337,9 @@ entry:
 			if got := mod.NamedFunction("main.call").String(); !strings.Contains(got, "call ") || !strings.Contains(got, "@cOdd(") {
 				t.Fatalf("call site was not preserved and lowered:\n%s", got)
 			}
+			if got := mod.NamedFunction("main.vararg").String(); !strings.Contains(got, "i32 17") || !strings.Contains(got, "double 2.500000e+00") {
+				t.Fatalf("lowering dropped C variadic operands:\n%s", got)
+			}
 			if test.goarch == "386" {
 				paddedFn := mod.NamedFunction("cPadded")
 				padded := paddedFn.String()
@@ -355,6 +365,66 @@ entry:
 				t.Fatalf("MSVC C ABI module is invalid: %v\n%s", err, mod.String())
 			}
 		})
+	}
+}
+
+func TestMSVC386CallingConventionLowering(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Odd = type { i8, i8, i8 }
+
+declare x86_stdcallcc void @consume(%Odd)
+
+define void @"main.call"(%Odd %value) {
+entry:
+  call x86_stdcallcc void @consume(%Odd %value)
+  ret void
+}
+`
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "msvc_stdcall.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	NewTransformer(prog, "i686-pc-windows-msvc", "", ModeCFunc, true).TransformModule("test", mod)
+
+	consume := mod.NamedFunction("consume")
+	if got := consume.FunctionCallConv(); got != llvm.X86StdcallCallConv {
+		t.Fatalf("lowered declaration calling convention = %v, want x86_stdcallcc", got)
+	}
+	var loweredCall llvm.Value
+	caller := mod.NamedFunction("main.call")
+	for block := caller.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue() == consume {
+				loweredCall = call
+			}
+		}
+	}
+	if loweredCall.IsNil() {
+		t.Fatalf("lowered stdcall call not found:\n%s", caller.String())
+	}
+	if got := loweredCall.InstructionCallConv(); got != llvm.X86StdcallCallConv {
+		t.Fatalf("lowered call calling convention = %v, want x86_stdcallcc", got)
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("MSVC stdcall module is invalid: %v\n%s", err, mod.String())
 	}
 }
 

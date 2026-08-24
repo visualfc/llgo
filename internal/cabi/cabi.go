@@ -682,8 +682,17 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 			}
 		}
 	}
+	if info.Type.IsFunctionVarArg() {
+		// CallBase stores the callee as its final operand. LLGo does not emit
+		// operand bundles here, so the operands between the fixed parameters
+		// and the callee are exactly the already-promoted C varargs.
+		for i, n := operandCount, call.OperandsCount()-1; i < n; i++ {
+			nparams = append(nparams, call.Operand(i))
+		}
+	}
 
 	updateCallAttr := func(replacement llvm.Value) {
+		replacement.SetInstructionCallConv(call.InstructionCallConv())
 		for i, list := range attrs {
 			for _, attr := range list {
 				replacement.AddCallSiteAttribute(i, attr)

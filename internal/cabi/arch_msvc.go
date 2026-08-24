@@ -60,6 +60,20 @@ type TypeInfoWindowsArm64 struct {
 	*TypeInfoArm64
 }
 
+func (p *TypeInfoWindowsArm64) SkipEmptyParams() bool {
+	// Clang lowers Microsoft's empty-structure extension to void on ARM64
+	// for both parameters and results. TypeInfoArm64 keeps an empty result
+	// for Go-level ABI purposes, so handle the C ABI case here explicitly.
+	return false
+}
+
+func (p *TypeInfoWindowsArm64) GetTypeInfo(ctx llvm.Context, ftyp llvm.Type, typ llvm.Type, index int) *TypeInfo {
+	if isAggregateType(typ) && p.Sizeof(typ) == 0 {
+		return &TypeInfo{Type: typ, Kind: AttrVoid, Type1: ctx.VoidType()}
+	}
+	return p.TypeInfoArm64.GetTypeInfo(ctx, ftyp, typ, index)
+}
+
 // TypeInfoWindows386 implements the Microsoft x86 structure-return rules and
 // the cdecl aggregate parameter rules emitted by Clang for the MSVC target.
 type TypeInfoWindows386 struct {
