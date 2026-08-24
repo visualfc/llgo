@@ -85,6 +85,119 @@ func TestTargetArchAndNewTransformerArchSelection(t *testing.T) {
 	}
 }
 
+func TestCOFFTargetDetection(t *testing.T) {
+	windows := &llssa.Target{GOOS: "windows", GOARCH: "amd64"}
+	linux := &llssa.Target{GOOS: "linux", GOARCH: "amd64"}
+	tests := []struct {
+		name   string
+		target *llssa.Target
+		triple string
+		want   bool
+	}{
+		{name: "native Windows", target: windows, want: true},
+		{name: "Windows arch only", target: windows, triple: "x86_64", want: true},
+		{name: "MSVC", target: linux, triple: "x86_64-pc-windows-msvc", want: true},
+		{name: "MinGW", target: linux, triple: "x86_64-w64-mingw32", want: true},
+		{name: "Cygwin", target: linux, triple: "x86_64-pc-cygwin", want: true},
+		{name: "Linux", target: linux, triple: "x86_64-unknown-linux-gnu", want: false},
+		{name: "Darwin", target: windows, triple: "arm64-apple-darwin", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isCOFFTarget(test.target, test.triple); got != test.want {
+				t.Fatalf("isCOFFTarget(%q) = %v, want %v", test.triple, got, test.want)
+			}
+		})
+	}
+}
+
+func TestWindowsComdatPreservedByCABILowering(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	mod := ctx.NewModule("comdat")
+	defer mod.Dispose()
+	large := ctx.StructType([]llvm.Type{ctx.Int64Type(), ctx.Int64Type(), ctx.Int64Type()}, false)
+	ft := llvm.FunctionType(ctx.VoidType(), []llvm.Type{large}, false)
+	fn := llvm.AddFunction(mod, "generic", ft)
+	fn.SetLinkage(llvm.LinkOnceAnyLinkage)
+	comdat := mod.Comdat("generic")
+	comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
+	fn.SetComdat(comdat)
+	b := ctx.NewBuilder()
+	defer b.Dispose()
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(fn, "entry"))
+	b.CreateRetVoid()
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "amd64"})
+	defer prog.Dispose()
+	NewTransformer(prog, "x86_64-pc-windows-msvc", "", ModeAllFunc, true).TransformModule("test", mod)
+
+	lowered := mod.NamedFunction("generic")
+	if lowered.IsNil() {
+		t.Fatalf("lowered function not found:\n%s", mod.String())
+	}
+	gotComdat := lowered.Comdat()
+	if gotComdat.C == nil {
+		t.Fatalf("C ABI lowering dropped the function COMDAT:\n%s", lowered.String())
+	}
+	if got := gotComdat.SelectionKind(); got != llvm.AnyComdatSelectionKind {
+		t.Fatalf("lowered function COMDAT selection = %v, want any", got)
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("lowered COMDAT module is invalid: %v\n%s", err, mod.String())
+	}
+}
+
+func TestCallbackWrapperComdatMatchesObjectFormat(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	for _, test := range []struct {
+		name   string
+		goos   string
+		triple string
+		want   bool
+	}{
+		{name: "COFF", goos: "windows", triple: "x86_64-pc-windows-msvc", want: true},
+		{name: "ELF", goos: "linux", triple: "x86_64-unknown-linux-gnu", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := llvm.NewContext()
+			defer ctx.Dispose()
+			mod := ctx.NewModule("callback")
+			defer mod.Dispose()
+			large := ctx.StructType([]llvm.Type{ctx.Int64Type(), ctx.Int64Type(), ctx.Int64Type()}, false)
+			callback := llvm.AddFunction(mod, "main.callback", llvm.FunctionType(ctx.VoidType(), []llvm.Type{large}, false))
+			b := ctx.NewBuilder()
+			defer b.Dispose()
+			b.SetInsertPointAtEnd(ctx.AddBasicBlock(callback, "entry"))
+			b.CreateRetVoid()
+
+			prog := llssa.NewProgram(&llssa.Target{GOOS: test.goos, GOARCH: "amd64"})
+			defer prog.Dispose()
+			tr := NewTransformer(prog, test.triple, "", ModeAllFunc, true)
+			wrapper, ok := tr.transformCallbackFunc(mod, callback)
+			if !ok {
+				t.Fatalf("callback wrapper was not required:\n%s", mod.String())
+			}
+			if got := wrapper.Comdat().C != nil; got != test.want {
+				t.Fatalf("callback wrapper has COMDAT = %v, want %v:\n%s", got, test.want, wrapper.String())
+			}
+			if test.want && wrapper.Comdat().SelectionKind() != llvm.AnyComdatSelectionKind {
+				t.Fatalf("callback wrapper COMDAT selection is not any:\n%s", wrapper.String())
+			}
+			if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("callback wrapper module is invalid: %v\n%s", err, mod.String())
+			}
+		})
+	}
+}
+
 func TestMSVCTargetDetection(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -62,6 +62,18 @@ func isMSVCTarget(target *ssa.Target, llvmTarget string) bool {
 	return windows && (msvc || !gnu)
 }
 
+func isCOFFTarget(target *ssa.Target, llvmTarget string) bool {
+	if llvmTarget == "" || !strings.Contains(llvmTarget, "-") {
+		return target != nil && target.GOOS == "windows"
+	}
+	for _, part := range strings.Split(strings.ToLower(llvmTarget), "-")[1:] {
+		if part == "windows" || part == "win32" || strings.Contains(part, "mingw") || strings.Contains(part, "cygwin") {
+			return true
+		}
+	}
+	return false
+}
+
 func NewTransformer(prog ssa.Program, llvmTarget string, targetAbi string, mode Mode, optimize bool) *Transformer {
 	target := prog.Target()
 	arch := target.GOARCH
@@ -72,6 +84,7 @@ func NewTransformer(prog ssa.Program, llvmTarget string, targetAbi string, mode 
 		prog:     prog,
 		td:       prog.TargetData(),
 		arch:     arch,
+		coff:     isCOFFTarget(target, llvmTarget),
 		mode:     mode,
 		optimize: optimize,
 	}
@@ -113,6 +126,7 @@ type Transformer struct {
 	prog     ssa.Program
 	td       llvm.TargetData
 	arch     string
+	coff     bool
 	sys      TypeInfoSys
 	mode     Mode
 	optimize bool
@@ -454,6 +468,7 @@ func (p *Transformer) transformFunc(m llvm.Module, fn llvm.Value) bool {
 		nfn.AddAttributeAtIndex(1, preloweredSRet)
 	}
 	nfn.SetLinkage(fn.Linkage())
+	nfn.SetComdat(fn.Comdat())
 	nfn.SetFunctionCallConv(fn.FunctionCallConv())
 	for _, attr := range fn.GetFunctionAttributes() {
 		nfn.AddAttributeAtIndex(-1, attr)
@@ -783,6 +798,11 @@ func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap 
 	}
 	wrapFunc := llvm.AddFunction(m, wrapName, nft)
 	wrapFunc.SetLinkage(llvm.LinkOnceAnyLinkage)
+	if p.coff {
+		comdat := m.Comdat(wrapName)
+		comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
+		wrapFunc.SetComdat(comdat)
+	}
 	wrapFunc.AddFunctionAttr(funcInlineHint(ctx))
 
 	for i, list := range attrs {
