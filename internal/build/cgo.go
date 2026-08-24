@@ -249,7 +249,7 @@ static void _init_%s() {
 }
 
 func getMacroNames(compiler *llclang.Cmd, file string, cflags []string, macroNames map[string]bool) error {
-	args := append([]string{"-dM", "-E"}, cflags...)
+	args := append([]string{"-x", "c", "-dM", "-E"}, cflags...)
 	args = append(args, file)
 	var output bytes.Buffer
 	compiler.Stdout = &output
@@ -270,7 +270,7 @@ func getMacroNames(compiler *llclang.Cmd, file string, cflags []string, macroNam
 }
 
 func getFuncNames(compiler *llclang.Cmd, file string, cflags []string, symbolNames map[string]bool) error {
-	args := append([]string{"-Xclang", "-ast-dump=json", "-fsyntax-only"}, cflags...)
+	args := append([]string{"-x", "c", "-Xclang", "-ast-dump=json", "-fsyntax-only"}, cflags...)
 	args = append(args, file)
 	var output bytes.Buffer
 	compiler.Stdout = &output
