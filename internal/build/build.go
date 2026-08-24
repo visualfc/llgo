@@ -1840,9 +1840,6 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	if !moveExactWindowsOutput {
 		return nil
 	}
-	if err := os.Remove(app); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("replace exact Windows output %s: %w", app, err)
-	}
 	if ctx.mode == ModeTest && !ctx.buildConf.CompileOnly {
 		// Keep the .exe sibling so os/exec's Windows PATHEXT lookup can run an
 		// extensionless explicit test output, while also publishing the exact
@@ -1852,6 +1849,9 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		}
 		return nil
 	}
+	// os.Rename replaces an existing non-directory destination. On Windows it
+	// uses MoveFileEx with MOVEFILE_REPLACE_EXISTING, avoiding a remove/rename
+	// gap in which another build could recreate app.
 	if err := os.Rename(linkOutput, app); err != nil {
 		return fmt.Errorf("publish exact Windows output %s: %w", app, err)
 	}

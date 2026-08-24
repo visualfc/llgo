@@ -155,9 +155,12 @@ func testWindowsExecutableArtifact(t *testing.T) {
 	ctx := newWindowsArtifactContext(t, BuildModeExe)
 	object := compileWindowsArtifact(t, ctx, dir, "entry.c", `
 int mainCRTStartup(void) { return 0; }
-`)
+	`)
 	// An explicit -o name is exact even without the conventional suffix.
 	executable := filepath.Join(dir, "native-exact-output")
+	if err := os.WriteFile(executable, []byte("stale output"), 0o666); err != nil {
+		t.Fatal(err)
+	}
 	linkWindowsExecutable(t, ctx, executable, object)
 	if _, err := os.Stat(executable + ".exe"); !os.IsNotExist(err) {
 		t.Fatalf("Clang's intermediate .exe was not consumed: %v", err)
