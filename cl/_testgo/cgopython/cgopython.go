@@ -2,8 +2,17 @@
 package main
 
 /*
-#cgo pkg-config: python3-embed
+#cgo !windows pkg-config: python3-embed
+#ifdef _WIN32
+// This compile-only fixture checks LLGo's C-call and defer lowering; it does
+// not link or execute Python. Keep its Windows declaration surface local so
+// the compiler test does not depend on a separately installed Python SDK.
+void Py_Initialize(void);
+void Py_Finalize(void);
+int PyRun_SimpleString(const char *command);
+#else
 #include <Python.h>
+#endif
 */
 import "C"
 
