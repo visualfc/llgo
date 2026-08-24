@@ -24,7 +24,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Test benchmark change classifier
         run: python3 .github/scripts/test_classify_benchmark_changes.py
 
@@ -40,7 +40,7 @@ jobs:
     steps:
       - name: Check out LLGo history
         if: github.event_name == 'push'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
