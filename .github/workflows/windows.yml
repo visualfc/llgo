@@ -216,8 +216,17 @@ jobs:
           }
 
           $env:LLGO_TEST_UNRECOVERED_FAULT = "1"
-          $faultOutput = .\windows-runtime-smoke.exe 2>&1 | Out-String
-          $faultExitCode = $LASTEXITCODE
+          # This process is expected to write a panic to stderr and fail.
+          # Temporarily keep native stderr non-terminating so it can be
+          # asserted below even in Windows PowerShell 5.
+          $savedErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
+          try {
+            $faultOutput = .\windows-runtime-smoke.exe 2>&1 | Out-String
+            $faultExitCode = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $savedErrorActionPreference
+          }
           Remove-Item Env:LLGO_TEST_UNRECOVERED_FAULT
           Write-Host $faultOutput
           if ($faultExitCode -eq 0) {
@@ -226,7 +235,7 @@ jobs:
           foreach ($expected in @(
             "runtime error: invalid memory address or nil pointer dereference",
             "main.windowsNilFault",
-            "windowsruntime\main.go"
+            "windowsruntime/main.go"
           )) {
             if (-not $faultOutput.Contains($expected)) {
               throw "unrecovered Windows fault output is missing '$expected'"
