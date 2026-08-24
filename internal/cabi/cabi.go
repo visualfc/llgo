@@ -573,7 +573,8 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 		index++
 	}
 
-	if info.Return.Kind >= AttrPointer {
+	voidAggregateReturn := info.Return.Kind == AttrVoid && info.Return.Type.TypeKind() != llvm.VoidTypeKind
+	if info.Return.Kind >= AttrPointer || voidAggregateReturn {
 		var retInstrs []llvm.Value
 		bb := nfn.FirstBasicBlock()
 		for !bb.IsNil() {
@@ -591,6 +592,8 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 			b.SetInsertPointBefore(instr)
 			var rv llvm.Value
 			switch info.Return.Kind {
+			case AttrVoid:
+				rv = b.CreateRetVoid()
 			case AttrPointer:
 				// %typ @fn()
 				// %2 = load %typ, ptr %1
@@ -730,8 +733,15 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 	var instr llvm.Value
 	switch info.Return.Kind {
 	case AttrVoid:
-		instr = llvm.CreateCall(b, nft, nfn, nparams)
-		updateCallAttr(instr)
+		loweredCall := llvm.CreateCall(b, nft, nfn, nparams)
+		updateCallAttr(loweredCall)
+		if info.Return.Type.TypeKind() == llvm.VoidTypeKind {
+			instr = loweredCall
+		} else {
+			// The target ABI omits zero-sized aggregate results. Preserve the
+			// original SSA value for users even though no value crosses the ABI.
+			instr = llvm.ConstNull(info.Return.Type)
+		}
 	case AttrPointer:
 		ret := createAlloca(info.Return.Type)
 		call := llvm.CreateCall(b, nft, nfn, append([]llvm.Value{ret}, nparams...))

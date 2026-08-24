@@ -198,6 +198,65 @@ func TestCallbackWrapperComdatMatchesObjectFormat(t *testing.T) {
 	}
 }
 
+func TestWindowsARM64VoidAggregateReturnLowering(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Empty = type {}
+%Large = type { i64, i64, i64 }
+
+define %Empty @callee(%Large %value) {
+entry:
+  ret %Empty zeroinitializer
+}
+
+define %Empty @caller(%Large %value) {
+entry:
+  %result = call %Empty @callee(%Large %value)
+  %slot = alloca %Empty
+  store %Empty %result, ptr %slot
+  ret %Empty %result
+}
+`
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "empty_return.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "arm64"})
+	defer prog.Dispose()
+	NewTransformer(prog, "aarch64-pc-windows-msvc", "", ModeAllFunc, true).TransformModule("test", mod)
+
+	ir := mod.String()
+	for _, function := range []string{"callee", "caller"} {
+		if got := mod.NamedFunction(function).GlobalValueType().ReturnType().TypeKind(); got != llvm.VoidTypeKind {
+			t.Fatalf("lowered %s return kind = %v, want void:\n%s", function, got, ir)
+		}
+	}
+	if strings.Contains(ir, "<badref>") || strings.Contains(ir, "store void") || strings.Contains(ir, "ret %Empty") {
+		t.Fatalf("void aggregate result left invalid value uses:\n%s", ir)
+	}
+	if !strings.Contains(mod.NamedFunction("caller").String(), "call void @callee(") {
+		t.Fatalf("caller did not use the lowered void ABI:\n%s", mod.NamedFunction("caller").String())
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("void aggregate return module is invalid: %v\n%s", err, ir)
+	}
+}
+
 func TestMSVCTargetDetection(t *testing.T) {
 	tests := []struct {
 		name   string
