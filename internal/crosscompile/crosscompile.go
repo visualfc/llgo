@@ -232,8 +232,12 @@ func ltoLinkerOptFlag(level optlevel.Level) string {
 	}
 }
 
-func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
-	targetTriple := llvm.GetTargetTriple(goos, goarch)
+func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (Export, error) {
+	return useWithGOARM(goos, goarch, "", wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+}
+
+func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
+	targetTriple := llvm.GetTargetTripleWithGOARM(goos, goarch, goarm)
 	llgoRoot := env.LLGoROOT()
 
 	// Check for ESP Clang support for target-based builds
@@ -738,8 +742,15 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 // Use extends the original Use function to support target-based configuration
 // If targetName is provided, it takes precedence over goos/goarch
 func Use(goos, goarch, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
+	return UseWithGOARM(goos, goarch, "", targetName, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+}
+
+// UseWithGOARM is Use with an explicit Go ARM architecture setting. The
+// setting affects native GOARCH=arm clang and linker triples; named targets
+// retain their target configuration's LLVM triple.
+func UseWithGOARM(goos, goarch, goarm, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
 	if targetName != "" && !strings.HasPrefix(targetName, "wasm") && !strings.HasPrefix(targetName, "wasi") {
 		return UseTarget(targetName, level, ltoMode)
 	}
-	return use(goos, goarch, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+	return useWithGOARM(goos, goarch, goarm, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
 }

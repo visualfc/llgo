@@ -1,8 +1,18 @@
 package llvm
 
-import "runtime"
+import (
+	"runtime"
+
+	archcfg "github.com/xgo-dev/llgo/internal/goarch"
+)
 
 func GetTargetTriple(goos, goarch string) string {
+	return GetTargetTripleWithGOARM(goos, goarch, "")
+}
+
+// GetTargetTripleWithGOARM returns the LLVM target triple for a Go target.
+// goarm selects the ARM version and floating-point ABI for GOARCH=arm.
+func GetTargetTripleWithGOARM(goos, goarch, goarm string) string {
 	var llvmarch string
 	if goarch == "" {
 		goarch = runtime.GOARCH
@@ -18,9 +28,15 @@ func GetTargetTriple(goos, goarch string) string {
 	case "arm64":
 		llvmarch = "aarch64"
 	case "arm":
-		// Keep the default in sync with ssa.Target.Spec when GOARM is not
-		// explicitly modeled by this helper.
-		llvmarch = "armv7"
+		arm, _ := archcfg.ParseARM(goarm)
+		switch arm.Version {
+		case "5":
+			llvmarch = "armv5"
+		case "6":
+			llvmarch = "armv6"
+		default:
+			llvmarch = "armv7"
+		}
 	case "wasm":
 		llvmarch = "wasm32"
 	default:
@@ -37,7 +53,6 @@ func GetTargetTriple(goos, goarch string) string {
 			// Looks like Apple prefers to call this architecture ARM64
 			// instead of AArch64.
 			llvmarch = "arm64"
-			llvmos = "macosx"
 		}
 		llvmvendor = "apple"
 	case "wasip1":
@@ -50,7 +65,11 @@ func GetTargetTriple(goos, goarch string) string {
 	if llvmos == "windows" {
 		triple += "-gnu"
 	} else if goarch == "arm" {
-		triple += "-gnueabihf"
+		arm, _ := archcfg.ParseARM(goarm)
+		triple += "-gnueabi"
+		if !arm.SoftFloat {
+			triple += "hf"
+		}
 	}
 	return triple
 }
