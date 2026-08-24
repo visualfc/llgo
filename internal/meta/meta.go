@@ -399,13 +399,29 @@ func (pm *PackageMeta) validate() error {
 	if err := pm.validateNameRecords("Symbols", pm.symOff+4, pm.nsyms, 12, strSize); err != nil {
 		return err
 	}
-	if err := pm.validateFuncDemandNames(layouts[1], strSize); err != nil {
+	if err := pm.validateSymbolRecords(sections[0].name, layouts[0], 4, symbolField{}); err != nil {
+		return err
+	}
+	if err := pm.validateFuncDemands(layouts[1], strSize); err != nil {
+		return err
+	}
+	if err := pm.validateSymbolRecords(sections[2].name, layouts[2], 4, symbolField{}); err != nil {
 		return err
 	}
 	if err := pm.validateNameRecords(sections[3].name, layouts[3].dataOff, layouts[3].nrecords, 20, strSize); err != nil {
 		return err
 	}
-	return pm.validateNameRecords(sections[4].name, layouts[4].dataOff, layouts[4].nrecords, 12, strSize)
+	if err := pm.validateSymbolRecords(sections[3].name, layouts[3], 20,
+		symbolField{name: "MType", offset: 8},
+		symbolField{name: "IFn", offset: 12},
+		symbolField{name: "TFn", offset: 16},
+	); err != nil {
+		return err
+	}
+	if err := pm.validateNameRecords(sections[4].name, layouts[4].dataOff, layouts[4].nrecords, 12, strSize); err != nil {
+		return err
+	}
+	return pm.validateSymbolRecords(sections[4].name, layouts[4], 12, symbolField{name: "MType", offset: 8})
 }
 
 func validNameRef(ref nameRef, strSize uint32) bool {
@@ -444,19 +460,46 @@ func validateCSRSection(raw []byte, name string, start, end, nsyms, recordSize u
 	return csrLayout{dataOff: uint32(uint64(start) + headerSize), nrecords: uint32(nrecords)}, nil
 }
 
-func (pm *PackageMeta) validateFuncDemandNames(layout csrLayout, strSize uint32) error {
+func (pm *PackageMeta) validateFuncDemands(layout csrLayout, strSize uint32) error {
 	for i := uint32(0); i < layout.nrecords; i++ {
 		base := layout.dataOff + i*12
 		kind := DemandKind(binary.LittleEndian.Uint32(pm.raw[base:]))
-		if kind != DemandNamedMethod {
-			continue
+		switch kind {
+		case DemandUseIface, DemandIfaceMethod:
+			target := binary.LittleEndian.Uint32(pm.raw[base+4:])
+			if target >= pm.nsyms {
+				return fmt.Errorf("meta: FuncDemand record %d has invalid target symbol %d (symbol count %d)", i, target, pm.nsyms)
+			}
+		case DemandNamedMethod:
+			ref := nameRef{
+				Off: binary.LittleEndian.Uint32(pm.raw[base+4:]),
+				Len: binary.LittleEndian.Uint32(pm.raw[base+8:]),
+			}
+			if !validNameRef(ref, strSize) {
+				return fmt.Errorf("meta: FuncDemand record %d has invalid name range [%d,%d)", i, ref.Off, uint64(ref.Off)+uint64(ref.Len))
+			}
 		}
-		ref := nameRef{
-			Off: binary.LittleEndian.Uint32(pm.raw[base+4:]),
-			Len: binary.LittleEndian.Uint32(pm.raw[base+8:]),
-		}
-		if !validNameRef(ref, strSize) {
-			return fmt.Errorf("meta: FuncDemand record %d has invalid name range [%d,%d)", i, ref.Off, uint64(ref.Off)+uint64(ref.Len))
+	}
+	return nil
+}
+
+type symbolField struct {
+	name   string
+	offset uint32
+}
+
+func (pm *PackageMeta) validateSymbolRecords(section string, layout csrLayout, recordSize uint32, fields ...symbolField) error {
+	for i := uint32(0); i < layout.nrecords; i++ {
+		base := layout.dataOff + i*recordSize
+		for _, field := range fields {
+			sym := binary.LittleEndian.Uint32(pm.raw[base+field.offset:])
+			if sym < pm.nsyms {
+				continue
+			}
+			if field.name == "" {
+				return fmt.Errorf("meta: %s record %d has invalid symbol %d (symbol count %d)", section, i, sym, pm.nsyms)
+			}
+			return fmt.Errorf("meta: %s record %d has invalid %s symbol %d (symbol count %d)", section, i, field.name, sym, pm.nsyms)
 		}
 	}
 	return nil

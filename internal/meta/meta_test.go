@@ -483,6 +483,80 @@ func TestOpenErrors(t *testing.T) {
 			},
 			want: "meta: InterfaceInfo record 0 has invalid name range",
 		},
+		{
+			name: "ordinary edge symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				binary.LittleEndian.PutUint32(raw[metaCSRDataOffset(raw, secOrdinaryEdges):], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: OrdinaryEdges record 0 has invalid symbol",
+		},
+		{
+			name: "interface-use demand symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				dataOff := metaCSRDataOffset(raw, secFuncDemand)
+				binary.LittleEndian.PutUint32(raw[dataOff+12+4:], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: FuncDemand record 1 has invalid target symbol",
+		},
+		{
+			name: "interface-method demand symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				dataOff := metaCSRDataOffset(raw, secFuncDemand)
+				binary.LittleEndian.PutUint32(raw[dataOff+2*12+4:], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: FuncDemand record 2 has invalid target symbol",
+		},
+		{
+			name: "type child symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				binary.LittleEndian.PutUint32(raw[metaCSRDataOffset(raw, secTypeChildren):], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: TypeChildren record 0 has invalid symbol",
+		},
+		{
+			name: "method type symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				binary.LittleEndian.PutUint32(raw[metaCSRDataOffset(raw, secMethodInfo)+8:], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: MethodInfo record 0 has invalid MType symbol",
+		},
+		{
+			name: "interface function symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				binary.LittleEndian.PutUint32(raw[metaCSRDataOffset(raw, secMethodInfo)+12:], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: MethodInfo record 0 has invalid IFn symbol",
+		},
+		{
+			name: "type function symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				binary.LittleEndian.PutUint32(raw[metaCSRDataOffset(raw, secMethodInfo)+16:], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: MethodInfo record 0 has invalid TFn symbol",
+		},
+		{
+			name: "interface method type symbol past table",
+			raw: func() []byte {
+				raw := cloneValid()
+				binary.LittleEndian.PutUint32(raw[metaCSRDataOffset(raw, secIfaceInfo)+8:], metaSymbolCount(raw))
+				return raw
+			},
+			want: "meta: InterfaceInfo record 0 has invalid MType symbol",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -550,6 +624,8 @@ func validationMetaBytes(t *testing.T) []byte {
 	tfn := b.Sym("pkg.tfn")
 	b.AddOrdinaryEdge(src, dst)
 	b.AddNamedMethodUse(src, "Method")
+	b.AddIfaceUse(src, dst)
+	b.AddIfaceMethodUse(src, iface, 0)
 	b.AddTypeChild(src, dst)
 	b.AddMethodSlot(src, "Method", mtype, ifn, tfn)
 	b.AddIfaceMethod(iface, "Method", mtype)
@@ -568,6 +644,10 @@ func metaCSRDataOffset(raw []byte, section int) uint32 {
 	sectionOff := metaSectionOffset(raw, section)
 	nsyms := binary.LittleEndian.Uint32(raw[sectionOff:])
 	return sectionOff + 4 + (nsyms+1)*4
+}
+
+func metaSymbolCount(raw []byte) uint32 {
+	return binary.LittleEndian.Uint32(raw[metaSectionOffset(raw, secSymbols):])
 }
 
 func validEmptyMetaHeader(size int) []byte {
