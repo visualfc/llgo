@@ -33,21 +33,36 @@ func TestWindowsConsumesMSVCLibrary(t *testing.T) {
 		t.Skip("native MSVC interoperability test")
 	}
 	cl, clErr := exec.LookPath("cl.exe")
-	lib, libErr := exec.LookPath("lib.exe")
-	if clErr != nil || libErr != nil {
+	lib := filepath.Join(filepath.Dir(cl), "lib.exe")
+	link := filepath.Join(filepath.Dir(cl), "link.exe")
+	_, libErr := os.Stat(lib)
+	_, linkErr := os.Stat(link)
+	if clErr != nil || libErr != nil || linkErr != nil {
 		if os.Getenv("LLGO_REQUIRE_MSVC") == "1" {
-			t.Fatalf("Visual Studio cl.exe/lib.exe are required: cl=%v, lib=%v", clErr, libErr)
+			t.Fatalf("Visual Studio cl.exe/lib.exe/link.exe are required: cl=%v, lib=%v, link=%v", clErr, libErr, linkErr)
 		}
 		t.Skip("Visual Studio C++ tools are not installed")
 	}
 
+	t.Run("consume cl static library", func(t *testing.T) {
+		testWindowsConsumesCLLibrary(t, cl, lib)
+	})
+	t.Run("link consumes LLGo archive", func(t *testing.T) {
+		testMSVCConsumesWindowsArchive(t, cl, link)
+	})
+	t.Run("link consumes LLGo DLL", func(t *testing.T) {
+		testMSVCConsumesWindowsDLL(t, cl, link)
+	})
+}
+
+func testWindowsConsumesCLLibrary(t *testing.T, cl, lib string) {
 	dir := t.TempDir()
 	source := writeWindowsArtifactSource(t, dir, "msvc-answer.c", `
 int answer_from_msvc(void) { return 42; }
 `)
 	object := filepath.Join(dir, "msvc-answer.obj")
 	archive := filepath.Join(dir, "msvc-answer.lib")
-	runTool(t, cl, "/nologo", "/c", source, "/Fo"+object)
+	runTool(t, cl, "/nologo", "/TC", "/c", source, "/Fo"+object)
 	runTool(t, lib, "/nologo", "/out:"+archive, object)
 
 	ctx := newWindowsArtifactContext(t, BuildModeExe)
@@ -57,6 +72,57 @@ int mainCRTStartup(void) { return answer_from_msvc() == 42 ? 0 : 23; }
 `)
 	executable := filepath.Join(dir, "msvc-consumer.exe")
 	linkWindowsExecutable(t, ctx, executable, consumer, archive)
+	checkPEArtifact(t, executable, false)
+	runTool(t, executable)
+}
+
+func testMSVCConsumesWindowsArchive(t *testing.T, cl, link string) {
+	dir := t.TempDir()
+	ctx := newWindowsArtifactContext(t, BuildModeCArchive)
+	object := compileWindowsArtifact(t, ctx, dir, "llgo-static.c", `
+int answer_from_llgo_archive(void) { return 42; }
+`)
+	archive := filepath.Join(dir, "llgo-output.a")
+	if err := ctx.createMergedArchiveFile(archive, []string{object}); err != nil {
+		t.Fatal(err)
+	}
+
+	consumer := compileMSVCArtifact(t, cl, dir, "llgo-archive-consumer.c", `
+int answer_from_llgo_archive(void);
+int mainCRTStartup(void) { return answer_from_llgo_archive() == 42 ? 0 : 23; }
+`)
+	executable := filepath.Join(dir, "llgo-archive-consumer.exe")
+	linkMSVCExecutable(t, link, executable, consumer, archive)
+	checkPEArtifact(t, executable, false)
+	runTool(t, executable)
+}
+
+func testMSVCConsumesWindowsDLL(t *testing.T, cl, link string) {
+	dir := t.TempDir()
+	ctx := newWindowsArtifactContext(t, BuildModeCShared)
+	object := compileWindowsArtifact(t, ctx, dir, "llgo-shared.c", `
+int answer_from_llgo_dll(void) { return 42; }
+`)
+	dll := filepath.Join(dir, "llgo-output.dll")
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	lpkg := prog.NewPackage("example.com/msvcfixture", "example.com/msvcfixture")
+	lpkg.SetExport("example.com/msvcfixture.answer", "answer_from_llgo_dll")
+	linkArgs := append(
+		[]string{"-nostdlib", "-Wl,/noentry"},
+		cSharedExportArgs(ctx, []*aPackage{{LPkg: lpkg}})...,
+	)
+	if err := linkObjFiles(ctx, dll, []string{object}, linkArgs, false); err != nil {
+		t.Fatal(err)
+	}
+	imports := strings.TrimSuffix(dll, filepath.Ext(dll)) + ".lib"
+
+	consumer := compileMSVCArtifact(t, cl, dir, "llgo-dll-consumer.c", `
+__declspec(dllimport) int answer_from_llgo_dll(void);
+int mainCRTStartup(void) { return answer_from_llgo_dll() == 42 ? 0 : 23; }
+`)
+	executable := filepath.Join(dir, "llgo-dll-consumer.exe")
+	linkMSVCExecutable(t, link, executable, consumer, imports)
 	checkPEArtifact(t, executable, false)
 	runTool(t, executable)
 }
@@ -192,6 +258,26 @@ func writeWindowsArtifactSource(t *testing.T, dir, name, source string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func compileMSVCArtifact(t *testing.T, cl, dir, name, source string) string {
+	t.Helper()
+	sourcePath := writeWindowsArtifactSource(t, dir, name, source)
+	object := filepath.Join(dir, strings.TrimSuffix(name, filepath.Ext(name))+".obj")
+	runTool(t, cl, "/nologo", "/TC", "/c", sourcePath, "/Fo"+object)
+	return object
+}
+
+func linkMSVCExecutable(t *testing.T, link, executable string, inputs ...string) {
+	t.Helper()
+	args := []string{
+		"/nologo",
+		"/nodefaultlib",
+		"/entry:mainCRTStartup",
+		"/subsystem:console",
+		"/out:" + executable,
+	}
+	runTool(t, link, append(args, inputs...)...)
 }
 
 func linkWindowsExecutable(t *testing.T, ctx *context, executable string, inputs ...string) {
