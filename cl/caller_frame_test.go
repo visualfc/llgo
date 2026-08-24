@@ -1242,6 +1242,13 @@ func TestDirectiveFilename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	lines := strings.Split(src, "\n")
+	sourceLine := func(_ string, line int) (string, bool) {
+		if line <= 0 || line > len(lines) {
+			return "", false
+		}
+		return lines[line-1], true
+	}
 	pos := func(i int) token.Pos { return file.Decls[i].Pos() }
 	cases := []struct {
 		pos  token.Pos
@@ -1258,7 +1265,7 @@ func TestDirectiveFilename(t *testing.T) {
 			// The package loader hands cl an absolute expansion; emulate it.
 			adjusted = "/work/pkg/rel.go"
 		}
-		if got := directiveFilename(fset, c.pos, adjusted, nil); got != c.want {
+		if got := directiveFilename(fset, c.pos, adjusted, sourceLine); got != c.want {
 			t.Fatalf("case %d: directiveFilename(%q) = %q, want %q", i, adjusted, got, c.want)
 		}
 	}
