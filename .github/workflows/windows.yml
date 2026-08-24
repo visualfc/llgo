@@ -1,0 +1,56 @@
+name: Windows target configuration
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  target-configuration:
+    name: target configuration (windows-amd64, LLVM 19, Go 1.26.7)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.26.7"
+
+      - name: Set up dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Test Windows target configuration
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+
+          go version
+          clang --version
+          pkg-config --modversion llvm-19
+
+          # Compile the released binding through its normal Windows build
+          # path, without byollvm or global CGO flag overrides.
+          go test -run '^$' -timeout=10m github.com/xgo-dev/llvm
+          go test -count=1 -timeout=10m -covermode=atomic \
+            -coverprofile=coverage-windows-target.txt \
+            ./internal/goarch ./internal/xtool/llvm
+
+      - name: Upload Windows coverage
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage-windows-target.txt
+          flags: windows-target

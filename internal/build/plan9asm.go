@@ -67,7 +67,7 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 		if shouldSkipDarwinDynimportTrampolineAsm(skipDarwinDynimportTrampolines, sfile, src) {
 			continue
 		}
-		tr, err := llplan9asm.TranslateSourceModuleForPkg(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch)
+		tr, err := llplan9asm.TranslateSourceModuleForPkgWithOptions(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch, llplan9asm.TranslateOptions{GOARM: ctx.buildConf.GOARM})
 		if err != nil {
 			// Some stdlib .s files are comment-only placeholders (e.g. internal/cpu/cpu.s).
 			// Skip those silently.
@@ -262,7 +262,7 @@ func plan9asmSigsForPkg(ctx *context, pkgPath string) (map[string]struct{}, erro
 		if err != nil {
 			return nil, fmt.Errorf("%s: read %s: %w", pkg.PkgPath, sfile, err)
 		}
-		tr, err := llplan9asm.TranslateSourceForPkg(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch)
+		tr, err := llplan9asm.TranslateSourceForPkgWithOptions(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch, llplan9asm.TranslateOptions{GOARM: ctx.buildConf.GOARM})
 		if err != nil {
 			if strings.Contains(err.Error(), "no TEXT directive found") {
 				continue

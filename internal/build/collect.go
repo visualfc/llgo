@@ -91,6 +91,10 @@ func (c *context) packageCacheDisabled(id string) bool {
 func (c *context) collectEnvInputs(m *manifestBuilder) {
 	m.env.Goos = c.buildConf.Goos
 	m.env.Goarch = c.buildConf.Goarch
+	m.env.Go386 = c.buildConf.GO386
+	m.env.Goamd64 = c.buildConf.GOAMD64
+	m.env.Goarm = c.buildConf.GOARM
+	m.env.Goarm64 = c.buildConf.GOARM64
 	m.env.LlvmTriple = c.crossCompile.LLVMTarget
 	m.env.LlgoVersion = env.Version()
 	m.env.LlgoCompilerHash = c.buildConf.CompilerHash

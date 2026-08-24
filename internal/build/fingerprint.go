@@ -99,6 +99,10 @@ func (m orderedStringMap) MarshalYAML() (interface{}, error) {
 type envSection struct {
 	Goos             string           `yaml:"GOOS,omitempty"`
 	Goarch           string           `yaml:"GOARCH,omitempty"`
+	Go386            string           `yaml:"GO386,omitempty"`
+	Goamd64          string           `yaml:"GOAMD64,omitempty"`
+	Goarm            string           `yaml:"GOARM,omitempty"`
+	Goarm64          string           `yaml:"GOARM64,omitempty"`
 	GoVersion        string           `yaml:"GO_VERSION,omitempty"`
 	LlgoVersion      string           `yaml:"LLGO_VERSION,omitempty"`
 	LlgoCompilerHash string           `yaml:"LLGO_COMPILER_HASH,omitempty"`
@@ -108,7 +112,7 @@ type envSection struct {
 }
 
 func (s *envSection) empty() bool {
-	return s.Goos == "" && s.Goarch == "" && s.LlvmTriple == "" && s.LlgoVersion == "" && s.LlgoCompilerHash == "" && s.GoVersion == "" && s.LlvmVersion == "" && len(s.Vars) == 0
+	return s.Goos == "" && s.Goarch == "" && s.Go386 == "" && s.Goamd64 == "" && s.Goarm == "" && s.Goarm64 == "" && s.LlvmTriple == "" && s.LlgoVersion == "" && s.LlgoCompilerHash == "" && s.GoVersion == "" && s.LlvmVersion == "" && len(s.Vars) == 0
 }
 
 type commonSection struct {

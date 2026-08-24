@@ -1,9 +1,20 @@
 package llvm
 
-import "runtime"
+import (
+	"runtime"
+
+	archcfg "github.com/xgo-dev/llgo/internal/goarch"
+)
 
 func GetTargetTriple(goos, goarch string) string {
+	return GetTargetTripleWithGOARM(goos, goarch, "")
+}
+
+// GetTargetTripleWithGOARM returns the LLVM target triple for a Go target.
+// goarm selects the ARM version and floating-point ABI for GOARCH=arm.
+func GetTargetTripleWithGOARM(goos, goarch, goarm string) string {
 	var llvmarch string
+	var armConfig archcfg.ARM
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
@@ -12,15 +23,26 @@ func GetTargetTriple(goos, goarch string) string {
 	}
 	switch goarch {
 	case "386":
-		llvmarch = "i386"
+		if goos == "windows" {
+			// LLVM's 32-bit MSVC target spelling uses i686.
+			llvmarch = "i686"
+		} else {
+			llvmarch = "i386"
+		}
 	case "amd64":
 		llvmarch = "x86_64"
 	case "arm64":
 		llvmarch = "aarch64"
 	case "arm":
-		// Keep the default in sync with ssa.Target.Spec when GOARM is not
-		// explicitly modeled by this helper.
-		llvmarch = "armv7"
+		armConfig, _ = archcfg.ParseARM(goarm)
+		switch armConfig.Version {
+		case "5":
+			llvmarch = "armv5"
+		case "6":
+			llvmarch = "armv6"
+		default:
+			llvmarch = "armv7"
+		}
 	case "wasm":
 		llvmarch = "wasm32"
 	default:
@@ -37,20 +59,27 @@ func GetTargetTriple(goos, goarch string) string {
 			// Looks like Apple prefers to call this architecture ARM64
 			// instead of AArch64.
 			llvmarch = "arm64"
-			llvmos = "macosx"
 		}
 		llvmvendor = "apple"
 	case "wasip1":
 		llvmos = "wasip1"
+	case "windows":
+		// GOOS=windows defaults to the native Microsoft ABI. MinGW is a
+		// separate target toolchain and must not be inferred from the host
+		// shell.
+		llvmvendor = "pc"
 	}
 	// Target triples (which actually have four components, but are called
 	// triples for historical reasons) have the form:
 	//   arch-vendor-os-environment
 	triple := llvmarch + "-" + llvmvendor + "-" + llvmos
 	if llvmos == "windows" {
-		triple += "-gnu"
+		triple += "-msvc"
 	} else if goarch == "arm" {
-		triple += "-gnueabihf"
+		triple += "-gnueabi"
+		if !armConfig.SoftFloat {
+			triple += "hf"
+		}
 	}
 	return triple
 }

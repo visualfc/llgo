@@ -2731,6 +2731,42 @@ func TestTargetMachineAndDataLayout(t *testing.T) {
 	}
 }
 
+func TestARMTargetSpec(t *testing.T) {
+	for _, test := range []struct {
+		goarm       string
+		wantTriple  string
+		wantFeature string
+	}{
+		{"5", "armv5-unknown-linux-gnueabi", "+armv5t"},
+		{"6", "armv6-unknown-linux-gnueabihf", "+armv6"},
+		{"7", "armv7-unknown-linux-gnueabihf", "+armv7-a"},
+	} {
+		spec := (&Target{GOOS: "linux", GOARCH: "arm", GOARM: test.goarm}).Spec()
+		if spec.Triple != test.wantTriple {
+			t.Errorf("linux/arm GOARM=%s triple = %q, want %q", test.goarm, spec.Triple, test.wantTriple)
+		}
+		if !strings.Contains(spec.Features, test.wantFeature) {
+			t.Errorf("linux/arm GOARM=%s features = %q, want %q", test.goarm, spec.Features, test.wantFeature)
+		}
+	}
+}
+
+func TestWindowsTargetTriple(t *testing.T) {
+	for _, test := range []struct {
+		goarch string
+		want   string
+	}{
+		{"386", "i686-pc-windows-msvc"},
+		{"amd64", "x86_64-pc-windows-msvc"},
+		{"arm64", "aarch64-pc-windows-msvc"},
+	} {
+		target := &Target{GOOS: "windows", GOARCH: test.goarch}
+		if got := target.Spec().Triple; got != test.want {
+			t.Errorf("windows/%s target triple = %q, want %q", test.goarch, got, test.want)
+		}
+	}
+}
+
 func TestAbiTables(t *testing.T) {
 	prog := NewProgram(nil)
 	prog.sizes = types.SizesFor("gc", runtime.GOARCH)

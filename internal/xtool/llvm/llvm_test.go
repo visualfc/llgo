@@ -42,6 +42,7 @@ func TestGetTargetTriple(t *testing.T) {
 	clangArchMap := map[string][]string{
 		"x86_64":  {"x86-64", "x86_64"},
 		"i386":    {"x86", "i386"},
+		"i686":    {"x86", "i386"},
 		"aarch64": {"aarch64", "arm64"},
 		"arm64":   {"arm64", "aarch64"},
 		"armv7":   {"arm", "thumb"},
@@ -144,7 +145,26 @@ func TestGetTargetTriple(t *testing.T) {
 	checkTriple(t, "linux/arm", "linux", "arm", "armv7-unknown-linux-gnueabihf")
 	checkTriple(t, "darwin/amd64", "darwin", "amd64", "x86_64-apple-macosx")
 	checkTriple(t, "darwin/arm64", "darwin", "arm64", "arm64-apple-macosx")
-	checkTriple(t, "windows/amd64", "windows", "amd64", "x86_64-unknown-windows-gnu")
-	checkTriple(t, "windows/386", "windows", "386", "i386-unknown-windows-gnu")
+	checkTriple(t, "windows/amd64", "windows", "amd64", "x86_64-pc-windows-msvc")
+	checkTriple(t, "windows/386", "windows", "386", "i686-pc-windows-msvc")
+	checkTriple(t, "windows/arm64", "windows", "arm64", "aarch64-pc-windows-msvc")
 	checkTriple(t, "js/wasm", "js", "wasm", "wasm32-unknown-js")
+}
+
+func TestGetTargetTripleWithGOARM(t *testing.T) {
+	for _, test := range []struct {
+		goarm string
+		want  string
+	}{
+		{"5", "armv5-unknown-linux-gnueabi"},
+		{"5,hardfloat", "armv5-unknown-linux-gnueabihf"},
+		{"6", "armv6-unknown-linux-gnueabihf"},
+		{"6,softfloat", "armv6-unknown-linux-gnueabi"},
+		{"7", "armv7-unknown-linux-gnueabihf"},
+		{"", "armv7-unknown-linux-gnueabihf"},
+	} {
+		if got := GetTargetTripleWithGOARM("linux", "arm", test.goarm); got != test.want {
+			t.Errorf("GetTargetTripleWithGOARM(linux, arm, %q) = %q, want %q", test.goarm, got, test.want)
+		}
+	}
 }

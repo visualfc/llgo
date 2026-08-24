@@ -98,6 +98,22 @@ func Foo()
 	}
 }
 
+func TestTranslateGOARMTargetTriple(t *testing.T) {
+	pkg := mustTestPackage(t, "example.com/arm", `package arm
+func Foo()
+`)
+	asmPath := filepath.Join(t.TempDir(), "foo_arm.s")
+	asm := []byte("TEXT ·Foo(SB),NOSPLIT,$0-0\n\tRET\n")
+	tr, err := TranslateSourceModuleForPkgWithOptions(pkg, asmPath, asm, "linux", "arm", TranslateOptions{GOARM: "6,softfloat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Module.Dispose()
+	if got, want := tr.Module.Target(), "armv6-unknown-linux-gnueabi"; got != want {
+		t.Fatalf("module target = %q, want %q", got, want)
+	}
+}
+
 func TestTranslateHelperFunctions(t *testing.T) {
 	if got := StripABISuffix("runtime·cmpstring<ABIInternal>"); got != "runtime·cmpstring" {
 		t.Fatalf("StripABISuffix runtime = %q", got)

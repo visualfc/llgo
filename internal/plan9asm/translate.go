@@ -32,6 +32,7 @@ type ModuleTranslation struct {
 
 type TranslateOptions struct {
 	AnnotateSource bool
+	GOARM          string
 }
 
 func TranslateFileForPkg(pkg *packages.Package, sfile string, goos string, goarch string, overlay map[string][]byte) (*FileTranslation, error) {
@@ -105,7 +106,7 @@ func TranslateSourceModuleForPkgWithOptions(pkg *packages.Package, sfile string,
 		FileName:       sfile,
 		GOOS:           goos,
 		GOARCH:         goarch,
-		TargetTriple:   intllvm.GetTargetTriple(goos, goarch),
+		TargetTriple:   intllvm.GetTargetTripleWithGOARM(goos, goarch, opt.GOARM),
 		AnnotateSource: opt.AnnotateSource,
 		ResolveSym:     resolve,
 		KeepFunc:       keep,

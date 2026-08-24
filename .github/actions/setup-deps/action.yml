@@ -13,6 +13,115 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up Windows MSYS2
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true'
+      # CLANG64 provides a native Windows LLVM build. It is only the host
+      # library used by github.com/xgo-dev/llvm; LLGo's target configuration
+      # independently selects the requested Go target ABI.
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: CLANG64
+        path-type: inherit
+        update: true
+
+    - name: Install Windows dependencies
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true'
+      shell: msys2 {0}
+      run: |
+        set -euo pipefail
+
+        llvm_major="${{ inputs.llvm-version }}"
+        case "$llvm_major" in
+          19)
+            llvm_version=19.1.7
+            package_version=19.1.7-1
+            ;;
+          *)
+            echo "unsupported Windows LLVM version: $llvm_major" >&2
+            exit 1
+            ;;
+        esac
+
+        repo=https://repo.msys2.org/mingw/clang64
+        prefix=mingw-w64-clang-x86_64
+        packages=(
+          "clang-$package_version"
+          "clang-libs-$package_version"
+          "compiler-rt-$package_version"
+          "llvm-$package_version"
+          "llvm-libs-$package_version"
+          "lld-$package_version"
+          "libc++-$package_version"
+          "libunwind-$package_version"
+          "gettext-runtime-0.22.5-2"
+          "libffi-3.4.6-1"
+          "libiconv-1.17-4"
+          "libxml2-2.12.9-2"
+          "xz-5.6.3-3"
+          "zlib-1.3.1-1"
+          "zstd-1.5.6-2"
+        )
+        urls=()
+        for package in "${packages[@]}"; do
+          urls+=("$repo/$prefix-$package-any.pkg.tar.zst")
+        done
+
+        # LLVM 19 packages predate MSYS2's compiler-runtime dependency rename
+        # from gcc-libs to cc-libs. libc++ 19 already supplies the runtime, so
+        # satisfy only the renamed package metadata while installing the
+        # archived, mutually compatible package set.
+        assumed_cc_runtime="$prefix-cc-libs=$llvm_version"
+        pacman --noconfirm -U \
+          --assume-installed "$assumed_cc_runtime" \
+          "${urls[@]}"
+        pacman --noconfirm -S --needed \
+          --assume-installed "$assumed_cc_runtime" \
+          "$prefix-pkgconf"
+
+        for package in clang clang-libs compiler-rt llvm llvm-libs lld libc++ libunwind; do
+          installed="$(pacman -Q "$prefix-$package" | awk '{print $2}')"
+          if [[ "$installed" != "$package_version" ]]; then
+            echo "expected $package $package_version, got $installed" >&2
+            exit 1
+          fi
+        done
+
+        # The released LLVM binding discovers its host flags through
+        # versioned pkg-config metadata. MSYS2 does not ship llvm.pc, so derive
+        # it from the authoritative llvm-config installation instead of
+        # leaking global CGO flags into every package in the build.
+        cflags="$(llvm-config --cflags)"
+        ldflags="$(llvm-config --ldflags --libs all --system-libs)"
+        cflags="${cflags//$'\r'/}"
+        cflags="${cflags//$'\n'/ }"
+        ldflags="${ldflags//$'\r'/}"
+        ldflags="${ldflags//$'\n'/ }"
+        # Install the metadata in CLANG64's standard pkg-config tree. This
+        # keeps discovery stable for both MSYS2 shells and native Go/CGO
+        # subprocesses without passing shell-specific temporary paths between
+        # workflow steps.
+        pc_dir="$MINGW_PREFIX/lib/pkgconfig"
+        mkdir -p "$pc_dir"
+        printf '%s\n' \
+          "Name: LLVM $llvm_major" \
+          "Description: LLVM $llvm_major host compiler and linker flags" \
+          "Version: $llvm_version" \
+          "Cflags: $cflags" \
+          "Libs: $ldflags" \
+          > "$pc_dir/llvm-$llvm_major.pc"
+
+        {
+          echo "CC=clang"
+          echo "CXX=clang++"
+          echo "CGO_ENABLED=1"
+        } >> "$GITHUB_ENV"
+
+        if [[ "$(llvm-config --version)" != "$llvm_version" ]]; then
+          echo "expected LLVM $llvm_version, got $(llvm-config --version)" >&2
+          exit 1
+        fi
+        pkg-config --modversion "llvm-$llvm_major"
+
     - name: Install macOS dependencies
       if: runner.os == 'macOS'
       shell: bash
