@@ -14,6 +14,7 @@ func GetTargetTriple(goos, goarch string) string {
 // goarm selects the ARM version and floating-point ABI for GOARCH=arm.
 func GetTargetTripleWithGOARM(goos, goarch, goarm string) string {
 	var llvmarch string
+	var armConfig archcfg.ARM
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
@@ -33,8 +34,8 @@ func GetTargetTripleWithGOARM(goos, goarch, goarm string) string {
 	case "arm64":
 		llvmarch = "aarch64"
 	case "arm":
-		arm, _ := archcfg.ParseARM(goarm)
-		switch arm.Version {
+		armConfig, _ = archcfg.ParseARM(goarm)
+		switch armConfig.Version {
 		case "5":
 			llvmarch = "armv5"
 		case "6":
@@ -75,9 +76,8 @@ func GetTargetTripleWithGOARM(goos, goarch, goarm string) string {
 	if llvmos == "windows" {
 		triple += "-msvc"
 	} else if goarch == "arm" {
-		arm, _ := archcfg.ParseARM(goarm)
 		triple += "-gnueabi"
-		if !arm.SoftFloat {
+		if !armConfig.SoftFloat {
 			triple += "hf"
 		}
 	}
