@@ -22,7 +22,9 @@ import (
 // CHECK: {{^_llgo_[0-9]+:}}
 // DARWIN-ARM64: [[STDERR:%[0-9]+]] = load ptr, ptr @__stderrp
 // LINUX-AMD64: [[STDERR:%[0-9]+]] = load ptr, ptr @stderr
-// WINDOWS: [[STDERR:%[0-9]+]] = load ptr, ptr @"github.com/goplus/lib/c.Stderr"
+// WINDOWS-386: [[STDERR:%[0-9]+]] = load ptr, ptr @stderr
+// WINDOWS-AMD64: [[STDERR:%[0-9]+]] = load ptr, ptr @stderr
+// WINDOWS-ARM64: [[STDERR:%[0-9]+]] = load ptr, ptr @stderr
 // CHECK-NEXT: call i32 (ptr, ptr, ...) @fprintf(ptr [[STDERR]], ptr @{{[0-9]+}}, ptr getelementptr (i8, ptr getelementptr (i8, ptr @{{[0-9]+}}, i{{32|64}} 1), i{{32|64}} 1))
 // DARWIN-NEXT: call void @siglongjmp(ptr [[JMPBUF]], i32 1)
 // LINUX-NEXT: call void @siglongjmp(ptr [[JMPBUF]], i32 1)
