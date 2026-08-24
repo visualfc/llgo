@@ -37,6 +37,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("LLGO_TEST_FAILING_ARCHIVER") == "1" {
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		fmt.Fprintln(os.Stderr, "merge failed")
+		os.Exit(7)
+	}
 	old := cacheRootFunc
 	td, _ := os.MkdirTemp("", "llgo-cache-*")
 	cacheRootFunc = func() string { return td }
@@ -103,6 +108,13 @@ func TestResolveBuildConfigDefaultsAndValidation(t *testing.T) {
 	}
 	if resolved.OptLevel != optlevel.Os {
 		t.Fatalf("default optimization level = %v, want %v", resolved.OptLevel, optlevel.Os)
+	}
+	windows, err := resolveBuildConfig(&Config{Goos: "windows"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if windows.BuildMode != BuildModeExe || windows.AppExt != ".exe" {
+		t.Fatalf("Windows defaults = buildmode %q, app extension %q", windows.BuildMode, windows.AppExt)
 	}
 	if _, err := resolveBuildConfig(&Config{SizeReport: true, SizeLevel: "invalid"}); err == nil {
 		t.Fatal("invalid size-reporting level succeeded")
@@ -1301,7 +1313,7 @@ func TestLTOEnabledExplicitOverride(t *testing.T) {
 
 func TestArchiverPrefersLLVMArForLTO(t *testing.T) {
 	td := t.TempDir()
-	llvmAr := filepath.Join(td, "llvm-ar")
+	llvmAr := testToolPath(td, "llvm-ar")
 	if err := os.WriteFile(llvmAr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1334,13 +1346,22 @@ func TestCSharedExportArgs(t *testing.T) {
 	lpkg.SetExport("example.com/p.A", "Add")
 	pkgs := []*aPackage{{LPkg: lpkg}}
 
-	ctx := &context{buildConf: &Config{BuildMode: BuildModeCShared, Goos: "linux"}}
+	ctx := &context{
+		buildConf:    &Config{BuildMode: BuildModeCShared, Goos: "linux"},
+		crossCompile: crosscompile.Export{Toolchain: crosscompile.NativeToolchain{ObjectFormat: crosscompile.ObjectFormatELF}},
+	}
 	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,--undefined=Add -Wl,--undefined=Zed"; got != want {
 		t.Fatalf("linux cSharedExportArgs = %q, want %q", got, want)
 	}
 	ctx.buildConf.Goos = "darwin"
+	ctx.crossCompile.Toolchain.ObjectFormat = crosscompile.ObjectFormatMachO
 	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,-u,_Add -Wl,-u,_Zed"; got != want {
 		t.Fatalf("darwin cSharedExportArgs = %q, want %q", got, want)
+	}
+	ctx.buildConf.Goos = "windows"
+	ctx.crossCompile.Toolchain.ObjectFormat = crosscompile.ObjectFormatCOFF
+	if got, want := strings.Join(cSharedExportArgs(ctx, pkgs), " "), "-Wl,/export:Add -Wl,/export:Zed"; got != want {
+		t.Fatalf("windows cSharedExportArgs = %q, want %q", got, want)
 	}
 	ctx.buildConf.BuildMode = BuildModeExe
 	if got := cSharedExportArgs(ctx, pkgs); got != nil {
@@ -1370,27 +1391,62 @@ func TestCSharedExportArgsKeepsTestMain(t *testing.T) {
 
 func TestApplyBuildModeCompileFlags(t *testing.T) {
 	tests := []struct {
-		name string
-		mode BuildMode
-		in   []string
-		want string
+		name       string
+		mode       BuildMode
+		objectType crosscompile.ObjectFormat
+		in         []string
+		want       string
 	}{
-		{name: "shared adds PIC", mode: BuildModeCShared, want: "-fPIC"},
-		{name: "shared preserves flags", mode: BuildModeCShared, in: []string{"-O2"}, want: "-O2 -fPIC"},
-		{name: "shared does not duplicate PIC", mode: BuildModeCShared, in: []string{"-fPIC"}, want: "-fPIC"},
-		{name: "archive remains unchanged", mode: BuildModeCArchive, in: []string{"-O2"}, want: "-O2"},
+		{name: "ELF shared adds PIC", mode: BuildModeCShared, objectType: crosscompile.ObjectFormatELF, want: "-fPIC"},
+		{name: "Mach-O shared preserves flags", mode: BuildModeCShared, objectType: crosscompile.ObjectFormatMachO, in: []string{"-O2"}, want: "-O2 -fPIC"},
+		{name: "ELF shared does not duplicate PIC", mode: BuildModeCShared, objectType: crosscompile.ObjectFormatELF, in: []string{"-fPIC"}, want: "-fPIC"},
+		{name: "COFF shared omits PIC", mode: BuildModeCShared, objectType: crosscompile.ObjectFormatCOFF, in: []string{"-O2"}, want: "-O2"},
+		{name: "archive remains unchanged", mode: BuildModeCArchive, objectType: crosscompile.ObjectFormatELF, in: []string{"-O2"}, want: "-O2"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			export := crosscompile.Export{CCFLAGS: slices.Clone(tt.in)}
-			applyBuildModeCompileFlags(tt.mode, &export)
+			toolchain := crosscompile.NativeToolchain{ObjectFormat: tt.objectType}
+			applyBuildModeCompileFlags(tt.mode, toolchain, &export)
 			if got := strings.Join(export.CCFLAGS, " "); got != tt.want {
 				t.Fatalf("CCFLAGS = %q, want %q", got, tt.want)
 			}
 		})
 	}
 
-	applyBuildModeCompileFlags(BuildModeCShared, nil)
+	applyBuildModeCompileFlags(BuildModeCShared, crosscompile.NativeToolchain{}, nil)
+}
+
+func TestCSharedLinkArgs(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		objectType crosscompile.ObjectFormat
+		want       string
+	}{
+		{name: "ELF", objectType: crosscompile.ObjectFormatELF, want: "-shared -fPIC"},
+		{name: "Mach-O", objectType: crosscompile.ObjectFormatMachO, want: "-shared -fPIC"},
+		{name: "COFF", objectType: crosscompile.ObjectFormatCOFF, want: "-shared"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			toolchain := crosscompile.NativeToolchain{ObjectFormat: test.objectType}
+			if got := strings.Join(cSharedLinkArgs(toolchain), " "); got != test.want {
+				t.Fatalf("cSharedLinkArgs() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestFullRpathArgs(t *testing.T) {
+	linkArgs := []string{"-L/first", "-lfoo", "-L/second", "-L/first"}
+	coff := crosscompile.NativeToolchain{ObjectFormat: crosscompile.ObjectFormatCOFF}
+	if got := fullRpathArgs(coff, linkArgs); got != nil {
+		t.Fatalf("COFF rpath arguments = %q, want none", got)
+	}
+	elf := crosscompile.NativeToolchain{ObjectFormat: crosscompile.ObjectFormatELF}
+	want := []string{"-rpath", "/first", "-rpath", "/second"}
+	if got := fullRpathArgs(elf, linkArgs); !slices.Equal(got, want) {
+		t.Fatalf("ELF rpath arguments = %q, want %q", got, want)
+	}
 }
 
 func TestCHeaderPackagesExcludesStandardRuntime(t *testing.T) {
@@ -1441,7 +1497,7 @@ func TestArchiveMergerSelection(t *testing.T) {
 		t.Setenv("LLGO_AR", "")
 		t.Setenv("PATH", "")
 		td := t.TempDir()
-		llvmAr := filepath.Join(td, "llvm-ar")
+		llvmAr := testToolPath(td, "llvm-ar")
 		if err := os.WriteFile(llvmAr, nil, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -1456,7 +1512,7 @@ func TestArchiveMergerSelection(t *testing.T) {
 	t.Run("path", func(t *testing.T) {
 		t.Setenv("LLGO_AR", "")
 		td := t.TempDir()
-		llvmAr := filepath.Join(td, "llvm-ar")
+		llvmAr := testToolPath(td, "llvm-ar")
 		if err := os.WriteFile(llvmAr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -1527,11 +1583,12 @@ func TestCreateMergedArchiveFileErrors(t *testing.T) {
 	}
 
 	td := t.TempDir()
-	failingAr := filepath.Join(td, "llvm-ar")
-	if err := os.WriteFile(failingAr, []byte("#!/bin/sh\necho merge failed >&2\nexit 7\n"), 0o755); err != nil {
+	failingAr, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("LLGO_AR", failingAr)
+	t.Setenv("LLGO_TEST_FAILING_ARCHIVER", "1")
 	input := filepath.Join(td, "input.o")
 	if err := os.WriteFile(input, []byte("object"), 0o644); err != nil {
 		t.Fatal(err)
@@ -1539,6 +1596,13 @@ func TestCreateMergedArchiveFileErrors(t *testing.T) {
 	if err := ctx.createMergedArchiveFile(filepath.Join(td, "failed.a"), []string{input}); err == nil || !strings.Contains(err.Error(), "merge failed") {
 		t.Fatalf("createMergedArchiveFile error = %v, want archiver output", err)
 	}
+}
+
+func testToolPath(dir, name string) string {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(dir, name)
 }
 
 func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {

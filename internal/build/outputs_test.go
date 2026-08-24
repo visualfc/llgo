@@ -4,12 +4,17 @@
 package build
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/crosscompile"
 	"github.com/xgo-dev/llgo/internal/flash"
 )
+
+func sameHostPath(got, want string) bool {
+	return got == want || got != "" && want != "" && filepath.Clean(got) == filepath.Clean(want)
+}
 
 func TestBuildOutFmtsWithTarget(t *testing.T) {
 	tests := []struct {
@@ -144,7 +149,7 @@ func TestBuildOutFmtsWithTarget(t *testing.T) {
 
 			// Check base output path
 			if tt.wantOut != "" {
-				if result.Out != tt.wantOut {
+				if !sameHostPath(result.Out, tt.wantOut) {
 					t.Errorf("buildOutFmts().Out = %v, want %v", result.Out, tt.wantOut)
 				}
 			} else {
@@ -335,7 +340,7 @@ func TestBuildOutFmtsNativeTarget(t *testing.T) {
 
 			// Check base output path
 			if tt.wantOut != "" {
-				if result.Out != tt.wantOut {
+				if !sameHostPath(result.Out, tt.wantOut) {
 					t.Errorf("buildOutFmts().Out = %v, want %v", result.Out, tt.wantOut)
 				}
 			} else {
@@ -401,7 +406,7 @@ func TestBuildOutFmtsPCLN(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.PCLN != tt.want {
+			if !sameHostPath(got.PCLN, tt.want) {
 				t.Fatalf("buildOutFmts().PCLN = %q, want %q", got.PCLN, tt.want)
 			}
 		})
@@ -451,7 +456,7 @@ func TestBuildOutFmtsBuildModes(t *testing.T) {
 			target:      "",
 			goos:        "linux",
 			appExt:      ".a",
-			expectedOut: "libcustom.a",
+			expectedOut: "custom.a",
 		},
 		{
 			name:        "c_archive_build_with_path",
@@ -462,7 +467,17 @@ func TestBuildOutFmtsBuildModes(t *testing.T) {
 			target:      "",
 			goos:        "linux",
 			appExt:      ".a",
-			expectedOut: "build/libcustom.a",
+			expectedOut: "build/custom.a",
+		},
+		{
+			name:        "c_archive_build_with_exact_extensionless_outfile",
+			pkgName:     "mylib",
+			buildMode:   BuildModeCArchive,
+			outFile:     "custom",
+			mode:        ModeBuild,
+			goos:        "windows",
+			appExt:      ".a",
+			expectedOut: "custom",
 		},
 
 		// C-Shared tests
@@ -487,6 +502,16 @@ func TestBuildOutFmtsBuildModes(t *testing.T) {
 			goos:        "windows",
 			appExt:      ".dll",
 			expectedOut: "mylib.dll",
+		},
+		{
+			name:        "c_shared_windows_exact_outfile",
+			pkgName:     "mylib",
+			buildMode:   BuildModeCShared,
+			outFile:     "custom-name",
+			mode:        ModeBuild,
+			goos:        "windows",
+			appExt:      ".dll",
+			expectedOut: "custom-name",
 		},
 		{
 			name:        "c_shared_build_darwin",
@@ -565,7 +590,7 @@ func TestBuildOutFmtsBuildModes(t *testing.T) {
 				t.Fatalf("buildOutFmts failed: %v", err)
 			}
 
-			if result.Out != tt.expectedOut {
+			if !sameHostPath(result.Out, tt.expectedOut) {
 				t.Errorf("buildOutFmts(%q, buildMode=%v, target=%q, goos=%q) = %q, want %q",
 					tt.pkgName, tt.buildMode, tt.target, tt.goos, result.Out, tt.expectedOut)
 			}
