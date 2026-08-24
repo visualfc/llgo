@@ -188,7 +188,9 @@ runs:
             Add-Content -Encoding utf8 $env:GITHUB_ENV "$name=$value"
           }
         }
-        @("cl.exe", "lib.exe", "link.exe", "rc.exe", "mt.exe") |
+        # CMake's NMake generator used by WAMR needs nmake in later workflow
+        # steps; Enter-VsDevShell only updates this action process.
+        @("cl.exe", "lib.exe", "link.exe", "nmake.exe", "rc.exe", "mt.exe") |
           ForEach-Object { Split-Path (Get-Command $_).Source } |
           Select-Object -Unique |
           ForEach-Object { Add-Content -Encoding utf8 $env:GITHUB_PATH $_ }
