@@ -268,6 +268,11 @@ func (d *pass) markUsedInIface(typ meta.Symbol) {
 		return
 	}
 	d.usedInIface[typ] = struct{}{}
+	// A type child may be a leaf symbol with no metadata of its own. Such
+	// symbols are valid references but have neither children nor method slots.
+	if !d.info.HasFacts(typ) {
+		return
+	}
 	if _, ok := d.reachable[typ]; ok {
 		d.workQueue = append(d.workQueue, typ)
 	}

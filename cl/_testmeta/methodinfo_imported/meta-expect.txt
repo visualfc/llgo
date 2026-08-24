@@ -1,312 +1,101 @@
 [TypeChildren]
-*[]_llgo_uint8:
-    []_llgo_uint8
-*_llgo_bool:
-    _llgo_bool
 *_llgo_bytes.Buffer:
     _llgo_bytes.Buffer
-*_llgo_bytes.readOp:
-    _llgo_bytes.readOp
-*_llgo_error:
-    _llgo_error
-*_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
-    _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
-*_llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w:
-    _llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w
-*_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
-    _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
-*_llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk:
-    _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
-*_llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o:
-    _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o
-*_llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA:
-    _llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA
-*_llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk:
-    _llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk
-*_llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY:
-    _llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY
-*_llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0:
-    _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0
-*_llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ:
-    _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ
-*_llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY:
-    _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY
-*_llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU:
-    _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU
-*_llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ:
-    _llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ
-*_llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y:
-    _llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y
-*_llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M:
-    _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M
-*_llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw:
-    _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw
-*_llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8:
-    _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8
-*_llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw:
-    _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw
-*_llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M:
-    _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M
-*_llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg:
-    _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg
-*_llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to:
-    _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to
-*_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw:
-    _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw
-*_llgo_int:
-    _llgo_int
-*_llgo_int32:
-    _llgo_int32
-*_llgo_int64:
-    _llgo_int64
-*_llgo_io.Reader:
-    _llgo_io.Reader
-*_llgo_io.Writer:
-    _llgo_io.Writer
-*_llgo_string:
-    _llgo_string
-*_llgo_uint8:
-    _llgo_uint8
 []_llgo_uint8:
-    *[]_llgo_uint8
     _llgo_uint8
-_llgo_bool:
-    *_llgo_bool
 _llgo_bytes.Buffer:
     *_llgo_bytes.Buffer
     []_llgo_uint8
     _llgo_bytes.readOp
     _llgo_int
-_llgo_bytes.readOp:
-    *_llgo_bytes.readOp
-_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
-    *_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
 _llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w:
-    *_llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w
     _llgo_error
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
-    *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     _llgo_int
 _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk:
-    *_llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
     []_llgo_uint8
     _llgo_error
     _llgo_int
 _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o:
-    *_llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o
     _llgo_error
     _llgo_string
     _llgo_uint8
 _llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA:
-    *_llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA
     _llgo_int
 _llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk:
-    *_llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk
     _llgo_bool
 _llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY:
-    *_llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY
     []_llgo_uint8
 _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0:
-    *_llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0
     []_llgo_uint8
     _llgo_error
     _llgo_uint8
 _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ:
-    *_llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ
     []_llgo_uint8
     _llgo_error
     _llgo_int
 _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY:
-    *_llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY
     []_llgo_uint8
     _llgo_int
 _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU:
-    *_llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU
     _llgo_int
 _llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ:
-    *_llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ
     _llgo_error
     _llgo_uint8
 _llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y:
-    *_llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y
     _llgo_error
     _llgo_int
     _llgo_int32
 _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M:
-    *_llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M
     _llgo_bool
     _llgo_int
 _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw:
-    *_llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw
     _llgo_error
     _llgo_int
     _llgo_string
 _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8:
-    *_llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8
     _llgo_error
     _llgo_int64
     _llgo_io.Reader
 _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw:
-    *_llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw
     _llgo_error
     _llgo_int
     _llgo_int32
 _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M:
-    *_llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M
     _llgo_error
     _llgo_int64
     _llgo_io.Writer
 _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg:
-    *_llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg
     _llgo_error
     _llgo_uint8
 _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to:
-    *_llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to
     _llgo_string
-_llgo_int:
-    *_llgo_int
-_llgo_int32:
-    *_llgo_int32
-_llgo_int64:
-    *_llgo_int64
-_llgo_string:
-    *_llgo_string
-_llgo_uint8:
-    *_llgo_uint8
 
 [OrdinaryEdges]
-*[]_llgo_uint8:
-    []_llgo_uint8
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_bool:
-    _llgo_bool
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
 *_llgo_bytes.Buffer:
     _llgo_bytes.Buffer
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_bytes.readOp:
-    _llgo_bytes.readOp
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_error:
-    _llgo_error
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
-    _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w:
-    _llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
-    _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk:
-    _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o:
-    _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA:
-    _llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk:
-    _llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY:
-    _llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0:
-    _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ:
-    _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY:
-    _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU:
-    _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ:
-    _llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y:
-    _llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M:
-    _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw:
-    _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8:
-    _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw:
-    _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M:
-    _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg:
-    _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to:
-    _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw:
-    _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_int:
-    _llgo_int
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_int32:
-    _llgo_int32
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_int64:
-    _llgo_int64
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_io.Reader:
-    _llgo_io.Reader
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_io.Writer:
-    _llgo_io.Writer
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_string:
-    _llgo_string
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
-*_llgo_uint8:
-    _llgo_uint8
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
 []_llgo_uint8:
-    *[]_llgo_uint8
     _llgo_uint8
 _llgo_bool:
-    *_llgo_bool
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequal8
 _llgo_bytes.Buffer:
     *_llgo_bytes.Buffer
     bytes.struct$8M6lRFZ7Fk2XCr2laNI9Y7uQtk2A8VDBrezMuq2Fkuo$fields
 _llgo_bytes.readOp:
-    *_llgo_bytes.readOp
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequal8
 _llgo_error:
-    *_llgo_error
     _llgo_iface$Fh8eUJ-Gw4e6TYuajcFIOSCuqSPKAt5nS4ow7xeGXEU$imethods
     github.com/xgo-dev/llgo/runtime/internal/runtime.interequal
-_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
-    *_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
 _llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w:
-    *_llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w
     _llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w$out
 _llgo_func$8rsrSd_r3UHd_2DiYTyaOKR7BYkei4zw5ysG35KF38w$out:
     _llgo_error
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA:
-    *_llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA
     _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA$out
 _llgo_func$ETeB8WwW04JEq0ztcm-XPTJtuYvtpkjIsAc0-2NT9zA$out:
     _llgo_int
 _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk:
-    *_llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
     _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk$in
     _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk$out
 _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk$in:
@@ -315,7 +104,6 @@ _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk$out:
     _llgo_error
     _llgo_int
 _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o:
-    *_llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o
     _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o$in
     _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o$out
 _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o$in:
@@ -324,22 +112,18 @@ _llgo_func$TBlCn7YTQdraI1HMiBWmkrqIGG-8UgD1UVyJy62Z_0o$out:
     _llgo_error
     _llgo_string
 _llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA:
-    *_llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA
     _llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA$in
 _llgo_func$VZ-8VPNF1RaLICwxc1Ghn7BbgyFX3v762OCdx127EkA$in:
     _llgo_int
 _llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk:
-    *_llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk
     _llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk$out
 _llgo_func$YHeRw3AOvQtzv982-ZO3Yn8vh3Fx89RM3VvI8E4iKVk$out:
     _llgo_bool
 _llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY:
-    *_llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY
     _llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY$out
 _llgo_func$Z_-7GWzB37LCYRTQLsSYmEihg_hqBK8o_GbT88pqnPY$out:
     []_llgo_uint8
 _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0:
-    *_llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0
     _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0$in
     _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0$out
 _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0$in:
@@ -348,7 +132,6 @@ _llgo_func$aJkaU3jhXr0Q2QraTe2_TTdupeMMW2MD66UwBxynRM0$out:
     []_llgo_uint8
     _llgo_error
 _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ:
-    *_llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ
     _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ$in
     _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ$out
 _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ$in:
@@ -357,7 +140,6 @@ _llgo_func$c8Vvy7bpifdsF4PDKWnpU2KNuhLPRr7XBIDM-4p45sQ$out:
     []_llgo_uint8
     _llgo_error
 _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY:
-    *_llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY
     _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY$in
     _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY$out
 _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY$in:
@@ -365,7 +147,6 @@ _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY$in:
 _llgo_func$d4kMA_oCkLwnd1j8nVlv1hwRarEVuCIrDCpnHhDz9UY$out:
     []_llgo_uint8
 _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU:
-    *_llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU
     _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU$in
     _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU$out
 _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU$in:
@@ -373,20 +154,17 @@ _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU$in:
 _llgo_func$ekGNsrYBSzltfAjxbl6T8H6Yq8j16wzqS3nDj2xxGMU$out:
     _llgo_int
 _llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ:
-    *_llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ
     _llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ$out
 _llgo_func$lukqSsfDYBoIp_R8GMojGkZnrYDqaq2iHn8RkCjW7iQ$out:
     _llgo_error
     _llgo_uint8
 _llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y:
-    *_llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y
     _llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y$out
 _llgo_func$q-bw-_pPYBCXnr1TXIF8sOD4fVVzzIlpHqD-A13AB4Y$out:
     _llgo_error
     _llgo_int
     _llgo_int32
 _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M:
-    *_llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M
     _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M$in
     _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M$out
 _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M$in:
@@ -395,7 +173,6 @@ _llgo_func$qVJ5SH6qhXP_h0AM41vpBGzQEMp-fQIfvwQEJy5NI8M$out:
     _llgo_bool
     _llgo_int
 _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw:
-    *_llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw
     _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw$in
     _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw$out
 _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw$in:
@@ -404,7 +181,6 @@ _llgo_func$thH5FBpdXzJNnCpSfiLU5ItTntFU6LWp0RJhDm2XJjw$out:
     _llgo_error
     _llgo_int
 _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8:
-    *_llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8
     _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8$in
     _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8$out
 _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8$in:
@@ -413,7 +189,6 @@ _llgo_func$uVmBDI0DMcrui3Q9y-g_hbtVN8JckQ18V2wmO5_G7A8$out:
     _llgo_error
     _llgo_int64
 _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw:
-    *_llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw
     _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw$in
     _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw$out
 _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw$in:
@@ -422,7 +197,6 @@ _llgo_func$uf8yw1UkUdbDuCneSpNKIq_NThWIEVE7f1IYfJGz_bw$out:
     _llgo_error
     _llgo_int
 _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M:
-    *_llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M
     _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M$in
     _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M$out
 _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M$in:
@@ -431,7 +205,6 @@ _llgo_func$vSv85k0UY6JWccAc3T-lvdCx9J-4GM-oZC9zGLrxW1M$out:
     _llgo_error
     _llgo_int64
 _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg:
-    *_llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg
     _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg$in
     _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg$out
 _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg$in:
@@ -439,7 +212,6 @@ _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg$in:
 _llgo_func$w4tN9iibS_UimF5vLUWoKP0uAk2tJZF26VqETo_8LVg$out:
     _llgo_error
 _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to:
-    *_llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to
     _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to$out
 _llgo_func$zNDVRsWTIpUPKouNUS805RGX--IV9qVK8B31IZbg5to$out:
     _llgo_string
@@ -448,33 +220,25 @@ _llgo_iface$Fh8eUJ-Gw4e6TYuajcFIOSCuqSPKAt5nS4ow7xeGXEU$imethods:
 _llgo_iface$kr1iSWwMezh0B9LdQN0MhEZUNZvBlHPhlst95jAyxE0$imethods:
     _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
 _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw:
-    *_llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw$imethods
     github.com/xgo-dev/llgo/runtime/internal/runtime.interequal
 _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw$imethods:
     _llgo_func$G2hch9Iy9DrhKKsg70PbL54bK-XSl-1IUUORN17J2Dk
 _llgo_int:
-    *_llgo_int
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequal64
 _llgo_int32:
-    *_llgo_int32
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequal32
 _llgo_int64:
-    *_llgo_int64
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequal64
 _llgo_io.Reader:
-    *_llgo_io.Reader
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw$imethods
     github.com/xgo-dev/llgo/runtime/internal/runtime.interequal
 _llgo_io.Writer:
-    *_llgo_io.Writer
     _llgo_iface$kr1iSWwMezh0B9LdQN0MhEZUNZvBlHPhlst95jAyxE0$imethods
     github.com/xgo-dev/llgo/runtime/internal/runtime.interequal
 _llgo_string:
-    *_llgo_string
     github.com/xgo-dev/llgo/runtime/internal/runtime.strequal
 _llgo_uint8:
-    *_llgo_uint8
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequal8
 bytes.struct$8M6lRFZ7Fk2XCr2laNI9Y7uQtk2A8VDBrezMuq2Fkuo$fields:
     []_llgo_uint8

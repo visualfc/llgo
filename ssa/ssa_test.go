@@ -902,40 +902,64 @@ func TestRecordTypeChildren(t *testing.T) {
 
 	const want = `[TypeChildren]
 pkg.array:
-    *[4]_llgo_uint8
     _llgo_uint8
-pkg.basic:
-    *_llgo_int
 pkg.channel:
-    *chan _llgo_string
     _llgo_string
-pkg.emptySignature:
-    *_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
 pkg.map:
-    *map[_llgo_string]_llgo_int
     _llgo_int
     _llgo_string
 pkg.named:
-    *_llgo_example.com/pkg.Named
     _llgo_bool
 pkg.pointer:
     _llgo_int
 pkg.signature:
-    *_llgo_func$ZJJ9zC4Iq-CB1QSlO9vdPouqa3YC-lLDsE6RcJPWFiQ
     _llgo_bool
     _llgo_int
     _llgo_string
 pkg.slice:
-    *[]_llgo_bool
     _llgo_bool
 pkg.struct:
-    *_llgo_struct$0VM4HVYYqIuvLFTFnW5tNIahdvhuRgu-SencVQDPbzk
     _llgo_int
     _llgo_string
 
 `
 	if got := pm.String(); got != want {
 		t.Fatalf("metadata mismatch\ngot:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestAbiTypeLazyPtrToThis(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+
+	goPkg := types.NewPackage("example.com/pkg", "pkg")
+	plain := types.NewNamed(types.NewTypeName(token.NoPos, goPkg, "Plain", nil), types.NewStruct(nil, nil), nil)
+	withMethod := types.NewNamed(types.NewTypeName(token.NoPos, goPkg, "WithMethod", nil), types.NewStruct(nil, nil), nil)
+	recv := types.NewVar(token.NoPos, goPkg, "", types.NewPointer(withMethod))
+	withMethod.AddMethod(types.NewFunc(token.NoPos, goPkg, "M", types.NewSignatureType(recv, nil, nil, nil, nil, false)))
+
+	pkg := prog.NewPackageEx("pkg", goPkg.Path(), true)
+	fn := pkg.NewFunc("use", types.NewSignatureType(nil, nil, nil, nil, nil, false), InGo)
+	b := fn.MakeBody(1)
+	b.abiType(plain)
+	b.abiType(withMethod)
+	b.Return()
+
+	plainPtrName, _ := prog.abi.TypeName(types.NewPointer(plain))
+	if got := pkg.VarOf(plainPtrName); got != nil {
+		t.Fatalf("methodless pointer descriptor %q was generated eagerly", plainPtrName)
+	}
+	methodPtrName, _ := prog.abi.TypeName(types.NewPointer(withMethod))
+	if got := pkg.VarOf(methodPtrName); got == nil {
+		t.Fatalf("pointer descriptor with methods %q was not generated", methodPtrName)
 	}
 }
 
@@ -971,12 +995,8 @@ func TestRecordMethodSlots(t *testing.T) {
 	const want = `[TypeChildren]
 *_llgo_example.com/pkg.T:
     _llgo_example.com/pkg.T
-*_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
-    _llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
 _llgo_example.com/pkg.T:
     *_llgo_example.com/pkg.T
-_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac:
-    *_llgo_func$2_iS07vIlF2_rZqWB5eU0IvP_9HviM4MYZNkXZDvbac
 
 [MethodInfo]
 *_llgo_example.com/pkg.T:
@@ -1028,6 +1048,31 @@ func TestReflectSliceAtDemandsSliceTypeInit(t *testing.T) {
 
 	if got := pkg.NeedAbiInit & ReflectSliceOf; got == 0 {
 		t.Fatal("reflect.SliceAt did not retain slice type-construction metadata")
+	}
+}
+
+func TestReflectPointerOperationsDemandPointerTypeInit(t *testing.T) {
+	for _, name := range []string{
+		"reflect.New",
+		"reflect.NewAt",
+		"reflect.PointerTo",
+		"reflect.PtrTo",
+		"reflect.Value.Addr",
+	} {
+		t.Run(name, func(t *testing.T) {
+			prog := NewProgram(nil)
+			defer prog.Dispose()
+			pkg := prog.NewPackage("pkg", "pkg")
+			operation := pkg.NewFunc(name, NoArgsNoRet, InGo)
+			caller := pkg.NewFunc("pkg.call", NoArgsNoRet, InGo)
+			b := caller.MakeBody(1)
+			b.Call(operation.Expr)
+			b.Return()
+
+			if got := pkg.NeedAbiInit & ReflectPointerTo; got == 0 {
+				t.Fatalf("%s did not retain pointer type-construction metadata", name)
+			}
+		})
 	}
 }
 

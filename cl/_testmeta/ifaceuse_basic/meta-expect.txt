@@ -1,15 +1,5 @@
-[TypeChildren]
-*_llgo_main.T:
-    _llgo_main.T
-_llgo_main.T:
-    *_llgo_main.T
-
 [OrdinaryEdges]
-*_llgo_main.T:
-    _llgo_main.T
-    github.com/xgo-dev/llgo/runtime/internal/runtime.memequalptr
 _llgo_main.T:
-    *_llgo_main.T
     github.com/xgo-dev/llgo/runtime/internal/runtime.memequal0
 main.init:
     main.init$guard

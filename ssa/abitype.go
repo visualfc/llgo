@@ -80,6 +80,17 @@ func directIfaceType(t types.Type) bool {
 	return false
 }
 
+// staticPtrToThis reports whether *T must have a statically generated type
+// descriptor. Runtime reflection can synthesize descriptors for methodless
+// pointer types, but it cannot synthesize their method metadata.
+func staticPtrToThis(t types.Type) (types.Type, bool) {
+	if _, ok := types.Unalias(t).(*types.Pointer); ok {
+		return nil, false
+	}
+	ptr := types.NewPointer(t)
+	return ptr, types.NewMethodSet(ptr).Len() != 0
+}
+
 func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool, global llvm.Value) (fields []llvm.Value) {
 	prog := b.Prog
 	ab := prog.abi
@@ -131,10 +142,11 @@ func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool, gl
 	// Str_       string
 	fields = append(fields, b.Str(ab.Str(t)).impl)
 	// PtrToThis_ *Type
-	if _, ok := t.(*types.Pointer); ok {
+	ptr, static := staticPtrToThis(t)
+	if !static {
 		fields = append(fields, prog.Nil(prog.AbiTypePtr()).impl)
 	} else {
-		fields = append(fields, b.abiType(types.NewPointer(t)).impl)
+		fields = append(fields, b.abiType(ptr).impl)
 	}
 	return
 }
@@ -363,13 +375,10 @@ func (b Builder) recordTypeChildren(parentName string, t types.Type) {
 
 func (b Builder) directTypeChildren(t types.Type) []types.Type {
 	children := b.structuralTypeChildren(t)
-	underlying := types.Unalias(t).Underlying()
-	// PtrToThis lets reflection derive *T from an addressable T. Interface
-	// descriptors intentionally stay out of this type-child relation.
-	if _, ok := underlying.(*types.Pointer); !ok {
-		if _, ok := underlying.(*types.Interface); !ok {
-			children = append(children, types.NewPointer(t))
-		}
+	// Runtime reflection can lazily derive methodless *T descriptors. Keep the
+	// type-child edge only when the static descriptor carries method metadata.
+	if ptr, static := staticPtrToThis(t); static {
+		children = append(children, ptr)
 	}
 	return children
 }
