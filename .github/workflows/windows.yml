@@ -117,7 +117,7 @@ jobs:
             -covermode=atomic -coverprofile=coverage-windows-execution-ssa.txt \
             ./ssa
           go test -count=1 -timeout=10m \
-            -run '^(TestCompileRuntimeCallerPanicPCLineMetadata|TestCompileRuntimeCallerStorePanicPCLineMetadataIsWindowsOnly|TestCompileRuntimeCallerPCLineMetadataOnWindows|TestFuncInfoDisplayName|TestDirectiveFilename|TestDirectiveFilenameWindowsRootedSlash|TestParseLineDirectiveFilename|TestRuntimeSourceFilename|TestCompileRuntimeCallerFrameUsesGoNameForLinkname|TestErrBuiltin)$' \
+            -run '^(TestCompileRuntimeCallerPanicPCLineMetadata|TestCompileRuntimeCallerStorePanicPCLineMetadataIsWindowsOnly|TestCompileRuntimeCallerPCLineMetadataOnWindows|TestFuncInfoDisplayName|TestFuncInfoMetadataEmission|TestFuncInfoWrapperMetadataIsWindowsOnly|TestDirectiveFilename|TestDirectiveFilenameWindowsRootedSlash|TestParseLineDirectiveFilename|TestRuntimeSourceFilename|TestCompileRuntimeCallerFrameUsesGoNameForLinkname|TestErrBuiltin)$' \
             -covermode=atomic -coverprofile=coverage-windows-execution-cl.txt \
             ./cl
           go test -count=1 -timeout=10m \

@@ -53,6 +53,7 @@ func leaf() int { return 1 }
 func (T) method() {}
 `
 	ir := cltest.CompileIREx(t, src, "foo.go", false, func(prog llssa.Program) {
+		prog.Target().GOOS = "linux"
 		prog.EnableFuncInfoMetadata(true)
 		prog.EnableFuncInfoSites(true)
 	})
@@ -106,8 +107,37 @@ func (T) method() {}
 	if got := records["foo.T.method"].line; got != 11 {
 		t.Fatalf("empty method funcinfo line = %d, want declaration line 11", got)
 	}
-	if got := records["foo.(*T).method"]; got.version != 2 || got.flags != llssa.FuncInfoFlagWrapper {
-		t.Fatalf("synthetic pointer method wrapper funcinfo = %#v, want version 2 wrapper flag", got)
+	if got := records["foo.(*T).method"]; got.version != 1 || got.flags != 0 {
+		t.Fatalf("non-Windows synthetic pointer method wrapper funcinfo = %#v, want version 1 without flags", got)
+	}
+}
+
+func TestFuncInfoWrapperMetadataIsWindowsOnly(t *testing.T) {
+	const src = `package foo
+
+type T struct{}
+
+func (T) method() {}
+`
+	for _, test := range []struct {
+		goos        string
+		wantVersion int
+		wantFlags   uint32
+	}{
+		{goos: "linux", wantVersion: 1},
+		{goos: "windows", wantVersion: 2, wantFlags: llssa.FuncInfoFlagWrapper},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			ir := cltest.CompileIREx(t, src, "foo.go", false, func(prog llssa.Program) {
+				prog.Target().GOOS = test.goos
+				prog.EnableFuncInfoMetadata(true)
+				prog.EnableFuncInfoSites(true)
+			})
+			got := parseFuncInfoRecords(t, ir)["foo.(*T).method"]
+			if got.version != test.wantVersion || got.flags != test.wantFlags {
+				t.Fatalf("%s synthetic pointer method wrapper funcinfo = %#v, want version %d flags %#x", test.goos, got, test.wantVersion, test.wantFlags)
+			}
+		})
 	}
 }
 
