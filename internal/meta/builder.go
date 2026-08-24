@@ -282,7 +282,7 @@ func (b *Builder) Build() (*PackageMeta, error) {
 	writeMethodInfo(raw[offsets[secMethodInfo]:], b, nsyms)
 	writeIfaceInfo(raw[offsets[secIfaceInfo]:], b, nsyms)
 
-	return newPackageMeta(raw)
+	return packageMetaView(raw, offsets, nsyms), nil
 }
 
 // ── section writers ───────────────────────────────────────────────────────────
