@@ -29,13 +29,15 @@ STATIC_STDLIB_LIBS = $(shell pkg-config --libs libffi 2>/dev/null || echo -lffi)
 # Library and flags based on link type
 ifeq ($(LINK_TYPE),shared)
     BUILDMODE = c-shared
-    LIBRARY = ../libexport.$(SHARED_EXT)
+    OUTPUT = libexport.$(SHARED_EXT)
+    LIBRARY = ../$(OUTPUT)
     LDFLAGS = -L.. -lexport $(RUNTIME_LIBS) $(PLATFORM_LIBS)
     BUILD_MSG = "Building Go shared library..."
     LINK_MSG = "Linking with shared library..."
 else
     BUILDMODE = c-archive
-    LIBRARY = ../libexport.a
+    OUTPUT = libexport.a
+    LIBRARY = ../$(OUTPUT)
     LDFLAGS = $(LIBRARY) $(RUNTIME_LIBS) $(PLATFORM_LIBS) $(STATIC_STDLIB_LIBS)
     BUILD_MSG = "Building Go static library..."
     LINK_MSG = "Linking with static library..."
@@ -48,7 +50,7 @@ all: build-go $(TARGET)
 # Build the Go library first
 build-go:
 	@echo $(BUILD_MSG)
-	cd .. && ../../../dev/llgo.sh build -buildmode $(BUILDMODE) $(LLGOFLAGS) -o export .
+	cd .. && ../../../dev/llgo.sh build -buildmode $(BUILDMODE) $(LLGOFLAGS) -o $(OUTPUT) .
 
 # Build the C executable
 $(TARGET): $(SOURCES) $(LIBRARY) $(HEADER)
