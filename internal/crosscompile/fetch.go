@@ -12,7 +12,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/xgo-dev/llgo/internal/env"
 )
@@ -146,6 +145,10 @@ func checkDownloadAndExtractLib(url, dstDir, internalArchiveSrcDir string) error
 
 // acquireLock creates and locks a file to prevent concurrent operations
 func acquireLock(lockPath string) (*os.File, error) {
+	return acquireLockWith(lockPath, lockFileHandle)
+}
+
+func acquireLockWith(lockPath string, lock func(*os.File) error) (*os.File, error) {
 	// Ensure the parent directory exists
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create lock directory: %w", err)
@@ -155,22 +158,32 @@ func acquireLock(lockPath string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create lock file: %w", err)
 	}
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		lockFile.Close()
+	if err := lock(lockFile); err != nil {
+		_ = lockFile.Close()
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
 	}
 	return lockFile, nil
 }
 
-// releaseLock unlocks and removes the lock file
+// releaseLock unlocks and closes the lock file. The file must remain in place:
+// removing it could let a new caller lock a different file while another caller
+// still holds the original one.
 func releaseLock(lockFile *os.File) error {
 	if lockFile == nil {
 		return nil
 	}
-	lockPath := lockFile.Name()
-	syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
-	lockFile.Close()
-	os.Remove(lockPath)
+	unlockErr := unlockFileHandle(lockFile)
+	closeErr := lockFile.Close()
+	return lockReleaseError(unlockErr, closeErr)
+}
+
+func lockReleaseError(unlockErr, closeErr error) error {
+	if unlockErr != nil {
+		return fmt.Errorf("failed to release lock: %w", unlockErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("failed to close lock file: %w", closeErr)
+	}
 	return nil
 }
 
