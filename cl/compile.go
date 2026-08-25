@@ -1334,7 +1334,11 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 		x := p.compileValueAs(b, v.X, v.Y.Type())
 		y := p.compileValueAs(b, v.Y, v.X.Type())
-		ret = b.BinOp(v.Op, x, y)
+		if _, ok := v.X.Type().Underlying().(*types.Array); ok && (v.Op == token.EQL || v.Op == token.NEQ) {
+			ret = b.ArrayBinOp(v.Op, x, y, p.arrayCompareAddr(b, v.X), p.arrayCompareAddr(b, v.Y))
+		} else {
+			ret = b.BinOp(v.Op, x, y)
+		}
 	case *ssa.UnOp:
 		if v.Op == token.MUL {
 			if _, ok := p.methodNilDerefChecks[v]; ok {
@@ -1718,6 +1722,87 @@ func (p *context) compileValueAs(b llssa.Builder, v ssa.Value, typ types.Type) l
 		return p.nilOf(typ)
 	}
 	return p.compileValue(b, v)
+}
+
+func (p *context) arrayCompareAddr(b llssa.Builder, v ssa.Value) llssa.Expr {
+	addr, ok := immutableLocalArrayLoadAddr(v)
+	if !ok {
+		return llssa.Nil
+	}
+	return p.compileValue(b, addr)
+}
+
+// immutableLocalArrayLoadAddr recognizes array values loaded from a local
+// allocation that cannot change after the load. Reusing the allocation lets
+// equality helpers read the value in place, as cmd/compile does for its
+// addressable comparison operands, and avoids scalarizing a copied array.
+func immutableLocalArrayLoadAddr(v ssa.Value) (ssa.Value, bool) {
+	load, ok := v.(*ssa.UnOp)
+	if !ok || load.Op != token.MUL {
+		return nil, false
+	}
+	if _, ok := load.Type().Underlying().(*types.Array); !ok {
+		return nil, false
+	}
+	alloc, ok := load.X.(*ssa.Alloc)
+	if !ok || alloc.Heap {
+		return nil, false
+	}
+	seen := make(map[ssa.Value]bool)
+	var immutable func(ssa.Value) bool
+	immutable = func(ptr ssa.Value) bool {
+		if seen[ptr] {
+			return true
+		}
+		seen[ptr] = true
+		refs, available := nonDebugReferrers(ptr)
+		if !available {
+			return false
+		}
+		for _, ref := range refs {
+			switch ref := ref.(type) {
+			case *ssa.IndexAddr:
+				if ref.X != ptr || !immutable(ref) {
+					return false
+				}
+			case *ssa.FieldAddr:
+				if ref.X != ptr || !immutable(ref) {
+					return false
+				}
+			case *ssa.UnOp:
+				if ref.X != ptr || ref.Op != token.MUL {
+					return false
+				}
+			case *ssa.Store:
+				if ref.Addr != ptr || !instructionPrecedes(ref, load) {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		return true
+	}
+	if !immutable(alloc) {
+		return nil, false
+	}
+	return load.X, true
+}
+
+func instructionPrecedes(before, after ssa.Instruction) bool {
+	block := before.Block()
+	if block == nil || block != after.Block() {
+		return false
+	}
+	for _, instr := range block.Instrs {
+		if instr == before {
+			return true
+		}
+		if instr == after {
+			return false
+		}
+	}
+	return false
 }
 
 func (p *context) assertNilDerefBase(b llssa.Builder, addr ssa.Value) {
