@@ -763,9 +763,16 @@ func needsExternalCgoBaseline(goos, goarch string, tc testCase) (bool, error) {
 		return false, nil
 	}
 	filename := filepath.Join(tc.Dir, tc.FileName)
-	f, err := parser.ParseFile(token.NewFileSet(), filename, nil, parser.ImportsOnly)
+	src, err := os.ReadFile(filename)
 	if err != nil {
-		return false, fmt.Errorf("parse imports from %s: %w", tc.RelPath, err)
+		return false, fmt.Errorf("read imports from %s: %w", tc.RelPath, err)
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), filename, src, parser.ImportsOnly)
+	if err != nil {
+		// Errorcheck inputs deliberately contain malformed syntax. This probe
+		// only selects the official Go link mode for otherwise buildable cgo
+		// baselines; leave source diagnostics to the directive runner.
+		return false, nil
 	}
 	for _, spec := range f.Imports {
 		path, err := strconv.Unquote(spec.Path.Value)

@@ -1256,6 +1256,10 @@ func TestNeedsExternalCgoBaseline(t *testing.T) {
 	if err := os.WriteFile(plainFile, []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	invalidFile := filepath.Join(dir, "invalid.go")
+	if err := os.WriteFile(invalidFile, []byte("package main\nimport (\"fmt\", \"os\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, tc := range []struct {
 		name   string
@@ -1268,6 +1272,7 @@ func TestNeedsExternalCgoBaseline(t *testing.T) {
 		{name: "windows amd64 cgo", goos: "windows", goarch: "amd64", file: "cgo.go"},
 		{name: "linux arm64 cgo", goos: "linux", goarch: "arm64", file: "cgo.go"},
 		{name: "windows arm64 plain", goos: "windows", goarch: "arm64", file: "plain.go"},
+		{name: "windows arm64 invalid syntax", goos: "windows", goarch: "arm64", file: "invalid.go"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := needsExternalCgoBaseline(tc.goos, tc.goarch, testCase{
