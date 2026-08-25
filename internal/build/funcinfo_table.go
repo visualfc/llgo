@@ -989,23 +989,6 @@ func emitRuntimeFuncInfoSites(mod llvm.Module, pointerSize int, format siteObjec
 	mod.SetInlineAsm(asm.String())
 }
 
-func asmQuoteELFSymbol(symbol string) string {
-	var b strings.Builder
-	b.Grow(len(symbol) + 2)
-	b.WriteByte('"')
-	for i := 0; i < len(symbol); i++ {
-		switch symbol[i] {
-		case '\\', '"':
-			b.WriteByte('\\')
-		case '$':
-			b.WriteByte('$')
-		}
-		b.WriteByte(symbol[i])
-	}
-	b.WriteByte('"')
-	return b.String()
-}
-
 func toFuncInfoRecords(records []funcInfoRecord) []buildfuncinfo.Record {
 	out := make([]buildfuncinfo.Record, len(records))
 	for i, rec := range records {

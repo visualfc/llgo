@@ -621,20 +621,6 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 	}
 }
 
-func TestAsmQuoteELFSymbol(t *testing.T) {
-	cases := map[string]string{
-		`plain`:      `"plain"`,
-		`we$ird`:     `"we$$ird"`,
-		`q"uote`:     `"q\"uote"`,
-		`back\slash`: `"back\\slash"`,
-	}
-	for in, want := range cases {
-		if got := asmQuoteELFSymbol(in); got != want {
-			t.Fatalf("quote(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestELFFuncInfoSiteSectionsAllowSharedLibraryRelocations(t *testing.T) {
 	if got, want := entrySiteSectionInfo.push(siteObjectELF, "anchor"), `.pushsection llgo_funcinfo_entry,"awo",@progbits,anchor`; got != want {
 		t.Fatalf("ELF site section = %q, want %q", got, want)
