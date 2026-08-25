@@ -576,6 +576,41 @@ func TestLowerWindowsCgoImportPointerErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("duplicate", func(t *testing.T) {
+		llvmCtx := gllvm.NewContext()
+		defer llvmCtx.Dispose()
+		mod := llvmCtx.NewModule("windows-dynimport-duplicate")
+		defer mod.Dispose()
+		ptrType := gllvm.PointerType(llvmCtx.Int8Type(), 0)
+		global := gllvm.AddGlobal(mod, ptrType, "syscall.value")
+		file := parse(t, `package syscall
+//go:cgo_import_dynamic syscall.value Value%0 "kernel32.dll"
+//go:cgo_import_dynamic syscall.value Value%0 "kernel32.dll"
+`)
+		if err := lowerWindowsCgoImportPointers("windows", "386", "syscall", []*ast.File{file}, mod); err != nil {
+			t.Fatal(err)
+		}
+		if init := global.Initializer(); init.IsNil() || init != mod.NamedFunction("Value") {
+			t.Fatalf("duplicate import initializer = %v, want Value", init)
+		}
+	})
+
+	t.Run("invalid alias", func(t *testing.T) {
+		llvmCtx := gllvm.NewContext()
+		defer llvmCtx.Dispose()
+		mod := llvmCtx.NewModule("windows-dynimport-invalid-alias")
+		defer mod.Dispose()
+		ptrType := gllvm.PointerType(llvmCtx.Int8Type(), 0)
+		gllvm.AddGlobal(mod, ptrType, "syscall.value")
+		file := parse(t, `package syscall
+//go:cgo_import_dynamic syscall.value Value%bad "kernel32.dll"
+`)
+		err := lowerWindowsCgoImportPointers("windows", "386", "syscall", []*ast.File{file}, mod)
+		if err == nil || !strings.Contains(err.Error(), "invalid go:cgo_import_dynamic alias") {
+			t.Fatalf("lowerWindowsCgoImportPointers error = %v, want invalid-alias error", err)
+		}
+	})
+
 	t.Run("defined function collision", func(t *testing.T) {
 		llvmCtx := gllvm.NewContext()
 		defer llvmCtx.Dispose()

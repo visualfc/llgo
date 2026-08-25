@@ -513,6 +513,7 @@ func TestFuncInfoTableIgnoresInvalidMetadata(t *testing.T) {
 		mod.AddNamedMetadataOperand(llssa.FuncInfoMetadataName, ctx.MDNode(fields))
 	}
 
+	add()
 	add(mdstr("short"))
 	add(mdint(2), mdstr("bad.version"), mdstr("bad.version"), mdstr("bad.go"), mdint(1), mdint(1))
 	add(mdint(1), mdint(0), mdstr("bad.symbol"), mdstr("bad.go"), mdint(1), mdint(1))

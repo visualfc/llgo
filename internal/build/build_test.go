@@ -42,6 +42,28 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, "merge failed")
 		os.Exit(7)
 	}
+	if mode := os.Getenv("LLGO_TEST_LINKER_HELPER"); mode != "" {
+		if mode == "fail" {
+			fmt.Fprintln(os.Stderr, "link failed")
+			os.Exit(8)
+		}
+		var output string
+		for i := 1; i+1 < len(os.Args); i++ {
+			if os.Args[i] == "-o" {
+				output = os.Args[i+1]
+				break
+			}
+		}
+		if output == "" {
+			fmt.Fprintln(os.Stderr, "missing -o")
+			os.Exit(9)
+		}
+		if err := os.WriteFile(output, []byte("linked"), 0o666); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(10)
+		}
+		os.Exit(0)
+	}
 	old := cacheRootFunc
 	td, _ := os.MkdirTemp("", "llgo-cache-*")
 	cacheRootFunc = func() string { return td }
@@ -429,6 +451,82 @@ func TestLinkObjFilesReportsOutputDirectoryError(t *testing.T) {
 	ctx := &context{buildConf: &Config{BuildMode: BuildModeExe}}
 	if err := linkObjFiles(ctx, filepath.Join(parent, "app"), nil, nil, false); err == nil {
 		t.Fatal("linkObjFiles succeeded below a regular file")
+	}
+}
+
+func TestWindowsLinkObjFilesExactOutput(t *testing.T) {
+	newContext := func(mode Mode) *context {
+		return &context{
+			mode: mode,
+			buildConf: &Config{
+				Goos:      "windows",
+				Goarch:    "amd64",
+				Mode:      mode,
+				BuildMode: BuildModeExe,
+				LinkOptions: LinkOptions{
+					DWARF: DWARFOmit,
+				},
+			},
+			crossCompile: crosscompile.Export{
+				CC: os.Args[0],
+				Toolchain: crosscompile.NativeToolchain{
+					ObjectFormat: crosscompile.ObjectFormatCOFF,
+				},
+			},
+		}
+	}
+
+	t.Run("build renames driver output", func(t *testing.T) {
+		t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
+		app := filepath.Join(t.TempDir(), "app")
+		if err := linkObjFiles(newContext(ModeBuild), app, nil, nil, false); err != nil {
+			t.Fatal(err)
+		}
+		if data, err := os.ReadFile(app); err != nil || string(data) != "linked" {
+			t.Fatalf("exact output = %q, %v", data, err)
+		}
+		if _, err := os.Stat(app + ".exe"); !os.IsNotExist(err) {
+			t.Fatalf("intermediate executable still exists: %v", err)
+		}
+	})
+
+	t.Run("test keeps executable sibling", func(t *testing.T) {
+		t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
+		app := filepath.Join(t.TempDir(), "test-output")
+		if err := linkObjFiles(newContext(ModeTest), app, nil, nil, false); err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{app, app + ".exe"} {
+			if data, err := os.ReadFile(path); err != nil || string(data) != "linked" {
+				t.Fatalf("output %s = %q, %v", path, data, err)
+			}
+		}
+	})
+
+	t.Run("link error", func(t *testing.T) {
+		t.Setenv("LLGO_TEST_LINKER_HELPER", "fail")
+		if err := linkObjFiles(newContext(ModeBuild), filepath.Join(t.TempDir(), "app"), nil, nil, false); err == nil {
+			t.Fatal("linkObjFiles succeeded with a failing linker")
+		}
+	})
+
+	for _, test := range []struct {
+		name string
+		mode Mode
+	}{
+		{name: "copy error", mode: ModeTest},
+		{name: "rename error", mode: ModeBuild},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
+			app := filepath.Join(t.TempDir(), "occupied")
+			if err := os.Mkdir(app, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := linkObjFiles(newContext(test.mode), app, nil, nil, false); err == nil {
+				t.Fatal("linkObjFiles published an exact output over a directory")
+			}
+		})
 	}
 }
 

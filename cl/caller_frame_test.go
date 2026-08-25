@@ -1348,6 +1348,43 @@ func TestDirectiveFilenameWindowsRootedSlash(t *testing.T) {
 	}
 }
 
+func TestPrecedingLineDirectiveFilename(t *testing.T) {
+	pos := token.Position{Filename: "source.go", Line: 4}
+	tests := []struct {
+		name         string
+		pos          token.Position
+		lines        map[int]string
+		available    bool
+		wantFilename string
+		wantOK       bool
+	}{
+		{name: "nil source reader", pos: pos},
+		{name: "empty source filename", pos: token.Position{Line: 4}, available: true},
+		{name: "first source line", pos: token.Position{Filename: "source.go", Line: 1}, available: true},
+		{name: "source unavailable", pos: pos, available: true},
+		{name: "no directive", pos: pos, available: true, lines: map[int]string{3: "// ordinary comment", 2: "package p", 1: ""}},
+		{name: "malformed directive", pos: pos, available: true, lines: map[int]string{3: "//line bad", 2: "package p", 1: ""}},
+		{name: "previous filename", pos: pos, available: true, lines: map[int]string{3: "//line :12:3"}},
+		{name: "empty filename", pos: pos, available: true, lines: map[int]string{3: "//line :12"}, wantFilename: "??", wantOK: true},
+		{name: "CRLF directive", pos: pos, available: true, lines: map[int]string{3: "//line rel.go:12\r"}, wantFilename: "rel.go", wantOK: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var sourceLine func(string, int) (string, bool)
+			if test.available {
+				sourceLine = func(filename string, line int) (string, bool) {
+					text, ok := test.lines[line]
+					return text, ok
+				}
+			}
+			got, ok := precedingLineDirectiveFilename(test.pos, sourceLine)
+			if got != test.wantFilename || ok != test.wantOK {
+				t.Fatalf("precedingLineDirectiveFilename() = (%q, %v), want (%q, %v)", got, ok, test.wantFilename, test.wantOK)
+			}
+		})
+	}
+}
+
 func TestParseLineDirectiveFilename(t *testing.T) {
 	tests := []struct {
 		text         string
@@ -1363,6 +1400,8 @@ func TestParseLineDirectiveFilename(t *testing.T) {
 		{"bad", "", false, false},
 		{"foo.go:0", "", false, false},
 		{"foo.go:1:0", "", false, false},
+		{"foo.go:0:1", "", false, false},
+		{"foo.go:1073741825:1", "", false, false},
 		{"foo.go:not-a-line", "", false, false},
 	}
 	for _, test := range tests {

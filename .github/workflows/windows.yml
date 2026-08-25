@@ -68,7 +68,7 @@ jobs:
           # Win32 runtime work staged for R4: an executable, a flat C archive,
           # a DLL/import library, and both directions of MSVC interoperability.
           LLGO_REQUIRE_MSVC=1 go test -count=1 -timeout=10m \
-            -run '^(TestWindows(NativeArtifacts|ConsumesMSVCLibrary)|TestResolveBuildConfigDefaultsAndValidation|TestApplyBuildModeCompileFlags|TestCSharedLinkArgs|TestFullRpathArgs|TestCSharedExportArgs|TestIsArchiveInput|TestBuildOutFmtsBuildModes)$' \
+            -run '^(TestWindows(NativeArtifacts|ConsumesMSVCLibrary|LinkObjFilesExactOutput)|TestResolveBuildConfigDefaultsAndValidation|TestApplyBuildModeCompileFlags|TestCSharedLinkArgs|TestFullRpathArgs|TestCSharedExportArgs|TestIsArchiveInput|TestBuildOutFmtsBuildModes)$' \
             -covermode=atomic -coverprofile=coverage-windows-artifacts.txt \
             ./internal/build
 
@@ -113,15 +113,15 @@ jobs:
           # them in the Windows coverage upload as well as executing the
           # generated Windows IR fixtures.
           go test -count=1 -timeout=10m \
-            -run '^(TestSetjmpLongjmpIRPaths|TestSigjmpUsesSetjmpOnExplicitTarget|TestWindowsSigjmpBufferAlignment|TestWindowsSetjmpABI|TestNeedsFramePointer|TestSetjmpReturnsTwice|TestDeferInitBuilderInheritsDebugLocation)$' \
+            -run '^(TestSetjmpLongjmpIRPaths|TestSigjmpUsesSetjmpOnExplicitTarget|TestWindowsSigjmpBufferAlignment|TestWindowsSetjmpABI|TestWindowsSetjmpRejectsUnsupportedArchitecture|TestNeedsFramePointer|TestSetjmpReturnsTwice|TestDeferInitBuilderInheritsDebugLocation)$' \
             -covermode=atomic -coverprofile=coverage-windows-execution-ssa.txt \
             ./ssa
           go test -count=1 -timeout=10m \
-            -run '^(TestCompileRuntimeCallerPanicPCLineMetadata|TestCompileRuntimeCallerStorePanicPCLineMetadataIsWindowsOnly|TestCompileRuntimeCallerPCLineMetadataOnWindows|TestFuncInfoDisplayName|TestFuncInfoMetadataEmission|TestFuncInfoWrapperMetadataIsWindowsOnly|TestDirectiveFilename|TestDirectiveFilenameWindowsRootedSlash|TestParseLineDirectiveFilename|TestRuntimeSourceFilename|TestCompileRuntimeCallerFrameUsesGoNameForLinkname|TestErrBuiltin)$' \
+            -run '^(TestCompileRuntimeCallerPanicPCLineMetadata|TestCompileRuntimeCallerStorePanicPCLineMetadataIsWindowsOnly|TestCompileRuntimeCallerPCLineMetadataOnWindows|TestFuncInfoDisplayName|TestFuncInfoMetadataEmission|TestFuncInfoWrapperMetadataIsWindowsOnly|TestDirectiveFilename|TestDirectiveFilenameWindowsRootedSlash|TestPrecedingLineDirectiveFilename|TestParseLineDirectiveFilename|TestRuntimeSourceFilename|TestCompileRuntimeCallerFrameUsesGoNameForLinkname|TestErrBuiltin)$' \
             -covermode=atomic -coverprofile=coverage-windows-execution-cl.txt \
             ./cl
           go test -count=1 -timeout=10m \
-            -run '^(TestFuncInfo.*|TestCOFFFuncInfoEntrySiteIsAssociative|TestExternalFuncInfoTableKeepsPayloadOutOfIR)$' \
+            -run '^(TestFuncInfo.*|TestCOFFFuncInfoEntrySiteIsAssociative|TestExternalFuncInfoTableKeepsPayloadOutOfIR|TestLowerWindowsCgoImportPointerErrors)$' \
             -covermode=atomic -coverprofile=coverage-windows-execution-build.txt \
             ./internal/build ./internal/build/funcinfo
           go test -count=1 -timeout=10m \

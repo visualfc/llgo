@@ -122,6 +122,34 @@ func TestWriteResponseFile(t *testing.T) {
 			}
 		})
 	}
+
+	missingTemp := filepath.Join(t.TempDir(), "missing")
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, missingTemp)
+	}
+	if _, err := writeResponseFile(args, ResponseFileGNU); err == nil {
+		t.Fatal("writeResponseFile succeeded with a missing temporary directory")
+	}
+	closed, err := os.CreateTemp(t.TempDir(), "closed-*.rsp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closedName := closed.Name()
+	if err := closed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeResponseFileTo(closed, args, ResponseFileGNU); err == nil {
+		t.Fatal("writeResponseFileTo succeeded with a closed file")
+	}
+	if _, err := os.Stat(closedName); !os.IsNotExist(err) {
+		t.Fatalf("failed response file was not removed: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		err := New("clang", Config{}).exec(strings.Repeat("x", windowsCommandLineLimit))
+		if err == nil || !strings.Contains(err.Error(), "write clang response file") {
+			t.Fatalf("long Windows command error = %v, want response-file error", err)
+		}
+	}
 }
 
 func TestResponseFileStyle(t *testing.T) {

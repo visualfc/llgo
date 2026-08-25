@@ -234,6 +234,10 @@ func writeResponseFile(args []string, style ResponseFileStyle) (name string, err
 	if err != nil {
 		return "", err
 	}
+	return writeResponseFileTo(file, args, style)
+}
+
+func writeResponseFileTo(file *os.File, args []string, style ResponseFileStyle) (name string, err error) {
 	name = file.Name()
 	defer func() {
 		if closeErr := file.Close(); err == nil {

@@ -124,6 +124,23 @@ func TestWindowsSetjmpABI(t *testing.T) {
 	}
 }
 
+func TestWindowsSetjmpRejectsUnsupportedArchitecture(t *testing.T) {
+	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: "mips"})
+	pkg := prog.NewPackage("foo", "foo")
+	fn := pkg.NewFunc("f", ssa.NoArgsNoRet, ssa.InGo)
+	b := fn.MakeBody(1)
+	jb := b.AllocaSigjmpBuf()
+	zero := prog.IntVal(0, prog.CInt())
+	defer func() {
+		got := recover()
+		msg, ok := got.(string)
+		if !ok || !strings.Contains(msg, "unsupported Windows architecture") {
+			t.Fatalf("Sigsetjmp panic = %v, want unsupported-architecture diagnostic", got)
+		}
+	}()
+	_ = b.Sigsetjmp(jb, zero)
+}
+
 func TestDeferInLoopContiguousDrainerGeneration(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	pkg := prog.NewPackage("foo", "foo")
