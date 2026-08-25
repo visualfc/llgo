@@ -121,7 +121,7 @@ jobs:
             -covermode=atomic -coverprofile=coverage-windows-execution-cl.txt \
             ./cl
           go test -count=1 -timeout=10m \
-            -run '^(TestFuncInfo.*|TestCOFFFuncInfoEntrySiteIsAssociative|TestExternalFuncInfoTableKeepsPayloadOutOfIR|TestLowerWindowsCgoImportPointerErrors)$' \
+            -run '^(TestFuncInfo.*|TestEncodePacksWrapperFlagWithoutGrowingRecord|TestCOFFFuncInfoEntrySiteIsAssociative|TestExternalFuncInfoTableKeepsPayloadOutOfIR|TestLowerWindowsCgoImportPointerErrors)$' \
             -covermode=atomic -coverprofile=coverage-windows-execution-build.txt \
             ./internal/build ./internal/build/funcinfo
           go test -count=1 -timeout=10m \
