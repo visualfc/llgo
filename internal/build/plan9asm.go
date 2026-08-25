@@ -2,10 +2,8 @@ package build
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -18,12 +16,9 @@ import (
 	gllvm "github.com/xgo-dev/llvm"
 )
 
-// compilePkgSFiles translates Go/Plan9 assembly files selected by `go list -json`
-// for this package/target into LLVM IR, compiles them to .o, and returns the
-// object files for linking.
-//
-// NOTE: golang.org/x/tools/go/packages.Package does not expose SFiles, so we
-// query `go list -json` here to get the exact filtered set for GOOS/GOARCH.
+// compilePkgSFiles translates Go/Plan9 assembly files selected by the package
+// loader for this package/target into LLVM IR, compiles them to .o, and returns
+// the object files for linking.
 func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbose bool) ([]string, error) {
 	if len(ctx.patchFiles[pkg.PkgPath]) != 0 && llruntime.SourcePatchReplacesAsmForGOARCH(pkg.PkgPath, ctx.buildConf.Goarch) {
 		return nil, nil
@@ -392,75 +387,28 @@ func pkgSFiles(ctx *context, pkg *packages.Package) ([]string, error) {
 	if v, ok := ctx.sfilesCache[pkg.ID]; ok {
 		return v, nil
 	}
-	// The synthetic test main shares the tested package's directory, so a
-	// directory scan may find assembly files that do not belong to testmain.
-	// Its generated import path (for example, example.com/p.test) is also not
-	// a package that can be queried directly with `go list`.
+	// The synthetic test main shares the tested package's directory, but it does
+	// not own that package's assembly files.
 	if ctx.mode == ModeTest && pkg.Name == "main" && strings.HasSuffix(pkg.ID, ".test") {
 		ctx.sfilesCache[pkg.ID] = nil
 		return nil, nil
 	}
-	// Some unit tests construct synthetic packages that are not loadable via
-	// `go list` (PkgPath not in any module, and Dir/Standard/Goroot unset).
-	// In that case, treat the package as having no selected .s files.
+	// Some unit tests construct synthetic packages without an on-disk package
+	// directory. Treat those packages as having no selected assembly files.
 	if pkg.Dir == "" {
 		ctx.sfilesCache[pkg.ID] = nil
 		return nil, nil
 	}
-	// Fast path: if directory has no .s/.S at all, skip `go list`.
-	if ss, _ := filepath.Glob(filepath.Join(pkg.Dir, "*.s")); len(ss) == 0 {
-		if ss, _ := filepath.Glob(filepath.Join(pkg.Dir, "*.S")); len(ss) == 0 {
-			ctx.sfilesCache[pkg.ID] = nil
-			return nil, nil
-		}
-	}
-
 	if ctx.sfilesFrozen {
 		return nil, fmt.Errorf("package %s assembly files were not prepared before backend execution", pkg.PkgPath)
 	}
-
-	args := []string{"list", "-json"}
-	if ctx.conf != nil && len(ctx.conf.BuildFlags) > 0 {
-		args = append(args, ctx.conf.BuildFlags...)
-	}
-	args = append(args, pkg.PkgPath)
-
-	cmd := exec.Command("go", args...)
-	ctx.commands.configure(cmd)
-	// Resolve dependencies from the module or workspace used by packages.Load.
-	// A dependency directory in the module cache may not contain a go.mod.
-	if ctx.conf != nil && ctx.conf.Dir != "" {
-		cmd.Dir = ctx.conf.Dir
-	}
-	if ctx.conf != nil && len(ctx.conf.Env) > 0 {
-		cmd.Env = append([]string(nil), ctx.conf.Env...)
-	}
-	cmd.Env = withEnv(cmd.Env,
-		"GOOS="+ctx.buildConf.Goos,
-		"GOARCH="+ctx.buildConf.Goarch,
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		var errBuf bytes.Buffer
-		if ee, ok := err.(*exec.ExitError); ok && len(ee.Stderr) > 0 {
-			errBuf.Write(ee.Stderr)
-		}
-		return nil, fmt.Errorf("go list -json %s failed: %w\n%s", pkg.PkgPath, err, strings.TrimSpace(errBuf.String()))
-	}
-
-	var lp struct {
-		Dir    string   `json:"Dir"`
-		SFiles []string `json:"SFiles"`
-	}
-	if err := json.Unmarshal(out, &lp); err != nil {
-		return nil, fmt.Errorf("go list -json %s: parse: %w", pkg.PkgPath, err)
-	}
+	paths := selectedSFiles(pkg.OtherFiles)
 
 	// internal/chacha8rand has highly optimized arch asm on amd64/arm64.
 	// Until full vector lowering lands, force the generic stub entry, which
 	// tail-jumps to block_generic and preserves package behavior.
-	if pkg.PkgPath == "internal/chacha8rand" && lp.Dir != "" {
-		stub := filepath.Join(lp.Dir, "chacha8_stub.s")
+	if len(paths) != 0 && pkg.PkgPath == "internal/chacha8rand" && pkg.Dir != "" {
+		stub := filepath.Join(pkg.Dir, "chacha8_stub.s")
 		if _, err := os.Stat(stub); err == nil {
 			paths := []string{stub}
 			ctx.sfilesCache[pkg.ID] = paths
@@ -475,21 +423,23 @@ func pkgSFiles(ctx *context, pkg *packages.Package) ([]string, error) {
 		return nil, nil
 	}
 
-	paths := selectedSFiles(lp.Dir, lp.SFiles)
 	ctx.sfilesCache[pkg.ID] = paths
 	return paths, nil
 }
 
-func selectedSFiles(dir string, files []string) []string {
-	if dir == "" || len(files) == 0 {
+func selectedSFiles(files []string) []string {
+	if len(files) == 0 {
 		return nil
 	}
-	paths := make([]string, 0, len(files))
+	var paths []string
 	for _, f := range files {
+		if !strings.HasSuffix(f, ".s") && !strings.HasSuffix(f, ".S") {
+			continue
+		}
 		if strings.HasSuffix(f, "_test.s") || strings.HasSuffix(f, "_test.S") {
 			continue
 		}
-		paths = append(paths, filepath.Join(dir, f))
+		paths = append(paths, f)
 	}
 	return paths
 }
