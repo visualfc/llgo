@@ -237,3 +237,94 @@ entry:
 		t.Fatalf("large-return closure-env module is invalid: %v\n%s", err, mod.String())
 	}
 }
+
+func TestLowerLargeAggregateStoredLoads(t *testing.T) {
+	const testIR = `
+%Large = type [65537 x i8]
+%Small = type [65536 x i8]
+
+define void @copy_twice(ptr %src, ptr %dst1, ptr %dst2) {
+entry:
+  %value = load %Large, ptr %src, align 1
+  %first = getelementptr inbounds %Large, ptr %src, i64 0, i64 0
+  store i8 9, ptr %first, align 1
+  store %Large %value, ptr %dst1, align 1
+  store %Large %value, ptr %dst2, align 1
+  ret void
+}
+
+define void @copy_once(ptr %src, ptr %dst) {
+entry:
+  %value = load %Large, ptr %src, align 1
+  store %Large %value, ptr %dst, align 1
+  ret void
+}
+
+define i8 @mixed_use(ptr %src, ptr %dst) {
+entry:
+  %value = load %Large, ptr %src, align 1
+  store %Large %value, ptr %dst, align 1
+  %first = extractvalue %Large %value, 0
+  ret i8 %first
+}
+
+define void @small_copy(ptr %src, ptr %dst) {
+entry:
+  %value = load %Small, ptr %src, align 1
+  store %Small %value, ptr %dst, align 1
+  ret void
+}
+`
+
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "large_stored_loads.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+
+	LowerLargeAggregates(td, mod)
+
+	copyTwice := mod.NamedFunction("copy_twice").String()
+	if got := strings.Count(copyTwice, "call void @llvm.memcpy"); got != 3 {
+		t.Fatalf("copy_twice has %d memcpy calls, want snapshot plus two stores:\n%s", got, copyTwice)
+	}
+	snapshot := strings.Index(copyTwice, "call void @llvm.memcpy")
+	mutation := strings.Index(copyTwice, "store i8 9")
+	if snapshot < 0 || mutation < 0 || snapshot >= mutation {
+		t.Fatalf("large value was not snapshotted before source mutation:\n%s", copyTwice)
+	}
+	if strings.Contains(copyTwice, "load [65537 x i8]") || strings.Contains(copyTwice, "store [65537 x i8]") {
+		t.Fatalf("copy_twice retained a direct large aggregate copy:\n%s", copyTwice)
+	}
+
+	copyOnce := mod.NamedFunction("copy_once").String()
+	if strings.Count(copyOnce, "call void @llvm.memmove") != 1 || strings.Contains(copyOnce, "AllocU") {
+		t.Fatalf("adjacent large copy was not lowered directly to memmove:\n%s", copyOnce)
+	}
+	if strings.Contains(copyOnce, "load [65537 x i8]") || strings.Contains(copyOnce, "store [65537 x i8]") {
+		t.Fatalf("copy_once retained a direct large aggregate copy:\n%s", copyOnce)
+	}
+	mixed := mod.NamedFunction("mixed_use").String()
+	if !strings.Contains(mixed, "load [65537 x i8]") || !strings.Contains(mixed, "store [65537 x i8]") {
+		t.Fatalf("mixed non-store use was unexpectedly rewritten:\n%s", mixed)
+	}
+	small := mod.NamedFunction("small_copy").String()
+	if !strings.Contains(small, "load [65536 x i8]") || !strings.Contains(small, "store [65536 x i8]") {
+		t.Fatalf("aggregate at the threshold was unexpectedly rewritten:\n%s", small)
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("stored-load module is invalid: %v\n%s", err, mod.String())
+	}
+}
