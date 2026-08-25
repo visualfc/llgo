@@ -1,4 +1,4 @@
-//go:build !((linux || darwin) && (amd64 || arm64)) && !baremetal
+//go:build !((linux || darwin) && (amd64 || arm64)) && !windows && !baremetal
 
 package setjmp
 

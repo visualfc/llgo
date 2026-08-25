@@ -1,7 +1,7 @@
-//go:build !darwin && !windows && !baremetal
+//go:build windows && llgo
 
 /*
- * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,14 +21,19 @@ package c
 import _ "unsafe"
 
 const (
-	LLGoPackage = "decl"
+	// Standard-stream pointers require package initialization; declaration-only
+	// packages intentionally skip init functions.
+	LLGoPackage = true
 )
 
-//go:linkname Stdin stdin
-var Stdin FilePtr
+// The Universal CRT exposes standard streams through __acrt_iob_func rather
+// than the Unix stdin/stdout/stderr data symbols.
+//
+//go:linkname acrtIobFunc C.__acrt_iob_func
+func acrtIobFunc(index Uint) FilePtr
 
-//go:linkname Stdout stdout
-var Stdout FilePtr
-
-//go:linkname Stderr stderr
-var Stderr FilePtr
+var (
+	Stdin  = acrtIobFunc(0)
+	Stdout = acrtIobFunc(1)
+	Stderr = acrtIobFunc(2)
+)

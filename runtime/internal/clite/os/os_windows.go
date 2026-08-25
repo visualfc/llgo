@@ -1,7 +1,7 @@
-//go:build !darwin && !windows && !baremetal
+//go:build windows
 
 /*
- * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,24 @@
  * limitations under the License.
  */
 
-package c
+// Package os exposes the hosted runtime's operating-system C API.
+package os
 
-import _ "unsafe"
+import (
+	_ "unsafe"
 
-const (
-	LLGoPackage = "decl"
+	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 )
 
-//go:linkname Stdin stdin
-var Stdin FilePtr
+const (
+	LLGoFiles   = "_os/os_windows.c"
+	LLGoPackage = "link"
+)
 
-//go:linkname Stdout stdout
-var Stdout FilePtr
+//go:linkname Getenv C.getenv
+func Getenv(name *c.Char) *c.Char
 
-//go:linkname Stderr stderr
-var Stderr FilePtr
+// ExitProcess terminates the process and all of its threads.
+//
+//go:linkname ExitProcess C.llgo_windows_exit_process
+func ExitProcess(code uint32)

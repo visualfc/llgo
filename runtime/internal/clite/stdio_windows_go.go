@@ -1,7 +1,7 @@
-//go:build !darwin && !windows && !baremetal
+//go:build windows && !llgo
 
 /*
- * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,17 +18,13 @@
 
 package c
 
-import _ "unsafe"
+const LLGoPackage = true
 
-const (
-	LLGoPackage = "decl"
+// The Go compiler cannot resolve LLGo's C.__acrt_iob_func linkname. Native Go
+// tests only need the declarations to type-check; LLGo builds select
+// stdio_windows.go and initialize these streams from the Universal CRT.
+var (
+	Stdin  FilePtr
+	Stdout FilePtr
+	Stderr FilePtr
 )
-
-//go:linkname Stdin stdin
-var Stdin FilePtr
-
-//go:linkname Stdout stdout
-var Stdout FilePtr
-
-//go:linkname Stderr stderr
-var Stderr FilePtr
