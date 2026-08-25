@@ -87,9 +87,31 @@ jobs:
             -covermode=atomic -coverprofile=coverage-windows-comdat.txt \
             ./ssa
 
+          go test -count=1 -timeout=10m \
+            -run '^(TestTargetArchAndNewTransformerArchSelection|TestMSVC.*)$' \
+            -covermode=atomic -coverprofile=coverage-windows-cabi.txt \
+            ./internal/cabi
+
+          (
+            cd runtime
+            go test -count=1 -timeout=10m \
+              -covermode=atomic -coverprofile=../coverage-windows-ffi.txt \
+              ./internal/ffi ./internal/clite/ffi ./internal/lib/reflect
+            for arch in 386 arm64; do
+              CGO_ENABLED=0 GOOS=windows GOARCH="$arch" go test -c \
+                -o "$RUNNER_TEMP/llgo-ffi-$arch.test.exe" ./internal/ffi
+            done
+          )
+
+          ffi_include="$(pkg-config --variable=includedir libffi)"
+          clang -target x86_64-pc-windows-msvc -I"$ffi_include" -c \
+            runtime/internal/clite/ffi/_wrap/libffi.c \
+            -o "$RUNNER_TEMP/llgo-libffi-amd64.obj"
+          llvm-readobj --file-headers "$RUNNER_TEMP/llgo-libffi-amd64.obj"
+
       - name: Upload Windows coverage
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt
+          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-cabi.txt,coverage-windows-ffi.txt
           flags: windows-native

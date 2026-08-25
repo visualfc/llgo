@@ -1,4 +1,34 @@
+/* MSYS2's ARM64 MinGW vadefs.h has no _M_ARM64 varargs branch. Clang's MSVC
+ * target still supports the GNU varargs builtins, so advertise that compiler
+ * compatibility only while reading the ARM64 libffi/CRT headers. x86 targets
+ * use their native MSVC header branches and keep libffi's MSVC ABI selection. */
+#if defined(_WIN32) && defined(__aarch64__) && defined(_MSC_VER) &&        \
+    defined(__clang__) && !defined(__GNUC__)
+#define LLGO_LIBFFI_MINGW_HEADER_COMPAT 1
+#define __GNUC__ 4
+#define __GNUC_MINOR__ 2
+#define __GNUC_PATCHLEVEL__ 1
+#endif
 #include <ffi.h>
+#if defined(LLGO_LIBFFI_MINGW_HEADER_COMPAT)
+#undef __GNUC_PATCHLEVEL__
+#undef __GNUC_MINOR__
+#undef __GNUC__
+#undef LLGO_LIBFFI_MINGW_HEADER_COMPAT
+#endif
+
+#if defined(_WIN32) && defined(__x86_64__)
+_Static_assert(FFI_DEFAULT_ABI == FFI_WIN64,
+               "Windows x86-64 requires libffi's MSVC ABI");
+#elif defined(_WIN32) && defined(__i386__)
+_Static_assert(FFI_DEFAULT_ABI == FFI_MS_CDECL,
+               "Windows x86 requires libffi's MSVC cdecl ABI");
+_Static_assert(FFI_STDCALL == 2,
+               "LLGo's Windows x86 stdcall ABI constant is stale");
+#elif defined(_WIN32) && defined(__aarch64__)
+_Static_assert(FFI_DEFAULT_ABI == FFI_WIN64,
+               "Windows AArch64 requires libffi's Win64 ABI");
+#endif
 
 void *llgo_ffi_closure_alloc(void **code) {
     return ffi_closure_alloc(sizeof(ffi_closure), code);
@@ -11,9 +41,9 @@ void *llgo_ffi_closure_alloc(void **code) {
  * expose its Go ABI on x86, and on AArch64 Apple/Android where X18 is reserved
  * and LLGo uses swiftself/X20 instead.
  *
- * Windows follows the same architecture-selected closure ABI even though LLGo
- * does not support the OS yet. x86 can use the direct path below. TODO: add and
- * validate the Windows ARM/AArch64 FFI final hop without changing that ABI.
+ * Windows follows the same architecture-selected closure ABI. Its x86
+ * backends can use the direct path below; Windows AArch64 uses swiftself/X20
+ * and therefore shares the public-ffi-call trampoline.
  */
 #if defined(__x86_64__) || defined(__i386__) || defined(__riscv) ||        \
     defined(__riscv__) || defined(__arm__) || defined(__aarch64__)
@@ -28,11 +58,12 @@ void *llgo_ffi_closure_alloc(void **code) {
 #define LLGO_FFI_CALL_GO_DIRECT 1
 #elif !defined(_WIN32) && defined(__arm__)
 #define LLGO_FFI_CALL_GO_ARM_BRIDGE 1
-#elif !defined(_WIN32) &&                                                  \
+#elif (defined(_WIN32) && defined(__aarch64__)) ||                         \
+    (!defined(_WIN32) &&                                                  \
     (((defined(__x86_64__) || defined(__i386__)) &&                        \
       !defined(FFI_GO_CLOSURES)) ||                                        \
      (defined(__aarch64__) &&                                              \
-      (defined(__APPLE__) || defined(__ANDROID__))))
+      (defined(__APPLE__) || defined(__ANDROID__)))))
 #define LLGO_FFI_CALL_PUBLIC_TRAMPOLINE 1
 #endif
 
@@ -43,8 +74,6 @@ void *llgo_ffi_closure_alloc(void **code) {
      (defined(__aarch64__) && !defined(__APPLE__) && !defined(__ANDROID__) && \
       !defined(_WIN32)))
 #error "LLGo hidden closure environments require libffi Go closures on this target"
-#elif defined(_WIN32) && (defined(__arm__) || defined(__aarch64__))
-#error "LLGo Windows ARM hidden-env FFI final hop is not implemented"
 #elif defined(LLGO_FFI_HIDDEN_ENV_TARGET) &&                              \
     (defined(LLGO_FFI_CALL_GO_DIRECT) +                                   \
          defined(LLGO_FFI_CALL_GO_ARM_BRIDGE) +                           \
