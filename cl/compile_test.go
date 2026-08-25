@@ -229,6 +229,7 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 			"./_testlto/globaldce_reflect_method",
 			"./_testlto/globaldce_reflect_type_method",
 			"./_testlto/globaldce_reflect_type_method_by_name",
+			"./_testlto/globaldce_reflect_type_method_metadata_only",
 			"./_testlto/globaldce_reflect_value_method",
 			"./_testlto/globaldce_typeid_dce",
 			"./_testlto/globaldce_unexported_method_identity",
@@ -249,6 +250,7 @@ var testltoSymbolChecks = []string{
 }
 
 var testltoLTOPluginTests = []string{
+	"globaldce_reflect_type_method_metadata_only",
 	"globaldce_reflect_method_by_name_ltoplugin",
 	"globaldce_reflect_method_by_name_ltoplugin_concat",
 	"globaldce_reflect_method_by_name_ltoplugin_global",
@@ -387,12 +389,14 @@ func TestBuildAndCheckSymbolsFromTestltoLTOPluginAggregateABI(t *testing.T) {
 		t.Fatalf("aggregate ABI output retained the generic value marker\n%s", result)
 	}
 
-	// A generic marker conservatively retains every matching method, so test
-	// unknown-name fallback in a separate module from the Drop symbol check.
+	// The helper above still verifies that the dynamic name survives aggregate
+	// ABI lowering. Since this module discards the returned Method, however, it
+	// must not synthesize a generic Func-capability marker that retains every
+	// matching method body.
 	unknownResult := runTestltoLTOPluginAggregateABI(t,
 		"./_testlto/_globaldce_reflect_method_by_name_ltoplugin_string_abi_unknown")
-	if !strings.Contains(unknownResult, `metadata !"go.method.type.reflect"`) {
-		t.Fatalf("aggregate ABI output lost the unknown-name type marker\n%s", unknownResult)
+	if strings.Contains(unknownResult, `metadata !"go.method.type.reflect"`) {
+		t.Fatalf("aggregate ABI output retained a generic type Func marker\n%s", unknownResult)
 	}
 }
 

@@ -48,6 +48,7 @@ static constexpr char RuntimeStringSlice2Suffix[] =
 static constexpr unsigned MaxReflectMethodNames = 32;
 static constexpr unsigned MaxStringAnalysisDepth = 12;
 static constexpr unsigned MaxConstantGEPChoices = 32;
+static constexpr unsigned MaxReflectFuncAnalysisDepth = 48;
 
 // Keep the replacement bounded. The pass is only meant to refine cases where
 // optimization has exposed a small finite set of names. If the set grows too
@@ -1243,6 +1244,405 @@ bool isReflectMethodCheckedLoad(CallBase *CheckedLoad,
   return TypeID && *TypeID == GenericTypeID;
 }
 
+bool isReflectTypeMethodCheckedLoad(CallBase *CheckedLoad) {
+  auto TypeID = checkedLoadTypeID(CheckedLoad);
+  return TypeID && (*TypeID == ReflectTypeMethodTypeID ||
+                    TypeID->starts_with(ReflectTypeMethodTypeIDPrefix));
+}
+
+std::optional<uint64_t> aggregateByteOffset(Type *Ty,
+                                            ArrayRef<unsigned> Indices,
+                                            const DataLayout &DL) {
+  uint64_t Offset = 0;
+  for (unsigned Index : Indices) {
+    if (auto *StructTy = dyn_cast<StructType>(Ty)) {
+      if (!StructTy->isSized() || Index >= StructTy->getNumElements())
+        return std::nullopt;
+      Offset += DL.getStructLayout(StructTy)->getElementOffset(Index);
+      Ty = StructTy->getElementType(Index);
+      continue;
+    }
+    if (auto *ArrayTy = dyn_cast<ArrayType>(Ty)) {
+      if (Index >= ArrayTy->getNumElements())
+        return std::nullopt;
+      Type *ElemTy = ArrayTy->getElementType();
+      Offset += Index * DL.getTypeAllocSize(ElemTy);
+      Ty = ElemTy;
+      continue;
+    }
+    return std::nullopt;
+  }
+  return Offset;
+}
+
+struct ReflectFuncStorage {
+  AllocaInst *Base;
+  uint64_t Offset;
+  uint64_t Size;
+};
+
+// Recover the byte occupied by Method.Func's code pointer. The frontend emits
+// the checked-load from an extract of a value loaded out of the Method result,
+// so this walk is independent of the concrete Go ABI aggregate shape.
+std::optional<ReflectFuncStorage> findReflectFuncStorage(CallBase *CheckedLoad,
+                                                         const DataLayout &DL) {
+  if (!isReflectTypeMethodCheckedLoad(CheckedLoad) || CheckedLoad->arg_empty())
+    return std::nullopt;
+
+  Value *V = CheckedLoad->getArgOperand(0);
+  uint64_t Offset = 0;
+  uint64_t Size = DL.getTypeStoreSize(V->getType());
+  for (unsigned Depth = 0; Depth != MaxReflectFuncAnalysisDepth; ++Depth) {
+    if (auto *Cast = dyn_cast<CastInst>(V)) {
+      if (!isa<BitCastInst>(Cast) && !isa<AddrSpaceCastInst>(Cast))
+        return std::nullopt;
+      if (DL.getTypeStoreSize(Cast->getType()) !=
+          DL.getTypeStoreSize(Cast->getOperand(0)->getType()))
+        return std::nullopt;
+      V = Cast->getOperand(0);
+      continue;
+    }
+    if (auto *Extract = dyn_cast<ExtractElementInst>(V)) {
+      auto *Index = dyn_cast<ConstantInt>(Extract->getIndexOperand());
+      auto *VectorTy =
+          dyn_cast<FixedVectorType>(Extract->getVectorOperand()->getType());
+      if (!Index || Index->isNegative() || !VectorTy ||
+          Index->getZExtValue() >= VectorTy->getNumElements())
+        return std::nullopt;
+      Offset += Index->getZExtValue() *
+                DL.getTypeAllocSize(VectorTy->getElementType());
+      V = Extract->getVectorOperand();
+      continue;
+    }
+    if (auto *Extract = dyn_cast<ExtractValueInst>(V)) {
+      auto ExtractOffset = aggregateByteOffset(
+          Extract->getAggregateOperand()->getType(), Extract->getIndices(), DL);
+      if (!ExtractOffset)
+        return std::nullopt;
+      Offset += *ExtractOffset;
+      V = Extract->getAggregateOperand();
+      continue;
+    }
+    if (auto *Freeze = dyn_cast<FreezeInst>(V)) {
+      V = Freeze->getOperand(0);
+      continue;
+    }
+    auto *Load = dyn_cast<LoadInst>(V);
+    if (!Load || !Load->isSimple())
+      return std::nullopt;
+
+    uint64_t LoadSize = DL.getTypeStoreSize(Load->getType());
+    if (Offset > LoadSize || Size > LoadSize - Offset)
+      return std::nullopt;
+    int64_t LoadOffset = 0;
+    Value *Base = GetPointerBaseWithConstantOffset(Load->getPointerOperand(),
+                                                   LoadOffset, DL);
+    auto *Alloca =
+        Base ? dyn_cast<AllocaInst>(Base->stripPointerCasts()) : nullptr;
+    if (!Alloca || Alloca->isArrayAllocation() || LoadOffset < 0)
+      return std::nullopt;
+    uint64_t AllocaSize = DL.getTypeAllocSize(Alloca->getAllocatedType());
+    uint64_t FinalOffset = static_cast<uint64_t>(LoadOffset);
+    if (FinalOffset > AllocaSize || Offset > AllocaSize - FinalOffset ||
+        Size > AllocaSize - FinalOffset - Offset)
+      return std::nullopt;
+    return ReflectFuncStorage{Alloca, FinalOffset + Offset, Size};
+  }
+  return std::nullopt;
+}
+
+bool regionsOverlap(uint64_t AOffset, uint64_t ASize, uint64_t BOffset,
+                    uint64_t BSize) {
+  if (ASize == 0 || BSize == 0)
+    return false;
+  if (AOffset < BOffset)
+    return BOffset - AOffset < ASize;
+  return AOffset - BOffset < BSize;
+}
+
+struct TrackedReflectFuncRegion {
+  Value *Base;
+  uint64_t Offset;
+  uint64_t Size;
+};
+
+bool markReflectFuncRegionSeen(SmallVectorImpl<TrackedReflectFuncRegion> &Seen,
+                               Value *Base, uint64_t Offset, uint64_t Size) {
+  for (const TrackedReflectFuncRegion &Region : Seen) {
+    if (Region.Base == Base && Region.Offset == Offset && Region.Size == Size)
+      return false;
+  }
+  Seen.push_back({Base, Offset, Size});
+  return true;
+}
+
+// Follow only the bytes containing Method.Func's code pointer. Loads turn a
+// storage region into an SSA-value region; local stores turn it back into a
+// storage region. Extracts of sibling Method fields do not overlap and are
+// ignored. Any call, return, non-local store, pointer escape, non-constant
+// offset, or unrecognized IR shape fails closed and keeps the checked-load.
+class ReflectFuncUseAnalysis {
+  const DataLayout &DL;
+  SmallVector<TrackedReflectFuncRegion, 32> SeenStorage;
+  SmallVector<TrackedReflectFuncRegion, 64> SeenValues;
+
+  bool analyzeValue(Value *V, uint64_t Offset, uint64_t Size, unsigned Depth) {
+    if (Depth > MaxReflectFuncAnalysisDepth)
+      return false;
+    if (!markReflectFuncRegionSeen(SeenValues, V, Offset, Size))
+      return true;
+
+    for (User *U : V->users()) {
+      if (auto *Extract = dyn_cast<ExtractElementInst>(U)) {
+        if (Extract->getVectorOperand() != V)
+          return false;
+        auto *Index = dyn_cast<ConstantInt>(Extract->getIndexOperand());
+        auto *VectorTy = dyn_cast<FixedVectorType>(V->getType());
+        if (!Index || Index->isNegative() || !VectorTy ||
+            Index->getZExtValue() >= VectorTy->getNumElements())
+          return false;
+        uint64_t ElemOffset = Index->getZExtValue() *
+                              DL.getTypeAllocSize(VectorTy->getElementType());
+        uint64_t ElemSize = DL.getTypeStoreSize(Extract->getType());
+        if (!regionsOverlap(Offset, Size, ElemOffset, ElemSize))
+          continue;
+        uint64_t Start = std::max(Offset, ElemOffset);
+        uint64_t End = std::min(Offset + Size, ElemOffset + ElemSize);
+        if (!analyzeValue(Extract, Start - ElemOffset, End - Start, Depth + 1))
+          return false;
+        continue;
+      }
+
+      if (auto *Extract = dyn_cast<ExtractValueInst>(U)) {
+        if (Extract->getAggregateOperand() != V)
+          return false;
+        auto ElemOffset =
+            aggregateByteOffset(V->getType(), Extract->getIndices(), DL);
+        if (!ElemOffset)
+          return false;
+        uint64_t ElemSize = DL.getTypeStoreSize(Extract->getType());
+        if (!regionsOverlap(Offset, Size, *ElemOffset, ElemSize))
+          continue;
+        uint64_t Start = std::max(Offset, *ElemOffset);
+        uint64_t End = std::min(Offset + Size, *ElemOffset + ElemSize);
+        if (!analyzeValue(Extract, Start - *ElemOffset, End - Start, Depth + 1))
+          return false;
+        continue;
+      }
+
+      if (auto *Insert = dyn_cast<InsertValueInst>(U)) {
+        auto ElemOffset =
+            aggregateByteOffset(Insert->getType(), Insert->getIndices(), DL);
+        if (!ElemOffset)
+          return false;
+        uint64_t ElemSize =
+            DL.getTypeStoreSize(Insert->getInsertedValueOperand()->getType());
+        if (Insert->getAggregateOperand() == V) {
+          if (!regionsOverlap(Offset, Size, *ElemOffset, ElemSize)) {
+            if (!analyzeValue(Insert, Offset, Size, Depth + 1))
+              return false;
+          } else if (!(*ElemOffset <= Offset &&
+                       Offset + Size <= *ElemOffset + ElemSize)) {
+            return false;
+          }
+          continue;
+        }
+        if (Insert->getInsertedValueOperand() == V) {
+          if (!analyzeValue(Insert, *ElemOffset + Offset, Size, Depth + 1))
+            return false;
+          continue;
+        }
+        return false;
+      }
+
+      if (auto *Store = dyn_cast<StoreInst>(U)) {
+        if (Store->getValueOperand() != V || !Store->isSimple())
+          return false;
+        int64_t StoreOffset = 0;
+        Value *StoreBase = GetPointerBaseWithConstantOffset(
+            Store->getPointerOperand(), StoreOffset, DL);
+        auto *Alloca =
+            StoreBase ? dyn_cast<AllocaInst>(StoreBase->stripPointerCasts())
+                      : nullptr;
+        if (!Alloca || Alloca->isArrayAllocation() || StoreOffset < 0)
+          return false;
+        uint64_t DestOffset = static_cast<uint64_t>(StoreOffset);
+        uint64_t AllocaSize = DL.getTypeAllocSize(Alloca->getAllocatedType());
+        if (DestOffset > AllocaSize || Offset > AllocaSize - DestOffset ||
+            Size > AllocaSize - DestOffset - Offset ||
+            !analyzeStorage(Alloca, DestOffset + Offset, Size, Depth + 1))
+          return false;
+        continue;
+      }
+
+      if (auto *Cast = dyn_cast<CastInst>(U)) {
+        if ((!isa<BitCastInst>(Cast) && !isa<AddrSpaceCastInst>(Cast)) ||
+            DL.getTypeStoreSize(Cast->getType()) !=
+                DL.getTypeStoreSize(V->getType()) ||
+            !analyzeValue(Cast, Offset, Size, Depth + 1))
+          return false;
+        continue;
+      }
+      if (auto *Freeze = dyn_cast<FreezeInst>(U)) {
+        if (!analyzeValue(Freeze, Offset, Size, Depth + 1))
+          return false;
+        continue;
+      }
+      if (auto *Phi = dyn_cast<PHINode>(U)) {
+        if (!analyzeValue(Phi, Offset, Size, Depth + 1))
+          return false;
+        continue;
+      }
+      if (auto *Select = dyn_cast<SelectInst>(U)) {
+        if ((Select->getTrueValue() != V && Select->getFalseValue() != V) ||
+            !analyzeValue(Select, Offset, Size, Depth + 1))
+          return false;
+        continue;
+      }
+
+      if (auto *CB = dyn_cast<CallBase>(U)) {
+        if (!CB->arg_empty() && CB->getArgOperand(0) == V &&
+            isReflectTypeMethodCheckedLoad(CB))
+          continue;
+        return false;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  bool analyzeStoragePointer(Value *Ptr, AllocaInst *Base, uint64_t Offset,
+                             uint64_t Size,
+                             SmallPtrSetImpl<Value *> &SeenPointers,
+                             unsigned Depth) {
+    if (Depth > MaxReflectFuncAnalysisDepth)
+      return false;
+    if (!SeenPointers.insert(Ptr).second)
+      return true;
+
+    for (User *U : Ptr->users()) {
+      if (isa<GetElementPtrInst>(U) || isa<BitCastInst>(U) ||
+          isa<AddrSpaceCastInst>(U)) {
+        auto *Derived = cast<Value>(U);
+        int64_t DerivedOffset = 0;
+        Value *DerivedBase =
+            GetPointerBaseWithConstantOffset(Derived, DerivedOffset, DL);
+        if (!DerivedBase || DerivedBase->stripPointerCasts() != Base ||
+            DerivedOffset < 0 ||
+            !analyzeStoragePointer(Derived, Base, Offset, Size, SeenPointers,
+                                   Depth + 1))
+          return false;
+        continue;
+      }
+
+      if (auto *Load = dyn_cast<LoadInst>(U)) {
+        if (Load->getPointerOperand() != Ptr || !Load->isSimple())
+          return false;
+        int64_t LoadOffset = 0;
+        Value *LoadBase = GetPointerBaseWithConstantOffset(
+            Load->getPointerOperand(), LoadOffset, DL);
+        if (!LoadBase || LoadBase->stripPointerCasts() != Base ||
+            LoadOffset < 0)
+          return false;
+        uint64_t LoadStart = static_cast<uint64_t>(LoadOffset);
+        uint64_t LoadSize = DL.getTypeStoreSize(Load->getType());
+        if (!regionsOverlap(Offset, Size, LoadStart, LoadSize))
+          continue;
+        uint64_t Start = std::max(Offset, LoadStart);
+        uint64_t End = std::min(Offset + Size, LoadStart + LoadSize);
+        if (!analyzeValue(Load, Start - LoadStart, End - Start, Depth + 1))
+          return false;
+        continue;
+      }
+
+      if (auto *Store = dyn_cast<StoreInst>(U)) {
+        if (Store->getPointerOperand() == Ptr &&
+            Store->getValueOperand() != Ptr && Store->isSimple())
+          continue;
+        return false;
+      }
+
+      if (auto *II = dyn_cast<IntrinsicInst>(U)) {
+        if (II->getIntrinsicID() == Intrinsic::lifetime_start ||
+            II->getIntrinsicID() == Intrinsic::lifetime_end)
+          continue;
+      }
+
+      if (auto *CB = dyn_cast<CallBase>(U)) {
+        if (CB->getCalledOperand() == Ptr)
+          return false;
+        bool HasSRetUse = false;
+        bool OnlySRetUses = true;
+        for (unsigned I = 0, E = CB->arg_size(); I != E; ++I) {
+          if (CB->getArgOperand(I) == Ptr) {
+            if (!CB->paramHasAttr(I, Attribute::StructRet)) {
+              OnlySRetUses = false;
+              break;
+            }
+            HasSRetUse = true;
+          }
+        }
+        if (HasSRetUse && OnlySRetUses)
+          continue;
+      }
+      return false;
+    }
+    return true;
+  }
+
+  bool analyzeStorage(AllocaInst *Base, uint64_t Offset, uint64_t Size,
+                      unsigned Depth) {
+    if (Depth > MaxReflectFuncAnalysisDepth)
+      return false;
+    if (!markReflectFuncRegionSeen(SeenStorage, Base, Offset, Size))
+      return true;
+    SmallPtrSet<Value *, 32> SeenPointers;
+    return analyzeStoragePointer(Base, Base, Offset, Size, SeenPointers,
+                                 Depth + 1);
+  }
+
+public:
+  explicit ReflectFuncUseAnalysis(const DataLayout &DL) : DL(DL) {}
+
+  bool isUnobserved(const ReflectFuncStorage &Storage) {
+    return analyzeStorage(Storage.Base, Storage.Offset, Storage.Size, 0);
+  }
+};
+
+bool eraseUnobservedReflectTypeMethodFuncs(Module &M, const DataLayout &DL) {
+  SmallVector<CallBase *, 16> CheckedLoads;
+  for (Function &F : M) {
+    for (BasicBlock &BB : F) {
+      for (Instruction &I : BB) {
+        auto *CB = dyn_cast<CallBase>(&I);
+        if (isReflectTypeMethodCheckedLoad(CB))
+          CheckedLoads.push_back(CB);
+      }
+    }
+  }
+
+  SmallVector<CallBase *, 16> ToErase;
+  for (CallBase *CheckedLoad : CheckedLoads) {
+    auto Storage = findReflectFuncStorage(CheckedLoad, DL);
+    if (!Storage)
+      continue;
+    ReflectFuncUseAnalysis Analysis(DL);
+    if (Analysis.isUnobserved(*Storage))
+      ToErase.push_back(CheckedLoad);
+  }
+
+  for (CallBase *CheckedLoad : ToErase) {
+    if (!eraseGenericCheckedLoad(CheckedLoad))
+      report_fatal_error(
+          "llgo-lto-plugin: failed to erase unobserved reflect Method.Func "
+          "check");
+  }
+  if (!ToErase.empty() && std::getenv("LLGO_LTO_PLUGIN_VERBOSE"))
+    errs() << "llgo-lto-plugin: erased " << ToErase.size()
+           << " unobserved reflect Type Method.Func checks\n";
+  return !ToErase.empty();
+}
+
 Value *getSRetArg(CallBase *CB) {
   for (unsigned I = 0, E = CB->arg_size(); I != E; ++I) {
     if (CB->paramHasAttr(I, Attribute::StructRet))
@@ -1311,6 +1711,9 @@ void collectSRetReflectMethodCheckedLoads(
 class LLGOLTOPreGlobalDCEPass : public PassInfoMixin<LLGOLTOPreGlobalDCEPass> {
 public:
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
+    const DataLayout &DL = M.getDataLayout();
+    bool Changed = eraseUnobservedReflectTypeMethodFuncs(M, DL);
+
     SmallVector<CallBase *, 16> Calls;
     for (Function &F : M) {
       for (BasicBlock &BB : F) {
@@ -1323,8 +1726,6 @@ public:
       }
     }
 
-    bool Changed = false;
-    const DataLayout &DL = M.getDataLayout();
     DenseMap<CallBase *, Value *> SRetStorageByCall;
     DenseMap<Value *, SmallVector<CallBase *, 4>> CallsBySRetStorage;
     for (CallBase *ReflectCall : Calls) {
