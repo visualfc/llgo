@@ -163,19 +163,17 @@ if [[ "$run_build_mode_tests" == true ]]; then
 
 # Test 1: c-shared mode
 print_status "=== Test 1: Building with -buildmode c-shared ==="
-if $LLGO_SCRIPT build -buildmode c-shared -o export .; then
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    SHARED_LIB="libexport.dylib"
+else
+    SHARED_LIB="libexport.so"
+fi
+if $LLGO_SCRIPT build -buildmode c-shared -o "$SHARED_LIB" .; then
     print_status "Build succeeded"
 
-    # Check generated files (different extensions on different platforms)
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        check_file "libexport.dylib" "Dynamic library (libexport.dylib)"
-        SHARED_LIB="libexport.dylib"
-    else
-        # Linux and others
-        check_file "libexport.so" "Dynamic library (libexport.so)"
-        SHARED_LIB="libexport.so"
-    fi
+    # -o is an exact file name, matching cmd/go. Choose the platform suffix
+    # explicitly instead of relying on the build driver to rewrite it.
+    check_file "$SHARED_LIB" "Dynamic library ($SHARED_LIB)"
 
     check_file "libexport.h" "C header (libexport.h)"
 
@@ -216,7 +214,7 @@ fi
 
 # Test 2: c-archive mode
 print_status "=== Test 2: Building with -buildmode c-archive ==="
-if $LLGO_SCRIPT build -buildmode c-archive -o export .; then
+if $LLGO_SCRIPT build -buildmode c-archive -o libexport.a .; then
     print_status "Build succeeded"
 
     # Check generated files

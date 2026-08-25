@@ -265,11 +265,11 @@ func resolveBuildConfig(input *Config) (*Config, error) {
 	if err := resolveGOARCHConfig(conf, os.Getenv); err != nil {
 		return nil, err
 	}
-	if conf.AppExt == "" {
-		conf.AppExt = defaultAppExt(conf)
-	}
 	if conf.BuildMode == "" {
 		conf.BuildMode = BuildModeExe
+	}
+	if conf.AppExt == "" {
+		conf.AppExt = defaultAppExt(conf)
 	}
 	if conf.BuildMode != BuildModeExe {
 		conf.DeadcodeDrop = false
@@ -483,7 +483,6 @@ func Build(inv Invocation) ([]Package, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup crosscompile: %w", err)
 	}
-	applyBuildModeCompileFlags(conf.BuildMode, &export)
 	// Update GOOS/GOARCH from export if target was used
 	if conf.Target != "" && export.GOOS != "" {
 		conf.Goos = export.GOOS
@@ -491,6 +490,7 @@ func Build(inv Invocation) ([]Package, error) {
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
 	}
+	applyBuildModeCompileFlags(conf.BuildMode, export.Toolchain, &export)
 	if err := validateLinkOptions(conf, &export); err != nil {
 		return nil, err
 	}
@@ -912,10 +912,19 @@ func hasLocalCExports(pkg llssa.Package) bool {
 // applyBuildModeCompileFlags adds code-generation flags that must be present
 // while package C/C++ sources are compiled. Passing -fPIC only to the final
 // shared-library link is too late for objects containing global references.
-func applyBuildModeCompileFlags(mode BuildMode, export *crosscompile.Export) {
-	if mode == BuildModeCShared && export != nil && !slices.Contains(export.CCFLAGS, "-fPIC") {
+func applyBuildModeCompileFlags(mode BuildMode, toolchain crosscompile.NativeToolchain, export *crosscompile.Export) {
+	if mode == BuildModeCShared && toolchain.ObjectFormat != crosscompile.ObjectFormatCOFF &&
+		export != nil && !slices.Contains(export.CCFLAGS, "-fPIC") {
 		export.CCFLAGS = append(export.CCFLAGS, "-fPIC")
 	}
+}
+
+func cSharedLinkArgs(toolchain crosscompile.NativeToolchain) []string {
+	args := []string{"-shared"}
+	if toolchain.ObjectFormat != crosscompile.ObjectFormatCOFF {
+		args = append(args, "-fPIC")
+	}
+	return args
 }
 
 // DefaultBuildTags returns the build tags LLGo always enables for a target.
@@ -1648,20 +1657,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	linkInputs = append(linkInputs, archiveInputs...)
 
 	if IsFullRpathEnabled() {
-		// Treat every link-time library search path, specified by the -L parameter, as a runtime search path as well.
-		// This is to ensure the final executable can locate libraries with a relocatable install_name
-		// (e.g., "@rpath/libfoo.dylib") at runtime.
-		rpaths := make(map[string]none)
-		for _, arg := range linkArgs {
-			if strings.HasPrefix(arg, "-L") {
-				path := arg[2:]
-				if _, ok := rpaths[path]; ok {
-					continue
-				}
-				rpaths[path] = none{}
-				linkArgs = append(linkArgs, "-rpath", path)
-			}
-		}
+		linkArgs = append(linkArgs, fullRpathArgs(ctx.crossCompile.Toolchain, linkArgs)...)
 	}
 	linkArgs = append(linkArgs, cSharedExportArgs(ctx, linkedOrder)...)
 	darwinSymbols := planDarwinSizeSymbols(ctx, linkedOrder, linkArgs)
@@ -1674,6 +1670,30 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	}
 
 	return nil
+}
+
+func fullRpathArgs(toolchain crosscompile.NativeToolchain, linkArgs []string) (rpathArgs []string) {
+	// PE images use the Windows DLL search order. Neither lld-link nor
+	// link.exe has an ELF/Mach-O-style runtime search-path option.
+	if toolchain.ObjectFormat == crosscompile.ObjectFormatCOFF {
+		return nil
+	}
+	// Treat every link-time library search path, specified by -L, as a
+	// runtime search path too. This keeps relocatable install names such as
+	// @rpath/libfoo.dylib discoverable without duplicating entries.
+	rpaths := make(map[string]none)
+	for _, arg := range linkArgs {
+		if !strings.HasPrefix(arg, "-L") {
+			continue
+		}
+		path := arg[2:]
+		if _, ok := rpaths[path]; ok {
+			continue
+		}
+		rpaths[path] = none{}
+		rpathArgs = append(rpathArgs, "-rpath", path)
+	}
+	return rpathArgs
 }
 
 func linkedPackageMetas(pkgs []Package) []*meta.PackageMeta {
@@ -1760,7 +1780,19 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 		return ctx.createMergedArchiveFile(app, objFiles, printCmds)
 	}
 
-	buildArgs := []string{"-o", app}
+	linkOutput := app
+	moveExactWindowsOutput := false
+	if ctx.crossCompile.Toolchain.ObjectFormat == crosscompile.ObjectFormatCOFF &&
+		ctx.buildConf.Target == "" && ctx.buildConf.BuildMode == BuildModeExe &&
+		filepath.Ext(app) == "" {
+		// Clang's Windows driver appends .exe when -o has no extension, while
+		// cmd/go treats an explicit -o name as exact. Link to the conventional
+		// driver name, then publish the requested name after a successful link.
+		// Implicit outputs already carry Config.AppExt.
+		linkOutput = app + ".exe"
+		moveExactWindowsOutput = true
+	}
+	buildArgs := []string{"-o", linkOutput}
 	buildArgs = append(buildArgs, linkArgs...)
 	siteLayoutArgs, cleanupSiteLayout, err := funcInfoSiteLayoutArgs(ctx, app)
 	if err != nil {
@@ -1768,7 +1800,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	}
 	defer cleanupSiteLayout()
 	buildArgs = append(buildArgs, siteLayoutArgs...)
-	buildArgs = append(buildArgs, dwarfLinkerArgs(ctx.buildConf, &ctx.crossCompile)...)
+	buildArgs = append(buildArgs, debugInfoLinkerArgs(ctx.buildConf, &ctx.crossCompile)...)
 	ltoPluginFlags, err := ctx.buildConf.LTOPlugin.LinkerFlags(ctx.buildConf.Goos)
 	if err != nil {
 		return err
@@ -1778,7 +1810,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	// Add build mode specific linker arguments
 	switch ctx.buildConf.BuildMode {
 	case BuildModeCShared:
-		buildArgs = append(buildArgs, "-shared", "-fPIC")
+		buildArgs = append(buildArgs, cSharedLinkArgs(ctx.crossCompile.Toolchain)...)
 	case BuildModeExe:
 		if needsLinuxNoPIE(ctx, linkArgs) {
 			buildArgs = append(buildArgs, "-no-pie")
@@ -1814,7 +1846,28 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 
 	cmd := ctx.linker()
 	cmd.Verbose = printCmds
-	return cmd.Link(buildArgs...)
+	if err := cmd.Link(buildArgs...); err != nil {
+		return err
+	}
+	if !moveExactWindowsOutput {
+		return nil
+	}
+	if ctx.mode == ModeTest && !ctx.buildConf.CompileOnly {
+		// Keep the .exe sibling so os/exec's Windows PATHEXT lookup can run an
+		// extensionless explicit test output, while also publishing the exact
+		// file requested by -o.
+		if err := copyFileAtomic(linkOutput, app); err != nil {
+			return fmt.Errorf("publish exact Windows test output %s: %w", app, err)
+		}
+		return nil
+	}
+	// os.Rename replaces an existing non-directory destination. On Windows it
+	// uses MoveFileEx with MOVEFILE_REPLACE_EXISTING, avoiding a remove/rename
+	// gap in which another build could recreate app.
+	if err := os.Rename(linkOutput, app); err != nil {
+		return fmt.Errorf("publish exact Windows output %s: %w", app, err)
+	}
+	return nil
 }
 
 // funcInfoSiteLayoutArgs places the ELF entry carrier immediately before .bss,
@@ -1883,9 +1936,15 @@ func cSharedExportArgs(ctx *context, pkgs []*aPackage) []string {
 	slices.Sort(names)
 	args := make([]string, 0, len(names))
 	for _, name := range names {
-		if ctx.buildConf.Goos == "darwin" {
+		switch ctx.crossCompile.Toolchain.ObjectFormat {
+		case crosscompile.ObjectFormatMachO:
 			args = append(args, "-Wl,-u,_"+name)
-		} else {
+		case crosscompile.ObjectFormatCOFF:
+			// /export both roots the symbol and writes it to the PE export
+			// table. lld-link also creates the import library consumed by C
+			// and Visual Studio callers.
+			args = append(args, "-Wl,/export:"+name)
+		default:
 			args = append(args, "-Wl,--undefined="+name)
 		}
 	}
@@ -1924,19 +1983,13 @@ func linuxExportDynamicArgs(ctx *context) []string {
 // For wasm targets and LTO builds, it prefers llvm-ar because linkers need
 // LLVM-aware archive indexes for wasm objects and bitcode members.
 func (c *context) archiver() string {
-	// First check toolchain directory (for cross-compilation)
-	if c.crossCompile.CC != "" {
-		clangDir := filepath.Dir(c.crossCompile.CC)
-		if clangDir != "" {
-			llvmAr := filepath.Join(clangDir, "llvm-ar")
-			if _, err := os.Stat(llvmAr); err == nil {
-				return llvmAr
-			}
-		}
-	}
-	// Allow user override
+	// Allow user override before probing any implicit toolchain path.
 	if ar := os.Getenv("LLGO_AR"); ar != "" {
 		return ar
+	}
+	// First check toolchain directory (for cross-compilation)
+	if llvmAr := siblingTool(c.crossCompile.CC, "llvm-ar"); llvmAr != "" {
+		return llvmAr
 	}
 	if c.buildConf.ltoEnabled() || c.buildConf.Goarch == "wasm" || strings.Contains(c.crossCompile.LLVMTarget, "wasm") {
 		if llvmAr, err := exec.LookPath("llvm-ar"); err == nil {
@@ -1953,16 +2006,32 @@ func (c *context) archiveMerger() (string, error) {
 	if ar := os.Getenv("LLGO_AR"); ar != "" {
 		return ar, nil
 	}
-	if c.crossCompile.CC != "" {
-		llvmAr := filepath.Join(filepath.Dir(c.crossCompile.CC), "llvm-ar")
-		if _, err := os.Stat(llvmAr); err == nil {
-			return llvmAr, nil
-		}
+	if llvmAr := siblingTool(c.crossCompile.CC, "llvm-ar"); llvmAr != "" {
+		return llvmAr, nil
 	}
 	if llvmAr, err := exec.LookPath("llvm-ar"); err == nil {
 		return llvmAr, nil
 	}
 	return "", errors.New("llvm-ar is required to create a flat c-archive")
+}
+
+func siblingTool(compiler, name string) string {
+	if compiler == "" {
+		return ""
+	}
+	base := filepath.Join(filepath.Dir(compiler), name)
+	candidates := []string{base}
+	if runtime.GOOS == "windows" {
+		// LLVM's native Windows distributions include the PE executable suffix
+		// even when the configured Clang path omitted it.
+		candidates = append([]string{base + ".exe"}, candidates...)
+	}
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // createMergedArchiveFile combines object files and package archives into one
@@ -1990,7 +2059,7 @@ func (c *context) createMergedArchiveFile(archivePath string, inputs []string, v
 	fmt.Fprintf(&script, "CREATE %s\n", strconv.Quote(tmpName))
 	for _, input := range inputs {
 		command := "ADDMOD"
-		if strings.HasSuffix(strings.ToLower(input), ".a") {
+		if isArchiveInput(input) {
 			command = "ADDLIB"
 		}
 		fmt.Fprintf(&script, "%s %s\n", command, strconv.Quote(input))
@@ -2016,6 +2085,15 @@ func (c *context) createMergedArchiveFile(archivePath string, inputs []string, v
 		return fmt.Errorf("publish archive %s: %w", archivePath, err)
 	}
 	return nil
+}
+
+func isArchiveInput(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".a", ".lib":
+		return true
+	default:
+		return false
+	}
 }
 
 // createArchiveFile builds an archive at archivePath atomically to avoid races when

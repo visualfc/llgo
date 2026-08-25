@@ -87,10 +87,24 @@ func (p Package) moduleZeroSizedAlloc(elem Type) Expr {
 		byteTy := p.Prog.Byte()
 		zerobase = llvm.AddGlobal(p.mod, byteTy.ll, moduleZeroName)
 		zerobase.SetInitializer(llvm.ConstNull(byteTy.ll))
-		zerobase.SetLinkage(llvm.LinkOnceODRLinkage)
+		p.setODRLinkage(zerobase, llvm.LinkOnceODRLinkage)
 		zerobase.SetUnnamedAddr(true)
 	}
 	return Expr{zerobase, p.Prog.Pointer(elem)}
+}
+
+// setODRLinkage gives multiply emitted definitions the section-group metadata
+// required by COFF. On ELF and Mach-O, LLVM's weak/linkonce linkage is enough;
+// on COFF, omitting COMDAT leaves every object with a separately named weak
+// fallback and lld-link rejects the otherwise identical definitions.
+func (p Package) setODRLinkage(value llvm.Value, linkage llvm.Linkage) {
+	value.SetLinkage(linkage)
+	if p.Prog.target.effectiveGOOS() != "windows" {
+		return
+	}
+	comdat := p.mod.Comdat(value.Name())
+	comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
+	value.SetComdat(comdat)
 }
 
 func (p Package) ownsGlobal(name string) bool {
@@ -329,7 +343,7 @@ func (p Package) newFunc(
 		}
 	}
 	if instantiated {
-		fn.SetLinkage(llvm.LinkOnceAnyLinkage)
+		p.setODRLinkage(fn, llvm.LinkOnceAnyLinkage)
 	}
 	if p.isPreservedName(name) {
 		p.markLLVMUsed(fn)

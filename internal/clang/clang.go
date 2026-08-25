@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -29,12 +30,24 @@ import (
 
 // Config represents clang configuration parameters.
 type Config struct {
-	CC      string   // Compiler to use (e.g., "clang", "clang++")
-	CCFLAGS []string // Compiler flags for C/C++ compilation
-	CFLAGS  []string // C-specific flags
-	LDFLAGS []string // Linker flags
-	Linker  string   // Linker to use (e.g., "ld.lld", "avr-ld")
+	CC                string   // Compiler to use (e.g., "clang", "clang++")
+	CCFLAGS           []string // Compiler flags for C/C++ compilation
+	CFLAGS            []string // C-specific flags
+	LDFLAGS           []string // Linker flags
+	Linker            string   // Linker to use (e.g., "ld.lld", "avr-ld")
+	ResponseFileStyle ResponseFileStyle
 }
+
+// ResponseFileStyle identifies the tokenizer used by a compiler or linker.
+// Clang's GNU driver uses GNU tokenization even on Windows, while clang-cl,
+// lld-link, link.exe, and cl.exe use Windows command-line tokenization.
+type ResponseFileStyle uint8
+
+const (
+	ResponseFileAuto ResponseFileStyle = iota
+	ResponseFileGNU
+	ResponseFileWindows
+)
 
 // NewConfig creates a new Config with the specified parameters.
 func NewConfig(cc string, ccflags, cflags, ldflags []string, linker string) Config {
@@ -158,6 +171,16 @@ func (c *Cmd) mergeLinkerFlags() []string {
 
 // exec executes the clang command with given arguments.
 func (c *Cmd) exec(args ...string) error {
+	responseFile := ""
+	if useResponseFile(c.app, args) {
+		var err error
+		responseFile, err = writeResponseFile(args, c.responseFileStyle())
+		if err != nil {
+			return fmt.Errorf("write clang response file: %w", err)
+		}
+		defer os.Remove(responseFile)
+		args = []string{"@" + responseFile}
+	}
 	cmd := exec.Command(c.app, args...)
 	cmd.Dir = c.Dir
 	if c.Verbose {
@@ -170,6 +193,115 @@ func (c *Cmd) exec(args ...string) error {
 		cmd.Env = c.Env
 	}
 	return cmd.Run()
+}
+
+// Windows CreateProcess limits a command line to 32,767 UTF-16 code units.
+// UTF-8 byte length is a conservative upper bound for UTF-16 length, and this
+// lower threshold leaves room for executable-path and quoting overhead added
+// by os/exec.
+const windowsCommandLineLimit = 30 * 1024
+
+func useResponseFile(app string, args []string) bool {
+	return useResponseFileForGOOS(runtime.GOOS, app, args)
+}
+
+func useResponseFileForGOOS(goos, app string, args []string) bool {
+	if goos != "windows" {
+		return false
+	}
+	length := len(app)
+	for _, arg := range args {
+		length += 1 + len(arg)
+	}
+	return length > windowsCommandLineLimit
+}
+
+func (c *Cmd) responseFileStyle() ResponseFileStyle {
+	if c.config.ResponseFileStyle != ResponseFileAuto {
+		return c.config.ResponseFileStyle
+	}
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(c.app)), ".exe")
+	switch name {
+	case "cl", "clang-cl", "link", "lld-link":
+		return ResponseFileWindows
+	default:
+		return ResponseFileGNU
+	}
+}
+
+func writeResponseFile(args []string, style ResponseFileStyle) (name string, err error) {
+	file, err := os.CreateTemp("", "llgo-clang-*.rsp")
+	if err != nil {
+		return "", err
+	}
+	name = file.Name()
+	defer func() {
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			os.Remove(name)
+		}
+	}()
+
+	var content strings.Builder
+	for index, arg := range args {
+		if index != 0 {
+			content.WriteByte(' ')
+		}
+		if style == ResponseFileWindows {
+			writeWindowsResponseArg(&content, arg)
+		} else {
+			writeGNUResponseArg(&content, arg)
+		}
+	}
+	content.WriteByte('\n')
+	_, err = io.WriteString(file, content.String())
+	return name, err
+}
+
+// writeGNUResponseArg quotes one argument for LLVM's GNU response-file
+// tokenizer. Within double quotes both backslash and quote must be escaped.
+func writeGNUResponseArg(out *strings.Builder, arg string) {
+	out.WriteByte('"')
+	for _, char := range arg {
+		if char == '"' || char == '\\' {
+			out.WriteByte('\\')
+		}
+		out.WriteRune(char)
+	}
+	out.WriteByte('"')
+}
+
+// writeWindowsResponseArg quotes one argument using the CommandLineToArgvW
+// convention consumed by Clang, lld-link, and link.exe on Windows. Backslashes
+// are preserved unless they precede a quote or the closing delimiter; blindly
+// doubling every backslash would corrupt ordinary paths such as C:\\src.
+func writeWindowsResponseArg(out *strings.Builder, arg string) {
+	out.WriteByte('"')
+	backslashes := 0
+	for _, char := range arg {
+		if char == '\\' {
+			backslashes++
+			continue
+		}
+		if char == '"' {
+			writeBackslashes(out, backslashes*2+1)
+			out.WriteByte('"')
+		} else {
+			writeBackslashes(out, backslashes)
+			out.WriteRune(char)
+		}
+		backslashes = 0
+	}
+	writeBackslashes(out, backslashes*2)
+	out.WriteByte('"')
+}
+
+func writeBackslashes(out *strings.Builder, count int) {
+	for range count {
+		out.WriteByte('\\')
+	}
 }
 
 // CheckLinkArgs validates linking arguments by attempting a test compile.

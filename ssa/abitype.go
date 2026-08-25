@@ -188,7 +188,7 @@ func (b Builder) abiStructFields(t *types.Struct, name string) llvm.Value {
 		g = b.Pkg.doNewVar(name, prog.Pointer(atyp))
 		g.Init(data)
 		g.impl.SetGlobalConstant(true)
-		g.impl.SetLinkage(llvm.WeakODRLinkage)
+		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 	}
 	size := uint64(n)
 	return llvm.ConstNamedStruct(prog.rtType("Slice").ll, []llvm.Value{
@@ -238,7 +238,7 @@ func (b Builder) abiInterfaceImethods(t *types.Interface, name string) llvm.Valu
 		g = b.Pkg.doNewVar(name, prog.Pointer(atyp))
 		g.Init(data)
 		g.impl.SetGlobalConstant(true)
-		g.impl.SetLinkage(llvm.WeakODRLinkage)
+		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 	}
 	size := uint64(n)
 	return llvm.ConstNamedStruct(prog.rtType("Slice").ll, []llvm.Value{
@@ -266,7 +266,7 @@ func (b Builder) abiTuples(t *types.Tuple, name string) llvm.Value {
 		g = b.Pkg.doNewVar(name, prog.Pointer(atyp))
 		g.Init(data)
 		g.impl.SetGlobalConstant(true)
-		g.impl.SetLinkage(llvm.WeakODRLinkage)
+		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 	}
 	size := uint64(n)
 	return llvm.ConstNamedStruct(prog.rtType("Slice").ll, []llvm.Value{
@@ -692,7 +692,7 @@ func (b Builder) abiType(t types.Type) Expr {
 		}
 		g.impl.SetInitializer(llvm.ConstNamedStruct(g.impl.GlobalValueType(), fields))
 		g.impl.SetGlobalConstant(true)
-		g.impl.SetLinkage(llvm.WeakODRLinkage)
+		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 		if prog.enableGoGlobalDCE {
 			prog.addMethodTypeMetadata(g.impl, prog.Type(typ, InGo), methods)
 		}

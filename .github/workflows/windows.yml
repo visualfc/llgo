@@ -1,4 +1,4 @@
-name: Windows compiler host
+name: Windows native compiler
 
 on:
   push:
@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compiler-host:
-    name: compiler host (windows-amd64, LLVM 19, Go 1.26.7)
+  native-compiler:
+    name: native PE/COFF (windows-amd64, LLVM 19, Go 1.26.7)
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
@@ -40,6 +40,9 @@ jobs:
           go version
           clang --version
           pkg-config --modversion llvm-19
+          where.exe cl.exe
+          where.exe lib.exe
+          where.exe link.exe
 
           # Compile the released binding through its normal Windows build
           # path, without byollvm or global CGO flag overrides.
@@ -61,9 +64,32 @@ jobs:
           go test -run '^$' -timeout=10m \
             ./ssa ./internal/build
 
+          # R2 exercises actual PE/COFF outputs without depending on the
+          # Win32 runtime work staged for R4: an executable, a flat C archive,
+          # a DLL/import library, and both directions of MSVC interoperability.
+          LLGO_REQUIRE_MSVC=1 go test -count=1 -timeout=10m \
+            -run '^(TestWindows(NativeArtifacts|ConsumesMSVCLibrary)|TestResolveBuildConfigDefaultsAndValidation|TestApplyBuildModeCompileFlags|TestCSharedLinkArgs|TestFullRpathArgs|TestCSharedExportArgs|TestIsArchiveInput|TestBuildOutFmtsBuildModes)$' \
+            -covermode=atomic -coverprofile=coverage-windows-artifacts.txt \
+            ./internal/build
+
+          go test -count=1 -timeout=10m \
+            -run '^(TestNativeToolchain|TestNativeWindows|TestCOFFLTOLevel)$' \
+            -covermode=atomic -coverprofile=coverage-windows-coff-flags.txt \
+            ./internal/crosscompile
+
+          go test -count=1 -timeout=10m \
+            -run '^(TestWriteResponseFile|TestWriteWindowsResponseArg|TestWriteGNUResponseArg|TestResponseFileStyle|TestUseResponseFile|TestLongWindowsCommandUsesClangResponseFile)$' \
+            -covermode=atomic -coverprofile=coverage-windows-response.txt \
+            ./internal/clang
+
+          go test -count=1 -timeout=10m \
+            -run '^(TestWindowsODRDefinitionsUseCOMDAT|TestUnixODRDefinitionsDoNotGainCOMDAT)$' \
+            -covermode=atomic -coverprofile=coverage-windows-comdat.txt \
+            ./ssa
+
       - name: Upload Windows coverage
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-windows-host.txt,coverage-windows-lock.txt
-          flags: windows-host
+          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt
+          flags: windows-native

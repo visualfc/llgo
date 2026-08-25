@@ -343,28 +343,49 @@ func TestUseWithTarget(t *testing.T) {
 	if runtime.GOOS == "darwin" && len(export.LDFLAGS) == 0 {
 		t.Error("Expected LDFLAGS to be set for native build")
 	}
-	wantDebugInfo := nativeDebugInfoPolicy(runtime.GOOS)
-	if export.DebugInfo.AlwaysOmit != wantDebugInfo.AlwaysOmit || !slices.Equal(export.DebugInfo.OmitLinkFlags, wantDebugInfo.OmitLinkFlags) {
+	wantDebugInfo := nativeDebugInfoPolicy(nativeToolchain(runtime.GOOS))
+	if export.DebugInfo.AlwaysOmit != wantDebugInfo.AlwaysOmit ||
+		!slices.Equal(export.DebugInfo.OmitLinkFlags, wantDebugInfo.OmitLinkFlags) ||
+		!slices.Equal(export.DebugInfo.PreserveLinkFlags, wantDebugInfo.PreserveLinkFlags) {
 		t.Fatalf("native debug-info policy = %+v, want %+v", export.DebugInfo, wantDebugInfo)
+	}
+}
+
+func TestNativeToolchain(t *testing.T) {
+	tests := []struct {
+		goos string
+		want NativeToolchain
+	}{
+		{"darwin", NativeToolchain{ABI: PlatformABIDarwin, ObjectFormat: ObjectFormatMachO, Driver: DriverFlavorClangGNU, Linker: LinkerFlavorMachO}},
+		{"linux", NativeToolchain{ABI: PlatformABIGNU, ObjectFormat: ObjectFormatELF, Driver: DriverFlavorClangGNU, Linker: LinkerFlavorELFLLD}},
+		{"windows", NativeToolchain{ABI: PlatformABIMsvc, ObjectFormat: ObjectFormatCOFF, Driver: DriverFlavorClangGNU, Linker: LinkerFlavorCOFFLLD}},
+		{"freebsd", NativeToolchain{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			if got := nativeToolchain(tt.goos); got != tt.want {
+				t.Fatalf("nativeToolchain(%q) = %+v, want %+v", tt.goos, got, tt.want)
+			}
+		})
 	}
 }
 
 func TestNativeDebugInfoPolicy(t *testing.T) {
 	tests := []struct {
-		goos      string
-		supported bool
+		goos     string
+		omit     []string
+		preserve []string
 	}{
-		{goos: "darwin", supported: true},
-		{goos: "linux", supported: true},
-		{goos: "windows"},
+		{goos: "darwin", omit: []string{"-Wl,-S"}},
+		{goos: "linux", omit: []string{"-Wl,-S"}},
+		{goos: "windows", omit: []string{"-Wl,/debug:none"}, preserve: []string{"-Wl,/debug:dwarf"}},
 		{goos: "freebsd"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.goos, func(t *testing.T) {
-			policy := nativeDebugInfoPolicy(tt.goos)
-			got := !policy.AlwaysOmit && slices.Equal(policy.OmitLinkFlags, []string{"-Wl,-S"})
-			if got != tt.supported {
-				t.Fatalf("nativeDebugInfoPolicy(%q) = %+v, supported = %v", tt.goos, policy, got)
+			policy := nativeDebugInfoPolicy(nativeToolchain(tt.goos))
+			if policy.AlwaysOmit || !slices.Equal(policy.OmitLinkFlags, tt.omit) || !slices.Equal(policy.PreserveLinkFlags, tt.preserve) {
+				t.Fatalf("nativeDebugInfoPolicy(%q) = %+v, want omit=%v preserve=%v", tt.goos, policy, tt.omit, tt.preserve)
 			}
 		})
 	}
@@ -416,6 +437,108 @@ func TestLTOLinkerOptFlag(t *testing.T) {
 	}
 }
 
+func TestNativeWindowsLLDFlags(t *testing.T) {
+	toolchain := nativeToolchain("windows")
+	flags := nativeLLDFlags(toolchain, optlevel.O2, lto.Off)
+	for _, want := range []string{
+		"-fuse-ld=lld",
+		"-Wl,/errorlimit:0",
+		"-Wl,/opt:noicf",
+	} {
+		if !slices.Contains(flags, want) {
+			t.Errorf("native Windows LLD flags = %v, want %q", flags, want)
+		}
+	}
+	for _, unwanted := range []string{"-Wl,--error-limit=0", "-Wl,--icf=none"} {
+		if slices.Contains(flags, unwanted) {
+			t.Errorf("native Windows LLD flags = %v, do not want %q", flags, unwanted)
+		}
+	}
+
+	thin := nativeLLDFlags(toolchain, optlevel.O3, lto.Thin)
+	for _, want := range []string{"-flto=thin", "-Wl,/opt:lldlto=3"} {
+		if !slices.Contains(thin, want) {
+			t.Errorf("native Windows ThinLTO flags = %v, want %q", thin, want)
+		}
+	}
+	if slices.Contains(thin, "-Wl,--lto-O3") {
+		t.Errorf("native Windows ThinLTO flags = %v, contain ELF LTO syntax", thin)
+	}
+}
+
+func TestCOFFLTOLevel(t *testing.T) {
+	for _, tt := range []struct {
+		level optlevel.Level
+		want  string
+	}{
+		{optlevel.O0, "0"},
+		{optlevel.O1, "1"},
+		{optlevel.O2, "2"},
+		{optlevel.O3, "3"},
+		{optlevel.Os, "2"},
+		{optlevel.Oz, "2"},
+	} {
+		if got := coffLTOLevel(tt.level); got != tt.want {
+			t.Errorf("coffLTOLevel(%s) = %q, want %q", tt.level, got, tt.want)
+		}
+	}
+}
+
+func TestNativeWindowsSectionFlags(t *testing.T) {
+	ccflags, ldflags := nativeSectionFlags(nativeToolchain("windows"))
+	for _, want := range []string{"-fdata-sections", "-ffunction-sections"} {
+		if !slices.Contains(ccflags, want) {
+			t.Errorf("native Windows CCFLAGS = %v, want %q", ccflags, want)
+		}
+	}
+	for _, want := range []string{"-fdata-sections", "-ffunction-sections", "-Wl,/opt:ref"} {
+		if !slices.Contains(ldflags, want) {
+			t.Errorf("native Windows LDFLAGS = %v, want %q", ldflags, want)
+		}
+	}
+	for _, unwanted := range []string{"--gc-sections", "-latomic", "-lpthread", "-ldl"} {
+		if slices.Contains(ldflags, unwanted) {
+			t.Errorf("native Windows LDFLAGS = %v, do not want %q", ldflags, unwanted)
+		}
+	}
+}
+
+func TestNativeWindowsExportFlags(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("requires a native Windows host")
+	}
+
+	export, err := use("windows", runtime.GOARCH, false, false, optlevel.O2, lto.Thin, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if export.Toolchain != nativeToolchain("windows") {
+		t.Fatalf("native Windows toolchain = %+v", export.Toolchain)
+	}
+	for _, want := range []string{
+		"-Wl,/errorlimit:0",
+		"-Wl,/opt:noicf",
+		"-Wl,/opt:ref",
+		"-Wl,/opt:lldlto=2",
+	} {
+		if !slices.Contains(export.LDFLAGS, want) {
+			t.Errorf("native Windows LDFLAGS = %v, want %q", export.LDFLAGS, want)
+		}
+	}
+	for _, unwanted := range []string{
+		"-Wl,--error-limit=0",
+		"-Wl,--icf=none",
+		"--gc-sections",
+		"-latomic",
+		"-lpthread",
+		"-ldl",
+	} {
+		if slices.Contains(export.LDFLAGS, unwanted) {
+			t.Errorf("native Windows LDFLAGS = %v, do not want %q", export.LDFLAGS, unwanted)
+		}
+	}
+}
+
 func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 	export, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.O2, lto.Off, false)
 	if err != nil {
@@ -448,7 +571,8 @@ func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 	if !slices.Contains(thin.LDFLAGS, "-flto=thin") {
 		t.Fatalf("missing thin LTO link driver flag: %v", thin.LDFLAGS)
 	}
-	if !slices.Contains(thin.LDFLAGS, "-Wl,--lto-O2") {
+	wantLTOOpt := nativeLTOOptFlag(thin.Toolchain, optlevel.O2)
+	if !slices.Contains(thin.LDFLAGS, wantLTOOpt) {
 		t.Fatalf("missing thin LTO linker opt flag: %v", thin.LDFLAGS)
 	}
 
@@ -456,10 +580,10 @@ func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	if !slices.Contains(thinSize.LDFLAGS, "-Wl,--lto-O2") {
+	if !slices.Contains(thinSize.LDFLAGS, nativeLTOOptFlag(thinSize.Toolchain, optlevel.Oz)) {
 		t.Fatalf("missing numeric thin LTO linker opt flag for Oz: %v", thinSize.LDFLAGS)
 	}
-	if slices.Contains(thinSize.LDFLAGS, "-Wl,--lto-Oz") {
+	if slices.Contains(thinSize.LDFLAGS, "-Wl,--lto-Oz") || slices.Contains(thinSize.LDFLAGS, "-Wl,/opt:lldlto=Oz") {
 		t.Fatalf("invalid size-valued thin LTO linker opt flag: %v", thinSize.LDFLAGS)
 	}
 
@@ -490,6 +614,13 @@ func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 	if !slices.Contains(fullGlobalDCE.CCFLAGS, "-fwhole-program-vtables") {
 		t.Fatalf("missing whole-program vtables ccflag for full LTO with global DCE: %v", fullGlobalDCE.CCFLAGS)
 	}
+}
+
+func nativeLTOOptFlag(toolchain NativeToolchain, level optlevel.Level) string {
+	if toolchain.Linker == LinkerFlavorCOFFLLD {
+		return "-Wl,/opt:lldlto=" + coffLTOLevel(level)
+	}
+	return "-Wl," + ltoLinkerOptFlag(level)
 }
 
 func hasMllvmOption(flags []string, opt string) bool {

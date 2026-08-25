@@ -120,6 +120,10 @@ type commonSection struct {
 	BuildTags               []string     `yaml:"BUILD_TAGS,omitempty"`
 	Target                  string       `yaml:"TARGET,omitempty"`
 	TargetABI               string       `yaml:"TARGET_ABI,omitempty"`
+	PlatformABI             string       `yaml:"PLATFORM_ABI,omitempty"`
+	ObjectFormat            string       `yaml:"OBJECT_FORMAT,omitempty"`
+	DriverFlavor            string       `yaml:"DRIVER_FLAVOR,omitempty"`
+	LinkerFlavor            string       `yaml:"LINKER_FLAVOR,omitempty"`
 	GoGlobalDCE             bool         `yaml:"GO_GLOBAL_DCE,omitempty"`
 	EnableLTOPlugin         bool         `yaml:"ENABLE_LTO_PLUGIN,omitempty"`
 	EmitDWARF               bool         `yaml:"EMIT_DWARF,omitempty"`
@@ -137,6 +141,7 @@ type commonSection struct {
 
 func (s *commonSection) empty() bool {
 	return s.AbiMode == "" && len(s.BuildTags) == 0 && s.Target == "" && s.TargetABI == "" &&
+		s.PlatformABI == "" && s.ObjectFormat == "" && s.DriverFlavor == "" && s.LinkerFlavor == "" &&
 		!s.GoGlobalDCE && !s.EnableLTOPlugin && !s.EmitDWARF && s.PCLNMode == "" &&
 		!s.DisableBoundsChecks && !s.SaturatingFloatToUint32 && !s.LocalContext &&
 		s.CC == "" && len(s.CCFlags) == 0 && len(s.CFlags) == 0 && len(s.LDFlags) == 0 &&

@@ -25,6 +25,10 @@ type Export struct {
 	CCFLAGS []string
 	CFLAGS  []string
 	LDFLAGS []string
+	// Toolchain records the ABI and flag dialect selected for native-format
+	// outputs. It is independent of the host shell and remains empty for named
+	// embedded/WebAssembly targets that drive their linker directly.
+	Toolchain NativeToolchain
 
 	// Additional fields from target configuration
 	BuildTags    []string
@@ -47,18 +51,96 @@ type Export struct {
 	Device flash.Device // Device configuration for flashing/debugging
 }
 
+// NativeToolchain describes the externally visible ABI and the tools used to
+// produce a native object. Keep these choices explicit: in particular, a
+// Windows host does not imply either the MSVC or MinGW ABI.
+type NativeToolchain struct {
+	ABI          PlatformABI
+	ObjectFormat ObjectFormat
+	Driver       DriverFlavor
+	Linker       LinkerFlavor
+}
+
+type PlatformABI string
+
+const (
+	PlatformABIUnknown PlatformABI = ""
+	PlatformABIGNU     PlatformABI = "gnu"
+	PlatformABIDarwin  PlatformABI = "darwin"
+	PlatformABIMsvc    PlatformABI = "msvc"
+)
+
+type ObjectFormat string
+
+const (
+	ObjectFormatUnknown ObjectFormat = ""
+	ObjectFormatELF     ObjectFormat = "elf"
+	ObjectFormatMachO   ObjectFormat = "macho"
+	ObjectFormatCOFF    ObjectFormat = "coff"
+)
+
+type DriverFlavor string
+
+const (
+	DriverFlavorUnknown  DriverFlavor = ""
+	DriverFlavorClangGNU DriverFlavor = "clang"
+)
+
+type LinkerFlavor string
+
+const (
+	LinkerFlavorUnknown LinkerFlavor = ""
+	LinkerFlavorELFLLD  LinkerFlavor = "ld.lld"
+	LinkerFlavorMachO   LinkerFlavor = "ld64.lld"
+	LinkerFlavorCOFFLLD LinkerFlavor = "lld-link"
+)
+
 // DebugInfoPolicy describes how a selected linker handles debug information.
 // Build orchestration consumes this typed capability instead of inferring it
 // from a target name or linker executable.
 type DebugInfoPolicy struct {
-	AlwaysOmit    bool
-	OmitLinkFlags []string
+	AlwaysOmit        bool
+	OmitLinkFlags     []string
+	PreserveLinkFlags []string
 }
 
-func nativeDebugInfoPolicy(goos string) DebugInfoPolicy {
+func nativeToolchain(goos string) NativeToolchain {
 	switch goos {
-	case "darwin", "linux":
+	case "darwin":
+		return NativeToolchain{
+			ABI:          PlatformABIDarwin,
+			ObjectFormat: ObjectFormatMachO,
+			Driver:       DriverFlavorClangGNU,
+			Linker:       LinkerFlavorMachO,
+		}
+	case "linux":
+		return NativeToolchain{
+			ABI:          PlatformABIGNU,
+			ObjectFormat: ObjectFormatELF,
+			Driver:       DriverFlavorClangGNU,
+			Linker:       LinkerFlavorELFLLD,
+		}
+	case "windows":
+		return NativeToolchain{
+			ABI:          PlatformABIMsvc,
+			ObjectFormat: ObjectFormatCOFF,
+			Driver:       DriverFlavorClangGNU,
+			Linker:       LinkerFlavorCOFFLLD,
+		}
+	default:
+		return NativeToolchain{}
+	}
+}
+
+func nativeDebugInfoPolicy(toolchain NativeToolchain) DebugInfoPolicy {
+	switch toolchain.Linker {
+	case LinkerFlavorMachO, LinkerFlavorELFLLD:
 		return DebugInfoPolicy{OmitLinkFlags: []string{"-Wl,-S"}}
+	case LinkerFlavorCOFFLLD:
+		return DebugInfoPolicy{
+			OmitLinkFlags:     []string{"-Wl,/debug:none"},
+			PreserveLinkFlags: []string{"-Wl,/debug:dwarf"},
+		}
 	default:
 		return DebugInfoPolicy{}
 	}
@@ -232,6 +314,77 @@ func ltoLinkerOptFlag(level optlevel.Level) string {
 	}
 }
 
+func nativeLLDFlags(toolchain NativeToolchain, level optlevel.Level, ltoMode lto.Mode) []string {
+	flags := []string{"-fuse-ld=lld"}
+	if toolchain.Linker == LinkerFlavorCOFFLLD {
+		flags = append(flags,
+			"-Wl,/errorlimit:0",
+			// Go requires distinct functions to have distinct PCs. lld-link
+			// enables identical COMDAT folding through /opt:icf, so keep it
+			// disabled even when dead-code elimination is enabled.
+			"-Wl,/opt:noicf",
+		)
+	} else {
+		flags = append(flags,
+			"-Wl,--error-limit=0",
+			// lld's safe mode still folds llgo-emitted same-body functions.
+			"-Wl,--icf=none",
+		)
+	}
+	if !ltoMode.Enabled() {
+		return flags
+	}
+
+	flags = append(flags, ltoMode.ClangFlag())
+	if toolchain.Linker == LinkerFlavorCOFFLLD {
+		flags = append(flags, "-Wl,/opt:lldlto="+coffLTOLevel(level))
+	} else if optFlag := ltoLinkerOptFlag(level); optFlag != "" {
+		flags = append(flags, "-Wl,"+optFlag)
+	}
+	return flags
+}
+
+func coffLTOLevel(level optlevel.Level) string {
+	switch level {
+	case optlevel.O0:
+		return "0"
+	case optlevel.O1:
+		return "1"
+	case optlevel.O3:
+		return "3"
+	default:
+		// lld-link accepts only 0 through 3. -Os and -Oz remain encoded in
+		// the input IR through optsize/minsize attributes; use its normal
+		// optimization pipeline for the link-wide setting.
+		return "2"
+	}
+}
+
+func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
+	switch toolchain.ObjectFormat {
+	case ObjectFormatMachO:
+		return nil, []string{"-Xlinker", "-dead_strip"}
+	case ObjectFormatCOFF:
+		return []string{"-fdata-sections", "-ffunction-sections"}, []string{
+			"-fdata-sections",
+			"-ffunction-sections",
+			"-Wl,/opt:ref",
+		}
+	default:
+		return []string{"-fdata-sections", "-ffunction-sections"}, []string{
+			"-fdata-sections",
+			"-ffunction-sections",
+			"-Xlinker",
+			"--gc-sections",
+			"-latomic",
+			// libpthread & libdl is built-in since glibc 2.34 (2021-08-01);
+			// retain these flags for older supported systems.
+			"-lpthread",
+			"-ldl",
+		}
+	}
+}
+
 func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (Export, error) {
 	return useWithGOARM(goos, goarch, "", wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
 }
@@ -255,27 +408,16 @@ func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, l
 	}
 
 	if runtime.GOOS == goos && runtime.GOARCH == goarch {
-		export.DebugInfo = nativeDebugInfoPolicy(goos)
+		export.Toolchain = nativeToolchain(goos)
+		export.DebugInfo = nativeDebugInfoPolicy(export.Toolchain)
 		// not cross compile
 		// Set up basic flags for non-cross-compile
 		export.LDFLAGS = []string{
 			"-target", targetTriple,
 			"-Qunused-arguments",
 			"-Wno-unused-command-line-argument",
-			"-Wl,--error-limit=0",
-			"-fuse-ld=lld",
-			// ICF stays off: Go semantics require distinct functions to
-			// have distinct pcs (FuncForPC names, function-value identity —
-			// goroot fixedbugs/issue58300). lld's safe mode still folds
-			// llgo-emitted same-body functions, and gc never folds.
-			"-Wl,--icf=none",
 		}
-		if ltoMode.Enabled() {
-			export.LDFLAGS = append(export.LDFLAGS, ltoMode.ClangFlag())
-			if optFlag := ltoLinkerOptFlag(level); optFlag != "" {
-				export.LDFLAGS = append(export.LDFLAGS, "-Wl,"+optFlag)
-			}
-		}
+		export.LDFLAGS = append(export.LDFLAGS, nativeLLDFlags(export.Toolchain, level, ltoMode)...)
 		if clangRoot != "" {
 			clangLib := filepath.Join(clangRoot, "lib")
 			clangInc := filepath.Join(clangRoot, "include")
@@ -323,33 +465,9 @@ func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, l
 			export.LDFLAGS = append(export.LDFLAGS, []string{"--sysroot=" + sysrootPath}...)
 		}
 
-		// Add OS-specific flags
-		switch goos {
-		case "darwin": // ld64.lld (macOS)
-			export.LDFLAGS = append(
-				export.LDFLAGS,
-				"-Xlinker", "-dead_strip",
-			)
-		case "windows": // lld-link (Windows)
-			// TODO(lijie): Add options for Windows.
-		default: // ld.lld (Unix)
-			export.CCFLAGS = append(
-				export.CCFLAGS,
-				"-fdata-sections",
-				"-ffunction-sections",
-			)
-			export.LDFLAGS = append(
-				export.LDFLAGS,
-				"-fdata-sections",
-				"-ffunction-sections",
-				"-Xlinker",
-				"--gc-sections",
-				"-latomic",
-				// libpthread & libdl is built-in since glibc 2.34 (2021-08-01); we need to support earlier versions.
-				"-lpthread",
-				"-ldl",
-			)
-		}
+		ccflags, ldflags := nativeSectionFlags(export.Toolchain)
+		export.CCFLAGS = append(export.CCFLAGS, ccflags...)
+		export.LDFLAGS = append(export.LDFLAGS, ldflags...)
 		return
 	}
 	if goarch != "wasm" {
