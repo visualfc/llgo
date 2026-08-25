@@ -7,7 +7,7 @@ import (
 	_ "unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/sync"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 // The signal numbers accepted by os/signal are bounded by its numSig constant.

@@ -22,8 +22,8 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/sync"
 	ctime "github.com/xgo-dev/llgo/runtime/internal/clite/time"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 // These values must match internal/poll/fd_poll_runtime.go.

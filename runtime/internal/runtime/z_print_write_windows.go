@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 const platformLLGoFiles = "; _wrap/print_windows.c"
@@ -24,7 +25,7 @@ func c_printWriteConsole(data *uint16, size uintptr)
 
 var (
 	windowsConsoleBuffer [1000]uint16
-	windowsConsoleMu     nativeMutex
+	windowsConsoleMu     psync.Mutex
 )
 
 func PrintByte(v byte) {
