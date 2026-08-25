@@ -7,6 +7,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -64,6 +66,10 @@ func createTestServer(t *testing.T, files map[string]string) *httptest.Server {
 }
 
 func TestAcquireAndReleaseLock(t *testing.T) {
+	if err := releaseLock(nil); err != nil {
+		t.Fatalf("releaseLock(nil) = %v, want nil", err)
+	}
+
 	tempDir := t.TempDir()
 	lockPath := filepath.Join(tempDir, "test.lock")
 
@@ -83,9 +89,80 @@ func TestAcquireAndReleaseLock(t *testing.T) {
 		t.Errorf("Failed to release lock: %v", err)
 	}
 
-	// Check lock file is removed
-	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
-		t.Error("Lock file should be removed after release")
+	// The lock file remains so every caller continues to lock the same file.
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("Lock file should remain after release: %v", err)
+	}
+
+	// A retained lock file can be acquired again.
+	lockFile, err = acquireLock(lockPath)
+	if err != nil {
+		t.Fatalf("Failed to reacquire lock: %v", err)
+	}
+	if err := releaseLock(lockFile); err != nil {
+		t.Errorf("Failed to release reacquired lock: %v", err)
+	}
+
+	// A closed handle exercises the platform unlock failure path and verifies
+	// that releaseLock preserves enough context for callers to diagnose it.
+	closedLock, err := acquireLock(filepath.Join(tempDir, "closed.lock"))
+	if err != nil {
+		t.Fatalf("Failed to acquire lock for error test: %v", err)
+	}
+	if err := closedLock.Close(); err != nil {
+		t.Fatalf("Failed to close lock for error test: %v", err)
+	}
+	if err := releaseLock(closedLock); err == nil {
+		t.Fatal("Expected release of a closed lock to fail")
+	} else if !strings.Contains(err.Error(), "failed to release lock") {
+		t.Fatalf("Unexpected closed lock release error: %v", err)
+	}
+}
+
+func TestAcquireAndReleaseLockErrors(t *testing.T) {
+	wantErr := errors.New("injected lock failure")
+	var opened *os.File
+	got, err := acquireLockWith(filepath.Join(t.TempDir(), "failed.lock"), func(file *os.File) error {
+		opened = file
+		return wantErr
+	})
+	if got != nil || !errors.Is(err, wantErr) {
+		t.Fatalf("acquireLockWith = (%v, %v), want (nil, %v)", got, err, wantErr)
+	}
+	if opened == nil {
+		t.Fatal("lock callback did not receive the opened file")
+	}
+	if err := opened.Close(); err == nil {
+		t.Fatal("failed lock file remained open")
+	}
+}
+
+func TestLockReleaseError(t *testing.T) {
+	unlockErr := errors.New("unlock")
+	closeErr := errors.New("close")
+	for _, test := range []struct {
+		name      string
+		unlockErr error
+		closeErr  error
+		want      string
+	}{
+		{name: "success"},
+		{name: "unlock", unlockErr: unlockErr, want: "failed to release lock: unlock"},
+		{name: "close", closeErr: closeErr, want: "failed to close lock file: close"},
+		{name: "unlock takes precedence", unlockErr: unlockErr, closeErr: closeErr, want: "failed to release lock: unlock"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := lockReleaseError(test.unlockErr, test.closeErr)
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("lockReleaseError() = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("lockReleaseError() = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 
@@ -96,6 +173,7 @@ func TestAcquireLockConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	var results []int
 	var resultsMu sync.Mutex
+	var active atomic.Int32
 
 	// Start multiple goroutines trying to acquire the same lock
 	for i := 0; i < 5; i++ {
@@ -109,12 +187,17 @@ func TestAcquireLockConcurrency(t *testing.T) {
 				return
 			}
 
-			// Hold the lock for a short time
+			if n := active.Add(1); n != 1 {
+				t.Errorf("Goroutine %d entered an occupied critical section (%d active)", id, n)
+			}
+
+			// Hold the lock for a short time.
 			resultsMu.Lock()
 			results = append(results, id)
 			resultsMu.Unlock()
 
 			time.Sleep(10 * time.Millisecond)
+			active.Add(-1)
 
 			if err := releaseLock(lockFile); err != nil {
 				t.Errorf("Goroutine %d failed to release lock: %v", id, err)
