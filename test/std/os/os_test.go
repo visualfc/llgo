@@ -976,6 +976,34 @@ func TestFileChdir(t *testing.T) {
 	}
 }
 
+func TestFileChdirRestoresRelativeDirectory(t *testing.T) {
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	orig, err := os.Open(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orig.Close()
+
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := orig.Chdir(); err != nil {
+		t.Fatalf("File.Chdir failed to restore a directory opened as .: %v", err)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if canonicalPath(wd) != canonicalPath(origDir) {
+		t.Errorf("After File.Chdir, Getwd = %q, want %q", wd, origDir)
+	}
+}
+
 func TestFileChmod(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "chmod_file_test.txt")
