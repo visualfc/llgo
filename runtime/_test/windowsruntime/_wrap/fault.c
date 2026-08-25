@@ -39,3 +39,32 @@ int llgo_windows_foreign_fault_on_go_thread(void)
     RemoveVectoredExceptionHandler(handler);
     return (int)llgo_foreign_fault_count;
 }
+
+static DWORD WINAPI
+llgo_raise_foreign_fault(void *unused)
+{
+    ULONG_PTR information[2] = {0, 0};
+    (void)unused;
+    RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 2, information);
+    return 0;
+}
+
+int llgo_windows_foreign_fault_on_native_thread(void)
+{
+    DWORD exit_code;
+    HANDLE thread;
+    int result = -1;
+    PVOID handler = AddVectoredExceptionHandler(0, llgo_continue_foreign_fault);
+    if (handler == 0)
+        return -1;
+    llgo_foreign_fault_count = 0;
+    thread = CreateThread(0, 0, llgo_raise_foreign_fault, 0, 0, 0);
+    if (thread != 0) {
+        if (WaitForSingleObject(thread, INFINITE) == WAIT_OBJECT_0 &&
+            GetExitCodeThread(thread, &exit_code) && exit_code == 0)
+            result = (int)llgo_foreign_fault_count;
+        CloseHandle(thread);
+    }
+    RemoveVectoredExceptionHandler(handler);
+    return result;
+}

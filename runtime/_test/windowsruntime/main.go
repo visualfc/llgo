@@ -36,6 +36,12 @@ func windowsUnrecoveredFault() int32
 //go:linkname windowsForeignFaultOnGoThread C.llgo_windows_foreign_fault_on_go_thread
 func windowsForeignFaultOnGoThread() int32
 
+//go:linkname windowsForeignFaultOnNativeThread C.llgo_windows_foreign_fault_on_native_thread
+func windowsForeignFaultOnNativeThread() int32
+
+//go:linkname panicWindowsException github.com/xgo-dev/llgo/runtime/internal/runtime.panicWindowsException
+func panicWindowsException(code uint32, address uintptr)
+
 //go:noinline
 func windowsNilFault() byte {
 	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
@@ -162,6 +168,24 @@ func checkForeignFaultOnGoThread() {
 	}
 }
 
+func checkForeignFaultOnNativeThread() {
+	if got := windowsForeignFaultOnNativeThread(); got != 1 {
+		panic("native-thread Windows fault did not continue through the handler chain")
+	}
+}
+
+func checkIntegerOverflowFault() {
+	var got any
+	func() {
+		defer func() { got = recover() }()
+		panicWindowsException(0xc0000095, 0)
+	}()
+	err, ok := got.(error)
+	if !ok || err.Error() != "runtime error: integer overflow" {
+		panic("Windows integer overflow returned the wrong panic value")
+	}
+}
+
 func checkRecover() {
 	defer func() {
 		if value := recover(); value != "windows panic smoke" {
@@ -262,6 +286,8 @@ func main() {
 
 	checkRecover()
 	checkForeignFaultOnGoThread()
+	checkForeignFaultOnNativeThread()
+	checkIntegerOverflowFault()
 	checkNilFunctionFaultOrigin()
 	checkNilFault()
 	checkStoreNilFaultLine()

@@ -28,7 +28,7 @@ typedef struct {
 
 typedef llgo_long(LLGO_WINAPI *llgo_vectored_handler)(
     llgo_exception_pointers *exception);
-typedef void (*llgo_fault_callback)(void *context, int signal,
+typedef void (*llgo_fault_callback)(void *context, llgo_dword code,
                                     uintptr_t address);
 
 __declspec(dllimport) void *LLGO_WINAPI AddVectoredExceptionHandler(
@@ -38,9 +38,8 @@ enum {
     llgo_exception_access_violation = 0xc0000005UL,
     llgo_exception_in_page_error = 0xc0000006UL,
     llgo_exception_int_divide_by_zero = 0xc0000094UL,
+    llgo_exception_int_overflow = 0xc0000095UL,
     llgo_exception_continue_search = 0,
-    llgo_sigfpe = 8,
-    llgo_sigsegv = 11,
 };
 
 static llgo_fault_callback llgo_fault_go;
@@ -57,7 +56,6 @@ llgo_fault_handler(llgo_exception_pointers *exception)
 {
     llgo_exception_record *record;
     uintptr_t address = 0;
-    int signal;
 
     if (exception == 0 || exception->record == 0 ||
         exception->context == 0 || llgo_fault_go == 0 || llgo_in_fault)
@@ -69,22 +67,20 @@ llgo_fault_handler(llgo_exception_pointers *exception)
         if (record->parameter_count < 2)
             return llgo_exception_continue_search;
         address = record->information[1];
-        signal = llgo_sigsegv;
         break;
     case llgo_exception_int_divide_by_zero:
-        signal = llgo_sigfpe;
+    case llgo_exception_int_overflow:
         break;
     default:
         return llgo_exception_continue_search;
     }
 
     llgo_in_fault = 1;
-    /* The callback converts the exception to LLGo's normal panic path and
-     * longjmps out. It returns only if that invariant is broken. */
-    /* The Go callback returns only when a non-nil fault is not enabled by
-     * runtime/debug.SetPanicOnFault. In that case, let Windows continue the
-     * handler chain and preserve the normal crash behavior. */
-    llgo_fault_go(exception->context, signal, address);
+    /* Recoverable faults in Go text leave through LLGo's non-local panic
+     * path. The callback returns normally for a foreign thread, non-Go text,
+     * or a non-nil memory fault without SetPanicOnFault; in those cases keep
+     * walking Windows' vectored handler chain. */
+    llgo_fault_go(exception->context, record->code, address);
     llgo_in_fault = 0;
     return llgo_exception_continue_search;
 }

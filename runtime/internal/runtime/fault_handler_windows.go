@@ -9,8 +9,13 @@ import (
 )
 
 const (
-	windowsSIGSEGV                = 11
-	windowsMinPanicOnFaultAddress = 0x1000
+	windowsExceptionAccessViolation uint32 = 0xc0000005
+	windowsExceptionInPageError     uint32 = 0xc0000006
+	windowsExceptionIntDivideByZero uint32 = 0xc0000094
+	windowsExceptionIntOverflow     uint32 = 0xc0000095
+	windowsSIGFPE                          = 8
+	windowsSIGSEGV                         = 11
+	windowsMinPanicOnFaultAddress          = 0x1000
 )
 
 // WindowsFaultSnapshot, when set by the public runtime package, first reports
@@ -20,7 +25,7 @@ const (
 var WindowsFaultSnapshot func(unsafe.Pointer) bool
 
 //go:linkname installWindowsFaultHandler C.llgo_install_windows_fault_handler
-func installWindowsFaultHandler(cb func(unsafe.Pointer, int32, uintptr)) c.Int
+func installWindowsFaultHandler(cb func(unsafe.Pointer, uint32, uintptr)) c.Int
 
 //go:linkname windowsFaultCaptureDone C.llgo_windows_fault_capture_done
 func windowsFaultCaptureDone()
@@ -31,7 +36,7 @@ func init() {
 	}
 }
 
-func onWindowsFault(context unsafe.Pointer, signal int32, address uintptr) {
+func onWindowsFault(context unsafe.Pointer, code uint32, address uintptr) {
 	// The vectored handler is process-wide and may observe a fault on a native
 	// thread that never entered Go. Do not manufacture a G from exception
 	// context: only faults on a thread already executing Go can become Go
@@ -39,7 +44,8 @@ func onWindowsFault(context unsafe.Pointer, signal int32, address uintptr) {
 	if (*g)(unsafe.Pointer(currentG)) == nil {
 		return
 	}
-	if signal == windowsSIGSEGV && address >= windowsMinPanicOnFaultAddress && !PanicOnFault() {
+	memoryFault := code == windowsExceptionAccessViolation || code == windowsExceptionInPageError
+	if memoryFault && address >= windowsMinPanicOnFaultAddress && !PanicOnFault() {
 		return
 	}
 	if WindowsFaultSnapshot != nil && !WindowsFaultSnapshot(context) {
@@ -49,8 +55,20 @@ func onWindowsFault(context unsafe.Pointer, signal int32, address uintptr) {
 	// The panic path does not return through the vectored handler, so release
 	// its recursion guard before the non-local jump begins.
 	windowsFaultCaptureDone()
-	if signal == windowsSIGSEGV && address >= windowsMinPanicOnFaultAddress {
+	panicWindowsException(code, address)
+}
+
+func panicWindowsException(code uint32, address uintptr) {
+	memoryFault := code == windowsExceptionAccessViolation || code == windowsExceptionInPageError
+	if memoryFault && address >= windowsMinPanicOnFaultAddress {
 		PanicSignalAddr(address)
 	}
-	PanicSignal(int(signal))
+	switch code {
+	case windowsExceptionAccessViolation, windowsExceptionInPageError:
+		PanicSignal(windowsSIGSEGV)
+	case windowsExceptionIntDivideByZero:
+		PanicSignal(windowsSIGFPE)
+	case windowsExceptionIntOverflow:
+		PanicErrorString("integer overflow")
+	}
 }
