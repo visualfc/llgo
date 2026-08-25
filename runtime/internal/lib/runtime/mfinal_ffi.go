@@ -1,4 +1,4 @@
-//go:build !nogc
+//go:build !nogc || windows
 
 package runtime
 
@@ -11,7 +11,7 @@ import (
 
 var finalizerFFITypeClosure = ffi.StructOf(ffi.TypePointer, ffi.TypePointer)
 
-// Keep the Go ABI conversion local to finalizers. The low-level ffi package
+// Keep the Go ABI conversion local to the runtime. The low-level ffi package
 // should not depend on runtime/abi.
 func finalizerFFIType(typ *abi.Type) *ffi.Type {
 	switch typ.Kind() {
