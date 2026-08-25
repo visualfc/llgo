@@ -360,12 +360,12 @@ func coffLTOLevel(level optlevel.Level) string {
 	}
 }
 
-func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
+func nativeSectionFlags(toolchain NativeToolchain, goarch string) (ccflags, ldflags []string) {
 	switch toolchain.ObjectFormat {
 	case ObjectFormatMachO:
 		return nil, []string{"-Xlinker", "-dead_strip"}
 	case ObjectFormatCOFF:
-		return []string{"-fdata-sections", "-ffunction-sections"}, []string{
+		ldflags := []string{
 			"-fdata-sections",
 			"-ffunction-sections",
 			"-Wl,/opt:ref",
@@ -374,6 +374,15 @@ func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
 			// this Microsoft compatibility import library.
 			"-llegacy_stdio_definitions",
 		}
+		if goarch != "386" {
+			// LLGo uses native stacks. The PE default reserves only 1 MiB,
+			// substantially less than hosted Unix defaults and too little for
+			// ordinary deep Go call chains. This changes virtual reservation;
+			// Windows still commits stack pages on demand. Keep 386 at the PE
+			// default because its address space is limited.
+			ldflags = append(ldflags, "-Wl,/stack:10485760")
+		}
+		return []string{"-fdata-sections", "-ffunction-sections"}, ldflags
 	default:
 		return []string{"-fdata-sections", "-ffunction-sections"}, []string{
 			"-fdata-sections",
@@ -469,7 +478,7 @@ func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, l
 			export.LDFLAGS = append(export.LDFLAGS, []string{"--sysroot=" + sysrootPath}...)
 		}
 
-		ccflags, ldflags := nativeSectionFlags(export.Toolchain)
+		ccflags, ldflags := nativeSectionFlags(export.Toolchain, goarch)
 		export.CCFLAGS = append(export.CCFLAGS, ccflags...)
 		export.LDFLAGS = append(export.LDFLAGS, ldflags...)
 		return

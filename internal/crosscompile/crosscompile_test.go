@@ -485,13 +485,13 @@ func TestCOFFLTOLevel(t *testing.T) {
 }
 
 func TestNativeWindowsSectionFlags(t *testing.T) {
-	ccflags, ldflags := nativeSectionFlags(nativeToolchain("windows"))
+	ccflags, ldflags := nativeSectionFlags(nativeToolchain("windows"), "arm64")
 	for _, want := range []string{"-fdata-sections", "-ffunction-sections"} {
 		if !slices.Contains(ccflags, want) {
 			t.Errorf("native Windows CCFLAGS = %v, want %q", ccflags, want)
 		}
 	}
-	for _, want := range []string{"-fdata-sections", "-ffunction-sections", "-Wl,/opt:ref", "-llegacy_stdio_definitions"} {
+	for _, want := range []string{"-fdata-sections", "-ffunction-sections", "-Wl,/opt:ref", "-llegacy_stdio_definitions", "-Wl,/stack:10485760"} {
 		if !slices.Contains(ldflags, want) {
 			t.Errorf("native Windows LDFLAGS = %v, want %q", ldflags, want)
 		}
@@ -500,6 +500,10 @@ func TestNativeWindowsSectionFlags(t *testing.T) {
 		if slices.Contains(ldflags, unwanted) {
 			t.Errorf("native Windows LDFLAGS = %v, do not want %q", ldflags, unwanted)
 		}
+	}
+	_, windows386 := nativeSectionFlags(nativeToolchain("windows"), "386")
+	if slices.Contains(windows386, "-Wl,/stack:10485760") {
+		t.Errorf("native Windows/386 LDFLAGS = %v, contain a large stack reservation", windows386)
 	}
 }
 
