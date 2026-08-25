@@ -7,7 +7,7 @@ package runtime
 import (
 	_ "unsafe"
 
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 // Layout of in-memory per-function information prepared by linker

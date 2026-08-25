@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build windows
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -18,27 +18,24 @@
 
 package runtime
 
-import (
-	"unsafe"
+import _ "unsafe"
 
-	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/thread"
+const (
+	LLGoPackage = "link: -lkernel32"
+	LLGoFiles   = "_wrap/runtime_windows.c; _wrap/syscall_windows.S; _wrap/debugtrap.c"
 )
 
-// Detached pthreads do not leave a native handle owned by the M.
-type mOS struct{}
+//go:linkname c_maxprocs C.llgo_maxprocs
+func c_maxprocs() int32
 
-// newosproc provides the current host-thread backend for newm.
-func newosproc(mp *m, stackSize uintptr) int {
-	return int(thread.CreateDetached(
-		stackSize,
-		thread.RoutineFunc(mstart),
-		c.Pointer(unsafe.Pointer(mp)),
-	))
-}
+//go:linkname c_debugtrap C.llgo_debugtrap
+func c_debugtrap()
 
-func exitCurrentM() {
-	mp := getg().m
-	mexit(mp)
-	thread.Exit()
-}
+//go:linkname c_nanotime C.llgo_nanotime
+func c_nanotime() int64
+
+//go:linkname c_nanotimeInit C.llgo_nanotime_init
+func c_nanotimeInit() int32
+
+//go:linkname c_walltime C.llgo_walltime
+func c_walltime(sec *int64, nsec *int32)

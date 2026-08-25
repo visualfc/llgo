@@ -632,6 +632,47 @@ func TestWasmRuntimeAvoidsNativeHostDependencies(t *testing.T) {
 	}
 }
 
+func TestWindowsRuntimeSyscallVersionSelection(t *testing.T) {
+	runtimeDir := filepath.Join(env.LLGoRuntimeDir(), "internal", "lib", "runtime")
+	releaseTags := func(lastMinor int) []string {
+		tags := make([]string, lastMinor)
+		for minor := 1; minor <= lastMinor; minor++ {
+			tags[minor-1] = fmt.Sprintf("go1.%d", minor)
+		}
+		return tags
+	}
+
+	for _, test := range []struct {
+		name         string
+		lastMinor    int
+		wantPreGo126 bool
+	}{
+		{name: "go1.25", lastMinor: 25, wantPreGo126: true},
+		{name: "go1.26", lastMinor: 26, wantPreGo126: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := gobuild.Default
+			ctx.GOOS = "windows"
+			ctx.GOARCH = "amd64"
+			ctx.BuildTags = []string{"llgo"}
+			ctx.ReleaseTags = releaseTags(test.lastMinor)
+
+			for name, want := range map[string]bool{
+				"syscall_windows_llgo.go":           true,
+				"syscall_windows_pre_go126_llgo.go": test.wantPreGo126,
+			} {
+				got, err := ctx.MatchFile(runtimeDir, name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got != want {
+					t.Errorf("MatchFile(%q) = %v, want %v", name, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestBaremetalRuntimeAvoidsLocalityDirectives(t *testing.T) {
 	for _, relative := range []string{
 		filepath.Join("internal", "runtime"),

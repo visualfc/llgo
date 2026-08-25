@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build windows
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -18,27 +18,7 @@
 
 package runtime
 
-import (
-	"unsafe"
-
-	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/thread"
-)
-
-// Detached pthreads do not leave a native handle owned by the M.
-type mOS struct{}
-
-// newosproc provides the current host-thread backend for newm.
-func newosproc(mp *m, stackSize uintptr) int {
-	return int(thread.CreateDetached(
-		stackSize,
-		thread.RoutineFunc(mstart),
-		c.Pointer(unsafe.Pointer(mp)),
-	))
-}
-
-func exitCurrentM() {
-	mp := getg().m
-	mexit(mp)
-	thread.Exit()
+func walltime() (sec int64, nsec int32) {
+	c_walltime(&sec, &nsec)
+	return
 }

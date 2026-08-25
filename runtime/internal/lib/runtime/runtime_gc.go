@@ -10,6 +10,7 @@ import (
 
 func init() {
 	bdwgc.Init()
+	enableForeignThreadRegistration()
 }
 
 func ReadMemStats(m *runtime.MemStats) {

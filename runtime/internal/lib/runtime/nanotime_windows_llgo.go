@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build windows
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -18,27 +18,15 @@
 
 package runtime
 
-import (
-	"unsafe"
-
-	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/thread"
-)
-
-// Detached pthreads do not leave a native handle owned by the M.
-type mOS struct{}
-
-// newosproc provides the current host-thread backend for newm.
-func newosproc(mp *m, stackSize uintptr) int {
-	return int(thread.CreateDetached(
-		stackSize,
-		thread.RoutineFunc(mstart),
-		c.Pointer(unsafe.Pointer(mp)),
-	))
+func init() {
+	// QueryPerformanceFrequency is fixed for the lifetime of the system.
+	// Match Go's runtime startup model and keep the timestamp hot path to a
+	// single QueryPerformanceCounter call.
+	if c_nanotimeInit() == 0 {
+		panic("runtime: QueryPerformanceFrequency failed")
+	}
 }
 
-func exitCurrentM() {
-	mp := getg().m
-	mexit(mp)
-	thread.Exit()
+func nanotime1() int64 {
+	return c_nanotime()
 }

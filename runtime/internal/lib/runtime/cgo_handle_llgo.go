@@ -7,7 +7,7 @@ package runtime
 import (
 	_ "unsafe"
 
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 // These functions provide runtime/cgo.Handle without pulling in the gc

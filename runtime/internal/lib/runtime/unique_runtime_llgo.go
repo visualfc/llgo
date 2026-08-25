@@ -1,11 +1,11 @@
-//go:build darwin || linux
+//go:build darwin || linux || windows
 
 package runtime
 
 import (
 	_ "unsafe"
 
-	"github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
+	"github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 var (

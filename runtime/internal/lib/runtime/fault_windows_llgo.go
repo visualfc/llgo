@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build windows
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -22,23 +22,20 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/thread"
 )
 
-// Detached pthreads do not leave a native handle owned by the M.
-type mOS struct{}
+//go:linkname c_memReadable C.llgo_mem_readable
+func c_memReadable(p unsafe.Pointer) c.Int
 
-// newosproc provides the current host-thread backend for newm.
-func newosproc(mp *m, stackSize uintptr) int {
-	return int(thread.CreateDetached(
-		stackSize,
-		thread.RoutineFunc(mstart),
-		c.Pointer(unsafe.Pointer(mp)),
-	))
+func memReadable(addr uintptr) bool {
+	return c_memReadable(unsafe.Pointer(addr)) != 0
 }
 
-func exitCurrentM() {
-	mp := getg().m
-	mexit(mp)
-	thread.Exit()
-}
+// Windows hardware exceptions need a CONTEXT-aware exception handler. Until
+// that backend is installed, explicit Go panic/recover still uses the normal
+// runtime path and has no fault traceback to clear or print.
+func clearFaultTraceback() {}
+
+func faultTracebackActive() bool { return false }
+
+func faultTraceback(skip int) bool { return false }

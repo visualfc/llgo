@@ -1,4 +1,4 @@
-//go:build darwin || linux
+//go:build darwin || linux || windows
 
 package runtime
 
@@ -7,10 +7,10 @@ import (
 
 	latomic "sync/atomic"
 
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
-// Minimal semaphore + notify list support for stdlib sync on llgo/darwin.
+// Minimal semaphore + notify list support for stdlib sync on hosted targets.
 
 type semaState struct {
 	mu      psync.Mutex

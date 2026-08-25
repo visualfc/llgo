@@ -1,4 +1,4 @@
-//go:build !wasm && !baremetal
+//go:build !windows && !wasm && !baremetal
 
 /*
  * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.

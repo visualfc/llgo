@@ -39,7 +39,7 @@ func Rethrow(link *Defer) {
 		// goroutine. Reuse the longjmp-based defer unwinding:
 		// 1) If we have a defer frame, longjmp to it so it can execute defers.
 		// 2) Once we've unwound past the last frame (link==nil), terminate the
-		//    current pthread.
+		//    current host thread.
 		gp.defer_ = link
 		if link != nil {
 			c.Siglongjmp(link.Addr, 1)
