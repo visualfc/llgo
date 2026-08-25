@@ -113,7 +113,7 @@ jobs:
           # them in the Windows coverage upload as well as executing the
           # generated Windows IR fixtures.
           go test -count=1 -timeout=10m \
-            -run '^(TestSetjmpLongjmpIRPaths|TestSigjmpUsesSetjmpOnExplicitTarget|TestWindowsSigjmpBufferAlignment|TestWindowsSetjmpABI|TestWindowsSetjmpRejectsUnsupportedArchitecture|TestNeedsFramePointer|TestSetjmpReturnsTwice|TestDeferInitBuilderInheritsDebugLocation)$' \
+            -run '^(TestFuncInfoMetadataDoesNotPreserveFunctions|TestSetjmpLongjmpIRPaths|TestSigjmpUsesSetjmpOnExplicitTarget|TestWindowsSigjmpBufferAlignment|TestWindowsSetjmpABI|TestWindowsSetjmpRejectsUnsupportedArchitecture|TestNeedsFramePointer|TestSetjmpReturnsTwice|TestDeferInitBuilderInheritsDebugLocation)$' \
             -covermode=atomic -coverprofile=coverage-windows-execution-ssa.txt \
             ./ssa
           go test -count=1 -timeout=10m \
