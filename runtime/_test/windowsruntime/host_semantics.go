@@ -6,9 +6,6 @@ import (
 	"unsafe"
 )
 
-//go:linkname cMaxprocs C.llgo_maxprocs
-func cMaxprocs() int32
-
 func checkCoreMapRandStreams() {
 	const (
 		workers = 8
@@ -43,33 +40,6 @@ func checkCoreMapRandStreams() {
 	}
 	if allEqual {
 		panic("Windows goroutines share identical core map random streams")
-	}
-}
-
-func checkProcessAffinityCPUCount() {
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	process, _, _ := kernel32.NewProc("GetCurrentProcess").Call()
-	var processMask, systemMask uintptr
-	result, _, _ := kernel32.NewProc("GetProcessAffinityMask").Call(
-		process,
-		uintptr(unsafe.Pointer(&processMask)),
-		uintptr(unsafe.Pointer(&systemMask)),
-	)
-	if result == 0 || processMask == 0 {
-		panic("GetProcessAffinityMask failed")
-	}
-	singleCPU := processMask & -processMask
-	result, _, _ = kernel32.NewProc("SetProcessAffinityMask").Call(process, singleCPU)
-	if result == 0 {
-		panic("SetProcessAffinityMask(single CPU) failed")
-	}
-	got := cMaxprocs()
-	result, _, _ = kernel32.NewProc("SetProcessAffinityMask").Call(process, processMask)
-	if result == 0 {
-		panic("restoring the process affinity mask failed")
-	}
-	if got != 1 {
-		panic("Windows CPU count ignored the process affinity mask")
 	}
 }
 

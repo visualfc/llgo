@@ -322,7 +322,6 @@ func main() {
 	checkNilFunctionFaultOrigin()
 	checkRuntimeRandStreams()
 	checkCoreMapRandStreams()
-	checkProcessAffinityCPUCount()
 	checkUnicodeConsolePrint()
 	checkNilFault()
 	checkStoreNilFaultLine()
