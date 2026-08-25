@@ -1246,6 +1246,45 @@ func TestToolchainGoCommand(t *testing.T) {
 	}
 }
 
+func TestNeedsExternalCgoBaseline(t *testing.T) {
+	dir := t.TempDir()
+	cgoFile := filepath.Join(dir, "cgo.go")
+	if err := os.WriteFile(cgoFile, []byte("package main\nimport _ \"runtime/cgo\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plainFile := filepath.Join(dir, "plain.go")
+	if err := os.WriteFile(plainFile, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		goos   string
+		goarch string
+		file   string
+		want   bool
+	}{
+		{name: "windows arm64 cgo", goos: "windows", goarch: "arm64", file: "cgo.go", want: true},
+		{name: "windows amd64 cgo", goos: "windows", goarch: "amd64", file: "cgo.go"},
+		{name: "linux arm64 cgo", goos: "linux", goarch: "arm64", file: "cgo.go"},
+		{name: "windows arm64 plain", goos: "windows", goarch: "arm64", file: "plain.go"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := needsExternalCgoBaseline(tc.goos, tc.goarch, testCase{
+				RelPath:  tc.file,
+				Dir:      dir,
+				FileName: tc.file,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Fatalf("needsExternalCgoBaseline() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRunSingleFileCaseExcludesUnlistedSiblings(t *testing.T) {
 	disableSystemMemoryLimits(t)
 	repoRoot := t.TempDir()

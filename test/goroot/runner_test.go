@@ -726,6 +726,16 @@ func runCase(t *testing.T, repoRoot, goroot, goCmd, llgoBin string, tc testCase,
 	if err != nil {
 		return err
 	}
+	externalBaseline, err := needsExternalCgoBaseline(runtime.GOOS, runtime.GOARCH, tc)
+	if err != nil {
+		return err
+	}
+	if externalBaseline {
+		// Go's internal Windows/ARM64 linker does not resolve CRT references
+		// from runtime/cgo when the supported C compiler is LLVM-MinGW. Use
+		// the Go tool's standard external-link selection for those baselines.
+		opts.ExtraEnv = upsertEnv(opts.ExtraEnv, "GO_EXTLINK_ENABLED=1")
+	}
 	switch tc.Directive {
 	case "compile":
 		return runCompileCase(t, repoRoot, goroot, llgoBin, tc, opts, buildTimeout)
@@ -746,6 +756,27 @@ func runCase(t *testing.T, repoRoot, goroot, goCmd, llgoBin string, tc testCase,
 	default:
 		return fmt.Errorf("unsupported directive %q", tc.Directive)
 	}
+}
+
+func needsExternalCgoBaseline(goos, goarch string, tc testCase) (bool, error) {
+	if goos != "windows" || goarch != "arm64" {
+		return false, nil
+	}
+	filename := filepath.Join(tc.Dir, tc.FileName)
+	f, err := parser.ParseFile(token.NewFileSet(), filename, nil, parser.ImportsOnly)
+	if err != nil {
+		return false, fmt.Errorf("parse imports from %s: %w", tc.RelPath, err)
+	}
+	for _, spec := range f.Imports {
+		path, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			return false, fmt.Errorf("parse import path in %s: %w", tc.RelPath, err)
+		}
+		if path == "runtime/cgo" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func effectiveBuildTimeout(defaultBuildTimeout, caseTimeout time.Duration) time.Duration {
