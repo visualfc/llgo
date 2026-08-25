@@ -43,6 +43,12 @@ func snapshot() bool {
 	x[0] = 3
 	return old == y
 }
+
+func small() bool {
+	x := [4]byte{1}
+	y := [4]byte{2}
+	return x == y
+}
 `
 	ssaPkg, _, _ := buildGoSSAPkg(t, source)
 	findCompare := func(name string) *ssa.BinOp {
@@ -83,5 +89,9 @@ func snapshot() bool {
 	snapshotIR := mustNamedFunction(t, mod, "foo.snapshot").String()
 	if !strings.Contains(snapshotIR, ".memequal") || !strings.Contains(snapshotIR, "store [32 x i8]") || !strings.Contains(snapshotIR, "stacksave") {
 		t.Fatalf("mutable source did not preserve the loaded array snapshot:\n%s", snapshotIR)
+	}
+	smallIR := mustNamedFunction(t, mod, "foo.small").String()
+	if strings.Contains(smallIR, ".memequal") || strings.Contains(smallIR, "stacksave") {
+		t.Fatalf("small array comparison used the runtime path:\n%s", smallIR)
 	}
 }

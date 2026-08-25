@@ -776,11 +776,12 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 	panic("todo")
 }
 
-// inlineArrayEqual reports whether comparing an array element by element is
-// cheaper than calling its equality algorithm. Keep this aligned with the Go
-// compiler's comparison lowering: a single element is always safe to inline,
-// while only small arrays of scalar values are expanded.
-func (b Builder) inlineArrayEqual(t *types.Array) bool {
+// CanInlineArrayEqual reports whether comparing an array element by element is
+// cheaper than calling its equality algorithm. A single element is always
+// safe to inline. For simple elements, use cmd/compile's four-element budget,
+// but not its size-based allowance: this builder emits element-wise compares
+// rather than merging adjacent loads into wider compares.
+func CanInlineArrayEqual(t *types.Array) bool {
 	n := t.Len()
 	if n <= 1 {
 		return true
@@ -789,7 +790,7 @@ func (b Builder) inlineArrayEqual(t *types.Array) bool {
 	if !ok || basic.Info()&(types.IsBoolean|types.IsInteger|types.IsFloat|types.IsComplex) == 0 {
 		return false
 	}
-	return n <= 4 || uint64(b.Prog.abi.Size(t)) <= uint64(2*b.Prog.PointerSize())
+	return n <= 4
 }
 
 // ArrayBinOp compares two array values while reusing their backing addresses
@@ -809,7 +810,7 @@ func (b Builder) arrayBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 	prog := b.Prog
 	tret := prog.Bool()
 	typ := x.raw.Type.Underlying().(*types.Array)
-	if b.inlineArrayEqual(typ) {
+	if CanInlineArrayEqual(typ) {
 		elem := prog.Elem(x.Type)
 		ret := prog.BoolVal(true)
 		for i, n := 0, int(typ.Len()); i < n; i++ {

@@ -1334,8 +1334,13 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 		x := p.compileValueAs(b, v.X, v.Y.Type())
 		y := p.compileValueAs(b, v.Y, v.X.Type())
-		if _, ok := v.X.Type().Underlying().(*types.Array); ok && (v.Op == token.EQL || v.Op == token.NEQ) {
-			ret = b.ArrayBinOp(v.Op, x, y, p.arrayCompareAddr(b, v.X), p.arrayCompareAddr(b, v.Y))
+		if typ, ok := v.X.Type().Underlying().(*types.Array); ok && (v.Op == token.EQL || v.Op == token.NEQ) {
+			xaddr, yaddr := llssa.Nil, llssa.Nil
+			if !llssa.CanInlineArrayEqual(typ) {
+				xaddr = p.arrayCompareAddr(b, v.X)
+				yaddr = p.arrayCompareAddr(b, v.Y)
+			}
+			ret = b.ArrayBinOp(v.Op, x, y, xaddr, yaddr)
 		} else {
 			ret = b.BinOp(v.Op, x, y)
 		}
