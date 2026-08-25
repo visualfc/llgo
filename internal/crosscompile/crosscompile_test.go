@@ -258,7 +258,7 @@ func TestUseTarget(t *testing.T) {
 			// Check if LLVM target is in CCFLAGS
 			if tc.expectLLVM != "" {
 				found := false
-				expectedFlag := "--target=" + clangDriverTargetForHost(runtime.GOOS, tc.expectLLVM, export.BuildTags)
+				expectedFlag := "--target=" + tc.expectLLVM
 				for _, flag := range export.CCFLAGS {
 					if flag == expectedFlag {
 						found = true
