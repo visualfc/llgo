@@ -271,7 +271,7 @@ func TestGoRootRunCases(t *testing.T) {
 	}
 	goCmd := *flagGoCmd
 	if goCmd == "" {
-		goCmd = filepath.Join(goroot, "bin", "go")
+		goCmd = toolchainGoCommand(goroot, runtime.GOOS)
 	}
 	if _, err := os.Stat(goCmd); err != nil {
 		t.Fatalf("stat go command %q: %v", goCmd, err)
@@ -374,6 +374,14 @@ func TestGoRootRunCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func toolchainGoCommand(goroot, goos string) string {
+	name := "go"
+	if goos == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(goroot, "bin", name)
 }
 
 func writeStdlibImportCfg(t *testing.T, goCmd string) string {

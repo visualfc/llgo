@@ -1228,6 +1228,24 @@ func TestSplitSourceFiles(t *testing.T) {
 	}
 }
 
+func TestToolchainGoCommand(t *testing.T) {
+	goroot := filepath.Join("toolchains", "go1.26.5")
+	for _, tc := range []struct {
+		goos string
+		name string
+	}{
+		{goos: "linux", name: "go"},
+		{goos: "darwin", name: "go"},
+		{goos: "windows", name: "go.exe"},
+	} {
+		got := toolchainGoCommand(goroot, tc.goos)
+		want := filepath.Join(goroot, "bin", tc.name)
+		if got != want {
+			t.Errorf("toolchainGoCommand(%q, %q) = %q, want %q", goroot, tc.goos, got, want)
+		}
+	}
+}
+
 func TestRunSingleFileCaseExcludesUnlistedSiblings(t *testing.T) {
 	disableSystemMemoryLimits(t)
 	repoRoot := t.TempDir()
