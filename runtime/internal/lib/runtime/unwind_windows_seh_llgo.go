@@ -187,6 +187,10 @@ func recoverFrameMarks() (uintptr, uintptr) {
 	return context.sp(), entry
 }
 
+// recoverFrameMarks relies on this function remaining a distinct frame in the
+// Recover call chain.
+//
+//go:noinline
 func recoverMark() {
 	mark1, mark2 := recoverFrameMarks()
 	if mark1 == 0 && mark2 == 0 {

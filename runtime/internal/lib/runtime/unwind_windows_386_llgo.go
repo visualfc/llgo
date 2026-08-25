@@ -12,6 +12,9 @@ func platformFaultCallers(_ unsafe.Pointer, fp uintptr, pc []uintptr) int {
 	return windowsFPWalkFrom(fp, pc)
 }
 
+// callerFramePointer must observe recoverMark as a distinct frame.
+//
+//go:noinline
 func recoverMark() {
 	fp := callerFramePointer()
 	if fp == 0 {
@@ -58,9 +61,13 @@ func fpCallers(skip int, pc []uintptr) int {
 	fp := uintptr(c_framepointer())
 	n := 0
 	const maxFrames = 4096
+	wordSize := unsafe.Sizeof(uintptr(0))
 	for i := 0; fp != 0 && n < len(pc) && i < maxFrames; i++ {
+		if fp&(wordSize-1) != 0 || !memReadable(fp) || !memReadable(fp+wordSize) {
+			break
+		}
 		prev := *(*uintptr)(unsafe.Pointer(fp))
-		ret := *(*uintptr)(unsafe.Pointer(fp + unsafe.Sizeof(uintptr(0))))
+		ret := *(*uintptr)(unsafe.Pointer(fp + wordSize))
 		if ret < minLegalPC || !prebuiltTextContains(ret) {
 			break
 		}
@@ -70,7 +77,7 @@ func fpCallers(skip int, pc []uintptr) int {
 			pc[n] = ret
 			n++
 		}
-		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
+		if prev <= fp || prev-fp > maxFPStride || prev&(wordSize-1) != 0 {
 			break
 		}
 		fp = prev
