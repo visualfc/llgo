@@ -407,10 +407,11 @@ func pkgSFiles(ctx *context, pkg *packages.Package) ([]string, error) {
 	// internal/chacha8rand has highly optimized arch asm on amd64/arm64.
 	// Until full vector lowering lands, force the generic stub entry, which
 	// tail-jumps to block_generic and preserves package behavior.
-	if len(paths) != 0 && pkg.PkgPath == "internal/chacha8rand" && pkg.Dir != "" {
+	// Scope the stub override to targets that actually select chacha8 assembly.
+	if len(paths) != 0 && pkg.PkgPath == "internal/chacha8rand" {
 		stub := filepath.Join(pkg.Dir, "chacha8_stub.s")
 		if _, err := os.Stat(stub); err == nil {
-			paths := []string{stub}
+			paths = []string{stub}
 			ctx.sfilesCache[pkg.ID] = paths
 			return paths, nil
 		}
