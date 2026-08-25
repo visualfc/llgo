@@ -72,6 +72,14 @@ jobs:
             -covermode=atomic -coverprofile=coverage-windows-artifacts.txt \
             ./internal/build
 
+          # Exercise the R4 compiler paths on their native host. These tests
+          # verify Win32 dynamic imports and the process-exit edge in the
+          # generated main module without requiring a completed stdlib port.
+          go test -count=1 -timeout=10m \
+            -run '^(TestLowerWindowsCgoImportPointer|TestCompilePackageModuleLowersWindowsCgoImportPointer|TestLowerWindowsCgoImportPointerErrors|TestSplitWindowsCgoImportAlias|TestGenMainModuleWindowsExitsAfterMain)$' \
+            -covermode=atomic -coverprofile=coverage-windows-build-runtime.txt \
+            ./internal/build
+
           go test -count=1 -timeout=10m \
             -run '^(TestNativeToolchain|TestNativeWindows|TestCOFFLTOLevel)$' \
             -covermode=atomic -coverprofile=coverage-windows-coff-flags.txt \
@@ -85,6 +93,14 @@ jobs:
           go test -count=1 -timeout=10m \
             -run '^(TestWindowsODRDefinitionsUseCOMDAT|TestUnixODRDefinitionsDoNotGainCOMDAT)$' \
             -covermode=atomic -coverprofile=coverage-windows-comdat.txt \
+            ./ssa
+
+          # Run every setjmp/sigjmp unit path on Windows. In particular this
+          # covers the 386 zero unwind-record count and the amd64/arm64 frame
+          # operands that differ from the POSIX lowering.
+          go test -count=1 -timeout=10m \
+            -run '^(TestSetjmpLongjmpIRPaths|TestSigjmpUsesSetjmpOnExplicitTarget|TestWindowsSigjmpBufferAlignment|TestWindowsSetjmpABI)$' \
+            -covermode=atomic -coverprofile=coverage-windows-ssa-eh.txt \
             ./ssa
 
           go test -count=1 -timeout=10m \
@@ -113,5 +129,87 @@ jobs:
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-cabi.txt,coverage-windows-ffi.txt
+          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-build-runtime.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-ssa-eh.txt,coverage-windows-cabi.txt,coverage-windows-ffi.txt
           flags: windows-native
+
+      - name: Build and run the native Windows runtime and FFI smoke tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:LLGO_ROOT = (Get-Location).Path
+          $env:LLGO_BUILD_CACHE = "off"
+
+          go build -o llgo-windows-smoke.exe ./cmd/llgo
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          # Keep every Go-supported Windows architecture's raw SyscallN bridge
+          # assembly-valid even before the full 386 native execution lane lands.
+          $clangExe = (Get-Command clang.exe).Source
+          $llvmNmExe = (Get-Command llvm-nm.exe).Source
+          $syscallAsm = Join-Path $env:LLGO_ROOT `
+            "runtime\internal\lib\runtime\_wrap\syscall_windows.S"
+          foreach ($syscallTarget in @(
+            @{ Triple = "i686-pc-windows-msvc"; Symbol = "_llgo_windows_syscall" },
+            @{ Triple = "x86_64-pc-windows-msvc"; Symbol = "llgo_windows_syscall" },
+            @{ Triple = "aarch64-pc-windows-msvc"; Symbol = "llgo_windows_syscall" }
+          )) {
+            $syscallObj = Join-Path $env:RUNNER_TEMP `
+              ("syscall-{0}.obj" -f $syscallTarget.Triple)
+            & $clangExe "--target=$($syscallTarget.Triple)" `
+              -c $syscallAsm -o $syscallObj
+            if ($LASTEXITCODE -ne 0) {
+              exit $LASTEXITCODE
+            }
+            $symbols = & $llvmNmExe --defined-only $syscallObj | Out-String
+            if (-not $symbols.Contains($syscallTarget.Symbol)) {
+              throw "$($syscallTarget.Triple) bridge is missing $($syscallTarget.Symbol)"
+            }
+          }
+
+          Push-Location runtime
+          # Run the core runtime smoke with BDWGC enabled. The fixture checks
+          # allocation, an explicit collection, MemStats, and a finalizer.
+          ..\llgo-windows-smoke.exe build `
+            -o ..\windows-runtime-smoke.exe `
+            .\_test\windowsruntime
+          $buildExitCode = $LASTEXITCODE
+          if ($buildExitCode -eq 0) {
+            ..\llgo-windows-smoke.exe build `
+              -o ..\windows-ffi-smoke.exe `
+              .\_test\windowsffi
+            $buildExitCode = $LASTEXITCODE
+          }
+          if ($buildExitCode -eq 0) {
+            # A program with no imports only links the core runtime. Keep this
+            # separate from the richer smoke programs so runtime.exit cannot
+            # accidentally be supplied by an optional standard-library shim.
+            ..\llgo-windows-smoke.exe build `
+              -o ..\windows-empty-smoke.exe `
+              .\_test\windowsempty
+            $buildExitCode = $LASTEXITCODE
+          }
+          Pop-Location
+          if ($buildExitCode -ne 0) {
+            exit $buildExitCode
+          }
+          $readObjExe = (Get-Command llvm-readobj.exe).Source
+          & .\.github\workflows\check_windows_imports.ps1 `
+            -ReadObj $readObjExe `
+            -Artifacts @(
+              ".\windows-runtime-smoke.exe",
+              ".\windows-ffi-smoke.exe",
+              ".\windows-empty-smoke.exe"
+            )
+          .\windows-runtime-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          .\windows-ffi-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          .\windows-empty-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
