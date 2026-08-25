@@ -94,8 +94,7 @@ func ParseARM(value string) (ARM, error) {
 		ret.SoftFloat = true
 		floatSet = true
 		value = strings.TrimSuffix(value, softFloat)
-	}
-	if strings.HasSuffix(value, hardFloat) {
+	} else if strings.HasSuffix(value, hardFloat) {
 		floatSet = true
 		value = strings.TrimSuffix(value, hardFloat)
 	}

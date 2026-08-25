@@ -56,6 +56,71 @@ func TestSigjmpUsesSetjmpOnExplicitTarget(t *testing.T) {
 	}
 }
 
+func TestWindowsSigjmpBufferAlignment(t *testing.T) {
+	for _, arch := range []string{"386", "amd64", "arm64"} {
+		t.Run(arch, func(t *testing.T) {
+			prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: arch})
+			pkg := prog.NewPackage("foo", "foo")
+
+			fn := pkg.NewFunc("f", ssa.NoArgsNoRet, ssa.InGo)
+			b := fn.MakeBody(1)
+			_ = b.AllocaSigjmpBuf()
+			b.Return()
+			b.EndBuild()
+
+			ir := pkg.Module().String()
+			if !strings.Contains(ir, "alloca i8") || !strings.Contains(ir, "align 16") {
+				t.Fatalf("expected a 16-byte-aligned Windows/%s jmp_buf allocation, got:\n%s", arch, ir)
+			}
+		})
+	}
+}
+
+func TestWindowsSetjmpABI(t *testing.T) {
+	tests := []struct {
+		arch      string
+		setjmp    string
+		frameInfo string
+	}{
+		{arch: "386", setjmp: "@_setjmp3", frameInfo: ""},
+		{arch: "amd64", setjmp: "@_setjmpex", frameInfo: "@llvm.frameaddress"},
+		{arch: "arm64", setjmp: "@_setjmpex", frameInfo: "@llvm.sponentry"},
+	}
+	for _, test := range tests {
+		t.Run(test.arch, func(t *testing.T) {
+			prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: test.arch})
+			pkg := prog.NewPackage("foo", "foo")
+
+			fn := pkg.NewFunc("f", ssa.NoArgsNoRet, ssa.InGo)
+			b := fn.MakeBody(1)
+			jb := b.AllocaSigjmpBuf()
+			zero := prog.IntVal(0, prog.CInt())
+			one := prog.IntVal(1, prog.CInt())
+			_ = b.Sigsetjmp(jb, zero)
+			b.Siglongjmp(jb, one)
+			b.Return()
+			b.EndBuild()
+
+			ir := pkg.Module().String()
+			if !strings.Contains(ir, test.setjmp) {
+				t.Fatalf("Windows/%s IR does not call %s:\n%s", test.arch, test.setjmp, ir)
+			}
+			if test.frameInfo != "" && !strings.Contains(ir, test.frameInfo) {
+				t.Fatalf("Windows/%s IR does not obtain %s:\n%s", test.arch, test.frameInfo, ir)
+			}
+			if !strings.Contains(ir, "returns_twice") {
+				t.Fatalf("Windows/%s setjmp declaration is not marked returns_twice:\n%s", test.arch, ir)
+			}
+			if !strings.Contains(ir, "@longjmp") {
+				t.Fatalf("Windows/%s IR does not call longjmp:\n%s", test.arch, ir)
+			}
+			if strings.Contains(ir, "sigsetjmp") || strings.Contains(ir, "siglongjmp") {
+				t.Fatalf("Windows/%s IR unexpectedly uses POSIX sigjmp symbols:\n%s", test.arch, ir)
+			}
+		})
+	}
+}
+
 func TestDeferInLoopContiguousDrainerGeneration(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	pkg := prog.NewPackage("foo", "foo")

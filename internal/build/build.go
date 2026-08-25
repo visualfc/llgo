@@ -2220,6 +2220,15 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 	llabi.LowerLargeAggregates(ctx.prog.TargetData(), ret.Module())
 	ctx.cTransformer.TransformModule(ret.Path(), ret.Module())
 	ctx.cTransformer.SetSkipFuncs(nil)
+	if ctx.buildConf.Goos == "windows" {
+		pragmaSyntax := append([]*ast.File(nil), pkg.Syntax...)
+		if aPkg.AltPkg != nil {
+			pragmaSyntax = append(pragmaSyntax, aPkg.AltPkg.Syntax...)
+		}
+		if err := lowerWindowsCgoImportPointers(ctx.buildConf.Goos, ctx.buildConf.Goarch, pkgPath, pragmaSyntax, ret.Module()); err != nil {
+			return err
+		}
+	}
 	applySizeOptimizationAttributes(ret.Module(), ctx.buildConf.OptLevel)
 
 	// Run the default LLVM optimization pipeline selected by the requested -O level.

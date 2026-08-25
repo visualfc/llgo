@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	gllvm "github.com/xgo-dev/llvm"
 )
 
 type cgoImportDynamicDecl struct {
@@ -62,6 +64,87 @@ func collectGoCgoPragmas(files []*ast.File) (ldflags []string, dynimports []cgoI
 func goCgoLinkArgs(goos string, files []*ast.File) []string {
 	ldflags, _ := collectGoCgoPragmas(files)
 	return ldflags
+}
+
+// lowerWindowsCgoImportPointers connects pointer variables emitted for
+// //go:cgo_import_dynamic declarations to COFF dllimport functions. The Go
+// Windows syscall sources call these variables after the linker resolves the
+// imported address. Leaving the generated variables nil faults during package
+// initialization before main can run.
+func lowerWindowsCgoImportPointers(goos, goarch, pkgPath string, files []*ast.File, mod gllvm.Module) error {
+	if goos != "windows" || mod.IsNil() {
+		return nil
+	}
+	_, dynimports := collectGoCgoPragmas(files)
+	type aliasShape struct {
+		alias       string
+		argc        int
+		hasArgCount bool
+	}
+	seen := make(map[string]string, len(dynimports))
+	seenAliases := make(map[string]aliasShape, len(dynimports))
+	for _, d := range dynimports {
+		if prev, ok := seen[d.local]; ok {
+			if prev == d.alias {
+				continue
+			}
+			return fmt.Errorf("%s: conflicting go:cgo_import_dynamic for %q: %q vs %q", pkgPath, d.local, prev, d.alias)
+		}
+		seen[d.local] = d.alias
+		name, argc, hasArgCount, err := splitWindowsCgoImportAlias(d.alias)
+		if err != nil {
+			return fmt.Errorf("%s: invalid go:cgo_import_dynamic alias %q: %w", pkgPath, d.alias, err)
+		}
+		if prev, ok := seenAliases[name]; ok &&
+			(prev.argc != argc || prev.hasArgCount != hasArgCount) {
+			return fmt.Errorf("%s: conflicting go:cgo_import_dynamic argument counts for %q: %q vs %q", pkgPath, name, prev.alias, d.alias)
+		}
+		seenAliases[name] = aliasShape{d.alias, argc, hasArgCount}
+
+		global := mod.NamedGlobal(d.local)
+		if global.IsNil() {
+			// Function declarations already name the import directly and do not
+			// require an address-variable initializer.
+			continue
+		}
+		if global.GlobalValueType().TypeKind() != gllvm.PointerTypeKind {
+			return fmt.Errorf("%s: go:cgo_import_dynamic local %q is not a pointer variable", pkgPath, d.local)
+		}
+		fn := mod.NamedFunction(name)
+		if fn.IsNil() {
+			argType := mod.Context().Int32Type()
+			params := make([]gllvm.Type, argc)
+			for i := range params {
+				params[i] = argType
+			}
+			fn = gllvm.AddFunction(mod, name, gllvm.FunctionType(mod.Context().VoidType(), params, false))
+		} else if !fn.IsDeclaration() {
+			return fmt.Errorf("%s: go:cgo_import_dynamic alias %q collides with a defined function", pkgPath, name)
+		}
+		if goarch == "386" && hasArgCount {
+			fn.SetFunctionCallConv(gllvm.X86StdcallCallConv)
+		}
+		fn.SetDLLStorageClass(gllvm.DLLImportStorageClass)
+		global.SetInitializer(fn)
+	}
+	return nil
+}
+
+func splitWindowsCgoImportAlias(alias string) (name string, argc int, hasArgCount bool, err error) {
+	name = alias
+	percent := strings.IndexByte(alias, '%')
+	if percent < 0 {
+		return name, 0, false, nil
+	}
+	name = alias[:percent]
+	if name == "" || percent+1 == len(alias) {
+		return "", 0, false, fmt.Errorf("missing symbol name or argument count")
+	}
+	argc64, parseErr := strconv.ParseUint(alias[percent+1:], 10, 31)
+	if parseErr != nil {
+		return "", 0, false, fmt.Errorf("invalid argument count: %w", parseErr)
+	}
+	return name, int(argc64), true, nil
 }
 
 func buildGoCgoAliasObjects(ctx *context, pkgPath string, files []*ast.File, verbose bool) ([]string, error) {
