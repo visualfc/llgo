@@ -5,6 +5,7 @@
  * target's MSVC ABI and emits ordinary Kernel32 imports.
  */
 typedef unsigned long llgo_dword;
+typedef long long llgo_time_t;
 typedef int llgo_bool;
 typedef void *llgo_srwlock;
 typedef void *llgo_condition_variable;
@@ -41,6 +42,14 @@ __declspec(dllimport) llgo_bool LLGO_WINAPI WaitOnAddress(
     llgo_size_t address_size, llgo_dword milliseconds);
 __declspec(dllimport) void LLGO_WINAPI WakeByAddressSingle(void *address);
 
+typedef struct {
+    llgo_dword low;
+    llgo_dword high;
+} llgo_filetime;
+
+__declspec(dllimport) void LLGO_WINAPI
+GetSystemTimeAsFileTime(llgo_filetime *time);
+
 typedef llgo_bool(LLGO_WINAPI *llgo_init_once_fn)(
     llgo_init_once *once, void *parameter, void **context);
 __declspec(dllimport) llgo_bool LLGO_WINAPI InitOnceExecuteOnce(
@@ -49,6 +58,12 @@ __declspec(dllimport) llgo_bool LLGO_WINAPI InitOnceExecuteOnce(
 __declspec(dllimport) llgo_dword LLGO_WINAPI GetLastError(void);
 
 #define LLGO_INFINITE ((llgo_dword)0xffffffffUL)
+
+enum {
+    llgo_error_invalid_parameter = 22,
+    llgo_error_timeout = 1460,
+    llgo_timedout = 110,
+};
 
 typedef struct {
     void *code;
@@ -103,6 +118,51 @@ int llgo_win_cond_wait(llgo_condition_variable *condition,
     if (SleepConditionVariableSRW(condition, lock, LLGO_INFINITE, 0))
         return 0;
     return (int)GetLastError();
+}
+
+typedef struct {
+    llgo_time_t sec;
+    long nsec;
+} llgo_timespec;
+
+static unsigned long long llgo_unix_time_100ns(void)
+{
+    llgo_filetime now;
+    unsigned long long ticks;
+    GetSystemTimeAsFileTime(&now);
+    ticks = ((unsigned long long)now.high << 32) | now.low;
+    /* Number of 100ns intervals from 1601-01-01 to 1970-01-01. */
+    return ticks - 116444736000000000ULL;
+}
+
+int llgo_win_cond_timedwait(llgo_condition_variable *condition,
+                            llgo_srwlock *lock,
+                            const llgo_timespec *abstime)
+{
+    unsigned long long deadline;
+    unsigned long long now;
+    unsigned long long remaining;
+    llgo_dword milliseconds;
+    llgo_dword error;
+
+    if (abstime == 0 || abstime->sec < 0 || abstime->nsec < 0 ||
+        abstime->nsec >= 1000000000L)
+        return llgo_error_invalid_parameter;
+    deadline = (unsigned long long)abstime->sec * 10000000ULL
+             + (unsigned long long)abstime->nsec / 100ULL;
+    now = llgo_unix_time_100ns();
+    if (deadline <= now)
+        return llgo_timedout;
+    remaining = deadline - now;
+    /* Round up so a sub-millisecond remainder cannot time out early. */
+    remaining = (remaining + 9999ULL) / 10000ULL;
+    milliseconds = remaining >= LLGO_INFINITE
+                 ? LLGO_INFINITE - 1
+                 : (llgo_dword)remaining;
+    if (SleepConditionVariableSRW(condition, lock, milliseconds, 0))
+        return 0;
+    error = GetLastError();
+    return error == llgo_error_timeout ? llgo_timedout : (int)error;
 }
 
 int llgo_win_wait_uint32(volatile unsigned int *address,

@@ -24,6 +24,7 @@ import (
 	_ "unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	ctime "github.com/xgo-dev/llgo/runtime/internal/clite/time"
 )
 
 const (
@@ -95,6 +96,9 @@ func winCondBroadcast(cond *Cond) c.Int
 //go:linkname winCondWait C.llgo_win_cond_wait
 func winCondWait(cond *Cond, m *Mutex) c.Int
 
+//go:linkname winCondTimedWait C.llgo_win_cond_timedwait
+func winCondTimedWait(cond *Cond, m *Mutex, abstime *ctime.Timespec) c.Int
+
 func (cond *Cond) Init(_ *CondAttr) c.Int {
 	cond.state = 0
 	return 0
@@ -112,6 +116,10 @@ func (cond *Cond) Broadcast() c.Int {
 
 func (cond *Cond) Wait(m *Mutex) c.Int {
 	return winCondWait(cond, m)
+}
+
+func (cond *Cond) TimedWait(m *Mutex, abstime *ctime.Timespec) c.Int {
+	return winCondTimedWait(cond, m, abstime)
 }
 
 //go:linkname winWaitUint32 C.llgo_win_wait_uint32
