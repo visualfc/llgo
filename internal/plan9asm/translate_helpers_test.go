@@ -114,6 +114,25 @@ func Foo()
 	}
 }
 
+func TestTranslateMainPackageUsesCompilerSymbolPath(t *testing.T) {
+	pkg := mustTestPackage(t, "example.com/cmd", `package main
+var value uint64
+`)
+	asm := []byte("DATA ·value(SB)/8, $42\nGLOBL ·value(SB),8,$8\n")
+	tr, err := TranslateSourceModuleForPkg(pkg, "main_arm64.s", asm, "windows", "arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tr.Module.Dispose()
+
+	if tr.Module.NamedGlobal("main.value").IsNil() {
+		t.Fatalf("translated main package is missing main.value:\n%s", tr.Module.String())
+	}
+	if !tr.Module.NamedGlobal("example.com/cmd.value").IsNil() {
+		t.Fatalf("translated main package retained module-qualified symbol:\n%s", tr.Module.String())
+	}
+}
+
 func TestTranslateHelperFunctions(t *testing.T) {
 	if got := StripABISuffix("runtime·cmpstring<ABIInternal>"); got != "runtime·cmpstring" {
 		t.Fatalf("StripABISuffix runtime = %q", got)
