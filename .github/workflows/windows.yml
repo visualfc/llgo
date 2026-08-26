@@ -97,7 +97,7 @@ jobs:
             ./internal/build
 
           go test -count=1 -timeout=10m \
-            -run '^(TestNativeToolchain|TestNativeWindows|TestCOFFLTOLevel)$' \
+            -run '^(TestNativeToolchain|TestNativeWindows|TestCOFFLTOLevel|TestUseTargetWindowsSystemClang|TestUseTargetESPClangDownloadError|TestESPClangDownloadWhenNotExists|TestExtractTarXzError)$' \
             -covermode=atomic -coverprofile=coverage-windows-coff-flags.txt \
             ./internal/crosscompile
 

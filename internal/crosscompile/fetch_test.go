@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -54,6 +55,25 @@ func createTestTarGz(t *testing.T, files map[string]string) string {
 
 func createTestTarXz(t *testing.T, files map[string]string) string {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		sourceDir := t.TempDir()
+		for name, content := range files {
+			file := filepath.Join(sourceDir, filepath.FromSlash(name))
+			if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		xzFile := filepath.Join(t.TempDir(), "test.tar.xz")
+		tarCommand := filepath.Join(os.Getenv("SystemRoot"), "System32", "tar.exe")
+		if output, err := exec.Command(tarCommand, "-cJf", xzFile, "-C", sourceDir, ".").CombinedOutput(); err != nil {
+			t.Fatalf("compress test tar.xz: %v: %s", err, strings.TrimSpace(string(output)))
+		}
+		return xzFile
+	}
+
 	tarFile, err := os.CreateTemp("", "test*.tar")
 	if err != nil {
 		t.Fatal(err)
@@ -764,6 +784,16 @@ func TestESPClangDownloadWhenNotExists(t *testing.T) {
 		if string(content) != expectedContent {
 			t.Errorf("File %s: expected content %q, got %q", relativePath, expectedContent, string(content))
 		}
+	}
+}
+
+func TestExtractTarXzError(t *testing.T) {
+	err := extractTarXz(filepath.Join(t.TempDir(), "missing.tar.xz"), t.TempDir())
+	if err == nil {
+		t.Fatal("extractTarXz succeeded for a missing archive")
+	}
+	if !strings.Contains(err.Error(), "tar -xf:") {
+		t.Fatalf("extractTarXz error = %q, want tar command context", err)
 	}
 }
 

@@ -4,7 +4,10 @@
 package crosscompile
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -289,7 +292,8 @@ func TestUseTarget(t *testing.T) {
 			// Check if LLVM target is in CCFLAGS
 			if tc.expectLLVM != "" {
 				found := false
-				expectedFlag := "--target=" + tc.expectLLVM
+				expectedLLVM := clangDriverTargetForHost(runtime.GOOS, tc.expectLLVM, export.BuildTags)
+				expectedFlag := "--target=" + expectedLLVM
 				for _, flag := range export.CCFLAGS {
 					if flag == expectedFlag {
 						found = true
@@ -347,6 +351,72 @@ func TestUseTarget(t *testing.T) {
 			t.Logf("Target %s: BuildTags=%v, CFlags=%v, CCFlags=%v, LDFlags=%v",
 				tc.targetName, export.BuildTags, export.CFLAGS, export.CCFLAGS, export.LDFLAGS)
 		})
+	}
+}
+
+func TestUseTargetWindowsSystemClang(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows host toolchain selection")
+	}
+
+	export, err := UseTarget("rp2040", optlevel.Oz, lto.Thin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if export.CC != "clang++" {
+		t.Fatalf("RP2040 compiler on Windows = %q, want clang++", export.CC)
+	}
+	if export.ClangRoot != "" {
+		t.Fatalf("RP2040 Clang root on Windows = %q, want system toolchain", export.ClangRoot)
+	}
+	if export.Linker != "ld.lld" {
+		t.Fatalf("RP2040 linker on Windows = %q, want ld.lld", export.Linker)
+	}
+}
+
+func TestUseTargetESPClangDownloadError(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(server.Close)
+
+	llgoRoot := t.TempDir()
+	runtimeDir := filepath.Join(llgoRoot, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(runtimeDir, "go.mod"),
+		[]byte("module github.com/xgo-dev/llgo/runtime\n"), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	targetsDir := filepath.Join(llgoRoot, "targets")
+	if err := os.MkdirAll(targetsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(targetsDir, "esp-test.json"),
+		[]byte(`{"llvm-target":"xtensa","cpu":"esp32","build-tags":["esp"]}`), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_ROOT", llgoRoot)
+
+	originalCacheRoot := cacheRoot
+	originalBaseURL := espClangBaseUrl
+	originalWindowsBaseURL := espClangWindowsBaseUrl
+	cacheDir := t.TempDir()
+	cacheRoot = func() string { return cacheDir }
+	espClangBaseUrl = server.URL
+	espClangWindowsBaseUrl = server.URL
+	t.Cleanup(func() {
+		cacheRoot = originalCacheRoot
+		espClangBaseUrl = originalBaseURL
+		espClangWindowsBaseUrl = originalWindowsBaseURL
+	})
+
+	_, err := UseTarget("esp-test", optlevel.Oz, lto.Thin)
+	if err == nil || !strings.Contains(err.Error(), "404 Not Found") {
+		t.Fatalf("UseTarget(esp-test) error = %v, want download 404", err)
 	}
 }
 
