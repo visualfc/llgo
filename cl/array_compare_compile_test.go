@@ -67,6 +67,25 @@ func crossBlock(change bool) bool {
 	}
 	return x == y
 }
+
+type item struct {
+	value byte
+}
+
+func structs() bool {
+	x := [32]item{{value: 1}}
+	y := [32]item{{value: 2}}
+	return x == y
+}
+
+var escaped *[32]byte
+
+func heap() bool {
+	x := [32]byte{1}
+	y := [32]byte{2}
+	escaped = &x
+	return x == y
+}
 `
 	ssaPkg, _, _ := buildGoSSAPkg(t, source)
 	findCompare := func(name string) *ssa.BinOp {
@@ -116,21 +135,43 @@ func crossBlock(change bool) bool {
 		t.Fatal("scalar load was treated as reusable array storage")
 	}
 	immutableLoad := immutable.X.(*ssa.UnOp)
-	refs := immutableLoad.X.Referrers()
-	func() {
+	rejectRef := func(name string, ref ssa.Instruction) {
+		t.Helper()
+		refs := immutableLoad.X.Referrers()
 		original := *refs
 		defer func() { *refs = original }()
-		*refs = append(*refs, &ssa.BinOp{})
+		*refs = append(*refs, ref)
 		if _, ok := immutableLocalArrayLoadAddr(immutable.X); ok {
-			t.Fatal("array with an unknown address use was treated as immutable")
+			t.Fatalf("array with %s was treated as immutable", name)
 		}
-	}()
+	}
+	rejectRef("an unknown address use", &ssa.BinOp{})
+	rejectRef("a foreign field address", &ssa.FieldAddr{})
+	rejectRef("a non-load unary use", &ssa.UnOp{})
+	noReferrers := ssa.NewConst(nil, types.NewPointer(types.Typ[types.Int]))
+	if immutableArrayAddrUses(noReferrers, immutableLoad, make(map[ssa.Value]bool)) {
+		t.Fatal("address without referrer metadata was treated as immutable")
+	}
+	if !immutableArrayAddrUses(noReferrers, immutableLoad, map[ssa.Value]bool{noReferrers: true}) {
+		t.Fatal("previously visited address did not terminate the use walk")
+	}
 	crossBlock := findCompare("crossBlock")
 	if _, ok := immutableLocalArrayLoadAddr(crossBlock.X); ok {
 		t.Fatal("array written from another block was treated as immutable")
 	}
 	if _, ok := immutableLocalArrayLoadAddr(crossBlock.Y); !ok {
 		t.Fatal("unchanged cross-block operand was not recognized")
+	}
+	structs := findCompare("structs")
+	if _, ok := immutableLocalArrayLoadAddr(structs.X); !ok {
+		t.Fatal("immutable struct array with field stores was not recognized")
+	}
+	if _, ok := immutableLocalArrayLoadAddr(structs.Y); !ok {
+		t.Fatal("second immutable struct array with field stores was not recognized")
+	}
+	heap := findCompare("heap")
+	if _, ok := immutableLocalArrayLoadAddr(heap.X); ok {
+		t.Fatal("escaping heap array was treated as reusable local storage")
 	}
 
 	_, mod := mustCompileLLPkgFromSrc(t, source)

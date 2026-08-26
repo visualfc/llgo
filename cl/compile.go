@@ -1753,45 +1753,44 @@ func immutableLocalArrayLoadAddr(v ssa.Value) (ssa.Value, bool) {
 	if !ok || alloc.Heap {
 		return nil, false
 	}
-	seen := make(map[ssa.Value]bool)
-	var immutable func(ssa.Value) bool
-	immutable = func(ptr ssa.Value) bool {
-		if seen[ptr] {
-			return true
-		}
-		seen[ptr] = true
-		refs, available := nonDebugReferrers(ptr)
-		if !available {
-			return false
-		}
-		for _, ref := range refs {
-			switch ref := ref.(type) {
-			case *ssa.IndexAddr:
-				if ref.X != ptr || !immutable(ref) {
-					return false
-				}
-			case *ssa.FieldAddr:
-				if ref.X != ptr || !immutable(ref) {
-					return false
-				}
-			case *ssa.UnOp:
-				if ref.X != ptr || ref.Op != token.MUL {
-					return false
-				}
-			case *ssa.Store:
-				if ref.Addr != ptr || !instructionPrecedes(ref, load) {
-					return false
-				}
-			default:
-				return false
-			}
-		}
-		return true
-	}
-	if !immutable(alloc) {
+	if !immutableArrayAddrUses(alloc, load, make(map[ssa.Value]bool)) {
 		return nil, false
 	}
 	return load.X, true
+}
+
+func immutableArrayAddrUses(ptr ssa.Value, load *ssa.UnOp, seen map[ssa.Value]bool) bool {
+	if seen[ptr] {
+		return true
+	}
+	seen[ptr] = true
+	refs, available := nonDebugReferrers(ptr)
+	if !available {
+		return false
+	}
+	for _, ref := range refs {
+		switch ref := ref.(type) {
+		case *ssa.IndexAddr:
+			if ref.X != ptr || !immutableArrayAddrUses(ref, load, seen) {
+				return false
+			}
+		case *ssa.FieldAddr:
+			if ref.X != ptr || !immutableArrayAddrUses(ref, load, seen) {
+				return false
+			}
+		case *ssa.UnOp:
+			if ref.X != ptr || ref.Op != token.MUL {
+				return false
+			}
+		case *ssa.Store:
+			if ref.Addr != ptr || !instructionPrecedes(ref, load) {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func instructionPrecedes(before, after ssa.Instruction) bool {
