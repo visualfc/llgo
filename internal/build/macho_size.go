@@ -154,7 +154,11 @@ func stripAndSignDarwinLocalsUsing(path string, verbose bool, run darwinSizeComm
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() {
+		if source != nil {
+			_ = source.Close()
+		}
+	}()
 
 	tmp, err := files.createTemp(filepath.Dir(path), "."+filepath.Base(path)+".strip-*")
 	if err != nil {
@@ -171,6 +175,12 @@ func stripAndSignDarwinLocalsUsing(path string, verbose bool, run darwinSizeComm
 	if _, err := io.Copy(tmp, source); err != nil {
 		return err
 	}
+	// Windows does not replace an existing path while that file still has an
+	// open handle. The staged copy no longer needs the original after io.Copy.
+	if err := source.Close(); err != nil {
+		return err
+	}
+	source = nil
 	if err := tmp.Sync(); err != nil {
 		return err
 	}

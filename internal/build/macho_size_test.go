@@ -184,6 +184,10 @@ func TestStripAndSignDarwinLocalsStaging(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		path := newExecutable(t)
+		before, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 		var commands []string
 		run := func(name string, args ...string) ([]byte, error) {
 			commands = append(commands, name)
@@ -206,8 +210,8 @@ func TestStripAndSignDarwinLocalsStaging(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if st.Mode().Perm() != 0o751 {
-			t.Fatalf("final executable mode = %v, want 0751", st.Mode().Perm())
+		if st.Mode().Perm() != before.Mode().Perm() {
+			t.Fatalf("final executable mode = %v, want original %v", st.Mode().Perm(), before.Mode().Perm())
 		}
 	})
 
