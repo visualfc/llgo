@@ -55,7 +55,10 @@ func createTestTarGz(t *testing.T, files map[string]string) string {
 
 func createTestTarXz(t *testing.T, files map[string]string) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
+	_, xzErr := exec.LookPath("xz")
+	if runtime.GOOS == "windows" && xzErr != nil {
+		// Windows CI provides xz through MSYS2. Windows 11's bundled bsdtar is
+		// a fallback for local development VMs that do not install xz separately.
 		sourceDir := t.TempDir()
 		for name, content := range files {
 			file := filepath.Join(sourceDir, filepath.FromSlash(name))
