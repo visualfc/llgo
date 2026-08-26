@@ -27,25 +27,44 @@ cd "${TEMP_DIR}"
 echo "Cloning wasm-micro-runtime ${WAMR_VERSION}..."
 git clone --branch ${WAMR_VERSION} --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git
 
-# Determine platform
-if [[ "$(uname -s)" == "Darwin" ]]; then
-    PLATFORM="darwin"
-elif [[ "$(uname -s)" == "Linux" ]]; then
-    PLATFORM="linux"
-else
-    echo "Unsupported platform: $(uname -s)"
-    exit 1
-fi
+# WAMR's Windows platform sources expect MSVC preprocessing. This compiler
+# choice is only for the host-side iwasm test helper.
+IWASM_NAME="iwasm"
+CMAKE_GENERATOR_ARGS=()
+case "$(uname -s)" in
+    Darwin)
+        PLATFORM="darwin"
+        ;;
+    Linux)
+        PLATFORM="linux"
+        ;;
+    MINGW*|MSYS*|CYGWIN*)
+        PLATFORM="windows"
+        IWASM_NAME="iwasm.exe"
+        CMAKE_GENERATOR_ARGS=(
+            -G "NMake Makefiles"
+            -D CMAKE_C_COMPILER=cl
+            -D CMAKE_CXX_COMPILER=cl
+        )
+        ;;
+    *)
+        echo "Unsupported platform: $(uname -s)"
+        exit 1
+        ;;
+esac
 
 echo "Building for platform: ${PLATFORM}"
 
 mkdir -p wasm-micro-runtime/product-mini/platforms/${PLATFORM}/build
 cd wasm-micro-runtime/product-mini/platforms/${PLATFORM}/build
 
-# Configure with same options as CI
-cmake \
+# The test helper executes Wasm bytecode only, so AOT is unnecessary; LLGo's
+# generated modules require reference-types support.
+cmake "${CMAKE_GENERATOR_ARGS[@]}" \
     -D WAMR_BUILD_EXCE_HANDLING=1 \
+    -D WAMR_BUILD_AOT=0 \
     -D WAMR_BUILD_FAST_INTERP=0 \
+    -D WAMR_BUILD_REF_TYPES=1 \
     -D WAMR_BUILD_SHARED_MEMORY=1 \
     -D WAMR_BUILD_LIB_WASI_THREADS=1 \
     -D WAMR_BUILD_LIB_PTHREAD=1 \
@@ -54,21 +73,21 @@ cmake \
     ..
 
 echo "Compiling iwasm..."
-make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+cmake --build . --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 
 # Copy iwasm to cache directory
 echo "Installing iwasm to ${IWASM_BIN_DIR}..."
-cp iwasm "${IWASM_BIN_DIR}/"
+cp "${IWASM_NAME}" "${IWASM_BIN_DIR}/"
 
 # Cleanup
 cd /
 rm -rf "${TEMP_DIR}"
 
 echo ""
-echo "✓ iwasm successfully built and installed to ${IWASM_BIN_DIR}/iwasm"
+echo "✓ iwasm successfully built and installed to ${IWASM_BIN_DIR}/${IWASM_NAME}"
 echo ""
 echo "To use this iwasm, add to your PATH:"
 echo "  export PATH=\"${IWASM_BIN_DIR}:\$PATH\""
 echo ""
 echo "Or run directly:"
-echo "  ${IWASM_BIN_DIR}/iwasm --version"
+echo "  ${IWASM_BIN_DIR}/${IWASM_NAME} --version"

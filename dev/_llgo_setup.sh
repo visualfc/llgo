@@ -25,12 +25,22 @@ _llgo_require_repo_context() {
 }
 
 _llgo_compute_bin_path() {
-	local gobin
+	local gobin gohostos
+	gohostos="$(cd "${LLGO_ROOT}" && go env GOHOSTOS)"
 	gobin="$(cd "${LLGO_ROOT}" && go env GOBIN)"
 	if [ -z "$gobin" ]; then
 		local gopath_raw
 		gopath_raw="$(cd "${LLGO_ROOT}" && go env GOPATH)"
-		gobin="${gopath_raw%%:*}/bin"
+		if [ "$gohostos" = "windows" ]; then
+			# A drive colon belongs to the path; Windows separates multiple
+			# GOPATH entries with semicolons.
+			gobin="${gopath_raw%%;*}/bin"
+		else
+			gobin="${gopath_raw%%:*}/bin"
+		fi
+	fi
+	if [ "$gohostos" = "windows" ] && command -v cygpath >/dev/null 2>&1; then
+		gobin="$(cygpath -u "$gobin")"
 	fi
 	LLGO_BIN="${gobin}/llgo"
 }

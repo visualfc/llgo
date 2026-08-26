@@ -73,7 +73,11 @@ compare_snapshot() {
     local snapshot_file="$2"
     local actual_file="$3"
 
-    if diff -q "$snapshot_file" "$actual_file" > /dev/null 2>&1; then
+    # Git and native Windows programs may independently choose CRLF or LF.
+    # Compare logical lines so checkout policy does not change cache results.
+    if diff -q \
+        <(sed 's/\r$//' "$snapshot_file") \
+        <(sed 's/\r$//' "$actual_file") > /dev/null 2>&1; then
         echo -e "${GREEN}✓ PASS${NC}: $test_name"
         return 0
     else
@@ -83,7 +87,9 @@ compare_snapshot() {
         echo "Actual:"
         cat "$actual_file"
         echo "Diff:"
-        diff "$snapshot_file" "$actual_file" || true
+        diff \
+            <(sed 's/\r$//' "$snapshot_file") \
+            <(sed 's/\r$//' "$actual_file") || true
         return 1
     fi
 }
@@ -296,6 +302,9 @@ else
 fi
 
 LLGO_IWASM="$LLGO_IWASM_DIR/iwasm"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) LLGO_IWASM+=".exe" ;;
+esac
 
 # Build iwasm if it doesn't exist in llgo cache
 if [ ! -f "$LLGO_IWASM" ]; then
