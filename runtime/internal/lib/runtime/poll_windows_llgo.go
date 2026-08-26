@@ -185,6 +185,10 @@ func windowsPollWait(ctx uintptr, mode int, canceled bool) int {
 			return pollNoError
 		}
 		if canceled {
+			// Match Go's waitCanceled contract: after CancelIoEx, the
+			// operation and its buffers must remain pinned until IOCP reports
+			// the completion. A close or deadline may wake this waiter, but it
+			// must not make the canceled operation return early.
 			pd.cond.Wait(&pd.mu)
 			continue
 		}

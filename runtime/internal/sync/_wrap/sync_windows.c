@@ -11,8 +11,6 @@ typedef void *llgo_srwlock;
 typedef void *llgo_condition_variable;
 typedef void *llgo_init_once;
 
-#pragma comment(lib, "synchronization.lib")
-
 #if defined(_WIN64)
 typedef unsigned long long llgo_size_t;
 #else

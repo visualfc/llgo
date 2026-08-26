@@ -43,6 +43,26 @@ type windowsFaultContext struct {
 	Esp              uint32
 }
 
+const (
+	windowsFaultContextPrefixSize = unsafe.Sizeof(windowsFaultContext{})
+	windowsFaultContextSPOffset   = unsafe.Offsetof(windowsFaultContext{}.Esp)
+	windowsFaultContextFPOffset   = unsafe.Offsetof(windowsFaultContext{}.Ebp)
+	windowsFaultContextPCOffset   = unsafe.Offsetof(windowsFaultContext{}.Eip)
+)
+
+// Keep the locally declared prefix ABI-identical to the control/integer
+// prefix of the Windows 386 CONTEXT record.
+var (
+	_ [200 - windowsFaultContextPrefixSize]byte
+	_ [windowsFaultContextPrefixSize - 200]byte
+	_ [196 - windowsFaultContextSPOffset]byte
+	_ [windowsFaultContextSPOffset - 196]byte
+	_ [180 - windowsFaultContextFPOffset]byte
+	_ [windowsFaultContextFPOffset - 180]byte
+	_ [184 - windowsFaultContextPCOffset]byte
+	_ [windowsFaultContextPCOffset - 184]byte
+)
+
 func (context *windowsFaultContext) faultCallerPC() uintptr {
 	return windowsFaultStackCallerPC(uintptr(context.Esp))
 }
