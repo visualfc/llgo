@@ -304,23 +304,52 @@ func extractTarGz(tarGzFile, dest string) error {
 
 func extractTarXz(tarXzFile, dest string) error {
 	tarCommand := "tar"
+	tarArgs := []string{"-xf", tarXzFile, "-C", dest}
 	if runtime.GOOS == "windows" {
-		// setup-msys2 prepends its POSIX tar.exe to PATH, but this function
-		// passes native C:\... paths from Go. MSYS tar interprets the drive
-		// colon as a remote archive separator and exits 128. Windows' bundled
-		// bsdtar accepts native paths and xz streams directly.
-		if systemRoot := os.Getenv("SystemRoot"); systemRoot != "" {
-			nativeTar := filepath.Join(systemRoot, "System32", "tar.exe")
-			if _, err := os.Stat(nativeTar); err == nil {
-				tarCommand = nativeTar
+		var xzCommand string
+		tarCommand, xzCommand = windowsTarXzTools(
+			os.Getenv("LLGO_MSYS2_LOCATION"), os.Getenv("SystemRoot"),
+		)
+		if xzCommand != "" {
+			// Windows' bundled bsdtar takes more than 25 minutes to unpack the
+			// 2.7 GiB ESP toolchain on hosted runners. MSYS2 GNU tar does it in
+			// about a minute, but needs --force-local for native drive paths.
+			tarArgs = []string{
+				"--force-local",
+				"--use-compress-program=" + filepath.ToSlash(xzCommand),
+				"-xf", filepath.ToSlash(tarXzFile),
+				"-C", filepath.ToSlash(dest),
 			}
 		}
 	}
-	cmd := exec.Command(tarCommand, "-xf", tarXzFile, "-C", dest)
+	cmd := exec.Command(tarCommand, tarArgs...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("tar -xf: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func windowsTarXzTools(msysRoot, systemRoot string) (tarCommand, xzCommand string) {
+	if msysRoot != "" {
+		binDir := filepath.Join(msysRoot, "usr", "bin")
+		msysTar := filepath.Join(binDir, "tar.exe")
+		msysXz := filepath.Join(binDir, "xz.exe")
+		if fileExists(msysTar) && fileExists(msysXz) {
+			return msysTar, msysXz
+		}
+	}
+	if systemRoot != "" {
+		nativeTar := filepath.Join(systemRoot, "System32", "tar.exe")
+		if fileExists(nativeTar) {
+			return nativeTar, ""
+		}
+	}
+	return "tar", ""
+}
+
+func fileExists(name string) bool {
+	_, err := os.Stat(name)
+	return err == nil
 }
 
 func extractZip(zipFile, dest string) error {
