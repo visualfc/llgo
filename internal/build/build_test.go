@@ -1171,6 +1171,9 @@ func TestRunPrintfWithStdioNobuf(t *testing.T) {
 
 func TestTestOutputFileLogic(t *testing.T) {
 	// Test output file path determination logic for test mode
+	outputDir := filepath.Join(t.TempDir(), "output")
+	outputFile := filepath.Join(outputDir, "mytest.test")
+	directoryOutput := outputDir + string(filepath.Separator)
 	tests := []struct {
 		name        string
 		pkgName     string
@@ -1192,10 +1195,10 @@ func TestTestOutputFileLogic(t *testing.T) {
 		{
 			name:        "with -o absolute file path",
 			pkgName:     "mypackage",
-			conf:        &Config{Mode: ModeTest, OutFile: "/tmp/mytest.test", AppExt: ".test"},
+			conf:        &Config{Mode: ModeTest, OutFile: outputFile, AppExt: ".test"},
 			multiPkg:    false,
 			wantBase:    "mytest",
-			wantDir:     "/tmp",
+			wantDir:     outputDir,
 			description: "-o with absolute file path: use specified file",
 		},
 		{
@@ -1210,10 +1213,10 @@ func TestTestOutputFileLogic(t *testing.T) {
 		{
 			name:        "with -o directory",
 			pkgName:     "mypackage.test",
-			conf:        &Config{Mode: ModeTest, OutFile: "/tmp/build/", AppExt: ".test"},
+			conf:        &Config{Mode: ModeTest, OutFile: directoryOutput, AppExt: ".test"},
 			multiPkg:    false,
 			wantBase:    "mypackage.test",
-			wantDir:     "/tmp/build/",
+			wantDir:     directoryOutput,
 			description: "-o with directory: write pkg.test in that directory",
 		},
 		{

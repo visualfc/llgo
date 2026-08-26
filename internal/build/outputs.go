@@ -73,7 +73,8 @@ func determineBaseNameAndDir(pkgName string, conf *Config, multiPkg bool) (baseN
 	case ModeTest:
 		if conf.OutFile != "" {
 			// Handle -o flag for test mode
-			if strings.HasSuffix(conf.OutFile, "/") || isDir(conf.OutFile) {
+			if strings.HasSuffix(conf.OutFile, "/") ||
+				strings.HasSuffix(conf.OutFile, `\`) || isDir(conf.OutFile) {
 				// If OutFile ends in / or is a directory, write pkg.test in that directory
 				// pkgName for test packages already includes .test suffix
 				return pkgName, conf.OutFile
