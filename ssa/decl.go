@@ -17,6 +17,7 @@
 package ssa
 
 import (
+	"fmt"
 	"go/types"
 	"strconv"
 	"strings"
@@ -78,6 +79,7 @@ type Global = *aGlobal
 
 const (
 	moduleZeroName              = "__llgo.moduleZeroSizedAlloc$"
+	moduleMapZeroName           = "__llgo.map.zero"
 	runtimeZeroSizedAllocSymbol = "zeroSizedAlloc"
 )
 
@@ -101,6 +103,42 @@ func (p Package) moduleZeroSizedAlloc(elem Type) Expr {
 		zerobase.SetUnnamedAddr(true)
 	}
 	return Expr{zerobase, p.Prog.Pointer(elem)}
+}
+
+// mapZeroAddr returns the address of a module-local symbol containing at
+// least size zero bytes. The Go compiler passes an equivalent package-local
+// symbol to mapaccess1_fat and mapaccess2_fat for elements larger than
+// runtime.zeroVal.
+func (p Package) mapZeroAddr(size uint64, alignment int) Expr {
+	if size >= 1<<31 {
+		panic(fmt.Sprintf("map elem too big %d", size))
+	}
+	zero := p.mod.NamedGlobal(moduleMapZeroName)
+	if !zero.IsNil() && zero.GlobalValueType().ArrayLength() >= int(size) {
+		if zero.Alignment() < alignment {
+			zero.SetAlignment(alignment)
+		}
+		return Expr{zero, p.Prog.VoidPtr()}
+	}
+
+	oldAlignment := 0
+	if !zero.IsNil() {
+		oldAlignment = zero.Alignment()
+	}
+	typ := llvm.ArrayType(p.Prog.tyInt8(), int(size))
+	next := llvm.AddGlobal(p.mod, typ, "")
+	next.SetInitializer(llvm.ConstNull(typ))
+	next.SetLinkage(llvm.PrivateLinkage)
+	if alignment < oldAlignment {
+		alignment = oldAlignment
+	}
+	next.SetAlignment(alignment)
+	if !zero.IsNil() {
+		zero.ReplaceAllUsesWith(next)
+		zero.EraseFromParentAsGlobal()
+	}
+	next.SetName(moduleMapZeroName)
+	return Expr{next, p.Prog.VoidPtr()}
 }
 
 // setODRLinkage gives multiply emitted definitions the section-group metadata

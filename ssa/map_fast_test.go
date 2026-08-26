@@ -1,10 +1,14 @@
 package ssa
 
 import (
+	"go/importer"
 	"go/token"
 	"go/types"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/xgo-dev/llvm"
 )
 
 func TestMapKeyFastKind(t *testing.T) {
@@ -168,5 +172,57 @@ func TestMapFastRuntimeNames(t *testing.T) {
 		if got := test.kind.deleteName(); got != test.deleteName {
 			t.Errorf("%v delete = %q, want %q", test.kind, got, test.deleteName)
 		}
+	}
+}
+
+func TestLargeMapLookupUsesFatAccessAndPackageZero(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkg := prog.NewPackage("p", "example.com/p")
+
+	buildLookup := func(name string, elem types.Type, commaOK bool) {
+		mapType := types.NewMap(types.Typ[types.Int], elem)
+		params := types.NewTuple(
+			types.NewVar(token.NoPos, nil, "m", mapType),
+			types.NewVar(token.NoPos, nil, "key", types.Typ[types.Int]),
+		)
+		fn := pkg.NewFunc(name, types.NewSignatureType(nil, nil, nil, params, nil, false), InGo)
+		b := fn.MakeBody(1)
+		b.Lookup(fn.Param(0), fn.Param(1), commaOK)
+		b.Return()
+	}
+
+	buildLookup("small", types.NewArray(types.Typ[types.Uint64], 128), false)
+	buildLookup("large", types.NewArray(types.Typ[types.Byte], 2048), false)
+	buildLookup("largeAligned", types.NewArray(types.Typ[types.Uint64], 256), false)
+	buildLookup("largerCommaOK", types.NewArray(types.Typ[types.Byte], 4096), true)
+
+	ir := pkg.String()
+	for _, want := range []string{
+		`@"github.com/xgo-dev/llgo/runtime/internal/runtime.MapAccess1"`,
+		`@"github.com/xgo-dev/llgo/runtime/internal/runtime.MapAccess1Fat"`,
+		`@"github.com/xgo-dev/llgo/runtime/internal/runtime.MapAccess2Fat"`,
+		`@__llgo.map.zero = private global [4096 x i8] zeroinitializer, align 8`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("large map lookup IR missing %q:\n%s", want, ir)
+		}
+	}
+	if strings.Contains(ir, `private global [2048 x i8] zeroinitializer`) {
+		t.Fatalf("package map zero was not grown in place:\n%s", ir)
+	}
+	if got := strings.Count(ir, `ptr @__llgo.map.zero`); got != 3 {
+		t.Fatalf("package map zero use count = %d, want 3:\n%s", got, ir)
+	}
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("large map lookup module is invalid: %v\n%s", err, ir)
 	}
 }

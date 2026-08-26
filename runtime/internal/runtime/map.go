@@ -1439,7 +1439,8 @@ func reflectlite_maplen(h *hmap) int {
 }
 */
 
-const maxZero = 1024 // must match value in reflect/value.go:maxZero cmd/compile/internal/gc/walk.go:zeroValSize
+const maxZero = abi.ZeroValSize
+
 var zeroVal [maxZero]byte
 
 // mapinitnoop is a no-op function known the Go linker; if a given global

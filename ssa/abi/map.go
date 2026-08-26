@@ -24,6 +24,7 @@ const (
 	BUCKETSIZE  = abi.MapBucketCount
 	MAXKEYSIZE  = abi.MapMaxKeyBytes
 	MAXELEMSIZE = abi.MapMaxElemBytes
+	ZeroValSize = abi.ZeroValSize
 )
 
 func makefield(name string, t types.Type) *types.Var {
