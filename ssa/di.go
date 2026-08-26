@@ -215,11 +215,29 @@ func (b diBuilder) createType(name string, ty Type, pos token.Position) DIType {
 			panic(fmt.Errorf("can't create debug info of basic type: %v, %T", ty.RawType(), ty.RawType()))
 		}
 
+		basicName := name
+		if b.prog.Target().effectiveGOOS() == "windows" {
+			switch t.Kind() {
+			case types.Int:
+				basicName = fmt.Sprintf("int%d", b.prog.SizeOf(ty)*8)
+			case types.Uint, types.Uintptr:
+				basicName = fmt.Sprintf("uint%d", b.prog.SizeOf(ty)*8)
+			}
+		}
 		typ = b.di.CreateBasicType(llvm.DIBasicType{
-			Name:       name,
+			Name:       basicName,
 			SizeInBits: b.prog.SizeOf(b.prog.rawType(t)) * 8,
 			Encoding:   encoding,
 		})
+		if basicName != name {
+			typ = b.di.CreateTypedef(llvm.DITypedef{
+				Name:        name,
+				Type:        typ,
+				File:        b.file(pos.Filename).ll,
+				Line:        pos.Line,
+				AlignInBits: uint32(b.prog.sizes.Alignof(t) * 8),
+			})
+		}
 	case *types.Pointer:
 		return b.createPointerType(name, b.prog.rawType(t.Elem()), pos)
 	case *types.Named:
@@ -679,6 +697,14 @@ func (b Builder) di() diBuilder {
 }
 
 func (b Builder) DIParam(variable *types.Var, v Expr, dv DIVar, scope DIScope, pos token.Position, blk BasicBlock) {
+	if b.Prog.Target().effectiveGOOS() == "windows" {
+		if _, ok := v.Type.RawType().Underlying().(*types.Pointer); ok {
+			addr := b.AllocaT(v.Type)
+			b.Store(addr, v)
+			b.DIDeclare(variable, addr, dv, scope, pos, blk)
+			return
+		}
+	}
 	b.DIValue(variable, v, dv, scope, pos, blk)
 }
 

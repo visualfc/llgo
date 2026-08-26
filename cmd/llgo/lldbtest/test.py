@@ -310,6 +310,7 @@ class LLDBDebugger:
         if not self.target:
             raise LLDBTestException(
                 f"Failed to create target for {self.executable_path}")
+        llgo_plugin.configure_target(self.debugger)
 
         target_info = llgo_plugin.inspect_target(self.target)
         if not target_info.supported:

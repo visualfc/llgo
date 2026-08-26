@@ -33,7 +33,10 @@ import (
 	"github.com/xgo-dev/llgo/internal/mockable"
 )
 
-const minimumUpstreamLLDBVersion = 18
+const (
+	minimumUpstreamLLDBVersion = 18
+	configureTargetCommand     = `script llgo_plugin.configure_target(lldb.debugger)`
+)
 
 var (
 	//go:embed llgo_plugin.py
@@ -92,8 +95,9 @@ func run(configuredPath string, args []string, stdin io.Reader, stdout, stderr i
 		return fmt.Errorf("llgo lldb: write plugin: %w", err)
 	}
 
-	lldbArgs := make([]string, 0, len(args)+2)
+	lldbArgs := make([]string, 0, len(args)+4)
 	lldbArgs = append(lldbArgs, "-O", lldbImportCommand(pluginPath))
+	lldbArgs = append(lldbArgs, "-o", configureTargetCommand)
 	lldbArgs = append(lldbArgs, args...)
 
 	command := exec.Command(path, lldbArgs...)

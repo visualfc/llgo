@@ -129,7 +129,7 @@ grep -q __llgo_debugger_marker_v1 "$plugin"
 		t.Fatal(err)
 	}
 	got := string(data)
-	for _, want := range []string{"-O\n", "command script import \"", "--batch\n", "./program\n", "-o\n", "run\n"} {
+	for _, want := range []string{"-O\n", "command script import \"", "-o\n", configureTargetCommand + "\n", "--batch\n", "./program\n", "run\n"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("LLDB arguments %q do not contain %q", got, want)
 		}
@@ -173,6 +173,7 @@ func TestEmbeddedPluginIdentity(t *testing.T) {
 		"__llgo_debugger_marker_v1",
 		"is_llgo_compiler",
 		"inspect_target",
+		"configure_target",
 		"LLGO_DEBUGGER_SCHEMAS",
 		"LLGO_RUNTIME_LAYOUTS",
 		"string_summary",
