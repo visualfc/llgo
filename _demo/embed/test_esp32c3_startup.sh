@@ -77,12 +77,26 @@ run_case_and_compare() {
 }
 
 # Check if esptool is installed. Invoke its Python module so the test does not
-# depend on the platform-specific console-script name.
+# depend on the platform-specific console-script name. Prefer python3 because
+# pip3 may install into a different interpreter than an unversioned python.
+# Fall back to the Windows Python launcher when neither executable owns the
+# installed module.
+ESPTOOL_PYTHON=()
+for python_cmd in python3 python; do
+    if command -v "$python_cmd" > /dev/null 2>&1 && "$python_cmd" -c 'import esptool' &> /dev/null; then
+        ESPTOOL_PYTHON=("$python_cmd")
+        break
+    fi
+done
+if [ ${#ESPTOOL_PYTHON[@]} -eq 0 ] && command -v py > /dev/null 2>&1 && py -3 -c 'import esptool' &> /dev/null; then
+    ESPTOOL_PYTHON=(py -3)
+fi
+
 # esptool is required to parse ESP32-C3 BIN file format and verify
-# that constructor-related data is included in the firmware
-if ! python -c 'import esptool' &> /dev/null; then
+# that constructor-related data is included in the firmware.
+if [ ${#ESPTOOL_PYTHON[@]} -eq 0 ]; then
     echo "✗ FAIL: esptool not found"
-    echo "Please install: python -m pip install esptool==5.1.0"
+    echo "Please install: python3 -m pip install esptool==5.1.0"
     exit 1
 fi
 
@@ -172,7 +186,7 @@ echo "=== Test 3: Verify __init_array_start included in BIN file ==="
 # ESP32-C3 BIN files contain multiple segments with load addresses.
 # We need to verify the __init_array_start address is covered by one segment.
 #
-# Real output from: python -m esptool --chip esp32c3 image_info test.bin
+# Real output from: python3 -m esptool --chip esp32c3 image_info test.bin
 #
 # Segments Information
 # ====================
@@ -194,7 +208,7 @@ echo "=== Test 3: Verify __init_array_start included in BIN file ==="
 #   $5+ = IRAM       (memory type)
 #
 # We extract $2 (length) and $3 (load addr) to verify __init_array_start is within bounds
-if ! BIN_INFO=$(python -m esptool --chip esp32c3 image_info "$TEST_BIN" 2>&1); then
+if ! BIN_INFO=$("${ESPTOOL_PYTHON[@]}" -m esptool --chip esp32c3 image_info "$TEST_BIN" 2>&1); then
     echo "✗ FAIL: esptool failed to parse BIN file"
     echo "$BIN_INFO"
     exit 1
