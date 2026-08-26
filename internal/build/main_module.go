@@ -120,6 +120,10 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 	if cfg.rtInit {
 		rtInit = declareNoArgFunc(mainPkg, rtPkgPath+".init")
 	}
+	var processExit llssa.Function
+	if ctx.buildConf.Goos == "windows" {
+		processExit = declareRuntimeExit(mainPkg, "runtime.exit")
+	}
 
 	var abiInit llssa.Function
 	if cfg.abiInit != 0 {
@@ -174,6 +178,7 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		pyInit:       pyInit,
 		pyFinalize:   pyFinalize,
 		rtInit:       rtInit,
+		processExit:  processExit,
 		abiInit:      abiInit,
 		packageInits: packageInits,
 	})
@@ -291,6 +296,7 @@ type entryFunctions struct {
 	pyInit       llssa.Function
 	pyFinalize   llssa.Function
 	rtInit       llssa.Function
+	processExit  llssa.Function
 	abiInit      llssa.Function
 	packageInits []llssa.Function
 }
@@ -373,6 +379,13 @@ func emitRuntimeMainBody(b llssa.Builder, fns entryFunctions) {
 	if fns.pyFinalize != nil {
 		b.Call(fns.pyFinalize.Expr)
 	}
+	if fns.processExit != nil {
+		// Go terminates the process as soon as main returns, regardless of
+		// other goroutines. On Windows, call runtime.exit (ExitProcess) rather
+		// than returning through CRT teardown, which may wait on runtime-owned
+		// threads and violates that guarantee.
+		b.Call(fns.processExit.Expr, b.Prog.IntVal(0, b.Prog.Int32()))
+	}
 }
 
 func defineStart(pkg llssa.Package, entry llssa.Function, argvType llssa.Type) {
@@ -386,6 +399,11 @@ func defineStart(pkg llssa.Package, entry llssa.Function, argvType llssa.Type) {
 
 func declareNoArgFunc(pkg llssa.Package, name string) llssa.Function {
 	return pkg.NewFunc(name, llssa.NoArgsNoRet, llssa.InC)
+}
+
+func declareRuntimeExit(pkg llssa.Package, name string) llssa.Function {
+	sig := newSignature([]types.Type{types.Typ[types.Int32]}, nil)
+	return pkg.NewFunc(name, sig, llssa.InGo)
 }
 
 // defineRootInitTask exposes the header of the compiler-generated Go init task.

@@ -82,6 +82,25 @@ func TestGenMainModuleExecutable(t *testing.T) {
 	)
 }
 
+func TestGenMainModuleWindowsExitsAfterMain(t *testing.T) {
+	llvm.InitializeAllTargets()
+	ctx := &context{
+		prog: llssa.NewProgram(nil),
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "windows",
+			Goarch:    "arm64",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true})
+	ir := mod.LPkg.String()
+	assertInOrder(t, ir,
+		`call void @"example.com/foo.main"()`,
+		`call void @runtime.exit(i32 0)`,
+	)
+}
+
 func TestPackageInitOrderUsesLexicalReadyPackage(t *testing.T) {
 	newPackage := func(path string, imports ...*packages.Package) *packages.Package {
 		pkg := &packages.Package{ID: path, PkgPath: path, Imports: make(map[string]*packages.Package)}

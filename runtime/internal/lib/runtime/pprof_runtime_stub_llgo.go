@@ -1,4 +1,4 @@
-//go:build darwin || linux || wasm
+//go:build darwin || linux || wasm || windows
 
 package runtime
 

@@ -61,6 +61,9 @@ runs:
           "xz-5.6.3-3"
           "zlib-1.3.1-1"
           "zstd-1.5.6-2"
+          "libuv-1.52.1-1"
+          "gc-8.2.12-1"
+          "libatomic_ops-7.10.0-1"
         )
         urls=()
         for package in "${packages[@]}"; do
@@ -83,6 +86,19 @@ runs:
           installed="$(pacman -Q "$prefix-$package" | awk '{print $2}')"
           if [[ "$installed" != "$package_version" ]]; then
             echo "expected $package $package_version, got $installed" >&2
+            exit 1
+          fi
+        done
+
+        for spec in \
+          "libuv=1.52.1-1" \
+          "gc=8.2.12-1" \
+          "libatomic_ops=7.10.0-1"; do
+          package="${spec%%=*}"
+          expected="${spec#*=}"
+          installed="$(pacman -Q "$prefix-$package" | awk '{print $2}')"
+          if [[ "$installed" != "$expected" ]]; then
+            echo "expected $package $expected, got $installed" >&2
             exit 1
           fi
         done
@@ -111,10 +127,20 @@ runs:
           "Libs: $ldflags" \
           > "$pc_dir/llvm-$llvm_major.pc"
 
+        # setup-msys2 configures its dedicated bash shell, but a later native
+        # PowerShell step would otherwise fall back to Strawberry Perl's
+        # pkg-config and miss the CLANG64 metadata. Export native path
+        # spellings so every caller of this composite action resolves the same
+        # compiler and package database, independent of its shell.
+        mingw_bin="$(cygpath -w "$MINGW_PREFIX/bin")"
+        pc_dir_windows="$(cygpath -w "$pc_dir")"
+        printf '%s\n' "$mingw_bin" >> "$GITHUB_PATH"
+
         {
           echo "CC=clang"
           echo "CXX=clang++"
           echo "CGO_ENABLED=1"
+          echo "PKG_CONFIG_PATH=$pc_dir_windows"
         } >> "$GITHUB_ENV"
 
         if [[ "$(llvm-config --version)" != "$llvm_version" ]]; then

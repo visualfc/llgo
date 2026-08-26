@@ -74,7 +74,7 @@ func TestParseARM(t *testing.T) {
 		{value: "6", want: "6,hardfloat"},
 		{value: "6,softfloat", want: "6,softfloat", wantSoft: true},
 		{value: "7,hardfloat", want: "7,hardfloat"},
-		{value: "7,hardfloat,softfloat", want: "7,softfloat", wantSoft: true},
+		{value: "7,hardfloat,softfloat", want: "7,softfloat", wantSoft: true, wantErr: true},
 		{value: "4", want: "7,hardfloat", wantErr: true},
 		{value: "7,softfloat,hardfloat", want: "7,hardfloat", wantErr: true},
 	} {

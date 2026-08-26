@@ -247,21 +247,28 @@ func TestIsLLGoRoot(t *testing.T) {
 		}
 	})
 
-	// Test with valid path and valid go.mod
-	t.Run("valid path and go.mod", func(t *testing.T) {
-		tmpDir := t.TempDir()
-		runtimeDir := filepath.Join(tmpDir, "runtime")
-		os.MkdirAll(runtimeDir, 0755)
-		goModContent := []byte("module github.com/xgo-dev/llgo/runtime\n")
-		if err := os.WriteFile(filepath.Join(runtimeDir, "go.mod"), goModContent, 0644); err != nil {
-			t.Fatal(err)
-		}
+	for _, test := range []struct {
+		name      string
+		lineBreak string
+	}{
+		{name: "LF", lineBreak: "\n"},
+		{name: "CRLF", lineBreak: "\r\n"},
+	} {
+		t.Run("valid path and go.mod "+test.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			runtimeDir := filepath.Join(tmpDir, "runtime")
+			os.MkdirAll(runtimeDir, 0755)
+			goModContent := []byte("module github.com/xgo-dev/llgo/runtime" + test.lineBreak)
+			if err := os.WriteFile(filepath.Join(runtimeDir, "go.mod"), goModContent, 0644); err != nil {
+				t.Fatal(err)
+			}
 
-		absPath, _ := filepath.Abs(tmpDir)
-		if root, ok := isLLGoRoot(tmpDir); !ok || root != absPath {
-			t.Errorf("isLLGoRoot(valid) = %v, %v, want %v, true", root, ok, absPath)
-		}
-	})
+			absPath, _ := filepath.Abs(tmpDir)
+			if root, ok := isLLGoRoot(tmpDir); !ok || root != absPath {
+				t.Errorf("isLLGoRoot(valid) = %v, %v, want %v, true", root, ok, absPath)
+			}
+		})
+	}
 }
 
 func appendEnv(base []string, overrides ...string) []string {

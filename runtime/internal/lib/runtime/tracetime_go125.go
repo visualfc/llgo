@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	// osHasLowResClockInt is osHasLowResClock but in integer form, so it can be used to create
-	// constants conditionally.
-	osHasLowResClockInt = IsWindows
+	// LLGo normalizes QueryPerformanceCounter to nanoseconds on Windows, so
+	// every hosted target uses the high-resolution nanotime trace path.
+	osHasLowResClockInt = 0
 
 	// osHasLowResClock indicates that timestamps produced by nanotime on the platform have a
 	// low resolution, typically on the order of 1 ms or more.

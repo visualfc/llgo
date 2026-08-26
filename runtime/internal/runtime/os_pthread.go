@@ -1,3 +1,5 @@
+//go:build !windows
+
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
@@ -20,51 +22,23 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/clite/pthread"
+	"github.com/xgo-dev/llgo/runtime/internal/thread"
 )
 
-// mOS is the pthread-specific part of an M.
-type mOS struct {
-	thread pthread.Thread
-}
+// Detached pthreads do not leave a native handle owned by the M.
+type mOS struct{}
 
 // newosproc provides the current host-thread backend for newm.
 func newosproc(mp *m, stackSize uintptr) int {
-	var attr pthread.Attr
-	if ret := initThreadAttr(&attr, stackSize); ret != 0 {
-		return int(ret)
-	}
-	ret := pthread.Create(
-		&mp.os.thread,
-		&attr,
-		pthread.RoutineFunc(mstart),
+	return int(thread.CreateDetached(
+		stackSize,
+		thread.RoutineFunc(mstart),
 		c.Pointer(unsafe.Pointer(mp)),
-	)
-	// Once Create succeeds, mp belongs to the detached thread. A destroy
-	// failure cannot be reported as creation failure without freeing live data.
-	_ = attr.Destroy()
-	return int(ret)
-}
-
-func initThreadAttr(attr *pthread.Attr, stackSize uintptr) c.Int {
-	if ret := attr.Init(); ret != 0 {
-		return ret
-	}
-	if ret := attr.SetDetached(pthread.CreateDetached); ret != 0 {
-		_ = attr.Destroy()
-		return ret
-	}
-	if stackSize != 0 {
-		if ret := attr.SetStackSize(stackSize); ret != 0 {
-			_ = attr.Destroy()
-			return ret
-		}
-	}
-	return 0
+	))
 }
 
 func exitCurrentM() {
 	mp := getg().m
 	mexit(mp)
-	pthread.Exit(nil)
+	thread.Exit()
 }

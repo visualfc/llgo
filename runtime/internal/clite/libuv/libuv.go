@@ -7,11 +7,6 @@ import (
 	"github.com/xgo-dev/llgo/runtime/internal/clite/net"
 )
 
-const (
-	LLGoPackage = "link: $(pkg-config --libs libuv); -luv"
-	LLGoFiles   = "$(pkg-config --cflags libuv): _wrap/libuv.c"
-)
-
 // ----------------------------------------------
 const (
 	RUN_DEFAULT RunMode = iota

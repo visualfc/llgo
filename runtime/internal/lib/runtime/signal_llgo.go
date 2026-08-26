@@ -7,7 +7,7 @@ import (
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 	"github.com/xgo-dev/llgo/runtime/internal/clite/libuv"
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 // Minimal signal support for stdlib os/signal on hosted native targets.

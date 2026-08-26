@@ -6,8 +6,8 @@ import (
 	latomic "sync/atomic"
 	_ "unsafe"
 
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
 	llrt "github.com/xgo-dev/llgo/runtime/internal/runtime"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 type weakHandle struct {

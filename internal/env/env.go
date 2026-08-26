@@ -141,8 +141,11 @@ func isLLGoRoot(root string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
+	// Git's default Windows checkout may use CRLF. Normalize it before
+	// matching the module directive so a valid LLGO_ROOT remains portable.
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 	// Check module name
-	if !strings.Contains(string(data), "module "+LLGoRuntimePkg+"\n") {
+	if !bytes.Contains(data, []byte("module "+LLGoRuntimePkg+"\n")) {
 		return "", false
 	}
 	return root, true

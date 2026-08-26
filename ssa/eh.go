@@ -74,7 +74,14 @@ func (b Builder) AllocaSigjmpBuf() Expr {
 	sigjmpBufTy := prog.rtType("SigjmpBuf") // Get type from runtime (target architecture)
 	n := prog.SizeOf(sigjmpBufTy)           // Get size for target architecture
 	size := prog.IntVal(n, prog.Uintptr())
-	return b.Alloca(size)
+	ret := b.Alloca(size)
+	if prog.target.effectiveGOOS() == "windows" {
+		// UCRT jmp_buf uses up to 16-byte alignment on supported Windows
+		// architectures. CreateArrayAlloca otherwise inherits byte alignment
+		// from its i8 element.
+		ret.impl.SetAlignment(16)
+	}
+	return ret
 }
 
 // declare ptr @llvm.stacksave.p0()
@@ -106,6 +113,9 @@ func (b Builder) Sigsetjmp(jb, savemask Expr) Expr {
 	if b.Prog.target.GOARCH == "wasm" || b.Prog.target.Target != "" {
 		return b.Setjmp(jb)
 	}
+	if b.Prog.target.effectiveGOOS() == "windows" {
+		return b.windowsSetjmp(jb)
+	}
 	fn := b.Pkg.rtFunc("Sigsetjmp")
 	b.addReturnsTwiceAttr(fn)
 	return b.Call(fn, jb, savemask)
@@ -117,9 +127,67 @@ func (b Builder) Siglongjmp(jb, retval Expr) {
 		b.Longjmp(jb, retval)
 		return
 	}
+	if b.Prog.target.effectiveGOOS() == "windows" {
+		b.Longjmp(jb, retval)
+		return
+	}
 	fn := b.Pkg.rtFunc("Siglongjmp") // TODO(xsw): mark as noreturn
 	b.Call(fn, jb, retval)
 	// b.Unreachable()
+}
+
+func (b Builder) windowsSetjmp(jb Expr) Expr {
+	prog := b.Prog
+	ptrParam := types.NewParam(token.NoPos, nil, "", prog.VoidPtr().raw.Type)
+	intResult := types.NewParam(token.NoPos, nil, "", prog.CInt().raw.Type)
+	goarch := prog.target.effectiveGOARCH()
+	var name string
+	var params *types.Tuple
+	var args []Expr
+
+	switch goarch {
+	case "386":
+		name = "_setjmp3"
+		zero := prog.IntVal(0, prog.CInt())
+		params = types.NewTuple(
+			ptrParam,
+			types.NewParam(token.NoPos, nil, "", prog.CInt().raw.Type),
+		)
+		args = []Expr{jb, zero}
+	case "amd64", "arm64":
+		name = "_setjmpex"
+		var frame llvm.Value
+		if goarch == "arm64" {
+			frame = b.impl.CreateIntrinsic(
+				prog.VoidPtr().ll,
+				llvm.LookupIntrinsicID("llvm.sponentry"),
+				nil,
+				"",
+			)
+		} else {
+			zero := prog.IntVal(0, prog.CInt())
+			frame = b.impl.CreateIntrinsic(
+				prog.VoidPtr().ll,
+				llvm.LookupIntrinsicID("llvm.frameaddress"),
+				[]llvm.Value{zero.impl},
+				"",
+			)
+		}
+		params = types.NewTuple(
+			ptrParam,
+			types.NewParam(token.NoPos, nil, "", prog.VoidPtr().raw.Type),
+		)
+		args = []Expr{jb, {frame, prog.VoidPtr()}}
+	default:
+		panic("ssa: unsupported Windows architecture for setjmp: " + goarch)
+	}
+
+	sig := types.NewSignatureType(
+		nil, nil, nil, params, types.NewTuple(intResult), false,
+	)
+	fn := b.Pkg.cFunc(name, sig)
+	b.addReturnsTwiceAttr(fn)
+	return b.Call(fn, args...)
 }
 
 func (b Builder) Setjmp(jb Expr) Expr {

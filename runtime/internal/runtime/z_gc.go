@@ -23,7 +23,7 @@ import (
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 	"github.com/xgo-dev/llgo/runtime/internal/clite/bdwgc"
-	"github.com/xgo-dev/llgo/runtime/internal/clite/sync/atomic"
+	"github.com/xgo-dev/llgo/runtime/internal/sync/atomic"
 )
 
 // AllocU allocates uninitialized memory.

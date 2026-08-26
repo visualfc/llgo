@@ -21,7 +21,7 @@ import (
 
 	"github.com/xgo-dev/llgo/runtime/abi"
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
+	"github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 type eface struct {

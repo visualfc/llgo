@@ -6,9 +6,9 @@ import (
 	"unsafe"
 
 	"github.com/xgo-dev/llgo/runtime/internal/clite/os"
-	"github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
 	"github.com/xgo-dev/llgo/runtime/internal/clite/setjmp"
 	"github.com/xgo-dev/llgo/runtime/internal/clite/time"
+	"github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 func TestOSTypes(t *testing.T) {
@@ -165,30 +165,24 @@ func TestTypeSizes(t *testing.T) {
 	}
 
 	// Sync package size checks
-	onceSize, mutexSize, mutexAttrSize, condSize, condAttrSize, rwlockSize, rwlockAttrSize := getPlatformPthreadSizes()
+	onceSize, mutexSize, mutexAttrSize, condSize, condAttrSize, _, _ := getPlatformPthreadSizes()
 	clockSize := getPlatformClockSizes()
 	sigjmpBufSize, jmpBufSize := getPlatformJmpBufSizes()
 
-	if sync.PthreadOnceSize != onceSize {
-		t.Fatalf("PthreadOnceSize mismatch: %d != %d", sync.PthreadOnceSize, onceSize)
+	if got := unsafe.Sizeof(sync.Once{}); got != uintptr(onceSize) {
+		t.Fatalf("Once size mismatch: %d != %d", got, onceSize)
 	}
-	if sync.PthreadMutexSize != mutexSize {
-		t.Fatalf("PthreadMutexSize mismatch: %d != %d", sync.PthreadMutexSize, mutexSize)
+	if got := unsafe.Sizeof(sync.Mutex{}); got != uintptr(mutexSize) {
+		t.Fatalf("Mutex size mismatch: %d != %d", got, mutexSize)
 	}
-	if sync.PthreadMutexAttrSize != mutexAttrSize {
-		t.Fatalf("PthreadMutexAttrSize mismatch: %d != %d", sync.PthreadMutexAttrSize, mutexAttrSize)
+	if got := unsafe.Sizeof(sync.MutexAttr{}); got != uintptr(mutexAttrSize) {
+		t.Fatalf("MutexAttr size mismatch: %d != %d", got, mutexAttrSize)
 	}
-	if sync.PthreadCondSize != condSize {
-		t.Fatalf("PthreadCondSize mismatch: %d != %d", sync.PthreadCondSize, condSize)
+	if got := unsafe.Sizeof(sync.Cond{}); got != uintptr(condSize) {
+		t.Fatalf("Cond size mismatch: %d != %d", got, condSize)
 	}
-	if sync.PthreadCondAttrSize != condAttrSize {
-		t.Fatalf("PthreadCondAttrSize mismatch: %d != %d", sync.PthreadCondAttrSize, condAttrSize)
-	}
-	if sync.PthreadRWLockSize != rwlockSize {
-		t.Fatalf("PthreadRWLockSize mismatch: %d != %d", sync.PthreadRWLockSize, rwlockSize)
-	}
-	if sync.PthreadRWLockAttrSize != rwlockAttrSize {
-		t.Fatalf("PthreadRWLockAttrSize mismatch: %d != %d", sync.PthreadRWLockAttrSize, rwlockAttrSize)
+	if got := unsafe.Sizeof(sync.CondAttr{}); got != uintptr(condAttrSize) {
+		t.Fatalf("CondAttr size mismatch: %d != %d", got, condAttrSize)
 	}
 	if time.ClockTSize != clockSize {
 		t.Fatalf("ClockSize mismatch: %d != %d", time.ClockTSize, clockSize)

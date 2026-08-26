@@ -20,8 +20,8 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
 	"github.com/xgo-dev/llgo/runtime/internal/runtime/math"
+	"github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 // -----------------------------------------------------------------------------

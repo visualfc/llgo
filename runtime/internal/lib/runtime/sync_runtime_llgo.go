@@ -1,4 +1,4 @@
-//go:build darwin || linux
+//go:build darwin || linux || windows
 
 package runtime
 
@@ -6,7 +6,7 @@ import (
 	_ "sync/atomic"
 	_ "unsafe"
 
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 var poolCleanup func()

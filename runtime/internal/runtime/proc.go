@@ -55,7 +55,7 @@ var sched struct {
 // NewProc creates a new G running fn.
 //
 // The compiler turns a go statement into a call to NewProc. Unlike the old
-// lowering, this ABI contains no pthread types: the selected runtime backend
+// lowering, this ABI contains no host-thread types: the selected runtime backend
 // decides how to provide an M and execute the G.
 func NewProc(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr) {
 	gp := newproc1(fn, arg, getg())
@@ -68,7 +68,7 @@ func NewProc(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr) {
 	}
 }
 
-// newproc1 creates a runnable G and its initial M/P ownership. The pthread
+// newproc1 creates a runnable G and its initial M/P ownership. The host-thread
 // backend starts that G immediately; a future scheduler can enqueue the same G
 // without changing the compiler ABI.
 func newproc1(fn goroutineFunc, arg unsafe.Pointer, callergp *g) *g {

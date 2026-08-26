@@ -7,8 +7,8 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	psync "github.com/xgo-dev/llgo/runtime/internal/clite/pthread/sync"
 	csyscall "github.com/xgo-dev/llgo/runtime/internal/clite/syscall"
+	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
 const (
