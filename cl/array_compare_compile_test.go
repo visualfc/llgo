@@ -109,12 +109,18 @@ func heap() bool {
 	if _, ok := immutableLocalArrayLoadAddr(immutable.Y); !ok {
 		t.Fatal("immutable right array was not recognized")
 	}
+	if !canElideArrayCompareLoad(immutable.X.(*ssa.UnOp)) || !canElideArrayCompareLoad(immutable.Y.(*ssa.UnOp)) {
+		t.Fatal("immutable comparison loads were not eligible for elision")
+	}
 	snapshot := findCompare("snapshot")
 	if _, ok := immutableLocalArrayLoadAddr(snapshot.X); ok {
 		t.Fatal("array changed after its load was treated as immutable")
 	}
 	if _, ok := immutableLocalArrayLoadAddr(snapshot.Y); !ok {
 		t.Fatal("unchanged snapshot operand was not recognized")
+	}
+	if canElideArrayCompareLoad(snapshot.X.(*ssa.UnOp)) || canElideArrayCompareLoad(snapshot.Y.(*ssa.UnOp)) {
+		t.Fatal("comparison without two stable addresses was eligible for load elision")
 	}
 	parameters := findCompare("parameters")
 	if _, ok := immutableLocalArrayLoadAddr(parameters.X); ok {
@@ -134,7 +140,25 @@ func heap() bool {
 	if _, ok := immutableLocalArrayLoadAddr(scalarLoad); ok {
 		t.Fatal("scalar load was treated as reusable array storage")
 	}
+	if canElideArrayCompareLoad(scalarLoad) || canElideArrayCompareLoad(nil) {
+		t.Fatal("non-array load was eligible for array comparison load elision")
+	}
+	small := findCompare("small")
+	if canElideArrayCompareLoad(small.X.(*ssa.UnOp)) {
+		t.Fatal("inline array comparison load was eligible for elision")
+	}
 	immutableLoad := immutable.X.(*ssa.UnOp)
+	loadRefs := immutableLoad.Referrers()
+	originalLoadRefs := append([]ssa.Instruction(nil), (*loadRefs)...)
+	*loadRefs = nil
+	if canElideArrayCompareLoad(immutableLoad) {
+		t.Fatal("array load without executable comparisons was eligible for elision")
+	}
+	*loadRefs = []ssa.Instruction{&ssa.BinOp{Op: token.EQL}}
+	if canElideArrayCompareLoad(immutableLoad) {
+		t.Fatal("unrelated comparison was treated as a use of the array load")
+	}
+	*loadRefs = originalLoadRefs
 	rejectRef := func(name string, ref ssa.Instruction) {
 		t.Helper()
 		refs := immutableLoad.X.Referrers()
@@ -185,6 +209,9 @@ func heap() bool {
 	snapshotIR := mustNamedFunction(t, mod, "foo.snapshot").String()
 	if !strings.Contains(snapshotIR, ".memequal") || !strings.Contains(snapshotIR, "store [32 x i8]") || !strings.Contains(snapshotIR, "stacksave") {
 		t.Fatalf("mutable source did not preserve the loaded array snapshot:\n%s", snapshotIR)
+	}
+	if strings.Contains(immutableIR, "load [32 x i8]") {
+		t.Fatalf("immutable comparison retained unused aggregate loads:\n%s", immutableIR)
 	}
 	smallIR := mustNamedFunction(t, mod, "foo.small").String()
 	if strings.Contains(smallIR, ".memequal") || strings.Contains(smallIR, "stacksave") {

@@ -1332,22 +1332,36 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				break
 			}
 		}
-		x := p.compileValueAs(b, v.X, v.Y.Type())
-		y := p.compileValueAs(b, v.Y, v.X.Type())
 		if typ, ok := v.X.Type().Underlying().(*types.Array); ok && (v.Op == token.EQL || v.Op == token.NEQ) {
 			xaddr, yaddr := llssa.Nil, llssa.Nil
 			if !llssa.CanInlineArrayEqual(typ) {
 				xaddr = p.arrayCompareAddr(b, v.X)
 				yaddr = p.arrayCompareAddr(b, v.Y)
 			}
+			var x, y llssa.Expr
+			if !xaddr.IsNil() && !yaddr.IsNil() {
+				// The runtime helper consumes the proven-stable addresses. Keep
+				// typed placeholders for ArrayBinOp without materializing the
+				// otherwise unused aggregate loads.
+				x = p.prog.Zero(p.type_(v.X.Type(), llssa.InGo))
+				y = p.prog.Zero(p.type_(v.Y.Type(), llssa.InGo))
+			} else {
+				x = p.compileValueAs(b, v.X, v.Y.Type())
+				y = p.compileValueAs(b, v.Y, v.X.Type())
+			}
 			ret = b.ArrayBinOp(v.Op, x, y, xaddr, yaddr)
 		} else {
+			x := p.compileValueAs(b, v.X, v.Y.Type())
+			y := p.compileValueAs(b, v.Y, v.X.Type())
 			ret = b.BinOp(v.Op, x, y)
 		}
 	case *ssa.UnOp:
 		if v.Op == token.MUL {
 			if _, ok := p.methodNilDerefChecks[v]; ok {
 				return p.compileCheckedDeref(b, v)
+			}
+			if canElideArrayCompareLoad(v) {
+				return
 			}
 			effectfulArrayDeref := isEffectfulArrayPointerDeref(v)
 			if refs, ok := nonDebugReferrers(v); ok && len(refs) == 0 {
@@ -1735,6 +1749,46 @@ func (p *context) arrayCompareAddr(b llssa.Builder, v ssa.Value) llssa.Expr {
 		return llssa.Nil
 	}
 	return p.compileValue(b, addr)
+}
+
+// canElideArrayCompareLoad reports whether every executable use of load is a
+// non-inline equality comparison whose two operands can both be read from
+// proven-stable local storage. Such comparisons never consume the aggregate
+// value itself, so generating its load only increases the pre-optimization IR.
+func canElideArrayCompareLoad(load *ssa.UnOp) bool {
+	if load == nil || load.Op != token.MUL {
+		return false
+	}
+	typ, ok := load.Type().Underlying().(*types.Array)
+	if !ok || llssa.CanInlineArrayEqual(typ) {
+		return false
+	}
+	if _, ok := immutableLocalArrayLoadAddr(load); !ok {
+		return false
+	}
+	refs, available := nonDebugReferrers(load)
+	if !available || len(refs) == 0 {
+		return false
+	}
+	for _, ref := range refs {
+		bin, ok := ref.(*ssa.BinOp)
+		if !ok || (bin.Op != token.EQL && bin.Op != token.NEQ) {
+			return false
+		}
+		var other ssa.Value
+		switch {
+		case bin.X == load:
+			other = bin.Y
+		case bin.Y == load:
+			other = bin.X
+		default:
+			return false
+		}
+		if _, ok := immutableLocalArrayLoadAddr(other); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // immutableLocalArrayLoadAddr recognizes array values loaded from a local
