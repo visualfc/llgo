@@ -16,13 +16,23 @@ concurrency:
 
 jobs:
   test:
-    timeout-minutes: 60
+    # The known-good #172 Windows coverage run took about 56 minutes. Leave
+    # room for runner variance and the additional shared-matrix checks without
+    # changing the established Linux/macOS budget.
+    timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 90 || 60 }}
     strategy:
+      fail-fast: false
       matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
-        llvm: [19]
+        include:
+          - os: macos-latest
+            llvm: 19
+            go: "1.26.7"
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.26.7"
+          - os: windows-2022
+            llvm: 19
+            go: "1.26.7"
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -35,6 +45,7 @@ jobs:
         uses: ./.github/actions/setup-embed-deps
 
       - name: Clang information
+        shell: bash
         run: |
           echo $PATH
           which clang
@@ -42,45 +53,79 @@ jobs:
 
       - name: Set up Go
         uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{ matrix.go }}
 
       - name: Install further optional dependencies for demos
-        run: |
-          py_deps=(
-            numpy # for github.com/goplus/lib/py/numpy
-            torch # for github.com/goplus/lib/py/torch
-          )
-          pip3.12 install --break-system-packages "${py_deps[@]}"
-          # Align python3-embed with python-3.12-embed to avoid ABI mismatches.
-          pcdir=$HOME/pc
-          mkdir -p "$pcdir"
-          libdir=$(pkg-config --variable=libdir python-3.12-embed)
-          ln -s "$libdir/pkgconfig/python-3.12-embed.pc" "$pcdir/python3-embed.pc"
-          echo "PKG_CONFIG_PATH=$pcdir:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-          echo "LLGO_FULL_RPATH=true" >> $GITHUB_ENV
+        uses: ./.github/actions/setup-demo-deps
 
       - name: Set LLGO_ROOT
+        shell: bash
         run: echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Build
-        run: go build -v ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build -v ./...
 
-      # Both platforms upload coverage: OS-specific paths (ELF vs Mach-O
-      # emission, per-OS runtime shims) are otherwise invisible to
-      # codecov/patch and fail it on lines only the other OS executes.
-      - name: Test with coverage
-        # 45m: the caller-info acceptance suite (test/go) legitimately grew
-        # the covered run past the old 30m budget on macOS runners.
+      - name: Validate Windows host-only integration
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
           set -euo pipefail
 
+          # Keep the concurrency stress from the former dedicated workflow;
+          # one ordinary package run does not prove mutual exclusion.
+          go test -count=20 -timeout=10m -run 'Lock' ./internal/crosscompile
+
+          # The runtime is a nested module and is therefore outside ./....
+          # These host-side FFI tests still need native Windows coverage.
+          (
+            cd runtime
+            go test -count=1 -timeout=10m \
+              ./internal/ffi ./internal/clite/ffi ./internal/lib/reflect
+            for arch in 386 arm64; do
+              CGO_ENABLED=0 GOOS=windows GOARCH="$arch" go test -c \
+                -o "$RUNNER_TEMP/llgo-ffi-$arch.test.exe" ./internal/ffi
+            done
+          )
+
+          ffi_include="$(pkg-config --variable=includedir libffi)"
+          clang -target x86_64-pc-windows-msvc -I"$ffi_include" -c \
+            runtime/internal/clite/ffi/_wrap/libffi.c \
+            -o "$RUNNER_TEMP/llgo-libffi-amd64.obj"
+          llvm-readobj --file-headers "$RUNNER_TEMP/llgo-libffi-amd64.obj"
+
+      # Every host uploads coverage: OS-specific ELF, Mach-O, and COFF paths
+      # plus per-OS runtime shims are otherwise invisible to codecov/patch.
+      - name: Test with coverage
+        # 45m: the caller-info acceptance suite (test/go) legitimately grew
+        # the covered run past the old 30m budget on macOS runners.
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          go_test=(go test)
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            # Go's internal linker cannot consume every GNU COFF import
+            # archive used by the race runtime and LLVM. Use the configured
+            # Clang driver for the host test binaries instead of excluding
+            # those packages from the shared suite.
+            go_test+=("-ldflags=-linkmode=external -extldflags=-lsynchronization")
+            export LLGO_REQUIRE_MSVC=1
+            export LLGO_STDIO_NOBUF=1
+          fi
+
           # test/go intentionally contains compiler edge cases that make the
-          # Go 1.26.5 printf analyzer panic. Keep the normal go test vet gate
+          # Go 1.26 printf analyzer panic. Keep the normal go test vet gate
           # for every other package, and disable vet only for that package.
           go list ./... \
             | grep -v '^github.com/xgo-dev/llgo/test/go$' \
-            | xargs go test -timeout 45m -coverprofile="coverage-main.txt" -covermode=atomic \
+            | xargs "${go_test[@]}" -timeout 45m -coverprofile="coverage-main.txt" -covermode=atomic \
                 -bench '^BenchmarkGo126' -benchtime=1x
-          go test -timeout 45m -vet=off -coverprofile="coverage-test-go.txt" -covermode=atomic ./test/go
+          "${go_test[@]}" -timeout 45m -vet=off \
+            -coverprofile="coverage-test-go.txt" -covermode=atomic ./test/go
 
           head -n 1 coverage-main.txt > coverage.txt
           tail -n +2 coverage-main.txt >> coverage.txt
@@ -92,6 +137,7 @@ jobs:
         run: go test -v -timeout 60m ./cl -run '^TestRunEmbedEmulator$'
 
       - name: Check std symbol coverage
+        shell: bash
         run: bash doc/_readme/scripts/check_std_cover.sh
 
       - name: Upload coverage reports to Codecov

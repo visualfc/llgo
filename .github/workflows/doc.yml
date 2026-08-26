@@ -53,6 +53,7 @@ jobs:
         os:
           - macos-latest
           - ubuntu-latest
+          - windows-2022
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -74,10 +75,28 @@ jobs:
           set -x
           source doc/_readme/scripts/install_ubuntu.sh
 
+      - name: Set up Python 3.12 on Windows
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies on Windows
+        if: startsWith(matrix.os, 'windows')
+        uses: ./.github/actions/setup-deps
+
       - name: Install llgo with tools
+        shell: bash
         run: |
           set -e
           set -x
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            python_lib=$(python -c 'import os, sys; print(os.path.join(sys.base_prefix, "libs", f"python{sys.version_info.major}{sys.version_info.minor}"))')
+            export LLGO_LIB_PYTHON="$python_lib"
+            export LLGO_STDIO_NOBUF=1
+            echo "LLGO_LIB_PYTHON=$LLGO_LIB_PYTHON" >> "$GITHUB_ENV"
+            echo "LLGO_STDIO_NOBUF=$LLGO_STDIO_NOBUF" >> "$GITHUB_ENV"
+          fi
           git() {
             if [ "$1" = "clone" ]; then
               # do nothing because we already have the branch
@@ -90,6 +109,7 @@ jobs:
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Test doc code blocks
+        shell: bash
         run: |
           set -e
           set -x
@@ -102,6 +122,7 @@ jobs:
         os:
           - macos-latest
           - ubuntu-latest
+          - windows-2022
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -124,10 +145,28 @@ jobs:
           source doc/_readme/scripts/install_ubuntu.sh
           echo "PATH=/usr/lib/llvm-19/bin:$PATH" >> $GITHUB_ENV
 
+      - name: Set up Python 3.12 on Windows
+        if: startsWith(matrix.os, 'windows')
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies on Windows
+        if: startsWith(matrix.os, 'windows')
+        uses: ./.github/actions/setup-deps
+
       - name: Install llgo with tools
+        shell: bash
         run: |
           set -e
           set -x
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            python_lib=$(python -c 'import os, sys; print(os.path.join(sys.base_prefix, "libs", f"python{sys.version_info.major}{sys.version_info.minor}"))')
+            export LLGO_LIB_PYTHON="$python_lib"
+            export LLGO_STDIO_NOBUF=1
+            echo "LLGO_LIB_PYTHON=$LLGO_LIB_PYTHON" >> "$GITHUB_ENV"
+            echo "LLGO_STDIO_NOBUF=$LLGO_STDIO_NOBUF" >> "$GITHUB_ENV"
+          fi
           git() {
             if [ "$1" = "clone" ]; then
               # do nothing because we already have the branch
@@ -140,6 +179,7 @@ jobs:
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Test doc code blocks
+        shell: bash
         run: |
           set -e
           set -x

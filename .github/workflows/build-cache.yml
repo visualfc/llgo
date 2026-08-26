@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-2022]
         llvm: [19]
     runs-on: ${{matrix.os}}
     steps:
@@ -34,26 +34,11 @@ jobs:
         uses: ./.github/actions/setup-go
 
       - name: Install wamr (for wasm tests)
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          git clone --branch WAMR-2.4.4 --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git
-          mkdir wasm-micro-runtime/product-mini/platforms/darwin/build
-          cd wasm-micro-runtime/product-mini/platforms/darwin/build
-          cmake -D WAMR_BUILD_EXCE_HANDLING=1 -D WAMR_BUILD_FAST_INTERP=0 -DWAMR_BUILD_SHARED_MEMORY=1 -DWAMR_BUILD_LIB_WASI_THREADS=1 -DWAMR_BUILD_LIB_PTHREAD=1 -DCMAKE_BUILD_TYPE=Debug -DWAMR_BUILD_DEBUG_INTERP=1 ..
-          make -j8
-          echo "$PWD" >> $GITHUB_PATH
-
-      - name: Install wamr (for wasm tests on Linux)
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-          git clone --branch WAMR-2.4.4 --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git
-          mkdir wasm-micro-runtime/product-mini/platforms/linux/build
-          cd wasm-micro-runtime/product-mini/platforms/linux/build
-          cmake -D WAMR_BUILD_EXCE_HANDLING=1 -D WAMR_BUILD_FAST_INTERP=0 -DWAMR_BUILD_SHARED_MEMORY=1 -DWAMR_BUILD_LIB_WASI_THREADS=1 -DWAMR_BUILD_LIB_PTHREAD=1 -DCMAKE_BUILD_TYPE=Debug -DWAMR_BUILD_DEBUG_INTERP=1 ..
-          make -j8
-          echo "$PWD" >> $GITHUB_PATH
+        shell: bash
+        run: bash dev/build_iwasm.sh
 
       - name: Install llgo (dev mode)
+        shell: bash
         run: |
           go install -tags=dev ./cmd/llgo
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
@@ -63,4 +48,5 @@ jobs:
         run: pip3 install --break-system-packages esptool==5.1.0
 
       - name: Run build cache tests
+        shell: bash
         run: bash test/buildcache/test.sh
