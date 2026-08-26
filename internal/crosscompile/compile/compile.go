@@ -101,8 +101,10 @@ func (g CompileGroup) Compile(
 	cmd := exec.Command(llvmAr, "rcs", archive, "@"+responseFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err = cmd.Run()
-	return
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf("llvm-ar rcs %s: %w", archive, err)
+	}
+	return nil
 }
 
 func writeArchiveResponseFile(dir string, objFiles []string) (string, error) {

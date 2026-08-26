@@ -116,6 +116,9 @@ func TestResolveMSVCImportLibraries(t *testing.T) {
 		}
 	}
 	args := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", "-lclang", "-lnative", "-lmissing", "-l:exact.a"}
+	// Keep -lnative because the MSVC driver resolves it as native.lib across
+	// the complete search path, even though an earlier directory contains the
+	// GNU-only libnative.dll.a spelling.
 	want := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", clangImport, "-lnative", "-lmissing", "-l:exact.a"}
 	if got := resolveMSVCImportLibraries(root, args); !slices.Equal(got, want) {
 		t.Fatalf("resolved libraries = %q, want %q", got, want)

@@ -30,8 +30,8 @@ func TestESPClangHostDownload(t *testing.T) {
 	}{
 		{"darwin", "arm64", "aarch64-apple-darwin", espClangVersion},
 		{"linux", "amd64", "x86_64-linux-gnu", espClangVersion},
-		{"windows", "amd64", "x86_64-w64-mingw32", espClangWindowsVersion},
-		{"windows", "arm64", "x86_64-w64-mingw32", espClangWindowsVersion},
+		{"windows", "amd64", espClangWindowsPlatform, espClangWindowsVersion},
+		{"windows", "arm64", espClangWindowsPlatform, espClangWindowsVersion},
 	}
 	for _, test := range tests {
 		platform := getESPClangPlatform(test.goos, test.goarch)

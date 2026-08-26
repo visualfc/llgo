@@ -245,6 +245,21 @@ func TestWriteArchiveResponseFile(t *testing.T) {
 	})
 }
 
+func TestCompileArchiveErrorIncludesContext(t *testing.T) {
+	outputDir := t.TempDir()
+	group := CompileGroup{OutputFileName: "broken.a"}
+	err := group.Compile(outputDir, CompileOptions{
+		CC: filepath.Join(t.TempDir(), "missing-clang"),
+	})
+	if err == nil {
+		t.Fatal("Compile succeeded without llvm-ar")
+	}
+	want := "llvm-ar rcs " + filepath.Join(outputDir, group.OutputFileName)
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Compile error = %q, want context %q", err, want)
+	}
+}
+
 func TestLibConfig_String(t *testing.T) {
 	tests := []struct {
 		name     string

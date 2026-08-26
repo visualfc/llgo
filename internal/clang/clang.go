@@ -129,9 +129,11 @@ func (c *Cmd) Link(args ...string) error {
 }
 
 // resolveMSVCImportLibraries lets clang's MSVC driver consume GNU-named COFF
-// import archives installed by environments such as MSYS2. Prefer name.lib
-// anywhere on the explicit search path; only replace -lname when
-// libname.dll.a is the sole available spelling.
+// import archives installed by environments such as MSYS2. The driver lowers
+// -lname to name.lib and lets the linker search every -L directory for that
+// exact spelling; it does not probe libname.dll.a per directory. Preserve that
+// behavior by preferring name.lib anywhere on the explicit search path, and
+// only replace -lname when libname.dll.a is the sole available spelling.
 func resolveMSVCImportLibraries(baseDir string, args []string) []string {
 	if !slices.ContainsFunc(args, func(arg string) bool {
 		return strings.Contains(arg, "-windows-msvc")

@@ -159,6 +159,8 @@ var (
 	espClangWindowsVersion = "19.1.2_20250312"
 )
 
+const espClangWindowsPlatform = "x86_64-w64-mingw32"
+
 // cacheRoot can be overridden for testing
 var cacheRoot = env.LLGoCacheDir
 
@@ -271,14 +273,14 @@ func getESPClangPlatform(goos, goarch string) string {
 		case "amd64", "arm64":
 			// Espressif publishes an x86-64 Windows host toolchain. Windows on
 			// ARM64 runs it through the system's x64 emulation layer.
-			return "x86_64-w64-mingw32"
+			return espClangWindowsPlatform
 		}
 	}
 	return ""
 }
 
 func espClangDownload(platformSuffix string) (baseURL, version string) {
-	if platformSuffix == "x86_64-w64-mingw32" {
+	if platformSuffix == espClangWindowsPlatform {
 		// The LLGo-hosted 20250905 build does not publish a Windows archive.
 		// Use Espressif's official LLVM 19 Windows build instead of constructing
 		// a URL that can only return 404.

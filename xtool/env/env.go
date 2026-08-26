@@ -112,6 +112,7 @@ func lookPathInEnvironment(name, dir string, environ []string) string {
 	if strings.ContainsRune(name, filepath.Separator) {
 		return name
 	}
+	extensions := windowsExecutableExtensions(name, environ)
 	path := ""
 	prefix := "PATH="
 	for i := len(environ) - 1; i >= 0; i-- {
@@ -128,18 +129,25 @@ func lookPathInEnvironment(name, dir string, environ []string) string {
 			entry = filepath.Join(dir, entry)
 		}
 		candidate := filepath.Join(entry, name)
-		for _, path := range executableCandidates(candidate, environ) {
-			if info, err := os.Stat(path); err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
-				return path
+		if extensions == nil {
+			if isExecutableFile(candidate) {
+				return candidate
+			}
+			continue
+		}
+		for _, extension := range extensions {
+			candidateWithExtension := candidate + extension
+			if isExecutableFile(candidateWithExtension) {
+				return candidateWithExtension
 			}
 		}
 	}
 	return name
 }
 
-func executableCandidates(path string, environ []string) []string {
-	if runtime.GOOS != "windows" || filepath.Ext(path) != "" {
-		return []string{path}
+func windowsExecutableExtensions(name string, environ []string) []string {
+	if runtime.GOOS != "windows" || filepath.Ext(name) != "" {
+		return nil
 	}
 	extensions := ".COM;.EXE;.BAT;.CMD"
 	for i := len(environ) - 1; i >= 0; i-- {
@@ -149,13 +157,18 @@ func executableCandidates(path string, environ []string) []string {
 			break
 		}
 	}
-	paths := make([]string, 0, 4)
+	exts := make([]string, 0, 4)
 	for _, ext := range filepath.SplitList(extensions) {
 		if ext != "" {
-			paths = append(paths, path+ext)
+			exts = append(exts, ext)
 		}
 	}
-	return paths
+	return exts
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0)
 }
 
 func parseSubcmd(s string) []string {

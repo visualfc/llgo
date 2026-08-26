@@ -90,6 +90,23 @@ func TestLookPathInEnvironmentBoundaries(t *testing.T) {
 	if got := lookPathInEnvironment("missing-tool", dir, []string{"PATH=" + t.TempDir()}); got != "missing-tool" {
 		t.Fatalf("lookPathInEnvironment missing tool = %q", got)
 	}
+	if runtime.GOOS == "windows" {
+		customName := "custom-tool"
+		customTool := filepath.Join(dir, customName+".LLGO")
+		if err := os.WriteFile(customTool, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got := lookPathInEnvironment(customName, dir, []string{
+			"PATH=" + dir,
+			"PATHEXT=.EXE",
+			"pathext=.LLGO",
+		})
+		gotInfo, gotErr := os.Stat(got)
+		wantInfo, wantErr := os.Stat(customTool)
+		if gotErr != nil || wantErr != nil || !os.SameFile(gotInfo, wantInfo) {
+			t.Fatalf("lookPathInEnvironment with PATHEXT = %q, want same file as %q", got, customTool)
+		}
+	}
 	if got := ExpandEnvToArgsWith("$LLGO_ENV_MISSING", dir, []string{"PATH=" + dir}); got != nil {
 		t.Fatalf("missing explicit environment variable = %q, want nil", got)
 	}
