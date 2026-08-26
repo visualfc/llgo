@@ -547,6 +547,89 @@ func TestCompilePackageModuleLowersWindowsCgoImportPointer(t *testing.T) {
 	}
 }
 
+func TestCompilePackageModuleReportsWindowsCgoImportError(t *testing.T) {
+	gllvm.InitializeAllTargets()
+	gllvm.InitializeAllTargetMCs()
+	gllvm.InitializeAllTargetInfos()
+
+	target := &llssa.Target{GOOS: "windows", GOARCH: "amd64"}
+	prog := llssa.NewProgram(target)
+	defer prog.Dispose()
+	lpkg := prog.NewPackage("syscall", "syscall")
+	ptrType := gllvm.PointerType(lpkg.Module().Context().Int8Type(), 0)
+	gllvm.AddGlobal(lpkg.Module(), ptrType, "syscall.value")
+	file, err := parser.ParseFile(token.NewFileSet(), "dll_windows.go", `package syscall
+//go:cgo_import_dynamic syscall.value Value%bad "kernel32.dll"
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := &Config{
+		Goos:    "windows",
+		Goarch:  "amd64",
+		AbiMode: cabi.ModeAllFunc,
+	}
+	ctx := &context{
+		prog:         prog,
+		mode:         ModeGen,
+		buildConf:    conf,
+		cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", conf.AbiMode, true),
+	}
+	pkg := &aPackage{
+		Package: &packages.Package{PkgPath: "syscall", Syntax: []*ast.File{file}},
+		LPkg:    lpkg,
+	}
+	err = compilePackageModule(ctx, pkg, nil, false)
+	if err == nil || !strings.Contains(err.Error(), "invalid go:cgo_import_dynamic alias") {
+		t.Fatalf("compilePackageModule error = %v, want invalid dynamic-import alias", err)
+	}
+}
+
+func TestCompilePackageModulePropagatesSFileErrors(t *testing.T) {
+	gllvm.InitializeAllTargets()
+	gllvm.InitializeAllTargetMCs()
+	gllvm.InitializeAllTargetInfos()
+
+	for _, withAltPkg := range []bool{false, true} {
+		name := "package"
+		if withAltPkg {
+			name = "alternate package"
+		}
+		t.Run(name, func(t *testing.T) {
+			target := &llssa.Target{GOOS: "linux", GOARCH: "amd64"}
+			prog := llssa.NewProgram(target)
+			defer prog.Dispose()
+			lpkg := prog.NewPackage("example.com/p", "example.com/p")
+			conf := &Config{
+				Goos:    "linux",
+				Goarch:  "amd64",
+				AbiMode: cabi.ModeAllFunc,
+			}
+			ctx := &context{
+				prog:         prog,
+				mode:         ModeBuild,
+				buildConf:    conf,
+				sfilesFrozen: true,
+				cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", conf.AbiMode, true),
+			}
+			pkg := &aPackage{
+				Package: &packages.Package{ID: "example.com/p", PkgPath: "example.com/p"},
+				LPkg:    lpkg,
+			}
+			if withAltPkg {
+				pkg.AltPkg = &packages.Cached{Package: &packages.Package{
+					ID:      "example.com/p.alt",
+					PkgPath: "example.com/p.alt",
+				}}
+			}
+			err := compilePackageModule(ctx, pkg, nil, false)
+			if err == nil || !strings.Contains(err.Error(), "assembly files were not prepared") {
+				t.Fatalf("compilePackageModule error = %v, want frozen SFiles error", err)
+			}
+		})
+	}
+}
+
 func TestLowerWindowsCgoImportPointerErrors(t *testing.T) {
 	parse := func(t *testing.T, src string) *ast.File {
 		t.Helper()
