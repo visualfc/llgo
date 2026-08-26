@@ -26,7 +26,15 @@ typedef unsigned int llgo_size_t;
 __declspec(dllimport) void LLGO_WINAPI
 AcquireSRWLockExclusive(llgo_srwlock *lock);
 __declspec(dllimport) void LLGO_WINAPI
+AcquireSRWLockShared(llgo_srwlock *lock);
+__declspec(dllimport) void LLGO_WINAPI
 ReleaseSRWLockExclusive(llgo_srwlock *lock);
+__declspec(dllimport) void LLGO_WINAPI
+ReleaseSRWLockShared(llgo_srwlock *lock);
+__declspec(dllimport) unsigned char LLGO_WINAPI
+TryAcquireSRWLockExclusive(llgo_srwlock *lock);
+__declspec(dllimport) unsigned char LLGO_WINAPI
+TryAcquireSRWLockShared(llgo_srwlock *lock);
 
 __declspec(dllimport) void LLGO_WINAPI
 WakeConditionVariable(llgo_condition_variable *condition);
@@ -58,6 +66,7 @@ __declspec(dllimport) llgo_dword LLGO_WINAPI GetLastError(void);
 #define LLGO_INFINITE ((llgo_dword)0xffffffffUL)
 
 enum {
+    llgo_error_busy = 16,
     llgo_error_invalid_parameter = 22,
     llgo_error_timeout = 1460,
     llgo_timedout = 110,
@@ -94,6 +103,46 @@ void llgo_win_mutex_lock(llgo_srwlock *lock)
 }
 
 void llgo_win_mutex_unlock(llgo_srwlock *lock)
+{
+    ReleaseSRWLockExclusive(lock);
+}
+
+/*
+ * github.com/goplus/lib/c/pthread/sync uses the same SRWLOCK layout as the
+ * runtime. Keep its extended mutex and rwlock entry points in this object so
+ * an LLGo process has one native synchronization backend instead of two.
+ */
+int llgo_win_mutex_trylock(llgo_srwlock *lock)
+{
+    return TryAcquireSRWLockExclusive(lock) ? 0 : llgo_error_busy;
+}
+
+void llgo_win_rwlock_rlock(llgo_srwlock *lock)
+{
+    AcquireSRWLockShared(lock);
+}
+
+int llgo_win_rwlock_tryrlock(llgo_srwlock *lock)
+{
+    return TryAcquireSRWLockShared(lock) ? 0 : llgo_error_busy;
+}
+
+void llgo_win_rwlock_runlock(llgo_srwlock *lock)
+{
+    ReleaseSRWLockShared(lock);
+}
+
+void llgo_win_rwlock_lock(llgo_srwlock *lock)
+{
+    AcquireSRWLockExclusive(lock);
+}
+
+int llgo_win_rwlock_trylock(llgo_srwlock *lock)
+{
+    return TryAcquireSRWLockExclusive(lock) ? 0 : llgo_error_busy;
+}
+
+void llgo_win_rwlock_unlock(llgo_srwlock *lock)
 {
     ReleaseSRWLockExclusive(lock);
 }

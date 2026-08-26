@@ -14,4 +14,5 @@ class Callback : public ICalc, public IVal {
 
 extern "C" void f(Callback* cb) {
 	printf("val: %d\ncalc(2): %lf\n", cb->val(), cb->calc(2));
+	fflush(stdout);
 }

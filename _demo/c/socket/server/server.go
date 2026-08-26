@@ -5,14 +5,16 @@ import (
 
 	"github.com/goplus/lib/c"
 	"github.com/goplus/lib/c/net"
-	"github.com/goplus/lib/c/os"
 )
 
 func main() {
 	var buffer [256]c.Char
 
 	sockfd := net.Socket(net.AF_INET, net.SOCK_STREAM, 0)
-	defer os.Close(sockfd)
+	if sockfd == net.InvalidSocket {
+		panic("socket failed")
+	}
+	defer net.Close(sockfd)
 
 	servAddr := &net.SockaddrIn{
 		Family: net.AF_INET,
@@ -20,24 +22,29 @@ func main() {
 		Addr:   net.InAddr{Addr: 0x00000000},
 		Zero:   [8]c.Char{0, 0, 0, 0, 0, 0, 0, 0},
 	}
-	if res := net.Bind(sockfd, servAddr, c.Uint(unsafe.Sizeof(*servAddr))); res < 0 {
-		c.Perror(c.Str("bind error"))
-		return
+	if res := net.Bind(sockfd, servAddr, net.SocklenT(unsafe.Sizeof(*servAddr))); res < 0 {
+		panic("bind failed")
 	}
 
 	if net.Listen(sockfd, 5) < 0 {
-		c.Printf(c.Str("listen error"))
-		return
+		panic("listen failed")
 	}
 	c.Printf(c.Str("Listening on port 1234...\n"))
+	c.Fflush(c.Stdout)
 
-	cliAddr, clilen := &net.SockaddrIn{}, c.Uint(unsafe.Sizeof(servAddr))
+	cliAddr := &net.SockaddrIn{}
+	clilen := net.SocklenT(unsafe.Sizeof(*cliAddr))
 
 	newsockfd := net.Accept(sockfd, cliAddr, &clilen)
-	defer os.Close(newsockfd)
-	c.Printf(c.Str("Connection accepted."))
-
-	os.Read(newsockfd, unsafe.Pointer(unsafe.SliceData(buffer[:])), 256)
-	c.Printf(c.Str("Received: %s"), &buffer[0])
-
+	if newsockfd == net.InvalidSocket {
+		panic("accept failed")
+	}
+	defer net.Close(newsockfd)
+	count := net.Recv(newsockfd, unsafe.Pointer(unsafe.SliceData(buffer[:])), uintptr(len(buffer)-1), 0)
+	if count <= 0 {
+		panic("receive failed")
+	}
+	buffer[int(count)] = 0
+	c.Printf(c.Str("Connection accepted.\nReceived: %s\n"), &buffer[0])
+	c.Fflush(c.Stdout)
 }

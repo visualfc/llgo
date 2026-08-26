@@ -17,21 +17,40 @@ LLGOFLAGS ?=
 
 # Platform detection
 UNAME_S := $(shell uname -s)
+WINDOWS := $(filter MINGW% MSYS% CYGWIN%,$(UNAME_S))
+SHARED_LINK_FLAGS = -L.. -lexport
 ifeq ($(UNAME_S),Darwin)
     SHARED_EXT = dylib
     PLATFORM_LIBS =
+else ifneq ($(WINDOWS),)
+    SHARED_EXT = dll
+    GOARCH = $(shell go env GOARCH)
+    MSVC_TARGET_386 = i686-pc-windows-msvc
+    MSVC_TARGET_amd64 = x86_64-pc-windows-msvc
+    MSVC_TARGET_arm64 = aarch64-pc-windows-msvc
+    CFLAGS += --target=$(MSVC_TARGET_$(GOARCH)) -Wl,/debug:dwarf
+    SHARED_LINK_FLAGS = ../libexport.lib
+    PLATFORM_LIBS = -lsynchronization -lws2_32
+    MSYS2_LIB_DIR = $(shell pkg-config --variable=libdir bdw-gc)
+    LIBUV_SYSTEM_LIBS = $(filter-out -L% -luv,$(shell pkg-config --libs libuv))
+    # Keep the C consumer on LLGo's MSVC ABI. lld-link accepts these controlled
+    # MSYS2 import archives by path; -l would search for incompatible names.
+    RUNTIME_LIBS = "$(MSYS2_LIB_DIR)/libgc.dll.a" "$(MSYS2_LIB_DIR)/libuv.dll.a" $(LIBUV_SYSTEM_LIBS)
+    STATIC_STDLIB_LIBS = "$(MSYS2_LIB_DIR)/libffi.dll.a"
 else
     SHARED_EXT = so
     PLATFORM_LIBS = $(shell pkg-config --libs libunwind 2>/dev/null || echo -lunwind)
 endif
-STATIC_STDLIB_LIBS = $(shell pkg-config --libs libffi 2>/dev/null || echo -lffi) -lresolv
+ifeq ($(WINDOWS),)
+    STATIC_STDLIB_LIBS = $(shell pkg-config --libs libffi 2>/dev/null || echo -lffi) -lresolv
+endif
 
 # Library and flags based on link type
 ifeq ($(LINK_TYPE),shared)
     BUILDMODE = c-shared
     OUTPUT = libexport.$(SHARED_EXT)
     LIBRARY = ../$(OUTPUT)
-    LDFLAGS = -L.. -lexport $(RUNTIME_LIBS) $(PLATFORM_LIBS)
+    LDFLAGS = $(SHARED_LINK_FLAGS) $(RUNTIME_LIBS) $(PLATFORM_LIBS)
     BUILD_MSG = "Building Go shared library..."
     LINK_MSG = "Linking with shared library..."
 else
@@ -62,7 +81,11 @@ run: $(TARGET)
 	@echo "Running C demo..."
 ifeq ($(LINK_TYPE),shared)
 	@echo "Setting library path for shared library..."
+ifneq ($(WINDOWS),)
+	PATH=..:$$PATH ./$(TARGET)
+else
 	LD_LIBRARY_PATH=.. DYLD_LIBRARY_PATH=.. ./$(TARGET)
+endif
 else
 	./$(TARGET)
 endif
@@ -70,7 +93,7 @@ endif
 # Clean build artifacts
 clean:
 	rm -f $(TARGET)
-	rm -f ../libexport.a ../libexport.h ../libexport.so ../libexport.dylib
+	rm -f ../libexport.a ../libexport.h ../libexport.so ../libexport.dylib ../libexport.dll ../libexport.lib
 
 # Help target
 help:

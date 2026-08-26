@@ -14,7 +14,13 @@ func main() {
 	port := "80"
 
 	var result *net.AddrInfo
-	c.Printf(c.Str("%d\n"), net.Getaddrinfo(c.Str(host), c.Str(port), &hints, &result))
-
-	c.Printf(c.Str("%d\n"), net.Freeaddrinfo(result))
+	if resultCode := net.Getaddrinfo(c.Str(host), c.Str(port), &hints, &result); resultCode != 0 {
+		panic("getaddrinfo failed")
+	}
+	if result == nil {
+		panic("getaddrinfo returned no addresses")
+	}
+	net.Freeaddrinfo(result)
+	c.Printf(c.Str("resolved %s:%s\n"), c.Str(host), c.Str(port))
+	c.Fflush(c.Stdout)
 }
