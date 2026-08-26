@@ -20,6 +20,7 @@ package cl
 
 import (
 	"go/token"
+	"go/types"
 	"strings"
 	"testing"
 
@@ -49,6 +50,23 @@ func small() bool {
 	y := [4]byte{2}
 	return x == y
 }
+
+func parameters(x, y [32]byte) bool {
+	return x == y
+}
+
+func scalar(p *int) int {
+	return *p
+}
+
+func crossBlock(change bool) bool {
+	x := [32]byte{1}
+	y := [32]byte{2}
+	if change {
+		x[0] = 3
+	}
+	return x == y
+}
 `
 	ssaPkg, _, _ := buildGoSSAPkg(t, source)
 	findCompare := func(name string) *ssa.BinOp {
@@ -56,7 +74,9 @@ func small() bool {
 		for _, block := range ssaPkg.Func(name).Blocks {
 			for _, instr := range block.Instrs {
 				if bin, ok := instr.(*ssa.BinOp); ok && bin.Op == token.EQL {
-					return bin
+					if _, ok := bin.X.Type().Underlying().(*types.Array); ok {
+						return bin
+					}
 				}
 			}
 		}
@@ -76,6 +96,41 @@ func small() bool {
 	}
 	if _, ok := immutableLocalArrayLoadAddr(snapshot.Y); !ok {
 		t.Fatal("unchanged snapshot operand was not recognized")
+	}
+	parameters := findCompare("parameters")
+	if _, ok := immutableLocalArrayLoadAddr(parameters.X); ok {
+		t.Fatal("array parameter was treated as reusable local storage")
+	}
+	var scalarLoad *ssa.UnOp
+	for _, block := range ssaPkg.Func("scalar").Blocks {
+		for _, instr := range block.Instrs {
+			if load, ok := instr.(*ssa.UnOp); ok && load.Op == token.MUL {
+				scalarLoad = load
+			}
+		}
+	}
+	if scalarLoad == nil {
+		t.Fatal("scalar load not found")
+	}
+	if _, ok := immutableLocalArrayLoadAddr(scalarLoad); ok {
+		t.Fatal("scalar load was treated as reusable array storage")
+	}
+	immutableLoad := immutable.X.(*ssa.UnOp)
+	refs := immutableLoad.X.Referrers()
+	func() {
+		original := *refs
+		defer func() { *refs = original }()
+		*refs = append(*refs, &ssa.BinOp{})
+		if _, ok := immutableLocalArrayLoadAddr(immutable.X); ok {
+			t.Fatal("array with an unknown address use was treated as immutable")
+		}
+	}()
+	crossBlock := findCompare("crossBlock")
+	if _, ok := immutableLocalArrayLoadAddr(crossBlock.X); ok {
+		t.Fatal("array written from another block was treated as immutable")
+	}
+	if _, ok := immutableLocalArrayLoadAddr(crossBlock.Y); !ok {
+		t.Fatal("unchanged cross-block operand was not recognized")
 	}
 
 	_, mod := mustCompileLLPkgFromSrc(t, source)

@@ -1804,7 +1804,7 @@ func instructionPrecedes(before, after ssa.Instruction) bool {
 			return true
 		}
 		if instr == after {
-			return false
+			break
 		}
 	}
 	return false

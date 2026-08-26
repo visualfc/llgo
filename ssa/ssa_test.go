@@ -2489,6 +2489,34 @@ func TestArrayEqualLowering(t *testing.T) {
 	if !strings.Contains(nonMemory, ".arrayequal") || strings.Contains(nonMemory, "extractvalue [5 x double]") {
 		t.Fatalf("non-memory array comparison was not lowered to arrayequal:\n%s", nonMemory)
 	}
+
+	array := types.NewArray(types.Typ[types.Uint8], 4)
+	sig := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "x", array),
+			types.NewVar(token.NoPos, nil, "y", array),
+		),
+		types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool])),
+		false,
+	)
+	fn := pkg.NewFunc("direct", sig, InGo)
+	b := fn.MakeBody(1)
+	mustPanic := func(want string, call func()) {
+		t.Helper()
+		defer func() {
+			if got := recover(); got != want {
+				t.Fatalf("panic = %v, want %q", got, want)
+			}
+		}()
+		call()
+	}
+	mustPanic("ArrayBinOp requires array operands", func() {
+		b.ArrayBinOp(token.EQL, prog.Val(1), prog.Val(2), Nil, Nil)
+	})
+	mustPanic("ArrayBinOp requires an equality operator", func() {
+		b.ArrayBinOp(token.ADD, fn.Param(0), fn.Param(1), Nil, Nil)
+	})
+	b.Return(b.BinOp(token.EQL, fn.Param(0), fn.Param(1)))
 	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("array comparison module is invalid: %v\n%s", err, pkg.String())
 	}
