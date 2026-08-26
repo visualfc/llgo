@@ -846,10 +846,9 @@ func TestExtractTarXzError(t *testing.T) {
 }
 
 func TestESPClangDownloadLicenseFailure(t *testing.T) {
-	archivePath := createTestTarGz(t, map[string]string{
+	archivePath := createTestTarXz(t, map[string]string{
 		"esp-clang/bin/clang": "fake esp clang binary",
 	})
-	defer os.Remove(archivePath)
 
 	archiveContent, err := os.ReadFile(archivePath)
 	if err != nil {
