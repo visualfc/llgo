@@ -1790,10 +1790,7 @@ func linkedCExports(ctx *context, pkgs []Package) ([]cExport, error) {
 		}
 	}
 	slices.SortFunc(exports, func(a, b cExport) int {
-		if n := strings.Compare(a.cName, b.cName); n != 0 {
-			return n
-		}
-		return strings.Compare(a.goName, b.goName)
+		return strings.Compare(a.cName, b.cName)
 	})
 	return exports, nil
 }

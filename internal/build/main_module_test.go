@@ -362,7 +362,7 @@ func TestGenMainModuleWindowsCSharedInitializesFromCExport(t *testing.T) {
 		}, {
 			goName: "example.com/foo.Value",
 			cName:  "Value",
-			sig:    newSignature(nil, []types.Type{types.Typ[types.Int32]}),
+			sig:    newSignature([]types.Type{types.Typ[types.Int32]}, []types.Type{types.Typ[types.Int32]}),
 		}},
 	}).LPkg.String()
 
@@ -392,12 +392,35 @@ func TestGenMainModuleWindowsCSharedInitializesFromCExport(t *testing.T) {
 		"call void @__llgo_runtime_ensure_initialized()",
 		`call void @"example.com/foo.Exported"()`,
 	)
-	valueWrapper := ir[strings.Index(ir, "define i32 @Value()"):]
+	valueWrapper := ir[strings.Index(ir, "define i32 @Value(i32 %0)"):]
 	assertInOrder(t, valueWrapper,
 		"call void @__llgo_runtime_ensure_initialized()",
-		`%0 = call i32 @"example.com/foo.Value"()`,
-		"ret i32 %0",
+		`%1 = call i32 @"example.com/foo.Value"(i32 %0)`,
+		"ret i32 %1",
 	)
+}
+
+func TestGenMainModuleWindowsCShared386UsesStdcallInitOnce(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	ctx := &context{
+		prog: llssa.NewProgram(nil),
+		buildConf: &Config{
+			BuildMode: BuildModeCShared,
+			Goos:      "windows",
+			Goarch:    "386",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true}).LPkg.String()
+	for _, want := range []string{
+		"declare dllimport x86_stdcallcc i32 @InitOnceExecuteOnce(",
+		"call x86_stdcallcc i32 @InitOnceExecuteOnce(",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("Windows/386 c-shared module IR missing %q:\n%s", want, ir)
+		}
+	}
 }
 
 func TestGenMainModuleLibraryConstructorArgsByPlatform(t *testing.T) {

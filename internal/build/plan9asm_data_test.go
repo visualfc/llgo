@@ -36,11 +36,13 @@ func TestExternalizePlan9DataGlobals(t *testing.T) {
 
 func TestExternalizePlan9DataGlobalsRejectsConflicts(t *testing.T) {
 	tests := []struct {
-		name       string
-		goTypeSize int
-		goValue    uint64
-		want       string
+		name           string
+		goTypeSize     int
+		goValue        uint64
+		asmThreadLocal bool
+		want           string
 	}{
+		{name: "thread local", goTypeSize: 8, asmThreadLocal: true, want: "incompatible thread-local storage"},
 		{name: "size", goTypeSize: 4, want: "Go size 4 but DATA size 8"},
 		{name: "initializer", goTypeSize: 8, goValue: 1, want: "both a Go initializer and DATA"},
 	}
@@ -61,6 +63,7 @@ func TestExternalizePlan9DataGlobalsRejectsConflicts(t *testing.T) {
 			asmType := gllvm.ArrayType(ctx.Int8Type(), 8)
 			asmGlobal := gllvm.AddGlobal(asmMod, asmType, "main.value")
 			asmGlobal.SetInitializer(gllvm.ConstNull(asmType))
+			asmGlobal.SetThreadLocal(test.asmThreadLocal)
 
 			err := externalizePlan9DataGlobals(goMod, asmMod, td)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
