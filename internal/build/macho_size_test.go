@@ -303,6 +303,18 @@ func TestStripAndSignDarwinLocalsFileFailures(t *testing.T) {
 			},
 		},
 		{
+			name: "close-source",
+			mutate: func(files *darwinSizeFileOps) {
+				closeFile := files.closeFile
+				files.closeFile = func(file *os.File) error {
+					if err := closeFile(file); err != nil {
+						return err
+					}
+					return fileFailure
+				}
+			},
+		},
+		{
 			name: "open-signed-stage",
 			mutate: func(files *darwinSizeFileOps) {
 				files.openFile = func(string, int, os.FileMode) (*os.File, error) { return nil, fileFailure }
