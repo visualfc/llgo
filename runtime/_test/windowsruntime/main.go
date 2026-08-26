@@ -45,6 +45,9 @@ func panicWindowsException(code uint32, address uintptr)
 //go:linkname runtimeRand runtime.rand
 func runtimeRand() uint64
 
+//go:linkname windowsRandom github.com/xgo-dev/llgo/runtime/internal/runtime.windowsRandom
+func windowsRandom(data unsafe.Pointer, size uintptr) bool
+
 //go:noinline
 func windowsNilFault() byte {
 	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
@@ -288,6 +291,17 @@ func checkRuntimeRandStreams() {
 	}
 }
 
+func checkWindowsRandomSource() {
+	var first, second [32]byte
+	if !windowsRandom(unsafe.Pointer(&first[0]), unsafe.Sizeof(first)) ||
+		!windowsRandom(unsafe.Pointer(&second[0]), unsafe.Sizeof(second)) {
+		panic("Windows system random source failed")
+	}
+	if first == second {
+		panic("Windows system random source repeated a 256-bit block")
+	}
+}
+
 func main() {
 	values := make(chan int)
 	go func() {
@@ -320,6 +334,7 @@ func main() {
 	checkForeignFaultOnNativeThread()
 	checkIntegerOverflowFault()
 	checkNilFunctionFaultOrigin()
+	checkWindowsRandomSource()
 	checkRuntimeRandStreams()
 	checkCoreMapRandStreams()
 	checkUnicodeConsolePrint()

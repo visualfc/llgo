@@ -61,7 +61,7 @@ func collectGoCgoPragmas(files []*ast.File) (ldflags []string, dynimports []cgoI
 	return
 }
 
-func goCgoLinkArgs(goos string, files []*ast.File) []string {
+func goCgoLinkArgs(files []*ast.File) []string {
 	ldflags, _ := collectGoCgoPragmas(files)
 	return ldflags
 }

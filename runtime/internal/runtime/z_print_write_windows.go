@@ -9,7 +9,7 @@ import (
 	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
-const platformLLGoFiles = "; _wrap/print_windows.c"
+const platformLLGoFiles = "; _wrap/print_windows.c; _wrap/rand_windows.c"
 
 //go:linkname c_printByte C.llgo_print_byte
 func c_printByte(v byte)

@@ -41,7 +41,7 @@ func onWindowsFault(context unsafe.Pointer, code uint32, address uintptr) {
 	// thread that never entered Go. Do not manufacture a G from exception
 	// context: only faults on a thread already executing Go can become Go
 	// panics. Foreign faults must continue through Windows' handler chain.
-	if (*g)(unsafe.Pointer(currentG)) == nil {
+	if currentG == 0 {
 		return
 	}
 	memoryFault := code == windowsExceptionAccessViolation || code == windowsExceptionInPageError

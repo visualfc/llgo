@@ -3,13 +3,33 @@
 package runtime
 
 import (
+	"unsafe"
+
+	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 	clitetime "github.com/xgo-dev/llgo/runtime/internal/clite/time"
 	"github.com/xgo-dev/llgo/runtime/internal/runtime/math"
 )
 
 const windowsRandIncrement = uint64(0xa0761d6478bd642f)
 
-var windowsRandProcessSeed = uint64(clitetime.Time(nil))
+var windowsRandProcessSeed = newWindowsRandProcessSeed()
+
+//go:linkname c_windowsRandom C.llgo_windows_random
+func c_windowsRandom(data unsafe.Pointer, size uintptr) c.Int
+
+func windowsRandom(data unsafe.Pointer, size uintptr) bool {
+	return c_windowsRandom(data, size) != 0
+}
+
+func newWindowsRandProcessSeed() uint64 {
+	var seed uint64
+	if windowsRandom(unsafe.Pointer(&seed), unsafe.Sizeof(seed)) {
+		return seed
+	}
+	// Match Go's availability-first startup behavior: OS entropy is the
+	// primary source, but a process must still start if it is unavailable.
+	return uint64(clitetime.Time(nil))
+}
 
 // fastrand returns random data from the current M, following the ownership
 // model used by Go's runtime.rand. LLGo cannot use UCRT rand here: srand seeds
@@ -19,9 +39,10 @@ var windowsRandProcessSeed = uint64(clitetime.Time(nil))
 // supposedly randomized runtime values. See Microsoft's srand documentation:
 // https://learn.microsoft.com/cpp/c-runtime-library/reference/srand.
 //
-// The M id separates the streams created during one process. Mixing it with a
-// process seed, rather than merely offsetting one linear sequence, prevents
-// adjacent M ids from producing the same sequence shifted by one call.
+// The process seed comes from Windows' system-preferred CSPRNG. The M id then
+// separates the streams created during one process. Mixing it with the seed,
+// rather than merely offsetting one linear sequence, prevents adjacent M ids
+// from producing the same sequence shifted by one call.
 func fastrand() uint32 {
 	mp := getg().m
 	state := mp.os.randomState
