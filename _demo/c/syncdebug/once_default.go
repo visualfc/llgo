@@ -9,6 +9,9 @@ var (
 	onceDelta int
 )
 
+// POSIX pthread_once accepts a bare C function pointer, so keep these
+// callbacks non-capturing. Passing a Go closure would supply the separate
+// {function, environment} value used by LLGo and violate that C prototype.
 func addOnceDelta()  { onceCount += onceDelta }
 func incrementOnce() { onceCount++ }
 
