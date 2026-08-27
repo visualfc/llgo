@@ -6,9 +6,13 @@ runs:
   steps:
     - name: Set up Python 3.12 on Windows
       if: runner.os == 'Windows'
+      id: windows_python
       uses: actions/setup-python@v6
       with:
         python-version: "3.12"
+        # setup-python otherwise replaces PKG_CONFIG_PATH, hiding the native
+        # vcpkg metadata installed by setup-deps from LLGo's runtime build.
+        update-environment: false
 
     - name: Install cargs demo library on Unix
       if: runner.os != 'Windows'
@@ -130,14 +134,15 @@ runs:
       run: |
         $ErrorActionPreference = "Stop"
 
-        python -m pip install numpy torch
+        $python = "${{ steps.windows_python.outputs.python-path }}"
+        & $python -m pip install numpy torch
         if ($LASTEXITCODE -ne 0) {
           throw "Installing Python demo dependencies failed with exit code $LASTEXITCODE"
         }
 
-        $prefix = (& python -c "import sys; print(sys.base_prefix)").Trim()
-        $includeDir = (& python -c "import sysconfig; print(sysconfig.get_path('include'))").Trim()
-        $version = (& python -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')").Trim()
+        $prefix = (& $python -c "import sys; print(sys.base_prefix)").Trim()
+        $includeDir = (& $python -c "import sysconfig; print(sysconfig.get_path('include'))").Trim()
+        $version = (& $python -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')").Trim()
         $libDir = Join-Path $prefix "libs"
         $importLibrary = Join-Path $libDir "python$version.lib"
         if (-not (Test-Path $importLibrary)) {
@@ -158,3 +163,5 @@ runs:
         Libs: -L"`${libdir}" -lpython$version
         Cflags: -I"`${includedir}"
         "@ | Set-Content -Encoding ascii (Join-Path $pcDir "python3-embed.pc")
+
+        Add-Content -Encoding utf8 $env:GITHUB_PATH $prefix
