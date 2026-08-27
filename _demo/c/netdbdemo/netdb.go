@@ -6,6 +6,9 @@ import (
 )
 
 func main() {
+	cleanup := startupNetwork()
+	defer cleanup()
+
 	var hints net.AddrInfo
 	hints.Family = net.AF_UNSPEC
 	hints.SockType = net.SOCK_STREAM

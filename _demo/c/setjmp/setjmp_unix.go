@@ -1,8 +1,8 @@
+//go:build !windows
+
 package main
 
-import (
-	"github.com/goplus/lib/c/setjmp"
-)
+import "github.com/goplus/lib/c/setjmp"
 
 func main() {
 	var jb setjmp.SigjmpBuf

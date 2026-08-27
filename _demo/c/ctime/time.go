@@ -1,3 +1,5 @@
+//go:build !windows
+
 package main
 
 import "github.com/goplus/lib/c/time"
