@@ -79,6 +79,10 @@ $pkgConfig = (Get-Command pkg-config).Source
 if ($pkgConfig -notmatch '(?i)[\\/]llgo-(msvc|mingw)-tools[\\/]pkg-config\.cmd$') {
   throw "pkg-config does not resolve to the profile-local command wrapper: $pkgConfig"
 }
+$pkgConfigShell = Join-Path (Split-Path $pkgConfig) "pkg-config"
+if (-not (Test-Path $pkgConfigShell)) {
+  throw "The shell-compatible pkg-config wrapper was not found: $pkgConfigShell"
+}
 if ($env:PKG_CONFIG -or $env:PKG_CONFIG_PATH) {
   throw "The $Profile profile unexpectedly requires PKG_CONFIG or PKG_CONFIG_PATH"
 }

@@ -325,6 +325,16 @@ runs:
         @echo off
         "$pkgconf" --dont-define-prefix "--with-path=$pcDir" "--with-path=$vcpkgLibPC" "--with-path=$vcpkgSharePC" %*
         "@ | Set-Content -Encoding ascii $pkgconfWrapper
+        $pkgconfShell = Join-Path $nativeTools "pkg-config"
+        $pkgconfUnix = $pkgconf.Replace('\', '/')
+        $pcDirUnix = $pcDir.Replace('\', '/')
+        $vcpkgLibPCUnix = $vcpkgLibPC.Replace('\', '/')
+        $vcpkgSharePCUnix = $vcpkgSharePC.Replace('\', '/')
+        @"
+        #!/usr/bin/env bash
+        set -euo pipefail
+        MSYS2_ARG_CONV_EXCL='*' exec "$pkgconfUnix" --dont-define-prefix "--with-path=$pcDirUnix" "--with-path=$vcpkgLibPCUnix" "--with-path=$vcpkgSharePCUnix" "`$@"
+        "@ | Set-Content -Encoding ascii $pkgconfShell
 
         $gcLibFlags = ((& $pkgconfWrapper --libs bdw-gc) -join " ").Trim() -split '\s+'
         if ($LASTEXITCODE -ne 0) {
@@ -517,6 +527,15 @@ runs:
         @echo off
         "$pkgconf" --dont-define-prefix "--with-path=$profilePC" "--with-path=$pcDir" %*
         "@ | Set-Content -Encoding ascii $pkgConfig
+        $pkgConfigShell = Join-Path $nativeTools "pkg-config"
+        $pkgconfUnix = $pkgconf.Replace('\', '/')
+        $profilePCUnix = $profilePC.Replace('\', '/')
+        $pcDirUnix = $pcDir.Replace('\', '/')
+        @"
+        #!/usr/bin/env bash
+        set -euo pipefail
+        MSYS2_ARG_CONV_EXCL='*' exec "$pkgconfUnix" --dont-define-prefix "--with-path=$profilePCUnix" "--with-path=$pcDirUnix" "`$@"
+        "@ | Set-Content -Encoding ascii $pkgConfigShell
 
         foreach ($package in @("llvm-${{ inputs.llvm-version }}", "bdw-gc", "libffi", "libuv", "openssl", "libcjson", "sqlite3", "zlib")) {
           & $pkgConfig --modversion $package
