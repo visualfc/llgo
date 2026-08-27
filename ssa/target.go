@@ -146,6 +146,14 @@ func (p *Target) Spec() (spec TargetSpec) {
 	goos := p.effectiveGOOS()
 	goarm := p.goArchitectureSetting(p.GOARM)
 	spec.Triple = intllvm.GetTargetTripleWithGOARM(goos, goarch, goarm)
+	// A native toolchain profile can select a physical ABI triple that differs
+	// from the GOOS/GOARCH default (for example Windows GNU instead of MSVC).
+	// Named embedded targets keep their existing backend triple here: their
+	// external compiler may support a target such as Xtensa that the host LLVM
+	// library used to build LLGo does not register.
+	if p.Target == "" && p.LLVMTarget != "" {
+		spec.Triple = p.LLVMTarget
+	}
 	// Build validates these settings before constructing Target. Spec also
 	// accepts hand-built Targets, so it intentionally uses each resolver's
 	// documented Go-default fallback when its error cannot be returned here.

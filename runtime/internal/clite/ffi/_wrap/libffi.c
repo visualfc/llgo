@@ -18,8 +18,13 @@
 #endif
 
 #if defined(_WIN32) && defined(__x86_64__)
+#if defined(__MINGW32__)
+_Static_assert(FFI_DEFAULT_ABI == FFI_GNUW64,
+               "Windows MinGW x86-64 requires libffi's GNUW64 ABI");
+#else
 _Static_assert(FFI_DEFAULT_ABI == FFI_WIN64,
                "Windows x86-64 requires libffi's MSVC ABI");
+#endif
 #elif defined(_WIN32) && defined(__i386__)
 _Static_assert(FFI_DEFAULT_ABI == FFI_MS_CDECL,
                "Windows x86 requires libffi's MSVC cdecl ABI");

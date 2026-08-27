@@ -57,6 +57,24 @@ func TestTargetArchitectureFeatures(t *testing.T) {
 	}
 }
 
+func TestTargetSpecUsesResolvedLLVMTarget(t *testing.T) {
+	target := &Target{
+		GOOS:       "windows",
+		GOARCH:     "amd64",
+		LLVMTarget: "x86_64-w64-windows-gnu",
+	}
+	if got := target.Spec().Triple; got != target.LLVMTarget {
+		t.Fatalf("target triple = %q, want resolved LLVM target %q", got, target.LLVMTarget)
+	}
+
+	prog := NewProgram(target)
+	defer prog.Dispose()
+	pkg := prog.NewPackage("p", "example.com/p")
+	if got := pkg.Module().Target(); got != target.LLVMTarget {
+		t.Fatalf("module target = %q, want %q", got, target.LLVMTarget)
+	}
+}
+
 func TestArchitectureFeatureTargetMachines(t *testing.T) {
 	for _, target := range []*Target{
 		{GOOS: "windows", GOARCH: "386", GO386: "softfloat"},
