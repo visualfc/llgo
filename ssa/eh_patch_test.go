@@ -83,17 +83,20 @@ func TestWindowsSigjmpBufferAlignment(t *testing.T) {
 
 func TestWindowsSetjmpABI(t *testing.T) {
 	tests := []struct {
-		arch    string
-		setjmp  string
-		longjmp string
+		name       string
+		arch       string
+		llvmTarget string
+		setjmp     string
+		longjmp    string
 	}{
-		{arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
-		{arch: "amd64", setjmp: "@_setjmpex", longjmp: "@longjmp"},
-		{arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
+		{name: "386", arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
+		{name: "amd64-msvc", arch: "amd64", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
+		{name: "amd64-gnu", arch: "amd64", llvmTarget: "x86_64-w64-windows-gnu", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
+		{name: "arm64", arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
 	}
 	for _, test := range tests {
-		t.Run(test.arch, func(t *testing.T) {
-			prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: test.arch})
+		t.Run(test.name, func(t *testing.T) {
+			prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: test.arch, LLVMTarget: test.llvmTarget})
 			pkg := prog.NewPackage("foo", "foo")
 
 			fn := pkg.NewFunc("f", ssa.NoArgsNoRet, ssa.InGo)
@@ -131,16 +134,19 @@ func TestWindowsSetjmpABI(t *testing.T) {
 
 func TestWindowsDirectSetjmpABI(t *testing.T) {
 	for _, test := range []struct {
-		arch    string
-		setjmp  string
-		longjmp string
+		name       string
+		arch       string
+		llvmTarget string
+		setjmp     string
+		longjmp    string
 	}{
-		{arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
-		{arch: "amd64", setjmp: "@_setjmpex", longjmp: "@longjmp"},
-		{arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
+		{name: "386", arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
+		{name: "amd64-msvc", arch: "amd64", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
+		{name: "amd64-gnu", arch: "amd64", llvmTarget: "x86_64-w64-windows-gnu", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
+		{name: "arm64", arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
 	} {
-		t.Run(test.arch, func(t *testing.T) {
-			prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: test.arch})
+		t.Run(test.name, func(t *testing.T) {
+			prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: test.arch, LLVMTarget: test.llvmTarget})
 			pkg := prog.NewPackage("foo", "foo")
 
 			fn := pkg.NewFunc("f", ssa.NoArgsNoRet, ssa.InGo)

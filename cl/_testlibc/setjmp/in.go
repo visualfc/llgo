@@ -41,7 +41,7 @@ func fprintf(fp unsafe.Pointer, format *int8, __llgo_va_list ...any) int32
 // DARWIN-NEXT: call void @siglongjmp(ptr [[JMPBUF]], i32 1)
 // LINUX-NEXT: call void @siglongjmp(ptr [[JMPBUF]], i32 1)
 // WINDOWS-386-NEXT: call void @longjmp(ptr [[JMPBUF]], i32 1)
-// WINDOWS-AMD64-NEXT: call void @longjmp(ptr [[JMPBUF]], i32 1)
+// WINDOWS-AMD64-NEXT: call void @llgo_longjmp(ptr [[JMPBUF]], i32 1)
 // WINDOWS-ARM64-NEXT: call void @llgo_longjmp(ptr [[JMPBUF]], i32 1)
 // CHECK: {{^_llgo_[0-9]+:}}
 // CHECK: [[PRINT_RET:%[0-9]+]] = sext i32 [[RET]] to i64
