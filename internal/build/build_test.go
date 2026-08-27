@@ -37,6 +37,14 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("LLGO_TEST_PKG_CONFIG_HELPER") == "1" {
+		if len(os.Args) > 1 && os.Args[1] == "--libs" {
+			fmt.Print("-L/request/lib -lrequest")
+		} else {
+			fmt.Print(`-I/request/include -DREQUEST="request value"`)
+		}
+		os.Exit(0)
+	}
 	if os.Getenv("LLGO_TEST_FAILING_ARCHIVER") == "1" {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		fmt.Fprintln(os.Stderr, "merge failed")

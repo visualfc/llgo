@@ -163,6 +163,29 @@ printf '%s\n' '-I/request/include -DREQUEST="request value"'
 	}
 }
 
+func TestParseCgoDeclWithCommandEnvUsesPkgConfigSetting(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	commands := commandEnv{dir: t.TempDir(), environ: append(os.Environ(),
+		`PKG_CONFIG='`+executable+`' --ignored-like-go`,
+		"LLGO_TEST_PKG_CONFIG_HELPER=1",
+	)}
+	got, err := parseCgoDeclWithCommandEnv(commands, "#cgo windows pkg-config: request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []cgoDecl{{
+		tag:     "windows",
+		cflags:  []string{"-I/request/include", `-DREQUEST="request value"`},
+		ldflags: []string{"-L/request/lib", "-lrequest"},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseCgoDeclWithCommandEnv(PKG_CONFIG) = %#v, want %#v", got, want)
+	}
+}
+
 func TestParseCgoPreambleDelegatesToCommandEnvParser(t *testing.T) {
 	preamble, decls, err := parseCgoPreamble(token.Position{Filename: "request.go", Line: 7}, "#cgo CFLAGS: -I/request/include")
 	if err != nil {

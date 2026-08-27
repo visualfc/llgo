@@ -34,6 +34,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/buildtags"
 	llclang "github.com/xgo-dev/llgo/internal/clang"
 	llssa "github.com/xgo-dev/llgo/ssa"
+	xenv "github.com/xgo-dev/llgo/xtool/env"
 	"github.com/xgo-dev/llgo/xtool/safesplit"
 )
 
@@ -479,14 +480,15 @@ func parseCgoDeclWithCommandEnv(commands commandEnv, line string) (cgoDecls []cg
 
 	switch flag {
 	case "pkg-config":
-		libsCmd := exec.Command("pkg-config", "--libs", arg)
+		pkgConfig := xenv.PkgConfigCommand(commands.dir, commands.environ)
+		libsCmd := exec.Command(pkgConfig, "--libs", arg)
 		commands.configure(libsCmd)
 		ldflags, e := libsCmd.Output()
 		if e != nil {
 			err = fmt.Errorf("pkg-config: %v", e)
 			return
 		}
-		flagsCmd := exec.Command("pkg-config", "--cflags", arg)
+		flagsCmd := exec.Command(pkgConfig, "--cflags", arg)
 		commands.configure(flagsCmd)
 		cflags, e := flagsCmd.Output()
 		if e != nil {

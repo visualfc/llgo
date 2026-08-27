@@ -68,6 +68,31 @@ func TestExpandEnvToArgsWithConfiguresSubprocess(t *testing.T) {
 	}
 }
 
+func TestExpandEnvToArgsWithUsesPkgConfigSetting(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "pkg config")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tool := filepath.Join(dir, "native-pkgconf")
+	if runtime.GOOS == "windows" {
+		tool += ".exe"
+	}
+	copyExecutable(t, tool)
+	got := ExpandEnvToArgsWith(
+		"$(pkg-config --libs fixture)",
+		dir,
+		[]string{
+			"PATH=" + t.TempDir(),
+			"PKG_CONFIG='" + tool + "' --ignored-like-go",
+			"LLGO_ENV_TEST=request",
+			helperEnvironment + "=1",
+		},
+	)
+	if len(got) != 2 || got[0] != "-Lrequest" || !strings.HasPrefix(got[1], "-I") {
+		t.Fatalf("ExpandEnvToArgsWith using PKG_CONFIG = %q, want -Lrequest and one include directory", got)
+	}
+}
+
 func TestLookPathInEnvironmentBoundaries(t *testing.T) {
 	dir := t.TempDir()
 	toolName := "fixture-tool"
