@@ -186,7 +186,7 @@ func (b Builder) windowsSetjmp(jb Expr) Expr {
 
 func (b Builder) windowsLongjmp(jb, retval Expr) {
 	if b.Prog.target.effectiveGOARCH() != "arm64" {
-		b.Longjmp(jb, retval)
+		b.cLongjmp(jb, retval)
 		return
 	}
 	fn := b.Pkg.cFunc("llgo_longjmp", b.Prog.tyLongjmp())
@@ -194,12 +194,27 @@ func (b Builder) windowsLongjmp(jb, retval Expr) {
 }
 
 func (b Builder) Setjmp(jb Expr) Expr {
+	if b.Prog.target.effectiveGOOS() == "windows" {
+		return b.windowsSetjmp(jb)
+	}
+	return b.cSetjmp(jb)
+}
+
+func (b Builder) cSetjmp(jb Expr) Expr {
 	fn := b.Pkg.cFunc("setjmp", b.Prog.tySetjmp())
 	b.addReturnsTwiceAttr(fn)
 	return b.Call(fn, jb)
 }
 
 func (b Builder) Longjmp(jb, retval Expr) {
+	if b.Prog.target.effectiveGOOS() == "windows" {
+		b.windowsLongjmp(jb, retval)
+		return
+	}
+	b.cLongjmp(jb, retval)
+}
+
+func (b Builder) cLongjmp(jb, retval Expr) {
 	fn := b.Pkg.cFunc("longjmp", b.Prog.tyLongjmp())
 	b.Call(fn, jb, retval)
 	// b.Unreachable()

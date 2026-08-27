@@ -124,6 +124,40 @@ func TestWindowsSetjmpABI(t *testing.T) {
 	}
 }
 
+func TestWindowsDirectSetjmpABI(t *testing.T) {
+	for _, test := range []struct {
+		arch    string
+		setjmp  string
+		longjmp string
+	}{
+		{arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
+		{arch: "amd64", setjmp: "@_setjmpex", longjmp: "@longjmp"},
+		{arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
+	} {
+		t.Run(test.arch, func(t *testing.T) {
+			prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: test.arch})
+			pkg := prog.NewPackage("foo", "foo")
+
+			fn := pkg.NewFunc("f", ssa.NoArgsNoRet, ssa.InGo)
+			b := fn.MakeBody(1)
+			jb := b.AllocaSigjmpBuf()
+			one := prog.IntVal(1, prog.CInt())
+			_ = b.Setjmp(jb)
+			b.Longjmp(jb, one)
+			b.Return()
+			b.EndBuild()
+
+			ir := pkg.Module().String()
+			if !strings.Contains(ir, test.setjmp) || !strings.Contains(ir, test.longjmp) {
+				t.Fatalf("Windows/%s direct setjmp ABI mismatch:\n%s", test.arch, ir)
+			}
+			if strings.Contains(ir, "sigsetjmp") || strings.Contains(ir, "siglongjmp") {
+				t.Fatalf("Windows/%s direct setjmp unexpectedly uses POSIX signal variants:\n%s", test.arch, ir)
+			}
+		})
+	}
+}
+
 func TestWindowsSetjmpRejectsUnsupportedArchitecture(t *testing.T) {
 	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: "mips"})
 	pkg := prog.NewPackage("foo", "foo")
