@@ -5,17 +5,34 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Assert-Success([string]$Operation) {
-  if ($LASTEXITCODE -ne 0) {
-    throw "$Operation failed with exit code $LASTEXITCODE"
+function Assert-Success([string]$Operation, [int]$ExitCode = $LASTEXITCODE) {
+  if ($ExitCode -ne 0) {
+    throw "$Operation failed with exit code $ExitCode"
   }
+}
+
+function Invoke-NativeCapture([string]$Executable, [object[]]$ArgumentList = @()) {
+  # Windows PowerShell 5.1 promotes redirected native stderr to ErrorRecord.
+  # Capture each record as its original text under Continue so LLGo's normal
+  # -x trace and println stderr remain data; pwsh 7 follows the same path.
+  $savedErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $output = (& $Executable @ArgumentList 2>&1 |
+      ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $savedErrorActionPreference
+  }
+  return [PSCustomObject]@{ Output = $output; ExitCode = $exitCode }
 }
 
 function Assert-NativeOutput([string]$Executable) {
   # Go's implementation-defined println builtin may write to stderr. Capture
   # both streams because this smoke test validates execution, not stream choice.
-  $output = (& $Executable 2>&1 | Out-String).Trim()
-  Assert-Success "Running $Executable"
+  $result = Invoke-NativeCapture $Executable
+  Assert-Success "Running $Executable" $result.ExitCode
+  $output = $result.Output.Trim()
   if ($output -ne "windows-msvc-shell") {
     throw "$Executable printed '$output', want 'windows-msvc-shell'"
   }
@@ -77,8 +94,9 @@ if (-not $SkipNativeShells) {
     $powershellExe = Join-Path $sourceDir "powershell.exe"
     Push-Location $sourceDir
     try {
-      $trace = (& $llgo build -x -o $powershellExe . 2>&1 | Out-String)
-      Assert-Success "Building with unset CC/CXX from PowerShell"
+      $result = Invoke-NativeCapture $llgo @("build", "-x", "-o", $powershellExe, ".")
+      Assert-Success "Building with unset CC/CXX from PowerShell" $result.ExitCode
+      $trace = $result.Output
     } finally {
       Pop-Location
     }
@@ -115,8 +133,9 @@ foreach ($bash in $BashPaths) {
   }
   $outputUnix = "$sourceUnix/$name.exe"
   $command = "cd $(Quote-Sh $sourceUnix) && unset CC CXX && $(Quote-Sh $llgoUnix) build -x -o $(Quote-Sh $outputUnix) . && $(Quote-Sh $outputUnix)"
-  $trace = (& $bash -lc $command 2>&1 | Out-String)
-  Assert-Success "Building and running through $bash"
+  $result = Invoke-NativeCapture $bash @("-lc", $command)
+  Assert-Success "Building and running through $bash" $result.ExitCode
+  $trace = $result.Output
   if ($trace -notmatch 'x86_64-pc-windows-msvc' -or $trace -notmatch 'windows-msvc-shell') {
     throw "The shell did not preserve the default MSVC profile:`n$trace"
   }
