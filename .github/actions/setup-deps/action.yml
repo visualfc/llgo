@@ -199,11 +199,42 @@ runs:
 
         $pcDir = Join-Path $env:RUNNER_TEMP "llgo-pkgconfig"
         New-Item -ItemType Directory -Force $pcDir | Out-Null
-        $cflags = ((& $llvmConfig --cflags) -join " ").Trim()
-        $ldflags = ((& $llvmConfig --link-static --ldflags --libs all --system-libs) -join " ").Trim()
+        $cflags = ((& $llvmConfig --cflags) -join " ").Trim().Replace('\', '/')
         if ($LASTEXITCODE -ne 0) {
           throw "llvm-config failed with exit code $LASTEXITCODE"
         }
+        $llvmLibDir = ((& $llvmConfig --libdir) -join " ").Trim().Replace('\', '/')
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $llvmLibDir)) {
+          throw "llvm-config reported an invalid library directory: $llvmLibDir"
+        }
+        $llvmLibOutput = ((& $llvmConfig --link-static --libnames all) -join " ").Trim()
+        if ($LASTEXITCODE -ne 0) {
+          throw "llvm-config failed to report the static LLVM libraries"
+        }
+        $llvmLibNames = ($llvmLibOutput -split '\s+') | Where-Object { $_ }
+        if ($llvmLibNames.Count -eq 0) {
+          throw "llvm-config did not report the static LLVM libraries"
+        }
+        $systemLibOutput = ((& $llvmConfig --link-static --system-libs) -join " ").Trim()
+        if ($LASTEXITCODE -ne 0) {
+          throw "llvm-config failed to report the Windows system libraries"
+        }
+        $systemLibNames = ($systemLibOutput -split '\s+') |
+          Where-Object { $_ -and $_ -ne "libxml2s.lib" }
+        # The official archive reports libxml2s for optional XML-backed
+        # Windows-manifest support but does not ship that library. The LLVM Go
+        # bindings do not use that component; retaining it would make every
+        # host compiler depend on an unrelated third-party archive.
+        $libraryFlags = (@($llvmLibNames) + @($systemLibNames)) | ForEach-Object {
+          if (-not $_.EndsWith(".lib", [StringComparison]::OrdinalIgnoreCase)) {
+            throw "llvm-config reported an unsupported Windows library argument: $_"
+          }
+          "-l$([IO.Path]::GetFileNameWithoutExtension($_))"
+        }
+        # llvm-config prints full .lib paths on Windows. Express the same
+        # ordered static link as standard -L/-l flags so pkgconf does not treat
+        # backslashes as escapes and Go's CGO flag validation remains intact.
+        $ldflags = (@("-L$llvmLibDir") + @($libraryFlags)) -join " "
         @"
         Name: LLVM ${{ inputs.llvm-version }}
         Description: LLVM ${{ inputs.llvm-version }} host compiler and linker flags
@@ -219,8 +250,11 @@ runs:
         ) | Where-Object { Test-Path $_ }
         $env:PKG_CONFIG_PATH = $pcDirs -join ";"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG_PATH=$env:PKG_CONFIG_PATH"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++"
+        # Go's Windows external linker detects LLD through the compiler command
+        # prefix. Without this option it emits a GNU ld linker script that the
+        # native MSVC linker dialect cannot consume.
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG=$pkgconf"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_LLVM_ROOT=$llvmRoot"
