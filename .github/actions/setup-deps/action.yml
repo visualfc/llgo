@@ -277,6 +277,9 @@ runs:
         }
         $fileCheckLibraries = @("LLVMFileCheck.lib", "LLVMSupport.lib", "LLVMDemangle.lib") |
           ForEach-Object { Join-Path $llvmLibDir $_ }
+        $fileCheckSystemLibraries = $systemLibNames | ForEach-Object {
+          "-l$([IO.Path]::GetFileNameWithoutExtension($_))"
+        }
         foreach ($library in $fileCheckLibraries) {
           if (-not (Test-Path $library)) {
             throw "FileCheck dependency was not found: $library"
@@ -291,7 +294,7 @@ runs:
           "-I$llvmIncludeDir" `
           $fileCheckSource `
           $fileCheckLibraries `
-          $systemLibNames `
+          $fileCheckSystemLibraries `
           -o $fileCheck
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $fileCheck)) {
           throw "Building the native FileCheck utility failed with exit code $LASTEXITCODE"
