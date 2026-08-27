@@ -78,7 +78,7 @@ runs:
 
         $object = Join-Path $env:RUNNER_TEMP "cargs.obj"
         $compiler = (Get-Command clang.exe).Source
-        & $compiler "--target=$targetTriple" -O2 -std=c11 `
+        & $compiler "--target=$targetTriple" -fms-runtime-lib=dll -O2 -std=c11 `
           "-I$includeDir" -c $source -o $object
         if ($LASTEXITCODE -ne 0) {
           throw "Compiling cargs failed with exit code $LASTEXITCODE"

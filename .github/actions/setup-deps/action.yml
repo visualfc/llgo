@@ -260,8 +260,11 @@ runs:
         # Go's Windows external linker detects LLD through the compiler command
         # prefix. Without this option it emits a GNU ld linker script that the
         # native MSVC linker dialect cannot consume.
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld"
+        # The upstream full-target LLVM archive and the x64-windows vcpkg
+        # triplet use the dynamic MSVC runtime. Make cgo objects match them so
+        # lld-link does not reject mixed /MT and /MD RuntimeLibrary directives.
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=dll"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=dll"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG=$pkgconf"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_LLVM_ROOT=$llvmRoot"
