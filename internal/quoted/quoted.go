@@ -1,3 +1,6 @@
+// Copyright 2017 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+
 // Package quoted implements the argument-list quoting rules used by the Go
 // command for compiler environment variables and linker flag values.
 package quoted

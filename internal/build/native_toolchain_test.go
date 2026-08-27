@@ -14,6 +14,28 @@ import (
 	"github.com/xgo-dev/llgo/internal/crosscompile"
 )
 
+func TestUsesNativeWindowsToolchain(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		hostOS   string
+		hostArch string
+		conf     Config
+		want     bool
+	}{
+		{name: "native Windows", hostOS: "windows", hostArch: "amd64", conf: Config{Goos: "windows", Goarch: "amd64"}, want: true},
+		{name: "named target", hostOS: "windows", hostArch: "amd64", conf: Config{Goos: "windows", Goarch: "amd64", Target: "esp32c3"}},
+		{name: "cross OS", hostOS: "windows", hostArch: "amd64", conf: Config{Goos: "linux", Goarch: "amd64"}},
+		{name: "cross architecture", hostOS: "windows", hostArch: "arm64", conf: Config{Goos: "windows", Goarch: "amd64"}},
+		{name: "non-Windows host", hostOS: "darwin", hostArch: "arm64", conf: Config{Goos: "darwin", Goarch: "arm64"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := usesNativeWindowsToolchain(test.hostOS, test.hostArch, &test.conf); got != test.want {
+				t.Fatalf("usesNativeWindowsToolchain() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestParseNativeToolchainInput(t *testing.T) {
 	commands := commandEnv{
 		dir: "/work",

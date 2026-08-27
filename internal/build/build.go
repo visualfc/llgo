@@ -491,9 +491,12 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	}()
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
-	nativeInput, err := parseNativeToolchainInput(commands, conf.LinkOptions)
-	if err != nil {
-		return nil, err
+	nativeInput := crosscompile.NativeToolchainInput{}
+	if usesNativeWindowsToolchain(runtime.GOOS, runtime.GOARCH, conf) {
+		nativeInput, err = parseNativeToolchainInput(commands, conf.LinkOptions)
+		if err != nil {
+			return nil, err
+		}
 	}
 	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
 	if err != nil {
@@ -913,6 +916,11 @@ func removeOutFmts(outFmts *OutFmtDetails) {
 			_ = os.Remove(output)
 		}
 	}
+}
+
+func usesNativeWindowsToolchain(hostGOOS, hostGOARCH string, conf *Config) bool {
+	return conf.Target == "" && hostGOOS == "windows" &&
+		conf.Goos == hostGOOS && conf.Goarch == hostGOARCH
 }
 
 func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crosscompile.NativeToolchainInput, error) {
