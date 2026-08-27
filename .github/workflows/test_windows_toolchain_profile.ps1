@@ -1,6 +1,6 @@
 param(
-  [switch]$SkipNativeShells,
-  [string[]]$BashPaths = @()
+  [ValidateSet("msvc", "mingw")]
+  [string]$Profile = "msvc"
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,21 +33,20 @@ function Assert-NativeOutput([string]$Executable) {
   $result = Invoke-NativeCapture $Executable
   Assert-Success "Running $Executable" $result.ExitCode
   $output = $result.Output.Trim()
-  if ($output -ne "windows-msvc-shell") {
-    throw "$Executable printed '$output', want 'windows-msvc-shell'"
+  $want = "windows-$Profile-profile"
+  if ($output -ne $want) {
+    throw "$Executable printed '$output', want '$want'"
   }
-  $dependents = (& dumpbin.exe /nologo /dependents $Executable | Out-String)
+  $dependents = (& llvm-readobj.exe --coff-imports $Executable | Out-String)
   Assert-Success "Inspecting $Executable"
-  if ($dependents -match '(?i)(msys-2\.0|cygwin1|libwinpthread)\.dll') {
+  $forbidden = if ($Profile -eq "msvc") {
+    '(?i)(msys-2\.0|cygwin1|libwinpthread)\.dll'
+  } else {
+    '(?i)(msys-2\.0|cygwin1)\.dll'
+  }
+  if ($dependents -match $forbidden) {
     throw "$Executable has an unsupported POSIX-emulation dependency:`n$dependents"
   }
-}
-
-function Quote-Sh([string]$Value) {
-  if ($Value.Contains("'")) {
-    throw "A shell-smoke path contains an unsupported single quote: $Value"
-  }
-  return "'$Value'"
 }
 
 $sourceDir = Join-Path $env:RUNNER_TEMP "llgo-windows-toolchain-profile"
@@ -57,87 +56,72 @@ module example.com/llgo-windows-toolchain-profile
 
 go 1.26
 '@ | Set-Content -Encoding ascii (Join-Path $sourceDir "go.mod")
-@'
+$mainSource = @'
 package main
 
 func main() {
-	println("windows-msvc-shell")
+	println("windows-$Profile-profile")
 }
-'@ | Set-Content -Encoding utf8 (Join-Path $sourceDir "main.go")
+'@
+$mainSource.Replace('$Profile', $Profile) | Set-Content -Encoding utf8 (Join-Path $sourceDir "main.go")
 
 $llgo = (Get-Command llgo.exe).Source
-if (-not $SkipNativeShells) {
-  foreach ($tool in @("clang.exe", "clang++.exe", "llvm-config.exe")) {
-    $path = (Get-Command $tool).Source
-    if ($path -match '(?i)[\\/](msys64|cygwin)[\\/]') {
-      throw "$tool unexpectedly resolves through a POSIX environment: $path"
-    }
+foreach ($tool in @("clang.exe", "clang++.exe", "llvm-config.exe")) {
+  $path = (Get-Command $tool).Source
+  if ($Profile -eq "msvc" -and $path -match '(?i)[\\/](msys64|cygwin)[\\/]') {
+    throw "$tool unexpectedly resolves through a POSIX environment: $path"
   }
-  if (-not $env:PKG_CONFIG -or -not (Test-Path $env:PKG_CONFIG)) {
-    throw "PKG_CONFIG does not name an installed native executable: $env:PKG_CONFIG"
-  }
-  if ($env:PKG_CONFIG -match '(?i)[\\/](msys64|cygwin|strawberry)[\\/]') {
-    throw "PKG_CONFIG unexpectedly resolves through a bundled POSIX or Perl environment: $env:PKG_CONFIG"
-  }
-  & $env:PKG_CONFIG --modversion llvm-19 | Out-Null
-  Assert-Success "Reading LLVM metadata with native pkgconf"
-  if ($env:LLGO_MSYS2_LOCATION) {
-    throw "The native Windows lane still exports LLGO_MSYS2_LOCATION"
-  }
-
-  $savedCC = $env:CC
-  $savedCXX = $env:CXX
-  try {
-    Remove-Item Env:CC -ErrorAction SilentlyContinue
-    Remove-Item Env:CXX -ErrorAction SilentlyContinue
-
-    $powershellExe = Join-Path $sourceDir "powershell.exe"
-    Push-Location $sourceDir
-    try {
-      $result = Invoke-NativeCapture $llgo @("build", "-x", "-o", $powershellExe, ".")
-      Assert-Success "Building with unset CC/CXX from PowerShell" $result.ExitCode
-      $trace = $result.Output
-    } finally {
-      Pop-Location
-    }
-    if ($trace -notmatch 'x86_64-pc-windows-msvc') {
-      throw "Unset CC/CXX did not select the canonical MSVC target:`n$trace"
-    }
-    Assert-NativeOutput $powershellExe
-
-    $cmdExe = Join-Path $sourceDir "cmd.exe"
-    $cmdLine = 'cd /d "' + $sourceDir + '" && "' + $llgo + '" build -o "' + $cmdExe + '" .'
-    & $env:ComSpec /d /s /c $cmdLine
-    Assert-Success "Building with unset CC/CXX from cmd.exe"
-    Assert-NativeOutput $cmdExe
-  } finally {
-    if ($null -eq $savedCC) { Remove-Item Env:CC -ErrorAction SilentlyContinue } else { $env:CC = $savedCC }
-    if ($null -eq $savedCXX) { Remove-Item Env:CXX -ErrorAction SilentlyContinue } else { $env:CXX = $savedCXX }
+  if ($Profile -eq "mingw" -and $path -notmatch '(?i)[\\/]clang64[\\/]') {
+    throw "$tool does not belong to the independent CLANG64 profile: $path"
   }
 }
+$pkgConfig = (Get-Command pkg-config).Source
+if ($pkgConfig -notmatch '(?i)[\\/]llgo-(msvc|mingw)-tools[\\/]pkg-config\.cmd$') {
+  throw "pkg-config does not resolve to the profile-local command wrapper: $pkgConfig"
+}
+if ($env:PKG_CONFIG -or $env:PKG_CONFIG_PATH) {
+  throw "The $Profile profile unexpectedly requires PKG_CONFIG or PKG_CONFIG_PATH"
+}
+if ($Profile -eq "msvc" -and $env:LLGO_MSYS2_LOCATION) {
+  throw "The MSVC lane still exports LLGO_MSYS2_LOCATION"
+}
+& pkg-config --modversion llvm-19 | Out-Null
+Assert-Success "Reading LLVM metadata through the profile-local pkg-config"
 
-foreach ($bash in $BashPaths) {
-  if (-not (Test-Path $bash)) {
-    throw "Requested shell was not found: $bash"
+$compilerTarget = (& clang.exe -dumpmachine).Trim()
+Assert-Success "Reading the Clang target"
+$targetPattern = if ($Profile -eq "msvc") { '-windows-msvc$' } else { '-(windows-gnu|mingw32)$' }
+if ($compilerTarget -notmatch $targetPattern) {
+  throw "$Profile Clang reports incompatible target $compilerTarget"
+}
+
+$savedCC = $env:CC
+$savedCXX = $env:CXX
+try {
+  Remove-Item Env:CC -ErrorAction SilentlyContinue
+  Remove-Item Env:CXX -ErrorAction SilentlyContinue
+
+  $powershellExe = Join-Path $sourceDir "powershell.exe"
+  Push-Location $sourceDir
+  try {
+    $result = Invoke-NativeCapture $llgo @("build", "-x", "-o", $powershellExe, ".")
+    Assert-Success "Building with unset CC/CXX from PowerShell" $result.ExitCode
+    $trace = $result.Output
+  } finally {
+    Pop-Location
   }
-  $sourceUnix = (& $bash -lc "cygpath -u $(Quote-Sh $sourceDir)").Trim()
-  Assert-Success "Converting the source path in $bash"
-  $llgoUnix = (& $bash -lc "cygpath -u $(Quote-Sh $llgo)").Trim()
-  Assert-Success "Converting the LLGo path in $bash"
-  $name = if ($bash -match '(?i)[\\/]cygwin[\\/]') {
-    "cygwin"
-  } elseif ($bash -match '(?i)[\\/]msys[^\\/]*[\\/]') {
-    "msys2"
-  } else {
-    (Split-Path (Split-Path $bash -Parent) -Leaf) -replace '[^A-Za-z0-9_.-]', '-'
+  $canonicalTarget = if ($Profile -eq "msvc") { 'x86_64-pc-windows-msvc' } else { 'x86_64-w64-windows-gnu' }
+  if ($trace -notmatch [regex]::Escape($canonicalTarget)) {
+    throw "Unset CC/CXX did not select the canonical $Profile target:`n$trace"
   }
-  $outputUnix = "$sourceUnix/$name.exe"
-  $command = "cd $(Quote-Sh $sourceUnix) && unset CC CXX && $(Quote-Sh $llgoUnix) build -x -o $(Quote-Sh $outputUnix) . && $(Quote-Sh $outputUnix)"
-  $result = Invoke-NativeCapture $bash @("-lc", $command)
-  Assert-Success "Building and running through $bash" $result.ExitCode
-  $trace = $result.Output
-  if ($trace -notmatch 'x86_64-pc-windows-msvc' -or $trace -notmatch 'windows-msvc-shell') {
-    throw "The shell did not preserve the default MSVC profile:`n$trace"
-  }
-  Assert-NativeOutput (Join-Path $sourceDir "$name.exe")
+  Assert-NativeOutput $powershellExe
+
+  $cmdExe = Join-Path $sourceDir "cmd.exe"
+  $cmdLine = 'cd /d "' + $sourceDir + '" && "' + $llgo + '" build -o "' + $cmdExe + '" .'
+  & $env:ComSpec /d /s /c $cmdLine
+  Assert-Success "Building with unset CC/CXX from cmd.exe"
+  Assert-NativeOutput $cmdExe
+} finally {
+  if ($null -eq $savedCC) { Remove-Item Env:CC -ErrorAction SilentlyContinue } else { $env:CC = $savedCC }
+  if ($null -eq $savedCXX) { Remove-Item Env:CXX -ErrorAction SilentlyContinue } else { $env:CXX = $savedCXX }
 }

@@ -1,6 +1,8 @@
 param(
   [Parameter(Mandatory = $true)]
-  [string]$LLGo
+  [string]$LLGo,
+  [ValidateSet("msvc", "mingw")]
+  [string]$Profile = "msvc"
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,10 +25,11 @@ $env:LLGO_BUILD_CACHE = "off"
 # bridge for every Go-supported Windows architecture so target-ABI regressions
 # do not wait for native 386 or ARM64 runners.
 $syscallAsm = Join-Path $root "runtime\internal\lib\runtime\_wrap\syscall_windows.S"
+$targetSuffix = if ($Profile -eq "msvc") { "pc-windows-msvc" } else { "w64-windows-gnu" }
 foreach ($syscallTarget in @(
-  @{ Triple = "i686-pc-windows-msvc"; Symbol = "_llgo_windows_syscall" },
-  @{ Triple = "x86_64-pc-windows-msvc"; Symbol = "llgo_windows_syscall" },
-  @{ Triple = "aarch64-pc-windows-msvc"; Symbol = "llgo_windows_syscall" }
+  @{ Triple = "i686-$targetSuffix"; Symbol = "_llgo_windows_syscall" },
+  @{ Triple = "x86_64-$targetSuffix"; Symbol = "llgo_windows_syscall" },
+  @{ Triple = "aarch64-$targetSuffix"; Symbol = "llgo_windows_syscall" }
 )) {
   $syscallObj = Join-Path $out ("syscall-{0}.obj" -f $syscallTarget.Triple)
   & $clangExe "--target=$($syscallTarget.Triple)" -c $syscallAsm -o $syscallObj

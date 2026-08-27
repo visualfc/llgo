@@ -1,5 +1,10 @@
 name: "Setup Demo Dependencies"
 description: "Install dependencies required by the LLGo demo suite"
+inputs:
+  windows-abi:
+    description: "Native Windows toolchain profile: msvc or mingw"
+    required: false
+    default: "msvc"
 
 runs:
   using: "composite"
@@ -62,11 +67,23 @@ runs:
       run: |
         $ErrorActionPreference = "Stop"
 
-        $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-        switch ($architecture) {
-          "X64" { $targetTriple = "x86_64-pc-windows-msvc" }
-          "Arm64" { $targetTriple = "aarch64-pc-windows-msvc" }
-          default { throw "Unsupported Windows architecture: $architecture" }
+        if ("${{ inputs.windows-abi }}" -notin @("msvc", "mingw")) {
+          throw "Unsupported Windows ABI profile: ${{ inputs.windows-abi }}"
+        }
+        $compiler = (Get-Command clang.exe).Source
+        $target = (& $compiler -dumpmachine).Trim()
+        if ("${{ inputs.windows-abi }}" -eq "msvc") {
+          if ($target -notmatch "-windows-msvc$") {
+            throw "The MSVC profile resolved Clang target $target"
+          }
+          $runtimeArgs = @("-fms-runtime-lib=dll")
+          $archive = "cargs.lib"
+        } else {
+          if ($target -notmatch "-(windows-gnu|mingw32)$") {
+            throw "The MinGW profile resolved Clang target $target"
+          }
+          $runtimeArgs = @()
+          $archive = "libcargs.a"
         }
 
         $libsDir = Join-Path $env:GITHUB_WORKSPACE "_demo\c\cargs\libs"
@@ -81,19 +98,22 @@ runs:
         Invoke-WebRequest "$baseUrl/src/cargs.c" -OutFile $source
 
         $object = Join-Path $env:RUNNER_TEMP "cargs.obj"
-        $compiler = (Get-Command clang.exe).Source
-        & $compiler "--target=$targetTriple" -fms-runtime-lib=dll -O2 -std=c11 `
+        & $compiler @runtimeArgs -O2 -std=c11 `
           "-I$includeDir" -c $source -o $object
         if ($LASTEXITCODE -ne 0) {
           throw "Compiling cargs failed with exit code $LASTEXITCODE"
         }
-        & llvm-lib "/out:$(Join-Path $libDir 'cargs.lib')" $object
+        if ("${{ inputs.windows-abi }}" -eq "msvc") {
+          & llvm-lib "/out:$(Join-Path $libDir $archive)" $object
+        } else {
+          & llvm-ar rcs (Join-Path $libDir $archive) $object
+        }
         if ($LASTEXITCODE -ne 0) {
           throw "Archiving cargs failed with exit code $LASTEXITCODE"
         }
 
-        # A static MSVC library avoids a demo-only DLL search path. pkgconf's
-        # logical -lcargs entry is resolved by LLGo's Windows dependency path.
+        # A static target-native library avoids a demo-only DLL search path.
+        # Each profile's pkg-config resolves -lcargs to its own archive format.
         # Windows pkgconf relocates a variable named "prefix" relative to the
         # .pc file by default. Keep these installation paths absolute because
         # the metadata intentionally lives under RUNNER_TEMP, not the library.
@@ -109,8 +129,6 @@ runs:
         Libs: -L"`${libdir}" -lcargs
         Cflags: -I"`${includedir}"
         "@ | Set-Content -Encoding ascii (Join-Path $pcDir "cargs.pc")
-
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDir;$env:PKG_CONFIG_PATH"
 
     - name: Install Python demo dependencies on Unix
       if: runner.os != 'Windows'
@@ -147,6 +165,12 @@ runs:
         $importLibrary = Join-Path $libDir "python$version.lib"
         if (-not (Test-Path $importLibrary)) {
           throw "Python import library was not found at $importLibrary"
+        }
+        if ("${{ inputs.windows-abi }}" -eq "mingw") {
+          # LLVM's MinGW linker accepts the same COFF import-library contents
+          # but its -l search uses the GNU filename. Keep the official Python
+          # artifact untouched and expose only a profile-local spelling.
+          Copy-Item -Force $importLibrary (Join-Path $libDir "libpython$version.a")
         }
 
         $pcDir = Join-Path $env:RUNNER_TEMP "llgo-pkgconfig"
