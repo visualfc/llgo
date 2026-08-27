@@ -747,6 +747,24 @@ def format_pointer(var: lldb.SBValue, _debugger: lldb.SBDebugger, _indent: int, 
     return var.GetValue()  # Return the address as a string
 
 
+TYPE_NAME_MAPPING: Dict[str, str] = {
+    'long': 'int',
+    'void': 'unsafe.Pointer',
+    'char': 'byte',
+    'short': 'int16',
+    'int': 'int32',
+    'long long': 'int64',
+    'unsigned char': 'uint8',
+    'unsigned short': 'uint16',
+    'unsigned int': 'uint32',
+    'unsigned long': 'uint',
+    'unsigned long long': 'uint64',
+    'float': 'float32',
+    'double': 'float64',
+}
+TYPE_NAMES_BY_LENGTH = sorted(TYPE_NAME_MAPPING, key=len, reverse=True)
+
+
 def map_type_name(type_name: str) -> str:
     # Handle pointer types
     if type_name.endswith('*'):
@@ -754,26 +772,12 @@ def map_type_name(type_name: str) -> str:
         mapped_base_type = map_type_name(base_type)
         return f"*{mapped_base_type}"
 
-    # Map other types
-    type_mapping: Dict[str, str] = {
-        'long': 'int',
-        'void': 'unsafe.Pointer',
-        'char': 'byte',
-        'short': 'int16',
-        'int': 'int32',
-        'long long': 'int64',
-        'unsigned char': 'uint8',
-        'unsigned short': 'uint16',
-        'unsigned int': 'uint32',
-        'unsigned long': 'uint',
-        'unsigned long long': 'uint64',
-        'float': 'float32',
-        'double': 'float64',
-    }
-
-    for c_type in sorted(type_mapping, key=len, reverse=True):
+    # Prefer longer C spellings so "unsigned long long" is considered before
+    # its prefixes. The mapping is shared because this runs for every value in
+    # recursive container formatting.
+    for c_type in TYPE_NAMES_BY_LENGTH:
         if type_name.startswith(c_type):
-            return type_name.replace(c_type, type_mapping[c_type], 1)
+            return type_name.replace(c_type, TYPE_NAME_MAPPING[c_type], 1)
 
     return type_name
 

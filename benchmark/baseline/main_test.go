@@ -479,6 +479,18 @@ func TestRunQuietIncludesCommandOutput(t *testing.T) {
 	}
 }
 
+func TestRunMeasuredIncludesCommandOutputAfterFailure(t *testing.T) {
+	err := runMeasured(
+		context.Background(),
+		os.Environ(),
+		"go",
+		"definitely-not-a-go-command",
+	)
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("runMeasured error = %v", err)
+	}
+}
+
 func TestValidateArtifactReportsMissingFiles(t *testing.T) {
 	dir := t.TempDir()
 	if err := validateArtifact(dir); err == nil || !strings.Contains(err.Error(), "size.json") {

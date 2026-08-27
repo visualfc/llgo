@@ -234,7 +234,7 @@ func collect(ctx context.Context, root, llgo, out string, buildRuns, runRuns int
 		buildDurations := make([]time.Duration, 0, buildRuns)
 		for range buildRuns {
 			start := time.Now()
-			if err := runQuiet(ctx, env, llgo, buildArgs...); err != nil {
+			if err := runMeasured(ctx, env, llgo, buildArgs...); err != nil {
 				return fmt.Errorf("build %s: %w", item.name, err)
 			}
 			buildDurations = append(buildDurations, time.Since(start))
@@ -299,6 +299,20 @@ func runQuiet(ctx context.Context, env []string, name string, args ...string) er
 		return err
 	}
 	return nil
+}
+
+// runMeasured keeps the successful benchmark path free of diagnostic buffer
+// work. If the command fails, the failed sample is discarded anyway, so rerun
+// it once with capture enabled to provide the actionable compiler output.
+func runMeasured(ctx context.Context, env []string, name string, args ...string) error {
+	err := run(ctx, env, io.Discard, name, args...)
+	if err == nil {
+		return nil
+	}
+	if detailErr := runQuiet(ctx, env, name, args...); detailErr != nil {
+		return detailErr
+	}
+	return err
 }
 
 func run(ctx context.Context, env []string, output io.Writer, name string, args ...string) error {
