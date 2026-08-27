@@ -656,6 +656,94 @@ func TestDevLTOGlobalDCEMethodCheckedLoadEmitsIntrinsicAndAssume(t *testing.T) {
 	}
 }
 
+func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	prog.sizes = types.SizesFor("gc", runtime.GOARCH)
+	prog.EnableGoGlobalDCE(true)
+	prog.EnableLTOPluginMarkers(true)
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkgTypes := types.NewPackage("example.com/staticitab", "staticitab")
+	concrete := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkgTypes, "T", nil),
+		types.NewStruct(nil, nil), nil)
+	recv := types.NewVar(token.NoPos, pkgTypes, "", concrete)
+	methodSig := types.NewSignatureType(recv, nil, nil, nil, nil, false)
+	concrete.AddMethod(types.NewFunc(token.NoPos, pkgTypes, "M", methodSig))
+	concrete.AddMethod(types.NewFunc(token.NoPos, pkgTypes, "N", methodSig))
+	interfaceMethodSig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	interfaceMethodM := types.NewFunc(token.NoPos, pkgTypes, "M", interfaceMethodSig)
+	interfaceMethodN := types.NewFunc(token.NoPos, pkgTypes, "N", interfaceMethodSig)
+	intf := types.NewInterfaceType([]*types.Func{interfaceMethodM, interfaceMethodN}, nil)
+	intf.Complete()
+
+	pkg := prog.NewPackage("staticitab", pkgTypes.Path())
+	returns := types.NewTuple(types.NewVar(token.NoPos, nil, "", intf))
+	fn := pkg.NewFunc("Make", types.NewSignatureType(nil, nil, nil, nil, returns, false), InGo)
+	b := fn.MakeBody(1)
+	b.Return(b.MakeInterface(prog.Type(intf, InGo), prog.Zero(prog.Type(concrete, InGo))))
+	if _, ok := b.staticItab(intf, concrete, b.abiType(intf), b.abiType(concrete)); !ok {
+		t.Fatal("cached static itab template was not reused")
+	}
+	if _, ok := b.staticItab(intf, nil, b.abiType(intf), Expr{}); ok {
+		t.Fatal("dynamic concrete type emitted a static itab template")
+	}
+	empty := types.NewInterfaceType(nil, nil).Complete()
+	if _, ok := b.staticItab(empty, concrete, b.abiType(empty), b.abiType(concrete)); ok {
+		t.Fatal("empty interface emitted a static itab template")
+	}
+	unrelated := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkgTypes, "Unrelated", nil),
+		types.NewStruct(nil, nil), nil)
+	if _, ok := b.staticItab(intf, unrelated, b.abiType(intf), b.abiType(unrelated)); ok {
+		t.Fatal("unassignable concrete type emitted a static itab template")
+	}
+	prog.EnableLTOPluginMarkers(false)
+	if _, ok := b.staticItab(intf, concrete, b.abiType(intf), b.abiType(concrete)); ok {
+		t.Fatal("static itab template emitted without LTO plugin markers")
+	}
+	prog.EnableLTOPluginMarkers(true)
+	noInterface := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkgTypes, "NoInterface", nil),
+		types.NewStruct(nil, nil), nil)
+	noInterfaceRecv := types.NewVar(token.NoPos, pkgTypes, "", noInterface)
+	noInterfaceSig := types.NewSignatureType(noInterfaceRecv, nil, nil, nil, nil, false)
+	noInterface.AddMethod(types.NewFunc(token.NoPos, pkgTypes, "M", noInterfaceSig))
+	noInterface.AddMethod(types.NewFunc(token.NoPos, pkgTypes, "N", noInterfaceSig))
+	prog.SetNoInterfaceMethod(pkgTypes.Path() + ".NoInterface.M")
+	if _, ok := b.staticItab(intf, noInterface, b.abiType(intf), b.abiType(noInterface)); ok {
+		t.Fatal("nointerface method emitted a static itab template")
+	}
+	b.EndBuild()
+	pkg.MaterializePreserveSyms()
+
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatal(err)
+	}
+	ir := pkg.String()
+	for _, want := range []string{
+		`_llgo_itab$`,
+		`@llvm.compiler.used`,
+		`!"go.method.M:func()"`,
+		`!"go.method.N:func()"`,
+		`!llgo.static.itab.slot`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing %s in static itab IR:\n%s", want, ir)
+		}
+	}
+	if !strings.Contains(ir, `call ptr @"github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab"`) {
+		t.Fatalf("static itab template replaced NewItab before LTO proof:\n%s", ir)
+	}
+}
+
 func TestDevLTOGlobalDCEReflectMethodByNameCallMarkers(t *testing.T) {
 	requireGoGlobalDCE(t)
 

@@ -17,6 +17,9 @@
 package ssa
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/binary"
 	"go/token"
 	"go/types"
 
@@ -41,11 +44,90 @@ func (b Builder) newItab(tintf, typ Expr) Expr {
 	return b.Call(b.Pkg.rtFunc("NewItab"), tintf, typ)
 }
 
-func (b Builder) unsafeInterface(rawIntf *types.Interface, t Expr, data llvm.Value) llvm.Value {
+func (b Builder) staticItab(rawIntf *types.Interface, concrete types.Type, tintf, typ Expr) (Expr, bool) {
+	prog := b.Prog
+	if !prog.enableGoGlobalDCE || !prog.enableLTOPluginMarker ||
+		rawIntf.NumMethods() == 0 || concrete == nil {
+		return Expr{}, false
+	}
+	if !types.AssignableTo(concrete, rawIntf) {
+		return Expr{}, false
+	}
+	mset := types.NewMethodSet(concrete)
+	methods := make([]*types.Selection, rawIntf.NumMethods())
+	for i := range methods {
+		im := rawIntf.Method(i)
+		method := mset.Lookup(im.Pkg(), im.Name())
+		if method == nil || prog.isNoInterfaceMethod(method.Obj().(*types.Func)) {
+			return Expr{}, false
+		}
+		methods[i] = method
+	}
+
+	intfName, _ := prog.abi.TypeName(rawIntf)
+	typeName, _ := prog.abi.TypeName(concrete)
+	sum := sha256.Sum256([]byte(intfName + "\x00" + typeName))
+	name := "_llgo_itab$" + base64.RawURLEncoding.EncodeToString(sum[:])
+	if global := b.Pkg.VarOf(name); global != nil {
+		return Expr{global.impl, prog.Pointer(prog.rtType("Itab"))}, true
+	}
+
+	ptr := prog.VoidPtr()
+	funArray := prog.rawType(types.NewArray(ptr.RawType(), int64(len(methods))))
+	staticType := prog.rawType(types.NewStruct([]*types.Var{
+		types.NewVar(token.NoPos, nil, "inter", ptr.RawType()),
+		types.NewVar(token.NoPos, nil, "typ", ptr.RawType()),
+		types.NewVar(token.NoPos, nil, "hash", types.Typ[types.Uint32]),
+		types.NewVar(token.NoPos, nil, "fun", funArray.RawType()),
+	}, nil))
+	global := b.Pkg.NewVarEx(name, prog.Pointer(staticType))
+	funcs := make([]llvm.Value, len(methods))
+	for i, method := range methods {
+		funcs[i], _ = b.abiMethodFuncs(concrete, method)
+	}
+	hashBytes := sha256.Sum256([]byte(typeName))
+	hash := binary.LittleEndian.Uint32(hashBytes[:4])
+	global.impl.SetInitializer(prog.ctx.ConstStruct([]llvm.Value{
+		tintf.impl,
+		typ.impl,
+		prog.IntVal(uint64(hash), prog.Uint32()).impl,
+		llvm.ConstArray(ptr.ll, funcs),
+	}, false))
+	global.impl.SetGlobalConstant(true)
+	b.Pkg.setODRLinkage(global.impl, llvm.WeakODRLinkage)
+
+	// Describe each function slot with private LLGo metadata. The template is a
+	// compile-time certificate, not a runtime vtable, so it must not participate
+	// in LLVM's type-test candidate sets before the plugin consumes it.
+	slotKind := prog.ctx.MDKindID("llgo.static.itab.slot")
+	funOffset := uint64(prog.td.ElementOffset(staticType.ll, 3))
+	stride := uint64(prog.td.TypeAllocSize(ptr.ll))
+	for i := range methods {
+		offset := funOffset + uint64(i)*stride
+		method := rawIntf.Method(i)
+		node := prog.ctx.MDNode([]llvm.Metadata{
+			llvm.ConstInt(prog.Int64().ll, offset, false).ConstantAsMetadata(),
+			prog.ctx.MDString(methodCapabilityKey(method)),
+		})
+		global.impl.AddMetadata(slotKind, node)
+	}
+	// Keep the otherwise-dormant template through package optimization without
+	// perturbing function IR. The LTO plugin removes this compiler.used entry
+	// after using the template as a compile-time devirtualization certificate.
+	b.Pkg.markLLVMUsed(global.impl)
+	return Expr{global.impl, prog.Pointer(prog.rtType("Itab"))}, true
+}
+
+func (b Builder) unsafeInterface(rawIntf *types.Interface, concrete types.Type, t Expr, data llvm.Value) llvm.Value {
 	if rawIntf.Empty() {
 		return b.unsafeEface(t.impl, data)
 	}
 	tintf := b.abiType(rawIntf)
+	// Emit a constant template for LTO analysis. Keep the runtime NewItab call
+	// even after devirtualization so dynamically-created interfaces continue to
+	// share the runtime's canonical itab pointer. Every template disappears
+	// before GlobalDCE.
+	b.staticItab(rawIntf, concrete, tintf, t)
 	itab := b.newItab(tintf, t)
 	return b.unsafeIface(itab.impl, data)
 }
@@ -151,14 +233,14 @@ func (b Builder) MakeInterface(tinter Type, x Expr) (ret Expr) {
 	if !directIfaceType(typ.raw.Type) {
 		vptr := b.AllocU(typ)
 		b.Store(vptr, x)
-		return Expr{b.unsafeInterface(rawIntf, tabi, vptr.impl), tinter}
+		return Expr{b.unsafeInterface(rawIntf, typ.raw.Type, tabi, vptr.impl), tinter}
 	}
 	kind, _, lvl := abi.DataKindOf(typ.raw.Type, 0, prog.is32Bits)
 	switch kind {
 	case abi.Indirect:
 		vptr := b.AllocU(typ)
 		b.Store(vptr, x)
-		return Expr{b.unsafeInterface(rawIntf, tabi, vptr.impl), tinter}
+		return Expr{b.unsafeInterface(rawIntf, typ.raw.Type, tabi, vptr.impl), tinter}
 	}
 	ximpl := x.impl
 	if lvl > 0 {
@@ -167,7 +249,7 @@ func (b Builder) MakeInterface(tinter Type, x Expr) (ret Expr) {
 	var u llvm.Value
 	switch kind {
 	case abi.Pointer:
-		return Expr{b.unsafeInterface(rawIntf, tabi, ximpl), tinter}
+		return Expr{b.unsafeInterface(rawIntf, typ.raw.Type, tabi, ximpl), tinter}
 	case abi.Integer:
 		tu := prog.Uintptr()
 		u = llvm.CreateIntCast(b.impl, ximpl, tu.ll)
@@ -182,7 +264,7 @@ func (b Builder) MakeInterface(tinter Type, x Expr) (ret Expr) {
 		panic("todo")
 	}
 	data := llvm.CreateIntToPtr(b.impl, u, prog.tyVoidPtr())
-	return Expr{b.unsafeInterface(rawIntf, tabi, data), tinter}
+	return Expr{b.unsafeInterface(rawIntf, typ.raw.Type, tabi, data), tinter}
 }
 
 func (b Builder) MakeInterfaceFromPtr(tinter Type, ptr Expr) (ret Expr) {
@@ -201,7 +283,7 @@ func (b Builder) MakeInterfaceFromPtr(tinter Type, ptr Expr) (ret Expr) {
 	dst := b.Convert(prog.VoidPtr(), vptr)
 	src := b.Convert(prog.VoidPtr(), ptr)
 	b.Call(b.Pkg.rtFunc("Typedmemmove"), tabi, dst, src)
-	return Expr{b.unsafeInterface(rawIntf, tabi, vptr.impl), tinter}
+	return Expr{b.unsafeInterface(rawIntf, typ.raw.Type, tabi, vptr.impl), tinter}
 }
 
 func (b Builder) recordUseIface(typ Type) {
@@ -351,7 +433,7 @@ func (b Builder) TypeAssert(x Expr, assertedTyp Type, commaOk bool) Expr {
 	} else {
 		if rawIntf, ok := assertedTyp.raw.Type.Underlying().(*types.Interface); ok {
 			eq = b.InlineCall(b.Pkg.rtFunc("Implements"), tabi, tx)
-			val = func() Expr { return Expr{b.unsafeInterface(rawIntf, tx, b.faceData(x.impl)), assertedTyp} }
+			val = func() Expr { return Expr{b.unsafeInterface(rawIntf, nil, tx, b.faceData(x.impl)), assertedTyp} }
 		} else if assertedTyp.kind == vkClosure {
 			eq = b.InlineCall(b.Pkg.rtFunc("MatchesClosure"), tabi, tx)
 			val = func() Expr { return b.valFromData(assertedTyp, b.faceData(x.impl)) }
@@ -417,7 +499,7 @@ func (b Builder) ChangeInterface(typ Type, x Expr) (ret Expr) {
 	rawIntf := typ.raw.Type.Underlying().(*types.Interface)
 	tabi := b.faceAbiType(x)
 	data := b.faceData(x.impl)
-	return Expr{b.unsafeInterface(rawIntf, tabi, data), typ}
+	return Expr{b.unsafeInterface(rawIntf, nil, tabi, data), typ}
 }
 
 // -----------------------------------------------------------------------------

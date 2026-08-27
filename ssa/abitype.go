@@ -534,32 +534,12 @@ func (b Builder) abiUncommonMethods(t types.Type, methods []*types.Selection) ll
 	n := len(methods)
 	fields := make([]llvm.Value, n)
 	typeName, _ := prog.abi.TypeName(t)
-	pkg, _ := b.abiUncommonPkg(t)
-	anonymous := pkg == nil
-	if anonymous {
-		pkg = types.NewPackage(b.Pkg.Path(), "")
-	}
 	for i := 0; i < n; i++ {
 		m := methods[i]
 		obj := m.Obj().(*types.Func)
-		mName := obj.Name()
 		fullName := abiMethodName(obj)
 		name := b.Str(fullName).impl
-		mSig := m.Type().(*types.Signature)
-		// funcName uses this same receiver package for the emitted wrapper
-		// definition; MethodSymbolName must see identical inputs here.
-		mSymbolName := MethodSymbolName(pkg, obj, mName)
-		var tfn, ifn llvm.Value
-		tfnFn := b.abiMethodFunc(anonymous, pkg, mSymbolName, mSig)
-		// Tfn is used as a method-expression funcval. Its explicit receiver is
-		// already part of that semantic signature, so it is a no-env entry.
-		tfn = tfnFn.impl
-		ifn = tfnFn.impl
-		if _, ok := m.Recv().Underlying().(*types.Pointer); !ok {
-			pRecv := types.NewVar(token.NoPos, pkg, "", types.NewPointer(mSig.Recv().Type()))
-			pSig := types.NewSignature(pRecv, mSig.Params(), mSig.Results(), mSig.Variadic())
-			ifn = b.abiMethodFunc(anonymous, pkg, mSymbolName, pSig).impl
-		}
+		ifn, tfn := b.abiMethodFuncs(t, m)
 		var values []llvm.Value
 		values = append(values, name)
 		ftyp := funcType(prog, m.Type())
@@ -573,6 +553,33 @@ func (b Builder) abiUncommonMethods(t types.Type, methods []*types.Selection) ll
 		}
 	}
 	return llvm.ConstArray(ft.ll, fields)
+}
+
+// abiMethodFuncs returns the interface-call and method-expression entry points
+// stored in a concrete type's method metadata. Keep this shared with static
+// itab construction so both representations select exactly the same wrapper.
+func (b Builder) abiMethodFuncs(t types.Type, m *types.Selection) (ifn, tfn llvm.Value) {
+	pkg, _ := b.abiUncommonPkg(t)
+	anonymous := pkg == nil
+	if anonymous {
+		pkg = types.NewPackage(b.Pkg.Path(), "")
+	}
+	obj := m.Obj().(*types.Func)
+	mSig := m.Type().(*types.Signature)
+	// funcName uses this same receiver package for the emitted wrapper
+	// definition; MethodSymbolName must see identical inputs here.
+	mSymbolName := MethodSymbolName(pkg, obj, obj.Name())
+	tfnFn := b.abiMethodFunc(anonymous, pkg, mSymbolName, mSig)
+	// Tfn is used as a method-expression funcval. Its explicit receiver is
+	// already part of that semantic signature, so it is a no-env entry.
+	tfn = tfnFn.impl
+	ifn = tfn
+	if _, ok := m.Recv().Underlying().(*types.Pointer); !ok {
+		pRecv := types.NewVar(token.NoPos, pkg, "", types.NewPointer(mSig.Recv().Type()))
+		pSig := types.NewSignature(pRecv, mSig.Params(), mSig.Results(), mSig.Variadic())
+		ifn = b.abiMethodFunc(anonymous, pkg, mSymbolName, pSig).impl
+	}
+	return
 }
 
 func (b Builder) abiInterfaceMethods(mset *types.MethodSet) []*types.Selection {
