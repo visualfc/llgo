@@ -100,7 +100,7 @@ jobs:
             done
           )
 
-          ffi_include="$(pkg-config --variable=includedir libffi)"
+          ffi_include="$("$PKG_CONFIG" --variable=includedir libffi)"
           clang -target x86_64-pc-windows-msvc -I"$ffi_include" -c \
             runtime/internal/clite/ffi/_wrap/libffi.c \
             -o "$RUNNER_TEMP/llgo-libffi-amd64.obj"
