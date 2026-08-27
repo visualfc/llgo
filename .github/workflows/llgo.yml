@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   llgo:
-    name: llgo (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
+    name: llgo (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
     continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: 60
     strategy:
@@ -47,6 +47,12 @@ jobs:
             llvm: 19
             go: "1.26.7"
             lane: primary
+            windows_abi: msvc
+          - os: windows-2022
+            llvm: 19
+            go: "1.26.7"
+            lane: primary
+            windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -54,10 +60,13 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           llvm-version: ${{matrix.llvm}}
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
       - name: Install embedded dependencies
         uses: ./.github/actions/setup-embed-deps
       - name: Setup demo dependencies
         uses: ./.github/actions/setup-demo-deps
+        with:
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Set up Go for build
         uses: ./.github/actions/setup-go
@@ -77,10 +86,10 @@ jobs:
         with:
           go-version: ${{matrix.go}}
 
-      - name: Validate the standalone Windows MSVC toolchain profile
+      - name: Validate the native Windows toolchain profile
         if: ${{ matrix.os == 'windows-2022' && matrix.lane == 'primary' }}
         shell: pwsh
-        run: .\.github\workflows\test_windows_toolchain_profile.ps1
+        run: .\.github\workflows\test_windows_toolchain_profile.ps1 -Profile "${{ matrix.windows_abi }}"
 
       - name: Test demo without RPATH (expect failure)
         if: runner.os != 'Windows'
@@ -101,7 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           export LLGO_FULL_RPATH=false
-          "$PKG_CONFIG" --libs cargs
+          pkg-config --libs cargs
           (cd ./_demo/c/cargs && llgo run .)
 
       - name: Test demos
@@ -161,79 +170,87 @@ jobs:
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
 
-      # Install these shells only after the native Windows suite has finished.
-      # They supply no compiler, linker, runtime library, or dependency to the
-      # primary build; this smoke verifies that the invoking shell cannot
-      # silently select a POSIX-emulation target ABI.
-      - name: Set up MSYS2 invocation shell
-        if: ${{ matrix.os == 'windows-2022' && matrix.lane == 'primary' }}
-        id: windows_shell_msys2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MSYS
-          path-type: inherit
-          update: true
-
-      - name: Set up Cygwin invocation shell
-        if: ${{ matrix.os == 'windows-2022' && matrix.lane == 'primary' }}
-        shell: pwsh
-        run: choco install cygwin --yes --no-progress --params "/InstallDir:C:\tools\cygwin /NoStartMenu"
-
-      - name: Validate MSYS2 and Cygwin shell independence
-        if: ${{ matrix.os == 'windows-2022' && matrix.lane == 'primary' }}
-        shell: pwsh
-        env:
-          MSYS2_BASH: ${{ steps.windows_shell_msys2.outputs.msys2-location }}\usr\bin\bash.exe
-          CYGWIN_BASH: C:\tools\cygwin\bin\bash.exe
-        run: |
-          .\.github\workflows\test_windows_toolchain_profile.ps1 `
-            -SkipNativeShells `
-            -BashPaths @($env:MSYS2_BASH, $env:CYGWIN_BASH)
-
       - name: DWARF standard tests
         if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
         run: go test -timeout 15m ./internal/build -run '^TestStandardDWARF$' -count=1 -v
 
   test:
-    name: test (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }}, shard ${{ matrix.shard }})
+    name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }}, shard ${{ matrix.shard }})
     continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 30 }}
     strategy:
       fail-fast: false
       matrix:
-        # Keep compatibility and primary toolchains pinned to exact patches.
-        os:
-          - macos-latest
-          - ubuntu-latest
-          - windows-2022
-        llvm: [19]
-        go: ["1.25.0", "1.26.7", "1.27.0"]
-        # In-command package parallelism lets Ubuntu use two shards while
-        # retaining headroom for the serial std build-mode checks.
-        shard: ["0", "1"]
         include:
-          - go: "1.25.0"
+          # In-command package parallelism lets Ubuntu use two shards while
+          # retaining headroom for the serial std build-mode checks.
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.25.0"
+            shard: "0"
             lane: compatibility
-          - go: "1.26.7"
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.25.0"
+            shard: "1"
+            lane: compatibility
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.26.7"
+            shard: "0"
             lane: primary
-          - go: "1.27.0"
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.26.7"
+            shard: "1"
             lane: primary
-        exclude:
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.27.0"
+            shard: "0"
+            lane: primary
+          - os: ubuntu-latest
+            llvm: 19
+            go: "1.27.0"
+            shard: "1"
+            lane: primary
           # The full demo lane above exercises Go 1.25 user-project/runtime
-          # compatibility on macOS. Keep the much larger per-package
-          # compatibility matrix on Ubuntu and use one parallel primary shard
-          # on macOS.
+          # compatibility on macOS. Use one parallel current-Go shard there.
           - os: macos-latest
-            go: "1.25.0"
+            llvm: 19
+            go: "1.26.7"
+            shard: "0"
+            lane: primary
           - os: macos-latest
-            shard: "1"
-          # Windows is a primary current-Go lane. One process-level shard and
-          # -p=2 keep both the hosted runner and the 8 GB development VM below
-          # their memory limits without excluding any test package.
+            llvm: 19
+            go: "1.27.0"
+            shard: "0"
+            lane: primary
+          # Each Windows profile runs the complete package set with -p=2.
           - os: windows-2022
-            go: "1.25.0"
+            llvm: 19
+            go: "1.26.7"
+            shard: "0"
+            lane: primary
+            windows_abi: msvc
           - os: windows-2022
-            shard: "1"
+            llvm: 19
+            go: "1.26.7"
+            shard: "0"
+            lane: primary
+            windows_abi: mingw
+          - os: windows-2022
+            llvm: 19
+            go: "1.27.0"
+            shard: "0"
+            lane: primary
+            windows_abi: msvc
+          - os: windows-2022
+            llvm: 19
+            go: "1.27.0"
+            shard: "0"
+            lane: primary
+            windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -241,8 +258,11 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           llvm-version: ${{matrix.llvm}}
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
       - name: Install further optional dependencies for demos
         uses: ./.github/actions/setup-demo-deps
+        with:
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Set up Go for build and testing
         uses: ./.github/actions/setup-go
@@ -268,7 +288,9 @@ jobs:
         shell: pwsh
         run: |
           $llgo = (Get-Command llgo.exe).Source
-          .\.github\workflows\test_windows_runtime.ps1 -LLGo $llgo
+          .\.github\workflows\test_windows_runtime.ps1 `
+            -LLGo $llgo `
+            -Profile "${{ matrix.windows_abi }}"
 
       - name: run llgo test
         env:
@@ -322,7 +344,7 @@ jobs:
           fi
 
   hello:
-    name: hello (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
+    name: hello (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
     continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: 30
     strategy:
@@ -346,6 +368,12 @@ jobs:
             llvm: 19
             go: "1.26.7"
             lane: primary
+            windows_abi: msvc
+          - os: windows-2022
+            llvm: 19
+            go: "1.26.7"
+            lane: primary
+            windows_abi: mingw
           - os: ubuntu-latest
             llvm: 19
             go: "1.27.0"
@@ -358,6 +386,12 @@ jobs:
             llvm: 19
             go: "1.27.0"
             lane: primary
+            windows_abi: msvc
+          - os: windows-2022
+            llvm: 19
+            go: "1.27.0"
+            lane: primary
+            windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -365,6 +399,7 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           llvm-version: ${{matrix.llvm}}
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go

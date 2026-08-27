@@ -47,13 +47,17 @@ jobs:
           source doc/_readme/scripts/run.sh
 
   local_install:
+    name: local install (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }})
     timeout-minutes: 30
     strategy:
       matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
-          - windows-2022
+        include:
+          - os: macos-latest
+          - os: ubuntu-latest
+          - os: windows-2022
+            windows_abi: msvc
+          - os: windows-2022
+            windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -84,6 +88,8 @@ jobs:
       - name: Install dependencies on Windows
         if: startsWith(matrix.os, 'windows')
         uses: ./.github/actions/setup-deps
+        with:
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Install llgo with tools
         shell: bash
@@ -116,13 +122,17 @@ jobs:
           source doc/_readme/scripts/run.sh
 
   local_install_full:
+    name: local full install (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }})
     timeout-minutes: 30
     strategy:
       matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
-          - windows-2022
+        include:
+          - os: macos-latest
+          - os: ubuntu-latest
+          - os: windows-2022
+            windows_abi: msvc
+          - os: windows-2022
+            windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -154,6 +164,8 @@ jobs:
       - name: Install dependencies on Windows
         if: startsWith(matrix.os, 'windows')
         uses: ./.github/actions/setup-deps
+        with:
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Install llgo with tools
         shell: bash
