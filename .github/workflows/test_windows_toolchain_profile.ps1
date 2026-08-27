@@ -54,6 +54,14 @@ if (-not $SkipNativeShells) {
       throw "$tool unexpectedly resolves through a POSIX environment: $path"
     }
   }
+  if (-not $env:PKG_CONFIG -or -not (Test-Path $env:PKG_CONFIG)) {
+    throw "PKG_CONFIG does not name an installed native executable: $env:PKG_CONFIG"
+  }
+  if ($env:PKG_CONFIG -match '(?i)[\\/](msys64|cygwin|strawberry)[\\/]') {
+    throw "PKG_CONFIG unexpectedly resolves through a bundled POSIX or Perl environment: $env:PKG_CONFIG"
+  }
+  & $env:PKG_CONFIG --modversion llvm-19 | Out-Null
+  Assert-Success "Reading LLVM metadata with native pkgconf"
   if ($env:LLGO_MSYS2_LOCATION) {
     throw "The native Windows lane still exports LLGO_MSYS2_LOCATION"
   }

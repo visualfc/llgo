@@ -146,8 +146,12 @@ runs:
         $llvmConfig = Join-Path $llvmBin "llvm-config.exe"
         $vcpkgRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-vcpkg\$env:VCPKG_MANIFEST_HASH"
         $vcpkgTripletRoot = Join-Path $vcpkgRoot "x64-windows"
+        $pkgconf = Join-Path $vcpkgTripletRoot "tools\pkgconf\pkgconf.exe"
         if (-not (Test-Path (Join-Path $vcpkgTripletRoot "include\gc\gc.h"))) {
           throw "The cached x64-windows dependency installation is incomplete"
+        }
+        if (-not (Test-Path $pkgconf)) {
+          throw "The native pkgconf executable was not installed at $pkgconf"
         }
 
         $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -218,8 +222,10 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG=$pkgconf"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_LLVM_ROOT=$llvmRoot"
         Add-Content -Encoding utf8 $env:GITHUB_PATH $llvmBin
+        Add-Content -Encoding utf8 $env:GITHUB_PATH (Split-Path $pkgconf)
         Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $vcpkgTripletRoot "bin")
 
         $lldb = Join-Path $llvmBin "lldb.exe"
@@ -241,7 +247,7 @@ runs:
           throw "Clang's MSVC compiler-rt builtins were not found at $builtins"
         }
         foreach ($package in @("llvm-${{ inputs.llvm-version }}", "bdw-gc", "libffi", "libuv", "openssl", "libcjson", "sqlite3", "zlib")) {
-          & pkg-config --modversion $package
+          & $pkgconf --modversion $package
           if ($LASTEXITCODE -ne 0) {
             throw "pkg-config metadata for $package is unavailable"
           }

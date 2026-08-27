@@ -9,6 +9,10 @@
     "libffi",
     "libuv",
     "openssl",
+    {
+      "name": "pkgconf",
+      "host": true
+    },
     "sqlite3",
     "zlib"
   ],
