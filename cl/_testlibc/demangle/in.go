@@ -10,7 +10,9 @@ import (
 // CHECK-LABEL: define void @main.main(){{.*}} {
 func main() {
 	mangledName := "__ZNK9INIReader10ParseErrorEv"
-	// CHECK: [[DEMANGLED:%[0-9]+]] = call ptr @_ZN4llvm15itaniumDemangleENSt3__117basic_string_viewIcNS0_11char_traitsIcEEEEb(%"{{.*}}/runtime/internal/runtime.String" { ptr [[MANGLED]], i64 29 }, i1 true)
+	// DARWIN: [[DEMANGLED:%[0-9]+]] = call ptr @_ZN4llvm15itaniumDemangleENSt3__117basic_string_viewIcNS0_11char_traitsIcEEEEb(%"{{.*}}/runtime/internal/runtime.String" { ptr [[MANGLED]], i64 29 }, i1 true)
+	// LINUX: [[DEMANGLED:%[0-9]+]] = call ptr @_ZN4llvm15itaniumDemangleENSt3__117basic_string_viewIcNS0_11char_traitsIcEEEEb(%"{{.*}}/runtime/internal/runtime.String" { ptr [[MANGLED]], i64 29 }, i1 true)
+	// WINDOWS: [[DEMANGLED:%[0-9]+]] = call ptr @"github.com/goplus/lib/cpp/llvm.ItaniumDemangle"(%"{{.*}}/runtime/internal/runtime.String" { ptr [[MANGLED]], i64 29 }, i1 true)
 	// CHECK-NEXT: [[OK:%[0-9]+]] = icmp ne ptr [[DEMANGLED]], null
 	// CHECK-NEXT: br i1 [[OK]], label %{{[^,]+}}, label %{{[^ ]+}}
 	// CHECK: call i32 (ptr, ...) @printf(ptr @{{[0-9]+}}, ptr [[DEMANGLED]])

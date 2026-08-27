@@ -1,4 +1,4 @@
-// LITTEST darwin/arm64 linux/amd64
+// LITTEST
 package main
 
 import (
