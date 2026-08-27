@@ -9,12 +9,14 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -111,7 +113,7 @@ func createTestTarXz(t *testing.T, files map[string]string) string {
 	return xzFile
 }
 
-func TestWindowsTarXzTools(t *testing.T) {
+func TestWindowsArchiveTools(t *testing.T) {
 	touch := func(t *testing.T, name string) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
@@ -122,38 +124,165 @@ func TestWindowsTarXzTools(t *testing.T) {
 		}
 	}
 
-	t.Run("MSYS2", func(t *testing.T) {
+	t.Run("7-Zip", func(t *testing.T) {
 		root := t.TempDir()
-		tarPath := filepath.Join(root, "usr", "bin", "tar.exe")
-		xzPath := filepath.Join(root, "usr", "bin", "xz.exe")
-		touch(t, tarPath)
-		touch(t, xzPath)
+		sevenZip := filepath.Join(root, "7-Zip", "7z.exe")
+		touch(t, sevenZip)
+		if got := windowsSevenZip(root); got != sevenZip {
+			t.Fatalf("windowsSevenZip() = %q, want %q", got, sevenZip)
+		}
+	})
 
-		gotTar, gotXz := windowsTarXzTools(root, "")
-		if gotTar != tarPath || gotXz != xzPath {
-			t.Fatalf("windowsTarXzTools() = (%q, %q), want (%q, %q)", gotTar, gotXz, tarPath, xzPath)
+	t.Run("7-ZipFromPath", func(t *testing.T) {
+		binDir := t.TempDir()
+		sevenZip := filepath.Join(binDir, "7z.exe")
+		touch(t, sevenZip)
+		t.Setenv("PATH", binDir)
+		if got := windowsSevenZip(""); got != sevenZip {
+			t.Fatalf("windowsSevenZip() = %q, want %q", got, sevenZip)
 		}
 	})
 
 	t.Run("NativeFallback", func(t *testing.T) {
-		msysRoot := t.TempDir()
-		touch(t, filepath.Join(msysRoot, "usr", "bin", "tar.exe"))
 		systemRoot := t.TempDir()
 		nativeTar := filepath.Join(systemRoot, "System32", "tar.exe")
 		touch(t, nativeTar)
 
-		gotTar, gotXz := windowsTarXzTools(msysRoot, systemRoot)
-		if gotTar != nativeTar || gotXz != "" {
-			t.Fatalf("windowsTarXzTools() = (%q, %q), want (%q, empty)", gotTar, gotXz, nativeTar)
+		if got := windowsTarCommand(systemRoot); got != nativeTar {
+			t.Fatalf("windowsTarCommand() = %q, want %q", got, nativeTar)
 		}
 	})
 
 	t.Run("PathFallback", func(t *testing.T) {
-		gotTar, gotXz := windowsTarXzTools("", "")
-		if gotTar != "tar" || gotXz != "" {
-			t.Fatalf("windowsTarXzTools() = (%q, %q), want (tar, empty)", gotTar, gotXz)
+		if got := windowsTarCommand(""); got != "tar" {
+			t.Fatalf("windowsTarCommand() = %q, want tar", got)
 		}
 	})
+}
+
+func TestExtractTarXzWith7ZipCommand(t *testing.T) {
+	if mode := os.Getenv("LLGO_7ZIP_HELPER"); mode != "" {
+		switch mode {
+		case "decompress":
+			if os.Getenv("LLGO_7ZIP_FAIL") == mode {
+				os.Exit(2)
+			}
+			_, _ = os.Stdout.WriteString("streamed tar payload")
+		case "extract":
+			payload, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				os.Exit(3)
+			}
+			if err := os.WriteFile(os.Getenv("LLGO_7ZIP_OUTPUT"), payload, 0o644); err != nil {
+				os.Exit(4)
+			}
+			if os.Getenv("LLGO_7ZIP_FAIL") == mode {
+				os.Exit(5)
+			}
+		default:
+			os.Exit(6)
+		}
+		os.Exit(0)
+	}
+
+	output := filepath.Join(t.TempDir(), "payload")
+	t.Setenv("LLGO_7ZIP_OUTPUT", output)
+	command := func(_ string, args ...string) *exec.Cmd {
+		mode := "extract"
+		if slices.Contains(args, "-so") {
+			mode = "decompress"
+		}
+		cmd := exec.Command(os.Args[0], "-test.run=^TestExtractTarXzWith7ZipCommand$")
+		cmd.Env = append(os.Environ(), "LLGO_7ZIP_HELPER="+mode)
+		return cmd
+	}
+
+	if err := extractTarXzWith7ZipCommand("7z", "input.tar.xz", "output", command); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(payload), "streamed tar payload"; got != want {
+		t.Fatalf("streamed payload = %q, want %q", got, want)
+	}
+
+	for _, test := range []struct {
+		mode string
+		want string
+	}{
+		{mode: "decompress", want: "7-Zip xz decompression"},
+		{mode: "extract", want: "7-Zip tar extraction"},
+	} {
+		t.Run(test.mode+" failure", func(t *testing.T) {
+			t.Setenv("LLGO_7ZIP_FAIL", test.mode)
+			if err := extractTarXzWith7ZipCommand("7z", "input.tar.xz", "output", command); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
+	}
+
+	t.Run("extract start failure", func(t *testing.T) {
+		calls := 0
+		factory := func(_ string, _ ...string) *exec.Cmd {
+			calls++
+			if calls == 2 {
+				return exec.Command(filepath.Join(t.TempDir(), "missing"))
+			}
+			return command("7z", "-so")
+		}
+		if err := extractTarXzWith7ZipCommand("7z", "input.tar.xz", "output", factory); err == nil || !strings.Contains(err.Error(), "start 7-Zip tar extraction") {
+			t.Fatalf("error = %v, want extract start failure", err)
+		}
+	})
+
+	t.Run("decompress start failure", func(t *testing.T) {
+		calls := 0
+		factory := func(_ string, _ ...string) *exec.Cmd {
+			calls++
+			if calls == 1 {
+				return exec.Command(filepath.Join(t.TempDir(), "missing"))
+			}
+			return command("7z", "-si")
+		}
+		if err := extractTarXzWith7ZipCommand("7z", "input.tar.xz", "output", factory); err == nil || !strings.Contains(err.Error(), "start 7-Zip xz decompression") {
+			t.Fatalf("error = %v, want decompressor start failure", err)
+		}
+	})
+}
+
+func TestExtractTarXzForWindowsUses7Zip(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test helper is a POSIX shell script")
+	}
+	programFiles := t.TempDir()
+	sevenZip := filepath.Join(programFiles, "7-Zip", "7z.exe")
+	if err := os.MkdirAll(filepath.Dir(sevenZip), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := `#!/bin/sh
+if [ "$2" = "-so" ]; then
+  printf 'streamed tar payload'
+else
+  cat > "$LLGO_7ZIP_OUTPUT"
+fi
+`
+	if err := os.WriteFile(sevenZip, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "payload")
+	t.Setenv("LLGO_7ZIP_OUTPUT", output)
+	if err := extractTarXzForGOOS("windows", programFiles, "", "input.tar.xz", "output"); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(payload), "streamed tar payload"; got != want {
+		t.Fatalf("streamed payload = %q, want %q", got, want)
+	}
 }
 
 // Helper function to create a test HTTP server
