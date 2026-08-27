@@ -13,7 +13,7 @@ func main() {
 	hints.Family = net.AF_UNSPEC
 	hints.SockType = net.SOCK_STREAM
 
-	host := "httpbin.org"
+	host := "localhost"
 	port := "80"
 
 	var result *net.AddrInfo
