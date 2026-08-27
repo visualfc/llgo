@@ -93,6 +93,41 @@ func TestExpandEnvToArgsWithUsesPkgConfigSetting(t *testing.T) {
 	}
 }
 
+func TestPkgConfigCommandMatchesGoSelection(t *testing.T) {
+	t.Setenv("PKG_CONFIG", `'configured pkg-config' --ignored-like-go`)
+	if got, want := PkgConfigCommand("", nil), "configured pkg-config"; got != want {
+		t.Fatalf("PkgConfigCommand using process environment = %q, want %q", got, want)
+	}
+	if got, want := PkgConfigCommand("", []string{"PKG_CONFIG=   "}), "pkg-config"; got != want {
+		t.Fatalf("PkgConfigCommand using an empty field list = %q, want %q", got, want)
+	}
+	t.Run("invalid quoting", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("PkgConfigCommand accepted an unterminated quote")
+			}
+		}()
+		PkgConfigCommand("", []string{"PKG_CONFIG='unterminated"})
+	})
+}
+
+func TestExpandEnvToArgsWithFindsLLVMConfigInExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+	tool := filepath.Join(dir, "llvm-config")
+	if runtime.GOOS == "windows" {
+		tool += ".exe"
+	}
+	copyExecutable(t, tool)
+	got := ExpandEnvToArgsWith(
+		"$(llvm-config --libs)",
+		dir,
+		[]string{"PATH=" + dir, "LLGO_ENV_TEST=request", helperEnvironment + "=1"},
+	)
+	if len(got) != 2 || got[0] != "-Lrequest" || !strings.HasPrefix(got[1], "-I") {
+		t.Fatalf("ExpandEnvToArgsWith using llvm-config = %q, want -Lrequest and one include directory", got)
+	}
+}
+
 func TestLookPathInEnvironmentBoundaries(t *testing.T) {
 	dir := t.TempDir()
 	toolName := "fixture-tool"
