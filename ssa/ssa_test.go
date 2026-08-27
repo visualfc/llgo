@@ -2704,7 +2704,10 @@ func TestZeroSizedGlobalEmitsAliasSymbol(t *testing.T) {
 	os.Chdir("../../runtime")
 	defer os.Chdir(wd)
 
-	prog := NewProgram(nil)
+	// This assertion covers the non-COFF ODR definition. Windows deliberately
+	// uses a module-local sentinel and has a dedicated test in coff_comdat_test.
+	prog := NewProgram(&Target{GOOS: "linux", GOARCH: "amd64"})
+	defer prog.Dispose()
 	prog.SetRuntime(func() *types.Package {
 		fset := token.NewFileSet()
 		imp := packages.NewImporter(fset)

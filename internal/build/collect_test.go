@@ -1149,6 +1149,7 @@ func TestTryLoadFromCache_LoadsPackageMeta(t *testing.T) {
 	if pkg.Meta == nil {
 		t.Fatal("Meta was not loaded from cache")
 	}
+	defer pkg.Meta.Close()
 	summary, err := meta.NewGlobalSummary([]*meta.PackageMeta{pkg.Meta})
 	if err != nil {
 		t.Fatalf("NewGlobalSummary: %v", err)

@@ -36,15 +36,17 @@ func AddCleanup[T, S any](ptr *T, cleanup func(S), arg S) Cleanup {
 	fn := func() {
 		cleanup(arg)
 	}
-	_ = runtime.AddCleanupPtr(unsafe.Pointer(ptr), fn)
-	return Cleanup{}
+	id := runtime.AddCancelableCleanupPtr(unsafe.Pointer(ptr), fn)
+	return Cleanup{id: id}
 }
 
 type Cleanup struct {
-	id  uint64
+	id uint64
+	// Keep Go's second word for type-layout compatibility, but leave it zero:
+	// BDWGC conservatively treats a uintptr containing ptr as a live root.
 	ptr uintptr
 }
 
 func (c Cleanup) Stop() {
-	// No-op: llgo runtime does not currently support cleanup cancellation.
+	runtime.StopCleanupPtr(c.id)
 }

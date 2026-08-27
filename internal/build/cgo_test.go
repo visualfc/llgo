@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/cabi"
+	llclang "github.com/xgo-dev/llgo/internal/clang"
 	"github.com/xgo-dev/llgo/internal/packages"
 	llssa "github.com/xgo-dev/llgo/ssa"
 	gllvm "github.com/xgo-dev/llvm"
@@ -193,22 +194,32 @@ func TestCollectCgoSymbolsStripsPackagePrefix(t *testing.T) {
 	}
 }
 
-func TestGenExternDeclsUsesProcessLLVMPath(t *testing.T) {
+func TestGenExternDeclsUsesConfiguredCompilerAndFlags(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test helper uses a shell script")
 	}
 
-	clang := filepath.Join(t.TempDir(), "clang")
+	clangPath := filepath.Join(t.TempDir(), "clang")
 	script := `#!/bin/sh
+saw_target=false
 for arg in "$@"; do
+	if [ "$arg" = "configured-target" ]; then
+		saw_target=true
+	fi
 	if [ "$arg" = "-dM" ]; then
+		if [ "$saw_target" != "true" ]; then
+			exit 2
+		fi
 		printf '#define request_macro 1\n'
 		exit 0
 	fi
 done
+if [ "$saw_target" != "true" ]; then
+	exit 2
+fi
 printf '%s\n' '{"kind":"TranslationUnitDecl","inner":[{"kind":"FunctionDecl","name":"request_func"}]}'
 `
-	if err := os.WriteFile(clang, []byte(script), 0o755); err != nil {
+	if err := os.WriteFile(clangPath, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -216,8 +227,8 @@ printf '%s\n' '{"kind":"TranslationUnitDecl","inner":[{"kind":"FunctionDecl","na
 		"cgo_func":  "request_func",
 		"cgo_macro": "request_macro",
 	}
-	t.Setenv("PATH", filepath.Dir(clang))
-	got, err := genExternDeclsByClang(commandEnv{}, nil, "", nil, symbols, true)
+	compiler := llclang.NewCompiler(llclang.Config{CC: clangPath, CCFLAGS: []string{"-target", "configured-target"}})
+	got, err := genExternDeclsByClang(compiler, nil, "", nil, symbols, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,12 +268,12 @@ printf '%s\n' '{"kind":"TranslationUnitDecl"}'
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			clang := filepath.Join(t.TempDir(), "clang")
-			if err := os.WriteFile(clang, []byte(tt.script), 0o755); err != nil {
+			clangPath := filepath.Join(t.TempDir(), "clang")
+			if err := os.WriteFile(clangPath, []byte(tt.script), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			t.Setenv("PATH", filepath.Dir(clang))
-			if _, err := genExternDeclsByClang(commandEnv{}, nil, "", nil, nil, false); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+			compiler := llclang.NewCompiler(llclang.Config{CC: clangPath})
+			if _, err := genExternDeclsByClang(compiler, nil, "", nil, nil, false); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("genExternDeclsByClang() error = %v, want %q", err, tt.wantErr)
 			}
 		})
@@ -533,6 +544,89 @@ func TestCompilePackageModuleLowersWindowsCgoImportPointer(t *testing.T) {
 	}
 	if init := global.Initializer(); init.IsNil() || init != fn {
 		t.Fatalf("compiled Windows import pointer initializer = %v, want %v", init, fn)
+	}
+}
+
+func TestCompilePackageModuleReportsWindowsCgoImportError(t *testing.T) {
+	gllvm.InitializeAllTargets()
+	gllvm.InitializeAllTargetMCs()
+	gllvm.InitializeAllTargetInfos()
+
+	target := &llssa.Target{GOOS: "windows", GOARCH: "amd64"}
+	prog := llssa.NewProgram(target)
+	defer prog.Dispose()
+	lpkg := prog.NewPackage("syscall", "syscall")
+	ptrType := gllvm.PointerType(lpkg.Module().Context().Int8Type(), 0)
+	gllvm.AddGlobal(lpkg.Module(), ptrType, "syscall.value")
+	file, err := parser.ParseFile(token.NewFileSet(), "dll_windows.go", `package syscall
+//go:cgo_import_dynamic syscall.value Value%bad "kernel32.dll"
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := &Config{
+		Goos:    "windows",
+		Goarch:  "amd64",
+		AbiMode: cabi.ModeAllFunc,
+	}
+	ctx := &context{
+		prog:         prog,
+		mode:         ModeGen,
+		buildConf:    conf,
+		cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", conf.AbiMode, true),
+	}
+	pkg := &aPackage{
+		Package: &packages.Package{PkgPath: "syscall", Syntax: []*ast.File{file}},
+		LPkg:    lpkg,
+	}
+	err = compilePackageModule(ctx, pkg, nil, false)
+	if err == nil || !strings.Contains(err.Error(), "invalid go:cgo_import_dynamic alias") {
+		t.Fatalf("compilePackageModule error = %v, want invalid dynamic-import alias", err)
+	}
+}
+
+func TestCompilePackageModulePropagatesSFileErrors(t *testing.T) {
+	gllvm.InitializeAllTargets()
+	gllvm.InitializeAllTargetMCs()
+	gllvm.InitializeAllTargetInfos()
+
+	for _, withAltPkg := range []bool{false, true} {
+		name := "package"
+		if withAltPkg {
+			name = "alternate package"
+		}
+		t.Run(name, func(t *testing.T) {
+			target := &llssa.Target{GOOS: "linux", GOARCH: "amd64"}
+			prog := llssa.NewProgram(target)
+			defer prog.Dispose()
+			lpkg := prog.NewPackage("example.com/p", "example.com/p")
+			conf := &Config{
+				Goos:    "linux",
+				Goarch:  "amd64",
+				AbiMode: cabi.ModeAllFunc,
+			}
+			ctx := &context{
+				prog:         prog,
+				mode:         ModeBuild,
+				buildConf:    conf,
+				sfilesFrozen: true,
+				cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", conf.AbiMode, true),
+			}
+			pkg := &aPackage{
+				Package: &packages.Package{ID: "example.com/p", PkgPath: "example.com/p"},
+				LPkg:    lpkg,
+			}
+			if withAltPkg {
+				pkg.AltPkg = &packages.Cached{Package: &packages.Package{
+					ID:      "example.com/p.alt",
+					PkgPath: "example.com/p.alt",
+				}}
+			}
+			err := compilePackageModule(ctx, pkg, nil, false)
+			if err == nil || !strings.Contains(err.Error(), "assembly files were not prepared") {
+				t.Fatalf("compilePackageModule error = %v, want frozen SFiles error", err)
+			}
+		})
 	}
 }
 

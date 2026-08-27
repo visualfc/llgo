@@ -24,11 +24,14 @@ import (
 	_ "unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	ctime "github.com/xgo-dev/llgo/runtime/internal/clite/time"
 )
 
 const (
-	LLGoFiles   = "_wrap/sync_windows.c"
-	LLGoPackage = "link"
+	LLGoFiles = "_wrap/sync_windows.c"
+	// MinGW exposes the address-wait imports used by this backend through
+	// libsynchronization rather than libkernel32.
+	LLGoPackage = "link: -lsynchronization"
 )
 
 // Once has the layout of Windows INIT_ONCE. Its zero value is ready for use.
@@ -93,6 +96,9 @@ func winCondBroadcast(cond *Cond) c.Int
 //go:linkname winCondWait C.llgo_win_cond_wait
 func winCondWait(cond *Cond, m *Mutex) c.Int
 
+//go:linkname winCondTimedWait C.llgo_win_cond_timedwait
+func winCondTimedWait(cond *Cond, m *Mutex, abstime *ctime.Timespec) c.Int
+
 func (cond *Cond) Init(_ *CondAttr) c.Int {
 	cond.state = 0
 	return 0
@@ -110,4 +116,25 @@ func (cond *Cond) Broadcast() c.Int {
 
 func (cond *Cond) Wait(m *Mutex) c.Int {
 	return winCondWait(cond, m)
+}
+
+func (cond *Cond) TimedWait(m *Mutex, abstime *ctime.Timespec) c.Int {
+	return winCondTimedWait(cond, m, abstime)
+}
+
+//go:linkname winWaitUint32 C.llgo_win_wait_uint32
+func winWaitUint32(addr *uint32, value uint32) c.Int
+
+//go:linkname winWakeUint32 C.llgo_win_wake_uint32
+func winWakeUint32(addr *uint32)
+
+// WaitUint32 blocks while addr still contains value. Callers must recheck the
+// value after it returns because Windows permits spurious wakeups.
+func WaitUint32(addr *uint32, value uint32) c.Int {
+	return winWaitUint32(addr, value)
+}
+
+// WakeUint32 wakes one thread waiting for addr.
+func WakeUint32(addr *uint32) {
+	winWakeUint32(addr)
 }

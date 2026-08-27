@@ -24,7 +24,9 @@ int uv_signal_start_oneshot(uv_signal_t *handle, uv_signal_cb cb, int signum);
 
 extern void llgo_runtime_timerEvent(uv_async_t* handle);
 extern void llgo_runtime_timerCallback(uv_timer_t* handle);
+#if !defined(_WIN32)
 extern void llgo_runtime_signalCallback(uv_signal_t* handle, int signum);
+#endif
 
 static void llgo_uv_async_noop(uv_async_t* handle) {
   (void)handle;
@@ -42,6 +44,7 @@ int llgo_uv_timer_start_runtime(uv_timer_t* timer, uint64_t timeout, uint64_t re
   return uv_timer_start(timer, llgo_runtime_timerCallback, timeout, repeat);
 }
 
+#if !defined(_WIN32)
 int llgo_uv_signal_start_runtime(uv_signal_t* handle, int signum) {
   return uv_signal_start(handle, llgo_runtime_signalCallback, signum);
 }
@@ -49,6 +52,7 @@ int llgo_uv_signal_start_runtime(uv_signal_t* handle, int signum) {
 int llgo_uv_signal_start_oneshot_runtime(uv_signal_t* handle, int signum) {
   return uv_signal_start_oneshot(handle, llgo_runtime_signalCallback, signum);
 }
+#endif
 
 int uv_tcp_get_io_watcher_fd (uv_tcp_t* handle) {
 #if defined(_WIN32)

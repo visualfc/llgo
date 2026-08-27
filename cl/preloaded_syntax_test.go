@@ -63,7 +63,7 @@ func XDefault() {}
 	ssaPkg.Build()
 	compiled, _, err := NewPackageExWithEmbedMetaOptions(
 		backend, nil, nil, nil, ssaPkg, files, goembed.VarMap{}, false,
-		Options{ExportRename: true, PreloadedSyntax: true},
+		Options{ExportRename: true, CExportWrappers: true, PreloadedSyntax: true},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +77,12 @@ func XDefault() {}
 		}
 		if export, ok := compiled.ExportFuncs()[fullName]; !ok || export != want {
 			t.Errorf("ExportFuncs()[%q] = (%q, %v), want (%q, true)", fullName, export, ok, want)
+		}
+		if fn := compiled.FuncOf(fullName); fn == nil {
+			t.Errorf("FuncOf(%q) = nil, want wrapped implementation", fullName)
+		}
+		if fn := compiled.FuncOf(want); fn != nil {
+			t.Errorf("FuncOf(%q) = %q, want final-link wrapper only", want, fn.Name())
 		}
 	}
 }

@@ -3,8 +3,10 @@ package goroot
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -377,26 +379,8 @@ func TestValidateSystemMemoryState(t *testing.T) {
 func TestRunGeneratedProgramUsesProvidedTimeout(t *testing.T) {
 	disableSystemMemoryLimits(t)
 	dir := t.TempDir()
-	tool := filepath.Join(dir, "fake-tool.sh")
-	script := `#!/bin/sh
-set -eu
-out=""
-prev=""
-for arg in "$@"; do
-	if [ "$prev" = "-o" ]; then
-		out="$arg"
-	fi
-	prev="$arg"
-done
-cat > "$out" <<'EOF'
-#!/bin/sh
-sleep 0.2
-EOF
-chmod +x "$out"
-`
-	if err := os.WriteFile(tool, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	tool := fakeToolPath(dir, "fake-timeout-tool")
+	writeTimeoutFakeTool(t, tool)
 	if err := os.WriteFile(filepath.Join(dir, "generated.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -931,6 +915,32 @@ func TestNormalizeCompilerDiagnosticMessage(t *testing.T) {
 	}
 }
 
+func TestMatchesExpectedDiagnosticGoTypesAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected string
+		message  string
+	}{
+		{
+			name:     "unquoted blank struct field",
+			expected: `unknown field _ in struct literal of type T`,
+			message:  `unknown field '_' in struct literal of type T`,
+		},
+		{
+			name:     "qualified nearby field",
+			expected: `type it .* field or method floats, but does have field Floats`,
+			message:  `i1.floats undefined (type it has no field or method floats, but does have Floats)`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !matchesExpectedDiagnostic(regexp.MustCompile(tt.expected), tt.message) {
+				t.Fatalf("matchesExpectedDiagnostic(%q, %q)=false, want true", tt.expected, tt.message)
+			}
+		})
+	}
+}
+
 func TestCheckExpectedErrorsFiltersDeterministicSecondaryDiagnostics(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -1218,6 +1228,137 @@ func TestSplitSourceFiles(t *testing.T) {
 	}
 }
 
+func TestToolchainGoCommand(t *testing.T) {
+	goroot := filepath.Join("toolchains", "go1.26.5")
+	for _, tc := range []struct {
+		goos string
+		name string
+	}{
+		{goos: "linux", name: "go"},
+		{goos: "darwin", name: "go"},
+		{goos: "windows", name: "go.exe"},
+	} {
+		got := toolchainGoCommand(goroot, tc.goos)
+		want := filepath.Join(goroot, "bin", tc.name)
+		if got != want {
+			t.Errorf("toolchainGoCommand(%q, %q) = %q, want %q", goroot, tc.goos, got, want)
+		}
+	}
+}
+
+func TestNeedsExternalCgoBaseline(t *testing.T) {
+	dir := t.TempDir()
+	cgoFile := filepath.Join(dir, "cgo.go")
+	if err := os.WriteFile(cgoFile, []byte("package main\nimport _ \"runtime/cgo\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plainFile := filepath.Join(dir, "plain.go")
+	if err := os.WriteFile(plainFile, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	invalidFile := filepath.Join(dir, "invalid.go")
+	if err := os.WriteFile(invalidFile, []byte("package main\nimport (\"fmt\", \"os\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		goos   string
+		goarch string
+		file   string
+		want   bool
+	}{
+		{name: "windows arm64 cgo", goos: "windows", goarch: "arm64", file: "cgo.go", want: true},
+		{name: "windows amd64 cgo", goos: "windows", goarch: "amd64", file: "cgo.go"},
+		{name: "linux arm64 cgo", goos: "linux", goarch: "arm64", file: "cgo.go"},
+		{name: "windows arm64 plain", goos: "windows", goarch: "arm64", file: "plain.go"},
+		{name: "windows arm64 invalid syntax", goos: "windows", goarch: "arm64", file: "invalid.go"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := needsExternalCgoBaseline(tc.goos, tc.goarch, testCase{
+				RelPath:  tc.file,
+				Dir:      dir,
+				FileName: tc.file,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Fatalf("needsExternalCgoBaseline() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunSingleFileCaseExcludesUnlistedSiblings(t *testing.T) {
+	disableSystemMemoryLimits(t)
+	repoRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoRoot, "go.mod"), []byte("module example.com/llgo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srcDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "case.go"), []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "generator.c"), []byte("this is not valid C\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	llgoTool := fakeToolPath(t.TempDir(), "fake-llgo")
+	writeSiblingScanningFakeTool(t, llgoTool)
+	goTool := filepath.Join(runtime.GOROOT(), "bin", "go")
+	if runtime.GOOS == "windows" {
+		goTool += ".exe"
+	}
+	tc := testCase{RelPath: "case.go", Dir: srcDir, FileName: "case.go", Directive: "run"}
+	opts := directiveOptions{Timeout: 30 * time.Second}
+	if err := runSingleFileCase(t, repoRoot, runtime.GOROOT(), goTool, llgoTool, tc, opts, 30*time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeSiblingScanningFakeTool(t *testing.T, path string) {
+	t.Helper()
+	sourcePath := path + ".go"
+	source := `package main
+
+import "os"
+
+func main() {
+	if len(os.Args) == 1 {
+		return
+	}
+	if _, err := os.Stat("generator.c"); err == nil {
+		os.Exit(21)
+	}
+	out := ""
+	for i := 1; i+1 < len(os.Args); i++ {
+		if os.Args[i] == "-o" {
+			out = os.Args[i+1]
+			break
+		}
+	}
+	if out == "" {
+		os.Exit(22)
+	}
+	data, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(out, data, 0755); err != nil {
+		panic(err)
+	}
+}
+`
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", path, sourcePath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build sibling-scanning fake tool: %v\n%s", err, output)
+	}
+}
+
 func TestEnsureModuleWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	if err := ensureModuleWorkspace(dir, "llgo-goroot-runoutput", "1.14"); err != nil {
@@ -1235,9 +1376,6 @@ func TestEnsureModuleWorkspace(t *testing.T) {
 
 func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
 	disableSystemMemoryLimits(t)
-	if runtime.GOOS == "windows" {
-		t.Skip("fake tool scripts use /bin/sh")
-	}
 	dir := t.TempDir()
 	repoRoot := filepath.Join(dir, "repo")
 	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
@@ -1262,8 +1400,8 @@ func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
 	}
 
 	logPath := filepath.Join(dir, "tools.log")
-	goTool := filepath.Join(dir, "fake-go")
-	llgoTool := filepath.Join(dir, "fake-llgo")
+	goTool := fakeToolPath(dir, "fake-go")
+	llgoTool := fakeToolPath(dir, "fake-llgo")
 	writeRunOutputFakeTool(t, goTool, logPath, true)
 	writeRunOutputFakeTool(t, llgoTool, logPath, false)
 
@@ -1294,6 +1432,13 @@ func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
 	}
 }
 
+func fakeToolPath(dir, name string) string {
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(dir, name)
+}
+
 func disableSystemMemoryLimits(t *testing.T) {
 	t.Helper()
 	oldMemory := *flagMinMemPct
@@ -1304,65 +1449,6 @@ func disableSystemMemoryLimits(t *testing.T) {
 		*flagMinMemPct = oldMemory
 		*flagMinSwapMiB = oldSwap
 	})
-}
-
-func writeRunOutputFakeTool(t *testing.T, path, logPath string, allowRun bool) {
-	t.Helper()
-	allowRunValue := "false"
-	if allowRun {
-		allowRunValue = "true"
-	}
-	script := fmt.Sprintf(`#!/bin/sh
-set -eu
-printf '%%s\n' "$0 $*" >> %[1]q
-case "$1" in
-run)
-	if [ %[2]q != "true" ]; then
-		echo "unexpected runoutput generator invocation" >&2
-		exit 23
-	fi
-	cat <<'EOF'
-package main
-
-func main() {
-	print("ok\n")
-}
-EOF
-	;;
-build)
-	out=""
-	last=""
-	prev=""
-	for arg in "$@"; do
-		if [ "$prev" = "-o" ]; then
-			out="$arg"
-		fi
-		last="$arg"
-		prev="$arg"
-	done
-	if [ -z "$out" ]; then
-		echo "missing -o" >&2
-		exit 24
-	fi
-	if [ ! -s "$last" ]; then
-		echo "empty generated source: $last" >&2
-		exit 25
-	fi
-	cat > "$out" <<'EOF'
-#!/bin/sh
-printf 'ok\n'
-EOF
-	chmod +x "$out"
-	;;
-*)
-	echo "unexpected command: $*" >&2
-	exit 26
-	;;
-esac
-`, logPath, allowRunValue)
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestToolchainGoModVersion(t *testing.T) {

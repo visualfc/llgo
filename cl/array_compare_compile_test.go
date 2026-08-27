@@ -218,3 +218,87 @@ func heap() bool {
 		t.Fatalf("small array comparison used the runtime path:\n%s", smallIR)
 	}
 }
+
+func TestImmutableLocalArrayLoadAddrRejectsUnsupportedSSA(t *testing.T) {
+	const source = `
+package foo
+
+func compare() bool {
+	x := [32]byte{1}
+	y := [32]byte{2}
+	return x == y
+}
+
+func scalar(p *int) int { return *p }
+`
+	ssaPkg, _, _ := buildGoSSAPkg(t, source)
+	findLoad := func(t *testing.T, name string, accept func(*ssa.UnOp) bool) *ssa.UnOp {
+		t.Helper()
+		for _, block := range ssaPkg.Func(name).Blocks {
+			for _, instr := range block.Instrs {
+				if load, ok := instr.(*ssa.UnOp); ok && load.Op == token.MUL && accept(load) {
+					return load
+				}
+			}
+		}
+		t.Fatalf("matching load not found in %s", name)
+		return nil
+	}
+
+	scalarLoad := findLoad(t, "scalar", func(*ssa.UnOp) bool { return true })
+	if _, ok := immutableLocalArrayLoadAddr(scalarLoad); ok {
+		t.Fatal("scalar load was treated as an immutable array")
+	}
+
+	arrayLoad := findLoad(t, "compare", func(load *ssa.UnOp) bool {
+		_, ok := load.Type().Underlying().(*types.Array)
+		return ok
+	})
+	alloc, ok := arrayLoad.X.(*ssa.Alloc)
+	if !ok {
+		t.Fatalf("array load base is %T, want *ssa.Alloc", arrayLoad.X)
+	}
+	refs := alloc.Referrers()
+	if refs == nil {
+		t.Fatal("array allocation does not track referrers")
+	}
+	originalRefs := append([]ssa.Instruction(nil), (*refs)...)
+	defer func() { *refs = originalRefs }()
+
+	t.Run("foreign field base", func(t *testing.T) {
+		*refs = []ssa.Instruction{&ssa.FieldAddr{X: new(ssa.Alloc)}}
+		if _, ok := immutableLocalArrayLoadAddr(arrayLoad); ok {
+			t.Fatal("field address from another base was accepted")
+		}
+	})
+
+	t.Run("invalid dereference", func(t *testing.T) {
+		*refs = []ssa.Instruction{&ssa.UnOp{Op: token.NOT, X: alloc}}
+		if _, ok := immutableLocalArrayLoadAddr(arrayLoad); ok {
+			t.Fatal("non-dereference unary use was accepted")
+		}
+	})
+
+	t.Run("unsupported instruction", func(t *testing.T) {
+		*refs = []ssa.Instruction{new(ssa.Call)}
+		if _, ok := immutableLocalArrayLoadAddr(arrayLoad); ok {
+			t.Fatal("unsupported allocation use was accepted")
+		}
+	})
+
+	if instructionPrecedes(new(ssa.Store), arrayLoad) {
+		t.Fatal("instruction without a block was ordered before an array load")
+	}
+	block := arrayLoad.Block()
+	if block == nil || alloc.Block() != block {
+		t.Fatal("array allocation and load are not in the same block")
+	}
+	func() {
+		instructions := block.Instrs
+		block.Instrs = nil
+		defer func() { block.Instrs = instructions }()
+		if instructionPrecedes(alloc, arrayLoad) {
+			t.Fatal("instructions absent from their block were ordered")
+		}
+	}()
+}

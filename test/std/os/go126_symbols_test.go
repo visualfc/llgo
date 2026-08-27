@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -35,7 +36,11 @@ func TestRootFileOperations(t *testing.T) {
 	if err := root.Chtimes("nested/dir/source.txt", when, when); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.Chown("nested/dir/source.txt", -1, -1); err != nil {
+	if err := root.Chown("nested/dir/source.txt", -1, -1); runtime.GOOS == "windows" {
+		if err == nil {
+			t.Fatal("Chown succeeded on Windows, want an unsupported-operation error")
+		}
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	if err := root.Link("nested/dir/source.txt", "nested/hardlink.txt"); err != nil {
@@ -47,7 +52,11 @@ func TestRootFileOperations(t *testing.T) {
 	if err := root.Symlink("dir/source.txt", "nested/symlink.txt"); err != nil {
 		t.Fatal(err)
 	}
-	if err := root.Lchown("nested/symlink.txt", -1, -1); err != nil {
+	if err := root.Lchown("nested/symlink.txt", -1, -1); runtime.GOOS == "windows" {
+		if err == nil {
+			t.Fatal("Lchown succeeded on Windows, want an unsupported-operation error")
+		}
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	target, err := root.Readlink("nested/symlink.txt")

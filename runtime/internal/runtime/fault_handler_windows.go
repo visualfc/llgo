@@ -41,6 +41,9 @@ func onWindowsFault(context unsafe.Pointer, code uint32, address uintptr) {
 	// thread that never entered Go. Do not manufacture a G from exception
 	// context: only faults on a thread already executing Go can become Go
 	// panics. Foreign faults must continue through Windows' handler chain.
+	// currentG is a uintptr in the LLGo TLS build and a *g in host and
+	// baremetal builds. Normalize both representations without calling getg,
+	// which would incorrectly create a G for a foreign faulting thread.
 	if (*g)(unsafe.Pointer(currentG)) == nil {
 		return
 	}

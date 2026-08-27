@@ -224,7 +224,14 @@ func TestWithDeadline(t *testing.T) {
 
 	select {
 	case <-ctx.Done():
-	case <-time.After(100 * time.Millisecond):
+	// Do not use another deadline-sized timer as the failure bound here.
+	// Delivering a timer callback requires the runtime goroutine to be
+	// scheduled, and on a loaded Windows host or VM even the official Go
+	// runtime can run it more than 50ms late. A generous bound keeps this a
+	// context cancellation test instead of turning it into a scheduler latency
+	// test; the preceding select still verifies that the 100ms deadline does
+	// not fire during its first 50ms.
+	case <-time.After(time.Second):
 		t.Fatal("context not canceled after deadline")
 	}
 

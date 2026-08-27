@@ -186,6 +186,12 @@ func poll_runtime_pollOpen(fd uintptr) (uintptr, int) {
 	if wakeR < 0 {
 		return 0, int(csyscall.EOPNOTSUPP)
 	}
+	if pollDescriptorUnsupported(c.Int(fd)) {
+		// Linux epoll rejects regular files and directories with EPERM. Match
+		// that contract so internal/poll leaves their runtime context unset and
+		// reports ErrNoDeadline from os.File deadline methods.
+		return 0, int(csyscall.EPERM)
+	}
 	pd := &llgoPollDesc{fd: c.Int(fd)}
 	return pollRootAdd(pd), 0
 }

@@ -18,11 +18,6 @@
 
 package c
 
-import _ "unsafe"
-
-//go:linkname winSleep C.Sleep
-func winSleep(milliseconds Uint)
-
 func Usleep(useconds Uint) Int {
 	milliseconds := useconds / 1000
 	if useconds%1000 != 0 {

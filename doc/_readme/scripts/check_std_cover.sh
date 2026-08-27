@@ -36,7 +36,11 @@ expected_file="$(mktemp)"
 covered_file="$(mktemp)"
 trap 'rm -f "${expected_file}" "${covered_file}"' EXIT
 
-go list std \
+# The std pattern may also report a package whose every source file is excluded
+# by the current platform. Require coverage for packages that actually have
+# buildable Go or cgo sources on this target.
+go list -e -f '{{if or .GoFiles .CgoFiles}}{{.ImportPath}}{{end}}' std \
+	| awk 'NF' \
   | awk '!/(^|\/)internal(\/|$)/ && !/(^|\/)vendor(\/|$)/' \
   | sort -u > "${expected_file}"
 printf '%s\n' "${covered_packages[@]}" | sort -u > "${covered_file}"

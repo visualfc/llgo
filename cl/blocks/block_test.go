@@ -28,7 +28,7 @@ import (
 	"go/types"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -85,7 +85,7 @@ func fromDir(t *testing.T, sel, relDir string, fn func(string) string) {
 	if err != nil {
 		t.Fatal("Getwd failed:", err)
 	}
-	dir = path.Join(dir, relDir)
+	dir = filepath.Join(dir, relDir)
 	fis, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal("ReadDir failed:", err)

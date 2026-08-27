@@ -45,6 +45,7 @@ func main() {
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB1]]:
 // CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
+// WINDOWS-NEXT: call void @"github.com/goplus/lib/c.init"()
 // CHECK-NEXT:   call void @"github.com/goplus/lib/py/math.init"()
 // CHECK-NEXT:   call void @"github.com/goplus/lib/py/std.init"()
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = load ptr, ptr @__llgo_py.builtins, align 8

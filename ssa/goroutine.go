@@ -108,7 +108,6 @@ func (p Package) routine(t Type, fn Expr, buildCall func(Builder, Expr, ...Expr)
 	for i := 0; i < n; i++ {
 		args[i] = b.getField(data, i+offset)
 	}
-	b.Call(p.rtFunc("FreeRoot"), param)
 	buildCall(b, fn, args...)
 	lastInst := b.impl.GetInsertBlock().LastInstruction()
 	if lastInst.IsNil() || lastInst.IsAUnreachableInst().IsNil() {

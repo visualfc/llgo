@@ -580,16 +580,27 @@ func (b Builder) Lookup(x, key Expr, commaOk bool) (ret Expr) {
 	prog := b.Prog
 	typ := b.abiType(x.raw.Type)
 	vtyp := prog.Elem(x.Type)
+	vsize := prog.SizeOf(vtyp)
 	kind := mapKeyFastKind(prog, x.raw.Type)
 	arg := b.mapKeyAccessArg(x, key, kind)
+	name := kind.accessName(commaOk)
+	args := []Expr{typ, x, arg}
+	if vsize > abi.ZeroValSize {
+		if commaOk {
+			name = "MapAccess2Fat"
+		} else {
+			name = "MapAccess1Fat"
+		}
+		args = append(args, b.Pkg.mapZeroAddr(vsize, prog.td.ABITypeAlignment(vtyp.ll)))
+	}
 	if commaOk {
-		vals := b.Call(b.Pkg.rtFunc(kind.accessName(true)), typ, x, arg)
+		vals := b.Call(b.Pkg.rtFunc(name), args...)
 		val := b.Load(Expr{b.impl.CreateExtractValue(vals.impl, 0, ""), prog.Pointer(vtyp)})
 		ok := b.impl.CreateExtractValue(vals.impl, 1, "")
 		t := prog.Struct(vtyp, prog.Bool())
 		return b.aggregateValue(t, val.impl, ok)
 	} else {
-		val := b.Call(b.Pkg.rtFunc(kind.accessName(false)), typ, x, arg)
+		val := b.Call(b.Pkg.rtFunc(name), args...)
 		val.Type = prog.Pointer(vtyp)
 		ret = b.Load(val)
 	}

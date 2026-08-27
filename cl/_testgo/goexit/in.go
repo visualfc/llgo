@@ -25,8 +25,8 @@ import (
 // CHECK: call i1 @"{{.*}}ChanRecv"(ptr [[D1_RECV_CH]], ptr [[D1_RECV_BUF]], i64 1)
 // CHECK: load i1, ptr [[D1_RECV_BUF]]
 
-// DARWIN-ARM64-LABEL: define void @"main.demo1$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.demo1$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.demo1$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.demo1$1"(ptr nest %0){{.*}} {
 // CHECK: [[D1_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK: [[D1_CH_CAPTURE:%.*]] = extractvalue { ptr } [[D1_CAPTURE]], 0
 // CHECK: [[D1_DEFER_ENV:%.*]] = call ptr @"{{.*}}AllocU"(i64 8)
@@ -47,11 +47,11 @@ import (
 // CHECK: [[D1_DEFER_CALL_FN:%.*]] = extractvalue { ptr, ptr } [[D1_DEFER_VALUE]], 0
 // CHECK-NOT: StartRecoverFrame
 // CHECK: [[D1_DEFER_CODE:%.*]] = call ptr asm "", "=r,0"(ptr [[D1_DEFER_CALL_FN]])
-// DARWIN-ARM64: call void [[D1_DEFER_CODE]](ptr swiftself [[D1_DEFER_CALL_ENV]])
-// LINUX-AMD64: call void [[D1_DEFER_CODE]](ptr nest [[D1_DEFER_CALL_ENV]])
+// ARM64: call void [[D1_DEFER_CODE]](ptr swiftself [[D1_DEFER_CALL_ENV]])
+// AMD64: call void [[D1_DEFER_CODE]](ptr nest [[D1_DEFER_CALL_ENV]])
 
-// DARWIN-ARM64-LABEL: define void @"main.demo1$1$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.demo1$1$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.demo1$1$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.demo1$1$1"(ptr nest %0){{.*}} {
 // CHECK: [[D1_SEND_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK: [[D1_SEND_SLOT:%.*]] = extractvalue { ptr } [[D1_SEND_CAPTURE]], 0
 // CHECK: [[D1_SEND_CH:%.*]] = load ptr, ptr [[D1_SEND_SLOT]]
@@ -74,8 +74,8 @@ import (
 // CHECK: call i1 @"{{.*}}ChanRecv"(ptr [[D2_RECV_CH]], ptr [[D2_RECV_BUF]], i64 1)
 // CHECK: load i1, ptr [[D2_RECV_BUF]]
 
-// DARWIN-ARM64-LABEL: define void @"main.demo2$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.demo2$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.demo2$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.demo2$1"(ptr nest %0){{.*}} {
 // CHECK: [[D2_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK: [[D2_CH_CAPTURE:%.*]] = extractvalue { ptr } [[D2_CAPTURE]], 0
 // CHECK: [[D2_DEFER_ENV:%.*]] = call ptr @"{{.*}}AllocU"(i64 8)
@@ -96,12 +96,12 @@ import (
 // CHECK: [[D2_DEFER_CALL_ENV:%.*]] = extractvalue { ptr, ptr } [[D2_DEFER_VALUE]], 1
 // CHECK: [[D2_DEFER_CALL_FN:%.*]] = extractvalue { ptr, ptr } [[D2_DEFER_VALUE]], 0
 // CHECK: [[D2_DEFER_CODE:%.*]] = call ptr asm "", "=r,0"(ptr [[D2_DEFER_CALL_FN]])
-// DARWIN-ARM64: call void [[D2_DEFER_CODE]](ptr swiftself [[D2_DEFER_CALL_ENV]])
-// LINUX-AMD64: call void [[D2_DEFER_CODE]](ptr nest [[D2_DEFER_CALL_ENV]])
+// ARM64: call void [[D2_DEFER_CODE]](ptr swiftself [[D2_DEFER_CALL_ENV]])
+// AMD64: call void [[D2_DEFER_CODE]](ptr nest [[D2_DEFER_CALL_ENV]])
 // CHECK: call void @"{{.*}}EndRecoverFrame"(%"{{.*}}recoverState" [[D2_RECOVER_STATE]])
 
-// DARWIN-ARM64-LABEL: define void @"main.demo2$1$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.demo2$1$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.demo2$1$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.demo2$1$1"(ptr nest %0){{.*}} {
 // CHECK: [[D2_SEND_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK: [[D2_RECOVER_TOKEN:%.*]] = alloca i8
 // CHECK: call void @"{{.*}}BindRecoverFrame"(ptr @"main.demo2$1$1", ptr [[D2_RECOVER_TOKEN]])
@@ -133,8 +133,8 @@ import (
 // CHECK: call i1 @"{{.*}}ChanRecv"(ptr [[D3_RECV_CH]], ptr [[D3_RECV_BUF]], i64 1)
 // CHECK: load i1, ptr [[D3_RECV_BUF]]
 
-// DARWIN-ARM64-LABEL: define void @"main.demo3$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.demo3$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.demo3$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.demo3$1"(ptr nest %0){{.*}} {
 // CHECK: [[D3_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK: [[D3_CH_CAPTURE:%.*]] = extractvalue { ptr } [[D3_CAPTURE]], 0
 // CHECK: [[D3_OUTER_ENV:%.*]] = call ptr @"{{.*}}AllocU"(i64 8)
@@ -160,12 +160,12 @@ import (
 // CHECK: [[D3_OUTER_CALL_ENV:%.*]] = extractvalue { ptr, ptr } [[D3_OUTER_VALUE]], 1
 // CHECK: [[D3_OUTER_CALL_FN:%.*]] = extractvalue { ptr, ptr } [[D3_OUTER_VALUE]], 0
 // CHECK: [[D3_OUTER_CODE:%.*]] = call ptr asm "", "=r,0"(ptr [[D3_OUTER_CALL_FN]])
-// DARWIN-ARM64: call void [[D3_OUTER_CODE]](ptr swiftself [[D3_OUTER_CALL_ENV]])
-// LINUX-AMD64: call void [[D3_OUTER_CODE]](ptr nest [[D3_OUTER_CALL_ENV]])
+// ARM64: call void [[D3_OUTER_CODE]](ptr swiftself [[D3_OUTER_CALL_ENV]])
+// AMD64: call void [[D3_OUTER_CODE]](ptr nest [[D3_OUTER_CALL_ENV]])
 // CHECK: call void @"{{.*}}EndRecoverFrame"(%"{{.*}}recoverState" [[D3_OUTER_STATE]])
 
-// DARWIN-ARM64-LABEL: define void @"main.demo3$1$1"(ptr swiftself %0){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.demo3$1$1"(ptr nest %0){{.*}} {
+// ARM64-LABEL: define void @"main.demo3$1$1"(ptr swiftself %0){{.*}} {
+// AMD64-LABEL: define void @"main.demo3$1$1"(ptr nest %0){{.*}} {
 // CHECK: [[D3_OUTER_CAPTURE:%.*]] = load { ptr }, ptr %0
 // CHECK: [[D3_OUTER_TOKEN:%.*]] = alloca i8
 // CHECK: call void @"{{.*}}BindRecoverFrame"(ptr @"main.demo3$1$1", ptr [[D3_OUTER_TOKEN]])

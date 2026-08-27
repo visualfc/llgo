@@ -38,8 +38,8 @@ func countState(c *counter) stateFn {
 // CHECK: %[[STATE:[0-9]+]] = load %main.stateFn, ptr %{{[0-9]+}}
 // CHECK-NEXT: %[[STATE_ENV:[0-9]+]] = extractvalue %main.stateFn %[[STATE]], 1
 // CHECK-NEXT: %[[STATE_CODE:[0-9]+]] = extractvalue %main.stateFn %[[STATE]], 0
-// DARWIN-ARM64: %[[NEXT_STATE:[0-9]+]] = call %main.stateFn %__llgo_funcval_code(ptr swiftself %[[STATE_ENV]], ptr %[[COUNTER_OBJ]])
-// LINUX-AMD64: %[[NEXT_STATE:[0-9]+]] = call %main.stateFn %__llgo_funcval_code(ptr nest %[[STATE_ENV]], ptr %[[COUNTER_OBJ]])
+// ARM64: %[[NEXT_STATE:[0-9]+]] = call %main.stateFn %__llgo_funcval_code(ptr swiftself %[[STATE_ENV]], ptr %[[COUNTER_OBJ]])
+// AMD64: %[[NEXT_STATE:[0-9]+]] = call %main.stateFn %__llgo_funcval_code(ptr nest %[[STATE_ENV]], ptr %[[COUNTER_OBJ]])
 // CHECK: store %main.stateFn %[[NEXT_STATE]], ptr %{{[0-9]+}}
 func main() {
 	c := &counter{max: 5, state: countState}

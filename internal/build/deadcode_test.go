@@ -1,6 +1,7 @@
 package build
 
 import (
+	"go/types"
 	"reflect"
 	"strings"
 	"testing"
@@ -78,12 +79,120 @@ func TestDCEEntryRootCandidatesIncludesCExports(t *testing.T) {
 	lpkg := prog.NewPackage("pkg", "pkg")
 	lpkg.SetExport("main.Z", "Zed")
 	lpkg.SetExport("main.A", "Add")
+	lpkg.NewFunc("main.Z", llssa.NoArgsNoRet, llssa.InGo)
+	lpkg.NewFunc("main.A", llssa.NoArgsNoRet, llssa.InGo)
 	pkgs := []Package{&aPackage{LPkg: lpkg}}
 
-	want := []string{"main.init", "main.main", "Add", "Zed"}
+	want := []string{"main.init", "main.main", "main.A", "main.Z"}
 	if got := dceEntryRootCandidates(pkgs, false); !reflect.DeepEqual(got, want) {
 		t.Fatalf("dceEntryRootCandidates() = %v, want %v", got, want)
 	}
+}
+
+func TestLinkedCExportsIncludesOnlyWindowsSharedMain(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	newExport := func(path, name, goName, cName string) Package {
+		lpkg := prog.NewPackage(path, path)
+		lpkg.SetExport(goName, cName)
+		lpkg.NewFunc(goName, llssa.NoArgsNoRet, llssa.InGo)
+		return &aPackage{
+			Package: &packages.Package{Name: name, PkgPath: path},
+			LPkg:    lpkg,
+		}
+	}
+	ctx := &context{buildConf: &Config{
+		Goos:      "windows",
+		BuildMode: BuildModeCShared,
+	}}
+	exports, err := linkedCExports(ctx, []Package{
+		newExport("main", "main", "main.Exported", "Exported"),
+		newExport("example.com/dep", "dep", "example.com/dep.Callback", "Callback"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exports) != 1 || exports[0].goName != "main.Exported" {
+		t.Fatalf("linked C exports = %+v, want command-package export only", exports)
+	}
+}
+
+func TestLinkedCExportsValidation(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	ctx := &context{buildConf: &Config{
+		Goos:      "windows",
+		BuildMode: BuildModeCShared,
+	}}
+	newExport := func(path, goName, cName string, sig *types.Signature, define bool) Package {
+		lpkg := prog.NewPackage(path, path)
+		lpkg.SetExport(goName, cName)
+		if define {
+			lpkg.NewFunc(goName, sig, llssa.InGo)
+		}
+		return &aPackage{
+			Package: &packages.Package{Name: "main", PkgPath: path},
+			LPkg:    lpkg,
+		}
+	}
+
+	t.Run("duplicate C name", func(t *testing.T) {
+		_, err := linkedCExports(ctx, []Package{
+			newExport("first", "first.Exported", "Exported", llssa.NoArgsNoRet, true),
+			newExport("second", "second.Exported", "Exported", llssa.NoArgsNoRet, true),
+		})
+		if err == nil || !strings.Contains(err.Error(), "provided by both") {
+			t.Fatalf("linkedCExports() error = %v, want duplicate C export", err)
+		}
+	})
+
+	t.Run("duplicate mapping", func(t *testing.T) {
+		exports, err := linkedCExports(ctx, []Package{
+			newExport("main", "main.Exported", "Exported", llssa.NoArgsNoRet, true),
+			newExport("main", "main.Exported", "Exported", llssa.NoArgsNoRet, true),
+		})
+		if err != nil || len(exports) != 1 {
+			t.Fatalf("linkedCExports() = (%+v, %v), want one deduplicated export", exports, err)
+		}
+	})
+
+	t.Run("missing implementation", func(t *testing.T) {
+		_, err := linkedCExports(ctx, []Package{
+			newExport("main", "main.Exported", "Exported", llssa.NoArgsNoRet, false),
+		})
+		if err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Fatalf("linkedCExports() error = %v, want missing implementation", err)
+		}
+	})
+
+	t.Run("unsupported signature", func(t *testing.T) {
+		sig := newSignature(nil, []types.Type{types.Typ[types.Int], types.Typ[types.Int]})
+		_, err := linkedCExports(ctx, []Package{
+			newExport("main", "main.Exported", "Exported", sig, true),
+		})
+		if err == nil || !strings.Contains(err.Error(), "unsupported signature") {
+			t.Fatalf("linkedCExports() error = %v, want unsupported signature", err)
+		}
+	})
+
+	t.Run("foreign implementation", func(t *testing.T) {
+		exports, err := linkedCExports(ctx, []Package{
+			newExport("main", "dependency.Exported", "Exported", llssa.NoArgsNoRet, false),
+		})
+		if err != nil || len(exports) != 0 {
+			t.Fatalf("linkedCExports() = (%+v, %v), want no foreign export", exports, err)
+		}
+	})
+
+	t.Run("sorted", func(t *testing.T) {
+		exports, err := linkedCExports(ctx, []Package{
+			newExport("zed", "zed.Exported", "Zed", llssa.NoArgsNoRet, true),
+			newExport("add", "add.Exported", "Add", llssa.NoArgsNoRet, true),
+		})
+		if err != nil || len(exports) != 2 || exports[0].cName != "Add" || exports[1].cName != "Zed" {
+			t.Fatalf("linkedCExports() = (%+v, %v), want exports sorted by C name", exports, err)
+		}
+	})
 }
 
 func buildDeadcodeMeta(t *testing.T) *meta.PackageMeta {

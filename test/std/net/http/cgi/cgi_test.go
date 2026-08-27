@@ -4,10 +4,25 @@ import (
 	"net/http/cgi"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
+
+const cgiHelperEnv = "LLGO_TEST_CGI_HELPER"
+
+func TestCGIHelperProcess(t *testing.T) {
+	if os.Getenv(cgiHelperEnv) != "1" {
+		return
+	}
+	_, err := os.Stdout.WriteString("Status: 200 OK\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"method=" + os.Getenv("REQUEST_METHOD") + " query=" + os.Getenv("QUERY_STRING") + "\r\n")
+	if err != nil {
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
 
 func TestRequestFromMap(t *testing.T) {
 	req, err := cgi.RequestFromMap(map[string]string{
@@ -52,21 +67,12 @@ func TestPublicAPISymbols(t *testing.T) {
 }
 
 func TestHandlerServeHTTP(t *testing.T) {
-	dir := t.TempDir()
-	script := filepath.Join(dir, "app.sh")
-	content := "#!/bin/sh\n" +
-		"echo \"Status: 200 OK\"\n" +
-		"echo \"Content-Type: text/plain\"\n" +
-		"echo\n" +
-		"echo \"method=$REQUEST_METHOD query=$QUERY_STRING\"\n"
-	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-		t.Fatalf("WriteFile script: %v", err)
-	}
-
 	h := &cgi.Handler{
-		Path: script,
+		Path: os.Args[0],
 		Root: "/cgi-bin",
-		Dir:  dir,
+		Dir:  t.TempDir(),
+		Args: []string{"-test.run=^TestCGIHelperProcess$"},
+		Env:  []string{cgiHelperEnv + "=1"},
 	}
 	req := httptest.NewRequest("GET", "http://example.com/cgi-bin/app.sh?x=1&y=2", nil)
 	w := httptest.NewRecorder()

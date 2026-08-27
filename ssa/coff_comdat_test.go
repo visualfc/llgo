@@ -52,3 +52,28 @@ func TestUnixODRDefinitionsDoNotGainCOMDAT(t *testing.T) {
 		t.Fatalf("non-Windows ODR IR unexpectedly contains COMDAT:\n%s", ir)
 	}
 }
+
+func TestWindowsZeroSizedGlobalUsesModuleLocalSentinel(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "windows", GOARCH: "amd64"})
+	defer prog.Dispose()
+	prog.SetRuntime(func() *types.Package {
+		return types.NewPackage(PkgRuntime, "runtime")
+	})
+	pkg := prog.NewPackage("example.com/p", "example.com/p")
+	typ := types.NewPointer(types.NewArray(types.Typ[types.Int], 0))
+	global := pkg.NewVar("example.com/p.zero", typ, InGo)
+	global.InitNil()
+
+	ir := pkg.String()
+	for _, want := range []string{
+		`@"__llgo.moduleZeroSizedAlloc$" = private unnamed_addr global i8 0`,
+		`@"example.com/p.zero" = alias [0 x i64], ptr @"__llgo.moduleZeroSizedAlloc$"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("Windows zero-sized global IR does not contain %q:\n%s", want, ir)
+		}
+	}
+	if strings.Contains(ir, `$"__llgo.moduleZeroSizedAlloc$" = comdat`) {
+		t.Fatalf("Windows zero-sized sentinel unexpectedly uses COMDAT:\n%s", ir)
+	}
+}

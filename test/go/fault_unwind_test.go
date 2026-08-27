@@ -110,13 +110,16 @@ func faultLLGo(t *testing.T) string {
 	t.Helper()
 	repoRoot := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
+	if compiler := configuredLLGoTestCompiler(t); compiler != "" {
+		return compiler
+	}
 	faultLLGoOnce.Do(func() {
 		tmp, err := os.MkdirTemp("", "llgo-fault-bin")
 		if err != nil {
 			faultLLGoErr = err.Error()
 			return
 		}
-		bin := filepath.Join(tmp, "llgo")
+		bin := testExecutablePath(tmp, "llgo")
 		build := exec.Command("go", "build", "-o", bin, "./cmd/llgo")
 		build.Dir = repoRoot
 		if out, berr := build.CombinedOutput(); berr != nil {

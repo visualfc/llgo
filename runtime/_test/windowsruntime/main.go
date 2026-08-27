@@ -42,6 +42,12 @@ func windowsForeignFaultOnNativeThread() int32
 //go:linkname panicWindowsException github.com/xgo-dev/llgo/runtime/internal/runtime.panicWindowsException
 func panicWindowsException(code uint32, address uintptr)
 
+//go:linkname runtimeRand runtime.rand
+func runtimeRand() uint64
+
+//go:linkname windowsRandom github.com/xgo-dev/llgo/runtime/internal/runtime.windowsRandom
+func windowsRandom(data unsafe.Pointer, size uintptr) bool
+
 //go:noinline
 func windowsNilFault() byte {
 	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
@@ -257,6 +263,45 @@ func checkWallClock() {
 	}
 }
 
+func checkRuntimeRandStreams() {
+	const workers = 8
+	start := make(chan struct{})
+	values := make(chan uint64, workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			<-start
+			values <- runtimeRand()
+		}()
+	}
+	close(start)
+
+	first := <-values
+	allEqual := true
+	for i := 1; i < workers; i++ {
+		if <-values != first {
+			allEqual = false
+		}
+	}
+	// UCRT rand has per-thread state and starts every unseeded thread from
+	// seed 1. Because LLGo currently runs each goroutine on its own native
+	// thread, using rand directly made all workers emit the same sequence.
+	// That breaks callers such as os.CreateTemp under normal concurrency.
+	if allEqual {
+		panic("Windows goroutines share identical runtime random streams")
+	}
+}
+
+func checkWindowsRandomSource() {
+	var first, second [32]byte
+	if !windowsRandom(unsafe.Pointer(&first[0]), unsafe.Sizeof(first)) ||
+		!windowsRandom(unsafe.Pointer(&second[0]), unsafe.Sizeof(second)) {
+		panic("Windows system random source failed")
+	}
+	if first == second {
+		panic("Windows system random source repeated a 256-bit block")
+	}
+}
+
 func main() {
 	values := make(chan int)
 	go func() {
@@ -289,6 +334,10 @@ func main() {
 	checkForeignFaultOnNativeThread()
 	checkIntegerOverflowFault()
 	checkNilFunctionFaultOrigin()
+	checkWindowsRandomSource()
+	checkRuntimeRandStreams()
+	checkCoreMapRandStreams()
+	checkUnicodeConsolePrint()
 	checkNilFault()
 	checkStoreNilFaultLine()
 	checkConcurrentNilFault()

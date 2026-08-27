@@ -431,7 +431,8 @@ func TestBuildSourcePatchOverlayForIter(t *testing.T) {
 	if !strings.Contains(string(patchSrc), "func Pull[V any]") {
 		t.Fatalf("source patch file %s does not contain iter replacement", patchFile)
 	}
-	if !strings.HasPrefix(string(patchSrc), sourcePatchLineDirective(filepath.Join(env.LLGoRuntimeDir(), "_patch", "iter", "iter.go"))) {
+	normalizedPatchSrc := strings.ReplaceAll(string(patchSrc), "\r\n", "\n")
+	if !strings.HasPrefix(normalizedPatchSrc, sourcePatchLineDirective(filepath.Join(env.LLGoRuntimeDir(), "_patch", "iter", "iter.go"))) {
 		t.Fatalf("source patch file %s is missing line directive, got:\n%s", patchFile, patchSrc)
 	}
 
@@ -446,6 +447,25 @@ func TestBuildSourcePatchOverlayForIter(t *testing.T) {
 	}
 	if strings.Contains(got, "func Pull") {
 		t.Fatalf("stub overlay for %s still contains original declarations", stdFile)
+	}
+}
+
+func TestBuildInjectedSourcePatchFilePreservesNewlines(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		src     string
+		newline string
+	}{
+		{name: "LF", src: "package demo\n", newline: "\n"},
+		{name: "CRLF", src: "package demo\r\n", newline: "\r\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := buildInjectedSourcePatchFile("patch.go", []byte(test.src))
+			want := "//line patch.go:1" + test.newline + test.src
+			if string(got) != want {
+				t.Fatalf("buildInjectedSourcePatchFile() = %q, want %q", got, want)
+			}
+		})
 	}
 }
 

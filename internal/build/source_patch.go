@@ -467,10 +467,15 @@ func sanitizeSourcePatchDirectiveLines(src []byte) []byte {
 
 func buildInjectedSourcePatchFile(filename string, src []byte) []byte {
 	sanitized := sanitizeSourcePatchDirectiveLines(src)
+	newline := "\n"
+	if first := bytes.IndexByte(src, '\n'); first > 0 && src[first-1] == '\r' {
+		newline = "\r\n"
+	}
 	var out bytes.Buffer
 	out.WriteString("//line ")
 	out.WriteString(filepath.ToSlash(filename))
-	out.WriteString(":1\n")
+	out.WriteString(":1")
+	out.WriteString(newline)
 	out.Write(sanitized)
 	return out.Bytes()
 }

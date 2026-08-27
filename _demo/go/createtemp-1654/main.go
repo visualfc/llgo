@@ -6,9 +6,10 @@ import (
 	"sync"
 )
 
-// Regression stress for darwin/amd64 create-temp failure path.
-// If open failure does not return EEXIST correctly, os.CreateTemp may return
-// a file with an invalid fd and later operations can fail with EBADF.
+// Regression stress for concurrent temporary-file creation. It originally
+// covered the darwin/amd64 open-failure path, where losing EEXIST could leave
+// os.CreateTemp with an invalid fd. On Windows it also verifies that native
+// threads do not repeat one random-name sequence and continually collide.
 const (
 	goroutines = 4
 	iterations = 5000

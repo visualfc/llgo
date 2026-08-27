@@ -83,6 +83,18 @@ timeouts:
     timeout: 90s
     reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
   - version: go1.26
+    platform: windows/amd64
+    directive: run
+    case: fixedbugs/issue79186.go
+    timeout: 90s
+    reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
+  - version: go1.26
+    platform: windows/arm64
+    directive: run
+    case: fixedbugs/issue79186.go
+    timeout: 90s
+    reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
+  - version: go1.26
     platform: darwin/arm64
     directive: run
     case: fixedbugs/issue19658.go
@@ -1125,26 +1137,6 @@ flakes:
   - version: go1.26
     platform: linux/amd64
     directive: run
-    case: stack.go
-    reason: go1.26 goroot run can either pass or fail on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: stack.go
-    reason: go1.24 goroot run can either pass or fail on linux/amd64
-  - version: go1.26
-    platform: darwin/arm64
-    directive: run
-    case: stack.go
-    reason: go1.26 goroot run can either pass or fail on darwin/arm64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: run
-    case: stack.go
-    reason: go1.24 goroot run can either pass or fail on darwin/arm64
-  - version: go1.26
-    platform: linux/amd64
-    directive: run
     case: fixedbugs/issue48898.go
     reason: go1.26 goroot run can either pass or fail on linux/amd64
   - version: go1.26
@@ -1214,6 +1206,11 @@ flakes:
     directive: run
     case: typeparam/chans.go
     reason: select over the unbuffered channel can either complete or miss the final receive and time out on linux/amd64
+  - version: go1.26
+    platform: windows/arm64
+    directive: run
+    case: typeparam/chans.go
+    reason: select over the unbuffered channel can either complete or miss the final receive and time out on windows/arm64
   - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue25897a.go
@@ -1258,4 +1255,13 @@ xfails:
     directive: run
     case: heapsampling.go
     reason: go1.26 goroot run failure on linux/amd64
-
+  - version: go1.26
+    platform: windows/amd64
+    directive: run
+    case: heapsampling.go
+    reason: "sampled heap profiles are implemented by pending PR #2027"
+  - version: go1.26
+    platform: windows/arm64
+    directive: run
+    case: heapsampling.go
+    reason: "sampled heap profiles are implemented by pending PR #2027"

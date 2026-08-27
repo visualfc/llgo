@@ -33,10 +33,6 @@ func PrintBool(v bool) {
 	c.Fprintf(c.Stderr, boolCStr(v))
 }
 
-func PrintByte(v byte) {
-	c.Fputc(c.Int(v), c.Stderr)
-}
-
 func PrintUint(v uint64) {
 	c.Fprintf(c.Stderr, printFormatPrefixUInt, v)
 }
@@ -61,10 +57,6 @@ func PrintPointer(p unsafe.Pointer) {
 	// Match Go's builtin print/println pointer formatting (0x... even for nil).
 	c.Fprintf(c.Stderr, c.Str("0x"))
 	c.Fprintf(c.Stderr, printFormatPrefixHex, uintptr(p))
-}
-
-func PrintString(s String) {
-	c.Fwrite(s.data, 1, uintptr(s.len), c.Stderr)
 }
 
 func PrintSlice(s Slice) {

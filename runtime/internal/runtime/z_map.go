@@ -59,6 +59,14 @@ func MapAccess2(t *maptype, h *hmap, key unsafe.Pointer) (unsafe.Pointer, bool) 
 	return mapaccess2(t, h, key)
 }
 
+func MapAccess1Fat(t *maptype, h *hmap, key, zero unsafe.Pointer) unsafe.Pointer {
+	return mapaccess1_fat(t, h, key, zero)
+}
+
+func MapAccess2Fat(t *maptype, h *hmap, key, zero unsafe.Pointer) (unsafe.Pointer, bool) {
+	return mapaccess2_fat(t, h, key, zero)
+}
+
 func MapDelete(t *maptype, h *hmap, key unsafe.Pointer) {
 	mapdelete(t, h, key)
 }

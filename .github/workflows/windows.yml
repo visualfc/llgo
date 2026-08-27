@@ -15,6 +15,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  std-cover:
+    name: standard-library coverage (windows-amd64, Go 1.26.7)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.26.7"
+
+      - name: Check Windows standard-library coverage
+        shell: bash
+        run: bash doc/_readme/scripts/check_std_cover.sh
+
   native-compiler:
     name: native PE/COFF (windows-amd64, LLVM 19, Go 1.26.7)
     runs-on: windows-2022
@@ -199,6 +215,12 @@ jobs:
             .\_test\windowsruntime
           $buildExitCode = $LASTEXITCODE
           if ($buildExitCode -eq 0) {
+            ..\llgo-windows-smoke.exe build -tags=nogc `
+              -o ..\windows-stdlib-smoke.exe `
+              .\_test\windowsstdlib
+            $buildExitCode = $LASTEXITCODE
+          }
+          if ($buildExitCode -eq 0) {
             ..\llgo-windows-smoke.exe build `
               -o ..\windows-ffi-smoke.exe `
               .\_test\windowsffi
@@ -221,6 +243,12 @@ jobs:
               .\_test\windowscorefault
             $buildExitCode = $LASTEXITCODE
           }
+          if ($buildExitCode -eq 0) {
+            ..\llgo-windows-smoke.exe build `
+              -o ..\windows-network-smoke.exe `
+              .\_test\windowsnetwork
+            $buildExitCode = $LASTEXITCODE
+          }
           Pop-Location
           if ($buildExitCode -ne 0) {
             exit $buildExitCode
@@ -230,15 +258,16 @@ jobs:
             -ReadObj $readObjExe `
             -Artifacts @(
               ".\windows-runtime-smoke.exe",
+              ".\windows-stdlib-smoke.exe",
               ".\windows-ffi-smoke.exe",
               ".\windows-empty-smoke.exe",
-              ".\windows-core-fault-smoke.exe"
+              ".\windows-core-fault-smoke.exe",
+              ".\windows-network-smoke.exe"
             )
           .\windows-runtime-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
-
           $env:LLGO_TEST_UNRECOVERED_FAULT = "1"
           # This process is expected to write a panic to stderr and fail.
           # Temporarily keep native stderr non-terminating so it can be
@@ -253,6 +282,7 @@ jobs:
           }
           Remove-Item Env:LLGO_TEST_UNRECOVERED_FAULT
           Write-Host $faultOutput
+          $normalizedFaultOutput = $faultOutput.Replace('\', '/')
           if ($faultExitCode -eq 0) {
             throw "unrecovered Windows fault exited successfully"
           }
@@ -261,13 +291,26 @@ jobs:
             "main.windowsNilFault",
             "windowsruntime/main.go"
           )) {
-            if (-not $faultOutput.Contains($expected)) {
+            if (-not $normalizedFaultOutput.Contains($expected)) {
               throw "unrecovered Windows fault output is missing '$expected'"
             }
           }
           if ($faultOutput.Contains("github.com/xgo-dev/llgo/runtime/internal/clite/tls.init")) {
             throw "unrecovered Windows fault traceback continued past runtime.goexit"
           }
+          .\windows-stdlib-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $env:LLGO_TEST_OS_EXIT = "1"
+          .\windows-stdlib-smoke.exe
+          $exitCode = $LASTEXITCODE
+          Remove-Item Env:LLGO_TEST_OS_EXIT
+          if ($exitCode -ne 23) {
+            throw "os.Exit(23) returned exit code $exitCode"
+          }
+
           .\windows-ffi-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
@@ -277,6 +320,27 @@ jobs:
             exit $LASTEXITCODE
           }
           .\windows-core-fault-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          .\windows-network-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          # Exercise cmd/llgo's test path with testing-package behavior, cgo
+          # errno propagation, synchronization stress, CPU profiling, and
+          # runtime trace clock hooks.
+          # The runtime/FFI binaries above only cover build/run.
+          .\llgo-windows-smoke.exe test `
+            -p=1 `
+            -count=1 `
+            -timeout=10m `
+            ./test/windows `
+            ./test/cgo `
+            ./test/std/sync `
+            ./test/std/runtime/pprof `
+            ./test/std/runtime/trace
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

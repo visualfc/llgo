@@ -93,8 +93,8 @@ type receiver struct {
 // CHECK-DAG: [[METHOD_ENV:%.*]] = extractvalue { ptr, ptr } [[METHOD_FN]], 1
 // CHECK-DAG: [[METHOD_CODE_RAW:%.*]] = extractvalue { ptr, ptr } [[METHOD_FN]], 0
 // CHECK-DAG: [[METHOD_CODE:%.*]] = call ptr asm "", "=r,0"(ptr [[METHOD_CODE_RAW]])
-// DARWIN-ARM64-DAG: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr swiftself [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
-// LINUX-AMD64-DAG: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr nest [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
+// ARM64-DAG: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr swiftself [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
+// AMD64-DAG: [[METHOD_GOT:%.*]] = call i64 [[METHOD_CODE]](ptr nest [[METHOD_ENV]], i64 1, i64 2, i64 3, i64 4, i64 5, i64 6, i64 7, i64 8, i64 9)
 // CHECK-DAG: [[METHOD_BAD:%.*]] = icmp ne i64 [[METHOD_GOT]], 55
 
 // CHECK-LABEL: define i64 @"main.main$1"(i64 %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8){{.*}} {
@@ -117,8 +117,8 @@ type receiver struct {
 // CHECK: [[FLOAT_CLOSURE:%.*]] = insertvalue { ptr, ptr } { ptr @"main.makeFloatSum$1", ptr undef }, ptr %{{.*}}, 1
 // CHECK: ret { ptr, ptr } [[FLOAT_CLOSURE]]
 
-// DARWIN-ARM64-LABEL: define double @"main.makeFloatSum$1"(ptr swiftself %0, double %1, double %2, double %3, double %4, double %5, double %6, double %7, double %8, double %9){{.*}} {
-// LINUX-AMD64-LABEL: define double @"main.makeFloatSum$1"(ptr nest %0, double %1, double %2, double %3, double %4, double %5, double %6, double %7, double %8, double %9){{.*}} {
+// ARM64-LABEL: define double @"main.makeFloatSum$1"(ptr swiftself %0, double %1, double %2, double %3, double %4, double %5, double %6, double %7, double %8, double %9){{.*}} {
+// AMD64-LABEL: define double @"main.makeFloatSum$1"(ptr nest %0, double %1, double %2, double %3, double %4, double %5, double %6, double %7, double %8, double %9){{.*}} {
 // CHECK: [[FLOAT_ENV:%.*]] = load { ptr }, ptr %0
 // CHECK: [[FLOAT_BASE_PTR:%.*]] = extractvalue { ptr } [[FLOAT_ENV]], 0
 // CHECK: [[FLOAT_BASE_VALUE:%.*]] = load double, ptr [[FLOAT_BASE_PTR]]
@@ -139,8 +139,8 @@ type receiver struct {
 // CHECK: [[NESTED_CLOSURE:%.*]] = insertvalue { ptr, ptr } { ptr @"main.makeNestedSum$1", ptr undef }, ptr %{{.*}}, 1
 // CHECK: ret { ptr, ptr } [[NESTED_CLOSURE]]
 
-// DARWIN-ARM64-LABEL: define i64 @"main.makeNestedSum$1"(ptr swiftself %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
-// LINUX-AMD64-LABEL: define i64 @"main.makeNestedSum$1"(ptr nest %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
+// ARM64-LABEL: define i64 @"main.makeNestedSum$1"(ptr swiftself %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
+// AMD64-LABEL: define i64 @"main.makeNestedSum$1"(ptr nest %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
 // CHECK: [[NESTED_VALUES:%.*]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 216)
 // CHECK: [[NESTED_FIRST_PTR:%.*]] = getelementptr inbounds %reflect.Value, ptr [[NESTED_VALUES]], i64 0
 // CHECK: store i64 %1, ptr [[NESTED_FIRST_BOX_ADDR:%[-A-Za-z0-9_.]+]]
@@ -172,8 +172,8 @@ type receiver struct {
 // CHECK: [[SUM_CLOSURE:%.*]] = insertvalue { ptr, ptr } { ptr @"main.makeSum$1", ptr undef }, ptr %{{.*}}, 1
 // CHECK: ret { ptr, ptr } [[SUM_CLOSURE]]
 
-// DARWIN-ARM64-LABEL: define i64 @"main.makeSum$1"(ptr swiftself %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
-// LINUX-AMD64-LABEL: define i64 @"main.makeSum$1"(ptr nest %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
+// ARM64-LABEL: define i64 @"main.makeSum$1"(ptr swiftself %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
+// AMD64-LABEL: define i64 @"main.makeSum$1"(ptr nest %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i64 %8, i64 %9){{.*}} {
 // CHECK: [[SUM_ENV:%.*]] = load { ptr }, ptr %0
 // CHECK: [[SUM_BASE_PTR:%.*]] = extractvalue { ptr } [[SUM_ENV]], 0
 // CHECK: [[SUM_BASE_VALUE:%.*]] = load i64, ptr [[SUM_BASE_PTR]]

@@ -369,6 +369,10 @@ func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
 			"-fdata-sections",
 			"-ffunction-sections",
 			"-Wl,/opt:ref",
+			// UCRT defines printf-family entry points inline in its headers.
+			// LLGo C linknames use the traditional external symbols supplied by
+			// this Microsoft compatibility import library.
+			"-llegacy_stdio_definitions",
 		}
 	default:
 		return []string{"-fdata-sections", "-ffunction-sections"}, []string{

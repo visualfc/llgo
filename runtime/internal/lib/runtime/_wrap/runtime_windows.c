@@ -1,5 +1,6 @@
 /* Keep the runtime shim independent of Windows SDK headers. Clang still
  * applies the target's MSVC ABI and emits ordinary Kernel32 imports. */
+#include <errno.h>
 #include <stdint.h>
 
 typedef __SIZE_TYPE__ llgo_size_t;
@@ -52,6 +53,13 @@ __declspec(dllimport) int LLGO_WINAPI
 QueryPerformanceFrequency(long long *frequency);
 
 static long long llgo_nanotime_frequency;
+
+/* C2func wrappers read the calling thread's CRT errno through this common
+ * runtime entry point. Unix provides the same symbol from clite/os. */
+int cliteErrno(void)
+{
+    return errno;
+}
 
 typedef struct {
     llgo_dword low;
@@ -180,6 +188,22 @@ long long llgo_nanotime(void)
            remainder * 1000000000LL / llgo_nanotime_frequency;
 }
 
+long long llgo_query_performance_counter(void)
+{
+    long long counter;
+    if (!QueryPerformanceCounter(&counter))
+        return 0;
+    return counter;
+}
+
+long long llgo_query_performance_frequency(void)
+{
+    long long frequency;
+    if (!QueryPerformanceFrequency(&frequency))
+        return 0;
+    return frequency;
+}
+
 void llgo_walltime(long long *seconds, long *nanoseconds)
 {
     llgo_filetime now;
@@ -206,4 +230,116 @@ llgo_uintptr llgo_get_proc_address(llgo_uintptr module,
     void *proc = GetProcAddress((void *)module, (const char *)name);
     *error = proc == 0 ? GetLastError() : 0;
     return (llgo_uintptr)proc;
+}
+
+/* --- Standard library OS bridges (link_windows_llgo.go) ------------------- */
+
+__declspec(dllimport) llgo_dword LLGO_WINAPI
+GetSystemDirectoryA(char *buffer, llgo_dword size);
+typedef int (LLGO_WINAPI *llgo_console_handler)(llgo_dword event);
+__declspec(dllimport) int LLGO_WINAPI
+SetConsoleCtrlHandler(llgo_console_handler handler, int add);
+__declspec(dllimport) void LLGO_WINAPI Sleep(llgo_dword milliseconds);
+typedef struct llgo_overlapped llgo_overlapped;
+__declspec(dllimport) void *LLGO_WINAPI
+CreateIoCompletionPort(void *file, void *existing_port,
+                       llgo_uintptr completion_key,
+                       llgo_dword concurrent_threads);
+__declspec(dllimport) int LLGO_WINAPI
+GetQueuedCompletionStatus(void *port, llgo_dword *bytes,
+                          llgo_uintptr *completion_key,
+                          llgo_overlapped **overlapped,
+                          llgo_dword milliseconds);
+
+extern int llgo_runtime_windowsSignalCallback(llgo_dword signum);
+
+enum {
+    llgo_ctrl_c_event = 0,
+    llgo_ctrl_break_event = 1,
+    llgo_ctrl_close_event = 2,
+    llgo_ctrl_logoff_event = 5,
+    llgo_ctrl_shutdown_event = 6,
+    llgo_sigint = 2,
+    llgo_sigterm = 15,
+};
+
+static int LLGO_WINAPI llgo_windows_console_handler(llgo_dword event)
+{
+    llgo_dword signum;
+    int handled;
+    switch (event) {
+    case llgo_ctrl_c_event:
+    case llgo_ctrl_break_event:
+        signum = llgo_sigint;
+        break;
+    case llgo_ctrl_close_event:
+    case llgo_ctrl_logoff_event:
+    case llgo_ctrl_shutdown_event:
+        signum = llgo_sigterm;
+        break;
+    default:
+        return 0;
+    }
+    handled = llgo_runtime_windowsSignalCallback(signum);
+    if (!handled)
+        return 0;
+    if (signum == llgo_sigterm) {
+        /* Windows terminates the process after a close, logoff, or shutdown
+         * handler returns. Match Go's ctrlHandler by parking this dedicated
+         * callback thread after SIGTERM has been accepted, leaving the other
+         * LLGo native threads free to run os/signal cleanup until the process
+         * exits. */
+        for (;;)
+            Sleep(0xffffffffUL);
+    }
+    return 1;
+}
+
+int llgo_getpagesize(void)
+{
+    llgo_system_info info;
+    GetSystemInfo(&info);
+    return (int)info.page_size;
+}
+
+llgo_dword llgo_get_system_directory(unsigned char *buffer, llgo_dword size)
+{
+    return GetSystemDirectoryA((char *)buffer, size);
+}
+
+int llgo_windows_signal_init(void)
+{
+    return SetConsoleCtrlHandler(llgo_windows_console_handler, 1);
+}
+
+llgo_uintptr llgo_iocp_create(llgo_dword *error)
+{
+    void *port = CreateIoCompletionPort((void *)(llgo_uintptr)-1, 0, 0, 0);
+    *error = port == 0 ? GetLastError() : 0;
+    return (llgo_uintptr)port;
+}
+
+int llgo_iocp_associate(llgo_uintptr port, llgo_uintptr handle,
+                        llgo_uintptr key, llgo_dword *error)
+{
+    void *result = CreateIoCompletionPort((void *)handle, (void *)port, key, 0);
+    *error = result == 0 ? GetLastError() : 0;
+    return result != 0;
+}
+
+int llgo_iocp_get(llgo_uintptr port, llgo_uintptr *key,
+                  llgo_overlapped **overlapped, llgo_dword *error)
+{
+    llgo_dword bytes;
+    *overlapped = 0;
+    int ok = GetQueuedCompletionStatus((void *)port, &bytes, key, overlapped,
+                                       0xffffffffUL);
+    if (!ok && *overlapped == 0) {
+        *error = GetLastError();
+        return 0;
+    }
+    /* A failed overlapped operation still produces a completion packet. The
+     * caller obtains its operation-specific error with WSA/GetOverlappedResult. */
+    *error = ok ? 0 : GetLastError();
+    return 1;
 }

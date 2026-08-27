@@ -101,6 +101,38 @@ func TestGenMainModuleWindowsExitsAfterMain(t *testing.T) {
 	)
 }
 
+func TestGenMainModuleWindowsStdioNobufUsesUCRTStreams(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "1")
+	ctx := &context{
+		prog: llssa.NewProgram(nil),
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "windows",
+			Goarch:    "arm64",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{}).LPkg.String()
+	for _, want := range []string{
+		"call ptr @__acrt_iob_func(i32 1)",
+		"call ptr @__acrt_iob_func(i32 2)",
+		"call i32 @setvbuf(",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("Windows stdio setup IR missing %q:\n%s", want, ir)
+		}
+	}
+	if got := strings.Count(ir, "i32 4, i64 0)"); got != 2 {
+		t.Fatalf("Windows stdio setup used _IONBF=4 %d times, want 2:\n%s", got, ir)
+	}
+	for _, unwanted := range []string{"@stdout =", "@stderr ="} {
+		if strings.Contains(ir, unwanted) {
+			t.Fatalf("Windows stdio setup IR contains unavailable UCRT global %q:\n%s", unwanted, ir)
+		}
+	}
+}
+
 func TestPackageInitOrderUsesLexicalReadyPackage(t *testing.T) {
 	newPackage := func(path string, imports ...*packages.Package) *packages.Package {
 		pkg := &packages.Package{ID: path, PkgPath: path, Imports: make(map[string]*packages.Package)}
@@ -305,6 +337,89 @@ func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
 				t.Fatalf("library mode should not emit main function:\n%s", ir)
 			}
 		})
+	}
+}
+
+func TestGenMainModuleWindowsCSharedInitializesFromCExport(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	ctx := &context{
+		prog: llssa.NewProgram(nil),
+		buildConf: &Config{
+			BuildMode: BuildModeCShared,
+			Goos:      "windows",
+			Goarch:    "arm64",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
+		rtInit:       true,
+		packageInits: []string{"example.com/dep.init"},
+		cExports: []cExport{{
+			goName: "example.com/foo.Exported",
+			cName:  "Exported",
+			sig:    llssa.NoArgsNoRet,
+		}, {
+			goName: "example.com/foo.Value",
+			cName:  "Value",
+			sig:    newSignature([]types.Type{types.Typ[types.Int32]}, []types.Type{types.Typ[types.Int32]}),
+		}},
+	}).LPkg.String()
+
+	for _, want := range []string{
+		"define internal void @__llgo_runtime_initialize()",
+		"declare dllimport i32 @InitOnceExecuteOnce(",
+		"define hidden void @__llgo_runtime_ensure_initialized()",
+		"define void @Exported()",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("Windows c-shared module IR missing %q:\n%s", want, ir)
+		}
+	}
+	for _, unwanted := range []string{"@llvm.global_ctors", "@__llgo_runtime_ctor"} {
+		if strings.Contains(ir, unwanted) {
+			t.Fatalf("Windows c-shared module IR contains loader-lock constructor %q:\n%s", unwanted, ir)
+		}
+	}
+	assertInOrder(t, ir,
+		"define internal void @__llgo_runtime_initialize()",
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.init"()`,
+		`call void @"example.com/dep.init"()`,
+		`call void @"example.com/foo.init"()`,
+	)
+	wrapper := ir[strings.Index(ir, "define void @Exported()"):]
+	assertInOrder(t, wrapper,
+		"call void @__llgo_runtime_ensure_initialized()",
+		`call void @"example.com/foo.Exported"()`,
+	)
+	valueWrapper := ir[strings.Index(ir, "define i32 @Value(i32 %0)"):]
+	assertInOrder(t, valueWrapper,
+		"call void @__llgo_runtime_ensure_initialized()",
+		`%1 = call i32 @"example.com/foo.Value"(i32 %0)`,
+		"ret i32 %1",
+	)
+}
+
+func TestGenMainModuleWindowsCShared386UsesStdcallInitOnce(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	ctx := &context{
+		prog: llssa.NewProgram(nil),
+		buildConf: &Config{
+			BuildMode: BuildModeCShared,
+			Goos:      "windows",
+			Goarch:    "386",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true}).LPkg.String()
+	for _, want := range []string{
+		"declare dllimport x86_stdcallcc i32 @InitOnceExecuteOnce(",
+		"call x86_stdcallcc i32 @InitOnceExecuteOnce(",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("Windows/386 c-shared module IR missing %q:\n%s", want, ir)
+		}
 	}
 }
 

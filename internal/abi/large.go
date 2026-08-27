@@ -15,8 +15,8 @@ const (
 	runtimeAllocU = "github.com/xgo-dev/llgo/runtime/internal/runtime.AllocU"
 )
 
-// LowerLargeAggregates converts oversized direct aggregate returns to an
-// indirect result pointer before target-specific C ABI lowering runs.
+// LowerLargeAggregates converts oversized direct aggregate returns and copies
+// to indirect memory operations before target-specific C ABI lowering runs.
 func LowerLargeAggregates(td llvm.TargetData, m llvm.Module) {
 	l := largeAggregateLowerer{td: td}
 	l.transformModule(m)
@@ -62,6 +62,73 @@ func (l largeAggregateLowerer) transformModule(m llvm.Module) {
 	for _, fn := range funcs {
 		l.transformFunc(m, fn)
 	}
+	l.transformStoredLoads(m)
+}
+
+// transformStoredLoads prevents a large aggregate load from reaching
+// SelectionDAG as one enormous SSA value. Lower an adjacent load/store pair
+// directly to memmove. When the value is stored later or more than once,
+// preserve Go assignment semantics by taking one snapshot at the original
+// load and copying that snapshot to every destination at the original sites.
+func (l largeAggregateLowerer) transformStoredLoads(m llvm.Module) {
+	var loads []llvm.Value
+	for fn := m.FirstFunction(); !fn.IsNil(); fn = llvm.NextFunction(fn) {
+		for bb := fn.FirstBasicBlock(); !bb.IsNil(); bb = llvm.NextBasicBlock(bb) {
+			for instr := bb.FirstInstruction(); !instr.IsNil(); instr = llvm.NextInstruction(instr) {
+				load := instr.IsALoadInst()
+				if !load.IsNil() && !load.IsVolatile() && l.isLargeAggregate(load.Type()) {
+					if _, ok := storedLoadUsers(load); ok {
+						loads = append(loads, load)
+					}
+				}
+			}
+		}
+	}
+	for _, load := range loads {
+		l.transformStoredLoad(m, load)
+	}
+}
+
+func storedLoadUsers(load llvm.Value) ([]llvm.Value, bool) {
+	var stores []llvm.Value
+	for use := load.FirstUse(); !use.IsNil(); use = use.NextUse() {
+		store := use.User().IsAStoreInst()
+		if store.IsNil() || store.IsVolatile() || store.Operand(0) != load {
+			return nil, false
+		}
+		stores = append(stores, store)
+	}
+	return stores, len(stores) != 0
+}
+
+func (l largeAggregateLowerer) transformStoredLoad(m llvm.Module, load llvm.Value) {
+	stores, ok := storedLoadUsers(load)
+	if !ok {
+		return
+	}
+	ctx := m.Context()
+	b := ctx.NewBuilder()
+	defer b.Dispose()
+	typ := load.Type()
+
+	b.SetInsertPointBefore(load)
+	if len(stores) == 1 && llvm.NextInstruction(load) == stores[0] {
+		copy := l.callMemmove(ctx, b, stores[0].Operand(1), load.Operand(0), typ)
+		copy.InstructionSetDebugLoc(load.InstructionDebugLoc())
+		stores[0].EraseFromParentAsInstruction()
+		load.EraseFromParentAsInstruction()
+		return
+	}
+	snapshot := l.allocResult(m, ctx, b, typ)
+	copy := l.callMemcpy(ctx, b, snapshot, load.Operand(0), typ)
+	copy.InstructionSetDebugLoc(load.InstructionDebugLoc())
+	for _, store := range stores {
+		b.SetInsertPointBefore(store)
+		copy := l.callMemcpy(ctx, b, store.Operand(1), snapshot, typ)
+		copy.InstructionSetDebugLoc(store.InstructionDebugLoc())
+		store.EraseFromParentAsInstruction()
+	}
+	load.EraseFromParentAsInstruction()
 }
 
 func (l largeAggregateLowerer) transformCall(m llvm.Module, call llvm.Value) {
@@ -230,8 +297,16 @@ func (l largeAggregateLowerer) allocResult(m llvm.Module, ctx llvm.Context, b ll
 }
 
 func (l largeAggregateLowerer) callMemcpy(ctx llvm.Context, b llvm.Builder, dst, src llvm.Value, typ llvm.Type) llvm.Value {
+	return l.callMemoryCopy(ctx, b, "llvm.memcpy", dst, src, typ)
+}
+
+func (l largeAggregateLowerer) callMemmove(ctx llvm.Context, b llvm.Builder, dst, src llvm.Value, typ llvm.Type) llvm.Value {
+	return l.callMemoryCopy(ctx, b, "llvm.memmove", dst, src, typ)
+}
+
+func (l largeAggregateLowerer) callMemoryCopy(ctx llvm.Context, b llvm.Builder, intrinsic string, dst, src llvm.Value, typ llvm.Type) llvm.Value {
 	size := llvm.ConstInt(ctx.IntType(l.td.PointerSize()*8), l.td.TypeAllocSize(typ), false)
-	return b.CreateIntrinsic(ctx.VoidType(), llvm.LookupIntrinsicID("llvm.memcpy"), []llvm.Value{
+	return b.CreateIntrinsic(ctx.VoidType(), llvm.LookupIntrinsicID(intrinsic), []llvm.Value{
 		dst, src, size, llvm.ConstInt(ctx.Int1Type(), 0, false),
 	}, "")
 }

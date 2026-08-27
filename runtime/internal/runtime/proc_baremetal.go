@@ -48,7 +48,7 @@ func releaseG() (remaining uint64, mainExited bool) {
 // Bare-metal keeps its existing single-context behavior.
 func markMainExited() {}
 
-func gStateForTesting() (count uint64, mainExited bool) {
+func gState() (count uint64, mainExited bool) {
 	return 1, false
 }
 

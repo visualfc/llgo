@@ -62,6 +62,7 @@ func NewProc(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr) {
 	if errno := newm(gp.m, stackSize); errno != 0 {
 		ctx := gp.context
 		releaseG()
+		gp.startarg = nil
 		FreeRoot(arg)
 		FreeRoot(ctx.root)
 		panic("runtime: failed to create new OS thread")
@@ -116,7 +117,6 @@ func mstart(arg unsafe.Pointer) unsafe.Pointer {
 
 	fn, arg := gp.startfn, gp.startarg
 	gp.startfn = nil
-	gp.startarg = nil
 	ret := fn(arg)
 	mexit(mp)
 	return ret
@@ -134,6 +134,10 @@ func mexit(mp *m) {
 	pp := mp.p
 	ctx := gp.context
 	root := ctx.root
+	// The compiler-generated entry wrapper needs the scanned startup record
+	// for the whole initial call. A normal return and Goexit both converge on
+	// mexit, so the runtime can release that record in one place.
+	releaseStartArg(gp)
 	ownedByLifecycle := currentGUsesLifecycle()
 	if !ownedByLifecycle {
 		releaseGAndCheckDeadlock()
@@ -151,6 +155,13 @@ func mexit(mp *m) {
 	if !ownedByLifecycle && root != nil {
 		ctx.root = nil
 		FreeRoot(root)
+	}
+}
+
+func releaseStartArg(gp *g) {
+	if arg := gp.startarg; arg != nil {
+		gp.startarg = nil
+		FreeRoot(arg)
 	}
 }
 
@@ -212,5 +223,13 @@ func GMPForTesting() (goid, parentGoid uint64, mid int64, pid int32, gstatus, ps
 // Execution tests use it to wait until a lifecycle-owned main G has completed
 // mexit before allowing the last worker to return.
 func GStateForTesting() (count uint64, mainExited bool) {
-	return gStateForTesting()
+	return gState()
+}
+
+// NumGoroutine reports the number of live runtime contexts. A go statement
+// registers its context before the platform thread is started, matching Go's
+// guarantee that the new goroutine is visible when NewProc returns.
+func NumGoroutine() int {
+	count, _ := gState()
+	return int(count)
 }

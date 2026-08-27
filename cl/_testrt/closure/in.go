@@ -36,8 +36,8 @@ func main() {
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 1
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 0
 // CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %[[TMP5]])
-// DARWIN-ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]])
-// LINUX-AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]])
+// ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]])
+// AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]])
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 
@@ -56,8 +56,8 @@ func main() {
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define void @"main.main$3"(
-// DARWIN-ARM64-SAME: ptr swiftself %[[TMP0:[0-9]+]]){{.*}} {
-// LINUX-AMD64-SAME: ptr nest %[[TMP0:[0-9]+]]){{.*}} {
+// ARM64-SAME: ptr swiftself %[[TMP0:[0-9]+]]){{.*}} {
+// AMD64-SAME: ptr nest %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = load { ptr }, ptr %[[TMP0]], align 8
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = extractvalue { ptr } %[[TMP1]], 0
@@ -65,7 +65,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 1
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 0
 // CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %[[TMP5]])
-// DARWIN-ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]], i64 100, i64 200)
-// LINUX-AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]], i64 100, i64 200)
+// ARM64-NEXT:   call void %__llgo_funcval_code(ptr swiftself %[[TMP4]], i64 100, i64 200)
+// AMD64-NEXT:   call void %__llgo_funcval_code(ptr nest %[[TMP4]], i64 100, i64 200)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }

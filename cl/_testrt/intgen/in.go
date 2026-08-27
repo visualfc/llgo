@@ -68,8 +68,8 @@ func main() {
 // CHECK-NEXT:   %[[TMP7:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP1]], 1
 // CHECK-NEXT:   %[[TMP8:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP1]], 0
 // CHECK-NEXT:   %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %[[TMP8]])
-// DARWIN-ARM64-NEXT:   %[[TMP9:[0-9]+]] = call i32 %__llgo_funcval_code(ptr swiftself %[[TMP7]])
-// LINUX-AMD64-NEXT:   %[[TMP9:[0-9]+]] = call i32 %__llgo_funcval_code(ptr nest %[[TMP7]])
+// ARM64-NEXT:   %[[TMP9:[0-9]+]] = call i32 %__llgo_funcval_code(ptr swiftself %[[TMP7]])
+// AMD64-NEXT:   %[[TMP9:[0-9]+]] = call i32 %__llgo_funcval_code(ptr nest %[[TMP7]])
 // CHECK-NEXT:   %[[TMP10:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[TMP2]], 0
 // CHECK-NEXT:   %[[TMP11:[0-9]+]] = extractvalue %"{{.*}}/runtime/internal/runtime.Slice" %[[TMP2]], 1
 // CHECK-NEXT:   %[[TMP12:[0-9]+]] = icmp slt i64 %[[TMP5]], 0
@@ -209,8 +209,8 @@ func main() {
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define i32 @"main.main$1"(
-// DARWIN-ARM64-SAME: ptr swiftself %[[TMP0:[0-9]+]]){{.*}} {
-// LINUX-AMD64-SAME: ptr nest %[[TMP0:[0-9]+]]){{.*}} {
+// ARM64-SAME: ptr swiftself %[[TMP0:[0-9]+]]){{.*}} {
+// AMD64-SAME: ptr nest %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = load { ptr }, ptr %[[TMP0]], align 8
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = extractvalue { ptr } %[[TMP1]], 0
@@ -224,8 +224,8 @@ func main() {
 // CHECK-NEXT: }
 
 // CHECK-LABEL: define i32 @"main.(*generator).next$bound"(
-// DARWIN-ARM64-SAME: ptr swiftself %[[TMP0:[0-9]+]]){{.*}} {
-// LINUX-AMD64-SAME: ptr nest %[[TMP0:[0-9]+]]){{.*}} {
+// ARM64-SAME: ptr swiftself %[[TMP0:[0-9]+]]){{.*}} {
+// AMD64-SAME: ptr nest %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = load { ptr }, ptr %[[TMP0]], align 8
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = extractvalue { ptr } %[[TMP1]], 0

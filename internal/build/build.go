@@ -1625,6 +1625,10 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	if err != nil {
 		return err
 	}
+	cExports, err := linkedCExports(ctx, linkedOrder)
+	if err != nil {
+		return err
+	}
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
 		rtInit:        needRuntime,
 		pyInit:        needPyInit,
@@ -1636,7 +1640,12 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		abiTypes:      ctx.backendAbiTypes(linkedOrder),
 		funcInfo:      funcInfo,
 		pcLineInfo:    pcLineInfo,
+		cExports:      cExports,
 	})
+	if len(cExports) != 0 {
+		llabi.LowerLargeAggregates(ctx.prog.TargetData(), entryPkg.LPkg.Module())
+		ctx.cTransformer.TransformModule(entryPkg.LPkg.Path(), entryPkg.LPkg.Module())
+	}
 	if ctx.buildConf.deadcodeDropEnabled() {
 		if err := applyDeadcodeDropOverrides(linkedOrder, entryPkg, needRuntime, verbose); err != nil {
 			return err
@@ -1731,7 +1740,11 @@ func dceEntryRootCandidates(pkgs []Package, needRuntime bool) []string {
 	// root, so their final linker names must seed the analysis explicitly.
 	var exports []string
 	for _, pkg := range pkgs {
-		for _, name := range pkg.LPkg.ExportFuncs() {
+		for goName, cName := range pkg.LPkg.ExportFuncs() {
+			name := cName
+			if fn := pkg.LPkg.FuncOf(goName); fn != nil && fn.Name() == goName {
+				name = goName
+			}
 			exports = append(exports, name)
 		}
 	}
@@ -1741,6 +1754,51 @@ func dceEntryRootCandidates(pkgs []Package, needRuntime bool) []string {
 		roots = append(roots, llssa.PkgRuntime+".init")
 	}
 	return roots
+}
+
+func linkedCExports(ctx *context, pkgs []Package) ([]cExport, error) {
+	seen := make(map[string]string)
+	var exports []cExport
+	for _, pkg := range pkgs {
+		if !needsWindowsCExportWrappers(ctx, pkg) || pkg.LPkg == nil {
+			continue
+		}
+		for goName, cName := range pkg.LPkg.ExportFuncs() {
+			if strings.Contains(goName, ".") && !strings.HasPrefix(goName, pkg.LPkg.Path()+".") {
+				continue
+			}
+			if previous, ok := seen[cName]; ok {
+				if previous != goName {
+					return nil, fmt.Errorf("C export %q is provided by both %q and %q", cName, previous, goName)
+				}
+				continue
+			}
+			fn := pkg.LPkg.FuncOf(goName)
+			if fn == nil {
+				return nil, fmt.Errorf("C export implementation %q not found", goName)
+			}
+			sig, ok := fn.RawType().(*types.Signature)
+			if !ok || sig.Recv() != nil || sig.Variadic() || sig.Results().Len() > 1 {
+				return nil, fmt.Errorf("C export %q has an unsupported signature", goName)
+			}
+			seen[cName] = goName
+			exports = append(exports, cExport{
+				goName: goName,
+				cName:  cName,
+				sig:    sig,
+			})
+		}
+	}
+	slices.SortFunc(exports, func(a, b cExport) int {
+		return strings.Compare(a.cName, b.cName)
+	})
+	return exports, nil
+}
+
+func needsWindowsCExportWrappers(ctx *context, pkg *aPackage) bool {
+	return ctx != nil && ctx.buildConf != nil && pkg != nil && pkg.Package != nil &&
+		ctx.buildConf.Goos == "windows" && ctx.buildConf.Target == "" &&
+		ctx.buildConf.BuildMode == BuildModeCShared && pkg.Name == "main"
 }
 
 func linkedModuleGlobals(pkgs []Package) map[string]none {
@@ -2190,9 +2248,14 @@ func preparePackageModule(ctx *context, aPkg *aPackage, verbose bool) ([]string,
 	if err != nil {
 		return nil, fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
+	options := ctx.frontendOptions
+	// A Windows DLL cannot initialize the Go runtime while holding the loader
+	// lock. Only the command package needs alternate export symbols, and command
+	// packages are deliberately excluded from the package cache.
+	options.CExportWrappers = needsWindowsCExportWrappers(ctx, aPkg)
 	ret, externs, err := cl.NewPackageExWithEmbedMetaOptions(
 		ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars,
-		aPkg.SSA, syntax, embedMap, needMeta, ctx.frontendOptions)
+		aPkg.SSA, syntax, embedMap, needMeta, options)
 	check(err)
 
 	aPkg.LPkg = ret
@@ -2230,6 +2293,23 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 	}
 	applySizeOptimizationAttributes(ret.Module(), ctx.buildConf.OptLevel)
+	printCmds := ctx.shouldPrintCommands(verbose)
+	if ctx.mode != ModeGen {
+		if aPkg.AltPkg == nil || llruntime.HasAdditiveAltPkg(pkgPath) {
+			asmObjFiles, err := compilePkgSFiles(ctx, aPkg, pkg, printCmds)
+			if err != nil {
+				return err
+			}
+			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
+		}
+		if aPkg.AltPkg != nil {
+			asmObjFiles, err := compilePkgSFiles(ctx, aPkg, aPkg.AltPkg.Package, printCmds)
+			if err != nil {
+				return err
+			}
+			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
+		}
+	}
 
 	// Run the default LLVM optimization pipeline selected by the requested -O level.
 	if ctx.passOpt {
@@ -2245,6 +2325,7 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 			return fmt.Errorf("run LLVM passes failed for %v: %w", pkgPath, err)
 		}
 	}
+	dropUnusedWindowsTestMain(ctx, aPkg, ret.Module())
 	emitFuncInfoEntrySites(ctx, ret)
 	// ModeGen callers consume the in-memory LLVM module directly. They do not
 	// need cgo/link objects or a package archive for a later link step.
@@ -2252,27 +2333,19 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		return nil
 	}
 
-	printCmds := ctx.shouldPrintCommands(verbose)
 	cgoLLFiles, cgoLdflags, err := buildCgo(ctx, aPkg, aPkg.Package.Syntax, externs, printCmds)
 	if err != nil {
 		return fmt.Errorf("build cgo of %v failed: %v", pkgPath, err)
 	}
 	aPkg.ObjFiles = append(aPkg.ObjFiles, cgoLLFiles...)
 	aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, pkg, printCmds)...)
-	if aPkg.AltPkg == nil || llruntime.HasAdditiveAltPkg(pkgPath) {
-		if asmObjFiles, err := compilePkgSFiles(ctx, aPkg, pkg, printCmds); err != nil {
-			return err
-		} else {
-			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
-		}
-	}
 	if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.Package.Syntax, printCmds); err != nil {
 		return err
 	} else {
 		aPkg.ObjFiles = append(aPkg.ObjFiles, aliasObjs...)
 	}
 	aPkg.LinkArgs = append(aPkg.LinkArgs, cgoLdflags...)
-	aPkg.LinkArgs = append(aPkg.LinkArgs, goCgoLinkArgs(ctx.buildConf.Goos, aPkg.Package.Syntax)...)
+	aPkg.LinkArgs = append(aPkg.LinkArgs, goCgoLinkArgs(aPkg.Package.Syntax)...)
 	if aPkg.AltPkg != nil {
 		altLLFiles, altLdflags, e := buildCgo(ctx, aPkg, aPkg.AltPkg.Syntax, externs, printCmds)
 		if e != nil {
@@ -2280,18 +2353,13 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 		aPkg.ObjFiles = append(aPkg.ObjFiles, altLLFiles...)
 		aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, aPkg.AltPkg.Package, printCmds)...)
-		if asmObjFiles, err := compilePkgSFiles(ctx, aPkg, aPkg.AltPkg.Package, printCmds); err != nil {
-			return err
-		} else {
-			aPkg.ObjFiles = append(aPkg.ObjFiles, asmObjFiles...)
-		}
 		if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.AltPkg.Syntax, printCmds); err != nil {
 			return err
 		} else {
 			aPkg.ObjFiles = append(aPkg.ObjFiles, aliasObjs...)
 		}
 		aPkg.LinkArgs = append(aPkg.LinkArgs, altLdflags...)
-		aPkg.LinkArgs = append(aPkg.LinkArgs, goCgoLinkArgs(ctx.buildConf.Goos, aPkg.AltPkg.Syntax)...)
+		aPkg.LinkArgs = append(aPkg.LinkArgs, goCgoLinkArgs(aPkg.AltPkg.Syntax)...)
 	}
 	if pkg.ExportFile != "" {
 		exportFile, exportBuffer, err := exportPackageObject(ctx, pkg.PkgPath, pkg.ExportFile, ret)
@@ -2308,6 +2376,37 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		}
 	}
 	return nil
+}
+
+// dropUnusedWindowsTestMain mirrors cmd/link's treatment of a command package
+// under `go test`. The tested package still contains its source main function,
+// now named <import-path>.main, but the executable entry is the synthetic test
+// main. cmd/link computes Go reachability before diagnosing unresolved symbols,
+// so it can discard an unreferenced source main even when that body contains a
+// one-sided //go:linkname call. lld-link instead resolves every COFF relocation
+// before /OPT:REF section GC and reports the dead call as undefined.
+//
+// Do not rewrite //go:linkname or weaken undefined symbols: either would also
+// hide an error when the source main is genuinely reachable. Remove only this
+// test-specific entry candidate while it is LLVM IR and only after proving that
+// it has no local use, no //go:linkname reference from any loaded test package,
+// and no //export root. Ordinary builds, synthetic test mains, and non-Windows
+// object formats keep their existing behavior.
+func dropUnusedWindowsTestMain(ctx *context, pkg *aPackage, mod gllvm.Module) {
+	if ctx == nil || ctx.prog == nil || ctx.buildConf == nil || pkg == nil || pkg.Package == nil ||
+		ctx.mode != ModeTest || ctx.buildConf.Goos != "windows" || ctx.buildConf.BuildMode != BuildModeExe ||
+		pkg.Name != "main" || pkg.ForTest == "" || mod.IsNil() {
+		return
+	}
+	symbol := pkg.PkgPath + ".main"
+	fn := mod.NamedFunction(symbol)
+	if fn.IsNil() || fn.IsDeclaration() || !fn.FirstUse().IsNil() || ctx.prog.HasLinknameTarget(symbol) {
+		return
+	}
+	if _, exported := ctx.prog.PackageExport(symbol); exported {
+		return
+	}
+	fn.EraseFromParentAsFunction()
 }
 
 func printCompiledPackage(conf *Config, pkg *aPackage) {

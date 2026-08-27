@@ -12,9 +12,6 @@ import (
 	"github.com/xgo-dev/llgo/runtime/internal/sync/atomic"
 )
 
-//go:linkname fastrand C.rand
-func fastrand() uint32
-
 //go:linkname srand C.srand
 func srand(uint32)
 

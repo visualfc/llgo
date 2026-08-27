@@ -1,20 +1,75 @@
 package user_test
 
 import (
+	"errors"
 	"os/user"
 	"runtime"
+	"slices"
+	"syscall"
 	"testing"
 )
 
-func TestCurrent(t *testing.T) {
+func currentUser(t *testing.T) *user.User {
+	t.Helper()
 	u, err := user.Current()
 	if err != nil {
 		t.Fatalf("Current error: %v", err)
 	}
-
 	if u == nil {
 		t.Fatal("Current returned nil user")
 	}
+	return u
+}
+
+func compareUsers(t *testing.T, got, want *user.User) {
+	t.Helper()
+	if *got != *want {
+		t.Errorf("user = %+v, want %+v", got, want)
+	}
+}
+
+func currentGroup(t *testing.T) *user.Group {
+	t.Helper()
+	u := currentUser(t)
+	g, err := user.LookupGroupId(u.Gid)
+	if err == nil {
+		return g
+	}
+
+	gids, groupIDsErr := u.GroupIds()
+	if groupIDsErr != nil {
+		t.Fatalf("LookupGroupId(%q): %v; GroupIds: %v", u.Gid, err, groupIDsErr)
+	}
+	for _, gid := range gids {
+		if g, lookupErr := user.LookupGroupId(gid); lookupErr == nil {
+			return g
+		}
+	}
+	t.Fatalf("no group ID for current user could be resolved: primary %q: %v; groups: %v", u.Gid, err, gids)
+	return nil
+}
+
+func checkLookupError[T error](t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("lookup unexpectedly succeeded")
+	}
+	if runtime.GOOS == "windows" {
+		// Windows account APIs return the underlying Win32 lookup error. This is
+		// also the behavior of the official Go os/user implementation.
+		var errno syscall.Errno
+		if !errors.As(err, &errno) {
+			t.Errorf("error type = %T, want syscall.Errno", err)
+		}
+		return
+	}
+	if _, ok := err.(T); !ok {
+		t.Errorf("error type = %T, want %T", err, *new(T))
+	}
+}
+
+func TestCurrent(t *testing.T) {
+	u := currentUser(t)
 
 	if u.Uid == "" {
 		t.Error("User Uid is empty")
@@ -26,158 +81,86 @@ func TestCurrent(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	u, err := user.Lookup("root")
+	want := currentUser(t)
+	u, err := user.Lookup(want.Username)
 	if err != nil {
-		t.Skipf("Lookup(root) error: %v", err)
+		t.Fatalf("Lookup(%q) error: %v", want.Username, err)
 	}
-
-	if u == nil {
-		t.Fatal("Lookup returned nil user")
-	}
-
-	if u.Uid != "0" {
-		t.Errorf("root Uid = %q, want %q", u.Uid, "0")
-	}
-
-	if u.Username != "root" {
-		t.Errorf("root Username = %q, want %q", u.Username, "root")
-	}
+	compareUsers(t, u, want)
 }
 
 func TestLookupNonexistent(t *testing.T) {
 	_, err := user.Lookup("nonexistent_user_12345")
-	if err == nil {
-		t.Error("Expected error for nonexistent user")
-	}
-
-	_, ok := err.(user.UnknownUserError)
-	if !ok {
-		t.Errorf("Error type = %T, want UnknownUserError", err)
-	}
+	checkLookupError[user.UnknownUserError](t, err)
 }
 
 func TestLookupId(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	u, err := user.LookupId("0")
+	want := currentUser(t)
+	u, err := user.LookupId(want.Uid)
 	if err != nil {
-		t.Skipf("LookupId(0) error: %v", err)
+		t.Fatalf("LookupId(%q) error: %v", want.Uid, err)
 	}
-
-	if u == nil {
-		t.Fatal("LookupId returned nil user")
-	}
-
-	if u.Uid != "0" {
-		t.Errorf("User Uid = %q, want %q", u.Uid, "0")
-	}
+	compareUsers(t, u, want)
 }
 
 func TestLookupIdNonexistent(t *testing.T) {
-	_, err := user.LookupId("99999999")
-	if err == nil {
-		t.Error("Expected error for nonexistent uid")
+	id := "99999999"
+	if runtime.GOOS == "windows" {
+		id = "S-1-5-21-0-0-0-4294967294"
 	}
-
-	_, ok := err.(user.UnknownUserIdError)
-	if !ok {
-		t.Errorf("Error type = %T, want UnknownUserIdError", err)
-	}
+	_, err := user.LookupId(id)
+	checkLookupError[user.UnknownUserIdError](t, err)
 }
 
 func TestUserGroupIds(t *testing.T) {
-	u, err := user.Current()
-	if err != nil {
-		t.Fatalf("Current error: %v", err)
-	}
-
+	u := currentUser(t)
 	gids, err := u.GroupIds()
 	if err != nil {
-		t.Skipf("GroupIds error: %v", err)
+		t.Fatalf("GroupIds error: %v", err)
 	}
-
-	if len(gids) == 0 {
-		t.Error("GroupIds returned empty slice")
+	if !slices.Contains(gids, u.Gid) {
+		t.Errorf("GroupIds = %v, want primary group %q", gids, u.Gid)
 	}
 }
 
 func TestLookupGroup(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	g, err := user.LookupGroup("root")
+	want := currentGroup(t)
+	g, err := user.LookupGroup(want.Name)
 	if err != nil {
-		t.Skipf("LookupGroup(root) error: %v", err)
+		t.Fatalf("LookupGroup(%q) error: %v", want.Name, err)
 	}
-
-	if g == nil {
-		t.Fatal("LookupGroup returned nil group")
-	}
-
-	if g.Gid == "" {
-		t.Error("Group Gid is empty")
-	}
-
-	if g.Name != "root" {
-		t.Errorf("Group Name = %q, want %q", g.Name, "root")
+	if *g != *want {
+		t.Errorf("group = %+v, want %+v", g, want)
 	}
 }
 
 func TestLookupGroupNonexistent(t *testing.T) {
 	_, err := user.LookupGroup("nonexistent_group_12345")
-	if err == nil {
-		t.Error("Expected error for nonexistent group")
-	}
-
-	_, ok := err.(user.UnknownGroupError)
-	if !ok {
-		t.Errorf("Error type = %T, want UnknownGroupError", err)
-	}
+	checkLookupError[user.UnknownGroupError](t, err)
 }
 
 func TestLookupGroupId(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	g, err := user.LookupGroupId("0")
+	want := currentGroup(t)
+	g, err := user.LookupGroupId(want.Gid)
 	if err != nil {
-		t.Skipf("LookupGroupId(0) error: %v", err)
+		t.Fatalf("LookupGroupId(%q) error: %v", want.Gid, err)
 	}
-
-	if g == nil {
-		t.Fatal("LookupGroupId returned nil group")
-	}
-
-	if g.Gid != "0" {
-		t.Errorf("Group Gid = %q, want %q", g.Gid, "0")
+	if *g != *want {
+		t.Errorf("group = %+v, want %+v", g, want)
 	}
 }
 
 func TestLookupGroupIdNonexistent(t *testing.T) {
-	_, err := user.LookupGroupId("99999999")
-	if err == nil {
-		t.Error("Expected error for nonexistent gid")
+	id := "99999999"
+	if runtime.GOOS == "windows" {
+		id = "S-1-5-21-0-0-0-4294967294"
 	}
-
-	_, ok := err.(user.UnknownGroupIdError)
-	if !ok {
-		t.Errorf("Error type = %T, want UnknownGroupIdError", err)
-	}
+	_, err := user.LookupGroupId(id)
+	checkLookupError[user.UnknownGroupIdError](t, err)
 }
 
 func TestUserFields(t *testing.T) {
-	u, err := user.Current()
-	if err != nil {
-		t.Fatalf("Current error: %v", err)
-	}
+	u := currentUser(t)
 
 	if u.Uid == "" {
 		t.Error("User.Uid is empty")
@@ -191,14 +174,7 @@ func TestUserFields(t *testing.T) {
 }
 
 func TestGroupFields(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping on Windows")
-	}
-
-	g, err := user.LookupGroup("root")
-	if err != nil {
-		t.Skipf("LookupGroup error: %v", err)
-	}
+	g := currentGroup(t)
 
 	if g.Gid == "" {
 		t.Error("Group.Gid is empty")

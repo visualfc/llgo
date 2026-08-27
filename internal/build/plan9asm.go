@@ -82,6 +82,10 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 			ctx.cTransformer.TransformModule(pkg.PkgPath, mod)
 		}
 		applySizeOptimizationAttributes(mod, ctx.buildConf.OptLevel)
+		if err := externalizePlan9DataGlobals(aPkg.LPkg.Module(), mod, ctx.prog.TargetData()); err != nil {
+			mod.Dispose()
+			return nil, fmt.Errorf("%s: bind DATA globals from %s: %w", pkg.PkgPath, sfile, err)
+		}
 		ll := mod.String()
 		mod.Dispose()
 
@@ -135,6 +139,41 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 	}
 
 	return objFiles, nil
+}
+
+// externalizePlan9DataGlobals turns zero-initialized Go globals that are
+// defined by Plan 9 DATA/GLOBL into declarations. Otherwise the Go object
+// satisfies its own references and the linker has no reason to extract a
+// data-only assembly member from the package archive.
+func externalizePlan9DataGlobals(goMod, asmMod gllvm.Module, td gllvm.TargetData) error {
+	for asmGlobal := asmMod.FirstGlobal(); !asmGlobal.IsNil(); asmGlobal = gllvm.NextGlobal(asmGlobal) {
+		if asmGlobal.Initializer().IsNil() {
+			continue
+		}
+		goGlobal := goMod.NamedGlobal(asmGlobal.Name())
+		if goGlobal.IsNil() || goGlobal.IsDeclaration() {
+			continue
+		}
+		if goGlobal.IsThreadLocal() != asmGlobal.IsThreadLocal() {
+			return fmt.Errorf("global %s has incompatible thread-local storage", asmGlobal.Name())
+		}
+		goSize := td.TypeAllocSize(goGlobal.GlobalValueType())
+		asmSize := td.TypeAllocSize(asmGlobal.GlobalValueType())
+		if goSize != asmSize {
+			return fmt.Errorf("global %s has Go size %d but DATA size %d", asmGlobal.Name(), goSize, asmSize)
+		}
+		initializer := goGlobal.Initializer()
+		if initializer.IsNil() {
+			continue
+		}
+		if !initializer.IsNull() {
+			return fmt.Errorf("global %s has both a Go initializer and DATA", asmGlobal.Name())
+		}
+		goGlobal.SetInitializer(gllvm.Value{})
+		goGlobal.SetLinkage(gllvm.ExternalLinkage)
+		goGlobal.SetGlobalConstant(false)
+	}
+	return nil
 }
 
 func shouldCheckDarwinDynimportTrampolineAsm(ctx *context, pkg *packages.Package) bool {

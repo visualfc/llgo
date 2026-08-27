@@ -671,13 +671,16 @@ func acceptanceLLGoBinary(t *testing.T) string {
 	t.Helper()
 	repoRoot := findRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
+	if compiler := configuredLLGoTestCompiler(t); compiler != "" {
+		return compiler
+	}
 	acceptanceLLGoOnce.Do(func() {
 		tmp, err := os.MkdirTemp("", "llgo-acceptance-bin")
 		if err != nil {
 			acceptanceLLGoErr = err.Error()
 			return
 		}
-		bin := filepath.Join(tmp, "llgo")
+		bin := testExecutablePath(tmp, "llgo")
 		build := exec.Command("go", "build", "-o", bin, "./cmd/llgo")
 		build.Dir = repoRoot
 		if bout, berr := build.CombinedOutput(); berr != nil {

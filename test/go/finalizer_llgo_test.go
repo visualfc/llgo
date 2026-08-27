@@ -5,6 +5,7 @@ package gotest
 import (
 	"runtime"
 	"testing"
+	"time"
 	_ "unsafe"
 )
 
@@ -13,6 +14,58 @@ func getBDWGCFinalizeOnDemand() int32
 
 //go:linkname setBDWGCFinalizeOnDemand C.GC_set_finalize_on_demand
 func setBDWGCFinalizeOnDemand(enabled int32)
+
+func TestRuntimeAddCleanupStop(t *testing.T) {
+	old := getBDWGCFinalizeOnDemand()
+	setBDWGCFinalizeOnDemand(1)
+	t.Cleanup(func() {
+		setBDWGCFinalizeOnDemand(old)
+	})
+
+	const n = 32
+	stopped := make(chan int32, n)
+	active := make(chan int32, n)
+	activeHandles := make(chan runtime.Cleanup, n)
+	created := make(chan struct{})
+	go func() {
+		for i := range int32(n) {
+			stoppedObject := new([64]byte)
+			cleanup := runtime.AddCleanup(stoppedObject, func(value int32) {
+				stopped <- value
+			}, i)
+			cleanup.Stop()
+			cleanup.Stop()
+			runtime.KeepAlive(stoppedObject)
+
+			activeObject := new([64]byte)
+			activeHandles <- runtime.AddCleanup(activeObject, func(value int32) {
+				active <- value
+			}, i)
+		}
+		close(created)
+	}()
+	<-created
+
+	deadline := time.After(3 * time.Second)
+	for len(active) <= n/2 {
+		runtime.Gosched()
+		runGCWithTimeout(t)
+		select {
+		case <-deadline:
+			t.Fatalf("only %d/%d active cleanups ran", len(active), n)
+		default:
+		}
+	}
+	for range n {
+		(<-activeHandles).Stop()
+	}
+	for range 3 {
+		runGCWithTimeout(t)
+	}
+	if got := len(stopped); got != 0 {
+		t.Fatalf("%d stopped cleanups ran", got)
+	}
+}
 
 func TestRuntimeGCDrainsBDWGCFinalizersOnDemand(t *testing.T) {
 	// BDWGC normally may invoke ready finalizers during a later allocation.

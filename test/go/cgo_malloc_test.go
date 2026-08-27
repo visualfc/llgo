@@ -58,7 +58,27 @@ func main() {
 	runGoCmd(t, dir, "run", mainFile)
 
 	root := findLLGoRoot(t)
-	runGoCmd(t, root, "run", "./cmd/llgo", "run", mainFile)
+	llgo := acceptanceLLGoBinary(t)
+	runLLGoWithoutHostCgoFlags(t, root, llgo, "run", mainFile)
+}
+
+func runLLGoWithoutHostCgoFlags(t *testing.T, dir, llgo string, args ...string) {
+	t.Helper()
+	cmd := exec.Command(llgo, args...)
+	cmd.Dir = dir
+	for _, value := range os.Environ() {
+		name, _, _ := strings.Cut(value, "=")
+		if strings.HasPrefix(name, "CGO_") && strings.HasSuffix(name, "FLAGS") {
+			continue
+		}
+		cmd.Env = append(cmd.Env, value)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("%s %s failed: %v\nstdout:\n%s\nstderr:\n%s", llgo, strings.Join(args, " "), err, stdout.String(), stderr.String())
+	}
 }
 
 func runGoCmd(t *testing.T, dir string, args ...string) string {

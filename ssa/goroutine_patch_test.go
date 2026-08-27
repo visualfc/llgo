@@ -44,8 +44,8 @@ func TestGoClosureStartupUsesGCManagedMemory(t *testing.T) {
 	if !strings.Contains(ir, `"github.com/xgo-dev/llgo/runtime/internal/runtime.AllocRoot"`) {
 		t.Fatalf("goroutine startup data should use scanned uncollectable memory:\n%s", ir)
 	}
-	if !strings.Contains(ir, `"github.com/xgo-dev/llgo/runtime/internal/runtime.FreeRoot"`) {
-		t.Fatalf("goroutine startup data should be freed after the entry call returns:\n%s", ir)
+	if strings.Contains(ir, `"github.com/xgo-dev/llgo/runtime/internal/runtime.FreeRoot"`) {
+		t.Fatalf("the runtime, not the compiler wrapper, should release goroutine startup data:\n%s", ir)
 	}
 	// The closure context must remain visible to the runtime GC until the
 	// uncollectable startup record is initialized.
@@ -94,10 +94,8 @@ func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {
 	}
 
 	ir := pkg.String()
-	freeRoot := strings.Index(ir, `"github.com/xgo-dev/llgo/runtime/internal/runtime.FreeRoot"`)
-	panicCall := strings.Index(ir, `"github.com/xgo-dev/llgo/runtime/internal/runtime.Panic"`)
-	if freeRoot < 0 || panicCall < 0 || freeRoot > panicCall {
-		t.Fatalf("goroutine wrapper should free startup data before panic call:\n%s", ir)
+	if strings.Contains(ir, `"github.com/xgo-dev/llgo/runtime/internal/runtime.FreeRoot"`) {
+		t.Fatalf("goroutine wrapper should leave panic-path startup cleanup to the runtime:\n%s", ir)
 	}
 	if strings.Contains(ir, "unreachable\n  ret ptr null") {
 		t.Fatalf("goroutine wrapper should not return after unreachable:\n%s", ir)

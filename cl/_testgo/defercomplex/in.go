@@ -57,13 +57,13 @@ package main
 // CHECK: [[RUN_FN:%[0-9]+]] = extractvalue { ptr, i64, { ptr, ptr }, %"{{.*}}String" } [[RUN_RECORD]], 2
 // CHECK-NEXT: [[RUN_LABEL:%[0-9]+]] = extractvalue { ptr, i64, { ptr, ptr }, %"{{.*}}String" } [[RUN_RECORD]], 3
 // CHECK-NEXT: call void @"{{.*}}FreeDeferNode"(ptr [[RUN_NODE]])
-// DARWIN-ARM64: call void %__llgo_funcval_code(ptr swiftself %{{[0-9]+}}, %"{{.*}}String" [[RUN_LABEL]])
-// LINUX-AMD64: call void %__llgo_funcval_code(ptr nest %{{[0-9]+}}, %"{{.*}}String" [[RUN_LABEL]])
+// ARM64: call void %__llgo_funcval_code(ptr swiftself %{{[0-9]+}}, %"{{.*}}String" [[RUN_LABEL]])
+// AMD64: call void %__llgo_funcval_code(ptr nest %{{[0-9]+}}, %"{{.*}}String" [[RUN_LABEL]])
 // CHECK: [[SAVED_DEFER:%[0-9]+]] = load %"{{.*}}Defer", ptr [[DEFER_FRAME]]
 // CHECK-NEXT: [[RESTORED_DEFER:%[0-9]+]] = extractvalue %"{{.*}}Defer" [[SAVED_DEFER]], 2
 // CHECK-NEXT: call void @"{{.*}}SetThreadDefer"(ptr [[RESTORED_DEFER]])
-// DARWIN-ARM64-LABEL: define void @"main.complexOrder$1"(ptr swiftself %0, %"{{.*}}String" %1){{.*}} {
-// LINUX-AMD64-LABEL: define void @"main.complexOrder$1"(ptr nest %0, %"{{.*}}String" %1){{.*}} {
+// ARM64-LABEL: define void @"main.complexOrder$1"(ptr swiftself %0, %"{{.*}}String" %1){{.*}} {
+// AMD64-LABEL: define void @"main.complexOrder$1"(ptr nest %0, %"{{.*}}String" %1){{.*}} {
 // CHECK: [[RECORD_ENV_VALUE:%[0-9]+]] = load { ptr }, ptr %0
 // CHECK-NEXT: [[RECORD_RESULT_SLOT:%[0-9]+]] = extractvalue { ptr } [[RECORD_ENV_VALUE]], 0
 // CHECK-NEXT: [[OLD_RESULT:%[0-9]+]] = load %"{{.*}}Slice", ptr [[RECORD_RESULT_SLOT]]

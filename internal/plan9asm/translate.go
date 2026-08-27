@@ -9,6 +9,7 @@ import (
 
 	"github.com/xgo-dev/llgo/internal/packages"
 	intllvm "github.com/xgo-dev/llgo/internal/xtool/llvm"
+	llssaabi "github.com/xgo-dev/llgo/ssa/abi"
 	gllvm "github.com/xgo-dev/llvm"
 	extplan9asm "github.com/xgo-dev/plan9asm"
 )
@@ -78,7 +79,11 @@ func TranslateSourceModuleForPkgWithOptions(pkg *packages.Package, sfile string,
 		return nil, fmt.Errorf("%s: missing types (needed for asm signatures)", pkg.PkgPath)
 	}
 
-	resolve := resolveSymFuncForTarget(pkg.PkgPath, goos, goarch)
+	// Match the symbol identity used by LLGo's frontend. In particular, an
+	// executable package named main is linked as "main" even when go list
+	// reports its module-qualified import path.
+	symbolPkgPath := llssaabi.PathOf(pkg.Types)
+	resolve := resolveSymFuncForTarget(symbolPkgPath, goos, goarch)
 	keep := func(textSym, resolved string) bool {
 		return shouldKeepResolvedFunc(pkg.PkgPath, goos, goarch, resolved)
 	}
@@ -98,7 +103,7 @@ func TranslateSourceModuleForPkgWithOptions(pkg *packages.Package, sfile string,
 	}
 
 	tr, err := extplan9asm.TranslateGoModule(extplan9asm.GoPackage{
-		Path:    pkg.PkgPath,
+		Path:    symbolPkgPath,
 		Types:   pkg.Types,
 		Imports: imports,
 		Syntax:  pkg.Syntax,

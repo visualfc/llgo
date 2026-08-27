@@ -665,7 +665,12 @@ func genHeader(p ssa.Program, pkgs []ssa.Package, w io.Writer) error {
 
 		for _, name := range exportNames { // name is goName
 			link := exports[name] // link is cName
-			fn := pkg.FuncOf(link)
+			fn := pkg.FuncOf(name)
+			if fn == nil {
+				// Older/non-wrapper backends emit the implementation directly
+				// under its public C symbol.
+				fn = pkg.FuncOf(link)
+			}
 			if fn == nil {
 				return fmt.Errorf("function %s not found in package %s", link, pkg.Path())
 			}

@@ -1,4 +1,4 @@
-//go:build !baremetal && !wasm && (darwin || linux) && (amd64 || arm64)
+//go:build !baremetal && !wasm && (darwin || linux || windows) && (amd64 || arm64)
 
 package runtime
 
@@ -7,7 +7,6 @@ import (
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	csyscall "github.com/xgo-dev/llgo/runtime/internal/clite/syscall"
 	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
@@ -17,7 +16,6 @@ const (
 	maxCPUProfileDrainData    = 4 + maxCPUProfileDrainRecords*(3+maxCPUProfileStack)
 	maxCPUProfileDrainTags    = 1 + maxCPUProfileDrainRecords
 	cpuProfilePollUsec        = 10000
-	cpuProfileSignal          = uint32(csyscall.SIGPROF)
 )
 
 //go:linkname c_cpuProfileStart C.llgo_cpu_profile_start
@@ -34,8 +32,8 @@ func c_cpuProfileRefreshSignal() int32
 
 var (
 	// cpuProfileStateMu is the Go control-plane lock. It serializes native
-	// sampler start/stop with libuv SIGPROF watcher changes, but is never
-	// acquired by the asynchronous signal handler.
+	// sampler start/stop and, on Unix, libuv SIGPROF watcher changes. Native
+	// sample collection never acquires it.
 	cpuProfileStateOnce psync.Once
 	cpuProfileStateMu   psync.Mutex
 
@@ -79,9 +77,9 @@ func cpuProfileSignalUnlock(locked bool) {
 	cpuProfileStateMu.Unlock()
 }
 
-// SetCPUProfileRate starts or stops process CPU-time sampling. The signal
-// handler and its ring buffer live in profile.c so the sampling path neither
-// allocates Go memory nor enters the Go runtime.
+// SetCPUProfileRate starts or stops process CPU-time sampling. The native
+// sampler and its ring buffer live in the platform C shim, so sample collection
+// neither allocates Go memory nor enters the Go runtime.
 func SetCPUProfileRate(hz int) {
 	if hz < 0 {
 		hz = 0
@@ -168,9 +166,9 @@ func runtime_pprof_readProfile() (data []uint64, tags []unsafe.Pointer, eof bool
 			return nil, nil, true
 		}
 
-		// Linux's profile writer expects readProfile to block. Keep the wait
-		// out of the signal path and poll every 10 ms (the default 100 Hz
-		// period); Darwin already sleeps between non-blocking reads.
+		// Hosted profile writers other than Darwin expect readProfile to block.
+		// Keep the wait out of the native sampling path and poll every 10 ms
+		// (the default 100 Hz period); Darwin already sleeps between reads.
 		c.Usleep(cpuProfilePollUsec)
 	}
 }

@@ -74,9 +74,9 @@ func TestGenCHeaderExport(t *testing.T) {
 		types.NewVar(token.NoPos, nil, "b", types.Typ[types.Int]))
 	addResults := types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Int]))
 	addSig := types.NewSignatureType(nil, nil, nil, addParams, addResults, false)
-	cPkg.NewFunc("Add", addSig, ssa.InGo)
+	cPkg.NewFunc(cPkgPath+".XAdd", addSig, ssa.InGo)
 	cPkg.NewFunc("Sub", addSig, ssa.InGo)
-	cPkg.SetExport("XAdd", "Add")
+	cPkg.SetExport(cPkgPath+".XAdd", "Add")
 	cPkg.SetExport("XSub", "Sub")
 
 	// Generate header

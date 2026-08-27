@@ -54,33 +54,34 @@ runs:
           "lld-$package_version"
           "libc++-$package_version"
           "libunwind-$package_version"
-          "gettext-runtime-0.22.5-2"
-          "libffi-3.4.6-1"
-          "libiconv-1.17-4"
+          # LLVM 19 imports libxml2-2.dll. Current MSYS2 libxml2 releases
+          # provide libxml2-16.dll after an ABI version bump.
           "libxml2-2.12.9-2"
-          "xz-5.6.3-3"
-          "zlib-1.3.1-1"
-          "zstd-1.5.6-2"
-          "libuv-1.52.1-1"
-          "gc-8.2.12-1"
-          "libatomic_ops-7.10.0-1"
         )
         urls=()
         for package in "${packages[@]}"; do
           urls+=("$repo/$prefix-$package-any.pkg.tar.zst")
         done
 
-        # LLVM 19 packages predate MSYS2's compiler-runtime dependency rename
-        # from gcc-libs to cc-libs. libc++ 19 already supplies the runtime, so
-        # satisfy only the renamed package metadata while installing the
-        # archived, mutually compatible package set.
+        # Keep only the mutually versioned LLVM split packages on archived
+        # URLs. Their ordinary runtime dependencies have no version constraint
+        # in the package metadata, so let pacman resolve current versions
+        # instead of relying on old package files that MSYS2 eventually prunes.
+        # LLVM 19 predates MSYS2's compiler-runtime dependency rename from
+        # gcc-libs to cc-libs. libc++ 19 already supplies the runtime, so
+        # satisfy only the renamed package metadata.
         assumed_cc_runtime="$prefix-cc-libs=$llvm_version"
         pacman --noconfirm -U \
           --assume-installed "$assumed_cc_runtime" \
           "${urls[@]}"
         pacman --noconfirm -S --needed \
           --assume-installed "$assumed_cc_runtime" \
-          "$prefix-pkgconf"
+          "$prefix-pkgconf" \
+          "$prefix-sqlite3" \
+          "$prefix-libuv" \
+          "$prefix-gc" \
+          "$prefix-libatomic_ops" \
+          make
 
         for package in clang clang-libs compiler-rt llvm llvm-libs lld libc++ libunwind; do
           installed="$(pacman -Q "$prefix-$package" | awk '{print $2}')"
@@ -90,17 +91,13 @@ runs:
           fi
         done
 
-        for spec in \
-          "libuv=1.52.1-1" \
-          "gc=8.2.12-1" \
-          "libatomic_ops=7.10.0-1"; do
-          package="${spec%%=*}"
-          expected="${spec#*=}"
-          installed="$(pacman -Q "$prefix-$package" | awk '{print $2}')"
-          if [[ "$installed" != "$expected" ]]; then
-            echo "expected $package $expected, got $installed" >&2
-            exit 1
-          fi
+        installed_libxml2="$(pacman -Q "$prefix-libxml2" | awk '{print $2}')"
+        if [[ "$installed_libxml2" != "2.12.9-2" ]]; then
+          echo "expected libxml2 2.12.9-2, got $installed_libxml2" >&2
+          exit 1
+        fi
+        for package in libuv gc libatomic_ops; do
+          pacman -Q "$prefix-$package"
         done
 
         # The released LLVM binding discovers its host flags through
