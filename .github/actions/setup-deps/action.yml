@@ -176,6 +176,13 @@ runs:
           -SkipAutomaticLocation `
           -DevCmdArguments "-arch=x64 -host_arch=x64"
 
+        # pkg-config describes third-party libraries with -I/-L flags, but
+        # LLGo also resolves MSVC import and static libraries before invoking
+        # Clang. Give both stages the same vcpkg roots instead of relying on a
+        # runner-wide vcpkg integration or an MSYS2 environment.
+        $env:INCLUDE = "$(Join-Path $vcpkgTripletRoot 'include');$env:INCLUDE"
+        $env:LIB = "$(Join-Path $vcpkgTripletRoot 'lib');$env:LIB"
+
         # Clang emits the MSVC ABI but uses the SDK/UCRT selected by the
         # Visual Studio developer environment. Persist only the target search
         # variables and native tools needed by later composite-action callers.
@@ -303,6 +310,31 @@ runs:
         ) | Where-Object { Test-Path $_ }
         $env:PKG_CONFIG_PATH = $pcDirs -join ";"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG_PATH=$env:PKG_CONFIG_PATH"
+        # Native pkgconf treats a variable literally named `prefix` as a
+        # relocatable installation marker by default. vcpkg's .pc files are
+        # already relocatable and use paths relative to their metadata file;
+        # applying both rules turns .../lib into .../lib/lib. Keep Go's
+        # PKG_CONFIG contract (one executable, no embedded arguments) by
+        # exposing the required pkgconf mode through a small command wrapper.
+        $pkgconfWrapper = Join-Path $env:RUNNER_TEMP "llgo-pkg-config.cmd"
+        @"
+        @echo off
+        "$pkgconf" --dont-define-prefix %*
+        "@ | Set-Content -Encoding ascii $pkgconfWrapper
+
+        $gcLibFlags = ((& $pkgconfWrapper --libs bdw-gc) -join " ").Trim() -split '\s+'
+        if ($LASTEXITCODE -ne 0) {
+          throw "pkgconf failed to resolve bdw-gc libraries"
+        }
+        $gcLibDirFlag = $gcLibFlags | Where-Object { $_.StartsWith("-L") } | Select-Object -First 1
+        if (-not $gcLibDirFlag) {
+          throw "pkgconf did not report the bdw-gc library directory: $gcLibFlags"
+        }
+        $gcLibDir = [IO.Path]::GetFullPath($gcLibDirFlag.Substring(2))
+        $expectedVcpkgLibDir = [IO.Path]::GetFullPath((Join-Path $vcpkgTripletRoot "lib"))
+        if (-not $gcLibDir.Equals($expectedVcpkgLibDir, [StringComparison]::OrdinalIgnoreCase)) {
+          throw "pkgconf resolved bdw-gc to $gcLibDir, want $expectedVcpkgLibDir"
+        }
         # Go's Windows external linker detects LLD through the compiler command
         # prefix. Without this option it emits a GNU ld linker script that the
         # native MSVC linker dialect cannot consume.
@@ -312,7 +344,7 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=dll"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=dll"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG=$pkgconf"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG=$pkgconfWrapper"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_LLVM_ROOT=$llvmRoot"
         Add-Content -Encoding utf8 $env:GITHUB_PATH $fileCheckRoot
         Add-Content -Encoding utf8 $env:GITHUB_PATH $llvmBin
@@ -342,7 +374,7 @@ runs:
           throw "Clang's MSVC compiler-rt builtins were not found at $builtins"
         }
         foreach ($package in @("llvm-${{ inputs.llvm-version }}", "bdw-gc", "libffi", "libuv", "openssl", "libcjson", "sqlite3", "zlib")) {
-          & $pkgconf --modversion $package
+          & $pkgconfWrapper --modversion $package
           if ($LASTEXITCODE -ne 0) {
             throw "pkg-config metadata for $package is unavailable"
           }
