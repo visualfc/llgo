@@ -482,7 +482,7 @@ func TestUseWithTarget(t *testing.T) {
 	if runtime.GOOS == "darwin" && len(export.LDFLAGS) == 0 {
 		t.Error("Expected LDFLAGS to be set for native build")
 	}
-	wantDebugInfo := nativeDebugInfoPolicy(nativeToolchain(runtime.GOOS))
+	wantDebugInfo := nativeDebugInfoPolicy(export.Toolchain)
 	if export.DebugInfo.AlwaysOmit != wantDebugInfo.AlwaysOmit ||
 		!slices.Equal(export.DebugInfo.OmitLinkFlags, wantDebugInfo.OmitLinkFlags) ||
 		!slices.Equal(export.DebugInfo.PreserveLinkFlags, wantDebugInfo.PreserveLinkFlags) {
@@ -546,10 +546,14 @@ func TestOptimizationFlagPlacement(t *testing.T) {
 	if !slices.Contains(export.CCFLAGS, "-O3") {
 		t.Fatalf("host CCFLAGS = %v, want -O3", export.CCFLAGS)
 	}
-	if !hasFlagValue(export.CCFLAGS, "-target", llvm.GetTargetTriple(runtime.GOOS, runtime.GOARCH)) {
+	wantTarget := llvm.GetTargetTriple(runtime.GOOS, runtime.GOARCH)
+	if export.Toolchain.TargetTriple != "" {
+		wantTarget = export.Toolchain.TargetTriple
+	}
+	if !hasFlagValue(export.CCFLAGS, "-target", wantTarget) {
 		t.Fatalf("host CCFLAGS = %v, want native -target", export.CCFLAGS)
 	}
-	if !hasFlagValue(export.LDFLAGS, "-target", llvm.GetTargetTriple(runtime.GOOS, runtime.GOARCH)) {
+	if !hasFlagValue(export.LDFLAGS, "-target", wantTarget) {
 		t.Fatalf("host LDFLAGS = %v, want native -target", export.LDFLAGS)
 	}
 }
@@ -651,40 +655,65 @@ func TestNativeWindowsExportFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantTriple, err := windowsTargetTriple(runtime.GOARCH, PlatformABIMsvc)
+	wantTriple, err := windowsTargetTriple(runtime.GOARCH, export.Toolchain.ABI)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if export.Toolchain.ABI != PlatformABIMsvc ||
-		export.Toolchain.ObjectFormat != ObjectFormatCOFF ||
+	if export.Toolchain.ObjectFormat != ObjectFormatCOFF ||
 		export.Toolchain.Driver != DriverFlavorClangGNU ||
-		export.Toolchain.Linker != LinkerFlavorCOFFLLD ||
-		export.Toolchain.TargetTriple != wantTriple ||
-		export.Toolchain.CRT != CRTFlavorUCRT ||
-		export.Toolchain.CXXRuntime != CXXRuntimeMSVC {
+		export.Toolchain.TargetTriple != wantTriple {
 		t.Fatalf("native Windows toolchain = %+v", export.Toolchain)
 	}
-	for _, want := range []string{
-		"-Wl,/errorlimit:0",
-		"-Wl,/opt:noicf",
-		"-Wl,/opt:ref",
-		"-Wl,/opt:lldlto=2",
-		"-llegacy_stdio_definitions",
-	} {
+	var wanted, unwanted []string
+	switch export.Toolchain.ABI {
+	case PlatformABIMsvc:
+		if export.Toolchain.Linker != LinkerFlavorCOFFLLD ||
+			export.Toolchain.CRT != CRTFlavorUCRT ||
+			export.Toolchain.CXXRuntime != CXXRuntimeMSVC {
+			t.Fatalf("native MSVC toolchain = %+v", export.Toolchain)
+		}
+		wanted = []string{
+			"-Wl,/errorlimit:0",
+			"-Wl,/opt:noicf",
+			"-Wl,/opt:ref",
+			"-Wl,/opt:lldlto=2",
+			"-llegacy_stdio_definitions",
+		}
+		unwanted = []string{
+			"-Wl,--error-limit=0",
+			"-Wl,--icf=none",
+			"--gc-sections",
+		}
+	case PlatformABIGNU:
+		if export.Toolchain.Linker != LinkerFlavorMinGWLLD ||
+			export.Toolchain.CRT != CRTFlavorUnknown ||
+			export.Toolchain.CXXRuntime != CXXRuntimeUnknown {
+			t.Fatalf("native GNU/MinGW toolchain = %+v", export.Toolchain)
+		}
+		wanted = []string{
+			"-Wl,--error-limit=0",
+			"-Wl,--icf=none",
+			"-Wl,--gc-sections",
+			"-Wl,--lto-O2",
+		}
+		unwanted = []string{
+			"-Wl,/errorlimit:0",
+			"-Wl,/opt:noicf",
+			"-Wl,/opt:ref",
+			"-Wl,/opt:lldlto=2",
+			"-llegacy_stdio_definitions",
+		}
+	default:
+		t.Fatalf("unsupported native Windows ABI: %+v", export.Toolchain)
+	}
+	for _, want := range wanted {
 		if !slices.Contains(export.LDFLAGS, want) {
 			t.Errorf("native Windows LDFLAGS = %v, want %q", export.LDFLAGS, want)
 		}
 	}
-	for _, unwanted := range []string{
-		"-Wl,--error-limit=0",
-		"-Wl,--icf=none",
-		"--gc-sections",
-		"-latomic",
-		"-lpthread",
-		"-ldl",
-	} {
-		if slices.Contains(export.LDFLAGS, unwanted) {
-			t.Errorf("native Windows LDFLAGS = %v, do not want %q", export.LDFLAGS, unwanted)
+	for _, flag := range append(unwanted, "-latomic", "-lpthread", "-ldl") {
+		if slices.Contains(export.LDFLAGS, flag) {
+			t.Errorf("native Windows LDFLAGS = %v, do not want %q", export.LDFLAGS, flag)
 		}
 	}
 }
