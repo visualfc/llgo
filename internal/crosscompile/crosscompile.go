@@ -423,6 +423,7 @@ func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
 		return []string{"-fdata-sections", "-ffunction-sections"}, []string{
 			"-fdata-sections",
 			"-ffunction-sections",
+			"--rtlib=compiler-rt",
 			"-Wl,/opt:ref",
 			// UCRT defines printf-family entry points inline in its headers.
 			// LLGo C linknames use the traditional external symbols supplied by

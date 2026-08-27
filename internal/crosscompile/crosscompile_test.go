@@ -630,7 +630,7 @@ func TestNativeWindowsSectionFlags(t *testing.T) {
 			t.Errorf("native Windows CCFLAGS = %v, want %q", ccflags, want)
 		}
 	}
-	for _, want := range []string{"-fdata-sections", "-ffunction-sections", "-Wl,/opt:ref", "-llegacy_stdio_definitions"} {
+	for _, want := range []string{"-fdata-sections", "-ffunction-sections", "--rtlib=compiler-rt", "-Wl,/opt:ref", "-llegacy_stdio_definitions"} {
 		if !slices.Contains(ldflags, want) {
 			t.Errorf("native Windows LDFLAGS = %v, want %q", ldflags, want)
 		}
