@@ -727,21 +727,7 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 				return Expr{llvm.CreateICmp(b.impl, pred, x.impl, y.impl), tret}
 			}
 		case vkArray:
-			typ := x.raw.Type.Underlying().(*types.Array)
-			elem := b.Prog.Elem(x.Type)
-			ret := prog.BoolVal(true)
-			for i, n := 0, int(typ.Len()); i < n; i++ {
-				fx := b.impl.CreateExtractValue(x.impl, i, "")
-				fy := b.impl.CreateExtractValue(y.impl, i, "")
-				r := b.BinOp(token.EQL, Expr{fx, elem}, Expr{fy, elem})
-				ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
-			}
-			switch op {
-			case token.EQL:
-				return ret
-			case token.NEQ:
-				return Expr{b.impl.CreateNot(ret.impl, ""), tret}
-			}
+			return b.arrayBinOp(op, x, y, Nil, Nil)
 		case vkStruct:
 			typ := x.raw.Type.Underlying().(*types.Struct)
 			ret := prog.BoolVal(true)
@@ -788,6 +774,91 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 		}
 	}
 	panic("todo")
+}
+
+// CanInlineArrayEqual reports whether comparing an array element by element is
+// cheaper than calling its equality algorithm. A single element is always
+// safe to inline. For simple elements, use cmd/compile's four-element budget,
+// but not its size-based allowance: this builder emits element-wise compares
+// rather than merging adjacent loads into wider compares.
+func CanInlineArrayEqual(t *types.Array) bool {
+	n := t.Len()
+	if n <= 1 {
+		return true
+	}
+	basic, ok := t.Elem().Underlying().(*types.Basic)
+	if !ok || basic.Info()&(types.IsBoolean|types.IsInteger|types.IsFloat|types.IsComplex) == 0 {
+		return false
+	}
+	return n <= 4
+}
+
+// ArrayBinOp compares two array values while reusing their backing addresses
+// when the frontend has proved that those addresses still hold the loaded
+// values. A nil address falls back to a value-preserving temporary.
+func (b Builder) ArrayBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
+	if x.kind != vkArray || y.kind != vkArray {
+		panic("ArrayBinOp requires array operands")
+	}
+	if op != token.EQL && op != token.NEQ {
+		panic("ArrayBinOp requires an equality operator")
+	}
+	return b.arrayBinOp(op, x, y, xaddr, yaddr)
+}
+
+func (b Builder) arrayBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
+	prog := b.Prog
+	tret := prog.Bool()
+	typ := x.raw.Type.Underlying().(*types.Array)
+	if CanInlineArrayEqual(typ) {
+		elem := prog.Elem(x.Type)
+		ret := prog.BoolVal(true)
+		for i, n := 0, int(typ.Len()); i < n; i++ {
+			fx := b.impl.CreateExtractValue(x.impl, i, "")
+			fy := b.impl.CreateExtractValue(y.impl, i, "")
+			r := b.BinOp(token.EQL, Expr{fx, elem}, Expr{fy, elem})
+			ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
+		}
+		if op == token.NEQ {
+			ret.impl = llvm.CreateNot(b.impl, ret.impl)
+		}
+		return ret
+	}
+	ret := b.callArrayEqual(x, y, xaddr, yaddr, typ)
+	if op == token.NEQ {
+		ret.impl = llvm.CreateNot(b.impl, ret.impl)
+	}
+	return ret
+}
+
+func (b Builder) callArrayEqual(x, y, xaddr, yaddr Expr, t *types.Array) Expr {
+	prog := b.Prog
+	var sp Expr
+	if xaddr.IsNil() || yaddr.IsNil() {
+		sp = b.StackSave()
+	}
+	if xaddr.IsNil() {
+		xaddr = b.toPtr(x)
+	} else {
+		xaddr = b.PtrCast(prog.VoidPtr(), xaddr)
+	}
+	if yaddr.IsNil() {
+		yaddr = b.toPtr(y)
+	} else {
+		yaddr = b.PtrCast(prog.VoidPtr(), yaddr)
+	}
+	var ret Expr
+	if prog.abi.IsRegularMemory(t) {
+		ret = b.Call(b.Pkg.rtFunc("memequal"), xaddr, yaddr, prog.IntVal(prog.SizeOf(x.Type), prog.Uintptr()))
+	} else {
+		equal := b.Pkg.rtEnvFunc("arrayequal")
+		equal = b.aggregateValue(prog.Type(equalFunc, InGo), equal.impl, b.abiType(x.raw.Type).impl)
+		ret = b.Call(equal, xaddr, yaddr)
+	}
+	if !sp.IsNil() {
+		b.StackRestore(sp)
+	}
+	return ret
 }
 
 // The UnOp instruction yields the result of (op x).

@@ -11,6 +11,31 @@ import (
 	"time"
 )
 
+func TestPrepareCaseWorkspaceUsesRepositoryModulePath(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/owner/project\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws, err := prepareCaseWorkspace(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(ws.cleanup)
+
+	linkPath := filepath.Join(ws.gopath, "src", "example.com", "owner", "project")
+	linkInfo, err := os.Stat(linkPath)
+	if err != nil {
+		t.Fatalf("stat module workspace link: %v", err)
+	}
+	repoInfo, err := os.Stat(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(linkInfo, repoInfo) {
+		t.Fatalf("workspace path %q does not link to repository %q", linkPath, repo)
+	}
+}
+
 func TestParseDirective(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "case.go")
@@ -1216,6 +1241,9 @@ func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
 	dir := t.TempDir()
 	repoRoot := filepath.Join(dir, "repo")
 	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "go.mod"), []byte("module example.com/llgo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	goroot := filepath.Join(dir, "goroot")

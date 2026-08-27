@@ -30,6 +30,7 @@ import (
 	"unicode"
 
 	"go.yaml.in/yaml/v3"
+	"golang.org/x/mod/modfile"
 )
 
 var (
@@ -752,12 +753,21 @@ func prepareCaseWorkspace(repoRoot string) (caseWorkspace, error) {
 		return caseWorkspace{}, err
 	}
 	gopath := filepath.Join(root, "gopath")
-	llgoPath := filepath.Join(gopath, "src", "github.com", "goplus")
-	if err := os.MkdirAll(llgoPath, 0o755); err != nil {
+	goMod, err := os.ReadFile(filepath.Join(repoRoot, "go.mod"))
+	if err != nil {
+		_ = os.RemoveAll(root)
+		return caseWorkspace{}, fmt.Errorf("read repository module path: %w", err)
+	}
+	modulePath := modfile.ModulePath(goMod)
+	if modulePath == "" {
+		_ = os.RemoveAll(root)
+		return caseWorkspace{}, fmt.Errorf("read repository module path: go.mod has no module directive")
+	}
+	linkPath := filepath.Join(gopath, "src", filepath.FromSlash(modulePath))
+	if err := os.MkdirAll(filepath.Dir(linkPath), 0o755); err != nil {
 		_ = os.RemoveAll(root)
 		return caseWorkspace{}, err
 	}
-	linkPath := filepath.Join(llgoPath, "llgo")
 	if err := os.Symlink(repoRoot, linkPath); err != nil && !errors.Is(err, os.ErrExist) {
 		_ = os.RemoveAll(root)
 		return caseWorkspace{}, fmt.Errorf("symlink %q -> %q: %w", linkPath, repoRoot, err)

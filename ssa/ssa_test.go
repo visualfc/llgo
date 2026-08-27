@@ -2437,6 +2437,113 @@ attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
 `)
 }
 
+func TestArrayEqualLowering(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkg := prog.NewPackage("main", "main")
+	compare := func(name string, elem types.Type, n int64, op token.Token, addrMask uint) llvm.Value {
+		array := types.NewArray(elem, n)
+		sig := types.NewSignatureType(nil, nil, nil,
+			types.NewTuple(
+				types.NewVar(token.NoPos, nil, "x", array),
+				types.NewVar(token.NoPos, nil, "y", array),
+			),
+			types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool])),
+			false,
+		)
+		fn := pkg.NewFunc(name, sig, InGo)
+		b := fn.MakeBody(1)
+		xaddr, yaddr := Nil, Nil
+		if addrMask&1 != 0 {
+			xaddr = b.AllocaT(fn.Param(0).Type)
+			b.Store(xaddr, fn.Param(0))
+		}
+		if addrMask&2 != 0 {
+			yaddr = b.AllocaT(fn.Param(1).Type)
+			b.Store(yaddr, fn.Param(1))
+		}
+		b.Return(b.ArrayBinOp(op, fn.Param(0), fn.Param(1), xaddr, yaddr))
+		return pkg.Module().NamedFunction(name)
+	}
+
+	small := compare("small", types.Typ[types.Uint8], 4, token.EQL, 0).String()
+	if strings.Contains(small, "memequal") || strings.Contains(small, "arrayequal") {
+		t.Fatalf("small scalar array comparison was not inlined:\n%s", small)
+	}
+	medium := compare("medium", types.Typ[types.Uint8], 16, token.EQL, 3).String()
+	if !strings.Contains(medium, ".memequal") || strings.Contains(medium, "extractvalue [16 x i8]") {
+		t.Fatalf("medium scalar array comparison was expanded element by element:\n%s", medium)
+	}
+	large := compare("large", types.Typ[types.Uint8], 1024, token.NEQ, 0).String()
+	if !strings.Contains(large, ".memequal") || strings.Contains(large, "extractvalue [1024 x i8]") {
+		t.Fatalf("large regular-memory array comparison was not lowered to memequal:\n%s", large)
+	}
+	nonMemory := compare("nonmemory", types.Typ[types.Float64], 5, token.EQL, 0).String()
+	if !strings.Contains(nonMemory, ".arrayequal") || strings.Contains(nonMemory, "extractvalue [5 x double]") {
+		t.Fatalf("non-memory array comparison was not lowered to arrayequal:\n%s", nonMemory)
+	}
+
+	array := types.NewArray(types.Typ[types.Uint8], 4)
+	sig := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "x", array),
+			types.NewVar(token.NoPos, nil, "y", array),
+		),
+		types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool])),
+		false,
+	)
+	fn := pkg.NewFunc("direct", sig, InGo)
+	b := fn.MakeBody(1)
+	mustPanic := func(want string, call func()) {
+		t.Helper()
+		defer func() {
+			if got := recover(); got != want {
+				t.Fatalf("panic = %v, want %q", got, want)
+			}
+		}()
+		call()
+	}
+	mustPanic("ArrayBinOp requires array operands", func() {
+		b.ArrayBinOp(token.EQL, prog.Val(1), prog.Val(2), Nil, Nil)
+	})
+	mustPanic("ArrayBinOp requires an equality operator", func() {
+		b.ArrayBinOp(token.ADD, fn.Param(0), fn.Param(1), Nil, Nil)
+	})
+	b.Return(b.BinOp(token.EQL, fn.Param(0), fn.Param(1)))
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("array comparison module is invalid: %v\n%s", err, pkg.String())
+	}
+}
+
+func TestCanInlineArrayEqual(t *testing.T) {
+	tests := []struct {
+		name string
+		typ  *types.Array
+		want bool
+	}{
+		{"single interface", types.NewArray(types.NewInterfaceType(nil, nil), 1), true},
+		{"four bytes", types.NewArray(types.Typ[types.Uint8], 4), true},
+		{"five bytes", types.NewArray(types.Typ[types.Uint8], 5), false},
+		{"two strings", types.NewArray(types.Typ[types.String], 2), false},
+		{"two structs", types.NewArray(types.NewStruct(nil, nil), 2), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanInlineArrayEqual(tt.typ); got != tt.want {
+				t.Fatalf("CanInlineArrayEqual(%v) = %v, want %v", tt.typ, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUnOp(t *testing.T) {
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("bar", "foo/bar")
