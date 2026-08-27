@@ -1615,6 +1615,26 @@ func TestCSharedLinkArgs(t *testing.T) {
 	}
 }
 
+func TestCSharedImportLibraryArgs(t *testing.T) {
+	output := filepath.Join("tmp", "native-shared.dll")
+	gnu := crosscompile.NativeToolchain{
+		ObjectFormat: crosscompile.ObjectFormatCOFF,
+		ABI:          crosscompile.PlatformABIGNU,
+	}
+	want := strings.Join([]string{"-Xlinker", "--out-implib", "-Xlinker", filepath.Join("tmp", "native-shared.lib")}, " ")
+	if got := strings.Join(cSharedImportLibraryArgs(gnu, output), " "); got != want {
+		t.Fatalf("GNU COFF import-library arguments = %q, want %q", got, want)
+	}
+	for _, toolchain := range []crosscompile.NativeToolchain{
+		{ObjectFormat: crosscompile.ObjectFormatCOFF, ABI: crosscompile.PlatformABIMsvc},
+		{ObjectFormat: crosscompile.ObjectFormatELF, ABI: crosscompile.PlatformABIGNU},
+	} {
+		if got := cSharedImportLibraryArgs(toolchain, output); got != nil {
+			t.Fatalf("toolchain %+v import-library arguments = %q, want none", toolchain, got)
+		}
+	}
+}
+
 func TestFullRpathArgs(t *testing.T) {
 	linkArgs := []string{"-L/first", "-lfoo", "-L/second", "-L/first"}
 	coff := crosscompile.NativeToolchain{ObjectFormat: crosscompile.ObjectFormatCOFF}

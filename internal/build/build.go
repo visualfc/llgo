@@ -998,6 +998,17 @@ func cSharedLinkArgs(toolchain crosscompile.NativeToolchain) []string {
 	return args
 }
 
+func cSharedImportLibraryArgs(toolchain crosscompile.NativeToolchain, output string) []string {
+	if toolchain.ObjectFormat != crosscompile.ObjectFormatCOFF || toolchain.ABI != crosscompile.PlatformABIGNU {
+		return nil
+	}
+	// lld-link creates a sibling .lib automatically for MSVC links. MinGW's
+	// GNU-flavor lld needs an explicit output path for the equivalent COFF
+	// import library.
+	imports := strings.TrimSuffix(output, filepath.Ext(output)) + ".lib"
+	return []string{"-Xlinker", "--out-implib", "-Xlinker", imports}
+}
+
 // DefaultBuildTags returns the build tags LLGo always enables for a target.
 func DefaultBuildTags(goarch, target string) string {
 	return defaultBuildTags(goarch, target)
@@ -1925,6 +1936,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	switch ctx.buildConf.BuildMode {
 	case BuildModeCShared:
 		buildArgs = append(buildArgs, cSharedLinkArgs(ctx.crossCompile.Toolchain)...)
+		buildArgs = append(buildArgs, cSharedImportLibraryArgs(ctx.crossCompile.Toolchain, linkOutput)...)
 	case BuildModeExe:
 		if needsLinuxNoPIE(ctx, linkArgs) {
 			buildArgs = append(buildArgs, "-no-pie")
