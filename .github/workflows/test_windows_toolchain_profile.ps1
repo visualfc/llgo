@@ -12,7 +12,9 @@ function Assert-Success([string]$Operation) {
 }
 
 function Assert-NativeOutput([string]$Executable) {
-  $output = (& $Executable | Out-String).Trim()
+  # Go's implementation-defined println builtin may write to stderr. Capture
+  # both streams because this smoke test validates execution, not stream choice.
+  $output = (& $Executable 2>&1 | Out-String).Trim()
   Assert-Success "Running $Executable"
   if ($output -ne "windows-msvc-shell") {
     throw "$Executable printed '$output', want 'windows-msvc-shell'"
