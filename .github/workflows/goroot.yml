@@ -24,18 +24,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # These are reproducibility pins, not floating series selectors.
-        # Upgrade them together in a dedicated toolchain-update PR.
-        os: [macos-latest, ubuntu-latest]
-        go-version: ["1.25.0", "1.26.5"]
+        # GOROOT compatibility follows the project's current Go 1.26 release
+        # line. Old xfail/not-applicable classifications are retired with the
+        # corpus.
+        os: [macos-latest, ubuntu-latest, windows-2022]
+        go-version: ["1.26.7"]
         shard-index: ["0", "1", "2", "3"]
         include:
-          - go-version: "1.25.0"
-            lane: compatibility
-          - go-version: "1.26.5"
+          - go-version: "1.26.7"
             lane: primary
-        # Keep both supported runtime generations on Linux and macOS. Go 1.25
-        # is intentionally omitted because it is not a compatibility target.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -61,12 +58,18 @@ jobs:
         run: go mod download
 
       - name: Run GOROOT runner
+        shell: bash
         run: |
           min_swap_free_mib=512
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             # macOS manages swap dynamically; a low instantaneous free value
             # does not mean the runner cannot make forward progress.
             min_swap_free_mib=0
+          fi
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            # Generated programs write into pipes and terminate through
+            # ExitProcess, which does not run CRT stream teardown.
+            export LLGO_STDIO_NOBUF=1
           fi
           set +e
           bash dev/test_goroot.sh -- \
@@ -81,6 +84,7 @@ jobs:
 
       - name: Summarize GOROOT shard
         if: always()
+        shell: bash
         env:
           MATRIX_OS: ${{ matrix.os }}
           GO_VERSION: ${{ matrix.go-version }}
@@ -94,6 +98,8 @@ jobs:
           platform=linux/amd64
           if [[ "$MATRIX_OS" == "macos-latest" ]]; then
             platform=darwin/arm64
+          elif [[ "$MATRIX_OS" == "windows-2022" ]]; then
+            platform=windows/amd64
           fi
 
           selected=$(sed -nE 's/.* shard=[^ ]+ cases=([0-9]+) directive_mode=.*/\1/p' "$log" | tail -1)
@@ -200,16 +206,15 @@ jobs:
           {
             echo '## GOROOT run summary'
             echo
-            echo "Received $report_count/16 shard reports."
+            echo "Received $report_count/12 shard reports."
             echo
             echo '| Platform / toolchain | Shards | Selected | Observed | Passed | Failed | Skipped |'
             echo '|---|---:|---:|---:|---:|---:|---:|'
-            write_row 'Darwin · Go 1.25.0' darwin/arm64 1.25.0 4
-            write_row 'Darwin · Go 1.26.5' darwin/arm64 1.26.5 4
-            write_row '**Darwin total**' darwin/arm64 '' 8
-            write_row 'Linux · Go 1.25.0' linux/amd64 1.25.0 4
-            write_row 'Linux · Go 1.26.5' linux/amd64 1.26.5 4
-            write_row '**Linux total**' linux/amd64 '' 8
+            write_row 'Darwin · Go 1.26.7' darwin/arm64 1.26.7 4
+            write_row '**Darwin total**' darwin/arm64 '' 4
+            write_row 'Linux · Go 1.26.7' linux/amd64 1.26.7 4
+            write_row '**Linux total**' linux/amd64 '' 4
+            write_row 'Windows · Go 1.26.7' windows/amd64 1.26.7 4
             echo
             echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
             echo
@@ -224,8 +229,8 @@ jobs:
             fi
           } >>"$GITHUB_STEP_SUMMARY"
 
-          if [[ "$report_count" -ne 16 ]]; then
-            echo "error: expected 16 shard reports, got $report_count" >&2
+          if [[ "$report_count" -ne 12 ]]; then
+            echo "error: expected 12 shard reports, got $report_count" >&2
             exit 1
           fi
           if [[ "$GOROOT_RESULT" != success ]]; then

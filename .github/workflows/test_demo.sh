@@ -272,6 +272,14 @@ if [ "$mode" = "embedded" ]; then
   done
 else
   for d in "${cases[@]}"; do
+    if [ "${RUNNER_OS:-}" = "Windows" ]; then
+      case "$d" in
+        ./_demo/c/syncdebug|./_demo/c/thread)
+          echo "SKIP $d (c/pthread exposes the native POSIX API and is not applicable to Windows)"
+          continue
+          ;;
+      esac
+    fi
     if is_model_demo "$d" && [ "${LLGO_RUN_MODEL_DEMOS:-0}" != "1" ]; then
       echo "SKIP $d (model demo runs in scheduled Model Demo workflow)"
       continue

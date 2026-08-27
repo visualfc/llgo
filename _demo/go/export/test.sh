@@ -141,6 +141,16 @@ fi
 print_status "Starting C header generation tests..."
 print_status "Working directory: $SCRIPT_DIR"
 
+SHARED_LIB="libexport.so"
+case "$OSTYPE" in
+    darwin*)
+        SHARED_LIB="libexport.dylib"
+        ;;
+    msys*|cygwin*|win32*)
+        SHARED_LIB="libexport.dll"
+        ;;
+esac
+
 echo ""
 build_failures=0
 run_build_mode_tests=true
@@ -163,11 +173,6 @@ if [[ "$run_build_mode_tests" == true ]]; then
 
 # Test 1: c-shared mode
 print_status "=== Test 1: Building with -buildmode c-shared ==="
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    SHARED_LIB="libexport.dylib"
-else
-    SHARED_LIB="libexport.so"
-fi
 if $LLGO_SCRIPT build -buildmode c-shared -o "$SHARED_LIB" .; then
     print_status "Build succeeded"
 
@@ -185,9 +190,9 @@ if $LLGO_SCRIPT build -buildmode c-shared -o "$SHARED_LIB" .; then
     # Test C demo with shared library
     print_status "=== Testing C demo with shared library ==="
     if cd use; then
-        if LINK_TYPE=shared make clean && LINK_TYPE=shared LLGOFLAGS=-ldflags=-w=false make; then
+        if make LINK_TYPE=shared clean && make LINK_TYPE=shared LLGOFLAGS=-ldflags=-w=false; then
             print_status "C demo build succeeded with shared library"
-            if LINK_TYPE=shared make run; then
+            if make LINK_TYPE=shared run; then
                 print_status "C demo execution succeeded with shared library"
             else
                 print_error "C demo execution failed with shared library"

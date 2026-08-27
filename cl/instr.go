@@ -532,6 +532,21 @@ func (p *context) siglongjmp(b llssa.Builder, args []ssa.Value) {
 	panic("siglongjmp(jb c.SigjmpBuf, retval c.Int): invalid arguments")
 }
 
+func (p *context) setjmp(b llssa.Builder, args []ssa.Value) llssa.Expr {
+	if len(args) == 1 {
+		return b.Setjmp(p.compileValue(b, args[0]))
+	}
+	panic("setjmp(jb c.JmpBuf): invalid arguments")
+}
+
+func (p *context) longjmp(b llssa.Builder, args []ssa.Value) {
+	if len(args) == 2 {
+		b.Longjmp(p.compileValue(b, args[0]), p.compileValue(b, args[1]))
+		return
+	}
+	panic("longjmp(jb c.JmpBuf, retval c.Int): invalid arguments")
+}
+
 func (p *context) atomic(b llssa.Builder, op llssa.AtomicOp, args []llssa.Expr) (ret llssa.Expr) {
 	if len(args) == 2 {
 		addr := args[0]
@@ -607,6 +622,8 @@ var llgoInstrs = map[string]int{
 	"sigjmpbuf":   llgoSigjmpbuf,
 	"sigsetjmp":   llgoSigsetjmp,
 	"siglongjmp":  llgoSiglongjmp,
+	"setjmp":      llgoSetjmp,
+	"longjmp":     llgoLongjmp,
 	"deferData":   llgoDeferData,
 	"unreachable": llgoUnreachable,
 
@@ -2533,6 +2550,10 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 			ret = p.sigsetjmp(b, args)
 		case llgoSiglongjmp:
 			p.siglongjmp(b, args)
+		case llgoSetjmp:
+			ret = p.setjmp(b, args)
+		case llgoLongjmp:
+			p.longjmp(b, args)
 		case llgoStackSave:
 			ret = b.StackSave()
 		case llgoSigjmpbuf: // func sigjmpbuf()

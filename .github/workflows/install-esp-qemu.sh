@@ -7,6 +7,7 @@ INSTALL_DIR="${1:-.cache/qemu}"
 # Detect platform
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)
+EXE_SUFFIX=""
 
 # Map architecture names
 case "$ARCH" in
@@ -29,6 +30,12 @@ case "$OS" in
     ;;
   linux)
     PLATFORM="${ARCH}-linux-gnu"
+    ;;
+  mingw*|msys*|cygwin*)
+    # Espressif publishes the Windows emulator as an x86-64 MinGW host
+    # binary. This is independent of the ESP firmware target architecture.
+    PLATFORM="x86_64-w64-mingw32"
+    EXE_SUFFIX=".exe"
     ;;
   *)
     echo "Unsupported OS: $OS"
@@ -58,7 +65,7 @@ done
 
 # Verify installation
 for exe in qemu-system-riscv32 qemu-system-xtensa; do
-  if [ ! -x "${INSTALL_DIR}/bin/${exe}" ]; then
+  if [ ! -x "${INSTALL_DIR}/bin/${exe}${EXE_SUFFIX}" ]; then
     echo "Error: ${exe} not found after extraction"
     exit 1
   fi

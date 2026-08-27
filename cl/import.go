@@ -605,6 +605,8 @@ const (
 	llgoSigsetjmp  = llgoInstrBase + 0xc
 	llgoSiglongjmp = llgoInstrBase + 0xd
 	llgoFuncAddr   = llgoInstrBase + 0xe
+	llgoSetjmp     = llgoInstrBase + 0x13
+	llgoLongjmp    = llgoInstrBase + 0x14
 
 	llgoPyList  = llgoInstrBase + 0x10
 	llgoPyStr   = llgoInstrBase + 0x11

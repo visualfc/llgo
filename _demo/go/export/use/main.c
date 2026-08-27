@@ -91,10 +91,6 @@ int main() {
     printf("=== C Export Demo ===\n");
     fflush(stdout);  // Force output
     
-    // Initialize packages - call init functions first
-    github_com_xgo_dev_llgo__demo_go_export_c_init();
-    main_init();
-
     // Verify that funcinfo is not merely linkable: runtime.Callers must yield
     // a symbolized frame and runtime.FuncForPC must resolve that PC's details.
     main_FuncInfoResult func_info = GetFuncInfo();

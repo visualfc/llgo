@@ -60,6 +60,9 @@ run_with_heartbeat() {
 
 for goroot in "${goroots[@]}"; do
 	go_bin="$goroot/bin/go"
+	if [[ "${OS:-}" == "Windows_NT" ]]; then
+		go_bin+=".exe"
+	fi
 	if [[ ! -x "$go_bin" ]]; then
 		echo "error: missing go binary: $go_bin" >&2
 		exit 2

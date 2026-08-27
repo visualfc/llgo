@@ -38,7 +38,14 @@ runs:
         Hello, LLGo!
         Hello, LLGo!
         Hello LLGo by cpp/std.Str"
-        OUTPUT=$(llgo run . 2>&1 | tee /dev/stderr)
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+            # ExitProcess does not flush UCRT streams, so keep C output
+            # observable without leaking this setting into the ESP build.
+            OUTPUT=$(LLGO_STDIO_NOBUF=1 llgo run . 2>&1)
+        else
+            OUTPUT=$(llgo run . 2>&1)
+        fi
+        echo "$OUTPUT"
         if echo "$OUTPUT" | grep -qF "$EXPECTED"; then
             echo "Basic test passed"
         else

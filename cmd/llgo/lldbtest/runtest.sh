@@ -43,11 +43,15 @@ build_project "$package_path" || exit 1
 test_tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/llgo-lldbtest.XXXXXX")
 trap 'rm -rf "$test_tmp_dir"' EXIT
 result_file="$test_tmp_dir/exit-code"
+result_file_for_lldb="$result_file"
+if command -v cygpath >/dev/null 2>&1; then
+    result_file_for_lldb=$(cygpath -m "$result_file")
+fi
 
 # Prepare LLDB commands
 lldb_commands=(
     "command script import ./test.py"
-    "script test.run_tests_with_result('./debug.out', ['main.go'], $verbose, $interactive, $plugin_path, '$result_file')"
+    "script test.run_tests_with_result('./debug.out', ['main.go'], $verbose, $interactive, $plugin_path, '$result_file_for_lldb')"
     "quit"
 )
 
@@ -75,36 +79,37 @@ if [ "$exit_code" -ne 0 ]; then
 fi
 
 llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
-    -o 'script info = llgo_plugin.inspect_target(lldb.target); assert info.schema_version == 1 and info.runtime_layout_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown"' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "LLGo debugger schema v1 (runtime layout v1)" in result.GetOutput()' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); assert not result.Succeeded() and "requires a stopped process" in result.GetError()' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo print s", result); assert not result.Succeeded() and "requires a stopped process" in result.GetError()'
+    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.schema_version == 1 and info.runtime_layout_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown") or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "LLGo debugger schema v1 (runtime layout v1)" in result.GetOutput()) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); (not result.Succeeded() and "requires a stopped process" in result.GetError()) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo print s", result); (not result.Succeeded() and "requires a stopped process" in result.GetError()) or os._exit(1)'
 
 # The LLGo formatter must not attach itself to an ordinary C target.
 non_llgo_dir="$test_tmp_dir/non-llgo"
+host_exe_ext=$(go env GOEXE)
 mkdir -p "$non_llgo_dir"
 printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; int main(void) { return 0; }\n' | \
-    "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo" -
-llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo" \
-    -o 'script info = llgo_plugin.inspect_target(lldb.target); assert not info.marker_versions and not info.supported' \
-    -o 'script value = lldb.target.FindFirstGlobalVariable("cstring"); assert value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "Not an LLGo target" in result.GetOutput()' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); assert result.Succeeded() and "2" in result.GetOutput()'
+    "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo$host_exe_ext" -
+llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo$host_exe_ext" \
+    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (not info.marker_versions and not info.supported) or os._exit(1)' \
+    -o 'script import os; value = lldb.target.FindFirstGlobalVariable("cstring"); (value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "Not an LLGo target" in result.GetOutput()) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); (result.Succeeded() and "2" in result.GetOutput()) or os._exit(1)'
 
 # An unknown marker must disable only LLGo-specific presentation.
 printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; __attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
-    "${CC:-cc}" -x c -g -o "$non_llgo_dir/unsupported-llgo" -
-llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/unsupported-llgo" \
-    -o 'script info = llgo_plugin.inspect_target(lldb.target); assert info.marker_versions == (2,) and not info.supported' \
-    -o 'script value = lldb.target.FindFirstGlobalVariable("cstring"); assert value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "Unsupported LLGo debugger marker version(s): v2" in result.GetOutput()' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); assert not result.Succeeded() and "Unsupported LLGo debugger marker version(s): v2" in result.GetError()' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); assert result.Succeeded() and "2" in result.GetOutput()'
+    "${CC:-cc}" -x c -g -o "$non_llgo_dir/unsupported-llgo$host_exe_ext" -
+llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/unsupported-llgo$host_exe_ext" \
+    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.marker_versions == (2,) and not info.supported) or os._exit(1)' \
+    -o 'script import os; value = lldb.target.FindFirstGlobalVariable("cstring"); (value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "Unsupported LLGo debugger marker version(s): v2" in result.GetOutput()) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); (not result.Succeeded() and "Unsupported LLGo debugger marker version(s): v2" in result.GetError()) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); (result.Succeeded() and "2" in result.GetOutput()) or os._exit(1)'
 
 # Multiple marker versions are ambiguous even when one version is supported.
 printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; __attribute__((used)) int __llgo_debugger_marker_v1 = 1; __attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
-    "${CC:-cc}" -x c -g -o "$non_llgo_dir/ambiguous-llgo" -
-llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/ambiguous-llgo" \
-    -o 'script info = llgo_plugin.inspect_target(lldb.target); assert info.marker_versions == (1, 2) and not info.supported' \
-    -o 'script value = lldb.target.FindFirstGlobalVariable("cstring"); assert value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2' \
-    -o 'script result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); assert result.Succeeded() and "Unsupported LLGo debugger marker version(s): v1, v2" in result.GetOutput()'
+    "${CC:-cc}" -x c -g -o "$non_llgo_dir/ambiguous-llgo$host_exe_ext" -
+llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/ambiguous-llgo$host_exe_ext" \
+    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.marker_versions == (1, 2) and not info.supported) or os._exit(1)' \
+    -o 'script import os; value = lldb.target.FindFirstGlobalVariable("cstring"); (value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2) or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "Unsupported LLGo debugger marker version(s): v1, v2" in result.GetOutput()) or os._exit(1)'

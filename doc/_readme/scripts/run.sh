@@ -2,13 +2,21 @@
 DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$DIR" || exit 1
 
-python3 -m venv .venv
+python_cmd=python3
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+  python_cmd=python
+fi
+"$python_cmd" -m venv .venv
 # shellcheck source=/dev/null
-source .venv/bin/activate
+if [[ -f .venv/Scripts/activate ]]; then
+  source .venv/Scripts/activate
+else
+  source .venv/bin/activate
+fi
 pip3 install numpy
 
 PYTHONPATH=""
-PYTHONPATH=$(python -c "import sys; print(':'.join(sys.path))")
+PYTHONPATH=$(python -c "import os, sys; print(os.pathsep.join(sys.path))")
 export PYTHONPATH
 
 for sub in ./*/; do

@@ -111,7 +111,13 @@ def register_type_formatters(debugger: lldb.SBDebugger) -> None:
             lldb.SBTypeSynthetic.CreateWithClassName(
                 "llgo_plugin.SliceSyntheticProvider", _type_options()),
         )
-    category.SetEnabled(True)
+    category.SetEnabled(False)
+
+
+def configure_target(debugger: lldb.SBDebugger) -> None:
+    category = debugger.GetCategory(LLGO_TYPE_CATEGORY)
+    category.SetEnabled(
+        inspect_target(debugger.GetSelectedTarget()).supported)
 
 
 def _marker_versions(target: lldb.SBTarget) -> Tuple[int, ...]:
@@ -592,7 +598,7 @@ def print_all_variables(debugger: lldb.SBDebugger, _command: str, result: lldb.S
     output: List[str] = []
     try:
         for var in variables:
-            type_name = map_type_name(var.GetType().GetName())
+            type_name = go_type_name(var.GetType())
             formatted = format_value(
                 var, debugger, include_type=False, indent=0)
             output.append(f"var {var.GetName()} {type_name} = {formatted}")
@@ -614,13 +620,13 @@ def format_value(var: lldb.SBValue, debugger: lldb.SBDebugger, include_type: boo
 
     var_type = var.GetType()
     type_class = var_type.GetTypeClass()
-    type_name = map_type_name(var_type.GetName())
+    type_name = go_type_name(var_type)
 
     # Handle typedef types
     original_type_name = type_name
     while var_type.IsTypedefType():
         var_type = var_type.GetTypedefedType()
-        type_name = map_type_name(var_type.GetName())
+        type_name = go_type_name(var_type)
         type_class = var_type.GetTypeClass()
 
     if var_type.IsPointerType():
@@ -696,7 +702,7 @@ def format_array(var: lldb.SBValue, debugger: lldb.SBDebugger, indent: int) -> s
         elements.append(value)
 
     array_size = var.GetNumChildren()
-    element_type = map_type_name(var.GetType().GetArrayElementType().GetName())
+    element_type = go_type_name(var.GetType().GetArrayElementType())
     type_name = f"[{array_size}]{element_type}"
 
     if len(elements) > 5:  # wrap line if too many elements
@@ -741,6 +747,24 @@ def format_pointer(var: lldb.SBValue, _debugger: lldb.SBDebugger, _indent: int, 
     return var.GetValue()  # Return the address as a string
 
 
+TYPE_NAME_MAPPING: Dict[str, str] = {
+    'long': 'int',
+    'void': 'unsafe.Pointer',
+    'char': 'byte',
+    'short': 'int16',
+    'int': 'int32',
+    'long long': 'int64',
+    'unsigned char': 'uint8',
+    'unsigned short': 'uint16',
+    'unsigned int': 'uint32',
+    'unsigned long': 'uint',
+    'unsigned long long': 'uint64',
+    'float': 'float32',
+    'double': 'float64',
+}
+TYPE_NAMES_BY_LENGTH = sorted(TYPE_NAME_MAPPING, key=len, reverse=True)
+
+
 def map_type_name(type_name: str) -> str:
     # Handle pointer types
     if type_name.endswith('*'):
@@ -748,25 +772,19 @@ def map_type_name(type_name: str) -> str:
         mapped_base_type = map_type_name(base_type)
         return f"*{mapped_base_type}"
 
-    # Map other types
-    type_mapping: Dict[str, str] = {
-        'long': 'int',
-        'void': 'unsafe.Pointer',
-        'char': 'byte',
-        'short': 'int16',
-        'int': 'int32',
-        'long long': 'int64',
-        'unsigned char': 'uint8',
-        'unsigned short': 'uint16',
-        'unsigned int': 'uint32',
-        'unsigned long': 'uint',
-        'unsigned long long': 'uint64',
-        'float': 'float32',
-        'double': 'float64',
-    }
-
-    for c_type, go_type in type_mapping.items():
+    # Prefer longer C spellings so "unsigned long long" is considered before
+    # its prefixes. The mapping is shared because this runs for every value in
+    # recursive container formatting.
+    for c_type in TYPE_NAMES_BY_LENGTH:
         if type_name.startswith(c_type):
-            return type_name.replace(c_type, go_type, 1)
+            return type_name.replace(c_type, TYPE_NAME_MAPPING[c_type], 1)
 
     return type_name
+
+
+def go_type_name(value_type: lldb.SBType) -> str:
+    if value_type.IsPointerType():
+        return f"*{go_type_name(value_type.GetPointeeType())}"
+    if value_type.IsTypedefType():
+        return value_type.GetName()
+    return map_type_name(value_type.GetName())

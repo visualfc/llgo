@@ -53,7 +53,13 @@ func TestFromTestpy(t *testing.T) {
 }
 
 func TestFromTestlibc(t *testing.T) {
-	cltest.FromDir(t, "", "../cl/_testlibc")
+	var ignore []string
+	if runtime.GOOS == "windows" {
+		ignore = []string{
+			"./../cl/_testlibc/once", // POSIX pthread_once has no Windows ABI counterpart; Windows synchronization is covered by goplus/lib.
+		}
+	}
+	cltest.RunAndTestFromDir(t, "", "../cl/_testlibc", ignore, cltest.WithOutputCheck(false))
 }
 
 func TestFromTestrt(t *testing.T) {

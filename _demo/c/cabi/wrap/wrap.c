@@ -1,4 +1,4 @@
-extern int printf(const char *format, ...);
+#include <stdio.h>
 
 int demo32(int v) {
     return v+100;

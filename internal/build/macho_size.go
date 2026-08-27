@@ -39,6 +39,7 @@ type darwinSizeCommand func(name string, args ...string) ([]byte, error)
 type darwinSizeFileOps struct {
 	stat       func(string) (os.FileInfo, error)
 	open       func(string) (*os.File, error)
+	closeFile  func(*os.File) error
 	createTemp func(string, string) (*os.File, error)
 	openFile   func(string, int, os.FileMode) (*os.File, error)
 	rename     func(string, string) error
@@ -48,6 +49,7 @@ func darwinSizeOSFileOps() darwinSizeFileOps {
 	return darwinSizeFileOps{
 		stat:       os.Stat,
 		open:       os.Open,
+		closeFile:  (*os.File).Close,
 		createTemp: os.CreateTemp,
 		openFile:   os.OpenFile,
 		rename:     os.Rename,
@@ -154,7 +156,11 @@ func stripAndSignDarwinLocalsUsing(path string, verbose bool, run darwinSizeComm
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() {
+		if source != nil {
+			_ = files.closeFile(source)
+		}
+	}()
 
 	tmp, err := files.createTemp(filepath.Dir(path), "."+filepath.Base(path)+".strip-*")
 	if err != nil {
@@ -171,6 +177,12 @@ func stripAndSignDarwinLocalsUsing(path string, verbose bool, run darwinSizeComm
 	if _, err := io.Copy(tmp, source); err != nil {
 		return err
 	}
+	// Windows does not replace an existing path while that file still has an
+	// open handle. The staged copy no longer needs the original after io.Copy.
+	if err := files.closeFile(source); err != nil {
+		return err
+	}
+	source = nil
 	if err := tmp.Sync(); err != nil {
 		return err
 	}

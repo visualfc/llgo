@@ -195,6 +195,11 @@ runs:
           Select-Object -Unique |
           ForEach-Object { Add-Content -Encoding utf8 $env:GITHUB_PATH $_ }
 
+        # LLGo uses MSYS2's GNU tar+xz to unpack the large ESP toolchain in
+        # about a minute; Windows' bundled bsdtar can exceed 25 minutes on a
+        # hosted runner. Keep the location explicit for native Go processes.
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MSYS2_LOCATION=$env:MSYS2_LOCATION"
+
         # MSYS2 stores compiler-rt under its GNU archive name. Clang's MSVC
         # target searches the equivalent target-specific COFF layout, so make
         # the same archive visible there without changing its ABI or contents.

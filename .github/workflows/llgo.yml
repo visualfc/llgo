@@ -33,7 +33,7 @@ jobs:
             lane: compatibility
           - os: ubuntu-latest
             llvm: 19
-            go: "1.26.5"
+            go: "1.26.7"
             lane: primary
           - os: macos-latest
             llvm: 19
@@ -41,7 +41,11 @@ jobs:
             lane: compatibility
           - os: macos-latest
             llvm: 19
-            go: "1.26.5"
+            go: "1.26.7"
+            lane: primary
+          - os: windows-2022
+            llvm: 19
+            go: "1.26.7"
             lane: primary
     runs-on: ${{matrix.os}}
     steps:
@@ -59,6 +63,7 @@ jobs:
         uses: ./.github/actions/setup-go
 
       - name: Install
+        shell: bash
         run: |
           go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
@@ -69,6 +74,7 @@ jobs:
           go-version: ${{matrix.go}}
 
       - name: Test demo without RPATH (expect failure)
+        if: runner.os != 'Windows'
         run: |
           echo "Testing demo without RPATH (should fail)..."
           export LLGO_FULL_RPATH=false
@@ -80,6 +86,15 @@ jobs:
             echo "✓ cargs demo correctly failed without RPATH"
           fi
 
+      - name: Test static cargs without a runtime search path
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LLGO_FULL_RPATH=false
+          pkg-config --libs cargs
+          (cd ./_demo/c/cargs && llgo run .)
+
       - name: Test demos
         run: bash .github/workflows/test_demo.sh
 
@@ -87,6 +102,7 @@ jobs:
         run: bash .github/workflows/test_demo.sh --embedded
 
       - name: Test C header generation
+        shell: bash
         run: |
           echo "Testing C header generation in different build modes..."
           cd _demo/go/export
@@ -94,6 +110,7 @@ jobs:
           ./test.sh
 
       - name: Test export with different symbol names on embedded targets
+        shell: bash
         run: |
           echo "Testing //export with different symbol names on embedded targets..."
           cd _demo/embed/export
@@ -101,6 +118,7 @@ jobs:
           ./verify_export.sh
 
       - name: Test ESP serial smoke (build + emulator)
+        shell: bash
         run: |
           echo "Testing ESP32/ESP32-C3 build + emulator smoke..."
           cd _demo/embed
@@ -108,9 +126,10 @@ jobs:
           ./test-esp-serial-startup.sh
 
       - name: Test ESP32-C3 startup regression
+        shell: bash
         run: |
           echo "Testing ESP32-C3 startup regressions..."
-          pip3 install --break-system-packages esptool==5.1.0
+          python -m pip install esptool==5.1.0
           cd _demo/embed
           chmod +x test_esp32c3_startup.sh
           ./test_esp32c3_startup.sh
@@ -127,6 +146,28 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.lane == 'primary' }}
         run: sudo apt-get install -y lldb-${{matrix.llvm}}
 
+      - name: Install Windows LLDB for integration tests
+        if: ${{ matrix.os == 'windows-2022' && matrix.lane == 'primary' }}
+        shell: msys2 {0}
+        env:
+          MSYS2_LLDB_PACKAGE_VERSION: "19.1.7-1"
+          MSYS2_PYTHON_PACKAGE_VERSION: "3.12.8-2"
+        run: |
+          set -euo pipefail
+          repo=https://repo.msys2.org/mingw/clang64
+          prefix=mingw-w64-clang-x86_64
+          pacman_args=(--noconfirm -U)
+          for dependency in cc-libs expat bzip2 mpdecimal ncurses openssl sqlite3 tcl tk tzdata; do
+            pacman_args+=(--assume-installed "$prefix-$dependency")
+          done
+          pacman "${pacman_args[@]}" \
+            "$repo/$prefix-python-$MSYS2_PYTHON_PACKAGE_VERSION-any.pkg.tar.zst" \
+            "$repo/$prefix-lldb-$MSYS2_LLDB_PACKAGE_VERSION-any.pkg.tar.zst"
+
+          lldb_path=/clang64/bin/lldb.exe
+          "$lldb_path" --version
+          echo "LLGO_LLDB=$(cygpath -m "$lldb_path")" >> "$GITHUB_ENV"
+
       - name: LLDB integration tests
         if: ${{ matrix.lane == 'primary' }}
         run: |
@@ -140,22 +181,24 @@ jobs:
   test:
     name: test (${{ matrix.lane }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }}, shard ${{ matrix.shard }})
     continue-on-error: ${{ matrix.lane == 'compatibility' }}
-    timeout-minutes: ${{ startsWith(matrix.os, 'macos') && 45 || 30 }}
+    timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 30 }}
     strategy:
+      fail-fast: false
       matrix:
         # Keep compatibility and primary toolchains pinned to exact patches.
         os:
           - macos-latest
           - ubuntu-latest
+          - windows-2022
         llvm: [19]
-        go: ["1.25.0", "1.26.5"]
+        go: ["1.25.0", "1.26.7"]
         # In-command package parallelism lets Ubuntu use two shards while
         # retaining headroom for the serial std build-mode checks.
         shard: ["0", "1"]
         include:
           - go: "1.25.0"
             lane: compatibility
-          - go: "1.26.5"
+          - go: "1.26.7"
             lane: primary
         exclude:
           # The full demo lane above exercises Go 1.25 user-project/runtime
@@ -166,6 +209,13 @@ jobs:
             go: "1.25.0"
           - os: macos-latest
             shard: "1"
+          # Windows is a primary current-Go lane. One process-level shard and
+          # -p=2 keep both the hosted runner and the 8 GB development VM below
+          # their memory limits without excluding any test package.
+          - os: windows-2022
+            go: "1.25.0"
+          - os: windows-2022
+            shard: "1"
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -174,17 +224,13 @@ jobs:
         with:
           llvm-version: ${{matrix.llvm}}
       - name: Install further optional dependencies for demos
-        run: |
-          py_deps=(
-            numpy # for github.com/goplus/lib/py/numpy
-            torch # for github.com/goplus/lib/py/torch
-          )
-          pip3.12 install --break-system-packages "${py_deps[@]}"
+        uses: ./.github/actions/setup-demo-deps
 
       - name: Set up Go for build
         uses: ./.github/actions/setup-go
 
       - name: Install
+        shell: bash
         run: |
           go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
@@ -193,13 +239,29 @@ jobs:
         uses: ./.github/actions/setup-go
         with:
           go-version: ${{matrix.go}}
+
+      - name: Check Windows native runtime and FFI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $llgo = (Get-Command llgo.exe).Source
+          .\.github\workflows\test_windows_runtime.ps1 -LLGo $llgo
+
       - name: run llgo test
         env:
           SHARD_INDEX: ${{ matrix.shard }}
-          SHARD_TOTAL: ${{ startsWith(matrix.os, 'macos') && '1' || '2' }}
-          TEST_JOBS: ${{ startsWith(matrix.os, 'macos') && '3' || '4' }}
+          SHARD_TOTAL: ${{ startsWith(matrix.os, 'ubuntu') && '2' || '1' }}
+          TEST_JOBS: ${{ startsWith(matrix.os, 'windows') && '2' || startsWith(matrix.os, 'macos') && '3' || '4' }}
+        shell: bash
         run: |
           set -euo pipefail
+
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            # test/go launches the compiler from native subprocesses. Keep an
+            # absolute Windows spelling without splitting the package list.
+            export LLGO_TEST_COMPILER="$(cygpath -w "$(command -v llgo)")"
+            export LLGO_STDIO_NOBUF=1
+          fi
 
           pkgs=()
           while IFS= read -r pkg; do
@@ -222,7 +284,7 @@ jobs:
 
           std_pkgs=()
           for pkg in "${selected[@]}"; do
-            if [[ "${{ matrix.os }}" == ubuntu-latest && "${{ matrix.go }}" == 1.26.5 && "${pkg}" == */test/std/* ]]; then
+            if [[ "${{ matrix.os }}" == ubuntu-latest && "${{ matrix.go }}" == 1.26.7 && "${pkg}" == */test/std/* ]]; then
               std_pkgs+=("${pkg}")
             fi
           done
@@ -249,13 +311,17 @@ jobs:
             lane: compatibility
           - os: ubuntu-latest
             llvm: 19
-            go: "1.26.5"
+            go: "1.26.7"
             lane: primary
-          # Keep the Go 1.26 user-module compatibility matrix on both host
-          # platforms; release artifact smoke tests alone only cover go 1.26.
+          # Keep the Go 1.26 user-module compatibility matrix on every native
+          # host platform; release artifact smoke tests alone only cover go 1.26.
           - os: macos-latest
             llvm: 19
-            go: "1.26.5"
+            go: "1.26.7"
+            lane: primary
+          - os: windows-2022
+            llvm: 19
+            go: "1.26.7"
             lane: primary
     runs-on: ${{matrix.os}}
     steps:
@@ -269,6 +335,7 @@ jobs:
         uses: ./.github/actions/setup-go
 
       - name: Install llgo
+        shell: bash
         run: |
           go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
@@ -360,7 +427,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ["1.25.0", "1.26.5"]
+        go: ["1.25.0", "1.26.7"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

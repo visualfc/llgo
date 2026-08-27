@@ -111,6 +111,51 @@ func createTestTarXz(t *testing.T, files map[string]string) string {
 	return xzFile
 }
 
+func TestWindowsTarXzTools(t *testing.T) {
+	touch := func(t *testing.T, name string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("MSYS2", func(t *testing.T) {
+		root := t.TempDir()
+		tarPath := filepath.Join(root, "usr", "bin", "tar.exe")
+		xzPath := filepath.Join(root, "usr", "bin", "xz.exe")
+		touch(t, tarPath)
+		touch(t, xzPath)
+
+		gotTar, gotXz := windowsTarXzTools(root, "")
+		if gotTar != tarPath || gotXz != xzPath {
+			t.Fatalf("windowsTarXzTools() = (%q, %q), want (%q, %q)", gotTar, gotXz, tarPath, xzPath)
+		}
+	})
+
+	t.Run("NativeFallback", func(t *testing.T) {
+		msysRoot := t.TempDir()
+		touch(t, filepath.Join(msysRoot, "usr", "bin", "tar.exe"))
+		systemRoot := t.TempDir()
+		nativeTar := filepath.Join(systemRoot, "System32", "tar.exe")
+		touch(t, nativeTar)
+
+		gotTar, gotXz := windowsTarXzTools(msysRoot, systemRoot)
+		if gotTar != nativeTar || gotXz != "" {
+			t.Fatalf("windowsTarXzTools() = (%q, %q), want (%q, empty)", gotTar, gotXz, nativeTar)
+		}
+	})
+
+	t.Run("PathFallback", func(t *testing.T) {
+		gotTar, gotXz := windowsTarXzTools("", "")
+		if gotTar != "tar" || gotXz != "" {
+			t.Fatalf("windowsTarXzTools() = (%q, %q), want (tar, empty)", gotTar, gotXz)
+		}
+	})
+}
+
 // Helper function to create a test HTTP server
 func createTestServer(t *testing.T, files map[string]string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -801,10 +846,9 @@ func TestExtractTarXzError(t *testing.T) {
 }
 
 func TestESPClangDownloadLicenseFailure(t *testing.T) {
-	archivePath := createTestTarGz(t, map[string]string{
+	archivePath := createTestTarXz(t, map[string]string{
 		"esp-clang/bin/clang": "fake esp clang binary",
 	})
-	defer os.Remove(archivePath)
 
 	archiveContent, err := os.ReadFile(archivePath)
 	if err != nil {

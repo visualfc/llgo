@@ -65,6 +65,38 @@ func compileWithRewritesModeTarget(t *testing.T, src string, rewrites map[string
 	return ret.String()
 }
 
+func TestWindowsSetjmpIntrinsicsLowerAtCaller(t *testing.T) {
+	const src = `package setjmpintrinsic
+
+import _ "unsafe"
+
+type JmpBuf [256]byte
+
+//go:linkname setjmp llgo.setjmp
+func setjmp(*JmpBuf) int32
+
+//go:linkname longjmp llgo.longjmp
+func longjmp(*JmpBuf, int32)
+
+func use(env *JmpBuf) int32 {
+	ret := setjmp(env)
+	if ret == 0 {
+		longjmp(env, 1)
+	}
+	return ret
+}
+`
+	ir := compileWithRewritesTarget(t, src, nil, &llssa.Target{GOOS: "windows", GOARCH: "amd64"})
+	if !strings.Contains(ir, `call i32 @_setjmpex(ptr %0, ptr null)`) ||
+		!strings.Contains(ir, `call void @longjmp(ptr %0, i32 1)`) {
+		t.Fatalf("Windows setjmp intrinsics were not lowered in the caller:\n%s", ir)
+	}
+	if strings.Contains(ir, `define i32 @setjmpintrinsic.setjmp`) ||
+		strings.Contains(ir, `define void @setjmpintrinsic.longjmp`) {
+		t.Fatalf("Windows setjmp intrinsics unexpectedly emitted wrapper functions:\n%s", ir)
+	}
+}
+
 func TestClosureEnvIntrinsicRequiresEnvBearingEntry(t *testing.T) {
 	valid := `package closureenv
 

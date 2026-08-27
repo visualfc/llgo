@@ -21,6 +21,7 @@ import (
 	"context"
 	"debug/elf"
 	"debug/macho"
+	"debug/pe"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -274,6 +276,48 @@ func TestAddMachOSections(t *testing.T) {
 	}
 }
 
+func TestAddPESections(t *testing.T) {
+	var got footprint
+	addPESections(&got, []*pe.Section{
+		{SectionHeader: pe.SectionHeader{VirtualSize: 10, Characteristics: pe.IMAGE_SCN_CNT_CODE}},
+		{SectionHeader: pe.SectionHeader{VirtualSize: 20, Characteristics: pe.IMAGE_SCN_MEM_EXECUTE}},
+		{SectionHeader: pe.SectionHeader{VirtualSize: 30, Characteristics: pe.IMAGE_SCN_CNT_INITIALIZED_DATA}},
+		{SectionHeader: pe.SectionHeader{VirtualSize: 40, Characteristics: pe.IMAGE_SCN_CNT_UNINITIALIZED_DATA}},
+		{SectionHeader: pe.SectionHeader{Size: 50, Characteristics: pe.IMAGE_SCN_CNT_INITIALIZED_DATA}},
+		{SectionHeader: pe.SectionHeader{VirtualSize: 99}},
+	})
+	if got.text != 30 || got.data != 80 || got.bss != 40 {
+		t.Fatalf("PE footprint = %+v", got)
+	}
+}
+
+func TestWindowsBenchmarkConfiguration(t *testing.T) {
+	t.Setenv("LLGO_STDIO_NOBUF", "")
+
+	wantExecutable := filepath.Join("tmp", "program")
+	wantNoBuf := false
+	if runtime.GOOS == "windows" {
+		wantExecutable += ".exe"
+		wantNoBuf = true
+	}
+	if got := nativeExecutable(filepath.Join("tmp", "program")); got != wantExecutable {
+		t.Fatalf("nativeExecutable() = %q, want %q", got, wantExecutable)
+	}
+	if got := nativeExecutable(filepath.Join("tmp", "program.exe")); got != filepath.Join("tmp", "program.exe") {
+		t.Fatalf("nativeExecutable() with extension = %q", got)
+	}
+
+	hasNoBuf := false
+	for _, value := range benchmarkEnv("test-root") {
+		if value == "LLGO_STDIO_NOBUF=1" {
+			hasNoBuf = true
+		}
+	}
+	if hasNoBuf != wantNoBuf {
+		t.Fatalf("benchmarkEnv() has LLGO_STDIO_NOBUF = %v, want %v", hasNoBuf, wantNoBuf)
+	}
+}
+
 func TestCollect(t *testing.T) {
 	if os.PathSeparator != '/' {
 		t.Skip("fake compiler uses a POSIX shell")
@@ -415,6 +459,35 @@ func TestRunReportsCommand(t *testing.T) {
 	err := run(context.Background(), os.Environ(), &output, "definitely-not-an-llgo-command")
 	if err == nil || !strings.Contains(err.Error(), "definitely-not-an-llgo-command") {
 		t.Fatalf("run error = %v", err)
+	}
+}
+
+func TestRunQuietIncludesCommandOutput(t *testing.T) {
+	err := runQuiet(
+		context.Background(),
+		os.Environ(),
+		"go",
+		"definitely-not-a-go-command",
+	)
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("runQuiet error = %v", err)
+	}
+
+	err = runQuiet(context.Background(), os.Environ(), "definitely-not-an-llgo-command")
+	if err == nil || !strings.Contains(err.Error(), "definitely-not-an-llgo-command") {
+		t.Fatalf("runQuiet error without command output = %v", err)
+	}
+}
+
+func TestRunMeasuredIncludesCommandOutputAfterFailure(t *testing.T) {
+	err := runMeasured(
+		context.Background(),
+		os.Environ(),
+		"go",
+		"definitely-not-a-go-command",
+	)
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("runMeasured error = %v", err)
 	}
 }
 

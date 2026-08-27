@@ -166,6 +166,67 @@ type Shape struct {
 	}
 }
 
+func TestWindowsDebugPointerParameter(t *testing.T) {
+	const goarch = "amd64"
+	for _, test := range []struct {
+		goos        string
+		wantDeclare bool
+	}{
+		{goos: "linux"},
+		{goos: "windows", wantDeclare: true},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file := fset.AddFile("param.go", -1, 100)
+			pkgTypes := types.NewPackage("example.com/p", "p")
+			param := types.NewParam(file.Pos(20), pkgTypes, "p", types.NewPointer(types.Typ[types.Int]))
+			sig := types.NewSignatureType(nil, nil, nil, types.NewTuple(param), nil, false)
+			object := types.NewFunc(file.Pos(10), pkgTypes, "f", sig)
+
+			prog := NewProgram(&Target{GOOS: test.goos, GOARCH: goarch, OptLevel: optlevel.O0})
+			defer prog.Dispose()
+			prog.TypeSizes(types.SizesFor("gc", goarch))
+			pkg := prog.NewPackage("p", "example.com/p")
+			pkg.InitDebug("p", "example.com/p", fset)
+			fn := pkg.NewFunc("example.com/p.f", sig, InGo)
+			builder := fn.MakeBody(1)
+			defer builder.Dispose()
+			pos := fset.Position(param.Pos())
+			builder.DebugFunction(fn, object.Scope(), fset.Position(object.Pos()), pos)
+			debugParam := builder.DIVarParam(fn, pos, param.Name(), prog.Type(param.Type(), InGo), 1)
+			builder.DIParam(param, fn.Param(0), debugParam, fn, pos, fn.Block(0))
+			for _, kind := range []types.BasicKind{types.Uint, types.Uintptr} {
+				typ := types.Typ[kind]
+				global := pkg.NewVar("example.com/p."+typ.Name(), types.NewPointer(typ), InGo)
+				builder.DIGlobal(global.Expr, typ.Name(), pos)
+			}
+			builder.Return()
+			pkg.FinalizeDebug()
+
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("debug metadata is invalid: %v\n%s", err, pkg.Module().String())
+			}
+			ir := pkg.Module().String()
+			if got := strings.Contains(ir, "#dbg_declare"); got != test.wantDeclare {
+				t.Fatalf("dbg_declare presence = %v, want %v:\n%s", got, test.wantDeclare, ir)
+			}
+			if test.goos == "windows" {
+				for _, want := range []string{
+					`!DIBasicType(name: "int64"`,
+					`!DIBasicType(name: "uint64"`,
+					`DW_TAG_typedef, name: "int"`,
+					`DW_TAG_typedef, name: "uint"`,
+					`DW_TAG_typedef, name: "uintptr"`,
+				} {
+					if !strings.Contains(ir, want) {
+						t.Errorf("Windows debug metadata is missing %q:\n%s", want, ir)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestDIGlobalIgnoresStorageLessFrontendVariable(t *testing.T) {
 	var builder Builder
 	builder.DIGlobal(pyVarExpr(Nil, "attribute"), "module.attribute", token.Position{})

@@ -6,7 +6,7 @@ inputs:
     required: false
     # Keep this pin synchronized with the primary CI and release smoke-test
     # matrices. Upgrade it in a dedicated toolchain-update PR.
-    default: "1.26.5"
+    default: "1.26.7"
 runs:
   using: "composite"
   steps:

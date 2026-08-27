@@ -4,7 +4,14 @@ description: "Install dependencies required by the LLGo demo suite"
 runs:
   using: "composite"
   steps:
-    - name: Install cargs demo library
+    - name: Set up Python 3.12 on Windows
+      if: runner.os == 'Windows'
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12"
+
+    - name: Install cargs demo library on Unix
+      if: runner.os != 'Windows'
       shell: bash
       run: |
         set -euo pipefail
@@ -27,10 +34,6 @@ runs:
                 ;;
             esac
             ;;
-          *)
-            echo "Unsupported runner OS: ${RUNNER_OS}" >&2
-            exit 1
-            ;;
         esac
 
         libs_dir="${GITHUB_WORKSPACE}/_demo/c/cargs/libs"
@@ -45,7 +48,67 @@ runs:
 
         echo "PKG_CONFIG_PATH=${libs_dir}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" >> "${GITHUB_ENV}"
 
-    - name: Install Python demo dependencies
+    - name: Build cargs demo library on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        # Pin the target of the upstream v1.2.0 annotated tag so source
+        # downloads cannot change if that tag is moved.
+        CARGS_COMMIT: 0fbac1a0c6ebb7ecd72f0d7ae89c2b79eb3a12eb
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+        switch ($architecture) {
+          "X64" { $targetTriple = "x86_64-pc-windows-msvc" }
+          "Arm64" { $targetTriple = "aarch64-pc-windows-msvc" }
+          default { throw "Unsupported Windows architecture: $architecture" }
+        }
+
+        $libsDir = Join-Path $env:GITHUB_WORKSPACE "_demo\c\cargs\libs"
+        $includeDir = Join-Path $libsDir "include"
+        $libDir = Join-Path $libsDir "lib"
+        $pcDir = Join-Path $env:RUNNER_TEMP "llgo-pkgconfig"
+        New-Item -ItemType Directory -Force $includeDir, $libDir, $pcDir | Out-Null
+
+        $source = Join-Path $env:RUNNER_TEMP "cargs.c"
+        $baseUrl = "https://raw.githubusercontent.com/likle/cargs/$env:CARGS_COMMIT"
+        Invoke-WebRequest "$baseUrl/include/cargs.h" -OutFile (Join-Path $includeDir "cargs.h")
+        Invoke-WebRequest "$baseUrl/src/cargs.c" -OutFile $source
+
+        $object = Join-Path $env:RUNNER_TEMP "cargs.obj"
+        & $env:CC "--target=$targetTriple" -O2 -std=c11 `
+          "-I$includeDir" -c $source -o $object
+        if ($LASTEXITCODE -ne 0) {
+          throw "Compiling cargs failed with exit code $LASTEXITCODE"
+        }
+        & llvm-lib "/out:$(Join-Path $libDir 'cargs.lib')" $object
+        if ($LASTEXITCODE -ne 0) {
+          throw "Archiving cargs failed with exit code $LASTEXITCODE"
+        }
+
+        # A static MSVC library avoids a demo-only DLL search path. pkgconf's
+        # logical -lcargs entry is resolved by LLGo's Windows dependency path.
+        # Windows pkgconf relocates a variable named "prefix" relative to the
+        # .pc file by default. Keep these installation paths absolute because
+        # the metadata intentionally lives under RUNNER_TEMP, not the library.
+        $pcIncludeDir = $includeDir.Replace('\', '/')
+        $pcLibDir = $libDir.Replace('\', '/')
+        @"
+        libdir=$pcLibDir
+        includedir=$pcIncludeDir
+
+        Name: cargs
+        Description: A simple argument parser library
+        Version: 1.2.0
+        Libs: -L"`${libdir}" -lcargs
+        Cflags: -I"`${includedir}"
+        "@ | Set-Content -Encoding ascii (Join-Path $pcDir "cargs.pc")
+
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG_PATH=$pcDir;$env:PKG_CONFIG_PATH"
+
+    - name: Install Python demo dependencies on Unix
+      if: runner.os != 'Windows'
       shell: bash
       run: |
         set -euo pipefail
@@ -59,3 +122,38 @@ runs:
 
         echo "PKG_CONFIG_PATH=${pcdir}:${PKG_CONFIG_PATH:-}" >> "${GITHUB_ENV}"
         echo "LLGO_FULL_RPATH=true" >> "${GITHUB_ENV}"
+
+    - name: Install Python demo dependencies on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        python -m pip install numpy torch
+        if ($LASTEXITCODE -ne 0) {
+          throw "Installing Python demo dependencies failed with exit code $LASTEXITCODE"
+        }
+
+        $prefix = (& python -c "import sys; print(sys.base_prefix)").Trim()
+        $includeDir = (& python -c "import sysconfig; print(sysconfig.get_path('include'))").Trim()
+        $version = (& python -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')").Trim()
+        $libDir = Join-Path $prefix "libs"
+        $importLibrary = Join-Path $libDir "python$version.lib"
+        if (-not (Test-Path $importLibrary)) {
+          throw "Python import library was not found at $importLibrary"
+        }
+
+        $pcDir = Join-Path $env:RUNNER_TEMP "llgo-pkgconfig"
+        New-Item -ItemType Directory -Force $pcDir | Out-Null
+        $pcIncludeDir = $includeDir.Replace('\', '/')
+        $pcLibDir = $libDir.Replace('\', '/')
+        @"
+        libdir=$pcLibDir
+        includedir=$pcIncludeDir
+
+        Name: Python
+        Description: Python library for LLGo embedding demos
+        Version: 3.12
+        Libs: -L"`${libdir}" -lpython$version
+        Cflags: -I"`${includedir}"
+        "@ | Set-Content -Encoding ascii (Join-Path $pcDir "python3-embed.pc")
