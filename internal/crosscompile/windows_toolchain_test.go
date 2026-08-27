@@ -75,6 +75,11 @@ func TestResolveWindowsToolchainExplicitGNUProfile(t *testing.T) {
 	export, err := resolveWindowsToolchain("amd64", NativeToolchainInput{
 		CC:             cc,
 		ExternalLinker: extld,
+		Environ: []string{
+			"WindowsSDKVersion=10.0.26100.0\\",
+			"UCRTVersion=10.0.26100.0",
+			"VCToolsVersion=14.44.35207\\",
+		},
 	}, probe)
 	if err != nil {
 		t.Fatal(err)
@@ -84,6 +89,9 @@ func TestResolveWindowsToolchainExplicitGNUProfile(t *testing.T) {
 	}
 	if export.Toolchain.CRT != CRTFlavorUnknown || export.Toolchain.CXXRuntime != CXXRuntimeUnknown {
 		t.Fatalf("ambiguous GNU runtime was guessed: %+v", export.Toolchain)
+	}
+	if export.Toolchain.SDKVersion != "" || export.Toolchain.CRTVersion != "" || export.Toolchain.ToolsetVersion != "" {
+		t.Fatalf("GNU profile inherited the host MSVC environment: %+v", export.Toolchain)
 	}
 	if export.CXX != cxx[0] || !slices.Equal(export.CXXArgs, cxx[1:]) {
 		t.Fatalf("derived CXX = %q %q, want %q", export.CXX, export.CXXArgs, cxx)

@@ -51,9 +51,15 @@ func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe to
 	if err := requireClangGNUDriver("CC", cc, ccIdentity); err != nil {
 		return Export{}, err
 	}
-	toolchain.SDKVersion = windowsEnvironmentValue(input.Environ, "WindowsSDKVersion")
-	toolchain.CRTVersion = windowsEnvironmentValue(input.Environ, "UCRTVersion")
-	toolchain.ToolsetVersion = windowsEnvironmentValue(input.Environ, "VCToolsVersion")
+	// Visual Studio's developer variables identify only the MSVC dependency
+	// profile. A GNU/MinGW profile must obtain its CRT, C++ runtime, sysroot,
+	// and version identity from its own setup instead of inheriting the host's
+	// MSVC installation and cache identity.
+	if toolchain.ABI == PlatformABIMsvc {
+		toolchain.SDKVersion = windowsEnvironmentValue(input.Environ, "WindowsSDKVersion")
+		toolchain.CRTVersion = windowsEnvironmentValue(input.Environ, "UCRTVersion")
+		toolchain.ToolsetVersion = windowsEnvironmentValue(input.Environ, "VCToolsVersion")
+	}
 
 	// An unset CXX follows the profile selected by CC. This is important when
 	// an explicit CC selects MinGW: the host's default clang++ target must not
