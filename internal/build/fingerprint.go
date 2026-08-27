@@ -124,6 +124,12 @@ type commonSection struct {
 	ObjectFormat            string       `yaml:"OBJECT_FORMAT,omitempty"`
 	DriverFlavor            string       `yaml:"DRIVER_FLAVOR,omitempty"`
 	LinkerFlavor            string       `yaml:"LINKER_FLAVOR,omitempty"`
+	TargetTriple            string       `yaml:"TARGET_TRIPLE,omitempty"`
+	CRTFlavor               string       `yaml:"CRT_FLAVOR,omitempty"`
+	CXXRuntime              string       `yaml:"CXX_RUNTIME,omitempty"`
+	SDKVersion              string       `yaml:"SDK_VERSION,omitempty"`
+	CRTVersion              string       `yaml:"CRT_VERSION,omitempty"`
+	ToolsetVersion          string       `yaml:"TOOLSET_VERSION,omitempty"`
 	GoGlobalDCE             bool         `yaml:"GO_GLOBAL_DCE,omitempty"`
 	EnableLTOPlugin         bool         `yaml:"ENABLE_LTO_PLUGIN,omitempty"`
 	EmitDWARF               bool         `yaml:"EMIT_DWARF,omitempty"`
@@ -132,20 +138,31 @@ type commonSection struct {
 	SaturatingFloatToUint32 bool         `yaml:"SATURATING_FLOAT_TO_UINT32,omitempty"`
 	LocalContext            bool         `yaml:"LOCAL_CONTEXT,omitempty"`
 	CC                      string       `yaml:"CC,omitempty"`
+	CCArgs                  []string     `yaml:"CC_ARGS,omitempty"`
+	CCIdentity              string       `yaml:"CC_IDENTITY,omitempty"`
+	CXX                     string       `yaml:"CXX,omitempty"`
+	CXXArgs                 []string     `yaml:"CXX_ARGS,omitempty"`
+	CXXIdentity             string       `yaml:"CXX_IDENTITY,omitempty"`
 	CCFlags                 []string     `yaml:"CCFLAGS,omitempty"`
 	CFlags                  []string     `yaml:"CFLAGS,omitempty"`
 	LDFlags                 []string     `yaml:"LDFLAGS,omitempty"`
 	Linker                  string       `yaml:"LINKER,omitempty"`
+	LinkerArgs              []string     `yaml:"LINKER_ARGS,omitempty"`
+	LinkerIdentity          string       `yaml:"LINKER_IDENTITY,omitempty"`
 	ExtraFiles              []fileDigest `yaml:"EXTRA_FILES,omitempty"`
 }
 
 func (s *commonSection) empty() bool {
 	return s.AbiMode == "" && len(s.BuildTags) == 0 && s.Target == "" && s.TargetABI == "" &&
 		s.PlatformABI == "" && s.ObjectFormat == "" && s.DriverFlavor == "" && s.LinkerFlavor == "" &&
+		s.TargetTriple == "" && s.CRTFlavor == "" && s.CXXRuntime == "" &&
+		s.SDKVersion == "" && s.CRTVersion == "" && s.ToolsetVersion == "" &&
 		!s.GoGlobalDCE && !s.EnableLTOPlugin && !s.EmitDWARF && s.PCLNMode == "" &&
 		!s.DisableBoundsChecks && !s.SaturatingFloatToUint32 && !s.LocalContext &&
-		s.CC == "" && len(s.CCFlags) == 0 && len(s.CFlags) == 0 && len(s.LDFlags) == 0 &&
-		s.Linker == "" && len(s.ExtraFiles) == 0
+		s.CC == "" && len(s.CCArgs) == 0 && s.CCIdentity == "" && s.CXX == "" &&
+		len(s.CXXArgs) == 0 && s.CXXIdentity == "" && len(s.CCFlags) == 0 &&
+		len(s.CFlags) == 0 && len(s.LDFlags) == 0 && s.Linker == "" &&
+		len(s.LinkerArgs) == 0 && s.LinkerIdentity == "" && len(s.ExtraFiles) == 0
 }
 
 type packageSection struct {

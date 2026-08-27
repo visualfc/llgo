@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/xgo-dev/llgo/internal/crosscompile/compile"
@@ -21,24 +22,33 @@ import (
 )
 
 type Export struct {
-	CC      string // Compiler to use
+	CC      string // C compiler executable
+	CCArgs  []string
+	CXX     string // C++ compiler executable
+	CXXArgs []string
 	CCFLAGS []string
 	CFLAGS  []string
 	LDFLAGS []string
+	// CompilerIdentity values are stable version strings used to keep cached
+	// packages separate when an explicit native toolchain changes.
+	CCIdentity  string
+	CXXIdentity string
 	// Toolchain records the ABI and flag dialect selected for native-format
 	// outputs. It is independent of the host shell and remains empty for named
 	// embedded/WebAssembly targets that drive their linker directly.
 	Toolchain NativeToolchain
 
 	// Additional fields from target configuration
-	BuildTags    []string
-	GOOS         string
-	GOARCH       string
-	Libc         string
-	Linker       string   // Linker to use (e.g., "ld.lld", "avr-ld")
-	ExtraFiles   []string // Extra files to compile and link (e.g., .s, .c files)
-	ClangRoot    string   // Root directory of custom clang installation
-	ClangBinPath string   // Path to clang binary directory
+	BuildTags      []string
+	GOOS           string
+	GOARCH         string
+	Libc           string
+	Linker         string // Linker to use (e.g., "ld.lld", "avr-ld")
+	LinkerArgs     []string
+	LinkerIdentity string
+	ExtraFiles     []string // Extra files to compile and link (e.g., .s, .c files)
+	ClangRoot      string   // Root directory of custom clang installation
+	ClangBinPath   string   // Path to clang binary directory
 
 	LLVMTarget   string // LLVM Target
 	TargetABI    string // RISC-V Target ABI (e.g., "lp64", "lp64d")
@@ -55,10 +65,16 @@ type Export struct {
 // produce a native object. Keep these choices explicit: in particular, a
 // Windows host does not imply either the MSVC or MinGW ABI.
 type NativeToolchain struct {
-	ABI          PlatformABI
-	ObjectFormat ObjectFormat
-	Driver       DriverFlavor
-	Linker       LinkerFlavor
+	ABI            PlatformABI
+	ObjectFormat   ObjectFormat
+	Driver         DriverFlavor
+	Linker         LinkerFlavor
+	TargetTriple   string
+	CRT            CRTFlavor
+	CXXRuntime     CXXRuntimeFlavor
+	SDKVersion     string
+	CRTVersion     string
+	ToolsetVersion string
 }
 
 type PlatformABI string
@@ -89,10 +105,25 @@ const (
 type LinkerFlavor string
 
 const (
-	LinkerFlavorUnknown LinkerFlavor = ""
-	LinkerFlavorELFLLD  LinkerFlavor = "ld.lld"
-	LinkerFlavorMachO   LinkerFlavor = "ld64.lld"
-	LinkerFlavorCOFFLLD LinkerFlavor = "lld-link"
+	LinkerFlavorUnknown  LinkerFlavor = ""
+	LinkerFlavorELFLLD   LinkerFlavor = "ld.lld"
+	LinkerFlavorMachO    LinkerFlavor = "ld64.lld"
+	LinkerFlavorCOFFLLD  LinkerFlavor = "lld-link"
+	LinkerFlavorMinGWLLD LinkerFlavor = "mingw-lld"
+)
+
+type CRTFlavor string
+
+const (
+	CRTFlavorUnknown CRTFlavor = ""
+	CRTFlavorUCRT    CRTFlavor = "ucrt"
+)
+
+type CXXRuntimeFlavor string
+
+const (
+	CXXRuntimeUnknown CXXRuntimeFlavor = ""
+	CXXRuntimeMSVC    CXXRuntimeFlavor = "msvc"
 )
 
 // DebugInfoPolicy describes how a selected linker handles debug information.
@@ -134,7 +165,7 @@ func nativeToolchain(goos string) NativeToolchain {
 
 func nativeDebugInfoPolicy(toolchain NativeToolchain) DebugInfoPolicy {
 	switch toolchain.Linker {
-	case LinkerFlavorMachO, LinkerFlavorELFLLD:
+	case LinkerFlavorMachO, LinkerFlavorELFLLD, LinkerFlavorMinGWLLD:
 		return DebugInfoPolicy{OmitLinkFlags: []string{"-Wl,-S"}}
 	case LinkerFlavorCOFFLLD:
 		return DebugInfoPolicy{
@@ -382,6 +413,13 @@ func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
 	case ObjectFormatMachO:
 		return nil, []string{"-Xlinker", "-dead_strip"}
 	case ObjectFormatCOFF:
+		if toolchain.ABI == PlatformABIGNU {
+			return []string{"-fdata-sections", "-ffunction-sections"}, []string{
+				"-fdata-sections",
+				"-ffunction-sections",
+				"-Wl,--gc-sections",
+			}
+		}
 		return []string{"-fdata-sections", "-ffunction-sections"}, []string{
 			"-fdata-sections",
 			"-ffunction-sections",
@@ -411,6 +449,10 @@ func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Le
 }
 
 func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
+	return useWithGOARMAndToolchain(goos, goarch, goarm, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE, NativeToolchainInput{})
+}
+
+func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool, nativeInput NativeToolchainInput) (export Export, err error) {
 	targetTriple := llvm.GetTargetTripleWithGOARM(goos, goarch, goarm)
 	llgoRoot := env.LLGoROOT()
 
@@ -429,10 +471,24 @@ func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, l
 	}
 
 	if runtime.GOOS == goos && runtime.GOARCH == goarch {
-		export.Toolchain = nativeToolchain(goos)
+		if goos == "windows" {
+			export, err = resolveWindowsToolchain(goarch, nativeInput, probeNativeTool)
+			if err != nil {
+				return
+			}
+			targetTriple = export.Toolchain.TargetTriple
+			// Native Windows tool selection is authoritative. An embedded
+			// toolchain cached below LLGO_ROOT must not leak include or library
+			// paths into this profile.
+			clangRoot = ""
+			export.ClangRoot = ""
+		} else {
+			export.Toolchain = nativeToolchain(goos)
+		}
 		export.DebugInfo = nativeDebugInfoPolicy(export.Toolchain)
 		// not cross compile
 		// Set up basic flags for non-cross-compile
+		externalLDFlags := slices.Clone(export.LDFLAGS)
 		export.LDFLAGS = []string{
 			"-target", targetTriple,
 			"-Qunused-arguments",
@@ -489,6 +545,7 @@ func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, l
 		ccflags, ldflags := nativeSectionFlags(export.Toolchain)
 		export.CCFLAGS = append(export.CCFLAGS, ccflags...)
 		export.LDFLAGS = append(export.LDFLAGS, ldflags...)
+		export.LDFLAGS = append(export.LDFLAGS, externalLDFlags...)
 		return
 	}
 	if goarch != "wasm" {
@@ -927,8 +984,15 @@ func Use(goos, goarch, targetName string, wasiThreads, forceEspClang bool, level
 // setting affects native GOARCH=arm clang and linker triples; named targets
 // retain their target configuration's LLVM triple.
 func UseWithGOARM(goos, goarch, goarm, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
+	return UseWithGOARMAndToolchain(goos, goarch, goarm, targetName, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE, NativeToolchainInput{})
+}
+
+// UseWithGOARMAndToolchain is UseWithGOARM with explicit Go-compatible native
+// compiler commands. Named -target configurations intentionally ignore these
+// host commands and preserve their existing toolchain selection.
+func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool, nativeInput NativeToolchainInput) (export Export, err error) {
 	if targetName != "" && !strings.HasPrefix(targetName, "wasm") && !strings.HasPrefix(targetName, "wasi") {
 		return UseTarget(targetName, level, ltoMode)
 	}
-	return useWithGOARM(goos, goarch, goarm, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+	return useWithGOARMAndToolchain(goos, goarch, goarm, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE, nativeInput)
 }

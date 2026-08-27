@@ -54,6 +54,55 @@ func newTestCmd(config Config) *Cmd {
 	return cmd
 }
 
+func TestConfiguredCommandPrefixes(t *testing.T) {
+	config := Config{
+		CC:         os.Args[0],
+		CCArgs:     []string{"--cc-prefix"},
+		CXX:        os.Args[0],
+		CXXArgs:    []string{"--cxx-prefix"},
+		Linker:     os.Args[0],
+		LinkerArgs: []string{"--link-prefix"},
+		CCFLAGS:    []string{"-O2"},
+		LDFLAGS:    []string{"-Wl,test"},
+	}
+	for _, test := range []struct {
+		name string
+		cmd  *Cmd
+		run  func(*Cmd) error
+		want string
+	}{
+		{name: "CC", cmd: NewCompiler(config), run: func(cmd *Cmd) error { return cmd.Compile("-c", "file.c") }, want: "--cc-prefix -O2 -c file.c"},
+		{name: "CXX", cmd: NewCXXCompiler(config), run: func(cmd *Cmd) error { return cmd.Compile("-c", "file.cpp") }, want: "--cxx-prefix -O2 -c file.cpp"},
+		{name: "linker", cmd: NewLinker(config), run: func(cmd *Cmd) error { return cmd.Link("file.o") }, want: "--link-prefix -Wl,test file.o"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			test.cmd.Env = append(os.Environ(), clangTestHelperEnv+"=1")
+			test.cmd.Stdout = &output
+			if err := test.run(test.cmd); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(output.String()); got != test.want {
+				t.Fatalf("command = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestCXXCompilerFallsBackToCCCommand(t *testing.T) {
+	config := Config{CC: os.Args[0], CCArgs: []string{"--cc-prefix"}}
+	cmd := NewCXXCompiler(config)
+	var output bytes.Buffer
+	cmd.Env = append(os.Environ(), clangTestHelperEnv+"=1")
+	cmd.Stdout = &output
+	if err := cmd.Compile("-c", "file.cpp"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(output.String()), "--cc-prefix -c file.cpp"; got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+}
+
 func TestWriteWindowsResponseArg(t *testing.T) {
 	tests := []struct {
 		arg  string

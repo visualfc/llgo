@@ -32,10 +32,14 @@ import (
 // Config represents clang configuration parameters.
 type Config struct {
 	CC                string   // Compiler to use (e.g., "clang", "clang++")
+	CCArgs            []string // Arguments that are part of the CC command
+	CXX               string   // C++ compiler to use
+	CXXArgs           []string // Arguments that are part of the CXX command
 	CCFLAGS           []string // Compiler flags for C/C++ compilation
 	CFLAGS            []string // C-specific flags
 	LDFLAGS           []string // Linker flags
 	Linker            string   // Linker to use (e.g., "ld.lld", "avr-ld")
+	LinkerArgs        []string // Arguments that are part of the linker command
 	ResponseFileStyle ResponseFileStyle
 }
 
@@ -63,29 +67,35 @@ func NewConfig(cc string, ccflags, cflags, ldflags []string, linker string) Conf
 
 // Cmd represents a clang command with environment and configuration support.
 type Cmd struct {
-	app     string
-	config  Config
-	Dir     string
-	Env     []string
-	Verbose bool
-	Stdin   io.Reader
-	Stdout  io.Writer
-	Stderr  io.Writer
+	app        string
+	prefixArgs []string
+	config     Config
+	Dir        string
+	Env        []string
+	Verbose    bool
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
 }
 
 // New creates a new clang command with configuration.
 func New(app string, config Config) *Cmd {
+	return newWithArgs(app, nil, config)
+}
+
+func newWithArgs(app string, args []string, config Config) *Cmd {
 	if app == "" {
 		app = "clang"
 	}
 	return &Cmd{
-		app:     app,
-		config:  config,
-		Env:     nil,
-		Verbose: false,
-		Stdin:   nil,
-		Stdout:  os.Stdout,
-		Stderr:  os.Stderr,
+		app:        app,
+		prefixArgs: slices.Clone(args),
+		config:     config,
+		Env:        nil,
+		Verbose:    false,
+		Stdin:      nil,
+		Stdout:     os.Stdout,
+		Stderr:     os.Stderr,
 	}
 }
 
@@ -95,18 +105,23 @@ func NewCompiler(config Config) *Cmd {
 	if config.CC != "" {
 		app = config.CC
 	}
-	return New(app, config)
+	return newWithArgs(app, config.CCArgs, config)
+}
+
+// NewCXXCompiler creates a C++ compiler command with proper flag merging.
+func NewCXXCompiler(config Config) *Cmd {
+	if config.CXX != "" {
+		return newWithArgs(config.CXX, config.CXXArgs, config)
+	}
+	return NewCompiler(config)
 }
 
 // NewLinker creates a linker command with proper flag merging.
 func NewLinker(config Config) *Cmd {
-	app := "clang"
 	if config.Linker != "" {
-		app = config.Linker
-	} else if config.CC != "" {
-		app = config.CC
+		return newWithArgs(config.Linker, config.LinkerArgs, config)
 	}
-	return New(app, config)
+	return NewCompiler(config)
 }
 
 // Compile executes a compilation command with merged flags.
@@ -228,6 +243,11 @@ func (c *Cmd) mergeLinkerFlags() []string {
 
 // exec executes the clang command with given arguments.
 func (c *Cmd) exec(args ...string) error {
+	if len(c.prefixArgs) != 0 {
+		allArgs := make([]string, 0, len(c.prefixArgs)+len(args))
+		allArgs = append(allArgs, c.prefixArgs...)
+		args = append(allArgs, args...)
+	}
 	responseFile := ""
 	if useResponseFile(c.app, args) {
 		var err error

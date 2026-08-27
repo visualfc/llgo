@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -134,6 +135,12 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	m.common.ObjectFormat = string(c.crossCompile.Toolchain.ObjectFormat)
 	m.common.DriverFlavor = string(c.crossCompile.Toolchain.Driver)
 	m.common.LinkerFlavor = string(c.crossCompile.Toolchain.Linker)
+	m.common.TargetTriple = c.crossCompile.Toolchain.TargetTriple
+	m.common.CRTFlavor = string(c.crossCompile.Toolchain.CRT)
+	m.common.CXXRuntime = string(c.crossCompile.Toolchain.CXXRuntime)
+	m.common.SDKVersion = c.crossCompile.Toolchain.SDKVersion
+	m.common.CRTVersion = c.crossCompile.Toolchain.CRTVersion
+	m.common.ToolsetVersion = c.crossCompile.Toolchain.ToolsetVersion
 	m.common.GoGlobalDCE = c.buildConf.goGlobalDCEEnabled()
 	m.common.EnableLTOPlugin = c.buildConf.LTOPlugin.Enabled()
 	m.common.EmitDWARF = shouldEmitDebugInfo(c.buildConf, &c.crossCompile)
@@ -146,6 +153,17 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	if c.crossCompile.CC != "" {
 		m.common.CC = c.crossCompile.CC
 	}
+	if len(c.crossCompile.CCArgs) > 0 {
+		m.common.CCArgs = slices.Clone(c.crossCompile.CCArgs)
+	}
+	m.common.CCIdentity = c.crossCompile.CCIdentity
+	if c.crossCompile.CXX != "" {
+		m.common.CXX = c.crossCompile.CXX
+	}
+	if len(c.crossCompile.CXXArgs) > 0 {
+		m.common.CXXArgs = slices.Clone(c.crossCompile.CXXArgs)
+	}
+	m.common.CXXIdentity = c.crossCompile.CXXIdentity
 	if len(c.crossCompile.CCFLAGS) > 0 {
 		m.common.CCFlags = append([]string(nil), c.crossCompile.CCFLAGS...)
 	}
@@ -158,6 +176,10 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	if c.crossCompile.Linker != "" {
 		m.common.Linker = c.crossCompile.Linker
 	}
+	if len(c.crossCompile.LinkerArgs) > 0 {
+		m.common.LinkerArgs = slices.Clone(c.crossCompile.LinkerArgs)
+	}
+	m.common.LinkerIdentity = c.crossCompile.LinkerIdentity
 
 	// Extra files from target configuration
 	if len(c.crossCompile.ExtraFiles) > 0 {

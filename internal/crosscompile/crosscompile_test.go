@@ -651,7 +651,17 @@ func TestNativeWindowsExportFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if export.Toolchain != nativeToolchain("windows") {
+	wantTriple, err := windowsTargetTriple(runtime.GOARCH, PlatformABIMsvc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if export.Toolchain.ABI != PlatformABIMsvc ||
+		export.Toolchain.ObjectFormat != ObjectFormatCOFF ||
+		export.Toolchain.Driver != DriverFlavorClangGNU ||
+		export.Toolchain.Linker != LinkerFlavorCOFFLLD ||
+		export.Toolchain.TargetTriple != wantTriple ||
+		export.Toolchain.CRT != CRTFlavorUCRT ||
+		export.Toolchain.CXXRuntime != CXXRuntimeMSVC {
 		t.Fatalf("native Windows toolchain = %+v", export.Toolchain)
 	}
 	for _, want := range []string{
