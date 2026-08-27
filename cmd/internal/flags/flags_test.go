@@ -356,6 +356,22 @@ func TestBuildGoroutineStackSizeFlags(t *testing.T) {
 	}
 }
 
+func TestBuildPthreadStackSizeFlagPreservesDefaultWhenUnset(t *testing.T) {
+	fs := flag.NewFlagSet("pthread-stack-size-unset", flag.ContinueOnError)
+	fs.SetOutput(new(bytes.Buffer))
+	AddBuildFlags(fs)
+	if err := fs.Parse(nil); err != nil {
+		t.Fatalf("Parse unexpected error: %v", err)
+	}
+	conf := &build.Config{PthreadStackSize: 32 << 20}
+	if err := UpdateConfig(conf); err != nil {
+		t.Fatalf("UpdateConfig error: %v", err)
+	}
+	if conf.PthreadStackSize != 32<<20 {
+		t.Fatalf("conf.PthreadStackSize = %d, want %d", conf.PthreadStackSize, 32<<20)
+	}
+}
+
 func TestBuildGoroutineStackSizeFlagsRejectNegative(t *testing.T) {
 	for _, name := range []string{"goroutine-stack-size", "pthread-stack-size"} {
 		t.Run(name, func(t *testing.T) {
