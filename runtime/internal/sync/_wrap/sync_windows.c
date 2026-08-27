@@ -72,29 +72,59 @@ enum {
     llgo_timedout = 110,
 };
 
-typedef struct {
-    void *code;
-    void *context;
-} llgo_go_func;
+typedef void (*llgo_once_fn)(void);
+typedef void (*llgo_once_context_fn)(void *);
 
-extern void llgo_win_once_invoke(llgo_go_func *fn);
+typedef struct {
+    llgo_once_context_fn callback;
+    void *data;
+} llgo_once_call;
+
+typedef struct {
+    llgo_once_fn fn;
+} llgo_once_raw_call;
 
 static llgo_bool LLGO_WINAPI llgo_once_callback(
     llgo_init_once *once, void *parameter, void **context)
 {
+    llgo_once_call *call = (llgo_once_call *)parameter;
     (void)once;
     (void)context;
-    llgo_win_once_invoke((llgo_go_func *)parameter);
+    call->callback(call->data);
     return 1;
 }
 
-int llgo_win_once(llgo_init_once *once, llgo_go_func *fn)
+static int llgo_win_once_execute(llgo_init_once *once,
+                                 llgo_once_context_fn callback, void *data)
 {
-    if (fn == 0 || fn->code == 0)
+    llgo_once_call call;
+    if (callback == 0)
         return 87; /* ERROR_INVALID_PARAMETER */
-    if (InitOnceExecuteOnce(once, llgo_once_callback, fn, 0))
+    call.callback = callback;
+    call.data = data;
+    if (InitOnceExecuteOnce(once, llgo_once_callback, &call, 0))
         return 0;
     return (int)GetLastError();
+}
+
+static void llgo_win_once_invoke_raw(void *data)
+{
+    ((llgo_once_raw_call *)data)->fn();
+}
+
+int llgo_win_once(llgo_init_once *once, llgo_once_fn fn)
+{
+    llgo_once_raw_call call;
+    if (fn == 0)
+        return 87; /* ERROR_INVALID_PARAMETER */
+    call.fn = fn;
+    return llgo_win_once_execute(once, llgo_win_once_invoke_raw, &call);
+}
+
+int llgo_win_once_context(llgo_init_once *once,
+                          llgo_once_context_fn callback, void *data)
+{
+    return llgo_win_once_execute(once, callback, data);
 }
 
 void llgo_win_mutex_lock(llgo_srwlock *lock)

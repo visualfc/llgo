@@ -47,7 +47,7 @@ type Once struct {
 }
 
 // llgo:link (*Once).Do C.pthread_once
-func (o *Once) Do(f func()) c.Int { return 0 }
+func (o *Once) Do(f OnceFunc) c.Int { return 0 }
 
 // MutexAttr has the native layout of pthread_mutexattr_t.
 type MutexAttr struct {

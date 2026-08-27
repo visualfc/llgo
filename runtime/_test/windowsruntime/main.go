@@ -302,6 +302,12 @@ func checkWindowsRandomSource() {
 	}
 }
 
+var nativeOnceValue int
+
+func initializeNativeOnceValue() {
+	nativeOnceValue = 7
+}
+
 func main() {
 	values := make(chan int)
 	go func() {
@@ -313,10 +319,10 @@ func main() {
 
 	var once nativesync.Once
 	done := make(chan struct{}, 4)
-	onceValue := 0
+	nativeOnceValue = 0
 	for i := 0; i < 4; i++ {
 		go func() {
-			if result := once.Do(func() { onceValue = 7 }); result != 0 {
+			if result := once.Do(initializeNativeOnceValue); result != 0 {
 				panic("native once failed")
 			}
 			done <- struct{}{}
@@ -325,7 +331,7 @@ func main() {
 	for i := 0; i < 4; i++ {
 		<-done
 	}
-	if onceValue != 7 {
+	if nativeOnceValue != 7 {
 		panic("native once ran incorrectly")
 	}
 
