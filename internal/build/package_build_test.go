@@ -97,14 +97,18 @@ var content string
 	}}
 	ctx := &context{
 		conf:      &packages.Config{Fset: fset},
-		buildConf: &Config{},
+		buildConf: &Config{PrintPackages: true},
 	}
+	readStderr := captureStderr(t)
 	externs, err := preparePackageModule(ctx, pkg, true)
 	if err == nil || !strings.Contains(err.Error(), "only allowed in Go files that import") {
 		t.Fatalf("preparePackageModule embed error = %v", err)
 	}
 	if externs != nil {
 		t.Fatalf("preparePackageModule externs = %v, want nil", externs)
+	}
+	if got := readStderr(); got != "" {
+		t.Fatalf("stderr before package completion = %q, want empty", got)
 	}
 }
 

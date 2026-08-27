@@ -357,8 +357,9 @@ func UpdateConfig(conf *build.Config) error {
 	conf.PrintPackages = false
 	switch conf.Mode {
 	case build.ModeBuild:
-		// Match go build -v: print package names as they are compiled. The
-		// legacy LLGo compiler output is available through -compiler-verbose.
+		// Keep go build -v's package-only output, but report packages only after
+		// successful compilation. The legacy LLGo compiler output is available
+		// through -compiler-verbose.
 		conf.Verbose = CompilerVerbose
 		conf.PrintPackages = Verbose
 	case build.ModeTest:
