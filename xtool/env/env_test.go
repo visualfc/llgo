@@ -128,6 +128,39 @@ func TestExpandEnvToArgsWithFindsLLVMConfigInExplicitPath(t *testing.T) {
 	}
 }
 
+func TestNormalizeWindowsLLVMConfigOutput(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{
+			name:   "absolute libraries and duplicate search path",
+			output: `C:\LLVM\lib\LLVMCore.lib C:\LLVM\lib\libclang.lib -LIBPATH:C:\LLVM\lib`,
+			want:   `-LC:/LLVM/lib -lLLVMCore -lclang`,
+		},
+		{
+			name:   "quoted search path",
+			output: `"-LIBPATH:C:\Program Files\LLVM\lib" LLVMFileCheck.lib /DEBUG`,
+			want:   `-LC:/Program Files/LLVM/lib -lLLVMFileCheck /DEBUG`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := normalizeWindowsLLVMConfigOutput(test.output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("normalizeWindowsLLVMConfigOutput() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	if _, err := normalizeWindowsLLVMConfigOutput(`"unterminated`); err == nil {
+		t.Fatal("normalizeWindowsLLVMConfigOutput accepted invalid quoting")
+	}
+}
+
 func TestLookPathInEnvironmentBoundaries(t *testing.T) {
 	dir := t.TempDir()
 	toolName := "fixture-tool"

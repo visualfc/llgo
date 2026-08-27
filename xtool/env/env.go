@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -94,7 +95,14 @@ func expandEnvWithCmd(s, dir string, environ []string) (string, bool) {
 			return ""
 		}
 
-		return strings.Replace(strings.TrimSpace(string(out)), "\n", " ", -1)
+		output := strings.Replace(strings.TrimSpace(string(out)), "\n", " ", -1)
+		if cmd == "llvm-config" && runtime.GOOS == "windows" {
+			output, err = normalizeWindowsLLVMConfigOutput(output)
+			if err != nil {
+				return ""
+			}
+		}
+		return output
 	})
 	lookup := os.Getenv
 	if environ != nil {
@@ -109,6 +117,46 @@ func expandEnvWithCmd(s, dir string, environ []string) (string, bool) {
 		}
 	}
 	return strings.TrimSpace(os.Expand(expanded, lookup)), config
+}
+
+// normalizeWindowsLLVMConfigOutput translates llvm-config's MSVC-style
+// library output into flags accepted by Clang's GNU-compatible driver. The
+// upstream Windows archive prints absolute .lib paths and -LIBPATH:, whereas
+// LLGo's external-link specification consumes conventional -L/-l flags.
+func normalizeWindowsLLVMConfigOutput(output string) (string, error) {
+	fields, err := quoted.Split(strings.ReplaceAll(output, `\`, "/"))
+	if err != nil {
+		return "", fmt.Errorf("parse llvm-config output %q: %w", output, err)
+	}
+	flags := make([]string, 0, len(fields))
+	libDirs := make(map[string]struct{})
+	addLibDir := func(dir string) {
+		if dir == "" || dir == "." {
+			return
+		}
+		if _, ok := libDirs[dir]; ok {
+			return
+		}
+		libDirs[dir] = struct{}{}
+		flags = append(flags, "-L"+dir)
+	}
+	for _, field := range fields {
+		upper := strings.ToUpper(field)
+		if strings.HasPrefix(upper, "-LIBPATH:") {
+			addLibDir(field[len("-LIBPATH:"):])
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(field), ".lib") {
+			dir, file := path.Split(field)
+			addLibDir(strings.TrimSuffix(dir, "/"))
+			name := strings.TrimSuffix(file, path.Ext(file))
+			name = strings.TrimPrefix(name, "lib")
+			flags = append(flags, "-l"+name)
+			continue
+		}
+		flags = append(flags, field)
+	}
+	return strings.Join(flags, " "), nil
 }
 
 // PkgConfigCommand returns the pkg-config executable selected by PKG_CONFIG.
