@@ -34,7 +34,11 @@ func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe to
 	if err != nil {
 		return Export{}, err
 	}
-	cc := commandOrDefault(input.CC, "clang", "--target="+defaultTarget)
+	// The native dependency profile uses a dynamic Windows vcpkg triplet, whose
+	// libraries and the upstream full-target LLVM archive use the dynamic MSVC
+	// runtime. Keep the implicit compiler profile link-compatible with them;
+	// explicit CC/CXX commands remain the caller's choice.
+	cc := commandOrDefault(input.CC, "clang", "--target="+defaultTarget, "-fms-runtime-lib=dll")
 
 	ccIdentity, err := probe(cc, input)
 	if err != nil {
@@ -54,7 +58,11 @@ func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe to
 	// An unset CXX follows the profile selected by CC. This is important when
 	// an explicit CC selects MinGW: the host's default clang++ target must not
 	// silently switch the C++ half of the build back to MSVC.
-	cxx := commandOrDefault(input.CXX, "clang++", "--target="+toolchain.TargetTriple)
+	cxxDefault := []string{"clang++", "--target=" + toolchain.TargetTriple}
+	if toolchain.ABI == PlatformABIMsvc {
+		cxxDefault = append(cxxDefault, "-fms-runtime-lib=dll")
+	}
+	cxx := commandOrDefault(input.CXX, cxxDefault...)
 	cxxIdentity, err := probe(cxx, input)
 	if err != nil {
 		return Export{}, fmt.Errorf("probe CXX %q: %w", cxx[0], err)

@@ -12,8 +12,8 @@ import (
 
 func TestResolveWindowsToolchainDefaultsToMSVC(t *testing.T) {
 	probe := fixedToolProbe(t, map[string]toolIdentity{
-		commandKey("clang", "--target=x86_64-pc-windows-msvc"):   {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
-		commandKey("clang++", "--target=x86_64-pc-windows-msvc"): {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
+		commandKey("clang", "--target=x86_64-pc-windows-msvc", "-fms-runtime-lib=dll"):   {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
+		commandKey("clang++", "--target=x86_64-pc-windows-msvc", "-fms-runtime-lib=dll"): {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
 	})
 	input := NativeToolchainInput{
 		ExternalFlags: []string{"/incremental:no"},
@@ -42,10 +42,10 @@ func TestResolveWindowsToolchainDefaultsToMSVC(t *testing.T) {
 	if export.Toolchain != wantToolchain {
 		t.Fatalf("Toolchain = %+v, want %+v", export.Toolchain, wantToolchain)
 	}
-	if export.CC != "clang" || !slices.Equal(export.CCArgs, []string{"--target=x86_64-pc-windows-msvc"}) {
+	if export.CC != "clang" || !slices.Equal(export.CCArgs, []string{"--target=x86_64-pc-windows-msvc", "-fms-runtime-lib=dll"}) {
 		t.Fatalf("CC command = %q %q", export.CC, export.CCArgs)
 	}
-	if export.CXX != "clang++" || !slices.Equal(export.CXXArgs, []string{"--target=x86_64-pc-windows-msvc"}) {
+	if export.CXX != "clang++" || !slices.Equal(export.CXXArgs, []string{"--target=x86_64-pc-windows-msvc", "-fms-runtime-lib=dll"}) {
 		t.Fatalf("CXX command = %q %q", export.CXX, export.CXXArgs)
 	}
 	if export.CCIdentity != "clang version 19.1.7" || export.CXXIdentity != "clang version 19.1.7" {
