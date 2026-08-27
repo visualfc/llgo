@@ -1,0 +1,5 @@
+main.S
+Metadata
+func() string
+true
+Metadata
