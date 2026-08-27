@@ -2766,7 +2766,10 @@ func TestGlobalConstLiterals(t *testing.T) {
 }
 
 func TestSetjmpReturnsTwice(t *testing.T) {
-	prog := NewProgram(nil)
+	// Keep this generic C setjmp check independent of the test host. Windows
+	// uses architecture-specific UCRT entry points, which are covered by the
+	// Windows ABI tests in eh_patch_test.go.
+	prog := NewProgram(&Target{GOOS: "linux", GOARCH: "amd64"})
 	pkg := prog.NewPackage("bar", "foo/bar")
 
 	// func test(jmpbuf unsafe.Pointer) int32
