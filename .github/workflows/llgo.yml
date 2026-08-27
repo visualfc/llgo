@@ -101,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           export LLGO_FULL_RPATH=false
-          pkg-config --libs cargs
+          "$PKG_CONFIG" --libs cargs
           (cd ./_demo/c/cargs && llgo run .)
 
       - name: Test demos
