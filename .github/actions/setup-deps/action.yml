@@ -16,7 +16,7 @@ runs:
     - name: Cache standalone Windows LLVM archive
       if: runner.os == 'Windows' && inputs.install-llvm == 'true'
       id: windows_llvm_cache
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-downloads\clang+llvm-19.1.7-x86_64-pc-windows-msvc.tar.xz
         key: llgo-llvm-19.1.7-x86_64-pc-windows-msvc-b4557b4f012161f56a2f5d9e877ab9635cafd7a08f7affe14829bd60c9d357f0
@@ -48,10 +48,17 @@ runs:
           throw "LLVM archive SHA-256 is $actual, want $env:LLVM_ARCHIVE_SHA256"
         }
 
+    - name: Save standalone Windows LLVM archive
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && steps.windows_llvm_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}\llgo-downloads\clang+llvm-19.1.7-x86_64-pc-windows-msvc.tar.xz
+        key: llgo-llvm-19.1.7-x86_64-pc-windows-msvc-b4557b4f012161f56a2f5d9e877ab9635cafd7a08f7affe14829bd60c9d357f0
+
     - name: Cache Windows MSVC dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true'
       id: windows_vcpkg_cache
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
         key: llgo-vcpkg-x64-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
@@ -92,6 +99,13 @@ runs:
         if ($LASTEXITCODE -ne 0) {
           throw "Installing vcpkg dependencies failed with exit code $LASTEXITCODE"
         }
+
+    - name: Save Windows MSVC dependencies
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && steps.windows_vcpkg_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}\llgo-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+        key: llgo-vcpkg-x64-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Configure standalone Windows LLVM, SDK, and dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true'
@@ -222,7 +236,7 @@ runs:
         if ($target -ne "x86_64-pc-windows-msvc") {
           throw "Standalone Clang defaults to $target, want x86_64-pc-windows-msvc"
         }
-        $builtins = (& (Join-Path $llvmBin "clang.exe") --target=x86_64-pc-windows-msvc -print-libgcc-file-name).Trim()
+        $builtins = (& (Join-Path $llvmBin "clang.exe") --target=x86_64-pc-windows-msvc --rtlib=compiler-rt -print-libgcc-file-name).Trim()
         if (-not (Test-Path $builtins)) {
           throw "Clang's MSVC compiler-rt builtins were not found at $builtins"
         }
