@@ -1,4 +1,4 @@
-//go:build llgo_pclntab_external && darwin
+//go:build darwin
 
 package runtime
 
