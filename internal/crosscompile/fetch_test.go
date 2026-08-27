@@ -969,8 +969,12 @@ func TestExtractTarXzError(t *testing.T) {
 	if err == nil {
 		t.Fatal("extractTarXz succeeded for a missing archive")
 	}
-	if !strings.Contains(err.Error(), "tar -xf:") {
-		t.Fatalf("extractTarXz error = %q, want tar command context", err)
+	want := "tar -xf:"
+	if runtime.GOOS == "windows" && windowsSevenZip(os.Getenv("ProgramFiles")) != "" {
+		want = "7-Zip xz decompression:"
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("extractTarXz error = %q, want %q command context", err, want)
 	}
 }
 
