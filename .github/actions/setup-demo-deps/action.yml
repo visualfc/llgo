@@ -77,7 +77,8 @@ runs:
         Invoke-WebRequest "$baseUrl/src/cargs.c" -OutFile $source
 
         $object = Join-Path $env:RUNNER_TEMP "cargs.obj"
-        & $env:CC "--target=$targetTriple" -O2 -std=c11 `
+        $compiler = (Get-Command clang.exe).Source
+        & $compiler "--target=$targetTriple" -O2 -std=c11 `
           "-I$includeDir" -c $source -o $object
         if ($LASTEXITCODE -ne 0) {
           throw "Compiling cargs failed with exit code $LASTEXITCODE"
