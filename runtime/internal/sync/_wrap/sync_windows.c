@@ -26,15 +26,7 @@ typedef unsigned int llgo_size_t;
 __declspec(dllimport) void LLGO_WINAPI
 AcquireSRWLockExclusive(llgo_srwlock *lock);
 __declspec(dllimport) void LLGO_WINAPI
-AcquireSRWLockShared(llgo_srwlock *lock);
-__declspec(dllimport) void LLGO_WINAPI
 ReleaseSRWLockExclusive(llgo_srwlock *lock);
-__declspec(dllimport) void LLGO_WINAPI
-ReleaseSRWLockShared(llgo_srwlock *lock);
-__declspec(dllimport) unsigned char LLGO_WINAPI
-TryAcquireSRWLockExclusive(llgo_srwlock *lock);
-__declspec(dllimport) unsigned char LLGO_WINAPI
-TryAcquireSRWLockShared(llgo_srwlock *lock);
 
 __declspec(dllimport) void LLGO_WINAPI
 WakeConditionVariable(llgo_condition_variable *condition);
@@ -66,23 +58,16 @@ __declspec(dllimport) llgo_dword LLGO_WINAPI GetLastError(void);
 #define LLGO_INFINITE ((llgo_dword)0xffffffffUL)
 
 enum {
-    llgo_error_busy = 16,
     llgo_error_invalid_parameter = 22,
     llgo_error_timeout = 1460,
     llgo_timedout = 110,
 };
 
 typedef void (*llgo_once_fn)(void);
-typedef void (*llgo_once_context_fn)(void *);
-
-typedef struct {
-    llgo_once_context_fn callback;
-    void *data;
-} llgo_once_call;
 
 typedef struct {
     llgo_once_fn fn;
-} llgo_once_raw_call;
+} llgo_once_call;
 
 static llgo_bool LLGO_WINAPI llgo_once_callback(
     llgo_init_once *once, void *parameter, void **context)
@@ -90,41 +75,19 @@ static llgo_bool LLGO_WINAPI llgo_once_callback(
     llgo_once_call *call = (llgo_once_call *)parameter;
     (void)once;
     (void)context;
-    call->callback(call->data);
+    call->fn();
     return 1;
-}
-
-static int llgo_win_once_execute(llgo_init_once *once,
-                                 llgo_once_context_fn callback, void *data)
-{
-    llgo_once_call call;
-    if (callback == 0)
-        return 87; /* ERROR_INVALID_PARAMETER */
-    call.callback = callback;
-    call.data = data;
-    if (InitOnceExecuteOnce(once, llgo_once_callback, &call, 0))
-        return 0;
-    return (int)GetLastError();
-}
-
-static void llgo_win_once_invoke_raw(void *data)
-{
-    ((llgo_once_raw_call *)data)->fn();
 }
 
 int llgo_win_once(llgo_init_once *once, llgo_once_fn fn)
 {
-    llgo_once_raw_call call;
+    llgo_once_call call;
     if (fn == 0)
         return 87; /* ERROR_INVALID_PARAMETER */
     call.fn = fn;
-    return llgo_win_once_execute(once, llgo_win_once_invoke_raw, &call);
-}
-
-int llgo_win_once_context(llgo_init_once *once,
-                          llgo_once_context_fn callback, void *data)
-{
-    return llgo_win_once_execute(once, callback, data);
+    if (InitOnceExecuteOnce(once, llgo_once_callback, &call, 0))
+        return 0;
+    return (int)GetLastError();
 }
 
 void llgo_win_mutex_lock(llgo_srwlock *lock)
@@ -133,46 +96,6 @@ void llgo_win_mutex_lock(llgo_srwlock *lock)
 }
 
 void llgo_win_mutex_unlock(llgo_srwlock *lock)
-{
-    ReleaseSRWLockExclusive(lock);
-}
-
-/*
- * github.com/goplus/lib/c/pthread/sync uses the same SRWLOCK layout as the
- * runtime. Keep its extended mutex and rwlock entry points in this object so
- * an LLGo process has one native synchronization backend instead of two.
- */
-int llgo_win_mutex_trylock(llgo_srwlock *lock)
-{
-    return TryAcquireSRWLockExclusive(lock) ? 0 : llgo_error_busy;
-}
-
-void llgo_win_rwlock_rlock(llgo_srwlock *lock)
-{
-    AcquireSRWLockShared(lock);
-}
-
-int llgo_win_rwlock_tryrlock(llgo_srwlock *lock)
-{
-    return TryAcquireSRWLockShared(lock) ? 0 : llgo_error_busy;
-}
-
-void llgo_win_rwlock_runlock(llgo_srwlock *lock)
-{
-    ReleaseSRWLockShared(lock);
-}
-
-void llgo_win_rwlock_lock(llgo_srwlock *lock)
-{
-    AcquireSRWLockExclusive(lock);
-}
-
-int llgo_win_rwlock_trylock(llgo_srwlock *lock)
-{
-    return TryAcquireSRWLockExclusive(lock) ? 0 : llgo_error_busy;
-}
-
-void llgo_win_rwlock_unlock(llgo_srwlock *lock)
 {
     ReleaseSRWLockExclusive(lock);
 }
