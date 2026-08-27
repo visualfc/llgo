@@ -1,5 +1,3 @@
-//go:build windows
-
 package main
 
 import llsync "github.com/goplus/lib/c/pthread/sync"
