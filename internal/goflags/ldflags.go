@@ -88,9 +88,6 @@ func ParseLinkFlags(buildFlags []string) (ParsedLinkFlags, error) {
 				opts.Options.ExternalLinker = linkFlags[i]
 			case strings.HasPrefix(linkFlag, "-extld="):
 				opts.Options.ExternalLinker = strings.TrimPrefix(linkFlag, "-extld=")
-				if opts.Options.ExternalLinker == "" {
-					return ParsedLinkFlags{}, fmt.Errorf("-extld requires a value")
-				}
 			case linkFlag == "-extldflags":
 				if i+1 >= len(linkFlags) {
 					return ParsedLinkFlags{}, fmt.Errorf("-extldflags requires a value")

@@ -64,7 +64,6 @@ func TestParseNativeToolchainInputErrors(t *testing.T) {
 		{name: "unterminated CC", environ: []string{"CC='clang"}, wantErr: "could not parse CC"},
 		{name: "empty CXX", environ: []string{"CXX=  "}, wantErr: "CXX requires a non-empty command"},
 		{name: "unterminated extld", options: LinkOptions{ExternalLinker: `'clang`}, wantErr: "could not parse -extld"},
-		{name: "empty extld", options: LinkOptions{ExternalLinker: "  "}, wantErr: "-extld requires a non-empty command"},
 		{name: "unterminated extldflags", options: LinkOptions{ExternalLinkerFlags: `'/debug`}, wantErr: "could not parse -extldflags"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -73,6 +72,19 @@ func TestParseNativeToolchainInputErrors(t *testing.T) {
 				t.Fatalf("error = %v, want substring %q", err, test.wantErr)
 			}
 		})
+	}
+}
+
+func TestParseNativeToolchainInputAcceptsEmptyLinkerFlags(t *testing.T) {
+	got, err := parseNativeToolchainInput(commandEnv{}, LinkOptions{
+		ExternalLinker:      "  ",
+		ExternalLinkerFlags: "\t",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ExternalLinker) != 0 || len(got.ExternalFlags) != 0 {
+		t.Fatalf("external inputs = %q, %q; want empty", got.ExternalLinker, got.ExternalFlags)
 	}
 }
 

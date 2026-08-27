@@ -918,14 +918,15 @@ func removeOutFmts(outFmts *OutFmtDetails) {
 func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crosscompile.NativeToolchainInput, error) {
 	input := crosscompile.NativeToolchainInput{Dir: commands.dir, Environ: slices.Clone(commands.environ)}
 	for _, setting := range []struct {
-		name  string
-		value string
-		out   *[]string
+		name       string
+		value      string
+		out        *[]string
+		allowEmpty bool
 	}{
 		{name: "CC", value: commands.lookup("CC"), out: &input.CC},
 		{name: "CXX", value: commands.lookup("CXX"), out: &input.CXX},
-		{name: "-extld", value: options.ExternalLinker, out: &input.ExternalLinker},
-		{name: "-extldflags", value: options.ExternalLinkerFlags, out: &input.ExternalFlags},
+		{name: "-extld", value: options.ExternalLinker, out: &input.ExternalLinker, allowEmpty: true},
+		{name: "-extldflags", value: options.ExternalLinkerFlags, out: &input.ExternalFlags, allowEmpty: true},
 	} {
 		if setting.value == "" {
 			continue
@@ -935,6 +936,9 @@ func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crossc
 			return crosscompile.NativeToolchainInput{}, fmt.Errorf("could not parse %s value %q: %w", setting.name, setting.value, err)
 		}
 		if len(args) == 0 {
+			if setting.allowEmpty {
+				continue
+			}
 			return crosscompile.NativeToolchainInput{}, fmt.Errorf("%s requires a non-empty command or argument list", setting.name)
 		}
 		*setting.out = args

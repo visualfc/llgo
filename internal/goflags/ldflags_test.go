@@ -133,6 +133,16 @@ func TestParseLinkFlagsExternalLinker(t *testing.T) {
 	}
 }
 
+func TestParseLinkFlagsEmptyExternalLinkerValues(t *testing.T) {
+	opts, err := ParseLinkFlags([]string{`-ldflags=-extld= -extldflags=`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Options.ExternalLinker != "" || opts.Options.ExternalLinkerFlags != "" {
+		t.Fatalf("options = %+v, want empty external linker values", opts.Options)
+	}
+}
+
 func TestParseLinkFlagsBoolSpellings(t *testing.T) {
 	trueValues := []string{"1", "t", "T", "true", "TRUE", "True"}
 	for _, value := range trueValues {
@@ -176,7 +186,6 @@ func TestParseLinkFlagsErrors(t *testing.T) {
 		{name: "invalid s boolean", flags: []string{"-ldflags=-s=maybe"}},
 		{name: "invalid w boolean", flags: []string{"-ldflags=-w=yes"}},
 		{name: "missing extld value", flags: []string{"-ldflags=-extld"}},
-		{name: "empty extld value", flags: []string{"-ldflags=-extld="}},
 		{name: "missing extldflags value", flags: []string{"-ldflags=-extldflags"}},
 		{name: "unterminated quote", flags: []string{`-ldflags=-s '-w=false`}},
 	}
