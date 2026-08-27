@@ -80,16 +80,16 @@ jobs:
           set -euo pipefail
 
           test "$(command -v llgo)" = "$RUNNER_TEMP/llgo-stage2/llgo"
-          llgo test -timeout=10m ./test/std/io/ioutil
-          llgo test -timeout=10m -run '^TestRuntimeGMPLinks$' ./test/llgoext
+          LLGO_BUILD_CACHE=off llgo test -timeout=10m ./test/std/io/ioutil
+          LLGO_BUILD_CACHE=off llgo test -timeout=10m -run '^TestRuntimeGMPLinks$' ./test/llgoext
 
       - name: Run demos with stage 2
         run: |
           set -euo pipefail
 
           test "$(command -v llgo)" = "$RUNNER_TEMP/llgo-stage2/llgo"
-          (cd _demo/go && llgo run ./stdlib)
-          (cd _demo/c && llgo run ./hello)
+          (cd _demo/go && LLGO_BUILD_CACHE=off llgo run ./stdlib)
+          (cd _demo/c && LLGO_BUILD_CACHE=off llgo run ./hello)
 
   llgo:
     permissions:
