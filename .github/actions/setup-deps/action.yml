@@ -250,6 +250,52 @@ runs:
         Libs: $ldflags
         "@ | Set-Content -Encoding ascii (Join-Path $pcDir "llvm-${{ inputs.llvm-version }}.pc")
 
+        # Upstream Windows LLVM release archives contain LLVMFileCheck.lib but
+        # omit the FileCheck executable used by LLGo's IR regression tests.
+        # Build that utility from its matching, hash-pinned upstream source so
+        # the native CI lane does not depend on an MSYS2 LLVM tools package.
+        $fileCheckRoot = Join-Path $env:RUNNER_TEMP "llgo-filecheck"
+        $fileCheckSource = Join-Path $fileCheckRoot "FileCheck.cpp"
+        $fileCheck = Join-Path $fileCheckRoot "FileCheck.exe"
+        $fileCheckSourceSHA256 = "7a0d8a2989d497b679efdc93244300ba4c7cad531ba90ba82c0af106cf864466"
+        New-Item -ItemType Directory -Force $fileCheckRoot | Out-Null
+        $fileCheckURL = "https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-$env:LLVM_VERSION/llvm/utils/FileCheck/FileCheck.cpp"
+        & curl.exe --fail --location --retry 5 --retry-all-errors --output $fileCheckSource $fileCheckURL
+        if ($LASTEXITCODE -ne 0) {
+          throw "Downloading FileCheck source failed with exit code $LASTEXITCODE"
+        }
+        $fileCheckSourceActual = (Get-FileHash -Algorithm SHA256 $fileCheckSource).Hash
+        if (-not $fileCheckSourceActual.Equals($fileCheckSourceSHA256, [StringComparison]::OrdinalIgnoreCase)) {
+          throw "FileCheck source SHA-256 is $fileCheckSourceActual, want $fileCheckSourceSHA256"
+        }
+        $fileCheckLibraries = @("LLVMFileCheck.lib", "LLVMSupport.lib", "LLVMDemangle.lib") |
+          ForEach-Object { Join-Path $llvmLibDir $_ }
+        foreach ($library in $fileCheckLibraries) {
+          if (-not (Test-Path $library)) {
+            throw "FileCheck dependency was not found: $library"
+          }
+        }
+        $llvmIncludeDir = Join-Path $llvmRoot "include"
+        & (Join-Path $llvmBin "clang++.exe") `
+          --target=x86_64-pc-windows-msvc `
+          -fuse-ld=lld `
+          -fms-runtime-lib=dll `
+          -std=c++17 `
+          "-I$llvmIncludeDir" `
+          $fileCheckSource `
+          $fileCheckLibraries `
+          $systemLibNames `
+          -o $fileCheck
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $fileCheck)) {
+          throw "Building the native FileCheck utility failed with exit code $LASTEXITCODE"
+        }
+        $fileCheckInput = Join-Path $fileCheckRoot "smoke.txt"
+        "CHECK: llgo-filecheck" | Set-Content -Encoding ascii $fileCheckInput
+        "llgo-filecheck" | & $fileCheck $fileCheckInput
+        if ($LASTEXITCODE -ne 0) {
+          throw "The native FileCheck smoke test failed with exit code $LASTEXITCODE"
+        }
+
         $pcDirs = @(
           $pcDir,
           (Join-Path $vcpkgTripletRoot "lib\pkgconfig"),
@@ -268,6 +314,7 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "PKG_CONFIG=$pkgconf"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_LLVM_ROOT=$llvmRoot"
+        Add-Content -Encoding utf8 $env:GITHUB_PATH $fileCheckRoot
         Add-Content -Encoding utf8 $env:GITHUB_PATH $llvmBin
         Add-Content -Encoding utf8 $env:GITHUB_PATH (Split-Path $pkgconf)
         Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $vcpkgTripletRoot "bin")
