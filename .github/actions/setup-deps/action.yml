@@ -68,10 +68,11 @@ runs:
         $installRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-vcpkg\$env:VCPKG_MANIFEST_HASH"
         $manifestRoot = Join-Path $env:GITHUB_WORKSPACE ".github\windows\vcpkg"
 
-        # Version overrides refer to historical Git tree objects. Keep a
-        # blob-filtered Git repository rather than a source ZIP so vcpkg can
-        # materialize the pinned libffi port through its versions database.
-        & git clone --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg.git $sourceRoot
+        # Version overrides refer to historical Git tree objects. Keep the
+        # complete Git object database rather than a source ZIP or partial
+        # clone so vcpkg does not need a second network request while it
+        # materializes the pinned libffi port.
+        & git clone --no-checkout https://github.com/microsoft/vcpkg.git $sourceRoot
         if ($LASTEXITCODE -ne 0) {
           throw "Cloning vcpkg failed with exit code $LASTEXITCODE"
         }
