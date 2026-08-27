@@ -4,4 +4,4 @@ go 1.20
 
 require github.com/goplus/lib v0.3.1
 
-replace github.com/goplus/lib => github.com/cpunion/lib v0.0.0-20260827140004-ee1d302f0713
+replace github.com/goplus/lib => github.com/cpunion/lib v0.0.0-20260827140553-9e4cab6e8e45
