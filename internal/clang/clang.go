@@ -143,12 +143,12 @@ func (c *Cmd) Link(args ...string) error {
 	return c.exec(allArgs...)
 }
 
-// resolveMSVCImportLibraries lets clang's MSVC driver consume GNU-named COFF
-// import archives installed by environments such as MSYS2. The driver lowers
-// -lname to name.lib and lets the linker search every -L directory for that
-// exact spelling; it does not probe libname.dll.a per directory. Preserve that
-// behavior by preferring name.lib anywhere on the explicit search path, and
-// only replace -lname when libname.dll.a is the sole available spelling.
+// resolveMSVCImportLibraries lets clang's MSVC driver consume library names
+// emitted for Unix-compatible -l flags. The driver lowers -lname to name.lib
+// and lets the linker search every -L directory for that exact spelling; it
+// does not probe libname.lib or libname.dll.a per directory. Preserve that
+// behavior by preferring name.lib anywhere on the explicit search path, then
+// replace -lname with the first alternative spelling that exists.
 func resolveMSVCImportLibraries(baseDir string, args []string) []string {
 	if !slices.ContainsFunc(args, func(arg string) bool {
 		return strings.Contains(arg, "-windows-msvc")
@@ -174,7 +174,11 @@ func resolveMSVCImportLibraries(baseDir string, args []string) []string {
 		if findLibrary(baseDir, dirs, name+".lib") != "" {
 			continue
 		}
-		if archive := findLibrary(baseDir, dirs, "lib"+name+".dll.a"); archive != "" {
+		archive := findLibrary(baseDir, dirs, "lib"+name+".lib")
+		if archive == "" {
+			archive = findLibrary(baseDir, dirs, "lib"+name+".dll.a")
+		}
+		if archive != "" {
 			if !changed {
 				resolved = slices.Clone(args)
 				changed = true

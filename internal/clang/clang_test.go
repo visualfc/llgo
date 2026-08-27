@@ -154,9 +154,10 @@ func TestResolveMSVCImportLibraries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	clangImport := filepath.Join(root, "first", "libclang.dll.a")
+	clangImport := filepath.Join(root, "first", "libclang.lib")
 	for _, file := range []string{
 		clangImport,
+		filepath.Join(root, "first", "libgnu.dll.a"),
 		filepath.Join(root, "first", "libnative.dll.a"),
 		filepath.Join(root, "second", "native.lib"),
 	} {
@@ -164,11 +165,11 @@ func TestResolveMSVCImportLibraries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	args := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", "-lclang", "-lnative", "-lmissing", "-l:exact.a"}
+	args := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", "-lclang", "-lgnu", "-lnative", "-lmissing", "-l:exact.a"}
 	// Keep -lnative because the MSVC driver resolves it as native.lib across
 	// the complete search path, even though an earlier directory contains the
 	// GNU-only libnative.dll.a spelling.
-	want := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", clangImport, "-lnative", "-lmissing", "-l:exact.a"}
+	want := []string{"-target", "x86_64-pc-windows-msvc", "-Lfirst", "-L", "second", clangImport, filepath.Join(root, "first", "libgnu.dll.a"), "-lnative", "-lmissing", "-l:exact.a"}
 	if got := resolveMSVCImportLibraries(root, args); !slices.Equal(got, want) {
 		t.Fatalf("resolved libraries = %q, want %q", got, want)
 	}
