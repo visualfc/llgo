@@ -33,7 +33,19 @@ func os_runtime_args() []string {
 		args = append(args, c.GoString(p))
 	}
 	if executablePath == "" {
-		executablePath = externalPCLNExecutablePath()
+		// Darwin puts the executable path in the first Apple vector entry,
+		// after argv, envv, and their terminating nil pointers.
+		n := argc + 1
+		for c.Index(c.Argv, n) != nil {
+			n++
+		}
+		if p := c.Index(c.Argv, n+1); p != nil {
+			executablePath = c.GoString(p)
+			const prefix = "executable_path="
+			if len(executablePath) >= len(prefix) && executablePath[:len(prefix)] == prefix {
+				executablePath = executablePath[len(prefix):]
+			}
+		}
 		if executablePath == "" && len(args) > 0 {
 			executablePath = args[0]
 		}
