@@ -30,15 +30,18 @@ type toolIdentity struct {
 type toolProbe func(command []string, input NativeToolchainInput) (toolIdentity, error)
 
 func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe toolProbe) (Export, error) {
-	defaultTarget, err := windowsTargetTriple(goarch, PlatformABIMsvc)
-	if err != nil {
+	if _, err := windowsTargetTriple(goarch, PlatformABIMsvc); err != nil {
 		return Export{}, err
 	}
-	// The native dependency profile uses a dynamic Windows vcpkg triplet, whose
-	// libraries and the upstream full-target LLVM archive use the dynamic MSVC
-	// runtime. Keep the implicit compiler profile link-compatible with them;
-	// explicit CC/CXX commands remain the caller's choice.
-	cc := commandOrDefault(input.CC, "clang", "--target="+defaultTarget, "-fms-runtime-lib=dll")
+	// Probe an implicit Clang before adding target flags. Official Windows LLVM
+	// defaults to MSVC while MSYS2 CLANG64 defaults to GNU/MinGW, so either
+	// native installation works without requiring CC/CXX environment settings.
+	// The compiler target selects the profile; the invoking shell does not.
+	implicitCC := len(input.CC) == 0
+	cc := slices.Clone(input.CC)
+	if implicitCC {
+		cc = []string{"clang"}
+	}
 
 	ccIdentity, err := probe(cc, input)
 	if err != nil {
@@ -50,6 +53,14 @@ func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe to
 	}
 	if err := requireClangGNUDriver("CC", cc, ccIdentity); err != nil {
 		return Export{}, err
+	}
+	if implicitCC {
+		cc = append(cc, "--target="+toolchain.TargetTriple)
+		if toolchain.ABI == PlatformABIMsvc {
+			// The standalone LLVM and native dependency profile use the dynamic
+			// MSVC runtime. Explicit compiler commands remain the caller's choice.
+			cc = append(cc, "-fms-runtime-lib=dll")
+		}
 	}
 	// Visual Studio's developer variables identify only the MSVC dependency
 	// profile. A GNU/MinGW profile must obtain its CRT, C++ runtime, sysroot,

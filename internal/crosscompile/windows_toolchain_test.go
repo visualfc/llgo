@@ -12,7 +12,7 @@ import (
 
 func TestResolveWindowsToolchainDefaultsToMSVC(t *testing.T) {
 	probe := fixedToolProbe(t, map[string]toolIdentity{
-		commandKey("clang", "--target=x86_64-pc-windows-msvc", "-fms-runtime-lib=dll"):   {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
+		commandKey("clang"): {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
 		commandKey("clang++", "--target=x86_64-pc-windows-msvc", "-fms-runtime-lib=dll"): {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
 	})
 	input := NativeToolchainInput{
@@ -53,6 +53,36 @@ func TestResolveWindowsToolchainDefaultsToMSVC(t *testing.T) {
 	}
 	if !slices.Equal(export.LDFLAGS, input.ExternalFlags) {
 		t.Fatalf("LDFLAGS = %q, want %q", export.LDFLAGS, input.ExternalFlags)
+	}
+}
+
+func TestResolveWindowsToolchainDefaultsToGNUProfile(t *testing.T) {
+	probe := fixedToolProbe(t, map[string]toolIdentity{
+		commandKey("clang"): {target: "x86_64-w64-mingw32", version: "clang version 19.1.7"},
+		commandKey("clang++", "--target=x86_64-w64-windows-gnu"): {target: "x86_64-w64-windows-gnu", version: "clang version 19.1.7"},
+	})
+	export, err := resolveWindowsToolchain("amd64", NativeToolchainInput{
+		Environ: []string{
+			"MSYSTEM=CLANG64",
+			"WindowsSDKVersion=10.0.26100.0\\",
+			"UCRTVersion=10.0.26100.0",
+			"VCToolsVersion=14.44.35207\\",
+		},
+	}, probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if export.Toolchain.ABI != PlatformABIGNU || export.Toolchain.TargetTriple != "x86_64-w64-windows-gnu" {
+		t.Fatalf("GNU toolchain = %+v", export.Toolchain)
+	}
+	if export.Toolchain.SDKVersion != "" || export.Toolchain.CRTVersion != "" || export.Toolchain.ToolsetVersion != "" {
+		t.Fatalf("GNU profile inherited the host MSVC environment: %+v", export.Toolchain)
+	}
+	if export.CC != "clang" || !slices.Equal(export.CCArgs, []string{"--target=x86_64-w64-windows-gnu"}) {
+		t.Fatalf("CC command = %q %q", export.CC, export.CCArgs)
+	}
+	if export.CXX != "clang++" || !slices.Equal(export.CXXArgs, []string{"--target=x86_64-w64-windows-gnu"}) {
+		t.Fatalf("CXX command = %q %q", export.CXX, export.CXXArgs)
 	}
 }
 
