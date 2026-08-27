@@ -14,6 +14,7 @@ import (
 func cpuProfileHotLoop(d time.Duration) uint64 {
 	deadline := time.Now().Add(d)
 	x := uint64(1)
+	waitForCPUProfileSample()
 	for time.Now().Before(deadline) {
 		for i := 0; i < 10000; i++ {
 			x = x*1664525 + 1013904223
@@ -21,6 +22,11 @@ func cpuProfileHotLoop(d time.Duration) uint64 {
 	}
 	return x
 }
+
+// waitForCPUProfileSample is overridden on LLGo/Windows amd64 and arm64 so the
+// statistical profile checks wait for the real sampler instead of guessing a
+// longer run time. Other targets keep the existing duration-based behavior.
+var waitForCPUProfileSample = func() {}
 
 func requireCPUProfileContains(t *testing.T, data []byte, function string) {
 	t.Helper()

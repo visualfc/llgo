@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/xgo-dev/llgo/xtool/safesplit"
@@ -111,6 +112,7 @@ func lookPathInEnvironment(name, dir string, environ []string) string {
 	if strings.ContainsRune(name, filepath.Separator) {
 		return name
 	}
+	extensions := windowsExecutableExtensions(name, environ)
 	path := ""
 	prefix := "PATH="
 	for i := len(environ) - 1; i >= 0; i-- {
@@ -127,11 +129,46 @@ func lookPathInEnvironment(name, dir string, environ []string) string {
 			entry = filepath.Join(dir, entry)
 		}
 		candidate := filepath.Join(entry, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-			return candidate
+		if extensions == nil {
+			if isExecutableFile(candidate) {
+				return candidate
+			}
+			continue
+		}
+		for _, extension := range extensions {
+			candidateWithExtension := candidate + extension
+			if isExecutableFile(candidateWithExtension) {
+				return candidateWithExtension
+			}
 		}
 	}
 	return name
+}
+
+func windowsExecutableExtensions(name string, environ []string) []string {
+	if runtime.GOOS != "windows" || filepath.Ext(name) != "" {
+		return nil
+	}
+	extensions := ".COM;.EXE;.BAT;.CMD"
+	for i := len(environ) - 1; i >= 0; i-- {
+		key, value, ok := strings.Cut(environ[i], "=")
+		if ok && strings.EqualFold(key, "PATHEXT") {
+			extensions = value
+			break
+		}
+	}
+	exts := make([]string, 0, 4)
+	for _, ext := range filepath.SplitList(extensions) {
+		if ext != "" {
+			exts = append(exts, ext)
+		}
+	}
+	return exts
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0)
 }
 
 func parseSubcmd(s string) []string {

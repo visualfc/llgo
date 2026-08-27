@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/xgo-dev/llgo/internal/env"
@@ -45,7 +46,7 @@ func checkDownloadAndExtractWasiSDK(dir string) (wasiSdkRoot string, err error) 
 }
 
 // checkDownloadAndExtractESPClang downloads and extracts ESP Clang binaries and libraries
-func checkDownloadAndExtractESPClang(platformSuffix, dir string) error {
+func checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, dir string) error {
 	// Check if already exists
 	if _, err := os.Stat(dir); err == nil {
 		return nil
@@ -64,8 +65,8 @@ func checkDownloadAndExtractESPClang(platformSuffix, dir string) error {
 		return nil
 	}
 
-	clangUrl := fmt.Sprintf("%s/clang-esp-%s-%s.tar.xz", espClangBaseUrl, espClangVersion, platformSuffix)
-	description := fmt.Sprintf("ESP Clang %s-%s", espClangVersion, platformSuffix)
+	clangUrl := fmt.Sprintf("%s/clang-esp-%s-%s.tar.xz", baseURL, version, platformSuffix)
+	description := fmt.Sprintf("ESP Clang %s-%s", version, platformSuffix)
 
 	// Use temporary extraction directory for ESP Clang special handling
 	tempExtractDir := dir + ".extract"
@@ -302,9 +303,24 @@ func extractTarGz(tarGzFile, dest string) error {
 }
 
 func extractTarXz(tarXzFile, dest string) error {
-	// Use external tar command to extract .tar.xz files
-	cmd := exec.Command("tar", "-xf", tarXzFile, "-C", dest)
-	return cmd.Run()
+	tarCommand := "tar"
+	if runtime.GOOS == "windows" {
+		// setup-msys2 prepends its POSIX tar.exe to PATH, but this function
+		// passes native C:\... paths from Go. MSYS tar interprets the drive
+		// colon as a remote archive separator and exits 128. Windows' bundled
+		// bsdtar accepts native paths and xz streams directly.
+		if systemRoot := os.Getenv("SystemRoot"); systemRoot != "" {
+			nativeTar := filepath.Join(systemRoot, "System32", "tar.exe")
+			if _, err := os.Stat(nativeTar); err == nil {
+				tarCommand = nativeTar
+			}
+		}
+	}
+	cmd := exec.Command(tarCommand, "-xf", tarXzFile, "-C", dest)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("tar -xf: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 func extractZip(zipFile, dest string) error {

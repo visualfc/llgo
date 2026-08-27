@@ -3,6 +3,7 @@
 package compile
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,6 +208,56 @@ func TestCompile(t *testing.T) {
 			t.Errorf("unexpected result: should nil %v", err)
 		}
 	})
+}
+
+func TestObjectFilePattern(t *testing.T) {
+	if got, want := objectFilePattern(filepath.Join("source tree", "foo:bar.c")), "foo-bar.c-*.o"; got != want {
+		t.Fatalf("objectFilePattern = %q, want %q", got, want)
+	}
+}
+
+func TestWriteArchiveResponseFile(t *testing.T) {
+	t.Run("quoted object paths", func(t *testing.T) {
+		dir := t.TempDir()
+		objFiles := []string{
+			filepath.Join(dir, "first.o"),
+			filepath.Join(dir, "directory with spaces", "second.o"),
+		}
+		responseFile, err := writeArchiveResponseFile(dir, objFiles)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(responseFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := fmt.Sprintf("\"%s\"\n\"%s\"\n", filepath.ToSlash(objFiles[0]), filepath.ToSlash(objFiles[1]))
+		if string(got) != want {
+			t.Fatalf("response file = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("write error", func(t *testing.T) {
+		missingDir := filepath.Join(t.TempDir(), "missing")
+		if _, err := writeArchiveResponseFile(missingDir, []string{"object.o"}); err == nil {
+			t.Fatal("writeArchiveResponseFile succeeded in a missing directory")
+		}
+	})
+}
+
+func TestCompileArchiveErrorIncludesContext(t *testing.T) {
+	outputDir := t.TempDir()
+	group := CompileGroup{OutputFileName: "broken.a"}
+	err := group.Compile(outputDir, CompileOptions{
+		CC: filepath.Join(t.TempDir(), "missing-clang"),
+	})
+	if err == nil {
+		t.Fatal("Compile succeeded without llvm-ar")
+	}
+	want := "llvm-ar rcs " + filepath.Join(outputDir, group.OutputFileName)
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("Compile error = %q, want context %q", err, want)
+	}
 }
 
 func TestLibConfig_String(t *testing.T) {

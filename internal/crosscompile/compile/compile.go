@@ -66,8 +66,12 @@ func (g CompileGroup) Compile(
 
 	for _, file := range g.Files {
 		var tempObjFile *os.File
-		tempObjFile, err = os.CreateTemp(tmpCompileDir, fmt.Sprintf("%s*.o", strings.ReplaceAll(file, string(os.PathSeparator), "-")))
+		tempObjFile, err = os.CreateTemp(tmpCompileDir, objectFilePattern(file))
 		if err != nil {
+			return
+		}
+		tempObjName := tempObjFile.Name()
+		if err = tempObjFile.Close(); err != nil {
 			return
 		}
 
@@ -75,26 +79,61 @@ func (g CompileGroup) Compile(
 		if filepath.Ext(file) == ".S" {
 			lang = "assembler-with-cpp"
 		}
-		err = compiler.Compile("-o", tempObjFile.Name(), "-x", lang, "-c", file)
+		err = compiler.Compile("-o", tempObjName, "-x", lang, "-c", file)
 		if err != nil {
 			return
 		}
 
-		objFiles = append(objFiles, tempObjFile.Name())
+		objFiles = append(objFiles, tempObjName)
 	}
-
-	args := []string{"rcs", archive}
-	args = append(args, objFiles...)
 
 	ccDir := filepath.Dir(options.CC)
 	llvmAr := filepath.Join(ccDir, "llvm-ar")
 
-	cmd := exec.Command(llvmAr, args...)
-	// TODO(MeteorsLiu): support verbose
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	err = cmd.Run()
-	return
+	responseFile, err := writeArchiveResponseFile(tmpCompileDir, objFiles)
+	if err != nil {
+		return err
+	}
+	// newlib contains hundreds of object files, whose expanded paths exceed
+	// Windows' CreateProcess command-line limit. LLVM tools support response
+	// files on every host, so keep the object list out of the process command
+	// line rather than splitting one archive update into platform-only batches.
+	cmd := exec.Command(llvmAr, "rcs", archive, "@"+responseFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err = cmd.Run(); err != nil {
+		return fmt.Errorf("llvm-ar rcs %s: %w", archive, err)
+	}
+	return nil
+}
+
+func writeArchiveResponseFile(dir string, objFiles []string) (string, error) {
+	var contents strings.Builder
+	for _, objFile := range objFiles {
+		// LLVM's response-file parser accepts forward slashes on Windows. Quote
+		// each argument so temporary roots containing spaces remain one path.
+		contents.WriteByte('"')
+		contents.WriteString(filepath.ToSlash(objFile))
+		contents.WriteString("\"\n")
+	}
+	responseFile := filepath.Join(dir, "objects.rsp")
+	if err := os.WriteFile(responseFile, []byte(contents.String()), 0o600); err != nil {
+		return "", err
+	}
+	return responseFile, nil
+}
+
+func objectFilePattern(source string) string {
+	name := filepath.Base(source)
+	name = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			return r
+		default:
+			return '-'
+		}
+	}, name)
+	return fmt.Sprintf("%s-*.o", name)
 }
 
 // CompileConfig represents compilation configuration

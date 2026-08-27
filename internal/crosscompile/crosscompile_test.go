@@ -4,7 +4,10 @@
 package crosscompile
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -21,6 +24,30 @@ const (
 	includePrefix     = "-I"
 	libPrefix         = "-L"
 )
+
+func TestESPClangHostDownload(t *testing.T) {
+	tests := []struct {
+		goos, goarch string
+		wantPlatform string
+		wantVersion  string
+	}{
+		{"darwin", "arm64", "aarch64-apple-darwin", espClangVersion},
+		{"linux", "amd64", "x86_64-linux-gnu", espClangVersion},
+		{"windows", "amd64", espClangWindowsPlatform, espClangWindowsVersion},
+		{"windows", "arm64", espClangWindowsPlatform, espClangWindowsVersion},
+	}
+	for _, test := range tests {
+		platform := getESPClangPlatform(test.goos, test.goarch)
+		if platform != test.wantPlatform {
+			t.Errorf("getESPClangPlatform(%q, %q) = %q, want %q", test.goos, test.goarch, platform, test.wantPlatform)
+			continue
+		}
+		_, version := espClangDownload(platform)
+		if version != test.wantVersion {
+			t.Errorf("espClangDownload(%q) version = %q, want %q", platform, version, test.wantVersion)
+		}
+	}
+}
 
 func TestUseCrossCompileSDK(t *testing.T) {
 	// Skip long-running tests unless explicitly enabled
@@ -220,6 +247,13 @@ func TestUseTarget(t *testing.T) {
 			expectMarch: "-march=rv32imac", // Generic RISC-V32 uses rv32imac (with A extension)
 		},
 		{
+			name:        "ESP32 Target (Xtensa)",
+			targetName:  "esp32",
+			expectError: false,
+			expectLLVM:  "xtensa",
+			expectCPU:   "esp32",
+		},
+		{
 			name:        "ESP32-C3 Target (ESP RISC-V)",
 			targetName:  "esp32c3",
 			expectError: false,
@@ -258,7 +292,8 @@ func TestUseTarget(t *testing.T) {
 			// Check if LLVM target is in CCFLAGS
 			if tc.expectLLVM != "" {
 				found := false
-				expectedFlag := "--target=" + tc.expectLLVM
+				expectedLLVM := clangDriverTargetForHost(runtime.GOOS, tc.expectLLVM, export.BuildTags)
+				expectedFlag := "--target=" + expectedLLVM
 				for _, flag := range export.CCFLAGS {
 					if flag == expectedFlag {
 						found = true
@@ -313,10 +348,114 @@ func TestUseTarget(t *testing.T) {
 					t.Errorf("Expected %s in CCFLAGS, got %v", tc.expectMarch, export.CCFLAGS)
 				}
 			}
-
 			t.Logf("Target %s: BuildTags=%v, CFlags=%v, CCFlags=%v, LDFlags=%v",
 				tc.targetName, export.BuildTags, export.CFLAGS, export.CCFLAGS, export.LDFLAGS)
 		})
+	}
+}
+
+func TestUseTargetWindowsSystemClang(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows host toolchain selection")
+	}
+
+	export, err := UseTarget("rp2040", optlevel.Oz, lto.Thin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if export.CC != "clang++" {
+		t.Fatalf("RP2040 compiler on Windows = %q, want clang++", export.CC)
+	}
+	if export.ClangRoot != "" {
+		t.Fatalf("RP2040 Clang root on Windows = %q, want system toolchain", export.ClangRoot)
+	}
+	if export.Linker != "ld.lld" {
+		t.Fatalf("RP2040 linker on Windows = %q, want ld.lld", export.Linker)
+	}
+}
+
+func TestUseTargetESPClangDownloadError(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(server.Close)
+
+	llgoRoot := t.TempDir()
+	runtimeDir := filepath.Join(llgoRoot, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(runtimeDir, "go.mod"),
+		[]byte("module github.com/xgo-dev/llgo/runtime\n"), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	targetsDir := filepath.Join(llgoRoot, "targets")
+	if err := os.MkdirAll(targetsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(targetsDir, "esp-test.json"),
+		[]byte(`{"llvm-target":"xtensa","cpu":"esp32","build-tags":["esp"]}`), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_ROOT", llgoRoot)
+
+	originalCacheRoot := cacheRoot
+	originalBaseURL := espClangBaseUrl
+	originalWindowsBaseURL := espClangWindowsBaseUrl
+	cacheDir := t.TempDir()
+	cacheRoot = func() string { return cacheDir }
+	espClangBaseUrl = server.URL
+	espClangWindowsBaseUrl = server.URL
+	t.Cleanup(func() {
+		cacheRoot = originalCacheRoot
+		espClangBaseUrl = originalBaseURL
+		espClangWindowsBaseUrl = originalWindowsBaseURL
+	})
+
+	_, err := UseTarget("esp-test", optlevel.Oz, lto.Thin)
+	if err == nil || !strings.Contains(err.Error(), "404 Not Found") {
+		t.Fatalf("UseTarget(esp-test) error = %v, want download 404", err)
+	}
+}
+
+func TestUseSystemClangForTarget(t *testing.T) {
+	for _, test := range []struct {
+		goos      string
+		target    string
+		buildTags []string
+		want      bool
+	}{
+		{goos: "windows", target: "thumbv6m-unknown-unknown-eabi", want: true},
+		{goos: "windows", target: "avr", want: true},
+		{goos: "windows", target: "riscv32-esp-elf", buildTags: []string{"esp"}, want: false},
+		{goos: "windows", target: "xtensa", buildTags: []string{"esp32", "esp"}, want: false},
+		{goos: "windows", target: "xtensa", want: false},
+		{goos: "linux", target: "thumbv6m-unknown-unknown-eabi", want: false},
+	} {
+		if got := useSystemClangForTarget(test.goos, test.target, test.buildTags); got != test.want {
+			t.Errorf("useSystemClangForTarget(%q, %q, %v) = %v, want %v", test.goos, test.target, test.buildTags, got, test.want)
+		}
+	}
+}
+
+func TestClangDriverTargetForHost(t *testing.T) {
+	for _, test := range []struct {
+		goos      string
+		target    string
+		buildTags []string
+		want      string
+	}{
+		{goos: "windows", target: "xtensa", buildTags: []string{"esp32", "esp"}, want: "xtensa-esp-unknown-elf"},
+		{goos: "windows", target: "xtensa", want: "xtensa"},
+		{goos: "windows", target: "riscv32-esp-elf", buildTags: []string{"esp"}, want: "riscv32-esp-elf"},
+		{goos: "linux", target: "xtensa", buildTags: []string{"esp"}, want: "xtensa"},
+		{goos: "darwin", target: "xtensa", buildTags: []string{"esp"}, want: "xtensa"},
+	} {
+		if got := clangDriverTargetForHost(test.goos, test.target, test.buildTags); got != test.want {
+			t.Errorf("clangDriverTargetForHost(%q, %q, %v) = %q, want %q", test.goos, test.target, test.buildTags, got, test.want)
+		}
 	}
 }
 

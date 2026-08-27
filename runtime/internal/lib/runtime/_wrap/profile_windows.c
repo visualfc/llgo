@@ -109,6 +109,11 @@ static volatile int llgo_prof_ring_lock;
 static volatile int llgo_prof_active;
 static volatile int llgo_prof_sampler_running;
 static volatile uint64_t llgo_prof_lost;
+/* Test-only synchronization state. With no target registered, normal
+ * profiling adds one atomic load per captured thread; the fetch-add only runs
+ * when a test thread matches. */
+static volatile llgo_dword llgo_prof_test_thread_id;
+static volatile uint64_t llgo_prof_test_thread_samples;
 static llgo_handle llgo_prof_thread;
 static llgo_handle llgo_prof_stop_event;
 
@@ -285,8 +290,14 @@ static void llgo_prof_sample_process(void)
                 ResumeThread(thread);
             }
             CloseHandle(thread);
-            if (captured)
+            if (captured) {
                 llgo_prof_record(&sample);
+                if (entry.thread_id ==
+                    __atomic_load_n(&llgo_prof_test_thread_id,
+                                    __ATOMIC_ACQUIRE))
+                    __atomic_fetch_add(&llgo_prof_test_thread_samples, 1,
+                                       __ATOMIC_RELEASE);
+            }
         } while (Thread32Next(snapshot, &entry));
     }
     CloseHandle(snapshot);
@@ -449,4 +460,24 @@ int llgo_cpu_profile_test_fault_recovery(void)
 #else
     return -1;
 #endif
+}
+
+uint64_t llgo_cpu_profile_test_current_thread_samples(void)
+{
+    llgo_dword thread_id = GetCurrentThreadId();
+
+    if (__atomic_load_n(&llgo_prof_test_thread_id, __ATOMIC_ACQUIRE) !=
+        thread_id) {
+        __atomic_store_n(&llgo_prof_test_thread_id, 0, __ATOMIC_RELEASE);
+        /* The following thread-id release publishes the zeroed counter. */
+        __atomic_store_n(&llgo_prof_test_thread_samples, 0, __ATOMIC_RELAXED);
+        __atomic_store_n(&llgo_prof_test_thread_id, thread_id,
+                         __ATOMIC_RELEASE);
+    }
+    return __atomic_load_n(&llgo_prof_test_thread_samples, __ATOMIC_ACQUIRE);
+}
+
+void llgo_cpu_profile_test_clear_thread(void)
+{
+    __atomic_store_n(&llgo_prof_test_thread_id, 0, __ATOMIC_RELEASE);
 }

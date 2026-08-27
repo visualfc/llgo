@@ -1,6 +1,7 @@
 package rtlib
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -49,7 +50,7 @@ func TestPlatformSpecifiedFiles(t *testing.T) {
 		{"x86_64-pc-windows", 0},
 	}
 
-	builtinsDir := "/test/builtins"
+	builtinsDir := filepath.FromSlash("/test/builtins")
 	for _, tt := range tests {
 		t.Run(tt.target, func(t *testing.T) {
 			result := platformSpecifiedFiles(builtinsDir, tt.target)
@@ -61,7 +62,7 @@ func TestPlatformSpecifiedFiles(t *testing.T) {
 }
 
 func TestWithPlatformSpecifiedFiles(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "riscv32-unknown-elf"
 	inputFiles := []string{"file1.c", "file2.c"}
 
@@ -88,7 +89,7 @@ func TestWithPlatformSpecifiedFiles(t *testing.T) {
 }
 
 func TestGetCompilerRTConfig(t *testing.T) {
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	target := "riscv32-unknown-elf"
 
 	config := GetCompilerRTCompileConfig(baseDir, target)
@@ -129,7 +130,7 @@ func TestGetCompilerRTConfig_DifferentTargets(t *testing.T) {
 		"xtensa",
 	}
 
-	baseDir := "/test/base"
+	baseDir := filepath.FromSlash("/test/base")
 	for _, target := range targets {
 		t.Run(target, func(t *testing.T) {
 			config := GetCompilerRTCompileConfig(baseDir, target)

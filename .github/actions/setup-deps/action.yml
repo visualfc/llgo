@@ -81,6 +81,7 @@ runs:
           "$prefix-libuv" \
           "$prefix-gc" \
           "$prefix-libatomic_ops" \
+          "$prefix-cjson" \
           make
 
         for package in clang clang-libs compiler-rt llvm llvm-libs lld libc++ libunwind; do
@@ -90,13 +91,12 @@ runs:
             exit 1
           fi
         done
-
         installed_libxml2="$(pacman -Q "$prefix-libxml2" | awk '{print $2}')"
         if [[ "$installed_libxml2" != "2.12.9-2" ]]; then
           echo "expected libxml2 2.12.9-2, got $installed_libxml2" >&2
           exit 1
         fi
-        for package in libuv gc libatomic_ops; do
+        for package in libuv gc libatomic_ops cjson; do
           pacman -Q "$prefix-$package"
         done
 
@@ -188,7 +188,9 @@ runs:
             Add-Content -Encoding utf8 $env:GITHUB_ENV "$name=$value"
           }
         }
-        @("cl.exe", "lib.exe", "link.exe", "rc.exe", "mt.exe") |
+        # CMake's NMake generator used by WAMR needs nmake in later workflow
+        # steps; Enter-VsDevShell only updates this action process.
+        @("cl.exe", "lib.exe", "link.exe", "nmake.exe", "rc.exe", "mt.exe") |
           ForEach-Object { Split-Path (Get-Command $_).Source } |
           Select-Object -Unique |
           ForEach-Object { Add-Content -Encoding utf8 $env:GITHUB_PATH $_ }
