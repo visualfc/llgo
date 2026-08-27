@@ -64,18 +64,21 @@ runs:
         VCPKG_MANIFEST_HASH: ${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
       run: |
         $ErrorActionPreference = "Stop"
-        $sourceArchive = Join-Path $env:RUNNER_TEMP "vcpkg-$env:VCPKG_BASELINE.zip"
-        $sourceParent = Join-Path $env:RUNNER_TEMP "llgo-vcpkg-source"
-        $sourceRoot = Join-Path $sourceParent "vcpkg-$env:VCPKG_BASELINE"
+        $sourceRoot = Join-Path $env:RUNNER_TEMP "llgo-vcpkg-source"
         $installRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-vcpkg\$env:VCPKG_MANIFEST_HASH"
         $manifestRoot = Join-Path $env:GITHUB_WORKSPACE ".github\windows\vcpkg"
 
-        & curl.exe --fail --location --retry 5 --retry-all-errors --output $sourceArchive `
-          "https://github.com/microsoft/vcpkg/archive/$env:VCPKG_BASELINE.zip"
+        # Version overrides refer to historical Git tree objects. Keep a
+        # blob-filtered Git repository rather than a source ZIP so vcpkg can
+        # materialize the pinned libffi port through its versions database.
+        & git clone --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg.git $sourceRoot
         if ($LASTEXITCODE -ne 0) {
-          throw "Downloading vcpkg failed with exit code $LASTEXITCODE"
+          throw "Cloning vcpkg failed with exit code $LASTEXITCODE"
         }
-        Expand-Archive -LiteralPath $sourceArchive -DestinationPath $sourceParent
+        & git -C $sourceRoot checkout --detach $env:VCPKG_BASELINE
+        if ($LASTEXITCODE -ne 0) {
+          throw "Checking out vcpkg $env:VCPKG_BASELINE failed with exit code $LASTEXITCODE"
+        }
         & (Join-Path $sourceRoot "bootstrap-vcpkg.bat") -disableMetrics
         if ($LASTEXITCODE -ne 0) {
           throw "Bootstrapping vcpkg failed with exit code $LASTEXITCODE"
