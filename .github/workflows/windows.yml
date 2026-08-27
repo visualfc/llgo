@@ -68,7 +68,7 @@ jobs:
           # Win32 runtime work staged for R4: an executable, a flat C archive,
           # a DLL/import library, and both directions of MSVC interoperability.
           LLGO_REQUIRE_MSVC=1 go test -count=1 -timeout=10m \
-            -run '^(TestWindows(NativeArtifacts|ConsumesMSVCLibrary)|TestResolveBuildConfigDefaultsAndValidation|TestApplyBuildModeCompileFlags|TestCSharedLinkArgs|TestFullRpathArgs|TestCSharedExportArgs|TestIsArchiveInput|TestBuildOutFmtsBuildModes)$' \
+            -run '^(TestWindows(NativeArtifacts|ConsumesMSVCLibrary|LinkObjFilesExactOutput)|TestResolveBuildConfigDefaultsAndValidation|TestApplyBuildModeCompileFlags|TestCSharedLinkArgs|TestFullRpathArgs|TestCSharedExportArgs|TestIsArchiveInput|TestBuildOutFmtsBuildModes)$' \
             -covermode=atomic -coverprofile=coverage-windows-artifacts.txt \
             ./internal/build
 
@@ -108,6 +108,30 @@ jobs:
             -covermode=atomic -coverprofile=coverage-windows-cabi.txt \
             ./internal/cabi
 
+          # R5 compiler and metadata paths are ordinary Go code even though
+          # their output is exercised by the native LLGo smokes below. Keep
+          # them in the Windows coverage upload as well as executing the
+          # generated Windows IR fixtures.
+          go test -count=1 -timeout=10m \
+            -run '^(TestFuncInfoMetadataDoesNotPreserveFunctions|TestSetjmpLongjmpIRPaths|TestSigjmpUsesSetjmpOnExplicitTarget|TestWindowsSigjmpBufferAlignment|TestWindowsSetjmpABI|TestWindowsSetjmpRejectsUnsupportedArchitecture|TestNeedsFramePointer|TestSetjmpReturnsTwice|TestDeferInitBuilderInheritsDebugLocation)$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-ssa.txt \
+            ./ssa
+          go test -count=1 -timeout=10m \
+            -run '^(TestCompileRuntimeCallerPanicPCLineMetadata|TestCompileRuntimeCallerStorePanicPCLineMetadataIsWindowsOnly|TestCompileRuntimeCallerPCLineMetadataOnWindows|TestFuncInfoDisplayName|TestFuncInfoMetadataEmission|TestFuncInfoWrapperMetadataIsWindowsOnly|TestDirectiveFilename|TestDirectiveFilenameWindowsRootedSlash|TestPrecedingLineDirectiveFilename|TestParseLineDirectiveFilename|TestRuntimeSourceFilename|TestCompileRuntimeCallerFrameUsesGoNameForLinkname|TestErrBuiltin)$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-cl.txt \
+            ./cl
+          go test -count=1 -timeout=10m \
+            -run '^(TestFuncInfo.*|TestEncodePacksWrapperFlagWithoutGrowingRecord|TestCOFFFuncInfoEntrySiteIsAssociative|TestExternalFuncInfoTableKeepsPayloadOutOfIR|TestLowerWindowsCgoImportPointerErrors)$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-build.txt \
+            ./internal/build ./internal/build/funcinfo
+          go test -count=1 -timeout=10m \
+            -run '^TestBuilderWindowsDebuggerMarkerUsesComdat$' \
+            -covermode=atomic -coverprofile=coverage-windows-execution-debug.txt \
+            ./internal/debuginfo
+          go test -count=1 -timeout=10m -run '^TestFromTestlibc$/^setjmp$' ./ssa
+          go test -count=1 -timeout=10m -run '^TestFromTestgo$/^(cgopython|defer5)$' ./ssa
+          go test -count=1 -timeout=10m -run '^TestFromTestlibgo$/^mapzero$' ./ssa
+
           (
             cd runtime
             go test -count=1 -timeout=10m \
@@ -129,7 +153,7 @@ jobs:
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-build-runtime.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-ssa-eh.txt,coverage-windows-cabi.txt,coverage-windows-ffi.txt
+          files: coverage-windows-host.txt,coverage-windows-lock.txt,coverage-windows-artifacts.txt,coverage-windows-build-runtime.txt,coverage-windows-coff-flags.txt,coverage-windows-response.txt,coverage-windows-comdat.txt,coverage-windows-ssa-eh.txt,coverage-windows-cabi.txt,coverage-windows-execution-ssa.txt,coverage-windows-execution-cl.txt,coverage-windows-execution-build.txt,coverage-windows-execution-debug.txt,coverage-windows-ffi.txt
           flags: windows-native
 
       - name: Build and run the native Windows runtime and FFI smoke tests
@@ -189,6 +213,14 @@ jobs:
               .\_test\windowsempty
             $buildExitCode = $LASTEXITCODE
           }
+          if ($buildExitCode -eq 0) {
+            # Recover a hardware-backed nil call without relying on the
+            # optional public-runtime traceback layer.
+            ..\llgo-windows-smoke.exe build `
+              -o ..\windows-core-fault-smoke.exe `
+              .\_test\windowscorefault
+            $buildExitCode = $LASTEXITCODE
+          }
           Pop-Location
           if ($buildExitCode -ne 0) {
             exit $buildExitCode
@@ -199,17 +231,52 @@ jobs:
             -Artifacts @(
               ".\windows-runtime-smoke.exe",
               ".\windows-ffi-smoke.exe",
-              ".\windows-empty-smoke.exe"
+              ".\windows-empty-smoke.exe",
+              ".\windows-core-fault-smoke.exe"
             )
           .\windows-runtime-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
+          }
+
+          $env:LLGO_TEST_UNRECOVERED_FAULT = "1"
+          # This process is expected to write a panic to stderr and fail.
+          # Temporarily keep native stderr non-terminating so it can be
+          # asserted below even in Windows PowerShell 5.
+          $savedErrorActionPreference = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
+          try {
+            $faultOutput = .\windows-runtime-smoke.exe 2>&1 | Out-String
+            $faultExitCode = $LASTEXITCODE
+          } finally {
+            $ErrorActionPreference = $savedErrorActionPreference
+          }
+          Remove-Item Env:LLGO_TEST_UNRECOVERED_FAULT
+          Write-Host $faultOutput
+          if ($faultExitCode -eq 0) {
+            throw "unrecovered Windows fault exited successfully"
+          }
+          foreach ($expected in @(
+            "runtime error: invalid memory address or nil pointer dereference",
+            "main.windowsNilFault",
+            "windowsruntime/main.go"
+          )) {
+            if (-not $faultOutput.Contains($expected)) {
+              throw "unrecovered Windows fault output is missing '$expected'"
+            }
+          }
+          if ($faultOutput.Contains("github.com/xgo-dev/llgo/runtime/internal/clite/tls.init")) {
+            throw "unrecovered Windows fault traceback continued past runtime.goexit"
           }
           .\windows-ffi-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
           .\windows-empty-smoke.exe
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          .\windows-core-fault-smoke.exe
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

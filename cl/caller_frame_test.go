@@ -10,6 +10,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -446,6 +447,57 @@ func pinnedPanicSite() {
 	}
 	if strings.Contains(ir, `!"non_recover_site.go"`) {
 		t.Fatalf("ordinary pinned function unexpectedly received implicit panic-site metadata:\n%s", ir)
+	}
+}
+
+func TestCompileRuntimeCallerStorePanicPCLineMetadataIsWindowsOnly(t *testing.T) {
+	const source = `package foo
+import "runtime"
+
+func inspect() {
+	recover()
+	runtime.Caller(0)
+}
+
+func owner() {
+	defer inspect()
+	storePanicLeaf(nil)
+}
+
+func storePanicLeaf(p *int) {
+//line store_panic_site.go:167
+	*p = 1
+}
+`
+	for _, test := range []struct {
+		goos string
+		want bool
+	}{
+		{goos: "linux", want: false},
+		{goos: "windows", want: true},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", source)
+			prog := newLLSSAProgForTarget(t, &llssa.Target{GOOS: test.goos, GOARCH: "amd64"})
+			prog.EnableFuncInfoMetadata(true)
+			prog.EnableFuncInfoSites(true)
+			pkg, err := NewPackage(prog, ssapkg, files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ir := pkg.Module().String()
+			got := false
+			for _, row := range strings.Split(ir, "\n") {
+				if strings.Contains(row, `!{i32 1, i64 `) &&
+					strings.Contains(row, `!"example.com/foo.storePanicLeaf", !"store_panic_site.go", i32 167`) {
+					got = true
+					break
+				}
+			}
+			if got != test.want {
+				t.Fatalf("store panic-site metadata present = %v, want %v for %s:\n%s", got, test.want, test.goos, ir)
+			}
+		})
 	}
 }
 
@@ -932,6 +984,40 @@ func top() {
 	}
 }
 
+func TestCompileRuntimeCallerPCLineMetadataOnWindows(t *testing.T) {
+	ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
+import "runtime"
+
+func top() {
+	runtime.Caller(0)
+}
+`)
+	prog := newLLSSAProg(t)
+	prog.Target().GOOS = "windows"
+	prog.Target().GOARCH = "arm64"
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	pkg, err := NewPackage(prog, ssapkg, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir := pkg.Module().String()
+	for _, want := range []string{
+		`!llgo.pcline`,
+		"__llgo_pcsite_",
+		`.pushsection .llgopcl$$m,\22dr\22,associative,__llgo_pcsite_`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("windows should emit associative COFF pc-site labels, missing %q:\n%s", want, ir)
+		}
+	}
+	for _, bad := range []string{`.pushsection llgo_pcline`, `.pushsection __DATA,__llgo_pcl`} {
+		if strings.Contains(ir, bad) {
+			t.Fatalf("windows must not use a non-COFF pcline section, found %q:\n%s", bad, ir)
+		}
+	}
+}
+
 func TestCompileRuntimeCallerFrameUsesGoNameForLinkname(t *testing.T) {
 	ssapkg, files := buildCallerFrameSSAPackage(t, "command-line-arguments", `package main
 import "runtime"
@@ -1200,6 +1286,13 @@ func TestDirectiveFilename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	lines := strings.Split(src, "\n")
+	sourceLine := func(_ string, line int) (string, bool) {
+		if line <= 0 || line > len(lines) {
+			return "", false
+		}
+		return lines[line-1], true
+	}
 	pos := func(i int) token.Pos { return file.Decls[i].Pos() }
 	cases := []struct {
 		pos  token.Pos
@@ -1216,14 +1309,122 @@ func TestDirectiveFilename(t *testing.T) {
 			// The package loader hands cl an absolute expansion; emulate it.
 			adjusted = "/work/pkg/rel.go"
 		}
-		if got := directiveFilename(fset, c.pos, adjusted); got != c.want {
+		if got := directiveFilename(fset, c.pos, adjusted, sourceLine); got != c.want {
 			t.Fatalf("case %d: directiveFilename(%q) = %q, want %q", i, adjusted, got, c.want)
 		}
 	}
-	if got := directiveFilename(fset, token.NoPos, "x.go"); got != "x.go" {
+	if got := directiveFilename(fset, token.NoPos, "x.go", nil); got != "x.go" {
 		t.Fatal("NoPos must pass through")
 	}
-	if got := directiveFilename(nil, pos(0), "x.go"); got != "x.go" {
+	if got := directiveFilename(nil, pos(0), "x.go", nil); got != "x.go" {
 		t.Fatal("nil fset must pass through")
+	}
+}
+func TestDirectiveFilenameWindowsRootedSlash(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows filepath semantics")
+	}
+	fset := token.NewFileSet()
+	src := "package p\n//line /foo/bar.go:123\nfunc F() {}\n"
+	file, err := parser.ParseFile(fset, `C:\work\pkg\orig.go`, src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos := file.Decls[0].Pos()
+	adjusted := fset.Position(pos).Filename
+	lines := strings.Split(src, "\n")
+	sourceLine := func(_ string, line int) (string, bool) {
+		if line <= 0 || line > len(lines) {
+			return "", false
+		}
+		return lines[line-1], true
+	}
+	got := runtimeSourceFilename(
+		&llssa.Target{GOOS: "windows"},
+		directiveFilename(fset, pos, adjusted, sourceLine),
+	)
+	if want := "/foo/bar.go"; got != want {
+		t.Fatalf("directiveFilename(%q) = %q, want %q", adjusted, got, want)
+	}
+}
+
+func TestPrecedingLineDirectiveFilename(t *testing.T) {
+	pos := token.Position{Filename: "source.go", Line: 4}
+	tests := []struct {
+		name         string
+		pos          token.Position
+		lines        map[int]string
+		available    bool
+		wantFilename string
+		wantOK       bool
+	}{
+		{name: "nil source reader", pos: pos},
+		{name: "empty source filename", pos: token.Position{Line: 4}, available: true},
+		{name: "first source line", pos: token.Position{Filename: "source.go", Line: 1}, available: true},
+		{name: "source unavailable", pos: pos, available: true},
+		{name: "no directive", pos: pos, available: true, lines: map[int]string{3: "// ordinary comment", 2: "package p", 1: ""}},
+		{name: "malformed directive", pos: pos, available: true, lines: map[int]string{3: "//line bad", 2: "package p", 1: ""}},
+		{name: "previous filename", pos: pos, available: true, lines: map[int]string{3: "//line :12:3"}},
+		{name: "empty filename", pos: pos, available: true, lines: map[int]string{3: "//line :12"}, wantFilename: "??", wantOK: true},
+		{name: "CRLF directive", pos: pos, available: true, lines: map[int]string{3: "//line rel.go:12\r"}, wantFilename: "rel.go", wantOK: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var sourceLine func(string, int) (string, bool)
+			if test.available {
+				sourceLine = func(filename string, line int) (string, bool) {
+					text, ok := test.lines[line]
+					return text, ok
+				}
+			}
+			got, ok := precedingLineDirectiveFilename(test.pos, sourceLine)
+			if got != test.wantFilename || ok != test.wantOK {
+				t.Fatalf("precedingLineDirectiveFilename() = (%q, %v), want (%q, %v)", got, ok, test.wantFilename, test.wantOK)
+			}
+		})
+	}
+}
+
+func TestParseLineDirectiveFilename(t *testing.T) {
+	tests := []struct {
+		text         string
+		wantFilename string
+		wantPrevious bool
+		wantOK       bool
+	}{
+		{"rel.go:20", "rel.go", false, true},
+		{"c:/foo/bar.go:987", "c:/foo/bar.go", false, true},
+		{"foo.go:12:3", "foo.go", false, true},
+		{":30", "", false, true},
+		{":30:4", "", true, true},
+		{"bad", "", false, false},
+		{"foo.go:0", "", false, false},
+		{"foo.go:1:0", "", false, false},
+		{"foo.go:0:1", "", false, false},
+		{"foo.go:1073741825:1", "", false, false},
+		{"foo.go:not-a-line", "", false, false},
+	}
+	for _, test := range tests {
+		filename, previous, ok := parseLineDirectiveFilename(test.text)
+		if filename != test.wantFilename || previous != test.wantPrevious || ok != test.wantOK {
+			t.Errorf("parseLineDirectiveFilename(%q) = (%q, %v, %v), want (%q, %v, %v)",
+				test.text, filename, previous, ok,
+				test.wantFilename, test.wantPrevious, test.wantOK)
+		}
+	}
+}
+
+func TestRuntimeSourceFilename(t *testing.T) {
+	windows := &llssa.Target{GOOS: "windows"}
+	linux := &llssa.Target{GOOS: "linux"}
+	const native = `C:\work\pkg\main.go`
+	if got, want := runtimeSourceFilename(windows, native), "C:/work/pkg/main.go"; got != want {
+		t.Fatalf("Windows runtime filename = %q, want %q", got, want)
+	}
+	if got := runtimeSourceFilename(linux, native); got != native {
+		t.Fatalf("Unix runtime filename = %q, want unchanged %q", got, native)
+	}
+	if got := runtimeSourceFilename(nil, native); got != native {
+		t.Fatalf("nil-target runtime filename = %q, want unchanged %q", got, native)
 	}
 }

@@ -1902,6 +1902,10 @@ func (p *context) pushCallerLocationFrame(b llssa.Builder, fn *ssa.Function) {
 		return
 	}
 	pos := p.fset.Position(fn.Pos())
+	pos.Filename = runtimeSourceFilename(
+		p.prog.Target(),
+		directiveFilename(p.fset, fn.Pos(), pos.Filename, p.sourceLine),
+	)
 	entry := b.Convert(p.prog.Uintptr(), p.fn.Expr)
 	p.callerFrameMark = b.Call(
 		p.runtimeFunc("PushCallerLocationFrame", pushCallerLocationFrameSig()),
@@ -1932,6 +1936,10 @@ func (p *context) recordRuntimeLocation(b llssa.Builder, pos token.Pos, fn strin
 		return
 	}
 	position := p.fset.Position(pos)
+	position.Filename = runtimeSourceFilename(
+		p.prog.Target(),
+		directiveFilename(p.fset, pos, position.Filename, p.sourceLine),
+	)
 	if position.Line <= 0 || position.Filename == "" {
 		return
 	}
@@ -1967,7 +1975,10 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 	position := p.fset.Position(pos)
 	// Normalize before the emptiness check: an empty //line directive
 	// filename must anchor as "??" (gc's spelling), not lose its anchor.
-	position.Filename = directiveFilename(p.fset, pos, position.Filename)
+	position.Filename = runtimeSourceFilename(
+		target,
+		directiveFilename(p.fset, pos, position.Filename, p.sourceLine),
+	)
 	if position.Line <= 0 || position.Filename == "" {
 		return
 	}
@@ -2004,12 +2015,18 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 	// latter without rewriting symbol names embedded in inline-asm strings.
 	// Mach-O uses a live_support section plus one linker-private atom symbol per
 	// record so -dead_strip keeps a record exactly when the function containing
-	// its label is live.
+	// its label is live. COFF uses an associative COMDAT tied to the function
+	// section containing the local anchor, so /OPT:REF has the same behavior.
 	pushSection := ".pushsection llgo_pcline,\"awo\",@progbits," + asmLabel
 	recordSymbol := ""
-	if target.GOOS == "darwin" {
+	switch target.GOOS {
+	case "darwin":
 		pushSection = ".pushsection __DATA,__llgo_pcl,regular,live_support"
 		recordSymbol = "l_llgo_pcline_rec_${:uid}:\n"
+	case "windows":
+		// '$' is an inline-asm escape. '$$m' reaches the COFF assembler as
+		// the '$m' subsection suffix used for lexicographic merging.
+		pushSection = ".pushsection .llgopcl$$m,\"dr\",associative," + asmLabel
 	}
 	b.InlineAsm(
 		asmLabel + ":\n" +
@@ -2030,11 +2047,10 @@ func canEmitPCLineLabelsForTarget(target *llssa.Target) bool {
 	if target.Target != "" || target.GOARCH == "wasm" {
 		return false
 	}
-	// ELF uses SHF_LINK_ORDER associated sections; Mach-O uses plain
-	// __DATA,__llgo_pcl sections (safe because LLGo's global DCE runs at the
-	// IR level). Other object formats need separate support.
+	// ELF uses SHF_LINK_ORDER associated sections; Mach-O uses live_support;
+	// COFF uses associative COMDAT sections.
 	switch target.GOOS {
-	case "linux", "darwin":
+	case "linux", "darwin", "windows":
 		return true
 	}
 	return false

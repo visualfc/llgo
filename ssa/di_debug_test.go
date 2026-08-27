@@ -196,12 +196,20 @@ func f() {}
 	defer builder.Dispose()
 	bodyPos := fset.Position(decl.Body.Lbrace)
 	builder.DebugFunction(fn, object.Scope(), fset.Position(object.Pos()), bodyPos)
+	// A cached declaration can be visited again while patched packages are
+	// lowered. Initializing its source location must remain idempotent: the
+	// function's DISubprogram is a scope, not an inlined-at DILocation.
+	builder.DebugFunction(fn, object.Scope(), fset.Position(object.Pos()), bodyPos)
+	loc := builder.impl.GetCurrentDebugLocation()
+	if !loc.InlinedAt.IsNil() {
+		t.Fatalf("function debug location has an inlined-at node: %+v", loc)
+	}
 	builder.DISetCurrentDebugLocation(fn, bodyPos)
 	builder.Return()
 
 	deferBuilder, next := fn.deferInitBuilder(builder)
 	defer deferBuilder.Dispose()
-	loc := deferBuilder.impl.GetCurrentDebugLocation()
+	loc = deferBuilder.impl.GetCurrentDebugLocation()
 	if loc.Line != uint(bodyPos.Line) || loc.Col != uint(bodyPos.Column) || loc.Scope != fn.diFunc.ll {
 		t.Fatalf("defer debug location = %+v, want %s:%d:%d", loc, bodyPos.Filename, bodyPos.Line, bodyPos.Column)
 	}

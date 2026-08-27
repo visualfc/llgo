@@ -63,6 +63,29 @@ func TestBuilderLifecycleAndModuleMetadata(t *testing.T) {
 	}
 }
 
+func TestBuilderWindowsDebuggerMarkerUsesComdat(t *testing.T) {
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	module := ctx.NewModule("windows-debug-test")
+	defer module.Dispose()
+	module.SetTarget("aarch64-pc-windows-msvc")
+
+	builder := New(module, Config{})
+	builder.CompileUnit("main.go", "/src/example")
+	builder.Finalize()
+
+	marker := module.NamedGlobal(debuggerMarkerSymbol)
+	if marker.IsNil() {
+		t.Fatal("debugger marker is missing")
+	}
+	if got := marker.Comdat().SelectionKind(); got != llvm.AnyComdatSelectionKind {
+		t.Fatalf("debugger marker COMDAT selection = %v, want any", got)
+	}
+	if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("Windows debug module is invalid: %v\n%s", err, module.String())
+	}
+}
+
 func TestBuilderMetadataOperations(t *testing.T) {
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()

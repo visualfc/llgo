@@ -1,10 +1,9 @@
-//go:build linux || darwin
+//go:build linux || darwin || windows
 
 package gotest
 
 import (
 	"reflect"
-	"syscall"
 	"testing"
 	"unsafe"
 )
@@ -25,8 +24,7 @@ type compareInterfaceThenScalar struct {
 }
 
 func TestInterfaceStructStringCompareShortCircuits(t *testing.T) {
-	bad1, bad2, cleanup := protectedStrings(t)
-	defer cleanup()
+	bad1, bad2 := protectedStrings(t)
 
 	cases := []struct {
 		name string
@@ -62,25 +60,15 @@ func TestInterfaceStructComparePreservesInterfacePanicOrder(t *testing.T) {
 	})
 }
 
-func protectedStrings(t *testing.T) (string, string, func()) {
+func protectedStrings(t *testing.T) (string, string) {
 	t.Helper()
 
-	pageSize := syscall.Getpagesize()
-	page, err := syscall.Mmap(-1, 0, pageSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
-	if err != nil {
-		t.Skipf("mmap unavailable: %v", err)
-	}
-	if err := syscall.Mprotect(page, syscall.PROT_NONE); err != nil {
-		_ = syscall.Munmap(page)
-		t.Skipf("mprotect unavailable: %v", err)
-	}
+	page, _ := protectedMemory(t, 1, 0, 1)
 
 	bad1 := "foo"
 	bad2 := "foo"
 	(*reflect.StringHeader)(unsafe.Pointer(&bad1)).Data = uintptr(unsafe.Pointer(&page[0]))
 	(*reflect.StringHeader)(unsafe.Pointer(&bad2)).Data = uintptr(unsafe.Pointer(&page[1]))
 
-	return bad1, bad2, func() {
-		_ = syscall.Munmap(page)
-	}
+	return bad1, bad2
 }

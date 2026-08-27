@@ -22,7 +22,12 @@ const (
 	FuncInfoMetadataName = "llgo.funcinfo"
 	PCLineMetadataName   = "llgo.pcline"
 	funcInfoVersion      = 1
+	funcInfoFlagsVersion = 2
 	pcLineVersion        = 1
+
+	// FuncInfoFlagWrapper marks compiler-generated forwarding wrappers. The
+	// runtime uses this to match gc's abi.FuncIDWrapper stack-trace elision.
+	FuncInfoFlagWrapper uint32 = 1
 )
 
 // EnableFuncInfoMetadata controls emission of DCE-safe function source
@@ -56,6 +61,18 @@ func (p Program) FuncInfoSitesEnabled() bool {
 //
 //	!{i32 version, !"symbol", !"go.name", !"file", i32 line, i32 column}
 func (p Package) EmitFuncInfo(symbol, name, file string, line, column int) {
+	p.emitFuncInfo(symbol, name, file, line, column, 0, funcInfoVersion)
+}
+
+// EmitFuncInfoFlags is EmitFuncInfo with compiler/runtime semantic flags. Its
+// versioned row adds one trailing i32 flags operand so old metadata remains
+// readable while consumers can distinguish generated wrappers from ordinary
+// methods with the same displayed Go name.
+func (p Package) EmitFuncInfoFlags(symbol, name, file string, line, column int, flags uint32) {
+	p.emitFuncInfo(symbol, name, file, line, column, flags, funcInfoFlagsVersion)
+}
+
+func (p Package) emitFuncInfo(symbol, name, file string, line, column int, flags uint32, version uint64) {
 	if symbol == "" {
 		return
 	}
@@ -66,16 +83,18 @@ func (p Package) EmitFuncInfo(symbol, name, file string, line, column int) {
 		column = 0
 	}
 	i32 := p.Prog.Int32().ll
-	p.mod.AddNamedMetadataOperand(FuncInfoMetadataName,
-		p.Prog.ctx.MDNode([]llvm.Metadata{
-			llvm.ConstInt(i32, funcInfoVersion, false).ConstantAsMetadata(),
-			p.Prog.ctx.MDString(symbol),
-			p.Prog.ctx.MDString(name),
-			p.Prog.ctx.MDString(file),
-			llvm.ConstInt(i32, uint64(line), false).ConstantAsMetadata(),
-			llvm.ConstInt(i32, uint64(column), false).ConstantAsMetadata(),
-		}),
-	)
+	fields := []llvm.Metadata{
+		llvm.ConstInt(i32, version, false).ConstantAsMetadata(),
+		p.Prog.ctx.MDString(symbol),
+		p.Prog.ctx.MDString(name),
+		p.Prog.ctx.MDString(file),
+		llvm.ConstInt(i32, uint64(line), false).ConstantAsMetadata(),
+		llvm.ConstInt(i32, uint64(column), false).ConstantAsMetadata(),
+	}
+	if version == funcInfoFlagsVersion {
+		fields = append(fields, llvm.ConstInt(i32, uint64(flags), false).ConstantAsMetadata())
+	}
+	p.mod.AddNamedMetadataOperand(FuncInfoMetadataName, p.Prog.ctx.MDNode(fields))
 }
 
 // EmitPCLineInfo records a PC label id and its source position. The id names a
@@ -117,7 +136,7 @@ func (p Program) NeedsFramePointer() bool {
 		return false
 	}
 	switch target.GOOS {
-	case "linux", "darwin", "":
+	case "linux", "darwin", "windows", "":
 		return true
 	}
 	return false

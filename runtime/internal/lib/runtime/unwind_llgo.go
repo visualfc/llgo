@@ -21,24 +21,6 @@ func init() {
 	rtdebug.RecoverMark = recoverMark
 }
 
-// recoverMark records the recovering deferred frame (and one above, for
-// wrapper-reached recover) so the panic snapshot stays spliceable while
-// that frame is live. After siglongjmp the frame-pointer chain two levels
-// up can point into a stale/reused stack region that is sometimes
-// unmapped; probe each slot before dereferencing — an unguarded read here
-// self-faults ~7% of the time, converting to a nil-deref panic that
-// corrupts the value the recover was extracting (goroot reflectmake flake).
-func recoverMark() {
-	// Record this function's frame address: it sits below the recovering
-	// deferred frame, and the liveness gate tests interval containment, so
-	// the exact level does not matter.
-	fp := callerFramePointer()
-	if fp == 0 {
-		return
-	}
-	rtdebug.MarkPanicRecoverFPs(fp, 0)
-}
-
 // capturePanicPCs runs at panic time, before any longjmp unwinding, and
 // stores the physical pc chain for later splicing (see spliceCallers).
 func capturePanicPCs() {
@@ -48,46 +30,6 @@ func capturePanicPCs() {
 	var pcs [64]uintptr
 	n := fpCallers(0, pcs[:])
 	rtdebug.StorePanicPCs(pcs[:n])
-}
-
-// panicSplicePCs returns the snapshot when it is observable: either the
-// panic is still in flight, or the deferred frame that recovered it is
-// still live on the physical chain (gc keeps panic frames on the stack
-// exactly that long).
-func panicSplicePCs() []uintptr {
-	pcs := rtdebug.PanicPCs()
-	if len(pcs) == 0 {
-		return nil
-	}
-	if rtdebug.PanicActive() {
-		return pcs
-	}
-	mark, _ := rtdebug.PanicRecoverFPs()
-	if mark == 0 {
-		return nil
-	}
-	// The mark is a frame address recorded inside Recover's call chain;
-	// the recovering deferred frame is live iff the mark still lies
-	// within the current chain's span. Interval containment instead of
-	// exact equality: the hook's own frame depth differs across
-	// platforms (stub/wrapper layers), but any frame's [fp, parent fp)
-	// range straddling the mark proves the region is still stack, not
-	// reused heap or a dead extent.
-	fp := callerFramePointer()
-	for i := 0; fp != 0 && i < maxPanicSpliceFrames; i++ {
-		if !memReadable(fp) {
-			break
-		}
-		prev := *(*uintptr)(unsafe.Pointer(fp))
-		if fp <= mark && (prev > mark || prev == 0) {
-			return pcs
-		}
-		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
-			break
-		}
-		fp = prev
-	}
-	return nil
 }
 
 const maxPanicSpliceFrames = 4096
@@ -304,62 +246,6 @@ func panicTraceback(skip int) bool {
 // A slot whose decoded parent is further away than any plausible frame is a
 // corrupt chain, not a giant frame; stop rather than walk off the stack.
 const maxFPStride = 1 << 20
-
-// fpCallers walks the frame-pointer chain and fills pc with return
-// addresses, Go-style: pc[0] is the return address in the frame `skip`
-// levels above the caller of fpCallers. Every LLGo-compiled function keeps
-// x29/rbp chained ("frame-pointer"="non-leaf" is set on all Go functions),
-// so unlike the shadow stack this sees every physical frame; the walk stops
-// at the first frame that breaks the chain discipline (e.g. foreign C code
-// compiled without frame pointers).
-//
-// The clite walker (runtime/internal/clite/debug/_wrap/debug.c
-// llgo_stacktrace) implements the same chain discipline and guards for the
-// pre-table paths (unrecovered-panic dump, last-resort Callers fallback);
-// keep the two in sync when changing the walk rules.
-//
-//go:noinline
-func fpCallers(skip int, pc []uintptr) int {
-	if len(pc) == 0 {
-		return 0
-	}
-	// The walk bound needs the frame table's text range; make sure it is
-	// built (no-op when the prebuilt table was adopted at startup).
-	initRuntimeFuncPCFrames()
-	fp := uintptr(c_framepointer())
-	n := 0
-	// The helper returns this function's frame pointer, so the first return
-	// address already represents fpCallers' caller.
-	const maxFrames = 4096
-	for i := 0; fp != 0 && n < len(pc) && i < maxFrames; i++ {
-		prev := *(*uintptr)(unsafe.Pointer(fp))
-		ret := *(*uintptr)(unsafe.Pointer(fp + unsafe.Sizeof(uintptr(0))))
-		if ret < minLegalPC {
-			break
-		}
-		// Beyond main the chain runs into libc frames without FP
-		// discipline; their slots decode as wild pcs that nearest-below
-		// symbolization would map to arbitrary functions. Bound the walk
-		// to the program's own text (Go tracebacks stop at runtime.main
-		// for the same reason).
-		if !prebuiltTextContains(ret) {
-			break
-		}
-		if skip > 0 {
-			skip--
-		} else {
-			pc[n] = ret
-			n++
-		}
-		// Stacks grow down, so the chain must strictly increase; bound the
-		// stride so a corrupt slot cannot walk off the stack.
-		if prev <= fp || prev-fp > maxFPStride || prev&(unsafe.Sizeof(uintptr(0))-1) != 0 {
-			break
-		}
-		fp = prev
-	}
-	return n
-}
 
 // runtimeFPChain is emitted next to the funcinfo table (one per binary,
 // internal/build emitFuncInfoTable) and records whether this binary's Go

@@ -30,11 +30,13 @@ import (
 )
 
 type funcInfoRecord struct {
-	symbol string
-	name   string
-	file   string
-	line   int
-	column int
+	version int
+	symbol  string
+	name    string
+	file    string
+	line    int
+	column  int
+	flags   uint32
 }
 
 func TestFuncInfoMetadataEmission(t *testing.T) {
@@ -51,6 +53,7 @@ func leaf() int { return 1 }
 func (T) method() {}
 `
 	ir := cltest.CompileIREx(t, src, "foo.go", false, func(prog llssa.Program) {
+		prog.Target().GOOS = "linux"
 		prog.EnableFuncInfoMetadata(true)
 		prog.EnableFuncInfoSites(true)
 	})
@@ -104,6 +107,38 @@ func (T) method() {}
 	if got := records["foo.T.method"].line; got != 11 {
 		t.Fatalf("empty method funcinfo line = %d, want declaration line 11", got)
 	}
+	if got := records["foo.(*T).method"]; got.version != 1 || got.flags != 0 {
+		t.Fatalf("non-Windows synthetic pointer method wrapper funcinfo = %#v, want version 1 without flags", got)
+	}
+}
+
+func TestFuncInfoWrapperMetadataIsWindowsOnly(t *testing.T) {
+	const src = `package foo
+
+type T struct{}
+
+func (T) method() {}
+`
+	for _, test := range []struct {
+		goos        string
+		wantVersion int
+		wantFlags   uint32
+	}{
+		{goos: "linux", wantVersion: 1},
+		{goos: "windows", wantVersion: 2, wantFlags: llssa.FuncInfoFlagWrapper},
+	} {
+		t.Run(test.goos, func(t *testing.T) {
+			ir := cltest.CompileIREx(t, src, "foo.go", false, func(prog llssa.Program) {
+				prog.Target().GOOS = test.goos
+				prog.EnableFuncInfoMetadata(true)
+				prog.EnableFuncInfoSites(true)
+			})
+			got := parseFuncInfoRecords(t, ir)["foo.(*T).method"]
+			if got.version != test.wantVersion || got.flags != test.wantFlags {
+				t.Fatalf("%s synthetic pointer method wrapper funcinfo = %#v, want version %d flags %#x", test.goos, got, test.wantVersion, test.wantFlags)
+			}
+		})
+	}
 }
 
 func TestNoInlineDirectiveDisablesTailCalls(t *testing.T) {
@@ -141,27 +176,40 @@ func parseFuncInfoRecords(t *testing.T, ir string) map[string]funcInfoRecord {
 		wantRefs[ref[1]] = true
 	}
 
-	rowRE := regexp.MustCompile(`^!(\d+) = !\{i32 1, !"([^"]+)", !"([^"]+)", !"([^"]*)", i32 ([0-9]+), i32 ([0-9]+)\}$`)
+	rowRE := regexp.MustCompile(`^!(\d+) = !\{i32 ([12]), !"([^"]+)", !"([^"]+)", !"([^"]*)", i32 ([0-9]+), i32 ([0-9]+)(?:, i32 ([0-9]+))?\}$`)
 	records := make(map[string]funcInfoRecord)
 	for _, line := range strings.Split(ir, "\n") {
 		row := rowRE.FindStringSubmatch(line)
 		if row == nil || !wantRefs[row[1]] {
 			continue
 		}
-		lineNo, err := strconv.Atoi(row[5])
+		version, err := strconv.Atoi(row[2])
+		if err != nil {
+			t.Fatalf("bad funcinfo version in %q: %v", line, err)
+		}
+		lineNo, err := strconv.Atoi(row[6])
 		if err != nil {
 			t.Fatalf("bad funcinfo line in %q: %v", line, err)
 		}
-		column, err := strconv.Atoi(row[6])
+		column, err := strconv.Atoi(row[7])
 		if err != nil {
 			t.Fatalf("bad funcinfo column in %q: %v", line, err)
 		}
-		records[row[2]] = funcInfoRecord{
-			symbol: row[2],
-			name:   row[3],
-			file:   row[4],
-			line:   lineNo,
-			column: column,
+		var flags uint64
+		if row[8] != "" {
+			flags, err = strconv.ParseUint(row[8], 10, 32)
+			if err != nil {
+				t.Fatalf("bad funcinfo flags in %q: %v", line, err)
+			}
+		}
+		records[row[3]] = funcInfoRecord{
+			version: version,
+			symbol:  row[3],
+			name:    row[4],
+			file:    row[5],
+			line:    lineNo,
+			column:  column,
+			flags:   uint32(flags),
 		}
 	}
 	if len(records) != len(wantRefs) {

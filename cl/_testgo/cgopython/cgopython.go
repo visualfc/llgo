@@ -2,8 +2,17 @@
 package main
 
 /*
-#cgo pkg-config: python3-embed
+#cgo !windows pkg-config: python3-embed
+#ifdef _WIN32
+// This compile-only fixture checks LLGo's C-call and defer lowering; it does
+// not link or execute Python. Keep its Windows declaration surface local so
+// the compiler test does not depend on a separately installed Python SDK.
+void Py_Initialize(void);
+void Py_Finalize(void);
+int PyRun_SimpleString(const char *command);
+#else
 #include <Python.h>
+#endif
 */
 import "C"
 
@@ -35,6 +44,8 @@ import "C"
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[DEFER]])
 // DARWIN-ARM64: [[JMP_RESULT:%[0-9]+]] = call i32 @sigsetjmp
 // LINUX-AMD64: [[JMP_RESULT:%[0-9]+]] = call i32 @__sigsetjmp
+// WINDOWS-ARM64: [[JMP_RESULT:%[0-9]+]] = call i32 @llgo_setjmp(ptr %{{[0-9]+}})
+// WINDOWS-AMD64: [[JMP_RESULT:%[0-9]+]] = call i32 @_setjmpex(ptr %{{[0-9]+}}, ptr null)
 // CHECK-NEXT: [[JMP_NORMAL:%[0-9]+]] = icmp eq i32 [[JMP_RESULT]], 0
 // CHECK-NEXT: br i1 [[JMP_NORMAL]], label %{{[^,]+}}, label %{{[^ ]+}}
 // CHECK: call [0 x i8] @main._Cfunc_Py_Finalize()

@@ -1,4 +1,4 @@
-//go:build linux || darwin
+//go:build linux || darwin || windows
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -20,23 +20,14 @@ package gotest
 
 import (
 	"fmt"
-	"syscall"
 	"testing"
 )
 
-var boundsLoadPageSize = syscall.Getpagesize()
 var boundsLoadOne = 1
 
 func TestBoundsCheckBeforeWiderByteLoad(t *testing.T) {
-	b, err := syscall.Mmap(-1, 0, 2*boundsLoadPageSize, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer syscall.Munmap(b)
-	if err := syscall.Mprotect(b[boundsLoadPageSize:], syscall.PROT_NONE); err != nil {
-		t.Fatal(err)
-	}
-	x := b[boundsLoadPageSize-boundsLoadOne : boundsLoadPageSize]
+	b, pageSize := protectedMemory(t, 2, 1, 1)
+	x := b[pageSize-boundsLoadOne : pageSize]
 
 	tests := []struct {
 		name string

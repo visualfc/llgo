@@ -29,6 +29,7 @@ type Record struct {
 	File   string
 	Line   uint32
 	Column uint32
+	Flags  uint32
 }
 
 type PCLineRecord struct {
@@ -60,6 +61,10 @@ type EncodedPCLineRecord struct {
 const (
 	EncodedRecordSize       = 28
 	EncodedPCLineRecordSize = 24
+
+	RecordFlagWrapper  uint32 = 1
+	EncodedLineWrapper        = uint32(1 << 31)
+	EncodedLineMask           = EncodedLineWrapper - 1
 )
 
 type Table struct {
@@ -101,9 +106,19 @@ func EncodeWithPCLines(records []Record, pcLines []PCLineRecord) (Table, error) 
 		Strings:       strings,
 	}
 	for _, rec := range records {
+		if rec.Flags & ^RecordFlagWrapper != 0 {
+			return Table{}, fmt.Errorf("funcinfo record %q has unsupported flags %#x", rec.Symbol, rec.Flags)
+		}
+		if rec.Line > EncodedLineMask {
+			return Table{}, fmt.Errorf("funcinfo record %q source line exceeds %d", rec.Symbol, EncodedLineMask)
+		}
 		symPkg, symName := splitQualifiedName(rec.Symbol)
 		namePkg, nameName := splitQualifiedName(rec.Name)
 		fileRoot, fileName := splitFileName(rec.File)
+		line := rec.Line
+		if rec.Flags&RecordFlagWrapper != 0 {
+			line |= EncodedLineWrapper
+		}
 		out.Records = append(out.Records, EncodedRecord{
 			SymbolPkg:  ids[symPkg],
 			SymbolName: ids[symName],
@@ -111,7 +126,7 @@ func EncodeWithPCLines(records []Record, pcLines []PCLineRecord) (Table, error) 
 			NameName:   ids[nameName],
 			FileRoot:   ids[fileRoot],
 			FileName:   ids[fileName],
-			Line:       rec.Line,
+			Line:       line,
 		})
 	}
 	out.PCLines = make([]EncodedPCLineRecord, 0, len(filteredPCLines))

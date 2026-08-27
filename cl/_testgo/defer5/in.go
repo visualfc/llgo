@@ -1,4 +1,4 @@
-// LITTEST darwin/arm64 linux/amd64
+// LITTEST darwin/arm64 linux/amd64 windows/arm64 windows/amd64
 package main
 
 // Bind the four messages so the checks below prove which defer/panic payload
@@ -31,6 +31,8 @@ func main() {
 	// CHECK-NEXT: [[DEFER_HEAD_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 5
 	// DARWIN-ARM64: [[SETJMP_RESULT:%[0-9]+]] = call i32 @sigsetjmp(ptr [[DEFER_JMPBUF]], i32 0)
 	// LINUX-AMD64: [[SETJMP_RESULT:%[0-9]+]] = call i32 @__sigsetjmp(ptr [[DEFER_JMPBUF]], i32 0)
+	// WINDOWS-ARM64: [[SETJMP_RESULT:%[0-9]+]] = call i32 @llgo_setjmp(ptr [[DEFER_JMPBUF]])
+	// WINDOWS-AMD64: [[SETJMP_RESULT:%[0-9]+]] = call i32 @_setjmpex(ptr [[DEFER_JMPBUF]], ptr null)
 	// CHECK-NEXT: [[FIRST_ENTRY:%[0-9]+]] = icmp eq i32 [[SETJMP_RESULT]], 0
 	// CHECK-NEXT: br i1 [[FIRST_ENTRY]], label %{{.*}}, label %{{.*}}
 

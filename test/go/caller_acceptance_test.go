@@ -483,8 +483,12 @@ func main() {
 	want := []string{"main.main", "runtime.main", "runtime.goexit"}
 	for skip, name := range want {
 		pc, _, _, ok := runtime.Caller(skip)
-		if !ok || runtime.FuncForPC(pc).Name() != name {
-			panic("bad runtime caller tail")
+		got := "<missing>"
+		if ok {
+			got = runtime.FuncForPC(pc).Name()
+		}
+		if got != name {
+			panic("bad runtime caller tail: got " + got + ", want " + name)
 		}
 	}
 	os.Stdout.WriteString("CALLER_TAIL_OK\n")

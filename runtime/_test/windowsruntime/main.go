@@ -13,7 +13,7 @@ import (
 	_ "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
-const LLGoFiles = "_wrap/runtime.c"
+const LLGoFiles = "_wrap/runtime.c; _wrap/fault.c"
 
 //go:linkname currentThreadID C.llgo_windows_current_thread_id
 func currentThreadID() uint32
@@ -26,6 +26,165 @@ func traceClockUnitsPerSecond() uint64
 
 //go:linkname cMaxprocs C.llgo_maxprocs
 func cMaxprocs() int32
+
+//go:linkname windowsInvalidAddress C.llgo_windows_invalid_address
+func windowsInvalidAddress() uintptr
+
+//go:linkname windowsUnrecoveredFault C.llgo_windows_unrecovered_fault
+func windowsUnrecoveredFault() int32
+
+//go:linkname windowsForeignFaultOnGoThread C.llgo_windows_foreign_fault_on_go_thread
+func windowsForeignFaultOnGoThread() int32
+
+//go:linkname windowsForeignFaultOnNativeThread C.llgo_windows_foreign_fault_on_native_thread
+func windowsForeignFaultOnNativeThread() int32
+
+//go:linkname panicWindowsException github.com/xgo-dev/llgo/runtime/internal/runtime.panicWindowsException
+func panicWindowsException(code uint32, address uintptr)
+
+//go:noinline
+func windowsNilFault() byte {
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress()))
+}
+
+// Keep two distinct fault sites so concurrent captures cannot accidentally
+// satisfy each other's traceback checks.
+//
+//go:noinline
+func windowsNilFaultA() byte {
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress())) + 1
+}
+
+//go:noinline
+func windowsNilFaultB() byte {
+	return *(*byte)(unsafe.Pointer(windowsInvalidAddress())) + 2
+}
+
+func hasSuffix(value, suffix string) bool {
+	return len(value) >= len(suffix) && value[len(value)-len(suffix):] == suffix
+}
+
+func checkNilFault() {
+	for attempt := 0; attempt < 2; attempt++ {
+		deferred := false
+		recovered := false
+		func() {
+			defer func() {
+				value := recover()
+				if value == nil {
+					panic("Windows nil fault was not recoverable")
+				}
+				err, ok := value.(error)
+				if !ok || err.Error() != "runtime error: invalid memory address or nil pointer dereference" {
+					panic("Windows nil fault returned the wrong panic value")
+				}
+				if !deferred {
+					panic("Windows nil fault skipped an earlier defer")
+				}
+
+				var pcs [32]uintptr
+				n := runtime.Callers(0, pcs[:])
+				frames := runtime.CallersFrames(pcs[:n])
+				found := false
+				seenGoexit := false
+				for {
+					frame, more := frames.Next()
+					if seenGoexit {
+						panic("Windows nil fault traceback continued past runtime.goexit")
+					}
+					if hasSuffix(frame.Function, ".windowsNilFault") {
+						found = true
+					}
+					if frame.Function == "runtime.goexit" {
+						seenGoexit = true
+					}
+					if !more {
+						break
+					}
+				}
+				if !found {
+					panic("Windows nil fault traceback lost the faulting frame")
+				}
+				if !seenGoexit {
+					panic("Windows nil fault traceback lost runtime.goexit")
+				}
+				recovered = true
+			}()
+			defer func() { deferred = true }()
+			_ = windowsNilFault()
+		}()
+		if !recovered || !deferred {
+			panic("Windows nil fault did not complete recovery")
+		}
+	}
+}
+
+func checkConcurrentNilFault() {
+	start := make(chan struct{})
+	ready := make(chan struct{}, 2)
+	done := make(chan struct{}, 2)
+
+	run := func(fault func() byte, functionSuffix string) {
+		ready <- struct{}{}
+		<-start
+		for attempt := 0; attempt < 32; attempt++ {
+			func() {
+				defer func() {
+					if recover() == nil {
+						panic("concurrent Windows nil fault was not recoverable")
+					}
+					var pcs [32]uintptr
+					n := runtime.Callers(0, pcs[:])
+					frames := runtime.CallersFrames(pcs[:n])
+					for {
+						frame, more := frames.Next()
+						if hasSuffix(frame.Function, functionSuffix) {
+							return
+						}
+						if !more {
+							break
+						}
+					}
+					panic("concurrent Windows fault traceback used another goroutine's snapshot")
+				}()
+				_ = fault()
+			}()
+		}
+		done <- struct{}{}
+	}
+
+	go run(windowsNilFaultA, ".windowsNilFaultA")
+	go run(windowsNilFaultB, ".windowsNilFaultB")
+	<-ready
+	<-ready
+	close(start)
+	<-done
+	<-done
+}
+
+func checkForeignFaultOnGoThread() {
+	if got := windowsForeignFaultOnGoThread(); got != 1 {
+		panic("native Windows fault did not continue through the handler chain")
+	}
+}
+
+func checkForeignFaultOnNativeThread() {
+	if got := windowsForeignFaultOnNativeThread(); got != 1 {
+		panic("native-thread Windows fault did not continue through the handler chain")
+	}
+}
+
+func checkIntegerOverflowFault() {
+	var got any
+	func() {
+		defer func() { got = recover() }()
+		panicWindowsException(0xc0000095, 0)
+	}()
+	err, ok := got.(error)
+	if !ok || err.Error() != "runtime error: integer overflow" {
+		panic("Windows integer overflow returned the wrong panic value")
+	}
+}
 
 func checkRecover() {
 	defer func() {
@@ -126,6 +285,17 @@ func main() {
 	}
 
 	checkRecover()
+	checkForeignFaultOnGoThread()
+	checkForeignFaultOnNativeThread()
+	checkIntegerOverflowFault()
+	checkNilFunctionFaultOrigin()
+	checkNilFault()
+	checkStoreNilFaultLine()
+	checkConcurrentNilFault()
+	if windowsUnrecoveredFault() != 0 {
+		_ = windowsNilFault()
+		panic("unrecovered Windows fault returned")
+	}
 	checkThreadSemantics()
 	checkProcessAffinityCPUCount()
 	checkTraceClock()

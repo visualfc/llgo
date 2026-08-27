@@ -268,12 +268,13 @@ func testFuncInfoMetadataDoesNotPreserveFunctions(t *testing.T) {
 
 	pkg.EmitFuncInfo("main.unused", "main.unused", "unused.go", 7, 1)
 	pkg.EmitFuncInfo("main.negative", "main.negative", "negative.go", -7, -1)
+	pkg.EmitFuncInfoFlags("main.wrapper", "main.wrapper", "wrapper.go", 9, 2, FuncInfoFlagWrapper)
 	ir := pkg.String()
 
 	if !strings.Contains(ir, `!llgo.funcinfo = !{!`) {
 		t.Fatalf("missing %s metadata:\n%s", FuncInfoMetadataName, ir)
 	}
-	for _, want := range []string{`!"main.unused"`, `!"unused.go"`, `i32 7`, `!"main.negative"`, `!"negative.go"`, `i32 0`} {
+	for _, want := range []string{`!"main.unused"`, `!"unused.go"`, `i32 7`, `!"main.negative"`, `!"negative.go"`, `i32 0`, `!"main.wrapper"`, `!"wrapper.go"`, `i32 9, i32 2, i32 1`} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("missing funcinfo field %s:\n%s", want, ir)
 		}

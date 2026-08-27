@@ -832,7 +832,7 @@ func (b Builder) DebugFunction(f Function, funcScope *types.Scope, pos token.Pos
 		uint(bodyPos.Line),
 		uint(bodyPos.Column),
 		p.diFunc.ll,
-		f.impl.InstructionDebugLoc(),
+		llvm.Metadata{},
 	)
 }
 

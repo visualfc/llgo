@@ -133,6 +133,22 @@ func TestEncodeRoundTripsSingleRecord(t *testing.T) {
 	}
 }
 
+func TestEncodePacksWrapperFlagWithoutGrowingRecord(t *testing.T) {
+	table, err := Encode([]Record{{Symbol: "s", Name: "n", File: "f", Line: 17, Flags: RecordFlagWrapper}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := table.Records[0].Line, uint32(17)|EncodedLineWrapper; got != want {
+		t.Fatalf("encoded line = %#x, want %#x", got, want)
+	}
+	if _, err := Encode([]Record{{Symbol: "bad", Flags: 2}}); err == nil {
+		t.Fatal("unsupported record flag was accepted")
+	}
+	if _, err := Encode([]Record{{Symbol: "bad-line", Line: EncodedLineWrapper}}); err == nil {
+		t.Fatal("source line overlapping encoded flags was accepted")
+	}
+}
+
 func TestEncodeHashHandlesCollisions(t *testing.T) {
 	a, b := collisionPair(t)
 	table, err := Encode([]Record{

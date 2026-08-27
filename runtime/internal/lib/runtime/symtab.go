@@ -151,6 +151,11 @@ type runtimeFuncInfoRecord struct {
 	line       uint32
 }
 
+const (
+	runtimeFuncInfoLineWrapper = uint32(1 << 31)
+	runtimeFuncInfoLineMask    = runtimeFuncInfoLineWrapper - 1
+)
+
 //go:linkname runtimeFuncInfoTable __llgo_funcinfo_table
 var runtimeFuncInfoTable *runtimeFuncInfoRecord
 
@@ -264,6 +269,13 @@ const (
 	runtimePCFindSubbucket  = 16
 	runtimeFuncPCEntrySlack = 64
 )
+
+// Win64 entry-slack validation uses the same PE unwind lookup as the platform
+// stack walker. The branch that references it is a compile-time false path on
+// every other target, so no Windows symbol or code reaches those binaries.
+//
+//go:linkname c_windowsLookupFunctionEntry C.llgo_windows_lookup_function_entry
+func c_windowsLookupFunctionEntry(pc uintptr, imageBase *uintptr) unsafe.Pointer
 
 var runtimeFuncPCInitState uint32
 var runtimeFuncPCFrames []runtimeFuncPCFrame
@@ -571,10 +583,14 @@ func applyFuncInfo(sym *pcSymbol, rawFunction string) {
 			sym.file = file
 		}
 	}
+	line := int(rec.line)
+	if GOOS == "windows" {
+		line = int(rec.line & runtimeFuncInfoLineMask)
+	}
 	if rec.line != 0 {
 		sym.startLine = int(rec.line)
 		if sym.line == 0 {
-			sym.line = int(rec.line)
+			sym.line = line
 		}
 	}
 	sym.ok = sym.ok || sym.function != "" || sym.file != ""
@@ -1438,6 +1454,13 @@ func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
 	if pc == 0 || prebuiltFuncPCTablePresent() {
 		return pcSymbol{}, false
 	}
+	if GOOS == "windows" && (GOARCH == "amd64" || GOARCH == "arm64") {
+		var imageBase uintptr
+		if entry := c_windowsLookupFunctionEntry(pc, &imageBase); entry != nil &&
+			imageBase+uintptr(*(*uint32)(entry)) != pc {
+			return pcSymbol{}, false
+		}
+	}
 	bestDelta := uintptr(runtimeFuncPCEntrySlack) + 1
 	bestIndex := uint32(0)
 	if runtimeFuncInfoEntryStart != nil && runtimeFuncInfoEntryEnd != nil {
@@ -1505,8 +1528,17 @@ func funcPCFrameForEntryPC(pc uintptr) (pcSymbol, bool) {
 		return pcSymbol{}, false
 	}
 	frame := frames[lo]
-	if frame.entry != pc && frame.entry-pc > runtimeFuncPCEntrySlack {
-		return pcSymbol{}, false
+	if frame.entry != pc {
+		if frame.entry-pc > runtimeFuncPCEntrySlack {
+			return pcSymbol{}, false
+		}
+		if GOOS == "windows" && (GOARCH == "amd64" || GOARCH == "arm64") {
+			var imageBase uintptr
+			if entry := c_windowsLookupFunctionEntry(pc, &imageBase); entry != nil &&
+				imageBase+uintptr(*(*uint32)(entry)) != pc {
+				return pcSymbol{}, false
+			}
+		}
 	}
 	return pcSymbolForFuncInfoIndex(pc, pc, frame.funcIndex)
 }
@@ -1517,13 +1549,18 @@ func pcSymbolForFuncInfoIndex(pc, entry uintptr, funcIndex uint32) (pcSymbol, bo
 	}
 	fn := funcInfoAt(uintptr(funcIndex) - 1)
 	line := int(fn.line)
+	startLine := line
+	if GOOS == "windows" {
+		line = int(fn.line & runtimeFuncInfoLineMask)
+		startLine = int(fn.line)
+	}
 	return pcSymbol{
 		pc:        pc,
 		entry:     entry,
 		function:  funcInfoFunctionName(fn),
 		file:      funcInfoFileName(fn),
 		line:      line,
-		startLine: line,
+		startLine: startLine,
 		ok:        true,
 	}, true
 }
@@ -1648,6 +1685,9 @@ func initRuntimePCLineFramesOnce() {
 			}
 			fc.file = funcInfoJoinFile(fn.fileRoot, fn.fileName)
 			fc.line = int(fn.line)
+			if GOOS == "windows" {
+				fc.line = int(fn.line & runtimeFuncInfoLineMask)
+			}
 			fc.resolved = true
 		}
 		entry := fc.entry
@@ -1671,6 +1711,10 @@ func initRuntimePCLineFramesOnce() {
 		if line == 0 {
 			line = fc.line
 		}
+		startLine := fc.line
+		if GOOS == "windows" {
+			startLine = int(fn.line)
+		}
 		*(*runtimePCLineFrame)(unsafe.Add(frameBase, uintptr(nframes)*frameSize)) = runtimePCLineFrame{
 			pc:        pc,
 			sequence:  i,
@@ -1678,11 +1722,18 @@ func initRuntimePCLineFramesOnce() {
 			function:  fc.function,
 			file:      file,
 			line:      line,
-			startLine: fc.line,
+			startLine: startLine,
 		}
 		nframes++
 	}
 	frames = frames[:nframes]
+	if GOOS == "windows" {
+		// COFF can fold adjacent zero-byte source anchors onto one final PC.
+		// Associative carrier sections retain their emission order, so collapse
+		// those aliases before the unstable PC sort and let the nearest source
+		// location win. ELF and Mach-O retain their established table path.
+		frames = uniqueRuntimePCLineFrames(frames)
+	}
 	sortRuntimePCLineFrames(frames)
 	frames = uniqueRuntimePCLineFrames(frames)
 	runtimePCLineFrames = frames
@@ -2167,6 +2218,12 @@ func (ci *Frames) Next() (frame Frame, more bool) {
 		}
 		sym := frameSymbol(lookupPC)
 		sym.pc = pc
+		if GOOS == "windows" {
+			// Win64 keeps the wrapper marker in the high bit of the private
+			// start-line field while walking. Public Frames expose only the Go
+			// source line, matching the standard runtime API.
+			sym.startLine = int(uint32(sym.startLine) & runtimeFuncInfoLineMask)
+		}
 		if !sym.ok {
 			ci.frames = append(ci.frames, Frame{
 				PC:        pc,
