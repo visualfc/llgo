@@ -6,13 +6,13 @@ import (
 	"github.com/goplus/lib/c/pthread/sync"
 )
 
-// The C-backed Once implementation must retain a concrete callback rather
-// than duplicating the closure body at each call site. POSIX lowers directly
-// to pthread_once; Windows calls the shared INIT_ONCE adapter.
+// The C-backed Once implementation accepts the same bare C callback on every
+// host. POSIX lowers directly to pthread_once; Windows calls the shared
+// INIT_ONCE adapter without exposing the Go closure representation.
 // CHECK-LABEL: define void @main.f(){{.*}} {
 // DARWIN: call i32 @pthread_once(ptr @main.once, ptr @"main.f$1")
 // LINUX: call i32 @pthread_once(ptr @main.once, ptr @"main.f$1")
-// WINDOWS: call i32 @"github.com/goplus/lib/c/pthread/sync.(*Once).Do"(ptr @main.once, { ptr, ptr } { ptr @"main.f$1", ptr null })
+// WINDOWS: call i32 @"github.com/goplus/lib/c/pthread/sync.(*Once).Do"(ptr @main.once, ptr @"main.f$1")
 // CHECK-NEXT: ret void
 // CHECK-LABEL: define void @"main.f$1"(){{.*}} {
 // CHECK: call i32 (ptr, ...) @printf(ptr @{{[0-9]+}})
