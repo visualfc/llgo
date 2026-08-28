@@ -2111,8 +2111,9 @@ func linuxExportDynamicArgs(ctx *context) []string {
 }
 
 // archiver returns the archiving tool to use for the current context.
-// For wasm targets and LTO builds, it prefers llvm-ar because linkers need
-// LLVM-aware archive indexes for wasm objects and bitcode members.
+// For COFF or wasm targets, and for LTO builds, it prefers llvm-ar because
+// linkers need LLVM-aware archive indexes for COFF objects, wasm objects, and
+// bitcode members.
 func (c *context) archiver() string {
 	// Allow user override before probing any implicit toolchain path.
 	if ar := os.Getenv("LLGO_AR"); ar != "" {
@@ -2122,7 +2123,8 @@ func (c *context) archiver() string {
 	if llvmAr := siblingTool(c.crossCompile.CC, "llvm-ar"); llvmAr != "" {
 		return llvmAr
 	}
-	if c.buildConf.ltoEnabled() || c.buildConf.Goarch == "wasm" || strings.Contains(c.crossCompile.LLVMTarget, "wasm") {
+	if c.crossCompile.Toolchain.ObjectFormat == crosscompile.ObjectFormatCOFF ||
+		c.buildConf.ltoEnabled() || c.buildConf.Goarch == "wasm" || strings.Contains(c.crossCompile.LLVMTarget, "wasm") {
 		if llvmAr, err := exec.LookPath("llvm-ar"); err == nil {
 			return llvmAr
 		}
