@@ -492,7 +492,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
 	nativeInput := crosscompile.NativeToolchainInput{}
-	if usesNativeWindowsToolchain(runtime.GOOS, runtime.GOARCH, conf) {
+	if usesNativeWindowsToolchain(runtime.GOOS, conf) {
 		nativeInput, err = parseNativeToolchainInput(commands, conf.LinkOptions)
 		if err != nil {
 			return nil, err
@@ -918,9 +918,12 @@ func removeOutFmts(outFmts *OutFmtDetails) {
 	}
 }
 
-func usesNativeWindowsToolchain(hostGOOS, hostGOARCH string, conf *Config) bool {
-	return conf.Target == "" && hostGOOS == "windows" &&
-		conf.Goos == hostGOOS && conf.Goarch == hostGOARCH
+func usesNativeWindowsToolchain(hostGOOS string, conf *Config) bool {
+	// Windows can execute a host-architecture LLGo compiler while Clang targets
+	// another Windows architecture (for example, x64 LLGo producing ARM64 or
+	// 386 programs). The selected CC target, not the compiler process's GOARCH,
+	// defines the physical ABI that must be resolved below.
+	return conf.Target == "" && hostGOOS == "windows" && conf.Goos == hostGOOS
 }
 
 func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crosscompile.NativeToolchainInput, error) {

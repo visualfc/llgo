@@ -92,6 +92,35 @@ func TestResolveWindowsToolchainDefaultsToGNUProfile(t *testing.T) {
 	}
 }
 
+func TestResolveWindowsToolchainImplicitlyCrossesWindowsArchitecture(t *testing.T) {
+	for _, test := range []struct {
+		goarch string
+		triple string
+	}{
+		{goarch: "386", triple: "i686-pc-windows-msvc"},
+		{goarch: "arm64", triple: "aarch64-pc-windows-msvc"},
+	} {
+		t.Run(test.goarch, func(t *testing.T) {
+			probe := fixedToolProbe(t, map[string]toolIdentity{
+				commandKey("clang"): {target: "x86_64-pc-windows-msvc", version: "clang version 19.1.7"},
+				commandKey("clang++", "--target="+test.triple, "-fms-runtime-lib=dll"): {
+					target: test.triple, version: "clang version 19.1.7",
+				},
+			})
+			export, err := resolveWindowsToolchain(test.goarch, NativeToolchainInput{}, probe)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := export.Toolchain.TargetTriple; got != test.triple {
+				t.Fatalf("TargetTriple = %q, want %q", got, test.triple)
+			}
+			if !slices.Equal(export.CCArgs, []string{"--target=" + test.triple, "-fms-runtime-lib=dll"}) {
+				t.Fatalf("CCArgs = %q", export.CCArgs)
+			}
+		})
+	}
+}
+
 func TestWindowsEnvironmentValueUsesLastCaseInsensitiveEntry(t *testing.T) {
 	environ := []string{"UCRTVersion=old", "other=value", "ucrtversion=10.0.26100.0\\"}
 	if got, want := windowsEnvironmentValue(environ, "UCRTVersion"), "10.0.26100.0"; got != want {

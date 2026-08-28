@@ -691,7 +691,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 }
 
 func usesNativePlatformToolchain(hostGOOS, hostGOARCH, targetGOOS, targetGOARCH string) bool {
-	return hostGOOS == targetGOOS && hostGOARCH == targetGOARCH
+	return hostGOOS == targetGOOS && (hostGOARCH == targetGOARCH || targetGOOS == "windows")
 }
 
 // UseTarget loads configuration from a target name (e.g., "rp2040", "wasi")
