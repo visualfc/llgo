@@ -228,6 +228,16 @@ func use(v int32) int32 {
 `,
 			want: "stdcall callback must be a non-capturing function",
 		},
+		{
+			name: "stdcall value used as Go function", goos: "windows", goarch: "386",
+			src: `package p
+//llgo:type stdcall
+type Callback func(int32) int32
+func callGo(fn func(int32) int32, value int32) int32 { return fn(value) }
+func use(callback Callback, value int32) int32 { return callGo(callback, value) }
+`,
+			want: "stdcall function value cannot be used as a Go function; wrap the call in a Go function",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

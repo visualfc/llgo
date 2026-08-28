@@ -929,6 +929,9 @@ func (b Builder) UnOp(op token.Token, x Expr) (ret Expr) {
 //	t1 = changetype *int <- IntPtr (t0)
 func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 	dbgInstrf("ChangeType %v, %v\n", t.RawType(), x.impl)
+	if b.Prog.isStdcallType(x.raw.Type) && !b.Prog.isStdcallType(t.raw.Type) {
+		panic("stdcall function value cannot be used as a Go function; wrap the call in a Go function")
+	}
 	if b.Prog.isStdcallType(t.raw.Type) && !b.Prog.isStdcallType(x.raw.Type) {
 		return b.stdcallCallback(t.raw.Type, x)
 	}
