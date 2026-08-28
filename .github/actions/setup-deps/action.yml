@@ -24,6 +24,7 @@ runs:
         if ("${{ inputs.windows-abi }}" -notin @("msvc", "mingw")) {
           throw "Unsupported Windows ABI profile: ${{ inputs.windows-abi }}"
         }
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_ABI=${{ inputs.windows-abi }}"
 
     - name: Cache full-target Windows LLVM
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
@@ -459,6 +460,7 @@ runs:
           "$prefix-openssl" \
           "$prefix-zlib" \
           "$prefix-cjson" \
+          "$prefix-ninja" \
           make
 
         for package in clang clang-libs compiler-rt llvm llvm-libs lld libc++ libunwind; do

@@ -2,7 +2,7 @@
 # Script to build iwasm with correct options for llgo WASM testing
 # This ensures local testing uses the same iwasm configuration as CI
 
-set -e
+set -euo pipefail
 
 # Determine cache directory based on platform
 if [ "$(uname -s)" = "Darwin" ]; then
@@ -12,7 +12,7 @@ else
 fi
 
 IWASM_BIN_DIR="${LLGO_CACHE_DIR}/bin"
-WAMR_VERSION="WAMR-2.4.4"
+WAMR_VERSION="WAMR-2.4.5"
 
 echo "Building iwasm for llgo WASM testing..."
 echo "Target directory: ${IWASM_BIN_DIR}"
@@ -22,13 +22,12 @@ mkdir -p "${IWASM_BIN_DIR}"
 
 # Create temp directory for building
 TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TEMP_DIR}"' EXIT
 cd "${TEMP_DIR}"
 
 echo "Cloning wasm-micro-runtime ${WAMR_VERSION}..."
-git clone --branch ${WAMR_VERSION} --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git
+git clone --branch "${WAMR_VERSION}" --depth 1 https://github.com/wasm-micro-runtime/wasm-micro-runtime.git
 
-# WAMR's Windows platform sources expect MSVC preprocessing. This compiler
-# choice is only for the host-side iwasm test helper.
 IWASM_NAME="iwasm"
 CMAKE_GENERATOR_ARGS=()
 case "$(uname -s)" in
@@ -41,11 +40,34 @@ case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
         PLATFORM="windows"
         IWASM_NAME="iwasm.exe"
-        CMAKE_GENERATOR_ARGS=(
-            -G "NMake Makefiles"
-            -D CMAKE_C_COMPILER=cl
-            -D CMAKE_CXX_COMPILER=cl
-        )
+        WINDOWS_ABI="${LLGO_WINDOWS_ABI:-}"
+        if [ -z "${WINDOWS_ABI}" ]; then
+            if [ -n "${MINGW_PREFIX:-}" ]; then
+                WINDOWS_ABI="mingw"
+            else
+                WINDOWS_ABI="msvc"
+            fi
+        fi
+        if [ "${WINDOWS_ABI}" = "mingw" ]; then
+            # Keep MinGW on its own GNU ABI toolchain. This builds for the
+            # active MSYS2 host architecture, including future 386 lanes.
+            CMAKE_GENERATOR_ARGS=(
+                -G Ninja
+                -D "CMAKE_C_COMPILER=${CC:-clang}"
+                -D "CMAKE_CXX_COMPILER=${CXX:-clang++}"
+            )
+        elif [ "${WINDOWS_ABI}" = "msvc" ]; then
+            # The standalone MSVC profile exports nmake and the matching SDK
+            # environment without requiring an MSYS2 installation.
+            CMAKE_GENERATOR_ARGS=(
+                -G "NMake Makefiles"
+                -D CMAKE_C_COMPILER=cl
+                -D CMAKE_CXX_COMPILER=cl
+            )
+        else
+            echo "Unsupported Windows ABI profile: ${WINDOWS_ABI}" >&2
+            exit 1
+        fi
         ;;
     *)
         echo "Unsupported platform: $(uname -s)"
@@ -79,9 +101,9 @@ cmake --build . --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null
 echo "Installing iwasm to ${IWASM_BIN_DIR}..."
 cp "${IWASM_NAME}" "${IWASM_BIN_DIR}/"
 
-# Cleanup
-cd /
-rm -rf "${TEMP_DIR}"
+if [ -n "${GITHUB_PATH:-}" ]; then
+    printf '%s\n' "${IWASM_BIN_DIR}" >> "${GITHUB_PATH}"
+fi
 
 echo ""
 echo "✓ iwasm successfully built and installed to ${IWASM_BIN_DIR}/${IWASM_NAME}"

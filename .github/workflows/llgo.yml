@@ -458,9 +458,9 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        # WASI output is host-independent; keep this expensive WAMR build on
-        # Ubuntu. Native Darwin coverage remains in the primary LLGo lanes and
-        # release artifact smoke tests.
+        # WASI output is host-independent; keep this source build on Ubuntu.
+        # Native Darwin coverage remains in the primary LLGo lanes and release
+        # artifact smoke tests.
         os: [ubuntu-latest]
         llvm: [19]
     runs-on: ${{matrix.os}}
@@ -474,14 +474,9 @@ jobs:
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
 
-      - name: Install wamr
-        run: |
-          git clone --branch WAMR-2.4.4 --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git
-          mkdir wasm-micro-runtime/product-mini/platforms/linux/build
-          cd wasm-micro-runtime/product-mini/platforms/linux/build
-          cmake -D WAMR_BUILD_EXCE_HANDLING=1 -D WAMR_BUILD_FAST_INTERP=0 -DWAMR_BUILD_SHARED_MEMORY=1 -DWAMR_BUILD_LIB_WASI_THREADS=1 -DWAMR_BUILD_LIB_PTHREAD=1 -DCMAKE_BUILD_TYPE=Debug -DWAMR_BUILD_DEBUG_INTERP=1 ..
-          make -j8
-          echo "$PWD" >> $GITHUB_PATH
+      - name: Install WAMR
+        shell: bash
+        run: bash dev/build_iwasm.sh
 
       - name: Install llgo
         run: |
@@ -500,7 +495,6 @@ jobs:
           # Check file type
           file hello.wasm
 
-          # Run the wasm binary using llgo_wasm
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
 
   wasm-runtime:
