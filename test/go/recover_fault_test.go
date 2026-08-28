@@ -23,6 +23,13 @@ func faultCopy(dst, src []byte) (n int, err error) {
 }
 
 func TestRecoverAfterFaultPreservesNamedResult(t *testing.T) {
+	// Automatic GC is orthogonal to this test and can perturb the host's
+	// signal/exception recovery path while the fault is being converted into
+	// a panic. Disable it only around the intentional fault so Go and LLGo run
+	// the same deterministic recovery check.
+	oldGCPercent := debug.SetGCPercent(-1)
+	defer debug.SetGCPercent(oldGCPercent)
+
 	old := debug.SetPanicOnFault(true)
 	defer debug.SetPanicOnFault(old)
 
