@@ -380,9 +380,6 @@ func (p Package) newFunc(
 		llvmName = p.Prog.stdcallSymbolName(name)
 	}
 	fn := llvm.AddFunction(p.mod, llvmName, t.ll)
-	if isNativeFuncBackground(bg) {
-		p.Prog.nativeFuncBackgrounds[fn] = bg
-	}
 	if bg == InStdcall {
 		fn.SetFunctionCallConv(p.Prog.stdcallCallConv())
 	}

@@ -40,15 +40,9 @@ func requireStdcallPanic(t *testing.T, want string, fn func()) {
 }
 
 func newStdcallType(prog Program, pkgPath, name string, sig *types.Signature) *types.Named {
-	return newNativeFuncType(prog, pkgPath, name, sig, InStdcall)
-}
-
-func newNativeFuncType(
-	prog Program, pkgPath, name string, sig *types.Signature, background Background,
-) *types.Named {
 	pkg := types.NewPackage(pkgPath, "p")
 	named := types.NewNamed(types.NewTypeName(token.NoPos, pkg, name, nil), sig, nil)
-	prog.SetTypeBackground(pkgPath+"."+name, background)
+	prog.SetTypeBackground(pkgPath+"."+name, InStdcall)
 	return named
 }
 
@@ -236,94 +230,128 @@ func TestStdcallCallbackConversionWithoutX86Adapter(t *testing.T) {
 }
 
 func TestStdcallFuncvalAdapters(t *testing.T) {
-	for _, arch := range []string{"386", "amd64", "arm64"} {
-		for _, resultCount := range []int{0, 1, 2} {
-			t.Run(fmt.Sprintf("%s/results-%d", arch, resultCount), func(t *testing.T) {
-				prog := NewProgram(&Target{GOOS: "windows", GOARCH: arch, CABIOnly: true})
-				defer prog.Dispose()
-				params := types.NewTuple(types.NewVar(token.NoPos, nil, "value", types.Typ[types.Int32]))
-				results := make([]*types.Var, resultCount)
-				for i := range results {
-					results[i] = types.NewVar(token.NoPos, nil, fmt.Sprintf("result%d", i), types.Typ[types.Int32])
-				}
-				sig := types.NewSignatureType(nil, nil, nil, params, types.NewTuple(results...), false)
-				callback := newStdcallType(prog, "example.com/p", fmt.Sprintf("Callback%d", resultCount), sig)
-				pkg := prog.NewPackage("p", "example.com/p")
-				ownerSig := types.NewSignatureType(nil, nil, nil, types.NewTuple(
-					types.NewVar(token.NoPos, nil, "callback", callback),
-				), nil, false)
-				owner := pkg.NewFunc(fmt.Sprintf("example.com/p.owner%d", resultCount), ownerSig, InGo)
-				body := owner.MakeBody(1)
-				goFunc := prog.Type(sig, InGo)
-				converted := body.ChangeType(goFunc, owner.Param(0))
-				body.Return()
+	for _, resultCount := range []int{0, 1, 2} {
+		t.Run(fmt.Sprintf("results-%d", resultCount), func(t *testing.T) {
+			prog := NewProgram(&Target{GOOS: "windows", GOARCH: "386"})
+			defer prog.Dispose()
+			params := types.NewTuple(types.NewVar(token.NoPos, nil, "value", types.Typ[types.Int32]))
+			results := make([]*types.Var, resultCount)
+			for i := range results {
+				results[i] = types.NewVar(token.NoPos, nil, fmt.Sprintf("result%d", i), types.Typ[types.Int32])
+			}
+			sig := types.NewSignatureType(nil, nil, nil, params, types.NewTuple(results...), false)
+			callback := newStdcallType(prog, "example.com/p", fmt.Sprintf("Callback%d", resultCount), sig)
+			pkg := prog.NewPackage("p", "example.com/p")
+			ownerSig := types.NewSignatureType(nil, nil, nil, types.NewTuple(
+				types.NewVar(token.NoPos, nil, "callback", callback),
+			), nil, false)
+			owner := pkg.NewFunc(fmt.Sprintf("example.com/p.owner%d", resultCount), ownerSig, InGo)
+			body := owner.MakeBody(1)
+			goFunc := prog.Type(sig, InGo)
+			converted := body.ChangeType(goFunc, owner.Param(0))
+			body.Return()
 
-				wrapperName := pkg.Path() + ".__llgo_stdcall_funcval$" + prog.abi.FuncName(
-					goFunc.raw.Type.Underlying().(*types.Struct).Field(0).Type().(*types.Signature),
-				)
-				wrapper := pkg.FuncOf(wrapperName)
-				if wrapper == nil || !wrapper.NeedsEnv() {
-					t.Fatalf("stdcall funcval adapter %q was not generated with an environment", wrapperName)
-				}
-				if wrapper.impl.Linkage() != llvm.InternalLinkage {
-					t.Fatalf("stdcall funcval adapter linkage = %v, want internal", wrapper.impl.Linkage())
-				}
-				if converted.kind != vkClosure {
-					t.Fatalf("converted stdcall value kind = %v, want closure", converted.kind)
-				}
-				if converted.impl.Operand(1) != owner.Param(0).impl {
-					t.Fatalf("funcval context does not carry the native function pointer: %s", converted.impl)
-				}
+			wrapperName := pkg.Path() + ".__llgo_stdcall_funcval$" + prog.abi.FuncName(
+				goFunc.raw.Type.Underlying().(*types.Struct).Field(0).Type().(*types.Signature),
+			)
+			wrapper := pkg.FuncOf(wrapperName)
+			if wrapper == nil || !wrapper.NeedsEnv() {
+				t.Fatalf("stdcall funcval adapter %q was not generated with an environment", wrapperName)
+			}
+			if wrapper.impl.Linkage() != llvm.InternalLinkage {
+				t.Fatalf("stdcall funcval adapter linkage = %v, want internal", wrapper.impl.Linkage())
+			}
+			if converted.kind != vkClosure {
+				t.Fatalf("converted stdcall value kind = %v, want closure", converted.kind)
+			}
+			if converted.impl.Operand(1) != owner.Param(0).impl {
+				t.Fatalf("funcval context does not carry the native function pointer: %s", converted.impl)
+			}
 
-				var nativeCall llvm.Value
-				for block := wrapper.impl.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
-					for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
-						call := instruction.IsACallInst()
-						if !call.IsNil() {
-							nativeCall = call
-							break
-						}
+			var nativeCall llvm.Value
+			for block := wrapper.impl.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+				for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+					call := instruction.IsACallInst()
+					if !call.IsNil() {
+						nativeCall = call
+						break
 					}
 				}
-				if nativeCall.IsNil() {
-					t.Fatalf("adapter has no native call:\n%s", wrapper.impl.String())
-				}
-				if nativeCall.InstructionCallConv() != prog.stdcallCallConv() {
-					t.Fatalf("adapter native call convention = %v, want %v:\n%s",
-						nativeCall.InstructionCallConv(), prog.stdcallCallConv(), wrapper.impl.String())
-				}
-				if attr := nativeCall.GetCallSiteStringAttribute(-1, NativeCallAttribute); attr.IsNil() {
-					t.Fatalf("adapter native call is not marked as a native ABI boundary:\n%s", wrapper.impl.String())
-				}
-				if strings.Contains(pkg.String(), "runtime.AllocU") {
-					t.Fatalf("stdcall funcval conversion unexpectedly allocated:\n%s", pkg.String())
-				}
-				if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
-					t.Fatalf("invalid stdcall funcval adapter module: %v\n%s", err, pkg.String())
-				}
-			})
-		}
+			}
+			if nativeCall.IsNil() {
+				t.Fatalf("adapter has no native call:\n%s", wrapper.impl.String())
+			}
+			if nativeCall.InstructionCallConv() != prog.stdcallCallConv() {
+				t.Fatalf("adapter native call convention = %v, want %v:\n%s",
+					nativeCall.InstructionCallConv(), prog.stdcallCallConv(), wrapper.impl.String())
+			}
+			if strings.Contains(pkg.String(), "runtime.AllocU") {
+				t.Fatalf("stdcall funcval conversion unexpectedly allocated:\n%s", pkg.String())
+			}
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("invalid stdcall funcval adapter module: %v\n%s", err, pkg.String())
+			}
+		})
 	}
 }
 
-func TestNativeFuncvalAdapterSelection(t *testing.T) {
+func TestStdcallFuncvalWithoutAdapter(t *testing.T) {
+	for _, arch := range []string{"amd64", "arm64"} {
+		t.Run(arch, func(t *testing.T) {
+			prog := NewProgram(&Target{GOOS: "windows", GOARCH: arch})
+			defer prog.Dispose()
+			param := types.NewVar(token.NoPos, nil, "value", types.Typ[types.Int32])
+			result := types.NewVar(token.NoPos, nil, "result", types.Typ[types.Int32])
+			sig := types.NewSignatureType(nil, nil, nil, types.NewTuple(param), types.NewTuple(result), false)
+			callback := newStdcallType(prog, "example.com/p", "Callback", sig)
+			pkg := prog.NewPackage("p", "example.com/p")
+			ownerSig := types.NewSignatureType(nil, nil, nil, types.NewTuple(
+				types.NewVar(token.NoPos, nil, "callback", callback),
+			), nil, false)
+			owner := pkg.NewFunc("example.com/p.owner", ownerSig, InGo)
+			body := owner.MakeBody(1)
+			converted := body.ChangeType(prog.Type(sig, InGo), owner.Param(0))
+			body.Return()
+
+			if converted.kind != vkClosure {
+				t.Fatalf("converted stdcall value kind = %v, want closure", converted.kind)
+			}
+			code := converted.impl.Operand(0).Operand(1)
+			if code != owner.Param(0).impl {
+				t.Fatalf("funcval code does not contain the native function pointer: %s", converted.impl)
+			}
+			env := converted.impl.Operand(1)
+			if !env.IsNull() {
+				t.Fatalf("funcval environment = %s, want nil", env)
+			}
+			wrapperPrefix := pkg.Path() + ".__llgo_stdcall_funcval$"
+			for name := range pkg.fns {
+				if strings.HasPrefix(name, wrapperPrefix) {
+					t.Fatalf("windows/%s emitted an unnecessary stdcall funcval adapter %q", arch, name)
+				}
+			}
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("invalid compatible stdcall funcval module: %v\n%s", err, pkg.String())
+			}
+		})
+	}
+}
+
+func TestStdcallFuncvalAdapterSelection(t *testing.T) {
 	tests := []struct {
-		name       string
-		arch       string
-		background Background
-		cabiOnly   bool
-		named      bool
-		want       bool
+		name     string
+		arch     string
+		cabiOnly bool
+		named    bool
+		want     bool
 	}{
-		{name: "cdecl-direct-allfunc", arch: "amd64", background: InC},
-		{name: "cdecl-named-allfunc", arch: "arm64", background: InC, named: true},
-		{name: "cdecl-direct-cfunc", arch: "amd64", background: InC, cabiOnly: true, want: true},
-		{name: "cdecl-named-cfunc", arch: "arm64", background: InC, cabiOnly: true, named: true, want: true},
-		{name: "stdcall-386-allfunc", arch: "386", background: InStdcall, named: true, want: true},
-		{name: "stdcall-amd64-allfunc", arch: "amd64", background: InStdcall, named: true},
-		{name: "stdcall-arm64-allfunc", arch: "arm64", background: InStdcall},
-		{name: "stdcall-amd64-cfunc", arch: "amd64", background: InStdcall, cabiOnly: true, want: true},
-		{name: "stdcall-arm64-cfunc", arch: "arm64", background: InStdcall, cabiOnly: true, named: true, want: true},
+		{name: "386-direct", arch: "386", want: true},
+		{name: "386-named", arch: "386", named: true, want: true},
+		{name: "amd64-direct", arch: "amd64"},
+		{name: "amd64-named", arch: "amd64", named: true},
+		{name: "arm64-direct", arch: "arm64"},
+		{name: "arm64-named", arch: "arm64", named: true},
+		{name: "legacy-cabi-only", arch: "amd64", cabiOnly: true, named: true, want: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -332,70 +360,24 @@ func TestNativeFuncvalAdapterSelection(t *testing.T) {
 			sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
 			pkg := prog.NewPackage("p", "example.com/p")
 
-			var owner Function
-			var body Builder
-			var native Expr
+			owner := pkg.NewFunc("example.com/p.owner", NoArgsNoRet, InGo)
+			body := owner.MakeBody(1)
+			var value Expr
 			if test.named {
-				typ := newNativeFuncType(prog, pkg.Path(), "NativeFunc", sig, test.background)
+				typ := newStdcallType(prog, pkg.Path(), "Callback", sig)
 				ownerSig := types.NewSignatureType(nil, nil, nil,
 					types.NewTuple(types.NewVar(token.NoPos, nil, "fn", typ)), nil, false)
 				owner = pkg.NewFunc("example.com/p.namedOwner", ownerSig, InGo)
 				body = owner.MakeBody(1)
-				native = owner.Param(0)
+				value = owner.Param(0)
 			} else {
-				owner = pkg.NewFunc("example.com/p.owner", NoArgsNoRet, InGo)
-				body = owner.MakeBody(1)
-				native = pkg.NewFunc("Native", sig, test.background).Expr
+				value = pkg.NewFunc("Native", sig, InStdcall).Expr
 			}
-			converted := body.ChangeType(prog.Type(sig, InGo), native)
-			body.Return()
-
-			prefix := pkg.Path() + ".__llgo_c_funcval$"
-			if test.background == InStdcall {
-				prefix = pkg.Path() + ".__llgo_stdcall_funcval$"
-			}
-			var wrapper Function
-			for name, fn := range pkg.fns {
-				if strings.HasPrefix(name, prefix) {
-					wrapper = fn
-					break
-				}
-			}
-			if got := wrapper != nil; got != test.want {
-				t.Fatalf("native funcval adapter generated = %v, want %v\n%s", got, test.want, pkg.String())
-			}
-			if !test.want {
-				if converted.kind != vkClosure {
-					t.Fatalf("compatible native pointer conversion kind = %v, want closure", converted.kind)
-				}
-			}
-			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
-				t.Fatalf("invalid native funcval module: %v\n%s", err, pkg.String())
+			if got := body.needsStdcallFuncval(value); got != test.want {
+				t.Fatalf("needsStdcallFuncval() = %v, want %v", got, test.want)
 			}
 		})
 	}
-}
-
-func TestNativeCallRejectsCapturingCallback(t *testing.T) {
-	prog := NewProgram(&Target{GOOS: "windows", GOARCH: "amd64"})
-	defer prog.Dispose()
-	setTestRuntime(t, prog)
-	callbackSig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
-	consumerSig := types.NewSignatureType(nil, nil, nil,
-		types.NewTuple(types.NewVar(token.NoPos, nil, "callback", callbackSig)), nil, false)
-	pkg := prog.NewPackage("p", "example.com/p")
-	consumer := pkg.NewFunc("Consume", consumerSig, InC)
-	env := types.NewVar(token.NoPos, nil, "$env", types.NewPointer(types.NewStruct(
-		[]*types.Var{types.NewField(token.NoPos, nil, "value", types.Typ[types.Int], false)}, nil,
-	)))
-	callback := pkg.NewEnvFunc("example.com/p.callback", callbackSig, InGo, env, false)
-	callback.MakeBody(1).Return()
-	owner := pkg.NewFunc("example.com/p.owner", NoArgsNoRet, InGo)
-	body := owner.MakeBody(1)
-	closure := body.MakeClosure(callback.Expr, []Expr{prog.Val(1)})
-	requireStdcallPanic(t, "native callback must be a direct function reference", func() {
-		body.Call(consumer.Expr, closure)
-	})
 }
 
 func TestStdcallRejectsNonDirectCallback(t *testing.T) {

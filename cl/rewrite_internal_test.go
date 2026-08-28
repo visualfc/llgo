@@ -149,7 +149,8 @@ func use(callbackArg Callback, v int32) int32 {
 				}
 				return
 			}
-			if strings.Contains(ir, "x86_stdcallcc") || strings.Contains(ir, ".__llgo_stdcall$") {
+			if strings.Contains(ir, "x86_stdcallcc") || strings.Contains(ir, ".__llgo_stdcall$") ||
+				strings.Contains(ir, ".__llgo_stdcall_funcval$") {
 				t.Fatalf("windows/%s should use its ordinary native C ABI without an adapter:\n%s", arch, ir)
 			}
 			if !strings.Contains(ir, "call i32 @Invoke(ptr @stdcalltest.callback") {

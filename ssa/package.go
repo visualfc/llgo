@@ -138,8 +138,6 @@ type aProgram struct {
 	named   map[string]Type
 	fnnamed map[string]int
 
-	nativeFuncBackgrounds map[llvm.Value]Background
-
 	intType   llvm.Type
 	int1Type  llvm.Type
 	int8Type  llvm.Type
@@ -322,8 +320,7 @@ func NewProgram(target *Target) Program {
 		ctx: ctx, gocvt: newGoTypes(packageSyntax),
 		target: target, td: td, tm: tm, is32Bits: is32Bits,
 		ptrSize: td.PointerSize(), named: make(map[string]Type), fnnamed: make(map[string]int),
-		nativeFuncBackgrounds: make(map[llvm.Value]Background),
-		packageSyntax:         packageSyntax, localities: newLocalityInfos(),
+		packageSyntax: packageSyntax, localities: newLocalityInfos(),
 		abiSymbol:          make(map[string]*AbiSymbol),
 		debugInfoOptimized: target.effectiveOptLevel() != optlevel.O0,
 	}

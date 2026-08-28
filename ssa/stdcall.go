@@ -92,17 +92,12 @@ func (p Program) validateStdcallType(typ types.Type) {
 }
 
 func (p Program) isStdcallType(typ types.Type) bool {
-	background, ok := p.nativeFuncTypeBackground(typ)
-	return ok && background == InStdcall
-}
-
-func (p Program) nativeFuncTypeBackground(typ types.Type) (Background, bool) {
 	named, ok := types.Unalias(typ).(*types.Named)
 	if !ok {
-		return inUnknown, false
+		return false
 	}
 	background, ok := p.packageTypeBackground(namedLinkname(named))
-	return background, ok && isNativeFuncBackground(background)
+	return ok && background == InStdcall
 }
 
 func (b Builder) setNativeCallConv(call llvm.Value, fn Expr) {
@@ -157,63 +152,33 @@ func (b Builder) stdcallCallback(typ types.Type, fn Expr) Expr {
 	return Expr{wrapper.impl, dst}
 }
 
-// nativeFuncBackground reports the source ABI of a native function pointer.
-// Named native function types carry that information in package syntax;
-// direct declarations are registered when their LLVM symbols are created.
-func (b Builder) nativeFuncBackground(fn Expr) (Background, bool) {
-	if background, ok := b.Prog.nativeFuncTypeBackground(fn.raw.Type); ok {
-		return background, true
+// needsStdcallFuncval reports whether fn needs an ABI adapter before it can be
+// represented by an ordinary Go func value. Under the normal all-function C
+// ABI, only 32-bit stdcall differs from the funcval call convention. Keep the
+// CABI-only compatibility branch until the legacy ABI modes are removed.
+func (b Builder) needsStdcallFuncval(fn Expr) bool {
+	if b.Prog.isStdcallType(fn.raw.Type) {
+		return b.Prog.Target().CABIOnly ||
+			b.Prog.stdcallCallConv() == llvm.X86StdcallCallConv
 	}
 	direct := fn.impl.IsAFunction()
-	if direct.IsNil() {
-		return inUnknown, false
-	}
-	background, ok := b.Prog.nativeFuncBackgrounds[direct]
-	return background, ok
+	return !direct.IsNil() && direct.FunctionCallConv() == llvm.X86StdcallCallConv
 }
 
-// nativeFuncvalBackground reports whether a native function pointer needs an
-// adapter before it can be represented by an ordinary Go func value. In
-// CABI-only mode, indirect Go calls deliberately retain the Go ABI, so both C
-// and stdcall pointers need a native-boundary adapter. Outside that mode only
-// 32-bit stdcall differs from the ordinary funcval call convention.
-func (b Builder) nativeFuncvalBackground(fn Expr) (Background, bool) {
-	background, ok := b.nativeFuncBackground(fn)
-	if !ok {
-		return inUnknown, false
-	}
-	if b.Prog.Target().CABIOnly ||
-		background == InStdcall && b.Prog.stdcallCallConv() == llvm.X86StdcallCallConv {
-		return background, true
-	}
-	return inUnknown, false
-}
-
-// NativeCallAttribute marks an indirect call that crosses a native ABI
-// boundary. ModeCFunc uses it to distinguish these calls from ordinary Go
-// funcval calls, which must retain Go-level signatures.
-const NativeCallAttribute = "llgo.native.call"
-
-// nativeFuncval adapts a native function pointer to LLGo's ordinary Go
+// stdcallFuncval adapts a native stdcall function pointer to LLGo's ordinary
 // funcval representation. The funcval context carries the native pointer
 // directly; the Go entry retrieves it through the hidden closure-context
-// register and performs the final call with the source ABI. This avoids an
-// allocation while preserving nil: a nil native pointer produces a funcval
-// with a nil code pointer.
-func (b Builder) nativeFuncval(dst Type, fn Expr, background Background) Expr {
+// register and performs the final call with the stdcall convention. This
+// avoids an allocation while preserving nil: a nil native pointer produces a
+// funcval with a nil code pointer.
+func (b Builder) stdcallFuncval(dst Type, fn Expr) Expr {
 	closure, ok := types.Unalias(dst.raw.Type).Underlying().(*types.Struct)
 	if !ok || !IsClosure(closure) {
-		panic(fmt.Errorf("native funcval target must be a Go function, got %s", dst.raw.Type))
+		panic(fmt.Errorf("stdcall funcval target must be a Go function, got %s", dst.raw.Type))
 	}
 	goSig := closure.Field(0).Type().(*types.Signature)
 	nativeSig := types.Unalias(fn.raw.Type).Underlying().(*types.Signature)
-	abiName := "c"
-	callConv := llvm.CCallConv
-	if background == InStdcall {
-		abiName = "stdcall"
-		callConv = b.Prog.stdcallCallConv()
-	}
-	wrapperName := b.Pkg.Path() + ".__llgo_" + abiName + "_funcval$" + b.Prog.abi.FuncName(goSig)
+	wrapperName := b.Pkg.Path() + ".__llgo_stdcall_funcval$" + b.Prog.abi.FuncName(goSig)
 	wrapper := b.Pkg.FuncOf(wrapperName)
 	if wrapper == nil {
 		env := types.NewVar(token.NoPos, nil, "$env", types.Typ[types.UnsafePointer])
@@ -226,8 +191,7 @@ func (b Builder) nativeFuncval(dst Type, fn Expr, background Background) Expr {
 		}
 		native := Expr{wrapper.Env().impl, b.Prog.rawType(nativeSig)}
 		result := body.Call(native, args...)
-		result.impl.SetInstructionCallConv(callConv)
-		result.impl.AddCallSiteAttribute(-1, b.Prog.ctx.CreateStringAttribute(NativeCallAttribute, "1"))
+		result.impl.SetInstructionCallConv(b.Prog.stdcallCallConv())
 		switch n := goSig.Results().Len(); n {
 		case 0:
 			body.Return()
