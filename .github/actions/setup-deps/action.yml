@@ -135,7 +135,7 @@ runs:
         $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$installerName"
         & curl.exe --fail --location --retry 5 --retry-all-errors --output $installer $url
         if ($LASTEXITCODE -ne 0) {
-          throw "Downloading the LLVM ARM64 installer failed with exit code $LASTEXITCODE"
+          throw "Downloading the LLVM ${{ inputs.windows-arch }} installer failed with exit code $LASTEXITCODE"
         }
         $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash
         if (-not $actual.Equals($env:LLVM_INSTALLER_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
