@@ -197,8 +197,7 @@ jobs:
         shell: pwsh
         run: |
           # The upstream LLVM archive records its build runner's Python home.
-          # Use the exact setup-python installation prepared for the demos;
-          # PATH may still resolve a different cached 3.12 patch release.
+          # setup-demo-deps installs that exact Python patch release.
           $env:PYTHONHOME = $env:LLGO_WINDOWS_PYTHON_HOME
           Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
