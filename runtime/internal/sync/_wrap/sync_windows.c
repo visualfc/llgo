@@ -23,22 +23,12 @@ typedef unsigned int llgo_size_t;
 #define LLGO_WINAPI __attribute__((stdcall))
 #endif
 
-__declspec(dllimport) void LLGO_WINAPI
-AcquireSRWLockExclusive(llgo_srwlock *lock);
-__declspec(dllimport) void LLGO_WINAPI
-ReleaseSRWLockExclusive(llgo_srwlock *lock);
-
-__declspec(dllimport) void LLGO_WINAPI
-WakeConditionVariable(llgo_condition_variable *condition);
-__declspec(dllimport) void LLGO_WINAPI
-WakeAllConditionVariable(llgo_condition_variable *condition);
 __declspec(dllimport) llgo_bool LLGO_WINAPI SleepConditionVariableSRW(
     llgo_condition_variable *condition, llgo_srwlock *lock,
     llgo_dword milliseconds, llgo_dword flags);
 __declspec(dllimport) llgo_bool LLGO_WINAPI WaitOnAddress(
     volatile void *address, void *compare_address,
     llgo_size_t address_size, llgo_dword milliseconds);
-__declspec(dllimport) void LLGO_WINAPI WakeByAddressSingle(void *address);
 
 typedef struct {
     llgo_dword low;
@@ -88,28 +78,6 @@ int llgo_win_once(llgo_init_once *once, llgo_once_fn fn)
     if (InitOnceExecuteOnce(once, llgo_once_callback, &call, 0))
         return 0;
     return (int)GetLastError();
-}
-
-void llgo_win_mutex_lock(llgo_srwlock *lock)
-{
-    AcquireSRWLockExclusive(lock);
-}
-
-void llgo_win_mutex_unlock(llgo_srwlock *lock)
-{
-    ReleaseSRWLockExclusive(lock);
-}
-
-int llgo_win_cond_signal(llgo_condition_variable *condition)
-{
-    WakeConditionVariable(condition);
-    return 0;
-}
-
-int llgo_win_cond_broadcast(llgo_condition_variable *condition)
-{
-    WakeAllConditionVariable(condition);
-    return 0;
 }
 
 int llgo_win_cond_wait(llgo_condition_variable *condition,
@@ -171,9 +139,4 @@ int llgo_win_wait_uint32(volatile unsigned int *address,
     if (WaitOnAddress(address, &value, sizeof(value), LLGO_INFINITE))
         return 0;
     return (int)GetLastError();
-}
-
-void llgo_win_wake_uint32(unsigned int *address)
-{
-    WakeByAddressSingle(address);
 }

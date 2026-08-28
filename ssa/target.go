@@ -39,6 +39,7 @@ type Target struct {
 	LLVMTarget              string // physical LLVM target selected by a target configuration
 	OptLevel                optlevel.Level
 	SaturatingFloatToUint32 bool
+	CABIOnly                bool // C ABI lowering is limited to native function boundaries (-abi=1)
 }
 
 func (p *Target) effectiveGOOS() string {

@@ -310,8 +310,14 @@ func TestCollectMethodNilDerefChecksSkipsDynamicDeferGo(t *testing.T) {
 }
 
 func TestToBackground(t *testing.T) {
-	if v := toBackground(""); v != llssa.InGo {
-		t.Fatal("toBackground:", v)
+	for name, want := range map[string]llssa.Background{
+		"":        llssa.InGo,
+		"C":       llssa.InC,
+		"stdcall": llssa.InStdcall,
+	} {
+		if got := toBackground(name); got != want {
+			t.Fatalf("toBackground(%q) = %v, want %v", name, got, want)
+		}
 	}
 }
 

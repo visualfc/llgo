@@ -234,8 +234,6 @@ llgo_uintptr llgo_get_proc_address(llgo_uintptr module,
 
 /* --- Standard library OS bridges (link_windows_llgo.go) ------------------- */
 
-__declspec(dllimport) llgo_dword LLGO_WINAPI
-GetSystemDirectoryA(char *buffer, llgo_dword size);
 typedef int (LLGO_WINAPI *llgo_console_handler)(llgo_dword event);
 __declspec(dllimport) int LLGO_WINAPI
 SetConsoleCtrlHandler(llgo_console_handler handler, int add);
@@ -300,11 +298,6 @@ int llgo_getpagesize(void)
     llgo_system_info info;
     GetSystemInfo(&info);
     return (int)info.page_size;
-}
-
-llgo_dword llgo_get_system_directory(unsigned char *buffer, llgo_dword size)
-{
-    return GetSystemDirectoryA((char *)buffer, size);
 }
 
 int llgo_windows_signal_init(void)

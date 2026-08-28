@@ -108,6 +108,25 @@ func main() {
 
 Because calls into C compile to native calls against the C ABI, there is no Go-to-C stack or scheduler transition, so frequent C calls stay cheap.
 
+On Windows, bind APIs declared with `WINAPI` or `__stdcall` through the
+`stdcall.` namespace. The convention is distinct on 386; Windows amd64 and
+arm64 use their unified native C ABI. An explicitly decorated 386 name such as
+`_MessageBoxW@16` is also accepted and is normalized to `MessageBoxW` on
+64-bit targets.
+
+```go
+//go:linkname MessageBoxW stdcall.MessageBoxW
+func MessageBoxW(hwnd uintptr, text, caption *uint16, flags uint32) int32
+
+//llgo:type stdcall
+type Callback func(context uintptr) uintptr
+```
+
+`stdcall.` declarations and `//llgo:type stdcall` apply only to non-variadic
+function types. A native callback is one function pointer, so a Go callback
+must be a direct function reference; pass state through an explicit context
+pointer rather than a capturing closure.
+
 ### C/C++ standard libraries
 
 LLGo provides Go bindings for the C/C++ standard library:

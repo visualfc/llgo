@@ -375,7 +375,14 @@ func (p Package) newFunc(
 		t = &aType{p.Prog.toLLVMFunc(entrySig), t.raw, vkFuncDecl}
 	}
 	dbgInstrln("NewFunc", name, t.raw.Type, "needsEnv:", envType != nil)
-	fn := llvm.AddFunction(p.mod, name, t.ll)
+	llvmName := name
+	if bg == InStdcall {
+		llvmName = p.Prog.stdcallSymbolName(name)
+	}
+	fn := llvm.AddFunction(p.mod, llvmName, t.ll)
+	if bg == InStdcall {
+		fn.SetFunctionCallConv(p.Prog.stdcallCallConv())
+	}
 	if envType != nil {
 		p.Prog.markClosureEnvFunction(fn, 0)
 	}

@@ -97,6 +97,151 @@ func use(env *JmpBuf) int32 {
 	}
 }
 
+func TestStdcallDeclarationsCallsAndCallbacks(t *testing.T) {
+	const src = `package stdcalltest
+
+import _ "unsafe"
+
+//llgo:type stdcall
+type Callback func(int32) int32
+
+//go:linkname invoke stdcall.Invoke
+func invoke(Callback, int32) int32
+
+//go:linkname direct stdcall.Direct
+func direct(int32) int32
+
+//go:linkname explicit stdcall._Explicit@4
+func explicit(int32)
+
+func callback(v int32) int32 { return v + 1 }
+
+func callGo(fn func(int32) int32, v int32) int32 { return fn(v) }
+
+func use(callbackArg Callback, v int32) int32 {
+	explicit(v)
+	return direct(v) + callbackArg(v) + invoke(callback, v) + callGo(callbackArg, v) + callGo(direct, v)
+}
+`
+	for _, arch := range []string{"386", "amd64", "arm64"} {
+		t.Run(arch, func(t *testing.T) {
+			ir := compileWithRewritesTarget(t, src, nil, &llssa.Target{GOOS: "windows", GOARCH: arch})
+			if !strings.Contains(ir, "@Direct(i32") || !strings.Contains(ir, "@Invoke(ptr") {
+				t.Fatalf("stdcall linkname did not preserve the native symbol names:\n%s", ir)
+			}
+			if arch == "386" {
+				for _, want := range []string{
+					"declare x86_stdcallcc i32 @Direct(i32)",
+					"declare x86_stdcallcc i32 @Invoke(ptr, i32)",
+					"declare x86_stdcallcc void @\"\\01_Explicit@4\"(i32)",
+					"call x86_stdcallcc i32 @Direct(i32",
+					"call x86_stdcallcc i32 %0(i32",
+					"define internal x86_stdcallcc i32 @\"stdcalltest.__llgo_stdcall$stdcalltest.callback$",
+					"call x86_stdcallcc i32 @Invoke(ptr @\"stdcalltest.__llgo_stdcall$stdcalltest.callback$",
+					"define internal i32 @\"stdcalltest.__llgo_stdcall_funcval$",
+				} {
+					if !strings.Contains(ir, want) {
+						t.Fatalf("windows/386 IR does not contain %q:\n%s", want, ir)
+					}
+				}
+				if !strings.Contains(ir, "call i32 @stdcalltest.callback(i32") {
+					t.Fatalf("stdcall callback adapter did not call the original Go entry with its original convention:\n%s", ir)
+				}
+				return
+			}
+			if strings.Contains(ir, "x86_stdcallcc") || strings.Contains(ir, ".__llgo_stdcall$") ||
+				strings.Contains(ir, ".__llgo_stdcall_funcval$") {
+				t.Fatalf("windows/%s should use its ordinary native C ABI without an adapter:\n%s", arch, ir)
+			}
+			if !strings.Contains(ir, "call i32 @Invoke(ptr @stdcalltest.callback") {
+				t.Fatalf("windows/%s did not pass the original callback directly:\n%s", arch, ir)
+			}
+		})
+	}
+}
+
+func TestStdcallDiagnostics(t *testing.T) {
+	tests := []struct {
+		name   string
+		goos   string
+		goarch string
+		src    string
+		want   string
+	}{
+		{
+			name: "non-Windows target", goos: "linux", goarch: "amd64",
+			src: `package p
+import _ "unsafe"
+//go:linkname f stdcall.f
+func f()
+func use() { f() }
+`,
+			want: "stdcall is only defined for Windows targets",
+		},
+		{
+			name: "unsupported Windows architecture", goos: "windows", goarch: "mips",
+			src: `package p
+import _ "unsafe"
+//go:linkname f stdcall.f
+func f()
+func use() { f() }
+`,
+			want: "stdcall is not supported on windows/mips",
+		},
+		{
+			name: "variadic function", goos: "windows", goarch: "386",
+			src: `package p
+import _ "unsafe"
+//go:linkname f stdcall.f
+func f(...any)
+func use() { f() }
+`,
+			want: "stdcall does not support variadic functions",
+		},
+		{
+			name: "non-function type", goos: "windows", goarch: "386",
+			src: `package p
+//llgo:type stdcall
+type Value int
+var value Value
+func use() Value { return value }
+`,
+			want: "stdcall requires a function type",
+		},
+		{
+			name: "variable linkname", goos: "windows", goarch: "386",
+			src: `package p
+import _ "unsafe"
+//go:linkname value stdcall.value
+var value int
+func use() int { return value }
+`,
+			want: "stdcall linkname namespace applies only to functions",
+		},
+		{
+			name: "non-direct callback", goos: "windows", goarch: "386",
+			src: `package p
+import _ "unsafe"
+//llgo:type stdcall
+type Callback func(int32) int32
+//go:linkname invoke stdcall.invoke
+func invoke(Callback, int32) int32
+func use(v int32) int32 {
+	return invoke(func(arg int32) int32 { return arg + v }, v)
+}
+`,
+			want: "stdcall callback must be a direct function reference",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mustPanicContains(t, test.want, func() {
+				compileWithRewritesTarget(t, test.src, nil, &llssa.Target{GOOS: test.goos, GOARCH: test.goarch})
+			})
+		})
+	}
+}
+
 func TestClosureEnvIntrinsicRequiresEnvBearingEntry(t *testing.T) {
 	valid := `package closureenv
 

@@ -41,7 +41,7 @@ func c_queryPerformanceFrequency() int64
 // These entry points implement the runtime hooks declared by the official
 // internal/syscall/windows package.
 
-//go:linkname c_getSystemDirectory C.llgo_get_system_directory
+//go:linkname c_getSystemDirectory stdcall.GetSystemDirectoryA
 func c_getSystemDirectory(buffer *byte, size uint32) uint32
 
 //go:linkname windows_GetSystemDirectory internal/syscall/windows.GetSystemDirectory
