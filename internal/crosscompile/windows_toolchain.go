@@ -21,6 +21,11 @@ type NativeToolchainInput struct {
 	ExternalFlags  []string
 	Dir            string
 	Environ        []string
+	// ResolveCrossArch selects the host's native Windows toolchain when a
+	// Windows process produces linked output for another Windows architecture.
+	// Pure IR generation leaves it false so multi-target golden tests do not
+	// depend on the host compiler's architecture or ABI profile.
+	ResolveCrossArch bool
 }
 
 type toolIdentity struct {

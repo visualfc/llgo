@@ -497,6 +497,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		if err != nil {
 			return nil, err
 		}
+		nativeInput.ResolveCrossArch = conf.Mode != ModeGen
 	}
 	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
 	if err != nil {

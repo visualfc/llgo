@@ -108,28 +108,29 @@ runs:
         path: ${{ runner.tool_cache }}\llgo-llvm\LLVM-19.1.3-Windows-X64
         key: llgo-llvm-19.1.3-full-target-windows-x64-1077267ca353a1e236055ed4b57d6a404d09c40b01bd27dc882870395cdc1aae
 
-    - name: Cache Windows ARM64 compiler-rt builtins
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch == 'arm64'
-      id: windows_arm64_builtins_cache
+    - name: Cache Windows cross-target compiler-rt builtins
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64'
+      id: windows_target_builtins_cache
       uses: actions/cache/restore@v4
       with:
-        path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\arm64
-        key: llgo-compiler-rt-19.1.3-windows-arm64-20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9
+        path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\${{ inputs.windows-arch }}
+        key: llgo-compiler-rt-19.1.3-windows-${{ inputs.windows-arch }}-${{ inputs.windows-arch == 'arm64' && '20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9' || '9bab022d175ff27e35db517b71d3e428027d75ffff0d0195ccc9f20ce5a20d4f' }}
 
-    - name: Install Windows ARM64 compiler-rt builtins
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch == 'arm64' && steps.windows_arm64_builtins_cache.outputs.cache-hit != 'true'
+    - name: Install Windows cross-target compiler-rt builtins
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64' && steps.windows_target_builtins_cache.outputs.cache-hit != 'true'
       shell: pwsh
       env:
         LLVM_VERSION: "19.1.3"
-        LLVM_INSTALLER_SHA256: 20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9
+        LLVM_INSTALLER_ARCH: ${{ inputs.windows-arch == 'arm64' && 'woa64' || 'win32' }}
+        LLVM_INSTALLER_SHA256: ${{ inputs.windows-arch == 'arm64' && '20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9' || '9bab022d175ff27e35db517b71d3e428027d75ffff0d0195ccc9f20ce5a20d4f' }}
+        LLVM_BUILTINS_ARCH: ${{ inputs.windows-arch == 'arm64' && 'aarch64' || 'i386' }}
       run: |
         $ErrorActionPreference = "Stop"
 
         # The upstream x64 full-target archive supplies the host LLVM tools
-        # and x86 compiler-rt libraries but not the ARM64 builtins. Extract
-        # only that target library from the matching official WOA package;
-        # the ARM64 LLVM binaries themselves never enter PATH.
-        $installerName = "LLVM-$env:LLVM_VERSION-woa64.exe"
+        # but only x64 compiler-rt. Extract the target library from the
+        # matching official package; its LLVM binaries never enter PATH.
+        $installerName = "LLVM-$env:LLVM_VERSION-$env:LLVM_INSTALLER_ARCH.exe"
         $installer = Join-Path $env:RUNNER_TEMP $installerName
         $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$installerName"
         & curl.exe --fail --location --retry 5 --retry-all-errors --output $installer $url
@@ -138,33 +139,33 @@ runs:
         }
         $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash
         if (-not $actual.Equals($env:LLVM_INSTALLER_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
-          throw "LLVM ARM64 installer SHA-256 is $actual, want $env:LLVM_INSTALLER_SHA256"
+          throw "LLVM ${{ inputs.windows-arch }} installer SHA-256 is $actual, want $env:LLVM_INSTALLER_SHA256"
         }
 
-        $extractRoot = Join-Path $env:RUNNER_TEMP "llgo-llvm-arm64-extract"
+        $extractRoot = Join-Path $env:RUNNER_TEMP "llgo-llvm-${{ inputs.windows-arch }}-extract"
         $sevenZip = Join-Path $env:ProgramFiles "7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
           throw "7-Zip was not found at $sevenZip"
         }
-        $builtinsRelative = "lib\clang\19\lib\windows\clang_rt.builtins-aarch64.lib"
+        $builtinsRelative = "lib\clang\19\lib\windows\clang_rt.builtins-$env:LLVM_BUILTINS_ARCH.lib"
         & $sevenZip x -y "-o$extractRoot" $installer $builtinsRelative
         if ($LASTEXITCODE -ne 0) {
-          throw "Extracting the LLVM ARM64 builtins failed with exit code $LASTEXITCODE"
+          throw "Extracting the LLVM ${{ inputs.windows-arch }} builtins failed with exit code $LASTEXITCODE"
         }
         $source = Join-Path $extractRoot $builtinsRelative
         if (-not (Test-Path $source)) {
-          throw "The LLVM ARM64 compiler-rt builtins were not found at $source"
+          throw "The LLVM ${{ inputs.windows-arch }} compiler-rt builtins were not found at $source"
         }
-        $cacheRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\$env:LLVM_VERSION\arm64"
+        $cacheRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\$env:LLVM_VERSION\${{ inputs.windows-arch }}"
         New-Item -ItemType Directory -Force $cacheRoot | Out-Null
         Copy-Item -LiteralPath $source -Destination $cacheRoot
 
-    - name: Save Windows ARM64 compiler-rt builtins
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch == 'arm64' && steps.windows_arm64_builtins_cache.outputs.cache-hit != 'true'
+    - name: Save Windows cross-target compiler-rt builtins
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64' && steps.windows_target_builtins_cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\arm64
-        key: llgo-compiler-rt-19.1.3-windows-arm64-20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9
+        path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\${{ inputs.windows-arch }}
+        key: llgo-compiler-rt-19.1.3-windows-${{ inputs.windows-arch }}-${{ inputs.windows-arch == 'arm64' && '20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9' || '9bab022d175ff27e35db517b71d3e428027d75ffff0d0195ccc9f20ce5a20d4f' }}
 
     - name: Cache Windows MSVC dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
@@ -441,10 +442,11 @@ runs:
           throw "Clang's MSVC compiler-rt builtins were not found at $builtins"
         }
         $targetBuiltins = (& (Join-Path $llvmBin "clang.exe") "--target=$($target.Triple)" --rtlib=compiler-rt -print-libgcc-file-name).Trim()
-        if ($target.GoArch -eq "arm64" -and -not (Test-Path $targetBuiltins)) {
-          $cachedBuiltins = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\$env:LLVM_VERSION\arm64\clang_rt.builtins-aarch64.lib"
+        if ($target.GoArch -ne "amd64" -and -not (Test-Path $targetBuiltins)) {
+          $builtinsArch = if ($target.GoArch -eq "arm64") { "aarch64" } else { "i386" }
+          $cachedBuiltins = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\$env:LLVM_VERSION\$($target.GoArch)\clang_rt.builtins-$builtinsArch.lib"
           if (-not (Test-Path $cachedBuiltins)) {
-            throw "The cached Windows ARM64 compiler-rt builtins were not found at $cachedBuiltins"
+            throw "The cached Windows $($target.GoArch) compiler-rt builtins were not found at $cachedBuiltins"
           }
           # Let the x64 host Clang driver discover the target library through
           # its normal resource-dir lookup, exactly as it does for x86/x64.

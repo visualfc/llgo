@@ -33,7 +33,10 @@ runs:
       id: windows_target_python
       uses: actions/setup-python@v6
       with:
-        python-version: "3.12.7"
+        # The target library ABI is stable across Python 3.12 patch releases.
+        # Reuse the runner's native architecture build when available instead
+        # of replacing it after the exact x64 LLDB dependency is installed.
+        python-version: "3.12"
         architecture: ${{ inputs.windows-arch == 'arm64' && 'arm64' || 'x86' }}
         update-environment: false
 

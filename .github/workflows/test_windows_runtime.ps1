@@ -96,16 +96,19 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "==> windows-runtime-smoke.exe (unrecovered fault)"
 $env:LLGO_TEST_UNRECOVERED_FAULT = "1"
-$savedErrorActionPreference = $ErrorActionPreference
+$faultStdout = Join-Path $out "unrecovered-fault.stdout"
+$faultStderr = Join-Path $out "unrecovered-fault.stderr"
 try {
-  # Windows PowerShell 5 turns redirected native stderr into a terminating
-  # NativeCommandError. This invocation is expected to fail and its stderr is
-  # the value asserted below.
-  $ErrorActionPreference = "Continue"
-  $faultOutput = & $runtime 2>&1 | Out-String
-  $faultExitCode = $LASTEXITCODE
+  # Capture native streams as files. Windows PowerShell 5 otherwise converts
+  # stderr into formatted NativeCommandError records and may wrap a panic line
+  # at the console width before the assertion sees it.
+  $faultProcess = Start-Process -FilePath $runtime `
+    -Wait -PassThru -NoNewWindow `
+    -RedirectStandardOutput $faultStdout `
+    -RedirectStandardError $faultStderr
+  $faultExitCode = $faultProcess.ExitCode
+  $faultOutput = (Get-Content -Raw $faultStdout) + (Get-Content -Raw $faultStderr)
 } finally {
-  $ErrorActionPreference = $savedErrorActionPreference
   Remove-Item Env:LLGO_TEST_UNRECOVERED_FAULT
 }
 Write-Host $faultOutput

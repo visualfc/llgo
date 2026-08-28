@@ -12,7 +12,6 @@ function Get-LLGoWindowsMSVCTarget {
         Triple        = "i686-pc-windows-msvc"
         VcpkgTriplet  = "x86-windows"
         VisualStudio  = "x86"
-        Python        = "x86"
       }
     }
     "amd64" {
@@ -21,7 +20,6 @@ function Get-LLGoWindowsMSVCTarget {
         Triple        = "x86_64-pc-windows-msvc"
         VcpkgTriplet  = "x64-windows"
         VisualStudio  = "x64"
-        Python        = "x64"
       }
     }
     "arm64" {
@@ -30,7 +28,6 @@ function Get-LLGoWindowsMSVCTarget {
         Triple        = "aarch64-pc-windows-msvc"
         VcpkgTriplet  = "arm64-windows"
         VisualStudio  = "arm64"
-        Python        = "arm64"
       }
     }
   }
