@@ -53,11 +53,11 @@ type Mutex struct {
 	state uintptr
 }
 
-//go:linkname winMutexLock C.llgo_win_mutex_lock
-func winMutexLock(m *Mutex)
+//go:linkname acquireSRWLockExclusive stdcall.AcquireSRWLockExclusive
+func acquireSRWLockExclusive(m *Mutex)
 
-//go:linkname winMutexUnlock C.llgo_win_mutex_unlock
-func winMutexUnlock(m *Mutex)
+//go:linkname releaseSRWLockExclusive stdcall.ReleaseSRWLockExclusive
+func releaseSRWLockExclusive(m *Mutex)
 
 func (m *Mutex) Init(_ *MutexAttr) c.Int {
 	m.state = 0
@@ -67,11 +67,11 @@ func (m *Mutex) Init(_ *MutexAttr) c.Int {
 func (m *Mutex) Destroy() {}
 
 func (m *Mutex) Lock() {
-	winMutexLock(m)
+	acquireSRWLockExclusive(m)
 }
 
 func (m *Mutex) Unlock() {
-	winMutexUnlock(m)
+	releaseSRWLockExclusive(m)
 }
 
 type CondAttr struct{}
@@ -82,11 +82,11 @@ type Cond struct {
 	state uintptr
 }
 
-//go:linkname winCondSignal C.llgo_win_cond_signal
-func winCondSignal(cond *Cond) c.Int
+//go:linkname wakeConditionVariable stdcall.WakeConditionVariable
+func wakeConditionVariable(cond *Cond)
 
-//go:linkname winCondBroadcast C.llgo_win_cond_broadcast
-func winCondBroadcast(cond *Cond) c.Int
+//go:linkname wakeAllConditionVariable stdcall.WakeAllConditionVariable
+func wakeAllConditionVariable(cond *Cond)
 
 //go:linkname winCondWait C.llgo_win_cond_wait
 func winCondWait(cond *Cond, m *Mutex) c.Int
@@ -102,11 +102,13 @@ func (cond *Cond) Init(_ *CondAttr) c.Int {
 func (cond *Cond) Destroy() {}
 
 func (cond *Cond) Signal() c.Int {
-	return winCondSignal(cond)
+	wakeConditionVariable(cond)
+	return 0
 }
 
 func (cond *Cond) Broadcast() c.Int {
-	return winCondBroadcast(cond)
+	wakeAllConditionVariable(cond)
+	return 0
 }
 
 func (cond *Cond) Wait(m *Mutex) c.Int {
@@ -120,8 +122,8 @@ func (cond *Cond) TimedWait(m *Mutex, abstime *ctime.Timespec) c.Int {
 //go:linkname winWaitUint32 C.llgo_win_wait_uint32
 func winWaitUint32(addr *uint32, value uint32) c.Int
 
-//go:linkname winWakeUint32 C.llgo_win_wake_uint32
-func winWakeUint32(addr *uint32)
+//go:linkname wakeByAddressSingle stdcall.WakeByAddressSingle
+func wakeByAddressSingle(addr *uint32)
 
 // WaitUint32 blocks while addr still contains value. Callers must recheck the
 // value after it returns because Windows permits spurious wakeups.
@@ -131,5 +133,5 @@ func WaitUint32(addr *uint32, value uint32) c.Int {
 
 // WakeUint32 wakes one thread waiting for addr.
 func WakeUint32(addr *uint32) {
-	winWakeUint32(addr)
+	wakeByAddressSingle(addr)
 }
