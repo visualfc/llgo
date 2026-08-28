@@ -40,13 +40,19 @@ else ifneq ($(WINDOWS),)
     endif
     ifneq ($(findstring windows-msvc,$(WINDOWS_CC_TARGET)),)
         CFLAGS += -Wl,/debug:dwarf
+        # A c-archive has no final link step in which LLGo can carry native
+        # library options. Its runtime objects reference the ISO stdio entry
+        # points directly, while the MSVC UCRT headers normally provide inline
+        # adapters. Link the SDK's compatibility import library in the native
+        # consumer; MinGW exports these entry points without this bridge.
+        WINDOWS_STATIC_STDLIB_LIBS = -llegacy_stdio_definitions
     endif
     SHARED_LINK_FLAGS = ../libexport.lib
     PLATFORM_LIBS = -lsynchronization -lws2_32
     # Keep dependency discovery inside the selected target profile. The MSVC
     # and GNU/MinGW lanes provide separate pkg-config roots and library names.
     RUNTIME_LIBS = $(shell "$(PKG_CONFIG)" --libs bdw-gc) $(shell "$(PKG_CONFIG)" --libs libuv)
-    STATIC_STDLIB_LIBS = $(shell "$(PKG_CONFIG)" --libs libffi)
+    STATIC_STDLIB_LIBS = $(shell "$(PKG_CONFIG)" --libs libffi) $(WINDOWS_STATIC_STDLIB_LIBS)
 else
     SHARED_EXT = so
     PLATFORM_LIBS = $(shell "$(PKG_CONFIG)" --libs libunwind 2>/dev/null || echo -lunwind)
