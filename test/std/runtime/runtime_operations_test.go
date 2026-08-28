@@ -54,7 +54,7 @@ func TestRuntimeRecordMethods(t *testing.T) {
 
 func TestRuntimeErrorMethods(t *testing.T) {
 	panicNil := new(runtime.PanicNilError)
-	if got := panicNil.Error(); got != "panic called with nil argument" {
+	if got := panicNil.Error(); got != wantPanicNilError {
 		t.Fatalf("PanicNilError.Error = %q", got)
 	}
 }

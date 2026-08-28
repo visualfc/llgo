@@ -61,6 +61,10 @@ jobs:
 
       - name: Set up Go for build
         uses: ./.github/actions/setup-go
+        with:
+          # Build with the newest toolchain so this compiler can run against
+          # the older Go versions used by the compatibility matrix.
+          go-version: "1.27.0"
 
       - name: Install
         shell: bash
@@ -352,6 +356,10 @@ jobs:
 
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
+        with:
+          # Build with the newest toolchain; compatibility jobs below run
+          # this llgo binary against older Go standard libraries.
+          go-version: "1.27.0"
 
       - name: Install llgo
         shell: bash
@@ -386,11 +394,18 @@ jobs:
           mod-version: "1.24"
 
       - name: Test Hello World with go.mod 1.26
-        if: startsWith(matrix.go, '1.26')
+        if: startsWith(matrix.go, '1.26') || startsWith(matrix.go, '1.27')
         uses: ./.github/actions/test-helloworld
         with:
           go-version: ${{matrix.go}}
           mod-version: "1.26"
+
+      - name: Test Hello World with go.mod 1.27
+        if: startsWith(matrix.go, '1.27')
+        uses: ./.github/actions/test-helloworld
+        with:
+          go-version: ${{matrix.go}}
+          mod-version: "1.27"
 
   cross-compile:
     timeout-minutes: 30
@@ -462,6 +477,10 @@ jobs:
 
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
+        with:
+          # Keep the compiler binary built with the newest toolchain while
+          # testing it against each matrix Go standard library below.
+          go-version: "1.27.0"
 
       - name: Install llgo
         run: |
