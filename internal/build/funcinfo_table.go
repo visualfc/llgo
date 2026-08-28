@@ -276,10 +276,13 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 		i32Type,
 		i32Type,
 	}, false)
+	// Go's 386 ABI gives uint64 fields 4-byte alignment. Pack this record for
+	// Windows/386 so its array stride is 12 rather than the Windows C ABI's
+	// padded 16; the runtime reads it as a Go struct.
 	symbolIndexRecordType := llvmCtx.StructType([]llvm.Type{
 		i64Type,
 		i32Type,
-	}, false)
+	}, ctx.prog.PointerSize() == 4 && ctx.buildConf != nil && ctx.buildConf.Goos == "windows")
 	funcEntryRecordType := llvmCtx.StructType([]llvm.Type{
 		llvm.PointerType(i8Type, 0),
 		i64Type,
@@ -807,8 +810,17 @@ func emitRuntimeSiteBoundaries(mod llvm.Module, recordType llvm.Type, pointerSiz
 		return llvm.AddGlobal(mod, recordType, startName), llvm.AddGlobal(mod, recordType, endName)
 	}
 	emitSentinel := func(name, suffix string) llvm.Value {
-		global := llvm.AddGlobal(mod, recordType, name)
-		global.SetInitializer(llvm.ConstNull(recordType))
+		sentinelType := recordType
+		if pointerSize == 4 {
+			// COFF sites serialize a pointer followed immediately by a uint64.
+			// Go's 32-bit layout therefore consumes 12 bytes, while LLVM's
+			// Windows C layout pads the equivalent struct to 16 bytes. Keep the
+			// boundary sentinel byte-identical to the inline-asm records so the
+			// runtime can walk the merged $a/$m range at a fixed stride.
+			sentinelType = llvm.ArrayType(mod.Context().Int8Type(), pointerSize+8)
+		}
+		global := llvm.AddGlobal(mod, sentinelType, name)
+		global.SetInitializer(llvm.ConstNull(sentinelType))
 		global.SetLinkage(llvm.PrivateLinkage)
 		global.SetGlobalConstant(true)
 		global.SetAlignment(pointerSize)

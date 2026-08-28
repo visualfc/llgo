@@ -616,6 +616,20 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 						t.Fatalf("missing COFF entry site %q:\n%s", want, ir)
 					}
 				}
+				if c.goarch == "386" {
+					for _, sentinel := range []string{
+						funcInfoEntryCOFFStartSymbol, funcInfoEntryCOFFEndSymbol,
+						pcSiteCOFFStartSymbol, pcSiteCOFFEndSymbol,
+					} {
+						want := `@` + sentinel + ` = private constant [12 x i8] zeroinitializer`
+						if !strings.Contains(ir, want) {
+							t.Fatalf("32-bit COFF sentinel does not match its 12-byte site records; missing %q:\n%s", want, ir)
+						}
+					}
+					if want := `@"__llgo_funcinfo_symbol_index$data" = private unnamed_addr constant [2 x <{ i64, i32 }>]`; !strings.Contains(ir, want) {
+						t.Fatalf("32-bit funcinfo symbol index does not use its Go-compatible 12-byte stride; missing %q:\n%s", want, ir)
+					}
+				}
 			}
 		})
 	}
