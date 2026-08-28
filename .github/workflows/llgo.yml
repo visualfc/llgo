@@ -164,6 +164,28 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.lane == 'primary' }}
         run: sudo apt-get install -y lldb-${{matrix.llvm}}
 
+      - name: Install MinGW LLDB for integration tests
+        if: ${{ matrix.os == 'windows-2022' && matrix.windows_abi == 'mingw' && matrix.lane == 'primary' }}
+        shell: msys2 {0}
+        env:
+          MSYS2_LLDB_PACKAGE_VERSION: "19.1.7-1"
+          MSYS2_PYTHON_PACKAGE_VERSION: "3.12.8-2"
+        run: |
+          set -euo pipefail
+          repo=https://repo.msys2.org/mingw/clang64
+          prefix=mingw-w64-clang-x86_64
+          pacman_args=(--noconfirm -U)
+          for dependency in cc-libs expat bzip2 mpdecimal ncurses openssl sqlite3 tcl tk tzdata; do
+            pacman_args+=(--assume-installed "$prefix-$dependency")
+          done
+          pacman "${pacman_args[@]}" \
+            "$repo/$prefix-python-$MSYS2_PYTHON_PACKAGE_VERSION-any.pkg.tar.zst" \
+            "$repo/$prefix-lldb-$MSYS2_LLDB_PACKAGE_VERSION-any.pkg.tar.zst"
+
+          lldb_path=/clang64/bin/lldb.exe
+          "$lldb_path" --version
+          echo "LLGO_LLDB=$(cygpath -m "$lldb_path")" >> "$GITHUB_ENV"
+
       - name: LLDB integration tests
         if: ${{ matrix.lane == 'primary' }}
         run: |
