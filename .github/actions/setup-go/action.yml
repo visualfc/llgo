@@ -4,6 +4,12 @@ inputs:
   go-version:
     description: "The exact Go version to install; omit it for the LLGo build toolchain"
     required: false
+    # Keep this pin synchronized with the primary CI and release smoke-test
+    # matrices. Upgrade it in a dedicated toolchain-update PR.
+    default: "1.26.7"
+  architecture:
+    description: "Host Go architecture; defaults to the runner architecture"
+    required: false
     default: ""
 runs:
   using: "composite"
@@ -20,6 +26,7 @@ runs:
       uses: actions/setup-go@v7
       with:
         go-version: ${{ inputs.go-version }}
+        architecture: ${{ inputs.architecture }}
         cache: false
 
     - name: Verify Go installation
@@ -44,8 +51,21 @@ runs:
           exit 1
         fi
 
+        requested_arch="${{ inputs.architecture }}"
+        case "$requested_arch" in
+          "") ;;
+          x64) requested_arch=amd64 ;;
+          x86) requested_arch=386 ;;
+        esac
+        if [[ -n "$requested_arch" && "$(go env GOHOSTARCH)" != "$requested_arch" ]]; then
+          echo "Expected Go host architecture ${requested_arch}, got $(go env GOHOSTARCH)" >&2
+          exit 1
+        fi
+
         echo "Requested Go: ${requested}"
         echo "Resolved Go: go${actual}"
+        echo "Resolved host architecture: $(go env GOHOSTARCH)"
         echo "Go binary: $(command -v go)"
         go version
         go env GOROOT
+

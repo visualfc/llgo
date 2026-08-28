@@ -115,6 +115,10 @@ else
       echo "SKIP $d (c/pthread exposes the native POSIX API and is not applicable to Windows)"
       continue
     fi
+    if [ "${RUNNER_OS:-}" = "Windows" ] && [ "$d" = "./_demo/py/tensor" ] && [ "${LLGO_WINDOWS_NO_TORCH:-0}" = "1" ]; then
+      echo "SKIP $d (PyTorch does not publish Windows ARM64 or win32 wheels)"
+      continue
+    fi
     if [ "$d" = "./_demo/c/llama2-c" ] && [ "${LLGO_RUN_MODEL_DEMOS:-0}" != "1" ]; then
       echo "SKIP $d (model demo runs in scheduled Model Demo workflow)"
       continue

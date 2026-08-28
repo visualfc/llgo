@@ -1,6 +1,9 @@
 param(
   [ValidateSet("msvc", "mingw")]
-  [string]$Profile = "msvc"
+  [string]$Profile = "msvc",
+  [Parameter(Mandatory = $true)]
+  [ValidateSet("386", "amd64", "arm64")]
+  [string]$GoArch
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,7 +36,7 @@ function Assert-NativeOutput([string]$Executable) {
   $result = Invoke-NativeCapture $Executable
   Assert-Success "Running $Executable" $result.ExitCode
   $output = $result.Output.Trim()
-  $want = "windows-$Profile-profile"
+  $want = "windows-$Profile-$GoArch-profile"
   if ($output -ne $want) {
     throw "$Executable printed '$output', want '$want'"
   }
@@ -60,10 +63,11 @@ $mainSource = @'
 package main
 
 func main() {
-	println("windows-$Profile-profile")
+	println("windows-$Profile-$GoArch-profile")
 }
 '@
-$mainSource.Replace('$Profile', $Profile) | Set-Content -Encoding utf8 (Join-Path $sourceDir "main.go")
+$mainSource.Replace('$Profile', $Profile).Replace('$GoArch', $GoArch) |
+  Set-Content -Encoding utf8 (Join-Path $sourceDir "main.go")
 
 $llgo = (Get-Command llgo.exe).Source
 foreach ($tool in @("clang.exe", "clang++.exe", "llvm-config.exe")) {
@@ -114,7 +118,16 @@ try {
   } finally {
     Pop-Location
   }
-  $canonicalTarget = if ($Profile -eq "msvc") { 'x86_64-pc-windows-msvc' } else { 'x86_64-w64-windows-gnu' }
+  $targetArch = switch ($GoArch) {
+    "386" { "i686" }
+    "amd64" { "x86_64" }
+    "arm64" { "aarch64" }
+  }
+  $canonicalTarget = if ($Profile -eq "msvc") {
+    "$targetArch-pc-windows-msvc"
+  } else {
+    "$targetArch-w64-windows-gnu"
+  }
   if ($trace -notmatch [regex]::Escape($canonicalTarget)) {
     throw "Unset CC/CXX did not select the canonical $Profile target:`n$trace"
   }

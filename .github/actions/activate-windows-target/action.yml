@@ -1,0 +1,45 @@
+name: "Activate Windows Target"
+description: "Switch a built LLGo host compiler to an architecture-matched Windows target environment"
+inputs:
+  windows-abi:
+    description: "Native Windows toolchain profile"
+    required: false
+    default: "msvc"
+  windows-arch:
+    description: "Windows target GOARCH"
+    required: false
+    default: "amd64"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Activate Windows MSVC target
+      if: runner.os == 'Windows' && inputs.windows-abi == 'msvc'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        . (Join-Path $env:GITHUB_WORKSPACE ".github\windows\msvc-target.ps1")
+        $target = Enter-LLGoVisualStudio2022 -GoArch "${{ inputs.windows-arch }}"
+
+        if ($env:LLGO_WINDOWS_TARGET_TRIPLE -ne $target.Triple) {
+          throw "Configured target $env:LLGO_WINDOWS_TARGET_TRIPLE does not match $($target.Triple)"
+        }
+        if ($env:LLGO_WINDOWS_VCPKG_TRIPLET -ne $target.VcpkgTriplet) {
+          throw "Configured vcpkg triplet $env:LLGO_WINDOWS_VCPKG_TRIPLET does not match $($target.VcpkgTriplet)"
+        }
+        if (-not (Test-Path (Join-Path $env:LLGO_WINDOWS_VCPKG_ROOT "include\gc\gc.h"))) {
+          throw "The $($target.VcpkgTriplet) dependency installation is incomplete"
+        }
+
+        Export-LLGoVisualStudioEnvironment
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=$($target.Triple) -fuse-ld=lld -fms-runtime-lib=dll"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=$($target.Triple) -fuse-ld=lld -fms-runtime-lib=dll -std=c++17"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "GOOS=windows"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "GOARCH=$($target.GoArch)"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_ACTIVE=1"
+        Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $env:LLGO_WINDOWS_VCPKG_ROOT "bin")
+
+    - name: Reject unsupported Windows GNU target architecture
+      if: runner.os == 'Windows' && inputs.windows-abi == 'mingw' && inputs.windows-arch != 'amd64'
+      shell: pwsh
+      run: throw "Non-amd64 MinGW qualification belongs to R11"

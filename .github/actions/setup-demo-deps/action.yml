@@ -5,6 +5,10 @@ inputs:
     description: "Native Windows toolchain profile: msvc or mingw"
     required: false
     default: "msvc"
+  windows-arch:
+    description: "Windows target GOARCH"
+    required: false
+    default: "amd64"
 
 runs:
   using: "composite"
@@ -19,8 +23,18 @@ runs:
         # stdlib path with that installation and cannot import encodings. Keep
         # the MinGW demo environment on the normal latest 3.12 patch.
         python-version: ${{ inputs.windows-abi == 'msvc' && '3.12.7' || '3.12' }}
+        architecture: x64
         # setup-python otherwise replaces PKG_CONFIG_PATH, hiding the native
         # vcpkg metadata installed by setup-deps from LLGo's runtime build.
+        update-environment: false
+
+    - name: Set up target Python 3.12 on Windows
+      if: runner.os == 'Windows' && inputs.windows-arch != 'amd64'
+      id: windows_target_python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.12.7"
+        architecture: ${{ inputs.windows-arch == 'arm64' && 'arm64' || 'x86' }}
         update-environment: false
 
     - name: Install cargs demo library on Unix
@@ -74,17 +88,29 @@ runs:
         if ("${{ inputs.windows-abi }}" -notin @("msvc", "mingw")) {
           throw "Unsupported Windows ABI profile: ${{ inputs.windows-abi }}"
         }
-        $compiler = (Get-Command clang.exe).Source
-        $target = (& $compiler -dumpmachine).Trim()
         if ("${{ inputs.windows-abi }}" -eq "msvc") {
-          if ($target -notmatch "-windows-msvc$") {
-            throw "The MSVC profile resolved Clang target $target"
+          # setup-deps intentionally leaves the x64 developer environment
+          # active while the host LLGo compiler is built. Select the target
+          # SDK only inside this process when producing the target cargs
+          # archive; the shared target environment is activated afterwards.
+          . (Join-Path $env:GITHUB_WORKSPACE ".github\windows\msvc-target.ps1")
+          $null = Enter-LLGoVisualStudio2022 -GoArch "${{ inputs.windows-arch }}"
+        }
+        $compiler = (Get-Command clang.exe).Source
+        $compilerArgs = @()
+        if ("${{ inputs.windows-abi }}" -eq "msvc") {
+          $compilerArgs = @("--target=$env:LLGO_WINDOWS_TARGET_TRIPLE")
+        }
+        $compilerTarget = (& $compiler @compilerArgs -dumpmachine).Trim()
+        if ("${{ inputs.windows-abi }}" -eq "msvc") {
+          if ($compilerTarget -ne $env:LLGO_WINDOWS_TARGET_TRIPLE) {
+            throw "The MSVC profile resolved Clang target $compilerTarget, want $env:LLGO_WINDOWS_TARGET_TRIPLE"
           }
           $runtimeArgs = @("-fms-runtime-lib=dll")
           $archive = "cargs.lib"
         } else {
-          if ($target -notmatch "-(windows-gnu|mingw32)$") {
-            throw "The MinGW profile resolved Clang target $target"
+          if ($compilerTarget -notmatch "-(windows-gnu|mingw32)$") {
+            throw "The MinGW profile resolved Clang target $compilerTarget"
           }
           $runtimeArgs = @()
           $archive = "libcargs.a"
@@ -102,7 +128,7 @@ runs:
         Invoke-WebRequest "$baseUrl/src/cargs.c" -OutFile $source
 
         $object = Join-Path $env:RUNNER_TEMP "cargs.obj"
-        & $compiler @runtimeArgs -O2 -std=c11 `
+        & $compiler @compilerArgs @runtimeArgs -O2 -std=c11 `
           "-I$includeDir" -c $source -o $object
         if ($LASTEXITCODE -ne 0) {
           throw "Compiling cargs failed with exit code $LASTEXITCODE"
@@ -156,13 +182,21 @@ runs:
       run: |
         $ErrorActionPreference = "Stop"
 
-        $python = "${{ steps.windows_python.outputs.python-path }}"
-        & $python -m pip install numpy torch
+        $hostPython = "${{ steps.windows_python.outputs.python-path }}"
+        $python = "${{ steps.windows_target_python.outputs.python-path || steps.windows_python.outputs.python-path }}"
+        $packages = @("numpy")
+        if ("${{ inputs.windows-arch }}" -eq "amd64") {
+          $packages += "torch"
+        } else {
+          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_NO_TORCH=1"
+        }
+        & $python -m pip install @packages
         if ($LASTEXITCODE -ne 0) {
           throw "Installing Python demo dependencies failed with exit code $LASTEXITCODE"
         }
 
         $prefix = (& $python -c "import sys; print(sys.base_prefix)").Trim()
+        $hostPrefix = (& $hostPython -c "import sys; print(sys.base_prefix)").Trim()
         $includeDir = (& $python -c "import sysconfig; print(sysconfig.get_path('include'))").Trim()
         $version = (& $python -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')").Trim()
         $libDir = Join-Path $prefix "libs"
@@ -193,4 +227,5 @@ runs:
         "@ | Set-Content -Encoding ascii (Join-Path $pcDir "python3-embed.pc")
 
         Add-Content -Encoding utf8 $env:GITHUB_PATH $prefix
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_PYTHON_HOME=$prefix"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_PYTHON_HOME=$hostPrefix"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_PYTHON_HOME=$prefix"

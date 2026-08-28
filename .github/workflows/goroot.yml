@@ -45,6 +45,7 @@ jobs:
         with:
           llvm-version: 19
           windows-abi: ${{ matrix.windows_abi }}
+          windows-arch: ${{ matrix.windows_arch }}
 
       - name: Set up Go for building LLGo and the runner
         uses: ./.github/actions/setup-go
@@ -90,9 +91,13 @@ jobs:
             # ExitProcess, which does not run CRT stream teardown.
             export LLGO_STDIO_NOBUF=1
           fi
-          target_goroot="$(go env GOROOT)"
+          llgo_args=()
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            llgo_args=(-llgo "$RUNNER_TEMP/llgo-host.exe")
+          fi
           set +e
-          bash dev/test_goroot.sh "$target_goroot" -- \
+          bash dev/test_goroot.sh -- \
+            "${llgo_args[@]}" \
             -directive-mode ci \
             -min-swap-free-mib "$min_swap_free_mib" \
             -progress 60s \
@@ -108,6 +113,8 @@ jobs:
         env:
           MATRIX_OS: ${{ matrix.os }}
           WINDOWS_ABI: ${{ matrix.windows_abi }}
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
+          GO_VERSION: ${{ matrix.go-version }}
           SHARD_INDEX: ${{ matrix.shard-index }}
         run: |
           GO_VERSION="$(tr -d '[:space:]' < .go-version)"
@@ -120,7 +127,9 @@ jobs:
           if [[ "$MATRIX_OS" == "macos-latest" ]]; then
             platform=darwin/arm64
           elif [[ "$MATRIX_OS" == "windows-2022" ]]; then
-            platform="windows-${WINDOWS_ABI}/amd64"
+            platform="windows-${WINDOWS_ABI}/${WINDOWS_ARCH}"
+          elif [[ "$MATRIX_OS" == "windows-11-arm" ]]; then
+            platform="windows-${WINDOWS_ABI}/${WINDOWS_ARCH}"
           fi
 
           selected=$(sed -nE 's/.* shard=[^ ]+ cases=([0-9]+) directive_mode=.*/\1/p' "$log" | tail -1)
@@ -263,3 +272,4 @@ jobs:
             echo "error: one or more GOROOT shards did not succeed" >&2
             exit 1
           fi
+

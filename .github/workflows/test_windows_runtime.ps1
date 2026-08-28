@@ -2,7 +2,10 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$LLGo,
   [ValidateSet("msvc", "mingw")]
-  [string]$Profile = "msvc"
+  [string]$Profile = "msvc",
+  [Parameter(Mandatory = $true)]
+  [ValidateSet("386", "amd64", "arm64")]
+  [string]$GoArch
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,9 +24,9 @@ New-Item -ItemType Directory $out | Out-Null
 $env:LLGO_ROOT = $root
 $env:LLGO_BUILD_CACHE = "off"
 
-# The common Windows runner executes amd64 binaries. Compile the raw SyscallN
-# bridge for every Go-supported Windows architecture so target-ABI regressions
-# do not wait for native 386 or ARM64 runners.
+# Each lane executes its selected architecture below. Also compile the raw
+# SyscallN bridge for every Go-supported Windows architecture so a change in
+# one lane cannot silently break assembly selected by another lane.
 $syscallAsm = Join-Path $root "runtime\internal\lib\runtime\_wrap\syscall_windows.S"
 $targetSuffix = if ($Profile -eq "msvc") { "pc-windows-msvc" } else { "w64-windows-gnu" }
 foreach ($syscallTarget in @(
@@ -72,6 +75,18 @@ try {
 & .\.github\workflows\check_windows_imports.ps1 `
   -ReadObj $readObjExe `
   -Artifacts @($runtime, $stdlib, $ffi, $empty, $coreFault, $network)
+
+$expectedMachine = switch ($GoArch) {
+  "386" { "IMAGE_FILE_MACHINE_I386" }
+  "amd64" { "IMAGE_FILE_MACHINE_AMD64" }
+  "arm64" { "IMAGE_FILE_MACHINE_ARM64" }
+}
+foreach ($artifact in @($runtime, $stdlib, $ffi, $empty, $coreFault, $network)) {
+  $headers = (& $readObjExe --file-headers $artifact | Out-String)
+  if ($LASTEXITCODE -ne 0 -or -not $headers.Contains($expectedMachine)) {
+    throw "$artifact is not a windows/$GoArch PE image:`n$headers"
+  }
+}
 
 Write-Host "==> windows-runtime-smoke.exe"
 & $runtime
