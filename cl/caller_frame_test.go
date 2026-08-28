@@ -1018,6 +1018,33 @@ func top() {
 	}
 }
 
+func TestCompileRuntimeCallerPCLineMetadataOnWindows386(t *testing.T) {
+	ssapkg, files := buildCallerFrameSSAPackage(t, "example.com/foo", `package foo
+import "runtime"
+
+func top() {
+	runtime.Caller(0)
+}
+`)
+	prog := newLLSSAProgForTarget(t, &llssa.Target{GOOS: "windows", GOARCH: "386"})
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	pkg, err := NewPackage(prog, ssapkg, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir := pkg.Module().String()
+	for _, want := range []string{
+		`.pushsection .llgopcl$$m,\22dr\22,associative,__llgo_pcsite_`,
+		`.long __llgo_pcsite_`,
+		`.long 0\0A.quad `,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("windows/386 pc-site metadata missing %q:\n%s", want, ir)
+		}
+	}
+}
+
 func TestCompileRuntimeCallerFrameUsesGoNameForLinkname(t *testing.T) {
 	ssapkg, files := buildCallerFrameSSAPackage(t, "command-line-arguments", `package main
 import "runtime"

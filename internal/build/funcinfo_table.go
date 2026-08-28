@@ -276,13 +276,10 @@ func emitFuncInfoTable(ctx *context, pkg llssa.Package, records []funcInfoRecord
 		i32Type,
 		i32Type,
 	}, false)
-	// Go's 386 ABI gives uint64 fields 4-byte alignment. Pack this record for
-	// Windows/386 so its array stride is 12 rather than the Windows C ABI's
-	// padded 16; the runtime reads it as a Go struct.
 	symbolIndexRecordType := llvmCtx.StructType([]llvm.Type{
 		i64Type,
 		i32Type,
-	}, ctx.prog.PointerSize() == 4 && ctx.buildConf != nil && ctx.buildConf.Goos == "windows")
+	}, false)
 	funcEntryRecordType := llvmCtx.StructType([]llvm.Type{
 		llvm.PointerType(i8Type, 0),
 		i64Type,
@@ -810,17 +807,8 @@ func emitRuntimeSiteBoundaries(mod llvm.Module, recordType llvm.Type, pointerSiz
 		return llvm.AddGlobal(mod, recordType, startName), llvm.AddGlobal(mod, recordType, endName)
 	}
 	emitSentinel := func(name, suffix string) llvm.Value {
-		sentinelType := recordType
-		if pointerSize == 4 {
-			// COFF sites serialize a pointer followed immediately by a uint64.
-			// Go's 32-bit layout therefore consumes 12 bytes, while LLVM's
-			// Windows C layout pads the equivalent struct to 16 bytes. Keep the
-			// boundary sentinel byte-identical to the inline-asm records so the
-			// runtime can walk the merged $a/$m range at a fixed stride.
-			sentinelType = llvm.ArrayType(mod.Context().Int8Type(), pointerSize+8)
-		}
-		global := llvm.AddGlobal(mod, sentinelType, name)
-		global.SetInitializer(llvm.ConstNull(sentinelType))
+		global := llvm.AddGlobal(mod, recordType, name)
+		global.SetInitializer(llvm.ConstNull(recordType))
 		global.SetLinkage(llvm.PrivateLinkage)
 		global.SetGlobalConstant(true)
 		global.SetAlignment(pointerSize)
@@ -881,9 +869,16 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 	asmType := llvm.FunctionType(llvmCtx.VoidType(), nil, false)
 	ptrDirective := ".quad"
 	align := "3"
+	recordPadding := ""
 	if ctx.prog.PointerSize() == 4 {
 		ptrDirective = ".long"
 		align = "2"
+		if siteFormat == siteObjectCOFF {
+			// The Windows C ABI aligns the following uint64 to offset 8. Keep
+			// inline records identical to the natural LLVM struct used for the
+			// COFF boundary sentinels and to the Windows/386 runtime declaration.
+			recordPadding = ".long 0\n"
+		}
 	}
 	for fn := mod.FirstFunction(); !fn.IsNil(); fn = llvm.NextFunction(fn) {
 		if fn.IsDeclaration() || fn.BasicBlocksCount() == 0 {
@@ -910,6 +905,7 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 			".p2align " + align + "\n" +
 			entrySiteInfo.recordSymbol(siteFormat, "funcinfo_entry") +
 			ptrDirective + " " + anchor + "\n" +
+			recordPadding +
 			".quad " + uint64Hex(symbolID) + "\n" +
 			".popsection"
 		asm := llvm.InlineAsm(asmType, instruction, "", true, false, llvm.InlineAsmDialectATT, false)

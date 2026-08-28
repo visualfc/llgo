@@ -2029,9 +2029,15 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 	asmLabel := label + "_${:uid}"
 	ptrDirective := ".quad"
 	align := "3"
+	recordPadding := ""
 	if p.prog.PointerSize() == 4 {
 		ptrDirective = ".long"
 		align = "2"
+		if target.GOOS == "windows" {
+			// COFF follows the Windows C ABI and aligns the uint64 ID to offset
+			// 8 after a 32-bit pointer. The runtime uses the same 16-byte record.
+			recordPadding = ".long 0\n"
+		}
 	}
 	// Keep section names in sync with internal/build/funcinfo_table.go
 	// (pcLineSiteSectionInfo). ELF ties the record to its final code location
@@ -2059,6 +2065,7 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 			".p2align " + align + "\n" +
 			recordSymbol +
 			ptrDirective + " " + asmLabel + "\n" +
+			recordPadding +
 			".quad " + uint64Hex(id) + "\n" +
 			".popsection",
 	)

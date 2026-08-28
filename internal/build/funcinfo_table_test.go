@@ -621,13 +621,16 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 						funcInfoEntryCOFFStartSymbol, funcInfoEntryCOFFEndSymbol,
 						pcSiteCOFFStartSymbol, pcSiteCOFFEndSymbol,
 					} {
-						want := `@` + sentinel + ` = private constant [12 x i8] zeroinitializer`
+						want := `@` + sentinel + ` = private constant { ptr, i64 } zeroinitializer`
 						if !strings.Contains(ir, want) {
-							t.Fatalf("32-bit COFF sentinel does not match its 12-byte site records; missing %q:\n%s", want, ir)
+							t.Fatalf("32-bit COFF sentinel does not use its natural 16-byte Windows ABI layout; missing %q:\n%s", want, ir)
 						}
 					}
-					if want := `@"__llgo_funcinfo_symbol_index$data" = private unnamed_addr constant [2 x <{ i64, i32 }>]`; !strings.Contains(ir, want) {
-						t.Fatalf("32-bit funcinfo symbol index does not use its Go-compatible 12-byte stride; missing %q:\n%s", want, ir)
+					if want := `@"__llgo_funcinfo_symbol_index$data" = private unnamed_addr constant [2 x { i64, i32 }]`; !strings.Contains(ir, want) {
+						t.Fatalf("32-bit funcinfo symbol index does not use its natural 16-byte Windows ABI stride; missing %q:\n%s", want, ir)
+					}
+					if want := `.long 0\0A.quad `; !strings.Contains(ir, want) {
+						t.Fatalf("32-bit COFF entry site does not pad its uint64 ID to offset 8; missing %q:\n%s", want, ir)
 					}
 				}
 			}

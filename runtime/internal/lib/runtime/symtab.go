@@ -177,21 +177,11 @@ var runtimeFuncInfoCount uintptr
 //go:linkname runtimeFuncInfoHashMask __llgo_funcinfo_hash_mask
 var runtimeFuncInfoHashMask uintptr
 
-type runtimeFuncInfoSymbolIndexRecord struct {
-	symbolID  uint64
-	funcIndex uint32
-}
-
 //go:linkname runtimeFuncInfoSymbolIndex __llgo_funcinfo_symbol_index
 var runtimeFuncInfoSymbolIndex *runtimeFuncInfoSymbolIndexRecord
 
 //go:linkname runtimeFuncInfoSymbolIndexCount __llgo_funcinfo_symbol_index_count
 var runtimeFuncInfoSymbolIndexCount uintptr
-
-type runtimeFuncInfoEntryRecord struct {
-	pc       uintptr
-	symbolID uint64
-}
 
 //go:linkname runtimeFuncInfoEntryStart __llgo_funcinfo_entry_start
 var runtimeFuncInfoEntryStart *runtimeFuncInfoEntryRecord
@@ -212,35 +202,6 @@ var runtimePCLineTable *runtimePCLineRecord
 
 //go:linkname runtimePCLineCount __llgo_pcline_count
 var runtimePCLineCount uintptr
-
-type runtimePCSiteRecord struct {
-	pc uintptr
-	id uint64
-}
-
-// LLVM's Windows/386 data layout places a uint64 following a pointer at
-// offset 8, but Go's 386 ABI and the serialized site records use offset 4.
-// Decode that one target from its two little-endian words; every other target
-// retains the ordinary typed field access and generated code.
-func runtimeWindows386SiteID(record unsafe.Pointer) uint64 {
-	lo := *(*uint32)(unsafe.Add(record, unsafe.Sizeof(uintptr(0))))
-	hi := *(*uint32)(unsafe.Add(record, unsafe.Sizeof(uintptr(0))+4))
-	return uint64(lo) | uint64(hi)<<32
-}
-
-func runtimeFuncInfoEntrySymbolID(site *runtimeFuncInfoEntryRecord) uint64 {
-	if GOOS == "windows" && unsafe.Sizeof(uintptr(0)) == 4 {
-		return runtimeWindows386SiteID(unsafe.Pointer(site))
-	}
-	return site.symbolID
-}
-
-func runtimePCSiteID(site *runtimePCSiteRecord) uint64 {
-	if GOOS == "windows" && unsafe.Sizeof(uintptr(0)) == 4 {
-		return runtimeWindows386SiteID(unsafe.Pointer(site))
-	}
-	return site.id
-}
 
 //go:linkname runtimePCSiteStart __llgo_pcsite_start
 var runtimePCSiteStart *runtimePCSiteRecord
@@ -987,14 +948,10 @@ func appendRuntimeFuncInfoEntryFrames(frames []runtimeFuncPCFrame, entries []uin
 	used := false
 	for i := uintptr(0); i < nsite; i++ {
 		site := (*runtimeFuncInfoEntryRecord)(unsafe.Pointer(start + i*size))
-		if site == nil {
+		if site == nil || site.pc == 0 || site.symbolID == 0 {
 			continue
 		}
-		symbolID := runtimeFuncInfoEntrySymbolID(site)
-		if site.pc == 0 || symbolID == 0 {
-			continue
-		}
-		funcIndex := funcInfoIndexForSymbolID(symbolID)
+		funcIndex := funcInfoIndexForSymbolID(site.symbolID)
 		if funcIndex == 0 || uintptr(funcIndex) > runtimeFuncInfoCount {
 			continue
 		}
@@ -1355,15 +1312,14 @@ func coldFuncInfoScanRange(start, end, size, pc uintptr, bestDelta uintptr) (uin
 	bestIndex := uint32(0)
 	for i := uintptr(0); i < nsite; i++ {
 		site := (*runtimeFuncInfoEntryRecord)(unsafe.Pointer(start + i*size))
-		symbolID := runtimeFuncInfoEntrySymbolID(site)
-		if symbolID == 0 || site.pc < pc {
+		if site.symbolID == 0 || site.pc < pc {
 			continue
 		}
 		delta := site.pc - pc
 		if delta >= bestDelta {
 			continue
 		}
-		funcIndex := funcInfoIndexForSymbolID(symbolID)
+		funcIndex := funcInfoIndexForSymbolID(site.symbolID)
 		if funcIndex == 0 || uintptr(funcIndex) > runtimeFuncInfoCount {
 			continue
 		}
@@ -1693,14 +1649,10 @@ func initRuntimePCLineFramesOnce() {
 	fileCache := make(map[uint64]string)
 	for i := uintptr(0); i < nsite; i++ {
 		site := (*runtimePCSiteRecord)(unsafe.Pointer(start + i*size))
-		if site == nil {
+		if site == nil || site.id == 0 || site.pc == 0 {
 			continue
 		}
-		id := runtimePCSiteID(site)
-		if id == 0 || site.pc == 0 {
-			continue
-		}
-		rec := pcLineInfoForID(id)
+		rec := pcLineInfoForID(site.id)
 		if rec == nil || rec.funcIndex == 0 || uintptr(rec.funcIndex) > runtimeFuncInfoCount {
 			continue
 		}
