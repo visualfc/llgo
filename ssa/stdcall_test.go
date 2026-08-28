@@ -40,9 +40,15 @@ func requireStdcallPanic(t *testing.T, want string, fn func()) {
 }
 
 func newStdcallType(prog Program, pkgPath, name string, sig *types.Signature) *types.Named {
+	return newNativeFuncType(prog, pkgPath, name, sig, InStdcall)
+}
+
+func newNativeFuncType(
+	prog Program, pkgPath, name string, sig *types.Signature, background Background,
+) *types.Named {
 	pkg := types.NewPackage(pkgPath, "p")
 	named := types.NewNamed(types.NewTypeName(token.NoPos, pkg, name, nil), sig, nil)
-	prog.SetTypeBackground(pkgPath+"."+name, InStdcall)
+	prog.SetTypeBackground(pkgPath+"."+name, background)
 	return named
 }
 
@@ -233,7 +239,7 @@ func TestStdcallFuncvalAdapters(t *testing.T) {
 	for _, arch := range []string{"386", "amd64", "arm64"} {
 		for _, resultCount := range []int{0, 1, 2} {
 			t.Run(fmt.Sprintf("%s/results-%d", arch, resultCount), func(t *testing.T) {
-				prog := NewProgram(&Target{GOOS: "windows", GOARCH: arch})
+				prog := NewProgram(&Target{GOOS: "windows", GOARCH: arch, CABIOnly: true})
 				defer prog.Dispose()
 				params := types.NewTuple(types.NewVar(token.NoPos, nil, "value", types.Typ[types.Int32]))
 				results := make([]*types.Var, resultCount)
@@ -286,6 +292,9 @@ func TestStdcallFuncvalAdapters(t *testing.T) {
 					t.Fatalf("adapter native call convention = %v, want %v:\n%s",
 						nativeCall.InstructionCallConv(), prog.stdcallCallConv(), wrapper.impl.String())
 				}
+				if attr := nativeCall.GetCallSiteStringAttribute(-1, NativeCallAttribute); attr.IsNil() {
+					t.Fatalf("adapter native call is not marked as a native ABI boundary:\n%s", wrapper.impl.String())
+				}
 				if strings.Contains(pkg.String(), "runtime.AllocU") {
 					t.Fatalf("stdcall funcval conversion unexpectedly allocated:\n%s", pkg.String())
 				}
@@ -295,6 +304,98 @@ func TestStdcallFuncvalAdapters(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestNativeFuncvalAdapterSelection(t *testing.T) {
+	tests := []struct {
+		name       string
+		arch       string
+		background Background
+		cabiOnly   bool
+		named      bool
+		want       bool
+	}{
+		{name: "cdecl-direct-allfunc", arch: "amd64", background: InC},
+		{name: "cdecl-named-allfunc", arch: "arm64", background: InC, named: true},
+		{name: "cdecl-direct-cfunc", arch: "amd64", background: InC, cabiOnly: true, want: true},
+		{name: "cdecl-named-cfunc", arch: "arm64", background: InC, cabiOnly: true, named: true, want: true},
+		{name: "stdcall-386-allfunc", arch: "386", background: InStdcall, named: true, want: true},
+		{name: "stdcall-amd64-allfunc", arch: "amd64", background: InStdcall, named: true},
+		{name: "stdcall-arm64-allfunc", arch: "arm64", background: InStdcall},
+		{name: "stdcall-amd64-cfunc", arch: "amd64", background: InStdcall, cabiOnly: true, want: true},
+		{name: "stdcall-arm64-cfunc", arch: "arm64", background: InStdcall, cabiOnly: true, named: true, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			prog := NewProgram(&Target{GOOS: "windows", GOARCH: test.arch, CABIOnly: test.cabiOnly})
+			defer prog.Dispose()
+			sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+			pkg := prog.NewPackage("p", "example.com/p")
+
+			var owner Function
+			var body Builder
+			var native Expr
+			if test.named {
+				typ := newNativeFuncType(prog, pkg.Path(), "NativeFunc", sig, test.background)
+				ownerSig := types.NewSignatureType(nil, nil, nil,
+					types.NewTuple(types.NewVar(token.NoPos, nil, "fn", typ)), nil, false)
+				owner = pkg.NewFunc("example.com/p.namedOwner", ownerSig, InGo)
+				body = owner.MakeBody(1)
+				native = owner.Param(0)
+			} else {
+				owner = pkg.NewFunc("example.com/p.owner", NoArgsNoRet, InGo)
+				body = owner.MakeBody(1)
+				native = pkg.NewFunc("Native", sig, test.background).Expr
+			}
+			converted := body.ChangeType(prog.Type(sig, InGo), native)
+			body.Return()
+
+			prefix := pkg.Path() + ".__llgo_c_funcval$"
+			if test.background == InStdcall {
+				prefix = pkg.Path() + ".__llgo_stdcall_funcval$"
+			}
+			var wrapper Function
+			for name, fn := range pkg.fns {
+				if strings.HasPrefix(name, prefix) {
+					wrapper = fn
+					break
+				}
+			}
+			if got := wrapper != nil; got != test.want {
+				t.Fatalf("native funcval adapter generated = %v, want %v\n%s", got, test.want, pkg.String())
+			}
+			if !test.want {
+				if converted.kind != vkClosure {
+					t.Fatalf("compatible native pointer conversion kind = %v, want closure", converted.kind)
+				}
+			}
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("invalid native funcval module: %v\n%s", err, pkg.String())
+			}
+		})
+	}
+}
+
+func TestNativeCallRejectsCapturingCallback(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "windows", GOARCH: "amd64"})
+	defer prog.Dispose()
+	setTestRuntime(t, prog)
+	callbackSig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	consumerSig := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, nil, "callback", callbackSig)), nil, false)
+	pkg := prog.NewPackage("p", "example.com/p")
+	consumer := pkg.NewFunc("Consume", consumerSig, InC)
+	env := types.NewVar(token.NoPos, nil, "$env", types.NewPointer(types.NewStruct(
+		[]*types.Var{types.NewField(token.NoPos, nil, "value", types.Typ[types.Int], false)}, nil,
+	)))
+	callback := pkg.NewEnvFunc("example.com/p.callback", callbackSig, InGo, env, false)
+	callback.MakeBody(1).Return()
+	owner := pkg.NewFunc("example.com/p.owner", NoArgsNoRet, InGo)
+	body := owner.MakeBody(1)
+	closure := body.MakeClosure(callback.Expr, []Expr{prog.Val(1)})
+	requireStdcallPanic(t, "native callback must be a direct function reference", func() {
+		body.Call(consumer.Expr, closure)
+	})
 }
 
 func TestStdcallRejectsNonDirectCallback(t *testing.T) {

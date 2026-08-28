@@ -4,6 +4,8 @@
 package cabi
 
 import (
+	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -991,4 +993,86 @@ entry:
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("transformed module is invalid: %v\n%s", err, mod.String())
 	}
+}
+
+func TestModeCFuncLowersMarkedNativeFuncvalBoundary(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	tests := []struct {
+		arch   string
+		triple string
+		want   []string
+	}{
+		{arch: "386", triple: "i686-pc-windows-msvc", want: []string{"call void ", "sret(", "byval("}},
+		{arch: "amd64", triple: "x86_64-pc-windows-msvc", want: []string{"call void ", "sret("}},
+		{arch: "arm64", triple: "aarch64-pc-windows-msvc", want: []string{"call i24 "}},
+	}
+	for _, test := range tests {
+		t.Run(test.arch, func(t *testing.T) {
+			prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: test.arch, CABIOnly: true})
+			defer prog.Dispose()
+			odd := types.NewStruct([]*types.Var{
+				types.NewField(token.NoPos, nil, "a", types.Typ[types.Uint8], false),
+				types.NewField(token.NoPos, nil, "b", types.Typ[types.Uint8], false),
+				types.NewField(token.NoPos, nil, "c", types.Typ[types.Uint8], false),
+			}, nil)
+			sig := types.NewSignatureType(nil, nil, nil,
+				types.NewTuple(types.NewVar(token.NoPos, nil, "value", odd)),
+				types.NewTuple(types.NewVar(token.NoPos, nil, "result", odd)), false)
+			pkg := prog.NewPackage("p", "example.com/p")
+			native := pkg.NewFunc("nativeOdd", sig, llssa.InC)
+			caller := pkg.NewFunc("example.com/p.callOdd", sig, llssa.InGo)
+			body := caller.MakeBody(1)
+			fnval := body.ChangeType(prog.Type(sig, llssa.InGo), native.Expr)
+			body.Return(body.Call(fnval, caller.Param(0)))
+
+			var wrapper llvm.Value
+			for fn := pkg.Module().FirstFunction(); !fn.IsNil(); fn = llvm.NextFunction(fn) {
+				if strings.Contains(fn.Name(), ".__llgo_c_funcval$") {
+					wrapper = fn
+					break
+				}
+			}
+			if wrapper.IsNil() {
+				t.Fatalf("C funcval adapter was not generated:\n%s", pkg.String())
+			}
+			if got := countMarkedNativeCalls(wrapper); got != 1 {
+				t.Fatalf("marked native calls = %d, want 1:\n%s", got, wrapper.String())
+			}
+
+			NewTransformer(prog, test.triple, "", ModeCFunc, true).
+				TransformModule("example.com/p", pkg.Module())
+			wrapperIR := wrapper.String()
+			for _, want := range test.want {
+				if !strings.Contains(wrapperIR, want) {
+					t.Fatalf("marked native aggregate call does not contain %q:\n%s", want, wrapperIR)
+				}
+			}
+			if got := countMarkedNativeCalls(wrapper); got != 1 {
+				t.Fatalf("lowered native calls with boundary marker = %d, want 1:\n%s", got, wrapperIR)
+			}
+			callerIR := pkg.Module().NamedFunction(caller.Name()).String()
+			if strings.Contains(callerIR, "sret(") {
+				t.Fatalf("ordinary Go funcval call was unexpectedly C-ABI lowered:\n%s", callerIR)
+			}
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("native funcval module is invalid: %v\n%s", err, pkg.String())
+			}
+		})
+	}
+}
+
+func countMarkedNativeCalls(fn llvm.Value) int {
+	count := 0
+	for block := fn.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			call := instruction.IsACallInst()
+			if !call.IsNil() && !call.GetCallSiteStringAttribute(-1, llssa.NativeCallAttribute).IsNil() {
+				count++
+			}
+		}
+	}
+	return count
 }

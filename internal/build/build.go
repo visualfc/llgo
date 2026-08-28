@@ -507,6 +507,7 @@ func Build(inv Invocation) ([]Package, error) {
 		LLVMTarget:              export.LLVMTarget,
 		OptLevel:                conf.OptLevel,
 		SaturatingFloatToUint32: conf.SaturatingFloatToUint32,
+		CABIOnly:                conf.AbiMode == cabi.ModeCFunc,
 	}
 	tags := defaultBuildTags(conf.Goarch, conf.Target) + "," + target.ClosureEnvBuildTag()
 	if conf.PCLNMode == PCLNExternal {

@@ -198,10 +198,12 @@ func (p *Transformer) TransformModule(path string, m llvm.Module) {
 							continue
 						}
 						callee := call.CalledValue()
+						nativeIndirect := callee.IsAFunction().IsNil() &&
+							!call.GetCallSiteStringAttribute(-1, ssa.NativeCallAttribute).IsNil()
 						// ModeCFunc only targets direct C symbol calls. Indirect calls
-						// (callee name is empty under opaque pointers) may be Go closure
-						// invocations and must keep Go-level signatures.
-						if callee.IsAFunction().IsNil() || !p.isCFunc(callee.Name()) {
+						// may be Go closure invocations and must keep Go-level signatures;
+						// SSA marks the few that deliberately cross a native boundary.
+						if !nativeIndirect && (callee.IsAFunction().IsNil() || !p.isCFunc(callee.Name())) {
 							instr = llvm.NextInstruction(instr)
 							continue
 						}
@@ -645,6 +647,7 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 	nft, attrs, paramMap := p.transformFuncType(ctx, &info)
 	preloweredSRet := call.GetCallSiteEnumAttribute(1, llvm.AttributeKindID("sret"))
 	reflectMethodByNameAttr := call.GetCallSiteStringAttribute(-1, "llgo.reflect.methodbyname")
+	nativeCallAttr := call.GetCallSiteStringAttribute(-1, ssa.NativeCallAttribute)
 	b := ctx.NewBuilder()
 	b.SetInsertPointBefore(call)
 
@@ -721,6 +724,9 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 		}
 		if !reflectMethodByNameAttr.IsNil() {
 			replacement.AddCallSiteAttribute(-1, reflectMethodByNameAttr)
+		}
+		if !nativeCallAttr.IsNil() {
+			replacement.AddCallSiteAttribute(-1, nativeCallAttr)
 		}
 		if remappedReflectMethodByNameArgAttrIndex >= 0 {
 			replacement.AddCallSiteAttribute(remappedReflectMethodByNameArgAttrIndex, ctx.CreateStringAttribute(

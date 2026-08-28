@@ -929,8 +929,13 @@ func (b Builder) UnOp(op token.Token, x Expr) (ret Expr) {
 //	t1 = changetype *int <- IntPtr (t0)
 func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 	dbgInstrf("ChangeType %v, %v\n", t.RawType(), x.impl)
-	if t.kind == vkClosure && b.needsStdcallFuncval(x) {
-		return b.stdcallFuncval(t, x)
+	if t.kind == vkClosure {
+		if background, ok := b.nativeFuncvalBackground(x); ok {
+			return b.nativeFuncval(t, x, background)
+		}
+		if _, ok := b.nativeFuncBackground(x); ok {
+			return checkExpr(x, t.raw.Type, b)
+		}
 	}
 	if b.Prog.isStdcallType(t.raw.Type) && !b.Prog.isStdcallType(x.raw.Type) {
 		return b.stdcallCallback(t.raw.Type, x)
@@ -1380,6 +1385,7 @@ func (b Builder) InlineCall(fn Expr, args ...Expr) (ret Expr) {
 func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	dbgInstrCall("Call", fn, args)
 	var kind = fn.kind
+	_, nativeCall := b.nativeFuncBackground(fn)
 	if kind == vkPyFuncRef {
 		return b.pyCall(fn, args)
 	}
@@ -1404,7 +1410,7 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 			b.impl,
 			b.Prog.FuncDecl(entrySig, InC).ll,
 			fn.impl,
-			llvmParamsEx(data, args, entrySig.Params(), b),
+			llvmParamsEx(data, args, entrySig.Params(), b, false),
 		)
 		return ret
 	case vkFuncPtr:
@@ -1424,7 +1430,7 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 		reflectCheck = b.checkReflect(fn, args)
 	}
 	ret.Type = b.Prog.retType(sig)
-	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
+	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b, nativeCall))
 	b.setNativeCallConv(ret.impl, fn)
 	if reflectCheck.Kind&ReflectMethodByName != 0 && reflectCheck.Name == "" {
 		nameArgIndex := len(args) - 1
@@ -1977,8 +1983,8 @@ func (b Builder) PrintEx(ln bool, args ...Expr) (ret Expr) {
 func checkExpr(v Expr, t types.Type, b Builder) Expr {
 	if st, ok := t.Underlying().(*types.Struct); ok && IsClosure(st) {
 		tclosure := b.Prog.rawType(t)
-		if b.needsStdcallFuncval(v) {
-			return b.stdcallFuncval(tclosure, v)
+		if background, ok := b.nativeFuncvalBackground(v); ok {
+			return b.nativeFuncval(tclosure, v, background)
 		}
 		if v.kind == vkClosure {
 			return v
@@ -2025,28 +2031,63 @@ func needsNegativeCheck(x Expr) bool {
 	return false
 }
 
-func llvmParamsEx(data Expr, vals []Expr, params *types.Tuple, b Builder) (ret []llvm.Value) {
-	if data.IsNil() {
-		return llvmParams(0, vals, params, b)
+func llvmParamsEx(data Expr, vals []Expr, params *types.Tuple, b Builder, native bool) (ret []llvm.Value) {
+	convert := checkExpr
+	if native {
+		convert = checkNativeCallExpr
 	}
-	ret = llvmParams(1, vals, params, b)
+	if data.IsNil() {
+		return llvmParamsWith(0, vals, params, b, convert)
+	}
+	ret = llvmParamsWith(1, vals, params, b, convert)
 	ret[0] = data.impl
 	return
 }
 
 func llvmParams(base int, vals []Expr, params *types.Tuple, b Builder) (ret []llvm.Value) {
+	return llvmParamsWith(base, vals, params, b, checkExpr)
+}
+
+func llvmParamsWith(
+	base int, vals []Expr, params *types.Tuple, b Builder, convert func(Expr, types.Type, Builder) Expr,
+) (ret []llvm.Value) {
 	n := params.Len()
 	if n > 0 {
 		ret = make([]llvm.Value, len(vals)+base)
 		for idx, v := range vals {
 			i := base + idx
 			if i < n {
-				v = checkExpr(v, params.At(i).Type(), b)
+				v = convert(v, params.At(i).Type(), b)
 			}
 			ret[i] = v.impl
 		}
 	}
 	return
+}
+
+// checkNativeCallExpr keeps function parameters at a native boundary as one
+// C function pointer. Go SSA may have already changed a named C callback into
+// an LLGo funcval; a statically empty environment makes that conversion
+// reversible. Capturing Go closures cannot be represented by a C callback.
+func checkNativeCallExpr(v Expr, t types.Type, b Builder) Expr {
+	if _, ok := types.Unalias(t).Underlying().(*types.Signature); !ok {
+		return checkExpr(v, t, b)
+	}
+	if v.kind == vkClosure {
+		data := b.Field(v, 1)
+		if !data.impl.IsNull() {
+			panic("native callback must be a direct function reference")
+		}
+		v = b.Field(v, 0)
+	}
+	if b.Prog.isStdcallType(t) {
+		return b.stdcallCallback(t, v)
+	}
+	dst := b.Prog.Type(t, InC)
+	if v.Type != dst {
+		v = b.ChangeType(dst, v)
+	}
+	return v
 }
 
 func llvmFields(vals []Expr, t *types.Struct, b Builder) (ret []llvm.Value) {
