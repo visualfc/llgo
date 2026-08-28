@@ -14,6 +14,16 @@ mkdir -p "$(dirname "$2")" "$3"
 llgo_output="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 result_directory="$(cd "$3" && pwd)"
 
+# A cross-architecture Windows lane builds the host compiler before activating
+# the target SDK, then measures target programs in the activated environment.
+if [[ -n "${LLGO_BENCHMARK_PREBUILT_LLGO:-}" ]]; then
+  llgo_output="$(cd "$(dirname "$LLGO_BENCHMARK_PREBUILT_LLGO")" && pwd)/$(basename "$LLGO_BENCHMARK_PREBUILT_LLGO")"
+  if [[ ! -f "$llgo_output" ]]; then
+    echo "prebuilt LLGo compiler not found: $llgo_output" >&2
+    exit 1
+  fi
+fi
+
 # An explicit output path is not given the platform suffix by go build. Keep
 # the compiler discoverable by both Bash and native Windows subprocesses.
 host_goos="$(go env GOOS)"
@@ -21,10 +31,12 @@ if [[ "$host_goos" == windows && "$llgo_output" != *.exe ]]; then
   llgo_output+=.exe
 fi
 
-(
-  cd "$source_root"
-  LLGO_ROOT="$source_root" go build -p=1 -o "$llgo_output" ./cmd/llgo
-)
+if [[ -z "${LLGO_BENCHMARK_PREBUILT_LLGO:-}" ]]; then
+  (
+    cd "$source_root"
+    LLGO_ROOT="$source_root" go build -p=1 -o "$llgo_output" ./cmd/llgo
+  )
+fi
 
 (
   cd "$harness_root"

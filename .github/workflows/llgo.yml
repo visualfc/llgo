@@ -20,6 +20,7 @@ jobs:
     continue-on-error: ${{ matrix.lane == 'compatibility' }}
     timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || 60 }}
     strategy:
+      fail-fast: false
       matrix:
         # Build the compiler and run compiler-owned integration checks once per
         # native toolchain profile, always with .go-version.
