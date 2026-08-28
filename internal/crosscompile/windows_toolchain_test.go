@@ -192,6 +192,14 @@ func TestResolveWindowsToolchainRejectsIncompatibleInputs(t *testing.T) {
 			wantErr: "want GOARCH=arm64",
 		},
 		{
+			name:   "implicit compiler unsupported architecture",
+			goarch: "amd64",
+			ids: map[string]toolIdentity{
+				commandKey("clang"): {target: "mips64-pc-windows-msvc", version: "clang version 19.1.7"},
+			},
+			wantErr: "unsupported Windows architecture",
+		},
+		{
 			name:   "Cygwin ABI",
 			goarch: "amd64",
 			input:  NativeToolchainInput{CC: []string{"clang"}},
