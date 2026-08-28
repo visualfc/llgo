@@ -71,14 +71,20 @@ func (b *Builder) addDebuggerMarker() {
 	marker.SetInitializer(llvm.ConstInt(i8, 1, false))
 	marker.SetGlobalConstant(true)
 	marker.SetLinkage(llvm.LinkOnceODRLinkage)
-	marker.SetVisibility(llvm.HiddenVisibility)
 	if strings.Contains(strings.ToLower(b.module.Target()), "windows") {
 		// COFF does not turn linkonce_odr into a coalescible section on its
 		// own. Every debug-enabled package emits this marker, so associate it
-		// with an any-selection COMDAT just like other ODR definitions.
+		// with an any-selection COMDAT just like other ODR definitions. Export
+		// the selected definition because llvm.used keeps the global during
+		// code generation but does not make its COFF section a linker GC root.
+		// The export directive both retains the marker and makes it discoverable
+		// through LLDB's PE symbol enumeration.
 		comdat := b.module.Comdat(debuggerMarkerSymbol)
 		comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
 		marker.SetComdat(comdat)
+		marker.SetDLLStorageClass(llvm.DLLExportStorageClass)
+	} else {
+		marker.SetVisibility(llvm.HiddenVisibility)
 	}
 
 	ptr := llvm.PointerType(i8, 0)
