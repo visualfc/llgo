@@ -54,6 +54,9 @@ func TestResolveWindowsToolchainDefaultsToMSVC(t *testing.T) {
 	if !slices.Equal(export.LDFLAGS, input.ExternalFlags) {
 		t.Fatalf("LDFLAGS = %q, want %q", export.LDFLAGS, input.ExternalFlags)
 	}
+	if len(export.BuildTags) != 0 {
+		t.Fatalf("MSVC BuildTags = %q, want none", export.BuildTags)
+	}
 }
 
 func TestResolveWindowsToolchainDefaultsToGNUProfile(t *testing.T) {
@@ -83,6 +86,9 @@ func TestResolveWindowsToolchainDefaultsToGNUProfile(t *testing.T) {
 	}
 	if export.CXX != "clang++" || !slices.Equal(export.CXXArgs, []string{"--target=x86_64-w64-windows-gnu"}) {
 		t.Fatalf("CXX command = %q %q", export.CXX, export.CXXArgs)
+	}
+	if !slices.Equal(export.BuildTags, []string{windowsGNUABIBuildTag}) {
+		t.Fatalf("GNU BuildTags = %q, want %q", export.BuildTags, windowsGNUABIBuildTag)
 	}
 }
 
@@ -128,6 +134,9 @@ func TestResolveWindowsToolchainExplicitGNUProfile(t *testing.T) {
 	}
 	if export.Linker != extld[0] || !slices.Equal(export.LinkerArgs, extld[1:]) {
 		t.Fatalf("external linker = %q %q, want %q", export.Linker, export.LinkerArgs, extld)
+	}
+	if !slices.Equal(export.BuildTags, []string{windowsGNUABIBuildTag}) {
+		t.Fatalf("GNU BuildTags = %q, want %q", export.BuildTags, windowsGNUABIBuildTag)
 	}
 }
 

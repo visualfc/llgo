@@ -29,6 +29,8 @@ type toolIdentity struct {
 
 type toolProbe func(command []string, input NativeToolchainInput) (toolIdentity, error)
 
+const windowsGNUABIBuildTag = "llgo_windows_gnu"
+
 func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe toolProbe) (Export, error) {
 	if _, err := windowsTargetTriple(goarch, PlatformABIMsvc); err != nil {
 		return Export{}, err
@@ -104,6 +106,12 @@ func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe to
 		CXXIdentity: cxxIdentity.version,
 		Toolchain:   toolchain,
 		LLVMTarget:  toolchain.TargetTriple,
+	}
+	if toolchain.ABI == PlatformABIGNU {
+		// x86-64 libffi distinguishes its GNUW64 and Win64 interfaces even
+		// though both toolchain profiles use the native Windows C ABI. Keep
+		// that implementation detail automatic and in the package cache key.
+		export.BuildTags = []string{windowsGNUABIBuildTag}
 	}
 	if len(input.ExternalLinker) != 0 {
 		linkerIdentity, err := probe(input.ExternalLinker, input)
