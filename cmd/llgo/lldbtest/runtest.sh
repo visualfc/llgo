@@ -88,8 +88,12 @@ llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
 non_llgo_dir="$test_tmp_dir/non-llgo"
 host_exe_ext=$(go env GOEXE)
 mkdir -p "$non_llgo_dir"
+# CC may include target and runtime-selection flags (for example, the MSVC
+# profile uses "clang --target=... -fms-runtime-lib=dll"). Preserve those as
+# separate arguments instead of treating the complete value as a file name.
+read -r -a cc_command <<< "${CC:-cc}"
 printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; int main(void) { return 0; }\n' | \
-    "${CC:-cc}" -x c -g -o "$non_llgo_dir/non-llgo$host_exe_ext" -
+    "${cc_command[@]}" -x c -g -o "$non_llgo_dir/non-llgo$host_exe_ext" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo$host_exe_ext" \
     -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (not info.marker_versions and not info.supported) or os._exit(1)' \
     -o 'script import os; value = lldb.target.FindFirstGlobalVariable("cstring"); (value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2) or os._exit(1)' \
@@ -98,7 +102,7 @@ llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/non-llgo$host_exe_ext" \
 
 # An unknown marker must disable only LLGo-specific presentation.
 printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; __attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
-    "${CC:-cc}" -x c -g -o "$non_llgo_dir/unsupported-llgo$host_exe_ext" -
+    "${cc_command[@]}" -x c -g -o "$non_llgo_dir/unsupported-llgo$host_exe_ext" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/unsupported-llgo$host_exe_ext" \
     -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.marker_versions == (2,) and not info.supported) or os._exit(1)' \
     -o 'script import os; value = lldb.target.FindFirstGlobalVariable("cstring"); (value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2) or os._exit(1)' \
@@ -108,7 +112,7 @@ llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/unsupported-llgo$host_exe
 
 # Multiple marker versions are ambiguous even when one version is supported.
 printf 'typedef struct { const char *data; unsigned long len; } string; string cstring = {"raw", 3}; __attribute__((used)) int __llgo_debugger_marker_v1 = 1; __attribute__((used)) int __llgo_debugger_marker_v2 = 2; int main(void) { return 0; }\n' | \
-    "${CC:-cc}" -x c -g -o "$non_llgo_dir/ambiguous-llgo$host_exe_ext" -
+    "${cc_command[@]}" -x c -g -o "$non_llgo_dir/ambiguous-llgo$host_exe_ext" -
 llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/ambiguous-llgo$host_exe_ext" \
     -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.marker_versions == (1, 2) and not info.supported) or os._exit(1)' \
     -o 'script import os; value = lldb.target.FindFirstGlobalVariable("cstring"); (value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2) or os._exit(1)' \
