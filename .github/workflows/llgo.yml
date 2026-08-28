@@ -187,8 +187,17 @@ jobs:
           echo "LLGO_LLDB=$(cygpath -m "$lldb_path")" >> "$GITHUB_ENV"
 
       - name: LLDB integration tests
-        if: ${{ matrix.lane == 'primary' }}
+        if: ${{ matrix.lane == 'primary' && matrix.windows_abi != 'mingw' }}
         run: |
+          echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
+          bash cmd/llgo/lldbtest/runtest.sh -v
+
+      - name: LLDB integration tests (MinGW)
+        if: ${{ matrix.lane == 'primary' && matrix.windows_abi == 'mingw' }}
+        shell: msys2 {0}
+        run: |
+          # Git Bash prepends its own MinGW runtime DLLs to PATH. Use the
+          # CLANG64 shell so the debuggee loads its ABI-matching dependencies.
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
 
