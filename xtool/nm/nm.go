@@ -135,6 +135,7 @@ func listOutput(data []byte) (items []*ObjectFile, err error) {
 	item := &ObjectFile{}
 	lines := bytes.Split(data, sep)
 	for _, line := range lines {
+		line = bytes.TrimSuffix(line, []byte{'\r'})
 		if len(line) == 0 {
 			if item.File == "" && len(item.Symbols) > 0 {
 				items = append(items, item)
