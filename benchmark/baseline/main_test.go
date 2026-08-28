@@ -350,6 +350,58 @@ func TestCollect(t *testing.T) {
 	}
 }
 
+func TestCollectBuildsFromSourceRoot(t *testing.T) {
+	if os.PathSeparator != '/' {
+		t.Skip("fake compiler uses a POSIX shell")
+	}
+	root := t.TempDir()
+	cwdFile := filepath.Join(root, "compiler.cwd")
+	t.Setenv("COMPILER_CWD_FILE", cwdFile)
+	compiler := writeScript(t, filepath.Join(root, "llgo"), `#!/bin/sh
+set -eu
+pwd -P > "$COMPILER_CWD_FILE"
+out=
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = -o ]; then
+		out=$2
+		shift 2
+		continue
+	fi
+	shift
+done
+cat > "$out" <<'EOF'
+#!/bin/sh
+printf 'Hello, world\n'
+EOF
+chmod +x "$out"
+`)
+
+	oldInspect := inspectExecutable
+	inspectExecutable = func(string) (footprint, error) {
+		return footprint{file: 1, text: 1}, nil
+	}
+	t.Cleanup(func() { inspectExecutable = oldInspect })
+
+	if err := collect(context.Background(), root, compiler, filepath.Join(root, "out"), 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(cwdFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootInfo, err := os.Stat(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwdInfo, err := os.Stat(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(rootInfo, cwdInfo) {
+		t.Fatalf("compiler directory = %q, want %q", strings.TrimSpace(string(data)), root)
+	}
+}
+
 func TestCollectRejectsInvalidRuns(t *testing.T) {
 	err := collect(context.Background(), ".", "llgo", t.TempDir(), 0, 1)
 	if err == nil || !strings.Contains(err.Error(), "must be positive") {

@@ -228,13 +228,13 @@ func collect(ctx context.Context, root, llgo, out string, buildRuns, runRuns int
 		buildArgs = append(buildArgs, "-o", binary, filepath.Join(root, item.source))
 		// Keep first-use toolchain and filesystem caches out of the measured
 		// median so the first revision is not systematically disadvantaged.
-		if err := runQuiet(ctx, env, llgo, buildArgs...); err != nil {
+		if err := runQuietInDir(ctx, root, env, llgo, buildArgs...); err != nil {
 			return fmt.Errorf("warm build %s: %w", item.name, err)
 		}
 		buildDurations := make([]time.Duration, 0, buildRuns)
 		for range buildRuns {
 			start := time.Now()
-			if err := runMeasured(ctx, env, llgo, buildArgs...); err != nil {
+			if err := runMeasuredInDir(ctx, root, env, llgo, buildArgs...); err != nil {
 				return fmt.Errorf("build %s: %w", item.name, err)
 			}
 			buildDurations = append(buildDurations, time.Since(start))
@@ -291,8 +291,14 @@ func benchmarkEnv(root string) []string {
 }
 
 func runQuiet(ctx context.Context, env []string, name string, args ...string) error {
+	return runQuietInDir(ctx, "", env, name, args...)
+}
+
+func runQuietInDir(
+	ctx context.Context, dir string, env []string, name string, args ...string,
+) error {
 	var output bytes.Buffer
-	if err := run(ctx, env, &output, name, args...); err != nil {
+	if err := runInDir(ctx, dir, env, &output, name, args...); err != nil {
 		if detail := strings.TrimSpace(output.String()); detail != "" {
 			return fmt.Errorf("%w\n%s", err, detail)
 		}
@@ -305,18 +311,31 @@ func runQuiet(ctx context.Context, env []string, name string, args ...string) er
 // work. If the command fails, the failed sample is discarded anyway, so rerun
 // it once with capture enabled to provide the actionable compiler output.
 func runMeasured(ctx context.Context, env []string, name string, args ...string) error {
-	err := run(ctx, env, io.Discard, name, args...)
+	return runMeasuredInDir(ctx, "", env, name, args...)
+}
+
+func runMeasuredInDir(
+	ctx context.Context, dir string, env []string, name string, args ...string,
+) error {
+	err := runInDir(ctx, dir, env, io.Discard, name, args...)
 	if err == nil {
 		return nil
 	}
-	if detailErr := runQuiet(ctx, env, name, args...); detailErr != nil {
+	if detailErr := runQuietInDir(ctx, dir, env, name, args...); detailErr != nil {
 		return detailErr
 	}
 	return err
 }
 
 func run(ctx context.Context, env []string, output io.Writer, name string, args ...string) error {
+	return runInDir(ctx, "", env, output, name, args...)
+}
+
+func runInDir(
+	ctx context.Context, dir string, env []string, output io.Writer, name string, args ...string,
+) error {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdout = output
 	cmd.Stderr = output
