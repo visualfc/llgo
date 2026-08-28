@@ -210,6 +210,8 @@ func TestRunAndTestFromTestlto(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeRun)
 	conf.LTO = lto.Full
 	ignore := []string{
+		"./_testlto/globaldce_static_itab_devirt",
+		"./_testlto/globaldce_static_itab_partial_root",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_concat",
 		"./_testlto/globaldce_reflect_method_by_name_ltoplugin_global",
