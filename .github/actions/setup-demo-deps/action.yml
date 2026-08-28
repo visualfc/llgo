@@ -189,3 +189,4 @@ runs:
         "@ | Set-Content -Encoding ascii (Join-Path $pcDir "python3-embed.pc")
 
         Add-Content -Encoding utf8 $env:GITHUB_PATH $prefix
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_PYTHON_HOME=$prefix"
