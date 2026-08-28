@@ -456,11 +456,17 @@ func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, l
 func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool, nativeInput NativeToolchainInput) (export Export, err error) {
 	targetTriple := llvm.GetTargetTripleWithGOARM(goos, goarch, goarm)
 	llgoRoot := env.LLGoROOT()
+	nativePlatformToolchain := usesNativePlatformToolchain(runtime.GOOS, runtime.GOARCH, goos, goarch)
 
-	// Check for ESP Clang support for target-based builds
-	clangRoot, err := getESPClangRoot(forceEspClang)
-	if err != nil {
-		return
+	// Native Windows resolves its compiler and dependencies as one coherent
+	// profile below. Do not download or reject an unrelated embedded Clang
+	// installation before that profile has a chance to resolve.
+	var clangRoot string
+	if !(nativePlatformToolchain && goos == "windows") {
+		clangRoot, err = getESPClangRoot(forceEspClang)
+		if err != nil {
+			return
+		}
 	}
 
 	// Set ClangRoot and CC if clang is available
@@ -471,7 +477,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		export.CC = "clang++"
 	}
 
-	if runtime.GOOS == goos && runtime.GOARCH == goarch {
+	if nativePlatformToolchain {
 		if goos == "windows" {
 			export, err = resolveWindowsToolchain(goarch, nativeInput, probeNativeTool)
 			if err != nil {
@@ -682,6 +688,10 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		return
 	}
 	return
+}
+
+func usesNativePlatformToolchain(hostGOOS, hostGOARCH, targetGOOS, targetGOARCH string) bool {
+	return hostGOOS == targetGOOS && hostGOARCH == targetGOARCH
 }
 
 // UseTarget loads configuration from a target name (e.g., "rp2040", "wasi")

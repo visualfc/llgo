@@ -10,9 +10,10 @@ import (
 )
 
 // NativeToolchainInput contains Go-compatible native compiler command
-// prefixes. Each slice is the result of parsing CC, CXX, or -extld: element
-// zero is the executable and the remainder are arguments that must precede
-// LLGo's generated flags.
+// prefixes and external-linker flags. CC, CXX, and ExternalLinker are parsed
+// command prefixes: element zero is the executable and the remainder are
+// arguments that must precede LLGo's generated flags. ExternalFlags is the
+// plain flag list parsed from -extldflags.
 type NativeToolchainInput struct {
 	CC             []string
 	CXX            []string

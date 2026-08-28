@@ -718,6 +718,24 @@ func TestNativeWindowsExportFlags(t *testing.T) {
 	}
 }
 
+func TestUsesNativePlatformToolchain(t *testing.T) {
+	for _, test := range []struct {
+		name                                   string
+		hostOS, hostArch, targetOS, targetArch string
+		want                                   bool
+	}{
+		{name: "same platform", hostOS: "windows", hostArch: "amd64", targetOS: "windows", targetArch: "amd64", want: true},
+		{name: "cross architecture", hostOS: "windows", hostArch: "amd64", targetOS: "windows", targetArch: "arm64"},
+		{name: "cross OS", hostOS: "windows", hostArch: "amd64", targetOS: "linux", targetArch: "amd64"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := usesNativePlatformToolchain(test.hostOS, test.hostArch, test.targetOS, test.targetArch); got != test.want {
+				t.Fatalf("usesNativePlatformToolchain() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 	export, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.O2, lto.Off, false)
 	if err != nil {
