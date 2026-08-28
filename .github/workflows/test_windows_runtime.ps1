@@ -43,6 +43,10 @@ foreach ($syscallTarget in @(
   if (-not $symbols.Contains($syscallTarget.Symbol)) {
     throw "$($syscallTarget.Triple) bridge is missing $($syscallTarget.Symbol)"
   }
+  if ($syscallTarget.Triple.StartsWith("i686-") -and
+      $symbols -notmatch '(?m)^00000001 [aA] @feat\.00\r?$') {
+    throw "$($syscallTarget.Triple) bridge is not marked SafeSEH-compatible"
+  }
 }
 
 $runtime = Join-Path $out "windows-runtime-smoke.exe"
