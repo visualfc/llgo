@@ -131,7 +131,7 @@ retry:
 	switch t := typ.(type) {
 	case *types.Named:
 		prog := Program(unsafe.Pointer(p))
-		if background, ok := prog.packageTypeBackground(namedLinkname(t)); ok && background == InC {
+		if background, ok := prog.packageTypeBackground(namedLinkname(t)); ok && isNativeFuncBackground(background) {
 			return 0
 		}
 		typ = t.Underlying()
@@ -550,6 +550,9 @@ func isPkgScope(parent, pkgScope *types.Scope) bool {
 }
 
 func (p Program) toNamed(raw *types.Named) Type {
+	if background, ok := p.packageTypeBackground(namedLinkname(raw)); ok && background == InStdcall {
+		p.validateStdcallType(raw)
+	}
 	name := p.llvmNameOf(raw)
 	if typ, ok := p.named[name]; ok {
 		if namedTypeEquivalent(typ.raw.Type, raw) || p.namedStructLayoutEquivalent(typ, raw) {

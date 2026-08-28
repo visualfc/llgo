@@ -63,12 +63,16 @@ const (
 	InGo
 	InC
 	InPython
+	InStdcall
 )
 
 // Type convert a Go/C type into raw type.
 // C type = raw type
 // Go type: convert to raw type (because of closure)
 func (p Program) Type(typ types.Type, bg Background) Type {
+	if bg == InStdcall {
+		p.validateStdcallType(typ)
+	}
 	if bg == InGo {
 		typ, _ = p.gocvt.cvtType(typ)
 	}
@@ -77,6 +81,9 @@ func (p Program) Type(typ types.Type, bg Background) Type {
 
 // FuncDecl converts a Go/C function declaration into raw type.
 func (p Program) FuncDecl(sig *types.Signature, bg Background) Type {
+	if bg == InStdcall {
+		p.validateStdcallSignature(sig)
+	}
 	recv := sig.Recv()
 	if bg == InGo {
 		sig = p.gocvt.cvtFunc(sig, recv)
@@ -182,7 +189,7 @@ func namedLinkname(t *types.Named) string {
 
 func (p goTypes) shouldConvertNamed(t *types.Named) bool {
 	background, ok := p.packageSyntax.typeBackground(namedLinkname(t))
-	return !ok || background != InC
+	return !ok || !isNativeFuncBackground(background)
 }
 
 func (p goTypes) cvtNamed(t *types.Named) (raw *types.Named, cvt bool) {

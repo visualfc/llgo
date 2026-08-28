@@ -803,10 +803,15 @@ func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap 
 
 	fname := fn.Name()
 	wrapName := "__llgo_cdecl$" + fname
+	callConv := fn.FunctionCallConv()
+	if callConv == llvm.X86StdcallCallConv {
+		wrapName = "__llgo_stdcall$" + fname
+	}
 	if wrapFunc := m.NamedFunction(wrapName); !wrapFunc.IsNil() {
 		return wrapFunc, true
 	}
 	wrapFunc := llvm.AddFunction(m, wrapName, nft)
+	wrapFunc.SetFunctionCallConv(callConv)
 	wrapFunc.SetLinkage(llvm.LinkOnceAnyLinkage)
 	if p.coff {
 		comdat := m.Comdat(wrapName)
@@ -869,15 +874,18 @@ func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap 
 	switch info.Return.Kind {
 	case AttrVoid:
 		call := llvm.CreateCall(b, info.Type, fn, nparams)
+		call.SetInstructionCallConv(callConv)
 		copyClosureEnvFunctionAttrsToCall(fn, call)
 		b.CreateRetVoid()
 	case AttrPointer:
 		ret := llvm.CreateCall(b, info.Type, fn, nparams)
+		ret.SetInstructionCallConv(callConv)
 		copyClosureEnvFunctionAttrsToCall(fn, ret)
 		b.CreateStore(ret, params[0])
 		b.CreateRetVoid()
 	case AttrWidthType, AttrWidthType2:
 		ret := llvm.CreateCall(b, info.Type, fn, nparams)
+		ret.SetInstructionCallConv(callConv)
 		copyClosureEnvFunctionAttrsToCall(fn, ret)
 		ptr := llvm.CreateAlloca(b, info.Return.Type)
 		b.CreateStore(ret, ptr)
@@ -886,6 +894,7 @@ func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap 
 		b.CreateRet(b.CreateLoad(returnType, iptr, ""))
 	default:
 		ret := llvm.CreateCall(b, info.Type, fn, nparams)
+		ret.SetInstructionCallConv(callConv)
 		copyClosureEnvFunctionAttrsToCall(fn, ret)
 		b.CreateRet(ret)
 	}

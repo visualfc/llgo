@@ -929,6 +929,9 @@ func (b Builder) UnOp(op token.Token, x Expr) (ret Expr) {
 //	t1 = changetype *int <- IntPtr (t0)
 func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 	dbgInstrf("ChangeType %v, %v\n", t.RawType(), x.impl)
+	if b.Prog.isStdcallType(t.raw.Type) && !b.Prog.isStdcallType(x.raw.Type) {
+		return b.stdcallCallback(t.raw.Type, x)
+	}
 	if t.kind == vkClosure {
 		switch x.kind {
 		case vkFuncDecl:
@@ -1419,6 +1422,7 @@ func (b Builder) Call(fn Expr, args ...Expr) (ret Expr) {
 	}
 	ret.Type = b.Prog.retType(sig)
 	ret.impl = llvm.CreateCall(b.impl, ll, fn.impl, llvmParamsEx(data, args, sig.Params(), b))
+	b.setNativeCallConv(ret.impl, fn)
 	if reflectCheck.Kind&ReflectMethodByName != 0 && reflectCheck.Name == "" {
 		nameArgIndex := len(args) - 1
 		if !data.IsNil() {
@@ -1988,6 +1992,9 @@ func checkExpr(v Expr, t types.Type, b Builder) Expr {
 	}
 	if types.Identical(v.raw.Type, t) || !types.AssignableTo(v.raw.Type, t) {
 		return v
+	}
+	if b.Prog.isStdcallType(t) {
+		return b.stdcallCallback(t, v)
 	}
 	dst := b.Prog.Type(t, InGo)
 	// Range and assignment lowering can produce a value whose source type is
