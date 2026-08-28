@@ -209,7 +209,7 @@ type plan9AsmSigCacheKey struct {
 var plan9AsmSigCache sync.Map // key: plan9AsmSigCacheKey, value: map[string]struct{}
 
 func archSupportsPlan9AsmDefaults(goarch string) bool {
-	return goarch == "arm64" || goarch == "amd64"
+	return goarch == "386" || goarch == "arm64" || goarch == "amd64"
 }
 
 type plan9asmPkgsEnvMode int
