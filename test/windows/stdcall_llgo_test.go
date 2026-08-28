@@ -28,6 +28,19 @@ func recordInitOnce(_ *initOnce, parameter unsafe.Pointer, context *unsafe.Point
 	return 1
 }
 
+func callGoSleep(fn func(uint32), milliseconds uint32) {
+	fn(milliseconds)
+}
+
+func callGoInitOnceCallback(
+	fn func(*initOnce, unsafe.Pointer, *unsafe.Pointer) int32,
+	once *initOnce,
+	parameter unsafe.Pointer,
+	context *unsafe.Pointer,
+) int32 {
+	return fn(once, parameter, context)
+}
+
 func TestStdcallDirectCallAndCallback(t *testing.T) {
 	// On windows/386, both calls exercise callee stack cleanup. Repetition makes
 	// an incorrect cdecl declaration fail before the callback assertions.
@@ -52,5 +65,29 @@ func TestStdcallDirectCallAndCallback(t *testing.T) {
 	}
 	if initOnceCallbackCalls != 1 || context != unsafe.Pointer(token) {
 		t.Fatalf("second call reran callback or lost context: calls = %d, context = %p", initOnceCallbackCalls, context)
+	}
+}
+
+func TestStdcallValuesAsGoFuncs(t *testing.T) {
+	for range 32 {
+		callGoSleep(sleep, 0)
+	}
+
+	initOnceCallbackCalls = 0
+	var once initOnce
+	token := new(byte)
+	var context unsafe.Pointer
+	native := initOnceCallback(recordInitOnce)
+	if got := callGoInitOnceCallback(native, &once, unsafe.Pointer(token), &context); got != 1 {
+		t.Fatalf("adapted callback returned %d, want 1", got)
+	}
+	if initOnceCallbackCalls != 1 || context != unsafe.Pointer(token) {
+		t.Fatalf("adapted callback calls = %d, context = %p", initOnceCallbackCalls, context)
+	}
+
+	var nilNative initOnceCallback
+	var nilGo func(*initOnce, unsafe.Pointer, *unsafe.Pointer) int32 = nilNative
+	if nilGo != nil {
+		t.Fatal("nil stdcall function became a non-nil Go function")
 	}
 }

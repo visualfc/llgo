@@ -116,9 +116,11 @@ func explicit(int32)
 
 func callback(v int32) int32 { return v + 1 }
 
+func callGo(fn func(int32) int32, v int32) int32 { return fn(v) }
+
 func use(callbackArg Callback, v int32) int32 {
 	explicit(v)
-	return direct(v) + callbackArg(v) + invoke(callback, v)
+	return direct(v) + callbackArg(v) + invoke(callback, v) + callGo(callbackArg, v) + callGo(direct, v)
 }
 `
 	for _, arch := range []string{"386", "amd64", "arm64"} {
@@ -136,6 +138,7 @@ func use(callbackArg Callback, v int32) int32 {
 					"call x86_stdcallcc i32 %0(i32",
 					"define internal x86_stdcallcc i32 @\"stdcalltest.__llgo_stdcall$stdcalltest.callback\"(i32",
 					"call x86_stdcallcc i32 @Invoke(ptr @\"stdcalltest.__llgo_stdcall$stdcalltest.callback\"",
+					"define internal i32 @\"stdcalltest.__llgo_stdcall_funcval$",
 				} {
 					if !strings.Contains(ir, want) {
 						t.Fatalf("windows/386 IR does not contain %q:\n%s", want, ir)
@@ -215,7 +218,7 @@ func use() int { return value }
 			want: "stdcall linkname namespace applies only to functions",
 		},
 		{
-			name: "capturing closure", goos: "windows", goarch: "386",
+			name: "non-direct callback", goos: "windows", goarch: "386",
 			src: `package p
 import _ "unsafe"
 //llgo:type stdcall
@@ -226,17 +229,7 @@ func use(v int32) int32 {
 	return invoke(func(arg int32) int32 { return arg + v }, v)
 }
 `,
-			want: "stdcall callback must be a non-capturing function",
-		},
-		{
-			name: "stdcall value used as Go function", goos: "windows", goarch: "386",
-			src: `package p
-//llgo:type stdcall
-type Callback func(int32) int32
-func callGo(fn func(int32) int32, value int32) int32 { return fn(value) }
-func use(callback Callback, value int32) int32 { return callGo(callback, value) }
-`,
-			want: "stdcall function value cannot be used as a Go function; wrap the call in a Go function",
+			want: "stdcall callback must be a direct function reference",
 		},
 	}
 	for _, test := range tests {

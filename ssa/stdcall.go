@@ -18,6 +18,7 @@ package ssa
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"strings"
 
@@ -76,10 +77,10 @@ func isDecoratedStdcallSymbol(name string) bool {
 }
 
 func (p Program) validateStdcallSignature(sig *types.Signature) {
-	_ = p.stdcallCallConv()
-	if sig.Variadic() || HasNameValist(sig) {
-		panic("stdcall does not support variadic functions; use the ordinary C ABI")
+	if sig.Variadic() {
+		panic(fmt.Errorf("stdcall does not support variadic functions; use the ordinary C ABI"))
 	}
+	_ = p.stdcallCallConv()
 }
 
 func (p Program) validateStdcallType(typ types.Type) {
@@ -109,15 +110,15 @@ func (b Builder) setNativeCallConv(call llvm.Value, fn Expr) {
 	call.SetInstructionCallConv(callConv)
 }
 
-// stdcallCallback adapts a static Go entry to the native stdcall boundary.
-// It deliberately rejects closure values: the native representation is one
+// stdcallCallback adapts a direct Go entry to the native stdcall boundary. It
+// deliberately rejects Go func values: the native representation is one
 // function pointer and has no implicit slot for an LLGo closure environment.
 func (b Builder) stdcallCallback(typ types.Type, fn Expr) Expr {
 	dst := b.Prog.Type(typ, InStdcall)
 	expected := b.Prog.stdcallCallConv()
 	direct := fn.impl.IsAFunction()
 	if direct.IsNil() {
-		panic("stdcall callback must be a non-capturing function")
+		panic("stdcall callback must be a direct function reference")
 	}
 	if direct.FunctionCallConv() == expected {
 		return Expr{fn.impl, dst}
@@ -149,4 +150,63 @@ func (b Builder) stdcallCallback(typ types.Type, fn Expr) Expr {
 		}
 	}
 	return Expr{wrapper.impl, dst}
+}
+
+// needsStdcallFuncval reports whether fn needs an ABI adapter before it can be
+// represented by an ordinary Go func value. Named stdcall values always use a
+// single native function pointer. A direct declaration only needs an adapter
+// on 32-bit Windows, where stdcall differs from the ordinary C calling
+// convention.
+func (b Builder) needsStdcallFuncval(fn Expr) bool {
+	if b.Prog.isStdcallType(fn.raw.Type) {
+		return true
+	}
+	direct := fn.impl.IsAFunction()
+	return !direct.IsNil() && direct.FunctionCallConv() == llvm.X86StdcallCallConv
+}
+
+// stdcallFuncval adapts a native stdcall function pointer to LLGo's ordinary
+// Go funcval representation. The funcval context carries the native pointer
+// directly; the Go entry retrieves it through the hidden closure-context
+// register and performs the final call with the stdcall convention. This
+// avoids an allocation while preserving nil: a nil native pointer produces a
+// funcval with a nil code pointer.
+func (b Builder) stdcallFuncval(dst Type, fn Expr) Expr {
+	closure, ok := types.Unalias(dst.raw.Type).Underlying().(*types.Struct)
+	if !ok || !IsClosure(closure) {
+		panic(fmt.Errorf("stdcall funcval target must be a Go function, got %s", dst.raw.Type))
+	}
+	goSig := closure.Field(0).Type().(*types.Signature)
+	nativeSig := types.Unalias(fn.raw.Type).Underlying().(*types.Signature)
+	wrapperName := b.Pkg.Path() + ".__llgo_stdcall_funcval$" + b.Prog.abi.FuncName(goSig)
+	wrapper := b.Pkg.FuncOf(wrapperName)
+	if wrapper == nil {
+		env := types.NewVar(token.NoPos, nil, "$env", types.Typ[types.UnsafePointer])
+		wrapper = b.Pkg.NewEnvFunc(wrapperName, goSig, InGo, env, false)
+		wrapper.impl.SetLinkage(llvm.InternalLinkage)
+		body := wrapper.MakeBody(1)
+		args := make([]Expr, goSig.Params().Len())
+		for i := range args {
+			args[i] = wrapper.Param(i)
+		}
+		native := Expr{wrapper.Env().impl, b.Prog.rawType(nativeSig)}
+		result := body.Call(native, args...)
+		result.impl.SetInstructionCallConv(b.Prog.stdcallCallConv())
+		switch n := goSig.Results().Len(); n {
+		case 0:
+			body.Return()
+		case 1:
+			body.Return(result)
+		default:
+			results := make([]Expr, n)
+			for i := range results {
+				results[i] = body.Extract(result, i)
+			}
+			body.Return(results...)
+		}
+	}
+
+	isNil := llvm.CreateICmp(b.impl, llvm.IntEQ, fn.impl, llvm.ConstNull(fn.impl.Type()))
+	code := llvm.CreateSelect(b.impl, isNil, llvm.ConstNull(wrapper.impl.Type()), wrapper.impl)
+	return b.aggregateValue(dst, code, fn.impl)
 }

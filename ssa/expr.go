@@ -929,8 +929,8 @@ func (b Builder) UnOp(op token.Token, x Expr) (ret Expr) {
 //	t1 = changetype *int <- IntPtr (t0)
 func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 	dbgInstrf("ChangeType %v, %v\n", t.RawType(), x.impl)
-	if b.Prog.isStdcallType(x.raw.Type) && !b.Prog.isStdcallType(t.raw.Type) {
-		panic("stdcall function value cannot be used as a Go function; wrap the call in a Go function")
+	if t.kind == vkClosure && b.needsStdcallFuncval(x) {
+		return b.stdcallFuncval(t, x)
 	}
 	if b.Prog.isStdcallType(t.raw.Type) && !b.Prog.isStdcallType(x.raw.Type) {
 		return b.stdcallCallback(t.raw.Type, x)
@@ -1976,11 +1976,14 @@ func (b Builder) PrintEx(ln bool, args ...Expr) (ret Expr) {
 
 func checkExpr(v Expr, t types.Type, b Builder) Expr {
 	if st, ok := t.Underlying().(*types.Struct); ok && IsClosure(st) {
+		tclosure := b.Prog.rawType(t)
+		if b.needsStdcallFuncval(v) {
+			return b.stdcallFuncval(tclosure, v)
+		}
 		if v.kind == vkClosure {
 			return v
 		}
 		prog := b.Prog
-		tclosure := prog.rawType(t)
 		fnType := prog.Field(tclosure, 0)
 		if v.Type != fnType {
 			// Signature conversions are representationally identical.
