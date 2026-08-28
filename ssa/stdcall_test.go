@@ -90,10 +90,19 @@ func TestStdcallCallConventions(t *testing.T) {
 		{name: "_Explicit@4", want: "\x01_Explicit@4"},
 		{name: "_NotDecorated", want: "_NotDecorated"},
 		{name: "_Bad@bytes", want: "_Bad@bytes"},
+		{name: "_a@b@4", want: "_a@b@4"},
+		{name: "_4bad@4", want: "_4bad@4"},
 	} {
 		if got := prog.stdcallSymbolName(test.name); got != test.want {
 			t.Errorf("stdcallSymbolName(%q) = %q, want %q", test.name, got, test.want)
 		}
+	}
+	for _, arch := range []string{"amd64", "arm64"} {
+		prog := NewProgram(&Target{GOOS: "windows", GOARCH: arch})
+		if got := prog.stdcallSymbolName("_Explicit@4"); got != "Explicit" {
+			t.Errorf("windows/%s stdcallSymbolName(_Explicit@4) = %q, want Explicit", arch, got)
+		}
+		prog.Dispose()
 	}
 
 	for _, test := range []struct {
@@ -176,7 +185,7 @@ func TestStdcallCallbackAdapters(t *testing.T) {
 			if first.impl != second.impl {
 				t.Fatal("repeated callback conversion did not reuse its adapter")
 			}
-			wrapperName := pkg.Path() + ".__llgo_stdcall$" + sourceName
+			wrapperName := pkg.Path() + ".__llgo_stdcall$" + sourceName + "$" + prog.abi.FuncName(sig)
 			wrapper := pkg.FuncOf(wrapperName)
 			if wrapper == nil || first.impl != wrapper.impl {
 				t.Fatalf("stdcall adapter %q was not generated", wrapperName)
@@ -222,8 +231,11 @@ func TestStdcallCallbackConversionWithoutX86Adapter(t *testing.T) {
 			if converted.impl != source.impl {
 				t.Fatalf("windows/%s unnecessarily wrapped the callback", arch)
 			}
-			if wrapper := pkg.FuncOf(pkg.Path() + ".__llgo_stdcall$" + source.Name()); wrapper != nil {
-				t.Fatalf("windows/%s emitted an x86-only adapter", arch)
+			wrapperPrefix := pkg.Path() + ".__llgo_stdcall$" + source.Name() + "$"
+			for name := range pkg.fns {
+				if strings.HasPrefix(name, wrapperPrefix) {
+					t.Fatalf("windows/%s emitted an x86-only adapter %q", arch, name)
+				}
 			}
 		})
 	}

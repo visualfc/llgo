@@ -51,35 +51,50 @@ func (p Program) stdcallCallConv() llvm.CallConv {
 // stdcallSymbolName suppresses LLVM's automatic 32-bit COFF decoration when a
 // binding already names the decorated symbol explicitly (for example,
 // _WindowProc@16). LLVM uses a leading byte 1 to mark such assembler names as
-// literal. Undecorated names retain the normal x86 stdcall decoration, while
-// x64 and ARM64 keep their unified native Windows symbol spelling.
+// literal. On x64 and ARM64, where stdcall uses the unified Windows ABI, the
+// same explicit spelling is normalized back to WindowProc.
 func (p Program) stdcallSymbolName(name string) string {
-	if p.stdcallCallConv() != llvm.X86StdcallCallConv || !isDecoratedStdcallSymbol(name) {
+	base, decorated := decoratedStdcallSymbol(name)
+	if !decorated {
 		return name
 	}
-	return "\x01" + name
+	if p.stdcallCallConv() == llvm.X86StdcallCallConv {
+		return "\x01" + name
+	}
+	return base
 }
 
-func isDecoratedStdcallSymbol(name string) bool {
+func decoratedStdcallSymbol(name string) (string, bool) {
 	if len(name) < 4 || name[0] != '_' {
-		return false
+		return "", false
 	}
-	at := strings.LastIndexByte(name, '@')
+	at := strings.IndexByte(name, '@')
 	if at <= 1 || at == len(name)-1 {
-		return false
+		return "", false
+	}
+	if strings.LastIndexByte(name, '@') != at {
+		return "", false
+	}
+	for i, ch := range name[1:at] {
+		if ch == '_' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' ||
+			i > 0 && ch >= '0' && ch <= '9' {
+			continue
+		}
+		return "", false
 	}
 	for _, ch := range name[at+1:] {
 		if ch < '0' || ch > '9' {
-			return false
+			return "", false
 		}
 	}
-	return true
+	return name[1:at], true
 }
 
 func (p Program) validateStdcallSignature(sig *types.Signature) {
 	if sig.Variadic() {
 		panic(fmt.Errorf("stdcall does not support variadic functions; use the ordinary C ABI"))
 	}
+	// Validate the target even though the calling convention is not needed here.
 	_ = p.stdcallCallConv()
 }
 
@@ -125,7 +140,7 @@ func (b Builder) stdcallCallback(typ types.Type, fn Expr) Expr {
 	}
 
 	sig := types.Unalias(typ).Underlying().(*types.Signature)
-	name := b.Pkg.Path() + ".__llgo_stdcall$" + direct.Name()
+	name := b.Pkg.Path() + ".__llgo_stdcall$" + direct.Name() + "$" + b.Prog.abi.FuncName(sig)
 	wrapper := b.Pkg.FuncOf(name)
 	if wrapper == nil {
 		wrapper = b.Pkg.NewFunc(name, sig, InStdcall)

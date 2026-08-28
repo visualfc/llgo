@@ -136,8 +136,8 @@ func use(callbackArg Callback, v int32) int32 {
 					"declare x86_stdcallcc void @\"\\01_Explicit@4\"(i32)",
 					"call x86_stdcallcc i32 @Direct(i32",
 					"call x86_stdcallcc i32 %0(i32",
-					"define internal x86_stdcallcc i32 @\"stdcalltest.__llgo_stdcall$stdcalltest.callback\"(i32",
-					"call x86_stdcallcc i32 @Invoke(ptr @\"stdcalltest.__llgo_stdcall$stdcalltest.callback\"",
+					"define internal x86_stdcallcc i32 @\"stdcalltest.__llgo_stdcall$stdcalltest.callback$",
+					"call x86_stdcallcc i32 @Invoke(ptr @\"stdcalltest.__llgo_stdcall$stdcalltest.callback$",
 					"define internal i32 @\"stdcalltest.__llgo_stdcall_funcval$",
 				} {
 					if !strings.Contains(ir, want) {
