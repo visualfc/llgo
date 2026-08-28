@@ -39,6 +39,10 @@ func TestTypeBackgroundAndParsePkgSyntaxCoverage(t *testing.T) {
 	if got := typeBackground(doc2); got != "C" {
 		t.Fatalf("typeBackground(// llgo:type C)=%q, want C", got)
 	}
+	doc3 := &ast.CommentGroup{List: []*ast.Comment{{Text: "//llgo:type stdcall"}}}
+	if got := typeBackground(doc3); got != "stdcall" {
+		t.Fatalf("typeBackground(//llgo:type stdcall)=%q, want stdcall", got)
+	}
 
 	src := `package p
 //llgo:type C

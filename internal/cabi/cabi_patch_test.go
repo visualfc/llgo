@@ -544,15 +544,23 @@ func TestMSVC386CallingConventionLowering(t *testing.T) {
 	llvm.InitializeAllTargets()
 	llvm.InitializeAllTargetMCs()
 	llvm.InitializeAllTargetInfos()
+	llvm.InitializeAllAsmPrinters()
 
 	const testIR = `
 %Odd = type { i8, i8, i8 }
 
 declare x86_stdcallcc void @consume(%Odd)
+declare void @registerCallback(ptr)
+
+define x86_stdcallcc %Odd @"main.callback"(%Odd %value) {
+entry:
+  ret %Odd %value
+}
 
 define void @"main.call"(%Odd %value) {
 entry:
   call x86_stdcallcc void @consume(%Odd %value)
+  call void @registerCallback(ptr @"main.callback")
   ret void
 }
 `
@@ -595,8 +603,38 @@ entry:
 	if got := loweredCall.InstructionCallConv(); got != llvm.X86StdcallCallConv {
 		t.Fatalf("lowered call calling convention = %v, want x86_stdcallcc", got)
 	}
+	callbackWrapper := mod.NamedFunction("__llgo_stdcall$main.callback")
+	if callbackWrapper.IsNil() {
+		t.Fatalf("lowered stdcall callback wrapper not found:\n%s", mod.String())
+	}
+	if got := callbackWrapper.FunctionCallConv(); got != llvm.X86StdcallCallConv {
+		t.Fatalf("callback wrapper calling convention = %v, want x86_stdcallcc", got)
+	}
+	var callbackCall llvm.Value
+	callback := mod.NamedFunction("main.callback")
+	for block := callbackWrapper.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue() == callback {
+				callbackCall = call
+			}
+		}
+	}
+	if callbackCall.IsNil() {
+		t.Fatalf("callback wrapper does not call the original callback:\n%s", callbackWrapper.String())
+	}
+	if got := callbackCall.InstructionCallConv(); got != llvm.X86StdcallCallConv {
+		t.Fatalf("callback wrapper call convention = %v, want x86_stdcallcc", got)
+	}
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("MSVC stdcall module is invalid: %v\n%s", err, mod.String())
+	}
+	assembly, err := prog.TargetMachine().EmitToMemoryBuffer(mod, llvm.AssemblyFile)
+	if err != nil {
+		t.Fatalf("emit MSVC x86 assembly: %v\n%s", err, mod.String())
+	}
+	defer assembly.Dispose()
+	if got := string(assembly.Bytes()); !strings.Contains(got, "_consume@4") {
+		t.Fatalf("stdcall declaration did not use MSVC x86 symbol decoration:\n%s", got)
 	}
 }
 
