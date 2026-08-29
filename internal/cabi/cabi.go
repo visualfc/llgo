@@ -293,12 +293,24 @@ func (p *FuncInfo) HasWrap() bool {
 
 type TypeInfo struct {
 	Type       llvm.Type
+	NativeType llvm.Type // native aggregate layout when it differs from Type
 	Kind       AttrKind
 	Type1      llvm.Type // AttrWidthType
 	Type2      llvm.Type // AttrWidthType2
 	Size       int
 	Align      int
 	ByValAlign int // explicit stack alignment for AttrPointer parameters
+}
+
+func (p *TypeInfo) nativeType() llvm.Type {
+	if p.NativeType.C != nil {
+		return p.NativeType
+	}
+	return p.Type
+}
+
+func (p *TypeInfo) hasNativeLayoutConversion() bool {
+	return p.NativeType.C != nil && p.NativeType != p.Type
 }
 
 func byvalAttribute(ctx llvm.Context, typ llvm.Type) llvm.Attribute {
@@ -401,7 +413,7 @@ func (p *Transformer) transformFuncType(
 	case AttrPointer:
 		returnType = ctx.VoidType()
 		paramTypes = append(paramTypes, info.Return.Type1)
-		addAttr(1, sretAttribute(ctx, info.Return.Type))
+		addAttr(1, sretAttribute(ctx, info.Return.nativeType()))
 	case AttrWidthType:
 		returnType = info.Return.Type1
 	case AttrWidthType2:
@@ -423,7 +435,7 @@ func (p *Transformer) transformFuncType(
 			paramTypes = append(paramTypes, ti.Type1)
 			if p.sys.SupportByVal() {
 				index := len(paramTypes)
-				addAttr(index, byvalAttribute(ctx, ti.Type))
+				addAttr(index, byvalAttribute(ctx, ti.nativeType()))
 				if ti.ByValAlign != 0 {
 					addAttr(index, alignAttribute(ctx, ti.ByValAlign))
 				}
@@ -431,7 +443,7 @@ func (p *Transformer) transformFuncType(
 		case AttrWidthType2:
 			paramTypes = append(paramTypes, ti.Type1, ti.Type2)
 		case AttrExtract:
-			subs := ti.Type.StructElementTypes()
+			subs := ti.nativeType().StructElementTypes()
 			paramTypes = append(paramTypes, subs...)
 		}
 	}
@@ -481,11 +493,98 @@ func (p *Transformer) transformFunc(m llvm.Module, fn llvm.Value) bool {
 }
 
 func loadIndirectParam(b llvm.Builder, info *TypeInfo, ptr llvm.Value) llvm.Value {
-	value := b.CreateLoad(info.Type, ptr, "")
+	value := b.CreateLoad(info.nativeType(), ptr, "")
 	if info.ByValAlign != 0 {
 		value.SetAlignment(info.ByValAlign)
 	}
 	return value
+}
+
+// windows386AggregateToNative and windows386AggregateFromNative translate
+// values between the explicit Go/386 field wrappers emitted by SSA and the
+// natural aggregate layout consumed by native C code. They are no-ops for all
+// other targets and for aggregates whose Go and C layouts already agree.
+func windows386AggregateToNative(b llvm.Builder, value llvm.Value, source, native llvm.Type) llvm.Value {
+	if source == native {
+		return value
+	}
+	switch source.TypeKind() {
+	case llvm.ArrayTypeKind:
+		ret := llvm.Undef(native)
+		for i := 0; i < source.ArrayLength(); i++ {
+			item := b.CreateExtractValue(value, i, "")
+			item = windows386AggregateToNative(b, item, source.ElementType(), native.ElementType())
+			ret = b.CreateInsertValue(ret, item, i, "")
+		}
+		return ret
+	case llvm.StructTypeKind:
+		ret := llvm.Undef(native)
+		nativeFields := native.StructElementTypes()
+		nativeIndex := 0
+		for sourceIndex, sourceField := range source.StructElementTypes() {
+			if nativeIndex == len(nativeFields) {
+				break // trailing zero-length Go alignment marker
+			}
+			item := b.CreateExtractValue(value, sourceIndex, "")
+			if inner, wrapped := windows386GoFieldWrapper(sourceField); wrapped {
+				item = b.CreateExtractValue(item, 0, "")
+				sourceField = inner
+			}
+			item = windows386AggregateToNative(b, item, sourceField, nativeFields[nativeIndex])
+			ret = b.CreateInsertValue(ret, item, nativeIndex, "")
+			nativeIndex++
+		}
+		return ret
+	default:
+		panic("cabi: unsupported Go/386 aggregate layout conversion")
+	}
+}
+
+func windows386AggregateFromNative(b llvm.Builder, value llvm.Value, source, native llvm.Type) llvm.Value {
+	if source == native {
+		return value
+	}
+	switch source.TypeKind() {
+	case llvm.ArrayTypeKind:
+		ret := llvm.Undef(source)
+		for i := 0; i < source.ArrayLength(); i++ {
+			item := b.CreateExtractValue(value, i, "")
+			item = windows386AggregateFromNative(b, item, source.ElementType(), native.ElementType())
+			ret = b.CreateInsertValue(ret, item, i, "")
+		}
+		return ret
+	case llvm.StructTypeKind:
+		ret := llvm.Undef(source)
+		nativeFields := native.StructElementTypes()
+		nativeIndex := 0
+		for sourceIndex, sourceField := range source.StructElementTypes() {
+			if nativeIndex == len(nativeFields) {
+				break // trailing zero-length Go alignment marker
+			}
+			item := b.CreateExtractValue(value, nativeIndex, "")
+			fieldNative := nativeFields[nativeIndex]
+			if inner, wrapped := windows386GoFieldWrapper(sourceField); wrapped {
+				item = windows386AggregateFromNative(b, item, inner, fieldNative)
+				wrapper := llvm.Undef(sourceField)
+				item = b.CreateInsertValue(wrapper, item, 0, "")
+			} else {
+				item = windows386AggregateFromNative(b, item, sourceField, fieldNative)
+			}
+			ret = b.CreateInsertValue(ret, item, sourceIndex, "")
+			nativeIndex++
+		}
+		return ret
+	default:
+		panic("cabi: unsupported native-to-Go/386 aggregate layout conversion")
+	}
+}
+
+func aggregateToNative(b llvm.Builder, info *TypeInfo, value llvm.Value) llvm.Value {
+	return windows386AggregateToNative(b, value, info.Type, info.nativeType())
+}
+
+func aggregateFromNative(b llvm.Builder, info *TypeInfo, value llvm.Value) llvm.Value {
+	return windows386AggregateFromNative(b, value, info.Type, info.nativeType())
 }
 
 func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *FuncInfo, fn llvm.Value, nfn llvm.Value, nft llvm.Type) {
@@ -529,17 +628,17 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 			// %2 = alloca %typ, align 8
 			// call void @llvm.memset(ptr %2, i8 0, i64 36, i1 false)
 			// store %typ %1, ptr %2, align 4
-			nv = loadIndirectParam(b, ti, params[index])
+			nv = aggregateFromNative(b, ti, loadIndirectParam(b, ti, params[index]))
 			// replace %0 to %2
-			if p.optimize && (ti.ByValAlign == 0 || ti.ByValAlign >= ti.Align) {
+			if p.optimize && !ti.hasNativeLayoutConversion() && (ti.ByValAlign == 0 || ti.ByValAlign >= ti.Align) {
 				replaceAllocaInstrs(fn.Param(i), params[index])
 			}
 		case AttrWidthType:
 			iptr := llvm.CreateAlloca(b, ti.Type1)
 			b.CreateStore(params[index], iptr)
-			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.Type, 0), "")
-			nv = b.CreateLoad(ti.Type, ptr, "")
-			if p.optimize {
+			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
+			nv = aggregateFromNative(b, ti, b.CreateLoad(ti.nativeType(), ptr, ""))
+			if p.optimize && !ti.hasNativeLayoutConversion() {
 				replaceAllocaInstrs(fn.Param(i), ptr)
 			}
 		case AttrWidthType2:
@@ -548,18 +647,19 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 0, ""))
 			index++
 			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 1, ""))
-			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.Type, 0), "")
-			nv = b.CreateLoad(ti.Type, ptr, "")
-			if p.optimize {
+			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
+			nv = aggregateFromNative(b, ti, b.CreateLoad(ti.nativeType(), ptr, ""))
+			if p.optimize && !ti.hasNativeLayoutConversion() {
 				replaceAllocaInstrs(fn.Param(i), ptr)
 			}
 		case AttrExtract:
-			nsubs := ti.Type.StructElementTypesCount()
-			nv = llvm.Undef(ti.Type)
+			nsubs := ti.nativeType().StructElementTypesCount()
+			nv = llvm.Undef(ti.nativeType())
 			for i := 0; i < nsubs; i++ {
 				nv = b.CreateInsertValue(nv, params[index], i, "")
 				index++
 			}
+			nv = aggregateFromNative(b, ti, nv)
 			fn.Param(i).ReplaceAllUsesWith(nv)
 			continue
 		}
@@ -584,6 +684,7 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 		for _, instr := range retInstrs {
 			ret := instr.Operand(0)
 			b.SetInsertPointBefore(instr)
+			nativeRet := aggregateToNative(b, info.Return, ret)
 			var rv llvm.Value
 			switch info.Return.Kind {
 			case AttrVoid:
@@ -601,10 +702,10 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 				// Note: We don't use memcpy optimization here because the source
 				// address content may be modified between load and ret.
 				// See: https://github.com/xgo-dev/llgo/issues/1608
-				b.CreateStore(ret, params[0])
+				b.CreateStore(nativeRet, params[0])
 				rv = b.CreateRetVoid()
 			case AttrWidthType:
-				if p.optimize {
+				if p.optimize && !info.Return.hasNativeLayoutConversion() {
 					if load := ret.IsALoadInst(); !load.IsNil() && !load.IsVolatile() && llvm.NextInstruction(load) == instr {
 						iptr := b.CreateBitCast(ret.Operand(0), llvm.PointerType(nft.ReturnType(), 0), "")
 						value := b.CreateLoad(nft.ReturnType(), iptr, "")
@@ -615,13 +716,13 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 				}
 				// Materialize the saved SSA value. The return may be a load whose
 				// source was modified after that load but before the return.
-				ptr := llvm.CreateAlloca(b, info.Return.Type)
-				b.CreateStore(ret, ptr)
+				ptr := llvm.CreateAlloca(b, info.Return.nativeType())
+				b.CreateStore(nativeRet, ptr)
 				iptr := b.CreateBitCast(ptr, llvm.PointerType(nft.ReturnType(), 0), "")
 				rv = b.CreateRet(b.CreateLoad(nft.ReturnType(), iptr, ""))
 			case AttrWidthType2:
-				ptr := llvm.CreateAlloca(b, info.Return.Type)
-				b.CreateStore(ret, ptr)
+				ptr := llvm.CreateAlloca(b, info.Return.nativeType())
+				b.CreateStore(nativeRet, ptr)
 				iptr := b.CreateBitCast(ptr, llvm.PointerType(nft.ReturnType(), 0), "")
 				rv = b.CreateRet(b.CreateLoad(nft.ReturnType(), iptr, ""))
 			}
@@ -676,23 +777,27 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 		case AttrPointer:
 			// Do not pass a load's source pointer directly. The source memory may
 			// be modified between the load and this call; pass the loaded value.
-			ptr := createAlloca(ti.Type)
+			param = aggregateToNative(b, ti, param)
+			ptr := createAlloca(ti.nativeType())
 			b.CreateStore(param, ptr)
 			nparams = append(nparams, ptr)
 		case AttrWidthType:
-			ptr := createAlloca(ti.Type)
+			param = aggregateToNative(b, ti, param)
+			ptr := createAlloca(ti.nativeType())
 			b.CreateStore(param, ptr)
 			iptr := b.CreateBitCast(ptr, llvm.PointerType(ti.Type1, 0), "")
 			nparams = append(nparams, b.CreateLoad(ti.Type1, iptr, ""))
 		case AttrWidthType2:
-			ptr := createAlloca(ti.Type)
+			param = aggregateToNative(b, ti, param)
+			ptr := createAlloca(ti.nativeType())
 			b.CreateStore(param, ptr)
 			typ := ctx.StructType([]llvm.Type{ti.Type1, ti.Type2}, false) // {i8,i64}
 			iptr := b.CreateBitCast(ptr, llvm.PointerType(typ, 0), "")
 			nparams = append(nparams, b.CreateLoad(ti.Type1, b.CreateStructGEP(typ, iptr, 0, ""), ""))
 			nparams = append(nparams, b.CreateLoad(ti.Type2, b.CreateStructGEP(typ, iptr, 1, ""), ""))
 		case AttrExtract:
-			nsubs := ti.Type.StructElementTypesCount()
+			param = aggregateToNative(b, ti, param)
+			nsubs := ti.nativeType().StructElementTypesCount()
 			for i := 0; i < nsubs; i++ {
 				nparams = append(nparams, b.CreateExtractValue(param, i, ""))
 			}
@@ -741,17 +846,17 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 			instr = llvm.ConstNull(info.Return.Type)
 		}
 	case AttrPointer:
-		ret := createAlloca(info.Return.Type)
+		ret := createAlloca(info.Return.nativeType())
 		call := llvm.CreateCall(b, nft, nfn, append([]llvm.Value{ret}, nparams...))
 		updateCallAttr(call)
-		instr = b.CreateLoad(info.Return.Type, ret, "")
+		instr = aggregateFromNative(b, info.Return, b.CreateLoad(info.Return.nativeType(), ret, ""))
 	case AttrWidthType, AttrWidthType2:
 		ret := llvm.CreateCall(b, nft, nfn, nparams)
 		updateCallAttr(ret)
 		ptr := createAlloca(nft.ReturnType())
 		b.CreateStore(ret, ptr)
-		pret := b.CreateBitCast(ptr, llvm.PointerType(info.Return.Type, 0), "")
-		instr = b.CreateLoad(info.Return.Type, pret, "")
+		pret := b.CreateBitCast(ptr, llvm.PointerType(info.Return.nativeType(), 0), "")
+		instr = aggregateFromNative(b, info.Return, b.CreateLoad(info.Return.nativeType(), pret, ""))
 	default:
 		instr = llvm.CreateCall(b, nft, nfn, nparams)
 		updateCallAttr(instr)
@@ -842,28 +947,30 @@ func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap 
 		case AttrVoid:
 			// none
 		case AttrPointer:
-			nparams = append(nparams, loadIndirectParam(b, ti, params[index]))
+			nparams = append(nparams, aggregateFromNative(b, ti, loadIndirectParam(b, ti, params[index])))
 		case AttrWidthType:
 			iptr := llvm.CreateAlloca(b, ti.Type1)
 			b.CreateStore(params[index], iptr)
-			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.Type, 0), "")
-			nparams = append(nparams, b.CreateLoad(ti.Type, ptr, ""))
+			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
+			native := b.CreateLoad(ti.nativeType(), ptr, "")
+			nparams = append(nparams, aggregateFromNative(b, ti, native))
 		case AttrWidthType2:
 			typ := ctx.StructType([]llvm.Type{ti.Type1, ti.Type2}, false)
 			iptr := llvm.CreateAlloca(b, typ)
 			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 0, ""))
 			index++
 			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 1, ""))
-			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.Type, 0), "")
-			nparams = append(nparams, b.CreateLoad(ti.Type, ptr, ""))
+			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
+			native := b.CreateLoad(ti.nativeType(), ptr, "")
+			nparams = append(nparams, aggregateFromNative(b, ti, native))
 		case AttrExtract:
-			nsubs := ti.Type.StructElementTypesCount()
-			nv := llvm.Undef(ti.Type)
+			nsubs := ti.nativeType().StructElementTypesCount()
+			nv := llvm.Undef(ti.nativeType())
 			for i := 0; i < nsubs; i++ {
 				nv = b.CreateInsertValue(nv, params[index], i, "")
 				index++
 			}
-			nparams = append(nparams, nv)
+			nparams = append(nparams, aggregateFromNative(b, ti, nv))
 			continue
 		}
 		index++
@@ -879,14 +986,14 @@ func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap 
 		ret := llvm.CreateCall(b, info.Type, fn, nparams)
 		ret.SetInstructionCallConv(callConv)
 		copyClosureEnvFunctionAttrsToCall(fn, ret)
-		b.CreateStore(ret, params[0])
+		b.CreateStore(aggregateToNative(b, info.Return, ret), params[0])
 		b.CreateRetVoid()
 	case AttrWidthType, AttrWidthType2:
 		ret := llvm.CreateCall(b, info.Type, fn, nparams)
 		ret.SetInstructionCallConv(callConv)
 		copyClosureEnvFunctionAttrsToCall(fn, ret)
-		ptr := llvm.CreateAlloca(b, info.Return.Type)
-		b.CreateStore(ret, ptr)
+		ptr := llvm.CreateAlloca(b, info.Return.nativeType())
+		b.CreateStore(aggregateToNative(b, info.Return, ret), ptr)
 		returnType := nft.ReturnType()
 		iptr := b.CreateBitCast(ptr, llvm.PointerType(returnType, 0), "")
 		b.CreateRet(b.CreateLoad(returnType, iptr, ""))

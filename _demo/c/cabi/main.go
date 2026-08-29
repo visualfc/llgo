@@ -342,11 +342,19 @@ func cabi_demo() {
 	println("=> pt7", p7.x, p7.y, p7.z, p7.m, p7.n, p7.k, p7.o)
 
 	// skip wrap
-	fd1 := fn1(data1{1, 2})
+	wantFD1 := data1{1, 2}
+	fd1 := fn1(wantFD1)
 	println("=> fd1", fd1.x, fd1.y)
+	if fd1 != wantFD1 {
+		panic("C ABI corrupted data1")
+	}
 
-	fd2 := fn2(data2{1, 2})
+	wantFD2 := data2{1, 2}
+	fd2 := fn2(wantFD2)
 	println("=> fd2", fd2.x, fd2.y)
+	if fd2 != wantFD2 {
+		panic("C ABI corrupted data2")
+	}
 
 	fd3 := fn3(data3{1, 2})
 	println("=> fd3", fd3.x, fd3.y)
@@ -375,8 +383,12 @@ func cabi_demo() {
 	f5 := ff5(fdata5{1.1, 2.1, 3.1, 4.1, 5.1})
 	println("=> f5", f5.x, f5.y, f5.z, f5.m, f5.n)
 
-	f2id := ff2id(fdata2id{1, 2, 3.1})
+	wantF2ID := fdata2id{1, 2, 3.1}
+	f2id := ff2id(wantF2ID)
 	println("=> f2id", f2id.x, f2id.y, f2id.z)
+	if f2id != wantF2ID {
+		panic("C ABI corrupted fdata2id")
+	}
 
 	f7if := ff7if(fdata7if{[7]int8{1, 2, 3, 4, 5, 6, 7}, 3.1})
 	println("=> f7if", f7if.x[0], f7if.x[1], f7if.y)

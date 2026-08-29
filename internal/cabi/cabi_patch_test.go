@@ -407,6 +407,96 @@ func checkTypeInfo(t *testing.T, tr *Transformer, typ llvm.Type, index int, kind
 	return info
 }
 
+func TestWindows386CABILowersGoAggregateToNativeLayout(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+
+	// This is the private SSA representation of Go struct { X int8; Y int64 }:
+	// Y is at offset 4 and the whole value has four-byte alignment. Native MSVC
+	// C instead lays out the equivalent structure as { i8, i64 }, with Y at 8.
+	bytePadding := llvm.ArrayType(ctx.Int8Type(), 3)
+	goType := ctx.StructType([]llvm.Type{
+		ctx.StructType([]llvm.Type{ctx.Int8Type(), bytePadding}, true),
+		ctx.StructType([]llvm.Type{ctx.Int64Type()}, true),
+		llvm.ArrayType(ctx.Int32Type(), 0),
+	}, false)
+	nativeType, changed := windows386NativeAggregateType(ctx, goType)
+	if !changed {
+		t.Fatal("Go/386 aggregate layout was not recognized")
+	}
+	if got, want := nativeType.String(), "{ i8, i64 }"; got != want {
+		t.Fatalf("native aggregate type = %s, want %s", got, want)
+	}
+	tr := NewTransformer(prog, "i686-pc-windows-msvc", "", ModeCFunc, true)
+	if got, want := tr.td.ElementOffset(goType, 1), uint64(4); got != want {
+		t.Fatalf("Go aggregate second field offset = %d, want %d", got, want)
+	}
+	if got, want := tr.td.ElementOffset(nativeType, 1), uint64(8); got != want {
+		t.Fatalf("native aggregate second field offset = %d, want %d", got, want)
+	}
+
+	mod := ctx.NewModule("windows-386-go-c-layout")
+	defer mod.Dispose()
+	ft := llvm.FunctionType(goType, []llvm.Type{goType}, false)
+	callee := llvm.AddFunction(mod, "cRoundTrip", ft)
+	caller := llvm.AddFunction(mod, "example.com/p.call", ft)
+	b := ctx.NewBuilder()
+	defer b.Dispose()
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(caller, "entry"))
+	b.CreateRet(llvm.CreateCall(b, ft, callee, []llvm.Value{caller.Param(0)}))
+	exported := llvm.AddFunction(mod, "exportRoundTrip", ft)
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(exported, "entry"))
+	b.CreateRet(exported.Param(0))
+	callback := llvm.AddFunction(mod, "example.com/p.callback", ft)
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(callback, "entry"))
+	b.CreateRet(callback.Param(0))
+	registerType := llvm.FunctionType(ctx.VoidType(), []llvm.Type{llvm.PointerType(ft, 0)}, false)
+	register := llvm.AddFunction(mod, "registerRoundTrip", registerType)
+	useCallback := llvm.AddFunction(mod, "example.com/p.useCallback", llvm.FunctionType(ctx.VoidType(), nil, false))
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(useCallback, "entry"))
+	b.CreateCall(registerType, register, []llvm.Value{callback}, "")
+	b.CreateRetVoid()
+	goArray := llvm.ArrayType(goType, 2)
+	arrayFT := llvm.FunctionType(goArray, []llvm.Type{goArray}, false)
+	arrayCallee := llvm.AddFunction(mod, "cArrayRoundTrip", arrayFT)
+	arrayCaller := llvm.AddFunction(mod, "example.com/p.callArray", arrayFT)
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(arrayCaller, "entry"))
+	b.CreateRet(llvm.CreateCall(b, arrayFT, arrayCallee, []llvm.Value{arrayCaller.Param(0)}))
+
+	tr.TransformModule("test", mod)
+	lowered := mod.NamedFunction("cRoundTrip").String()
+	for _, want := range []string{"sret({ i8, i64 })", "byval({ i8, i64 }) align 4"} {
+		if !strings.Contains(lowered, want) {
+			t.Fatalf("native aggregate declaration does not contain %q:\n%s", want, lowered)
+		}
+	}
+	arrayLowered := mod.NamedFunction("cArrayRoundTrip").String()
+	for _, want := range []string{"sret([2 x { i8, i64 }])", "byval([2 x { i8, i64 }]) align 4"} {
+		if !strings.Contains(arrayLowered, want) {
+			t.Fatalf("native aggregate array declaration does not contain %q:\n%s", want, arrayLowered)
+		}
+	}
+	for _, name := range []string{"exportRoundTrip", "__llgo_cdecl$example.com/p.callback"} {
+		fn := mod.NamedFunction(name)
+		if fn.IsNil() {
+			t.Fatalf("missing native aggregate bridge %s:\n%s", name, mod.String())
+		}
+		for _, want := range []string{"sret({ i8, i64 })", "byval({ i8, i64 }) align 4"} {
+			if got := fn.String(); !strings.Contains(got, want) {
+				t.Fatalf("native aggregate bridge %s does not contain %q:\n%s", name, want, got)
+			}
+		}
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("invalid Go/native aggregate bridge: %v\n%s", err, mod.String())
+	}
+}
+
 func TestMSVCCallAndCallbackLowering(t *testing.T) {
 	llvm.InitializeAllTargets()
 	llvm.InitializeAllTargetMCs()
