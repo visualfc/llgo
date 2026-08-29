@@ -133,6 +133,38 @@ func TestGo386StructLayoutEdgeCases(t *testing.T) {
 	})
 }
 
+func TestGo386TupleUsesGoStructLayout(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", "386"))
+
+	results := types.NewTuple(
+		types.NewVar(token.NoPos, nil, "", types.Typ[types.Int64]),
+		types.NewVar(token.NoPos, nil, "", types.Typ[types.Int32]),
+		types.NewVar(token.NoPos, nil, "", types.Typ[types.Int64]),
+	)
+	tupleType := prog.rawType(results)
+	if got, want := prog.SizeOf(tupleType), uint64(20); got != want {
+		t.Fatalf("Go Windows/386 tuple size = %d, want %d", got, want)
+	}
+	if got, want := prog.OffsetOf(tupleType, 2), uint64(12); got != want {
+		t.Fatalf("Go Windows/386 tuple third result offset = %d, want %d", got, want)
+	}
+
+	sig := types.NewSignatureType(nil, nil, nil, nil, results, false)
+	if got, want := prog.toLLVMFunc(sig).ReturnType(), tupleType.ll; got != want {
+		t.Fatalf("function result type = %s, want tuple type %s", got, want)
+	}
+	equivalentStruct := prog.Struct(
+		prog.Int64(),
+		prog.Int32(),
+		prog.Int64(),
+	)
+	if got, want := equivalentStruct.ll, tupleType.ll; got != want {
+		t.Fatalf("multi-result value type = %s, want function tuple type %s", got, want)
+	}
+}
+
 func TestConstStructValueAsUsesDestinationLLVMType(t *testing.T) {
 	prog := NewProgram(&Target{GOOS: "windows", GOARCH: "386"})
 	defer prog.Dispose()

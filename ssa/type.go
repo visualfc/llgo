@@ -18,6 +18,7 @@ package ssa
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"unsafe"
 
@@ -472,7 +473,19 @@ func (p Program) toLLVMFields(raw *types.Struct) (fields []llvm.Type) {
 }
 
 func (p Program) toLLVMTuple(t *types.Tuple) llvm.Type {
-	return p.ctx.StructType(p.toLLVMTypes(t, t.Len()), false)
+	fields := make([]*types.Var, t.Len())
+	for i := range fields {
+		// Tuple result names are not part of their type and may be empty or
+		// repeated. Give the layout-only struct unique private field names.
+		fields[i] = types.NewField(token.NoPos, nil, fmt.Sprintf("_llgo%d", i), t.At(i).Type(), false)
+	}
+	// Multiple results are represented as an anonymous LLVM aggregate. Keep
+	// its physical layout identical to the equivalent Go struct: on 386,
+	// i64 and double fields are only four-byte aligned. Calls and returns are
+	// otherwise liable to disagree about offsets across package boundaries.
+	body, layout := p.toLLVMStructBody(types.NewStruct(fields, nil), false)
+	p.setStructLayout(t, layout)
+	return p.ctx.StructType(body, false)
 }
 
 func (p Program) toLLVMTypes(t *types.Tuple, n int) (ret []llvm.Type) {
