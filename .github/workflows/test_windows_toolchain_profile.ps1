@@ -105,7 +105,13 @@ if ($Profile -eq "msvc" -and $env:LLGO_MSYS2_LOCATION) {
 & pkg-config --modversion llvm-19 | Out-Null
 Assert-Success "Reading LLVM metadata through the profile-local pkg-config"
 
-$compilerTarget = (& clang -dumpmachine).Trim()
+$compilerArgs = @()
+if ($Profile -eq "msvc") {
+  # Official LLVM is an x64 host compiler in every MSVC lane. Apply the
+  # activated target explicitly before checking cross-architecture output.
+  $compilerArgs = @("--target=$env:LLGO_WINDOWS_TARGET_TRIPLE")
+}
+$compilerTarget = (& clang @compilerArgs -dumpmachine).Trim()
 Assert-Success "Reading the Clang target"
 $targetPattern = if ($Profile -eq "msvc") { '-windows-msvc$' } else { '-(windows-gnu|mingw32)$' }
 if ($compilerTarget -notmatch $targetPattern) {
