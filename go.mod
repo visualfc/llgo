@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/goplus/cobra v1.9.12 //xgo:class
 	github.com/goplus/gogen v1.23.5
-	github.com/goplus/lib v0.3.1
+	github.com/goplus/lib v0.5.0
 	github.com/goplus/mod v0.22.0
 	github.com/mattn/go-tty v0.0.8
 	github.com/qiniu/x v1.18.3
@@ -26,5 +26,3 @@ require (
 )
 
 replace github.com/xgo-dev/llgo/runtime => ./runtime
-
-replace github.com/goplus/lib => github.com/cpunion/lib v0.0.0-20260827173821-b993779acb60
