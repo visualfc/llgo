@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	testAliasReceiver()
 	testGeneric()
 	testNamed1()
 	testNamed2()
@@ -22,6 +23,25 @@ func main() {
 	testAnonymous7()
 	testAnonymous8()
 	testAnonymousBuffer()
+}
+
+// Keep the alias receiver regression beside the method ABI matrix. The alias
+// must retain the pointer receiver method set when it is stored in an
+// interface.
+type aliasThreadImpl struct {
+	id int64
+}
+
+type aliasThread = *aliasThreadImpl
+
+func (t *aliasThreadImpl) ID() int64 { return t.id }
+func (t aliasThread) String() string { return "thread" }
+
+func testAliasReceiver() {
+	var v any = &aliasThreadImpl{100}
+	if got := v.(interface{ String() string }).String(); got != "thread" {
+		panic("alias receiver method set: " + got)
+	}
 }
 
 func testNamed1() {

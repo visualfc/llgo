@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	_ "unsafe"
 
 	"github.com/goplus/lib/c"
@@ -112,7 +110,7 @@ func main() {
 		},
 	}
 
-	args := os.Args
+	args := []string{"llgo-cargs", "-h"}
 
 	// Convert Go string array to C-style argv
 	argv := make([]*int8, len(args))
@@ -124,21 +122,13 @@ func main() {
 	var context OptionContext
 	context.OptionInit(&options[0], uintptr(len(options)), c.Int(len(args)), &argv[0])
 
-	// Process all options
-	identifierFound := false
-	for context.OptionFetch() {
-		identifierFound = true
-		identifier := context.OptionGetIdentifier()
-		switch identifier {
-		case 'h':
-			fmt.Println("Help: This is a simple command-line parser demo")
-		case 'v':
-			fmt.Println("Version: 1.0.0")
-		}
+	if !context.OptionFetch() {
+		panic("cargs did not parse the controlled -h option")
 	}
-
-	// Default output if no identifier is found
-	if !identifierFound {
-		fmt.Println("Demo Command-line Tool\nIdentifier:\n\t-h: Help\n\t-v: Version")
+	if identifier := context.OptionGetIdentifier(); identifier != 'h' {
+		panic("cargs returned the wrong option identifier")
+	}
+	if context.OptionFetch() {
+		panic("cargs returned an unexpected extra option")
 	}
 }

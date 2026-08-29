@@ -18,7 +18,7 @@ Start an interactive shell (pick one):
 ```
 
 Notes:
-- `amd64` uses the `pydeps` image target (includes the extra `numpy` Python demo dependency).
+- `amd64` uses the `pydeps` image target (includes the NumPy and PyTorch scientific demo dependencies).
 - `arm64` and `i386` use the smaller `base` target (no extra Python demo dependencies).
 
 Inside the container, run tests/builds using the repo scripts:

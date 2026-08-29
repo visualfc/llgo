@@ -7,14 +7,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestPlanUsesPositiveProfileAndGOOS(t *testing.T) {
 	manifest := Manifest{
 		Profiles: []Profile{{Name: "embedded", LLGOArgs: []string{"-lto=full"}, Target: "esp32", Emulator: true}},
 		Cases: []Case{
-			{ID: "both", Profiles: []string{"embedded"}, GOOS: []string{"linux", "darwin"}, Timeout: "2s"},
+			{ID: "both", Profiles: []string{"embedded"}, GOOS: []string{"linux", "darwin"}},
 			{ID: "darwin", Profiles: []string{"embedded"}, GOOS: []string{"darwin"}},
 			{ID: "other-profile", Profiles: []string{"host"}, GOOS: []string{"linux"}},
 		},
@@ -23,7 +22,7 @@ func TestPlanUsesPositiveProfileAndGOOS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan) != 1 || plan[0].Case.ID != "both" || plan[0].Timeout != 2*time.Second {
+	if len(plan) != 1 || plan[0].Case.ID != "both" {
 		t.Fatalf("Plan = %#v", plan)
 	}
 	wantArgs := []string{"run", "-lto=full", "-target=esp32", "-emulator", "."}
@@ -70,7 +69,25 @@ func TestFilterPlanAcceptsRepeatedIDAndDirectorySelectors(t *testing.T) {
 	}
 }
 
-func TestRepositoryManifestPreservesPhaseOneRunSets(t *testing.T) {
+func TestFilterPlanHandlesIdentityAndAmbiguousSelectors(t *testing.T) {
+	plan := []PlannedCase{
+		{Case: Case{ID: "first", Dir: "shared"}},
+		{Case: Case{ID: "shared", Dir: "_demo/go/second"}},
+	}
+	got, err := FilterPlan(plan, nil)
+	if err != nil || !reflect.DeepEqual(got, plan) {
+		t.Fatalf("FilterPlan identity = %#v, %v", got, err)
+	}
+	if _, err := FilterPlan(plan, []string{"shared"}); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("FilterPlan ambiguous error = %v", err)
+	}
+	if _, err := FilterPlan(plan, []string{"missing", "first", "shared"}); err == nil ||
+		!strings.Contains(err.Error(), "not in the plan") || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("FilterPlan combined error = %v", err)
+	}
+}
+
+func TestRepositoryManifestDefinesFocusedRunSets(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -82,18 +99,25 @@ func TestRepositoryManifestPreservesPhaseOneRunSets(t *testing.T) {
 	if err := Validate(root, manifest); err != nil {
 		t.Fatal(err)
 	}
-	hostGolden, err := os.ReadFile(filepath.Join("testdata", "phase1-host.txt"))
+	hostGolden, err := os.ReadFile(filepath.Join("testdata", "focused-host.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	hostDirectories := strings.Fields(string(hostGolden))
 	assertPlanDirectories(t, manifest, "host", hostDirectories)
-	assertPlanDirectories(t, manifest, "host-lto", hostDirectories)
-	assertPlanDirectories(t, manifest, "host-deadcodedrop", hostDirectories)
+	assertPlanDirectories(t, manifest, "host-lto", []string{
+		"_demo/c/asmfullcall", "_demo/c/cgofull", "_demo/c/cppintf",
+		"_demo/go/cabi", "_demo/go/export", "_demo/go/reflect",
+		"_demo/go/stdlib", "_demo/go/sync",
+	})
+	assertPlanDirectories(t, manifest, "host-deadcodedrop", []string{
+		"_demo/c/asmfullcall", "_demo/c/cgofull", "_demo/go/cabi",
+		"_demo/go/reflect", "_demo/go/stdlib", "_demo/go/sync",
+	})
 
-	windowsDirectories := make([]string, 0, len(hostDirectories)-2)
+	windowsDirectories := make([]string, 0, len(hostDirectories)-1)
 	for _, dir := range hostDirectories {
-		if dir != "_demo/c/syncdebug" && dir != "_demo/c/thread" {
+		if dir != "_demo/c/thread" {
 			windowsDirectories = append(windowsDirectories, dir)
 		}
 	}
@@ -131,8 +155,8 @@ func TestRepositoryManifestPreservesPhaseOneRunSets(t *testing.T) {
 	}
 
 	counts := map[string]int{
-		"host": 103, "host-lto": 103, "host-deadcodedrop": 103,
-		"esp32": 20, "esp32c3-basic": 28, "model": 1,
+		"host": 32, "host-lto": 8, "host-deadcodedrop": 6,
+		"esp32": 5, "esp32c3-basic": 6, "model": 1,
 	}
 	for profile, want := range counts {
 		plan, err := Plan(manifest, profile, "linux")
@@ -143,23 +167,19 @@ func TestRepositoryManifestPreservesPhaseOneRunSets(t *testing.T) {
 			t.Errorf("Plan(%q) has %d cases, want %d", profile, got, want)
 		}
 	}
-	if got, want := len(gotWindows), 101; got != want {
+	if got, want := len(gotWindows), 31; got != want {
 		t.Errorf("Windows host plan has %d cases, want %d", got, want)
 	}
 
 	assertPlanDirectories(t, manifest, "esp32", []string{
-		"_demo/c/cabi", "_demo/c/catomic", "_demo/c/fcntl", "_demo/c/genints", "_demo/c/helloc", "_demo/c/linkname", "_demo/c/qsort",
-		"_demo/go/aliasrecv", "_demo/go/async/async", "_demo/go/atomicfn", "_demo/go/complex", "_demo/go/export/c", "_demo/go/ifaceconv",
-		"_demo/go/ifaceprom-1559", "_demo/go/ifaceprom-1559/foo", "_demo/go/linkname", "_demo/go/mainlink", "_demo/go/mapclosure", "_demo/go/math", "_demo/go/statefn",
+		"_demo/c/catomic", "_demo/c/hello", "_demo/c/qsort",
+		"_demo/go/ifaceconv", "_demo/go/linkname",
 	})
 	assertPlanDirectories(t, manifest, "esp32c3-basic", []string{
-		"_demo/c/cabi", "_demo/c/cabisret", "_demo/c/cppintf", "_demo/c/cppintf/foo", "_demo/c/cppmintf", "_demo/c/cppmintf/foo",
-		"_demo/c/fcntl", "_demo/c/genints", "_demo/c/helloc", "_demo/c/linkname", "_demo/c/qsort",
-		"_demo/go/aliasrecv", "_demo/go/async/async", "_demo/go/cabi", "_demo/go/complex", "_demo/go/defer", "_demo/go/export/c",
-		"_demo/go/ifaceconv", "_demo/go/ifaceprom-1559", "_demo/go/ifaceprom-1559/foo", "_demo/go/issue1538",
-		"_demo/go/issue1538-floatcvtuint-over", "_demo/go/linkname", "_demo/go/mainlink", "_demo/go/mapclosure", "_demo/go/math",
-		"_demo/go/return-1605", "_demo/go/statefn",
+		"_demo/c/hello", "_demo/c/qsort",
+		"_demo/go/cabi", "_demo/go/ifaceconv", "_demo/go/issue1538", "_demo/go/linkname",
 	})
+	assertPlanDirectories(t, manifest, "model", []string{"_demo/workflow/model/llama2-c"})
 }
 
 func assertPlanDirectories(t *testing.T, manifest *Manifest, profile string, want []string) {

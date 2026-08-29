@@ -42,6 +42,10 @@ func TestMain(m *testing.M) {
 			fmt.Fprintf(os.Stderr, "unexpected fake go arguments: %q\n", os.Args[1:])
 			os.Exit(11)
 		}
+		if os.Getenv("LLGO_TEST_GO_ENV_ERROR") == "1" {
+			fmt.Fprintln(os.Stderr, "fake go env failure")
+			os.Exit(12)
+		}
 		fmt.Println(os.Getenv("LLGO_TEST_GO_ENV_GOROOT"))
 		fmt.Println(os.Getenv("LLGO_TEST_GO_ENV_GOVERSION"))
 		os.Exit(0)
@@ -133,6 +137,11 @@ func TestConfigureSourcePatchToolchainInjectsSelectedGoEnv(t *testing.T) {
 	}
 	if got := conf.GlobalRewrites["runtime"]["buildVersion"]; got != wantGoVersion {
 		t.Fatalf("runtime.buildVersion rewrite = %q, want selected cfg.Env value %q", got, wantGoVersion)
+	}
+
+	badEnv := withEnv(cfgEnv, "LLGO_TEST_GO_ENV_ERROR=1")
+	if _, err := configureSourcePatchToolchain(&Config{}, badEnv); err == nil || !strings.Contains(err.Error(), "fake go env failure") {
+		t.Fatalf("configureSourcePatchToolchain error = %v, want fake go env failure", err)
 	}
 }
 

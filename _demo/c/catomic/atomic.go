@@ -8,17 +8,27 @@ func main() {
 	var v int64
 
 	atomic.Store(&v, 100)
-	println("store:", atomic.Load(&v))
+	if atomic.Load(&v) != 100 {
+		panic("atomic load/store")
+	}
 
 	ret := atomic.Add(&v, 1)
-	println("ret:", ret, "v:", v)
+	if ret != 100 || v != 101 {
+		panic("atomic add")
+	}
 
-	ret, _ = atomic.CompareAndExchange(&v, 100, 102)
-	println("ret:", ret, "vs 100, v:", v)
+	ret, exchanged := atomic.CompareAndExchange(&v, 100, 102)
+	if ret != 101 || exchanged || v != 101 {
+		panic("atomic compare exchange miss")
+	}
 
-	ret, _ = atomic.CompareAndExchange(&v, 101, 102)
-	println("ret:", ret, "vs 101, v:", v)
+	ret, exchanged = atomic.CompareAndExchange(&v, 101, 102)
+	if ret != 101 || !exchanged || v != 102 {
+		panic("atomic compare exchange hit")
+	}
 
 	ret = atomic.Sub(&v, 1)
-	println("ret:", ret, "v:", v)
+	if ret != 102 || v != 101 {
+		panic("atomic sub")
+	}
 }

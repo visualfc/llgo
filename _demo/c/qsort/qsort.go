@@ -11,15 +11,10 @@ func main() {
 	c.Qsort(c.Pointer(&a), 5, unsafe.Sizeof(0), func(a, b c.Pointer) c.Int {
 		return c.Int(*(*int)(a) - *(*int)(b))
 	})
-	for _, v := range a {
-		c.Printf(c.Str("%d\n"), v)
+	want := [...]int{2, 7, 8, 23, 100}
+	for i, v := range a {
+		if v != want[i] {
+			panic("qsort result")
+		}
 	}
 }
-
-/* Expected output:
-2
-7
-8
-23
-100
-*/

@@ -2,13 +2,31 @@
 
 package main
 
-import "github.com/goplus/lib/c/time"
+import (
+	"github.com/goplus/lib/c/math/rand"
+	ctime "github.com/goplus/lib/c/time"
+)
 
 func main() {
-	var tv time.Timespec
-	time.ClockGettime(time.CLOCK_REALTIME, &tv)
-	println("REALTIME sec:", tv.Sec, "nsec:", tv.Nsec)
+	var realtime, monotonic ctime.Timespec
+	if ctime.ClockGettime(ctime.CLOCK_REALTIME, &realtime) != 0 ||
+		ctime.ClockGettime(ctime.CLOCK_MONOTONIC, &monotonic) != 0 {
+		panic("clock_gettime")
+	}
+	if realtime.Sec <= 0 || monotonic.Sec < 0 {
+		panic("invalid C clock")
+	}
 
-	time.ClockGettime(time.CLOCK_MONOTONIC, &tv)
-	println("MONOTONIC sec:", tv.Sec, "nsec:", tv.Nsec)
+	rand.Srand(1)
+	first := rand.Rand()
+	rand.Srand(1)
+	if rand.Rand() != first {
+		panic("C rand seed")
+	}
+	rand.Srandom(1)
+	random := rand.Random()
+	rand.Srandom(1)
+	if rand.Random() != random {
+		panic("C random seed")
+	}
 }

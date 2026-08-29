@@ -1,5 +1,4 @@
-// Package demotest provides the manifest, planning, and execution support for
-// the repository's demo and integration tests.
+// Package demotest plans and runs the repository's demo integration cases.
 package demotest
 
 import (
@@ -12,13 +11,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 )
 
 const ManifestVersion = 1
 
-// Manifest is the strictly decoded description of every Go source directory
-// below _demo. A directory has exactly one owner: Cases, Support, or Workflow.
 type Manifest struct {
 	Version  int                 `json:"version"`
 	Profiles []Profile           `json:"profiles"`
@@ -35,53 +31,36 @@ type Profile struct {
 }
 
 type Case struct {
-	ID           string   `json:"id"`
-	Dir          string   `json:"dir"`
-	Class        string   `json:"class"`
-	Capability   string   `json:"capability"`
-	Profiles     []string `json:"profiles"`
-	GOOS         []string `json:"goos"`
-	Timeout      string   `json:"timeout,omitempty"`
-	Dependencies []string `json:"dependencies,omitempty"`
-	History      string   `json:"history,omitempty"`
-	Check        Check    `json:"check"`
-}
-
-type Check struct {
-	Kind           string   `json:"kind"`
-	Golden         string   `json:"golden,omitempty"`
-	Rationale      string   `json:"rationale,omitempty"`
-	StderrContains []string `json:"stderr_contains,omitempty"`
+	ID       string   `json:"id"`
+	Dir      string   `json:"dir"`
+	Profiles []string `json:"profiles"`
+	GOOS     []string `json:"goos"`
 }
 
 type SupportDirectory struct {
-	Dir       string `json:"dir"`
-	Owner     string `json:"owner"`
-	Rationale string `json:"rationale"`
+	Dir   string `json:"dir"`
+	Owner string `json:"owner"`
 }
 
 type WorkflowDirectory struct {
-	Dir       string `json:"dir"`
-	Workflow  string `json:"workflow"`
-	Rationale string `json:"rationale"`
+	Dir      string `json:"dir"`
+	Workflow string `json:"workflow"`
 }
 
-// LoadManifest decodes exactly one JSON value and rejects unknown fields.
 func LoadManifest(path string) (*Manifest, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-
-	dec := json.NewDecoder(f)
-	dec.DisallowUnknownFields()
+	decoder := json.NewDecoder(f)
+	decoder.DisallowUnknownFields()
 	var manifest Manifest
-	if err := dec.Decode(&manifest); err != nil {
+	if err := decoder.Decode(&manifest); err != nil {
 		return nil, fmt.Errorf("decode manifest: %w", err)
 	}
 	var trailing any
-	if err := dec.Decode(&trailing); !errors.Is(err, io.EOF) {
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
 			return nil, errors.New("decode manifest: multiple JSON values")
 		}
@@ -90,8 +69,9 @@ func LoadManifest(path string) (*Manifest, error) {
 	return &manifest, nil
 }
 
-// Validate checks the schema invariants and verifies that every directory
-// containing Go source under _demo has exactly one manifest owner.
+// Validate enforces planning invariants and exact ownership of every Go-source
+// directory below _demo. Descriptive capability/history data lives in design
+// documentation instead of this runtime schema.
 func Validate(root string, manifest *Manifest) error {
 	if manifest == nil {
 		return errors.New("nil manifest")
@@ -115,7 +95,7 @@ func Validate(root string, manifest *Manifest) error {
 			problems = append(problems, where+": emulator requires target")
 		}
 		for j, arg := range profile.LLGOArgs {
-			if arg == "" || strings.IndexFunc(arg, func(r rune) bool { return r == '\x00' || r == '\n' || r == '\r' }) >= 0 {
+			if arg == "" || strings.ContainsAny(arg, "\x00\r\n") {
 				problems = append(problems, fmt.Sprintf("%s.llgo_args[%d]: invalid argument", where, j))
 			}
 		}
@@ -126,28 +106,19 @@ func Validate(root string, manifest *Manifest) error {
 
 	owners := make(map[string]string)
 	caseIDs := make(map[string]struct{}, len(manifest.Cases))
-	for i, c := range manifest.Cases {
+	for i, demoCase := range manifest.Cases {
 		where := fmt.Sprintf("cases[%d]", i)
-		if !validName(c.ID) {
+		if !validName(demoCase.ID) {
 			problems = append(problems, where+": invalid id")
-		} else if _, exists := caseIDs[c.ID]; exists {
-			problems = append(problems, where+": duplicate id "+c.ID)
+		} else if _, exists := caseIDs[demoCase.ID]; exists {
+			problems = append(problems, where+": duplicate id "+demoCase.ID)
 		} else {
-			caseIDs[c.ID] = struct{}{}
+			caseIDs[demoCase.ID] = struct{}{}
 		}
-		validateOwnedPath(root, c.Dir, where+".dir", "case "+c.ID, owners, &problems)
-		if !oneOf(c.Class, "example", "regression", "stdlib", "integration", "target-smoke", "optional") {
-			problems = append(problems, where+": invalid class "+c.Class)
-		}
-		if strings.TrimSpace(c.Capability) == "" {
-			problems = append(problems, where+": capability is required")
-		}
-		if len(c.Profiles) == 0 {
-			problems = append(problems, where+": at least one profile is required")
-		}
-		seenProfiles := make(map[string]struct{}, len(c.Profiles))
-		for _, name := range c.Profiles {
-			if _, ok := profiles[name]; !ok {
+		validateOwnedPath(root, demoCase.Dir, where+".dir", "case "+demoCase.ID, owners, &problems)
+		seenProfiles := make(map[string]struct{}, len(demoCase.Profiles))
+		for _, name := range demoCase.Profiles {
+			if _, exists := profiles[name]; !exists {
 				problems = append(problems, where+": unknown profile "+name)
 			}
 			if _, exists := seenProfiles[name]; exists {
@@ -155,12 +126,15 @@ func Validate(root string, manifest *Manifest) error {
 			}
 			seenProfiles[name] = struct{}{}
 		}
-		if len(c.GOOS) == 0 {
-			problems = append(problems, where+": goos is required")
+		if len(seenProfiles) == 0 {
+			problems = append(problems, where+": at least one profile is required")
 		}
-		seenGOOS := make(map[string]struct{}, len(c.GOOS))
-		for _, goos := range c.GOOS {
-			if !oneOf(goos, "aix", "android", "darwin", "dragonfly", "freebsd", "illumos", "ios", "js", "linux", "netbsd", "openbsd", "plan9", "solaris", "wasip1", "windows") {
+		if _, model := seenProfiles["model"]; model && len(seenProfiles) != 1 {
+			problems = append(problems, where+": model profile must be exclusive")
+		}
+		seenGOOS := make(map[string]struct{}, len(demoCase.GOOS))
+		for _, goos := range demoCase.GOOS {
+			if !validGOOS[goos] {
 				problems = append(problems, where+": invalid goos "+goos)
 			}
 			if _, exists := seenGOOS[goos]; exists {
@@ -168,50 +142,34 @@ func Validate(root string, manifest *Manifest) error {
 			}
 			seenGOOS[goos] = struct{}{}
 		}
-		if c.Timeout != "" {
-			d, err := time.ParseDuration(c.Timeout)
-			if err != nil || d <= 0 {
-				problems = append(problems, where+": timeout must be a positive Go duration")
-			}
+		if len(seenGOOS) == 0 {
+			problems = append(problems, where+": goos is required")
 		}
-		validateCheck(root, c.Check, where+".check", &problems)
 	}
 
-	workflowOwners := make(map[string]struct{}, len(manifest.Workflow))
+	workflows := make(map[string]struct{})
 	for i, owned := range manifest.Workflow {
 		where := fmt.Sprintf("workflow_owned[%d]", i)
 		validateOwnedPath(root, owned.Dir, where+".dir", "workflow", owners, &problems)
-		if strings.TrimSpace(owned.Workflow) == "" {
-			problems = append(problems, where+": workflow is required")
-		} else if strings.HasPrefix(owned.Workflow, "manual-") {
-			workflowOwners[owned.Workflow] = struct{}{}
+		if strings.HasPrefix(owned.Workflow, "manual-") {
+			workflows[owned.Workflow] = struct{}{}
 		} else if err := validateRepoPath(owned.Workflow); err != nil {
 			problems = append(problems, where+".workflow: "+err.Error())
+		} else if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(owned.Workflow))); err != nil || !info.Mode().IsRegular() {
+			problems = append(problems, where+".workflow: not a regular file")
 		} else {
-			workflowOwners[owned.Workflow] = struct{}{}
-			info, err := os.Stat(filepath.Join(root, filepath.FromSlash(owned.Workflow)))
-			if err != nil {
-				problems = append(problems, where+".workflow: "+err.Error())
-			} else if !info.Mode().IsRegular() {
-				problems = append(problems, where+".workflow: not a regular file")
-			}
-		}
-		if strings.TrimSpace(owned.Rationale) == "" {
-			problems = append(problems, where+": rationale is required")
+			workflows[owned.Workflow] = struct{}{}
 		}
 	}
 	for i, support := range manifest.Support {
 		where := fmt.Sprintf("support[%d]", i)
 		validateOwnedPath(root, support.Dir, where+".dir", "support", owners, &problems)
 		if workflow, ok := strings.CutPrefix(support.Owner, "workflow:"); ok {
-			if _, exists := workflowOwners[workflow]; !exists {
+			if _, exists := workflows[workflow]; !exists {
 				problems = append(problems, where+": unknown workflow owner "+workflow)
 			}
 		} else if _, exists := caseIDs[support.Owner]; !exists {
 			problems = append(problems, where+": unknown case owner "+support.Owner)
-		}
-		if strings.TrimSpace(support.Rationale) == "" {
-			problems = append(problems, where+": rationale is required")
 		}
 	}
 
@@ -220,22 +178,21 @@ func Validate(root string, manifest *Manifest) error {
 		problems = append(problems, "source audit: "+err.Error())
 	} else {
 		for dir := range sourceDirs {
-			if _, ok := owners[dir]; !ok {
+			if _, owned := owners[dir]; !owned {
 				problems = append(problems, "source directory has no owner: "+dir)
 			}
 		}
 		for dir, owner := range owners {
-			if _, ok := sourceDirs[dir]; !ok {
+			if _, exists := sourceDirs[dir]; !exists {
 				problems = append(problems, fmt.Sprintf("%s owns a directory without direct Go source: %s", owner, dir))
 			}
 		}
 	}
-
-	if len(problems) != 0 {
-		sort.Strings(problems)
-		return errors.New(strings.Join(problems, "\n"))
+	if len(problems) == 0 {
+		return nil
 	}
-	return nil
+	sort.Strings(problems)
+	return errors.New(strings.Join(problems, "\n"))
 }
 
 func validateOwnedPath(root, path, where, owner string, owners map[string]string, problems *[]string) {
@@ -252,52 +209,10 @@ func validateOwnedPath(root, path, where, owner string, owners map[string]string
 		return
 	}
 	owners[path] = owner
-	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(path)))
-	if err != nil {
+	if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
 		*problems = append(*problems, where+": "+err.Error())
 	} else if !info.IsDir() {
 		*problems = append(*problems, where+": not a directory")
-	}
-}
-
-func validateCheck(root string, check Check, where string, problems *[]string) {
-	if !oneOf(check.Kind, "self", "stdout", "exit", "failure") {
-		*problems = append(*problems, where+": invalid kind "+check.Kind)
-		return
-	}
-	switch check.Kind {
-	case "self":
-		if check.Golden != "" || check.Rationale != "" || len(check.StderrContains) != 0 {
-			*problems = append(*problems, where+": self check has incompatible fields")
-		}
-	case "stdout":
-		if err := validateRepoPath(check.Golden); err != nil {
-			*problems = append(*problems, where+".golden: "+err.Error())
-		} else if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(check.Golden))); err != nil {
-			*problems = append(*problems, where+".golden: "+err.Error())
-		}
-		if check.Rationale != "" || len(check.StderrContains) != 0 {
-			*problems = append(*problems, where+": stdout check has incompatible fields")
-		}
-	case "exit":
-		if strings.TrimSpace(check.Rationale) == "" {
-			*problems = append(*problems, where+": exit check requires rationale")
-		}
-		if check.Golden != "" || len(check.StderrContains) != 0 {
-			*problems = append(*problems, where+": exit check has incompatible fields")
-		}
-	case "failure":
-		if len(check.StderrContains) == 0 {
-			*problems = append(*problems, where+": failure check requires stderr_contains")
-		}
-		for i, fragment := range check.StderrContains {
-			if fragment == "" {
-				*problems = append(*problems, fmt.Sprintf("%s.stderr_contains[%d]: empty fragment", where, i))
-			}
-		}
-		if check.Golden != "" || check.Rationale != "" {
-			*problems = append(*problems, where+": failure check has incompatible fields")
-		}
 	}
 }
 
@@ -305,7 +220,8 @@ func validateRepoPath(path string) error {
 	if path == "" {
 		return errors.New("path is required")
 	}
-	if filepath.IsAbs(path) || strings.Contains(path, "\\") || filepath.ToSlash(filepath.Clean(filepath.FromSlash(path))) != path || path == "." || path == ".." || strings.HasPrefix(path, "../") {
+	clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
+	if filepath.IsAbs(path) || strings.Contains(path, "\\") || clean != path || path == "." || path == ".." || strings.HasPrefix(path, "../") {
 		return errors.New("path must be a clean, slash-separated repository-relative path")
 	}
 	return nil
@@ -313,21 +229,16 @@ func validateRepoPath(path string) error {
 
 func findGoSourceDirectories(root string) (map[string]struct{}, error) {
 	result := make(map[string]struct{})
-	for _, base := range []string{"_demo/go", "_demo/c", "_demo/py", "_demo/embed"} {
-		absolute := filepath.Join(root, filepath.FromSlash(base))
-		err := filepath.WalkDir(absolute, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil {
+	for _, base := range []string{"_demo/go", "_demo/c", "_demo/py", "_demo/embed", "_demo/workflow"} {
+		err := filepath.WalkDir(filepath.Join(root, base), func(path string, entry fs.DirEntry, err error) error {
+			if err != nil || entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
 				return err
-			}
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
-				return nil
 			}
 			relative, err := filepath.Rel(root, filepath.Dir(path))
-			if err != nil {
-				return err
+			if err == nil {
+				result[filepath.ToSlash(relative)] = struct{}{}
 			}
-			result[filepath.ToSlash(relative)] = struct{}{}
-			return nil
+			return err
 		})
 		if err != nil {
 			return nil, err
@@ -348,11 +259,9 @@ func validName(value string) bool {
 	return true
 }
 
-func oneOf(value string, allowed ...string) bool {
-	for _, candidate := range allowed {
-		if value == candidate {
-			return true
-		}
-	}
-	return false
+var validGOOS = map[string]bool{
+	"aix": true, "android": true, "darwin": true, "dragonfly": true,
+	"freebsd": true, "illumos": true, "ios": true, "js": true,
+	"linux": true, "netbsd": true, "openbsd": true, "plan9": true,
+	"solaris": true, "wasip1": true, "windows": true,
 }

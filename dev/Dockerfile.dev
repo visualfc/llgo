@@ -144,6 +144,6 @@ WORKDIR /repo
 
 FROM base AS pydeps
 
-# Optional demo dependency used by _demo/py/matrix. Keep it in a separate target
-# so users can build a smaller image when needed.
-RUN pip install numpy
+# Optional scientific demo dependencies used by _demo/py/matrix. Keep them in
+# a separate target so users can build a smaller image when needed.
+RUN pip install numpy torch

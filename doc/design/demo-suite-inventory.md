@@ -10,13 +10,31 @@ The count uses logical case families. A client/server pair is one
 multi-process family, while independently built embedded programs are separate
 cases. Support packages are not cases.
 
-| Family | Current | Proposed |
+| Family | Baseline | Implemented |
 | --- | ---: | ---: |
-| Go | 74 | 23 |
-| C/C++/CGo/asm | 28 | 13 |
-| Python | 7 | 4 |
-| Embedded executables | 13 | 11 |
-| **Total** | **122** | **51** |
+| Go | 74 | 17 |
+| C/C++/CGo/asm | 28 | 16 |
+| Python | 7 | 2 |
+| Embedded executables | 13 | 8 |
+| **Total** | **122** | **43** |
+
+The implementation has 33 generic runnable owners, seven support packages,
+and 11 workflow-owned source directories. The workflow set represents one
+manual socket family, one expected-failure Go family, and eight embedded
+executables. Thus 51 physical Go-source directories map to 43 logical case
+families without treating support packages as programs.
+
+The tables below preserve the initial per-case audit. Where an initial
+`move` depended on a separate, not-yet-merged change, this PR instead keeps the
+exact input in a bounded aggregate owner. The authoritative final groupings
+are:
+
+- Go core/tooling/ecosystem: 15 runnable owners plus the expected stacktrace
+  failure;
+- reflect: one `reflect` package split into capability-focused source files;
+- foreign: 15 runnable owners plus the manual socket family;
+- Python: `basic` and `matrix`;
+- embedded: the eight active specialized workflow executables.
 
 - **keep** retains an independent owner, usually after shrinking it;
 - **merge** moves unique subcases into another bounded owner;
@@ -25,7 +43,7 @@ cases. Support packages are not cases.
 - **replace** exchanges a broad or dormant case for focused deterministic
   evidence.
 
-## Go: 74 to 23
+## Go: 74 to 17
 
 ### ABI, integration, directives, and concurrency
 
@@ -36,7 +54,7 @@ cases. Support packages are not cases.
 | `async` | custom future; timeout path is not called and completion is not awaited | remove |
 | `atomicfn` | atomic function value call | merge into deterministic `concurrency` |
 | `cabi` | interface field clear and result order, despite its name | move to a focused compiler ABI regression |
-| `cgo` | compact C calls, aggregate pointer shapes, C2 errno paths | keep |
+| `cgo` | compact C calls, aggregate pointer shapes, C2 errno paths | merge the distinct errno two-result path into `cgofull`; its other paths are duplicates |
 | `defer` | capture, closure, and recover | move to focused defer/runtime tests |
 | `export` | generated header, C consumer, archive/shared, callbacks and aggregates | keep specialized; split source by ABI family |
 | `goroutine` | goroutine/channel smoke | merge into `concurrency` |
@@ -88,48 +106,55 @@ cases. Support packages are not cases.
 | `timedur` | Duration and Until | merge into `timer` |
 | `timer` | timer stop/reset/afterfunc, currently timing/output based | keep and rewrite with channel barriers |
 
-### Reflect: 23 to 10
+### Reflect: 23 to one
 
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
-| `reflectcallfn` | Value.Call closure and multi-result ABI | keep; absorb interface-wrapped result |
+| `reflectcallfn` | Value.Call closure and multi-result ABI | merge into split-file `reflect` owner; absorb interface-wrapped result |
 | `reflectifacecall` | reflected value returned through interface | merge into `reflectcallfn` |
-| `reflectfunc` | Func kind, fields, parameters, and results | keep; absorb type/name metadata |
+| `reflectfunc` | Func kind, fields, parameters, and results | merge into `reflect`; absorb type/name metadata |
 | `reflectfntype` | named function fields/parameters/results | merge into `reflectfunc` |
 | `reflectname-1412` | named integer Name/Kind regression | merge into `reflectfunc` |
-| `reflectnamedfn` | named Go/C function values, Set, Call, method | keep; absorb New/NewAt storage |
+| `reflectnamedfn` | named Go/C function values, Set, Call, method | merge into `reflect`; absorb New/NewAt storage |
 | `reflectnew` | New/NewAt function and closure storage | merge into `reflectnamedfn` |
-| `reflectmakefn` | MakeFunc callback and closure result | keep; absorb conversion/empty aggregate ABI |
+| `reflectmakefn` | MakeFunc callback and closure result | merge into `reflect`; absorb conversion/empty aggregate ABI |
 | `reflectfnconv` | named MakeFunc/FuncOf conversion | merge into `reflectmakefn` |
 | `reflectempty` | zero-size struct/array parameter and result | merge into `reflectmakefn` |
-| `reflectmethod` | Method/ByName, promoted/variadic and receiver ABI matrix | keep, drastically reduce Cartesian variants |
+| `reflectmethod` | Method/ByName, promoted/variadic and receiver ABI matrix | merge into `reflect`; retain its complete live ABI matrix |
 | `reflectembed` | promoted embedded method calls | merge into `reflectmethod` |
-| `reflectconv` | function conversion; most copied source is dead | keep only the live focused regression |
-| `reflectmake` | dynamic Array/Slice/Map/Func/Chan type construction | keep small cache/GC/algorithm representatives |
+| `reflectconv` | function conversion; most copied source is dead | merge the live conversion paths into `reflect` |
+| `reflectmake` | dynamic Array/Slice/Map/Func/Chan type construction | merge into `reflect`; retain every subtest called by its original `main` |
 | `reflectchanof` | ChanOf-to-PointerTo chain | merge into `reflectmake` |
-| `reflectstructof` | dynamic StructOf function fields, Set, and Call | keep separate with bounded metadata representatives |
-| `reflectpointerto` | dynamic/named/multilevel pointer metadata | keep; absorb package/method-array metadata |
+| `reflectstructof` | dynamic StructOf function fields, Set, and Call | merge into the dynamic-type files in `reflect` |
+| `reflectpointerto` | dynamic/named/multilevel pointer metadata | merge into `reflect`; absorb package/method-array metadata |
 | `reflectpkgpath` | named unsafe pointer package and method metadata | merge into `reflectpointerto` |
 | `reflectslice` | dynamic uncommon/method metadata array size | merge into `reflectpointerto` |
-| `reflectcopy` | overlapping slice/string/array copy and panic | merge into `reflectvalue` |
-| `reflectindirect` | nonpointer, pointer, nil pointer, struct Indirect | merge into `reflectvalue` |
-| `reflectsliceat` | unsafe-backed SliceAt | merge into version-gated `reflectvalue` section |
-| `reflectvisiblefields` | embedded field index traversal | merge into `reflectvalue` |
+| `reflectcopy` | overlapping slice/string/array copy and panic | merge into the value-operation file in `reflect` |
+| `reflectindirect` | nonpointer, pointer, nil pointer, struct Indirect | merge into `reflectcopy` |
+| `reflectsliceat` | unsafe-backed SliceAt | merge into version-gated `reflectcopy` section |
+| `reflectvisiblefields` | embedded field index traversal | merge into `reflectcopy` |
 
-The proposed Go owners are 13 non-reflect plus ten reflect, for 23.
+The implementation has one runnable reflect package, split into focused files
+for function calls, dynamic arrays/slices/maps/structs/functions/channels,
+pointer metadata, method ABI, conversion, and value operations. It preserves
+all subtests called by the original `reflectmake` and `reflectmethod`
+entrypoints, including the complete receiver-size and return-shape ABI
+matrices; only their commented-out dead subtests stay absent. Together with 15
+non-reflect runnable owners and the workflow-owned expected failure, Go has 17
+logical owners.
 
-## C, C++, CGo, and asm: 28 to 13
+## C, C++, CGo, and asm: 28 to 16
 
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
 | `asmcall` | one raw asm input plus a nondeterministic benchmark | merge one short subcase into `asmfullcall` |
 | `asmfullcall` | platform asm inputs, outputs, memory, real execution | keep core and self-check |
-| `cabi` | C aggregate register/sret, callback, export | keep core; one representative per ABI family |
-| `cabisret` | large aggregate return/allocation regression | move to a small deterministic C ABI runtime owner |
+| `cabi` | C aggregate register/sret, callback, export | keep one self-checking representative per ABI family |
+| `cabisret` | large aggregate return/allocation regression | merge its exact two 131072-iteration 9-float sret loops and 131072 appends into host-only `cabi` |
 | `cargs` | pkg-config, RPATH negative path, Windows static link, argv | keep specialized integration |
 | `catomic` | C atomic load/store/RMW/CAS | move to focused intrinsic runtime owner |
-| `cexec` | platform process replacement and C argv | move to process/library integration |
-| `cgofull` | broad CGo preamble/source/macro/export/callback/Python mix | remove only after three compiler CGo owners land |
+| `cexec` | platform process replacement and C argv | merge into the controlled-child process owner |
+| `cgofull` | broad CGo preamble/source/macro/export/callback/Python mix | keep as the single CGo integration owner and absorb errno two-result checking |
 | `concat` | documented Go-string-to-C-string and C vararg example | keep as primary-Ubuntu example |
 | `cppintf` | real C++, vtable, C function bridge | keep; absorb multiple inheritance subcase |
 | `cppmintf` | secondary-base `this` adjustment | merge into a bounded `cppintf` subcase |
@@ -151,10 +176,33 @@ The proposed Go owners are 13 non-reflect plus ten reflect, for 23.
 | `syncdebug` | Go mutex plus printed foreign mutex size | remove; it does not exercise the attempted pthread paths |
 | `thread` | pthread-to-Go callback, TLS/locality, join result | keep core; assert every error/result |
 
-The 13 retained families are nine core integrations, two documented smokes,
-and the `llama2-c` and `socket` optional families.
+The standalone implementation retains 15 runnable families plus the manual
+socket family. Compared with the narrower initial proposal, `catomic`,
+`cgofull`, `ctime`, `qsort`, and `setjmp` remain because they cross distinct
+intrinsic, source-generation, wrapper, callback, or return-twice boundaries.
+Their duplicate command packages are still merged: asm, sret, C++ multiple
+inheritance/string, C time/random, descriptor/getcwd, and hello/helloc/concat
+each have one runnable owner.
 
-## Python: seven to four
+Runtime setup metadata is deliberately documented rather than parsed by the
+runner:
+
+| Owner | CI prerequisites |
+| --- | --- |
+| `cargs` | `pkg-config`, `cargs` |
+| `cgofull` | `python3`, `python3-embed` |
+| `py/basic` | `python3` |
+| `py/matrix` | `python3`, `numpy`, `torch` |
+
+The remaining compile/link/run-focused evidence also stays here rather than in
+a generic check schema: `cppintf` owns C++ wrapper/vtable linking; `hello` owns
+the minimal C vararg/stdout/stderr bridge; `cgofull` owns generated CGo source,
+macro, export, callback, and Python-C-API linking in addition to its value
+assertions; `go/export` owns generated artifacts and C consumers; and
+`llama2-c` owns the scheduled model/file/runtime pipeline. Their command exit
+status is the integration result, while value-oriented paths assert internally.
+
+## Python: seven to two
 
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
@@ -163,10 +211,16 @@ and the `llama2-c` and `socket` optional families.
 | `max` | variadic call and list/tuple iterator paths | keep small independent core case |
 | `pi` | value extraction and C variadic bridge | keep |
 | `print` | scalar Python print | remove; subset of `callpy` |
-| `statistics` | math call and float extraction | merge into existing call/value owners |
-| `tensor` | nested containers and PyTorch extension | remove; duplicates matrix and adds heavy dependency |
+| `statistics` | math call and float extraction | merge into `basic` with a stable mean assertion |
+| `tensor` | nested containers and PyTorch extension | merge into `matrix` with deterministic `tolist` value checks |
 
-## Embedded: 13 to 11
+`callpy`, `max`, `pi`, and `statistics` are implemented as one `basic` owner. It retains
+`math.Sqrt`, `math.Pi`, ordinary and iterator-expanded `std.Max`, `std.Print`,
+scalar extraction, `statistics.Mean`, and the C variadic call. `matrix` remains
+separate because NumPy and PyTorch object/list conversion form the scientific
+third-party boundary.
+
+## Embedded: 13 to eight
 
 `_demo/embed` itself is not read by the generic demo runner. Its coverage comes
 from specialized workflow scripts.
@@ -187,10 +241,39 @@ from specialized workflow scripts.
 | `testdata/esp32-serial/int64slice` | target int64 slice-bounds width regression | keep |
 | `testdata/esp32-serial/gc-runtime` | GC roots, graphs, allocator and stats; recent repeated fixes | keep; later split into three bounded cases |
 
-Eight current automated regressions remain. The capability-preserving target
-adds at most three replacements for the dormant libc/compiler-rt programs,
-yielding 11. If an audit proves equivalent same-target coverage, omit those
-replacements and use an eight-case final target.
+All eight current automated regressions remain. The audit found that the
+dormant libc/compiler-rt monoliths added no checked CI owner: active serial C,
+GC/runtime, target-build, float, and export workflows plus the positive generic
+target profiles retain the target/toolchain boundaries. No unchecked
+replacement programs were added.
+
+## Implemented profile sizes
+
+| Profile / OS | Before | Implemented |
+| --- | ---: | ---: |
+| host Linux/macOS | 103 | 32 |
+| host Windows | 101 | 31 |
+| full LTO / GlobalDCE | 103 | 8 |
+| DeadcodeDrop | 103 | 6 |
+| ESP32 | 20 | 5 |
+| ESP32-C3 | 28 | 6 |
+| model | 1 | 1 |
+
+Merged owners use the intersection of their retained subcases' known-good
+profiles. In particular, `cabi`, `cppintf`, and `fcntl/getcwd` are host-only,
+`core-regressions` retains ESP32-C3 but not ESP32, and `issue1538` retains
+ESP32-C3 but not ESP32. Other focused owners continue to carry target coverage;
+no bare-metal no-op is counted as execution of a merged capability.
+
+With the current five host/embedded workflow lanes, this changes the generic
+plan from about 960 binary executions to about 229: host 159, embedded 55, LTO
+eight, DeadcodeDrop six, and model one. Ordinary host cases are built by
+explicit selected-directory batches for C, Go, and Python, while LTO and
+DeadcodeDrop each need only their C and Go groups. Embedded and model cases
+remain specialized. This reduces planned `llgo` compiler invocations further,
+from 229 per-case invocations to about 75, without changing the 229 executed
+binaries. The exact wall-clock comparison belongs in CI because package caches
+and runner hardware affect local timing.
 
 ## Current CI coverage facts
 
@@ -199,8 +282,8 @@ replacements and use an eight-case final target.
 | generic host candidates | 107 | - | - | repeated for LTO/drop |
 | recursively discovered C/Go source dirs | - | 111 | 111 | - |
 | actually run after target exclusions | - | 20 | 28 | - |
-| `go/failed/stacktrace` | no | ignored | ignored | none |
-| `c/socket/{client,server}` | no | ignored | ignored | none |
+| `workflow/expected-failure/stacktrace` | no | ignored | ignored | explicit expected-failure owner |
+| `workflow/socket/{client,server}` | no | ignored | ignored | manual multi-process owner |
 | embedded 13 executables | no | no | no | eight explicitly covered |
 
 All five host workflow lanes currently run the host and both embedded generic

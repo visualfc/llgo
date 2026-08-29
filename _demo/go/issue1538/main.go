@@ -75,6 +75,14 @@ func main() {
 	cvt32to64(2147483647, 2147483647)
 
 	cvtUinptr(1024, 1024)
+
+	// Regression subset formerly kept in issue1538-floatcvtuint-over. Keep the
+	// exact overflow inputs in the width-conversion matrix.
+	cvt32Fto8U(-1, 255)
+	cvt32Fto32U(4294967295.1, 0)
+	cvt32Fto32U(5294967295.1, 1000000000)
+	cvt32Fto32U(-1294967295.1, 3000000000)
+	cvt32Fto32U(-1.1, 4294967295)
 }
 
 func cvtUinptr(a int32, b uintptr) {

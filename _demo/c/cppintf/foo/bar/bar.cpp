@@ -1,4 +1,6 @@
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #define interface struct
 
 interface ICallback {
@@ -7,8 +9,13 @@ interface ICallback {
 };
 
 extern "C" void f(ICallback* cb) {
-	printf("val: %d\ncalc(2): %lf\n", cb->val(), cb->calc(2));
+	int val = cb->val();
+	double calc = cb->calc(2);
+	printf("val: %d\ncalc(2): %lf\n", val, calc);
 	fflush(stdout);
+	if (val != 1 || fabs(calc - sqrt(2.0)) > 1e-12) {
+		abort();
+	}
 }
 
 void g(ICallback* cb) {

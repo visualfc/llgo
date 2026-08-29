@@ -10,6 +10,7 @@ import (
 // Windows has no fcntl API. Exercise the equivalent Universal CRT descriptor
 // operations while the Unix source continues to cover F_GETFL/F_SETFL.
 func main() {
+	verifyGetcwd()
 	filename := c.Str("testfile.txt")
 	data := c.Str("Hello, os!")
 	defer os.Remove(filename)

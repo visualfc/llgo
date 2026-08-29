@@ -22,7 +22,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	root := flags.String("root", ".", "repository root")
 	manifestPath := flags.String("manifest", "_demo/manifest.json", "manifest path relative to root")
 	profile := flags.String("profile", "host", "positive execution profile")
-	jobs := flags.Int("jobs", 1, "maximum concurrent demo processes")
+	jobs := flags.Int("jobs", defaultJobs(), "maximum concurrent demo processes")
 	resultPath := flags.String("result", "result.md", "markdown result path relative to root; empty disables it")
 	llgo := flags.String("llgo", "llgo", "llgo executable")
 	checkManifest := flags.Bool("check-manifest", false, "validate ownership without running cases")
@@ -93,10 +93,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
-	if failed != 0 {
+	if failed != 0 || len(report.BuildErrors) != 0 {
 		return 1
 	}
 	return 0
+}
+
+func defaultJobs() int {
+	return min(max(runtime.NumCPU(), 1), 4)
 }
 
 type stringListFlag []string
@@ -111,12 +115,14 @@ func (values *stringListFlag) Set(value string) error {
 }
 
 func appendResult(path string, report demotest.Report) error {
+	// Append deliberately: an embedded workflow job runs the ESP32 and
+	// ESP32-C3 profiles separately and aggregates both results in one summary.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if report.Failed() == 0 {
+	if report.Succeeded() {
 		_, err = fmt.Fprintf(f, ":white_check_mark: All demo tests passed (%s)\n", report.Profile)
 		return err
 	}
@@ -128,6 +134,11 @@ func appendResult(path string, report demotest.Report) error {
 			if _, err := fmt.Fprintf(f, "* :x: %s\n", result.Case.Case.Dir); err != nil {
 				return err
 			}
+		}
+	}
+	for _, buildErr := range report.BuildErrors {
+		if _, err := fmt.Fprintf(f, "* :x: %v\n", buildErr); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -1,7 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-jobs="${LLGO_DEMO_JOBS:-1}"
+jobs_args=()
+if [ -n "${LLGO_DEMO_JOBS:-}" ]; then
+  jobs_args=(--jobs "$LLGO_DEMO_JOBS")
+fi
 profile="host"
 embedded=0
 extra=()
@@ -28,18 +31,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 run_profile() {
-  if [ "${#extra[@]}" -eq 0 ]; then
-    GOTOOLCHAIN=local GOWORK=off go run -mod=readonly ./chore/demorun \
-      --profile "$1" \
-      --jobs "$jobs" \
-      --result result.md
-  else
-    GOTOOLCHAIN=local GOWORK=off go run -mod=readonly ./chore/demorun \
-      --profile "$1" \
-      --jobs "$jobs" \
-      --result result.md \
-      "${extra[@]}"
-  fi
+  GOTOOLCHAIN=local GOWORK=off go run -mod=readonly ./chore/demorun \
+    --profile "$1" \
+    "${jobs_args[@]}" \
+    --result result.md \
+    "${extra[@]}"
 }
 
 if [ "$embedded" -eq 0 ]; then
