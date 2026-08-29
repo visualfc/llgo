@@ -775,9 +775,8 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 		`!"go.method.M:func()"`,
 		`!"go.method.N:func()"`,
 		`!llgo.static.itab.slot`,
-		`!llgo.interface.type`,
-		`!llgo.interface.method`,
-		`!"` + interfaceTypeID + `"`,
+		`"llgo.interface.call"="1"`,
+		`"llgo.interface.id"="` + interfaceTypeID + `"`,
 		`!"` + prog.interfaceMethodCapabilityKey(intf, 0) + `"`,
 		`!"` + prog.interfaceMethodCapabilityKey(intf, 1) + `"`,
 	} {
@@ -796,6 +795,9 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 			!strings.Contains(ir, `metadata !"`+typeID+`"`) {
 			t.Fatalf("missing checked load for %s:\n%s", typeID, ir)
 		}
+	}
+	if strings.Contains(ir, `!llgo.interface.type`) || strings.Contains(ir, `!llgo.interface.method`) {
+		t.Fatalf("interface declaration remained attached to a type descriptor:\n%s", ir)
 	}
 }
 
@@ -887,19 +889,41 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	}
 }
 
-func TestDevLTOGlobalDCEAddInterfaceTypeMetadataEarlyReturns(t *testing.T) {
+func TestDevLTOGlobalDCEInterfaceMethodCheckedLoadAttributes(t *testing.T) {
 	requireGoGlobalDCE(t)
 
 	prog := NewProgram(nil)
+	prog.EnableLTOPluginMarkers(true)
 	pkg := prog.NewPackage("main", "main")
-	g := pkg.NewVarEx("g", prog.Pointer(prog.Int()))
-
-	prog.addInterfaceTypeMetadata(g.impl, nil)
-	prog.addInterfaceTypeMetadata(g.impl, types.NewInterfaceType(nil, nil).Complete())
+	g := pkg.NewVarEx("itab", prog.Pointer(prog.VoidPtr()))
+	methodSig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	methodM := types.NewFunc(token.NoPos, nil, "M", methodSig)
+	methodN := types.NewFunc(token.NoPos, nil, "N", methodSig)
+	intf := types.NewInterfaceType([]*types.Func{methodM, methodN}, nil).Complete()
+	fn := pkg.NewFunc("Use", types.NewSignatureType(nil, nil, nil, nil, nil, false), InGo)
+	b := fn.MakeBody(1)
+	prog.interfaceMethodCheckedLoad(b.impl, g.impl, intf, 1)
+	b.Return()
 
 	ir := pkg.String()
-	if strings.Contains(ir, "!llgo.interface.") {
-		t.Fatalf("early-return paths should not attach interface metadata:\n%s", ir)
+	interfaceID := prog.interfaceCapabilityKey(intf)
+	for _, want := range []string{
+		`metadata !"` + interfaceMethodCapabilityKeyFromID(interfaceID, 1) + `") #`,
+		`"llgo.interface.call"="1"`,
+		`"llgo.interface.id"="` + interfaceID + `"`,
+		`"llgo.interface.index"="1"`,
+		`"llgo.interface.count"="2"`,
+		`"llgo.interface.method.0"="go.method.M:func()"`,
+		`"llgo.interface.method.1"="go.method.N:func()"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing checked-load interface attribute %s:\n%s", want, ir)
+		}
+	}
+	for _, unwanted := range []string{`!llgo.interface.type`, `!llgo.interface.method`, `@llvm.compiler.used`} {
+		if strings.Contains(ir, unwanted) {
+			t.Fatalf("checked load retained descriptor-based interface declaration %s:\n%s", unwanted, ir)
+		}
 	}
 }
 

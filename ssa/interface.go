@@ -176,14 +176,6 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 	tclosure := prog.Type(sig, InGo)
 	i := iMethodOf(rawIntf, method)
 	b.recordUseIfaceMethod(rawIntf, i)
-	methodTypeID := methodCapabilityKey(method)
-	if prog.enableGoGlobalDCE && prog.enableLTOPluginMarker {
-		// Materialize and preserve the structural interface declaration so the
-		// LTO plugin can refine this call from a signature-wide capability to
-		// the exact interface-and-method candidate set.
-		b.abiType(rawIntf)
-		methodTypeID = prog.interfaceMethodCapabilityKey(rawIntf, i)
-	}
 	data := b.InlineCall(b.Pkg.rtFunc("IfacePtrData"), intf)
 	impl := intf.impl
 	itab := Expr{b.faceItab(impl), prog.VoidPtrPtr()}
@@ -192,7 +184,7 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 	if prog.enableGoGlobalDCE && !recoverToken {
 		fnType := prog.Elem(pfn.Type)
 		fn = Expr{
-			prog.methodCheckedLoad(b.impl, pfn.impl, methodTypeID),
+			prog.interfaceMethodCheckedLoad(b.impl, pfn.impl, rawIntf, i),
 			fnType,
 		}
 	} else {
@@ -202,7 +194,7 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 			// general-purpose pointer. Recover bookkeeping needs the same code
 			// address as ordinary data, so retain the capability check while
 			// carrying the raw itab load into the transient invocation pair.
-			prog.methodCheckedLoad(b.impl, pfn.impl, methodTypeID)
+			prog.interfaceMethodCheckedLoad(b.impl, pfn.impl, rawIntf, i)
 		}
 	}
 	// This is a transient interface invocation pair, not a first-class

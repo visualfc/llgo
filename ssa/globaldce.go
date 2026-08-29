@@ -27,12 +27,15 @@ const (
 	reflectMethodByNameValue    = "value"
 	reflectMethodByNameType     = "type"
 
-	// Keep this metadata protocol in sync with the constants and schema in
+	// Keep this call-attribute protocol in sync with the constants and schema in
 	// ltoplugin/LLGOInterfaceMethodTypeIDPass.cpp.
-	interfaceTypeMetadata    = "llgo.interface.type"
-	interfaceMethodMetadata  = "llgo.interface.method"
-	interfaceTypeIDPrefix    = "go.method.i."
-	interfaceMetadataVersion = 1
+	interfaceCallAttr         = "llgo.interface.call"
+	interfaceTypeIDAttr       = "llgo.interface.id"
+	interfaceMethodIndexAttr  = "llgo.interface.index"
+	interfaceMethodCountAttr  = "llgo.interface.count"
+	interfaceMethodAttrPrefix = "llgo.interface.method."
+	interfaceTypeIDPrefix     = "go.method.i."
+	interfaceProtocolVersion  = "1"
 )
 
 type ReflectMethodCheck struct {
@@ -160,32 +163,6 @@ func interfaceMethodCapabilityKeyFromID(interfaceID string, index int) string {
 	return interfaceID + ".m" + strconv.Itoa(index)
 }
 
-// addInterfaceTypeMetadata declares the complete method set of an interface.
-// These are private LLGo markers rather than LLVM type metadata: the LTO
-// plugin consumes them to add exact interface-and-method !type entries only to
-// descriptors that implement every declared method.
-func (p Program) addInterfaceTypeMetadata(global llvm.Value, intf *types.Interface) {
-	if intf == nil || intf.NumMethods() == 0 {
-		return
-	}
-	intf = intf.Complete()
-	intfID := p.interfaceCapabilityKey(intf)
-	int32Type := p.Int32().ll
-	global.AddMetadata(p.ctx.MDKindID(interfaceTypeMetadata), p.ctx.MDNode([]llvm.Metadata{
-		llvm.ConstInt(int32Type, interfaceMetadataVersion, false).ConstantAsMetadata(),
-		p.ctx.MDString(intfID),
-		llvm.ConstInt(int32Type, uint64(intf.NumMethods()), false).ConstantAsMetadata(),
-	}))
-	methodKind := p.ctx.MDKindID(interfaceMethodMetadata)
-	for i := 0; i < intf.NumMethods(); i++ {
-		global.AddMetadata(methodKind, p.ctx.MDNode([]llvm.Metadata{
-			llvm.ConstInt(int32Type, uint64(i), false).ConstantAsMetadata(),
-			p.ctx.MDString(interfaceMethodCapabilityKeyFromID(intfID, i)),
-			p.ctx.MDString(methodCapabilityKey(intf.Method(i))),
-		}))
-	}
-}
-
 func reflectValueMethodNameTypeID(name string) string {
 	return reflectValueMethodTypeID + "." + name
 }
@@ -225,7 +202,7 @@ func (p Program) setVCallVisibilityMetadata(global llvm.Value, vis uint64) {
 	global.AddMetadata(kind, node)
 }
 
-func (p Program) methodCheckedLoad(b llvm.Builder, typedesc llvm.Value, typeID string) llvm.Value {
+func (p Program) methodCheckedLoadWithAttrs(b llvm.Builder, typedesc llvm.Value, typeID string, attrs []llvm.Attribute) llvm.Value {
 	mdVal := p.ctx.MetadataAsValue(p.ctx.MDString(typeID))
 	retTy := p.ctx.StructType([]llvm.Type{p.tyVoidPtr(), p.tyInt1()}, false)
 	res := b.CreateIntrinsic(retTy, llvm.LookupIntrinsicID("llvm.type.checked.load"), []llvm.Value{
@@ -233,9 +210,43 @@ func (p Program) methodCheckedLoad(b llvm.Builder, typedesc llvm.Value, typeID s
 		llvm.ConstInt(p.Int32().ll, 0, false),
 		mdVal,
 	}, "")
+	for _, attr := range attrs {
+		res.AddCallSiteAttribute(-1, attr)
+	}
 	ok := llvm.CreateExtractValue(b, res, 1)
 	b.CreateIntrinsic(p.tyVoid(), llvm.LookupIntrinsicID("llvm.assume"), []llvm.Value{ok}, "")
 	return llvm.CreateExtractValue(b, res, 0)
+}
+
+func (p Program) methodCheckedLoad(b llvm.Builder, typedesc llvm.Value, typeID string) llvm.Value {
+	return p.methodCheckedLoadWithAttrs(b, typedesc, typeID, nil)
+}
+
+// interfaceMethodCheckedLoad makes an exact interface-method check
+// self-describing. The live call carries the complete interface method set, so
+// the LTO plugin does not need to retain or rediscover an interface descriptor.
+func (p Program) interfaceMethodCheckedLoad(b llvm.Builder, typedesc llvm.Value, intf *types.Interface, methodIndex int) llvm.Value {
+	intf = intf.Complete()
+	if !p.enableLTOPluginMarker {
+		return p.methodCheckedLoad(b, typedesc, methodCapabilityKey(intf.Method(methodIndex)))
+	}
+
+	interfaceID := p.interfaceCapabilityKey(intf)
+	attrs := make([]llvm.Attribute, 0, 4+intf.NumMethods())
+	attrs = append(attrs,
+		p.ctx.CreateStringAttribute(interfaceCallAttr, interfaceProtocolVersion),
+		p.ctx.CreateStringAttribute(interfaceTypeIDAttr, interfaceID),
+		p.ctx.CreateStringAttribute(interfaceMethodIndexAttr, strconv.Itoa(methodIndex)),
+		p.ctx.CreateStringAttribute(interfaceMethodCountAttr, strconv.Itoa(intf.NumMethods())),
+	)
+	for i := 0; i < intf.NumMethods(); i++ {
+		attrs = append(attrs, p.ctx.CreateStringAttribute(
+			interfaceMethodAttrPrefix+strconv.Itoa(i), methodCapabilityKey(intf.Method(i)),
+		))
+	}
+	return p.methodCheckedLoadWithAttrs(
+		b, typedesc, interfaceMethodCapabilityKeyFromID(interfaceID, methodIndex), attrs,
+	)
 }
 
 func (b Builder) MarkReflectMethodByNameCall(call llvm.Value, kind string, nameArgIndex int) {

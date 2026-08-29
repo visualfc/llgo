@@ -349,13 +349,9 @@ func TestLTOPluginInterfaceMethodTypeIDs(t *testing.T) {
 	const input = `
 target datalayout = "e-p:64:64-i64:64-n8:16:32:64-S128"
 
-@interface.I = internal constant i8 0, !llgo.interface.type !0, !llgo.interface.method !1, !llgo.interface.method !2
-@interface.J = internal constant i8 0, !llgo.interface.type !3, !llgo.interface.method !4
-@interface.K = internal constant i8 0, !llgo.interface.type !8, !llgo.interface.method !9
 @type.A = internal constant [2 x ptr] [ptr @A.M, ptr @A.N], !type !5, !type !6, !vcall_visibility !7
 @type.B = internal constant [1 x ptr] [ptr @B.M], !type !5, !vcall_visibility !7
 @type.C = internal constant [1 x ptr] [ptr @C.N], !type !6, !vcall_visibility !7
-@llvm.compiler.used = appending global [3 x ptr] [ptr @interface.I, ptr @interface.J, ptr @interface.K], section "llvm.metadata"
 
 declare { ptr, i1 } @llvm.type.checked.load(ptr, i32, metadata)
 declare i1 @llvm.type.test(ptr, metadata)
@@ -365,23 +361,20 @@ define internal void @B.M() { ret void }
 define internal void @C.N() { ret void }
 
 define void @entry(ptr %itab.i, ptr %itab.j, ptr %itab.k) {
-  %i = call { ptr, i1 } @llvm.type.checked.load(ptr %itab.i, i32 0, metadata !"go.method.i.I.m0")
-  %j = call { ptr, i1 } @llvm.type.checked.load(ptr %itab.j, i32 0, metadata !"go.method.i.J.m0")
-  %k = call { ptr, i1 } @llvm.type.checked.load(ptr %itab.k, i32 0, metadata !"go.method.i.K.m0")
-  %kt = call i1 @llvm.type.test(ptr %itab.k, metadata !"go.method.i.K.m0")
+  %i = call { ptr, i1 } @llvm.type.checked.load(ptr %itab.i, i32 0, metadata !"go.method.i.I.m0") #0
+  %j = call { ptr, i1 } @llvm.type.checked.load(ptr %itab.j, i32 0, metadata !"go.method.i.J.m0") #1
+  %k = call { ptr, i1 } @llvm.type.checked.load(ptr %itab.k, i32 0, metadata !"go.method.i.K.m0") #2
+  %kt = call i1 @llvm.type.test(ptr %itab.k, metadata !"go.method.i.K.m0") #2
   ret void
 }
 
-!0 = !{i32 1, !"go.method.i.I", i32 2}
-!1 = !{i32 0, !"go.method.i.I.m0", !"go.method.M:func()"}
-!2 = !{i32 1, !"go.method.i.I.m1", !"go.method.N:func()"}
-!3 = !{i32 1, !"go.method.i.J", i32 1}
-!4 = !{i32 0, !"go.method.i.J.m0", !"go.method.M:func()"}
+attributes #0 = { "llgo.interface.call"="1" "llgo.interface.count"="2" "llgo.interface.id"="go.method.i.I" "llgo.interface.index"="0" "llgo.interface.method.0"="go.method.M:func()" "llgo.interface.method.1"="go.method.N:func()" }
+attributes #1 = { "llgo.interface.call"="1" "llgo.interface.count"="1" "llgo.interface.id"="go.method.i.J" "llgo.interface.index"="0" "llgo.interface.method.0"="go.method.M:func()" }
+attributes #2 = { "llgo.interface.call"="1" "llgo.interface.count"="1" "llgo.interface.id"="go.method.i.K" "llgo.interface.index"="0" "llgo.interface.method.0"="go.method.Z:func()" }
+
 !5 = !{i64 0, !"go.method.M:func()"}
 !6 = !{i64 8, !"go.method.N:func()"}
 !7 = !{i64 1}
-!8 = !{i32 1, !"go.method.i.K", i32 1}
-!9 = !{i32 0, !"go.method.i.K.m0", !"go.method.Z:func()"}
 `
 	opt := filepath.Join(llvmenv.New("").BinDir(), "opt")
 	cmd := exec.Command(opt, "-load-pass-plugin="+conf.LTOPlugin.Path,
@@ -408,39 +401,48 @@ define void @entry(ptr %itab.i, ptr %itab.j, ptr %itab.k) {
 			t.Fatalf("%s has %s = %v, want %v\n%s", check.global, check.typeID, got, check.want, ir)
 		}
 	}
-	if strings.Contains(ir, "@llvm.compiler.used") {
-		t.Fatalf("temporary interface declaration preservation was not removed:\n%s", ir)
-	}
 	if !strings.Contains(ir, `metadata !"go.method.Z:func()"`) || strings.Contains(ir, `metadata !"go.method.i.K.m0"`) {
 		t.Fatalf("zero-implementer interface did not use broad fallback:\n%s", ir)
 	}
+	if strings.Contains(ir, `"llgo.interface.`) {
+		t.Fatalf("temporary checked-load interface attributes were not removed:\n%s", ir)
+	}
 }
 
-func TestLTOPluginRejectsMalformedInterfaceMetadata(t *testing.T) {
+func TestLTOPluginRejectsMalformedInterfaceAttributes(t *testing.T) {
 	conf := testltoLTOPluginConf(t, build.ModeGen)
 	tests := []struct {
 		name   string
-		header string
-		method string
+		typeID string
+		attrs  string
 	}{
 		{
-			name:   "wrong integer width",
-			header: `!{i64 1, !"go.method.i.I", i32 1}`,
-			method: `!{i32 0, !"go.method.i.I.m0", !"go.method.M:func()"}`,
+			name:   "malformed method index",
+			typeID: "go.method.i.I.m0",
+			attrs:  `"llgo.interface.call"="1" "llgo.interface.count"="1" "llgo.interface.id"="go.method.i.I" "llgo.interface.index"="x" "llgo.interface.method.0"="go.method.M:func()"`,
 		},
 		{
 			name:   "method key as interface key",
-			header: `!{i32 1, !"go.method.i.I.m0", i32 1}`,
-			method: `!{i32 0, !"go.method.i.I.m0.m0", !"go.method.M:func()"}`,
+			typeID: "go.method.i.I.m0.m0",
+			attrs:  `"llgo.interface.call"="1" "llgo.interface.count"="1" "llgo.interface.id"="go.method.i.I.m0" "llgo.interface.index"="0" "llgo.interface.method.0"="go.method.M:func()"`,
+		},
+		{
+			name:   "checked method mismatch",
+			typeID: "go.method.i.I.m1",
+			attrs:  `"llgo.interface.call"="1" "llgo.interface.count"="2" "llgo.interface.id"="go.method.i.I" "llgo.interface.index"="0" "llgo.interface.method.0"="go.method.M:func()" "llgo.interface.method.1"="go.method.N:func()"`,
 		},
 	}
 	opt := filepath.Join(llvmenv.New("").BinDir(), "opt")
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			input := `
-@interface.I = internal constant i8 0, !llgo.interface.type !0, !llgo.interface.method !1
-!0 = ` + test.header + `
-!1 = ` + test.method + "\n"
+declare { ptr, i1 } @llvm.type.checked.load(ptr, i32, metadata)
+define void @entry(ptr %itab) {
+  %i = call { ptr, i1 } @llvm.type.checked.load(ptr %itab, i32 0, metadata !"` + test.typeID + `") #0
+  ret void
+}
+attributes #0 = { ` + test.attrs + ` }
+`
 			cmd := exec.Command(opt, "-load-pass-plugin="+conf.LTOPlugin.Path,
 				"-passes=llgo-interface-method-typeids", "-disable-output")
 			cmd.Stdin = strings.NewReader(input)
@@ -448,7 +450,7 @@ func TestLTOPluginRejectsMalformedInterfaceMetadata(t *testing.T) {
 			if err == nil {
 				t.Fatalf("malformed interface metadata was accepted:\n%s", out)
 			}
-			if !strings.Contains(string(out), "invalid interface type-id metadata: unsupported header") {
+			if !strings.Contains(string(out), "invalid interface type-id metadata:") {
 				t.Fatalf("unexpected malformed-metadata diagnostic: %v\n%s", err, out)
 			}
 		})
@@ -467,23 +469,32 @@ func TestLTOPluginFrontendInterfaceMethodTypeIDs(t *testing.T) {
 	ir := pkgs[0].LPkg.String()
 	pkgs[0].LPkg.Prog.Dispose()
 
-	methodDeclRE := regexp.MustCompile(`(?m)^![0-9]+ = !\{i32 0, !"(go\.method\.i\.[^"]+\.m0)", !"go\.method\.M:func\(\) int"\}$`)
-	match := methodDeclRE.FindStringSubmatch(ir)
-	if match == nil {
-		t.Fatalf("frontend did not declare an exact type id for Wide.M:\n%s", ir)
+	methodCallRE := regexp.MustCompile(`(?m)call \{ ptr, i1 \} @llvm\.type\.checked\.load\([^\n]+metadata !"(go\.method\.i\.[^"]+\.m0)"\) #([0-9]+)`)
+	var exactTypeID string
+	for _, match := range methodCallRE.FindAllStringSubmatch(ir, -1) {
+		attrRE := regexp.MustCompile(`(?m)^attributes #` + match[2] + ` = \{ [^\n]*"llgo\.interface\.call"="1"[^\n]*"llgo\.interface\.count"="2"[^\n]*"llgo\.interface\.id"="` + regexp.QuoteMeta(strings.TrimSuffix(match[1], ".m0")) + `"[^\n]*"llgo\.interface\.index"="0"[^\n]*"llgo\.interface\.method\.0"="go\.method\.M:func\(\) int"[^\n]*"llgo\.interface\.method\.1"="go\.method\.N:func\(\) int"[^\n]*\}$`)
+		if attrRE.MatchString(ir) {
+			exactTypeID = match[1]
+			break
+		}
 	}
-	exactTypeID := match[1]
+	if exactTypeID == "" {
+		t.Fatalf("frontend did not attach the Wide declaration to its checked load:\n%s", ir)
+	}
 	for _, want := range []string{
-		`!llgo.interface.type`,
-		`!llgo.interface.method`,
-		`@llvm.compiler.used`,
+		`"llgo.interface.call"="1"`,
 		`call { ptr, i1 } @llvm.type.checked.load`,
 		`metadata !"` + exactTypeID + `"`,
-		`!"go.method.N:func() int"`,
+		`"llgo.interface.method.1"="go.method.N:func() int"`,
 		`verify:func(string, func(string, string) (bool, error)) error`,
 	} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("frontend IR missing %s:\n%s", want, ir)
+		}
+	}
+	for _, unwanted := range []string{`!llgo.interface.type`, `!llgo.interface.method`} {
+		if strings.Contains(ir, unwanted) {
+			t.Fatalf("frontend retained descriptor-based interface declaration %s:\n%s", unwanted, ir)
 		}
 	}
 	if regexp.MustCompile(`call \{ ptr, i1 \} @llvm\.type\.checked\.load\([^\n]+metadata !"go\.method\.M:func\(\) int"`).MatchString(ir) {

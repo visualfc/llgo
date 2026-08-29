@@ -1,6 +1,5 @@
 #include "LLGOLTOPasses.h"
 
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
@@ -13,7 +12,6 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -27,10 +25,13 @@ using namespace llvm;
 
 namespace {
 
-// Keep this metadata protocol in sync with the constants and emitter in
+// Keep this call-attribute protocol in sync with the constants and emitter in
 // ssa/globaldce.go.
-static constexpr char InterfaceTypeMetadata[] = "llgo.interface.type";
-static constexpr char InterfaceMethodMetadata[] = "llgo.interface.method";
+static constexpr char InterfaceCallAttr[] = "llgo.interface.call";
+static constexpr char InterfaceTypeIDAttr[] = "llgo.interface.id";
+static constexpr char InterfaceMethodIndexAttr[] = "llgo.interface.index";
+static constexpr char InterfaceMethodCountAttr[] = "llgo.interface.count";
+static constexpr char InterfaceMethodAttrPrefix[] = "llgo.interface.method.";
 static constexpr char InterfaceTypeIDPrefix[] = "go.method.i.";
 static constexpr char MethodTypeIDPrefix[] = "go.method.";
 static constexpr char ReflectValueMethodTypeID[] = "go.method.value.reflect";
@@ -39,7 +40,7 @@ static constexpr char ReflectValueMethodTypeIDPrefix[] =
     "go.method.value.reflect.";
 static constexpr char ReflectTypeMethodTypeIDPrefix[] =
     "go.method.type.reflect.";
-static constexpr uint32_t InterfaceMetadataVersion = 1;
+static constexpr char InterfaceProtocolVersion[] = "1";
 
 struct InterfaceMethodDecl {
   unsigned Index = 0;
@@ -48,9 +49,9 @@ struct InterfaceMethodDecl {
 };
 
 struct InterfaceDecl {
-  // Header schema: {i32 version, MDString interface type ID, i32 method count}.
-  // Each method node is:
-  // {i32 index, MDString exact type ID, MDString broad type ID}.
+  // Every checked load carries a protocol marker, interface type ID, called
+  // method index, method count, and one broad method type ID per index.
+  // The complete ordered method list makes each checked load self-describing.
   std::string TypeID;
   std::vector<InterfaceMethodDecl> Methods;
 };
@@ -74,12 +75,18 @@ std::optional<uint64_t> metadataUInt(Metadata *MD) {
   return CI->getZExtValue();
 }
 
-std::optional<uint32_t> metadataUInt32(Metadata *MD) {
-  auto *CAM = dyn_cast_or_null<ConstantAsMetadata>(MD);
-  auto *CI = CAM ? dyn_cast<ConstantInt>(CAM->getValue()) : nullptr;
-  if (!CI || CI->isNegative() || CI->getBitWidth() != 32)
+std::optional<StringRef> callStringAttr(CallBase &CB, StringRef Kind) {
+  Attribute Attr = CB.getFnAttr(Kind);
+  if (!Attr.isStringAttribute())
     return std::nullopt;
-  return static_cast<uint32_t>(CI->getZExtValue());
+  return Attr.getValueAsString();
+}
+
+std::optional<uint32_t> parseUInt32(StringRef Value) {
+  uint32_t Result = 0;
+  if (Value.empty() || Value.getAsInteger(10, Result))
+    return std::nullopt;
+  return Result;
 }
 
 std::optional<StringRef> metadataString(Metadata *MD) {
@@ -143,65 +150,53 @@ bool sameDeclaration(const InterfaceDecl &A, const InterfaceDecl &B) {
   return true;
 }
 
-std::optional<InterfaceDecl> parseInterfaceDeclaration(GlobalVariable &GV,
-                                                       unsigned HeaderKind,
-                                                       unsigned MethodKind) {
-  SmallVector<std::pair<unsigned, MDNode *>, 16> Metadata;
-  GV.getAllMetadata(Metadata);
-
-  MDNode *Header = nullptr;
-  SmallVector<MDNode *, 8> MethodNodes;
-  for (auto [Kind, Node] : Metadata) {
-    if (Kind == HeaderKind) {
-      if (Header)
-        invalidMetadata(Twine("duplicate interface header on ") + GV.getName());
-      Header = Node;
-    } else if (Kind == MethodKind) {
-      MethodNodes.push_back(Node);
-    }
-  }
-  if (!Header) {
-    if (!MethodNodes.empty())
-      invalidMetadata(Twine("method declaration without header on ") +
-                      GV.getName());
-    return std::nullopt;
-  }
-  if (Header->getNumOperands() != 3)
-    invalidMetadata(Twine("malformed header on ") + GV.getName());
-
-  auto Version = metadataUInt32(Header->getOperand(0));
-  auto TypeID = metadataString(Header->getOperand(1));
-  auto MethodCount = metadataUInt32(Header->getOperand(2));
-  if (!Version || *Version != InterfaceMetadataVersion || !TypeID ||
-      !isInterfaceBaseTypeID(*TypeID) || !MethodCount || *MethodCount == 0)
-    invalidMetadata(Twine("unsupported header on ") + GV.getName());
-  if (MethodNodes.size() != *MethodCount)
-    invalidMetadata(Twine("method count mismatch on ") + GV.getName());
+InterfaceDecl parseInterfaceCall(CallBase &CB, StringRef CheckedTypeID) {
+  StringRef FunctionName = CB.getFunction()->getName();
+  auto Version = callStringAttr(CB, InterfaceCallAttr);
+  auto TypeID = callStringAttr(CB, InterfaceTypeIDAttr);
+  auto MethodIndexText = callStringAttr(CB, InterfaceMethodIndexAttr);
+  auto MethodCountText = callStringAttr(CB, InterfaceMethodCountAttr);
+  auto MethodIndex =
+      MethodIndexText ? parseUInt32(*MethodIndexText) : std::nullopt;
+  auto MethodCount =
+      MethodCountText ? parseUInt32(*MethodCountText) : std::nullopt;
+  if (!Version || *Version != InterfaceProtocolVersion || !TypeID ||
+      !isInterfaceBaseTypeID(*TypeID) || !MethodIndex || !MethodCount ||
+      *MethodCount == 0 || *MethodIndex >= *MethodCount)
+    invalidMetadata(Twine("unsupported call attributes in ") + FunctionName);
 
   InterfaceDecl Decl;
   Decl.TypeID = TypeID->str();
-  Decl.Methods.resize(static_cast<size_t>(*MethodCount));
-  std::vector<bool> Seen(static_cast<size_t>(*MethodCount), false);
-  for (MDNode *Node : MethodNodes) {
-    if (Node->getNumOperands() != 3)
-      invalidMetadata(Twine("malformed method on ") + GV.getName());
-    auto Index = metadataUInt32(Node->getOperand(0));
-    auto ExactTypeID = metadataString(Node->getOperand(1));
-    auto BroadTypeID = metadataString(Node->getOperand(2));
-    if (!Index || *Index >= *MethodCount || !ExactTypeID || !BroadTypeID ||
-        !BroadTypeID->starts_with(MethodTypeIDPrefix) ||
+  Decl.Methods.reserve(*MethodCount);
+  for (uint32_t I = 0; I < *MethodCount; ++I) {
+    std::string MethodAttr =
+        InterfaceMethodAttrPrefix + std::to_string(static_cast<uint64_t>(I));
+    auto BroadTypeID = callStringAttr(CB, MethodAttr);
+    if (!BroadTypeID || !BroadTypeID->starts_with(MethodTypeIDPrefix) ||
         BroadTypeID->starts_with(InterfaceTypeIDPrefix) ||
         isReflectMethodTypeID(*BroadTypeID))
-      invalidMetadata(Twine("unsupported method on ") + GV.getName());
-    unsigned I = *Index;
-    std::string Expected =
+      invalidMetadata(Twine("unsupported method attributes in ") +
+                      FunctionName);
+    std::string ExactTypeID =
         Decl.TypeID + ".m" + std::to_string(static_cast<uint64_t>(I));
-    if (*ExactTypeID != Expected || Seen[I])
-      invalidMetadata(Twine("inconsistent method on ") + GV.getName());
-    Seen[I] = true;
-    Decl.Methods[I] = {I, ExactTypeID->str(), BroadTypeID->str()};
+    Decl.Methods.push_back(
+        {static_cast<unsigned>(I), std::move(ExactTypeID), BroadTypeID->str()});
   }
+  if (CheckedTypeID != Decl.Methods[*MethodIndex].ExactTypeID)
+    invalidMetadata(Twine("inconsistent checked type id in ") + FunctionName);
   return Decl;
+}
+
+void removeInterfaceCallAttrs(CallBase &CB, unsigned MethodCount) {
+  CB.removeFnAttr(InterfaceCallAttr);
+  CB.removeFnAttr(InterfaceTypeIDAttr);
+  CB.removeFnAttr(InterfaceMethodIndexAttr);
+  CB.removeFnAttr(InterfaceMethodCountAttr);
+  for (unsigned I = 0; I < MethodCount; ++I) {
+    std::string MethodAttr =
+        InterfaceMethodAttrPrefix + std::to_string(static_cast<uint64_t>(I));
+    CB.removeFnAttr(MethodAttr);
+  }
 }
 
 bool collectTypeSlots(GlobalVariable &GV, unsigned TypeKind,
@@ -259,8 +254,10 @@ class LLGOInterfaceMethodTypeIDPass
     : public PassInfoMixin<LLGOInterfaceMethodTypeIDPass> {
 public:
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
+    bool Changed = false;
     StringSet<> ActiveExactTypeIDs;
     StringMap<SmallVector<TypeCheckSite, 4>> TypeChecksByExactTypeID;
+    StringMap<InterfaceDecl> Declarations;
     for (Function &F : M) {
       for (BasicBlock &BB : F) {
         for (Instruction &I : BB) {
@@ -271,52 +268,43 @@ public:
             TypeID = typeTestTypeID(CB);
             TypeIDArg = 1;
           }
-          if (TypeID && TypeID->starts_with(InterfaceTypeIDPrefix)) {
-            ActiveExactTypeIDs.insert(*TypeID);
-            TypeChecksByExactTypeID[*TypeID].push_back({CB, TypeIDArg});
+          if (!TypeID)
+            continue;
+          bool HasCallInfo = CB->hasFnAttr(InterfaceCallAttr);
+          if (!TypeID->starts_with(InterfaceTypeIDPrefix)) {
+            if (HasCallInfo)
+              invalidMetadata(Twine("attributes on non-interface type id in ") +
+                              F.getName());
+            continue;
           }
+          if (!HasCallInfo)
+            invalidMetadata(Twine("missing call attributes in ") + F.getName());
+
+          InterfaceDecl Parsed = parseInterfaceCall(*CB, *TypeID);
+          removeInterfaceCallAttrs(
+              *CB, static_cast<unsigned>(Parsed.Methods.size()));
+          Changed = true;
+          auto Existing = Declarations.find(Parsed.TypeID);
+          if (Existing == Declarations.end()) {
+            Declarations.try_emplace(Parsed.TypeID, std::move(Parsed));
+          } else if (!sameDeclaration(Existing->second, Parsed)) {
+            invalidMetadata(Twine("conflicting declarations for ") +
+                            Existing->getKey());
+          }
+          ActiveExactTypeIDs.insert(*TypeID);
+          TypeChecksByExactTypeID[*TypeID].push_back({CB, TypeIDArg});
         }
       }
     }
 
-    unsigned HeaderKind = M.getContext().getMDKindID(InterfaceTypeMetadata);
-    unsigned MethodKind = M.getContext().getMDKindID(InterfaceMethodMetadata);
     unsigned TypeKind = M.getContext().getMDKindID("type");
     unsigned VCallVisibilityKind =
         M.getContext().getMDKindID("vcall_visibility");
 
-    StringMap<InterfaceDecl> Declarations;
-    SmallPtrSet<GlobalVariable *, 16> DeclarationGlobals;
-    for (GlobalVariable &GV : M.globals()) {
-      auto Parsed = parseInterfaceDeclaration(GV, HeaderKind, MethodKind);
-      if (!Parsed)
-        continue;
-      DeclarationGlobals.insert(&GV);
-      std::string TypeID = Parsed->TypeID;
-      auto [It, Inserted] =
-          Declarations.try_emplace(TypeID, std::move(*Parsed));
-      if (!Inserted && !sameDeclaration(It->second, *Parsed))
-        invalidMetadata(Twine("conflicting declarations for ") + It->getKey());
-    }
-
-    StringSet<> CoveredExactTypeIDs;
-    for (const auto &Entry : Declarations) {
-      for (const InterfaceMethodDecl &Method : Entry.second.Methods) {
-        if (ActiveExactTypeIDs.contains(Method.ExactTypeID))
-          CoveredExactTypeIDs.insert(Method.ExactTypeID);
-      }
-    }
-    for (const auto &Entry : ActiveExactTypeIDs) {
-      if (!CoveredExactTypeIDs.contains(Entry.getKey()))
-        invalidMetadata(Twine("no declaration for active type id ") +
-                        Entry.getKey());
-    }
-
     std::vector<DescriptorInfo> Descriptors;
     StringMap<SmallVector<unsigned, 8>> DescriptorsByBroadTypeID;
     for (GlobalVariable &GV : M.globals()) {
-      if (DeclarationGlobals.contains(&GV) ||
-          !GV.getMetadata(VCallVisibilityKind))
+      if (!GV.getMetadata(VCallVisibilityKind))
         continue;
       DescriptorInfo Info;
       Info.GV = &GV;
@@ -328,7 +316,6 @@ public:
       Descriptors.push_back(std::move(Info));
     }
 
-    bool Changed = false;
     unsigned AddedTypeIDs = 0;
     unsigned ActiveInterfaces = 0;
     unsigned BroadFallbacks = 0;
@@ -402,19 +389,6 @@ public:
                << Implementers << " implementers for " << ActiveMethods.size()
                << " active methods"
                << (Implementers == 0 ? " (broad fallback)" : "") << "\n";
-    }
-
-    // The frontend preserves declaration descriptors because private metadata
-    // is not an IR use. Once the closed-world mapping has been materialized as
-    // LLVM !type entries, remove only that temporary preservation. Ordinary IR
-    // references still keep descriptors that are needed at runtime.
-    if (!DeclarationGlobals.empty()) {
-      removeFromUsedLists(M, [&](Constant *C) {
-        auto *GV = dyn_cast<GlobalVariable>(C->stripPointerCasts());
-        bool Remove = GV && DeclarationGlobals.contains(GV);
-        Changed |= Remove;
-        return Remove;
-      });
     }
 
     if (std::getenv("LLGO_LTO_PLUGIN_VERBOSE"))
