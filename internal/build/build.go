@@ -493,11 +493,10 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
 	nativeInput := crosscompile.NativeToolchainInput{}
 	if usesWindowsToolchainProfile(runtime.GOOS, conf) {
-		nativeInput, err = parseNativeToolchainInput(commands, conf.LinkOptions)
+		nativeInput, err = parseNativeToolchainInput(commands, conf.LinkOptions, conf.Mode != ModeGen)
 		if err != nil {
 			return nil, err
 		}
-		nativeInput.ResolveWindows = conf.Mode != ModeGen
 	}
 	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
 	if err != nil {
@@ -928,8 +927,12 @@ func usesWindowsToolchainProfile(hostGOOS string, conf *Config) bool {
 		(hostGOOS == "windows" || conf.Mode != ModeGen)
 }
 
-func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crosscompile.NativeToolchainInput, error) {
-	input := crosscompile.NativeToolchainInput{Dir: commands.dir, Environ: slices.Clone(commands.environ)}
+func parseNativeToolchainInput(commands commandEnv, options LinkOptions, resolveWindows bool) (crosscompile.NativeToolchainInput, error) {
+	input := crosscompile.NativeToolchainInput{
+		Dir:            commands.dir,
+		Environ:        slices.Clone(commands.environ),
+		ResolveWindows: resolveWindows,
+	}
 	for _, setting := range []struct {
 		name       string
 		value      string

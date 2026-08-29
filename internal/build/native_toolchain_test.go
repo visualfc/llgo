@@ -51,12 +51,15 @@ func TestParseNativeToolchainInput(t *testing.T) {
 		ExternalLinker:      `clang "--target=x86_64-pc-windows-msvc"`,
 		ExternalLinkerFlags: `'/debug:dwarf' /incremental:no`,
 	}
-	got, err := parseNativeToolchainInput(commands, options)
+	got, err := parseNativeToolchainInput(commands, options, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Dir != commands.dir || !reflect.DeepEqual(got.Environ, commands.environ) {
 		t.Fatalf("invocation state = dir %q env %q", got.Dir, got.Environ)
+	}
+	if !got.ResolveWindows {
+		t.Fatal("ResolveWindows = false, want true")
 	}
 	for name, values := range map[string]struct {
 		got  []string
@@ -91,7 +94,7 @@ func TestParseNativeToolchainInputErrors(t *testing.T) {
 		{name: "unterminated extldflags", options: LinkOptions{ExternalLinkerFlags: `'/debug`}, wantErr: "could not parse -extldflags"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := parseNativeToolchainInput(commandEnv{environ: test.environ}, test.options)
+			_, err := parseNativeToolchainInput(commandEnv{environ: test.environ}, test.options, false)
 			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 				t.Fatalf("error = %v, want substring %q", err, test.wantErr)
 			}
@@ -103,7 +106,7 @@ func TestParseNativeToolchainInputAcceptsEmptyLinkerFlags(t *testing.T) {
 	got, err := parseNativeToolchainInput(commandEnv{}, LinkOptions{
 		ExternalLinker:      "  ",
 		ExternalLinkerFlags: "\t",
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
