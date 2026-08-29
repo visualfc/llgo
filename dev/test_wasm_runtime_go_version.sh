@@ -7,7 +7,7 @@ source "${repo_root}/dev/go_toolchain.sh"
 cd "${repo_root}"
 
 if [[ $# -ne 1 ]]; then
-	echo "usage: $0 <1.20|...|1.26|exact-version>" >&2
+	echo "usage: $0 <1.20|...|1.27|exact-version>" >&2
 	exit 2
 fi
 if ! target_version="$(llgo_resolve_go_version "${repo_root}" "$1")"; then
@@ -22,7 +22,7 @@ case "${target_minor}" in
 		;;
 esac
 target_root="$(llgo_go_root "${target_version}")"
-target_go="${target_root}/bin/go"
+target_go="$(llgo_go_binary "${target_root}")"
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/llgo-wasm-runtime.XXXXXX")"
 trap 'rm -rf "${work_dir}"' EXIT

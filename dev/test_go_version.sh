@@ -7,7 +7,7 @@ source "${root_dir}/dev/go_toolchain.sh"
 cd "${root_dir}"
 
 usage() {
-	echo "usage: $0 <1.20|...|1.26|exact-version> [package ...]" >&2
+	echo "usage: $0 <1.20|...|1.27|exact-version> [package ...]" >&2
 	exit 2
 }
 
@@ -34,10 +34,15 @@ build_ci_tools() {
 	tools_built=1
 }
 
+tool_suffix=
+if [[ "${OS:-}" == "Windows_NT" ]]; then
+	tool_suffix=.exe
+fi
+
 llgo_cmd="${LLGO:-}"
 if [[ -z "${llgo_cmd}" ]]; then
 	build_ci_tools
-	llgo_cmd="${work_dir}/bin/llgo"
+	llgo_cmd="${work_dir}/bin/llgo${tool_suffix}"
 elif [[ "${llgo_cmd}" != */* ]]; then
 	llgo_cmd="$(command -v "${llgo_cmd}")"
 elif [[ "${llgo_cmd}" != /* ]]; then
@@ -45,22 +50,22 @@ elif [[ "${llgo_cmd}" != /* ]]; then
 fi
 
 llgen_cmd="${LLGO_TEST_LLGEN:-}"
-if [[ -z "${llgen_cmd}" && -x "$(dirname "${llgo_cmd}")/llgen" ]]; then
-	llgen_cmd="$(dirname "${llgo_cmd}")/llgen"
+if [[ -z "${llgen_cmd}" && -x "$(dirname "${llgo_cmd}")/llgen${tool_suffix}" ]]; then
+	llgen_cmd="$(dirname "${llgo_cmd}")/llgen${tool_suffix}"
 fi
 if [[ -z "${llgen_cmd}" ]]; then
 	build_ci_tools
-	llgen_cmd="${work_dir}/bin/llgen"
+	llgen_cmd="${work_dir}/bin/llgen${tool_suffix}"
 fi
 
 check_std_symbols="${CHECK_STD_SYMBOLS:-}"
 if [[ "${LLGO_TEST_CHECK_SYMBOLS:-}" == 1 && -z "${check_std_symbols}" ]]; then
 	build_ci_tools
-	check_std_symbols="${work_dir}/bin/check_std_symbols"
+	check_std_symbols="${work_dir}/bin/check_std_symbols${tool_suffix}"
 fi
 
 target_root="$(llgo_go_root "${target_version}")"
-target_go="${target_root}/bin/go"
+target_go="$(llgo_go_binary "${target_root}")"
 actual_version="$(cd "${work_dir}" && GOTOOLCHAIN=local "${target_go}" env GOVERSION)"
 if [[ "${actual_version}" != "go${target_version}" ]]; then
 	echo "expected go${target_version}, got ${actual_version}" >&2
@@ -81,8 +86,15 @@ export GOWORK=off
 export GOENV=off
 export GOFLAGS=
 export LLGO_ROOT="${root_dir}"
-export LLGO_TEST_LLGO="${llgo_cmd}"
-export LLGO_TEST_LLGEN="${llgen_cmd}"
+test_llgo_cmd="${llgo_cmd}"
+test_llgen_cmd="${llgen_cmd}"
+if [[ "${OS:-}" == "Windows_NT" ]] && command -v cygpath >/dev/null 2>&1; then
+	test_llgo_cmd="$(cygpath -w "${llgo_cmd}")"
+	test_llgen_cmd="$(cygpath -w "${llgen_cmd}")"
+fi
+export LLGO_TEST_LLGO="${test_llgo_cmd}"
+export LLGO_TEST_COMPILER="${test_llgo_cmd}"
+export LLGO_TEST_LLGEN="${test_llgen_cmd}"
 export LLGO_TEST_MODFILE="${modfile}"
 # LLGo's shared cache may contain standard-library objects from another Go
 # release. CI jobs are isolated and may opt back in explicitly.
@@ -102,6 +114,33 @@ if [[ "${#requested_packages[@]}" -eq 0 ]]; then
 			;;
 		1.24)
 			requested_packages=(./test/std/bytes ./test/std/crypto/hkdf ./test/std/crypto/pbkdf2 ./test/std/weak ./test/goroot)
+			;;
+		1.25)
+			# Cover every package with Go 1.25-specific symbol checks without
+			# repeating the full test tree reserved for supported releases.
+			requested_packages=(
+				./test/std/crypto
+				./test/std/crypto/ecdsa
+				./test/std/crypto/sha3
+				./test/std/go/ast
+				./test/std/go/token
+				./test/std/go/types
+				./test/std/hash
+				./test/std/hash/maphash
+				./test/std/io/fs
+				./test/std/log/slog
+				./test/std/mime/multipart
+				./test/std/net/http
+				./test/std/os
+				./test/std/reflect
+				./test/std/runtime/trace
+				./test/std/sync
+				./test/std/testing
+				./test/std/testing/fstest
+				./test/std/testing/synctest
+				./test/std/unicode
+				./test/goroot
+			)
 			;;
 		*) requested_packages=(./test/...) ;;
 	esac

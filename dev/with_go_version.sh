@@ -6,7 +6,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/dev/go_toolchain.sh"
 
 if [[ $# -lt 2 ]]; then
-	echo "usage: $0 <1.20|...|1.26|exact-version> <command> [argument ...]" >&2
+	echo "usage: $0 <1.20|...|1.27|exact-version> <command> [argument ...]" >&2
 	exit 2
 fi
 requested=$1

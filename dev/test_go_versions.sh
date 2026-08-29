@@ -7,7 +7,7 @@ cd "${repo_root}"
 
 versions=("$@")
 if [[ ${#versions[@]} -eq 0 ]]; then
-	versions=(1.20 1.21 1.22 1.23 1.24 1.25 1.26)
+	versions=(1.20 1.21 1.22 1.23 1.24 1.25 1.26 1.27)
 fi
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/llgo-test-go-versions.XXXXXX")"
@@ -32,7 +32,7 @@ for version in "${versions[@]}"; do
 	std_buildmodes="${LLGO_TEST_STD_BUILDMODES:-}"
 	if [[ -z "${std_buildmodes}" ]]; then
 		case "${version}" in
-			1.26|1.26.*) std_buildmodes=1 ;;
+			1.27|1.27.*) std_buildmodes=1 ;;
 			*) std_buildmodes=0 ;;
 		esac
 	fi

@@ -4,7 +4,7 @@ inputs:
   go-version:
     description: "Exact Go series used to run the smoke test"
     required: false
-    default: "1.26"
+    default: "1.27"
   embedded:
     description: "Also run the ESP32 build smoke test"
     required: false

@@ -1310,7 +1310,9 @@ func TestRunSingleFileCaseExcludesUnlistedSiblings(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		goTool += ".exe"
 	}
-	tc := testCase{RelPath: "case.go", Dir: srcDir, FileName: "case.go", Directive: "run"}
+	// buildrun exercises the same named-file staging without depending on a
+	// GOROOT/test directory, which downloaded toolchain modules may omit.
+	tc := testCase{RelPath: "case.go", Dir: srcDir, FileName: "case.go", Directive: "buildrun"}
 	opts := directiveOptions{Timeout: 30 * time.Second}
 	if err := runSingleFileCase(t, repoRoot, runtime.GOROOT(), goTool, llgoTool, tc, opts, 30*time.Second); err != nil {
 		t.Fatal(err)
@@ -1354,6 +1356,9 @@ func main() {
 		t.Fatal(err)
 	}
 	cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", path, sourcePath)
+	// The helper is a standalone file. Build it outside the repository module
+	// so older target toolchains do not parse the compiler's newer go.mod.
+	cmd.Dir = filepath.Dir(sourcePath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build sibling-scanning fake tool: %v\n%s", err, output)
 	}

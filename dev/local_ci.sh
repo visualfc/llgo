@@ -95,7 +95,7 @@ ensure_llama2_model
 
 run_hello() {
 	local mod_version="$1"
-	local go_version=1.26
+	local go_version=1.27
 	if [[ "$mod_version" == 1.20 ]]; then
 		go_version=1.20
 	fi
@@ -126,7 +126,7 @@ log_section "Go Build"
 log_section "Go Test"
 (cd "$workdir" && go test -timeout 30m ./...)
 
-log_section "Runtime module with Go 1.20 and Go 1.26"
+log_section "Runtime module with Go 1.20 and Go 1.27"
 (cd "$workdir" && dev/test_runtime_go_versions.sh)
 
 log_section "Install llgo"
@@ -138,7 +138,7 @@ if [ -z "$gobin" ]; then
 fi
 export PATH="$gobin:$PATH"
 
-log_section "llgo test with Go 1.20 through Go 1.26"
+log_section "llgo test with Go 1.20 through Go 1.27"
 (cd "$workdir" && LLGO="$(command -v llgo)" dev/test_go_versions.sh)
 
 log_section "Demo Tests"
@@ -162,7 +162,7 @@ log_section "Build targets"
 
 log_section "Hello World"
 hello_logs=()
-for mod in 1.20 1.21 1.22 1.23 1.24 1.26; do
+for mod in 1.20 1.21 1.22 1.23 1.24 1.25 1.26 1.27; do
 	log="$tmp_root/hello-${mod}.log"
 	(run_hello "$mod") >"$log" 2>&1 &
 	hello_logs+=("$log:$!")

@@ -7,7 +7,7 @@ cd "${repo_root}"
 
 versions=("$@")
 if [[ ${#versions[@]} -eq 0 ]]; then
-	versions=(1.20 1.26)
+	versions=(1.20 1.27)
 fi
 
 for version in "${versions[@]}"; do

@@ -48,10 +48,16 @@ EOF
 (
 	cd "${hello_dir}"
 	go mod tidy
-	if output="$("${llgo_cmd}" run . 2>&1)"; then
+	if [[ "${OS:-}" == "Windows_NT" || "${RUNNER_OS:-}" == "Windows" ]]; then
+		# ExitProcess does not flush UCRT streams. Keep C output observable for
+		# this native smoke test without leaking the setting into embedded builds.
+		output="$(LLGO_STDIO_NOBUF=1 "${llgo_cmd}" run . 2>&1)" && status=0 || status=$?
+	else
+		output="$("${llgo_cmd}" run . 2>&1)" && status=0 || status=$?
+	fi
+	if [[ "${status}" -eq 0 ]]; then
 		:
 	else
-		status=$?
 		printf '%s\n' "${output}" >&2
 		exit "${status}"
 	fi

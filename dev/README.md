@@ -59,7 +59,7 @@ Run one exact Go toolchain against its default representative/full package set:
 ./dev/test_go_version.sh 1.24 ./test/std/bytes
 ```
 
-Run the complete Go 1.20 through Go 1.26 integration matrix:
+Run the complete Go 1.20 through Go 1.27 integration matrix:
 
 ```bash
 ./dev/test_go_versions.sh

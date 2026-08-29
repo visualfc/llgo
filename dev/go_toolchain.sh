@@ -13,9 +13,10 @@ llgo_resolve_go_version() {
 		1.23) printf '%s\n' 1.23.12 ;;
 		1.24) printf '%s\n' 1.24.13 ;;
 		1.25) printf '%s\n' 1.25.11 ;;
-		1.26) tr -d '[:space:]' <"${repo_root}/.go-version" ;;
+		1.26) printf '%s\n' 1.26.7 ;;
+		1.27) tr -d '[:space:]' <"${repo_root}/.go-version" ;;
 		*)
-			if [[ "${requested}" =~ ^1\.2[0-6]\.[0-9]+$ ]]; then
+			if [[ "${requested}" =~ ^1\.2[0-7]\.[0-9]+$ ]]; then
 				printf '%s\n' "${requested}"
 			else
 				return 2
@@ -35,14 +36,28 @@ llgo_go_root() {
 	else
 		toolchain_root="$(GOTOOLCHAIN="go${version}" go env GOROOT)"
 	fi
+	if [[ "${OS:-}" == "Windows_NT" ]] && command -v cygpath >/dev/null 2>&1; then
+		toolchain_root="$(cygpath -u "${toolchain_root}")"
+	fi
 
-	if [[ ! -x "${toolchain_root}/bin/go" ]]; then
-		echo "missing go binary for go${version}: ${toolchain_root}/bin/go" >&2
+	local go_binary
+	go_binary="$(llgo_go_binary "${toolchain_root}")"
+	if [[ ! -x "${go_binary}" ]]; then
+		echo "missing go binary for go${version}: ${go_binary}" >&2
 		return 1
 	fi
-	if [[ "$(GOTOOLCHAIN=local "${toolchain_root}/bin/go" env GOVERSION)" != "go${version}" ]]; then
+	if [[ "$(GOTOOLCHAIN=local "${go_binary}" env GOVERSION)" != "go${version}" ]]; then
 		echo "failed to select exact Go toolchain go${version}" >&2
 		return 1
 	fi
 	printf '%s\n' "${toolchain_root}"
+}
+
+llgo_go_binary() {
+	local toolchain_root=$1
+	if [[ "${OS:-}" == "Windows_NT" ]]; then
+		printf '%s/bin/go.exe\n' "${toolchain_root}"
+	else
+		printf '%s/bin/go\n' "${toolchain_root}"
+	fi
 }
