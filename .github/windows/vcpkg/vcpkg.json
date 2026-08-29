@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "llgo-ci-windows-dependencies",
+  "version-string": "1",
+  "builtin-baseline": "ddd0023b0eee70986e42ed49d9d4afb8098f212e",
+  "dependencies": [
+    "bdwgc",
+    "cjson",
+    "libffi",
+    "libuv",
+    "openssl",
+    {
+      "name": "pkgconf",
+      "host": true
+    },
+    "sqlite3",
+    "zlib"
+  ],
+  "overrides": [
+    {
+      "name": "libffi",
+      "version": "3.4.6"
+    }
+  ]
+}

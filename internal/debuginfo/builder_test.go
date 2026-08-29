@@ -81,8 +81,17 @@ func TestBuilderWindowsDebuggerMarkerUsesComdat(t *testing.T) {
 	if got := marker.Comdat().SelectionKind(); got != llvm.AnyComdatSelectionKind {
 		t.Fatalf("debugger marker COMDAT selection = %v, want any", got)
 	}
+	if got := marker.DLLStorageClass(); got != llvm.DLLExportStorageClass {
+		t.Fatalf("debugger marker DLL storage class = %v, want export", got)
+	}
+	if got := marker.Visibility(); got != llvm.DefaultVisibility {
+		t.Fatalf("debugger marker visibility = %v, want default", got)
+	}
 	if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("Windows debug module is invalid: %v\n%s", err, module.String())
+	}
+	if ir := module.String(); !strings.Contains(ir, `@__llgo_debugger_marker_v1 = linkonce_odr dllexport constant i8 1`) {
+		t.Fatalf("Windows debugger marker is not exported:\n%s", ir)
 	}
 }
 

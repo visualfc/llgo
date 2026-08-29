@@ -2,7 +2,9 @@
 # Script to build iwasm with correct options for llgo WASM testing
 # This ensures local testing uses the same iwasm configuration as CI
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # Determine cache directory based on platform
 if [ "$(uname -s)" = "Darwin" ]; then
@@ -12,7 +14,7 @@ else
 fi
 
 IWASM_BIN_DIR="${LLGO_CACHE_DIR}/bin"
-WAMR_VERSION="WAMR-2.4.4"
+WAMR_VERSION="WAMR-2.4.5"
 
 echo "Building iwasm for llgo WASM testing..."
 echo "Target directory: ${IWASM_BIN_DIR}"
@@ -22,13 +24,12 @@ mkdir -p "${IWASM_BIN_DIR}"
 
 # Create temp directory for building
 TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TEMP_DIR}"' EXIT
 cd "${TEMP_DIR}"
 
 echo "Cloning wasm-micro-runtime ${WAMR_VERSION}..."
-git clone --branch ${WAMR_VERSION} --depth 1 https://github.com/bytecodealliance/wasm-micro-runtime.git
+git clone --branch "${WAMR_VERSION}" --depth 1 https://github.com/wasm-micro-runtime/wasm-micro-runtime.git
 
-# WAMR's Windows platform sources expect MSVC preprocessing. This compiler
-# choice is only for the host-side iwasm test helper.
 IWASM_NAME="iwasm"
 CMAKE_GENERATOR_ARGS=()
 case "$(uname -s)" in
@@ -41,17 +42,67 @@ case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
         PLATFORM="windows"
         IWASM_NAME="iwasm.exe"
-        CMAKE_GENERATOR_ARGS=(
-            -G "NMake Makefiles"
-            -D CMAKE_C_COMPILER=cl
-            -D CMAKE_CXX_COMPILER=cl
-        )
+        WINDOWS_ABI="${LLGO_WINDOWS_ABI:-}"
+        if [ -z "${WINDOWS_ABI}" ]; then
+            if [ -n "${MINGW_PREFIX:-}" ]; then
+                WINDOWS_ABI="mingw"
+            else
+                WINDOWS_ABI="msvc"
+            fi
+        fi
+        if [ "${WINDOWS_ABI}" = "mingw" ]; then
+            # Keep MinGW on its own GNU ABI toolchain and derive WAMR's target
+            # from the active compiler instead of assuming an x86-64 host.
+            read -r -a WAMR_CC <<< "${CC:-clang}"
+            COMPILER_TARGET=$("${WAMR_CC[@]}" -dumpmachine)
+            case "${COMPILER_TARGET%%-*}" in
+                x86_64|amd64)
+                    WAMR_BUILD_TARGET=X86_64
+                    ;;
+                i386|i486|i586|i686|x86)
+                    WAMR_BUILD_TARGET=X86_32
+                    ;;
+                aarch64|arm64)
+                    WAMR_BUILD_TARGET=AARCH64
+                    ;;
+                *)
+                    echo "Unsupported MinGW WAMR compiler target: ${COMPILER_TARGET}" >&2
+                    exit 1
+                    ;;
+            esac
+            CMAKE_GENERATOR_ARGS=(
+                -G "MinGW Makefiles"
+                -D "CMAKE_C_COMPILER=${CC:-clang}"
+                -D "CMAKE_CXX_COMPILER=${CXX:-clang++}"
+                -D "CMAKE_C_FLAGS=-fms-extensions -pthread"
+                -D "CMAKE_CXX_FLAGS=-fms-extensions -pthread"
+                -D "WAMR_BUILD_TARGET=${WAMR_BUILD_TARGET}"
+            )
+        elif [ "${WINDOWS_ABI}" = "msvc" ]; then
+            # The standalone MSVC profile exports nmake and the matching SDK
+            # environment without requiring an MSYS2 installation.
+            CMAKE_GENERATOR_ARGS=(
+                -G "NMake Makefiles"
+                -D CMAKE_C_COMPILER=cl
+                -D CMAKE_CXX_COMPILER=cl
+            )
+        else
+            echo "Unsupported Windows ABI profile: ${WINDOWS_ABI}" >&2
+            exit 1
+        fi
         ;;
     *)
         echo "Unsupported platform: $(uname -s)"
         exit 1
         ;;
 esac
+
+if [ "${PLATFORM}" = "windows" ] && [ "${WINDOWS_ABI:-}" = "mingw" ]; then
+    # WAMR 2.4.5 predates its upstream MinGW source fix. Keep the pinned
+    # release and apply that exact backport instead of carrying a local fork.
+    git -C wasm-micro-runtime apply \
+        "${SCRIPT_DIR}/patches/wamr-2.4.5-mingw.patch"
+fi
 
 echo "Building for platform: ${PLATFORM}"
 
@@ -79,9 +130,9 @@ cmake --build . --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null
 echo "Installing iwasm to ${IWASM_BIN_DIR}..."
 cp "${IWASM_NAME}" "${IWASM_BIN_DIR}/"
 
-# Cleanup
-cd /
-rm -rf "${TEMP_DIR}"
+if [ -n "${GITHUB_PATH:-}" ]; then
+    printf '%s\n' "${IWASM_BIN_DIR}" >> "${GITHUB_PATH}"
+fi
 
 echo ""
 echo "✓ iwasm successfully built and installed to ${IWASM_BIN_DIR}/${IWASM_NAME}"

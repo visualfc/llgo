@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/xgo-dev/llgo/internal/build"
+	"github.com/xgo-dev/llgo/internal/quoted"
 )
 
 // ParsedLinkFlags contains the Go linker options that LLGo currently handles.
@@ -56,7 +57,8 @@ func ParseLinkFlags(buildFlags []string) (ParsedLinkFlags, error) {
 		if err != nil {
 			return ParsedLinkFlags{}, fmt.Errorf("invalid -ldflags value %q: %w", value, err)
 		}
-		for _, linkFlag := range linkFlags {
+		for i := 0; i < len(linkFlags); i++ {
+			linkFlag := linkFlags[i]
 			switch {
 			case linkFlag == "-s" || linkFlag == "--s":
 				opts.Options.OmitSymbolTable = true
@@ -78,6 +80,22 @@ func ParseLinkFlags(buildFlags []string) (ParsedLinkFlags, error) {
 				} else {
 					opts.Options.DWARF = build.DWARFPreserve
 				}
+			case linkFlag == "-extld":
+				if i+1 >= len(linkFlags) {
+					return ParsedLinkFlags{}, fmt.Errorf("-extld requires a value")
+				}
+				i++
+				opts.Options.ExternalLinker = linkFlags[i]
+			case strings.HasPrefix(linkFlag, "-extld="):
+				opts.Options.ExternalLinker = strings.TrimPrefix(linkFlag, "-extld=")
+			case linkFlag == "-extldflags":
+				if i+1 >= len(linkFlags) {
+					return ParsedLinkFlags{}, fmt.Errorf("-extldflags requires a value")
+				}
+				i++
+				opts.Options.ExternalLinkerFlags = linkFlags[i]
+			case strings.HasPrefix(linkFlag, "-extldflags="):
+				opts.Options.ExternalLinkerFlags = strings.TrimPrefix(linkFlag, "-extldflags=")
 			default:
 				opts.Ignored = append(opts.Ignored, linkFlag)
 			}
@@ -144,39 +162,6 @@ func splitPerPackageArgumentList(value string) (pattern string, flags []string, 
 		pattern = strings.TrimSpace(value[:i])
 		value = value[i+1:]
 	}
-	flags, err = splitQuotedFields(value)
+	flags, err = quoted.Split(value)
 	return pattern, flags, err
-}
-
-// splitQuotedFields follows the quoting rules used by the Go command for
-// -ldflags: single or double quotes may surround one argument, with no escape
-// processing inside the quoted text.
-func splitQuotedFields(value string) ([]string, error) {
-	var fields []string
-	for len(value) > 0 {
-		value = strings.TrimLeft(value, " \t\n\r")
-		if value == "" {
-			break
-		}
-		if value[0] == '\'' || value[0] == '"' {
-			quote := value[0]
-			value = value[1:]
-			i := strings.IndexByte(value, quote)
-			if i < 0 {
-				return nil, fmt.Errorf("unterminated %c string", quote)
-			}
-			fields = append(fields, value[:i])
-			value = value[i+1:]
-			continue
-		}
-
-		i := strings.IndexAny(value, " \t\n\r")
-		if i < 0 {
-			fields = append(fields, value)
-			break
-		}
-		fields = append(fields, value[:i])
-		value = value[i:]
-	}
-	return fields, nil
 }

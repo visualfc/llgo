@@ -37,6 +37,14 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("LLGO_TEST_PKG_CONFIG_HELPER") == "1" {
+		if len(os.Args) > 1 && os.Args[1] == "--libs" {
+			fmt.Print("-L/request/lib -lrequest")
+		} else {
+			fmt.Print(`-I/request/include -DREQUEST="request value"`)
+		}
+		os.Exit(0)
+	}
 	if os.Getenv("LLGO_TEST_FAILING_ARCHIVER") == "1" {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		fmt.Fprintln(os.Stderr, "merge failed")
@@ -1604,6 +1612,26 @@ func TestCSharedLinkArgs(t *testing.T) {
 				t.Fatalf("cSharedLinkArgs() = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestCSharedImportLibraryArgs(t *testing.T) {
+	output := filepath.Join("tmp", "native-shared.dll")
+	gnu := crosscompile.NativeToolchain{
+		ObjectFormat: crosscompile.ObjectFormatCOFF,
+		ABI:          crosscompile.PlatformABIGNU,
+	}
+	want := strings.Join([]string{"-Xlinker", "--out-implib", "-Xlinker", filepath.Join("tmp", "native-shared.lib")}, " ")
+	if got := strings.Join(cSharedImportLibraryArgs(gnu, output), " "); got != want {
+		t.Fatalf("GNU COFF import-library arguments = %q, want %q", got, want)
+	}
+	for _, toolchain := range []crosscompile.NativeToolchain{
+		{ObjectFormat: crosscompile.ObjectFormatCOFF, ABI: crosscompile.PlatformABIMsvc},
+		{ObjectFormat: crosscompile.ObjectFormatELF, ABI: crosscompile.PlatformABIGNU},
+	} {
+		if got := cSharedImportLibraryArgs(toolchain, output); got != nil {
+			t.Fatalf("toolchain %+v import-library arguments = %q, want none", toolchain, got)
+		}
 	}
 }
 

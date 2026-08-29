@@ -20,11 +20,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 
+	"github.com/xgo-dev/llgo/internal/quoted"
 	"github.com/xgo-dev/llgo/xtool/safesplit"
 )
 
@@ -76,7 +78,9 @@ func expandEnvWithCmd(s, dir string, environ []string) (string, bool) {
 		var out []byte
 		var err error
 		executable := cmd
-		if environ != nil {
+		if cmd == "pkg-config" {
+			executable = PkgConfigCommand(dir, environ)
+		} else if environ != nil {
 			executable = lookPathInEnvironment(cmd, dir, environ)
 		}
 		command := exec.Command(executable, args[1:]...)
@@ -91,7 +95,14 @@ func expandEnvWithCmd(s, dir string, environ []string) (string, bool) {
 			return ""
 		}
 
-		return strings.Replace(strings.TrimSpace(string(out)), "\n", " ", -1)
+		output := strings.Replace(strings.TrimSpace(string(out)), "\n", " ", -1)
+		if cmd == "llvm-config" && runtime.GOOS == "windows" {
+			output, err = normalizeWindowsLLVMConfigOutput(output)
+			if err != nil {
+				return ""
+			}
+		}
+		return output
 	})
 	lookup := os.Getenv
 	if environ != nil {
@@ -106,6 +117,80 @@ func expandEnvWithCmd(s, dir string, environ []string) (string, bool) {
 		}
 	}
 	return strings.TrimSpace(os.Expand(expanded, lookup)), config
+}
+
+// normalizeWindowsLLVMConfigOutput translates llvm-config's MSVC-style
+// library output into flags accepted by Clang's GNU-compatible driver. The
+// upstream Windows archive prints absolute .lib paths and -LIBPATH:, whereas
+// LLGo's external-link specification consumes conventional -L/-l flags.
+func normalizeWindowsLLVMConfigOutput(output string) (string, error) {
+	fields, err := quoted.Split(strings.ReplaceAll(output, `\`, "/"))
+	if err != nil {
+		return "", fmt.Errorf("parse llvm-config output %q: %w", output, err)
+	}
+	flags := make([]string, 0, len(fields))
+	libDirs := make(map[string]struct{})
+	addLibDir := func(dir string) {
+		if dir == "" || dir == "." {
+			return
+		}
+		if _, ok := libDirs[dir]; ok {
+			return
+		}
+		libDirs[dir] = struct{}{}
+		flags = append(flags, "-L"+dir)
+	}
+	for _, field := range fields {
+		upper := strings.ToUpper(field)
+		if strings.HasPrefix(upper, "-LIBPATH:") {
+			addLibDir(field[len("-LIBPATH:"):])
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(field), ".lib") {
+			dir, file := path.Split(field)
+			addLibDir(strings.TrimSuffix(dir, "/"))
+			name := strings.TrimSuffix(file, path.Ext(file))
+			name = strings.TrimPrefix(name, "lib")
+			flags = append(flags, "-l"+name)
+			continue
+		}
+		flags = append(flags, field)
+	}
+	return strings.Join(flags, " "), nil
+}
+
+// PkgConfigCommand returns the pkg-config executable selected by PKG_CONFIG.
+// Like the Go command, it parses the setting with cmd/internal/quoted rules and
+// uses its first field as the executable name.
+func PkgConfigCommand(dir string, environ []string) string {
+	value := environmentValue("PKG_CONFIG", environ)
+	if value == "" {
+		value = "pkg-config"
+	}
+	args, err := quoted.Split(value)
+	if err != nil {
+		panic(fmt.Sprintf("could not parse environment variable PKG_CONFIG with value %q: %v", value, err))
+	}
+	if len(args) == 0 {
+		return "pkg-config"
+	}
+	if environ != nil {
+		return lookPathInEnvironment(args[0], dir, environ)
+	}
+	return args[0]
+}
+
+func environmentValue(name string, environ []string) string {
+	if environ == nil {
+		return os.Getenv(name)
+	}
+	for i := len(environ) - 1; i >= 0; i-- {
+		key, value, ok := strings.Cut(environ[i], "=")
+		if ok && (key == name || runtime.GOOS == "windows" && strings.EqualFold(key, name)) {
+			return value
+		}
+	}
+	return ""
 }
 
 func lookPathInEnvironment(name, dir string, environ []string) string {

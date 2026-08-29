@@ -42,6 +42,11 @@ type LinkOptions struct {
 	// Go's implied -w rule; native symbol-table omission is implemented later.
 	OmitSymbolTable bool
 	DWARF           DWARFMode
+	// ExternalLinker and ExternalLinkerFlags retain the Go linker's -extld
+	// command and -extldflags argument-list spelling. The native toolchain
+	// resolver applies Go's quoted command parsing after target selection.
+	ExternalLinker      string
+	ExternalLinkerFlags string
 }
 
 func (o LinkOptions) validate() error {

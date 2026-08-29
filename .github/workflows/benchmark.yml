@@ -27,8 +27,14 @@ jobs:
             display: macOS
             timeout: 20
           - os: windows-2022
-            id: windows
-            display: Windows
+            id: windows-msvc
+            display: Windows MSVC
+            windows_abi: msvc
+            timeout: 30
+          - os: windows-2022
+            id: windows-mingw
+            display: Windows MinGW
+            windows_abi: mingw
             timeout: 30
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.timeout }}
@@ -63,6 +69,7 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           llvm-version: 19
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Set up Go
         uses: ./.github/actions/setup-go
@@ -73,7 +80,7 @@ jobs:
         # The first integrated Windows revision may have a base that cannot
         # build on Windows. Still collect the head; comparisons start once the
         # base contains Windows support.
-        continue-on-error: ${{ matrix.id == 'windows' }}
+        continue-on-error: ${{ startsWith(matrix.id, 'windows-') }}
         shell: bash
         run: |
           benchmark/baseline/run.sh \
@@ -84,7 +91,7 @@ jobs:
       - name: Note unavailable Windows baseline
         if: >-
           github.event_name == 'pull_request' &&
-          matrix.id == 'windows' &&
+          startsWith(matrix.id, 'windows-') &&
           steps.measure-base.outcome == 'failure'
         shell: bash
         run: |

@@ -63,6 +63,9 @@ func TestTargetArchAndNewTransformerArchSelection(t *testing.T) {
 		{"x86_64-pc-windows-msvc", "", "amd64", func(sys TypeInfoSys) bool { _, ok := sys.(*TypeInfoWindowsAmd64); return ok }},
 		{"aarch64-pc-windows-msvc", "", "arm64", func(sys TypeInfoSys) bool { _, ok := sys.(*TypeInfoWindowsArm64); return ok }},
 		{"i686-pc-windows-msvc", "", "386", func(sys TypeInfoSys) bool { _, ok := sys.(*TypeInfoWindows386); return ok }},
+		{"x86_64-w64-windows-gnu", "", "amd64", func(sys TypeInfoSys) bool { _, ok := sys.(*TypeInfoWindowsAmd64); return ok }},
+		{"aarch64-w64-windows-gnu", "", "arm64", func(sys TypeInfoSys) bool { _, ok := sys.(*TypeInfoWindowsArm64); return ok }},
+		{"i686-w64-windows-gnu", "", "386", func(sys TypeInfoSys) bool { _, ok := sys.(*TypeInfoWindows386); return ok }},
 	}
 	for _, tc := range tests {
 		tr := NewTransformer(prog, tc.target, tc.abi, ModeCFunc, true)
@@ -257,7 +260,7 @@ entry:
 	}
 }
 
-func TestMSVCTargetDetection(t *testing.T) {
+func TestWindowsCABITargetDetection(t *testing.T) {
 	tests := []struct {
 		name   string
 		target *llssa.Target
@@ -267,9 +270,11 @@ func TestMSVCTargetDetection(t *testing.T) {
 		{"explicit msvc", nil, "x86_64-pc-windows-msvc", true},
 		{"versioned msvc", nil, "x86_64-pc-windows-msvc19.40", true},
 		{"windows default environment", nil, "x86_64-pc-windows", true},
-		{"mingw", nil, "x86_64-w64-windows-gnu", false},
-		{"mingw short triple", nil, "x86_64-w64-mingw32", false},
+		{"mingw", nil, "x86_64-w64-windows-gnu", true},
+		{"mingw short triple", nil, "x86_64-w64-mingw32", true},
 		{"cygwin", nil, "x86_64-pc-windows-cygnus", false},
+		{"cygwin short triple", nil, "x86_64-pc-cygwin", false},
+		{"msys", nil, "x86_64-pc-msys", false},
 		{"linux", nil, "x86_64-unknown-linux-gnu", false},
 		{"implicit windows", &llssa.Target{GOOS: "windows"}, "", true},
 		{"arch-only windows", &llssa.Target{GOOS: "windows"}, "x86_64", true},
@@ -277,8 +282,8 @@ func TestMSVCTargetDetection(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := isMSVCTarget(test.target, test.triple); got != test.want {
-				t.Fatalf("isMSVCTarget(%q) = %v, want %v", test.triple, got, test.want)
+			if got := usesWindowsCABI(test.target, test.triple); got != test.want {
+				t.Fatalf("usesWindowsCABI(%q) = %v, want %v", test.triple, got, test.want)
 			}
 		})
 	}

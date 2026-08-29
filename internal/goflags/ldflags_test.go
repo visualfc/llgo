@@ -109,9 +109,37 @@ func TestParseLinkFlagsQuotesPatternAndIgnored(t *testing.T) {
 	if !opts.Options.OmitSymbolTable || !opts.Options.EffectiveOmitDWARF() {
 		t.Fatalf("options = %+v, want -s and effective -w", opts.Options)
 	}
-	wantIgnored := []string{"-extldflags=-static -pthread", "-unknown"}
+	if opts.Options.ExternalLinkerFlags != "-static -pthread" {
+		t.Fatalf("external linker flags = %q", opts.Options.ExternalLinkerFlags)
+	}
+	wantIgnored := []string{"-unknown"}
 	if !reflect.DeepEqual(opts.Ignored, wantIgnored) {
 		t.Fatalf("ignored = %q, want %q", opts.Ignored, wantIgnored)
+	}
+}
+
+func TestParseLinkFlagsExternalLinker(t *testing.T) {
+	opts, err := ParseLinkFlags([]string{
+		`-ldflags=-extld 'clang --target=x86_64-pc-windows-msvc' -extldflags '/debug:dwarf /incremental:no'`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := opts.Options.ExternalLinker, "clang --target=x86_64-pc-windows-msvc"; got != want {
+		t.Fatalf("ExternalLinker = %q, want %q", got, want)
+	}
+	if got, want := opts.Options.ExternalLinkerFlags, "/debug:dwarf /incremental:no"; got != want {
+		t.Fatalf("ExternalLinkerFlags = %q, want %q", got, want)
+	}
+}
+
+func TestParseLinkFlagsEmptyExternalLinkerValues(t *testing.T) {
+	opts, err := ParseLinkFlags([]string{`-ldflags=-extld= -extldflags=`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Options.ExternalLinker != "" || opts.Options.ExternalLinkerFlags != "" {
+		t.Fatalf("options = %+v, want empty external linker values", opts.Options)
 	}
 }
 
@@ -157,6 +185,8 @@ func TestParseLinkFlagsErrors(t *testing.T) {
 		{name: "missing w boolean", flags: []string{"-ldflags=-w="}},
 		{name: "invalid s boolean", flags: []string{"-ldflags=-s=maybe"}},
 		{name: "invalid w boolean", flags: []string{"-ldflags=-w=yes"}},
+		{name: "missing extld value", flags: []string{"-ldflags=-extld"}},
+		{name: "missing extldflags value", flags: []string{"-ldflags=-extldflags"}},
 		{name: "unterminated quote", flags: []string{`-ldflags=-s '-w=false`}},
 	}
 	for _, tt := range tests {

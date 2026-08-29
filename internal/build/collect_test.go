@@ -102,6 +102,83 @@ func TestCollectFingerprint(t *testing.T) {
 	}
 }
 
+func TestNativeToolchainIdentityParticipatesInFingerprint(t *testing.T) {
+	base := crosscompile.Export{
+		CC:             "clang",
+		CCArgs:         []string{"--target=x86_64-pc-windows-msvc"},
+		CXX:            "clang++",
+		CXXArgs:        []string{"--target=x86_64-pc-windows-msvc"},
+		CCIdentity:     "clang version 19.1.7",
+		CXXIdentity:    "clang version 19.1.7",
+		CCFLAGS:        []string{"-O2"},
+		CFLAGS:         []string{"-Iinclude"},
+		LDFLAGS:        []string{"/incremental:no"},
+		Linker:         "clang",
+		LinkerArgs:     []string{"--target=x86_64-pc-windows-msvc"},
+		LinkerIdentity: "clang version 19.1.7",
+		Toolchain: crosscompile.NativeToolchain{
+			ABI:            crosscompile.PlatformABIMsvc,
+			ObjectFormat:   crosscompile.ObjectFormatCOFF,
+			Driver:         crosscompile.DriverFlavorClangGNU,
+			Linker:         crosscompile.LinkerFlavorCOFFLLD,
+			TargetTriple:   "x86_64-pc-windows-msvc",
+			CRT:            crosscompile.CRTFlavorUCRT,
+			CXXRuntime:     crosscompile.CXXRuntimeMSVC,
+			SDKVersion:     "10.0.26100.0",
+			CRTVersion:     "10.0.26100.0",
+			ToolsetVersion: "14.44.35207",
+		},
+	}
+	fingerprint := func(export crosscompile.Export) (string, *commonSection) {
+		ctx := &context{buildConf: &Config{}, crossCompile: export}
+		manifest := newManifestBuilder()
+		ctx.collectCommonInputs(manifest)
+		return manifest.Fingerprint(), &manifest.common
+	}
+
+	baseFingerprint, common := fingerprint(base)
+	if common.TargetTriple != base.Toolchain.TargetTriple ||
+		common.CRTFlavor != string(base.Toolchain.CRT) ||
+		common.CXXRuntime != string(base.Toolchain.CXXRuntime) ||
+		common.SDKVersion != base.Toolchain.SDKVersion ||
+		common.CRTVersion != base.Toolchain.CRTVersion ||
+		common.ToolsetVersion != base.Toolchain.ToolsetVersion ||
+		common.CCIdentity != base.CCIdentity || common.CXXIdentity != base.CXXIdentity ||
+		common.LinkerIdentity != base.LinkerIdentity {
+		t.Fatalf("toolchain manifest = %+v", common)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*crosscompile.Export)
+	}{
+		{"target triple", func(e *crosscompile.Export) { e.Toolchain.TargetTriple = "i686-pc-windows-msvc" }},
+		{"CRT", func(e *crosscompile.Export) { e.Toolchain.CRT = crosscompile.CRTFlavorUnknown }},
+		{"C++ runtime", func(e *crosscompile.Export) { e.Toolchain.CXXRuntime = crosscompile.CXXRuntimeUnknown }},
+		{"SDK version", func(e *crosscompile.Export) { e.Toolchain.SDKVersion = "10.0.22621.0" }},
+		{"CRT version", func(e *crosscompile.Export) { e.Toolchain.CRTVersion = "10.0.22621.0" }},
+		{"toolset", func(e *crosscompile.Export) { e.Toolchain.ToolsetVersion = "14.40.33807" }},
+		{"CC", func(e *crosscompile.Export) { e.CC = "other-clang" }},
+		{"CC args", func(e *crosscompile.Export) { e.CCArgs = []string{"--target=i686-pc-windows-msvc"} }},
+		{"CC identity", func(e *crosscompile.Export) { e.CCIdentity = "clang version 20.1.0" }},
+		{"CXX", func(e *crosscompile.Export) { e.CXX = "other-clang++" }},
+		{"CXX args", func(e *crosscompile.Export) { e.CXXArgs = []string{"--target=i686-pc-windows-msvc"} }},
+		{"CXX identity", func(e *crosscompile.Export) { e.CXXIdentity = "clang version 20.1.0" }},
+		{"linker", func(e *crosscompile.Export) { e.Linker = "other-clang" }},
+		{"linker args", func(e *crosscompile.Export) { e.LinkerArgs = []string{"--target=i686-pc-windows-msvc"} }},
+		{"linker identity", func(e *crosscompile.Export) { e.LinkerIdentity = "clang version 20.1.0" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			changed := base
+			test.mutate(&changed)
+			got, _ := fingerprint(changed)
+			if got == baseFingerprint {
+				t.Fatalf("fingerprint did not change after mutating %s", test.name)
+			}
+		})
+	}
+}
+
 func TestCollectFingerprintDeterminism(t *testing.T) {
 	td := t.TempDir()
 

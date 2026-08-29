@@ -1,4 +1,4 @@
-//go:build windows && amd64
+//go:build windows && amd64 && !llgo_windows_gnu
 
 package ffi
 

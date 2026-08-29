@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   test:
+    name: test (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
     # The known-good #172 Windows coverage run took about 56 minutes. Leave
     # room for runner variance and the additional shared-matrix checks without
     # changing the established Linux/macOS budget.
@@ -39,9 +40,19 @@ jobs:
           - os: windows-2022
             llvm: 19
             go: "1.26.7"
+            windows_abi: msvc
+          - os: windows-2022
+            llvm: 19
+            go: "1.26.7"
+            windows_abi: mingw
           - os: windows-2022
             llvm: 19
             go: "1.27.0"
+            windows_abi: msvc
+          - os: windows-2022
+            llvm: 19
+            go: "1.27.0"
+            windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -49,6 +60,7 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           llvm-version: ${{matrix.llvm}}
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Install embedded dependencies
         uses: ./.github/actions/setup-embed-deps
@@ -67,6 +79,8 @@ jobs:
 
       - name: Install further optional dependencies for demos
         uses: ./.github/actions/setup-demo-deps
+        with:
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Set LLGO_ROOT
         shell: bash
@@ -101,7 +115,7 @@ jobs:
           )
 
           ffi_include="$(pkg-config --variable=includedir libffi)"
-          clang -target x86_64-pc-windows-msvc -I"$ffi_include" -c \
+          clang -I"$ffi_include" -c \
             runtime/internal/clite/ffi/_wrap/libffi.c \
             -o "$RUNNER_TEMP/llgo-libffi-amd64.obj"
           llvm-readobj --file-headers "$RUNNER_TEMP/llgo-libffi-amd64.obj"
@@ -122,7 +136,9 @@ jobs:
             # Clang driver for the host test binaries instead of excluding
             # those packages from the shared suite.
             go_test+=("-ldflags=-linkmode=external -extldflags=-lsynchronization")
-            export LLGO_REQUIRE_MSVC=1
+            if [[ "${{ matrix.windows_abi }}" == msvc ]]; then
+              export LLGO_REQUIRE_MSVC=1
+            fi
             export LLGO_STDIO_NOBUF=1
           fi
 

@@ -219,6 +219,9 @@ func testWindowsCSharedArtifact(t *testing.T) {
 	ctx := newWindowsArtifactContext(t, BuildModeCShared)
 	object := compileWindowsArtifact(t, ctx, dir, "shared.c", `
 int answer_from_dll(void) { return 42; }
+#ifdef __MINGW32__
+int DllMainCRTStartup(void *module, unsigned reason, void *reserved) { return 1; }
+#endif
 `)
 	dll := filepath.Join(dir, "native-shared.dll")
 	prog := llssa.NewProgram(nil)
@@ -226,7 +229,11 @@ int answer_from_dll(void) { return 42; }
 	lpkg := prog.NewPackage("example.com/windowsfixture", "example.com/windowsfixture")
 	lpkg.SetExport("example.com/windowsfixture.answer", "answer_from_dll")
 	exportArgs := cSharedExportArgs(ctx, []*aPackage{{LPkg: lpkg}})
-	linkArgs := append([]string{"-nostdlib", "-Wl,/noentry"}, exportArgs...)
+	linkArgs := []string{"-nostdlib"}
+	if ctx.crossCompile.Toolchain.ABI != crosscompile.PlatformABIGNU {
+		linkArgs = append(linkArgs, "-Wl,/noentry")
+	}
+	linkArgs = append(linkArgs, exportArgs...)
 	if err := linkObjFiles(ctx, dll, []string{object}, linkArgs, false); err != nil {
 		t.Fatal(err)
 	}
@@ -239,10 +246,20 @@ int answer_from_dll(void) { return 42; }
 	consumerCtx := newWindowsArtifactContext(t, BuildModeExe)
 	consumer := compileWindowsArtifact(t, consumerCtx, dir, "shared-consumer.c", `
 __declspec(dllimport) int answer_from_dll(void);
+#ifdef __MINGW32__
+int main(void) { return answer_from_dll() == 42 ? 0 : 23; }
+#else
 int mainCRTStartup(void) { return answer_from_dll() == 42 ? 0 : 23; }
+#endif
 `)
 	executable := filepath.Join(dir, "shared-consumer.exe")
-	linkWindowsExecutable(t, consumerCtx, executable, consumer, imports)
+	if consumerCtx.crossCompile.Toolchain.ABI == crosscompile.PlatformABIGNU {
+		if err := linkObjFiles(consumerCtx, executable, []string{consumer, imports}, nil, false); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		linkWindowsExecutable(t, consumerCtx, executable, consumer, imports)
+	}
 	checkPEArtifact(t, executable, false)
 	runTool(t, executable)
 }

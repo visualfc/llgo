@@ -4,6 +4,7 @@ import (
 	"go/version"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -35,6 +36,19 @@ func (e commandEnv) configure(cmd *exec.Cmd) *exec.Cmd {
 	cmd.Dir = e.dir
 	cmd.Env = slices.Clone(e.environ)
 	return cmd
+}
+
+func (e commandEnv) lookup(name string) string {
+	for i := len(e.environ) - 1; i >= 0; i-- {
+		key, value, ok := strings.Cut(e.environ[i], "=")
+		if !ok {
+			continue
+		}
+		if key == name || runtime.GOOS == "windows" && strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
 }
 
 func resolveOutputs(dir string, out *OutFmtDetails) {

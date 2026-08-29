@@ -3,13 +3,17 @@
 # LINK_TYPE=static  - Link with static library (default)
 # LINK_TYPE=shared  - Link with shared library
 
+CC_WAS_DEFAULT := $(filter default undefined,$(origin CC))
+ifneq ($(CC_WAS_DEFAULT),)
 CC = clang
+endif
 CFLAGS = -Wall -Wextra -std=c99
 INCLUDES = -I..
 TARGET = main.out
 SOURCES = main.c
 HEADER = ../libexport.h
-RUNTIME_LIBS = -lpthread -lm $(shell pkg-config --libs bdw-gc || echo -lgc) $(shell pkg-config --libs libuv || echo -luv)
+PKG_CONFIG ?= pkg-config
+RUNTIME_LIBS = -lpthread -lm $(shell "$(PKG_CONFIG)" --libs bdw-gc || echo -lgc) $(shell "$(PKG_CONFIG)" --libs libuv || echo -luv)
 
 # Default to static linking
 LINK_TYPE ?= static
@@ -28,21 +32,33 @@ else ifneq ($(WINDOWS),)
     MSVC_TARGET_386 = i686-pc-windows-msvc
     MSVC_TARGET_amd64 = x86_64-pc-windows-msvc
     MSVC_TARGET_arm64 = aarch64-pc-windows-msvc
-    CFLAGS += --target=$(MSVC_TARGET_$(GOARCH)) -Wl,/debug:dwarf
+    ifneq ($(CC_WAS_DEFAULT),)
+        CFLAGS += --target=$(MSVC_TARGET_$(GOARCH))
+        WINDOWS_CC_TARGET = $(MSVC_TARGET_$(GOARCH))
+    else
+        WINDOWS_CC_TARGET = $(shell $(CC) -dumpmachine)
+    endif
+    ifneq ($(findstring windows-msvc,$(WINDOWS_CC_TARGET)),)
+        CFLAGS += -Wl,/debug:dwarf
+        # A c-archive has no final link step in which LLGo can carry native
+        # library options. Its runtime objects reference the ISO stdio entry
+        # points directly, while the MSVC UCRT headers normally provide inline
+        # adapters. Link the SDK's compatibility import library in the native
+        # consumer; MinGW exports these entry points without this bridge.
+        WINDOWS_STATIC_STDLIB_LIBS = -llegacy_stdio_definitions
+    endif
     SHARED_LINK_FLAGS = ../libexport.lib
     PLATFORM_LIBS = -lsynchronization -lws2_32
-    MSYS2_LIB_DIR = $(shell pkg-config --variable=libdir bdw-gc)
-    LIBUV_SYSTEM_LIBS = $(filter-out -L% -luv,$(shell pkg-config --libs libuv))
-    # Keep the C consumer on LLGo's MSVC ABI. lld-link accepts these controlled
-    # MSYS2 import archives by path; -l would search for incompatible names.
-    RUNTIME_LIBS = "$(MSYS2_LIB_DIR)/libgc.dll.a" "$(MSYS2_LIB_DIR)/libuv.dll.a" $(LIBUV_SYSTEM_LIBS)
-    STATIC_STDLIB_LIBS = "$(MSYS2_LIB_DIR)/libffi.dll.a"
+    # Keep dependency discovery inside the selected target profile. The MSVC
+    # and GNU/MinGW lanes provide separate pkg-config roots and library names.
+    RUNTIME_LIBS = $(shell "$(PKG_CONFIG)" --libs bdw-gc) $(shell "$(PKG_CONFIG)" --libs libuv)
+    STATIC_STDLIB_LIBS = $(shell "$(PKG_CONFIG)" --libs libffi) $(WINDOWS_STATIC_STDLIB_LIBS)
 else
     SHARED_EXT = so
-    PLATFORM_LIBS = $(shell pkg-config --libs libunwind 2>/dev/null || echo -lunwind)
+    PLATFORM_LIBS = $(shell "$(PKG_CONFIG)" --libs libunwind 2>/dev/null || echo -lunwind)
 endif
 ifeq ($(WINDOWS),)
-    STATIC_STDLIB_LIBS = $(shell pkg-config --libs libffi 2>/dev/null || echo -lffi) -lresolv
+    STATIC_STDLIB_LIBS = $(shell "$(PKG_CONFIG)" --libs libffi 2>/dev/null || echo -lffi) -lresolv
 endif
 
 # Library and flags based on link type

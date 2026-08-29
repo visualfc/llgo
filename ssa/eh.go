@@ -185,7 +185,8 @@ func (b Builder) windowsSetjmp(jb Expr) Expr {
 }
 
 func (b Builder) windowsLongjmp(jb, retval Expr) {
-	if b.Prog.target.effectiveGOARCH() != "arm64" {
+	goarch := b.Prog.target.effectiveGOARCH()
+	if goarch != "amd64" && goarch != "arm64" {
 		b.cLongjmp(jb, retval)
 		return
 	}

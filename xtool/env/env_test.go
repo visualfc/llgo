@@ -68,6 +68,99 @@ func TestExpandEnvToArgsWithConfiguresSubprocess(t *testing.T) {
 	}
 }
 
+func TestExpandEnvToArgsWithUsesPkgConfigSetting(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "pkg config")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tool := filepath.Join(dir, "native-pkgconf")
+	if runtime.GOOS == "windows" {
+		tool += ".exe"
+	}
+	copyExecutable(t, tool)
+	got := ExpandEnvToArgsWith(
+		"$(pkg-config --libs fixture)",
+		dir,
+		[]string{
+			"PATH=" + t.TempDir(),
+			"PKG_CONFIG='" + tool + "' --ignored-like-go",
+			"LLGO_ENV_TEST=request",
+			helperEnvironment + "=1",
+		},
+	)
+	if len(got) != 2 || got[0] != "-Lrequest" || !strings.HasPrefix(got[1], "-I") {
+		t.Fatalf("ExpandEnvToArgsWith using PKG_CONFIG = %q, want -Lrequest and one include directory", got)
+	}
+}
+
+func TestPkgConfigCommandMatchesGoSelection(t *testing.T) {
+	t.Setenv("PKG_CONFIG", `'configured pkg-config' --ignored-like-go`)
+	if got, want := PkgConfigCommand("", nil), "configured pkg-config"; got != want {
+		t.Fatalf("PkgConfigCommand using process environment = %q, want %q", got, want)
+	}
+	if got, want := PkgConfigCommand("", []string{"PKG_CONFIG=   "}), "pkg-config"; got != want {
+		t.Fatalf("PkgConfigCommand using an empty field list = %q, want %q", got, want)
+	}
+	t.Run("invalid quoting", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("PkgConfigCommand accepted an unterminated quote")
+			}
+		}()
+		PkgConfigCommand("", []string{"PKG_CONFIG='unterminated"})
+	})
+}
+
+func TestExpandEnvToArgsWithFindsLLVMConfigInExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+	tool := filepath.Join(dir, "llvm-config")
+	if runtime.GOOS == "windows" {
+		tool += ".exe"
+	}
+	copyExecutable(t, tool)
+	got := ExpandEnvToArgsWith(
+		"$(llvm-config --libs)",
+		dir,
+		[]string{"PATH=" + dir, "LLGO_ENV_TEST=request", helperEnvironment + "=1"},
+	)
+	if len(got) != 2 || got[0] != "-Lrequest" || !strings.HasPrefix(got[1], "-I") {
+		t.Fatalf("ExpandEnvToArgsWith using llvm-config = %q, want -Lrequest and one include directory", got)
+	}
+}
+
+func TestNormalizeWindowsLLVMConfigOutput(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   string
+	}{
+		{
+			name:   "absolute libraries and duplicate search path",
+			output: `C:\LLVM\lib\LLVMCore.lib C:\LLVM\lib\libclang.lib -LIBPATH:C:\LLVM\lib`,
+			want:   `-LC:/LLVM/lib -lLLVMCore -lclang`,
+		},
+		{
+			name:   "quoted search path",
+			output: `"-LIBPATH:C:\Program Files\LLVM\lib" LLVMFileCheck.lib /DEBUG`,
+			want:   `-LC:/Program Files/LLVM/lib -lLLVMFileCheck /DEBUG`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := normalizeWindowsLLVMConfigOutput(test.output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("normalizeWindowsLLVMConfigOutput() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	if _, err := normalizeWindowsLLVMConfigOutput(`"unterminated`); err == nil {
+		t.Fatal("normalizeWindowsLLVMConfigOutput accepted invalid quoting")
+	}
+}
+
 func TestLookPathInEnvironmentBoundaries(t *testing.T) {
 	dir := t.TempDir()
 	toolName := "fixture-tool"

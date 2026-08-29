@@ -16,11 +16,21 @@ concurrency:
 
 jobs:
   build-cache:
+    name: build-cache (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, ${{ matrix.llvm }})
     timeout-minutes: 30
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-2022]
-        llvm: [19]
+        include:
+          - os: macos-latest
+            llvm: 19
+          - os: ubuntu-latest
+            llvm: 19
+          - os: windows-2022
+            llvm: 19
+            windows_abi: msvc
+          - os: windows-2022
+            llvm: 19
+            windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -29,11 +39,12 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           llvm-version: ${{matrix.llvm}}
+          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
 
       - name: Set up Go
         uses: ./.github/actions/setup-go
 
-      - name: Install wamr (for wasm tests)
+      - name: Install WAMR (for wasm tests)
         shell: bash
         run: bash dev/build_iwasm.sh
 

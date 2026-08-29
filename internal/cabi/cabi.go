@@ -35,31 +35,25 @@ func targetArch(llvmTarget string) string {
 	return llvmTarget
 }
 
-// isMSVCTarget treats an absent or unknown Windows environment as MSVC. This
-// matches the default target convention used for GOOS=windows; explicit GNU,
-// MinGW, and Cygwin environments retain their non-MSVC ABI.
-func isMSVCTarget(target *ssa.Target, llvmTarget string) bool {
-	if llvmTarget == "" {
+// usesWindowsCABI reports whether the target uses the native Windows C ABI.
+// MinGW uses that ABI too; its GNU environment selects a toolchain and CRT,
+// not the SysV calling convention. MSYS and Cygwin are POSIX-emulation ABIs
+// and are deliberately excluded.
+func usesWindowsCABI(target *ssa.Target, llvmTarget string) bool {
+	if llvmTarget == "" || !strings.Contains(llvmTarget, "-") {
 		return target != nil && target.GOOS == "windows"
 	}
 	parts := strings.Split(strings.ToLower(llvmTarget), "-")
-	if len(parts) == 1 {
-		return target != nil && target.GOOS == "windows"
-	}
 	windows := false
-	msvc := false
-	gnu := false
 	for _, part := range parts[1:] {
 		switch {
-		case part == "windows" || part == "win32":
+		case strings.Contains(part, "cygwin"), part == "cygnus", strings.Contains(part, "msys"):
+			return false
+		case part == "windows", part == "win32", strings.Contains(part, "mingw"):
 			windows = true
-		case strings.HasPrefix(part, "msvc"):
-			msvc = true
-		case strings.Contains(part, "mingw") || strings.HasPrefix(part, "gnu") || strings.Contains(part, "cygwin") || part == "cygnus":
-			gnu = true
 		}
 	}
-	return windows && (msvc || !gnu)
+	return windows
 }
 
 func isCOFFTarget(target *ssa.Target, llvmTarget string) bool {
@@ -88,7 +82,7 @@ func NewTransformer(prog ssa.Program, llvmTarget string, targetAbi string, mode 
 		mode:     mode,
 		optimize: optimize,
 	}
-	if isMSVCTarget(target, llvmTarget) {
+	if usesWindowsCABI(target, llvmTarget) {
 		switch arch {
 		case "amd64":
 			tr.sys = &TypeInfoWindowsAmd64{tr}

@@ -88,7 +88,7 @@ func use(env *JmpBuf) int32 {
 `
 	ir := compileWithRewritesTarget(t, src, nil, &llssa.Target{GOOS: "windows", GOARCH: "amd64"})
 	if !strings.Contains(ir, `call i32 @_setjmpex(ptr %0, ptr null)`) ||
-		!strings.Contains(ir, `call void @longjmp(ptr %0, i32 1)`) {
+		!strings.Contains(ir, `call void @llgo_longjmp(ptr %0, i32 1)`) {
 		t.Fatalf("Windows setjmp intrinsics were not lowered in the caller:\n%s", ir)
 	}
 	if strings.Contains(ir, `define i32 @setjmpintrinsic.setjmp`) ||

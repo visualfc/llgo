@@ -60,6 +60,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/packages"
 	"github.com/xgo-dev/llgo/internal/pclnmap"
 	"github.com/xgo-dev/llgo/internal/pclnpost"
+	"github.com/xgo-dev/llgo/internal/quoted"
 	"github.com/xgo-dev/llgo/internal/typepatch"
 	"github.com/xgo-dev/llgo/ssa/abi"
 	xenv "github.com/xgo-dev/llgo/xtool/env"
@@ -490,7 +491,14 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	}()
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
-	export, err := crosscompile.UseWithGOARM(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled())
+	nativeInput := crosscompile.NativeToolchainInput{}
+	if usesNativeWindowsToolchain(runtime.GOOS, runtime.GOARCH, conf) {
+		nativeInput, err = parseNativeToolchainInput(commands, conf.LinkOptions)
+		if err != nil {
+			return nil, err
+		}
+	}
+	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup crosscompile: %w", err)
 	}
@@ -910,6 +918,42 @@ func removeOutFmts(outFmts *OutFmtDetails) {
 	}
 }
 
+func usesNativeWindowsToolchain(hostGOOS, hostGOARCH string, conf *Config) bool {
+	return conf.Target == "" && hostGOOS == "windows" &&
+		conf.Goos == hostGOOS && conf.Goarch == hostGOARCH
+}
+
+func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crosscompile.NativeToolchainInput, error) {
+	input := crosscompile.NativeToolchainInput{Dir: commands.dir, Environ: slices.Clone(commands.environ)}
+	for _, setting := range []struct {
+		name       string
+		value      string
+		out        *[]string
+		allowEmpty bool
+	}{
+		{name: "CC", value: commands.lookup("CC"), out: &input.CC},
+		{name: "CXX", value: commands.lookup("CXX"), out: &input.CXX},
+		{name: "-extld", value: options.ExternalLinker, out: &input.ExternalLinker, allowEmpty: true},
+		{name: "-extldflags", value: options.ExternalLinkerFlags, out: &input.ExternalFlags, allowEmpty: true},
+	} {
+		if setting.value == "" {
+			continue
+		}
+		args, err := quoted.Split(setting.value)
+		if err != nil {
+			return crosscompile.NativeToolchainInput{}, fmt.Errorf("could not parse %s value %q: %w", setting.name, setting.value, err)
+		}
+		if len(args) == 0 {
+			if setting.allowEmpty {
+				continue
+			}
+			return crosscompile.NativeToolchainInput{}, fmt.Errorf("%s requires a non-empty command or argument list", setting.name)
+		}
+		*setting.out = args
+	}
+	return input, nil
+}
+
 // cHeaderPackages excludes the patched standard runtime implementation. Its
 // //export callbacks are linker implementation details and may use internal C
 // types that are deliberately not representable in a public generated header.
@@ -952,6 +996,17 @@ func cSharedLinkArgs(toolchain crosscompile.NativeToolchain) []string {
 		args = append(args, "-fPIC")
 	}
 	return args
+}
+
+func cSharedImportLibraryArgs(toolchain crosscompile.NativeToolchain, output string) []string {
+	if toolchain.ObjectFormat != crosscompile.ObjectFormatCOFF || toolchain.ABI != crosscompile.PlatformABIGNU {
+		return nil
+	}
+	// lld-link creates a sibling .lib automatically for MSVC links. MinGW's
+	// GNU-flavor lld needs an explicit output path for the equivalent COFF
+	// import library.
+	imports := strings.TrimSuffix(output, filepath.Ext(output)) + ".lib"
+	return []string{"-Xlinker", "--out-implib", "-Xlinker", imports}
 }
 
 // DefaultBuildTags returns the build tags LLGo always enables for a target.
@@ -1187,21 +1242,22 @@ func preloadPatchedPackageSyntax(prog llssa.Program, patches cl.Patches, dedup p
 }
 
 func (c *context) compiler() *clang.Cmd {
-	config := clang.NewConfig(
-		c.crossCompile.CC,
-		c.crossCompile.CCFLAGS,
-		c.crossCompile.CFLAGS,
-		c.crossCompile.LDFLAGS,
-		c.crossCompile.Linker,
-	)
-	cmd := clang.NewCompiler(config)
+	cmd := clang.NewCompiler(c.clangConfig())
 	cmd.Dir = c.commands.dir
 	cmd.Env = slices.Clone(c.commands.environ)
 	cmd.Verbose = c.shouldPrintCommands(false)
 	return cmd
 }
 
-func (c *context) linker() *clang.Cmd {
+func (c *context) cxxCompiler() *clang.Cmd {
+	cmd := clang.NewCXXCompiler(c.clangConfig())
+	cmd.Dir = c.commands.dir
+	cmd.Env = slices.Clone(c.commands.environ)
+	cmd.Verbose = c.shouldPrintCommands(false)
+	return cmd
+}
+
+func (c *context) clangConfig() clang.Config {
 	config := clang.NewConfig(
 		c.crossCompile.CC,
 		c.crossCompile.CCFLAGS,
@@ -1209,7 +1265,22 @@ func (c *context) linker() *clang.Cmd {
 		c.crossCompile.LDFLAGS,
 		c.crossCompile.Linker,
 	)
+	config.CCArgs = slices.Clone(c.crossCompile.CCArgs)
+	config.CXX = c.crossCompile.CXX
+	config.CXXArgs = slices.Clone(c.crossCompile.CXXArgs)
+	config.LinkerArgs = slices.Clone(c.crossCompile.LinkerArgs)
+	return config
+}
+
+func (c *context) linker() *clang.Cmd {
+	config := c.clangConfig()
 	cmd := clang.NewLinker(config)
+	if config.Linker == "" && config.CXX != "" {
+		// Native LLGo historically linked through clang++. Preserve that C++
+		// runtime behavior while allowing CC and CXX to be selected and probed
+		// independently. An explicit -extld keeps Go's precedence.
+		cmd = clang.NewCXXCompiler(config)
+	}
 	cmd.Dir = c.commands.dir
 	cmd.Env = slices.Clone(c.commands.environ)
 	cmd.Verbose = c.shouldPrintCommands(false)
@@ -1865,6 +1936,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	switch ctx.buildConf.BuildMode {
 	case BuildModeCShared:
 		buildArgs = append(buildArgs, cSharedLinkArgs(ctx.crossCompile.Toolchain)...)
+		buildArgs = append(buildArgs, cSharedImportLibraryArgs(ctx.crossCompile.Toolchain, linkOutput)...)
 	case BuildModeExe:
 		if needsLinuxNoPIE(ctx, linkArgs) {
 			buildArgs = append(buildArgs, "-no-pie")
@@ -3182,7 +3254,7 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFil
 			fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", llFile, pkgPath)
 			fmt.Fprintln(os.Stderr, "clang", llArgs)
 		}
-		cmd := ctx.compiler()
+		cmd := ctx.compilerForSource(cFile)
 		err := cmd.Compile(llArgs...)
 		check(err)
 	}
@@ -3194,10 +3266,19 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFil
 		fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", objFile, pkgPath)
 		fmt.Fprintln(os.Stderr, "clang", objArgs)
 	}
-	cmd := ctx.compiler()
+	cmd := ctx.compilerForSource(cFile)
 	err := cmd.Compile(objArgs...)
 	check(err)
 	procFile(objFile)
+}
+
+func (c *context) compilerForSource(path string) *clang.Cmd {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".cc", ".cpp", ".cxx":
+		return c.cxxCompiler()
+	default:
+		return c.compiler()
+	}
 }
 
 func pkgExists(initial []*packages.Package, pkg *packages.Package) bool {

@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   goroot:
-    name: GOROOT (${{ matrix.lane }}, ${{ matrix.os }}, Go ${{ matrix.go-version }}, shard ${{ matrix.shard-index }}/4)
+    name: GOROOT (${{ matrix.lane }}, ${{ matrix.os }}${{ startsWith(matrix.os, 'windows') && format(', {0}', matrix.windows_abi) || '' }}, Go ${{ matrix.go-version }}, shard ${{ matrix.shard-index }}/4)
     timeout-minutes: 180
     env:
       GOPROXY: https://proxy.golang.org,direct
@@ -28,11 +28,17 @@ jobs:
         # line. Old xfail/not-applicable classifications are retired with the
         # corpus.
         os: [macos-latest, ubuntu-latest, windows-2022]
+        windows_abi: [msvc, mingw]
         go-version: ["1.26.7"]
         shard-index: ["0", "1", "2", "3"]
         include:
           - go-version: "1.26.7"
             lane: primary
+        exclude:
+          - os: macos-latest
+            windows_abi: mingw
+          - os: ubuntu-latest
+            windows_abi: mingw
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -41,6 +47,7 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           llvm-version: 19
+          windows-abi: ${{ matrix.windows_abi }}
 
       - name: Set up Go
         uses: ./.github/actions/setup-go
@@ -87,6 +94,7 @@ jobs:
         shell: bash
         env:
           MATRIX_OS: ${{ matrix.os }}
+          WINDOWS_ABI: ${{ matrix.windows_abi }}
           GO_VERSION: ${{ matrix.go-version }}
           SHARD_INDEX: ${{ matrix.shard-index }}
         run: |
@@ -99,7 +107,7 @@ jobs:
           if [[ "$MATRIX_OS" == "macos-latest" ]]; then
             platform=darwin/arm64
           elif [[ "$MATRIX_OS" == "windows-2022" ]]; then
-            platform=windows/amd64
+            platform="windows-${WINDOWS_ABI}/amd64"
           fi
 
           selected=$(sed -nE 's/.* shard=[^ ]+ cases=([0-9]+) directive_mode=.*/\1/p' "$log" | tail -1)
@@ -145,7 +153,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: goroot-stat-${{ matrix.os }}-${{ matrix.go-version }}-${{ matrix.shard-index }}
+          name: goroot-stat-${{ matrix.os }}-${{ matrix.windows_abi }}-${{ matrix.go-version }}-${{ matrix.shard-index }}
           path: ${{ runner.temp }}/goroot-report
           if-no-files-found: error
           retention-days: 7
@@ -206,7 +214,7 @@ jobs:
           {
             echo '## GOROOT run summary'
             echo
-            echo "Received $report_count/12 shard reports."
+            echo "Received $report_count/16 shard reports."
             echo
             echo '| Platform / toolchain | Shards | Selected | Observed | Passed | Failed | Skipped |'
             echo '|---|---:|---:|---:|---:|---:|---:|'
@@ -214,7 +222,8 @@ jobs:
             write_row '**Darwin total**' darwin/arm64 '' 4
             write_row 'Linux · Go 1.26.7' linux/amd64 1.26.7 4
             write_row '**Linux total**' linux/amd64 '' 4
-            write_row 'Windows · Go 1.26.7' windows/amd64 1.26.7 4
+            write_row 'Windows MSVC · Go 1.26.7' windows-msvc/amd64 1.26.7 4
+            write_row 'Windows MinGW · Go 1.26.7' windows-mingw/amd64 1.26.7 4
             echo
             echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
             echo
@@ -229,8 +238,8 @@ jobs:
             fi
           } >>"$GITHUB_STEP_SUMMARY"
 
-          if [[ "$report_count" -ne 12 ]]; then
-            echo "error: expected 12 shard reports, got $report_count" >&2
+          if [[ "$report_count" -ne 16 ]]; then
+            echo "error: expected 16 shard reports, got $report_count" >&2
             exit 1
           fi
           if [[ "$GOROOT_RESULT" != success ]]; then
