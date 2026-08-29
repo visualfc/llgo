@@ -438,14 +438,16 @@ func (p Program) toLLVMNamedStruct(name string, raw *types.Named, st *types.Stru
 	typ := &aType{t, rawType{raw}, kind}
 	p.named[name] = typ
 	p.typs.Set(raw, typ)
-	fields := p.toLLVMFields(st)
+	fields, layout := p.toLLVMStructBody(st, p.hasNativeStructLayout(raw))
 	t.StructSetBody(fields, false)
+	p.setStructLayout(raw, layout)
 	return typ
 }
 
 func (p Program) toLLVMStruct(raw *types.Struct) (ret llvm.Type, kind valueKind) {
-	fields := p.toLLVMFields(raw)
+	fields, layout := p.toLLVMStructBody(raw, false)
 	ret = p.ctx.StructType(fields, false)
+	p.setStructLayout(raw, layout)
 	if IsClosure(raw) {
 		kind = vkClosure
 	} else {

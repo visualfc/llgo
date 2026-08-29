@@ -31,12 +31,12 @@ import (
 
 // unsafeEface(t *abi.Type, data unsafe.Pointer) Eface
 func (b Builder) unsafeEface(t, data llvm.Value) llvm.Value {
-	return aggregateValue(b.impl, b.Prog.rtEface(), t, data)
+	return b.aggregateValue(b.Prog.rtType("Eface"), t, data).impl
 }
 
 // unsafeIface(itab *runtime.Itab, data unsafe.Pointer) Eface
 func (b Builder) unsafeIface(itab, data llvm.Value) llvm.Value {
-	return aggregateValue(b.impl, b.Prog.rtIface(), itab, data)
+	return b.aggregateValue(b.Prog.rtType("Iface"), itab, data).impl
 }
 
 // func NewItab(tintf *InterfaceType, typ *Type) *runtime.Itab
@@ -374,11 +374,11 @@ func (b Builder) buildVal(typ Type, val llvm.Value, lvl int) Expr {
 	case *types.Struct:
 		telem := b.Prog.rawType(t.Field(0).Type())
 		elem := b.buildVal(telem, val, lvl-1)
-		return Expr{aggregateValue(b.impl, typ.ll, elem.impl), typ}
+		return b.aggregateValue(typ, elem.impl)
 	case *types.Array:
 		telem := b.Prog.rawType(t.Elem())
 		elem := b.buildVal(telem, val, lvl-1)
-		return Expr{aggregateValue(b.impl, typ.ll, elem.impl), typ}
+		return b.aggregateValue(typ, elem.impl)
 	}
 	panic("todo")
 }
@@ -455,14 +455,14 @@ func (b Builder) TypeAssert(x Expr, assertedTyp Type, commaOk bool) Expr {
 		phi.AddIncoming(b, blks[:2], func(i int, blk BasicBlock) Expr {
 			b.SetBlockEx(blk, AtEnd, false)
 			if i == 0 {
-				valTrue := aggregateValue(b.impl, t.ll, val().impl, prog.BoolVal(true).impl)
+				valTrue := b.aggregateValue(t, val().impl, prog.BoolVal(true).impl)
 				b.Jump(blks[2])
-				return Expr{valTrue, t}
+				return valTrue
 			}
 			zero := prog.Zero(assertedTyp)
-			valFalse := aggregateValue(b.impl, t.ll, zero.impl, prog.BoolVal(false).impl)
+			valFalse := b.aggregateValue(t, zero.impl, prog.BoolVal(false).impl)
 			b.Jump(blks[2])
-			return Expr{valFalse, t}
+			return valFalse
 		})
 		b.SetBlockEx(blks[2], AtEnd, false)
 		b.blk.last = blks[2].last

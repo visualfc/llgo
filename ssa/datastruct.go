@@ -58,6 +58,7 @@ func (b Builder) Field(x Expr, idx int) Expr {
 func (b Builder) getField(x Expr, idx int) Expr {
 	tfld := b.Prog.Field(x.Type, idx)
 	fld := llvm.CreateExtractValue(b.impl, x.impl, idx)
+	fld = b.unwrapStructField(x.Type, idx, fld)
 	return Expr{fld, tfld}
 }
 
@@ -855,17 +856,17 @@ func (b Builder) Next(typ Type, iter Expr, isString bool) Expr {
 		if i == 0 {
 			k := b.impl.CreateExtractValue(rets.impl, 1, "")
 			v := b.impl.CreateExtractValue(rets.impl, 2, "")
-			valTrue := aggregateValue(b.impl, t.ll, prog.BoolVal(true).impl,
+			valTrue := b.aggregateValue(t, prog.BoolVal(true).impl,
 				llvm.CreateLoad(b.impl, ktyp.ll, k),
 				llvm.CreateLoad(b.impl, vtyp.ll, v))
 			b.Jump(blks[2])
-			return Expr{valTrue, t}
+			return valTrue
 		}
-		valFalse := aggregateValue(b.impl, t.ll, prog.BoolVal(false).impl,
+		valFalse := b.aggregateValue(t, prog.BoolVal(false).impl,
 			llvm.ConstNull(ktyp.ll),
 			llvm.ConstNull(vtyp.ll))
 		b.Jump(blks[2])
-		return Expr{valFalse, t}
+		return valFalse
 	})
 	b.SetBlockEx(blks[2], AtEnd, false)
 	b.blk.last = blks[2].last

@@ -96,10 +96,36 @@ func (prog Program) ConstStruct(t Type, values []Expr) Expr {
 	for i, value := range values {
 		fields[i] = value.impl
 	}
-	if _, ok := t.raw.Type.(*types.Named); ok {
-		return Expr{llvm.ConstNamedStruct(t.ll, fields), t}
+	return Expr{prog.constStructValue(t, fields), t}
+}
+
+func (prog Program) constStructValue(t Type, values []llvm.Value) llvm.Value {
+	elements := t.ll.StructElementTypes()
+	fields := make([]llvm.Value, len(elements))
+	for i, value := range values {
+		fields[i] = prog.wrapStructConstant(t, i, value)
 	}
-	return Expr{prog.ctx.ConstStruct(fields, false), t}
+	for i := len(values); i < len(fields); i++ {
+		fields[i] = llvm.ConstNull(elements[i])
+	}
+	if _, ok := t.raw.Type.(*types.Named); ok {
+		return llvm.ConstNamedStruct(t.ll, fields)
+	}
+	return prog.ctx.ConstStruct(fields, t.ll.IsStructPacked())
+}
+
+func (prog Program) wrapStructConstant(t Type, index int, value llvm.Value) llvm.Value {
+	layout, ok := prog.structLayout(t)
+	if !ok || index >= len(layout.wrapped) || !layout.wrapped[index] {
+		return value
+	}
+	elem := t.ll.StructElementTypes()[index]
+	parts := elem.StructElementTypes()
+	values := []llvm.Value{value}
+	if len(parts) == 2 {
+		values = append(values, llvm.ConstNull(parts[1]))
+	}
+	return prog.ctx.ConstStruct(values, true)
 }
 
 // Undefined global string var by names

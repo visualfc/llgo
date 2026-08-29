@@ -137,6 +137,10 @@ type aProgram struct {
 	tm      llvm.TargetMachine
 	named   map[string]Type
 	fnnamed map[string]int
+	// structLayouts holds target-specific LLVM representation metadata by Go
+	// semantic type. LLVM structurally uniques anonymous struct types, so an
+	// LLVM type is not a safe identity for this metadata.
+	structLayouts typeutil.Map
 
 	intType   llvm.Type
 	int1Type  llvm.Type

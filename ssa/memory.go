@@ -61,21 +61,42 @@ func (b Builder) Aggregate(t Type, flds ...Expr) Expr {
 
 // aggregateValue yields the value of the aggregate X with the fields
 func (b Builder) aggregateValue(t Type, flds ...llvm.Value) Expr {
-	return Expr{aggregateValue(b.impl, t.ll, flds...), t}
-}
-
-func aggregateValue(b llvm.Builder, tll llvm.Type, flds ...llvm.Value) llvm.Value {
-	agg := llvm.Undef(tll)
+	agg := llvm.Undef(t.ll)
 	for i, fld := range flds {
-		agg = b.CreateInsertValue(agg, fld, i, "")
+		agg = b.impl.CreateInsertValue(agg, b.wrapStructField(t, i, fld), i, "")
 	}
-	return agg
+	return Expr{agg, t}
 }
 
 func aggregateInit(b llvm.Builder, ptr llvm.Value, tll llvm.Type, flds ...llvm.Value) {
 	for i, fld := range flds {
 		b.CreateStore(fld, llvm.CreateStructGEP(b, tll, ptr, i))
 	}
+}
+
+func (b Builder) wrapStructField(t Type, index int, value llvm.Value) llvm.Value {
+	layout, ok := b.Prog.structLayout(t)
+	if !ok || index >= len(layout.wrapped) || !layout.wrapped[index] {
+		return value
+	}
+	elem := t.ll.StructElementTypes()[index]
+	wrapped := llvm.Undef(elem)
+	return b.impl.CreateInsertValue(wrapped, value, 0, "")
+}
+
+func (b Builder) unwrapStructField(t Type, index int, value llvm.Value) llvm.Value {
+	layout, ok := b.Prog.structLayout(t)
+	if !ok || index >= len(layout.wrapped) || !layout.wrapped[index] {
+		return value
+	}
+	// LLVM instructions such as cmpxchg have a fixed native aggregate result
+	// type even when the attached Go semantic type needs explicit 386 padding.
+	// Such an extracted value is already the field scalar and must not be
+	// treated as the in-memory wrapper.
+	if value.Type() != t.ll.StructElementTypes()[index] {
+		return value
+	}
+	return b.impl.CreateExtractValue(value, 0, "")
 }
 
 /*

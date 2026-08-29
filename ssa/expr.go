@@ -119,7 +119,6 @@ func pyVarExpr(mod Expr, name string) Expr {
 // Zero returns a zero constant expression.
 func (p Program) Zero(t Type) Expr {
 	var ret llvm.Value
-	_, isNamed := t.raw.Type.(*types.Named)
 	switch u := t.raw.Type.Underlying().(type) {
 	case *types.Basic:
 		kind := u.Kind()
@@ -151,11 +150,7 @@ func (p Program) Zero(t Type) Expr {
 		for i := 0; i < n; i++ {
 			flds[i] = p.Zero(p.rawType(u.Field(i).Type())).impl
 		}
-		if isNamed {
-			ret = llvm.ConstNamedStruct(t.ll, flds)
-		} else {
-			ret = p.ctx.ConstStruct(flds, false)
-		}
+		ret = p.constStructValue(t, flds)
 	case *types.Slice:
 		ret = p.Zero(p.rtType("Slice")).impl
 	case *types.Array:
@@ -342,20 +337,20 @@ func (b Builder) Str(v string) Expr {
 	prog := b.Prog
 	data := b.Pkg.createGlobalStr(v)
 	size := llvm.ConstInt(prog.tyInt(), uint64(len(v)), false)
-	return Expr{aggregateValue(b.impl, prog.rtString(), data, size), prog.String()}
+	return b.aggregateValue(prog.String(), data, size)
 }
 
 // unsafeString(data *byte, size int) string
 func (b Builder) unsafeString(data, size llvm.Value) Expr {
 	prog := b.Prog
-	return Expr{aggregateValue(b.impl, prog.rtString(), data, size), prog.String()}
+	return b.aggregateValue(prog.String(), data, size)
 }
 
 // unsafeSlice(data *T, size, cap int) []T
 func (b Builder) unsafeSlice(data Expr, size, cap llvm.Value) Expr {
 	prog := b.Prog
 	tslice := prog.Slice(prog.Elem(data.Type))
-	return Expr{aggregateValue(b.impl, prog.rtSlice(), data.impl, size, cap), tslice}
+	return b.aggregateValue(tslice, data.impl, size, cap)
 }
 
 func (b Builder) checkedUnsafeString(data, size Expr) Expr {
@@ -735,10 +730,9 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 				if typ.Field(i).Name() == "_" {
 					continue
 				}
-				ft := prog.Type(typ.Field(i).Type(), InGo)
-				fx := b.impl.CreateExtractValue(x.impl, i, "")
-				fy := b.impl.CreateExtractValue(y.impl, i, "")
-				r := b.BinOp(token.EQL, Expr{fx, ft}, Expr{fy, ft})
+				fx := b.getField(x, i)
+				fy := b.getField(y, i)
+				r := b.BinOp(token.EQL, fx, fy)
 				ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
 			}
 			switch op {
@@ -980,12 +974,11 @@ func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 		}
 	} else if t.kind == vkStruct {
 		xt := types.Unalias(x.RawType()).Underlying().(*types.Struct)
-		agg := llvm.Undef(t.ll)
+		fields := make([]llvm.Value, xt.NumFields())
 		for i := 0; i < xt.NumFields(); i++ {
-			field := b.impl.CreateExtractValue(x.impl, i, "")
-			agg = b.impl.CreateInsertValue(agg, field, i, "")
+			fields[i] = b.getField(x, i).impl
 		}
-		ret.impl = agg
+		ret.impl = b.aggregateValue(t, fields...).impl
 	} else {
 		if x.impl.Type().String() == t.ll.String() {
 			ret.impl = x.impl
