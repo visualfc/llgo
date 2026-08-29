@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/cabi"
+	llruntime "github.com/xgo-dev/llgo/runtime"
 )
 
 func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
@@ -21,11 +22,20 @@ func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
 
 func TestPlan9AsmDefaultsSupport386(t *testing.T) {
 	conf := &Config{Goarch: "386", AbiMode: cabi.ModeAllFunc}
-	if !plan9asmEnabledByDefault(conf, "internal/cpu") {
-		t.Fatal("plan9asm should be enabled by default for internal/cpu on 386")
-	}
-	if !plan9asmEnabledByDefault(conf, "internal/bytealg") {
-		t.Fatal("plan9asm should be enabled by default for internal/bytealg on 386")
+	for _, pkgPath := range []string{
+		"internal/bytealg",
+		"internal/chacha8rand",
+		"internal/cpu",
+		"internal/runtime/atomic",
+		"internal/runtime/syscall/windows",
+		"math",
+	} {
+		if !plan9asmEnabledByDefault(conf, pkgPath) {
+			t.Errorf("plan9asm should be enabled by default for %s on 386", pkgPath)
+		}
+		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "386") {
+			t.Errorf("%s should retain the Go 386 assembly implementation", pkgPath)
+		}
 	}
 	if !hasAltPkgForTarget(conf, "runtime") {
 		t.Fatal("runtime should keep using the LLGo alternate package")
