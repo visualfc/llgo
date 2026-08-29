@@ -132,6 +132,7 @@ runs:
         $ErrorActionPreference = "Stop"
         $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20241217\ucrt-x86_64"
         $llvmMingwBin = Join-Path $llvmMingwRoot "bin"
+        $llvmMingwRuntimeBin = Join-Path $llvmMingwRoot "i686-w64-mingw32\bin"
         $compiler = Join-Path $llvmMingwBin "i686-w64-mingw32-clang.exe"
         $compilerXX = Join-Path $llvmMingwBin "i686-w64-mingw32-clang++.exe"
         $vcpkgRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-mingw-vcpkg\$env:VCPKG_MANIFEST_HASH\386\x86-mingw-dynamic"
