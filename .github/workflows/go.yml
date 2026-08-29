@@ -146,6 +146,7 @@ jobs:
         run: go test -v -timeout 60m ./cl -run '^TestRunEmbedEmulator$'
 
       - name: Check std symbol coverage
+        if: matrix.go == '1.26.7'
         shell: bash
         run: bash doc/_readme/scripts/check_std_cover.sh
 
