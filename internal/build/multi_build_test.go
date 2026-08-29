@@ -57,6 +57,30 @@ func TestDefaultExecutableName(t *testing.T) {
 	}
 }
 
+func TestLinkInitialPackagePropagatesOutputCreationError(t *testing.T) {
+	root := t.TempDir()
+	blocking := filepath.Join(root, "not-a-directory")
+	if err := os.WriteFile(blocking, []byte("file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(name, blocking)
+	}
+	ctx := &context{initial: []*packages.Package{{}, {}}}
+	conf := multiBuildConfig()
+	conf.Mode = ModeRun
+	err := linkInitialPackage(ctx, &packages.Package{PkgPath: "example.com/tool"}, nil, conf, false, false)
+	if err == nil {
+		t.Fatalf("temporary output creation error = %v", err)
+	}
+	fallback := newMultiBuildFallback(multiBuildConfig(), []*packages.Package{{
+		Name: "main", PkgPath: "example.com/tool",
+	}}, root, "")
+	if _, err := fallback.run(); err == nil || !strings.Contains(err.Error(), "create temporary output") {
+		t.Fatalf("fallback temporary output creation error = %v", err)
+	}
+}
+
 func TestModeBuildMultiplePackagesMatchesGoOutputContract(t *testing.T) {
 	root := writeMultiBuildModule(t, map[string]string{
 		"cmd/first/main.go":  mainSource("first"),
@@ -121,6 +145,17 @@ func main() { missing() }
 		!strings.Contains(err.Error(), "-buildmode=c-archive requires exactly one main package") {
 		t.Fatalf("multi-package c-archive error = %v", err)
 	}
+	singleArchive := multiBuildConfig()
+	singleArchive.BuildMode = BuildModeCArchive
+	singleArchive.OutFile = filepath.Join(root, "first.a")
+	if _, err := Build(Invocation{Args: []string{"./cmd/first"}, Config: singleArchive, Dir: root}); err != nil {
+		t.Fatalf("single-package c-archive build: %v", err)
+	}
+	for _, artifact := range []string{singleArchive.OutFile, strings.TrimSuffix(singleArchive.OutFile, ".a") + ".h"} {
+		if _, err := os.Stat(artifact); err != nil {
+			t.Fatalf("single-package c-archive artifact %q: %v", artifact, err)
+		}
+	}
 
 	trailingDir := filepath.Join(root, "created") + string(os.PathSeparator)
 	trailing := multiBuildConfig()
@@ -173,6 +208,18 @@ func main() { missing() }
 		t.Fatalf("multi-package compile error = %v", err)
 	}
 	assertBuiltProgram(t, filepath.Join(out, "good"+conf.AppExt), "good")
+
+	checkOnly := multiBuildConfig()
+	_, checkErr := Build(Invocation{Args: []string{"./..."}, Config: checkOnly, Dir: root})
+	if checkErr == nil || !strings.Contains(checkErr.Error(), "example.com/multibuild/cmd/bad:") ||
+		!strings.Contains(checkErr.Error(), "example.com/multibuild/cmd/badlink:") {
+		t.Fatalf("check-only multi-package compile error = %v", checkErr)
+	}
+	for _, name := range []string{"good", "badlink"} {
+		if _, err := os.Stat(filepath.Join(root, name+checkOnly.AppExt)); !os.IsNotExist(err) {
+			t.Fatalf("check-only fallback left output %q: %v", name, err)
+		}
+	}
 }
 
 func TestModeBuildOutputDirectoryRequiresMain(t *testing.T) {
@@ -198,6 +245,8 @@ func TestModeBuildSinglePackageAcceptsOutputDirectory(t *testing.T) {
 	}
 	conf := multiBuildConfig()
 	conf.OutFile = out
+	conf.SizeReport = true
+	conf.SizeFormat = "invalid" // A report failure is intentionally non-fatal after a successful build.
 	if _, err := Build(Invocation{Args: []string{"./cmd/only"}, Config: conf, Dir: root}); err != nil {
 		t.Fatal(err)
 	}
