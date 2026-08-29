@@ -39,6 +39,12 @@ Decision terms:
 - **remove**: no independent compiler capability remains;
 - **replace**: preserve the capability using a smaller or more direct test.
 
+Each new, moved, or substantially rewritten `LITTEST` also records one target
+scope: `common`, `os (...)`, `arch (...)`, or `os+arch (...)`. Scope is
+orthogonal to the migration decision above. Untouched legacy cases are not
+mechanically relabelled; the scope and FileCheck-prefix closure rules become
+mandatory when their proposed owner is implemented.
+
 ## `_testdata`: 23
 
 | Current case | Primary evidence | Decision and proposed owner |

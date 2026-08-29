@@ -45,7 +45,13 @@ func TestFromTestlibgo(t *testing.T) {
 }
 
 func TestFromTestgo(t *testing.T) {
-	cltest.FromDir(t, "", "../cl/_testgo")
+	// These directories are package-selection fixtures owned by internal/build,
+	// not SSA/compiler lowering owners.
+	ignore := []string{
+		"./../cl/_testgo/runextest",
+		"./../cl/_testgo/runtest",
+	}
+	cltest.RunAndTestFromDir(t, "", "../cl/_testgo", ignore, cltest.WithOutputCheck(false))
 }
 
 func TestFromTestpy(t *testing.T) {

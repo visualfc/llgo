@@ -51,6 +51,16 @@ define each contract; runtime output continues to cover the surrounding
 behavior. The proposed 145-directory/151-scenario layout remains the target
 for later migrations after each destination owner exists.
 
+The materially changed LIT owners in this slice declare their scope directly:
+
+| Fixture | Scope | Primary instruction/ABI contract |
+| --- | --- | --- |
+| `arith-divrem` | `common` | guarded signed/unsigned division and remainder |
+| `uint` | `common` | unsigned-width arithmetic and print widening |
+| `strlen` | `common` | C varargs for zero, `size_t`, i32, and i64 arguments |
+| `cppabi` | `common` | local C++ compile/link and `extern "C"` call ABI |
+| `once` | `os (Darwin/Linux)` | POSIX `pthread_once` initializer and callback ABI |
+
 ## Context and problem
 
 Six directories use the same normal compile/run/FileCheck harness but are
@@ -177,6 +187,49 @@ fixture when:
 
 Otherwise the fixture is split.
 
+### Declare one target scope
+
+Every new, moved, or substantially rewritten `LITTEST` fixture declares one
+scope immediately after its marker:
+
+```go
+// LITTEST
+// Scope: common
+```
+
+The allowed scope labels are:
+
+| Scope | Contract | Allowed non-`CHECK` prefixes |
+| --- | --- | --- |
+| `common` | the asserted pre- or post-ABI invariant is identical on every supported target | none |
+| `os (...)` | the invariant is selected by the operating-system ABI or runtime | OS prefixes such as `DARWIN`, `LINUX`, or `WINDOWS` |
+| `arch (...)` | the invariant is selected by the architecture or calling convention | architecture prefixes such as `AMD64`, `ARM64`, or `WASM` |
+| `os+arch (...)` | one capability genuinely depends on the OS/architecture interaction | exact prefixes such as `DARWIN-ARM64` or `LINUX-AMD64` |
+
+Choose the narrowest scope that owns the capability. A fixture may use
+portable `CHECK` directives for relationships shared inside an `os`, `arch`,
+or `os+arch` contract, but it must not also become the owner of an unrelated
+common capability. Split independent contracts instead of accumulating
+several scopes in one source file.
+
+`os+arch` is not a reason to split one inseparable capability mechanically.
+It is retained when both dimensions change the same ABI or lowering, but its
+scope comment must state why neither an OS-only nor an arch-only rule is
+accurate. Exact GOOS/GOARCH prefixes are otherwise a review signal that the
+fixture has mixed scopes.
+
+FileCheck variables must be closed over by the same active prefix. A variable
+defined by `DARWIN`, for example, is referenced only by `DARWIN` directives;
+a value needed by shared checks is captured by a `CHECK` directive. Never
+define a variable under `DARWIN-ARM64` or `LINUX-AMD64` and consume it from a
+shared `CHECK-NEXT`: other supported architectures see the use without the
+definition. This prefix-closure rule applies to labels, captures, `-NEXT`,
+`-SAME`, and `-NOT` relationships.
+
+Legacy fixtures need not receive mechanical scope comments. Declaring and
+normalizing scope is mandatory when a fixture is added, moved into the
+proposed layout, or materially rewritten.
+
 ### Size review threshold
 
 The following are review thresholds, not incentives to compress code:
@@ -213,26 +266,26 @@ boundaries only; it must not cause `go` toolchain auto-selection or bypass the
 
 ## Proposed layout
 
-`_testcodegen` uses recursive leaf-fixture discovery. The test name is the
-relative leaf path, which keeps ownership visible without requiring giant
-flat names.
+The source-to-IR suites use recursive leaf-fixture discovery. Scope is the
+first path component and capability is the second where a suite has capability
+families. The test name is the relative leaf path, which keeps both dimensions
+visible without requiring giant flat names.
 
 ```text
 cl/
   _testcodegen/                 # 79 fixture leaves
-    scalar/                     # 10
-    abi/                        # 11
-    interface/                  # 9
-    closure/                    # 6
-    defer/                      # 7
-    map/                        # 4
-    data/                       # 7: slice, string, array, builtin
-    concurrency/                # 3
-    generics/                   # 7
-    reflect/                    # 5
-    foreign/                    # 10: C, CGo, C++, asm, Python
+    common/                     # Scope: common
+      <capability>/<fixture>
+    os/                         # Scope: os (...)
+      <capability>/<fixture>
+    arch/                       # Scope: arch (...)
+      <capability>/<fixture>
+    os-arch/                    # Scope: os+arch (...)
+      <capability>/<fixture>
   _testintrinsics/              # 10
+    <scope>/<fixture>
   _testdebug/                   # 3
+    <scope>/<fixture>
   _testdrop/                    # 17
   _testlto/                     # 24
   _testmeta/                    # 12
@@ -249,6 +302,14 @@ The legacy normal suites are removed after their owners move:
 - `_testpy`
 - `_testrt`
 - `_testdefer`
+
+Here `<scope>` is `common`, `os`, `arch`, or `os-arch`; the source comment uses
+the corresponding `common`, `os (...)`, `arch (...)`, or `os+arch (...)`
+label. The capability component under each `_testcodegen` scope is one of
+`scalar`, `abi`, `interface`, `closure`, `defer`, `map`, `data`,
+`concurrency`, `generics`, `reflect`, or `foreign`. The 79-leaf total is
+budgeted by capability below; scope changes the path and prefix policy, not
+the number of owners.
 
 ## Proposed normal fixture budget
 
@@ -471,9 +532,12 @@ reduction is 114, or about 43%.
 
 1. Add recursive leaf discovery for `_testcodegen`, `_testintrinsics`, and
    `_testdebug`.
-2. Preserve relative-path test names and target-specific CHECK prefixes.
-3. Add a test-only Python package injection mechanism.
-4. Record a machine-readable or test-generated ownership inventory for LLVM
+2. Preserve relative-path test names and normalize every migrated fixture into
+   the `common`, `os`, `arch`, or `os+arch` scope and prefix rules.
+3. Require a scope declaration for every new, moved, or materially rewritten
+   `LITTEST`; do not mechanically annotate untouched legacy fixtures.
+4. Add a test-only Python package injection mechanism.
+5. Record a machine-readable or test-generated ownership inventory for LLVM
    operations, runtime helpers, intrinsics, ABI attributes, and target
    prefixes.
 
@@ -531,7 +595,7 @@ Validation compares capability ownership before and after, not only pass/fail:
 - runtime-helper calls;
 - LLGo intrinsic mappings;
 - ABI attributes and calling conventions;
-- target-specific CHECK prefixes;
+- declared common/OS/arch/OS+arch scope and prefix closure;
 - metadata sections and edges;
 - DeadcodeDrop and LTO roots;
 - block classification and ordering.

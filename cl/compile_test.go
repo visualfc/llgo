@@ -90,6 +90,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/reflectfn",   // llgo panic: unsatisfied import internal/runtime/sys
 				"./_testgo/reflectmkfn", // llgo panic: unsatisfied import internal/runtime/sys
 				"./_testgo/rewrite",     // llgo panic: unsatisfied import internal/sync
+				"./_testgo/runextest",   // package-selection fixture owned by internal/build
+				"./_testgo/runtest",     // package-selection fixture owned by internal/build
 				"./_testgo/select",      // timeout: emulator did not auto-exit
 				"./_testgo/selects",     // timeout: emulator did not auto-exit
 				"./_testgo/sigsegv",     // unexpected output: got "0/main", expected recover nil-pointer message
@@ -140,6 +142,8 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/makeslice",   // runtime output: fatal error
 				"./_testgo/mapindirect", // fatal error: error in backend: Incomplete scavenging after 2nd pass
 				"./_testgo/multiret",    // unexpected output
+				"./_testgo/runextest",   // package-selection fixture owned by internal/build
+				"./_testgo/runtest",     // package-selection fixture owned by internal/build
 				"./_testgo/select",      // timeout: emulator did not auto-exit
 				"./_testgo/sigsegv",     // unexpected output
 				"./_testgo/struczero",   // timeout: emulator did not auto-exit
@@ -187,9 +191,8 @@ func runEmbedTargetSuite(t *testing.T, target, relDir string, ignore []string) {
 }
 
 func TestRunAndTestFromTestgo(t *testing.T) {
-	// These directories are package-selection fixtures for internal/build.
-	// Their executable sources contain only ordinary calls and do not own a
-	// compiler lowering contract.
+	// Package-selection fixtures remain in place for internal/build, but none
+	// of the compiler runners treat them as lowering owners.
 	ignore := []string{
 		"./_testgo/runextest",
 		"./_testgo/runtest",

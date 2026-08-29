@@ -1,4 +1,5 @@
 // LITTEST
+// Scope: common
 package main
 
 import "github.com/xgo-dev/llgo/cl/_testlibc/cppabi/local"

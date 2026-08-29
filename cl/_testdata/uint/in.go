@@ -1,4 +1,5 @@
 // LITTEST
+// Scope: common
 package main
 
 // CHECK-LABEL: define i32 @main.f(i32 %0){{.*}} {

@@ -1,3 +1,4 @@
 Hello
 Length 6
-Value 100
+Int32 6
+Int64 100
