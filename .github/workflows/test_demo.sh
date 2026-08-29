@@ -78,6 +78,7 @@ else
     cases=(
       ./_demo/c/asmfullcall
       ./_demo/c/cgofull
+      ./_demo/c/cabisret
       ./_demo/c/cppintf
       ./_demo/go/cabi
       ./_demo/go/export
@@ -89,6 +90,7 @@ else
     cases=(
       ./_demo/c/asmfullcall
       ./_demo/c/cgofull
+      ./_demo/c/cabisret
       ./_demo/go/cabi
       ./_demo/go/reflect
       ./_demo/go/stdlib

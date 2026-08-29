@@ -1,8 +1,6 @@
 package main
 
 import (
-	"strconv"
-
 	"github.com/goplus/lib/c"
 	"github.com/goplus/lib/c/os"
 )
@@ -13,26 +11,4 @@ func verifyGetcwd() {
 	if wd == nil || c.GoString(wd) == "" {
 		panic("getcwd")
 	}
-}
-
-func temporaryFilename() string {
-	// The demo runner executes each case from its writable source directory.
-	// A PID suffix isolates concurrent cases without adding a Go os.TempDir
-	// dependency to this C descriptor test.
-	return "llgo-fcntl-" + strconv.Itoa(int(os.Getpid())) + ".tmp"
-}
-
-func writeCString(buffer []c.Char, text string) *c.Char {
-	if len(text) >= len(buffer) {
-		panic("temporary filename is too long")
-	}
-	for i := range text {
-		buffer[i] = c.Char(text[i])
-	}
-	buffer[len(text)] = 0
-	return &buffer[0]
-}
-
-func fileError(operation, filename string) string {
-	return operation + ": " + filename + " (errno " + strconv.Itoa(int(os.Errno())) + ")"
 }

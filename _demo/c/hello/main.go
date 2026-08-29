@@ -6,9 +6,10 @@ import (
 	"github.com/goplus/lib/c"
 )
 
-// Canonical small C-FFI example, also used by the WASM smoke. It combines the
-// former hello, helloc and concat programs without pulling in platform APIs.
+// Canonical C-FFI example. It combines the former hello, concat, and focused
+// embedded libc-memory paths; c/helloc remains the workflow-owned WASI case.
 func main() {
+	verifyCMemory()
 	message := "Hello" + ", " + "C"
 	cMessage := c.AllocaCStr(message)
 	if c.GoString(cMessage) != message || c.Strlen(cMessage) != uintptr(len(message)) {

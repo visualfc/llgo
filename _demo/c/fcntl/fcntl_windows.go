@@ -11,15 +11,13 @@ import (
 // operations while the Unix source continues to cover F_GETFL/F_SETFL.
 func main() {
 	verifyGetcwd()
-	filenameText := temporaryFilename()
-	var filenameBuffer [64]c.Char
-	filename := writeCString(filenameBuffer[:], filenameText)
+	filename := c.Str("testfile.txt")
 	data := c.Str("Hello, os!")
 	defer os.Remove(filename)
 
 	fd := os.Open(filename, os.O_CREAT|os.O_WRONLY|os.O_TRUNC|os.O_BINARY, 0o644)
 	if fd == -1 {
-		panic(fileError("open for write failed", filenameText))
+		panic("open for write failed")
 	}
 	if n := os.Write(fd, c.Pointer(data), c.Uint(c.Strlen(data))); n != c.Int(c.Strlen(data)) {
 		os.Close(fd)
@@ -31,7 +29,7 @@ func main() {
 
 	fd = os.Open(filename, os.O_RDONLY|os.O_BINARY)
 	if fd == -1 {
-		panic(fileError("open for read failed", filenameText))
+		panic("open for read failed")
 	}
 	var buffer [20]c.Char
 	n := os.Read(fd, c.Pointer(unsafe.SliceData(buffer[:])), c.Uint(len(buffer)-1))
