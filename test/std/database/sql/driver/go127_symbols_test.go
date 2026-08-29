@@ -10,10 +10,10 @@ import (
 
 type columnScanner struct{}
 
-func (*columnScanner) Columns() []string                    { return []string{"value"} }
-func (*columnScanner) Close() error                         { return nil }
-func (*columnScanner) Next([]driver.Value) error            { return io.EOF }
-func (*columnScanner) NextRow() error                       { return io.EOF }
+func (*columnScanner) Columns() []string                             { return []string{"value"} }
+func (*columnScanner) Close() error                                  { return nil }
+func (*columnScanner) Next([]driver.Value) error                     { return io.EOF }
+func (*columnScanner) NextRow() error                                { return io.EOF }
 func (*columnScanner) ScanColumn(driver.ScanContext, int, any) error { return nil }
 
 func TestRowsColumnScanner(t *testing.T) {
