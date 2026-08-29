@@ -492,12 +492,12 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
 	nativeInput := crosscompile.NativeToolchainInput{}
-	if usesNativeWindowsToolchain(runtime.GOOS, conf) {
+	if usesWindowsToolchainProfile(runtime.GOOS, conf) {
 		nativeInput, err = parseNativeToolchainInput(commands, conf.LinkOptions)
 		if err != nil {
 			return nil, err
 		}
-		nativeInput.ResolveCrossArch = conf.Mode != ModeGen
+		nativeInput.ResolveWindows = conf.Mode != ModeGen
 	}
 	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
 	if err != nil {
@@ -919,12 +919,13 @@ func removeOutFmts(outFmts *OutFmtDetails) {
 	}
 }
 
-func usesNativeWindowsToolchain(hostGOOS string, conf *Config) bool {
-	// Windows can execute a host-architecture LLGo compiler while Clang targets
-	// another Windows architecture (for example, x64 LLGo producing ARM64 or
-	// 386 programs). The selected CC target, not the compiler process's GOARCH,
-	// defines the physical ABI that must be resolved below.
-	return conf.Target == "" && hostGOOS == "windows" && conf.Goos == hostGOOS
+func usesWindowsToolchainProfile(hostGOOS string, conf *Config) bool {
+	// Linked Windows output always needs a coherent compiler, ABI, CRT, and
+	// linker profile. This also covers a Unix-hosted LLGo compiler using an
+	// llvm-mingw toolchain. IR-only generation remains host-independent unless
+	// it runs natively on Windows, preserving golden-test behavior.
+	return conf.Target == "" && conf.Goos == "windows" &&
+		(hostGOOS == "windows" || conf.Mode != ModeGen)
 }
 
 func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crosscompile.NativeToolchainInput, error) {

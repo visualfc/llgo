@@ -14,7 +14,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/crosscompile"
 )
 
-func TestUsesNativeWindowsToolchain(t *testing.T) {
+func TestUsesWindowsToolchainProfile(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		hostOS string
@@ -23,13 +23,16 @@ func TestUsesNativeWindowsToolchain(t *testing.T) {
 	}{
 		{name: "native Windows", hostOS: "windows", conf: Config{Goos: "windows", Goarch: "amd64"}, want: true},
 		{name: "cross-architecture Windows", hostOS: "windows", conf: Config{Goos: "windows", Goarch: "arm64"}, want: true},
+		{name: "cross-host Windows build", hostOS: "darwin", conf: Config{Goos: "windows", Goarch: "arm64", Mode: ModeBuild}, want: true},
+		{name: "cross-host Windows test", hostOS: "linux", conf: Config{Goos: "windows", Goarch: "386", Mode: ModeTest}, want: true},
+		{name: "cross-host Windows IR", hostOS: "darwin", conf: Config{Goos: "windows", Goarch: "arm64", Mode: ModeGen}},
 		{name: "named target", hostOS: "windows", conf: Config{Goos: "windows", Goarch: "amd64", Target: "esp32c3"}},
 		{name: "cross OS", hostOS: "windows", conf: Config{Goos: "linux", Goarch: "amd64"}},
 		{name: "non-Windows host", hostOS: "darwin", conf: Config{Goos: "darwin", Goarch: "arm64"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := usesNativeWindowsToolchain(test.hostOS, &test.conf); got != test.want {
-				t.Fatalf("usesNativeWindowsToolchain() = %v, want %v", got, test.want)
+			if got := usesWindowsToolchainProfile(test.hostOS, &test.conf); got != test.want {
+				t.Fatalf("usesWindowsToolchainProfile() = %v, want %v", got, test.want)
 			}
 		})
 	}
