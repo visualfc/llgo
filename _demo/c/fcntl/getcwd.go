@@ -1,8 +1,6 @@
 package main
 
 import (
-	stdos "os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/goplus/lib/c"
@@ -18,6 +16,8 @@ func verifyGetcwd() {
 }
 
 func temporaryFilename() string {
-	name := "llgo-fcntl-" + strconv.Itoa(int(os.Getpid())) + ".tmp"
-	return filepath.Join(stdos.TempDir(), name)
+	// The demo runner executes each case from its writable source directory.
+	// A PID suffix isolates concurrent cases without adding a Go os.TempDir
+	// dependency to this C descriptor test.
+	return "llgo-fcntl-" + strconv.Itoa(int(os.Getpid())) + ".tmp"
 }
