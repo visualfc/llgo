@@ -59,7 +59,8 @@ func main() {
 
 	root := findLLGoRoot(t)
 	llgo := acceptanceLLGoBinary(t)
-	runLLGoWithoutHostCgoFlags(t, root, llgo, "run", mainFile)
+	t.Setenv("LLGO_ROOT", root)
+	runLLGoWithoutHostCgoFlags(t, dir, llgo, "run", mainFile)
 }
 
 func runLLGoWithoutHostCgoFlags(t *testing.T, dir, llgo string, args ...string) {

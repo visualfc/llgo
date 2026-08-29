@@ -97,12 +97,12 @@ func TestBuiltinPrintOutputMatchesGo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repoRoot := findBuiltinPrintRepoRoot(t)
 	goBin := testExecutablePath(dir, "go-probe")
 	llgoBin := testExecutablePath(dir, "llgo-probe")
-	runBuiltinPrintCommand(t, repoRoot, "go", "build", "-o", goBin, file)
+	runBuiltinPrintCommand(t, dir, "go", "build", "-o", goBin, file)
+	repoRoot := findBuiltinPrintRepoRoot(t)
 	t.Setenv("LLGO_ROOT", repoRoot)
-	runBuiltinPrintCommand(t, repoRoot, "go", "run", "./cmd/llgo", "build", "-o", llgoBin, file)
+	runBuiltinPrintCommand(t, dir, acceptanceLLGoBinary(t), "build", "-o", llgoBin, file)
 
 	want := runBuiltinPrintCommand(t, dir, goBin)
 	got := runBuiltinPrintCommand(t, dir, llgoBin)
