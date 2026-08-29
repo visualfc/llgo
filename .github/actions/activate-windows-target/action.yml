@@ -13,6 +13,19 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Record the installed host compiler when available
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        # GOROOT and benchmark jobs pass their explicitly built host compiler
+        # by path. Shared test jobs install llgo on PATH and reuse it whenever
+        # a target-native test launches the compiler as a subprocess.
+        $hostCompiler = Get-Command llgo.exe -ErrorAction SilentlyContinue
+        if ($null -ne $hostCompiler) {
+          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_TEST_COMPILER=$($hostCompiler.Source)"
+        }
+
     - name: Activate Windows MSVC target
       if: runner.os == 'Windows' && inputs.windows-abi == 'msvc'
       shell: pwsh

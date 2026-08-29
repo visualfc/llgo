@@ -46,6 +46,18 @@ _llgo_compute_bin_path() {
 }
 
 _llgo_ensure_llgo_cli() {
+	if [ -n "${LLGO_TEST_COMPILER:-}" ]; then
+		LLGO_BIN="$LLGO_TEST_COMPILER"
+		if command -v cygpath >/dev/null 2>&1; then
+			LLGO_BIN="$(cygpath -u "$LLGO_BIN")"
+		fi
+		if [ ! -x "$LLGO_BIN" ]; then
+			echo "error: LLGO_TEST_COMPILER is not executable: ${LLGO_TEST_COMPILER}" >&2
+			exit 2
+		fi
+		return
+	fi
+
 	_llgo_compute_bin_path
 
 	(
