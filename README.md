@@ -165,7 +165,8 @@ func main() {
 
 Additional demos are available in the `_demo` directory (prefixed with `_` so the `go` command skips them):
 
-* [hello](_demo/c/hello/main.go): call C `printf` and `fprintf` with Go and C strings
+* [hello](_demo/c/hello/hello.go): call C `printf` to print `Hello world`
+* [concat](_demo/c/concat/concat.go): call C `fprintf` with `stderr`
 * [qsort](_demo/c/qsort/qsort.go): call a C function that takes a callback (e.g. `qsort`)
 
 To run a demo (see [How to install](#how-to-install) if `llgo` isn't installed yet):
@@ -198,7 +199,7 @@ Available bindings include:
 
 Examples built on these bindings:
 
-* [llama2-c](_demo/workflow/model/llama2-c): inference Llama 2 (the first LLGo AI example)
+* [llama2-c](_demo/c/llama2-c): inference Llama 2 (the first LLGo AI example)
 * [mkjson](https://github.com/goplus/lib/tree/main/c/cjson/_demo/mkjson/mkjson.go): create a JSON object and print it
 * [sqlitedemo](https://github.com/goplus/lib/tree/main/c/sqlite/_demo/sqlitedemo/demo.go): a basic SQLite demo
 * [tetris](https://github.com/goplus/lib/tree/main/c/raylib/_demo/tetris/tetris.go): a Tetris game based on raylib
@@ -290,13 +291,15 @@ Here we define two 3x3 matrices a and b, add them to get x, and then print the r
 
 The `_demo/py/` directory contains some python related demos:
 
-* [basic](_demo/py/basic/main.go): call Python math, statistics, variadic builtin, iterator, and print APIs
-* [scientific](_demo/py/matrix/matrix.go): convert nested lists through NumPy and PyTorch
+* [callpy](_demo/py/callpy/callpy.go): call Python standard library function `math.sqrt`
+* [pi](_demo/py/pi/pi.go): print python constants `math.pi`
+* [statistics](_demo/py/statistics/statistics.go): define a python list and call `statistics.mean` to get the mean
+* [matrix](_demo/py/matrix/matrix.go): a basic `numpy` demo
 
 To run these demos (If you haven't installed `llgo` yet, please refer to [How to install](#how-to-install)):
 
 ```sh
-cd <demo-directory>  # eg. cd _demo/py/basic
+cd <demo-directory>  # eg. cd _demo/py/callpy
 llgo run .
 ```
 

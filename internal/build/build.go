@@ -28,6 +28,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -144,7 +145,7 @@ type Config struct {
 	LTOPlugin          lto.PassPlugin
 	BinPath            string
 	AppExt             string  // ".exe" on Windows, empty on Unix
-	OutFile            string  // file for one package, or directory for multiple ModeBuild packages
+	OutFile            string  // only valid for ModeBuild when len(pkgs) == 1
 	OutFmts            OutFmts // Output format specifications (only for Target != "")
 	CompileOnly        bool    // compile test binary but do not run it (only valid for ModeTest)
 	Emulator           bool    // run in emulator mode
@@ -439,37 +440,12 @@ const (
 
 var llssaInitOnce sync.Once
 
-type sourcePatchToolchain struct {
-	goroot    string
-	goversion string
-}
-
-func configureSourcePatchToolchain(conf *Config, environ []string) (sourcePatchToolchain, error) {
-	goroot, goversion, err := env.GOROOTAndGOVERSIONWithEnv(environ)
-	if err != nil {
-		return sourcePatchToolchain{}, err
-	}
-	// Default runtime globals must use the same selected Go toolchain as the
-	// source patches and must be registered before packages are built.
-	addGlobalString(conf, "runtime.defaultGOROOT="+goroot, nil)
-	addGlobalString(conf, "runtime.buildVersion="+goversion, nil)
-	return sourcePatchToolchain{goroot: goroot, goversion: goversion}, nil
-}
-
 func Do(args []string, conf *Config) ([]Package, error) {
 	return Build(Invocation{Args: args, Config: conf})
 }
 
 // Build executes one build invocation.
-func Build(inv Invocation) (result []Package, resultErr error) {
-	var fallback *multiBuildFallback
-	defer func() {
-		if resultErr == nil || fallback == nil || inv.disableMultiFallback {
-			return
-		}
-		result, resultErr = fallback.run()
-	}()
-
+func Build(inv Invocation) ([]Package, error) {
 	dir := inv.Dir
 	if dir == "" {
 		var err error
@@ -636,15 +612,15 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	if patterns == nil {
 		patterns = []string{"."}
 	}
-	sourcePatchToolchain, err := configureSourcePatchToolchain(conf, cfg.Env)
+	sourcePatchGOROOT, sourcePatchGoVersion, err := env.GOROOTAndGOVERSIONWithEnv(cfg.Env)
 	if err != nil {
 		return nil, err
 	}
 	var llgoFiles map[string][]string
-	conf.Overlay, llgoFiles, err = buildSourcePatchOverlayForGOROOT(conf.Overlay, env.LLGoRuntimeDir(), sourcePatchToolchain.goroot, sourcePatchBuildContext{
+	conf.Overlay, llgoFiles, err = buildSourcePatchOverlayForGOROOT(conf.Overlay, env.LLGoRuntimeDir(), sourcePatchGOROOT, sourcePatchBuildContext{
 		goos:       conf.Goos,
 		goarch:     conf.Goarch,
-		goversion:  sourcePatchToolchain.goversion,
+		goversion:  sourcePatchGoVersion,
 		buildFlags: cfg.BuildFlags,
 	})
 	if err != nil {
@@ -668,20 +644,13 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := loadSyntaxErr(); err != nil {
+		return nil, err
+	}
 	if conf.AllowNoBody {
 		allowMissingFunctionBodies(initial)
 	}
 	mode := conf.Mode
-	var multiOutputDir string
-	if mode == ModeBuild && conf.OutFile != "" {
-		multiOutputDir, err = prepareBuildOutput(dir, conf.OutFile, len(initial) > 1, initial)
-		if err != nil {
-			return nil, err
-		}
-		if multiOutputDir != "" {
-			conf.OutFile = multiOutputDir
-		}
-	}
 	if mode == ModeTest {
 		initial, err = filterTestPackages(initial, conf.OutFile)
 		if err != nil {
@@ -693,10 +662,9 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	} else if len(initial) > 1 {
 		switch mode {
 		case ModeBuild:
-			if conf.BuildMode != BuildModeExe {
-				return nil, fmt.Errorf("-buildmode=%s requires exactly one main package", conf.BuildMode)
+			if conf.OutFile != "" {
+				return nil, fmt.Errorf("cannot build multiple packages with -o")
 			}
-			fallback = newMultiBuildFallback(conf, initial, dir, multiOutputDir)
 		case ModeInstall:
 			if conf.Target != "" {
 				return nil, fmt.Errorf("cannot install multiple packages to embedded target")
@@ -705,15 +673,12 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 			return nil, fmt.Errorf("cannot run multiple packages")
 		}
 	}
-	if err := loadSyntaxErr(); err != nil {
-		return nil, err
-	}
 
 	altPkgPaths := altPkgs(initial, conf, llssa.PkgRuntime)
 	altCfg := *cfg
 	altCfg.Dir = env.LLGoRuntimeDir()
 	// The runtime submodule may otherwise select a different toolchain from its go.mod.
-	altCfg.Env = withResolvedGoToolchain(cfg.Env, sourcePatchToolchain.goversion)
+	altCfg.Env = withResolvedGoToolchain(cfg.Env, sourcePatchGoVersion)
 	loadAltSpan := buildTrace.startCoordinator("load runtime packages", map[string]any{
 		"packages": slices.Clone(altPkgPaths),
 	})
@@ -784,6 +749,9 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// override emission, then release them on every normal, error, or panic path.
 	defer ctx.disposeBackendPrograms()
 
+	// default runtime globals must be registered before packages are built
+	addGlobalString(conf, "runtime.defaultGOROOT="+runtime.GOROOT(), nil)
+	addGlobalString(conf, "runtime.buildVersion="+runtime.Version(), nil)
 	pkgs, pkgEntries, err := registerSSAPkgs(ctx, initial, verbose)
 	if err != nil {
 		return nil, err
@@ -813,103 +781,107 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		return nil, fmt.Errorf("initial package not found")
 	}
 
-	linkMultiple := mode == ModeBuild && len(initial) > 1
-	var linkErrs []error
 	for _, pkg := range initial {
-		if !needLink(pkg, mode) || inv.compileOnly {
-			continue
-		}
-		if err := linkInitialPackage(ctx, pkg, allPkgs, conf, verbose, linkMultiple && conf.OutFile == ""); err != nil {
-			linkErrs = append(linkErrs, fmt.Errorf("%s: %w", pkg.PkgPath, err))
+		if needLink(pkg, mode) {
+			name := path.Base(pkg.PkgPath)
+
+			// Create output format details
+			outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1, &ctx.crossCompile)
+			if err != nil {
+				return nil, err
+			}
+			resolveOutputs(ctx.commands.dir, outFmts)
+
+			// Link main package using the output path from buildOutFmts
+			linkSpan := buildTrace.startCoordinator("link "+pkg.PkgPath, map[string]any{
+				"package": pkg.PkgPath,
+				"output":  outFmts.Out,
+			})
+			err = linkMainPkg(ctx, pkg, allPkgs, outFmts.Out, verbose)
+			linkSpan.done()
+			if err != nil {
+				return nil, err
+			}
+			if err := finalizeRuntimePCLN(ctx, outFmts, verbose); err != nil {
+				return nil, err
+			}
+			if err := finalizeDarwinSizeExecutable(ctx, outFmts.Out, verbose); err != nil {
+				return nil, err
+			}
+			if conf.Mode == ModeBuild && conf.SizeReport {
+				if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
+				}
+			}
+
+			// Generate C headers for c-archive and c-shared modes before linking
+			if ctx.buildConf.BuildMode == BuildModeCArchive || ctx.buildConf.BuildMode == BuildModeCShared {
+				libname := strings.TrimSuffix(filepath.Base(outFmts.Out), conf.AppExt)
+				headerPath := filepath.Join(filepath.Dir(outFmts.Out), libname) + ".h"
+				pkgs := cHeaderPackages(allPkgs)
+				headerErr := header.GenHeaderFile(prog, pkgs, libname, headerPath, verbose)
+				if headerErr != nil {
+					return nil, headerErr
+				}
+				continue
+			}
+
+			envMap := outFmts.ToEnvMap()
+
+			// Only convert formats when Target is specified
+			if conf.Target != "" {
+				// Process format conversions for embedded targets
+				err = firmware.ConvertFormats(ctx.crossCompile.BinaryFormat, ctx.crossCompile.FormatDetail, envMap)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			switch mode {
+			case ModeBuild:
+				// Do nothing
+
+			case ModeInstall:
+				// Native already installed in linkMainPkg
+				if conf.Target != "" {
+					err = flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+			case ModeRun, ModeTest, ModeCmpTest:
+				if conf.Target == "" {
+					err = runNative(ctx, outFmts.Out, pkg.Dir, pkg.PkgPath, conf, mode)
+				} else if conf.Emulator {
+					err = runInEmulator(ctx.commands, ctx.crossCompile.Emulator, envMap, pkg.Dir, pkg.PkgPath, conf, mode, verbose)
+				} else {
+					err = flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose)
+					if err != nil {
+						return nil, err
+					}
+					monitorConfig := monitor.MonitorConfig{
+						Port:       ctx.buildConf.Port,
+						Target:     conf.Target,
+						Executable: outFmts.Out,
+						BaudRate:   conf.BaudRate,
+						SerialPort: ctx.crossCompile.Device.SerialPort,
+					}
+					err = monitor.Monitor(monitorConfig, verbose)
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
 		}
 	}
-	// The shared graph completed, so a link failure must not trigger the
-	// expensive per-root compile fallback. Other main packages were already
-	// attempted above and their link errors are returned together.
-	fallback = nil
 	ctx.disposeBackendPrograms()
 
 	if mode == ModeTest && ctx.testFail {
 		mockable.Exit(1)
 	}
 
-	return allPkgs, errors.Join(linkErrs...)
-}
-
-func linkInitialPackage(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, verbose, discardOutput bool) error {
-	name := defaultExecutableName(pkg.PkgPath)
-	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1, &ctx.crossCompile)
-	if err != nil {
-		return err
-	}
-	if discardOutput {
-		defer removeOutFmts(outFmts)
-	}
-	resolveOutputs(ctx.commands.dir, outFmts)
-	linkSpan := ctx.buildTrace.startCoordinator("link "+pkg.PkgPath, map[string]any{
-		"package": pkg.PkgPath,
-		"output":  outFmts.Out,
-	})
-	err = linkMainPkg(ctx, pkg, allPkgs, outFmts.Out, verbose)
-	linkSpan.done()
-	if err != nil {
-		return err
-	}
-	if err := finalizeRuntimePCLN(ctx, outFmts, verbose); err != nil {
-		return err
-	}
-	if err := finalizeDarwinSizeExecutable(ctx, outFmts.Out, verbose); err != nil {
-		return err
-	}
-	if conf.Mode == ModeBuild && conf.SizeReport {
-		if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
-		}
-	}
-	if ctx.buildConf.BuildMode == BuildModeCArchive || ctx.buildConf.BuildMode == BuildModeCShared {
-		libname := strings.TrimSuffix(filepath.Base(outFmts.Out), conf.AppExt)
-		headerPath := filepath.Join(filepath.Dir(outFmts.Out), libname) + ".h"
-		return header.GenHeaderFile(ctx.prog, cHeaderPackages(allPkgs), libname, headerPath, verbose)
-	}
-
-	envMap := outFmts.ToEnvMap()
-	if conf.Target != "" {
-		if err := firmware.ConvertFormats(ctx.crossCompile.BinaryFormat, ctx.crossCompile.FormatDetail, envMap); err != nil {
-			return err
-		}
-	}
-	switch conf.Mode {
-	case ModeInstall:
-		if conf.Target != "" {
-			return flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose)
-		}
-	case ModeRun, ModeTest, ModeCmpTest:
-		if conf.Target == "" {
-			return runNative(ctx, outFmts.Out, pkg.Dir, pkg.PkgPath, conf, conf.Mode)
-		}
-		if conf.Emulator {
-			return runInEmulator(ctx.commands, ctx.crossCompile.Emulator, envMap, pkg.Dir, pkg.PkgPath, conf, conf.Mode, verbose)
-		}
-		if err := flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose); err != nil {
-			return err
-		}
-		return monitor.Monitor(monitor.MonitorConfig{
-			Port: ctx.buildConf.Port, Target: conf.Target, Executable: outFmts.Out,
-			BaudRate: conf.BaudRate, SerialPort: ctx.crossCompile.Device.SerialPort,
-		}, verbose)
-	}
-	return nil
-}
-
-func removeOutFmts(outFmts *OutFmtDetails) {
-	for _, output := range []string{
-		outFmts.Out, outFmts.PCLN, outFmts.Bin, outFmts.Hex,
-		outFmts.Img, outFmts.Uf2, outFmts.Zip,
-	} {
-		if output != "" {
-			_ = os.Remove(output)
-		}
-	}
+	return allPkgs, nil
 }
 
 // cHeaderPackages excludes the patched standard runtime implementation. Its
@@ -1564,13 +1536,45 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	var needAbiInit int
 	methodByIndex := make(map[int]none)
 	methodByName := make(map[string]none)
+	allPkgs := []*packages.Package{pkg}
+	for _, v := range pkgs {
+		if v.PkgPath != pkg.PkgPath && v.Types != nil && v.Types.Name() == "main" {
+			continue
+		}
+		allPkgs = append(allPkgs, v.Package)
+	}
+	visitRoots := allPkgs
+	if ctx.mode == ModeTest {
+		visitRoots = []*packages.Package{pkg}
+		for _, p := range allPkgs {
+			if isRuntimePkg(p.PkgPath) {
+				visitRoots = append(visitRoots, p)
+			}
+		}
+	}
 	// archiveInputs contains package .a files. Object files are prepended later so
 	// archive extraction can see their undefined references in a single linker pass.
 	var archiveInputs []string
 	var linkArgs []string
 	var rtLinkInputs []string
 	var rtLinkArgs []string
-	linkedOrder := linkedPackageClosure(ctx, pkg, pkgs)
+	linkedPkgs := make(map[string]bool) // Track linked packages by ID to avoid duplicates
+	var linkedOrder []Package
+	packages.Visit(visitRoots, nil, func(p *packages.Package) {
+		// Skip if already linked this package (by ID)
+		if linkedPkgs[p.ID] {
+			return
+		}
+		aPkg := ctx.pkgs[p]
+		if aPkg == nil {
+			// Fallback: lookup by pkg.ID for packages that may be different instances
+			aPkg = ctx.pkgByID[p.ID]
+		}
+		if p.ExportFile != "" && aPkg != nil { // skip packages that only contain declarations
+			linkedPkgs[p.ID] = true
+			linkedOrder = append(linkedOrder, aPkg)
+		}
+	})
 
 	// packages.Visit with a post callback yields dependencies before importers.
 	// Reverse that order so static archives are linked after the objects that use them.

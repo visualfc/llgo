@@ -61,9 +61,6 @@ func determineBaseNameAndDir(pkgName string, conf *Config, multiPkg bool) (baseN
 	case ModeInstall:
 		return pkgName, conf.BinPath
 	case ModeBuild:
-		if conf.OutFile != "" && isDir(conf.OutFile) {
-			return pkgName, conf.OutFile
-		}
 		if !multiPkg && conf.OutFile != "" {
 			dir = filepath.Dir(conf.OutFile)
 			baseName = strings.TrimSuffix(filepath.Base(conf.OutFile), conf.AppExt)

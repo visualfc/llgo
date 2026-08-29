@@ -6,7 +6,7 @@ FROM ${BASE_IMAGE} AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG LLVM_VERSION=19
-ARG GO_VERSION=1.26.7
+ARG GO_VERSION=1.24.2
 ARG CARGS_VERSION=1.0.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -144,6 +144,8 @@ WORKDIR /repo
 
 FROM base AS pydeps
 
-# Optional scientific demo dependencies used by _demo/py/matrix. Keep them in
-# a separate target so users can build a smaller image when needed.
-RUN pip install numpy torch
+# Optional demo deps used by _demo/py (numpy/torch). Keep in a separate target
+# so users can build a smaller image when needed.
+RUN set -eux; \
+  pip install numpy && \
+  (pip install torch --index-url https://download.pytorch.org/whl/cpu || pip install torch)

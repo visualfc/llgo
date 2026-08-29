@@ -31,14 +31,12 @@ jobs:
 
       - name: Download llama2 model
         run: |
-          mkdir -p ./_demo/workflow/model/llama2-c
+          mkdir -p ./_demo/c/llama2-c
           curl --fail --location --retry 5 --retry-delay 60 --retry-all-errors \
-            --output ./_demo/workflow/model/llama2-c/stories15M.bin \
+            --output ./_demo/c/llama2-c/stories15M.bin \
             https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin
 
       - name: Test llama2 demo
         run: |
-          GOTOOLCHAIN=local GOWORK=off go run -mod=readonly ./chore/demorun \
-            --profile model \
-            --jobs 1 \
-            --result result.md
+          cd ./_demo/c/llama2-c
+          llgo run .

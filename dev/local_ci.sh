@@ -58,7 +58,7 @@ setup_python3_embed_pc() {
 setup_python3_embed_pc
 
 ensure_llama2_model() {
-	local dst="$workdir/_demo/workflow/model/llama2-c/stories15M.bin"
+	local dst="$workdir/_demo/c/llama2-c/stories15M.bin"
 	if [ -f "$dst" ]; then
 		return
 	fi
@@ -190,8 +190,7 @@ fi
 (cd "$workdir" && LLGO_DEMO_JOBS="$demo_jobs" bash .github/workflows/test_demo.sh)
 
 log_section "Build targets"
-(cd "$workdir/_demo/embed/targetsbuild" && bash build.sh empty)
-(cd "$workdir/_demo/embed/targetsbuild" && bash build.sh defer)
+(cd "$workdir/_demo/embed/targetsbuild" && bash build.sh)
 
 log_section "Hello World"
 hello_logs=()
