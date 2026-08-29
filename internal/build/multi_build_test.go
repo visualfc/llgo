@@ -9,7 +9,53 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/xgo-dev/llgo/internal/packages"
 )
+
+func TestPrepareBuildOutputEdges(t *testing.T) {
+	root := t.TempDir()
+	mainPackages := []*packages.Package{{Name: "main"}}
+	if got, err := prepareBuildOutput(root, "", false, nil); err != nil || got != "" {
+		t.Fatalf("empty output = %q, %v", got, err)
+	}
+
+	blocking := filepath.Join(root, "blocking")
+	if err := os.WriteFile(blocking, []byte("file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := prepareBuildOutput(root, filepath.Join("blocking", "child")+string(os.PathSeparator), false, mainPackages); err == nil ||
+		!strings.Contains(err.Error(), "create build output directory") {
+		t.Fatalf("blocked output directory error = %v", err)
+	}
+
+	if filepath.Separator != '\\' {
+		if got, err := prepareBuildOutput(root, `\`, false, mainPackages); err != nil || got != root {
+			t.Fatalf("root backslash output = %q, %v; want %q", got, err, root)
+		}
+		want := filepath.Join(root, "nested")
+		if got, err := prepareBuildOutput(root, `nested\`, false, mainPackages); err != nil || got != want {
+			t.Fatalf("nested backslash output = %q, %v; want %q", got, err, want)
+		}
+	}
+}
+
+func TestDefaultExecutableName(t *testing.T) {
+	for _, test := range []struct {
+		path string
+		want string
+	}{
+		{"example.com/tool", "tool"},
+		{"example.com/tool/v2", "tool"},
+		{"example.com/tool/v0", "v0"},
+		{"example.com/tool/v1", "v1"},
+		{"example.com/tool/vnext", "vnext"},
+	} {
+		if got := defaultExecutableName(test.path); got != test.want {
+			t.Errorf("defaultExecutableName(%q) = %q, want %q", test.path, got, test.want)
+		}
+	}
+}
 
 func TestModeBuildMultiplePackagesMatchesGoOutputContract(t *testing.T) {
 	root := writeMultiBuildModule(t, map[string]string{
@@ -67,6 +113,13 @@ func main() { missing() }
 	if _, err := Build(Invocation{Args: []string{"./cmd/first", "./cmd/second"}, Config: fileOutput, Dir: root}); err == nil ||
 		!strings.Contains(err.Error(), "cannot write multiple packages to non-directory") {
 		t.Fatalf("multi-package -o file error = %v", err)
+	}
+
+	archive := multiBuildConfig()
+	archive.BuildMode = BuildModeCArchive
+	if _, err := Build(Invocation{Args: []string{"./cmd/first", "./cmd/second"}, Config: archive, Dir: root}); err == nil ||
+		!strings.Contains(err.Error(), "-buildmode=c-archive requires exactly one main package") {
+		t.Fatalf("multi-package c-archive error = %v", err)
 	}
 
 	trailingDir := filepath.Join(root, "created") + string(os.PathSeparator)
