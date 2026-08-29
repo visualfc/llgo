@@ -140,6 +140,9 @@ run_case() {
 
   if [ -n "$target" ]; then
     cmd=(llgo run)
+    # Case-level workers already provide parallelism. Keep each embedded build
+    # single-threaded so package parallelism does not multiply across workers.
+    cmd+=("-p=1")
     cmd+=("${llgo_run_flags[@]}")
     cmd+=("-target=$target")
     if [ "$emulator" -eq 1 ]; then
