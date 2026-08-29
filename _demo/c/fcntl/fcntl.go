@@ -3,6 +3,7 @@
 package main
 
 import (
+	"syscall"
 	"unsafe"
 
 	"github.com/goplus/lib/c"
@@ -18,7 +19,11 @@ func main() {
 	var buffer [20]c.Char
 
 	// Open a file, O_CREAT|O_WRONLY|O_TRUNC means create, write only, or clear the file
-	fd := os.Open(filename, os.O_CREAT|os.O_WRONLY|os.O_TRUNC, 0644)
+	// open and fcntl consume the host libc's numeric flags. Use Go's
+	// target-specific syscall constants rather than non-Windows compatibility
+	// values that cannot represent both Darwin and Linux.
+	openFlags := c.Int(syscall.O_CREAT | syscall.O_WRONLY | syscall.O_TRUNC)
+	fd := os.Open(filename, openFlags, c.Int(0o644))
 	if fd == -1 {
 		panic("open for write failed")
 	}
@@ -38,11 +43,12 @@ func main() {
 	}
 
 	// Set the file status flag to non-blocking mode
-	if os.Fcntl(fd, os.F_SETFL, flags|os.O_NONBLOCK) == -1 {
+	nonblock := c.Int(syscall.O_NONBLOCK)
+	if os.Fcntl(fd, os.F_SETFL, flags|nonblock) == -1 {
 		os.Close(fd)
 		panic("F_SETFL failed")
 	}
-	if updated := os.Fcntl(fd, os.F_GETFL); updated == -1 || updated&os.O_NONBLOCK == 0 {
+	if updated := os.Fcntl(fd, os.F_GETFL); updated == -1 || updated&nonblock == 0 {
 		os.Close(fd)
 		panic("F_SETFL did not set O_NONBLOCK")
 	}
