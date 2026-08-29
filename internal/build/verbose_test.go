@@ -17,36 +17,69 @@
 package build
 
 import (
+	"go/types"
 	"os"
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/packages"
 )
 
-func TestPrintCompiledPackage(t *testing.T) {
+func captureStderr(t *testing.T) func() string {
+	t.Helper()
 	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
 	if err != nil {
 		t.Fatal(err)
 	}
 	oldStderr := os.Stderr
 	os.Stderr = stderr
-	t.Cleanup(func() { os.Stderr = oldStderr })
+	closed := false
+	t.Cleanup(func() {
+		if !closed {
+			os.Stderr = oldStderr
+			_ = stderr.Close()
+		}
+	})
+	return func() string {
+		t.Helper()
+		if closed {
+			t.Fatal("stderr capture already read")
+		}
+		os.Stderr = oldStderr
+		closed = true
+		if err := stderr.Close(); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(stderr.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(got)
+	}
+}
 
-	pkg := &aPackage{Package: &packages.Package{PkgPath: "example.com/rebuilt"}}
-	printCompiledPackage(&Config{PrintPackages: true}, pkg)
+func TestFinalizePackageBuildPrintsCompletedPackage(t *testing.T) {
+	readStderr := captureStderr(t)
+
+	pkg := &aPackage{Package: &packages.Package{
+		PkgPath: "example.com/rebuilt",
+		Types:   types.NewPackage("example.com/rebuilt", "rebuilt"),
+	}}
+	ctx := &context{buildConf: &Config{PrintPackages: true}}
+	if err := finalizePackageBuild(ctx, newPackageBuildTask(pkg), false); err != nil {
+		t.Fatal(err)
+	}
+
 	pkg.CacheHit = true
-	printCompiledPackage(&Config{PrintPackages: true}, pkg)
-	pkg.CacheHit = false
-	printCompiledPackage(&Config{}, pkg)
+	if err := finalizePackageBuild(ctx, newPackageBuildTask(pkg), false); err != nil {
+		t.Fatal(err)
+	}
 
-	if err := stderr.Close(); err != nil {
+	pkg.CacheHit = false
+	if err := finalizePackageBuild(&context{buildConf: &Config{}}, newPackageBuildTask(pkg), false); err != nil {
 		t.Fatal(err)
 	}
-	got, err := os.ReadFile(stderr.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "example.com/rebuilt\n"; string(got) != want {
+
+	if got, want := readStderr(), "example.com/rebuilt\n"; got != want {
 		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }

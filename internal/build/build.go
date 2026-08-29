@@ -156,7 +156,7 @@ type Config struct {
 	AbiMode            AbiMode
 	GenExpect          bool // only valid for ModeCmpTest
 	Verbose            bool
-	PrintPackages      bool // print package paths as they are compiled, like go build -v
+	PrintPackages      bool // print package paths after successful compilation
 	PrintCommands      bool
 	GenLL              bool // generate pkg .ll files
 	DeadcodeDrop       bool // enable Go dead code drop (development builds only)
@@ -1341,6 +1341,7 @@ func finalizePackageBuild(ctx *context, task *packageBuildTask, verbose bool) er
 	if err := ctx.saveToCache(aPkg); err != nil && verbose {
 		fmt.Fprintf(os.Stderr, "warning: failed to save cache for %s: %v\n", aPkg.PkgPath, err)
 	}
+	printCompletedPackage(ctx.buildConf, aPkg)
 	return nil
 }
 
@@ -2213,10 +2214,8 @@ func buildPkg(ctx *context, aPkg *aPackage, verbose bool) error {
 func preparePackageModule(ctx *context, aPkg *aPackage, verbose bool) ([]string, error) {
 	pkg := aPkg.Package
 	pkgPath := pkg.PkgPath
-	if debugBuild || verbose {
+	if debugBuild || verbose && !ctx.buildConf.PrintPackages {
 		fmt.Fprintln(os.Stderr, pkgPath)
-	} else {
-		printCompiledPackage(ctx.buildConf, aPkg)
 	}
 	if llruntime.SkipToBuild(pkgPath) {
 		pkg.ExportFile = ""
@@ -2396,7 +2395,7 @@ func dropUnusedWindowsTestMain(ctx *context, pkg *aPackage, mod gllvm.Module) {
 	fn.EraseFromParentAsFunction()
 }
 
-func printCompiledPackage(conf *Config, pkg *aPackage) {
+func printCompletedPackage(conf *Config, pkg *aPackage) {
 	if conf.PrintPackages && !pkg.CacheHit {
 		fmt.Fprintln(os.Stderr, pkg.PkgPath)
 	}
