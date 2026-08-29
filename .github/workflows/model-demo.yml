@@ -38,5 +38,7 @@ jobs:
 
       - name: Test llama2 demo
         run: |
-          cd ./_demo/c/llama2-c
-          llgo run .
+          GOTOOLCHAIN=local GOWORK=off go run -mod=readonly ./chore/demorun \
+            --profile model \
+            --jobs 1 \
+            --result result.md

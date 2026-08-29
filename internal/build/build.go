@@ -440,6 +440,23 @@ const (
 
 var llssaInitOnce sync.Once
 
+type sourcePatchToolchain struct {
+	goroot    string
+	goversion string
+}
+
+func configureSourcePatchToolchain(conf *Config, environ []string) (sourcePatchToolchain, error) {
+	goroot, goversion, err := env.GOROOTAndGOVERSIONWithEnv(environ)
+	if err != nil {
+		return sourcePatchToolchain{}, err
+	}
+	// Default runtime globals must use the same selected Go toolchain as the
+	// source patches and must be registered before packages are built.
+	addGlobalString(conf, "runtime.defaultGOROOT="+goroot, nil)
+	addGlobalString(conf, "runtime.buildVersion="+goversion, nil)
+	return sourcePatchToolchain{goroot: goroot, goversion: goversion}, nil
+}
+
 func Do(args []string, conf *Config) ([]Package, error) {
 	return Build(Invocation{Args: args, Config: conf})
 }
@@ -612,15 +629,15 @@ func Build(inv Invocation) ([]Package, error) {
 	if patterns == nil {
 		patterns = []string{"."}
 	}
-	sourcePatchGOROOT, sourcePatchGoVersion, err := env.GOROOTAndGOVERSIONWithEnv(cfg.Env)
+	sourcePatchToolchain, err := configureSourcePatchToolchain(conf, cfg.Env)
 	if err != nil {
 		return nil, err
 	}
 	var llgoFiles map[string][]string
-	conf.Overlay, llgoFiles, err = buildSourcePatchOverlayForGOROOT(conf.Overlay, env.LLGoRuntimeDir(), sourcePatchGOROOT, sourcePatchBuildContext{
+	conf.Overlay, llgoFiles, err = buildSourcePatchOverlayForGOROOT(conf.Overlay, env.LLGoRuntimeDir(), sourcePatchToolchain.goroot, sourcePatchBuildContext{
 		goos:       conf.Goos,
 		goarch:     conf.Goarch,
-		goversion:  sourcePatchGoVersion,
+		goversion:  sourcePatchToolchain.goversion,
 		buildFlags: cfg.BuildFlags,
 	})
 	if err != nil {
@@ -678,7 +695,7 @@ func Build(inv Invocation) ([]Package, error) {
 	altCfg := *cfg
 	altCfg.Dir = env.LLGoRuntimeDir()
 	// The runtime submodule may otherwise select a different toolchain from its go.mod.
-	altCfg.Env = withResolvedGoToolchain(cfg.Env, sourcePatchGoVersion)
+	altCfg.Env = withResolvedGoToolchain(cfg.Env, sourcePatchToolchain.goversion)
 	loadAltSpan := buildTrace.startCoordinator("load runtime packages", map[string]any{
 		"packages": slices.Clone(altPkgPaths),
 	})
@@ -749,9 +766,6 @@ func Build(inv Invocation) ([]Package, error) {
 	// override emission, then release them on every normal, error, or panic path.
 	defer ctx.disposeBackendPrograms()
 
-	// default runtime globals must be registered before packages are built
-	addGlobalString(conf, "runtime.defaultGOROOT="+runtime.GOROOT(), nil)
-	addGlobalString(conf, "runtime.buildVersion="+runtime.Version(), nil)
 	pkgs, pkgEntries, err := registerSSAPkgs(ctx, initial, verbose)
 	if err != nil {
 		return nil, err

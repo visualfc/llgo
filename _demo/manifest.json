@@ -1,0 +1,2373 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "name": "host",
+      "llgo_args": []
+    },
+    {
+      "name": "host-lto",
+      "llgo_args": [
+        "-lto=full",
+        "-globaldce"
+      ]
+    },
+    {
+      "name": "host-deadcodedrop",
+      "llgo_args": [
+        "-deadcodedrop"
+      ]
+    },
+    {
+      "name": "esp32",
+      "llgo_args": [],
+      "target": "esp32",
+      "emulator": true
+    },
+    {
+      "name": "esp32c3-basic",
+      "llgo_args": [],
+      "target": "esp32c3-basic",
+      "emulator": true
+    },
+    {
+      "name": "model",
+      "llgo_args": []
+    }
+  ],
+  "cases": [
+    {
+      "id": "c-asmcall",
+      "dir": "_demo/c/asmcall",
+      "class": "integration",
+      "capability": "raw assembly call compatibility",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-asmfullcall",
+      "dir": "_demo/c/asmfullcall",
+      "class": "integration",
+      "capability": "platform assembly inputs, outputs, memory, and execution",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cabi",
+      "dir": "_demo/c/cabi",
+      "class": "integration",
+      "capability": "C aggregate register, sret, callback, and export ABI",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cabisret",
+      "dir": "_demo/c/cabisret",
+      "class": "integration",
+      "capability": "large C aggregate return and allocation",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cargs",
+      "dir": "_demo/c/cargs",
+      "class": "integration",
+      "capability": "pkg-config, argv, and runtime search path integration",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-catomic",
+      "dir": "_demo/c/catomic",
+      "class": "integration",
+      "capability": "C atomic load, store, read-modify-write, and compare-and-swap",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cexec",
+      "dir": "_demo/c/cexec",
+      "class": "integration",
+      "capability": "C process replacement and argv propagation",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cgofull",
+      "dir": "_demo/c/cgofull",
+      "class": "integration",
+      "capability": "CGo preamble, macro, callback, export, and Python bridge integration",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-concat",
+      "dir": "_demo/c/concat",
+      "class": "integration",
+      "capability": "Go string to C string and variadic C call",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cppintf",
+      "dir": "_demo/c/cppintf",
+      "class": "integration",
+      "capability": "C++ virtual interface bridge",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cppintf-foo",
+      "dir": "_demo/c/cppintf/foo",
+      "class": "integration",
+      "capability": "embedded compilation of the C++ interface support package",
+      "profiles": [
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cppmintf",
+      "dir": "_demo/c/cppmintf",
+      "class": "integration",
+      "capability": "C++ secondary-base this adjustment",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cppmintf-foo",
+      "dir": "_demo/c/cppmintf/foo",
+      "class": "integration",
+      "capability": "embedded compilation of the C++ multiple-inheritance support package",
+      "profiles": [
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-cppstr",
+      "dir": "_demo/c/cppstr",
+      "class": "integration",
+      "capability": "external C++ std::string wrapper integration",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-crand",
+      "dir": "_demo/c/crand",
+      "class": "integration",
+      "capability": "C random and time wrapper integration",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-ctime",
+      "dir": "_demo/c/ctime",
+      "class": "integration",
+      "capability": "platform C time wrapper integration",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-fcntl",
+      "dir": "_demo/c/fcntl",
+      "class": "integration",
+      "capability": "POSIX and Windows descriptor operations",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-genints",
+      "dir": "_demo/c/genints",
+      "class": "integration",
+      "capability": "closure and function-value compilation for foreign targets",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-getcwd",
+      "dir": "_demo/c/getcwd",
+      "class": "integration",
+      "capability": "stack allocation and getcwd bridge",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-hello",
+      "dir": "_demo/c/hello",
+      "class": "integration",
+      "capability": "prebuilt C library call",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-helloc",
+      "dir": "_demo/c/helloc",
+      "class": "integration",
+      "capability": "inline C FFI and WASM C-call smoke",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-linkname",
+      "dir": "_demo/c/linkname",
+      "class": "integration",
+      "capability": "direct C symbol linkname",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-llama2-c",
+      "dir": "_demo/c/llama2-c",
+      "class": "optional",
+      "capability": "model file, argv, and memory integration",
+      "profiles": [
+        "model"
+      ],
+      "goos": [
+        "linux"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-netdbdemo",
+      "dir": "_demo/c/netdbdemo",
+      "class": "integration",
+      "capability": "resolver API and Windows socket lifecycle",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-qsort",
+      "dir": "_demo/c/qsort",
+      "class": "integration",
+      "capability": "C-to-Go callback and reentry",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-setjmp",
+      "dir": "_demo/c/setjmp",
+      "class": "integration",
+      "capability": "platform setjmp and longjmp ABI",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-stacksave",
+      "dir": "_demo/c/stacksave",
+      "class": "integration",
+      "capability": "stack-save result against the machine stack pointer",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-syncdebug",
+      "dir": "_demo/c/syncdebug",
+      "class": "integration",
+      "capability": "Go mutex and foreign mutex metadata",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "c-thread",
+      "dir": "_demo/c/thread",
+      "class": "integration",
+      "capability": "pthread-to-Go callback, locality, and join result",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-abimethod",
+      "dir": "_demo/go/abimethod",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: abimethod",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-aliasrecv",
+      "dir": "_demo/go/aliasrecv",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: aliasrecv",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-async",
+      "dir": "_demo/go/async",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: async",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-async-async",
+      "dir": "_demo/go/async/async",
+      "class": "regression",
+      "capability": "embedded compilation of the future support package",
+      "profiles": [
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-atomicfn",
+      "dir": "_demo/go/atomicfn",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: atomicfn",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-cabi",
+      "dir": "_demo/go/cabi",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: cabi",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-cgo",
+      "dir": "_demo/go/cgo",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: cgo",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-checkfile",
+      "dir": "_demo/go/checkfile",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: checkfile",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-commandrun",
+      "dir": "_demo/go/commandrun",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: commandrun",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-complex",
+      "dir": "_demo/go/complex",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: complex",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-createtemp-1654",
+      "dir": "_demo/go/createtemp-1654",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: createtemp-1654",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-defer",
+      "dir": "_demo/go/defer",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: defer",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-embedunexport-1598",
+      "dir": "_demo/go/embedunexport-1598",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: embedunexport-1598",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-export",
+      "dir": "_demo/go/export",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: export",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-export-c",
+      "dir": "_demo/go/export/c",
+      "class": "regression",
+      "capability": "embedded compilation of the export support package",
+      "profiles": [
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-gobuild",
+      "dir": "_demo/go/gobuild",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: gobuild",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-gobuild-1389",
+      "dir": "_demo/go/gobuild-1389",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: gobuild-1389",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-goimporter-1389",
+      "dir": "_demo/go/goimporter-1389",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: goimporter-1389",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-goroutine",
+      "dir": "_demo/go/goroutine",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: goroutine",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-gotime",
+      "dir": "_demo/go/gotime",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: gotime",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-gotoken",
+      "dir": "_demo/go/gotoken",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: gotoken",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-gotypes",
+      "dir": "_demo/go/gotypes",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: gotypes",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-ifaceconv",
+      "dir": "_demo/go/ifaceconv",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: ifaceconv",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-ifaceprom-1559",
+      "dir": "_demo/go/ifaceprom-1559",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: ifaceprom-1559",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-ifaceprom-1559-foo",
+      "dir": "_demo/go/ifaceprom-1559/foo",
+      "class": "regression",
+      "capability": "embedded compilation of the interface-promotion support package",
+      "profiles": [
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-issue1538",
+      "dir": "_demo/go/issue1538",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: issue1538",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-issue1538-floatcvtuint-over",
+      "dir": "_demo/go/issue1538-floatcvtuint-over",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: issue1538-floatcvtuint-over",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-linkname",
+      "dir": "_demo/go/linkname",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: linkname",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-logdemo",
+      "dir": "_demo/go/logdemo",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: logdemo",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-mainlink",
+      "dir": "_demo/go/mainlink",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: mainlink",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-mapclosure",
+      "dir": "_demo/go/mapclosure",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: mapclosure",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-maphash",
+      "dir": "_demo/go/maphash",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: maphash",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-math",
+      "dir": "_demo/go/math",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: math",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-mimeheader",
+      "dir": "_demo/go/mimeheader",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: mimeheader",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-mkdirdemo",
+      "dir": "_demo/go/mkdirdemo",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: mkdirdemo",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-netip",
+      "dir": "_demo/go/netip",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: netip",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-osfile",
+      "dir": "_demo/go/osfile",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: osfile",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-oslookpath",
+      "dir": "_demo/go/oslookpath",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: oslookpath",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-oswritestring",
+      "dir": "_demo/go/oswritestring",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: oswritestring",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-randcrypt",
+      "dir": "_demo/go/randcrypt",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: randcrypt",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-randdemo",
+      "dir": "_demo/go/randdemo",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: randdemo",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-readdir",
+      "dir": "_demo/go/readdir",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: readdir",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectcallfn",
+      "dir": "_demo/go/reflectcallfn",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectcallfn",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectchanof",
+      "dir": "_demo/go/reflectchanof",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectchanof",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectconv",
+      "dir": "_demo/go/reflectconv",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectconv",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectcopy",
+      "dir": "_demo/go/reflectcopy",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectcopy",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectembed",
+      "dir": "_demo/go/reflectembed",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectembed",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectempty",
+      "dir": "_demo/go/reflectempty",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectempty",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectfnconv",
+      "dir": "_demo/go/reflectfnconv",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectfnconv",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectfntype",
+      "dir": "_demo/go/reflectfntype",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectfntype",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectfunc",
+      "dir": "_demo/go/reflectfunc",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectfunc",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectifacecall",
+      "dir": "_demo/go/reflectifacecall",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectifacecall",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectindirect",
+      "dir": "_demo/go/reflectindirect",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectindirect",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectmake",
+      "dir": "_demo/go/reflectmake",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectmake",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectmakefn",
+      "dir": "_demo/go/reflectmakefn",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectmakefn",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectmethod",
+      "dir": "_demo/go/reflectmethod",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectmethod",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectname-1412",
+      "dir": "_demo/go/reflectname-1412",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectname-1412",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-reflectnamedfn",
+      "dir": "_demo/go/reflectnamedfn",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectnamedfn",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectnew",
+      "dir": "_demo/go/reflectnew",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectnew",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectpkgpath",
+      "dir": "_demo/go/reflectpkgpath",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectpkgpath",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectpointerto",
+      "dir": "_demo/go/reflectpointerto",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectpointerto",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectslice",
+      "dir": "_demo/go/reflectslice",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectslice",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectsliceat",
+      "dir": "_demo/go/reflectsliceat",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectsliceat",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectstructof",
+      "dir": "_demo/go/reflectstructof",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectstructof",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-reflectvisiblefields",
+      "dir": "_demo/go/reflectvisiblefields",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: reflectvisiblefields",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-return-1605",
+      "dir": "_demo/go/return-1605",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: return-1605",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-runtime",
+      "dir": "_demo/go/runtime",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: runtime",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-statefn",
+      "dir": "_demo/go/statefn",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: statefn",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop",
+        "esp32",
+        "esp32c3-basic"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-sync",
+      "dir": "_demo/go/sync",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: sync",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-syscall",
+      "dir": "_demo/go/syscall",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: syscall",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-syscallraw",
+      "dir": "_demo/go/syscallraw",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: syscallraw",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-sysexec",
+      "dir": "_demo/go/sysexec",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: sysexec",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-sysopen-1654",
+      "dir": "_demo/go/sysopen-1654",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: sysopen-1654",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      },
+      "history": "Named historical regression; preserve its platform and build-mode coverage."
+    },
+    {
+      "id": "go-texttemplate",
+      "dir": "_demo/go/texttemplate",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: texttemplate",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-timedur",
+      "dir": "_demo/go/timedur",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: timedur",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "go-timer",
+      "dir": "_demo/go/timer",
+      "class": "regression",
+      "capability": "Go compiler and runtime integration: timer",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "exit",
+        "rationale": "Phase 1 preserves the legacy successful-exit contract."
+      }
+    },
+    {
+      "id": "py-callpy",
+      "dir": "_demo/py/callpy",
+      "class": "integration",
+      "capability": "Python bridge integration: callpy",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "self"
+      },
+      "dependencies": [
+        "python3"
+      ]
+    },
+    {
+      "id": "py-matrix",
+      "dir": "_demo/py/matrix",
+      "class": "integration",
+      "capability": "Python bridge integration: matrix",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "self"
+      },
+      "dependencies": [
+        "python3",
+        "numpy"
+      ]
+    },
+    {
+      "id": "py-max",
+      "dir": "_demo/py/max",
+      "class": "integration",
+      "capability": "Python bridge integration: max",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "self"
+      },
+      "dependencies": [
+        "python3"
+      ]
+    },
+    {
+      "id": "py-pi",
+      "dir": "_demo/py/pi",
+      "class": "integration",
+      "capability": "Python bridge integration: pi",
+      "profiles": [
+        "host",
+        "host-lto",
+        "host-deadcodedrop"
+      ],
+      "goos": [
+        "linux",
+        "darwin",
+        "windows"
+      ],
+      "check": {
+        "kind": "self"
+      },
+      "dependencies": [
+        "python3"
+      ]
+    }
+  ],
+  "support": [
+    {
+      "dir": "_demo/c/cgofull/pymod1",
+      "owner": "c-cgofull",
+      "rationale": "Python extension support package imported by the cgofull case."
+    },
+    {
+      "dir": "_demo/c/cgofull/pymod2",
+      "owner": "c-cgofull",
+      "rationale": "Python extension support package imported by the cgofull case."
+    },
+    {
+      "dir": "_demo/go/async/timeout",
+      "owner": "go-async",
+      "rationale": "Timeout support package imported by the async case."
+    },
+    {
+      "dir": "_demo/embed/targetsbuild/C",
+      "owner": "workflow:_demo/embed/targetsbuild/build.sh",
+      "rationale": "Target startup symbol stubs imported by the target-build cases."
+    }
+  ],
+  "workflow_owned": [
+    {
+      "dir": "_demo/c/socket/client",
+      "workflow": "manual-socket",
+      "rationale": "Client half of the manual two-process socket example; the generic runner has no server lifecycle harness yet."
+    },
+    {
+      "dir": "_demo/c/socket/server",
+      "workflow": "manual-socket",
+      "rationale": "Server half of the manual two-process socket example; the generic runner has no port/readiness harness yet."
+    },
+    {
+      "dir": "_demo/go/failed/stacktrace",
+      "workflow": "manual-expected-failure",
+      "rationale": "Expected-panic stacktrace source was not discovered by the legacy host runner."
+    },
+    {
+      "dir": "_demo/embed/esp32/hello",
+      "workflow": "manual-embedded",
+      "rationale": "Dormant board example; specialized embedded workflows do not currently invoke it."
+    },
+    {
+      "dir": "_demo/embed/esp32/libc",
+      "workflow": "manual-embedded",
+      "rationale": "Dormant broad libc target example; specialized embedded workflows do not currently invoke it."
+    },
+    {
+      "dir": "_demo/embed/esp32/rt",
+      "workflow": "manual-embedded",
+      "rationale": "Dormant broad compiler-rt target example; specialized embedded workflows do not currently invoke it."
+    },
+    {
+      "dir": "_demo/embed/esp32/watchdog",
+      "workflow": "manual-embedded",
+      "rationale": "Support-style watchdog source is not an independently executed CI case."
+    },
+    {
+      "dir": "_demo/embed/esp32/write",
+      "workflow": "manual-embedded",
+      "rationale": "Dormant board write example; specialized embedded workflows do not currently invoke it."
+    },
+    {
+      "dir": "_demo/embed/esp32c3/float-1664",
+      "workflow": "_demo/embed/test_esp32c3_startup.sh",
+      "rationale": "Startup workflow checks the exact emulator output for issue 1664."
+    },
+    {
+      "dir": "_demo/embed/esp32c3/print-float-1723",
+      "workflow": "_demo/embed/test_esp32c3_startup.sh",
+      "rationale": "Startup workflow checks the exact emulator output for issue 1723."
+    },
+    {
+      "dir": "_demo/embed/esp32c3/write",
+      "workflow": "manual-embedded",
+      "rationale": "Dormant board write example; specialized embedded workflows do not currently invoke it."
+    },
+    {
+      "dir": "_demo/embed/export",
+      "workflow": "_demo/embed/export/verify_export.sh",
+      "rationale": "Export workflow validates target symbol names with llvm-nm."
+    },
+    {
+      "dir": "_demo/embed/targetsbuild/defer",
+      "workflow": "_demo/embed/targetsbuild/build.sh",
+      "rationale": "Targets workflow builds the defer and panic baseline for every declared target."
+    },
+    {
+      "dir": "_demo/embed/targetsbuild/empty",
+      "workflow": "_demo/embed/targetsbuild/build.sh",
+      "rationale": "Targets workflow builds the empty baseline for every declared target."
+    },
+    {
+      "dir": "_demo/embed/testdata/esp32-serial/chello",
+      "workflow": "_demo/embed/test-esp-serial-startup.sh",
+      "rationale": "Serial startup workflow checks the canonical C hello output on both emulator targets."
+    },
+    {
+      "dir": "_demo/embed/testdata/esp32-serial/gc-runtime",
+      "workflow": "_demo/embed/test-esp-serial-startup.sh",
+      "rationale": "Serial startup workflow checks GC roots, graph marking, allocation, and stats."
+    },
+    {
+      "dir": "_demo/embed/testdata/esp32-serial/int64slice",
+      "workflow": "_demo/embed/test-esp-serial-startup.sh",
+      "rationale": "Serial startup workflow checks the int64 slice-bounds regression."
+    }
+  ]
+}

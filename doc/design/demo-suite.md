@@ -1,6 +1,7 @@
 # Demo and integration suite organization
 
-Status: proposal. Baseline: xgo-dev/main@c1d5da2 (2026-08-29).
+Status: proposal with a phase-one manifest and runner implementation.
+Baseline: xgo-dev/main@c1d5da2 (2026-08-29).
 
 ## Summary
 
@@ -32,6 +33,20 @@ removed.
 
 The complete current-case decision table is in
 [demo-suite-inventory.md](demo-suite-inventory.md).
+
+### Phase-one implementation
+
+The accompanying implementation first makes ownership explicit without
+prematurely deleting historical regressions. The manifest accounts for all
+130 Go-source directories as 109 runnable cases, four support directories,
+and 17 workflow-owned directories. Its host, ESP32, ESP32-C3, and model plans
+contain 103, 20, 28, and one runnable case respectively.
+
+Only the three proven Python duplicates are removed in this phase, reducing
+the logical-family count from 122 to 119 while retaining four independent
+Python contracts. The proposed 51-family ownership budget remains the target;
+later removals require their focused `cl`, `test/go`, `test/std`, target, or
+integration owner to land first.
 
 ## Current behavior
 

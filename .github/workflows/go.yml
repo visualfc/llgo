@@ -213,8 +213,7 @@ jobs:
             ./cl
           go tool cover -func=coverage-dev-lto-plugin-cl.txt
 
-          LLGO_DEMO_LLGORUN_FLAGS="-lto=full -globaldce" \
-            bash .github/workflows/test_demo.sh
+          bash .github/workflows/test_demo.sh --profile host-lto
 
       - name: Upload dev LTO GlobalDCE coverage reports to Codecov
         continue-on-error: true
@@ -255,5 +254,4 @@ jobs:
 
       - name: Run Go deadcode-drop demos
         run: |
-          LLGO_DEMO_LLGORUN_FLAGS="-deadcodedrop" \
-            bash .github/workflows/test_demo.sh
+          bash .github/workflows/test_demo.sh --profile host-deadcodedrop

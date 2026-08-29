@@ -190,7 +190,8 @@ fi
 (cd "$workdir" && LLGO_DEMO_JOBS="$demo_jobs" bash .github/workflows/test_demo.sh)
 
 log_section "Build targets"
-(cd "$workdir/_demo/embed/targetsbuild" && bash build.sh)
+(cd "$workdir/_demo/embed/targetsbuild" && bash build.sh empty)
+(cd "$workdir/_demo/embed/targetsbuild" && bash build.sh defer)
 
 log_section "Hello World"
 hello_logs=()

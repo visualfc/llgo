@@ -7,6 +7,9 @@ import (
 )
 
 func main() {
-	x := math.Sqrt(py.Float(2))       // x = sqrt(2)
-	std.Print(py.Str("sqrt(2) ="), x) // print("sqrt(2) =", x)
+	x := math.Sqrt(py.Float(2))
+	if got := x.Float64(); !(got >= 1.41421356237 && got <= 1.41421356238) {
+		panic("unexpected math.sqrt result")
+	}
+	std.Print(py.Str("sqrt(2) ="), x)
 }

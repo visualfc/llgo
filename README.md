@@ -292,8 +292,8 @@ Here we define two 3x3 matrices a and b, add them to get x, and then print the r
 The `_demo/py/` directory contains some python related demos:
 
 * [callpy](_demo/py/callpy/callpy.go): call Python standard library function `math.sqrt`
+* [max](_demo/py/max/max.go): call a variadic Python builtin directly and through an iterator
 * [pi](_demo/py/pi/pi.go): print python constants `math.pi`
-* [statistics](_demo/py/statistics/statistics.go): define a python list and call `statistics.mean` to get the mean
 * [matrix](_demo/py/matrix/matrix.go): a basic `numpy` demo
 
 To run these demos (If you haven't installed `llgo` yet, please refer to [How to install](#how-to-install)):

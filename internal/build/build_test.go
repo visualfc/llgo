@@ -37,6 +37,15 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("LLGO_TEST_GO_ENV_HELPER") == "1" {
+		if !reflect.DeepEqual(os.Args[1:], []string{"env", "GOROOT", "GOVERSION"}) {
+			fmt.Fprintf(os.Stderr, "unexpected fake go arguments: %q\n", os.Args[1:])
+			os.Exit(11)
+		}
+		fmt.Println(os.Getenv("LLGO_TEST_GO_ENV_GOROOT"))
+		fmt.Println(os.Getenv("LLGO_TEST_GO_ENV_GOVERSION"))
+		os.Exit(0)
+	}
 	if os.Getenv("LLGO_TEST_FAILING_ARCHIVER") == "1" {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		fmt.Fprintln(os.Stderr, "merge failed")
@@ -71,6 +80,60 @@ func TestMain(m *testing.M) {
 	cacheRootFunc = old
 	_ = os.RemoveAll(td)
 	os.Exit(code)
+}
+
+func TestConfigureSourcePatchToolchainInjectsSelectedGoEnv(t *testing.T) {
+	helperDir := t.TempDir()
+	helperName := "go"
+	if runtime.GOOS == "windows" {
+		helperName += ".exe"
+	}
+	helperPath := filepath.Join(helperDir, helperName)
+	testExecutable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.Open(testExecutable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(helperPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(dst, src); err != nil {
+		_ = dst.Close()
+		t.Fatal(err)
+	}
+	if err := dst.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		wantGOROOT    = "/selected/go/root"
+		wantGoVersion = "go1.99.7"
+	)
+	t.Setenv("PATH", helperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	cfgEnv := withEnv(os.Environ(),
+		"LLGO_TEST_GO_ENV_HELPER=1",
+		"LLGO_TEST_GO_ENV_GOROOT="+wantGOROOT,
+		"LLGO_TEST_GO_ENV_GOVERSION="+wantGoVersion,
+	)
+	conf := &Config{}
+	toolchain, err := configureSourcePatchToolchain(conf, cfgEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if toolchain.goroot != wantGOROOT || toolchain.goversion != wantGoVersion {
+		t.Fatalf("source patch toolchain = %#v, want GOROOT %q and GOVERSION %q", toolchain, wantGOROOT, wantGoVersion)
+	}
+	if got := conf.GlobalRewrites["runtime"]["defaultGOROOT"]; got != wantGOROOT {
+		t.Fatalf("runtime.defaultGOROOT rewrite = %q, want selected cfg.Env value %q", got, wantGOROOT)
+	}
+	if got := conf.GlobalRewrites["runtime"]["buildVersion"]; got != wantGoVersion {
+		t.Fatalf("runtime.buildVersion rewrite = %q, want selected cfg.Env value %q", got, wantGoVersion)
+	}
 }
 
 func TestConfigCloneDoesNotAliasInput(t *testing.T) {
