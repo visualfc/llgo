@@ -2,15 +2,21 @@
 set -e
 
 mode="host"
-if [ "${1:-}" = "--embedded" ]; then
-  mode="embedded"
-  shift
-fi
+case "${1:-}" in
+  --embedded)
+    mode="embedded"
+    shift
+    ;;
+  --embedded-build-only)
+    mode="embedded-build-only"
+    shift
+    ;;
+esac
 
 # Keep the scheduler deliberately small: directory consolidation owns coverage,
 # while this script only selects the few specialized profiles and runs them.
 jobs="${LLGO_DEMO_JOBS:-4}"
-if [ "$mode" = "embedded" ] && [ -z "${LLGO_DEMO_JOBS:-}" ]; then
+if [ "$mode" != "host" ] && [ -z "${LLGO_DEMO_JOBS:-}" ]; then
   # The first case for each target warms an expensive shared build cache. Run
   # embedded cases sequentially by default so that cold work happens once.
   jobs=1
@@ -41,8 +47,10 @@ add_case() {
   run_labels+=("$3")
 }
 
-if [ "$mode" = "embedded" ]; then
-  emulator=1
+if [ "$mode" != "host" ]; then
+  if [ "$mode" = "embedded" ]; then
+    emulator=1
+  fi
 
   # Positive target lists avoid recursively treating support packages as demos.
   esp32_cases=(
@@ -148,7 +156,11 @@ run_case() {
   fi
 
   if [ -n "$target" ]; then
-    cmd=(llgo run)
+    if [ "$mode" = "embedded-build-only" ]; then
+      cmd=(llgo build -o "$output_dir/firmware.elf")
+    else
+      cmd=(llgo run)
+    fi
     cmd+=("${llgo_run_flags[@]}")
     cmd+=("-target=$target")
     if [ "$emulator" -eq 1 ]; then

@@ -272,4 +272,3 @@ jobs:
             echo "error: one or more GOROOT shards did not succeed" >&2
             exit 1
           fi
-
