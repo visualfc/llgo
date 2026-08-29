@@ -154,6 +154,11 @@ run_case() {
 
   mkdir -p "$output_dir"
   output="$output_dir/demo"
+  if [ "${RUNNER_OS:-}" = "Windows" ]; then
+    # Match cmd/go's Windows convention: an explicit -o is exact, so request
+    # the executable suffix when the artifact must be launched by os/exec.
+    output="$output.exe"
+  fi
   cmd=(llgo build)
   cmd+=("${llgo_run_flags[@]}")
   cmd+=("-p=1" "-o" "$output" ".")
