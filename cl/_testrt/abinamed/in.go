@@ -1,4 +1,5 @@
 // LITTEST
+// Scope: common
 package main
 
 import (
@@ -10,6 +11,11 @@ import (
 // Converting the two named values to interface{} must select their distinct
 // runtime type descriptors; the test body then exercises lazy pointer-to-this
 // and element links from those descriptors.
+// CHECK-LABEL: define void @main.checkBasicNames(){{.*}} {
+// CHECK: insertvalue %"{{.*}}eface" { ptr @_llgo_int32,
+// CHECK: call %"{{.*}}String" @"{{.*}}/runtime/abi.(*Type).String"
+// CHECK: insertvalue %"{{.*}}eface" { ptr @_llgo_uint8,
+// CHECK: call %"{{.*}}String" @"{{.*}}/runtime/abi.(*Type).String"
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: insertvalue %"{{.*}}eface" { ptr @_llgo_main.T,
 // CHECK: insertvalue %"{{.*}}eface" { ptr @"_llgo_{{.*}}/runtime/abi.Type",
@@ -28,7 +34,21 @@ type eface struct {
 	data unsafe.Pointer
 }
 
+// checkBasicNames folds the former abitype fixture into this runtime-type
+// owner while preserving the rune/byte descriptor-name regression.
+func checkBasicNames() {
+	var v any = rune(0)
+	if (*eface)(unsafe.Pointer(&v)).typ.String() != "int32" {
+		panic("abi rune error")
+	}
+	v = byte(0)
+	if (*eface)(unsafe.Pointer(&v)).typ.String() != "uint8" {
+		panic("abi byte error")
+	}
+}
+
 func main() {
+	checkBasicNames()
 	e := toEface(T{})
 	e2 := toEface(abi.Type{})
 

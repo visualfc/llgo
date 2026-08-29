@@ -1,9 +1,23 @@
 // LITTEST darwin/arm64 linux/amd64 windows/386 windows/amd64 windows/arm64
+// Scope: os+arch (setjmp symbols, buffer layout, and dispatch ABI)
 package main
 
-import (
-	"github.com/goplus/lib/c"
-)
+import "unsafe"
+
+//go:linkname allocaSigjmpBuf llgo.sigjmpbuf
+func allocaSigjmpBuf() unsafe.Pointer
+
+//go:linkname sigsetjmp llgo.sigsetjmp
+func sigsetjmp(jb unsafe.Pointer, savemask int32) int32
+
+//go:linkname siglongjmp llgo.siglongjmp
+func siglongjmp(jb unsafe.Pointer, retval int32)
+
+//go:linkname cstr llgo.cstr
+func cstr(string) *int8
+
+//go:linkname fprintf C.fprintf
+func fprintf(fp unsafe.Pointer, format *int8, __llgo_va_list ...any) int32
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // The libc ABI controls the sigjmp_buf size and libc symbol spellings.
@@ -22,8 +36,8 @@ import (
 // CHECK: {{^_llgo_[0-9]+:}}
 // DARWIN-ARM64: [[STDERR:%[0-9]+]] = load ptr, ptr @__stderrp
 // LINUX-AMD64: [[STDERR:%[0-9]+]] = load ptr, ptr @stderr
-// WINDOWS: [[STDERR:%[0-9]+]] = load ptr, ptr @"github.com/goplus/lib/c.Stderr"
-// CHECK-NEXT: call i32 (ptr, ptr, ...) @fprintf(ptr [[STDERR]], ptr @{{[0-9]+}}, ptr getelementptr (i8, ptr getelementptr (i8, ptr @{{[0-9]+}}, i{{32|64}} 1), i{{32|64}} 1))
+// WINDOWS: [[STDERR:%[0-9]+]] = load ptr, ptr @main.stderr
+// CHECK-NEXT: call i32 (ptr, ptr, ...) @fprintf(ptr [[STDERR]], ptr @{{[0-9]+}}, ptr getelementptr (i8, ptr @{{[0-9]+}}, i{{32|64}} 2))
 // DARWIN-NEXT: call void @siglongjmp(ptr [[JMPBUF]], i32 1)
 // LINUX-NEXT: call void @siglongjmp(ptr [[JMPBUF]], i32 1)
 // WINDOWS-386-NEXT: call void @longjmp(ptr [[JMPBUF]], i32 1)
@@ -34,12 +48,12 @@ import (
 // CHECK-NEXT: call void @"{{.*}}PrintInt"(i64 [[PRINT_RET]])
 
 func main() {
-	jb := c.AllocaSigjmpBuf()
-	switch ret := c.Sigsetjmp(jb, 0); ret {
+	jb := allocaSigjmpBuf()
+	switch ret := sigsetjmp(jb, 0); ret {
 	case 0:
-		cstr := c.Str("??Hello, setjmp!\n")
-		c.Fprintf(c.Stderr, c.Str("%s"), c.Advance(c.Pointer(c.Advance(cstr, 1)), 1))
-		c.Siglongjmp(jb, 1)
+		message := cstr("??Hello, setjmp!\n")
+		fprintf(stderr, cstr("%s"), unsafe.Add(unsafe.Pointer(message), 2))
+		siglongjmp(jb, 1)
 	default:
 		println("exception:", ret)
 	}

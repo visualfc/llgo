@@ -1,4 +1,5 @@
 // LITTEST
+// Scope: common
 package main
 
 // CHECK: [[HELLO:@[0-9]+]] = private unnamed_addr constant [5 x i8] c"hello"
@@ -103,4 +104,27 @@ func main() {
 		return
 	}
 	defer println("bye")
+}
+
+// zLoopJoin preserves the former nextblock regression exactly: an empty range
+// before and after registration must not let block[0] movement bypass cleanup.
+// CHECK-LABEL: define void @main.zLoopJoin(){{.*}} {
+// CHECK: [[LOOP_FRAME:%[0-9]+]] = call ptr @"{{.*}}AllocU"(i64 48)
+// CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[LOOP_FRAME]])
+// CHECK: [[LOOP_FLAGS:%[0-9]+]] = getelementptr inbounds %"{{.*}}Defer", ptr [[LOOP_FRAME]], i32 0, i32 1
+// CHECK: [[FIRST_INDEX:%[0-9]+]] = phi i64
+// CHECK: [[OLD_LOOP_FLAGS:%[0-9]+]] = load i64, ptr [[LOOP_FLAGS]]
+// CHECK-NEXT: [[NEW_LOOP_FLAGS:%[0-9]+]] = or i64 [[OLD_LOOP_FLAGS]], 1
+// CHECK-NEXT: store i64 [[NEW_LOOP_FLAGS]], ptr [[LOOP_FLAGS]]
+// CHECK: [[SECOND_INDEX:%[0-9]+]] = phi i64
+// CHECK: [[ACTIVE_LOOP_BIT:%[0-9]+]] = and i64 {{%[0-9]+}}, 1
+// CHECK: call void @"{{.*}}FreeDeferNode"(ptr %{{[0-9]+}})
+// CHECK-NEXT: call void @"{{.*}}PrintString"(%"{{.*}}String" %{{[0-9]+}})
+func zLoopJoin() {
+	values := []int{}
+	for range values {
+	}
+	defer println("loop-join")
+	for range values {
+	}
 }

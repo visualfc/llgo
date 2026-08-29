@@ -140,6 +140,62 @@ func TestRecoverNestedDeferredBuiltinBeforeInnerRecover(t *testing.T) {
 	}
 }
 
+// These cases came from the nesteddeferpanic compiler fixture. They are
+// runtime state-machine semantics, so keep them here instead of duplicating
+// three nearly identical recover/defer CFG snapshots in cl/_testgo.
+func TestRecoverSupersededPanics(t *testing.T) {
+	t.Run("deferred panic replaces active panic", func(t *testing.T) {
+		got := any(nil)
+		func() {
+			defer func() { got = recover() }()
+			func() {
+				for {
+					defer func() { defer panic(5) }()
+					break
+				}
+				panic(4)
+			}()
+		}()
+		if got != 5 {
+			t.Fatalf("replacement panic = %v, want 5", got)
+		}
+	})
+
+	t.Run("recover inner resumes outer panic", func(t *testing.T) {
+		outer, inner := any(nil), any(nil)
+		func() {
+			defer func() { outer = recover() }()
+			func() {
+				defer func() {
+					defer func() { inner = recover() }()
+					panic(2)
+				}()
+				panic(1)
+			}()
+		}()
+		if inner != 2 || outer != 1 {
+			t.Fatalf("recovered inner/outer = %v/%v, want 2/1", inner, outer)
+		}
+	})
+
+	t.Run("recover then deferred panic", func(t *testing.T) {
+		outer, old := any(nil), any(nil)
+		func() {
+			defer func() { outer = recover() }()
+			func() {
+				defer func() {
+					old = recover()
+					defer panic(3)
+				}()
+				panic(2)
+			}()
+		}()
+		if old != 2 || outer != 3 {
+			t.Fatalf("recovered old/outer = %v/%v, want 2/3", old, outer)
+		}
+	})
+}
+
 type fixedbugNestedPanicInterface interface {
 	panicInner()
 }

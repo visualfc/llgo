@@ -1,4 +1,5 @@
 // LITTEST
+// Scope: common
 package main
 
 import (
@@ -6,6 +7,8 @@ import (
 	"reflect"
 )
 
+// This is the LTO-plugin owner for finite names formed by concatenation or
+// slicing. The multi-part cases preserve the historical concat regression.
 // SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepValue
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepValueAlt
@@ -15,6 +18,8 @@ import (
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepMultiAltValue
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepMultiType
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepMultiAltType
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepSliceValue
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepSliceType
 // SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
@@ -57,6 +62,16 @@ func (S) KeepMultiType() string {
 //go:noinline
 func (S) KeepMultiAltType() string {
 	return "keep-multi-alt-type"
+}
+
+//go:noinline
+func (S) KeepSliceValue() string {
+	return "slice-value"
+}
+
+//go:noinline
+func (S) KeepSliceType() string {
+	return "slice-type"
 }
 
 //go:noinline
@@ -126,6 +141,14 @@ func multiTypeName() string {
 	return multiPrefix() + multiMiddle() + multiTypeSuffix()
 }
 
+func sliceValueName() string {
+	return "__KeepSliceValue__"[2:16]
+}
+
+func sliceTypeName() string {
+	return "__KeepSliceType__"[2:15]
+}
+
 func main() {
 	out := reflect.ValueOf(S{}).MethodByName(valueName()).Call(nil)
 	println(out[0].String())
@@ -143,6 +166,16 @@ func main() {
 	m, ok = reflect.TypeOf(S{}).MethodByName(multiTypeName())
 	if !ok {
 		panic("missing multi method")
+	}
+	out = m.Func.Call([]reflect.Value{reflect.ValueOf(S{})})
+	println(out[0].String())
+
+	out = reflect.ValueOf(S{}).MethodByName(sliceValueName()).Call(nil)
+	println(out[0].String())
+
+	m, ok = reflect.TypeOf(S{}).MethodByName(sliceTypeName())
+	if !ok {
+		panic("missing sliced method")
 	}
 	out = m.Func.Call([]reflect.Value{reflect.ValueOf(S{})})
 	println(out[0].String())

@@ -19,6 +19,19 @@ func TestNormalizeGoldenNewlines(t *testing.T) {
 	}
 }
 
+func TestIROnlyGoldenAllowsFinalNewline(t *testing.T) {
+	for _, data := range [][]byte{[]byte(";"), []byte(";\n"), []byte(";\r\n")} {
+		if !isIROnlyGolden(data) {
+			t.Fatalf("isIROnlyGolden(%q) = false", data)
+		}
+	}
+	for _, data := range [][]byte{nil, []byte("\n"), []byte(";\n\n")} {
+		if isIROnlyGolden(data) {
+			t.Fatalf("isIROnlyGolden(%q) = true", data)
+		}
+	}
+}
+
 func TestAdditionalIRTargets(t *testing.T) {
 	targets := []littest.Target{
 		{GOOS: "darwin", GOARCH: "arm64"},

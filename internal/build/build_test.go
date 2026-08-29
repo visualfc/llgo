@@ -206,6 +206,34 @@ func TestInvocationUsesExplicitWorkingDirectory(t *testing.T) {
 	pkgs[0].LPkg.Prog.Dispose()
 }
 
+func TestBuildUsesSyntheticPythonPackage(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/pythonfixture\n\ngo 1.24\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fixture.go"), []byte("package pythonfixture\n\nfunc F() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	conf := NewDefaultConf(ModeGen)
+	calls := 0
+	conf.TestPythonPackage = func() *types.Package {
+		calls++
+		return types.NewPackage(llssa.PkgPython, "py")
+	}
+	t.Setenv(llgoBuildCache, "0")
+	pkgs, err := Build(Invocation{Args: []string{"."}, Config: conf, Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("TestPythonPackage called %d times, want 1", calls)
+	}
+	for _, pkg := range pkgs {
+		pkg.LPkg.Prog.Dispose()
+	}
+}
+
 func TestConcurrentInvocationsIsolateFrontendOptions(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/frontend\n\ngo 1.24\n"), 0o644); err != nil {
@@ -1164,9 +1192,10 @@ func runBinary(t *testing.T, path string, args ...string) string {
 	return string(output)
 }
 
-func TestRunPrintfWithStdioNobuf(t *testing.T) {
+func TestRunStdioNobuf(t *testing.T) {
 	t.Setenv(llgoStdioNobuf, "1")
-	mockRun([]string{"../../cl/_testdata/printf"}, &Config{Mode: ModeRun})
+	// allocstr owns the consolidated C string/printf integration fixture.
+	mockRun([]string{"../../cl/_testrt/allocstr"}, &Config{Mode: ModeRun})
 }
 
 func TestTestOutputFileLogic(t *testing.T) {

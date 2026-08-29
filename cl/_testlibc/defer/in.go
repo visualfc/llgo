@@ -1,7 +1,20 @@
 // LITTEST
+// Scope: common
 package main
 
-import "github.com/goplus/lib/c"
+import "unsafe"
+
+//go:linkname deferData llgo.deferData
+func deferData() unsafe.Pointer
+
+//go:linkname allocaCStr llgo.allocaCStr
+func allocaCStr(string) *int8
+
+//go:linkname cstr llgo.cstr
+func cstr(string) *int8
+
+//go:linkname printf C.printf
+func printf(format *int8, __llgo_va_list ...any) int32
 
 // C varargs defers still use the Go defer chain, and each deferred printf is
 // guarded by a recover frame at invocation time.
@@ -87,11 +100,11 @@ func f(s string) bool {
 }
 
 func main() {
-	c.GoDeferData()
+	deferData()
 	if s := "hello"; f(s) {
-		defer c.Printf(c.Str("%s\n"), c.AllocaCStr(s))
+		defer printf(cstr("%s\n"), allocaCStr(s))
 	} else {
-		defer c.Printf(c.Str("world\n"))
+		defer printf(cstr("world\n"))
 	}
-	defer c.Printf(c.Str("bye\n"))
+	defer printf(cstr("bye\n"))
 }

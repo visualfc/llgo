@@ -1090,6 +1090,15 @@ func (p *context) compileBlock(b llssa.Builder, block *ssa.BasicBlock, n int, do
 			}
 		} else {
 			p.compileInstr(b, instr)
+			// llgo.unreachable is an LLVM terminator. Go SSA still appends a
+			// synthetic Return for a direct tail call, so do not lower that
+			// Return into the already-terminated LLVM block. Restrict this to
+			// the tail form; branching successors can carry phis and need a
+			// separate control-flow rewrite rather than silently dropping an
+			// edge here.
+			if p.isDirectTailUnreachableCall(instr, instrs[i+1:]) {
+				break
+			}
 		}
 	}
 	// is cgo cfunc but not return yet, some funcs has multiple blocks
@@ -1122,6 +1131,37 @@ end:
 		b.Jump(jumpTo)
 	}
 	return ret
+}
+
+func (p *context) isDirectTailUnreachableCall(instr ssa.Instruction, tail []ssa.Instruction) bool {
+	call, ok := instr.(*ssa.Call)
+	if !ok || call.Call.IsInvoke() {
+		return false
+	}
+	fn, ok := call.Call.Value.(*ssa.Function)
+	if !ok {
+		return false
+	}
+	_, name, kind := p.funcName(fn)
+	if kind != llgoInstr || llgoInstrs[name] != llgoUnreachable {
+		return false
+	}
+	sawRunDefers := false
+	for _, instr := range tail {
+		switch instr.(type) {
+		case *ssa.DebugRef:
+		case *ssa.RunDefers:
+			if sawRunDefers {
+				return false
+			}
+			sawRunDefers = true
+		case *ssa.Return:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 const (

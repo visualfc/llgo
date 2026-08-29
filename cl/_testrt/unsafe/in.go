@@ -1,11 +1,13 @@
 // LITTEST
+// Scope: common
 package main
 
 import (
 	"unsafe"
-
-	"github.com/goplus/lib/c"
 )
+
+//go:linkname cstr llgo.cstr
+func cstr(string) *int8
 
 //llgo:type C
 type T func()
@@ -19,6 +21,11 @@ type N struct {
 	fn func()
 	v  int
 }
+
+// A constant uintptr-to-pointer conversion is emitted directly, without a
+// runtime helper.
+// CHECK-LABEL: define ptr @main.constantPointer(){{.*}} {
+// CHECK: ret ptr inttoptr (i64 100 to ptr)
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // Sizeof, Alignof, and Offsetof are compile-time constants. Each of the ten
@@ -84,6 +91,12 @@ type N struct {
 // CHECK-NEXT: br label %{{_llgo_[0-9]+}}
 // CHECK: getelementptr inbounds i64, ptr %[[DATA1]], i64 1
 
+// A nil pointer with a zero, narrower length retains both folded safety checks
+// and returns a zero-length slice.
+// CHECK-LABEL: define %"{{.*}}Slice" @main.zeroSlice(){{.*}} {
+// CHECK-COUNT-4: call void @"{{.*}}AssertRuntimeError"(i1 false, %"{{.*}}String" {{.*}})
+// CHECK: ret %"{{.*}}Slice" zeroinitializer
+
 func main() {
 	if unsafe.Sizeof(*(*T)(nil)) != unsafe.Sizeof(0) {
 		panic("error")
@@ -120,7 +133,7 @@ func main() {
 		panic("error")
 	}
 
-	s := unsafe.String((*byte)(unsafe.Pointer(c.Str("abc"))), 3)
+	s := unsafe.String((*byte)(unsafe.Pointer(cstr("abc"))), 3)
 	if s != "abc" {
 		panic("error")
 	}
@@ -147,4 +160,17 @@ func main() {
 		panic("error")
 	}
 
+	_ = constantPointer()
+	_ = zeroSlice()
+
+}
+
+func constantPointer() unsafe.Pointer {
+	return unsafe.Pointer(uintptr(100))
+}
+
+func zeroSlice() []int {
+	var p *int
+	var n uint32
+	return unsafe.Slice(p, n)
 }

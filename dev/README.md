@@ -226,7 +226,6 @@ matching platform CI.
 
 Example:
 
-- [cl/_testrt/litdemo/in.go](../cl/_testrt/litdemo/in.go) is a minimal `_testrt` case that demonstrates `litgen` output.
 - [cl/_testlibc/setjmp/in.go](../cl/_testlibc/setjmp/in.go) demonstrates a handwritten default-stage cross-target matrix.
 - [cl/_testgo/postabi/in.go](../cl/_testgo/postabi/in.go) demonstrates a handwritten post-ABI check with shared assertions and target-specific prefixes.
 - [cl/_testdata/floatint/in.go](../cl/_testdata/floatint/in.go) demonstrates an automatically maintained post-ABI target matrix.

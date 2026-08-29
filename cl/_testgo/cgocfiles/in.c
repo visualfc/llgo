@@ -1,7 +1,9 @@
+#include <errno.h>
 #include <stdio.h>
 #include "in.h"
 
 int test_structs(s4* s4, s8* s8, s12* s12, s16* s16, s20* s20) {
+	errno = EACCES;
   printf("s4.a: %d\n", s4->a);
   printf("s8.a: %d, s8.b: %d\n", s8->a, s8->b);
   printf("s12.a: %d, s12.b: %d, s12.c: %d\n", s12->a, s12->b, s12->c);

@@ -39,6 +39,105 @@ func TestConstBool(t *testing.T) {
 	}
 }
 
+func TestCompileTailUnreachableOmitsSyntheticReturn(t *testing.T) {
+	_, m := mustCompileLLPkgFromSrc(t, `
+package foo
+
+import _ "unsafe"
+
+//go:linkname unreachable llgo.unreachable
+func unreachable()
+
+func stop() {
+	unreachable()
+}
+`)
+	ir := mustNamedFunction(t, m, "foo.stop").String()
+	if !strings.Contains(ir, "\n  unreachable\n") {
+		t.Fatalf("tail intrinsic did not lower to unreachable:\n%s", ir)
+	}
+	if strings.Contains(ir, "ret void") {
+		t.Fatalf("tail intrinsic retained the synthetic Go return:\n%s", ir)
+	}
+}
+
+func TestCompileTailUnreachableOmitsRunDefersAndReturn(t *testing.T) {
+	_, m := mustCompileLLPkgFromSrc(t, `
+package foo
+
+import _ "unsafe"
+
+//go:linkname unreachable llgo.unreachable
+func unreachable()
+
+func cleanup() {}
+
+func stop() {
+	defer cleanup()
+	unreachable()
+}
+`)
+	if err := llvm.VerifyModule(m, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("invalid module after tail unreachable with defer: %v\n%s", err, m.String())
+	}
+	ir := mustNamedFunction(t, m, "foo.stop").String()
+	if !strings.Contains(ir, "\n  unreachable\n\n_llgo_") {
+		t.Fatalf("tail intrinsic did not terminate its LLVM block:\n%s", ir)
+	}
+}
+
+func TestIsDirectTailUnreachableCallShapes(t *testing.T) {
+	ssaPkg, _, _ := buildGoSSAPkg(t, `
+package foo
+
+func unreachable()
+func ordinary()
+
+func stop() {
+	unreachable()
+}
+`)
+	call := findStaticCall(t, ssaPkg.Func("stop"), "unreachable")
+	ctx := &context{
+		prog:   llssa.NewProgram(nil),
+		goTyps: ssaPkg.Pkg,
+		loaded: make(map[*types.Package]*pkgInfo),
+	}
+	ctx.prog.SetLinkname("foo.unreachable", "llgo.unreachable")
+
+	if !ctx.isDirectTailUnreachableCall(call, []ssa.Instruction{new(ssa.DebugRef), new(ssa.RunDefers), new(ssa.Return)}) {
+		t.Fatal("debug references and one RunDefers should preserve the tail unreachable match")
+	}
+
+	tests := []struct {
+		name     string
+		instr    ssa.Instruction
+		tail     []ssa.Instruction
+		linkname string
+	}{
+		{name: "non-call", instr: new(ssa.Return)},
+		{name: "invoke", instr: &ssa.Call{Call: ssa.CallCommon{Method: types.NewFunc(token.NoPos, nil, "M", types.NewSignatureType(nil, nil, nil, nil, nil, false))}}},
+		{name: "dynamic call", instr: &ssa.Call{Call: ssa.CallCommon{Value: new(ssa.MakeClosure)}}},
+		{name: "ordinary function", instr: call, tail: []ssa.Instruction{new(ssa.Return)}, linkname: "foo.ordinary"},
+		{name: "different LLGo intrinsic", instr: call, tail: []ssa.Instruction{new(ssa.Return)}, linkname: "llgo.funcAddr"},
+		{name: "missing return", instr: call},
+		{name: "unexpected tail instruction", instr: call, tail: []ssa.Instruction{new(ssa.Jump)}},
+		{name: "duplicate RunDefers", instr: call, tail: []ssa.Instruction{new(ssa.RunDefers), new(ssa.RunDefers), new(ssa.Return)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			linkname := tt.linkname
+			if linkname == "" {
+				linkname = "llgo.unreachable"
+			}
+			ctx.prog.SetLinkname("foo.unreachable", linkname)
+			if ctx.isDirectTailUnreachableCall(tt.instr, tt.tail) {
+				t.Fatal("unexpected tail unreachable match")
+			}
+		})
+	}
+}
+
 func TestIsLargeNonPointerValue(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	ctx := &context{prog: prog}

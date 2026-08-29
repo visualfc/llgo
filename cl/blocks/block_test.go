@@ -20,149 +20,189 @@
 package blocks
 
 import (
-	"bytes"
-	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"go/types"
-	"log"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
-	"github.com/goplus/gogen/packages"
 	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 
 	llssa "github.com/xgo-dev/llgo/ssa"
 )
 
-func TestTestdefer(t *testing.T) {
-	fromDir(t, "", "../_testdefer", func(name string) string {
-		if strings.HasPrefix(name, "firstloop") {
-			return "Loop"
-		}
-		if strings.HasPrefix(name, "gobuild") {
-			return "Import"
-		}
-		return "main"
-	})
+type graphCase struct {
+	name          string
+	edges         [][]int
+	wantOrder     []int
+	wantKinds     []llssa.DoAction
+	findLoopFrom  int
+	checkFindLoop bool
 }
 
-func TestFirstLoop(t *testing.T) {
-	blk := &ssa.BasicBlock{}
-	blk.Index = 0
-	blk.Preds = []*ssa.BasicBlock{blk}
-	blk.Succs = []*ssa.BasicBlock{blk}
-	infos := Infos([]*ssa.BasicBlock{blk})
-	if infos[0].Kind != llssa.DeferInLoop {
-		t.Fatal("TestFirstLoop")
+func TestInfos(t *testing.T) {
+	tests := []graphCase{
+		{
+			name:      "single-exit diamond",
+			edges:     [][]int{{1, 2}, {3}, {3}, nil},
+			wantOrder: []int{0, 1, 2, 3},
+			wantKinds: []llssa.DoAction{
+				llssa.DeferAlways,
+				llssa.DeferInCond,
+				llssa.DeferInCond,
+				llssa.DeferAlways,
+			},
+		},
+		{
+			name:      "multiple exits",
+			edges:     [][]int{{1, 2}, nil, nil},
+			wantOrder: []int{0, 1, 2},
+			wantKinds: []llssa.DoAction{
+				llssa.DeferAlways,
+				llssa.DeferInCond,
+				llssa.DeferInCond,
+			},
+		},
+		{
+			name:      "natural loop",
+			edges:     [][]int{{1}, {2, 3}, {1}, nil},
+			wantOrder: []int{0, 1, 2, 3},
+			wantKinds: []llssa.DoAction{
+				llssa.DeferAlways,
+				llssa.DeferInLoop,
+				llssa.DeferInLoop,
+				llssa.DeferAlways,
+			},
+		},
+		{
+			// findLoop selects the 1 -> 2 -> 1 cycle for ordering. Block 3
+			// is nevertheless in the same SCC and can also execute repeatedly.
+			name:      "multi-node SCC with conditional exit",
+			edges:     [][]int{{1}, {2, 3}, {1}, {1, 4}, nil},
+			wantOrder: []int{0, 1, 2, 3, 4},
+			wantKinds: []llssa.DoAction{
+				llssa.DeferAlways,
+				llssa.DeferInLoop,
+				llssa.DeferInLoop,
+				llssa.DeferInLoop,
+				llssa.DeferAlways,
+			},
+		},
+		{
+			name:      "entry self-loop",
+			edges:     [][]int{{0}},
+			wantOrder: []int{0},
+			wantKinds: []llssa.DoAction{llssa.DeferInLoop},
+		},
+		disconnectedSharedSubgraph(),
 	}
-}
 
-func TestFindLoopSkipsSearchedSharedSubgraphs(t *testing.T) {
-	const n = 64
-	states := make([]*blockState, n)
-	for i := range states {
-		succs := make([]int, 0, 2)
-		if i+1 < n {
-			succs = append(succs, i+1)
-		}
-		if i+2 < n {
-			succs = append(succs, i+2)
-		}
-		states[i] = &blockState{succs: succs}
-	}
-	if loop := findLoop(states, make([]int, 0, n), make([]bool, n), 0); len(loop) != 0 {
-		t.Fatalf("findLoop returned non-loop path: %v", loop)
-	}
-}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			infos := Infos(blocksForGraph(t, test.edges))
+			checkInfos(t, infos, test.wantOrder, test.wantKinds)
 
-func fromDir(t *testing.T, sel, relDir string, fn func(string) string) {
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal("Getwd failed:", err)
-	}
-	dir = filepath.Join(dir, relDir)
-	fis, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal("ReadDir failed:", err)
-	}
-	for _, fi := range fis {
-		name := fi.Name()
-		if !fi.IsDir() || strings.HasPrefix(name, "_") {
-			continue
-		}
-		t.Run(name, func(t *testing.T) {
-			testFrom(t, dir+"/"+name, sel, fn(name))
+			if test.checkFindLoop {
+				states := statesForGraph(test.edges)
+				if loop := findLoop(states, nil, make([]bool, len(states)), test.findLoopFrom); len(loop) != 0 {
+					t.Fatalf("findLoop returned a loop in an acyclic shared subgraph: %v", loop)
+				}
+			}
 		})
 	}
 }
 
-func testFrom(t *testing.T, pkgDir, sel, fn string) {
-	if sel != "" && !strings.Contains(pkgDir, sel) {
-		return
+func disconnectedSharedSubgraph() graphCase {
+	// Block 2 models the recover block: it is a second entry that is not
+	// reachable from the ordinary entry block. The remaining 64-node DAG has
+	// overlapping paths; searching it without a visited set takes exponential
+	// time. Keep the graph generated so the regression test itself stays small.
+	const (
+		recoverBlock = 2
+		sharedBlocks = 64
+	)
+	n := recoverBlock + sharedBlocks
+	edges := make([][]int, n)
+	edges[0] = []int{1}
+	for i := recoverBlock; i < n; i++ {
+		if i+1 < n {
+			edges[i] = append(edges[i], i+1)
+		}
+		if i+2 < n {
+			edges[i] = append(edges[i], i+2)
+		}
 	}
-	log.Println("Parsing", pkgDir)
-	in := pkgDir + "/in.go"
-	out := pkgDir + "/out.txt"
-	b, err := os.ReadFile(out)
-	if err != nil {
-		t.Fatal("ReadFile failed:", err)
+
+	// Zero-predecessor blocks are queued before successors of block 0. Once
+	// blocks 0 and 2 have run, the two components advance in index order.
+	wantOrder := []int{0, recoverBlock, 1}
+	for i := recoverBlock + 1; i < n; i++ {
+		wantOrder = append(wantOrder, i)
 	}
-	expected := string(b)
-	testBlockInfo(t, nil, in, expected, fn)
+	wantKinds := make([]llssa.DoAction, n)
+	for i := range wantKinds {
+		wantKinds[i] = llssa.DeferInCond
+	}
+	wantKinds[0] = llssa.DeferAlways
+
+	return graphCase{
+		name:          "disconnected recover and shared subgraph",
+		edges:         edges,
+		wantOrder:     wantOrder,
+		wantKinds:     wantKinds,
+		findLoopFrom:  recoverBlock,
+		checkFindLoop: true,
+	}
 }
 
-func testBlockInfo(t *testing.T, src any, fname, expected, fn string) {
+func blocksForGraph(t *testing.T, edges [][]int) []*ssa.BasicBlock {
 	t.Helper()
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, fname, src, parser.ParseComments)
-	if err != nil {
-		t.Fatal("ParseFile failed:", err)
+	blocks := make([]*ssa.BasicBlock, len(edges))
+	for i := range blocks {
+		blocks[i] = &ssa.BasicBlock{Index: i}
 	}
-	files := []*ast.File{f}
-	name := f.Name.Name
-	pkg := types.NewPackage(name, name)
-	imp := packages.NewImporter(fset)
-	foo, _, err := ssautil.BuildPackage(
-		&types.Config{Importer: imp}, fset, pkg, files, ssa.SanityCheckFunctions|ssa.InstantiateGenerics|ssa.GlobalDebug)
-	if err != nil {
-		t.Fatal("BuildPackage failed:", err)
-	}
-	foo.WriteTo(os.Stderr)
-
-	for _, member := range foo.Members {
-		switch f := member.(type) {
-		case *ssa.Function:
-			if f.Name() == fn {
-				f.WriteTo(os.Stderr)
-				infos := Infos(f.Blocks)
-				if v := resultOf(infos); v != expected {
-					t.Fatalf("\n==> got:\n%s\n==> expected:\n%s\n", v, expected)
-				}
-				return
+	for from, succs := range edges {
+		for _, to := range succs {
+			if to < 0 || to >= len(blocks) {
+				t.Fatalf("edge %d -> %d is outside a %d-block graph", from, to, len(blocks))
 			}
+			blocks[from].Succs = append(blocks[from].Succs, blocks[to])
+			blocks[to].Preds = append(blocks[to].Preds, blocks[from])
 		}
 	}
+	return blocks
 }
 
-func resultOf(infos []Info) string {
-	var b bytes.Buffer
-	i := 0
-	for {
-		fmt.Fprintf(&b, "%2d: %s\n", i, kinds[infos[i].Kind])
-		if i = infos[i].Next; i < 0 {
-			break
+func statesForGraph(edges [][]int) []*blockState {
+	states := make([]*blockState, len(edges))
+	for i, succs := range edges {
+		states[i] = &blockState{succs: append([]int(nil), succs...)}
+	}
+	return states
+}
+
+func checkInfos(t *testing.T, got []Info, wantOrder []int, wantKinds []llssa.DoAction) {
+	t.Helper()
+	if len(got) != len(wantKinds) || len(got) != len(wantOrder) {
+		t.Fatalf("got %d infos; want %d kinds and %d ordered blocks", len(got), len(wantKinds), len(wantOrder))
+	}
+
+	wantNext := make([]int, len(got))
+	assigned := make([]bool, len(got))
+	for pos, block := range wantOrder {
+		if block < 0 || block >= len(got) {
+			t.Fatalf("wantOrder[%d] = %d is outside a %d-block graph", pos, block, len(got))
+		}
+		if assigned[block] {
+			t.Fatalf("block %d occurs more than once in wantOrder", block)
+		}
+		assigned[block] = true
+		wantNext[block] = -1
+		if pos+1 < len(wantOrder) {
+			wantNext[block] = wantOrder[pos+1]
 		}
 	}
-	return b.String()
-}
 
-var kinds = [...]string{
-	llssa.DeferAlways: "always",
-	llssa.DeferInCond: "cond",
-	llssa.DeferInLoop: "loop",
+	for block, info := range got {
+		if info.Kind != wantKinds[block] || info.Next != wantNext[block] {
+			t.Errorf("block %d: got {Kind:%v Next:%d}; want {Kind:%v Next:%d}",
+				block, info.Kind, info.Next, wantKinds[block], wantNext[block])
+		}
+	}
 }

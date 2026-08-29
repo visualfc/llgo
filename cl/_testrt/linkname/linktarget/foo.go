@@ -1,11 +1,15 @@
 package linktarget
 
-import (
-	"github.com/goplus/lib/c"
-)
+import _ "unsafe"
 
-func F(a, b *c.Char) {
-	c.Printf(c.Str("a: %s, b: %s\n"), a, b)
+//go:linkname cstr llgo.cstr
+func cstr(string) *int8
+
+//go:linkname printf C.printf
+func printf(format *int8, __llgo_va_list ...any) int32
+
+func F(a, b *int8) {
+	printf(cstr("a: %s, b: %s\n"), a, b)
 }
 
 var _ m

@@ -1,8 +1,10 @@
 // LITTEST
+// Scope: common
 package main
 
 type T string
 type A [2]int
+type MyBytes []byte
 
 func main() {
 	var v any = T("hello")
@@ -13,6 +15,10 @@ func main() {
 	var a any = A{1, 2}
 	ar, ok := a.(A)
 	println(ar[0], ar[1], ok)
+
+	var bytes any = MyBytes{}
+	_, ok = bytes.(MyBytes)
+	println(ok)
 }
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
@@ -51,3 +57,14 @@ func main() {
 // CHECK: call void @"{{.*}}PrintInt"(i64 [[A0]])
 // CHECK: call void @"{{.*}}PrintInt"(i64 [[A1]])
 // CHECK: call void @"{{.*}}PrintBool"(i1 [[A_OK]])
+// A named slice uses its named descriptor while the asserted payload retains
+// the ordinary three-word slice representation.
+// CHECK: [[BYTES_DATA:%.*]] = call ptr @"{{.*}}AllocU"(i64 24)
+// CHECK: [[BYTES_EFACE:%.*]] = insertvalue %"{{.*}}eface" { ptr @_llgo_main.MyBytes, ptr undef }, ptr [[BYTES_DATA]], 1
+// CHECK: [[BYTES_TYPE:%.*]] = extractvalue %"{{.*}}eface" [[BYTES_EFACE]], 0
+// CHECK-NEXT: [[IS_BYTES:%.*]] = icmp eq ptr [[BYTES_TYPE]], @_llgo_main.MyBytes
+// CHECK: [[BYTES_PAYLOAD:%.*]] = extractvalue %"{{.*}}eface" [[BYTES_EFACE]], 1
+// CHECK-NEXT: load %"{{.*}}Slice", ptr [[BYTES_PAYLOAD]]
+// CHECK: [[BYTES_RESULT:%.*]] = phi { %"{{.*}}Slice", i1 } [ {{.*}}, %{{.*}} ], [ zeroinitializer, %{{.*}} ]
+// CHECK: [[BYTES_OK:%.*]] = extractvalue { %"{{.*}}Slice", i1 } [[BYTES_RESULT]], 1
+// CHECK: call void @"{{.*}}PrintBool"(i1 [[BYTES_OK]])

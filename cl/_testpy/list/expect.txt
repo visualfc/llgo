@@ -1,3 +1,4 @@
-lens = 14 3
-ptrs = 1 1
-pi = 3.14159265358979
+list = 10 1 1
+nested = 1 1
+tuple = 2
+str = 1 true

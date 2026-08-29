@@ -1,4 +1,5 @@
 // LITTEST
+// Scope: common
 package main
 
 // fail's recovery defer is associated with its own recover frame; after it

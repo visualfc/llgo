@@ -2,3 +2,8 @@ loop-a
 loop-a
 loop-b
 loop-b
+query
+mutation
+subscription
+switch-a
+switch-a

@@ -1,9 +1,7 @@
 package qsort
 
 import (
-	_ "unsafe"
-
-	"github.com/goplus/lib/c"
+	"unsafe"
 )
 
 const (
@@ -11,10 +9,10 @@ const (
 )
 
 // llgo:type C
-type Comp func(a, b c.Pointer) c.Int
+type Comp func(a, b unsafe.Pointer) int32
 
 //go:linkname Qsort C.qsort
-func Qsort(base c.Pointer, count, elem uintptr, compar Comp)
+func Qsort(base unsafe.Pointer, count, elem uintptr, compar Comp)
 
 //go:linkname Qsort2 C.qsort
-func Qsort2(base c.Pointer, count, elem uintptr, compar func(a, b c.Pointer) c.Int)
+func Qsort2(base unsafe.Pointer, count, elem uintptr, compar func(a, b unsafe.Pointer) int32)

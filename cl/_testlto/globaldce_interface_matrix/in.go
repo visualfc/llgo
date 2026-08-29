@@ -1,5 +1,9 @@
 // LITTEST
+// Scope: common
 package main
+
+// This is the LTO owner for demanded interface slots across embedded
+// interfaces and both value- and pointer-receiver method sets.
 
 // CHECK-DAG: !"Virtual Function Elim"
 // CHECK-DAG: call { ptr, i1 } @llvm.type.checked.load(ptr %{{[0-9]+}}, i32 0, metadata !"go.method.A:func() int")
