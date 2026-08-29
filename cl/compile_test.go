@@ -123,6 +123,7 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/abimethod",     // panic: internal/bytealg selected .s files require plan9asm translation
 				"./_testgo/arith-divrem",  // embedded int64 min/-1 division returns 0 instead of Go's defined minInt result
 				"./_testgo/alias",         // unexpected output
+				"./_testgo/cgocfiles",     // host CGo errno/aggregate ABI; cgo source is excluded on bare metal
 				"./_testgo/cgodefer",      // panic: cannot build SSA for packages
 				"./_testgo/complitassign", // baremetal terminates on the merged nil-destination panic before deferred recovery
 				"./_testgo/defer4",        // runtime output: fatal error

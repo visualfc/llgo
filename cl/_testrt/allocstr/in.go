@@ -55,7 +55,8 @@ func hello() string {
 // CHECK-NEXT: [[VECTOR_LEN:%[0-9]+]] = add i64 [[SLICE_LEN]], 1
 // CHECK-NEXT: [[VECTOR:%[0-9]+]] = alloca ptr, i64 [[VECTOR_LEN]]
 // CHECK: [[STRLEN:%[0-9]+]] = call i64 @strlen(ptr @main.strlenInput)
-// CHECK-NEXT: call i32 (ptr, ...) @printf(ptr @{{[0-9]+}}, i64 [[STRLEN]])
+// CHECK-NEXT: [[BAD_LENGTH:%[0-9]+]] = icmp ne i64 [[STRLEN]], 3
+// CHECK-NEXT: br i1 [[BAD_LENGTH]], label %{{[^, ]+}}, label %{{[^, ]+}}
 // CHECK: store ptr null, ptr %{{[0-9]+}}
 // CHECK: call ptr @"{{.*}}CStrCopy"(ptr %{{[0-9]+}}, %"{{.*}}String" %{{[0-9]+}})
 func main() {
@@ -75,5 +76,9 @@ func main() {
 		printf(cstr("%s\n"), item)
 	}
 
-	printf(cstr("Length %zu\n"), strlen(&strlenInput[0]))
+	if strlen(&strlenInput[0]) != 3 {
+		panic("unexpected C string length")
+	}
+	// ESP-IDF's compact printf does not implement the C99 %zu modifier.
+	printf(cstr("Length 3\n"))
 }
