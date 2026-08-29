@@ -229,7 +229,7 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_VCPKG_ROOT=$vcpkgRoot"
 
     - name: Restore cross-host llvm-mingw
-      if: runner.os != 'Windows'
+      if: runner.os != 'Windows' && env.LLGO_MINGW_CROSS_ROOT == ''
       id: cross_host_llvm_mingw_cache
       uses: actions/cache/restore@v4
       with:
@@ -237,7 +237,7 @@ runs:
         key: llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && '80b2e7ade71ba2dfe9e8d27fe47ae5738b1fb8d34e057faa2beef3070392f2d6' || 'a16f52dee819797248e6c7d63b8b1e50a92119f45767ecd8e9633d1733b896e2' }}
 
     - name: Install cross-host llvm-mingw
-      if: runner.os != 'Windows' && steps.cross_host_llvm_mingw_cache.outputs.cache-hit != 'true'
+      if: runner.os != 'Windows' && env.LLGO_MINGW_CROSS_ROOT == '' && steps.cross_host_llvm_mingw_cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         LLVM_MINGW_VERSION: "20250114"
@@ -281,7 +281,7 @@ runs:
         mv "$source_root" "$install_root"
 
     - name: Save cross-host llvm-mingw
-      if: runner.os != 'Windows' && steps.cross_host_llvm_mingw_cache.outputs.cache-hit != 'true'
+      if: runner.os != 'Windows' && env.LLGO_MINGW_CROSS_ROOT == '' && steps.cross_host_llvm_mingw_cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.tool_cache }}/llvm-mingw/20250114/ucrt-${{ runner.os }}-${{ runner.arch }}
@@ -312,7 +312,7 @@ runs:
         source_root="$RUNNER_TEMP/llgo-mingw-vcpkg-source"
         install_root="$RUNNER_TOOL_CACHE/llgo-mingw-vcpkg/$VCPKG_MANIFEST_HASH/${RUNNER_OS}-${RUNNER_ARCH}/${{ inputs.windows-arch }}"
         manifest_root="$GITHUB_WORKSPACE/.github/windows/vcpkg"
-        llvm_mingw_root="$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}"
+        llvm_mingw_root="${LLGO_MINGW_CROSS_ROOT:-$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}}"
         export PATH="$llvm_mingw_root/bin:$PATH"
 
         # The three architectures run sequentially in one job. Reuse the
@@ -409,4 +409,5 @@ runs:
         echo "LLGO_MINGW_TARGET_TOOLS=$target_tools" >> "$GITHUB_ENV"
         echo "LLGO_MINGW_TARGET_TRIPLE=$canonical" >> "$GITHUB_ENV"
         echo "LLGO_MINGW_TARGET_VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+        echo "LLGO_MINGW_CROSS_ROOT=$llvm_mingw_root" >> "$GITHUB_ENV"
         echo "LLGO_CROSS_HOST_PKG_CONFIG=$pkg_config" >> "$GITHUB_ENV"
