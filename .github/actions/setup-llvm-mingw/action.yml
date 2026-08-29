@@ -363,7 +363,7 @@ runs:
             ;;
         esac
 
-        llvm_mingw_root="$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}"
+        llvm_mingw_root="${LLGO_MINGW_CROSS_ROOT:-$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}}"
         target_bin="$llvm_mingw_root/bin"
         runtime_bin="$llvm_mingw_root/$prefix/bin"
         compiler="$target_bin/$prefix-clang"
