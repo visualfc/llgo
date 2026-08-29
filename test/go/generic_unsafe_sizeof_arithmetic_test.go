@@ -23,7 +23,7 @@ func genericUnsafeSizeofAny[T any]() any {
 }
 
 func TestGenericUnsafeSizeofArithmetic(t *testing.T) {
-	const minInt64 = -1 << 63
+	const minInt64 int64 = -1 << 63
 
 	tests := []struct {
 		name string
