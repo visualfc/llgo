@@ -643,6 +643,93 @@ entry:
 	}
 }
 
+func TestMSVC386RegisterAggregateReturnPreservesLoadedValue(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Pair = type { ptr, ptr }
+%Holder = type { %Pair }
+
+define %Pair @read(ptr %holder) {
+entry:
+  %field = getelementptr inbounds %Holder, ptr %holder, i32 0, i32 0
+  %saved = load %Pair, ptr %field, align 4
+  store %Pair zeroinitializer, ptr %field, align 4
+  ret %Pair %saved
+}
+
+define %Pair @readDirect(ptr %holder) {
+entry:
+  %field = getelementptr inbounds %Holder, ptr %holder, i32 0, i32 0
+  %saved = load %Pair, ptr %field, align 4
+  ret %Pair %saved
+}
+`
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "register_return.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	NewTransformer(prog, "i686-pc-windows-msvc", "", ModeAllFunc, true).TransformModule("test", mod)
+
+	fn := mod.NamedFunction("read")
+	if got := fn.GlobalValueType().ReturnType().String(); got != "i64" {
+		t.Fatalf("lowered return type = %s, want i64:\n%s", got, fn.String())
+	}
+	var ret llvm.Value
+	for block := fn.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			if !instruction.IsAReturnInst().IsNil() {
+				ret = instruction
+			}
+		}
+	}
+	if ret.IsNil() || ret.OperandsCount() != 1 {
+		t.Fatalf("lowered return instruction not found:\n%s", fn.String())
+	}
+	value := ret.Operand(0).IsALoadInst()
+	if value.IsNil() || value.Operand(0).IsAAllocaInst().IsNil() {
+		t.Fatalf("lowered return reloads the mutated source instead of the saved value:\n%s", fn.String())
+	}
+	direct := mod.NamedFunction("readDirect")
+	var directReturn llvm.Value
+	for block := direct.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			if !instruction.IsAReturnInst().IsNil() {
+				directReturn = instruction
+			}
+		}
+	}
+	if directReturn.IsNil() || directReturn.OperandsCount() != 1 {
+		t.Fatalf("lowered direct return instruction not found:\n%s", direct.String())
+	}
+	directValue := directReturn.Operand(0).IsALoadInst()
+	if directValue.IsNil() || !directValue.Operand(0).IsAAllocaInst().IsNil() {
+		t.Fatalf("adjacent load/return did not retain the direct return path:\n%s", direct.String())
+	}
+	if got := directValue.Alignment(); got != 4 {
+		t.Fatalf("direct aggregate return alignment = %d, want 4:\n%s", got, direct.String())
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("lowered module is invalid: %v\n%s", err, mod.String())
+	}
+}
+
 func TestDevLTOGlobalDCEFuncNoUnwindCreatesNounwindAttribute(t *testing.T) {
 	ctx := llvm.NewContext()
 	attr := funcNoUnwind(ctx)

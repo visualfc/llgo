@@ -605,12 +605,16 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 				rv = b.CreateRetVoid()
 			case AttrWidthType:
 				if p.optimize {
-					if load := ret.IsALoadInst(); !load.IsNil() {
+					if load := ret.IsALoadInst(); !load.IsNil() && !load.IsVolatile() && llvm.NextInstruction(load) == instr {
 						iptr := b.CreateBitCast(ret.Operand(0), llvm.PointerType(nft.ReturnType(), 0), "")
-						rv = b.CreateRet(b.CreateLoad(nft.ReturnType(), iptr, ""))
+						value := b.CreateLoad(nft.ReturnType(), iptr, "")
+						value.SetAlignment(load.Alignment())
+						rv = b.CreateRet(value)
 						break
 					}
 				}
+				// Materialize the saved SSA value. The return may be a load whose
+				// source was modified after that load but before the return.
 				ptr := llvm.CreateAlloca(b, info.Return.Type)
 				b.CreateStore(ret, ptr)
 				iptr := b.CreateBitCast(ptr, llvm.PointerType(nft.ReturnType(), 0), "")
