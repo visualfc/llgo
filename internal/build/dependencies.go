@@ -48,3 +48,38 @@ func effectiveDependencies(pkg *aPackage) []*packages.Package {
 	sort.Slice(ret, func(i, j int) bool { return ret[i].ID < ret[j].ID })
 	return ret
 }
+
+// linkedPackageClosure returns dependency-first packages for one link. It
+// follows alternate-package-only imports as well as the ordinary Go graph and
+// includes the prepared runtime tree without pulling in unrelated roots.
+func linkedPackageClosure(ctx *context, root *packages.Package, built []*aPackage) []Package {
+	seen := make(map[string]bool)
+	var order []Package
+	var visit func(*packages.Package)
+	visit = func(pkg *packages.Package) {
+		if pkg == nil || seen[pkg.ID] {
+			return
+		}
+		seen[pkg.ID] = true
+		aPkg := ctx.pkgs[pkg]
+		if aPkg == nil {
+			aPkg = ctx.pkgByID[pkg.ID]
+		}
+		if aPkg == nil {
+			return
+		}
+		for _, dep := range effectiveDependencies(aPkg) {
+			visit(dep)
+		}
+		if pkg.ExportFile != "" {
+			order = append(order, aPkg)
+		}
+	}
+	visit(root)
+	for _, pkg := range built {
+		if isRuntimePkg(pkg.PkgPath) {
+			visit(pkg.Package)
+		}
+	}
+	return order
+}
