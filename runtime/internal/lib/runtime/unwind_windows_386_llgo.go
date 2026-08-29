@@ -60,6 +60,7 @@ func fpCallers(skip int, pc []uintptr) int {
 	initRuntimeFuncPCFrames()
 	fp := uintptr(c_framepointer())
 	n := 0
+	var callee pcSymbol
 	const maxFrames = 4096
 	wordSize := unsafe.Sizeof(uintptr(0))
 	for i := 0; fp != 0 && n < len(pc) && i < maxFrames; i++ {
@@ -71,13 +72,24 @@ func fpCallers(skip int, pc []uintptr) int {
 		if ret < minLegalPC || !prebuiltTextContains(ret) {
 			break
 		}
+		caller := frameSymbol(ret - 1)
+		validPrev := prev > fp && prev-fp <= maxFPStride && prev&(wordSize-1) == 0
+		if pcSymbolIsWrapper(caller) && elideWrapperCalling(callee.function) {
+			callee = caller
+			if !validPrev {
+				break
+			}
+			fp = prev
+			continue
+		}
 		if skip > 0 {
 			skip--
 		} else {
 			pc[n] = ret
 			n++
 		}
-		if prev <= fp || prev-fp > maxFPStride || prev&(wordSize-1) != 0 {
+		callee = caller
+		if !validPrev {
 			break
 		}
 		fp = prev

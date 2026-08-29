@@ -1428,7 +1428,7 @@ func init() {
 }
 
 func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
-	if pc == 0 || prebuiltFuncPCTablePresent() || !runtimeFuncPCMayUseEntrySlack(pc) {
+	if pc == 0 || prebuiltFuncPCTablePresent() {
 		return pcSymbol{}, false
 	}
 	bestDelta := uintptr(runtimeFuncPCEntrySlack) + 1
@@ -1440,6 +1440,9 @@ func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
 			unsafe.Sizeof(*runtimeFuncInfoEntryStart), pc, bestDelta)
 	}
 	if bestIndex == 0 {
+		return pcSymbol{}, false
+	}
+	if bestDelta != 0 && !runtimeFuncPCMayUseEntrySlack(pc) {
 		return pcSymbol{}, false
 	}
 	return pcSymbolForFuncInfoIndex(pc, pc, bestIndex)
