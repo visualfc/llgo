@@ -17,26 +17,43 @@ runs:
       shell: pwsh
       run: |
         if ("${{ inputs.llvm-version }}" -ne "19") {
-          throw "llvm-mingw 20241217 is paired with LLVM 19, not ${{ inputs.llvm-version }}"
+          throw "llvm-mingw 20250114 is paired with LLVM 19, not ${{ inputs.llvm-version }}"
         }
         if ("${{ inputs.windows-arch }}" -ne "386") {
           throw "The native llvm-mingw target currently qualifies windows/386, not windows/${{ inputs.windows-arch }}"
         }
+
+    - name: Validate cross-host llvm-mingw target
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "${{ inputs.llvm-version }}" != 19 ]]; then
+          echo "llvm-mingw 20250114 is paired with LLVM 19, not ${{ inputs.llvm-version }}" >&2
+          exit 1
+        fi
+        case "${{ inputs.windows-arch }}" in
+          386|amd64|arm64) ;;
+          *)
+            echo "unsupported llvm-mingw target: windows/${{ inputs.windows-arch }}" >&2
+            exit 1
+            ;;
+        esac
 
     - name: Restore llvm-mingw
       if: runner.os == 'Windows'
       id: llvm_mingw_cache
       uses: actions/cache/restore@v4
       with:
-        path: ${{ runner.tool_cache }}\llvm-mingw\20241217\ucrt-x86_64
-        key: llvm-mingw-20241217-ucrt-x86_64-f4f3ad8616c4183ce7b0d72df634400945b41ea9816145fc2430df6003455db7
+        path: ${{ runner.tool_cache }}\llvm-mingw\20250114\ucrt-x86_64
+        key: llvm-mingw-20250114-ucrt-x86_64-9395d95c089611e6cd728c9a07219ffc5ac706e0c719833a2f7e64a706a81541
 
     - name: Install llvm-mingw
       if: runner.os == 'Windows' && steps.llvm_mingw_cache.outputs.cache-hit != 'true'
       shell: pwsh
       env:
-        LLVM_MINGW_VERSION: "20241217"
-        LLVM_MINGW_SHA256: f4f3ad8616c4183ce7b0d72df634400945b41ea9816145fc2430df6003455db7
+        LLVM_MINGW_VERSION: "20250114"
+        LLVM_MINGW_SHA256: 9395d95c089611e6cd728c9a07219ffc5ac706e0c719833a2f7e64a706a81541
       run: |
         $ErrorActionPreference = "Stop"
         $asset = "llvm-mingw-$env:LLVM_MINGW_VERSION-ucrt-x86_64.zip"
@@ -67,8 +84,8 @@ runs:
       if: runner.os == 'Windows' && steps.llvm_mingw_cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
-        path: ${{ runner.tool_cache }}\llvm-mingw\20241217\ucrt-x86_64
-        key: llvm-mingw-20241217-ucrt-x86_64-f4f3ad8616c4183ce7b0d72df634400945b41ea9816145fc2430df6003455db7
+        path: ${{ runner.tool_cache }}\llvm-mingw\20250114\ucrt-x86_64
+        key: llvm-mingw-20250114-ucrt-x86_64-9395d95c089611e6cd728c9a07219ffc5ac706e0c719833a2f7e64a706a81541
 
     - name: Restore llvm-mingw target dependencies
       if: runner.os == 'Windows'
@@ -76,7 +93,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-mingw-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}\386
-        key: llgo-llvm-mingw-20241217-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+        key: llgo-llvm-mingw-20250114-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Build llvm-mingw target dependencies
       if: runner.os == 'Windows' && steps.llvm_mingw_vcpkg_cache.outputs.cache-hit != 'true'
@@ -89,7 +106,7 @@ runs:
         $sourceRoot = Join-Path $env:RUNNER_TEMP "llgo-mingw-vcpkg-source"
         $installRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-mingw-vcpkg\$env:VCPKG_MANIFEST_HASH\386"
         $manifestRoot = Join-Path $env:GITHUB_WORKSPACE ".github\windows\vcpkg"
-        $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20241217\ucrt-x86_64"
+        $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20250114\ucrt-x86_64"
         $llvmMingwBin = Join-Path $llvmMingwRoot "bin"
         $llvmMingwRuntimeBin = Join-Path $llvmMingwRoot "i686-w64-mingw32\bin"
         $env:PATH = "$llvmMingwBin;$env:PATH"
@@ -121,7 +138,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-mingw-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}\386
-        key: llgo-llvm-mingw-20241217-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+        key: llgo-llvm-mingw-20250114-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Configure llvm-mingw target
       if: runner.os == 'Windows'
@@ -130,7 +147,7 @@ runs:
         VCPKG_MANIFEST_HASH: ${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
       run: |
         $ErrorActionPreference = "Stop"
-        $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20241217\ucrt-x86_64"
+        $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20250114\ucrt-x86_64"
         $llvmMingwBin = Join-Path $llvmMingwRoot "bin"
         $llvmMingwRuntimeBin = Join-Path $llvmMingwRoot "i686-w64-mingw32\bin"
         $compiler = Join-Path $llvmMingwBin "i686-w64-mingw32-clang.exe"
@@ -210,3 +227,186 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_TOOLS=$targetTools"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_TRIPLE=i686-w64-windows-gnu"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_VCPKG_ROOT=$vcpkgRoot"
+
+    - name: Restore cross-host llvm-mingw
+      if: runner.os != 'Windows'
+      id: cross_host_llvm_mingw_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.tool_cache }}/llvm-mingw/20250114/ucrt-${{ runner.os }}-${{ runner.arch }}
+        key: llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && '80b2e7ade71ba2dfe9e8d27fe47ae5738b1fb8d34e057faa2beef3070392f2d6' || 'a16f52dee819797248e6c7d63b8b1e50a92119f45767ecd8e9633d1733b896e2' }}
+
+    - name: Install cross-host llvm-mingw
+      if: runner.os != 'Windows' && steps.cross_host_llvm_mingw_cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        LLVM_MINGW_VERSION: "20250114"
+      run: |
+        set -euo pipefail
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64)
+            asset="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-ubuntu-20.04-x86_64.tar.xz"
+            sha256=a16f52dee819797248e6c7d63b8b1e50a92119f45767ecd8e9633d1733b896e2
+            ;;
+          macOS/ARM64|macOS/X64)
+            asset="llvm-mingw-${LLVM_MINGW_VERSION}-ucrt-macos-universal.tar.xz"
+            sha256=80b2e7ade71ba2dfe9e8d27fe47ae5738b1fb8d34e057faa2beef3070392f2d6
+            ;;
+          *)
+            echo "llvm-mingw has no qualified $RUNNER_OS/$RUNNER_ARCH host archive" >&2
+            exit 1
+            ;;
+        esac
+
+        archive="$RUNNER_TEMP/$asset"
+        curl --fail --location --retry 5 --retry-all-errors \
+          --output "$archive" \
+          "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_VERSION}/${asset}"
+        actual="$(shasum -a 256 "$archive" | awk '{print $1}')"
+        if [[ "$actual" != "$sha256" ]]; then
+          echo "llvm-mingw SHA-256 is $actual, want $sha256" >&2
+          exit 1
+        fi
+
+        extract_root="$RUNNER_TEMP/llgo-llvm-mingw-cross-extract"
+        install_root="$RUNNER_TOOL_CACHE/llvm-mingw/${LLVM_MINGW_VERSION}/ucrt-${RUNNER_OS}-${RUNNER_ARCH}"
+        mkdir -p "$extract_root" "$(dirname "$install_root")"
+        tar -xJf "$archive" -C "$extract_root"
+        source_root="$(find "$extract_root" -mindepth 1 -maxdepth 1 -type d \
+          -exec test -x '{}/bin/i686-w64-mingw32-clang' \; -print -quit)"
+        if [[ -z "$source_root" ]]; then
+          echo "the llvm-mingw archive does not contain the i686 target compiler" >&2
+          exit 1
+        fi
+        mv "$source_root" "$install_root"
+
+    - name: Save cross-host llvm-mingw
+      if: runner.os != 'Windows' && steps.cross_host_llvm_mingw_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}/llvm-mingw/20250114/ucrt-${{ runner.os }}-${{ runner.arch }}
+        key: llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && '80b2e7ade71ba2dfe9e8d27fe47ae5738b1fb8d34e057faa2beef3070392f2d6' || 'a16f52dee819797248e6c7d63b8b1e50a92119f45767ecd8e9633d1733b896e2' }}
+
+    - name: Restore cross-host target dependencies
+      if: runner.os != 'Windows'
+      id: cross_host_vcpkg_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.tool_cache }}/llgo-mingw-vcpkg/${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}/${{ runner.os }}-${{ runner.arch }}/${{ inputs.windows-arch }}
+        key: llgo-llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.windows-arch }}-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+
+    - name: Build cross-host target dependencies
+      if: runner.os != 'Windows' && steps.cross_host_vcpkg_cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VCPKG_BASELINE: ddd0023b0eee70986e42ed49d9d4afb8098f212e
+        VCPKG_MANIFEST_HASH: ${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+      run: |
+        set -euo pipefail
+        case "${{ inputs.windows-arch }}" in
+          386) triplet=x86-mingw-dynamic ;;
+          amd64) triplet=x64-mingw-dynamic ;;
+          arm64) triplet=arm64-mingw-dynamic ;;
+        esac
+
+        source_root="$RUNNER_TEMP/llgo-mingw-vcpkg-source"
+        install_root="$RUNNER_TOOL_CACHE/llgo-mingw-vcpkg/$VCPKG_MANIFEST_HASH/${RUNNER_OS}-${RUNNER_ARCH}/${{ inputs.windows-arch }}"
+        manifest_root="$GITHUB_WORKSPACE/.github/windows/vcpkg"
+        llvm_mingw_root="$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}"
+        export PATH="$llvm_mingw_root/bin:$PATH"
+
+        # The three architectures run sequentially in one job. Reuse the
+        # pinned vcpkg checkout and host tool instead of cloning/bootstrapping
+        # it once per target; target build and install roots remain separate.
+        if [[ ! -d "$source_root/.git" ]]; then
+          git clone --no-checkout https://github.com/microsoft/vcpkg.git "$source_root"
+        fi
+        git -C "$source_root" checkout --detach "$VCPKG_BASELINE"
+        if [[ ! -x "$source_root/vcpkg" ]]; then
+          "$source_root/bootstrap-vcpkg.sh" -disableMetrics
+        fi
+        "$source_root/vcpkg" install \
+          "--triplet=$triplet" \
+          "--x-manifest-root=$manifest_root" \
+          "--x-install-root=$install_root" \
+          --clean-after-build
+
+    - name: Save cross-host target dependencies
+      if: runner.os != 'Windows' && steps.cross_host_vcpkg_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}/llgo-mingw-vcpkg/${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}/${{ runner.os }}-${{ runner.arch }}/${{ inputs.windows-arch }}
+        key: llgo-llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.windows-arch }}-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+
+    - name: Configure cross-host llvm-mingw target
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        VCPKG_MANIFEST_HASH: ${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+      run: |
+        set -euo pipefail
+        case "${{ inputs.windows-arch }}" in
+          386)
+            prefix=i686-w64-mingw32
+            canonical=i686-w64-windows-gnu
+            triplet=x86-mingw-dynamic
+            ;;
+          amd64)
+            prefix=x86_64-w64-mingw32
+            canonical=x86_64-w64-windows-gnu
+            triplet=x64-mingw-dynamic
+            ;;
+          arm64)
+            prefix=aarch64-w64-mingw32
+            canonical=aarch64-w64-windows-gnu
+            triplet=arm64-mingw-dynamic
+            ;;
+        esac
+
+        llvm_mingw_root="$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}"
+        target_bin="$llvm_mingw_root/bin"
+        runtime_bin="$llvm_mingw_root/$prefix/bin"
+        compiler="$target_bin/$prefix-clang"
+        compiler_xx="$target_bin/$prefix-clang++"
+        vcpkg_root="$RUNNER_TOOL_CACHE/llgo-mingw-vcpkg/$VCPKG_MANIFEST_HASH/${RUNNER_OS}-${RUNNER_ARCH}/${{ inputs.windows-arch }}/$triplet"
+        for path in "$compiler" "$compiler_xx" "$runtime_bin" "$vcpkg_root/include/gc/gc.h"; do
+          if [[ ! -e "$path" ]]; then
+            echo "the cross-host windows/${{ inputs.windows-arch }} target is incomplete: $path was not found" >&2
+            exit 1
+          fi
+        done
+        target="$($compiler -dumpmachine)"
+        case "$target" in
+          "$prefix"|"$canonical") ;;
+          *)
+            echo "llvm-mingw reports $target, want $canonical" >&2
+            exit 1
+            ;;
+        esac
+
+        target_tools="$RUNNER_TEMP/llgo-mingw-target-tools-${{ inputs.windows-arch }}"
+        mkdir -p "$target_tools"
+        printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$compiler" > "$target_tools/clang"
+        printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$compiler_xx" > "$target_tools/clang++"
+        # Preserve the Unix host command across sequential architecture
+        # qualifications; a previous target's wrapper may already be on PATH.
+        pkg_config="${LLGO_CROSS_HOST_PKG_CONFIG:-$(command -v pkg-config)}"
+        if [[ ! -x "$pkg_config" ]]; then
+          echo "the host pkg-config command is unavailable: $pkg_config" >&2
+          exit 1
+        fi
+        pkg_config_libdir="$vcpkg_root/lib/pkgconfig:$vcpkg_root/share/pkgconfig"
+        printf '#!/usr/bin/env bash\nPKG_CONFIG_LIBDIR=%q exec %q --dont-define-prefix "$@"\n' \
+          "$pkg_config_libdir" "$pkg_config" > "$target_tools/pkg-config"
+        chmod +x "$target_tools/clang" "$target_tools/clang++" "$target_tools/pkg-config"
+
+        for package in bdw-gc libffi libuv openssl libcjson sqlite3 zlib; do
+          "$target_tools/pkg-config" --modversion "$package"
+        done
+
+        echo "LLGO_MINGW_TARGET_BIN=$target_bin" >> "$GITHUB_ENV"
+        echo "LLGO_MINGW_TARGET_RUNTIME_BIN=$runtime_bin" >> "$GITHUB_ENV"
+        echo "LLGO_MINGW_TARGET_TOOLS=$target_tools" >> "$GITHUB_ENV"
+        echo "LLGO_MINGW_TARGET_TRIPLE=$canonical" >> "$GITHUB_ENV"
+        echo "LLGO_MINGW_TARGET_VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+        echo "LLGO_CROSS_HOST_PKG_CONFIG=$pkg_config" >> "$GITHUB_ENV"

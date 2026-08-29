@@ -96,3 +96,42 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "GOOS=windows"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "GOARCH=$goArch"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_ACTIVE=1"
+
+    - name: Activate cross-host Windows GNU target
+      if: runner.os != 'Windows' && inputs.windows-abi == 'mingw'
+      shell: bash
+      run: |
+        set -euo pipefail
+        for name in \
+          LLGO_MINGW_TARGET_BIN \
+          LLGO_MINGW_TARGET_RUNTIME_BIN \
+          LLGO_MINGW_TARGET_TOOLS \
+          LLGO_MINGW_TARGET_TRIPLE \
+          LLGO_MINGW_TARGET_VCPKG_ROOT; do
+          if [[ -z "${!name:-}" ]]; then
+            echo "the cross-host llvm-mingw target did not export $name" >&2
+            exit 1
+          fi
+        done
+
+        target="$(${LLGO_MINGW_TARGET_TOOLS}/clang -dumpmachine)"
+        case "${{ inputs.windows-arch }}:$target" in
+          386:i686-*-windows-gnu|386:i686-*-mingw32) ;;
+          amd64:x86_64-*-windows-gnu|amd64:x86_64-*-mingw32) ;;
+          arm64:aarch64-*-windows-gnu|arm64:aarch64-*-mingw32) ;;
+          *)
+            echo "llvm-mingw reports $target for windows/${{ inputs.windows-arch }}" >&2
+            exit 1
+            ;;
+        esac
+
+        # Only expose the target-selecting wrappers. The compiler locates its
+        # own CRT by absolute path, target DLLs cannot run on this Unix host,
+        # and vcpkg contributes link flags through the pkg-config wrapper.
+        # This prevents llvm-mingw's unqualified host tools from shadowing the
+        # LLVM installation used to build the LLGo compiler itself.
+        echo "$LLGO_MINGW_TARGET_TOOLS" >> "$GITHUB_PATH"
+        echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+        echo "GOOS=windows" >> "$GITHUB_ENV"
+        echo "GOARCH=${{ inputs.windows-arch }}" >> "$GITHUB_ENV"
+        echo "LLGO_WINDOWS_TARGET_ACTIVE=1" >> "$GITHUB_ENV"

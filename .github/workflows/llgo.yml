@@ -516,6 +516,51 @@ jobs:
 
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
 
+  windows-gnu-cross:
+    name: windows GNU cross (${{ matrix.os }})
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install host dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Go for building llgo
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.27.0"
+
+      - name: Build Unix host compiler
+        shell: bash
+        run: |
+          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" \
+            go build -p=2 -o "$RUNNER_TEMP/llgo-host" ./cmd/llgo
+
+      - name: Test cross-host windows/amd64
+        uses: ./.github/actions/test-windows-cross
+        with:
+          llgo: ${{ runner.temp }}/llgo-host
+          windows-arch: amd64
+
+      - name: Test cross-host windows/arm64
+        uses: ./.github/actions/test-windows-cross
+        with:
+          llgo: ${{ runner.temp }}/llgo-host
+          windows-arch: arm64
+
+      - name: Test cross-host windows/386
+        uses: ./.github/actions/test-windows-cross
+        with:
+          llgo: ${{ runner.temp }}/llgo-host
+          windows-arch: "386"
+
   wasm-runtime:
     name: wasm-runtime (Go 1.24 and 1.27)
     timeout-minutes: 30
