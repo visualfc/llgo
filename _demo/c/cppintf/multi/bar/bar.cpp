@@ -23,3 +23,24 @@ extern "C" void llgo_cppmintf_f(MultiCallback* cb) {
 		abort();
 	}
 }
+
+#if defined(_WIN32) && defined(_M_IX86)
+extern "C" double llgo_cppmintf_calc_cdecl(void* cb, double value);
+extern "C" int llgo_cppmintf_val_cdecl(void* cb);
+
+static double __thiscall llgo_cppmintf_calc_thiscall(ICalc* cb, double value) {
+	return llgo_cppmintf_calc_cdecl(cb, value);
+}
+
+static int __thiscall llgo_cppmintf_val_thiscall(IVal* cb) {
+	return llgo_cppmintf_val_cdecl(cb);
+}
+
+extern "C" void* llgo_cppmintf_calc_thunk() {
+	return reinterpret_cast<void*>(&llgo_cppmintf_calc_thiscall);
+}
+
+extern "C" void* llgo_cppmintf_val_thunk() {
+	return reinterpret_cast<void*>(&llgo_cppmintf_val_thiscall);
+}
+#endif

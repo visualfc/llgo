@@ -18,12 +18,12 @@ func NewMultiBar(a c.Int) *MultiBar {
 		Callback: multi.Callback{
 			ICalc: multi.ICalc{
 				Vptr: &multi.ICalcVtbl{
-					Calc: c.Func((*MultiBar).sqrt),
+					Calc: multiCallbackCalc(),
 				},
 			},
 			IVal: multi.IVal{
 				Vptr: &multi.IValVtbl{
-					Val: c.Func(multiIValGetA),
+					Val: multiCallbackVal(),
 				},
 			},
 		},
