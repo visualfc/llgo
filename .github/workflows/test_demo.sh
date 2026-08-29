@@ -10,6 +10,11 @@ fi
 # Keep the scheduler deliberately small: directory consolidation owns coverage,
 # while this script only selects the few specialized profiles and runs them.
 jobs="${LLGO_DEMO_JOBS:-4}"
+if [ "$mode" = "embedded" ] && [ -z "${LLGO_DEMO_JOBS:-}" ]; then
+  # The first case for each target warms an expensive shared build cache. Run
+  # embedded cases sequentially by default so that cold work happens once.
+  jobs=1
+fi
 case "$jobs" in
   ""|*[!0-9]*|0)
     echo "LLGO_DEMO_JOBS must be a positive integer" >&2
@@ -140,9 +145,6 @@ run_case() {
 
   if [ -n "$target" ]; then
     cmd=(llgo run)
-    # Case-level workers already provide parallelism. Keep each embedded build
-    # single-threaded so package parallelism does not multiply across workers.
-    cmd+=("-p=1")
     cmd+=("${llgo_run_flags[@]}")
     cmd+=("-target=$target")
     if [ "$emulator" -eq 1 ]; then
