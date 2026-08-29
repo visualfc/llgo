@@ -102,6 +102,19 @@ func TestParseNativeToolchainInputErrors(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsMalformedNativeToolchainInput(t *testing.T) {
+	t.Setenv("CC", "'clang")
+	conf := NewDefaultConf(ModeBuild)
+	conf.Goos = "windows"
+	conf.Goarch = "amd64"
+	conf.GOAMD64 = "v1"
+
+	_, err := Build(Invocation{Config: conf, Dir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "could not parse CC") {
+		t.Fatalf("Build() error = %v, want malformed CC error", err)
+	}
+}
+
 func TestParseNativeToolchainInputAcceptsEmptyLinkerFlags(t *testing.T) {
 	got, err := parseNativeToolchainInput(commandEnv{}, LinkOptions{
 		ExternalLinker:      "  ",
