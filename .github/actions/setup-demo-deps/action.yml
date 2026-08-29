@@ -23,7 +23,7 @@ runs:
         # stdlib path with that installation and cannot import encodings. Keep
         # the MinGW demo environment on the normal latest 3.12 patch.
         python-version: ${{ inputs.windows-abi == 'msvc' && '3.12.7' || '3.12' }}
-        architecture: x64
+        architecture: ${{ inputs.windows-abi == 'mingw' && inputs.windows-arch == 'arm64' && 'arm64' || 'x64' }}
         # setup-python otherwise replaces PKG_CONFIG_PATH, hiding the native
         # vcpkg metadata installed by setup-deps from LLGo's runtime build.
         update-environment: false
@@ -123,6 +123,12 @@ runs:
           $null = Enter-LLGoVisualStudio2022 -GoArch "${{ inputs.windows-arch }}"
         }
         $compiler = (Get-Command clang.exe).Source
+        if ("${{ inputs.windows-abi }}" -eq "mingw" -and "${{ inputs.windows-arch }}" -eq "386") {
+          if (-not $env:LLGO_MINGW_TARGET_BIN) {
+            throw "The standalone llvm-mingw target was not configured"
+          }
+          $compiler = Join-Path $env:LLGO_MINGW_TARGET_BIN "i686-w64-mingw32-clang.exe"
+        }
         $compilerArgs = @()
         if ("${{ inputs.windows-abi }}" -eq "msvc") {
           $compilerArgs = @("--target=$env:LLGO_WINDOWS_TARGET_TRIPLE")
@@ -137,6 +143,14 @@ runs:
         } else {
           if ($compilerTarget -notmatch "-(windows-gnu|mingw32)$") {
             throw "The MinGW profile resolved Clang target $compilerTarget"
+          }
+          $targetArch = switch ("${{ inputs.windows-arch }}") {
+            "386" { "i686" }
+            "amd64" { "x86_64|amd64" }
+            "arm64" { "aarch64" }
+          }
+          if ($compilerTarget -notmatch "^($targetArch)-") {
+            throw "The MinGW profile resolved $compilerTarget for windows/${{ inputs.windows-arch }}"
           }
           $runtimeArgs = @()
           $archive = "libcargs.a"

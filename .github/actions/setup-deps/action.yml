@@ -31,9 +31,6 @@ runs:
         if ("${{ inputs.windows-arch }}" -notin @("386", "amd64", "arm64")) {
           throw "Unsupported Windows target architecture: ${{ inputs.windows-arch }}"
         }
-        if ("${{ inputs.windows-abi }}" -eq "mingw" -and "${{ inputs.windows-arch }}" -ne "amd64") {
-          throw "The MinGW profile currently supports windows/amd64; other GNU architectures are qualified in R11"
-        }
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_ABI=${{ inputs.windows-abi }}"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_ARCH=${{ inputs.windows-arch }}"
 
@@ -500,7 +497,10 @@ runs:
       id: windows_mingw
       uses: msys2/setup-msys2@v2
       with:
-        msystem: CLANG64
+        # CLANGARM64 supplies an architecture-native LLVM host and target on
+        # the ARM64 runner. The x64 runner keeps CLANG64 as the LLGo host even
+        # when R11 activates a separate llvm-mingw 386 target afterwards.
+        msystem: ${{ inputs.windows-arch == 'arm64' && 'CLANGARM64' || 'CLANG64' }}
         path-type: inherit
         update: true
 
@@ -522,8 +522,20 @@ runs:
             ;;
         esac
 
-        repo=https://repo.msys2.org/mingw/clang64
-        prefix=mingw-w64-clang-x86_64
+        case "${{ inputs.windows-arch }}" in
+          arm64)
+            repo=https://repo.msys2.org/mingw/clangarm64
+            prefix=mingw-w64-clang-aarch64
+            ;;
+          amd64|386)
+            repo=https://repo.msys2.org/mingw/clang64
+            prefix=mingw-w64-clang-x86_64
+            ;;
+          *)
+            echo "unsupported Windows MinGW architecture: ${{ inputs.windows-arch }}" >&2
+            exit 1
+            ;;
+        esac
         packages=(
           "clang-$package_version"
           "clang-libs-$package_version"
@@ -602,7 +614,8 @@ runs:
       run: |
         $ErrorActionPreference = "Stop"
 
-        $mingwRoot = Join-Path $env:MSYS2_LOCATION "clang64"
+        $mingwSubdir = if ("${{ inputs.windows-arch }}" -eq "arm64") { "clangarm64" } else { "clang64" }
+        $mingwRoot = Join-Path $env:MSYS2_LOCATION $mingwSubdir
         $mingwBin = Join-Path $mingwRoot "bin"
         $clang = Join-Path $mingwBin "clang.exe"
         $pkgconf = Join-Path $mingwBin "pkgconf.exe"
@@ -614,8 +627,9 @@ runs:
         }
 
         $target = (& $clang -dumpmachine).Trim()
-        if ($target -notmatch "^(x86_64|amd64)-.*-(windows-gnu|mingw32)$") {
-          throw "MSYS2 Clang defaults to $target, want an x86_64 GNU/MinGW target"
+        $hostTargetArch = if ("${{ inputs.windows-arch }}" -eq "arm64") { "aarch64" } else { "x86_64|amd64" }
+        if ($target -notmatch "^($hostTargetArch)-.*-(windows-gnu|mingw32)$") {
+          throw "MSYS2 Clang defaults to $target, want a matching GNU/MinGW host target"
         }
 
         # Put one self-contained pkg-config command on PATH. Callers do not
@@ -649,10 +663,20 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_HOST_PC_DIR=$pcDir"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_HOST_PKGCONF=$pkgconf"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_HOST_ROOT=$mingwRoot"
         Add-Content -Encoding utf8 $env:GITHUB_PATH $mingwBin
         # Keep the fixed-search-path wrapper ahead of CLANG64's pkg-config.exe;
         # setup-demo-deps adds profile-local metadata below RUNNER_TEMP.
         Add-Content -Encoding utf8 $env:GITHUB_PATH $nativeTools
+
+    - name: Set up standalone llvm-mingw target
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'mingw' && inputs.windows-arch == '386'
+      uses: ./.github/actions/setup-llvm-mingw
+      with:
+        llvm-version: ${{ inputs.llvm-version }}
+        windows-arch: ${{ inputs.windows-arch }}
 
     - name: Install macOS dependencies
       if: runner.os == 'macOS'

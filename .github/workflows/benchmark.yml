@@ -47,10 +47,24 @@ jobs:
             windows_arch: arm64
             host_go_arch: x64
             timeout: 120
+          - os: windows-11-arm
+            id: windows-mingw-arm64
+            display: Windows MinGW ARM64
+            windows_abi: mingw
+            windows_arch: arm64
+            host_go_arch: arm64
+            timeout: 120
           - os: windows-2022
             id: windows-msvc-386
             display: Windows MSVC 386
             windows_abi: msvc
+            windows_arch: "386"
+            host_go_arch: x64
+            timeout: 90
+          - os: windows-2022
+            id: windows-mingw-386
+            display: Windows MinGW 386
+            windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
             timeout: 90

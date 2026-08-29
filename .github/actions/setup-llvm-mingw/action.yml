@@ -1,0 +1,205 @@
+name: "Set up llvm-mingw target"
+description: "Install a pinned GNU/UCRT target toolchain and architecture-matched dependencies"
+inputs:
+  windows-arch:
+    description: "Windows target GOARCH"
+    required: true
+  llvm-version:
+    description: "LLGo host LLVM major version"
+    required: false
+    default: "19"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate llvm-mingw target
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        if ("${{ inputs.llvm-version }}" -ne "19") {
+          throw "llvm-mingw 20241217 is paired with LLVM 19, not ${{ inputs.llvm-version }}"
+        }
+        if ("${{ inputs.windows-arch }}" -ne "386") {
+          throw "The native llvm-mingw target currently qualifies windows/386, not windows/${{ inputs.windows-arch }}"
+        }
+
+    - name: Restore llvm-mingw
+      if: runner.os == 'Windows'
+      id: llvm_mingw_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.tool_cache }}\llvm-mingw\20241217\ucrt-x86_64
+        key: llvm-mingw-20241217-ucrt-x86_64-f4f3ad8616c4183ce7b0d72df634400945b41ea9816145fc2430df6003455db7
+
+    - name: Install llvm-mingw
+      if: runner.os == 'Windows' && steps.llvm_mingw_cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      env:
+        LLVM_MINGW_VERSION: "20241217"
+        LLVM_MINGW_SHA256: f4f3ad8616c4183ce7b0d72df634400945b41ea9816145fc2430df6003455db7
+      run: |
+        $ErrorActionPreference = "Stop"
+        $asset = "llvm-mingw-$env:LLVM_MINGW_VERSION-ucrt-x86_64.zip"
+        $archive = Join-Path $env:RUNNER_TEMP $asset
+        $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/$env:LLVM_MINGW_VERSION/$asset"
+        & curl.exe --fail --location --retry 5 --retry-all-errors --output $archive $url
+        if ($LASTEXITCODE -ne 0) {
+          throw "Downloading llvm-mingw failed with exit code $LASTEXITCODE"
+        }
+        $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash
+        if (-not $actual.Equals($env:LLVM_MINGW_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
+          throw "llvm-mingw SHA-256 is $actual, want $env:LLVM_MINGW_SHA256"
+        }
+
+        $extractRoot = Join-Path $env:RUNNER_TEMP "llgo-llvm-mingw-extract"
+        $installRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\$env:LLVM_MINGW_VERSION\ucrt-x86_64"
+        New-Item -ItemType Directory -Force $extractRoot, (Split-Path $installRoot) | Out-Null
+        Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot
+        $source = Get-ChildItem -LiteralPath $extractRoot -Directory |
+          Where-Object { Test-Path (Join-Path $_.FullName "bin\i686-w64-mingw32-clang.exe") } |
+          Select-Object -First 1
+        if (-not $source) {
+          throw "The llvm-mingw archive does not contain the i686 target compiler"
+        }
+        Move-Item -LiteralPath $source.FullName -Destination $installRoot
+
+    - name: Save llvm-mingw
+      if: runner.os == 'Windows' && steps.llvm_mingw_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}\llvm-mingw\20241217\ucrt-x86_64
+        key: llvm-mingw-20241217-ucrt-x86_64-f4f3ad8616c4183ce7b0d72df634400945b41ea9816145fc2430df6003455db7
+
+    - name: Restore llvm-mingw target dependencies
+      if: runner.os == 'Windows'
+      id: llvm_mingw_vcpkg_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.tool_cache }}\llgo-mingw-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}\386
+        key: llgo-llvm-mingw-20241217-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+
+    - name: Build llvm-mingw target dependencies
+      if: runner.os == 'Windows' && steps.llvm_mingw_vcpkg_cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      env:
+        VCPKG_BASELINE: ddd0023b0eee70986e42ed49d9d4afb8098f212e
+        VCPKG_MANIFEST_HASH: ${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+      run: |
+        $ErrorActionPreference = "Stop"
+        $sourceRoot = Join-Path $env:RUNNER_TEMP "llgo-mingw-vcpkg-source"
+        $installRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-mingw-vcpkg\$env:VCPKG_MANIFEST_HASH\386"
+        $manifestRoot = Join-Path $env:GITHUB_WORKSPACE ".github\windows\vcpkg"
+        $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20241217\ucrt-x86_64"
+        $llvmMingwBin = Join-Path $llvmMingwRoot "bin"
+        $llvmMingwRuntimeBin = Join-Path $llvmMingwRoot "i686-w64-mingw32\bin"
+        $env:PATH = "$llvmMingwBin;$env:PATH"
+
+        & git clone --no-checkout https://github.com/microsoft/vcpkg.git $sourceRoot
+        if ($LASTEXITCODE -ne 0) {
+          throw "Cloning vcpkg failed with exit code $LASTEXITCODE"
+        }
+        & git -C $sourceRoot checkout --detach $env:VCPKG_BASELINE
+        if ($LASTEXITCODE -ne 0) {
+          throw "Checking out vcpkg $env:VCPKG_BASELINE failed with exit code $LASTEXITCODE"
+        }
+        & (Join-Path $sourceRoot "bootstrap-vcpkg.bat") -disableMetrics
+        if ($LASTEXITCODE -ne 0) {
+          throw "Bootstrapping vcpkg failed with exit code $LASTEXITCODE"
+        }
+        & (Join-Path $sourceRoot "vcpkg.exe") install `
+          --triplet=x86-mingw-dynamic `
+          --host-triplet=x64-windows `
+          "--x-manifest-root=$manifestRoot" `
+          "--x-install-root=$installRoot" `
+          --clean-after-build
+        if ($LASTEXITCODE -ne 0) {
+          throw "Installing llvm-mingw 386 dependencies failed with exit code $LASTEXITCODE"
+        }
+
+    - name: Save llvm-mingw target dependencies
+      if: runner.os == 'Windows' && steps.llvm_mingw_vcpkg_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}\llgo-mingw-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}\386
+        key: llgo-llvm-mingw-20241217-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+
+    - name: Configure llvm-mingw target
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        VCPKG_MANIFEST_HASH: ${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+      run: |
+        $ErrorActionPreference = "Stop"
+        $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20241217\ucrt-x86_64"
+        $llvmMingwBin = Join-Path $llvmMingwRoot "bin"
+        $compiler = Join-Path $llvmMingwBin "i686-w64-mingw32-clang.exe"
+        $compilerXX = Join-Path $llvmMingwBin "i686-w64-mingw32-clang++.exe"
+        $vcpkgRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-mingw-vcpkg\$env:VCPKG_MANIFEST_HASH\386\x86-mingw-dynamic"
+        foreach ($path in @($compiler, $compilerXX, $llvmMingwRuntimeBin, (Join-Path $vcpkgRoot "include\gc\gc.h"))) {
+          if (-not (Test-Path $path)) {
+            throw "The llvm-mingw 386 target is incomplete: $path was not found"
+          }
+        }
+        $target = (& $compiler -dumpmachine).Trim()
+        if ($target -notmatch '^i686-.*-(windows-gnu|mingw32)$') {
+          throw "llvm-mingw reports $target, want an i686 GNU/MinGW target"
+        }
+
+        $targetTools = Join-Path $env:RUNNER_TEMP "llgo-mingw-target-tools"
+        New-Item -ItemType Directory -Force $targetTools | Out-Null
+        @"
+        @echo off
+        "$compiler" %*
+        "@ | Set-Content -Encoding ascii (Join-Path $targetTools "clang.cmd")
+        @"
+        @echo off
+        "$compilerXX" %*
+        "@ | Set-Content -Encoding ascii (Join-Path $targetTools "clang++.cmd")
+
+        $pkgconf = $env:LLGO_MINGW_HOST_PKGCONF
+        $hostPC = $env:LLGO_MINGW_HOST_PC_DIR
+        if (-not (Test-Path $pkgconf) -or -not (Test-Path $hostPC)) {
+          throw "The CLANG64 host pkg-config profile is unavailable"
+        }
+        $targetLibPC = Join-Path $vcpkgRoot "lib\pkgconfig"
+        $targetSharePC = Join-Path $vcpkgRoot "share\pkgconfig"
+        $pkgConfigLibDir = "$hostPC;$targetLibPC;$targetSharePC"
+        @"
+        @echo off
+        setlocal
+        set "PKG_CONFIG_LIBDIR=$pkgConfigLibDir"
+        "$pkgconf" --dont-define-prefix %*
+        "@ | Set-Content -Encoding ascii (Join-Path $targetTools "pkg-config.cmd")
+
+        $compilerUnix = $compiler.Replace('\', '/')
+        $compilerXXUnix = $compilerXX.Replace('\', '/')
+        $pkgconfUnix = $pkgconf.Replace('\', '/')
+        $pkgConfigLibDirUnix = $pkgConfigLibDir.Replace('\', '/')
+        @"
+        #!/usr/bin/env bash
+        exec "$compilerUnix" "`$@"
+        "@ | Set-Content -Encoding ascii (Join-Path $targetTools "clang")
+        @"
+        #!/usr/bin/env bash
+        exec "$compilerXXUnix" "`$@"
+        "@ | Set-Content -Encoding ascii (Join-Path $targetTools "clang++")
+        @"
+        #!/usr/bin/env bash
+        set -euo pipefail
+        PKG_CONFIG_LIBDIR='$pkgConfigLibDirUnix' exec "$pkgconfUnix" --dont-define-prefix "`$@"
+        "@ | Set-Content -Encoding ascii (Join-Path $targetTools "pkg-config")
+
+        foreach ($package in @("llvm-${{ inputs.llvm-version }}", "bdw-gc", "libffi", "libuv", "openssl", "libcjson", "sqlite3", "zlib")) {
+          $env:PKG_CONFIG_LIBDIR = $pkgConfigLibDir
+          & $pkgconf --dont-define-prefix --modversion $package
+          if ($LASTEXITCODE -ne 0) {
+            throw "llvm-mingw pkg-config metadata for $package is unavailable"
+          }
+        }
+        Remove-Item Env:PKG_CONFIG_LIBDIR -ErrorAction SilentlyContinue
+
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_BIN=$llvmMingwBin"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_RUNTIME_BIN=$llvmMingwRuntimeBin"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_TOOLS=$targetTools"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_TRIPLE=i686-w64-windows-gnu"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_VCPKG_ROOT=$vcpkgRoot"

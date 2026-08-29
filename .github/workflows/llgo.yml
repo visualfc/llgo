@@ -43,9 +43,19 @@ jobs:
             windows_abi: msvc
             windows_arch: arm64
             host_go_arch: x64
+          - os: windows-11-arm
+            llvm: 19
+            windows_abi: mingw
+            windows_arch: arm64
+            host_go_arch: arm64
           - os: windows-2022
             llvm: 19
             windows_abi: msvc
+            windows_arch: "386"
+            host_go_arch: x64
+          - os: windows-2022
+            llvm: 19
+            windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
     runs-on: ${{matrix.os}}
@@ -210,7 +220,9 @@ jobs:
         run: sudo apt-get install -y lldb-${{matrix.llvm}}
 
       - name: Install MinGW LLDB for integration tests
-        if: ${{ matrix.os == 'windows-2022' && matrix.windows_abi == 'mingw' }}
+        # R12 qualifies debugger behavior for the new GNU architectures. Keep
+        # R11 focused on their language/runtime and C interoperability gates.
+        if: ${{ matrix.os == 'windows-2022' && matrix.windows_abi == 'mingw' && matrix.windows_arch == 'amd64' }}
         shell: msys2 {0}
         env:
           MSYS2_LLDB_PACKAGE_VERSION: "19.1.7-1"
@@ -265,7 +277,7 @@ jobs:
           }
 
       - name: LLDB integration tests (MinGW)
-        if: ${{ matrix.windows_abi == 'mingw' }}
+        if: ${{ matrix.windows_abi == 'mingw' && matrix.windows_arch == 'amd64' }}
         shell: msys2 {0}
         run: |
           # Git Bash prepends its own MinGW runtime DLLs to PATH. Use the
@@ -347,6 +359,15 @@ jobs:
             windows_abi: msvc
             windows_arch: arm64
             host_go_arch: x64
+          - os: windows-11-arm
+            llvm: 19
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
+            windows_abi: mingw
+            windows_arch: arm64
+            host_go_arch: arm64
           - os: windows-2022
             llvm: 19
             go_version: "1.27"
@@ -354,6 +375,15 @@ jobs:
             shard_index: "0"
             shard_total: "1"
             windows_abi: msvc
+            windows_arch: "386"
+            host_go_arch: x64
+          - os: windows-2022
+            llvm: 19
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
+            windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
     runs-on: ${{matrix.os}}

@@ -52,7 +52,47 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_ACTIVE=1"
         Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $env:LLGO_WINDOWS_VCPKG_ROOT "bin")
 
-    - name: Reject unsupported Windows GNU target architecture
-      if: runner.os == 'Windows' && inputs.windows-abi == 'mingw' && inputs.windows-arch != 'amd64'
+    - name: Activate Windows GNU target
+      if: runner.os == 'Windows' && inputs.windows-abi == 'mingw'
       shell: pwsh
-      run: throw "Non-amd64 MinGW qualification belongs to R11"
+      run: |
+        $ErrorActionPreference = "Stop"
+        $goArch = "${{ inputs.windows-arch }}"
+        $targetArch = switch ($goArch) {
+          "386" { "i686" }
+          "amd64" { "x86_64|amd64" }
+          "arm64" { "aarch64" }
+          default { throw "Unsupported Windows GNU target architecture: $goArch" }
+        }
+
+        if ($goArch -eq "386") {
+          foreach ($name in @("LLGO_MINGW_TARGET_BIN", "LLGO_MINGW_TARGET_RUNTIME_BIN", "LLGO_MINGW_TARGET_TOOLS", "LLGO_MINGW_TARGET_TRIPLE", "LLGO_MINGW_TARGET_VCPKG_ROOT")) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if (-not $value) {
+              throw "The standalone llvm-mingw target did not export $name"
+            }
+          }
+          $compiler = Join-Path $env:LLGO_MINGW_TARGET_BIN "i686-w64-mingw32-clang.exe"
+          $target = (& $compiler -dumpmachine).Trim()
+          if ($target -notmatch "^$targetArch-.*-(windows-gnu|mingw32)$") {
+            throw "llvm-mingw reports $target, want windows/$goArch GNU"
+          }
+          # GITHUB_PATH prepends entries in reverse write order. Keep the
+          # target-selecting clang/pkg-config wrappers ahead of the bundle's
+          # unqualified x64 host commands for all subsequent steps.
+          Add-Content -Encoding utf8 $env:GITHUB_PATH $env:LLGO_MINGW_TARGET_BIN
+          Add-Content -Encoding utf8 $env:GITHUB_PATH $env:LLGO_MINGW_TARGET_RUNTIME_BIN
+          Add-Content -Encoding utf8 $env:GITHUB_PATH $env:LLGO_MINGW_TARGET_TOOLS
+          Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $env:LLGO_MINGW_TARGET_VCPKG_ROOT "bin")
+        } else {
+          $target = (& clang.exe -dumpmachine).Trim()
+          if ($target -notmatch "^$targetArch-.*-(windows-gnu|mingw32)$") {
+            throw "MSYS2 Clang reports $target, want windows/$goArch GNU"
+          }
+        }
+
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "GOOS=windows"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "GOARCH=$goArch"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_ACTIVE=1"
