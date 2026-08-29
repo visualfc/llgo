@@ -412,7 +412,12 @@ func plan9asmEnabledByDefault(conf *Config, pkgPath string) bool {
 	// instructions. Keep the default narrow so unsupported assembly cannot be
 	// accepted and silently miscompiled.
 	if conf.Goarch == "386" {
-		return pkgPath == "internal/cpu"
+		switch pkgPath {
+		case "crypto/internal/boring/sig", "internal/cpu":
+			return true
+		default:
+			return false
+		}
 	}
 	if !archSupportsPlan9AsmDefaults(conf.Goarch) {
 		return false

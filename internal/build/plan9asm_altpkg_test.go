@@ -19,8 +19,11 @@ func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
 	}
 }
 
-func TestPlan9Asm386DefaultsAreLimitedToCPU(t *testing.T) {
+func TestPlan9Asm386DefaultsAreLimitedToSupportedPackages(t *testing.T) {
 	conf := &Config{Goarch: "386", AbiMode: cabi.ModeAllFunc}
+	if !plan9asmEnabledByDefault(conf, "crypto/internal/boring/sig") {
+		t.Fatal("386 should translate the RET-only boring signature markers")
+	}
 	if !plan9asmEnabledByDefault(conf, "internal/cpu") {
 		t.Fatal("plan9asm should be enabled by default for internal/cpu on 386")
 	}
