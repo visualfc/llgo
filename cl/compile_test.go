@@ -416,6 +416,45 @@ define void @entry(ptr %itab.i, ptr %itab.j, ptr %itab.k) {
 	}
 }
 
+func TestLTOPluginRejectsMalformedInterfaceMetadata(t *testing.T) {
+	conf := testltoLTOPluginConf(t, build.ModeGen)
+	tests := []struct {
+		name   string
+		header string
+		method string
+	}{
+		{
+			name:   "wrong integer width",
+			header: `!{i64 1, !"go.method.i.I", i32 1}`,
+			method: `!{i32 0, !"go.method.i.I.m0", !"go.method.M:func()"}`,
+		},
+		{
+			name:   "method key as interface key",
+			header: `!{i32 1, !"go.method.i.I.m0", i32 1}`,
+			method: `!{i32 0, !"go.method.i.I.m0.m0", !"go.method.M:func()"}`,
+		},
+	}
+	opt := filepath.Join(llvmenv.New("").BinDir(), "opt")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := `
+@interface.I = internal constant i8 0, !llgo.interface.type !0, !llgo.interface.method !1
+!0 = ` + test.header + `
+!1 = ` + test.method + "\n"
+			cmd := exec.Command(opt, "-load-pass-plugin="+conf.LTOPlugin.Path,
+				"-passes=llgo-interface-method-typeids", "-disable-output")
+			cmd.Stdin = strings.NewReader(input)
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("malformed interface metadata was accepted:\n%s", out)
+			}
+			if !strings.Contains(string(out), "invalid interface type-id metadata: unsupported header") {
+				t.Fatalf("unexpected malformed-metadata diagnostic: %v\n%s", err, out)
+			}
+		})
+	}
+}
+
 func TestLTOPluginFrontendInterfaceMethodTypeIDs(t *testing.T) {
 	conf := testltoLTOPluginConf(t, build.ModeGen)
 	pkgs, err := build.Do([]string{"./_testlto/globaldce_interface_method_typeid"}, conf)

@@ -16,6 +16,7 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <optional>
 #include <string>
@@ -26,6 +27,8 @@ using namespace llvm;
 
 namespace {
 
+// Keep this metadata protocol in sync with the constants and emitter in
+// ssa/globaldce.go.
 static constexpr char InterfaceTypeMetadata[] = "llgo.interface.type";
 static constexpr char InterfaceMethodMetadata[] = "llgo.interface.method";
 static constexpr char InterfaceTypeIDPrefix[] = "go.method.i.";
@@ -36,7 +39,7 @@ static constexpr char ReflectValueMethodTypeIDPrefix[] =
     "go.method.value.reflect.";
 static constexpr char ReflectTypeMethodTypeIDPrefix[] =
     "go.method.type.reflect.";
-static constexpr uint64_t InterfaceMetadataVersion = 1;
+static constexpr uint32_t InterfaceMetadataVersion = 1;
 
 struct InterfaceMethodDecl {
   unsigned Index = 0;
@@ -45,6 +48,9 @@ struct InterfaceMethodDecl {
 };
 
 struct InterfaceDecl {
+  // Header schema: {i32 version, MDString interface type ID, i32 method count}.
+  // Each method node is:
+  // {i32 index, MDString exact type ID, MDString broad type ID}.
   std::string TypeID;
   std::vector<InterfaceMethodDecl> Methods;
 };
@@ -66,6 +72,14 @@ std::optional<uint64_t> metadataUInt(Metadata *MD) {
   if (!CI || CI->isNegative())
     return std::nullopt;
   return CI->getZExtValue();
+}
+
+std::optional<uint32_t> metadataUInt32(Metadata *MD) {
+  auto *CAM = dyn_cast_or_null<ConstantAsMetadata>(MD);
+  auto *CI = CAM ? dyn_cast<ConstantInt>(CAM->getValue()) : nullptr;
+  if (!CI || CI->isNegative() || CI->getBitWidth() != 32)
+    return std::nullopt;
+  return static_cast<uint32_t>(CI->getZExtValue());
 }
 
 std::optional<StringRef> metadataString(Metadata *MD) {
@@ -102,6 +116,13 @@ bool isReflectMethodTypeID(StringRef TypeID) {
          TypeID.starts_with(ReflectValueMethodTypeIDPrefix) ||
          TypeID == ReflectTypeMethodTypeID ||
          TypeID.starts_with(ReflectTypeMethodTypeIDPrefix);
+}
+
+bool isInterfaceBaseTypeID(StringRef TypeID) {
+  if (!TypeID.starts_with(InterfaceTypeIDPrefix))
+    return false;
+  StringRef Suffix = TypeID.drop_front(StringRef(InterfaceTypeIDPrefix).size());
+  return !Suffix.empty() && !Suffix.contains('.');
 }
 
 [[noreturn]] void invalidMetadata(const Twine &Reason) {
@@ -148,12 +169,11 @@ std::optional<InterfaceDecl> parseInterfaceDeclaration(GlobalVariable &GV,
   if (Header->getNumOperands() != 3)
     invalidMetadata(Twine("malformed header on ") + GV.getName());
 
-  auto Version = metadataUInt(Header->getOperand(0));
+  auto Version = metadataUInt32(Header->getOperand(0));
   auto TypeID = metadataString(Header->getOperand(1));
-  auto MethodCount = metadataUInt(Header->getOperand(2));
+  auto MethodCount = metadataUInt32(Header->getOperand(2));
   if (!Version || *Version != InterfaceMetadataVersion || !TypeID ||
-      !TypeID->starts_with(InterfaceTypeIDPrefix) || !MethodCount ||
-      *MethodCount == 0 || *MethodCount > UINT_MAX)
+      !isInterfaceBaseTypeID(*TypeID) || !MethodCount || *MethodCount == 0)
     invalidMetadata(Twine("unsupported header on ") + GV.getName());
   if (MethodNodes.size() != *MethodCount)
     invalidMetadata(Twine("method count mismatch on ") + GV.getName());
@@ -165,7 +185,7 @@ std::optional<InterfaceDecl> parseInterfaceDeclaration(GlobalVariable &GV,
   for (MDNode *Node : MethodNodes) {
     if (Node->getNumOperands() != 3)
       invalidMetadata(Twine("malformed method on ") + GV.getName());
-    auto Index = metadataUInt(Node->getOperand(0));
+    auto Index = metadataUInt32(Node->getOperand(0));
     auto ExactTypeID = metadataString(Node->getOperand(1));
     auto BroadTypeID = metadataString(Node->getOperand(2));
     if (!Index || *Index >= *MethodCount || !ExactTypeID || !BroadTypeID ||
@@ -173,7 +193,7 @@ std::optional<InterfaceDecl> parseInterfaceDeclaration(GlobalVariable &GV,
         BroadTypeID->starts_with(InterfaceTypeIDPrefix) ||
         isReflectMethodTypeID(*BroadTypeID))
       invalidMetadata(Twine("unsupported method on ") + GV.getName());
-    unsigned I = static_cast<unsigned>(*Index);
+    unsigned I = *Index;
     std::string Expected =
         Decl.TypeID + ".m" + std::to_string(static_cast<uint64_t>(I));
     if (*ExactTypeID != Expected || Seen[I])
@@ -362,8 +382,10 @@ public:
       // interface with at least one closed-world implementer certificate.
       if (Implementers == 0) {
         for (const InterfaceMethodDecl *Method : ActiveMethods) {
-          for (TypeCheckSite Site :
-               TypeChecksByExactTypeID[Method->ExactTypeID]) {
+          auto Sites = TypeChecksByExactTypeID.find(Method->ExactTypeID);
+          if (Sites == TypeChecksByExactTypeID.end())
+            continue;
+          for (TypeCheckSite Site : Sites->second) {
             Site.Call->setArgOperand(
                 Site.TypeIDArg,
                 MetadataAsValue::get(

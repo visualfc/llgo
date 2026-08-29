@@ -102,9 +102,10 @@ func (b Builder) staticItab(rawIntf *types.Interface, concrete types.Type, tintf
 	slotKind := prog.ctx.MDKindID("llgo.static.itab.slot")
 	funOffset := uint64(prog.td.ElementOffset(staticType.ll, 3))
 	stride := uint64(prog.td.TypeAllocSize(ptr.ll))
+	interfaceTypeID := prog.interfaceCapabilityKey(rawIntf)
 	for i := range methods {
 		offset := funOffset + uint64(i)*stride
-		typeID := prog.interfaceMethodCapabilityKey(rawIntf, i)
+		typeID := interfaceMethodCapabilityKeyFromID(interfaceTypeID, i)
 		node := prog.ctx.MDNode([]llvm.Metadata{
 			llvm.ConstInt(prog.Int64().ll, offset, false).ConstantAsMetadata(),
 			prog.ctx.MDString(typeID),

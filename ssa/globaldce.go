@@ -27,6 +27,8 @@ const (
 	reflectMethodByNameValue    = "value"
 	reflectMethodByNameType     = "type"
 
+	// Keep this metadata protocol in sync with the constants and schema in
+	// ltoplugin/LLGOInterfaceMethodTypeIDPass.cpp.
 	interfaceTypeMetadata    = "llgo.interface.type"
 	interfaceMethodMetadata  = "llgo.interface.method"
 	interfaceTypeIDPrefix    = "go.method.i."
@@ -151,7 +153,11 @@ func (p Program) interfaceCapabilityKey(intf *types.Interface) string {
 }
 
 func (p Program) interfaceMethodCapabilityKey(intf *types.Interface, index int) string {
-	return p.interfaceCapabilityKey(intf) + ".m" + strconv.Itoa(index)
+	return interfaceMethodCapabilityKeyFromID(p.interfaceCapabilityKey(intf), index)
+}
+
+func interfaceMethodCapabilityKeyFromID(interfaceID string, index int) string {
+	return interfaceID + ".m" + strconv.Itoa(index)
 }
 
 // addInterfaceTypeMetadata declares the complete method set of an interface.
@@ -174,7 +180,7 @@ func (p Program) addInterfaceTypeMetadata(global llvm.Value, intf *types.Interfa
 	for i := 0; i < intf.NumMethods(); i++ {
 		global.AddMetadata(methodKind, p.ctx.MDNode([]llvm.Metadata{
 			llvm.ConstInt(int32Type, uint64(i), false).ConstantAsMetadata(),
-			p.ctx.MDString(p.interfaceMethodCapabilityKey(intf, i)),
+			p.ctx.MDString(interfaceMethodCapabilityKeyFromID(intfID, i)),
 			p.ctx.MDString(methodCapabilityKey(intf.Method(i))),
 		}))
 	}

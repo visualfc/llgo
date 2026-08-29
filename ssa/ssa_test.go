@@ -887,6 +887,22 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	}
 }
 
+func TestDevLTOGlobalDCEAddInterfaceTypeMetadataEarlyReturns(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	pkg := prog.NewPackage("main", "main")
+	g := pkg.NewVarEx("g", prog.Pointer(prog.Int()))
+
+	prog.addInterfaceTypeMetadata(g.impl, nil)
+	prog.addInterfaceTypeMetadata(g.impl, types.NewInterfaceType(nil, nil).Complete())
+
+	ir := pkg.String()
+	if strings.Contains(ir, "!llgo.interface.") {
+		t.Fatalf("early-return paths should not attach interface metadata:\n%s", ir)
+	}
+}
+
 func TestDevLTOGlobalDCEAddMethodTypeMetadataMarksIFnAndTFnForReflectContexts(t *testing.T) {
 	requireGoGlobalDCE(t)
 
