@@ -112,6 +112,10 @@ else
       echo "SKIP $d (model demo runs in scheduled Model Demo workflow)"
       continue
     fi
+    if [ "$d" = "./_demo/c/helloc" ]; then
+      echo "SKIP $d (WASI C-FFI demo runs in the cross-compile workflow)"
+      continue
+    fi
     add_case "$d" "" "$d"
   done
 fi
