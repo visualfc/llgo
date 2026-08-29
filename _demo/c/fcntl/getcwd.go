@@ -21,3 +21,18 @@ func temporaryFilename() string {
 	// dependency to this C descriptor test.
 	return "llgo-fcntl-" + strconv.Itoa(int(os.Getpid())) + ".tmp"
 }
+
+func writeCString(buffer []c.Char, text string) *c.Char {
+	if len(text) >= len(buffer) {
+		panic("temporary filename is too long")
+	}
+	for i := range text {
+		buffer[i] = c.Char(text[i])
+	}
+	buffer[len(text)] = 0
+	return &buffer[0]
+}
+
+func fileError(operation, filename string) string {
+	return operation + ": " + filename + " (errno " + strconv.Itoa(int(os.Errno())) + ")"
+}

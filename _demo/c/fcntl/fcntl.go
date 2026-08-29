@@ -12,7 +12,9 @@ import (
 func main() {
 	verifyGetcwd()
 
-	filename := c.AllocaCStr(temporaryFilename())
+	filenameText := temporaryFilename()
+	var filenameBuffer [64]c.Char
+	filename := writeCString(filenameBuffer[:], filenameText)
 	defer os.Remove(filename)
 	data := c.Str("Hello, os!")
 	var buffer [20]c.Char
@@ -20,7 +22,7 @@ func main() {
 	// Open a file, O_CREAT|O_WRONLY|O_TRUNC means create, write only, or clear the file
 	fd := os.Open(filename, os.O_CREAT|os.O_WRONLY|os.O_TRUNC, 0644)
 	if fd == -1 {
-		panic("open for write failed")
+		panic(fileError("open for write failed", filenameText))
 	}
 
 	// Writing data to a file
@@ -53,7 +55,7 @@ func main() {
 	// Reopen the file, O_RDONLY means read-only
 	fd = os.Open(filename, os.O_RDONLY)
 	if fd == -1 {
-		panic("open for read failed")
+		panic(fileError("open for read failed", filenameText))
 	}
 
 	// Reading data from a file
