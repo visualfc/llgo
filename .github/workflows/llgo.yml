@@ -258,7 +258,15 @@ jobs:
             foreach ($dll in $copiedTargetDLLs) {
               Copy-Item -LiteralPath $dll.FullName -Destination $debuggeeDir -Force
             }
-            $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -ne $targetBin }) -join ';'
+            # setup-demo-deps also puts the target Python runtime on PATH for
+            # compiled embedding demos. LLDB embeds x64 Python, so keep that
+            # target runtime out of its loader search path as well and make
+            # the matching host Python runtime explicit.
+            $targetRuntimePaths = @($targetBin, $env:LLGO_WINDOWS_TARGET_PYTHON_HOME)
+            $env:PATH = (($env:PATH -split ';') | Where-Object {
+              $_ -and $targetRuntimePaths -notcontains $_
+            }) -join ';'
+            $env:PATH = "$env:LLGO_WINDOWS_PYTHON_HOME;$env:PATH"
           }
           try {
             Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
