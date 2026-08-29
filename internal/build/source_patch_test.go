@@ -81,6 +81,9 @@ func TestWasmBytealgSourcePatchReplacesAsm(t *testing.T) {
 		if !llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "wasm") {
 			t.Fatalf("%s wasm assembly should be replaced by its source patch", pkgPath)
 		}
+		if !llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "386") {
+			t.Fatalf("%s 386 assembly should be replaced by its source patch", pkgPath)
+		}
 		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "arm64") {
 			t.Fatalf("%s native assembly should remain enabled", pkgPath)
 		}
@@ -105,6 +108,87 @@ func TestWasmBytealgSourcePatchReplacesAsm(t *testing.T) {
 		if got := string(overlay[path]); got != "// replaced by LLGo source patch\n" {
 			t.Fatalf("overlay[%q] = %q, want assembly replacement", path, got)
 		}
+	}
+}
+
+func Test386SourcePatchesReplaceUnsupportedAsm(t *testing.T) {
+	if !llruntime.SourcePatchReplacesAsmForGOARCH("math", "386") {
+		t.Fatal("math 386 assembly should be replaced by its source patch")
+	}
+	if !llruntime.SourcePatchReplacesAsmForGOARCH("internal/runtime/syscall/windows", "386") {
+		t.Fatal("Windows runtime syscall 386 assembly should be replaced by its source patch")
+	}
+
+	overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), runtime.GOROOT(), sourcePatchBuildContext{
+		goos:      "windows",
+		goarch:    "386",
+		goversion: runtime.Version(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{
+		"internal/bytealg/compare_386.s",
+		"internal/bytealg/equal_386.s",
+		"internal/bytealg/indexbyte_386.s",
+		"internal/chacha8rand/chacha8_stub.s",
+		"internal/runtime/atomic/atomic_386.s",
+		"internal/runtime/syscall/windows/asm_windows_386.s",
+		"math/floor_386.s",
+		"math/hypot_386.s",
+	} {
+		path := filepath.Join(runtime.GOROOT(), "src", filepath.FromSlash(file))
+		if got := string(overlay[path]); got != "// replaced by LLGo source patch\n" {
+			t.Fatalf("overlay[%q] = %q, want assembly replacement", path, got)
+		}
+	}
+
+	bytealgPatch := filepath.Join(runtime.GOROOT(), "src", "internal", "bytealg", "z_llgo_patch_bytealg_noasm.go")
+	if got := string(overlay[bytealgPatch]); !strings.Contains(got, "func IndexByteString") {
+		t.Fatalf("overlay[%q] does not contain the generic byte search implementation:\n%s", bytealgPatch, got)
+	}
+	atomicPatch := filepath.Join(runtime.GOROOT(), "src", "internal", "runtime", "atomic", "z_llgo_patch_atomic_llgo_386.go")
+	if got := string(overlay[atomicPatch]); !strings.Contains(got, "func Cas64") || !strings.Contains(got, "panicUnaligned") {
+		t.Fatalf("overlay[%q] does not preserve aligned 64-bit atomics:\n%s", atomicPatch, got)
+	}
+}
+
+func Test386SourcePatchesTypeCheck(t *testing.T) {
+	cfgEnv := append(os.Environ(), "GOOS=windows", "GOARCH=386")
+	goroot, goversion, err := env.GOROOTAndGOVERSIONWithEnv(cfgEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), goroot, sourcePatchBuildContext{
+		goos:      "windows",
+		goarch:    "386",
+		goversion: goversion,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, pkgPath := range []string{"internal/bytealg", "internal/chacha8rand", "internal/runtime/atomic", "internal/runtime/syscall/windows", "math"} {
+		t.Run(pkgPath, func(t *testing.T) {
+			pkgs, err := packages.LoadEx(nil, func(types.Sizes, string, string) types.Sizes {
+				return &types.StdSizes{WordSize: 4, MaxAlign: 4}
+			}, &packages.Config{
+				Mode:    loadSyntax | packages.NeedDeps | packages.NeedModule | packages.NeedExportFile,
+				Env:     cfgEnv,
+				Fset:    token.NewFileSet(),
+				Overlay: overlay,
+			}, pkgPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(pkgs) != 1 {
+				t.Fatalf("loaded %d packages, want 1", len(pkgs))
+			}
+			if pkgs[0].IllTyped {
+				logPackageErrors(t, pkgs[0], make(map[string]bool))
+				t.Fatalf("%s did not type-check with Windows 386 sizes", pkgPath)
+			}
+		})
 	}
 }
 

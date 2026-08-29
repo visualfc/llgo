@@ -19,10 +19,16 @@ func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
 	}
 }
 
-func TestPlan9AsmDefaultsSupport386(t *testing.T) {
+func TestPlan9Asm386DefaultsAreLimitedToCPU(t *testing.T) {
 	conf := &Config{Goarch: "386", AbiMode: cabi.ModeAllFunc}
 	if !plan9asmEnabledByDefault(conf, "internal/cpu") {
 		t.Fatal("plan9asm should be enabled by default for internal/cpu on 386")
+	}
+	if plan9asmEnabledByDefault(conf, "internal/bytealg") {
+		t.Fatal("general 386 assembly should not be enabled by default")
+	}
+	if !hasAltPkgForTarget(conf, "runtime") {
+		t.Fatal("runtime should keep using the LLGo alternate package on 386")
 	}
 }
 
