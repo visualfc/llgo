@@ -236,6 +236,16 @@ func TestExtraAsmSigsAndDeclMap(t *testing.T) {
 		t.Fatalf("runtime.memmove declaration = %q, want memmove", memmove.Name)
 	}
 
+	i386 := extraAsmSigsAndDeclMap("internal/bytealg", "386")
+	for _, name := range []string{
+		"internal/bytealg.cmpbody",
+		"internal/bytealg.memeqbody",
+	} {
+		if _, ok := i386[name]; !ok {
+			t.Fatalf("missing 386 manual sig %s", name)
+		}
+	}
+
 	arm := extraAsmSigsAndDeclMap("internal/bytealg", "arm")
 	for _, name := range []string{
 		"internal/bytealg.cmpbody",

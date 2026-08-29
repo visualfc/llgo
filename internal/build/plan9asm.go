@@ -209,7 +209,7 @@ type plan9AsmSigCacheKey struct {
 var plan9AsmSigCache sync.Map // key: plan9AsmSigCacheKey, value: map[string]struct{}
 
 func archSupportsPlan9AsmDefaults(goarch string) bool {
-	return goarch == "arm64" || goarch == "amd64"
+	return goarch == "386" || goarch == "arm64" || goarch == "amd64"
 }
 
 type plan9asmPkgsEnvMode int
@@ -406,18 +406,6 @@ func plan9asmEnabledByEnv(pkgPath string) bool {
 func plan9asmEnabledByDefault(conf *Config, pkgPath string) bool {
 	if conf == nil {
 		return false
-	}
-	// The x86 translator can lower the small CPUID helpers used by internal/cpu
-	// on 386, but it does not yet implement general 386 control flow and
-	// instructions. Keep the default narrow so unsupported assembly cannot be
-	// accepted and silently miscompiled.
-	if conf.Goarch == "386" {
-		switch pkgPath {
-		case "crypto/internal/boring/sig", "internal/cpu":
-			return true
-		default:
-			return false
-		}
 	}
 	if !archSupportsPlan9AsmDefaults(conf.Goarch) {
 		return false

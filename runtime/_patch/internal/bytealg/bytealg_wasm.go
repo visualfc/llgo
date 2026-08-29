@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license.
 // See LICENSES/Go-BSD-3-Clause.txt at this module root for license terms.
 
-//go:build 386 || wasm
+//go:build wasm
 
 package bytealg
 

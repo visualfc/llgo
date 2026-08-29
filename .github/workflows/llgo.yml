@@ -81,8 +81,8 @@ jobs:
       - name: Install
         shell: bash
         run: |
-          go install ./...
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Test Hello World with go.mod 1.21 through 1.26
         if: matrix.os == 'ubuntu-latest'
@@ -430,8 +430,8 @@ jobs:
 
       - name: Install llgo
         run: |
-          go install ./...
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
       - name: Test Cross Compilation (wasm)
         shell: bash
@@ -468,8 +468,13 @@ jobs:
 
       - name: Install llgo
         run: |
-          dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+
+      - name: Set up Go for testing
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: ${{matrix.go}}
 
       - name: Build standard runtime for wasm
         shell: bash

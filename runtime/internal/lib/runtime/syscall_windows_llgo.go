@@ -37,15 +37,6 @@ type windowsSyscall struct {
 //go:linkname c_windowsSyscall C.llgo_windows_syscall
 func c_windowsSyscall(call *windowsSyscall)
 
-// llgoWindowsStdCall backs Go 1.26's internal/runtime/syscall/windows bridge on
-// 386. Its StdCallInfo has the same layout as windowsSyscall.
-//
-//go:linkname llgoWindowsStdCall runtime.llgoWindowsStdCall
-//go:nosplit
-func llgoWindowsStdCall(call *windowsSyscall) {
-	c_windowsSyscall(call)
-}
-
 // syscall_syscalln calls fn with args[:n] using the native Windows ABI.
 // Like the Go runtime implementation, it clears last-error before the call and
 // returns the primary and secondary result words. The secondary word is the
