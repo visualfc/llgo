@@ -1,4 +1,4 @@
-//go:build llgo && windows && (amd64 || arm64)
+//go:build llgo && windows && (386 || amd64 || arm64)
 
 package pprof_test
 

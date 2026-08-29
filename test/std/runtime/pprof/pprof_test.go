@@ -23,7 +23,7 @@ func cpuProfileHotLoop(d time.Duration) uint64 {
 	return x
 }
 
-// waitForCPUProfileSample is overridden on LLGo/Windows amd64 and arm64 so the
+// waitForCPUProfileSample is overridden on supported native LLGo/Windows targets so the
 // statistical profile checks wait for the real sampler instead of guessing a
 // longer run time. Other targets keep the existing duration-based behavior.
 var waitForCPUProfileSample = func() {}
