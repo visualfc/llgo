@@ -145,16 +145,6 @@ jobs:
           "${go_test[@]}" -timeout 45m -vet=off \
             -coverprofile="coverage-test-go.txt" -covermode=atomic ./test/go
 
-          # ssa is covered by both its own tests and the cl fixture runner.
-          # Merge duplicate blocks by summing their atomic counters so the
-          # combined profile remains valid for both Go tooling and Codecov.
-          {
-            echo 'mode: atomic'
-            awk 'FNR > 1 { counts[$1 " " $2] += $3 } END { for (block in counts) print block, counts[block] }' \
-              coverage-main.txt coverage-compiler.txt coverage-test-go.txt \
-              | LC_ALL=C sort
-          } > coverage.txt
-
       - name: Test with embedded emulator env
         env:
           LLGO_EMBED_TESTS: "1"
@@ -169,7 +159,7 @@ jobs:
         uses: codecov/codecov-action@v7
         with:
           token: ${{secrets.CODECOV_TOKEN}}
-          files: coverage.txt
+          files: coverage-main.txt,coverage-compiler.txt,coverage-test-go.txt
           disable_search: true
 
   dev-lto-globaldce:
