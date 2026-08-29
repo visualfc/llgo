@@ -201,6 +201,21 @@ func TestValueAddrPointer(t *testing.T) {
 	}
 }
 
+func TestValueFuncUnsafePointer(t *testing.T) {
+	bias := 1
+	captured := func(v int) int { return bias + v }
+	declared := TestValueFuncUnsafePointer
+
+	capturedPointer := reflect.ValueOf(captured).UnsafePointer()
+	declaredPointer := reflect.ValueOf(declared).UnsafePointer()
+	if capturedPointer == nil || declaredPointer == nil {
+		t.Fatal("function UnsafePointer returned nil")
+	}
+	if capturedPointer == declaredPointer {
+		t.Fatal("captured and declared functions returned the same code pointer")
+	}
+}
+
 // Test Value.Bytes
 func TestValueBytes(t *testing.T) {
 	b := []byte{1, 2, 3}

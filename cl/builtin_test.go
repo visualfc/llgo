@@ -39,6 +39,53 @@ func TestConstBool(t *testing.T) {
 	}
 }
 
+func TestCompileTailUnreachableOmitsSyntheticReturn(t *testing.T) {
+	_, m := mustCompileLLPkgFromSrc(t, `
+package foo
+
+import _ "unsafe"
+
+//go:linkname unreachable llgo.unreachable
+func unreachable()
+
+func stop() {
+	unreachable()
+}
+`)
+	ir := mustNamedFunction(t, m, "foo.stop").String()
+	if !strings.Contains(ir, "\n  unreachable\n") {
+		t.Fatalf("tail intrinsic did not lower to unreachable:\n%s", ir)
+	}
+	if strings.Contains(ir, "ret void") {
+		t.Fatalf("tail intrinsic retained the synthetic Go return:\n%s", ir)
+	}
+}
+
+func TestCompileTailUnreachableOmitsRunDefersAndReturn(t *testing.T) {
+	_, m := mustCompileLLPkgFromSrc(t, `
+package foo
+
+import _ "unsafe"
+
+//go:linkname unreachable llgo.unreachable
+func unreachable()
+
+func cleanup() {}
+
+func stop() {
+	defer cleanup()
+	unreachable()
+}
+`)
+	if err := llvm.VerifyModule(m, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("invalid module after tail unreachable with defer: %v\n%s", err, m.String())
+	}
+	ir := mustNamedFunction(t, m, "foo.stop").String()
+	if !strings.Contains(ir, "\n  unreachable\n\n_llgo_") {
+		t.Fatalf("tail intrinsic did not terminate its LLVM block:\n%s", ir)
+	}
+}
+
 func TestIsLargeNonPointerValue(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	ctx := &context{prog: prog}

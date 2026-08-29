@@ -28,52 +28,16 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/xgo-dev/llgo/cl/cltest"
 	"github.com/xgo-dev/llgo/ssa"
 )
 
 func TestMain(m *testing.M) {
+	ssa.Initialize(ssa.InitAll | ssa.InitNative)
 	flag.Parse()
 	if !testing.Verbose() {
 		log.SetOutput(io.Discard)
 	}
 	m.Run()
-}
-
-func TestFromTestlibgo(t *testing.T) {
-	cltest.FromDir(t, "", "../cl/_testlibgo")
-}
-
-func TestFromTestgo(t *testing.T) {
-	// These directories are package-selection fixtures owned by internal/build,
-	// not SSA/compiler lowering owners.
-	ignore := []string{
-		"./../cl/_testgo/runextest",
-		"./../cl/_testgo/runtest",
-	}
-	cltest.RunAndTestFromDir(t, "", "../cl/_testgo", ignore, cltest.WithOutputCheck(false))
-}
-
-func TestFromTestpy(t *testing.T) {
-	cltest.FromDir(t, "", "../cl/_testpy")
-}
-
-func TestFromTestlibc(t *testing.T) {
-	var ignore []string
-	if runtime.GOOS == "windows" {
-		ignore = []string{
-			"./../cl/_testlibc/once", // POSIX pthread_once has no Windows ABI counterpart.
-		}
-	}
-	cltest.RunAndTestFromDir(t, "", "../cl/_testlibc", ignore, cltest.WithOutputCheck(false))
-}
-
-func TestFromTestrt(t *testing.T) {
-	cltest.FromDir(t, "", "../cl/_testrt")
-}
-
-func TestFromTestdata(t *testing.T) {
-	cltest.FromDir(t, "", "../cl/_testdata")
 }
 
 func TestMakeInterface(t *testing.T) {

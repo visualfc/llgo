@@ -1,15 +1,18 @@
 // LITTEST
+// Scope: common
 package main
 
 import (
 	_ "unsafe"
 
-	"github.com/goplus/lib/c"
 	_ "github.com/xgo-dev/llgo/cl/_testrt/linkname/linktarget"
 )
 
+//go:linkname cstr llgo.cstr
+func cstr(string) *int8
+
 //go:linkname print github.com/xgo-dev/llgo/cl/_testrt/linkname/linktarget.F
-func print(a, b, c, d *c.Char)
+func print(a, b, c, d *int8)
 
 type m struct {
 	s string
@@ -42,6 +45,6 @@ func main() {
 	var m m
 	setInfo(&m, "hello")
 	println(info(m))
-	print(c.Str("a"), c.Str("b"), c.Str("c"), c.Str("d"))
-	print(c.Str("1"), c.Str("2"), c.Str("3"), c.Str("4"))
+	print(cstr("a"), cstr("b"), cstr("c"), cstr("d"))
+	print(cstr("1"), cstr("2"), cstr("3"), cstr("4"))
 }

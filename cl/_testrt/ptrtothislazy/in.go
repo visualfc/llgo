@@ -1,13 +1,19 @@
 // LITTEST
+// Scope: common
 package main
 
 import (
 	"reflect"
+	"unsafe"
 
 	"github.com/xgo-dev/llgo/cl/_testrt/ptrtothislazy/dep"
 )
 
 type Local struct {
+	N int
+}
+
+type PlainNew struct {
 	N int
 }
 
@@ -23,6 +29,21 @@ func main() {
 		panic("failed to synthesize methodless pointer type")
 	}
 
+	// Keep the exact New/NewAt/Addr canonicalization shape from the historical
+	// ptrtothislazynew regression in this broader owner.
+	plainNew := reflect.TypeOf(PlainNew{})
+	wantNew := reflect.TypeOf((*PlainNew)(nil))
+	if reflect.New(plainNew).Type() != wantNew {
+		panic("New returned a non-canonical local pointer type")
+	}
+	var localValue PlainNew
+	if reflect.NewAt(plainNew, unsafe.Pointer(&localValue)).Type() != wantNew {
+		panic("NewAt returned a non-canonical local pointer type")
+	}
+	if reflect.ValueOf(&localValue).Elem().Addr().Type() != wantNew {
+		panic("Addr returned a non-canonical local pointer type")
+	}
+
 	// Plain comes from an imported package while *Plain is independently
 	// referenced. The lookup path must still return the canonical static type.
 	plain := reflect.TypeOf(dep.Plain{})
@@ -34,6 +55,9 @@ func main() {
 		panic("New returned a non-canonical pointer type")
 	}
 	var value dep.Plain
+	if reflect.NewAt(plain, unsafe.Pointer(&value)).Type() != plainPtr {
+		panic("NewAt returned a non-canonical pointer type")
+	}
 	if reflect.ValueOf(&value).Elem().Addr().Type() != plainPtr {
 		panic("Addr returned a non-canonical pointer type")
 	}

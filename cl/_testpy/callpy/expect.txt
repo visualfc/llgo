@@ -1,2 +1,6 @@
-sqrt(2) = 1.414214
-cwd ok = 1
+bool = 0
+float = true
+pow = true
+long = 5
+max = true
+max again = true

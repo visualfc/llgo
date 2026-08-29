@@ -1,6 +1,6 @@
 # Compiler fixture inventory and migration map
 
-Status: audit appendix for
+Status: implemented audit appendix for
 [Compiler fixture suite organization](cl-test-fixtures.md).
 Baseline: xgo-dev/main@c1d5da2 (2026-08-29).
 
@@ -11,24 +11,39 @@ baseline has 264 normally discovered directories plus the explicitly invoked
 `_testlto/_globaldce_reflect_method_by_name_ltoplugin_string_abi_unknown`
 directory, for 265 total.
 
-The proposed count distinguishes:
+The implemented count distinguishes:
 
 - fixture directories, which compile a source package through a harness; and
 - logical subtests, such as direct CFG rows in `cl/blocks`.
 
-| Current suite | Current directories | Proposed owner/count |
-| --- | ---: | --- |
-| `_testdata` | 23 | redistributed into focused suites |
-| `_testdefer` | 7 | 0 directories; 6 direct CFG subtests |
-| `_testdrop` | 17 | 17 |
-| `_testgo` | 80 | redistributed into focused suites |
-| `_testlibc` | 9 | redistributed or removed |
-| `_testlibgo` | 13 | removed; unique lowering moved |
-| `_testlto` | 30 | 24 |
-| `_testmeta` | 12 | 12 |
-| `_testpy` | 8 | 3 Python owners |
-| `_testrt` | 66 | redistributed into focused suites |
-| **Total** | **265** | **145 directories + 6 CFG rows** |
+| Suite | Baseline directories | Implemented directories | Go-source package directories |
+| --- | ---: | ---: | ---: |
+| `_testdata` | 23 | 11 | 12 |
+| `_testdefer` | 7 | 0; 6 direct CFG rows | 0 |
+| `_testdrop` | 17 | 17 | 32 |
+| `_testgo` | 80 | 56 | 63 |
+| `_testlibc` | 9 | 7 | 9 |
+| `_testlibgo` | 13 | 0 | 0 |
+| `_testlto` | 30 | 24 | 26 |
+| `_testmeta` | 12 | 12 | 15 |
+| `_testpy` | 8 | 3 | 5 |
+| `_testrt` | 66 | 40 | 43 |
+| **Total** | **265** | **170 directories + 6 CFG rows** | **205** |
+
+The baseline contained 299 Go-source package directories, so the implemented
+change removes 95 physical fixtures and 94 source-package directories. The
+earlier 145-directory estimate was an audit target, not a safe implementation
+count. History review found several superficially similar fixtures to be exact
+regressions (closure conversion, defer CFG movement, reflect pointer
+canonicalization, generic ABI, and container intrinsics); those remain, or
+were merged only with their triggering source shape and focused check intact.
+`rewrite`, `runtest`, and `runextest` also remain as build-driver support used
+directly by `internal/build`/SSA tests, although the compiler lowering runner
+does not treat them as owners.
+
+The detailed tables below record the audit recommendation and the implemented
+disposition where this change acted on it. Logical owner names describe a
+capability; they do not imply an unimplemented directory rename or split.
 
 Decision terms:
 
@@ -55,21 +70,21 @@ mandatory when their proposed owner is implemented.
 | `debug` | composite DI types, function parameters, lexical scopes | split into three `_testdebug` fixtures |
 | `embedunexport` | cross-package unexported embedded methods and wrappers | merge with `embedunexport-1598` into `interface/embed-unexported` |
 | `floatint` | target-dependent float-to-signed/unsigned lowering | keep as focused `scalar/float-int` |
-| `fncall` | direct call, integer compare, branch, scalar return | merge into `scalar/control` |
+| `fncall` | direct call, integer compare, branch, scalar return | merged into `_testdata/floatint` |
 | `foo` | eface boxing, aggregate address, value-to-pointer method wrapper | split between `interface/boxing` and `abi/method` |
 | `geometry1370` | cross-package struct layout, pointer receiver, interface registration | merge with `interface1370` |
 | `importpkg` | imported init ordering and C-linkname varargs | split between `abi/package-init` and `foreign/c/call` |
-| `llgointrinsics` | `funcPCABI0` variants, trampoline address, `skip` | split into `intrinsics/function-address` and `intrinsics/control` |
+| `llgointrinsics` | `funcPCABI0`, declared/literal function address and identity, `skip`, tail `unreachable` | retained as the focused function/control intrinsic owner; tail `unreachable` also has a compiler unit test |
 | `llgosyscall` | 3/6-argument, float, pointer, raw, and errno syscall ABI | split into two short syscall intrinsic fixtures |
 | `llgotag` | selection of an LLGo-only source file | move to build/package selection coverage |
-| `method` | value method, pointer wrapper, nil receiver guard | merge into `abi/method` |
+| `method` | value method, pointer wrapper, nil receiver guard | merged into `_testgo/abimethod` and `_testrt/vamethod` |
 | `print` | broad printer containing arithmetic, slice, bounds, and interface paths | remove after focused owners exist |
 | `printf` | C varargs with no additional argument | merge into `foreign/c/call` |
 | `printval` | C varargs with an integer argument | merge into `foreign/c/call` |
 | `ptrmthd` | pointer receiver forwarding to a C vararg function | split between method ABI and C call owners |
-| `uint` | unsigned 32-bit arithmetic through a thin C type alias | use builtin `uint32` in `scalar/integer` |
-| `untyped` | untyped constant conversion and initialization | merge into `scalar/constants` |
-| `utf8` | string index/slice plus a standard-library rune decoder | replace with a local focused string-range fixture |
+| `uint` | unsigned 32-bit arithmetic through a thin C type alias | merged as builtin `uint32` lowering in `_testdata/floatint` |
+| `untyped` | untyped constant conversion and initialization | merged into `_testdata/floatint` |
+| `utf8` | string index/slice plus a standard-library rune decoder | local string range remains in `_testrt/builtin`; narrow indexing is in `_testgo/indexerr`; stdlib decoding belongs to `test/std` |
 | `vargs` | `...any` construction, boxing, assertion, and bounds | merge into `interface/variadic` |
 | `varinit` | global load, add, and store | merge into `abi/globals` |
 
@@ -99,13 +114,13 @@ disconnected recover/shared subgraph.
 | --- | --- | --- |
 | `abimethod` | value/pointer/anonymous/promoted/generic method ABI, wrappers, nil guards | split into method, promoted-method, and generic-method ABI fixtures |
 | `alias` | alias struct fields and methods | merge into `abi/named-alias` |
-| `allocinloop` | loop phi and allocation/call placement | merge into `scalar/loop-control` |
+| `allocinloop` | constant string in a loop must not allocate | exact `CHECK-NOT: Alloc` trigger merged into `_testgo/loop` beside dynamic defer-in-loop lowering |
 | `blankfield` | blank-field layout and RHS side effects | keep as `abi/blank-field` |
 | `complitassign` | composite assignment evaluation order | merge with `complitnil` into a focused assignment fixture |
 | `complitnil` | nil LHS panic timing while preserving RHS evaluation | merge with `complitassign` |
-| `constconv` | constant folding before integer conversion | merge into `scalar/constants` |
+| `constconv` | exact mixed untyped reciprocal float-to-int expression | merged intact into `_testdata/floatint` |
 | `localitycodegen` | LLGo TLS/GLS, local package block, local context | move to `_testintrinsics/locality` |
-| `multiret` | aggregate insert/extract for multiple returns | merge into `abi/results` |
+| `multiret` | aggregate insert/extract plus returned closure result | retained; exact returned-closure extraction and dynamic invocation from `_testrt/result` merged in |
 | `postabi` | post-C-ABI sret and target triple behavior | keep as `abi/post-cabi` |
 | `returnorder` | multi-result expression evaluation order | keep as `abi/result-order` |
 
@@ -113,12 +128,12 @@ disconnected recover/shared subgraph.
 
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
-| `cgobasic` | repeated wrapper slot loads plus CString/CBytes/GoString helpers | extract one wrapper and conversion coverage into `foreign/cgo/call-conversion` |
-| `cgocfiles` | local C source/header and aggregate pointer ABI | merge into `foreign/cgo/aggregate-errno` |
-| `cgodefer` | deferred C pointer keepalive and call-after-free-node order | merge into `foreign/cgo/callback-defer` |
-| `cgofull` | C2 errno, exports, callback context, function pointer, macros, C files, Python | split across the three CGo owners; remove demo logic |
-| `cgomacro` | object-like macro getters and ordinary wrappers | retain one macro path in `call-conversion` |
-| `cgopython` | ordinary C wrappers combined with defer/unwind | wrapper is duplicate; retain only any unique defer/C ABI path in `callback-defer` |
+| `cgobasic` | wrapper, macro, CString/CBytes/GoString/GoStringN/GoBytes, pointer conversion | retained as bounded `foreign/cgo/call-conversion` owner |
+| `cgocfiles` | local C source/header, five aggregate pointer sizes, C2 errno | retained as bounded `foreign/cgo/aggregate-errno` owner |
+| `cgodefer` | C/Go callbacks, export-only callback reachability, deferred free and keepalive | retained as bounded `foreign/cgo/callback-defer` owner |
+| `cgofull` | C2 errno, exports, callback context, function pointer, macros, C files, Python | unique paths distributed across the three retained owners; demo/Python repetition removed |
+| `cgomacro` | object-like macro getters and ordinary wrappers | object-like macro path merged into `_testgo/cgobasic` |
+| `cgopython` | ordinary C wrappers combined with defer/unwind | redundant wrapper removed; defer/C ABI remains in `_testgo/cgodefer` |
 
 ### Closures and function values
 
@@ -133,19 +148,19 @@ disconnected recover/shared subgraph.
 
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
-| `defer1` | always/conditional registrations, bit flags, argument node, LIFO | merge into `defer/kinds` |
+| `defer1` | always/conditional registrations, bit flags, argument node, LIFO | retained and now also owns the exact empty-range/defer/empty-range block-movement regression |
 | `defer2` | conditional registration subset | merge into `defer/kinds` |
 | `defer3` | unrecovered panic and `Rethrow` | reduce to `defer/rethrow` |
 | `defer4` | recover frame, bind, activation token, consumed panic | reduce to `defer/recover` |
 | `defer5` | panic replacement plus target setjmp/dispatch snapshot | move semantics to runtime; low-level ABI remains unit-tested |
 | `deferclosure` | deferred closure, method/field closure values, closure-valued args | split into `defer/closure` and `defer/closure-arg` |
-| `defercomplex` | loops, branches, evaluation order, named result, formatting | remove after `defer/kinds` and `defer/named-result` exist |
+| `defercomplex` | loops, branches, evaluation order, named result, formatting | keep: historical dynamic-loop defer-chain/TLS and captured named-result regression |
 | `deferdispatch` | native blockaddress/indirectbr dispatch | remove duplicate acceptance; keep precise SSA unit owner |
 | `deferdispatch-wasm` | wasm selector/switch dispatch | remove duplicate acceptance; keep precise SSA unit owner |
 | `deferdispatch-wasm-target` | byte-identical source to wasm fixture | remove |
 | `deferiface` | saved itab slot and receiver for deferred invoke | keep as `defer/interface` |
-| `deferloop` | per-iteration registration and drain | merge into `defer/kinds` |
-| `nesteddeferpanic` | runtime panic replacement/resumption semantics | move to `test/go` |
+| `deferloop` | per-iteration registration and drain | renamed `_testgo/loop`; dynamic defer nodes and drain stay separate from its small allocation-free string-loop function |
+| `nesteddeferpanic` | runtime panic replacement/resumption semantics | three exact semantics moved into `test/go/recover_defer_fixedbugs_test.go`; `_testgo/defer4` keeps one focused recover/rethrow IR path |
 | `goexit` | Goexit defer lifecycle and recover behavior | move to `test/go` |
 | `recoverthenpanic` | recover followed by a new deferred panic | move semantics to `test/go`; compiler paths owned by recover/rethrow |
 
@@ -179,7 +194,7 @@ disconnected recover/shared subgraph.
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
 | `indexerr` | array/slice positive and negative bounds helpers | reduce to the focused bounds owner |
-| `makemaphint` | sign/zero extension of map size hint | merge into `map/make` |
+| `makemaphint` | int32/uint32 sign/zero extension of map size hint | exact `sext`/`zext` checks merged into `_testrt/makemap` |
 | `makeslice` | negative len/cap and len-greater-than-cap guards | keep as focused `data/make-slice` |
 | `mapfast` | fast helper selection by key representation | keep as `map/helper-selection` |
 | `mapindirect` | large indirect generic keys and generic helpers | keep as `map/indirect-key` |
@@ -189,8 +204,8 @@ disconnected recover/shared subgraph.
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
 | `reflect` | compiler/runtime reflect call and method bridges | split only the unique call/method paths |
-| `reflectconv` | 960-line standard-library-style conversion matrix | replace with a small conversion bridge fixture |
-| `reflectfn` | reflected function value call | merge into `reflect/call` |
+| `reflectconv` | 960-line standard-library-style conversion matrix | replaced in place by a bounded bridge for numeric overflow/truncation, string/bytes, slice/array, function, NaN, and pointer cases |
+| `reflectfn` | reflected function value call and function-kind code pointer | exact `UnsafePointer` function regression merged into `_testgo/reflectconv` |
 | `reflectmk` | Method and MethodByName compiler bridges | keep as `reflect/method` |
 | `reflectmkfn` | MakeFunc callback bridge | keep as `reflect/makefunc` |
 
@@ -215,12 +230,12 @@ disconnected recover/shared subgraph.
 
 | Current case | Primary evidence | Decision |
 | --- | --- | --- |
-| `cursor` | large go/ast/iter program combining interfaces, generics, bit operations | remove after focused owners exist |
+| `cursor` | large go/ast/iter program combining interfaces, generics, bit operations | replaced in place by a small range-over-function duplicate-empty-capture regression |
 | `print` | Go print helper selection | reduce to a small builtin-print fixture |
 | `reader` | large Reader implementation combining string, slice, interface, closure | remove after focused owners exist |
-| `rewrite` | ordinary globals and imported calls without a unique configured rewrite | remove |
-| `runextest` | external test-package discovery and execution | move to `internal/build` |
-| `runtest` | internal test-package discovery and execution | move to `internal/build` |
+| `rewrite` | `-X` rewriting of initialized/uninitialized globals and runtime values | keep as `internal/build` support; ignored by the compiler lowering runner |
+| `runextest` | external and recursively nested test-package discovery | keep as `internal/build`/SSA support; ignored by the compiler lowering runner |
+| `runtest` | internal test-package discovery, execution, and working directory | keep as `internal/build`/SSA support; ignored by the compiler lowering runner |
 | `sigsegv` | recoverable nil-dereference runtime behavior | move to runtime/`test/go` |
 
 ## `_testlibc`: 9
@@ -233,7 +248,7 @@ disconnected recover/shared subgraph.
 | `complex` | C complex aggregate ABI and extraction | move to `foreign/c/aggregate` |
 | `defer` | deferred C vararg call and C string capture | move to C/defer ownership and LLGo cstring/deferdata owners |
 | `demangle` | call to an external Go wrapper; no C++ source compilation | remove and add a real `foreign/cpp-abi` fixture |
-| `once` | pthread wrapper and external initializer | remove as external-library behavior |
+| `once` | pthread initializer object and callback ABI | retained as `_testlibc/once`, backed by its existing local declaration-only `once/local` package rather than an external wrapper |
 | `setjmp` | platform setjmp symbols, buffer sizes, and branching | keep precise target unit coverage; local intrinsic smoke only if needed |
 | `sqlite` | external sqlite wrapper and system-library link | remove as integration coverage |
 
@@ -246,7 +261,7 @@ disconnected recover/shared subgraph.
 | `complex` | ordinary standard-library calls | remove; `test/std` owns it |
 | `deferpanic` | deferred panic followed by recover | merge compiler path into defer; runtime semantics in `test/go` |
 | `errors` | ordinary standard-library calls | remove; `test/std` owns it |
-| `mapzero` | missing map element produces the element zero value | move minimal construct to `map/zero-result` |
+| `mapzero` | `[0]map[int]int{}[n][0]` non-panic branch still lowers null-map lookup | exact zero-length bounds and `MapAccess1Fast64(... null ...)` branches merged into `_testgo/indexerr` |
 | `math` | ordinary standard-library calls | remove; `test/std` owns it |
 | `mathbits` | ordinary standard-library calls | remove; `test/std` owns it |
 | `nettextproto` | ordinary standard-library calls | remove; `test/std` owns it |
@@ -262,9 +277,9 @@ disconnected recover/shared subgraph.
 | `math` | Python module declaration, import, and symbol storage | move to `foreign/python/module` |
 | `callpy` | fixed one-argument and zero-argument calls; result extraction | move to `foreign/python/calls` |
 | `gcd` | N-argument Python call and platform-sized long conversion | merge into `foreign/python/calls` |
-| `list` | scalar-to-Python conversion and list construction/access | reduce into `foreign/python/values` |
-| `matrix` | repeated nested list construction and external numpy call | remove repetition; retain no new path beyond values/calls |
-| `max` | variadic call, list/tuple iterator, repeated conversions | split unique call and tuple/list paths into calls/values |
+| `list` | scalar-to-Python conversion and list/tuple construction/access | retained as bounded values owner and now includes a fresh nested `*Object` list path |
+| `matrix` | repeated nested list construction and external numpy call | external numpy/repetition removed; nested-list construction retained in `_testpy/list` |
+| `max` | repeated invocation of the same Python function slot | exact repeated-call regression merged into `_testpy/callpy` |
 | `pi` | module attribute lookup and float extraction | merge into module/values |
 | `pow` | two-argument Python call | merge into `foreign/python/calls` |
 
@@ -277,7 +292,7 @@ packages keep the required `LLGoPackage = "py.<module>"` classification.
 
 | Current case or group | Primary evidence | Decision |
 | --- | --- | --- |
-| `abinamed`, `abitype` | runtime type descriptors, PtrToThis/Elem, byte/rune identity | merge into one runtime-type ABI fixture |
+| `abinamed`, `abitype` | runtime type descriptors, PtrToThis/Elem, byte/rune identity | merged into `_testrt/abinamed` |
 | `cast` | integer/float truncation, extension, and conversion opcodes | keep as `scalar/numeric-cast` |
 | `complex` | complex construction, division helper, real/imag | keep as focused complex arithmetic |
 | `constuptr` | constant int-to-pointer conversion | merge into constants/unsafe owner |
@@ -304,13 +319,13 @@ packages keep the required `LLGoPackage = "py.<module>"` classification.
 | `asm`, `asmfull` | inline asm without args, input constraints, output registers | remove strict subset `asm`; keep one fixture with short functions |
 | `callback` | closure pair passed to a C callback | merge into `foreign/cgo/callback-defer` |
 | `cvar` | external aggregate globals | merge into `foreign/c/call` or aggregate owner |
-| `fprintf` | external stderr global and C varargs | merge into `foreign/c/call` |
-| `funcaddr` | raw address for an `llgo:type C` function | move to `intrinsics/function-address` |
-| `hello`, `strlen` | external strlen followed by printf | replace both with one direct C call owner |
+| `fprintf` | external stderr global and C varargs | stderr/platform path merged into `_testlibc/setjmp`; void C-vararg call remains in `_testdata/importpkg` |
+| `funcaddr` | declared and literal `llgo:type C` function-value/address paths | exact shapes merged into `_testdata/llgointrinsics` |
+| `hello`, `strlen` | external strlen followed by printf | merged into `_testrt/allocstr`, which is also the `LLGO_STDIO_NOBUF` build-test owner |
 | `linkname` | cross-package unexported method/global/function linknames | keep as focused package-linkname fixture |
-| `qsort`, `qsortfn` | Go closure and C function pointer callbacks; repeated pairwise conversions | retain representative ABI shapes in callback owner |
+| `qsort`, `qsortfn` | Go closure and C function pointer callbacks; repeated pairwise conversions | reduced to four representatives: local named/unnamed, imported named, and explicit named conversion, each with callback and sorted runtime evidence |
 | `stacksave` | `llvm.stacksave` | move to `intrinsics/stack` |
-| `unreachable` | `llgo.unreachable` to LLVM unreachable | move to `intrinsics/control` |
+| `unreachable` | direct tail `llgo.unreachable` terminator | merged into `_testdata/llgointrinsics`; compiler unit test proves the synthetic Go return is omitted |
 
 ### Closures and calls
 
@@ -326,7 +341,7 @@ packages keep the required `LLGoPackage = "py.<module>"` classification.
 | `intgen` | large generator combining closure and iteration | remove after focused owners exist |
 | `litdemo` | direct call, closure, global init, arithmetic | remove after focused owners exist |
 | `methodthunk` | method thunk closure and receiver handling | merge into method-value/thunk owner |
-| `result` | closure and aggregate function results | merge into result and closure-result owners |
+| `result` | closure and aggregate function results | exact closure-in-multi-result shape merged into `_testgo/multiret` |
 | `vamethod` | variadic value/pointer/interface method ABI | merge into variadic-interface owner |
 
 ### Builtins, maps, slices, and strings
@@ -346,9 +361,9 @@ packages keep the required `LLGoPackage = "py.<module>"` classification.
 
 | Current case or group | Primary evidence | Decision |
 | --- | --- | --- |
-| `ptrtothislazy`, `ptrtothislazynew` | lazy PtrToThis through PointerTo/New/NewAt/Addr | keep the broader case in reduced form |
+| `ptrtothislazy`, `ptrtothislazynew` | lazy PtrToThis through PointerTo/New/NewAt/Addr | exact New/NewAt/Addr canonicalization merged into `_testrt/ptrtothislazy` |
 | `reflectclosureenv` | reflect Call/MakeFunc/method while preserving closure env | reduce to `reflect/closure` |
-| `nextblock` | conditional defer cleanup across CFG joins | merge into `defer/kinds` and direct block graphs |
+| `nextblock` | conditional defer cleanup across CFG joins | exact empty-range/defer/empty-range block[0] regression merged into `_testgo/defer1` |
 | `panic` | interface boxing, Panic helper, unreachable | merge into defer/panic basic owner |
 | `tpabi` | instantiated generic value/pointer method ABI | merge into `generics/method` |
 | `tpfunc` | local generic closures and type size | merge into `generics/function-value` |
@@ -434,14 +449,15 @@ merge, `_testlto` changes from 30 to 24.
 
 ## New owners required by the audit
 
-Three physical fixtures are new capabilities rather than reorganized old
-cases. They are already included in the proposed 145-directory total.
+Two physical fixtures add capabilities rather than reorganizing an old owner;
+they are included in the implemented 170-directory total. `builtin-minmax`
+remains a future semantic compiler change and is not counted as implemented.
 
-| New case | Missing capability |
-| --- | --- |
-| `scalar/arith-divrem` | zero-divisor guard, safe operands, signed minInt/-1, all four integer div/rem opcodes |
-| `scalar/builtin-minmax` | integer, floating, and string source lowering; NaN and signed-zero Go semantics |
-| `foreign/cpp-abi` | actual C++ source compilation, linking, and C ABI bridge |
+| Case | Status | Missing capability |
+| --- | --- | --- |
+| `_testgo/arith-divrem` | implemented | zero-divisor guard, safe operands, signed minInt/-1, all four integer div/rem opcodes |
+| `scalar/builtin-minmax` | future | integer, floating, and string source lowering; NaN and signed-zero Go semantics |
+| `_testlibc/cppabi` | implemented | actual C++ source compilation, linking, and C ABI bridge |
 
 The LLGo intrinsic gaps are folded into existing proposed owners:
 

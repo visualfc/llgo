@@ -1,2 +1,0 @@
-slice-value
-slice-type

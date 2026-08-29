@@ -216,6 +216,10 @@ type Config struct {
 	GlobalRewrites map[string]Rewrites
 	ModuleHook     ModuleHook
 	Overlay        map[string][]byte
+	// TestPythonPackage supplies the synthetic Python ABI root used by compiler
+	// fixtures that intentionally avoid importing github.com/goplus/lib/py.
+	// Production callers leave this nil; the provider is evaluated once per Do.
+	TestPythonPackage func() *types.Package
 }
 
 type Rewrites map[string]string
@@ -695,6 +699,8 @@ func Build(inv Invocation) ([]Package, error) {
 	var pythonPackage *types.Package
 	if python := dedup.Check(llssa.PkgPython); python != nil {
 		pythonPackage = python.Types
+	} else if conf.TestPythonPackage != nil {
+		pythonPackage = conf.TestPythonPackage()
 	}
 	prog.SetPython(func() *types.Package { return pythonPackage })
 

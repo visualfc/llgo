@@ -2,3 +2,5 @@ keep-value
 keep-type
 keep-multi-value
 keep-multi-type
+slice-value
+slice-type

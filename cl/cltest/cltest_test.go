@@ -20,7 +20,7 @@ func TestNormalizeGoldenNewlines(t *testing.T) {
 }
 
 func TestIROnlyGoldenAllowsFinalNewline(t *testing.T) {
-	for _, data := range [][]byte{[]byte(";"), []byte(";\n")} {
+	for _, data := range [][]byte{[]byte(";"), []byte(";\n"), []byte(";\r\n")} {
 		if !isIROnlyGolden(data) {
 			t.Fatalf("isIROnlyGolden(%q) = false", data)
 		}

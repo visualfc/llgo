@@ -1,13 +1,18 @@
 // LITTEST
+// Scope: common
 package main
 
 import "reflect"
 
+// This is the LTO-plugin owner for finite names loaded from global aggregate
+// storage, including a named-string slice.
 // SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepValue
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepValueAlt
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepType
 // SYMBOL-DAG: main{{.*}}S{{.*}}KeepTypeAlt
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepGlobalSliceA
+// SYMBOL-DAG: main{{.*}}S{{.*}}KeepGlobalSliceB
 // SYMBOL-NOT: main{{.*}}S{{.*}}Drop
 
 type S struct{}
@@ -33,6 +38,12 @@ func (S) KeepTypeAlt() string {
 }
 
 //go:noinline
+func (S) KeepGlobalSliceA() string { return "global-slice-a" }
+
+//go:noinline
+func (S) KeepGlobalSliceB() string { return "global-slice-b" }
+
+//go:noinline
 func (S) Drop() string {
 	panic("Drop should be unreachable")
 }
@@ -52,6 +63,10 @@ var names = methodNames{
 		typ: [2]string{"KeepType", "KeepTypeAlt"},
 	},
 }
+
+type callbackType string
+
+var callbackTypes = []callbackType{"KeepGlobalSliceA", "KeepGlobalSliceB"}
 
 func main() {
 	v := reflect.ValueOf(S{})
@@ -75,4 +90,9 @@ func main() {
 	}
 	out = m.Func.Call([]reflect.Value{v})
 	println(out[0].String())
+
+	for _, name := range callbackTypes {
+		out = v.MethodByName(string(name)).Call(nil)
+		println(out[0].String())
+	}
 }

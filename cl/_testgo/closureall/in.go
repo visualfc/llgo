@@ -1,23 +1,27 @@
 // LITTEST darwin/arm64 linux/amd64 windows/arm64 windows/amd64
+// Scope: arch (arm64, amd64)
 package main
 
 import _ "unsafe" // for go:linkname
 
-import "github.com/goplus/lib/c"
+type (
+	CDouble = float64
+	CInt    = int32
+)
 
 //go:linkname cSqrt C.sqrt
-func cSqrt(x c.Double) c.Double
+func cSqrt(x CDouble) CDouble
 
 // llgo:link cAbs C.abs
-func cAbs(x c.Int) c.Int { return 0 }
+func cAbs(x CInt) CInt { return 0 }
 
 // llgo:type C
-type CCallback func(c.Int) c.Int
+type CCallback func(CInt) CInt
 
 type Fn func(int) int
 
 //go:noinline
-func callCInt(fn func(c.Int) c.Int, x c.Int) c.Int {
+func callCInt(fn func(CInt) CInt, x CInt) CInt {
 	return fn(x)
 }
 
@@ -33,7 +37,7 @@ func (s *S) Add(x int) int {
 	return s.v + x
 }
 
-func callCallback(cb CCallback, v c.Int) c.Int {
+func callCallback(cb CCallback, v CInt) CInt {
 	return cb(v)
 }
 
@@ -64,7 +68,7 @@ func main() {
 	_ = cs(4)
 	_ = callCInt(cAbs, -3)
 
-	cb := CCallback(func(x c.Int) c.Int { return x + 1 })
+	cb := CCallback(func(x CInt) CInt { return x + 1 })
 	_ = callCallback(cb, 7)
 }
 

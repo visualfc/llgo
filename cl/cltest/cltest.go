@@ -240,7 +240,7 @@ func Pkg(t *testing.T, pkgPath, outFile string) {
 	}
 }
 
-func testFrom(t *testing.T, pkgDir, sel string) {
+func testFrom(t *testing.T, pkgDir, sel string, conf *build.Config) {
 	t.Helper()
 	if sel != "" && !strings.Contains(pkgDir, sel) {
 		return
@@ -253,11 +253,11 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 	var prefixes []string
 	withFuncInfoDisabled(func() {
 		if spec.PostABI {
-			generated := llgen.GeneratePostABI(pkgDir)
+			generated := llgen.GeneratePostABIWithConf(pkgDir, conf)
 			v = generated.Text
 			prefixes = filecheck.TargetPrefixes(generated.GOOS, generated.GOARCH, generated.Target)
 		} else {
-			generated := llgen.Generate(pkgDir)
+			generated := llgen.GenerateWithConf(pkgDir, conf)
 			v = generated.Text
 			prefixes = filecheck.TargetPrefixes(generated.GOOS, generated.GOARCH, generated.Target)
 		}
@@ -267,15 +267,20 @@ func testFrom(t *testing.T, pkgDir, sel string) {
 		t.Fatal(err)
 	}
 	if len(spec.Targets) != 0 {
-		testIRTargets(t, pkgDir, spec, specificTargetPrefix(t, prefixes))
+		testIRTargets(t, pkgDir, spec, specificTargetPrefix(t, prefixes), conf)
 	}
 }
 
-func testIRTargets(t *testing.T, pkgDir string, spec littest.Spec, currentPrefix string) {
+func testIRTargets(t *testing.T, pkgDir string, spec littest.Spec, currentPrefix string, base *build.Config) {
 	t.Helper()
 	for _, target := range additionalIRTargets(spec.Targets, currentPrefix) {
 		t.Run(target.String(), func(t *testing.T) {
-			conf := &build.Config{Goos: target.GOOS, Goarch: target.GOARCH}
+			conf := &build.Config{}
+			if base != nil {
+				*conf = *base
+			}
+			conf.Goos = target.GOOS
+			conf.Goarch = target.GOARCH
 			var generated llgen.GeneratedIR
 			withFuncInfoDisabled(func() {
 				if spec.PostABI {
@@ -340,7 +345,7 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 		// IR-only mode: when expect.txt is not checked, validate the
 		// source-embedded FileCheck directives via testFrom.
 		if opts.checkIR {
-			testFrom(t, pkgDir, sel)
+			testFrom(t, pkgDir, sel, opts.conf)
 		}
 		if opts.checkMeta {
 			metaDirs, err := findMetaCheckDirs(pkgDir)
@@ -422,7 +427,7 @@ func testRunAndTestFrom(t *testing.T, pkgDir, relPkg, sel string, opts runOption
 		t.Fatal(err)
 	}
 	if len(irSpec.Targets) != 0 {
-		testIRTargets(t, pkgDir, irSpec, specificTargetPrefix(t, prefixes))
+		testIRTargets(t, pkgDir, irSpec, specificTargetPrefix(t, prefixes), opts.conf)
 	}
 }
 
@@ -755,6 +760,7 @@ func readGolden(file string) ([]byte, bool, error) {
 }
 
 func isIROnlyGolden(data []byte) bool {
+	data = normalizeGoldenNewlines(data)
 	return bytes.Equal(bytes.TrimSuffix(data, []byte{'\n'}), []byte{';'})
 }
 

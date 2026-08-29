@@ -1,4 +1,5 @@
 // LITTEST darwin/arm64 linux/amd64
+// Scope: arch (arm64/amd64 function-value ABI; intrinsic lowering otherwise common)
 package llgointrinsics
 
 import (
@@ -33,6 +34,17 @@ import (
 // CHECK: ret i64 ptrtoint (ptr @"{{.*}}.UseFunc$1" to i64)
 // CHECK-LABEL: define void @"{{.*}}.UseFunc$1"(){{.*}} {
 // CHECK: ret void
+// CHECK-LABEL: define ptr @"{{.*}}.UseFuncAddr"(){{.*}} {
+// CHECK: ret ptr @"{{.*}}.addForAddress"
+// CHECK-LABEL: define i1 @"{{.*}}.UseFuncIdentity"(){{.*}} {
+// CHECK: store ptr @"{{.*}}.addForAddress", ptr [[DECLARED_SLOT:%[0-9]+]]
+// CHECK: store ptr @"{{.*}}.UseFuncIdentity$1", ptr [[LITERAL_SLOT:%[0-9]+]]
+// CHECK: [[DECLARED_CODE:%[0-9]+]] = load ptr, ptr [[DECLARED_SLOT]]
+// CHECK: [[DECLARED_DIRECT:%[0-9]+]] = load ptr, ptr [[DECLARED_SLOT]]
+// CHECK-NEXT: [[DECLARED_MATCH:%[0-9]+]] = icmp eq ptr [[DECLARED_CODE]], [[DECLARED_DIRECT]]
+// CHECK: [[LITERAL_CODE:%[0-9]+]] = load ptr, ptr [[LITERAL_SLOT]]
+// CHECK: [[LITERAL_DIRECT:%[0-9]+]] = load ptr, ptr [[LITERAL_SLOT]]
+// CHECK-NEXT: [[LITERAL_MATCH:%[0-9]+]] = icmp eq ptr [[LITERAL_CODE]], [[LITERAL_DIRECT]]
 // CHECK-LABEL: define i64 @"{{.*}}.UseLibc"(){{.*}} {
 // CHECK: ret i64 ptrtoint (ptr @foo to i64)
 // CHECK-LABEL: define void @"{{.*}}.UseSkip"(){{.*}} {
@@ -41,6 +53,11 @@ import (
 // CHECK-NEXT: call void @"{{.*}}.PrintUint"(i64 0)
 // CHECK-NEXT: call void @"{{.*}}.PrintUint"(i64 0)
 // CHECK-NEXT: ret void
+// CHECK-LABEL: define void @"{{.*}}.UseUnreachable"(){{.*}} {
+// CHECK: unreachable
+// CHECK-NEXT: }
+// CHECK-LABEL: define void @"{{.*}}.UseUnreachableWithDefer"(){{.*}} {
+// CHECK: unreachable
 
 //go:linkname funcPCABI0 llgo.funcPCABI0
 func funcPCABI0(fn interface{}) uintptr
@@ -53,6 +70,12 @@ func skipWithRet() uintptr
 
 //go:linkname skipWithMultiRet llgo.skip
 func skipWithMultiRet() (uintptr, uintptr)
+
+//go:linkname funcAddr llgo.funcAddr
+func funcAddr(fn interface{}) unsafe.Pointer
+
+//go:linkname unreachable llgo.unreachable
+func unreachable()
 
 //go:linkname libc_foo_trampoline C.foo
 func libc_foo_trampoline()
@@ -99,4 +122,33 @@ func UseSkip() {
 	print(i)
 	a, b := skipWithMultiRet()
 	print(a, b)
+}
+
+//llgo:type C
+type cAdd func(int, int) int
+
+func addForAddress(a, b int) int {
+	return a + b
+}
+
+func UseFuncAddr() unsafe.Pointer {
+	return funcAddr(cAdd(addForAddress))
+}
+
+// UseFuncIdentity retains the default C-function-value path for both declared
+// functions and literals. It is distinct from UseFuncAddr's direct operand.
+func UseFuncIdentity() bool {
+	var declared cAdd = addForAddress
+	var literal cAdd = func(a, b int) int { return a + b }
+	return funcAddr(declared) == *(*unsafe.Pointer)(unsafe.Pointer(&declared)) &&
+		funcAddr(literal) == *(*unsafe.Pointer)(unsafe.Pointer(&literal))
+}
+
+func UseUnreachable() {
+	unreachable()
+}
+
+func UseUnreachableWithDefer() {
+	defer func() {}()
+	unreachable()
 }

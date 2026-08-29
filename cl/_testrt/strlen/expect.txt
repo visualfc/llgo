@@ -1,4 +1,0 @@
-Hello
-Length 6
-Int32 6
-Int64 100

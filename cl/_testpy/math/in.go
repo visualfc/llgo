@@ -1,23 +1,33 @@
 // LITTEST
+// Scope: common
 package math
 
-import (
-	_ "unsafe"
+import _ "unsafe"
 
-	"github.com/goplus/lib/py"
-)
+// This fixture owns local Python-module classification, import, function
+// declaration, module-variable lookup, and storage without importing a wrapper
+// library.
+const LLGoPackage = "py.math"
 
-// CHECK-LABEL: define void @"{{.*}}/cl/_testpy/math.init"(){{.*}} {
-// CHECK: [[GUARD:%[0-9]+]] = load i1, ptr @"{{.*}}/cl/_testpy/math.init$guard"
-// CHECK: store i1 true, ptr @"{{.*}}/cl/_testpy/math.init$guard"
-// CHECK-NEXT: [[OLD_MATH:%[0-9]+]] = load ptr, ptr @__llgo_py.math
-// CHECK-NEXT: [[HAS_MATH:%[0-9]+]] = icmp ne ptr [[OLD_MATH]], null
-// CHECK: [[MATH:%[0-9]+]] = call ptr @PyImport_ImportModule(ptr @{{[0-9]+}})
-// CHECK-NEXT: store ptr [[MATH]], ptr @__llgo_py.math
+type Object struct {
+	unused [0]byte
+}
 
-const (
-	LLGoPackage = "py.math"
-)
+//go:linkname Pi py.pi
+var Pi *Object
 
 //go:linkname Sqrt py.sqrt
-func Sqrt(x *py.Object) *py.Object
+func Sqrt(x *Object) *Object
+
+func ReadPi() *Object {
+	return Pi
+}
+
+// CHECK-LABEL: define ptr @"{{.*}}/cl/_testpy/math.ReadPi"(){{.*}} {
+// CHECK: [[MATH:%[0-9]+]] = load ptr, ptr @__llgo_py.math
+// CHECK: [[PI:%[0-9]+]] = call ptr @PyObject_GetAttrString(ptr [[MATH]], ptr @{{[0-9]+}})
+// CHECK: ret ptr [[PI]]
+
+// CHECK-LABEL: define void @"{{.*}}/cl/_testpy/math.init"(){{.*}} {
+// CHECK: [[MATH:%[0-9]+]] = call ptr @PyImport_ImportModule(ptr @{{[0-9]+}})
+// CHECK: store ptr [[MATH]], ptr @__llgo_py.math

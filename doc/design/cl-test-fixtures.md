@@ -1,7 +1,7 @@
 # Compiler fixture suite organization
 
-Status: proposal with an initial migration slice. Baseline:
-xgo-dev/main@c1d5da2 (2026-08-29).
+Status: implemented fixture audit and consolidation, with a future layout
+proposal. Baseline: xgo-dev/main@c1d5da2 (2026-08-29).
 
 ## Summary
 
@@ -25,41 +25,56 @@ This proposal reorganizes the suites around explicit test contracts:
 - separate ownership for compiler IR, runtime semantics, standard-library
   compatibility, dead-code analysis, LTO, and package metadata.
 
-The current baseline contains 265 fixture directories. The proposed layout
-contains 145 fixture directories plus six direct CFG subtests in `cl/blocks`.
-Using logical scenarios as the common unit, the suite changes from 265 to 151,
-a reduction of about 43%, without merging unrelated behavior into large
-replacement fixtures.
+The baseline contains 265 fixture directories and 299 Go-source package
+directories. The implemented audit contains 170 fixture directories, 205
+Go-source package directories, and six direct CFG subtests in `cl/blocks`.
+That is 176 logical scenarios: 95 fewer physical fixtures and 94 fewer source
+packages. The proposed future layout remains 145 fixture directories plus the
+same six CFG rows. Historical review deliberately stopped the implementation
+above that numeric target when similar-looking cases protected different ABI,
+closure, defer, reflect, generic, or runtime regressions.
 
 The detailed current-case inventory and migration mapping is in
 [cl-test-fixtures-inventory.md](cl-test-fixtures-inventory.md).
 
-### Initial migration slice
+### Implemented migration
 
-The implementation accompanying this proposal deliberately starts with cases
-whose ownership can be changed without combining unrelated compiler paths. It
-reduces the physical fixture count from 265 to 237. The seven
-`cl/_testdefer` directories become six direct, table-driven `cl/blocks`
-subtests, so the common logical-scenario count is 243.
+The implementation accompanying this proposal reduces the physical fixture
+count from 265 to 170. The seven `cl/_testdefer` directories become six direct,
+table-driven `cl/blocks` subtests, so the implemented logical-scenario count is
+176.
 
-This slice removes byte-identical or strict-subset fixtures, moves pure
+The migration removes byte-identical or strict-subset fixtures, moves pure
 standard-library and build-selection checks to their existing owners,
-consolidates the small C vararg smokes, replaces thin external wrappers with
-local C/C++ declarations, and adds a focused integer divide/remainder owner.
-Its FileCheck assertions select only the instructions and ABI edges that
-define each contract; runtime output continues to cover the surrounding
-behavior. The proposed 145-directory/151-scenario layout remains the target
-for later migrations after each destination owner exists.
+consolidates six CGo fixtures into three bounded owners and eight Python
+fixtures into three, replaces thin external wrappers with local declarations,
+shrinks the reflect conversion matrix, and adds focused owners for loop,
+integer divide/remainder, historical map-zero, closure-result, and
+`llgo.unreachable` paths. FileCheck assertions select only the instructions
+and ABI edges that define each contract; runtime output covers the surrounding
+behavior. The proposed 145-directory/151-scenario layout remains a future
+budget, not a reason to erase a historically distinct trigger.
 
 The materially changed LIT owners in this slice declare their scope directly:
 
 | Fixture | Scope | Primary instruction/ABI contract |
 | --- | --- | --- |
 | `arith-divrem` | `common` | guarded signed/unsigned division and remainder |
-| `uint` | `common` | unsigned-width arithmetic and print widening |
-| `strlen` | `common` | C varargs for zero, `size_t`, i32, and i64 arguments |
+| `floatint` | `arch (...)` | target float-to-integer ABI plus exact untyped constant folding |
+| `llgointrinsics` | `arch (...)` | function-value ABI, function address, skip, and tail `unreachable` |
+| `cgobasic` | `common` | wrapper, macro, and compiler-owned CGo conversions |
+| `cgocfiles` | `common` | local C source, aggregate pointers, C2 return, and errno |
+| `cgodefer` | `arch (...)` | callbacks, export-only reachability, defer, and keepalive ABI |
+| `loop` | `common` | dynamic defer nodes and allocation-free constant strings in loops |
+| `defer1` | `common` | conditional defer flags plus the empty-range block-movement regression |
+| `multiret` | `arch (...)` | aggregate results and returned-closure dynamic-call ABI |
+| `reflectconv` | `common` | bounded reflect conversion bridge, including function code pointers |
+| `callpy` | `os+arch (...)` | Python call forms, C-long width, and repeated pyfunc calls |
+| `list` | `common` | scalar conversion plus nested list and tuple construction |
+| `qsortfn` | `common` | four representative callback type-conversion paths |
+| `allocstr` | `common` | C-string, stack allocation, vector, and `strlen` data flow |
 | `cppabi` | `common` | local C++ compile/link and `extern "C"` call ABI |
-| `once` | `os (Darwin/Linux)` | POSIX `pthread_once` initializer and callback ABI |
+| `once` | `os (Darwin/Linux)` | retained local POSIX `pthread_once` initializer and callback ABI |
 
 ## Context and problem
 
@@ -506,25 +521,28 @@ All 12 `_testmeta` capabilities remain because they emit different metadata
 sections or identities. `interface_exported_var` and `methodinfo_imported`
 replace standard-library packages with small local cross-package fixtures.
 
-## Before and after counts
+## Implemented count and future layout budget
 
 The baseline counts leaf fixture directories. The hidden
 `_testlto/_globaldce_reflect_method_by_name_ltoplugin_string_abi_unknown` case
 is included because the harness invokes it explicitly.
 
-| Test layer | Before | After |
-| --- | ---: | ---: |
-| Normal compile/run/FileCheck suites | 199 | 92 |
-| Block-classification fixture directories | 7 | 0 |
-| Direct block-classification table rows | 0 | 6 |
-| DeadcodeDrop | 17 | 17 |
-| LTO | 30 | 24 |
-| Package metadata | 12 | 12 |
-| **Fixture directories** | **265** | **145** |
-| **Logical scenarios** | **265** | **151** |
+| Test layer | Baseline | Implemented | Future budget |
+| --- | ---: | ---: | ---: |
+| Normal compile/run/FileCheck suites | 199 | 117 | 92 |
+| Block-classification fixture directories | 7 | 0 | 0 |
+| Direct block-classification table rows | 0 | 6 | 6 |
+| DeadcodeDrop | 17 | 17 | 17 |
+| LTO | 30 | 24 | 24 |
+| Package metadata | 12 | 12 | 12 |
+| **Fixture directories** | **265** | **170** | **145** |
+| **Logical scenarios** | **265** | **176** | **151** |
+| **Go-source package directories** | **299** | **205** | not budgeted |
 
-The fixture-directory reduction is 120, or about 45%. The logical-scenario
-reduction is 114, or about 43%.
+The implemented fixture-directory reduction is 95, about 36%; the
+logical-scenario reduction is 89, about 34%. Reaching the future 145-directory
+budget requires additional owner-by-owner history review and is not part of
+the implemented result recorded here.
 
 ## Staged migration
 
@@ -634,7 +652,8 @@ classification directly rather than relying on an external wrapper.
 
 ## Decision requested
 
-Accept the ownership model, proposed layout, and 145-directory/151-scenario
-target as the migration baseline. Implementation should proceed in staged
-pull requests, with the min/max semantic fix kept separate from mechanical
+Use the ownership model and 145-directory/151-scenario layout as the future
+migration budget. The implemented consolidation stops at 170 directories plus
+six CFG rows after history review; later staged changes must preserve the same
+evidence standard, with the min/max semantic fix kept separate from mechanical
 fixture consolidation.

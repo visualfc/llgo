@@ -1,2 +1,0 @@
-func 100
-closure 200 env

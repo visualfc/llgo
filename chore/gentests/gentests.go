@@ -41,7 +41,6 @@ func main() {
 
 func genExpects(root string) {
 	runExpectDir(root, "cl/_testlibc")
-	runExpectDir(root, "cl/_testlibgo")
 	runExpectDir(root, "cl/_testrt")
 	runExpectDir(root, "cl/_testgo")
 	runExpectDir(root, "cl/_testlto", func(conf *build.Config) {

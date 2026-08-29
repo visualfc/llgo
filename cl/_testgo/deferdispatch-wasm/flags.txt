@@ -1,1 +1,0 @@
-GOOS=wasip1 GOARCH=wasm
