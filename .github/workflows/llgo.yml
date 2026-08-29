@@ -542,6 +542,10 @@ jobs:
         run: |
           GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" \
             go build -p=2 -o "$RUNNER_TEMP/llgo-host" ./cmd/llgo
+          # This development binary lives outside LLGO_ROOT/bin. Point it at
+          # the checkout explicitly so standard-library source patches are
+          # available to the following cross-host builds.
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Test cross-host windows/amd64
         uses: ./.github/actions/test-windows-cross
