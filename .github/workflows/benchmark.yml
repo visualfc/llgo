@@ -143,6 +143,49 @@ jobs:
             build_host_compiler . .benchmark/llgo.exe
           fi
 
+      - name: Bundle MinGW host compiler runtime
+        if: runner.os == 'Windows' && matrix.windows_abi == 'mingw' && matrix.windows_arch == '386'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $hostBin = Join-Path $env:LLGO_MINGW_HOST_ROOT "bin"
+          $objdump = Join-Path $hostBin "llvm-objdump.exe"
+          if (-not (Test-Path $objdump)) {
+            throw "The MinGW host llvm-objdump is unavailable: $objdump"
+          }
+
+          # Target DLL directories must remain first on PATH when benchmark
+          # programs run. Keep the host compiler architecture-safe without
+          # changing that target environment by placing its DLL closure beside
+          # the prebuilt compiler, which Windows searches before PATH.
+          $queue = [Collections.Generic.Queue[string]]::new()
+          Get-ChildItem "$env:GITHUB_WORKSPACE\.benchmark\*.exe" |
+            ForEach-Object { $queue.Enqueue($_.FullName) }
+          $copied = @{}
+          while ($queue.Count -ne 0) {
+            $binary = $queue.Dequeue()
+            foreach ($line in (& $objdump -p $binary)) {
+              if ($line -notmatch '^\s*DLL Name:\s*(\S+)\s*$') {
+                continue
+              }
+              $name = $Matches[1]
+              if ($copied.ContainsKey($name)) {
+                continue
+              }
+              $source = Join-Path $hostBin $name
+              if (-not (Test-Path $source)) {
+                continue
+              }
+              $destination = Join-Path "$env:GITHUB_WORKSPACE\.benchmark" $name
+              Copy-Item -LiteralPath $source -Destination $destination
+              $copied[$name] = $true
+              $queue.Enqueue($destination)
+            }
+          }
+          if ($copied.Count -eq 0) {
+            throw "No MinGW host runtime DLLs were discovered"
+          }
+
       - name: Activate native Windows target
         if: runner.os == 'Windows' && matrix.windows_arch != 'amd64'
         uses: ./.github/actions/activate-windows-target
