@@ -60,8 +60,8 @@ func TestRootFileOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	target, err := root.Readlink("nested/symlink.txt")
-	if err != nil || target != "dir/source.txt" {
-		t.Fatalf("Readlink = %q, %v; want dir/source.txt, nil", target, err)
+	if err != nil || filepath.ToSlash(target) != "dir/source.txt" {
+		t.Fatalf("Readlink = %q, %v; want path equivalent to dir/source.txt, nil", target, err)
 	}
 	if err := root.RemoveAll("nested"); err != nil {
 		t.Fatal(err)
