@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/xgo-dev/llvm"
 )
 
 func TestAbiStructFieldsUseGo386Offsets(t *testing.T) {
@@ -129,4 +131,29 @@ func TestGo386StructLayoutEdgeCases(t *testing.T) {
 			t.Fatalf("named Go Windows/386 struct zero has type %s, want %s", zero.impl.Type(), typ.ll)
 		}
 	})
+}
+
+func TestConstStructValueAsUsesDestinationLLVMType(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", "386"))
+
+	fields := []*types.Var{
+		types.NewField(token.NoPos, nil, "B", types.Typ[types.Uint8], false),
+		types.NewField(token.NoPos, nil, "U", types.Typ[types.Uint64], false),
+	}
+	st := types.NewStruct(fields, nil)
+	pkg := types.NewPackage("example.com/p", "p")
+	named := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Value", nil), st, nil)
+	typ := prog.Type(named, InGo)
+	destination := prog.ctx.StructCreateNamed("example.com/p.destination")
+	destination.StructSetBody(typ.ll.StructElementTypes(), typ.ll.IsStructPacked())
+
+	value := prog.constStructValueAs(typ, destination, []llvm.Value{
+		prog.IntVal(1, prog.Byte()).impl,
+		prog.IntVal(2, prog.Uint64()).impl,
+	})
+	if value.Type() != destination {
+		t.Fatalf("constant type = %s, want exact destination type %s", value.Type(), destination)
+	}
 }

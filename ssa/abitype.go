@@ -709,7 +709,7 @@ func (b Builder) abiType(t types.Type) Expr {
 				pkg.abiTypeWithUncommon[g.impl] = struct{}{}
 			}
 		}
-		g.impl.SetInitializer(prog.constStructValue(prog.Type(typ, InGo), fields))
+		g.impl.SetInitializer(prog.constStructValueAs(prog.Type(typ, InGo), g.impl.GlobalValueType(), fields))
 		g.impl.SetGlobalConstant(true)
 		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 		if prog.enableGoGlobalDCE {
@@ -823,7 +823,7 @@ func (p Package) getAbiTypesFor(name string, filter func(sym *AbiSymbol) bool) E
 	size := uint64(len(names))
 	typ := prog.Slice(prog.AbiTypePtr())
 	g := p.doNewVar(name+"$slice", prog.Pointer(typ))
-	g.impl.SetInitializer(prog.constStructValue(typ, []llvm.Value{
+	g.impl.SetInitializer(prog.constStructValueAs(typ, g.impl.GlobalValueType(), []llvm.Value{
 		array.impl,
 		prog.IntVal(size, prog.Int()).impl,
 		prog.IntVal(size, prog.Int()).impl,
