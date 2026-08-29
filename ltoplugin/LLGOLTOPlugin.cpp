@@ -13,15 +13,24 @@ PassPluginLibraryInfo getLLGOLTOPluginInfo() {
             PB.registerPipelineParsingCallback(
                 [](StringRef Name, ModulePassManager &MPM,
                    ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name != llgo::LLGOPreGlobalDCEPassName)
-                    return false;
-                  llgo::addLLGOPreGlobalDCEPipeline(MPM);
-                  return true;
+                  if (Name == llgo::LLGOInterfaceMethodTypeIDPassName) {
+                    llgo::addLLGOInterfaceMethodTypeIDPass(MPM);
+                    return true;
+                  }
+                  if (Name == llgo::LLGOPreGlobalDCEPassName) {
+                    llgo::addLLGOPreGlobalDCEPipeline(MPM);
+                    return true;
+                  }
+                  return false;
                 });
 
             PB.registerFullLinkTimeOptimizationEarlyEPCallback(
                 [](ModulePassManager &MPM, OptimizationLevel) {
                   llgo::addLLGOPreGlobalDCEPipeline(MPM);
+                });
+            PB.registerFullLinkTimeOptimizationLastEPCallback(
+                [](ModulePassManager &MPM, OptimizationLevel) {
+                  llgo::addLLGOTypeIDExportCleanupPass(MPM);
                 });
           }};
 }

@@ -435,6 +435,41 @@ func TestDevLTOGlobalDCEMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *t
 	}
 }
 
+func TestDevLTOGlobalDCEMethodCapabilityKeyNormalizesABIClosure(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	pkg := types.NewPackage("testing", "testing")
+	callback := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "", types.Typ[types.String]),
+			types.NewVar(token.NoPos, nil, "", types.Typ[types.String]),
+		),
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool]),
+			types.NewVar(token.NoPos, nil, "", types.Universe.Lookup("error").Type()),
+		),
+		false)
+	closure := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, nil, "$f", callback, false),
+		types.NewField(token.NoPos, nil, "$data", types.Typ[types.UnsafePointer], false),
+	}, nil)
+	method := func(param types.Type) *types.Func {
+		return types.NewFunc(token.NoPos, pkg, "verify", types.NewSignatureType(nil, nil, nil,
+			types.NewTuple(
+				types.NewVar(token.NoPos, nil, "", types.Typ[types.String]),
+				types.NewVar(token.NoPos, nil, "", param),
+			),
+			types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Universe.Lookup("error").Type())),
+			false))
+	}
+
+	sourceKey := methodCapabilityKey(method(callback))
+	abiKey := methodCapabilityKey(method(closure))
+	if abiKey != sourceKey {
+		t.Fatalf("ABI closure capability key mismatch: got %q, want %q", abiKey, sourceKey)
+	}
+}
+
 func TestDevLTOGlobalDCEMethodCapabilityKeyQualifiesUnexportedNames(t *testing.T) {
 	requireGoGlobalDCE(t)
 
@@ -688,7 +723,12 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 	returns := types.NewTuple(types.NewVar(token.NoPos, nil, "", intf))
 	fn := pkg.NewFunc("Make", types.NewSignatureType(nil, nil, nil, nil, returns, false), InGo)
 	b := fn.MakeBody(1)
-	b.Return(b.MakeInterface(prog.Type(intf, InGo), prog.Zero(prog.Type(concrete, InGo))))
+	ifaceValue := b.MakeInterface(prog.Type(intf, InGo), prog.Zero(prog.Type(concrete, InGo)))
+	b.Imethod(ifaceValue, interfaceMethodM)
+	prog.EnableLTOPluginMarkers(false)
+	b.Imethod(ifaceValue, interfaceMethodM)
+	prog.EnableLTOPluginMarkers(true)
+	b.Return(ifaceValue)
 	if _, ok := b.staticItab(intf, concrete, b.abiType(intf), b.abiType(concrete)); !ok {
 		t.Fatal("cached static itab template was not reused")
 	}
@@ -728,12 +768,18 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	ir := pkg.String()
+	interfaceTypeID := prog.interfaceCapabilityKey(intf)
 	for _, want := range []string{
 		`_llgo_itab$`,
 		`@llvm.compiler.used`,
 		`!"go.method.M:func()"`,
 		`!"go.method.N:func()"`,
 		`!llgo.static.itab.slot`,
+		`!llgo.interface.type`,
+		`!llgo.interface.method`,
+		`!"` + interfaceTypeID + `"`,
+		`!"` + prog.interfaceMethodCapabilityKey(intf, 0) + `"`,
+		`!"` + prog.interfaceMethodCapabilityKey(intf, 1) + `"`,
 	} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("missing %s in static itab IR:\n%s", want, ir)
@@ -741,6 +787,15 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 	}
 	if !strings.Contains(ir, `call ptr @"github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab"`) {
 		t.Fatalf("static itab template replaced NewItab before LTO proof:\n%s", ir)
+	}
+	for _, typeID := range []string{
+		prog.interfaceMethodCapabilityKey(intf, 0),
+		methodCapabilityKey(interfaceMethodM),
+	} {
+		if !strings.Contains(ir, `call { ptr, i1 } @llvm.type.checked.load`+"(") ||
+			!strings.Contains(ir, `metadata !"`+typeID+`"`) {
+			t.Fatalf("missing checked load for %s:\n%s", typeID, ir)
+		}
 	}
 }
 

@@ -706,6 +706,15 @@ func (b Builder) abiType(t types.Type) Expr {
 		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 		if prog.enableGoGlobalDCE {
 			prog.addMethodTypeMetadata(g.impl, prog.Type(typ, InGo), methods)
+			if prog.enableLTOPluginMarker {
+				if intf, ok := types.Unalias(t).(*types.Interface); ok && !intf.Empty() {
+					prog.addInterfaceTypeMetadata(g.impl, intf)
+					// Private metadata is not an IR use. Keep the declaration alive
+					// until the LTO plugin has consumed it; the plugin removes this
+					// preservation before GlobalDCE.
+					pkg.markLLVMUsed(g.impl)
+				}
+			}
 		}
 		prog.abiSymbol[name] = &AbiSymbol{Name: name, PkgPath: pkg.Path(), Raw: t, Typ: g.Type, MSet: mset}
 	}

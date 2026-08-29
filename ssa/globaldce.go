@@ -1,8 +1,12 @@
 package ssa
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"go/types"
+	"strconv"
 
+	"github.com/xgo-dev/llgo/ssa/abi"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -22,6 +26,11 @@ const (
 	reflectMethodByNameArgAttr  = "llgo.reflect.methodbyname.name"
 	reflectMethodByNameValue    = "value"
 	reflectMethodByNameType     = "type"
+
+	interfaceTypeMetadata    = "llgo.interface.type"
+	interfaceMethodMetadata  = "llgo.interface.method"
+	interfaceTypeIDPrefix    = "go.method.i."
+	interfaceMetadataVersion = 1
 )
 
 type ReflectMethodCheck struct {
@@ -59,6 +68,14 @@ func methodCapabilityType(t types.Type) types.Type {
 	case *types.Slice:
 		return types.NewSlice(methodCapabilityType(t.Elem()))
 	case *types.Struct:
+		// Interface descriptors are built from ABI-patched types, where a Go
+		// function value is represented as {$f func(...); $data unsafe.Pointer}.
+		// Concrete method descriptors still carry the source-level function type.
+		// Normalize the compiler-only closure struct back to its code signature so
+		// both paths produce the same method capability key.
+		if abi.IsClosure(t) {
+			return methodCapabilityType(t.Field(0).Type())
+		}
 		fields := make([]*types.Var, t.NumFields())
 		tags := make([]string, t.NumFields())
 		for i := range fields {
@@ -125,6 +142,42 @@ func methodCapabilityName(method *types.Func) string {
 		return types.Id(pkg, name)
 	}
 	return name
+}
+
+func (p Program) interfaceCapabilityKey(intf *types.Interface) string {
+	name, _ := p.abi.TypeName(intf)
+	sum := sha256.Sum256([]byte(name))
+	return interfaceTypeIDPrefix + base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func (p Program) interfaceMethodCapabilityKey(intf *types.Interface, index int) string {
+	return p.interfaceCapabilityKey(intf) + ".m" + strconv.Itoa(index)
+}
+
+// addInterfaceTypeMetadata declares the complete method set of an interface.
+// These are private LLGo markers rather than LLVM type metadata: the LTO
+// plugin consumes them to add exact interface-and-method !type entries only to
+// descriptors that implement every declared method.
+func (p Program) addInterfaceTypeMetadata(global llvm.Value, intf *types.Interface) {
+	if intf == nil || intf.NumMethods() == 0 {
+		return
+	}
+	intf = intf.Complete()
+	intfID := p.interfaceCapabilityKey(intf)
+	int32Type := p.Int32().ll
+	global.AddMetadata(p.ctx.MDKindID(interfaceTypeMetadata), p.ctx.MDNode([]llvm.Metadata{
+		llvm.ConstInt(int32Type, interfaceMetadataVersion, false).ConstantAsMetadata(),
+		p.ctx.MDString(intfID),
+		llvm.ConstInt(int32Type, uint64(intf.NumMethods()), false).ConstantAsMetadata(),
+	}))
+	methodKind := p.ctx.MDKindID(interfaceMethodMetadata)
+	for i := 0; i < intf.NumMethods(); i++ {
+		global.AddMetadata(methodKind, p.ctx.MDNode([]llvm.Metadata{
+			llvm.ConstInt(int32Type, uint64(i), false).ConstantAsMetadata(),
+			p.ctx.MDString(p.interfaceMethodCapabilityKey(intf, i)),
+			p.ctx.MDString(methodCapabilityKey(intf.Method(i))),
+		}))
+	}
 }
 
 func reflectValueMethodNameTypeID(name string) string {

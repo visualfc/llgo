@@ -104,10 +104,10 @@ func (b Builder) staticItab(rawIntf *types.Interface, concrete types.Type, tintf
 	stride := uint64(prog.td.TypeAllocSize(ptr.ll))
 	for i := range methods {
 		offset := funOffset + uint64(i)*stride
-		method := rawIntf.Method(i)
+		typeID := prog.interfaceMethodCapabilityKey(rawIntf, i)
 		node := prog.ctx.MDNode([]llvm.Metadata{
 			llvm.ConstInt(prog.Int64().ll, offset, false).ConstantAsMetadata(),
-			prog.ctx.MDString(methodCapabilityKey(method)),
+			prog.ctx.MDString(typeID),
 		})
 		global.impl.AddMetadata(slotKind, node)
 	}
@@ -175,6 +175,14 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 	tclosure := prog.Type(sig, InGo)
 	i := iMethodOf(rawIntf, method)
 	b.recordUseIfaceMethod(rawIntf, i)
+	methodTypeID := methodCapabilityKey(method)
+	if prog.enableGoGlobalDCE && prog.enableLTOPluginMarker {
+		// Materialize and preserve the structural interface declaration so the
+		// LTO plugin can refine this call from a signature-wide capability to
+		// the exact interface-and-method candidate set.
+		b.abiType(rawIntf)
+		methodTypeID = prog.interfaceMethodCapabilityKey(rawIntf, i)
+	}
 	data := b.InlineCall(b.Pkg.rtFunc("IfacePtrData"), intf)
 	impl := intf.impl
 	itab := Expr{b.faceItab(impl), prog.VoidPtrPtr()}
@@ -183,7 +191,7 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 	if prog.enableGoGlobalDCE && !recoverToken {
 		fnType := prog.Elem(pfn.Type)
 		fn = Expr{
-			prog.methodCheckedLoad(b.impl, pfn.impl, methodCapabilityKey(method)),
+			prog.methodCheckedLoad(b.impl, pfn.impl, methodTypeID),
 			fnType,
 		}
 	} else {
@@ -193,7 +201,7 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 			// general-purpose pointer. Recover bookkeeping needs the same code
 			// address as ordinary data, so retain the capability check while
 			// carrying the raw itab load into the transient invocation pair.
-			prog.methodCheckedLoad(b.impl, pfn.impl, methodCapabilityKey(method))
+			prog.methodCheckedLoad(b.impl, pfn.impl, methodTypeID)
 		}
 	}
 	// This is a transient interface invocation pair, not a first-class
