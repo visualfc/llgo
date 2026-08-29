@@ -182,6 +182,21 @@ func MakeSlice(len, cap int, etSize int) Slice {
 	return Slice{AllocZ(mem), len, cap}
 }
 
+// MakeSlice64 follows runtime.makeslice64. The compiler uses it on 32-bit
+// targets when either source operand is wider than int, so an out-of-range
+// value is rejected before it can be truncated into an apparently valid size.
+func MakeSlice64(len64, cap64 int64, etSize int) Slice {
+	len := int(len64)
+	if int64(len) != len64 {
+		panicmakeslicelen()
+	}
+	cap := int(cap64)
+	if int64(cap) != cap64 {
+		panicmakeslicecap()
+	}
+	return MakeSlice(len, cap, etSize)
+}
+
 func panicmakeslicelen() {
 	panic(errorString("makeslice: len out of range"))
 }

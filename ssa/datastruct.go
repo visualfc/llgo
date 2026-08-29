@@ -555,10 +555,17 @@ func (b Builder) SliceLit(t Type, elts ...Expr) Expr {
 func (b Builder) MakeSlice(t Type, len, cap Expr) (ret Expr) {
 	dbgInstrf("MakeSlice %v, %v, %v\n", t.RawType(), len.impl, cap.impl)
 	prog := b.Prog
-	len = b.FitIntSize(len)
-	cap = b.FitIntSize(cap)
 	telem := prog.Index(t)
-	ret = b.InlineCall(b.Pkg.rtFunc("MakeSlice"), len, cap, prog.IntVal(prog.SizeOf(telem), prog.Int()))
+	fn := "MakeSlice"
+	if prog.SizeOf(len.Type) > prog.SizeOf(prog.Int()) || prog.SizeOf(cap.Type) > prog.SizeOf(prog.Int()) {
+		fn = "MakeSlice64"
+		len = b.fitInt64(len)
+		cap = b.fitInt64(cap)
+	} else {
+		len = b.FitIntSize(len)
+		cap = b.FitIntSize(cap)
+	}
+	ret = b.InlineCall(b.Pkg.rtFunc(fn), len, cap, prog.IntVal(prog.SizeOf(telem), prog.Int()))
 	ret.Type = t
 	return
 }
@@ -570,6 +577,17 @@ func (b Builder) FitIntSize(n Expr) Expr {
 	if prog.SizeOf(n.Type) != prog.SizeOf(typ) {
 		srcType := n.Type
 		n.impl = castInt(b, n.impl, srcType, typ)
+	}
+	n.Type = typ
+	return n
+}
+
+// fitInt64 applies the conversion used for runtime's 64-bit make helpers.
+// Equal-width signed and unsigned inputs have the same i64 representation.
+func (b Builder) fitInt64(n Expr) Expr {
+	typ := b.Prog.Int64()
+	if n.impl.Type() != typ.ll {
+		n.impl = castInt(b, n.impl, n.Type, typ)
 	}
 	n.Type = typ
 	return n
@@ -927,9 +945,15 @@ func (b Builder) MakeChan(t Type, size Expr) (ret Expr) {
 	dbgInstrf("MakeChan %v, %v\n", t.RawType(), size.impl)
 	prog := b.Prog
 	eltSize := prog.IntVal(prog.SizeOf(prog.Elem(t)), prog.Int())
-	size = b.FitIntSize(size)
+	fn := "NewChan"
+	if prog.SizeOf(size.Type) > prog.SizeOf(prog.Int()) {
+		fn = "NewChan64"
+		size = b.fitInt64(size)
+	} else {
+		size = b.FitIntSize(size)
+	}
 	ret.Type = t
-	ret.impl = b.InlineCall(b.Pkg.rtFunc("NewChan"), eltSize, size).impl
+	ret.impl = b.InlineCall(b.Pkg.rtFunc(fn), eltSize, size).impl
 	return
 }
 
