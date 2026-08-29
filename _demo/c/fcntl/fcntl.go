@@ -12,7 +12,7 @@ import (
 func main() {
 	verifyGetcwd()
 
-	filename := c.Str("testfile.txt")
+	filename := c.AllocaCStr(temporaryFilename())
 	defer os.Remove(filename)
 	data := c.Str("Hello, os!")
 	var buffer [20]c.Char

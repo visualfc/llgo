@@ -1,6 +1,10 @@
 package main
 
 import (
+	stdos "os"
+	"path/filepath"
+	"strconv"
+
 	"github.com/goplus/lib/c"
 	"github.com/goplus/lib/c/os"
 )
@@ -11,4 +15,9 @@ func verifyGetcwd() {
 	if wd == nil || c.GoString(wd) == "" {
 		panic("getcwd")
 	}
+}
+
+func temporaryFilename() string {
+	name := "llgo-fcntl-" + strconv.Itoa(int(os.Getpid())) + ".tmp"
+	return filepath.Join(stdos.TempDir(), name)
 }

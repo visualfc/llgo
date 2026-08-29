@@ -11,7 +11,7 @@ import (
 // operations while the Unix source continues to cover F_GETFL/F_SETFL.
 func main() {
 	verifyGetcwd()
-	filename := c.Str("testfile.txt")
+	filename := c.AllocaCStr(temporaryFilename())
 	data := c.Str("Hello, os!")
 	defer os.Remove(filename)
 
