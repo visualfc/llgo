@@ -55,6 +55,7 @@ func main() {
 	testReflectMakeFunc()
 	testFunctionMetadata()
 	testConversions()
+	TestConvertFunc(&t)
 	testValueOperations()
 }
 

@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	verifySyscallAPI()
 	msg := []byte("Hello from Syscall!\n")
 	r1, r2, err := syscall.Syscall(
 		syscall.SYS_WRITE,

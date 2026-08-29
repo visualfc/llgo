@@ -29,6 +29,10 @@ func testFunctionMetadata() {
 	if typ.Kind() != reflect.Func || typ.NumIn() != 2 || typ.NumOut() != 2 || typ.NumMethod() != 2 {
 		panic("named function metadata")
 	}
+	if typ.In(0).Kind() != reflect.Int || typ.In(1).Kind() != reflect.String ||
+		typ.Out(0).Kind() != reflect.Bool || typ.Out(1).Kind() != reflect.Int || typ.IsVariadic() {
+		panic("named function input/output metadata")
+	}
 	if reflect.TypeOf(reflectedHolder{}).Field(0).Type.Kind() != reflect.Func {
 		panic("function field metadata")
 	}

@@ -17,4 +17,5 @@ func main() {
 	if rand.Rand() != first {
 		panic("C rand seed")
 	}
+	verifyGenerators()
 }

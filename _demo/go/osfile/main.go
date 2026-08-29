@@ -14,6 +14,9 @@ func main() {
 	root, err := os.MkdirTemp("", "llgo-fileio-*")
 	check(err)
 	defer os.RemoveAll(root)
+	scratch, err := os.CreateTemp(root, "scratch-*.txt")
+	check(err)
+	check(scratch.Close())
 
 	nested := filepath.Join(root, "nested", "directory")
 	check(os.MkdirAll(nested, 0o755))
@@ -40,6 +43,21 @@ func main() {
 	}
 	if off, err := f.Seek(7, io.SeekStart); err != nil || off != 7 {
 		panic("Seek")
+	}
+	if n, err := f.Read(buf); err != nil || n != 5 || string(buf) != "World" {
+		panic("Read after SeekStart")
+	}
+	if off, err := f.Seek(2, io.SeekCurrent); err != nil || off != 14 {
+		panic("SeekCurrent")
+	}
+	if _, err := f.Seek(-5, io.SeekEnd); err != nil {
+		panic("SeekEnd")
+	}
+	if n, err := f.WriteAt([]byte("YYYYY"), 7); err != nil || n != 5 {
+		panic("WriteAt non-zero offset")
+	}
+	if n, err := f.ReadAt(buf, 7); err != nil || n != 5 || string(buf) != "YYYYY" {
+		panic("ReadAt after WriteAt")
 	}
 	check(f.Truncate(19))
 	info, err := f.Stat()

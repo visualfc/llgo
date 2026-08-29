@@ -8,6 +8,9 @@ import (
 )
 
 func main() {
+	if ctime.Time(nil) <= 0 {
+		panic("invalid C time")
+	}
 	var realtime, monotonic ctime.Timespec
 	if ctime.ClockGettime(ctime.CLOCK_REALTIME, &realtime) != 0 ||
 		ctime.ClockGettime(ctime.CLOCK_MONOTONIC, &monotonic) != 0 {
@@ -29,4 +32,7 @@ func main() {
 	if rand.Random() != random {
 		panic("C random seed")
 	}
+	rand.Srandom(1)
+	_ = fastRand64()
+	verifyGenerators()
 }

@@ -20,6 +20,7 @@ func (c *counter) add() {
 // former goroutine, mutex, Once, WaitGroup, atomic and atomic-function-value
 // calls in a single bounded concurrency owner.
 func main() {
+	testAsync()
 	const workers = 8
 	start := make(chan struct{})
 	var c counter

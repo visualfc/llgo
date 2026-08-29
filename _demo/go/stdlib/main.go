@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	cryptorand "crypto/rand"
-	"hash/maphash"
+	"io"
 	"log"
 	"math"
 	"math/cmplx"
@@ -11,15 +11,14 @@ import (
 	"net/netip"
 	"net/textproto"
 	"runtime"
-	"strings"
-	"text/template"
 )
 
-// A bounded ecosystem smoke keeps representative calls from ten former tiny
-// demos. Package-specific behavior remains owned by test/std; this case checks
-// that an LLGo program can link and execute the combined API surface.
+// A bounded ecosystem smoke keeps the distinct API calls from ten former tiny
+// demos in one executable. Package-specific semantics remain owned by test/std;
+// this case checks that an LLGo program can link and execute the combined API
+// surface without one independently linked command per package.
 func main() {
-	if math.Sqrt(81) != 9 || cmplx.Abs(3+4i) != 5 {
+	if math.Sqrt(81) != 9 || math.Abs(-1.2) != 1.2 || math.Ldexp(1.2, 3) != 9.6 || cmplx.Abs(3+4i) != 5 {
 		panic("math")
 	}
 
@@ -28,24 +27,26 @@ func main() {
 	if logOutput.String() != "llgo: ok\n" {
 		panic("log")
 	}
-
-	var hash maphash.Hash
-	hash.SetSeed(maphash.MakeSeed())
-	_, _ = hash.WriteString("llgo")
-	wantHash := hash.Sum64()
-	hash.Reset()
-	_, _ = hash.WriteString("llgo")
-	if hash.Sum64() != wantHash {
-		panic("maphash reset")
-	}
+	logWriter := log.Writer()
+	log.SetOutput(io.Discard)
+	log.Println("Hello")
+	log.SetOutput(logWriter)
+	testMapHash()
 
 	header := make(textproto.MIMEHeader)
 	header.Add("Content-Type", "text/plain")
+	header.Set("host", "www.example.com")
 	if header.Get("content-type") != "text/plain" || len(header.Values("Content-Type")) != 1 {
 		panic("MIMEHeader")
 	}
+	if header.Get("Host") != "www.example.com" {
+		panic("MIMEHeader Set")
+	}
 	if addr, err := netip.ParseAddr("127.0.0.1"); err != nil || !addr.IsLoopback() {
 		panic("netip")
+	}
+	if endpoint := netip.MustParseAddrPort("127.0.0.1:80"); endpoint.Port() != 80 {
+		panic("netip AddrPort")
 	}
 
 	var entropy [8]byte
@@ -56,14 +57,15 @@ func main() {
 	if rng.Int63() != 5577006791947779410 {
 		panic("math/rand")
 	}
+	for i := 0; i < 3; i++ {
+		if value := mathrand.Intn(100); value < 0 || value >= 100 {
+			panic("math/rand Intn")
+		}
+	}
 	if runtime.GOROOT() == "" {
 		panic("runtime.GOROOT")
 	}
 
-	tmpl := template.Must(template.New("names").Funcs(template.FuncMap{"join": strings.Join}).Parse(`{{join . ","}}`))
-	var rendered strings.Builder
-	if err := tmpl.Execute(&rendered, []string{"Go", "LLGo"}); err != nil || rendered.String() != "Go,LLGo" {
-		panic("text/template")
-	}
+	testTemplate()
 	println("stdlib ecosystem ok")
 }

@@ -39,16 +39,25 @@ func returnTwo() ([]int, bool) {
 
 type stateFn func(*machine) stateFn
 type machine struct {
-	n     int
+	value int
+	max   int
 	state stateFn
 }
 
+func startState(*machine) stateFn {
+	return countState
+}
+
 func countState(m *machine) stateFn {
-	m.n++
-	if m.n == 3 {
-		return nil
+	m.value++
+	if m.value >= m.max {
+		return endState
 	}
 	return countState
+}
+
+func endState(*machine) stateFn {
+	return nil
 }
 
 func deferRecover() (captured, closed int) {
@@ -79,11 +88,11 @@ func main() {
 	if got, ok := returnTwo(); !ok || len(got) != 2 || got[0] != 1 || got[1] != 2 {
 		panic("multi return capture")
 	}
-	m := &machine{state: countState}
+	m := &machine{max: 5, state: startState}
 	for m.state != nil {
 		m.state = m.state(m)
 	}
-	if m.n != 3 {
+	if m.value != 5 {
 		panic("recursive named function")
 	}
 	if captured, closed := deferRecover(); captured != 5 || closed != 10 {

@@ -10,6 +10,7 @@ import (
 var key pthread.Key
 
 func main() {
+	verifySyncLayout()
 	if key.Create(nil) != 0 {
 		panic("pthread_key_create")
 	}

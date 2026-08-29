@@ -6,6 +6,9 @@ import "time"
 // deadlines are stopped; only channel completion is used as synchronization.
 func main() {
 	start := time.Now()
+	if start.String() == "" {
+		panic("time string")
+	}
 	future := start.Add(time.Hour)
 	if time.Until(future) <= 0 || time.Since(start) < 0 {
 		panic("clock arithmetic")
@@ -17,6 +20,7 @@ func main() {
 	}
 	t.Reset(time.Millisecond)
 	<-t.C
+	<-time.After(0)
 
 	done := make(chan struct{})
 	after := time.AfterFunc(time.Millisecond, func() { close(done) })
