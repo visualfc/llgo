@@ -16,6 +16,12 @@ type Invocation struct {
 	Args   []string
 	Config *Config
 	Dir    string
+
+	// compileOnly and disableMultiFallback are used by the multi-package
+	// failure recovery path. They are intentionally not part of Config: a
+	// caller-visible ModeBuild still has normal cmd/go output semantics.
+	compileOnly          bool
+	disableMultiFallback bool
 }
 
 // commandEnv is the per-invocation process-execution state. It deliberately

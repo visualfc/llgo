@@ -50,3 +50,36 @@ func TestEffectiveDependenciesHandlesNilPackage(t *testing.T) {
 		t.Fatalf("effectiveDependencies(nil) = %v, want nil", deps)
 	}
 }
+
+func TestLinkedPackageClosureUsesOnlyRootAndEffectiveDependencies(t *testing.T) {
+	root := &packages.Package{ID: "root", ExportFile: "root.a"}
+	base := &packages.Package{ID: "base", ExportFile: "base.a"}
+	altOnly := &packages.Package{ID: "alt-only", ExportFile: "alt.a"}
+	unrelated := &packages.Package{ID: "unrelated", ExportFile: "unrelated.a"}
+	runtimePkg := &packages.Package{ID: "runtime", PkgPath: "github.com/xgo-dev/llgo/runtime", ExportFile: "runtime.a"}
+	root.Imports = map[string]*packages.Package{"base": base}
+
+	wrapped := func(pkg *packages.Package) *aPackage { return &aPackage{Package: pkg} }
+	rootPkg := wrapped(root)
+	rootPkg.AltPkg = &packages.Cached{Package: &packages.Package{
+		ID: "alt-root", Imports: map[string]*packages.Package{"alt-only": altOnly},
+	}}
+	basePkg, altPkg := wrapped(base), wrapped(altOnly)
+	unrelatedPkg, runtimeWrapped := wrapped(unrelated), wrapped(runtimePkg)
+	ctx := &context{
+		pkgs: map[*packages.Package]Package{
+			root: rootPkg, base: basePkg, altOnly: altPkg, unrelated: unrelatedPkg, runtimePkg: runtimeWrapped,
+		},
+		pkgByID: map[string]Package{
+			"root": rootPkg, "base": basePkg, "alt-only": altPkg, "unrelated": unrelatedPkg, "runtime": runtimeWrapped,
+		},
+	}
+	gotPkgs := linkedPackageClosure(ctx, root, []*aPackage{rootPkg, basePkg, altPkg, unrelatedPkg, runtimeWrapped})
+	got := make([]string, len(gotPkgs))
+	for i, pkg := range gotPkgs {
+		got[i] = pkg.ID
+	}
+	if want := []string{"alt-only", "base", "root", "runtime"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("linkedPackageClosure = %v, want %v", got, want)
+	}
+}
