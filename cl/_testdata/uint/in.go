@@ -1,20 +1,17 @@
 // LITTEST
 package main
 
-import "github.com/goplus/lib/c"
-
 // CHECK-LABEL: define i32 @main.f(i32 %0){{.*}} {
-// CHECK: [[UINT_NEXT:%[0-9]+]] = add i32 %0, 1
-// CHECK-NEXT: ret i32 [[UINT_NEXT]]
-func f(a c.Uint) c.Uint {
+// CHECK: add i32 %0, 1
+func f(a uint32) uint32 {
 	a++
 	return a
 }
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
-// CHECK: [[UINT_RESULT:%[0-9]+]] = call i32 @main.f(i32 100)
-// CHECK-NEXT: call i32 (ptr, ...) @printf(ptr @{{[0-9]+}}, i32 [[UINT_RESULT]])
+// CHECK: zext i32 {{%[0-9]+}} to i64
+// CHECK: call void @"{{.*}}PrintUint"
 func main() {
-	var a c.Uint = 100
-	c.Printf(c.Str("Hello, %u\n"), f(a))
+	var a uint32 = 100
+	println(f(a))
 }

@@ -93,23 +93,20 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/select",      // timeout: emulator did not auto-exit
 				"./_testgo/selects",     // timeout: emulator did not auto-exit
 				"./_testgo/sigsegv",     // unexpected output: got "0/main", expected recover nil-pointer message
-				"./_testgo/syncmap",     // llgo panic: unsatisfied import internal/runtime/sys
 				// Baremetal terminates after an outermost panic is recovered.
 				"./_testgo/nesteddeferpanic",
 			},
 			"./_testlibc": {
-				"./_testlibc/argv",     // timeout: emulator panic (Load access fault), no auto-exit
-				"./_testlibc/atomic",   // link error: ld.lld: error: undefined symbol: __atomic_store
-				"./_testlibc/complex",  // link error: ld.lld: error: undefined symbol: cabsf
-				"./_testlibc/demangle", // link error: ld.lld: error: unknown argument '-Wl,-search_paths_first'
-				"./_testlibc/once",     // fast fail: build constraints exclude all Go files (pthread/sync)
-				"./_testlibc/setjmp",   // link error: ld.lld: error: undefined symbol: stderr
-				"./_testlibc/sqlite",   // link error: ld.lld: error: unable to find library -lsqlite3
+				"./_testlibc/argv",    // timeout: emulator panic (Load access fault), no auto-exit
+				"./_testlibc/atomic",  // link error: ld.lld: error: undefined symbol: __atomic_store
+				"./_testlibc/complex", // link error: ld.lld: error: undefined symbol: cabsf
+				"./_testlibc/cppabi",  // C++ standard headers are unavailable in the baremetal sysroot
+				"./_testlibc/once",    // fast fail: build constraints exclude all Go files (pthread/sync)
+				"./_testlibc/setjmp",  // link error: ld.lld: error: undefined symbol: stderr
 			},
 			"./_testrt": {
 				"./_testrt/asmfull",     // compile/asm error: unrecognized instruction mnemonic
 				"./_testrt/fprintf",     // link error: ld.lld: error: undefined symbol: __stderrp
-				"./_testrt/hello",       // fast fail: build constraints exclude all Go files
 				"./_testrt/linkname",    // unexpected output: line order mismatch ("hello" appears first)
 				"./_testrt/makemap",     // link error: ld.lld: error: undefined symbol: __atomic_fetch_or_4
 				"./_testrt/strlen",      // fast fail: build constraints exclude all Go files
@@ -150,18 +147,16 @@ var embedTargetConfigs = []embedTargetConfig{
 				"./_testgo/nesteddeferpanic",
 			},
 			"./_testlibc": {
-				"./_testlibc/atomic",   // unexpected output
-				"./_testlibc/demangle", // link error: ld.lld unknown argument -Wl,-search_paths_first
-				"./_testlibc/once",     // panic: cannot build SSA for packages
-				"./_testlibc/setjmp",   // link error: ld.lld undefined symbol stderr
-				"./_testlibc/sqlite",   // link error: ld.lld unable to find library -lsqlite3
+				"./_testlibc/atomic", // unexpected output
+				"./_testlibc/cppabi", // C++ standard headers are unavailable in the baremetal sysroot
+				"./_testlibc/once",   // panic: cannot build SSA for packages
+				"./_testlibc/setjmp", // link error: ld.lld undefined symbol stderr
 			},
 			"./_testrt": {
 				"./_testrt/asmfull",  // unexpected output
 				"./_testrt/cast",     // timeout: emulator did not auto-exit
 				"./_testrt/complex",  // unexpected output
 				"./_testrt/fprintf",  // link error: ld.lld undefined symbol __stderrp
-				"./_testrt/hello",    // panic: cannot build SSA for packages
 				"./_testrt/linkname", // unexpected output
 				"./_testrt/strlen",   // panic: runtime index out of range
 				"./_testrt/struct",   // panic: runtime index out of range
@@ -192,7 +187,14 @@ func runEmbedTargetSuite(t *testing.T, target, relDir string, ignore []string) {
 }
 
 func TestRunAndTestFromTestgo(t *testing.T) {
-	cltest.RunAndTestFromDir(t, "", "./_testgo", nil)
+	// These directories are package-selection fixtures for internal/build.
+	// Their executable sources contain only ordinary calls and do not own a
+	// compiler lowering contract.
+	ignore := []string{
+		"./_testgo/runextest",
+		"./_testgo/runtest",
+	}
+	cltest.RunAndTestFromDir(t, "", "./_testgo", ignore)
 }
 
 func TestRunAndTestFromTestmeta(t *testing.T) {
@@ -663,14 +665,9 @@ func TestRunAndTestFromTestlibgo(t *testing.T) {
 
 func TestRunAndTestFromTestlibc(t *testing.T) {
 	var ignore []string
-	switch runtime.GOOS {
-	case "linux":
+	if runtime.GOOS == "windows" {
 		ignore = []string{
-			"./_testlibc/demangle", // Linux demangle symbol differs (itaniumDemangle linkage mismatch).
-		}
-	case "windows":
-		ignore = []string{
-			"./_testlibc/once", // POSIX pthread_once has no Windows ABI counterpart; Windows synchronization is covered by goplus/lib.
+			"./_testlibc/once", // POSIX pthread_once has no Windows ABI counterpart.
 		}
 	}
 	cltest.RunAndTestFromDir(t, "", "./_testlibc", ignore)

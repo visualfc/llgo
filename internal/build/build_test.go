@@ -1164,9 +1164,10 @@ func runBinary(t *testing.T, path string, args ...string) string {
 	return string(output)
 }
 
-func TestRunPrintfWithStdioNobuf(t *testing.T) {
+func TestRunStdioNobuf(t *testing.T) {
 	t.Setenv(llgoStdioNobuf, "1")
-	mockRun([]string{"../../cl/_testdata/printf"}, &Config{Mode: ModeRun})
+	// strlen owns the consolidated C printf/varargs integration fixture.
+	mockRun([]string{"../../cl/_testrt/strlen"}, &Config{Mode: ModeRun})
 }
 
 func TestTestOutputFileLogic(t *testing.T) {

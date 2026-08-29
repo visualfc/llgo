@@ -735,7 +735,7 @@ func readGolden(file string) ([]byte, bool, error) {
 	if versioned, ok := goldenForGoVersion(file, runtime.Version()); ok {
 		data, err := os.ReadFile(versioned)
 		if err == nil {
-			return data, !bytes.Equal(data, []byte{';'}), nil
+			return data, !isIROnlyGolden(data), nil
 		}
 		if !errors.Is(err, os.ErrNotExist) {
 			return nil, false, err
@@ -748,10 +748,14 @@ func readGolden(file string) ([]byte, bool, error) {
 		}
 		return nil, false, err
 	}
-	if bytes.Equal(data, []byte{';'}) {
+	if isIROnlyGolden(data) {
 		return data, false, nil
 	}
 	return data, true, nil
+}
+
+func isIROnlyGolden(data []byte) bool {
+	return bytes.Equal(bytes.TrimSuffix(data, []byte{'\n'}), []byte{';'})
 }
 
 func goldenForGoVersion(file, goVersion string) (string, bool) {

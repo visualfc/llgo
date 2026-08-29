@@ -1,6 +1,7 @@
 # Compiler fixture suite organization
 
-Status: proposal. Baseline: xgo-dev/main@c1d5da2 (2026-08-29).
+Status: proposal with an initial migration slice. Baseline:
+xgo-dev/main@c1d5da2 (2026-08-29).
 
 ## Summary
 
@@ -32,6 +33,23 @@ replacement fixtures.
 
 The detailed current-case inventory and migration mapping is in
 [cl-test-fixtures-inventory.md](cl-test-fixtures-inventory.md).
+
+### Initial migration slice
+
+The implementation accompanying this proposal deliberately starts with cases
+whose ownership can be changed without combining unrelated compiler paths. It
+reduces the physical fixture count from 265 to 237. The seven
+`cl/_testdefer` directories become six direct, table-driven `cl/blocks`
+subtests, so the common logical-scenario count is 243.
+
+This slice removes byte-identical or strict-subset fixtures, moves pure
+standard-library and build-selection checks to their existing owners,
+consolidates the small C vararg smokes, replaces thin external wrappers with
+local C/C++ declarations, and adds a focused integer divide/remainder owner.
+Its FileCheck assertions select only the instructions and ABI edges that
+define each contract; runtime output continues to cover the surrounding
+behavior. The proposed 145-directory/151-scenario layout remains the target
+for later migrations after each destination owner exists.
 
 ## Context and problem
 
