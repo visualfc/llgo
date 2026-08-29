@@ -1,11 +1,11 @@
-//go:build (darwin || linux || windows) && go1.23 && !go1.27
+//go:build (darwin || linux || windows) && go1.27
 
 package runtime
 
 import _ "unsafe"
 
 type pprofMemProfileRecord struct {
-	AllocBytes, FreeBytes     int64
+	ObjectSize                int64
 	AllocObjects, FreeObjects int64
 	Stack                     []uintptr
 }
@@ -28,13 +28,11 @@ func pprof_memProfileInternal(p []pprofMemProfileRecord, inuseZero bool) (n int,
 		return n, false
 	}
 	for i := 0; i < n; i++ {
-		p[i] = pprofMemProfileRecord{
-			AllocBytes:   records[i].AllocBytes,
-			FreeBytes:    records[i].FreeBytes,
-			AllocObjects: records[i].AllocObjects,
-			FreeObjects:  records[i].FreeObjects,
-			Stack:        pprofMemProfileStack(&records[i]),
+		objectSize := int64(0)
+		if records[i].AllocObjects != 0 {
+			objectSize = records[i].AllocBytes / records[i].AllocObjects
 		}
+		p[i] = pprofMemProfileRecord{ObjectSize: objectSize, AllocObjects: records[i].AllocObjects, FreeObjects: records[i].FreeObjects, Stack: pprofMemProfileStack(&records[i])}
 	}
 	return n, true
 }

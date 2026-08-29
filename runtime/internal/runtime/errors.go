@@ -229,5 +229,5 @@ type PanicNilError struct {
 	_ [0]*PanicNilError
 }
 
-func (*PanicNilError) Error() string { return "panic called with nil argument" }
+func (*PanicNilError) Error() string { return panicNilErrorMessage() }
 func (*PanicNilError) RuntimeError() {}

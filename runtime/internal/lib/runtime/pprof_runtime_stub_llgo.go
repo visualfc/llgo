@@ -29,13 +29,9 @@ type MemProfileRecord struct {
 	Stack0                    [32]uintptr
 }
 
-func (r *MemProfileRecord) InUseBytes() int64 {
-	return r.AllocBytes - r.FreeBytes
-}
+func (r *MemProfileRecord) InUseBytes() int64 { return r.AllocBytes - r.FreeBytes }
 
-func (r *MemProfileRecord) InUseObjects() int64 {
-	return r.AllocObjects - r.FreeObjects
-}
+func (r *MemProfileRecord) InUseObjects() int64 { return r.AllocObjects - r.FreeObjects }
 
 func (r *MemProfileRecord) Stack() []uintptr {
 	for i, pc := range r.Stack0 {
@@ -71,11 +67,9 @@ func MemProfile(p []MemProfileRecord, inuseZero bool) (n int, ok bool) {
 	}
 	for i := 0; i < n; i++ {
 		p[i] = MemProfileRecord{
-			AllocBytes:   records[i].AllocBytes,
-			FreeBytes:    records[i].FreeBytes,
-			AllocObjects: records[i].AllocObjects,
-			FreeObjects:  records[i].FreeObjects,
-			Stack0:       records[i].Stack0,
+			AllocBytes: records[i].AllocBytes, FreeBytes: records[i].FreeBytes,
+			AllocObjects: records[i].AllocObjects, FreeObjects: records[i].FreeObjects,
+			Stack0: records[i].Stack0,
 		}
 	}
 	return n, true

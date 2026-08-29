@@ -768,7 +768,9 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	defer ctx.disposeBackendPrograms()
 
 	// default runtime globals must be registered before packages are built
-	addGlobalString(conf, "runtime.defaultGOROOT="+runtime.GOROOT(), nil)
+	// The generated program must report the GOROOT whose standard library is
+	// being compiled, which may differ from the toolchain used to build llgo.
+	addGlobalString(conf, "runtime.defaultGOROOT="+sourcePatchGOROOT, nil)
 	addGlobalString(conf, "runtime.buildVersion="+runtime.Version(), nil)
 	pkgs, pkgEntries, err := registerSSAPkgs(ctx, initial, verbose)
 	if err != nil {

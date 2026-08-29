@@ -2,6 +2,7 @@ package runtime
 
 // MemProfileRecord describes allocations aggregated by size class.
 type MemProfileRecord struct {
+	ObjectSize                int64
 	AllocBytes, FreeBytes     int64
 	AllocObjects, FreeObjects int64
 	Stack0                    [32]uintptr
@@ -103,6 +104,7 @@ func MemProfile(p []MemProfileRecord, inuseZero bool) (n int, ok bool) {
 			continue
 		}
 		p[j] = MemProfileRecord{
+			ObjectSize:   int64(b.size),
 			AllocBytes:   int64(uint64(b.size) * uint64(objects)),
 			AllocObjects: int64(objects),
 		}
