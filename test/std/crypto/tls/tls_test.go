@@ -10,6 +10,8 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -131,6 +133,36 @@ func TestCertificate(t *testing.T) {
 
 	if len(cert.Certificate) == 0 {
 		t.Error("Certificate has no certificate chain")
+	}
+
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "cert.pem")
+	keyFile := filepath.Join(dir, "key.pem")
+	if err := os.WriteFile(certFile, certPEM, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, keyPEM, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		t.Fatalf("LoadX509KeyPair failed: %v", err)
+	}
+	if len(loaded.Certificate) != len(cert.Certificate) {
+		t.Fatalf("loaded certificate chain length = %d, want %d", len(loaded.Certificate), len(cert.Certificate))
+	}
+}
+
+func TestDialRejectsUnknownNetwork(t *testing.T) {
+	config := &tls.Config{}
+	if conn, err := tls.Dial("unknown-network", "unused", config); err == nil {
+		conn.Close()
+		t.Fatal("Dial unexpectedly accepted an unknown network")
+	}
+	dialer := &net.Dialer{}
+	if conn, err := tls.DialWithDialer(dialer, "unknown-network", "unused", config); err == nil {
+		conn.Close()
+		t.Fatal("DialWithDialer unexpectedly accepted an unknown network")
 	}
 }
 

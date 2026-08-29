@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   goroot:
-    name: GOROOT (${{ matrix.lane }}, ${{ matrix.os }}${{ startsWith(matrix.os, 'windows') && format(', {0}', matrix.windows_abi) || '' }}, Go ${{ matrix.go-version }}, shard ${{ matrix.shard-index }}/4)
+    name: GOROOT (${{ matrix.lane }}, ${{ matrix.os }}${{ startsWith(matrix.os, 'windows') && format(', {0}', matrix.windows_abi) || '' }}, Go ${{ matrix.go-label }}, shard ${{ matrix.shard-index }}/4)
     timeout-minutes: 180
     env:
       GOPROXY: https://proxy.golang.org,direct
@@ -24,21 +24,29 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # GOROOT compatibility follows the project's current Go 1.26 release
-        # line. Old xfail/not-applicable classifications are retired with the
-        # corpus.
+        # Build the runner with current Go, then exercise the current and
+        # previous supported GOROOT corpora. Windows keeps only the current
+        # corpus because ABI coverage is orthogonal to release compatibility.
         os: [macos-latest, ubuntu-latest, windows-2022]
         windows_abi: [msvc, mingw]
-        go-version: ["1.26.7"]
+        toolchain: [go1.26, current]
         shard-index: ["0", "1", "2", "3"]
         include:
-          - go-version: "1.26.7"
+          - toolchain: go1.26
+            go-version: "1.26.7"
+            go-label: "1.26.7"
+            lane: compatibility
+          - toolchain: current
+            go-version: ""
+            go-label: current
             lane: primary
         exclude:
           - os: macos-latest
             windows_abi: mingw
           - os: ubuntu-latest
             windows_abi: mingw
+          - os: windows-2022
+            toolchain: go1.26
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -49,7 +57,29 @@ jobs:
           llvm-version: 19
           windows-abi: ${{ matrix.windows_abi }}
 
-      - name: Set up Go
+      - name: Set up Go for building LLGo and the runner
+        uses: ./.github/actions/setup-go
+
+      - name: Build LLGo and the GOROOT runner
+        shell: bash
+        run: |
+          LLGO_BUILD_GOROOT_RUNNER=1 dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
+
+          tool_suffix=
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            tool_suffix=.exe
+          fi
+          runner="$RUNNER_TEMP/llgo-bin/goroot-runner${tool_suffix}"
+          llgo="$RUNNER_TEMP/llgo-bin/llgo${tool_suffix}"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            # The shell launches the runner, while the Go runner launches
+            # llgo through the native Windows process API.
+            llgo="$(cygpath -w "$llgo")"
+          fi
+          echo "LLGO_GOROOT_RUNNER=$runner" >> "$GITHUB_ENV"
+          echo "LLGO_TEST_LLGO=$llgo" >> "$GITHUB_ENV"
+
+      - name: Set up target Go
         uses: ./.github/actions/setup-go
         with:
           go-version: ${{ matrix.go-version }}
@@ -60,12 +90,10 @@ jobs:
           go env GOPROXY GOMODCACHE
           clang --version
 
-      - name: Download Go modules
-        timeout-minutes: 10
-        run: go mod download
-
       - name: Run GOROOT runner
         shell: bash
+        env:
+          GOTOOLCHAIN: local
         run: |
           min_swap_free_mib=512
           if [[ "$RUNNER_OS" == "macOS" ]]; then
@@ -78,8 +106,9 @@ jobs:
             # ExitProcess, which does not run CRT stream teardown.
             export LLGO_STDIO_NOBUF=1
           fi
+          target_goroot="$(go env GOROOT)"
           set +e
-          bash dev/test_goroot.sh -- \
+          bash dev/test_goroot.sh "$target_goroot" -- \
             -directive-mode ci \
             -min-swap-free-mib "$min_swap_free_mib" \
             -progress 60s \
@@ -93,11 +122,15 @@ jobs:
         if: always()
         shell: bash
         env:
+          CONFIGURED_GO_VERSION: ${{ matrix.go-version }}
           MATRIX_OS: ${{ matrix.os }}
           WINDOWS_ABI: ${{ matrix.windows_abi }}
-          GO_VERSION: ${{ matrix.go-version }}
           SHARD_INDEX: ${{ matrix.shard-index }}
         run: |
+          GO_VERSION="$CONFIGURED_GO_VERSION"
+          if [[ -z "$GO_VERSION" ]]; then
+            GO_VERSION="$(tr -d '[:space:]' < .go-version)"
+          fi
           log="$RUNNER_TEMP/goroot.log"
           report_dir="$RUNNER_TEMP/goroot-report"
           mkdir -p "$report_dir"
@@ -153,7 +186,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: goroot-stat-${{ matrix.os }}-${{ matrix.windows_abi }}-${{ matrix.go-version }}-${{ matrix.shard-index }}
+          name: goroot-stat-${{ matrix.os }}-${{ matrix.windows_abi }}-${{ matrix.toolchain }}-${{ matrix.shard-index }}
           path: ${{ runner.temp }}/goroot-report
           if-no-files-found: error
           retention-days: 7
@@ -181,6 +214,12 @@ jobs:
           find reports -type f -name 'failures-*.tsv' -exec cat {} + >"$failure_tsv"
 
           report_count=$(wc -l <"$summary_tsv" | tr -d ' ')
+          compatibility_version=$(awk -F '\t' '$2 ~ /^1\.26\./ { print $2; exit }' "$summary_tsv")
+          primary_version=$(awk -F '\t' '$2 ~ /^1\.27\./ { print $2; exit }' "$summary_tsv")
+          if [[ -z "$compatibility_version" || -z "$primary_version" ]]; then
+            echo "error: could not determine compatibility and primary Go versions" >&2
+            exit 1
+          fi
           write_row() {
             local label=$1
             local platform=$2
@@ -214,16 +253,18 @@ jobs:
           {
             echo '## GOROOT run summary'
             echo
-            echo "Received $report_count/16 shard reports."
+            echo "Received $report_count/24 shard reports."
             echo
             echo '| Platform / toolchain | Shards | Selected | Observed | Passed | Failed | Skipped |'
             echo '|---|---:|---:|---:|---:|---:|---:|'
-            write_row 'Darwin · Go 1.26.7' darwin/arm64 1.26.7 4
-            write_row '**Darwin total**' darwin/arm64 '' 4
-            write_row 'Linux · Go 1.26.7' linux/amd64 1.26.7 4
-            write_row '**Linux total**' linux/amd64 '' 4
-            write_row 'Windows MSVC · Go 1.26.7' windows-msvc/amd64 1.26.7 4
-            write_row 'Windows MinGW · Go 1.26.7' windows-mingw/amd64 1.26.7 4
+            write_row "Darwin · Go $compatibility_version" darwin/arm64 "$compatibility_version" 4
+            write_row "Darwin · Go $primary_version" darwin/arm64 "$primary_version" 4
+            write_row '**Darwin total**' darwin/arm64 '' 8
+            write_row "Linux · Go $compatibility_version" linux/amd64 "$compatibility_version" 4
+            write_row "Linux · Go $primary_version" linux/amd64 "$primary_version" 4
+            write_row '**Linux total**' linux/amd64 '' 8
+            write_row "Windows MSVC · Go $primary_version" windows-msvc/amd64 "$primary_version" 4
+            write_row "Windows MinGW · Go $primary_version" windows-mingw/amd64 "$primary_version" 4
             echo
             echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
             echo
@@ -238,8 +279,8 @@ jobs:
             fi
           } >>"$GITHUB_STEP_SUMMARY"
 
-          if [[ "$report_count" -ne 16 ]]; then
-            echo "error: expected 16 shard reports, got $report_count" >&2
+          if [[ "$report_count" -ne 24 ]]; then
+            echo "error: expected 24 shard reports, got $report_count" >&2
             exit 1
           fi
           if [[ "$GOROOT_RESULT" != success ]]; then

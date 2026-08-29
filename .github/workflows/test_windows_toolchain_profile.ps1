@@ -54,7 +54,7 @@ New-Item -ItemType Directory -Force $sourceDir | Out-Null
 @'
 module example.com/llgo-windows-toolchain-profile
 
-go 1.26
+go 1.27
 '@ | Set-Content -Encoding ascii (Join-Path $sourceDir "go.mod")
 $mainSource = @'
 package main

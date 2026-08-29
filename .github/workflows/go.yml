@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   test:
-    name: test (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
+    name: test (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go current)
     # The known-good #172 Windows coverage run took about 56 minutes. Leave
     # room for runner variance and the additional shared-matrix checks without
     # changing the established Linux/macOS budget.
@@ -24,34 +24,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Compiler and repository-tool tests use only the pinned current Go
+        # release. User-code compatibility is covered by LLGo's test matrix.
         include:
           - os: macos-latest
             llvm: 19
-            go: "1.26.7"
-          - os: macos-latest
-            llvm: 19
-            go: "1.27.0"
           - os: ubuntu-latest
             llvm: 19
-            go: "1.26.7"
-          - os: ubuntu-latest
-            llvm: 19
-            go: "1.27.0"
           - os: windows-2022
             llvm: 19
-            go: "1.26.7"
             windows_abi: msvc
           - os: windows-2022
             llvm: 19
-            go: "1.26.7"
-            windows_abi: mingw
-          - os: windows-2022
-            llvm: 19
-            go: "1.27.0"
-            windows_abi: msvc
-          - os: windows-2022
-            llvm: 19
-            go: "1.27.0"
             windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
@@ -74,8 +58,6 @@ jobs:
 
       - name: Set up Go
         uses: ./.github/actions/setup-go
-        with:
-          go-version: ${{ matrix.go }}
 
       - name: Install further optional dependencies for demos
         uses: ./.github/actions/setup-demo-deps
@@ -142,9 +124,9 @@ jobs:
             export LLGO_STDIO_NOBUF=1
           fi
 
-          # test/go intentionally contains compiler edge cases that make the
-          # Go 1.26 printf analyzer panic. Keep the normal go test vet gate
-          # for every other package, and disable vet only for that package.
+          # test/go intentionally contains compiler edge cases that can make
+          # the printf analyzer panic. Keep the normal go test vet gate for
+          # every other package, and disable vet only for that package.
           go list ./... \
             | grep -v '^github.com/xgo-dev/llgo/test/go$' \
             | grep -v '^github.com/xgo-dev/llgo/cl$' \
@@ -167,7 +149,6 @@ jobs:
         run: go test -v -timeout 60m ./cl -run '^TestRunEmbedEmulator$'
 
       - name: Check std symbol coverage
-        if: matrix.go == '1.26.7'
         shell: bash
         run: bash doc/_readme/scripts/check_std_cover.sh
 

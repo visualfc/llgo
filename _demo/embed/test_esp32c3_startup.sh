@@ -246,7 +246,8 @@ echo ""
 echo "=== Test 4: ESP32-C3 float output regressions (temporary) ==="
 pushd "$SCRIPT_DIR" > /dev/null
 FLOAT_1664_EXPECT=$'+5.000000e+000 +8.000000e+000\n1 +2.000000e+000\n0x0 +0.000000e+000 notOk: true\n0x0 +0.000000e+000 true\n3 +6.280000e+000'
-if [[ "$(go env GOVERSION)" == go1.26* ]]; then
+GO_VERSION="$(go env GOVERSION)"
+if [[ "${GO_VERSION}" =~ ^go1\.([0-9]+) ]] && (( BASH_REMATCH[1] >= 26 )); then
     FLOAT_1664_EXPECT=$'5 8\n1 2\n0x0 0 notOk: true\n0x0 0 true\n3 6.28'
 fi
 run_case_and_compare "./esp32c3/float-1664" "$FLOAT_1664_EXPECT"
