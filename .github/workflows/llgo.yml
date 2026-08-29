@@ -193,6 +193,11 @@ jobs:
           ./test_esp32c3_startup.sh "${args[@]}"
 
       - name: _xtool build tests
+        # _xtool contains host developer utilities that link the host LLVM and
+        # Python libraries. Windows amd64 already covers that build; the 386
+        # and ARM64 lanes qualify target programs and cannot link those x64
+        # host libraries into target-native tools.
+        if: runner.os != 'Windows' || matrix.windows_arch == 'amd64'
         run: |
           cd _xtool
           llgo build -v ./...
@@ -239,8 +244,33 @@ jobs:
           # The upstream LLVM archive records its build runner's Python home.
           # setup-demo-deps installs that exact Python patch release.
           $env:PYTHONHOME = $env:LLGO_WINDOWS_PYTHON_HOME
-          Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
-          bash cmd/llgo/lldbtest/runtest.sh -v
+          $copiedTargetDLLs = @()
+          if ("${{ matrix.windows_arch }}" -ne "amd64") {
+            # The debugger is an x64 host process, while the program under
+            # test and its vcpkg DLLs use the selected target architecture.
+            # Leaving the target bin directory on PATH makes Windows load a
+            # same-named ARM64/x86 DLL into x64 LLDB (0xc000007b). Stage those
+            # DLLs beside the debuggee, then keep them out of the host search
+            # path; Windows still resolves each process from its own directory.
+            $targetBin = Join-Path $env:LLGO_WINDOWS_VCPKG_ROOT "bin"
+            $debuggeeDir = Join-Path $env:GITHUB_WORKSPACE "cmd\llgo\lldbtest"
+            $copiedTargetDLLs = @(Get-ChildItem -LiteralPath $targetBin -Filter *.dll -File)
+            foreach ($dll in $copiedTargetDLLs) {
+              Copy-Item -LiteralPath $dll.FullName -Destination $debuggeeDir -Force
+            }
+            $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -ne $targetBin }) -join ';'
+          }
+          try {
+            Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
+            bash cmd/llgo/lldbtest/runtest.sh -v
+            if ($LASTEXITCODE -ne 0) {
+              throw "LLDB integration tests failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            foreach ($dll in $copiedTargetDLLs) {
+              Remove-Item -LiteralPath (Join-Path $debuggeeDir $dll.Name) -Force -ErrorAction SilentlyContinue
+            }
+          }
 
       - name: LLDB integration tests (MinGW)
         if: ${{ matrix.windows_abi == 'mingw' }}
