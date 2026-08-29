@@ -47,9 +47,14 @@ func main() { missing() }
 	if err == nil {
 		t.Fatal("directory build unexpectedly linked the missing symbol")
 	}
+	if count := strings.Count(err.Error(), "example.com/multibuild/cmd/badlink:"); count != 1 {
+		t.Fatalf("badlink error package prefix count = %d, want 1: %v", count, err)
+	}
 	for name, want := range map[string]string{"first": "first", "second": "second"} {
 		assertBuiltProgram(t, filepath.Join(out, name+withOutput.AppExt), want)
 	}
+	// cmd/go also accepts colliding DefaultExecName values for a directory
+	// output. One executable remains, but the winning package is unspecified.
 	if got := runBuiltProgram(t, filepath.Join(out, "same"+withOutput.AppExt)); got != "same-a" && got != "same-b" {
 		t.Fatalf("same-basename output = %q, want either main package", got)
 	}
@@ -72,6 +77,27 @@ func main() { missing() }
 	}
 	assertBuiltProgram(t, filepath.Join(trailingDir, "first"+trailing.AppExt), "first")
 	assertBuiltProgram(t, filepath.Join(trailingDir, "second"+trailing.AppExt), "second")
+}
+
+func TestRemoveTemporaryBuildOutputs(t *testing.T) {
+	root := t.TempDir()
+	output := filepath.Join(root, "program.elf")
+	base := strings.TrimSuffix(output, filepath.Ext(output))
+	artifacts := []string{
+		output, pclnSidecarPath(output), base + ".bin", base + ".hex",
+		base + ".img", base + ".uf2", base + ".zip",
+	}
+	for _, artifact := range artifacts {
+		if err := os.WriteFile(artifact, []byte("generated"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	removeTemporaryBuildOutputs(output)
+	for _, artifact := range artifacts {
+		if _, err := os.Stat(artifact); !os.IsNotExist(err) {
+			t.Errorf("temporary artifact %q remains: %v", artifact, err)
+		}
+	}
 }
 
 func TestModeBuildMultiplePackagesRecoversIndependentRoots(t *testing.T) {

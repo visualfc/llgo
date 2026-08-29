@@ -14,7 +14,8 @@ import (
 )
 
 // prepareBuildOutput implements the directory form of cmd/go's -o contract.
-// A plain non-directory remains a valid output file for exactly one package.
+// A plain non-directory remains a valid output file for exactly one package;
+// a directory output requires at least one main package.
 func prepareBuildOutput(root, output string, multiple bool, pkgs []*packages.Package) (string, error) {
 	if output == "" {
 		return "", nil
@@ -118,8 +119,7 @@ func (fallback *multiBuildFallback) run() ([]Package, error) {
 				}
 				func() {
 					if discardOutput != "" {
-						defer os.Remove(discardOutput)
-						defer os.Remove(pclnSidecarPath(discardOutput))
+						defer removeTemporaryBuildOutputs(discardOutput)
 					}
 					if outputLock != nil {
 						defer outputLock.Unlock()
@@ -154,4 +154,13 @@ func (fallback *multiBuildFallback) run() ([]Package, error) {
 		}
 	}
 	return all, errors.Join(failures...)
+}
+
+func removeTemporaryBuildOutputs(output string) {
+	base := strings.TrimSuffix(output, filepath.Ext(output))
+	removeOutFmts(&OutFmtDetails{
+		Out: output, PCLN: pclnSidecarPath(output),
+		Bin: base + ".bin", Hex: base + ".hex", Img: base + ".img",
+		Uf2: base + ".uf2", Zip: base + ".zip",
+	})
 }

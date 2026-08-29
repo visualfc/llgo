@@ -144,7 +144,7 @@ type Config struct {
 	LTOPlugin          lto.PassPlugin
 	BinPath            string
 	AppExt             string  // ".exe" on Windows, empty on Unix
-	OutFile            string  // file for one package, or directory for multiple ModeBuild packages
+	OutFile            string  // output file, or directory for ModeBuild package executables
 	OutFmts            OutFmts // Output format specifications (only for Target != "")
 	CompileOnly        bool    // compile test binary but do not run it (only valid for ModeTest)
 	Emulator           bool    // run in emulator mode
@@ -806,7 +806,11 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 			continue
 		}
 		if err := linkInitialPackage(ctx, pkg, allPkgs, conf, verbose, linkMultiple && conf.OutFile == ""); err != nil {
-			linkErrs = append(linkErrs, fmt.Errorf("%s: %w", pkg.PkgPath, err))
+			if inv.disableMultiFallback {
+				linkErrs = append(linkErrs, err)
+			} else {
+				linkErrs = append(linkErrs, fmt.Errorf("%s: %w", pkg.PkgPath, err))
+			}
 		}
 	}
 	// The shared graph completed, so a link failure must not trigger the
