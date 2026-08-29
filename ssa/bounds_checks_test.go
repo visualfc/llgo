@@ -43,6 +43,43 @@ func TestBoundsCheckModesIR(t *testing.T) {
 	}
 }
 
+func TestWideIndexBoundsCheck386(t *testing.T) {
+	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: "386"})
+	t.Cleanup(prog.Dispose)
+
+	byteSlice := types.NewSlice(types.Typ[types.Byte])
+	params := types.NewTuple(
+		types.NewVar(0, nil, "slice", byteSlice),
+		types.NewVar(0, nil, "unsigned", types.Typ[types.Uint64]),
+		types.NewVar(0, nil, "signed", types.Typ[types.Int64]),
+	)
+	sig := types.NewSignatureType(nil, nil, nil, params, nil, false)
+	pkg := prog.NewPackage("bounds", "example.com/bounds")
+	fn := pkg.NewFunc("wideIndex", sig, ssa.InGo)
+	b := fn.MakeBody(1)
+	b.IndexAddr(fn.Param(0), fn.Param(1))
+	b.IndexAddr(fn.Param(0), fn.Param(2))
+	b.Return()
+	b.EndBuild()
+
+	ir := pkg.String()
+	for _, want := range []string{
+		"icmp uge i64",
+		"lshr i64",
+		"PanicExtendIndexU\"",
+		"PanicExtendIndex\"",
+		"trunc i64",
+		"getelementptr inbounds i8",
+	} {
+		if !strings.Contains(ir, want) {
+			t.Errorf("386 wide-index IR does not contain %q:\n%s", want, ir)
+		}
+	}
+	if strings.Index(ir, "icmp uge i64") > strings.Index(ir, "trunc i64") {
+		t.Errorf("386 wide index is truncated before its bounds comparison:\n%s", ir)
+	}
+}
+
 func boundsCheckModeIR(t *testing.T, disable bool) string {
 	t.Helper()
 	prog := ssatest.NewProgram(t, nil)

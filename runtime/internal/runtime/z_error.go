@@ -75,6 +75,17 @@ func PanicIndexU(x uint, y int) {
 	panic(boundsError{x: int64(x), signed: false, y: y, code: boundsIndex})
 }
 
+// PanicExtendIndex and PanicExtendIndexU preserve a 64-bit index on 32-bit
+// targets. Their high/low-word interface follows runtime.panicExtendIndex in
+// the standard Go runtime.
+func PanicExtendIndex(hi int, lo uint, y int) {
+	panic(boundsError{x: int64(hi)<<32 + int64(lo), signed: true, y: y, code: boundsIndex})
+}
+
+func PanicExtendIndexU(hi uint, lo uint, y int) {
+	panic(boundsError{x: int64(hi)<<32 + int64(lo), signed: false, y: y, code: boundsIndex})
+}
+
 func AssertDivideByZero(b bool) {
 	if b {
 		panic(errorString("integer divide by zero"))

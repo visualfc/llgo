@@ -251,7 +251,9 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 	if !prog.disableBoundsChecks {
 		checkMin, checkMax = checkRange(idx, max)
 	}
-	// fit size
+	// GEP indexes use the native word size. Keep a wider index intact until
+	// after its bounds check: truncating first can turn an out-of-range uint64
+	// into an apparently valid 32-bit index.
 	signed := idx.kind == vkSigned
 	var typ Type
 	if signed {
@@ -259,25 +261,38 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 	} else {
 		typ = prog.Uint()
 	}
-	if prog.SizeOf(idx.Type) != prog.SizeOf(typ) {
-		srcType := idx.Type
-		idx.Type = typ
-		idx.impl = castUintptr(b, idx.impl, srcType, typ)
+	toNative := func(idx Expr) Expr {
+		if prog.SizeOf(idx.Type) != prog.SizeOf(typ) {
+			srcType := idx.Type
+			idx.Type = typ
+			idx.impl = castUintptr(b, idx.impl, srcType, typ)
+		}
+		return idx
 	}
 	if prog.disableBoundsChecks {
-		return idx
+		return toNative(idx)
+	}
+	extended := prog.SizeOf(idx.Type) > prog.SizeOf(typ)
+	nativeIdx := idx
+	if !extended {
+		nativeIdx = toNative(idx)
+	}
+	checkIdx, checkLimit := nativeIdx, max
+	if extended {
+		checkIdx, _ = b.boundsArg(idx)
+		checkLimit, _ = b.boundsArg(max)
 	}
 	// check range expr
 	var check Expr
 	if checkMin {
-		zero := llvm.ConstInt(idx.ll, 0, false)
-		check = Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, idx.impl, zero), prog.Bool()}
+		zero := llvm.ConstInt(checkIdx.ll, 0, false)
+		check = Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, checkIdx.impl, zero), prog.Bool()}
 	}
 	if checkMax {
 		// max is a non-negative len/cap value. Unsigned comparison is valid for
 		// both signed and unsigned indexes, and signed negatives fail as large
 		// unsigned values.
-		r := Expr{llvm.CreateICmp(b.impl, llvm.IntUGE, idx.impl, max.impl), prog.Bool()}
+		r := Expr{llvm.CreateICmp(b.impl, llvm.IntUGE, checkIdx.impl, checkLimit.impl), prog.Bool()}
 		if check.IsNil() {
 			check = r
 		} else {
@@ -292,14 +307,32 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 		if signed {
 			panicIndex = "PanicIndex"
 		}
-		b.InlineCall(b.Pkg.rtFunc(panicIndex), idx, max)
+		if extended {
+			panicIndex = "PanicExtendIndexU"
+			if signed {
+				panicIndex = "PanicExtendIndex"
+			}
+			lo := Expr{castInt(b, checkIdx.impl, checkIdx.Type, prog.Uint()), prog.Uint()}
+			hi64 := llvm.CreateLShr(b.impl, checkIdx.impl, llvm.ConstInt(checkIdx.ll, 32, false))
+			hiType := prog.Uint()
+			if signed {
+				hiType = prog.Int()
+			}
+			hi := Expr{castInt(b, hi64, prog.Uint64(), hiType), hiType}
+			b.InlineCall(b.Pkg.rtFunc(panicIndex), hi, lo, max)
+		} else {
+			b.InlineCall(b.Pkg.rtFunc(panicIndex), nativeIdx, max)
+		}
 		// Keep the failure path disconnected from the successful continuation,
 		// while retaining a post-call instruction for return-address line info.
 		b.Jump(blks[0])
 		b.SetBlockEx(blks[1], AtEnd, false)
 		b.blk.last = blks[1].last
 	}
-	return idx
+	if extended {
+		nativeIdx = toNative(idx)
+	}
+	return nativeIdx
 }
 
 // The Index instruction yields element Index of collection X, an array,
