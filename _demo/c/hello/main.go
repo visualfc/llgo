@@ -15,5 +15,5 @@ func main() {
 		panic("C string round trip")
 	}
 	c.Printf(c.Str("%s; int=%zu uintptr=%zu\n"), cMessage, unsafe.Sizeof(int(0)), unsafe.Sizeof(uintptr(0)))
-	c.Fprintf(c.Stderr, c.Str("C stderr: %s\n"), cMessage)
+	printStderr(message)
 }
