@@ -254,6 +254,13 @@ const (
 	runtimePCFindSubbucket  = 16
 )
 
+// Win64 entry-slack validation uses the same PE unwind lookup as the platform
+// stack walker. The branch that references it is a compile-time false path on
+// every other target, so no Windows symbol or code reaches those binaries.
+//
+//go:linkname c_windowsLookupFunctionEntry C.llgo_windows_lookup_function_entry
+func c_windowsLookupFunctionEntry(pc uintptr, imageBase *uintptr) unsafe.Pointer
+
 var runtimeFuncPCInitState uint32
 var runtimeFuncPCFrames []runtimeFuncPCFrame
 var runtimeFuncPCEntries []uintptr
@@ -1442,8 +1449,12 @@ func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
 	if bestIndex == 0 {
 		return pcSymbol{}, false
 	}
-	if bestDelta != 0 && !runtimeFuncPCMayUseEntrySlack(pc) {
-		return pcSymbol{}, false
+	if bestDelta != 0 && GOOS == "windows" && (GOARCH == "amd64" || GOARCH == "arm64") {
+		var imageBase uintptr
+		if entry := c_windowsLookupFunctionEntry(pc, &imageBase); entry != nil &&
+			imageBase+uintptr(*(*uint32)(entry)) != pc {
+			return pcSymbol{}, false
+		}
 	}
 	return pcSymbolForFuncInfoIndex(pc, pc, bestIndex)
 }
@@ -1502,8 +1513,15 @@ func funcPCFrameForEntryPC(pc uintptr) (pcSymbol, bool) {
 	}
 	frame := frames[lo]
 	if frame.entry != pc {
-		if frame.entry-pc > runtimeFuncPCEntrySlack || !runtimeFuncPCMayUseEntrySlack(pc) {
+		if frame.entry-pc > runtimeFuncPCEntrySlack {
 			return pcSymbol{}, false
+		}
+		if GOOS == "windows" && (GOARCH == "amd64" || GOARCH == "arm64") {
+			var imageBase uintptr
+			if entry := c_windowsLookupFunctionEntry(pc, &imageBase); entry != nil &&
+				imageBase+uintptr(*(*uint32)(entry)) != pc {
+				return pcSymbol{}, false
+			}
 		}
 	}
 	return pcSymbolForFuncInfoIndex(pc, pc, frame.funcIndex)

@@ -7,7 +7,3 @@ package runtime
 // accepting a post-prologue look-ahead here could misclassify an ordinary PC
 // near the end of one function as the next function.
 const runtimeFuncPCEntrySlack = 0
-
-func runtimeFuncPCMayUseEntrySlack(uintptr) bool {
-	return false
-}

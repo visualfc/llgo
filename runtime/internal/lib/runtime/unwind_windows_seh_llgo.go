@@ -16,9 +16,6 @@ import (
 //go:linkname c_windowsCaptureContext C.llgo_windows_capture_context
 func c_windowsCaptureContext(context *windowsFaultContext, pcOffset uintptr) unsafe.Pointer
 
-//go:linkname c_windowsLookupFunctionEntry C.llgo_windows_lookup_function_entry
-func c_windowsLookupFunctionEntry(pc uintptr, imageBase *uintptr) unsafe.Pointer
-
 //go:linkname c_windowsVirtualUnwind C.llgo_windows_virtual_unwind
 func c_windowsVirtualUnwind(imageBase, pc uintptr, functionEntry unsafe.Pointer, context *windowsFaultContext, establisherFrame *uintptr) unsafe.Pointer
 
