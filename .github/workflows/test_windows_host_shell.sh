@@ -56,11 +56,7 @@ if [[ "$output" != "$want" ]]; then
   exit 1
 fi
 
-if [[ "$LLGO_WINDOWS_ABI" == msvc ]]; then
-  readobj=$(dirname "$(cygpath -u "$LLGO_LLDB")")/llvm-readobj.exe
-else
-  readobj=$(cygpath -u "$LLGO_MINGW_HOST_ROOT")/bin/llvm-readobj.exe
-fi
+readobj=$(command -v llvm-readobj.exe || command -v llvm-readobj)
 imports=$($readobj --coff-imports "$executable")
 forbidden='(msys-2\.0|cygwin1)\.dll'
 if [[ "$LLGO_WINDOWS_ABI" == msvc ]]; then

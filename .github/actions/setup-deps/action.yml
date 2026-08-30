@@ -105,16 +105,16 @@ runs:
         path: ${{ runner.tool_cache }}\llgo-llvm\LLVM-19.1.3-Windows-X64
         key: llgo-llvm-19.1.3-full-target-windows-x64-1077267ca353a1e236055ed4b57d6a404d09c40b01bd27dc882870395cdc1aae
 
-    - name: Cache Windows cross-target compiler-rt builtins
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64'
-      id: windows_target_builtins_cache
+    - name: Cache target-native Windows LLVM support
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-arch != 'amd64'
+      id: windows_target_llvm_cache
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\${{ inputs.windows-arch }}
         key: ${{ inputs.windows-arch == 'arm64' && 'llgo-compiler-rt-19.1.3-windows-arm64-20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9-native-lldb-v1' || 'llgo-compiler-rt-19.1.3-windows-386-9bab022d175ff27e35db517b71d3e428027d75ffff0d0195ccc9f20ce5a20d4f-native-lldb-v1' }}
 
-    - name: Install Windows cross-target compiler-rt builtins
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64' && steps.windows_target_builtins_cache.outputs.cache-hit != 'true'
+    - name: Install target-native Windows LLVM support
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-arch != 'amd64' && steps.windows_target_llvm_cache.outputs.cache-hit != 'true'
       shell: pwsh
       env:
         LLVM_VERSION: "19.1.3"
@@ -124,12 +124,11 @@ runs:
       run: |
         $ErrorActionPreference = "Stop"
 
-        # The upstream x64 full-target archive supplies the host LLVM tools
-        # but only x64 compiler-rt. Extract the target library from the
-        # matching official package. Use the target-native LLDB from the same
-        # package as well: the x64 debugger cannot reliably inspect ARM64
-        # register variables or cross the WoW64 exception dispatcher into a
-        # 32-bit source frame.
+        # The upstream x64 full-target archive supplies the host LLVM tools but
+        # only x64 compiler-rt. The MSVC profile needs the target builtins from
+        # the matching official package. Both Windows ABIs use its target-native
+        # LLDB: the x64 debugger cannot reliably inspect ARM64 register variables
+        # or cross the WoW64 exception dispatcher into a 32-bit source frame.
         $installerName = "LLVM-$env:LLVM_VERSION-$env:LLVM_INSTALLER_ARCH.exe"
         $installer = Join-Path $env:RUNNER_TEMP $installerName
         $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$installerName"
@@ -158,7 +157,7 @@ runs:
         )
         & $sevenZip x -y "-o$extractRoot" $installer @extractPaths
         if ($LASTEXITCODE -ne 0) {
-          throw "Extracting the LLVM ${{ inputs.windows-arch }} builtins failed with exit code $LASTEXITCODE"
+          throw "Extracting LLVM ${{ inputs.windows-arch }} support failed with exit code $LASTEXITCODE"
         }
         $source = Join-Path $extractRoot $builtinsRelative
         if (-not (Test-Path $source)) {
@@ -181,8 +180,8 @@ runs:
           }
         }
 
-    - name: Save Windows cross-target compiler-rt builtins
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64' && steps.windows_target_builtins_cache.outputs.cache-hit != 'true'
+    - name: Save target-native Windows LLVM support
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-arch != 'amd64' && steps.windows_target_llvm_cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\${{ inputs.windows-arch }}
@@ -663,6 +662,15 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_HOST_PC_DIR=$pcDir"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_HOST_PKGCONF=$pkgconf"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_HOST_ROOT=$mingwRoot"
+        if ("${{ inputs.windows-arch }}" -ne "amd64") {
+          $lldbRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\19.1.3\${{ inputs.windows-arch }}\lldb"
+          $lldb = Join-Path $lldbRoot "bin\lldb.exe"
+          if (-not (Test-Path $lldb)) {
+            throw "lldb.exe was not found for Windows ${{ inputs.windows-arch }}"
+          }
+          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_LLDB=$lldb"
+          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_LLDB_PYTHONPATH=$(Join-Path $lldbRoot 'lib\site-packages')"
+        }
         Add-Content -Encoding utf8 $env:GITHUB_PATH $mingwBin
         # Keep the fixed-search-path wrapper ahead of CLANG64's pkg-config.exe;
         # setup-demo-deps adds profile-local metadata below RUNNER_TEMP.

@@ -118,33 +118,6 @@ jobs:
           -Profile "${{ matrix.windows_abi }}"
           -GoArch "${{ matrix.windows_arch || 'amd64' }}"
 
-      - name: Test from the MSYS2 host shell
-        if: ${{ matrix.windows_abi == 'mingw' }}
-        shell: msys2 {0}
-        run: bash .github/workflows/test_windows_host_shell.sh
-
-      - name: Install Cygwin for host-shell qualification
-        if: ${{ matrix.os == 'windows-2022' && matrix.windows_arch == 'amd64' }}
-        id: cygwin
-        uses: cygwin/cygwin-install-action@v6
-        with:
-          add-to-path: false
-
-      - name: Test from the Cygwin host shell
-        if: ${{ matrix.os == 'windows-2022' && matrix.windows_arch == 'amd64' }}
-        shell: pwsh
-        env:
-          CYGWIN_ROOT: ${{ steps.cygwin.outputs.root }}
-        run: |
-          $bash = Join-Path $env:CYGWIN_ROOT "bin\bash.exe"
-          if (-not (Test-Path $bash)) {
-            throw "Cygwin bash was not found at $bash"
-          }
-          & $bash -c 'cd "$(cygpath -u "$GITHUB_WORKSPACE")" && bash .github/workflows/test_windows_host_shell.sh'
-          if ($LASTEXITCODE -ne 0) {
-            throw "Cygwin host-shell qualification failed with exit code $LASTEXITCODE"
-          }
-
       - name: Test demo without RPATH (expect failure)
         if: runner.os != 'Windows'
         run: |
@@ -325,9 +298,61 @@ jobs:
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
 
-      - name: DWARF standard tests
-        if: ${{ (startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel') || matrix.windows_abi == 'msvc' }}
-        run: go test -timeout 15m ./internal/build -run '^TestStandardDWARF$' -count=1 -v
+      - name: LLDB integration tests (MinGW cross-architecture)
+        if: ${{ matrix.windows_abi == 'mingw' && matrix.windows_arch != 'amd64' }}
+        shell: pwsh
+        run: |
+          $env:PYTHONHOME = $env:LLGO_WINDOWS_LLDB_PYTHON_HOME
+          $env:PYTHONPATH = $env:LLGO_WINDOWS_LLDB_PYTHONPATH
+          $env:PYTHONUTF8 = "1"
+          $env:PYTHONIOENCODING = "utf-8"
+          $env:PATH = "$env:LLGO_WINDOWS_LLDB_PYTHON_HOME;$env:PATH"
+          Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
+          bash cmd/llgo/lldbtest/runtest.sh -v
+          if ($LASTEXITCODE -ne 0) {
+            throw "LLDB integration tests failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Native debug metadata tests
+        if: ${{ (startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel') || runner.os == 'Windows' }}
+        run: go test -timeout 15m ./internal/build -run '^(TestStandardDWARF|TestWindowsPDBLinkPath)$' -count=1 -v
+
+      # Keep shell setup last so its POSIX compatibility tools cannot affect
+      # the native compiler, runtime, demo, or debugger qualification above.
+      - name: Set up the MSYS2 host shell for MSVC
+        if: ${{ matrix.windows_abi == 'msvc' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          path-type: inherit
+          update: false
+
+      - name: Test from the MSYS2 host shell
+        if: ${{ runner.os == 'Windows' }}
+        shell: msys2 {0}
+        run: bash .github/workflows/test_windows_host_shell.sh
+
+      - name: Install Cygwin for host-shell qualification
+        if: ${{ matrix.os == 'windows-2022' && matrix.windows_arch == 'amd64' }}
+        id: cygwin
+        uses: cygwin/cygwin-install-action@v6
+        with:
+          add-to-path: false
+
+      - name: Test from the Cygwin host shell
+        if: ${{ matrix.os == 'windows-2022' && matrix.windows_arch == 'amd64' }}
+        shell: pwsh
+        env:
+          CYGWIN_ROOT: ${{ steps.cygwin.outputs.root }}
+        run: |
+          $bash = Join-Path $env:CYGWIN_ROOT "bin\bash.exe"
+          if (-not (Test-Path $bash)) {
+            throw "Cygwin bash was not found at $bash"
+          }
+          & $bash -c 'cd "$(cygpath -u "$GITHUB_WORKSPACE")" && bash .github/workflows/test_windows_host_shell.sh'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Cygwin host-shell qualification failed with exit code $LASTEXITCODE"
+          }
 
   test:
     name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})

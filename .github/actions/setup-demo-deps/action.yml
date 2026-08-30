@@ -44,7 +44,7 @@ runs:
         update-environment: false
 
     - name: Set up LLDB Python 3.11 on Windows ARM64
-      if: runner.os == 'Windows' && inputs.windows-abi == 'msvc' && inputs.windows-arch == 'arm64'
+      if: runner.os == 'Windows' && inputs.windows-arch == 'arm64'
       id: windows_lldb_python
       uses: actions/setup-python@v6
       with:
@@ -55,7 +55,7 @@ runs:
         update-environment: false
 
     - name: Configure LLDB Python on Windows ARM64
-      if: runner.os == 'Windows' && inputs.windows-abi == 'msvc' && inputs.windows-arch == 'arm64'
+      if: runner.os == 'Windows' && inputs.windows-arch == 'arm64'
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
@@ -67,7 +67,7 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_LLDB_PYTHON_HOME=$prefix"
 
     - name: Configure LLDB Python on Windows 386
-      if: runner.os == 'Windows' && inputs.windows-abi == 'msvc' && inputs.windows-arch == '386'
+      if: runner.os == 'Windows' && inputs.windows-arch == '386'
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
