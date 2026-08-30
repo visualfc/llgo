@@ -154,16 +154,6 @@ func NewChan(eltSize, cap int) *Chan {
 	return ret
 }
 
-// NewChan64 follows runtime.makechan64. It preserves the range check for a
-// wide make operand on 32-bit targets before calling the native-int fast path.
-func NewChan64(eltSize int, cap64 int64) *Chan {
-	cap := int(cap64)
-	if int64(cap) != cap64 {
-		panicMakeChanSize()
-	}
-	return NewChan(eltSize, cap)
-}
-
 func panicMakeChanSize() {
 	panic(errorString("makechan: size out of range"))
 }

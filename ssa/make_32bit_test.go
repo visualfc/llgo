@@ -28,6 +28,8 @@ import (
 )
 
 func TestWideMakeOperandsUseCheckedHelpersOn386(t *testing.T) {
+	t.Setenv("GOOS", "windows")
+	t.Setenv("GOARCH", "386")
 	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: "386"})
 	t.Cleanup(prog.Dispose)
 
