@@ -9,10 +9,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
+	_ "unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/clite/libuv"
 	_ "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
@@ -274,22 +273,6 @@ func testWindowsOS() {
 	}
 }
 
-func testLibuvHandleSizes() {
-	tests := [...]struct {
-		typeof libuv.HandleType
-		got    uintptr
-	}{
-		{libuv.ASYNC, unsafe.Sizeof(libuv.Async{})},
-		{libuv.TIMER, unsafe.Sizeof(libuv.Timer{})},
-		{libuv.SIGNAL, unsafe.Sizeof(libuv.Signal{})},
-	}
-	for _, test := range tests {
-		if want := libuv.HandleSize(test.typeof); test.got != want {
-			panic("libuv handle storage size does not match the installed DLL")
-		}
-	}
-}
-
 func main() {
 	if os.Getenv("LLGO_TEST_OS_EXIT") == "1" {
 		os.Exit(23)
@@ -312,7 +295,6 @@ func main() {
 	}
 	testWindowsSyscalls()
 	testWindowsOS()
-	testLibuvHandleSizes()
 
 	start := time.Now()
 	time.Sleep(time.Millisecond)

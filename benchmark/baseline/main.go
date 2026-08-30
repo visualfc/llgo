@@ -77,6 +77,16 @@ var expectedGoBenchmarks = []string{
 	"BenchmarkMergeCompilerFlags",
 	"BenchmarkMergeLinkerFlags",
 	"BenchmarkRuntimeGetG",
+	"BenchmarkTimerAfterFuncZeroDelivery/Go",
+	"BenchmarkTimerAfterFuncZeroDelivery/LLGo",
+	"BenchmarkTimerCreateStop/Go",
+	"BenchmarkTimerCreateStop/LLGo",
+	"BenchmarkTimerRearmStopped/Go",
+	"BenchmarkTimerRearmStopped/LLGo",
+	"BenchmarkTimerResetActive/Go",
+	"BenchmarkTimerResetActive/LLGo",
+	"BenchmarkTimerResetHeap1024/Go",
+	"BenchmarkTimerResetHeap1024/LLGo",
 }
 
 const goBenchmarkSamples = 5

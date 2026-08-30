@@ -1,12 +1,13 @@
 # LLGo baseline benchmarks
 
 This suite is the lightweight performance gate for ordinary LLGo changes. It
-uses fixed workloads and short calibrated benchmarks on Linux and macOS so it
-can run on every `main` push and pull request. Branch-only series can be run
-explicitly with `workflow_dispatch`, avoiding duplicate push and pull-request
-jobs for the same commit. The two native jobs record normalized artifacts; a
-trusted `workflow_run` publisher validates and merges both platforms into one
-commit, branch, or pull-request series.
+uses fixed workloads and short calibrated benchmarks on Linux, macOS, and the
+MSVC and MinGW Windows profiles, so it can run on every `main` push and pull
+request. Branch-only series can be run explicitly with `workflow_dispatch`,
+avoiding duplicate push and pull-request jobs for the same commit. The native
+jobs record normalized artifacts; a trusted `workflow_run` publisher validates
+and merges all four platform profiles into one commit, branch, or pull-request
+series.
 
 The program workloads reuse:
 
@@ -20,7 +21,25 @@ allocated non-executable data, and zero-filled data. On ELF, read-only constants
 are included in the data bucket; on Mach-O, `__TEXT` constants are included in
 the text bucket. The Go benchmark stream records five samples of selected
 compiler helpers and LLGo-generated core-language operations: direct/interface
-calls, defer, goroutine creation, channels, `getg`, and global access.
+calls, defer, goroutine creation, channels, `getg`, and global access. It also
+runs the same `benchmark/timer` source with native Go and LLGo. The timer suite
+measures `AfterFunc` create/stop, active reset, a stopped-timer rearm/stop cycle,
+reset with 1,024 live timers, and zero-duration callback delivery through one
+reused callback and channel. The first four avoid timer-channel implementation
+details; the delivery case intentionally includes scheduling and callback
+handoff so timer-management improvements are not mistaken for end-to-end
+latency improvements. Fixed iteration budgets bound native-handle accumulation
+when the same harness runs against the former libuv implementation. Each timer
+path warms its native runtime before recording samples so initialization is
+excluded consistently.
+
+Once the timer selectors are present on the target branch, a paired pull-request
+result compiles `/LLGo` once from the merge base and once from the head, while
+`/Go` is repeated as a same-runner control. A timer-runtime pull request whose
+base still uses libuv then shows native Go, libuv LLGo, and current LLGo in one
+report. Pull-request artifacts deliberately use the target branch's trusted
+configuration. A pull request that first introduces selectors still runs and
+validates their samples, but its new table begins publishing after merge.
 
 For pull requests, each platform job checks out the recorded base and current
 commits into the same source path, then runs both suites sequentially on the same
@@ -59,13 +78,38 @@ go run ./benchmark/baseline \
 
 Write the selected Go benchmark output to `.benchmark/results/go.txt`:
 
-```sh
+```bash
 results=.benchmark/results/go.txt
 GOMAXPROCS=1 go test \
   -run '^$' \
   -bench '^(BenchmarkMergeCompilerFlags|BenchmarkMergeLinkerFlags|BenchmarkLookupPCRandom)$' \
   -benchtime=250ms -count=5 -cpu=1 \
   ./internal/clang ./internal/build/funcinfo | tee "$results"
+GOMAXPROCS=1 go test \
+  -run '^$' -bench '^BenchmarkTimer' -benchtime=250ms -count=5 -cpu=1 \
+  ./benchmark/timer | tee -a "$results"
+timer_test=.benchmark/llgo-timer.test
+timer_stdio_nobuf=
+if [[ "$(go env GOOS)" == windows ]]; then
+  timer_test+=.exe
+  timer_stdio_nobuf=1
+fi
+LLGO_FULL_RPATH=true LLGO_ROOT="$PWD" LLGO_STDIO_NOBUF="$timer_stdio_nobuf" \
+  .benchmark/llgo test -c -o "$timer_test" ./benchmark/timer
+run_llgo_timer_samples() {
+  benchmarks="$1"
+  benchtime="$2"
+  for _ in 1 2 3 4 5; do
+    "$timer_test" \
+      -test.run='^$' -test.bench="$benchmarks" \
+      -test.benchtime="$benchtime" -test.count=1
+  done
+}
+run_llgo_timer_samples '^BenchmarkTimerCreateStop$' 10000x | tee -a "$results"
+run_llgo_timer_samples '^BenchmarkTimerAfterFuncZeroDelivery$' 10000x | tee -a "$results"
+run_llgo_timer_samples \
+  '^BenchmarkTimer(RearmStopped|ResetActive|ResetHeap1024)$' 20000x \
+  | tee -a "$results"
 GOMAXPROCS=1 .benchmark/llgo test \
   -run '^$' \
   -bench '^(BenchmarkRuntimeGetG|BenchmarkGlobal(Read|Write)|Benchmark(DirectCall|InterfaceCall|Defer|ChannelBuffered|ChannelHandoff))$' \
@@ -75,6 +119,11 @@ GOMAXPROCS=1 .benchmark/llgo test \
   -run '^$' -bench '^BenchmarkGoroutine$' -benchtime=100x -count=5 \
   ./test/llgoext | tee -a "$results"
 ```
+
+Native Go timer samples use `-cpu=1`. LLGo timer samples intentionally retain
+the current native runtime's 1:1 goroutine-to-thread execution model instead of
+claiming an unsupported `GOMAXPROCS` limit; base and head are measured
+sequentially on the same runner.
 
 Then validate and export the complete artifact in standard Go benchmark format:
 

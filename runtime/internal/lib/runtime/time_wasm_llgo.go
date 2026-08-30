@@ -11,7 +11,7 @@ import (
 
 // Minimal timer hooks for wasm builds. Host-backed asynchronous timers need
 // scheduler integration; until that is available, keep runtime and time
-// linkable without pulling the native libuv event loop into wasm binaries.
+// linkable without pulling native hosted event sources into wasm binaries.
 
 type runtimeTimer struct {
 	pp       uintptr

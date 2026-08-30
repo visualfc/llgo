@@ -312,7 +312,6 @@ llgo run .
 - [pkg-config 0.29+](https://gitlab.freedesktop.org/pkg-config/pkg-config)
 - [bdwgc/libgc 8.0+](https://www.hboehm.info/gc/)
 - [libffi](https://sourceware.org/libffi/)
-- [libuv](https://libuv.org/)
 - [OpenSSL 3.0+](https://www.openssl.org/)
 - [zlib 1.2+](https://github.com/madler/zlib)
 - [Python 3.12+](https://www.python.org) (optional, for [github.com/goplus/lib/py](https://pkg.go.dev/github.com/goplus/lib/py))
@@ -327,7 +326,7 @@ Follow these steps to install the `llgo` command, whose usage is similar to the 
 
 ```sh
 brew update
-brew install llvm@19 lld@19 bdw-gc openssl cjson libffi libuv pkg-config
+brew install llvm@19 lld@19 bdw-gc openssl cjson libffi pkg-config
 brew install python@3.12 # optional
 brew link --overwrite llvm@19 lld@19 libffi
 # curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
@@ -344,7 +343,7 @@ brew link --overwrite llvm@19 lld@19 libffi
 echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-19 main" | sudo tee /etc/apt/sources.list.d/llvm.list
 wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
 sudo apt-get update
-sudo apt-get install -y llvm-19-dev clang-19 libclang-19-dev lld-19 libunwind-19-dev libc++-19-dev pkg-config libgc-dev libssl-dev zlib1g-dev libffi-dev libcjson-dev libsqlite3-dev libuv1-dev
+sudo apt-get install -y llvm-19-dev clang-19 libclang-19-dev lld-19 libunwind-19-dev libc++-19-dev pkg-config libgc-dev libssl-dev zlib1g-dev libffi-dev libcjson-dev libsqlite3-dev
 sudo apt-get install -y python3.12-dev # optional
 #curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
 ./install.sh

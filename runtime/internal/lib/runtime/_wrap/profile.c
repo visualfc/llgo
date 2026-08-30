@@ -303,7 +303,7 @@ void llgo_cpu_profile_stop(void)
 #endif
 }
 
-/* A libuv SIGPROF watcher update may replace the process disposition. The Go
+/* An os/signal watcher update may replace the process disposition. The Go
  * control plane serializes that update with profile start/stop, then asks the
  * native sampler to take ownership back while profiling is active. */
 int llgo_cpu_profile_refresh_signal(void)

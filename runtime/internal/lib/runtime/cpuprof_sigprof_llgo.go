@@ -32,7 +32,7 @@ func c_cpuProfileRefreshSignal() int32
 
 var (
 	// cpuProfileStateMu is the Go control-plane lock. It serializes native
-	// sampler start/stop and, on Unix, libuv SIGPROF watcher changes. Native
+	// sampler start/stop and, on Unix, os/signal SIGPROF handler changes. Native
 	// sample collection never acquires it.
 	cpuProfileStateOnce psync.Once
 	cpuProfileStateMu   psync.Mutex
