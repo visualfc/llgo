@@ -19,8 +19,10 @@ package build
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/xgo-dev/llgo/internal/crosscompile"
+	"github.com/xgo-dev/llgo/internal/quoted"
 )
 
 // DWARFMode records whether the command layer requested that the backend
@@ -135,5 +137,44 @@ func debugInfoLinkerArgs(conf *Config, target *crosscompile.Export) []string {
 	if effectiveOmitDWARF(conf, target) {
 		return slices.Clone(target.DebugInfo.OmitLinkFlags)
 	}
+	// The default COFF policy keeps Go-compatible DWARF in the PE image. An
+	// explicit external-linker /debug option may instead request a PDB (for
+	// example /debug:full). Do not append /debug:dwarf after that user choice:
+	// lld-link applies the last /debug option and would silently suppress the
+	// requested PDB. DWARF omission above still wins when Go's -w is active.
+	if conf.Goos == "windows" && hasCOFFDebugFlag(conf.LinkOptions.ExternalLinkerFlags) {
+		return nil
+	}
 	return slices.Clone(target.DebugInfo.PreserveLinkFlags)
+}
+
+func hasCOFFDebugFlag(value string) bool {
+	args, err := quoted.Split(value)
+	if err != nil {
+		// Native toolchain input validation reports the malformed value before a
+		// real link. Keep this helper side-effect-free for configuration tests.
+		return false
+	}
+	for i, arg := range args {
+		lower := strings.ToLower(arg)
+		if isCOFFDebugFlag(lower) {
+			return true
+		}
+		if strings.HasPrefix(lower, "-wl,") {
+			for _, linkerArg := range strings.Split(strings.TrimPrefix(lower, "-wl,"), ",") {
+				if isCOFFDebugFlag(linkerArg) {
+					return true
+				}
+			}
+		}
+		if lower == "-xlinker" && i+1 < len(args) && isCOFFDebugFlag(strings.ToLower(args[i+1])) {
+			return true
+		}
+	}
+	return false
+}
+
+func isCOFFDebugFlag(arg string) bool {
+	return arg == "/debug" || strings.HasPrefix(arg, "/debug:") ||
+		arg == "-debug" || strings.HasPrefix(arg, "-debug:")
 }

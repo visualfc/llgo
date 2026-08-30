@@ -50,7 +50,10 @@ func TestDebugInfoLinkerArgs(t *testing.T) {
 		{name: "explicit w false", conf: Config{LinkOptions: LinkOptions{OmitSymbolTable: true, DWARF: DWARFPreserve}}},
 		{name: "windows safe default", conf: Config{BuildMode: BuildModeExe, OmitDWARFByDefault: true}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:none"}},
 		{name: "windows explicit w", conf: Config{BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFOmit}}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:none"}},
-		{name: "windows explicit w false", conf: Config{BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:dwarf"}},
+		{name: "windows explicit w false", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:dwarf"}},
+		{name: "windows explicit PDB", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFPreserve, ExternalLinkerFlags: "-Wl,/debug:full,/pdb:app.pdb"}}, target: windowsDebugInfo()},
+		{name: "windows explicit PDB via Xlinker", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFPreserve, ExternalLinkerFlags: "-Xlinker /debug:full"}}, target: windowsDebugInfo()},
+		{name: "windows w overrides external PDB", conf: Config{Goos: "windows", BuildMode: BuildModeExe, LinkOptions: LinkOptions{DWARF: DWARFOmit, ExternalLinkerFlags: "/debug:full"}}, target: windowsDebugInfo(), want: []string{"-Wl,/debug:none"}},
 		{name: "windows c-archive", conf: Config{BuildMode: BuildModeCArchive, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, target: windowsDebugInfo()},
 		{name: "target linker already suppresses DWARF", conf: Config{Target: "rp2040", LinkOptions: LinkOptions{DWARF: DWARFOmit}}, target: alwaysOmitDebugInfo()},
 	}
@@ -60,6 +63,25 @@ func TestDebugInfoLinkerArgs(t *testing.T) {
 				t.Fatalf("debugInfoLinkerArgs(%+v) = %v, want %v", tt.conf.LinkOptions, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHasCOFFDebugFlag(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  bool
+	}{
+		{value: "/debug", want: true},
+		{value: "/DEBUG:FULL", want: true},
+		{value: "-Wl,/debug:ghash,/pdb:app.pdb", want: true},
+		{value: "-Xlinker /debug:dwarf", want: true},
+		{value: "/pdb:app.pdb"},
+		{value: "-Wl,/incremental:no"},
+		{value: "'/debug"},
+	} {
+		if got := hasCOFFDebugFlag(test.value); got != test.want {
+			t.Errorf("hasCOFFDebugFlag(%q) = %v, want %v", test.value, got, test.want)
+		}
 	}
 }
 
