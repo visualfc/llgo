@@ -131,6 +131,9 @@ runs:
         # This prevents llvm-mingw's unqualified host tools from shadowing the
         # LLVM installation used to build the LLGo compiler itself.
         echo "$LLGO_MINGW_TARGET_TOOLS" >> "$GITHUB_PATH"
+        echo "CC=$LLGO_MINGW_TARGET_TOOLS/clang" >> "$GITHUB_ENV"
+        echo "CXX=$LLGO_MINGW_TARGET_TOOLS/clang++" >> "$GITHUB_ENV"
+        echo "PKG_CONFIG=$LLGO_MINGW_TARGET_TOOLS/pkg-config" >> "$GITHUB_ENV"
         echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
         echo "GOOS=windows" >> "$GITHUB_ENV"
         echo "GOARCH=${{ inputs.windows-arch }}" >> "$GITHUB_ENV"

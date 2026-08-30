@@ -43,11 +43,14 @@ runs:
           exit 1
         fi
         # Make this invocation independent of any target selected by an
-        # earlier architecture step in the same cross-host job. Leaving the
-        # Go-compatible compiler overrides unset also exercises LLGo's normal
-        # compiler-target probing path.
+        # earlier architecture step in the same cross-host job. The activation
+        # action exports these target-selecting wrappers so callers do not need
+        # to assemble compiler flags themselves.
         export PATH="$LLGO_MINGW_TARGET_TOOLS:$PATH"
-        unset CC CXX PKG_CONFIG PKG_CONFIG_PATH
+        export CC="$LLGO_MINGW_TARGET_TOOLS/clang"
+        export CXX="$LLGO_MINGW_TARGET_TOOLS/clang++"
+        export PKG_CONFIG="$LLGO_MINGW_TARGET_TOOLS/pkg-config"
+        unset PKG_CONFIG_PATH
 
         output_dir="$RUNNER_TEMP/llgo-windows-cross-$LLGO_CROSS_GOARCH"
         mkdir -p "$output_dir"
