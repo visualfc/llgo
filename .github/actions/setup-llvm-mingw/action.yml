@@ -183,11 +183,16 @@ runs:
         # from the x86 target tree; exposing CLANG64's complete pkg-config
         # directory here would silently select x64 BDWGC/libffi/libuv again.
         $hostLLVMPC = Join-Path $env:RUNNER_TEMP "llgo-mingw-host-pkgconfig"
-        New-Item -ItemType Directory -Force $hostLLVMPC | Out-Null
+        # setup-demo-deps writes target-native cargs and Python metadata here
+        # after this action has configured the target wrapper. Include the
+        # stable directory now so those later files are visible without
+        # exposing any host dependency metadata.
+        $profilePC = Join-Path $env:RUNNER_TEMP "llgo-pkgconfig"
+        New-Item -ItemType Directory -Force $hostLLVMPC, $profilePC | Out-Null
         Copy-Item -LiteralPath (Join-Path $hostPC "llvm-${{ inputs.llvm-version }}.pc") -Destination $hostLLVMPC
         $targetLibPC = Join-Path $vcpkgRoot "lib\pkgconfig"
         $targetSharePC = Join-Path $vcpkgRoot "share\pkgconfig"
-        $pkgConfigLibDir = "$hostLLVMPC;$targetLibPC;$targetSharePC"
+        $pkgConfigLibDir = "$profilePC;$hostLLVMPC;$targetLibPC;$targetSharePC"
         @"
         @echo off
         setlocal
