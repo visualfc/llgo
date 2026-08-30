@@ -2,10 +2,7 @@
 
 package multi
 
-import (
-	"unsafe"
-	_ "unsafe"
-)
+import "unsafe"
 
 //go:linkname Windows386CalcThunk C.llgo_cppmintf_calc_thunk
 func Windows386CalcThunk() unsafe.Pointer

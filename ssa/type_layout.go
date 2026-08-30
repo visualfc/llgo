@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,10 +35,14 @@ func (p Program) hasNativeStructLayout(raw *types.Named) bool {
 func (p Program) setStructLayout(typ types.Type, layout *structLayout) {
 	if layout != nil {
 		p.structLayouts.Set(typ, *layout)
+		p.hasStructLayouts = true
 	}
 }
 
 func (p Program) structLayout(typ Type) (structLayout, bool) {
+	if !p.hasStructLayouts {
+		return structLayout{}, false
+	}
 	layout := p.structLayouts.At(typ.raw.Type)
 	if layout == nil {
 		return structLayout{}, false

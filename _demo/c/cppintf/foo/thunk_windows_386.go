@@ -2,10 +2,7 @@
 
 package foo
 
-import (
-	"unsafe"
-	_ "unsafe"
-)
+import "unsafe"
 
 //go:linkname Windows386ValThunk C.llgo_cppintf_val_thunk
 func Windows386ValThunk() unsafe.Pointer
