@@ -26,9 +26,14 @@ if [[ -z "${llgo_cmd}" || ( "${check_symbols}" == 1 && -z "${check_std_symbols}"
 	fi
 fi
 
+failed_versions=()
 for version in "${versions[@]}"; do
 	echo
 	echo "==== test/ with Go ${version} ===="
+	# LLGo's cache contains target-standard-library objects. Keep one cache per
+	# release so callers can enable package reuse without crossing Go versions.
+	version_cache_dir="${work_dir}/cache/go${version}"
+	mkdir -p "${version_cache_dir}"
 	std_buildmodes="${LLGO_TEST_STD_BUILDMODES:-}"
 	if [[ -z "${std_buildmodes}" ]]; then
 		case "${version}" in
@@ -36,10 +41,20 @@ for version in "${versions[@]}"; do
 			*) std_buildmodes=0 ;;
 		esac
 	fi
-	LLGO="${llgo_cmd}" \
+	if ! XDG_CACHE_HOME="${version_cache_dir}" \
+		LLGO="${llgo_cmd}" \
 		CHECK_STD_SYMBOLS="${check_std_symbols}" \
 		LLGO_TEST_BENCH_GO126="${LLGO_TEST_BENCH_GO126:-1}" \
 		LLGO_TEST_CHECK_SYMBOLS="${check_symbols}" \
 		LLGO_TEST_STD_BUILDMODES="${std_buildmodes}" \
-		dev/test_go_version.sh "${version}"
+		dev/test_go_version.sh "${version}"; then
+		failed_versions+=("${version}")
+	fi
 done
+
+if [[ ${#failed_versions[@]} -ne 0 ]]; then
+	printf 'versioned test failures:' >&2
+	printf ' Go %s' "${failed_versions[@]}" >&2
+	printf '\n' >&2
+	exit 1
+fi

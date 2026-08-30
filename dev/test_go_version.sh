@@ -117,7 +117,7 @@ if [[ "${#requested_packages[@]}" -eq 0 ]]; then
 			;;
 		1.25)
 			# Cover every package with Go 1.25-specific symbol checks without
-			# repeating the full test tree reserved for supported releases.
+			# repeating the full test tree reserved for the primary release.
 			requested_packages=(
 				./test/std/crypto
 				./test/std/crypto/ecdsa
@@ -139,6 +139,33 @@ if [[ "${#requested_packages[@]}" -eq 0 ]]; then
 				./test/std/testing/fstest
 				./test/std/testing/synctest
 				./test/std/unicode
+				./test/goroot
+			)
+			;;
+		1.26)
+			# Keep the compatibility lane focused on packages that contain Go
+			# 1.26-specific checks. Go 1.27 owns the complete test matrix.
+			requested_packages=(
+				./test/std/bytes
+				./test/std/crypto
+				./test/std/crypto/ecdh
+				./test/std/crypto/fips140
+				./test/std/crypto/hpke
+				./test/std/crypto/mlkem
+				./test/std/crypto/mlkem/mlkemtest
+				./test/std/crypto/rsa
+				./test/std/crypto/x509
+				./test/std/errors
+				./test/std/go/ast
+				./test/std/go/token
+				./test/std/log/slog
+				./test/std/net
+				./test/std/net/http
+				./test/std/net/netip
+				./test/std/os
+				./test/std/reflect
+				./test/std/testing
+				./test/std/testing/cryptotest
 				./test/goroot
 			)
 			;;

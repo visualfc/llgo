@@ -7,10 +7,12 @@ uses a temporary alternate module file whose `go` directive matches the target
 release and sets `GOTOOLCHAIN=local`, so a test cannot silently upgrade or
 downgrade to another toolchain.
 
-Go 1.26 and Go 1.27 run all packages on Linux and macOS, and Go 1.27 also runs
-on both Windows ABI profiles. To limit runner usage, Go 1.20 through Go 1.25
-each run a representative package set, alternating between Linux and macOS.
-Tests for APIs introduced by a newer Go release belong
+Go 1.27 runs all packages on Linux, macOS, and both Windows ABI profiles. To
+limit runner usage, Go 1.20 through Go 1.26 share one sequential Linux job and
+each run a representative package set containing their release-specific
+checks. Platform behavior is covered by the primary Go 1.27 matrix rather than
+forming a Cartesian product of every Go version and platform. Tests for APIs
+introduced by a newer Go release belong
 in files with standard release tags such as `//go:build go1.24`; the selected Go
 toolchain then includes those files automatically. Symbol-coverage checks use
 the same toolchain and tags.
@@ -31,9 +33,10 @@ dev/test_go_version.sh 1.24 ./test/std/bytes ./test/goroot
 dev/test_go_versions.sh
 ```
 
-The complete local matrix is sequential and may take tens of minutes. CI runs
-the versions in separate jobs, with the full Go 1.26 and Go 1.27 package sets
-sharded on Linux.
+The complete local matrix is sequential and may take tens of minutes. CI also
+runs Go 1.20 through Go 1.26 sequentially in one compatibility job, while the
+full Go 1.27 package set is sharded on Linux and runs once on each other native
+toolchain profile.
 
 The runner downloads an exact toolchain when needed, builds llgo itself with
 the `.go-version` toolchain, and leaves the working tree unchanged. Set `LLGO`

@@ -66,8 +66,9 @@ Run the complete Go 1.20 through Go 1.27 integration matrix:
 ```
 
 This integration command is intentionally sequential and may take tens of
-minutes locally. CI invokes `test_go_version.sh` in separate versioned jobs
-instead of running the full integration script in one job.
+minutes locally. CI uses the same driver to consolidate the focused Go 1.20
+through Go 1.26 compatibility sets in one job; Go 1.27 runs the complete test
+tree in the primary platform matrix.
 
 The corresponding wasm runtime commands are:
 

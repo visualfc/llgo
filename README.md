@@ -31,7 +31,7 @@ LLGo is compatible with the C ecosystem through the C **Application Binary Inter
 
 LLGo is compatible with Go 1.20+ source code and supports the complete Go 1.27 language syntax, as well as `cgo`.
 
-Compatibility is checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases using pinned Go 1.26 and Go 1.27 toolchains. User projects and packages under `test/` are additionally tested with exact Go 1.20 through Go 1.27 toolchains. Remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml); gc-specific mechanisms outside LLGo's compatibility goals are documented in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
+Compiler compatibility is checked against applicable upstream [`GOROOT/test`](test/goroot/README.md) cases using the pinned Go 1.27 toolchain. User projects and packages under `test/` are additionally tested with exact Go 1.20 through Go 1.27 toolchains. Remaining applicable differences are recorded in [`xfail.yaml`](test/goroot/xfail.yaml); gc-specific mechanisms outside LLGo's compatibility goals are documented in [`notapplicable.yaml`](test/goroot/notapplicable.yaml).
 
 ### Runtime
 
@@ -47,7 +47,7 @@ llgo run -tags nogc .
 
 ### Standard libraries
 
-LLGo fully supports the Go standard library on supported native platforms. CI requires compatibility coverage for every public package and exported symbol in the primary Go toolchain, and runs [`test/std`](test/std/README.md) with both supported toolchains.
+LLGo fully supports the Go standard library on supported native platforms. CI requires compatibility coverage for every public package and exported symbol in the primary Go toolchain, and runs focused [`test/std`](test/std/README.md) compatibility sets with each older supported toolchain.
 
 Other targets may not provide every OS service or implementation-specific runtime behavior.
 
