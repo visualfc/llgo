@@ -17,11 +17,24 @@
 package gotest
 
 import (
+	"os"
+	"os/exec"
 	"runtime"
 	"testing"
 )
 
+const numGoroutineChildEnv = "LLGO_TEST_NUM_GOROUTINE_CHILD"
+
 func TestRuntimeNumGoroutineIncludesNewProc(t *testing.T) {
+	if os.Getenv(numGoroutineChildEnv) == "" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestRuntimeNumGoroutineIncludesNewProc$")
+		cmd.Env = append(os.Environ(), numGoroutineChildEnv+"=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("NumGoroutine child failed: %v\n%s", err, output)
+		}
+		return
+	}
+
 	before := runtime.NumGoroutine()
 	started := make(chan struct{})
 	release := make(chan struct{})
