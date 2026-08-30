@@ -1,6 +1,7 @@
 package cabi
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/xgo-dev/llgo/ssa"
@@ -543,7 +544,7 @@ func windows386AggregateToNative(b llvm.Builder, value llvm.Value, source, nativ
 		}
 		return ret
 	default:
-		panic("cabi: unsupported Go/386 aggregate layout conversion")
+		panic(fmt.Sprintf("cabi: unsupported Go/386 aggregate layout conversion from %s (%v) to %s (%v)", source, source.TypeKind(), native, native.TypeKind()))
 	}
 }
 
@@ -589,7 +590,7 @@ func windows386AggregateFromNative(b llvm.Builder, value llvm.Value, source, nat
 		}
 		return ret
 	default:
-		panic("cabi: unsupported native-to-Go/386 aggregate layout conversion")
+		panic(fmt.Sprintf("cabi: unsupported native-to-Go/386 aggregate layout conversion from %s (%v) to %s (%v)", native, native.TypeKind(), source, source.TypeKind()))
 	}
 }
 

@@ -515,11 +515,14 @@ func TestWindows386AggregateLayoutMismatchPanics(t *testing.T) {
 		source     llvm.Type
 		native     llvm.Type
 		fromNative bool
+		want       string
 	}{
-		{name: "extra Go field to native", source: two, native: one},
-		{name: "extra Go field from native", source: two, native: one, fromNative: true},
-		{name: "missing Go field to native", source: one, native: two},
-		{name: "missing Go field from native", source: one, native: two, fromNative: true},
+		{name: "extra Go field to native", source: two, native: one, want: "aggregate field"},
+		{name: "extra Go field from native", source: two, native: one, fromNative: true, want: "aggregate field"},
+		{name: "missing Go field to native", source: one, native: two, want: "aggregate field"},
+		{name: "missing Go field from native", source: one, native: two, fromNative: true, want: "aggregate field"},
+		{name: "unsupported kind to native", source: ctx.Int32Type(), native: ctx.Int64Type(), want: "i32"},
+		{name: "unsupported kind from native", source: ctx.Int32Type(), native: ctx.Int64Type(), fromNative: true, want: "i32"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -540,8 +543,8 @@ func TestWindows386AggregateLayoutMismatchPanics(t *testing.T) {
 					t.Fatal("layout mismatch did not panic")
 				}
 				message, ok := got.(string)
-				if !ok || !strings.Contains(message, "aggregate field") {
-					t.Fatalf("layout mismatch panic = %v, want aggregate-field diagnostic", got)
+				if !ok || !strings.Contains(message, test.want) {
+					t.Fatalf("layout mismatch panic = %v, want diagnostic containing %q", got, test.want)
 				}
 			}()
 			if test.fromNative {
