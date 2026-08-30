@@ -15,6 +15,17 @@ type weakHandle struct {
 	live uint32
 }
 
+// BDWGC conservatively treats pointer-looking uintptr values as live roots.
+// Keep weak-pointer identities encoded everywhere they outlive the call that
+// registers them, including map keys and weak handles.
+func encodeWeakPointer(p unsafe.Pointer) uintptr {
+	return ^uintptr(p)
+}
+
+func decodeWeakPointer(key uintptr) unsafe.Pointer {
+	return unsafe.Pointer(^key)
+}
+
 var weakState struct {
 	once psync.Once
 	mu   psync.Mutex
@@ -32,7 +43,7 @@ func llgoRegisterWeakPointer(p unsafe.Pointer) unsafe.Pointer {
 	}
 	weakState.once.Do(initWeakState)
 
-	key := uintptr(p)
+	key := encodeWeakPointer(p)
 	weakState.mu.Lock()
 	if h := weakState.m[key]; h != nil {
 		weakState.mu.Unlock()
@@ -42,6 +53,8 @@ func llgoRegisterWeakPointer(p unsafe.Pointer) unsafe.Pointer {
 	weakState.m[key] = h
 	weakState.mu.Unlock()
 
+	// Keep the cleanup closure limited to encoded identities. Capturing p here
+	// would turn the cleanup itself into a strong reference to the referent.
 	llrt.AddCleanupPtr(p, func() {
 		latomic.StoreUint32(&h.live, 0)
 		weakState.mu.Lock()
@@ -58,7 +71,7 @@ func llgoMakeStrongFromWeak(u unsafe.Pointer) unsafe.Pointer {
 	if h == nil || latomic.LoadUint32(&h.live) == 0 {
 		return nil
 	}
-	return unsafe.Pointer(h.key)
+	return decodeWeakPointer(h.key)
 }
 
 //go:linkname weak_runtime_registerWeakPointer weak.runtime_registerWeakPointer

@@ -3,6 +3,7 @@ package weak_test
 import (
 	"runtime"
 	"testing"
+	"time"
 	"weak"
 )
 
@@ -52,12 +53,43 @@ func TestPointerGC(t *testing.T) {
 		}
 	}()
 
-	runtime.GC()
-	runtime.GC()
+	deadline := time.Now().Add(3 * time.Second)
+	for wp.Value() != nil && time.Now().Before(deadline) {
+		runtime.Gosched()
+		runtime.GC()
+		time.Sleep(time.Millisecond)
+	}
+	if val := wp.Value(); val != nil {
+		t.Fatalf("weak pointer remained valid after its object became unreachable: %v", *val)
+	}
+}
 
-	val := wp.Value()
-	if val != nil {
-		t.Log("Note: weak pointer still valid after GC (may happen)")
+func TestPointerGCWithCleanup(t *testing.T) {
+	var wp weak.Pointer[int]
+	cleaned := make(chan struct{}, 1)
+
+	func() {
+		x := new(int)
+		*x = 456
+		runtime.AddCleanup(x, func(struct{}) {
+			cleaned <- struct{}{}
+		}, struct{}{})
+		wp = weak.Make(x)
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for wp.Value() != nil && time.Now().Before(deadline) {
+		runtime.Gosched()
+		runtime.GC()
+		time.Sleep(time.Millisecond)
+	}
+	if val := wp.Value(); val != nil {
+		t.Fatalf("weak pointer remained valid after its object became unreachable: %v", *val)
+	}
+	select {
+	case <-cleaned:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cleanup did not run after the weak pointer became nil")
 	}
 }
 
