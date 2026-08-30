@@ -519,11 +519,15 @@ func windows386AggregateToNative(b llvm.Builder, value llvm.Value, source, nativ
 		return ret
 	case llvm.StructTypeKind:
 		ret := llvm.Undef(native)
+		sourceFields := source.StructElementTypes()
 		nativeFields := native.StructElementTypes()
 		nativeIndex := 0
-		for sourceIndex, sourceField := range source.StructElementTypes() {
+		for sourceIndex, sourceField := range sourceFields {
 			if nativeIndex == len(nativeFields) {
-				break // trailing zero-length Go alignment marker
+				if sourceIndex != len(sourceFields)-1 || !windows386GoAlignmentMarker(sourceField) {
+					panic("cabi: invalid trailing Go/386 aggregate field")
+				}
+				break
 			}
 			item := b.CreateExtractValue(value, sourceIndex, "")
 			if inner, wrapped := windows386GoFieldWrapper(sourceField); wrapped {
@@ -533,6 +537,9 @@ func windows386AggregateToNative(b llvm.Builder, value llvm.Value, source, nativ
 			item = windows386AggregateToNative(b, item, sourceField, nativeFields[nativeIndex])
 			ret = b.CreateInsertValue(ret, item, nativeIndex, "")
 			nativeIndex++
+		}
+		if nativeIndex != len(nativeFields) {
+			panic("cabi: missing Go/386 aggregate field")
 		}
 		return ret
 	default:
@@ -555,11 +562,15 @@ func windows386AggregateFromNative(b llvm.Builder, value llvm.Value, source, nat
 		return ret
 	case llvm.StructTypeKind:
 		ret := llvm.Undef(source)
+		sourceFields := source.StructElementTypes()
 		nativeFields := native.StructElementTypes()
 		nativeIndex := 0
-		for sourceIndex, sourceField := range source.StructElementTypes() {
+		for sourceIndex, sourceField := range sourceFields {
 			if nativeIndex == len(nativeFields) {
-				break // trailing zero-length Go alignment marker
+				if sourceIndex != len(sourceFields)-1 || !windows386GoAlignmentMarker(sourceField) {
+					panic("cabi: invalid trailing Go/386 aggregate field")
+				}
+				break
 			}
 			item := b.CreateExtractValue(value, nativeIndex, "")
 			fieldNative := nativeFields[nativeIndex]
@@ -573,10 +584,18 @@ func windows386AggregateFromNative(b llvm.Builder, value llvm.Value, source, nat
 			ret = b.CreateInsertValue(ret, item, sourceIndex, "")
 			nativeIndex++
 		}
+		if nativeIndex != len(nativeFields) {
+			panic("cabi: missing native Go/386 aggregate field")
+		}
 		return ret
 	default:
 		panic("cabi: unsupported native-to-Go/386 aggregate layout conversion")
 	}
+}
+
+func windows386GoAlignmentMarker(typ llvm.Type) bool {
+	return typ.TypeKind() == llvm.ArrayTypeKind && typ.ArrayLength() == 0 &&
+		typ.ElementType().TypeKind() == llvm.IntegerTypeKind
 }
 
 func aggregateToNative(b llvm.Builder, info *TypeInfo, value llvm.Value) llvm.Value {

@@ -497,6 +497,62 @@ func TestWindows386CABILowersGoAggregateToNativeLayout(t *testing.T) {
 	}
 }
 
+func TestWindows386AggregateLayoutMismatchPanics(t *testing.T) {
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	one := ctx.StructType([]llvm.Type{ctx.Int32Type()}, false)
+	two := ctx.StructType([]llvm.Type{ctx.Int32Type(), ctx.Int32Type()}, false)
+	marker := llvm.ArrayType(ctx.Int32Type(), 0)
+	if !windows386GoAlignmentMarker(marker) {
+		t.Fatal("zero-length integer array was not recognized as an alignment marker")
+	}
+	if windows386GoAlignmentMarker(llvm.ArrayType(ctx.Int32Type(), 1)) {
+		t.Fatal("non-empty integer array was recognized as an alignment marker")
+	}
+
+	tests := []struct {
+		name       string
+		source     llvm.Type
+		native     llvm.Type
+		fromNative bool
+	}{
+		{name: "extra Go field to native", source: two, native: one},
+		{name: "extra Go field from native", source: two, native: one, fromNative: true},
+		{name: "missing Go field to native", source: one, native: two},
+		{name: "missing Go field from native", source: one, native: two, fromNative: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mod := ctx.NewModule(test.name)
+			defer mod.Dispose()
+			input := test.source
+			if test.fromNative {
+				input = test.native
+			}
+			fn := llvm.AddFunction(mod, "mismatch", llvm.FunctionType(ctx.VoidType(), []llvm.Type{input}, false))
+			b := ctx.NewBuilder()
+			defer b.Dispose()
+			b.SetInsertPointAtEnd(ctx.AddBasicBlock(fn, "entry"))
+
+			defer func() {
+				got := recover()
+				if got == nil {
+					t.Fatal("layout mismatch did not panic")
+				}
+				message, ok := got.(string)
+				if !ok || !strings.Contains(message, "aggregate field") {
+					t.Fatalf("layout mismatch panic = %v, want aggregate-field diagnostic", got)
+				}
+			}()
+			if test.fromNative {
+				windows386AggregateFromNative(b, fn.Param(0), test.source, test.native)
+			} else {
+				windows386AggregateToNative(b, fn.Param(0), test.source, test.native)
+			}
+		})
+	}
+}
+
 func TestMSVCCallAndCallbackLowering(t *testing.T) {
 	llvm.InitializeAllTargets()
 	llvm.InitializeAllTargetMCs()
