@@ -29,7 +29,7 @@ const (
 
 type timerState struct {
 	r         *runtimeTimer
-	callback  func(int64)
+	callback  runtimeTimerCallback
 	heapIndex int
 	active    bool
 }
@@ -53,12 +53,31 @@ func ensureTimerScheduler() {
 	timerSchedulerOnce.Do(initTimerScheduler)
 }
 
+// timerSchedulerHeadLocked returns a value snapshot of the current head. The
+// deadline must be copied separately because reset can mutate the head timer in
+// place while timerSchedulerMu is held.
+func timerSchedulerHeadLocked() (*timerState, int64) {
+	if len(timerSchedulerHeap) == 0 {
+		return nil, 0
+	}
+	st := timerSchedulerHeap[0]
+	return st, st.r.when
+}
+
+func signalTimerSchedulerIfHeadChangedLocked(old *timerState, oldWhen int64) {
+	current, currentWhen := timerSchedulerHeadLocked()
+	if current != old || currentWhen != oldWhen {
+		timerSchedulerCond.Signal()
+	}
+}
+
 func startRuntimeTimer(r *runtimeTimer) {
 	if r == nil {
 		return
 	}
 	ensureTimerScheduler()
 	timerSchedulerMu.Lock()
+	oldHead, oldHeadWhen := timerSchedulerHeadLocked()
 	st := timerSchedulerMap[r]
 	if st == nil {
 		st = &timerState{r: r, heapIndex: -1}
@@ -69,7 +88,7 @@ func startRuntimeTimer(r *runtimeTimer) {
 	st.callback = snapshotRuntimeTimer(r)
 	st.active = true
 	timerHeapAdd(st)
-	timerSchedulerCond.Signal()
+	signalTimerSchedulerIfHeadChangedLocked(oldHead, oldHeadWhen)
 	timerSchedulerMu.Unlock()
 }
 
@@ -79,13 +98,14 @@ func stopRuntimeTimer(r *runtimeTimer) bool {
 	}
 	ensureTimerScheduler()
 	timerSchedulerMu.Lock()
+	oldHead, oldHeadWhen := timerSchedulerHeadLocked()
 	st := timerSchedulerMap[r]
 	wasActive := st != nil && st.active
 	if wasActive {
 		timerHeapRemove(st.heapIndex)
 		st.active = false
 		delete(timerSchedulerMap, r)
-		timerSchedulerCond.Signal()
+		signalTimerSchedulerIfHeadChangedLocked(oldHead, oldHeadWhen)
 	}
 	timerSchedulerMu.Unlock()
 	return wasActive
@@ -100,6 +120,7 @@ func resetRuntimeTimer(r *runtimeTimer, when, period int64, update func()) bool 
 	}
 	ensureTimerScheduler()
 	timerSchedulerMu.Lock()
+	oldHead, oldHeadWhen := timerSchedulerHeadLocked()
 	st := timerSchedulerMap[r]
 	wasActive := st != nil && st.active
 	if st == nil {
@@ -116,7 +137,7 @@ func resetRuntimeTimer(r *runtimeTimer, when, period int64, update func()) bool 
 	st.callback = snapshotRuntimeTimer(r)
 	st.active = true
 	timerHeapAdd(st)
-	timerSchedulerCond.Signal()
+	signalTimerSchedulerIfHeadChangedLocked(oldHead, oldHeadWhen)
 	timerSchedulerMu.Unlock()
 	return wasActive
 }
@@ -131,7 +152,7 @@ func timerSchedulerLoop() {
 
 		st := timerSchedulerHeap[0]
 		now := runtimeNano()
-		if wait := st.r.when - now; wait > 0 {
+		if wait := timerSchedulerWaitDuration(st.r.when, now); wait > 0 {
 			timerSchedulerTimedWait(wait)
 			continue
 		}
@@ -153,11 +174,20 @@ func timerSchedulerLoop() {
 			delay = 0
 		}
 		timerSchedulerMu.Unlock()
-		if callback != nil {
-			callback(delay)
-		}
+		callback.run(delay)
 		timerSchedulerMu.Lock()
 	}
+}
+
+func timerSchedulerWaitDuration(when, now int64) int64 {
+	if when <= now {
+		return 0
+	}
+	wait := when - now
+	if wait <= 0 || wait > maxTimerCondWait {
+		return maxTimerCondWait
+	}
+	return wait
 }
 
 func timerNextWhen(when, period, now int64) int64 {
@@ -170,6 +200,25 @@ func timerNextWhen(when, period, now int64) int64 {
 		next = maxTimerWhen
 	}
 	return next
+}
+
+//go:linkname timeSleep time.Sleep
+func timeSleep(ns int64) {
+	if ns <= 0 {
+		return
+	}
+	when := runtimeNano() + ns
+	if when < 0 {
+		when = maxTimerWhen
+	}
+	done := make(chan struct{}, 1)
+	r := &runtimeTimer{
+		when: when,
+		f:    timeSleepWake,
+		arg:  done,
+	}
+	startRuntimeTimer(r)
+	<-done
 }
 
 func timerHeapLess(i, j int) bool {

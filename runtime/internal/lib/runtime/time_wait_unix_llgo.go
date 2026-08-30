@@ -22,8 +22,5 @@ func initTimerSchedulerCond() {
 }
 
 func timerSchedulerTimedWait(wait int64) {
-	if wait > maxTimerCondWait {
-		wait = maxTimerCondWait
-	}
 	c_timerCondTimedWait(&timerSchedulerCond, &timerSchedulerMu, wait)
 }

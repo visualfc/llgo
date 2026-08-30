@@ -46,6 +46,7 @@ func BenchmarkTimerCreateStop(b *testing.B) {
 
 func BenchmarkTimerResetActive(b *testing.B) {
 	b.Run(timerImplementation, func(b *testing.B) {
+		b.ReportAllocs()
 		timer := time.AfterFunc(farFuture, timerNoop)
 		b.ResetTimer()
 		for i := range b.N {
@@ -63,6 +64,7 @@ func BenchmarkTimerResetActive(b *testing.B) {
 
 func BenchmarkTimerRearmStopped(b *testing.B) {
 	b.Run(timerImplementation, func(b *testing.B) {
+		b.ReportAllocs()
 		timer := time.AfterFunc(farFuture, timerNoop)
 		if !timer.Stop() {
 			b.Fatal("new far-future timer was not active")
@@ -81,6 +83,7 @@ func BenchmarkTimerRearmStopped(b *testing.B) {
 
 func BenchmarkTimerResetHeap1024(b *testing.B) {
 	b.Run(timerImplementation, func(b *testing.B) {
+		b.ReportAllocs()
 		timers := make([]*time.Timer, timerHeapSize)
 		for i := range timers {
 			timers[i] = time.AfterFunc(

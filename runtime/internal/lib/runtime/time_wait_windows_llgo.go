@@ -14,9 +14,6 @@ func initTimerSchedulerCond() {
 }
 
 func timerSchedulerTimedWait(wait int64) {
-	if wait > maxTimerCondWait {
-		wait = maxTimerCondWait
-	}
 	sec, nsec := walltime()
 	sec += wait / 1e9
 	ns := int64(nsec) + wait%1e9

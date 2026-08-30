@@ -341,6 +341,30 @@ func TestTimeTimersAndTickers(t *testing.T) {
 	}
 }
 
+func TestTimerResetWakesEarlierDeadline(t *testing.T) {
+	head := time.NewTimer(2 * time.Second)
+	defer head.Stop()
+	target := time.NewTimer(time.Hour)
+	defer target.Stop()
+	// Let the timer scheduler observe the long-lived head before resetting a
+	// different timer ahead of it. This makes the test exercise the wakeup from
+	// an existing timed wait instead of racing scheduler initialization.
+	time.Sleep(10 * time.Millisecond)
+
+	start := time.Now()
+	if !target.Reset(20 * time.Millisecond) {
+		t.Fatal("Reset reported an active timer as stopped")
+	}
+	select {
+	case <-target.C:
+		if elapsed := time.Since(start); elapsed >= time.Second {
+			t.Fatalf("earlier reset was not scheduled promptly: %v", elapsed)
+		}
+	case <-head.C:
+		t.Fatal("earlier reset did not wake the timer scheduler")
+	}
+}
+
 func TestTimeJSONInterop(t *testing.T) {
 	payload := struct {
 		When time.Time     `json:"when"`

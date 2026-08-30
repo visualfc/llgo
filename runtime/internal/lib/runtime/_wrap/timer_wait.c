@@ -7,6 +7,8 @@
 #include <stdint.h>
 #include <time.h>
 
+#define LLGO_TIMER_MAX_WAIT_NANOS INT64_C(86400000000000)
+
 int llgo_timer_cond_init(pthread_cond_t *condition)
 {
 #if defined(__APPLE__)
@@ -33,6 +35,8 @@ int llgo_timer_cond_timedwait(pthread_cond_t *condition,
 
     if (wait_nanos < 0)
         wait_nanos = 0;
+    else if (wait_nanos > LLGO_TIMER_MAX_WAIT_NANOS)
+        wait_nanos = LLGO_TIMER_MAX_WAIT_NANOS;
 #if defined(__APPLE__)
     deadline.tv_sec = (time_t)(wait_nanos / 1000000000LL);
     deadline.tv_nsec = (long)(wait_nanos % 1000000000LL);

@@ -25,31 +25,20 @@ type timeTimer struct {
 	r    runtimeTimer
 }
 
-func snapshotRuntimeTimer(r *runtimeTimer) func(int64) {
-	f, arg, seq := r.f, r.arg, r.seq
-	return func(delay int64) {
-		f(arg, seq, delay)
-	}
+type runtimeTimerCallback struct {
+	f   func(any, uintptr, int64)
+	arg any
+	seq uintptr
 }
 
-//go:linkname timeSleep time.Sleep
-func timeSleep(ns int64) {
-	if ns <= 0 {
-		return
+func snapshotRuntimeTimer(r *runtimeTimer) runtimeTimerCallback {
+	return runtimeTimerCallback{f: r.f, arg: r.arg, seq: r.seq}
+}
+
+func (callback runtimeTimerCallback) run(delay int64) {
+	if callback.f != nil {
+		callback.f(callback.arg, callback.seq, delay)
 	}
-	when := runtimeNano() + ns
-	if when < 0 {
-		when = maxTimerWhen
-	}
-	done := make(chan struct{}, 1)
-	r := &runtimeTimer{
-		when: when,
-		f:    timeSleepWake,
-		arg:  done,
-	}
-	startRuntimeTimer(r)
-	<-done
-	stopRuntimeTimer(r)
 }
 
 func timeSleepWake(arg any, _ uintptr, _ int64) {
