@@ -105,8 +105,8 @@ jobs:
       # Every host uploads coverage: OS-specific ELF, Mach-O, and COFF paths
       # plus per-OS runtime shims are otherwise invisible to codecov/patch.
       - name: Test with coverage
-        # 45m: the caller-info acceptance suite (test/go) legitimately grew
-        # the covered run past the old 30m budget on macOS runners.
+        # Compiler fixtures build and run many programs under coverage; leave
+        # enough headroom for the slower native toolchains.
         shell: bash
         run: |
           set -euo pipefail
@@ -124,9 +124,8 @@ jobs:
             export LLGO_STDIO_NOBUF=1
           fi
 
-          # test/go intentionally contains compiler edge cases that can make
-          # the printf analyzer panic. Keep the normal go test vet gate for
-          # every other package, and disable vet only for that package.
+          # Keep the direct language-behavior suite in a separate profile so
+          # its coverage remains independently visible.
           go list ./... \
             | grep -v '^github.com/xgo-dev/llgo/test/go$' \
             | grep -v '^github.com/xgo-dev/llgo/cl$' \
@@ -140,7 +139,7 @@ jobs:
             -coverpkg=github.com/xgo-dev/llgo/cl,github.com/xgo-dev/llgo/ssa \
             -coverprofile="coverage-compiler.txt" -covermode=atomic \
             -bench '^BenchmarkGo126' -benchtime=1x ./cl
-          "${go_test[@]}" -timeout 45m -vet=off \
+          "${go_test[@]}" -timeout 45m \
             -coverprofile="coverage-test-go.txt" -covermode=atomic ./test/go
 
       - name: Test with embedded emulator env

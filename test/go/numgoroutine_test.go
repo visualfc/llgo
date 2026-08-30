@@ -17,42 +17,25 @@
 package gotest
 
 import (
-	"strings"
+	"runtime"
 	"testing"
 )
 
-const numGoroutineProbe = `package main
-
-import (
-	"fmt"
-	"runtime"
-)
-
-func main() {
+func TestRuntimeNumGoroutineIncludesNewProc(t *testing.T) {
 	before := runtime.NumGoroutine()
 	started := make(chan struct{})
 	release := make(chan struct{})
+	done := make(chan struct{})
 	go func() {
 		close(started)
 		<-release
+		close(done)
 	}()
 	<-started
 	during := runtime.NumGoroutine()
 	if during != before+1 {
-		panic(fmt.Sprintf("NumGoroutine: before=%d during=%d", before, during))
+		t.Fatalf("NumGoroutine: before=%d during=%d, want %d", before, during, before+1)
 	}
 	close(release)
-	fmt.Println("NUM_GOROUTINE_OK")
-}
-`
-
-func TestRuntimeNumGoroutineIncludesNewProc(t *testing.T) {
-	_, dir := prepareCallerAcceptanceProbe(t, numGoroutineProbe)
-	out, err := runLLGoProbe(t, dir)
-	if err != nil {
-		t.Fatalf("NumGoroutine probe failed: %v\n%s", err, out)
-	}
-	if !strings.Contains(out, "NUM_GOROUTINE_OK") {
-		t.Fatalf("NumGoroutine probe did not complete:\n%s", out)
-	}
+	<-done
 }

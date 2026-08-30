@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-package gotest
+package llgocmd
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -97,46 +96,24 @@ func TestBuiltinPrintOutputMatchesGo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	goBin := testExecutablePath(dir, "go-probe")
-	llgoBin := testExecutablePath(dir, "llgo-probe")
-	runBuiltinPrintCommand(t, dir, "go", "build", "-o", goBin, file)
-	repoRoot := findBuiltinPrintRepoRoot(t)
-	t.Setenv("LLGO_ROOT", repoRoot)
-	runBuiltinPrintCommand(t, dir, acceptanceLLGoBinary(t), "build", "-o", llgoBin, file)
-
-	want := runBuiltinPrintCommand(t, dir, goBin)
-	got := runBuiltinPrintCommand(t, dir, llgoBin)
-	if string(got) != string(want) {
-		t.Fatalf("llgo print output mismatch\nllgo:\n%s\n\ngo:\n%s", got, want)
+	goBin := executablePath(dir, "go-probe")
+	compilerBin := executablePath(dir, "compiler-probe")
+	if output, err := runGoCompiler(t, dir, "build", "-o", goBin, file); err != nil {
+		t.Fatalf("build builtin print probe with go: %v\n%s", err, output)
 	}
-}
+	if output, err := runCompiler(t, dir, "build", "-o", compilerBin, file); err != nil {
+		t.Fatalf("build builtin print probe with %s: %v\n%s", toolCompilerName, err, output)
+	}
 
-func runBuiltinPrintCommand(t *testing.T, dir, name string, args ...string) []byte {
-	t.Helper()
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	cmd.Env = os.Environ()
-	out, err := cmd.CombinedOutput()
+	want, err := runExecutable(t, dir, goBin)
 	if err != nil {
-		t.Fatalf("%s %v failed: %v\n%s", name, args, err, out)
+		t.Fatalf("run go builtin print probe: %v\n%s", err, want)
 	}
-	return out
-}
-
-func findBuiltinPrintRepoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
+	got, err := runExecutable(t, dir, compilerBin)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("run %s builtin print probe: %v\n%s", toolCompilerName, err, got)
 	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("repo root not found")
-		}
-		dir = parent
+	if got != want {
+		t.Fatalf("%s print output mismatch\n%s:\n%s\n\ngo:\n%s", toolCompilerName, toolCompilerName, got, want)
 	}
 }

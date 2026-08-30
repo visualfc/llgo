@@ -22,12 +22,10 @@ package gotest
 import (
 	"bytes"
 	"os"
-	"path/filepath"
+	"os/exec"
 	"strings"
 	"testing"
 )
-
-const printLegacyExponentProbe = `package main
 
 func printLegacyProbeFloat(v float64) {
 	println(v)
@@ -37,32 +35,25 @@ func printLegacyProbeComplex(c complex128) {
 	println(c)
 }
 
-func main() {
-	println(5.0, 8.0)
-	printLegacyProbeFloat(100.1)
-	println(1 + 2i)
-	printLegacyProbeComplex(1 + 2i)
-	c := complex(4.0, 6.0)
-	println(c)
-}
-`
-
 func TestBuiltinPrintLegacyExponentWidth(t *testing.T) {
-	dir := t.TempDir()
-	mainFile := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(mainFile, []byte(printLegacyExponentProbe), 0644); err != nil {
-		t.Fatal(err)
+	const helperEnv = "LLGO_PRINT_LEGACY_HELPER"
+	if os.Getenv(helperEnv) == "1" {
+		printLegacyExponentValues()
+		return
 	}
 
-	root := findLLGoRoot(t)
-	cmd := commandForTest(t, root, "go", "run", "./cmd/llgo", "run", mainFile)
-	cmd.Env = append(os.Environ(), "LLGO_ROOT="+root)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestBuiltinPrintLegacyExponentWidth$")
+	cmd.Env = append(os.Environ(), helperEnv+"=1")
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("builtin print probe failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
+		t.Fatalf("builtin print helper failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 
 	got := filterPrintProbeOutput(stderr.String())
@@ -75,6 +66,15 @@ func TestBuiltinPrintLegacyExponentWidth(t *testing.T) {
 	if got != want {
 		t.Fatalf("builtin print output mismatch:\n got %q\nwant %q", got, want)
 	}
+}
+
+func printLegacyExponentValues() {
+	println(5.0, 8.0)
+	printLegacyProbeFloat(100.1)
+	println(1 + 2i)
+	printLegacyProbeComplex(1 + 2i)
+	c := complex(4.0, 6.0)
+	println(c)
 }
 
 func filterPrintProbeOutput(s string) string {

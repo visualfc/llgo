@@ -17,49 +17,15 @@
 package gotest
 
 import (
-	"os"
-	"path/filepath"
+	"github.com/xgo-dev/llgo/test/go/testdata/runtimeinitgc"
 	"testing"
 )
 
 func TestRuntimeGCStatsDuringInit(t *testing.T) {
-	dir := t.TempDir()
-	src := `package main
-
-import "runtime"
-
-var initialized bool
-
-func init() {
-	c := make(chan struct{})
-	go func() {
-		c <- struct{}{}
-	}()
-	<-c
-
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	runtime.GC()
-	runtime.ReadMemStats(&after)
-	if after.NumGC <= before.NumGC {
-		panic("NumGC did not advance during init")
+	if !runtimeinitgc.Initialized {
+		t.Fatal("fixture init did not run")
 	}
-	initialized = true
-}
-
-func main() {
-	if !initialized {
-		panic("init did not run")
+	if runtimeinitgc.After.NumGC <= runtimeinitgc.Before.NumGC {
+		t.Fatalf("NumGC during init: before=%d after=%d", runtimeinitgc.Before.NumGC, runtimeinitgc.After.NumGC)
 	}
-}
-`
-	mainFile := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(mainFile, []byte(src), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	runGoCmd(t, dir, "run", mainFile)
-
-	root := findLLGoRoot(t)
-	runGoCmd(t, root, "run", "./cmd/llgo", "run", mainFile)
 }

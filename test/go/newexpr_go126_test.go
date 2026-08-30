@@ -19,58 +19,42 @@
 
 package gotest
 
-import (
-	"os"
-	"path/filepath"
-	"testing"
-)
-
-const newExpressionProbe = `package main
+import "testing"
 
 var (
 	globalNewExpr = new(0)
 	globalAlias   = globalNewExpr
 )
 
-func check(name string, ok bool) {
-	if !ok {
-		panic(name)
-	}
-}
-
-func main() {
+func TestNewExpressionInitializesAllocatedValue(t *testing.T) {
 	{
 		p := new(123)
-		check("untyped constant", *p == 123)
+		if *p != 123 {
+			t.Fatalf("new(untyped constant) = %d, want 123", *p)
+		}
 	}
 	{
 		x := 42
 		p := new(x)
-		check("non-constant", *p == x)
+		if *p != x {
+			t.Fatalf("new(non-constant) = %d, want %d", *p, x)
+		}
 	}
 	{
 		x := [2]int{123, 456}
 		p := new(x)
-		check("composite value", *p == x)
+		if *p != x {
+			t.Fatalf("new(composite value) = %v, want %v", *p, x)
+		}
 	}
 	{
 		var i int
 		p := new(i > 0)
-		check("untyped bool expression", *p == false)
+		if *p {
+			t.Fatal("new(untyped bool expression) = true, want false")
+		}
 	}
-	check("global initializer", globalAlias == globalNewExpr && *globalNewExpr == 0)
-}
-`
-
-func TestNewExpressionInitializesAllocatedValue(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(file, []byte(newExpressionProbe), 0644); err != nil {
-		t.Fatal(err)
+	if globalAlias != globalNewExpr || *globalNewExpr != 0 {
+		t.Fatalf("global new expression = (%p, %p, %d), want identical pointers and zero value", globalAlias, globalNewExpr, *globalNewExpr)
 	}
-
-	repoRoot := findRepoRoot(t)
-	runStringConversionProbe(t, dir, "go", "run", file)
-	t.Setenv("LLGO_ROOT", repoRoot)
-	runStringConversionProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)
 }
