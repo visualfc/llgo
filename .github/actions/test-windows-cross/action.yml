@@ -42,10 +42,9 @@ runs:
           echo "LLGo host compiler is not executable: $LLGO_CROSS_COMPILER" >&2
           exit 1
         fi
-        # Make this invocation independent of any target selected by an
-        # earlier architecture step in the same cross-host job. The activation
-        # action exports these target-selecting wrappers so callers do not need
-        # to assemble compiler flags themselves.
+        # Use the target-selecting wrappers exported by activation so callers
+        # do not need to assemble compiler flags and the host compiler cannot
+        # be selected accidentally through PATH.
         export PATH="$LLGO_MINGW_TARGET_TOOLS:$PATH"
         export CC="$LLGO_MINGW_TARGET_TOOLS/clang"
         export CXX="$LLGO_MINGW_TARGET_TOOLS/clang++"

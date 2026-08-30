@@ -315,16 +315,16 @@ runs:
         llvm_mingw_root="${LLGO_MINGW_CROSS_ROOT:-$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}}"
         export PATH="$llvm_mingw_root/bin:$PATH"
 
-        # Each target activation persists its compiler wrappers through
-        # GITHUB_ENV. Do not let a preceding Windows target become vcpkg's
-        # macOS/Linux host compiler while the next target is configured.
+        # Do not let target-specific compiler variables from the invoking job
+        # become vcpkg's macOS/Linux host compiler while dependencies are
+        # configured.
         # The MinGW triplet still discovers its target-prefixed drivers from
         # llvm-mingw on PATH.
         unset CC CXX PKG_CONFIG PKG_CONFIG_PATH GOOS GOARCH
 
-        # The three architectures run sequentially in one job. Reuse the
-        # pinned vcpkg checkout and host tool instead of cloning/bootstrapping
-        # it once per target; target build and install roots remain separate.
+        # Keep the pinned checkout and host tool reusable if this composite is
+        # invoked more than once in a job; target build/install roots remain
+        # separate.
         if [[ ! -d "$source_root/.git" ]]; then
           git clone --no-checkout https://github.com/microsoft/vcpkg.git "$source_root"
         fi
@@ -395,8 +395,8 @@ runs:
         mkdir -p "$target_tools"
         printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$compiler" > "$target_tools/clang"
         printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$compiler_xx" > "$target_tools/clang++"
-        # Preserve the Unix host command across sequential architecture
-        # qualifications; a previous target's wrapper may already be on PATH.
+        # Preserve the Unix host command if the composite is invoked again
+        # after a target-selecting wrapper has been added to PATH.
         pkg_config="${LLGO_CROSS_HOST_PKG_CONFIG:-$(command -v pkg-config)}"
         if [[ ! -x "$pkg_config" ]]; then
           echo "the host pkg-config command is unavailable: $pkg_config" >&2
