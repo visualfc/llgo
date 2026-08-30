@@ -517,12 +517,13 @@ jobs:
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
 
   windows-gnu-cross:
-    name: windows GNU cross (${{ matrix.os }})
-    timeout-minutes: 180
+    name: windows GNU cross (${{ matrix.os }}, ${{ matrix.windows_arch }})
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-latest]
+        windows_arch: [amd64, arm64, "386"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -547,23 +548,11 @@ jobs:
           # available to the following cross-host builds.
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
-      - name: Test cross-host windows/amd64
+      - name: Test cross-host windows/${{ matrix.windows_arch }}
         uses: ./.github/actions/test-windows-cross
         with:
           llgo: ${{ runner.temp }}/llgo-host
-          windows-arch: amd64
-
-      - name: Test cross-host windows/arm64
-        uses: ./.github/actions/test-windows-cross
-        with:
-          llgo: ${{ runner.temp }}/llgo-host
-          windows-arch: arm64
-
-      - name: Test cross-host windows/386
-        uses: ./.github/actions/test-windows-cross
-        with:
-          llgo: ${{ runner.temp }}/llgo-host
-          windows-arch: "386"
+          windows-arch: ${{ matrix.windows_arch }}
 
   wasm-runtime:
     name: wasm-runtime (Go 1.24 and 1.27)
