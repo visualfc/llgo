@@ -8,6 +8,7 @@ include:
   - "^Benchmark(RuntimeGetG|Global(Read|Write))$"
   - "^Benchmark(DirectCall|InterfaceCall|Defer|Goroutine)$"
   - "^BenchmarkChannel(Buffered|Handoff)$"
+  - "^BenchmarkTimer(AfterFuncZeroDelivery|CreateStop|RearmStopped|ResetActive|ResetHeap1024)/(Go|LLGo)$"
 groups:
   programs: "^Program/"
   compiler: "^(MergeCompilerFlags|MergeLinkerFlags|LookupPCRandom)$"
@@ -16,6 +17,7 @@ groups:
       - "^(RuntimeGetG|Global(Read|Write))$"
       - "^(DirectCall|InterfaceCall|Defer|Goroutine)$"
       - "^Channel(Buffered|Handoff)$"
+  timers: "^Timer(AfterFuncZeroDelivery|CreateStop|RearmStopped|ResetActive|ResetHeap1024)/(Go|LLGo)$"
 views:
   programs:
     title: Program measurements
@@ -55,3 +57,17 @@ views:
       collapsed: true
       missing: error
       empty: error
+  timers:
+    title: Timer runtime benchmarks
+    select:
+      groups: "^timers$"
+      metrics: "^ns/op$"
+    table:
+      rows: [platform, benchmark]
+      columns: [metric]
+      missing: error
+      empty: error
+      dimensions:
+        benchmark:
+          title: Operation and runtime
+          trim-prefix: BenchmarkTimer
