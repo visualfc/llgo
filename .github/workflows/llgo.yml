@@ -73,7 +73,7 @@ jobs:
       - name: Install
         shell: bash
         run: |
-          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
+          go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Activate native Windows target
@@ -380,7 +380,7 @@ jobs:
       - name: Build LLGo and test tools
         shell: bash
         run: |
-          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
+          dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
           echo "$RUNNER_TEMP/llgo-bin" >> "$GITHUB_PATH"
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
@@ -469,7 +469,7 @@ jobs:
 
       - name: Install llgo
         run: |
-          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
+          go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Test Cross Compilation (wasm)
@@ -507,7 +507,7 @@ jobs:
 
       - name: Install llgo
         run: |
-          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
+          dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Build standard runtime for wasm

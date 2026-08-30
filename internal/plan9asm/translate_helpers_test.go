@@ -11,6 +11,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	llpackages "github.com/xgo-dev/llgo/internal/packages"
@@ -111,6 +112,52 @@ func Foo()
 	defer tr.Module.Dispose()
 	if got, want := tr.Module.Target(), "armv6-unknown-linux-gnueabi"; got != want {
 		t.Fatalf("module target = %q, want %q", got, want)
+	}
+}
+
+func TestTranslateX87Mode(t *testing.T) {
+	pkg := mustTestPackage(t, "example.com/x87", `package x87
+func Round(value float64) int64
+`)
+	asm := []byte(`TEXT ·Round(SB),NOSPLIT,$0-16
+	FMOVD value+0(FP), F0
+	FRNDINT
+	FMOVVP F0, ret+8(FP)
+	RET
+`)
+
+	tests := []struct {
+		name       string
+		mode       extplan9asm.X87Mode
+		want       string
+		unwanted   string
+		wantErrSub string
+	}{
+		{name: "default hardware", mode: extplan9asm.X87Auto, want: `asm sideeffect "fldl $1; frndint; fstpl $0"`, unwanted: "call double @llvm.floor.f64"},
+		{name: "software fallback", mode: extplan9asm.X87Software, want: "call double @llvm.floor.f64", unwanted: "frndint"},
+		{name: "invalid", mode: extplan9asm.X87Mode(255), wantErrSub: "invalid x87 mode"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tr, err := TranslateSourceModuleForPkgWithOptions(pkg, "round_386.s", asm, "windows", "386", TranslateOptions{X87Mode: test.mode})
+			if test.wantErrSub != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErrSub) {
+					t.Fatalf("error = %v, want containing %q", err, test.wantErrSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tr.Module.Dispose()
+			ir := tr.Module.String()
+			if !strings.Contains(ir, test.want) {
+				t.Fatalf("IR missing %q:\n%s", test.want, ir)
+			}
+			if strings.Contains(ir, test.unwanted) {
+				t.Fatalf("IR unexpectedly contains %q:\n%s", test.unwanted, ir)
+			}
+		})
 	}
 }
 

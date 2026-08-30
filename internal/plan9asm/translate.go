@@ -34,6 +34,9 @@ type ModuleTranslation struct {
 type TranslateOptions struct {
 	AnnotateSource bool
 	GOARM          string
+	// X87Mode controls explicit 386 x87 assembly lowering. The zero value uses
+	// the Go-compatible hardware lowering.
+	X87Mode extplan9asm.X87Mode
 }
 
 func TranslateFileForPkg(pkg *packages.Package, sfile string, goos string, goarch string, overlay map[string][]byte) (*FileTranslation, error) {
@@ -112,6 +115,7 @@ func TranslateSourceModuleForPkgWithOptions(pkg *packages.Package, sfile string,
 		GOOS:           goos,
 		GOARCH:         goarch,
 		TargetTriple:   intllvm.GetTargetTripleWithGOARM(goos, goarch, opt.GOARM),
+		X87Mode:        opt.X87Mode,
 		AnnotateSource: opt.AnnotateSource,
 		ResolveSym:     resolve,
 		KeepFunc:       keep,

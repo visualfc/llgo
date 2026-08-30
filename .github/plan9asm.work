@@ -1,5 +1,0 @@
-go 1.27.0
-
-use ..
-
-replace github.com/xgo-dev/plan9asm => github.com/cpunion/plan9asm v0.0.0-20260830035946-10473d71f3d1

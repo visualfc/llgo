@@ -78,7 +78,7 @@ jobs:
       - name: Build LLGo and the GOROOT runner
         shell: bash
         run: |
-          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" LLGO_BUILD_GOROOT_RUNNER=1 dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
+          LLGO_BUILD_GOROOT_RUNNER=1 dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
 
           tool_suffix=
           if [[ "$RUNNER_OS" == Windows ]]; then
