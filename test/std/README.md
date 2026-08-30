@@ -1,6 +1,6 @@
 # Standard Library Compatibility Tests
 
-This directory contains compatibility tests for the Go standard library on llgo. The tests run with real Go 1.20 through Go 1.27 toolchains and matching module versions, so release tags and available standard-library APIs reflect the version being checked. Go 1.26 and Go 1.27 receive full coverage on Linux and macOS; each earlier version runs a representative, resource-bounded package set on one platform.
+This directory contains compatibility tests for the Go standard library on llgo. The tests run with real Go 1.20 through Go 1.27 toolchains and matching module versions, so release tags and available standard-library APIs reflect the version being checked. Go 1.27 receives full coverage on Linux, macOS, and both Windows ABI profiles; Go 1.20 through Go 1.26 each run a representative, resource-bounded package set in one consolidated Linux job.
 
 ## Directory Structure
 
