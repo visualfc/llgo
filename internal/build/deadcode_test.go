@@ -89,7 +89,7 @@ func TestDCEEntryRootCandidatesIncludesCExports(t *testing.T) {
 	}
 }
 
-func TestLinkedCExportsIncludesOnlyWindowsSharedMain(t *testing.T) {
+func TestLinkedCExportsIncludesOnlyLibraryMain(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	defer prog.Dispose()
 	newExport := func(path, name, goName, cName string) Package {
@@ -101,19 +101,25 @@ func TestLinkedCExportsIncludesOnlyWindowsSharedMain(t *testing.T) {
 			LPkg:    lpkg,
 		}
 	}
-	ctx := &context{buildConf: &Config{
-		Goos:      "windows",
-		BuildMode: BuildModeCShared,
-	}}
-	exports, err := linkedCExports(ctx, []Package{
-		newExport("main", "main", "main.Exported", "Exported"),
-		newExport("example.com/dep", "dep", "example.com/dep.Callback", "Callback"),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(exports) != 1 || exports[0].goName != "main.Exported" {
-		t.Fatalf("linked C exports = %+v, want command-package export only", exports)
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		for _, mode := range []BuildMode{BuildModeCShared, BuildModeCArchive} {
+			t.Run(goos+"/"+string(mode), func(t *testing.T) {
+				ctx := &context{buildConf: &Config{
+					Goos:      goos,
+					BuildMode: mode,
+				}}
+				exports, err := linkedCExports(ctx, []Package{
+					newExport("main", "main", "main.Exported", "Exported"),
+					newExport("example.com/dep", "dep", "example.com/dep.Callback", "Callback"),
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(exports) != 1 || exports[0].goName != "main.Exported" {
+					t.Fatalf("linked C exports = %+v, want command-package export only", exports)
+				}
+			})
+		}
 	}
 }
 

@@ -164,21 +164,30 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 			initArraySection = ".init_array"
 		}
 		inits := []llssa.Function{pyInit, rtInit, abiInit, runtimeStub}
+		// Windows already enables this during runtime initialization because
+		// callbacks in ordinary executables also enter from foreign threads.
+		// Other platforms enable it only for libraries with C exports.
+		if len(cfg.cExports) != 0 && ctx.buildConf.Goos != "windows" {
+			inits = append(inits, declareNoArgFunc(
+				mainPkg, llssa.PkgRuntime+".EnableForeignThreadRegistration",
+			))
+		}
 		// The C test runner supplies argc/argv before calling the generated
 		// test main package's init and main functions.
 		if ctx.mode != ModeTest {
 			inits = append(inits, packageInits...)
 			inits = append(inits, mainInit)
 		}
+		var ensureInit llssa.Function
 		if ctx.buildConf.BuildMode == BuildModeCShared && ctx.buildConf.Goos == "windows" {
-			ensureInit := defineWindowsSharedRuntimeInit(mainPkg, ctx.buildConf.Goarch, inits...)
-			defineCExportWrappers(mainPkg, cfg.cExports, ensureInit)
+			ensureInit = defineWindowsSharedRuntimeInit(mainPkg, ctx.buildConf.Goarch, inits...)
 		} else {
 			defineLibraryRuntimeInit(
 				mainPkg, initArraySection, argcVar, argvVar, argvValueType,
 				libraryConstructorReceivesProcessArgs(ctx.buildConf.Goos), inits...,
 			)
 		}
+		defineCExportWrappers(mainPkg, cfg.cExports, ensureInit)
 		return mainAPkg
 	}
 
@@ -329,16 +338,31 @@ func defineWindowsSharedRuntimeInit(pkg llssa.Package, goarch string, inits ...l
 }
 
 func defineCExportWrappers(pkg llssa.Package, exports []cExport, ensureInit llssa.Function) {
+	if len(exports) == 0 {
+		return
+	}
+	enterForeignThread := pkg.NewFunc(
+		llssa.PkgRuntime+".EnterForeignThread",
+		newSignature(nil, []types.Type{types.Typ[types.Bool]}), llssa.InGo,
+	)
+	exitForeignThread := pkg.NewFunc(
+		llssa.PkgRuntime+".ExitForeignThread",
+		newSignature([]types.Type{types.Typ[types.Bool]}, nil), llssa.InGo,
+	)
 	for _, export := range exports {
 		implementation := pkg.NewFunc(export.goName, export.sig, llssa.InGo)
 		wrapper := pkg.NewFunc(export.cName, export.sig, llssa.InGo)
 		b := wrapper.MakeBody(1)
-		b.Call(ensureInit.Expr)
+		if ensureInit != nil {
+			b.Call(ensureInit.Expr)
+		}
+		registered := b.Call(enterForeignThread.Expr)
 		args := make([]llssa.Expr, export.sig.Params().Len())
 		for i := range args {
 			args[i] = wrapper.Param(i)
 		}
 		result := b.Call(implementation.Expr, args...)
+		b.Call(exitForeignThread.Expr, registered)
 		if export.sig.Results().Len() == 0 {
 			b.Return()
 		} else {

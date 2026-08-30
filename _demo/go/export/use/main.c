@@ -6,6 +6,8 @@
 #include <string.h>
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <pthread.h>
 #endif
 #include "../libexport.h"
 
@@ -34,6 +36,17 @@ static void void_callback(void) {
     void_callback_count++;
 }
 
+enum {
+    foreign_thread_rounds = 512,
+    foreign_thread_count = 8,
+    foreign_thread_iterations = 32,
+};
+
+typedef struct {
+    intptr_t value;
+    volatile long progress;
+} foreign_thread_context;
+
 #ifdef _WIN32
 static volatile LONG foreign_fault_count;
 
@@ -46,16 +59,20 @@ static LONG CALLBACK continue_foreign_fault(EXCEPTION_POINTERS *exception) {
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
+#endif
 
-static DWORD WINAPI call_go_export_from_foreign_thread(LPVOID arg) {
-    intptr_t value = (intptr_t)arg;
+static int call_go_export_from_foreign_thread(foreign_thread_context *context) {
+#ifdef _WIN32
     ULONG_PTR fault_information[2] = {0, 0};
     // The LLGo DLL installs a process-wide vectored exception handler. A
     // fault on a thread that has not entered Go must continue to the next
     // native handler instead of being converted into a Go panic.
     RaiseException(EXCEPTION_ACCESS_VIOLATION, 0, 2, fault_information);
-    for (int i = 0; i < 32; i++) {
-        GoString formatted = FormatValue((GoString){"thread", 6}, value + i);
+#endif
+    for (int i = 0; i < foreign_thread_iterations; i++) {
+        context->progress = i + 1;
+        GoString formatted = FormatValue(
+            (GoString){"thread", 6}, context->value + i);
         if (formatted.n < 8 || memcmp(formatted.p, "thread:", 7) != 0) {
             return 1;
         }
@@ -63,29 +80,80 @@ static DWORD WINAPI call_go_export_from_foreign_thread(LPVOID arg) {
     return 0;
 }
 
+#ifdef _WIN32
+static DWORD WINAPI foreign_thread_entry(LPVOID arg) {
+    return (DWORD)call_go_export_from_foreign_thread(
+        (foreign_thread_context *)arg);
+}
+#else
+static void *foreign_thread_entry(void *arg) {
+    return (void *)(intptr_t)call_go_export_from_foreign_thread(
+        (foreign_thread_context *)arg);
+}
+#endif
+
 static void test_foreign_thread_exports(void) {
-    enum { thread_count = 8 };
-    HANDLE threads[thread_count];
+#ifdef _WIN32
     PVOID fault_handler = AddVectoredExceptionHandler(0, continue_foreign_fault);
     assert(fault_handler != NULL);
     foreign_fault_count = 0;
-    for (intptr_t i = 0; i < thread_count; i++) {
-        threads[i] = CreateThread(NULL, 0, call_go_export_from_foreign_thread,
-                                  (LPVOID)i, 0, NULL);
-        assert(threads[i] != NULL);
-    }
-    assert(WaitForMultipleObjects(thread_count, threads, TRUE, INFINITE) ==
-           WAIT_OBJECT_0);
-    for (int i = 0; i < thread_count; i++) {
-        DWORD result;
-        assert(GetExitCodeThread(threads[i], &result));
-        assert(result == 0);
-        assert(CloseHandle(threads[i]));
-    }
-    assert(foreign_fault_count == thread_count);
-    assert(RemoveVectoredExceptionHandler(fault_handler));
-}
 #endif
+
+    for (intptr_t round = 0; round < foreign_thread_rounds; round++) {
+        foreign_thread_context contexts[foreign_thread_count] = {0};
+#ifdef _WIN32
+        HANDLE threads[foreign_thread_count] = {0};
+#else
+        pthread_t threads[foreign_thread_count];
+#endif
+        for (intptr_t i = 0; i < foreign_thread_count; i++) {
+            contexts[i].value = round * foreign_thread_count + i;
+#ifdef _WIN32
+            threads[i] = CreateThread(
+                NULL, 0, foreign_thread_entry, &contexts[i], 0, NULL);
+            assert(threads[i] != NULL);
+#else
+            assert(pthread_create(
+                &threads[i], NULL, foreign_thread_entry, &contexts[i]) == 0);
+#endif
+        }
+
+#ifdef _WIN32
+        DWORD wait_result = WaitForMultipleObjects(
+            foreign_thread_count, threads, TRUE, 45000);
+        if (wait_result != WAIT_OBJECT_0) {
+            fprintf(stderr,
+                "foreign thread round %" PRIdPTR
+                " timed out (wait=%lu, error=%lu):",
+                round, (unsigned long)wait_result,
+                (unsigned long)GetLastError());
+            for (int i = 0; i < foreign_thread_count; i++) {
+                fprintf(stderr, " %ld", contexts[i].progress);
+            }
+            fprintf(stderr, "\n");
+            abort();
+        }
+        for (int i = 0; i < foreign_thread_count; i++) {
+            DWORD result = 0;
+            assert(GetExitCodeThread(threads[i], &result));
+            assert(result == 0);
+            assert(CloseHandle(threads[i]));
+        }
+#else
+        for (int i = 0; i < foreign_thread_count; i++) {
+            void *result = NULL;
+            assert(pthread_join(threads[i], &result) == 0);
+            assert((intptr_t)result == 0);
+        }
+#endif
+    }
+
+#ifdef _WIN32
+    assert(foreign_fault_count ==
+           foreign_thread_rounds * foreign_thread_count);
+    assert(RemoveVectoredExceptionHandler(fault_handler));
+#endif
+}
 
 int main() {
     printf("=== C Export Demo ===\n");
@@ -116,9 +184,7 @@ int main() {
     // that depend on the runtime hooks supplied by LLGo.
     GoString formatted = FormatValue((GoString){"answer", 6}, 42);
     assert(go_string_equals(formatted, "answer:42"));
-#ifdef _WIN32
     test_foreign_thread_exports();
-#endif
 #ifdef __linux__
     assert(AllThreadsSyscallStatus() == ENOTSUP);
 #else

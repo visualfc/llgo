@@ -39,6 +39,12 @@ type runtimeContext struct {
 	// root is non-nil for contexts passed through a host-thread API. Such
 	// contexts must remain visible to the collector until mexit.
 	root unsafe.Pointer
+
+	// foreignThreadAttached records that LLGo, rather than the selected GC
+	// backend's thread-creation API, attached this host thread. Keep ownership
+	// in the lifecycle object because native TLS may already be unavailable
+	// when an OS thread destructor runs.
+	foreignThreadAttached bool
 }
 
 var sched struct {
