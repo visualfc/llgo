@@ -205,7 +205,7 @@ jobs:
 
   test:
     name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})
-    timeout-minutes: ${{ matrix.lane == 'full' && (startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 40) || 30 }}
+    timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 40 }}
     strategy:
       fail-fast: false
       matrix:
@@ -295,8 +295,8 @@ jobs:
 
       - name: Run versioned LLGo tests
         env:
-          # The multi-version driver gives every target release an isolated
-          # XDG cache, so package reuse stays safe inside the consolidated job.
+          # The compatibility driver gives every target release an isolated
+          # XDG cache. Full lanes run one target release per runner job.
           LLGO_BUILD_CACHE: "1"
           LLGO_TEST_BENCH_GO126: "1"
           LLGO_TEST_CHECK_SYMBOLS: ${{ matrix.check_symbols && '1' || '0' }}

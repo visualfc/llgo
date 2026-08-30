@@ -30,8 +30,8 @@ failed_versions=()
 for version in "${versions[@]}"; do
 	echo
 	echo "==== test/ with Go ${version} ===="
-	# LLGo's cache contains target-standard-library objects. Keep one cache per
-	# release so callers can enable package reuse without crossing Go versions.
+	# LLGo's cache contains target-standard-library objects. When callers opt in
+	# with LLGO_BUILD_CACHE=1, keep reuse from crossing Go versions.
 	version_cache_dir="${work_dir}/cache/go${version}"
 	mkdir -p "${version_cache_dir}"
 	std_buildmodes="${LLGO_TEST_STD_BUILDMODES:-}"
