@@ -100,6 +100,15 @@ func shouldEmitDebugInfo(conf *Config, target *crosscompile.Export) bool {
 	return conf.Mode != ModeGen || conf.LinkOptions.DWARF == DWARFPreserve
 }
 
+// shouldEmitCodeView reports whether an MSVC COFF link explicitly requests a
+// PDB. LLGo keeps its Go-compatible DWARF by default; CodeView is additional
+// metadata for an explicitly requested native Windows debugger artifact.
+func shouldEmitCodeView(conf *Config, target *crosscompile.Export) bool {
+	return shouldEmitDebugInfo(conf, target) && conf.Goos == "windows" &&
+		target.Toolchain.ABI == crosscompile.PlatformABIMsvc &&
+		hasCOFFPDBFlag(conf.LinkOptions.ExternalLinkerFlags)
+}
+
 // validateLinkOptions checks whether the typed linker intent can be honored
 // by the selected backend. User-facing Go flag syntax is parsed by
 // internal/goflags.
@@ -148,18 +157,39 @@ func debugInfoLinkerArgs(conf *Config, target *crosscompile.Export) []string {
 	return slices.Clone(target.DebugInfo.PreserveLinkFlags)
 }
 
-// debugInfoCompilerArgs keeps package C/C++ sources on the same typed DWARF
-// policy as generated Go code. In particular, COFF builds deliberately use
-// DWARF rather than Clang's MSVC-default CodeView so LLDB and Go traceback
-// consumers see one source format in the linked image.
+// debugInfoCompilerArgs keeps package C/C++ sources on the same typed debug
+// policy as generated Go code. COFF PDB builds add CodeView while retaining
+// DWARF, so LLDB, Go tracebacks, and native Windows debuggers share the same
+// source inputs.
 func debugInfoCompilerArgs(conf *Config, target *crosscompile.Export) []string {
 	if shouldEmitDebugInfo(conf, target) {
-		return []string{"-gdwarf-4"}
+		args := []string{"-gdwarf-4"}
+		if shouldEmitCodeView(conf, target) {
+			args = append(args, "-gcodeview")
+		}
+		return args
 	}
 	return nil
 }
 
+func hasCOFFPDBFlag(value string) bool {
+	pdb := false
+	hasCOFFDebugFlagMatching(value, func(arg string) bool {
+		if isCOFFDebugFlag(arg) {
+			// lld-link applies the last /debug option. Preserve that ordering so
+			// "/debug:full /debug:none" does not add unused CodeView records.
+			pdb = isCOFFPDBFlag(arg)
+		}
+		return false
+	})
+	return pdb
+}
+
 func hasCOFFDebugFlag(value string) bool {
+	return hasCOFFDebugFlagMatching(value, isCOFFDebugFlag)
+}
+
+func hasCOFFDebugFlagMatching(value string, match func(string) bool) bool {
 	args, err := quoted.Split(value)
 	if err != nil {
 		// Native toolchain input validation reports the malformed value before a
@@ -168,18 +198,30 @@ func hasCOFFDebugFlag(value string) bool {
 	}
 	for i, arg := range args {
 		lower := strings.ToLower(arg)
-		if isCOFFDebugFlag(lower) {
+		if match(lower) {
 			return true
 		}
 		if strings.HasPrefix(lower, "-wl,") {
 			for _, linkerArg := range strings.Split(strings.TrimPrefix(lower, "-wl,"), ",") {
-				if isCOFFDebugFlag(linkerArg) {
+				if match(linkerArg) {
 					return true
 				}
 			}
 		}
-		if lower == "-xlinker" && i+1 < len(args) && isCOFFDebugFlag(strings.ToLower(args[i+1])) {
+		if lower == "-xlinker" && i+1 < len(args) && match(strings.ToLower(args[i+1])) {
 			return true
+		}
+	}
+	return false
+}
+
+func isCOFFPDBFlag(arg string) bool {
+	if arg == "/debug" || arg == "-debug" {
+		return true
+	}
+	for _, prefix := range []string{"/debug:", "-debug:"} {
+		if value, ok := strings.CutPrefix(arg, prefix); ok {
+			return value != "none" && value != "dwarf"
 		}
 	}
 	return false

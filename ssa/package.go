@@ -246,6 +246,7 @@ type aProgram struct {
 	enableFuncInfoMetadata bool
 	enableFuncInfoSites    bool
 	debugInfoOptimized     bool
+	emitCodeViewDebugInfo  bool
 }
 
 type AbiSymbol struct {
@@ -358,6 +359,7 @@ func (p Program) NewBackendProgram() Program {
 	backend.enableFuncInfoMetadata = p.enableFuncInfoMetadata
 	backend.enableFuncInfoSites = p.enableFuncInfoSites
 	backend.debugInfoOptimized = p.debugInfoOptimized
+	backend.emitCodeViewDebugInfo = p.emitCodeViewDebugInfo
 	return backend
 }
 
@@ -423,6 +425,13 @@ func (p Program) EnableLTOPluginMarkers(enable bool) {
 // optimized. It never selects compiler passes.
 func (p Program) SetDebugInfoOptimized(enable bool) {
 	p.debugInfoOptimized = enable
+}
+
+// EnableCodeViewDebugInfo asks LLVM to lower the existing source metadata to
+// CodeView in addition to DWARF. The final COFF link may then merge CodeView
+// records into a PDB without removing the DWARF used by LLDB and tracebacks.
+func (p Program) EnableCodeViewDebugInfo(enable bool) {
+	p.emitCodeViewDebugInfo = enable
 }
 
 func (p Program) SetNoInterfaceMethod(fullName string) {

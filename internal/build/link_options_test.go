@@ -76,6 +76,9 @@ func TestDebugInfoCompilerArgs(t *testing.T) {
 		{name: "linked safe default", conf: Config{Mode: ModeBuild, OmitDWARFByDefault: true}},
 		{name: "linked explicit omit", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFOmit}}},
 		{name: "linked explicit preserve", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, want: []string{"-gdwarf-4"}},
+		{name: "Windows PDB", conf: Config{Goos: "windows", Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFPreserve, ExternalLinkerFlags: "-Xlinker /debug:full"}}, target: windowsDebugInfo(), want: []string{"-gdwarf-4", "-gcodeview"}},
+		{name: "Windows DWARF", conf: Config{Goos: "windows", Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFPreserve, ExternalLinkerFlags: "-Xlinker /debug:dwarf"}}, target: windowsDebugInfo(), want: []string{"-gdwarf-4"}},
+		{name: "MinGW PDB flag", conf: Config{Goos: "windows", Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFPreserve, ExternalLinkerFlags: "-Xlinker /debug:full"}}, target: windowsGNUToolchainDebugInfo(), want: []string{"-gdwarf-4"}},
 		{name: "generation default", conf: Config{Mode: ModeGen}},
 		{name: "generation explicit preserve", conf: Config{Mode: ModeGen, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, want: []string{"-gdwarf-4"}},
 		{name: "target always omits", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, target: alwaysOmitDebugInfo()},
@@ -105,6 +108,49 @@ func TestHasCOFFDebugFlag(t *testing.T) {
 		if got := hasCOFFDebugFlag(test.value); got != test.want {
 			t.Errorf("hasCOFFDebugFlag(%q) = %v, want %v", test.value, got, test.want)
 		}
+	}
+}
+
+func TestHasCOFFPDBFlag(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  bool
+	}{
+		{value: "/debug", want: true},
+		{value: "/DEBUG:FULL", want: true},
+		{value: "-Wl,/debug:ghash,/pdb:app.pdb", want: true},
+		{value: "/debug:none /debug:full", want: true},
+		{value: "/debug:full /debug:none"},
+		{value: "-Xlinker /debug:full -Xlinker /debug:dwarf"},
+		{value: "-Xlinker /debug:dwarf"},
+		{value: "/debug:none"},
+		{value: "/pdb:app.pdb"},
+	} {
+		if got := hasCOFFPDBFlag(test.value); got != test.want {
+			t.Errorf("hasCOFFPDBFlag(%q) = %v, want %v", test.value, got, test.want)
+		}
+	}
+}
+
+func TestShouldEmitCodeView(t *testing.T) {
+	pdb := LinkOptions{DWARF: DWARFPreserve, ExternalLinkerFlags: "-Xlinker /debug:full"}
+	for _, test := range []struct {
+		name   string
+		conf   Config
+		target crosscompile.Export
+		want   bool
+	}{
+		{name: "MSVC PDB", conf: Config{Goos: "windows", Mode: ModeBuild, LinkOptions: pdb}, target: windowsDebugInfo(), want: true},
+		{name: "default Windows DWARF", conf: Config{Goos: "windows", Mode: ModeBuild}, target: windowsDebugInfo()},
+		{name: "omitted debug", conf: Config{Goos: "windows", Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFOmit, ExternalLinkerFlags: "/debug:full"}}, target: windowsDebugInfo()},
+		{name: "MinGW", conf: Config{Goos: "windows", Mode: ModeBuild, LinkOptions: pdb}, target: windowsGNUToolchainDebugInfo()},
+		{name: "non-Windows", conf: Config{Goos: "linux", Mode: ModeBuild, LinkOptions: pdb}, target: windowsDebugInfo()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := shouldEmitCodeView(&test.conf, &test.target); got != test.want {
+				t.Fatalf("shouldEmitCodeView() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
@@ -239,10 +285,16 @@ func configurableDebugInfo() crosscompile.Export {
 }
 
 func windowsDebugInfo() crosscompile.Export {
-	return crosscompile.Export{DebugInfo: crosscompile.DebugInfoPolicy{
+	return crosscompile.Export{Toolchain: crosscompile.NativeToolchain{ABI: crosscompile.PlatformABIMsvc}, DebugInfo: crosscompile.DebugInfoPolicy{
 		OmitLinkFlags:     []string{"-Wl,/debug:none"},
 		PreserveLinkFlags: []string{"-Wl,/debug:dwarf"},
 	}}
+}
+
+func windowsGNUToolchainDebugInfo() crosscompile.Export {
+	target := windowsDebugInfo()
+	target.Toolchain.ABI = crosscompile.PlatformABIGNU
+	return target
 }
 
 func alwaysOmitDebugInfo() crosscompile.Export {

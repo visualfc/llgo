@@ -26,8 +26,9 @@ type diBuilder = *aDIBuilder
 func newDIBuilder(prog Program, pkg Package, positioner Positioner) diBuilder {
 	return &aDIBuilder{
 		di: debuginfo.New(pkg.mod, debuginfo.Config{
-			Producer:  "LLGo",
-			Optimized: prog.debugInfoOptimized,
+			Producer:     "LLGo",
+			Optimized:    prog.debugInfoOptimized,
+			EmitCodeView: prog.emitCodeViewDebugInfo,
 		}),
 		prog:       prog,
 		types:      make(map[*aType]DIType),

@@ -558,6 +558,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
+	emitCodeView := shouldEmitCodeView(conf, &export)
 	frontendOptions := cl.Options{
 		Debug:        emitDebugInfo,
 		DebugSymbols: emitDebugInfo,
@@ -587,6 +588,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
 	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
+	prog.EnableCodeViewDebugInfo(emitCodeView)
 	funcInfo := conf.Mode != ModeGen && conf.PCLNMode != PCLNNone
 	prog.EnableFuncInfoMetadata(funcInfo)
 	// Site records are inline-asm fragments inside function bodies. Darwin

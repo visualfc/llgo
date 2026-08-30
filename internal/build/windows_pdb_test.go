@@ -75,12 +75,18 @@ func TestWindowsPDBLinkPath(t *testing.T) {
 
 	binDir := llvmenv.New("").BinDir()
 	pdbutil := filepath.Join(binDir, "llvm-pdbutil")
-	out, err := exec.Command(pdbutil, "dump", "-summary", "-publics", pdb).CombinedOutput()
+	out, err := exec.Command(pdbutil, "dump", "-summary", "-publics", "-files", "-l", pdb).CombinedOutput()
 	if err != nil {
 		t.Fatalf("llvm-pdbutil: %v\n%s", err, out)
 	}
 	text := string(out)
-	for _, want := range []string{"Has Publics: true", "main.main"} {
+	for _, want := range []string{
+		"Has Publics: true",
+		"main.main",
+		"main.go",
+		"helper.go",
+		"line/addr entries",
+	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("PDB output does not contain %q:\n%s", want, out)
 		}
