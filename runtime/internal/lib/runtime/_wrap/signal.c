@@ -5,11 +5,14 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sched.h>
 #include <signal.h>
 #include <stddef.h>
 #include <string.h>
 #include <unistd.h>
+
+_Static_assert(SIGPIPE == 13, "runtime signalPipe assumes SIGPIPE is 13");
 
 static int llgo_signal_pipe[2] = {-1, -1};
 static unsigned int llgo_signal_delivering;
@@ -87,6 +90,46 @@ int llgo_signal_ignore(int signum)
     sigemptyset(&action.sa_mask);
     action.sa_flags = 0;
     return sigaction(signum, &action, 0);
+}
+
+int llgo_signal_ignore_pipe(void)
+{
+    struct sigaction action;
+    struct sigaction previous;
+
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = SIG_IGN;
+    sigemptyset(&action.sa_mask);
+    if (sigaction(SIGPIPE, &action, &previous) != 0)
+        return -errno;
+    return previous.sa_handler == SIG_IGN;
+}
+
+int llgo_signal_raise_pipe(void)
+{
+    return raise(SIGPIPE);
+}
+
+int llgo_signal_die_pipe(void)
+{
+    struct sigaction action;
+    sigset_t mask;
+    int code;
+
+    memset(&action, 0, sizeof(action));
+    action.sa_handler = SIG_DFL;
+    sigemptyset(&action.sa_mask);
+    if (sigaction(SIGPIPE, &action, 0) != 0)
+        return errno;
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGPIPE);
+    code = pthread_sigmask(SIG_UNBLOCK, &mask, 0);
+    if (code != 0)
+        return code;
+    if (raise(SIGPIPE) != 0)
+        return errno;
+    return EIO;
 }
 
 /* Place a marker after every signal already written to the pipe. The write

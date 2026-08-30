@@ -23,6 +23,8 @@ var (
 	sigInitState uint32
 	sigReadFD    c.Int
 
+	sigPipeInheritedIgnored bool
+
 	sigMu     psync.Mutex
 	sigCond   psync.Cond
 	sigWaitMu psync.Mutex
@@ -48,11 +50,57 @@ func c_signalDisable(sig c.Int) c.Int
 //go:linkname c_signalIgnore C.llgo_signal_ignore
 func c_signalIgnore(sig c.Int) c.Int
 
+//go:linkname c_signalIgnorePipe C.llgo_signal_ignore_pipe
+func c_signalIgnorePipe() c.Int
+
+//go:linkname c_signalRaisePipe C.llgo_signal_raise_pipe
+func c_signalRaisePipe() c.Int
+
+//go:linkname c_signalDiePipe C.llgo_signal_die_pipe
+func c_signalDiePipe() c.Int
+
 //go:linkname c_signalBarrier C.llgo_signal_barrier
 func c_signalBarrier() c.Int
 
 //go:linkname c_signalRecv C.llgo_signal_recv
 func c_signalRecv(fd c.Int, sig *c.Int) c.Int
+
+func init() {
+	// Go programs turn SIGPIPE from ordinary file descriptors into EPIPE.
+	// Install that process-wide baseline before user goroutines can write.
+	previous := c_signalIgnorePipe()
+	if previous < 0 {
+		panic("runtime: failed to ignore SIGPIPE")
+	}
+	sigPipeInheritedIgnored = previous != 0
+}
+
+// signalPipe implements the explicit SIGPIPE raised by package os after an
+// EPIPE write to stdout or stderr. By contrast, EPIPE on ordinary descriptors
+// never reaches here; those writes rely on the ignored baseline from init.
+func signalPipe() {
+	const sigPipe = 13 // SIGPIPE on the supported Unix hosts.
+
+	ensureSignalInit()
+	sigMu.Lock()
+	defer sigMu.Unlock()
+	st := sigStates[sigPipe]
+	switch {
+	case st == nil && sigPipeInheritedIgnored:
+		return
+	case st != nil && st.ignored:
+		return
+	case st != nil && st.active:
+		if c_signalRaisePipe() != 0 {
+			panic("runtime: failed to raise SIGPIPE")
+		}
+		return
+	default:
+		if c_signalDiePipe() != 0 {
+			panic("runtime: failed to terminate with SIGPIPE")
+		}
+	}
+}
 
 func ensureSignalInit() {
 	const (
