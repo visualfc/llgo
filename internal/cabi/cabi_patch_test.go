@@ -1153,3 +1153,234 @@ entry:
 		t.Fatalf("transformed module is invalid: %v\n%s", err, mod.String())
 	}
 }
+
+func TestParamHomeReusePreservesObjectIdentity(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Aggregate = type { i64, i64, i64 }
+
+declare void @capture(ptr)
+declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
+
+define i64 @copy_then_mutate(%Aggregate %value) {
+entry:
+  %mutable = alloca %Aggregate, align 8
+  %original = alloca %Aggregate, align 8
+  store %Aggregate %value, ptr %mutable, align 8
+  %mutable.field = getelementptr inbounds %Aggregate, ptr %mutable, i32 0, i32 1
+  store i64 99, ptr %mutable.field, align 8
+  store %Aggregate %value, ptr %original, align 8
+  %original.field = getelementptr inbounds %Aggregate, ptr %original, i32 0, i32 1
+  %result = load i64, ptr %original.field, align 8
+  ret i64 %result
+}
+
+define i64 @rematerialize_one_copy(%Aggregate %value) {
+entry:
+  %copy = alloca %Aggregate, align 8
+  store %Aggregate %value, ptr %copy, align 8
+  store %Aggregate %value, ptr %copy, align 8
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+
+define i64 @reuse_after_memset(%Aggregate %value) {
+entry:
+  %copy = alloca %Aggregate, align 8
+  call void @llvm.memset.p0.i64(ptr %copy, i8 0, i64 24, i1 false)
+  store %Aggregate %value, ptr %copy, align 8
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+
+define i64 @reject_preinit_escape(%Aggregate %value) {
+entry:
+  %copy = alloca %Aggregate, align 8
+  call void @capture(ptr %copy)
+  store %Aggregate %value, ptr %copy, align 8
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+
+define i64 @reject_conditional_init(%Aggregate %value, i1 %cond) {
+entry:
+  %copy = alloca %Aggregate, align 8
+  br i1 %cond, label %left, label %right
+left:
+  store %Aggregate %value, ptr %copy, align 8
+  br label %done
+right:
+  store %Aggregate %value, ptr %copy, align 8
+  br label %done
+done:
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+
+define i64 @reject_stronger_alignment(%Aggregate %value) {
+entry:
+  %copy = alloca %Aggregate, align 32
+  store %Aggregate %value, ptr %copy, align 32
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+`
+
+	for _, test := range []struct {
+		name   string
+		goos   string
+		goarch string
+		triple string
+	}{
+		{name: "amd64", goos: "linux", goarch: "amd64", triple: "x86_64-unknown-linux-gnu"},
+		{name: "arm64", goos: "darwin", goarch: "arm64", triple: "arm64-apple-darwin"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := llvm.NewContext()
+			defer ctx.Dispose()
+			path := filepath.Join(t.TempDir(), "param_copies.ll")
+			if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			buf, err := llvm.NewMemoryBufferFromFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mod, err := ctx.ParseIR(buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mod.Dispose()
+
+			prog := llssa.NewProgram(&llssa.Target{GOOS: test.goos, GOARCH: test.goarch})
+			defer prog.Dispose()
+			NewTransformer(prog, test.triple, "", true).TransformModule("test", mod)
+
+			got := mod.NamedFunction("copy_then_mutate").String()
+			if strings.Contains(got, "getelementptr inbounds %Aggregate, ptr %mutable") {
+				t.Fatalf("C ABI lowering did not reuse the first proven parameter home:\n%s", got)
+			}
+			if !strings.Contains(got, "getelementptr inbounds %Aggregate, ptr %original") {
+				t.Fatalf("C ABI lowering aliased the independent parameter copy:\n%s", got)
+			}
+			singleCopy := mod.NamedFunction("rematerialize_one_copy").String()
+			if strings.Contains(singleCopy, "getelementptr inbounds %Aggregate, ptr %copy") {
+				t.Fatalf("C ABI lowering did not reuse the indirect parameter for one alloca:\n%s", singleCopy)
+			}
+			memsetCopy := mod.NamedFunction("reuse_after_memset").String()
+			if !strings.Contains(memsetCopy, "call void @llvm.memset.p0.i64(ptr %copy") {
+				t.Fatalf("C ABI lowering moved the pre-initialization memset to the parameter home:\n%s", memsetCopy)
+			}
+			if strings.Contains(memsetCopy, "getelementptr inbounds %Aggregate, ptr %copy") {
+				t.Fatalf("C ABI lowering did not reuse storage after a direct memset:\n%s", memsetCopy)
+			}
+			for _, name := range []string{"reject_preinit_escape", "reject_conditional_init", "reject_stronger_alignment"} {
+				got := mod.NamedFunction(name).String()
+				if !strings.Contains(got, "getelementptr inbounds %Aggregate, ptr %copy") {
+					t.Fatalf("C ABI lowering reused an unproven parameter home in %s:\n%s", name, got)
+				}
+			}
+			if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("lowered parameter-copy module is invalid: %v\n%s", err, mod.String())
+			}
+		})
+	}
+}
+
+func TestWidthReturnUsesEvaluatedValue(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Small = type { i32, i32 }
+%Pair = type { i64, i64 }
+
+define %Small @return_loaded_snapshot(ptr %src) {
+entry:
+  %snapshot = load %Small, ptr %src, align 4
+  store %Small { i32 9, i32 10 }, ptr %src, align 4
+  ret %Small %snapshot
+}
+
+define i32 @width_param_copies(%Small %value) {
+entry:
+  %first = alloca %Small, align 4
+  %second = alloca %Small, align 4
+  store %Small %value, ptr %first, align 4
+  %first.field = getelementptr inbounds %Small, ptr %first, i32 0, i32 0
+  store i32 99, ptr %first.field, align 4
+  store %Small %value, ptr %second, align 4
+  %second.field = getelementptr inbounds %Small, ptr %second, i32 0, i32 0
+  %result = load i32, ptr %second.field, align 4
+  ret i32 %result
+}
+
+define i64 @two_width_param_copies(%Pair %value) {
+entry:
+  %first = alloca %Pair, align 8
+  %second = alloca %Pair, align 8
+  store %Pair %value, ptr %first, align 8
+  %first.field = getelementptr inbounds %Pair, ptr %first, i32 0, i32 0
+  store i64 99, ptr %first.field, align 8
+  store %Pair %value, ptr %second, align 8
+  %second.field = getelementptr inbounds %Pair, ptr %second, i32 0, i32 0
+  %result = load i64, ptr %second.field, align 8
+  ret i64 %result
+}
+`
+
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "width_return.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
+	defer prog.Dispose()
+	NewTransformer(prog, "x86_64-unknown-linux-gnu", "", true).TransformModule("test", mod)
+
+	got := mod.NamedFunction("return_loaded_snapshot").String()
+	if !strings.Contains(got, "ret i64") {
+		t.Fatalf("small aggregate return was not width-lowered:\n%s", got)
+	}
+	if strings.Contains(got, "load i64, ptr %src") {
+		t.Fatalf("C ABI lowering re-read a return load's modified source:\n%s", got)
+	}
+	for _, test := range []struct {
+		name string
+		typ  string
+	}{
+		{name: "width_param_copies", typ: "%Small"},
+		{name: "two_width_param_copies", typ: "%Pair"},
+	} {
+		got := mod.NamedFunction(test.name).String()
+		if strings.Contains(got, "getelementptr inbounds "+test.typ+", ptr %first") {
+			t.Fatalf("C ABI lowering did not reuse the first %s parameter home:\n%s", test.name, got)
+		}
+		if !strings.Contains(got, "getelementptr inbounds "+test.typ+", ptr %second") {
+			t.Fatalf("C ABI lowering aliased an independent %s parameter copy:\n%s", test.name, got)
+		}
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("lowered width-return module is invalid: %v\n%s", err, mod.String())
+	}
+}

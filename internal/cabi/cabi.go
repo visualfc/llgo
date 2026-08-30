@@ -576,28 +576,36 @@ func (p *Transformer) transformFuncBody(m llvm.Module, ctx llvm.Context, info *F
 			// call void @llvm.memset(ptr %2, i8 0, i64 36, i1 false)
 			// store %typ %1, ptr %2, align 4
 			nv = aggregateFromNative(b, ti, loadIndirectParam(b, ti, params[index]))
-			// replace %0 to %2
-			if p.optimize && !ti.hasNativeLayoutConversion() && (ti.ByValAlign == 0 || ti.ByValAlign >= ti.Align) {
-				replaceAllocaInstrs(fn.Param(i), params[index])
+			// Reuse the incoming ABI storage for one proven parameter home.
+			if p.optimize && !ti.hasNativeLayoutConversion() {
+				storageAlign := ti.Align
+				if ti.ByValAlign != 0 {
+					storageAlign = ti.ByValAlign
+				}
+				reuseParamHome(fn.Param(i), params[index], nfn.EntryBasicBlock(), ti.Align, storageAlign)
 			}
 		case AttrWidthType:
 			iptr := llvm.CreateAlloca(b, ti.Type1)
+			storageAlign := max(ti.Align, p.Alignof(ti.Type1))
+			iptr.SetAlignment(storageAlign)
 			b.CreateStore(params[index], iptr)
 			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
 			nv = aggregateFromNative(b, ti, b.CreateLoad(ti.nativeType(), ptr, ""))
 			if p.optimize && !ti.hasNativeLayoutConversion() {
-				replaceAllocaInstrs(fn.Param(i), ptr)
+				reuseParamHome(fn.Param(i), ptr, nfn.EntryBasicBlock(), ti.Align, storageAlign)
 			}
 		case AttrWidthType2:
 			typ := ctx.StructType([]llvm.Type{ti.Type1, ti.Type2}, false)
 			iptr := llvm.CreateAlloca(b, typ)
+			storageAlign := max(ti.Align, p.Alignof(typ))
+			iptr.SetAlignment(storageAlign)
 			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 0, ""))
 			index++
 			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 1, ""))
 			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
 			nv = aggregateFromNative(b, ti, b.CreateLoad(ti.nativeType(), ptr, ""))
 			if p.optimize && !ti.hasNativeLayoutConversion() {
-				replaceAllocaInstrs(fn.Param(i), ptr)
+				reuseParamHome(fn.Param(i), ptr, nfn.EntryBasicBlock(), ti.Align, storageAlign)
 			}
 		case AttrExtract:
 			nsubs := ti.nativeType().StructElementTypesCount()
@@ -851,38 +859,94 @@ func (p *Transformer) callMemcpy(_ llvm.Module, ctx llvm.Context, b llvm.Builder
 	}, "")
 }
 
-func replaceAllocaInstrs(param llvm.Value, nv llvm.Value) {
-	u := param.FirstUse()
-	var storeInstrs []llvm.Value
-	for !u.IsNil() {
-		if user := u.User().IsAStoreInst(); !user.IsNil() && user.Operand(0) == param {
-			storeInstrs = append(storeInstrs, user)
+// reuseParamHome replaces at most one local copy of param with storage. The
+// incoming ABI storage can stand in for one parameter home, but independent
+// copies must remain distinct objects.
+func reuseParamHome(param, storage llvm.Value, entry llvm.BasicBlock, naturalAlign, storageAlign int) {
+	seen := make(map[llvm.Value]bool)
+	for instr := entry.FirstInstruction(); !instr.IsNil(); instr = llvm.NextInstruction(instr) {
+		store := instr.IsAStoreInst()
+		if store.IsNil() || store.Operand(0) != param {
+			continue
 		}
-		u = u.NextUse()
+		alloc := store.Operand(1).IsAAllocaInst()
+		if alloc.IsNil() || seen[alloc] {
+			continue
+		}
+		seen[alloc] = true
+		if canReuseParamHome(alloc, store, entry, param.Type(), naturalAlign, storageAlign) {
+			replaceParamHomeUses(alloc, storage, store)
+			return
+		}
 	}
-	for _, instr := range storeInstrs {
-		if alloc := instr.Operand(1).IsAAllocaInst(); !alloc.IsNil() {
-			skips := make(map[llvm.Value]bool)
-			next := llvm.NextInstruction(alloc)
-			for !next.IsNil() && next != instr {
-				skips[next] = true
-				next = llvm.NextInstruction(next)
-			}
-			var uses []llvm.Value
-			u := alloc.FirstUse()
-			for !u.IsNil() {
-				if v := u.User(); !skips[v] {
-					uses = append(uses, v)
-				}
-				u = u.NextUse()
-			}
-			for _, use := range uses {
-				n := use.OperandsCount()
-				for i := 0; i < n; i++ {
-					if use.Operand(i) == alloc {
-						use.SetOperand(i, nv)
-					}
-				}
+}
+
+func canReuseParamHome(alloc, initStore llvm.Value, entry llvm.BasicBlock, paramType llvm.Type, naturalAlign, storageAlign int) bool {
+	if alloc.InstructionParent() != entry || initStore.InstructionParent() != entry {
+		return false
+	}
+	if alloc.AllocatedType() != paramType {
+		return false
+	}
+	count := alloc.Operand(0).IsAConstantInt()
+	if count.IsNil() || count.ZExtValue() != 1 {
+		return false
+	}
+	allocAlign := alloc.Alignment()
+	if allocAlign == 0 {
+		allocAlign = naturalAlign
+	}
+	if storageAlign < allocAlign {
+		return false
+	}
+
+	// The initialization in the entry block dominates every later block. In
+	// the entry prefix, only a direct memset is harmless: it neither exposes a
+	// pointer that would keep referring to the old object nor observes the
+	// parameter value that begins at initStore.
+	prefix := make(map[llvm.Value]bool)
+	foundInit := false
+	for instr := llvm.NextInstruction(alloc); !instr.IsNil(); instr = llvm.NextInstruction(instr) {
+		if instr == initStore {
+			foundInit = true
+			break
+		}
+		prefix[instr] = true
+	}
+	if !foundInit {
+		return false
+	}
+	for use := alloc.FirstUse(); !use.IsNil(); use = use.NextUse() {
+		user := use.User()
+		if prefix[user] && !isDirectMemset(user, alloc) {
+			return false
+		}
+	}
+	return true
+}
+
+func isDirectMemset(instr, ptr llvm.Value) bool {
+	call := instr.IsACallInst()
+	return !call.IsNil() && call.CalledValue().IntrinsicID() == llvm.LookupIntrinsicID("llvm.memset") && call.Operand(0) == ptr
+}
+
+func replaceParamHomeUses(alloc, storage, initStore llvm.Value) {
+	prefix := make(map[llvm.Value]bool)
+	for instr := llvm.NextInstruction(alloc); !instr.IsNil() && instr != initStore; instr = llvm.NextInstruction(instr) {
+		prefix[instr] = true
+	}
+	var users []llvm.Value
+	for use := alloc.FirstUse(); !use.IsNil(); use = use.NextUse() {
+		user := use.User()
+		if prefix[user] {
+			continue
+		}
+		users = append(users, user)
+	}
+	for _, user := range users {
+		for i, n := 0, user.OperandsCount(); i < n; i++ {
+			if user.Operand(i) == alloc {
+				user.SetOperand(i, storage)
 			}
 		}
 	}
