@@ -42,17 +42,17 @@ func TestStandardDWARF(t *testing.T) {
 		optlevel.Os,
 		optlevel.Oz,
 	} {
-			t.Run(level.String(), func(t *testing.T) {
-				conf := NewDefaultConf(ModeBuild)
-				if runtime.GOOS == "windows" && os.Getenv("LLGO_WINDOWS_ABI") == "mingw" {
-					// MinGW section GC leaves zero-address tombstones in linked COFF
-					// DWARF. llvm-dwarfdump does not recognize those tombstones and
-					// reports false overlapping ranges, while llvm-dwarfutil cannot
-					// normalize COFF. Retain this verifier fixture's sections; the LLDB
-					// integration tests exercise normal section-GC output.
-					conf.LinkOptions.ExternalLinkerFlags = "-Wl,--no-gc-sections"
-				}
-				// Do resolves the platform extension on an internal config clone, so
+		t.Run(level.String(), func(t *testing.T) {
+			conf := NewDefaultConf(ModeBuild)
+			if runtime.GOOS == "windows" && os.Getenv("LLGO_WINDOWS_ABI") == "mingw" {
+				// MinGW section GC leaves zero-address tombstones in linked COFF
+				// DWARF. llvm-dwarfdump does not recognize those tombstones and
+				// reports false overlapping ranges, while llvm-dwarfutil cannot
+				// normalize COFF. Retain this verifier fixture's sections; the LLDB
+				// integration tests exercise normal section-GC output.
+				conf.LinkOptions.ExternalLinkerFlags = "-Wl,--no-gc-sections"
+			}
+			// Do resolves the platform extension on an internal config clone, so
 			// derive the explicit output path before the build as well.
 			bin := filepath.Join(t.TempDir(), "dwarf-standard"+defaultAppExt(conf))
 			conf.OutFile = bin
