@@ -14,7 +14,16 @@ import (
 	llplan9asm "github.com/xgo-dev/llgo/internal/plan9asm"
 	llruntime "github.com/xgo-dev/llgo/runtime"
 	gllvm "github.com/xgo-dev/llvm"
+	extplan9asm "github.com/xgo-dev/plan9asm"
 )
+
+func plan9asmTranslateOptions(conf *Config) llplan9asm.TranslateOptions {
+	opt := llplan9asm.TranslateOptions{GOARM: conf.GOARM}
+	if conf.Goarch == "386" && conf.GO386 == "softfloat" {
+		opt.X87Mode = extplan9asm.X87Software
+	}
+	return opt
+}
 
 // compilePkgSFiles translates Go/Plan9 assembly files selected by the package
 // loader for this package/target into LLVM IR, compiles them to .o, and returns
@@ -62,7 +71,7 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 		if shouldSkipDarwinDynimportTrampolineAsm(skipDarwinDynimportTrampolines, sfile, src) {
 			continue
 		}
-		tr, err := llplan9asm.TranslateSourceModuleForPkgWithOptions(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch, llplan9asm.TranslateOptions{GOARM: ctx.buildConf.GOARM})
+		tr, err := llplan9asm.TranslateSourceModuleForPkgWithOptions(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch, plan9asmTranslateOptions(ctx.buildConf))
 		if err != nil {
 			// Some stdlib .s files are comment-only placeholders (e.g. internal/cpu/cpu.s).
 			// Skip those silently.
@@ -296,7 +305,7 @@ func plan9asmSigsForPkg(ctx *context, pkgPath string) (map[string]struct{}, erro
 		if err != nil {
 			return nil, fmt.Errorf("%s: read %s: %w", pkg.PkgPath, sfile, err)
 		}
-		tr, err := llplan9asm.TranslateSourceForPkgWithOptions(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch, llplan9asm.TranslateOptions{GOARM: ctx.buildConf.GOARM})
+		tr, err := llplan9asm.TranslateSourceForPkgWithOptions(pkg, sfile, src, ctx.buildConf.Goos, ctx.buildConf.Goarch, plan9asmTranslateOptions(ctx.buildConf))
 		if err != nil {
 			if strings.Contains(err.Error(), "no TEXT directive found") {
 				continue
