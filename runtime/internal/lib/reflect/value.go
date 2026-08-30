@@ -389,7 +389,14 @@ func (v Value) Addr() Value {
 	// Preserve flagRO instead of using v.flag.ro() so that
 	// v.Addr().Elem() is equivalent to v (#32772)
 	fl := v.flag & flagRO
-	return Value{ptrTo(v.typ()), v.ptr, fl | flag(Pointer)}
+	typ := v.typ()
+	if v.typ_.IsClosure() {
+		// Function values use a closure struct as their physical LLGo
+		// representation. Addr must expose the pointer to the semantic Go
+		// function type, just as Type does, rather than *$closure.
+		typ = v.Type().common()
+	}
+	return Value{ptrTo(typ), v.ptr, fl | flag(Pointer)}
 }
 
 // Bool returns v's underlying value.
@@ -2318,7 +2325,11 @@ func toFFIArg(v Value, typ *abi.Type) unsafe.Pointer {
 		if len(iface.Methods) == 0 {
 			return unsafe.Pointer(&i)
 		}
-		itab := runtime.NewItab(iface, v.typ())
+		// Interface-valued reflect arguments carry the dynamic concrete type
+		// in i. Using v.typ() here instead constructs an itab for the source
+		// interface type itself, leaving method entries invalid when the
+		// reflected callee invokes them.
+		itab := runtime.NewItab(iface, rtypeOf(i))
 		data := struct {
 			itab *runtime.Itab
 			data unsafe.Pointer
