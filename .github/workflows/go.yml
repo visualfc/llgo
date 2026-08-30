@@ -125,7 +125,9 @@ jobs:
           fi
 
           # Keep the direct language-behavior suite in a separate profile so
-          # its coverage remains independently visible.
+          # its coverage remains independently visible. Compiler-only source
+          # and diagnostic fixtures are embedded under test/cmd/llgo, so the
+          # remaining test/go sources pass go test's default vet checks.
           go list ./... \
             | grep -v '^github.com/xgo-dev/llgo/test/go$' \
             | grep -v '^github.com/xgo-dev/llgo/cl$' \

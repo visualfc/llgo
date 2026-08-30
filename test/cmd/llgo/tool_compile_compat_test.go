@@ -22,7 +22,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+)
+
+var (
+	stdlibImportCfgOnce   sync.Once
+	stdlibImportCfgOutput []byte
+	stdlibImportCfgErr    error
 )
 
 func TestToolCompileGoFlagCompatibility(t *testing.T) {
@@ -168,12 +175,14 @@ func writeToolCompileSource(t *testing.T, dir, name, content string) {
 
 func writeToolCompileStdlibImportCfg(t *testing.T, dir string) {
 	t.Helper()
-	cmd := exec.Command("go", "list", "-export", "-f", "{{if .Export}}packagefile {{.ImportPath}}={{.Export}}{{end}}", "std")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOENV=off", "GOFLAGS=")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("list stdlib export files: %v\n%s", err, output)
+	stdlibImportCfgOnce.Do(func() {
+		cmd := exec.Command("go", "list", "-export", "-f", "{{if .Export}}packagefile {{.ImportPath}}={{.Export}}{{end}}", "std")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GOENV=off", "GOFLAGS=")
+		stdlibImportCfgOutput, stdlibImportCfgErr = cmd.CombinedOutput()
+	})
+	if stdlibImportCfgErr != nil {
+		t.Fatalf("list stdlib export files: %v\n%s", stdlibImportCfgErr, stdlibImportCfgOutput)
 	}
-	writeToolCompileSource(t, dir, "importcfg", string(output))
+	writeToolCompileSource(t, dir, "importcfg", string(stdlibImportCfgOutput))
 }

@@ -3,7 +3,7 @@
 package llgocmd
 
 import (
-	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +13,7 @@ import (
 
 var (
 	llgoOnce sync.Once
+	llgoDir  string
 	llgoPath string
 	llgoErr  string
 )
@@ -30,23 +31,26 @@ func runToolCompile(t *testing.T, dir string, args ...string) (string, error) {
 
 func runCompiler(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
-	cmd := exec.Command(testLLGo(t), args...)
-	cmd.Dir = dir
-	cmd.Env = os.Environ()
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		stdout.Write(stderr.Bytes())
+	return runCompilerCommand(t, dir, testLLGo(t), args...)
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if llgoDir != "" {
+		if err := os.RemoveAll(llgoDir); err != nil {
+			fmt.Fprintf(os.Stderr, "remove temporary llgo command: %v\n", err)
+			code = 1
+		}
 	}
-	return stdout.String(), err
+	os.Exit(code)
 }
 
 func testLLGo(t *testing.T) string {
 	t.Helper()
 	root := repositoryRoot(t)
 	t.Setenv("LLGO_ROOT", root)
+	// These overrides are trusted inputs supplied by the developer or CI
+	// environment running the test suite.
 	for _, name := range []string{"LLGO_TEST_COMPILER", "LLGO_TEST_LLGO", "LLGO"} {
 		if path := os.Getenv(name); path != "" {
 			absolute, err := filepath.Abs(path)
@@ -63,6 +67,7 @@ func testLLGo(t *testing.T) string {
 			llgoErr = err.Error()
 			return
 		}
+		llgoDir = dir
 		llgoPath = executablePath(dir, "llgo")
 		cmd := exec.Command("go", "build", "-o", llgoPath, "./cmd/llgo")
 		cmd.Dir = root

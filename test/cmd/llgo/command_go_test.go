@@ -3,7 +3,6 @@
 package llgocmd
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"testing"
@@ -22,15 +21,5 @@ func runToolCompile(t *testing.T, dir string, args ...string) (string, error) {
 
 func runCompiler(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
-	cmd := exec.Command("go", args...)
-	cmd.Dir = dir
-	cmd.Env = os.Environ()
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		stdout.Write(stderr.Bytes())
-	}
-	return stdout.String(), err
+	return runGoCompiler(t, dir, args...)
 }

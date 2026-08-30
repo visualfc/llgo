@@ -21,18 +21,26 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func runGoCompiler(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
-	cmd := exec.Command("go", args...)
+	return runCompilerCommand(t, dir, "go", args...)
+}
+
+func runCompilerCommand(t *testing.T, dir, compiler string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command(compiler, args...)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+	// Successful output is compared exactly by several compatibility tests.
+	// Include stderr only when it helps diagnose a failed command.
 	if err != nil {
 		stdout.Write(stderr.Bytes())
 	}
@@ -49,7 +57,7 @@ func runExecutable(t *testing.T, dir, name string, args ...string) (string, erro
 }
 
 func executablePath(dir, name string) string {
-	if filepath.Ext(os.Args[0]) == ".exe" {
+	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
 	return filepath.Join(dir, name)
