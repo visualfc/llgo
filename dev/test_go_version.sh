@@ -49,15 +49,6 @@ elif [[ "${llgo_cmd}" != /* ]]; then
 	llgo_cmd="$(cd "$(dirname "${llgo_cmd}")" && pwd)/$(basename "${llgo_cmd}")"
 fi
 
-llgen_cmd="${LLGO_TEST_LLGEN:-}"
-if [[ -z "${llgen_cmd}" && -x "$(dirname "${llgo_cmd}")/llgen${tool_suffix}" ]]; then
-	llgen_cmd="$(dirname "${llgo_cmd}")/llgen${tool_suffix}"
-fi
-if [[ -z "${llgen_cmd}" ]]; then
-	build_ci_tools
-	llgen_cmd="${work_dir}/bin/llgen${tool_suffix}"
-fi
-
 check_std_symbols="${CHECK_STD_SYMBOLS:-}"
 if [[ "${LLGO_TEST_CHECK_SYMBOLS:-}" == 1 && -z "${check_std_symbols}" ]]; then
 	build_ci_tools
@@ -87,14 +78,11 @@ export GOENV=off
 export GOFLAGS=
 export LLGO_ROOT="${root_dir}"
 test_llgo_cmd="${llgo_cmd}"
-test_llgen_cmd="${llgen_cmd}"
 if [[ "${OS:-}" == "Windows_NT" ]] && command -v cygpath >/dev/null 2>&1; then
 	test_llgo_cmd="$(cygpath -w "${llgo_cmd}")"
-	test_llgen_cmd="$(cygpath -w "${llgen_cmd}")"
 fi
 export LLGO_TEST_LLGO="${test_llgo_cmd}"
 export LLGO_TEST_COMPILER="${test_llgo_cmd}"
-export LLGO_TEST_LLGEN="${test_llgen_cmd}"
 export LLGO_TEST_MODFILE="${modfile}"
 # LLGo's shared cache may contain standard-library objects from another Go
 # release. CI jobs are isolated and may opt back in explicitly.

@@ -1925,6 +1925,33 @@ func unnamedResult(stop bool) int {
 	}
 }
 
+func TestCompileRecoverThenDeferredPanicModule(t *testing.T) {
+	_, m := mustCompileLLPkgFromSrc(t, `
+package foo
+
+func end() {
+	if recovered := recover(); recovered != nil {
+		defer panic(recovered)
+		println("will panic in defer")
+	}
+	println("end")
+}
+
+func run() {
+	defer end()
+	panic("panic in run")
+}
+`)
+
+	ir := mustNamedFunction(t, m, "foo.end").String()
+	if !strings.Contains(ir, "\n  unreachable\n") {
+		t.Fatalf("deferred panic did not terminate its LLVM block:\n%s", ir)
+	}
+	if err := llvm.VerifyModule(m, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("invalid module after recover and deferred panic: %v\n%s", err, m.String())
+	}
+}
+
 func TestNamedResultSlot(t *testing.T) {
 	ssaPkg, _, _ := buildGoSSAPkg(t, `
 package foo
