@@ -10,14 +10,20 @@ import (
 	psync "github.com/xgo-dev/llgo/runtime/internal/sync"
 )
 
-// Unix signal handlers write signal numbers to a nonblocking self-pipe. A
-// dedicated runtime goroutine drains that pipe and enters Go code in a normal
-// execution context; the async-signal-safe C handler never calls into Go.
+// Unix signal handlers atomically mark signals pending and write wake tokens to
+// a nonblocking self-pipe. A dedicated runtime goroutine claims the pending
+// signals and enters Go code in a normal execution context; the
+// async-signal-safe C handler never calls into Go.
 
 type sigState struct {
 	active  bool
 	ignored bool
 }
+
+const (
+	signalCount = 65 // max across Unix systems; matches os/signal
+	signalWords = (signalCount + 31) / 32
+)
 
 var (
 	sigInitState uint32
@@ -28,7 +34,8 @@ var (
 	sigMu     psync.Mutex
 	sigCond   psync.Cond
 	sigWaitMu psync.Mutex
-	sigQueue  []uint32
+	sigQueue  [signalWords]uint32
+	sigRecv   [signalWords]uint32
 	sigStates map[uint32]*sigState
 
 	// sigReceiving is true only while the os/signal receive goroutine is
@@ -149,14 +156,26 @@ func signalReadLoop() {
 }
 
 func signalCallback(sig uint32) {
+	if sig == 0 || sig >= signalCount {
+		return
+	}
 	sigMu.Lock()
-	// Every positive pipe entry was written by a handler that was active at
-	// the instant the signal arrived. Preserve it even if Reset or Stop has
-	// since changed sigStates; os/signal keeps stopping channels registered
-	// until signalWaitUntilIdle observes the barrier below.
-	sigQueue = append(sigQueue, sig)
+	// Every positive value was claimed from a pending bit set by a handler that
+	// was active at the instant the signal arrived. Preserve it even if Reset or
+	// Stop has since changed sigStates; os/signal keeps stopping channels
+	// registered until signalWaitUntilIdle observes the barrier below.
+	sigQueue[sig/32] |= 1 << (sig & 31)
 	sigCond.Broadcast()
 	sigMu.Unlock()
+}
+
+func signalBitsEmpty(bits *[signalWords]uint32) bool {
+	for _, word := range bits {
+		if word != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func ensureSignalState(sig uint32) *sigState {
@@ -247,16 +266,25 @@ func signal_ignored(sig uint32) bool {
 func signal_recv() uint32 {
 	ensureSignalInit()
 	sigMu.Lock()
-	for len(sigQueue) == 0 {
-		sigReceiving = true
-		sigCond.Broadcast()
-		sigCond.Wait(&sigMu)
+	for {
+		for sig := uint32(1); sig < signalCount; sig++ {
+			bit := uint32(1) << (sig & 31)
+			if sigRecv[sig/32]&bit != 0 {
+				sigRecv[sig/32] &^= bit
+				sigMu.Unlock()
+				return sig
+			}
+		}
+
+		for signalBitsEmpty(&sigQueue) {
+			sigReceiving = true
+			sigCond.Broadcast()
+			sigCond.Wait(&sigMu)
+		}
+		sigReceiving = false
+		sigRecv = sigQueue
+		sigQueue = [signalWords]uint32{}
 	}
-	sigReceiving = false
-	sig := sigQueue[0]
-	sigQueue = sigQueue[1:]
-	sigMu.Unlock()
-	return sig
 }
 
 func signalWaitUntilIdle() {
@@ -276,7 +304,8 @@ func signalWaitUntilIdle() {
 	}
 
 	sigMu.Lock()
-	for sigBarrierAck < wantAck || len(sigQueue) != 0 || !sigReceiving {
+	for sigBarrierAck < wantAck || !signalBitsEmpty(&sigQueue) ||
+		!signalBitsEmpty(&sigRecv) || !sigReceiving {
 		sigCond.Wait(&sigMu)
 	}
 	sigMu.Unlock()

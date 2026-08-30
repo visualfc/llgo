@@ -5,6 +5,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
@@ -14,21 +15,47 @@
 
 _Static_assert(SIGPIPE == 13, "runtime signalPipe assumes SIGPIPE is 13");
 
+#define LLGO_SIGNAL_COUNT 65
+#define LLGO_SIGNAL_WORDS ((LLGO_SIGNAL_COUNT + 31) / 32)
+
+_Static_assert(CHAR_BIT * sizeof(unsigned int) == 32,
+               "signal bitmaps require 32-bit unsigned int");
+#if defined(__clang__) || defined(__GNUC__)
+_Static_assert(__atomic_always_lock_free(sizeof(unsigned int), 0),
+               "signal-handler atomics must be lock-free");
+#endif
+
 static int llgo_signal_pipe[2] = {-1, -1};
 static unsigned int llgo_signal_delivering;
+static unsigned int llgo_signal_pending[LLGO_SIGNAL_WORDS];
+/* Only the dedicated signal reader accesses this snapshot. */
+static unsigned int llgo_signal_received[LLGO_SIGNAL_WORDS];
 
 static void llgo_signal_handler(int signum)
 {
     int saved_errno = errno;
+    unsigned int bit;
+    unsigned int old;
+    const int wake = 1;
 
     /* signalWaitUntilIdle uses this like the Go runtime's sig.delivering:
      * a pipe marker must not overtake a handler that has already entered. */
-    __atomic_add_fetch(&llgo_signal_delivering, 1, __ATOMIC_ACQUIRE);
-    if (llgo_signal_pipe[1] >= 0) {
-        ssize_t ignored = write(llgo_signal_pipe[1], &signum, sizeof(signum));
-        (void)ignored;
+    __atomic_add_fetch(&llgo_signal_delivering, 1, __ATOMIC_SEQ_CST);
+    if (llgo_signal_pipe[1] >= 0 && signum > 0 &&
+        signum < LLGO_SIGNAL_COUNT) {
+        bit = 1U << ((unsigned int)signum & 31U);
+        old = __atomic_fetch_or(&llgo_signal_pending[(unsigned int)signum / 32U],
+                                bit, __ATOMIC_SEQ_CST);
+        if ((old & bit) == 0) {
+            /* EAGAIN is safe: a full pipe already contains a wakeup, while
+             * the per-signal pending bit preserves this distinct signal. */
+            ssize_t count;
+            do {
+                count = write(llgo_signal_pipe[1], &wake, sizeof(wake));
+            } while (count < 0 && errno == EINTR);
+        }
     }
-    __atomic_sub_fetch(&llgo_signal_delivering, 1, __ATOMIC_RELEASE);
+    __atomic_sub_fetch(&llgo_signal_delivering, 1, __ATOMIC_SEQ_CST);
     errno = saved_errno;
 }
 
@@ -155,22 +182,64 @@ int llgo_signal_barrier(void)
     }
 }
 
-int llgo_signal_recv(int fd, int *signum)
+static int llgo_signal_take_received(void)
 {
-    unsigned char *out = (unsigned char *)signum;
-    size_t offset = 0;
+    unsigned int signum;
 
-    if (signum == 0)
-        return EINVAL;
-    while (offset < sizeof(*signum)) {
-        ssize_t count = read(fd, out + offset, sizeof(*signum) - offset);
-        if (count > 0) {
-            offset += (size_t)count;
-            continue;
+    for (signum = 1; signum < LLGO_SIGNAL_COUNT; signum++) {
+        unsigned int bit = 1U << (signum & 31U);
+        unsigned int *word = &llgo_signal_received[signum / 32U];
+
+        if ((*word & bit) != 0) {
+            *word &= ~bit;
+            return (int)signum;
         }
-        if (count < 0 && errno == EINTR)
-            continue;
-        return count == 0 ? EPIPE : errno;
     }
     return 0;
+}
+
+static void llgo_signal_receive_pending(void)
+{
+    unsigned int word;
+
+    for (word = 0; word < LLGO_SIGNAL_WORDS; word++)
+        llgo_signal_received[word] =
+            __atomic_exchange_n(&llgo_signal_pending[word], 0,
+                                __ATOMIC_SEQ_CST);
+}
+
+int llgo_signal_recv(int fd, int *signum)
+{
+    if (signum == 0)
+        return EINVAL;
+
+    for (;;) {
+        int received;
+        int token;
+        unsigned char *out;
+        size_t offset = 0;
+
+        received = llgo_signal_take_received();
+        if (received != 0) {
+            *signum = received;
+            return 0;
+        }
+
+        out = (unsigned char *)&token;
+        while (offset < sizeof(token)) {
+            ssize_t count = read(fd, out + offset, sizeof(token) - offset);
+            if (count > 0) {
+                offset += (size_t)count;
+                continue;
+            }
+            if (count < 0 && errno == EINTR)
+                continue;
+            return count == 0 ? EPIPE : errno;
+        }
+        if (token == 0) {
+            *signum = 0;
+            return 0;
+        }
+        llgo_signal_receive_pending();
+    }
 }
