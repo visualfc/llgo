@@ -312,8 +312,13 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 			if signed {
 				panicIndex = "PanicExtendIndex"
 			}
+			checkBytes := prog.SizeOf(checkIdx.Type)
+			wordBytes := prog.SizeOf(prog.Uint())
+			if checkBytes != 8 || wordBytes != 4 {
+				panic(fmt.Sprintf("ssa: extended index split requires 64-bit index and 32-bit word, got %d-bit index and %d-bit word", checkBytes*8, wordBytes*8))
+			}
 			lo := Expr{castInt(b, checkIdx.impl, checkIdx.Type, prog.Uint()), prog.Uint()}
-			hi64 := llvm.CreateLShr(b.impl, checkIdx.impl, llvm.ConstInt(checkIdx.ll, 32, false))
+			hi64 := llvm.CreateLShr(b.impl, checkIdx.impl, llvm.ConstInt(checkIdx.ll, uint64(wordBytes*8), false))
 			hiType := prog.Uint()
 			if signed {
 				hiType = prog.Int()
