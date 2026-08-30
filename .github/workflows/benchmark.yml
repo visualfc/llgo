@@ -193,16 +193,6 @@ jobs:
           windows-abi: ${{ matrix.windows_abi }}
           windows-arch: ${{ matrix.windows_arch }}
 
-      - name: Use direct MinGW 386 drivers for benchmark links
-        if: runner.os == 'Windows' && matrix.windows_abi == 'mingw' && matrix.windows_arch == '386'
-        shell: pwsh
-        run: |
-          # The general target profile keeps command wrappers so unqualified
-          # clang follows GOARCH. Benchmark links include LLVM's complete
-          # static library list, which exceeds cmd.exe's 8191-character limit.
-          Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=$(Join-Path $env:LLGO_MINGW_TARGET_BIN 'i686-w64-mingw32-clang.exe')"
-          Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=$(Join-Path $env:LLGO_MINGW_TARGET_BIN 'i686-w64-mingw32-clang++.exe')"
-
       - name: Measure pull request base
         if: github.event_name == 'pull_request'
         id: measure-base

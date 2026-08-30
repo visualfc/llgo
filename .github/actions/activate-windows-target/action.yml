@@ -64,6 +64,8 @@ runs:
           "arm64" { "aarch64" }
           default { throw "Unsupported Windows GNU target architecture: $goArch" }
         }
+        $cc = "clang"
+        $cxx = "clang++"
 
         if ($goArch -eq "386") {
           foreach ($name in @("LLGO_MINGW_TARGET_BIN", "LLGO_MINGW_TARGET_RUNTIME_BIN", "LLGO_MINGW_TARGET_TOOLS", "LLGO_MINGW_TARGET_TRIPLE", "LLGO_MINGW_TARGET_VCPKG_ROOT")) {
@@ -73,6 +75,12 @@ runs:
             }
           }
           $compiler = Join-Path $env:LLGO_MINGW_TARGET_BIN "i686-w64-mingw32-clang.exe"
+          $compilerXX = Join-Path $env:LLGO_MINGW_TARGET_BIN "i686-w64-mingw32-clang++.exe"
+          foreach ($path in @($compiler, $compilerXX)) {
+            if (-not (Test-Path $path)) {
+              throw "The standalone llvm-mingw target compiler was not found: $path"
+            }
+          }
           $target = (& $compiler -dumpmachine).Trim()
           if ($target -notmatch "^$targetArch-.*-(windows-gnu|mingw32)$") {
             throw "llvm-mingw reports $target, want windows/$goArch GNU"
@@ -84,6 +92,12 @@ runs:
           Add-Content -Encoding utf8 $env:GITHUB_PATH $env:LLGO_MINGW_TARGET_RUNTIME_BIN
           Add-Content -Encoding utf8 $env:GITHUB_PATH $env:LLGO_MINGW_TARGET_TOOLS
           Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $env:LLGO_MINGW_TARGET_VCPKG_ROOT "bin")
+          # Keep the wrappers for interactive shells, but let LLGo invoke the
+          # drivers directly. A normal runtime link can exceed cmd.exe's 8191
+          # character limit while remaining below LLGo's 30 KiB response-file
+          # threshold.
+          $cc = $compiler
+          $cxx = $compilerXX
         } else {
           $target = (& clang.exe -dumpmachine).Trim()
           if ($target -notmatch "^$targetArch-.*-(windows-gnu|mingw32)$") {
@@ -91,8 +105,8 @@ runs:
           }
         }
 
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=$cc"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=$cxx"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "GOOS=windows"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "GOARCH=$goArch"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_ACTIVE=1"

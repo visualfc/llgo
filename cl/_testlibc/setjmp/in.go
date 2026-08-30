@@ -29,7 +29,7 @@ func fprintf(fp unsafe.Pointer, format *int8, __llgo_va_list ...any) int32
 // DARWIN-ARM64-NEXT: [[RET:%[0-9]+]] = call i32 @sigsetjmp(ptr [[JMPBUF]], i32 0)
 // LINUX-AMD64-NEXT: [[RET:%[0-9]+]] = call i32 @__sigsetjmp(ptr [[JMPBUF]], i32 0)
 // WINDOWS-386-NEXT: [[RET:%[0-9]+]] = call i32 @_setjmp3(ptr [[JMPBUF]], i32 0)
-// WINDOWS-AMD64-NEXT: [[RET:%[0-9]+]] = call i32 @_setjmpex(ptr [[JMPBUF]], ptr null)
+// WINDOWS-AMD64-NEXT: [[RET:%[0-9]+]] = call i32 @{{_setjmpex|__intrinsic_setjmpex}}(ptr [[JMPBUF]], ptr null)
 // WINDOWS-ARM64-NEXT: [[RET:%[0-9]+]] = call i32 @llgo_setjmp(ptr [[JMPBUF]])
 // CHECK-NEXT: [[FIRST:%[0-9]+]] = icmp eq i32 [[RET]], 0
 // CHECK-NEXT: br i1 [[FIRST]], label %{{[^,]+}}, label %{{[^ ]+}}
