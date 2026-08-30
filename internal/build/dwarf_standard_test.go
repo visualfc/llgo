@@ -43,8 +43,8 @@ func TestStandardDWARF(t *testing.T) {
 		optlevel.Oz,
 	} {
 		t.Run(level.String(), func(t *testing.T) {
-			bin := filepath.Join(t.TempDir(), "dwarf-standard")
 			conf := NewDefaultConf(ModeBuild)
+			bin := filepath.Join(t.TempDir(), "dwarf-standard"+conf.AppExt)
 			conf.OutFile = bin
 			conf.OptLevel = level
 			conf.LinkOptions.DWARF = DWARFPreserve
