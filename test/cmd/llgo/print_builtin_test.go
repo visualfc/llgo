@@ -117,4 +117,3 @@ func TestBuiltinPrintOutputMatchesGo(t *testing.T) {
 		t.Fatalf("%s print output mismatch\n%s:\n%s\n\ngo:\n%s", toolCompilerName, toolCompilerName, got, want)
 	}
 }
-
