@@ -51,7 +51,7 @@ fi
 # Prepare LLDB commands
 lldb_commands=(
     "command script import ./test.py"
-    "script test.run_tests_with_result('./debug.out', ['main.go'], $verbose, $interactive, $plugin_path, '$result_file_for_lldb')"
+    "script test.run_tests_with_result('./debug.out', ['main.go', '_wrap/mixed.c'], $verbose, $interactive, $plugin_path, '$result_file_for_lldb')"
     "quit"
 )
 
@@ -63,6 +63,7 @@ done
 
 cd "$package_path"
 # Run LLDB with the embedded LLGo plugin and the test script.
+export LLGO_LLDB_FAULT_TEST=1
 llgo lldb -lldb "$LLDB_PATH" -- "${lldb_args[@]}"
 
 # Read the exit code from the result file

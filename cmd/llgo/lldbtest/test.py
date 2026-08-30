@@ -217,6 +217,16 @@ TEST_CASES = [
          "llgo_lldb_go_callback llgo_lldb_c_inner llgo_lldb_mixed_call main.main",
          "ordered_frames"),
     ]),
+    TestCase(
+        source_file="_wrap/mixed.c",
+        marker="LLDB_BREAK: mixed_go_c_callback_fault",
+        tests=[Test(
+            "stack frames",
+            "llgo_lldb_c_fault llgo_lldb_go_fault_callback "
+            "llgo_lldb_mixed_fault_call main.main",
+            "ordered_frames",
+        )],
+    ),
     test_case("struct_values_initial", STRUCT_VALUES_INITIAL),
     test_case("struct_values_updated", STRUCT_VALUES_UPDATED),
     test_case("struct_ptrs_initial", STRUCT_VALUES_INITIAL),
@@ -527,7 +537,7 @@ def run_tests(executable_path: str, source_files: List[str], verbose: bool, inte
     selected_sources = {os.path.basename(path) for path in source_files}
     test_cases = [
         test_case for test_case in TEST_CASES
-        if test_case.source_file in selected_sources
+        if os.path.basename(test_case.source_file) in selected_sources
     ]
     if not test_cases:
         raise LLDBTestException(
