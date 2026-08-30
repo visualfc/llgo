@@ -44,7 +44,9 @@ func TestStandardDWARF(t *testing.T) {
 	} {
 		t.Run(level.String(), func(t *testing.T) {
 			conf := NewDefaultConf(ModeBuild)
-			bin := filepath.Join(t.TempDir(), "dwarf-standard"+conf.AppExt)
+			// Do resolves the platform extension on an internal config clone, so
+			// derive the explicit output path before the build as well.
+			bin := filepath.Join(t.TempDir(), "dwarf-standard"+defaultAppExt(conf))
 			conf.OutFile = bin
 			conf.OptLevel = level
 			conf.LinkOptions.DWARF = DWARFPreserve
