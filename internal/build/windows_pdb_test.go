@@ -45,8 +45,8 @@ func TestWindowsPDBLinkPath(t *testing.T) {
 	conf.OptLevel = optlevel.O0
 	conf.LinkOptions.DWARF = DWARFPreserve
 	// Keep the default Go-compatible DWARF while asking lld-link to publish a
-	// companion PDB. The PDB supplies native Windows public symbols; LLDB and
-	// runtime traceback consumers continue to use the embedded DWARF/PCLN data.
+	// companion PDB. The PDB supplies native Windows public symbols and source
+	// lines; LLDB and runtime tracebacks continue to use embedded DWARF/PCLN.
 	conf.LinkOptions.ExternalLinkerFlags = fmt.Sprintf(
 		`-Xlinker /debug:full -Xlinker "/pdb:%s"`, filepath.ToSlash(pdb))
 	if _, err := Do([]string{"./testdata/dwarf"}, conf); err != nil {
