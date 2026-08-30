@@ -349,7 +349,10 @@ jobs:
           if (-not (Test-Path $bash)) {
             throw "Cygwin bash was not found at $bash"
           }
-          & $bash -c 'cd "$(cygpath -u "$GITHUB_WORKSPACE")" && bash .github/workflows/test_windows_host_shell.sh'
+          # The earlier MSYS2 setup remains on the inherited Windows PATH. Use
+          # Cygwin's own path converter and shell explicitly so an MSYS
+          # cygpath cannot turn D:\ into the invalid Cygwin path /d/.
+          & $bash --noprofile --norc -c 'export PATH=/usr/bin:/bin:$PATH; cd "$(/usr/bin/cygpath -u "$GITHUB_WORKSPACE")" && /usr/bin/bash .github/workflows/test_windows_host_shell.sh'
           if ($LASTEXITCODE -ne 0) {
             throw "Cygwin host-shell qualification failed with exit code $LASTEXITCODE"
           }

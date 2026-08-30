@@ -42,14 +42,30 @@ esac
 
 unset CC CXX
 executable="$source_dir/host-shell.exe"
-trace=$(cd "$source_dir" && MSYS2_ARG_CONV_EXCL='*' "$llgo" build -x -o "$executable" . 2>&1)
+set +e
+trace=$(cd "$source_dir" && "$llgo" build -x -o "$executable" . 2>&1)
+build_status=$?
+set -e
+if [[ $build_status -ne 0 ]]; then
+  echo "host-shell build failed with exit code $build_status:" >&2
+  echo "$trace" >&2
+  exit "$build_status"
+fi
 if ! grep -Fq -- "$target" <<<"$trace"; then
   echo "host shell did not retain target $target:" >&2
   echo "$trace" >&2
   exit 1
 fi
 
+set +e
 output=$($executable 2>&1)
+run_status=$?
+set -e
+if [[ $run_status -ne 0 ]]; then
+  echo "$executable failed with exit code $run_status:" >&2
+  echo "$output" >&2
+  exit "$run_status"
+fi
 want="windows-${LLGO_WINDOWS_ABI}-${LLGO_WINDOWS_ARCH}-host-shell"
 if [[ "$output" != "$want" ]]; then
   echo "$executable printed '$output', want '$want'" >&2
@@ -57,7 +73,15 @@ if [[ "$output" != "$want" ]]; then
 fi
 
 readobj=$(command -v llvm-readobj.exe || command -v llvm-readobj)
-imports=$($readobj --coff-imports "$executable")
+set +e
+imports=$($readobj --coff-imports "$executable" 2>&1)
+readobj_status=$?
+set -e
+if [[ $readobj_status -ne 0 ]]; then
+  echo "$readobj failed with exit code $readobj_status:" >&2
+  echo "$imports" >&2
+  exit "$readobj_status"
+fi
 forbidden='(msys-2\.0|cygwin1)\.dll'
 if [[ "$LLGO_WINDOWS_ABI" == msvc ]]; then
   forbidden='(msys-2\.0|cygwin1|libwinpthread)\.dll'
