@@ -17,7 +17,9 @@ add_definitions(${LLVM_DEFINITIONS})
 
 add_llvm_pass_plugin(LLGOLTOPlugin
   LLGOLTOPlugin.cpp
+  LLGOInterfaceMethodTypeIDPass.cpp
   LLGOReflectMethodByNamePass.cpp
+  LLGOTypeIDExportCleanupPass.cpp
 )
 
 target_compile_features(LLGOLTOPlugin PRIVATE cxx_std_17)

@@ -102,12 +102,13 @@ func (b Builder) staticItab(rawIntf *types.Interface, concrete types.Type, tintf
 	slotKind := prog.ctx.MDKindID("llgo.static.itab.slot")
 	funOffset := uint64(prog.td.ElementOffset(staticType.ll, 3))
 	stride := uint64(prog.td.TypeAllocSize(ptr.ll))
+	interfaceTypeID := prog.interfaceCapabilityKey(rawIntf)
 	for i := range methods {
 		offset := funOffset + uint64(i)*stride
-		method := rawIntf.Method(i)
+		typeID := interfaceMethodCapabilityKeyFromID(interfaceTypeID, i)
 		node := prog.ctx.MDNode([]llvm.Metadata{
 			llvm.ConstInt(prog.Int64().ll, offset, false).ConstantAsMetadata(),
-			prog.ctx.MDString(methodCapabilityKey(method)),
+			prog.ctx.MDString(typeID),
 		})
 		global.impl.AddMetadata(slotKind, node)
 	}
@@ -183,7 +184,7 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 	if prog.enableGoGlobalDCE && !recoverToken {
 		fnType := prog.Elem(pfn.Type)
 		fn = Expr{
-			prog.methodCheckedLoad(b.impl, pfn.impl, methodCapabilityKey(method)),
+			prog.interfaceMethodCheckedLoad(b.impl, pfn.impl, rawIntf, i),
 			fnType,
 		}
 	} else {
@@ -193,7 +194,7 @@ func (b Builder) imethod(intf Expr, method *types.Func, recoverToken bool) Expr 
 			// general-purpose pointer. Recover bookkeeping needs the same code
 			// address as ordinary data, so retain the capability check while
 			// carrying the raw itab load into the transient invocation pair.
-			prog.methodCheckedLoad(b.impl, pfn.impl, methodCapabilityKey(method))
+			prog.interfaceMethodCheckedLoad(b.impl, pfn.impl, rawIntf, i)
 		}
 	}
 	// This is a transient interface invocation pair, not a first-class

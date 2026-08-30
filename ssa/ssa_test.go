@@ -435,6 +435,41 @@ func TestDevLTOGlobalDCEMethodCapabilityKeyMatchesInterfaceAndConcreteNames(t *t
 	}
 }
 
+func TestDevLTOGlobalDCEMethodCapabilityKeyNormalizesABIClosure(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	pkg := types.NewPackage("testing", "testing")
+	callback := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "", types.Typ[types.String]),
+			types.NewVar(token.NoPos, nil, "", types.Typ[types.String]),
+		),
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool]),
+			types.NewVar(token.NoPos, nil, "", types.Universe.Lookup("error").Type()),
+		),
+		false)
+	closure := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, nil, "$f", callback, false),
+		types.NewField(token.NoPos, nil, "$data", types.Typ[types.UnsafePointer], false),
+	}, nil)
+	method := func(param types.Type) *types.Func {
+		return types.NewFunc(token.NoPos, pkg, "verify", types.NewSignatureType(nil, nil, nil,
+			types.NewTuple(
+				types.NewVar(token.NoPos, nil, "", types.Typ[types.String]),
+				types.NewVar(token.NoPos, nil, "", param),
+			),
+			types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Universe.Lookup("error").Type())),
+			false))
+	}
+
+	sourceKey := methodCapabilityKey(method(callback))
+	abiKey := methodCapabilityKey(method(closure))
+	if abiKey != sourceKey {
+		t.Fatalf("ABI closure capability key mismatch: got %q, want %q", abiKey, sourceKey)
+	}
+}
+
 func TestDevLTOGlobalDCEMethodCapabilityKeyQualifiesUnexportedNames(t *testing.T) {
 	requireGoGlobalDCE(t)
 
@@ -688,7 +723,12 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 	returns := types.NewTuple(types.NewVar(token.NoPos, nil, "", intf))
 	fn := pkg.NewFunc("Make", types.NewSignatureType(nil, nil, nil, nil, returns, false), InGo)
 	b := fn.MakeBody(1)
-	b.Return(b.MakeInterface(prog.Type(intf, InGo), prog.Zero(prog.Type(concrete, InGo))))
+	ifaceValue := b.MakeInterface(prog.Type(intf, InGo), prog.Zero(prog.Type(concrete, InGo)))
+	b.Imethod(ifaceValue, interfaceMethodM)
+	prog.EnableLTOPluginMarkers(false)
+	b.Imethod(ifaceValue, interfaceMethodM)
+	prog.EnableLTOPluginMarkers(true)
+	b.Return(ifaceValue)
 	if _, ok := b.staticItab(intf, concrete, b.abiType(intf), b.abiType(concrete)); !ok {
 		t.Fatal("cached static itab template was not reused")
 	}
@@ -728,12 +768,17 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	ir := pkg.String()
+	interfaceTypeID := prog.interfaceCapabilityKey(intf)
 	for _, want := range []string{
 		`_llgo_itab$`,
 		`@llvm.compiler.used`,
 		`!"go.method.M:func()"`,
 		`!"go.method.N:func()"`,
 		`!llgo.static.itab.slot`,
+		`"llgo.interface.call"="1"`,
+		`"llgo.interface.id"="` + interfaceTypeID + `"`,
+		`!"` + prog.interfaceMethodCapabilityKey(intf, 0) + `"`,
+		`!"` + prog.interfaceMethodCapabilityKey(intf, 1) + `"`,
 	} {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("missing %s in static itab IR:\n%s", want, ir)
@@ -741,6 +786,18 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 	}
 	if !strings.Contains(ir, `call ptr @"github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab"`) {
 		t.Fatalf("static itab template replaced NewItab before LTO proof:\n%s", ir)
+	}
+	for _, typeID := range []string{
+		prog.interfaceMethodCapabilityKey(intf, 0),
+		methodCapabilityKey(interfaceMethodM),
+	} {
+		if !strings.Contains(ir, `call { ptr, i1 } @llvm.type.checked.load`+"(") ||
+			!strings.Contains(ir, `metadata !"`+typeID+`"`) {
+			t.Fatalf("missing checked load for %s:\n%s", typeID, ir)
+		}
+	}
+	if strings.Contains(ir, `!llgo.interface.type`) || strings.Contains(ir, `!llgo.interface.method`) {
+		t.Fatalf("interface declaration remained attached to a type descriptor:\n%s", ir)
 	}
 }
 
@@ -829,6 +886,44 @@ func TestDevLTOGlobalDCEAddMethodTypeMetadataEarlyReturns(t *testing.T) {
 	ir := pkg.String()
 	if strings.Contains(ir, "!vcall_visibility") || strings.Contains(ir, "!type !") {
 		t.Fatalf("early-return paths should not attach method metadata:\n%s", ir)
+	}
+}
+
+func TestDevLTOGlobalDCEInterfaceMethodCheckedLoadAttributes(t *testing.T) {
+	requireGoGlobalDCE(t)
+
+	prog := NewProgram(nil)
+	prog.EnableLTOPluginMarkers(true)
+	pkg := prog.NewPackage("main", "main")
+	g := pkg.NewVarEx("itab", prog.Pointer(prog.VoidPtr()))
+	methodSig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	methodM := types.NewFunc(token.NoPos, nil, "M", methodSig)
+	methodN := types.NewFunc(token.NoPos, nil, "N", methodSig)
+	intf := types.NewInterfaceType([]*types.Func{methodM, methodN}, nil).Complete()
+	fn := pkg.NewFunc("Use", types.NewSignatureType(nil, nil, nil, nil, nil, false), InGo)
+	b := fn.MakeBody(1)
+	prog.interfaceMethodCheckedLoad(b.impl, g.impl, intf, 1)
+	b.Return()
+
+	ir := pkg.String()
+	interfaceID := prog.interfaceCapabilityKey(intf)
+	for _, want := range []string{
+		`metadata !"` + interfaceMethodCapabilityKeyFromID(interfaceID, 1) + `") #`,
+		`"llgo.interface.call"="1"`,
+		`"llgo.interface.id"="` + interfaceID + `"`,
+		`"llgo.interface.index"="1"`,
+		`"llgo.interface.count"="2"`,
+		`"llgo.interface.method.0"="go.method.M:func()"`,
+		`"llgo.interface.method.1"="go.method.N:func()"`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("missing checked-load interface attribute %s:\n%s", want, ir)
+		}
+	}
+	for _, unwanted := range []string{`!llgo.interface.type`, `!llgo.interface.method`, `@llvm.compiler.used`} {
+		if strings.Contains(ir, unwanted) {
+			t.Fatalf("checked load retained descriptor-based interface declaration %s:\n%s", unwanted, ir)
+		}
 	}
 }
 

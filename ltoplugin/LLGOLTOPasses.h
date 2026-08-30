@@ -6,10 +6,15 @@
 namespace llgo {
 
 inline constexpr char LLGOPreGlobalDCEPassName[] = "llgo-lto-pre-globaldce";
+inline constexpr char LLGOInterfaceMethodTypeIDPassName[] =
+    "llgo-interface-method-typeids";
 
+void addLLGOInterfaceMethodTypeIDPass(llvm::ModulePassManager &MPM);
 void addLLGOReflectMethodByNamePass(llvm::ModulePassManager &MPM);
+void addLLGOTypeIDExportCleanupPass(llvm::ModulePassManager &MPM);
 
 inline void addLLGOPreGlobalDCEPipeline(llvm::ModulePassManager &MPM) {
+  addLLGOInterfaceMethodTypeIDPass(MPM);
   addLLGOReflectMethodByNamePass(MPM);
 }
 
