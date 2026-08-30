@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xgo-dev/llgo/internal/optlevel"
 	llvmenv "github.com/xgo-dev/llgo/xtool/env/llvm"
 )
 
@@ -41,7 +42,7 @@ func TestWindowsPDBLinkPath(t *testing.T) {
 	pdb := filepath.Join(dir, "pdb-standard.pdb")
 	conf := NewDefaultConf(ModeBuild)
 	conf.OutFile = bin
-	conf.OptLevel = 0
+	conf.OptLevel = optlevel.O0
 	conf.LinkOptions.DWARF = DWARFPreserve
 	// Keep the default Go-compatible DWARF while asking lld-link to publish a
 	// companion PDB. The PDB supplies native Windows public symbols; LLDB and
