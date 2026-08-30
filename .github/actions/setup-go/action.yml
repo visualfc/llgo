@@ -4,9 +4,7 @@ inputs:
   go-version:
     description: "The exact Go version to install; omit it for the LLGo build toolchain"
     required: false
-    # Keep this pin synchronized with the primary CI and release smoke-test
-    # matrices. Upgrade it in a dedicated toolchain-update PR.
-    default: "1.26.7"
+    default: ""
   architecture:
     description: "Host Go architecture; defaults to the runner architecture"
     required: false
@@ -19,6 +17,7 @@ runs:
       uses: actions/setup-go@v7
       with:
         go-version-file: .go-version
+        architecture: ${{ inputs.architecture }}
         cache: false
 
     - name: Set up an explicit Go toolchain
@@ -68,4 +67,3 @@ runs:
         echo "Go binary: $(command -v go)"
         go version
         go env GOROOT
-

@@ -49,11 +49,13 @@ jobs:
 
       - name: Set up Go for building LLGo and the runner
         uses: ./.github/actions/setup-go
+        with:
+          architecture: ${{ startsWith(matrix.os, 'windows') && 'x64' || '' }}
 
       - name: Build LLGo and the GOROOT runner
         shell: bash
         run: |
-          LLGO_BUILD_GOROOT_RUNNER=1 dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
+          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" LLGO_BUILD_GOROOT_RUNNER=1 dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
 
           tool_suffix=
           if [[ "$RUNNER_OS" == Windows ]]; then
@@ -91,13 +93,9 @@ jobs:
             # ExitProcess, which does not run CRT stream teardown.
             export LLGO_STDIO_NOBUF=1
           fi
-          llgo_args=()
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            llgo_args=(-llgo "$RUNNER_TEMP/llgo-host.exe")
-          fi
+          target_goroot="$(go env GOROOT)"
           set +e
-          bash dev/test_goroot.sh -- \
-            "${llgo_args[@]}" \
+          bash dev/test_goroot.sh "$target_goroot" -- \
             -directive-mode ci \
             -min-swap-free-mib "$min_swap_free_mib" \
             -progress 60s \
@@ -114,7 +112,6 @@ jobs:
           MATRIX_OS: ${{ matrix.os }}
           WINDOWS_ABI: ${{ matrix.windows_abi }}
           WINDOWS_ARCH: ${{ matrix.windows_arch }}
-          GO_VERSION: ${{ matrix.go-version }}
           SHARD_INDEX: ${{ matrix.shard-index }}
         run: |
           GO_VERSION="$(tr -d '[:space:]' < .go-version)"

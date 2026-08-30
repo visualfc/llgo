@@ -16,8 +16,7 @@ concurrency:
 
 jobs:
   llgo:
-    name: llgo (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, LLVM ${{ matrix.llvm }}, Go ${{ matrix.go }})
-    continue-on-error: ${{ matrix.lane == 'compatibility' }}
+    name: llgo (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, LLVM ${{ matrix.llvm }}, Go current)
     timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || 60 }}
     strategy:
       fail-fast: false
@@ -41,15 +40,11 @@ jobs:
             host_go_arch: x64
           - os: windows-11-arm
             llvm: 19
-            go: "1.26.7"
-            lane: primary
             windows_abi: msvc
             windows_arch: arm64
             host_go_arch: x64
           - os: windows-2022
             llvm: 19
-            go: "1.26.7"
-            lane: primary
             windows_abi: msvc
             windows_arch: "386"
             host_go_arch: x64
@@ -73,16 +68,13 @@ jobs:
       - name: Set up Go for build
         uses: ./.github/actions/setup-go
         with:
-          # Build with the newest toolchain so this compiler can run against
-          # the older Go versions used by the compatibility matrix.
-          go-version: "1.27.0"
           architecture: ${{ matrix.host_go_arch || '' }}
 
       - name: Install
         shell: bash
         run: |
           GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Test Hello World with go.mod 1.21 through 1.26
         if: matrix.os == 'ubuntu-latest'
@@ -102,7 +94,7 @@ jobs:
         run: dev/test_runtime_go_versions.sh
 
       - name: Validate the native Windows toolchain profile
-        if: ${{ startsWith(matrix.os, 'windows') && matrix.lane == 'primary' }}
+        if: runner.os == 'Windows'
         shell: pwsh
         run: >-
           .\.github\workflows\test_windows_toolchain_profile.ps1
@@ -181,7 +173,8 @@ jobs:
           # cross-architecture Windows lane, use the x64 host Python so pip
           # can install its native dependencies without cross-building them.
           if [[ "$RUNNER_OS" == "Windows" && -n "${LLGO_WINDOWS_PYTHON_HOME:-}" ]]; then
-            export PATH="$(cygpath -u "$LLGO_WINDOWS_PYTHON_HOME"):$PATH"
+            host_python_home="$(cygpath -u "$LLGO_WINDOWS_PYTHON_HOME")"
+            export PATH="$host_python_home:$PATH"
           fi
           python -m pip install esptool==5.1.0
           cd _demo/embed
@@ -232,7 +225,7 @@ jobs:
           echo "LLGO_LLDB=$(cygpath -m "$lldb_path")" >> "$GITHUB_ENV"
 
       - name: LLDB integration tests
-        if: ${{ matrix.lane == 'primary' && startsWith(matrix.os, 'windows') == false }}
+        if: runner.os != 'Windows'
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
@@ -257,22 +250,15 @@ jobs:
             $env:PYTHONHOME = $env:LLGO_WINDOWS_PYTHON_HOME
           }
           if ("${{ matrix.windows_arch }}" -eq "386") {
-            # The debugger is an x64 host process, while the program under
-            # test and its vcpkg DLLs are x86. Leaving the target bin directory
-            # on PATH makes Windows load a same-named x86 DLL into x64 LLDB
-            # (0xc000007b). Stage those
-            # DLLs beside the debuggee, then keep them out of the host search
-            # path; Windows still resolves each process from its own directory.
+            # LLDB is an x64 host process, while the debuggee and vcpkg DLLs
+            # are x86. Stage target DLLs beside the debuggee and remove their
+            # directory from the host loader path.
             $targetBin = Join-Path $env:LLGO_WINDOWS_VCPKG_ROOT "bin"
             $debuggeeDir = Join-Path $env:GITHUB_WORKSPACE "cmd\llgo\lldbtest"
             $copiedTargetDLLs = @(Get-ChildItem -LiteralPath $targetBin -Filter *.dll -File)
             foreach ($dll in $copiedTargetDLLs) {
               Copy-Item -LiteralPath $dll.FullName -Destination $debuggeeDir -Force
             }
-            # setup-demo-deps also puts the target Python runtime on PATH for
-            # compiled embedding demos. LLDB embeds x64 Python, so keep that
-            # target runtime out of its loader search path as well and make
-            # the matching host Python runtime explicit.
             $targetRuntimePaths = @($targetBin, $env:LLGO_WINDOWS_TARGET_PYTHON_HOME)
             $env:PATH = (($env:PATH -split ';') | Where-Object {
               $_ -and $targetRuntimePaths -notcontains $_
@@ -358,41 +344,28 @@ jobs:
             host_go_arch: x64
           - os: windows-2022
             llvm: 19
-            go: "1.26.7"
-            shard: "0"
-            lane: primary
-            windows_abi: mingw
-            windows_arch: amd64
-            host_go_arch: x64
-          - os: windows-2022
-            llvm: 19
-            go: "1.27.0"
-            shard: "0"
-            lane: primary
-            windows_abi: msvc
-            windows_arch: amd64
-            host_go_arch: x64
-          - os: windows-2022
-            llvm: 19
-            go: "1.27.0"
-            shard: "0"
-            lane: primary
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
             windows_abi: mingw
             windows_arch: amd64
             host_go_arch: x64
           - os: windows-11-arm
             llvm: 19
-            go: "1.26.7"
-            shard: "0"
-            lane: primary
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
             windows_abi: msvc
             windows_arch: arm64
             host_go_arch: x64
           - os: windows-2022
             llvm: 19
-            go: "1.26.7"
-            shard: "0"
-            lane: primary
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
             windows_abi: msvc
             windows_arch: "386"
             host_go_arch: x64
@@ -415,10 +388,6 @@ jobs:
       - name: Set up Go for build
         uses: ./.github/actions/setup-go
         with:
-          # Build with the newest toolchain so the resulting llgo remains
-          # runnable against older Go standard libraries in compatibility
-          # jobs, while Go 1.27 is built and run with the same toolchain.
-          go-version: "1.27.0"
           architecture: ${{ matrix.host_go_arch || '' }}
 
       - name: Build LLGo and test tools
@@ -502,7 +471,7 @@ jobs:
       - name: Install llgo
         run: |
           GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Test Cross Compilation (wasm)
         shell: bash
@@ -539,13 +508,8 @@ jobs:
 
       - name: Install llgo
         run: |
-          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-
-      - name: Set up Go for testing
-        uses: ./.github/actions/setup-go
-        with:
-          go-version: ${{matrix.go}}
+          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Build standard runtime for wasm
         shell: bash
