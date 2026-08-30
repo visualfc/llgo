@@ -4,10 +4,16 @@ package gotest
 
 import (
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 	_ "unsafe"
 )
+
+type concurrentFinalizerValue struct {
+	value int
+	pad   [64]byte
+}
 
 //go:linkname getBDWGCFinalizeOnDemand C.GC_get_finalize_on_demand
 func getBDWGCFinalizeOnDemand() int32
@@ -99,5 +105,64 @@ func TestRuntimeGCDrainsBDWGCFinalizersOnDemand(t *testing.T) {
 	}
 	if got := len(finalized); got <= n/2 {
 		t.Fatalf("runtime.GC ran only %d/%d on-demand finalizers", got, n)
+	}
+}
+
+func TestRuntimeConcurrentGCFinalizers(t *testing.T) {
+	// Keep finalization inside the concurrent runtime.GC calls below instead
+	// of letting an unrelated allocation drain BDWGC's ready queue first.
+	old := getBDWGCFinalizeOnDemand()
+	setBDWGCFinalizeOnDemand(1)
+	t.Cleanup(func() {
+		setBDWGCFinalizeOnDemand(old)
+	})
+
+	const (
+		objects = 256
+		workers = 8
+		rounds  = 8
+	)
+	finalized := make(chan int, objects)
+	registered := make(chan struct{})
+	go func() {
+		for i := range objects {
+			p := &concurrentFinalizerValue{value: i}
+			runtime.SetFinalizer(p, func(p *concurrentFinalizerValue) {
+				finalized <- p.value
+			})
+		}
+		close(registered)
+	}()
+	<-registered
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for range workers {
+		go func() {
+			defer wg.Done()
+			for range rounds {
+				runtime.GC()
+			}
+		}()
+	}
+	wg.Wait()
+
+	seen := make(map[int]bool)
+	for {
+		select {
+		case value := <-finalized:
+			if value < 0 || value >= objects {
+				t.Fatalf("finalizer got %d, want [0,%d)", value, objects)
+			}
+			if seen[value] {
+				t.Fatalf("finalizer got duplicate value %d", value)
+			}
+			seen[value] = true
+		default:
+			if len(seen) <= objects/2 {
+				t.Fatalf("only %d/%d concurrent finalizers ran", len(seen), objects)
+			}
+			return
+		}
 	}
 }
