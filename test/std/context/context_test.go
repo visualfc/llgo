@@ -7,6 +7,30 @@ import (
 	"time"
 )
 
+func requireDone(t *testing.T, done <-chan struct{}, message string) {
+	t.Helper()
+	select {
+	case <-done:
+	default:
+		t.Fatal(message)
+	}
+}
+
+func waitDone(t *testing.T, done <-chan struct{}, timeout time.Duration, message string) {
+	t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return
+	case <-timer.C:
+		// The test goroutine may be descheduled after both channels become
+		// ready. Recheck the success condition so select's random choice does
+		// not turn scheduler latency into a false timeout.
+		requireDone(t, done, message)
+	}
+}
+
 func TestBackground(t *testing.T) {
 	ctx := context.Background()
 	if ctx == nil {
@@ -151,12 +175,7 @@ func TestAfterFunc(t *testing.T) {
 
 	cancel()
 
-	select {
-	case <-called:
-		// OK
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("AfterFunc not called after cancel")
-	}
+	waitDone(t, called, 5*time.Second, "AfterFunc not called after cancel")
 
 	if stop() {
 		t.Error("stop() returned true, want false")
@@ -181,11 +200,7 @@ func TestWithCancelCause(t *testing.T) {
 	testErr := errors.New("test error") // Modified
 	cancel(testErr)
 
-	select {
-	case <-ctx.Done():
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("context not canceled")
-	}
+	requireDone(t, ctx.Done(), "context not canceled")
 
 	if ctx.Err() != context.Canceled {
 		t.Errorf("ctx.Err() = %v, want %v", ctx.Err(), context.Canceled)
@@ -201,11 +216,7 @@ func TestWithDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(parent, time.Now().Add(-time.Hour))
 	defer cancel()
 
-	select {
-	case <-ctx.Done():
-	case <-time.After(10 * time.Millisecond):
-		t.Fatal("context not canceled immediately")
-	}
+	requireDone(t, ctx.Done(), "context not canceled immediately")
 
 	if ctx.Err() != context.DeadlineExceeded {
 		t.Errorf("ctx.Err() = %v, want %v", ctx.Err(), context.DeadlineExceeded)
@@ -222,8 +233,6 @@ func TestWithDeadline(t *testing.T) {
 		// OK
 	}
 
-	select {
-	case <-ctx.Done():
 	// Do not use another deadline-sized timer as the failure bound here.
 	// Delivering a timer callback requires the runtime goroutine to be
 	// scheduled, and on a loaded Windows host or VM even the official Go
@@ -231,9 +240,7 @@ func TestWithDeadline(t *testing.T) {
 	// context cancellation test instead of turning it into a scheduler latency
 	// test; the preceding select still verifies that the 100ms deadline does
 	// not fire during its first 50ms.
-	case <-time.After(time.Second):
-		t.Fatal("context not canceled after deadline")
-	}
+	waitDone(t, ctx.Done(), time.Second, "context not canceled after deadline")
 
 	if ctx.Err() != context.DeadlineExceeded {
 		t.Errorf("ctx.Err() = %v, want %v", ctx.Err(), context.DeadlineExceeded)
@@ -246,11 +253,7 @@ func TestWithDeadlineCause(t *testing.T) {
 	ctx, cancel := context.WithDeadlineCause(parent, time.Now().Add(-time.Hour), testErr)
 	defer cancel()
 
-	select {
-	case <-ctx.Done():
-	case <-time.After(10 * time.Millisecond):
-		t.Fatal("context not canceled immediately")
-	}
+	requireDone(t, ctx.Done(), "context not canceled immediately")
 
 	if ctx.Err() != context.DeadlineExceeded {
 		t.Errorf("ctx.Err() = %v, want %v", ctx.Err(), context.DeadlineExceeded)
@@ -266,11 +269,7 @@ func TestWithTimeoutCause(t *testing.T) {
 	ctx, cancel := context.WithTimeoutCause(parent, -time.Hour, testErr) // Timeout in the past
 	defer cancel()
 
-	select {
-	case <-ctx.Done():
-	case <-time.After(10 * time.Millisecond):
-		t.Fatal("context not canceled immediately")
-	}
+	requireDone(t, ctx.Done(), "context not canceled immediately")
 
 	if ctx.Err() != context.DeadlineExceeded {
 		t.Errorf("ctx.Err() = %v, want %v", ctx.Err(), context.DeadlineExceeded)
