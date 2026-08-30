@@ -66,6 +66,18 @@ runs:
         }
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_LLDB_PYTHON_HOME=$prefix"
 
+    - name: Configure LLDB Python on Windows 386
+      if: runner.os == 'Windows' && inputs.windows-abi == 'msvc' && inputs.windows-arch == '386'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        $python = "${{ steps.windows_target_python.outputs.python-path }}"
+        $prefix = (& $python -c "import sys; print(sys.base_prefix)").Trim()
+        if (-not (Test-Path (Join-Path $prefix "python312.dll"))) {
+          throw "The native x86 LLDB Python runtime is incomplete: $prefix"
+        }
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_LLDB_PYTHON_HOME=$prefix"
+
     - name: Install cargs demo library on Unix
       if: runner.os != 'Windows'
       shell: bash

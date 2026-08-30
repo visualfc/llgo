@@ -6,6 +6,7 @@ import (
 	"debug/dwarf"
 	"debug/elf"
 	"debug/macho"
+	"debug/pe"
 	"fmt"
 	"io"
 	"os"
@@ -29,8 +30,8 @@ type dwarfNode struct {
 }
 
 func TestStandardDWARF(t *testing.T) {
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		t.Skip("native DWARF integration test requires Mach-O or ELF")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		t.Skip("native DWARF integration test requires Mach-O, ELF, or PE")
 	}
 
 	for _, level := range []optlevel.Level{
@@ -107,6 +108,17 @@ func openNativeDWARF(t *testing.T, bin string) (*dwarf.Data, string) {
 			t.Fatal(err)
 		}
 		return data, dwarfPath
+	case "windows":
+		file, err := pe.Open(bin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = file.Close() })
+		data, err := file.DWARF()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data, bin
 	default:
 		panic("unreachable")
 	}

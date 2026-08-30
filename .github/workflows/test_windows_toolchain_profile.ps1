@@ -161,6 +161,20 @@ try {
   & $env:ComSpec /d /s /c $cmdLine
   Assert-Success "Building with unset CC/CXX from cmd.exe"
   Assert-NativeOutput $cmdExe
+
+  if ($Profile -eq "msvc") {
+    . (Join-Path $env:GITHUB_WORKSPACE ".github\windows\msvc-target.ps1")
+    $target = Get-LLGoWindowsMSVCTarget -GoArch $GoArch
+    $installPath = Find-LLGoVisualStudio2022 -GoArch $GoArch
+    $vsDevCmd = Join-Path $installPath "Common7\Tools\VsDevCmd.bat"
+    $vsDevExe = Join-Path $sourceDir "vsdev.exe"
+    $vsDevLine = 'call "' + $vsDevCmd + '" -no_logo -arch=' + $target.VisualStudio +
+      ' -host_arch=x64 && set "CC=" && set "CXX=" && cd /d "' + $sourceDir +
+      '" && "' + $llgo + '" build -o "' + $vsDevExe + '" .'
+    & $env:ComSpec /d /s /c $vsDevLine
+    Assert-Success "Building from a fresh Visual Studio Developer Shell"
+    Assert-NativeOutput $vsDevExe
+  }
 } finally {
   if ($null -eq $savedCC) { Remove-Item Env:CC -ErrorAction SilentlyContinue } else { $env:CC = $savedCC }
   if ($null -eq $savedCXX) { Remove-Item Env:CXX -ErrorAction SilentlyContinue } else { $env:CXX = $savedCXX }

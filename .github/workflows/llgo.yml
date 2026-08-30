@@ -118,6 +118,33 @@ jobs:
           -Profile "${{ matrix.windows_abi }}"
           -GoArch "${{ matrix.windows_arch || 'amd64' }}"
 
+      - name: Test from the MSYS2 host shell
+        if: ${{ matrix.windows_abi == 'mingw' }}
+        shell: msys2 {0}
+        run: bash .github/workflows/test_windows_host_shell.sh
+
+      - name: Install Cygwin for host-shell qualification
+        if: ${{ matrix.os == 'windows-2022' && matrix.windows_arch == 'amd64' }}
+        id: cygwin
+        uses: cygwin/cygwin-install-action@v6
+        with:
+          add-to-path: false
+
+      - name: Test from the Cygwin host shell
+        if: ${{ matrix.os == 'windows-2022' && matrix.windows_arch == 'amd64' }}
+        shell: pwsh
+        env:
+          CYGWIN_ROOT: ${{ steps.cygwin.outputs.root }}
+        run: |
+          $bash = Join-Path $env:CYGWIN_ROOT "bin\bash.exe"
+          if (-not (Test-Path $bash)) {
+            throw "Cygwin bash was not found at $bash"
+          }
+          & $bash -c 'cd "$(cygpath -u "$GITHUB_WORKSPACE")" && bash .github/workflows/test_windows_host_shell.sh'
+          if ($LASTEXITCODE -ne 0) {
+            throw "Cygwin host-shell qualification failed with exit code $LASTEXITCODE"
+          }
+
       - name: Test demo without RPATH (expect failure)
         if: runner.os != 'Windows'
         run: |
@@ -265,17 +292,14 @@ jobs:
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
 
-      # Windows/386 debugging is qualified in R12. The x64 LLDB follows the
-      # WoW64 exception dispatcher instead of the 32-bit source frame, so its
-      # variable results are not evidence for or against R10 runtime support.
       - name: LLDB integration tests (MSVC)
-        if: ${{ matrix.windows_abi == 'msvc' && matrix.windows_arch != '386' }}
+        if: ${{ matrix.windows_abi == 'msvc' }}
         shell: pwsh
         run: |
-          if ("${{ matrix.windows_arch }}" -eq "arm64") {
-            # Use the native debugger and Python runtime. The x64 debugger can
-            # start an ARM64 process through Windows emulation, but LLDB then
-            # reports register-located locals as unavailable.
+          if ("${{ matrix.windows_arch }}" -ne "amd64") {
+            # Use the target-native debugger and Python runtime. The x64
+            # debugger cannot reliably inspect ARM64 register variables or
+            # cross the WoW64 exception dispatcher into a 32-bit source frame.
             $env:PYTHONHOME = $env:LLGO_WINDOWS_LLDB_PYTHON_HOME
             $env:PYTHONPATH = $env:LLGO_WINDOWS_LLDB_PYTHONPATH
             $env:PYTHONUTF8 = "1"
@@ -302,7 +326,7 @@ jobs:
           bash cmd/llgo/lldbtest/runtest.sh -v
 
       - name: DWARF standard tests
-        if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
+        if: ${{ (startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel') || matrix.windows_abi == 'msvc' }}
         run: go test -timeout 15m ./internal/build -run '^TestStandardDWARF$' -count=1 -v
 
   test:
