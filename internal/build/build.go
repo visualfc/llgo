@@ -1827,7 +1827,7 @@ func linkedCExports(ctx *context, pkgs []Package) ([]cExport, error) {
 	seen := make(map[string]string)
 	var exports []cExport
 	for _, pkg := range pkgs {
-		if !needsWindowsCExportWrappers(ctx, pkg) || pkg.LPkg == nil {
+		if !needsCExportWrappers(ctx, pkg) || pkg.LPkg == nil {
 			continue
 		}
 		for goName, cName := range pkg.LPkg.ExportFuncs() {
@@ -1862,10 +1862,11 @@ func linkedCExports(ctx *context, pkgs []Package) ([]cExport, error) {
 	return exports, nil
 }
 
-func needsWindowsCExportWrappers(ctx *context, pkg *aPackage) bool {
+func needsCExportWrappers(ctx *context, pkg *aPackage) bool {
 	return ctx != nil && ctx.buildConf != nil && pkg != nil && pkg.Package != nil &&
-		ctx.buildConf.Goos == "windows" && ctx.buildConf.Target == "" &&
-		ctx.buildConf.BuildMode == BuildModeCShared && pkg.Name == "main"
+		ctx.buildConf.Target == "" &&
+		(ctx.buildConf.BuildMode == BuildModeCShared || ctx.buildConf.BuildMode == BuildModeCArchive) &&
+		pkg.Name == "main"
 }
 
 func linkedModuleGlobals(pkgs []Package) map[string]none {
@@ -2315,10 +2316,11 @@ func preparePackageModule(ctx *context, aPkg *aPackage, verbose bool) ([]string,
 		return nil, fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
 	options := ctx.frontendOptions
-	// A Windows DLL cannot initialize the Go runtime while holding the loader
-	// lock. Only the command package needs alternate export symbols, and command
-	// packages are deliberately excluded from the package cache.
-	options.CExportWrappers = needsWindowsCExportWrappers(ctx, aPkg)
+	// Library exports use final-link wrappers to register foreign caller threads
+	// with the collector; Windows shared libraries also initialize lazily. Only
+	// the command package needs alternate export symbols, and command packages
+	// are deliberately excluded from the package cache.
+	options.CExportWrappers = needsCExportWrappers(ctx, aPkg)
 	ret, externs, err := cl.NewPackageExWithEmbedMetaOptions(
 		ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars,
 		aPkg.SSA, syntax, embedMap, needMeta, options)

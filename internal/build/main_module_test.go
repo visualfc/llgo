@@ -287,6 +287,9 @@ func TestGenMainModuleLibrary(t *testing.T) {
 	if !strings.Contains(ir, "@llvm.global_ctors") {
 		t.Fatalf("library mode missing constructor:\n%s", ir)
 	}
+	if strings.Contains(ir, "EnableForeignThreadRegistration") {
+		t.Fatalf("library without C exports enabled foreign threads:\n%s", ir)
+	}
 }
 
 func TestGenMainModuleLibraryInitializesRuntime(t *testing.T) {
@@ -390,14 +393,70 @@ func TestGenMainModuleWindowsCSharedInitializesFromCExport(t *testing.T) {
 	wrapper := ir[strings.Index(ir, "define void @Exported()"):]
 	assertInOrder(t, wrapper,
 		"call void @__llgo_runtime_ensure_initialized()",
+		`call i1 @"github.com/xgo-dev/llgo/runtime/internal/runtime.EnterForeignThread"()`,
 		`call void @"example.com/foo.Exported"()`,
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.ExitForeignThread"(i1`,
 	)
 	valueWrapper := ir[strings.Index(ir, "define i32 @Value(i32 %0)"):]
 	assertInOrder(t, valueWrapper,
 		"call void @__llgo_runtime_ensure_initialized()",
-		`%1 = call i32 @"example.com/foo.Value"(i32 %0)`,
-		"ret i32 %1",
+		`call i1 @"github.com/xgo-dev/llgo/runtime/internal/runtime.EnterForeignThread"()`,
+		`call i32 @"example.com/foo.Value"(i32 %0)`,
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.ExitForeignThread"(i1`,
+		"ret i32",
 	)
+}
+
+func TestGenMainModuleCArchiveRegistersCExportThread(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	for _, test := range []struct {
+		goos   string
+		goarch string
+	}{
+		{goos: "darwin", goarch: "arm64"},
+		{goos: "linux", goarch: "amd64"},
+		{goos: "windows", goarch: "386"},
+	} {
+		t.Run(test.goos+"/"+test.goarch, func(t *testing.T) {
+			ctx := &context{
+				prog: llssa.NewProgram(nil),
+				buildConf: &Config{
+					BuildMode: BuildModeCArchive,
+					Goos:      test.goos,
+					Goarch:    test.goarch,
+				},
+			}
+			pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+			ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
+				rtInit: true,
+				cExports: []cExport{{
+					goName: "example.com/foo.Exported",
+					cName:  "Exported",
+					sig:    llssa.NoArgsNoRet,
+				}},
+			}).LPkg.String()
+
+			if !strings.Contains(ir, "@llvm.global_ctors") {
+				t.Fatalf("%s c-archive module is missing its runtime constructor:\n%s", test.goos, ir)
+			}
+			if strings.Contains(ir, "@__llgo_runtime_ensure_initialized") {
+				t.Fatalf("%s c-archive module unexpectedly uses lazy DLL initialization:\n%s", test.goos, ir)
+			}
+			enablesForeignThreads := strings.Contains(ir,
+				`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.EnableForeignThreadRegistration"()`)
+			if want := test.goos != "windows"; enablesForeignThreads != want {
+				t.Fatalf("%s c-archive foreign-thread enable = %v, want %v:\n%s",
+					test.goos, enablesForeignThreads, want, ir)
+			}
+			wrapper := ir[strings.Index(ir, "define void @Exported()"):]
+			assertInOrder(t, wrapper,
+				`call i1 @"github.com/xgo-dev/llgo/runtime/internal/runtime.EnterForeignThread"()`,
+				`call void @"example.com/foo.Exported"()`,
+				`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.ExitForeignThread"(i1`,
+			)
+		})
+	}
 }
 
 func TestGenMainModuleWindowsCShared386UsesStdcallInitOnce(t *testing.T) {
