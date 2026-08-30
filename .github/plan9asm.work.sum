@@ -1,5 +1,5 @@
-github.com/cpunion/plan9asm v0.0.0-20260829185256-433dbce3f9d0 h1:bwsFCaiL43tYXhcJF8/E0/CIAStGEnnXaJM/EVlfWrY=
-github.com/cpunion/plan9asm v0.0.0-20260829185256-433dbce3f9d0/go.mod h1:0yM4CCIp2PyT8h+Ro3Ukro3lHL8ji9mzHEv5yfhOckc=
+github.com/cpunion/plan9asm v0.0.0-20260830035946-10473d71f3d1 h1:H/Fams/xsvb+PHX3EYqR8eUXxL6iDx2rjjtkDEM5Ohw=
+github.com/cpunion/plan9asm v0.0.0-20260830035946-10473d71f3d1/go.mod h1:0yM4CCIp2PyT8h+Ro3Ukro3lHL8ji9mzHEv5yfhOckc=
 github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovkB8vQcUbaXHg=
 github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
