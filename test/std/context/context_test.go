@@ -24,9 +24,9 @@ func waitDone(t *testing.T, done <-chan struct{}, timeout time.Duration, message
 	case <-done:
 		return
 	case <-timer.C:
-		// The test goroutine may be descheduled after both channels become
-		// ready. Recheck the success condition so select's random choice does
-		// not turn scheduler latency into a false timeout.
+		// The timeout may be selected just as done becomes ready. Observe done
+		// once more before reporting failure so scheduler latency and select's
+		// choice cannot turn an observable completion into a false timeout.
 		requireDone(t, done, message)
 	}
 }
