@@ -47,8 +47,9 @@ static void llgo_signal_handler(int signum)
         old = __atomic_fetch_or(&llgo_signal_pending[(unsigned int)signum / 32U],
                                 bit, __ATOMIC_SEQ_CST);
         if ((old & bit) == 0) {
-            /* EAGAIN is safe: a full pipe already contains a wakeup, while
-             * the per-signal pending bit preserves this distinct signal. */
+            /* The pending bit preserves this signal if the nonblocking write
+             * fails. In particular, EAGAIN means the full pipe already
+             * contains a wakeup. */
             ssize_t count;
             do {
                 count = write(llgo_signal_pipe[1], &wake, sizeof(wake));
@@ -210,7 +211,7 @@ static void llgo_signal_receive_pending(void)
 
 int llgo_signal_recv(int fd, int *signum)
 {
-    if (signum == 0)
+    if (signum == NULL)
         return EINVAL;
 
     for (;;) {

@@ -37,7 +37,8 @@ LLGO_STRESS_PROFILE=heavy /tmp/llgo-runtime-stress test \
 ```
 
 The timer suite covers large live heaps, concurrent `Stop`/`Reset` on distinct
-and shared timers, callback bursts, and concurrent sleepers. The signal suite
-covers concurrent handler entry, distinct-signal delivery during a lower-number
-signal storm, concurrent registration churn, repeated `Notify`/`Stop`/`Reset`
-barriers, and timer progress while handlers are busy.
+and shared timers, callback bursts, and concurrent sleepers. The four signal
+tests cover distinct-signal delivery during a lower-number signal storm,
+concurrent registration churn, repeated `Notify`/`Stop`/`Reset` barriers, and
+timer progress while handlers are busy. The flood cases also exercise
+the handler under concurrent delivery pressure.
