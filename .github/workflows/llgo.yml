@@ -186,6 +186,22 @@ jobs:
         shell: bash
         run: |
           echo "Testing ESP32-C3 startup regressions..."
+          if [[ "$RUNNER_OS" == "Windows" && "${{ matrix.windows_abi }}" == "mingw" ]]; then
+            # Native target activation can put an architecture-limited
+            # llvm-mingw bundle first on PATH. Inspect the RISC-V firmware
+            # with the architecture-native host LLVM tools instead; this does
+            # not change the compiler/linker profile selected by LLGo.
+            host_llvm_bin="$(cygpath -u "$LLGO_MINGW_HOST_ROOT")/bin"
+            export LLVM_OBJDUMP="$host_llvm_bin/llvm-objdump.exe"
+            export LLVM_NM="$host_llvm_bin/llvm-nm.exe"
+            export LLVM_READELF="$host_llvm_bin/llvm-readelf.exe"
+            for llvm_tool in "$LLVM_OBJDUMP" "$LLVM_NM" "$LLVM_READELF"; do
+              if [[ ! -x "$llvm_tool" ]]; then
+                echo "required host LLVM inspection tool not found: $llvm_tool" >&2
+                exit 1
+              fi
+            done
+          fi
           # esptool inspects target firmware but runs on the CI host. For a
           # cross-architecture Windows lane, use the x64 host Python so pip
           # can install its native dependencies without cross-building them.

@@ -38,6 +38,14 @@ TEST_GO="$TEMP_DIR/main.go"
 TEST_ELF="test.elf"
 TEST_BIN="test.bin"
 
+# A native target profile may put architecture-limited LLVM utilities first on
+# PATH. In particular, llvm-mingw's 386 bundle cannot inspect a RISC-V ELF.
+# CI can select host LLVM utilities explicitly while leaving the compiler and
+# linker profile used by LLGo unchanged.
+LLVM_OBJDUMP_CMD="${LLVM_OBJDUMP:-llvm-objdump}"
+LLVM_NM_CMD="${LLVM_NM:-llvm-nm}"
+LLVM_READELF_CMD="${LLVM_READELF:-llvm-readelf}"
+
 cleanup() {
     rm -rf "$TEMP_DIR"
 }
@@ -148,7 +156,7 @@ echo ""
 echo "=== Test 1: Verify newlib startup (calls __libc_init_array) ==="
 
 # Disassemble _start and check for __libc_init_array call
-if llvm-objdump -d "$TEST_ELF" | grep -A50 "<_start>:" | grep "__libc_init_array" > /dev/null; then
+if "$LLVM_OBJDUMP_CMD" -d "$TEST_ELF" | grep -A50 "<_start>:" | grep "__libc_init_array" > /dev/null; then
     echo "✓ PASS: _start calls __libc_init_array"
     echo "        ESP32-C3 uses newlib's standard startup"
 else
@@ -157,7 +165,7 @@ else
     echo ""
     echo "Expected inheritance: esp32c3 → riscv32-nostart → riscv-nostart → riscv-basic"
     echo "Current _start disassembly:"
-    llvm-objdump -d "$TEST_ELF" | grep -A50 "<_start>:" || true
+    "$LLVM_OBJDUMP_CMD" -d "$TEST_ELF" | grep -A50 "<_start>:" || true
     exit 1
 fi
 
@@ -179,7 +187,7 @@ echo "=== Test 2: Verify __init_array_start symbol (ELF) ==="
 #   $3 = __init_array_start (symbol name)
 #
 # We extract $1 and add "0x" prefix: 40380450 → 0x40380450
-INIT_ARRAY_START=$(llvm-nm "$TEST_ELF" | grep "__init_array_start" | awk '{print "0x"$1}')
+INIT_ARRAY_START=$("$LLVM_NM_CMD" "$TEST_ELF" | grep "__init_array_start" | awk '{print "0x"$1}')
 if [ -z "$INIT_ARRAY_START" ]; then
     echo "✗ FAIL: __init_array_start symbol not found"
     exit 1
@@ -188,7 +196,7 @@ fi
 echo "✓ PASS: __init_array_start found at $INIT_ARRAY_START"
 INIT_ADDR_DEC=$((INIT_ARRAY_START))
 
-INIT_ARRAY_INFO=$(llvm-readelf -S "$TEST_ELF" | grep "\.init_array")
+INIT_ARRAY_INFO=$("$LLVM_READELF_CMD" -S "$TEST_ELF" | grep "\.init_array")
 if [ -z "$INIT_ARRAY_INFO" ]; then
     echo "✗ FAIL: .init_array section not found"
     exit 1
