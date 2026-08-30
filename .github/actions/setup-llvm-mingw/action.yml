@@ -315,6 +315,13 @@ runs:
         llvm_mingw_root="${LLGO_MINGW_CROSS_ROOT:-$RUNNER_TOOL_CACHE/llvm-mingw/20250114/ucrt-${RUNNER_OS}-${RUNNER_ARCH}}"
         export PATH="$llvm_mingw_root/bin:$PATH"
 
+        # Each target activation persists its compiler wrappers through
+        # GITHUB_ENV. Do not let a preceding Windows target become vcpkg's
+        # macOS/Linux host compiler while the next target is configured.
+        # The MinGW triplet still discovers its target-prefixed drivers from
+        # llvm-mingw on PATH.
+        unset CC CXX PKG_CONFIG PKG_CONFIG_PATH GOOS GOARCH
+
         # The three architectures run sequentially in one job. Reuse the
         # pinned vcpkg checkout and host tool instead of cloning/bootstrapping
         # it once per target; target build and install roots remain separate.
