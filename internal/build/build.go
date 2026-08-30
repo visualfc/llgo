@@ -3251,6 +3251,7 @@ func clFiles(ctx *context, files string, pkg *packages.Package, procFile func(li
 func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFile func(linkFile string), verbose bool) {
 	baseName := expFile + filepath.Base(cFile)
 	ext := filepath.Ext(cFile)
+	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
 
 	// default clang++ will use c++ to compile c file,will cause symbol be mangled
 	if ext == ".c" {

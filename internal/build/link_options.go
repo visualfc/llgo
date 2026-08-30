@@ -148,6 +148,17 @@ func debugInfoLinkerArgs(conf *Config, target *crosscompile.Export) []string {
 	return slices.Clone(target.DebugInfo.PreserveLinkFlags)
 }
 
+// debugInfoCompilerArgs keeps package C/C++ sources on the same typed DWARF
+// policy as generated Go code. In particular, COFF builds deliberately use
+// DWARF rather than Clang's MSVC-default CodeView so LLDB and Go traceback
+// consumers see one source format in the linked image.
+func debugInfoCompilerArgs(conf *Config, target *crosscompile.Export) []string {
+	if shouldEmitDebugInfo(conf, target) {
+		return []string{"-gdwarf-4"}
+	}
+	return nil
+}
+
 func hasCOFFDebugFlag(value string) bool {
 	args, err := quoted.Split(value)
 	if err != nil {

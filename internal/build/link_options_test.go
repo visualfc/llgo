@@ -66,6 +66,29 @@ func TestDebugInfoLinkerArgs(t *testing.T) {
 	}
 }
 
+func TestDebugInfoCompilerArgs(t *testing.T) {
+	tests := []struct {
+		name   string
+		conf   Config
+		target crosscompile.Export
+		want   []string
+	}{
+		{name: "linked safe default", conf: Config{Mode: ModeBuild, OmitDWARFByDefault: true}},
+		{name: "linked explicit omit", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFOmit}}},
+		{name: "linked explicit preserve", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, want: []string{"-gdwarf-4"}},
+		{name: "generation default", conf: Config{Mode: ModeGen}},
+		{name: "generation explicit preserve", conf: Config{Mode: ModeGen, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, want: []string{"-gdwarf-4"}},
+		{name: "target always omits", conf: Config{Mode: ModeBuild, LinkOptions: LinkOptions{DWARF: DWARFPreserve}}, target: alwaysOmitDebugInfo()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := debugInfoCompilerArgs(&tt.conf, &tt.target); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("debugInfoCompilerArgs() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestHasCOFFDebugFlag(t *testing.T) {
 	for _, test := range []struct {
 		value string
