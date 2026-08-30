@@ -3,13 +3,19 @@
 package signal_test
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 )
+
+const atomicStopHelperEnv = "LLGO_TEST_ATOMIC_SIGNAL_STOP"
 
 func TestNotify(t *testing.T) {
 	c := make(chan os.Signal, 1)
@@ -85,6 +91,70 @@ func TestStop(t *testing.T) {
 		t.Errorf("Received signal %v after Stop", sig)
 	case <-time.After(100 * time.Millisecond):
 	}
+}
+
+func TestAtomicStop(t *testing.T) {
+	if os.Getenv(atomicStopHelperEnv) == "1" {
+		runAtomicStopHelper()
+		return
+	}
+
+	for i := 0; i < 10; i++ {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestAtomicStop$")
+		cmd.Env = append(os.Environ(), atomicStopHelperEnv+"=1")
+		out, err := cmd.CombinedOutput()
+		if bytes.Contains(out, []byte("lost signal")) {
+			t.Fatalf("iteration %d dropped a signal during Stop:\n%s", i, out)
+		}
+		if err == nil {
+			continue
+		}
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("iteration %d: %v", i, err)
+		}
+		status, ok := exitErr.Sys().(syscall.WaitStatus)
+		if !ok || !status.Signaled() || status.Signal() != syscall.SIGUSR1 {
+			t.Fatalf("iteration %d exited unexpectedly: %v\n%s", i, err, out)
+		}
+	}
+}
+
+func runAtomicStopHelper() {
+	if signal.Ignored(syscall.SIGUSR1) {
+		fmt.Println("SIGUSR1 is ignored")
+		os.Exit(2)
+	}
+
+	pid := syscall.Getpid()
+	lost := false
+	for i := 0; i < 10; i++ {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGUSR1)
+
+		var stopped sync.WaitGroup
+		stopped.Add(1)
+		go func() {
+			defer stopped.Done()
+			signal.Stop(c)
+		}()
+
+		if err := syscall.Kill(pid, syscall.SIGUSR1); err != nil {
+			fmt.Printf("kill: %v\n", err)
+			os.Exit(2)
+		}
+		select {
+		case <-c:
+		case <-time.After(2 * time.Second):
+			fmt.Printf("lost signal on try %d\n", i)
+			lost = true
+		}
+		stopped.Wait()
+	}
+	if lost {
+		os.Exit(3)
+	}
+	os.Exit(0)
 }
 
 func TestReset(t *testing.T) {

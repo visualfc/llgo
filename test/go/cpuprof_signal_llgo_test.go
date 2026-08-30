@@ -110,7 +110,7 @@ func TestCPUProfileSIGPROFNotifyBeforeStart(t *testing.T) {
 	pprof.StopCPUProfile()
 	requireCPUProfileSignalFunction(t, profile.Bytes())
 
-	// Stopping profiling must restore the libuv watcher that was active when
+	// Stopping profiling must restore the os/signal watcher that was active when
 	// profiling began.
 	sendSIGPROF(t, "after profiling")
 	waitForSIGPROF(t, c, "after profiling")
@@ -150,7 +150,7 @@ func TestCPUProfileSIGPROFIgnoreReset(t *testing.T) {
 	}
 	_ = cpuProfileSignalHotLoop(300 * time.Millisecond)
 
-	// Reset changes the libuv watcher while profiling is still active. It
+	// Reset changes the os/signal watcher while profiling is still active. It
 	// must restore the logical signal state without removing the profiler.
 	signal.Reset(syscall.SIGPROF)
 	if signal.Ignored(syscall.SIGPROF) {
