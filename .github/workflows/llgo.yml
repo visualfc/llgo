@@ -76,6 +76,13 @@ jobs:
           GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
+      - name: Activate native Windows target
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/activate-windows-target
+        with:
+          windows-abi: ${{ matrix.windows_abi }}
+          windows-arch: ${{ matrix.windows_arch }}
+
       - name: Test Hello World with go.mod 1.21 through 1.26
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -271,8 +278,8 @@ jobs:
         run: go test -timeout 15m ./internal/build -run '^TestStandardDWARF$' -count=1 -v
 
   test:
-    name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})
-    timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 40 }}
+    name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})
+    timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 40 }}
     strategy:
       fail-fast: false
       matrix:
@@ -373,9 +380,16 @@ jobs:
       - name: Build LLGo and test tools
         shell: bash
         run: |
-          dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
+          GOWORK="$GITHUB_WORKSPACE/.github/plan9asm.work" dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
           echo "$RUNNER_TEMP/llgo-bin" >> "$GITHUB_PATH"
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Activate native Windows target
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/activate-windows-target
+        with:
+          windows-abi: ${{ matrix.windows_abi }}
+          windows-arch: ${{ matrix.windows_arch }}
 
       - name: Check Windows native runtime and FFI
         if: runner.os == 'Windows'
@@ -415,6 +429,11 @@ jobs:
           else
             dev/test_go_version.sh "${{ matrix.go_version }}"
           fi
+
+      - name: Check std symbol coverage
+        if: runner.os == 'Windows' && matrix.windows_arch != 'amd64'
+        shell: bash
+        run: bash doc/_readme/scripts/check_std_cover.sh
 
       - name: Test Hello World with Go 1.20
         if: matrix.lane == 'compatibility'
