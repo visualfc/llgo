@@ -13,17 +13,60 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Record the installed host compiler when available
+    - name: Record and isolate the host compiler when available
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
-        # GOROOT and benchmark jobs pass their explicitly built host compiler
-        # by path. Shared test jobs install llgo on PATH and reuse it whenever
-        # a target-native test launches the compiler as a subprocess.
+        # GOROOT exposes its explicitly built compiler through LLGO_TEST_LLGO.
+        # Shared test jobs install llgo on PATH and reuse it whenever a
+        # target-native test launches the compiler as a subprocess.
         $hostCompiler = Get-Command llgo.exe -ErrorAction SilentlyContinue
-        if ($null -ne $hostCompiler) {
-          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_TEST_COMPILER=$($hostCompiler.Source)"
+        $hostCompilerPath = if ($env:LLGO_TEST_LLGO -and (Test-Path $env:LLGO_TEST_LLGO)) {
+          (Resolve-Path $env:LLGO_TEST_LLGO).Path
+        } elseif ($null -ne $hostCompiler) {
+          $hostCompiler.Source
+        }
+        if ($hostCompilerPath) {
+          if ("${{ inputs.windows-abi }}" -eq "mingw" -and "${{ inputs.windows-arch }}" -eq "386") {
+            $hostBin = Join-Path $env:LLGO_MINGW_HOST_ROOT "bin"
+            $objdump = Join-Path $hostBin "llvm-objdump.exe"
+            if (-not (Test-Path $objdump)) {
+              throw "The MinGW host llvm-objdump is unavailable: $objdump"
+            }
+
+            # The x86 target DLL directories must precede the x64 host on PATH
+            # when generated programs run. Put the host compiler's DLL closure
+            # beside llgo.exe so Windows resolves it before consulting PATH.
+            $compilerDir = Split-Path $hostCompilerPath
+            $queue = [Collections.Generic.Queue[string]]::new()
+            $queue.Enqueue($hostCompilerPath)
+            $copied = @{}
+            while ($queue.Count -ne 0) {
+              $binary = $queue.Dequeue()
+              foreach ($line in (& $objdump -p $binary)) {
+                if ($line -notmatch '^\s*DLL Name:\s*(\S+)\s*$') {
+                  continue
+                }
+                $name = $Matches[1]
+                if ($copied.ContainsKey($name)) {
+                  continue
+                }
+                $source = Join-Path $hostBin $name
+                if (-not (Test-Path $source)) {
+                  continue
+                }
+                $destination = Join-Path $compilerDir $name
+                Copy-Item -LiteralPath $source -Destination $destination -Force
+                $copied[$name] = $true
+                $queue.Enqueue($destination)
+              }
+            }
+            if ($copied.Count -eq 0) {
+              throw "No MinGW host runtime DLLs were discovered for $hostCompilerPath"
+            }
+          }
+          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_TEST_COMPILER=$hostCompilerPath"
         }
 
     - name: Activate Windows MSVC target
