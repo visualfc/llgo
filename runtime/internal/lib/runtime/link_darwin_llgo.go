@@ -71,7 +71,7 @@ func syscall_runtimeUnsetenv(key string) {
 func os_beforeExit(exitCode int) {}
 
 //go:linkname os_sigpipe os.sigpipe
-func os_sigpipe() {}
+func os_sigpipe() { signalPipe() }
 
 //go:linkname c_getpagesize C.getpagesize
 func c_getpagesize() c.Int
