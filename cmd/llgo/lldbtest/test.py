@@ -211,14 +211,21 @@ TEST_CASES = [
         ("namedInts", "[0]=11, [1]=12, [2]=13, [3]=14", "synthetic"),
         ("ints", "[]int{7, ... (1 more)}", "limited"),
     ]),
-    test_case("mixed_go_c_callback", [
-        ("callbackValue", "43"),
-        ("stack frames",
-         "llgo_lldb_go_callback llgo_lldb_c_inner llgo_lldb_mixed_call main.main",
-         "ordered_frames"),
-    ]),
     TestCase(
-        source_file="_wrap/mixed.c",
+        source_file="mixed/mixed.go",
+        marker="LLDB_BREAK: mixed_go_c_callback",
+        tests=[
+            Test("callbackValue", "43"),
+            Test(
+                "stack frames",
+                "llgo_lldb_go_callback llgo_lldb_c_inner "
+                "llgo_lldb_mixed_call main.main",
+                "ordered_frames",
+            ),
+        ],
+    ),
+    TestCase(
+        source_file="mixed/_wrap/mixed.c",
         marker="LLDB_BREAK: mixed_go_c_callback_fault",
         tests=[Test(
             "stack frames",
@@ -534,10 +541,10 @@ def execute_tests(executable_path: str, test_cases: List[TestCase], verbose: boo
 
 
 def run_tests(executable_path: str, source_files: List[str], verbose: bool, interactive: bool, plugin_path: Optional[str]) -> int:
-    selected_sources = {os.path.basename(path) for path in source_files}
+    selected_sources = set(source_files)
     test_cases = [
         test_case for test_case in TEST_CASES
-        if os.path.basename(test_case.source_file) in selected_sources
+        if test_case.source_file in selected_sources
     ]
     if not test_cases:
         raise LLDBTestException(

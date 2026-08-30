@@ -39,6 +39,11 @@ done
 # Build the project
 build_project "$package_path" || exit 1
 
+(
+    cd "$package_path"
+    llgo build "${LLDB_TEST_OPTLEVEL}" -ldflags=-w=false -o "debug-mixed.out" ./mixed
+) || exit 1
+
 # Set up private paths for test results and auxiliary fixtures.
 test_tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/llgo-lldbtest.XXXXXX")
 trap 'rm -rf "$test_tmp_dir"' EXIT
@@ -48,36 +53,43 @@ if command -v cygpath >/dev/null 2>&1; then
     result_file_for_lldb=$(cygpath -m "$result_file")
 fi
 
-# Prepare LLDB commands
-lldb_commands=(
-    "command script import ./test.py"
-    "script test.run_tests_with_result('./debug.out', ['main.go', '_wrap/mixed.c'], $verbose, $interactive, $plugin_path, '$result_file_for_lldb')"
-    "quit"
-)
-
-# Prepare LLDB arguments without shell re-parsing.
-lldb_args=()
-for cmd in "${lldb_commands[@]}"; do
-    lldb_args+=("-o" "$cmd")
-done
-
 cd "$package_path"
-# Run LLDB with the embedded LLGo plugin and the test script.
-export LLGO_LLDB_FAULT_TEST=1
-llgo lldb -lldb "$LLDB_PATH" -- "${lldb_args[@]}"
 
-# Read the exit code from the result file
-if [ -f "$result_file" ]; then
+run_test_suite() {
+    local executable=$1
+    local sources=$2
+    local enable_fault=${3:-}
+    local lldb_commands=(
+        "command script import ./test.py"
+        "script test.run_tests_with_result('$executable', $sources, $verbose, $interactive, $plugin_path, '$result_file_for_lldb')"
+        "quit"
+    )
+    local lldb_args=()
+    local cmd
+    for cmd in "${lldb_commands[@]}"; do
+        lldb_args+=("-o" "$cmd")
+    done
+
+    rm -f "$result_file"
+    if [ -n "$enable_fault" ]; then
+        LLGO_LLDB_FAULT_TEST=1 llgo lldb -lldb "$LLDB_PATH" -- "${lldb_args[@]}"
+    else
+        llgo lldb -lldb "$LLDB_PATH" -- "${lldb_args[@]}"
+    fi
+    if [ ! -f "$result_file" ]; then
+        echo "Error: Could not find exit code file"
+        return 1
+    fi
+    local exit_code
     exit_code=$(cat "$result_file")
     rm "$result_file"
-else
-    echo "Error: Could not find exit code file"
-    exit 1
-fi
+    [ "$exit_code" -eq 0 ]
+}
 
-if [ "$exit_code" -ne 0 ]; then
-    exit "$exit_code"
-fi
+# Keep the mixed Go/C stack fixture separate: adding foreign calls to the large
+# variable-formatting fixture can change otherwise unrelated DWARF locations.
+run_test_suite './debug.out' "['main.go']"
+run_test_suite './debug-mixed.out' "['mixed/mixed.go', 'mixed/_wrap/mixed.c']" fault
 
 llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
     -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.schema_version == 1 and info.runtime_layout_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown") or os._exit(1)' \
