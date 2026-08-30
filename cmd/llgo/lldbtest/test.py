@@ -211,6 +211,12 @@ TEST_CASES = [
         ("namedInts", "[0]=11, [1]=12, [2]=13, [3]=14", "synthetic"),
         ("ints", "[]int{7, ... (1 more)}", "limited"),
     ]),
+    test_case("mixed_go_c_callback", [
+        ("callbackValue", "43"),
+        ("stack frames",
+         "llgo_lldb_go_callback llgo_lldb_c_inner llgo_lldb_mixed_call main.main",
+         "ordered_frames"),
+    ]),
     test_case("struct_values_initial", STRUCT_VALUES_INITIAL),
     test_case("struct_values_updated", STRUCT_VALUES_UPDATED),
     test_case("struct_ptrs_initial", STRUCT_VALUES_INITIAL),
@@ -382,6 +388,13 @@ class LLDBDebugger:
     def get_current_function_name(self) -> str:
         frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
         return frame.GetFunctionName()
+
+    def get_frame_names(self) -> List[str]:
+        thread = self.process.GetSelectedThread()
+        return [
+            thread.GetFrameAtIndex(index).GetFunctionName() or ""
+            for index in range(thread.GetNumFrames())
+        ]
 
     def require_print_error(self, expression: str, expected: str) -> None:
         result = lldb.SBCommandReturnObject()
@@ -563,6 +576,26 @@ def execute_all_variables_test(test: Test, all_variable_names: Set[str]) -> Test
 
 
 def execute_single_variable_test(debugger: LLDBDebugger, test: Test) -> TestResult:
+    if test.mode == "ordered_frames":
+        frame_names = debugger.get_frame_names()
+        expected_names = test.expected_value.split()
+        next_frame = 0
+        for expected_name in expected_names:
+            while (next_frame < len(frame_names) and
+                   expected_name not in frame_names[next_frame]):
+                next_frame += 1
+            if next_frame == len(frame_names):
+                return TestResult(
+                    test=test,
+                    status='fail',
+                    actual=" -> ".join(frame_names)
+                )
+            next_frame += 1
+        return TestResult(
+            test=test,
+            status='pass',
+            actual=" -> ".join(frame_names)
+        )
     if test.mode == "summary":
         actual_value = debugger.get_variable_summary(test.variable)
     elif test.mode == "synthetic":

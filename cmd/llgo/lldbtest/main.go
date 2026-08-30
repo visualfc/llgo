@@ -3,7 +3,21 @@ package main
 import (
 	"errors"
 	"strings"
+	_ "unsafe"
 )
+
+const LLGoFiles = "_wrap/mixed.c"
+
+//go:linkname lldbMixedCall C.llgo_lldb_mixed_call
+func lldbMixedCall(value int32) int32
+
+//go:noinline
+//export llgo_lldb_go_callback
+func llgo_lldb_go_callback(value int32) int32 {
+	callbackValue := value + 2
+	println(callbackValue) // LLDB_BREAK: mixed_go_c_callback
+	return callbackValue
+}
 
 type Base struct {
 	name string
@@ -296,6 +310,9 @@ func ScopeSwitch(i int) {
 }
 
 func main() {
+	if got := lldbMixedCall(39); got != 45 {
+		panic("mixed Go/C callback returned the wrong value")
+	}
 	FuncStructParams(TinyStruct{I: 1}, SmallStruct{I: 2, J: 3}, MidStruct{I: 4, J: 5, K: 6}, BigStruct{I: 7, J: 8, K: 9, L: 10, M: 11, N: 12, O: 13, P: 14, Q: 15, R: 16})
 	FuncStructPtrParams(&TinyStruct{I: 1}, &SmallStruct{I: 2, J: 3}, &MidStruct{I: 4, J: 5, K: 6}, &BigStruct{I: 7, J: 8, K: 9, L: 10, M: 11, N: 12, O: 13, P: 14, Q: 15, R: 16})
 	i := 100
