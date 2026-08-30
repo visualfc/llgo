@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package gotest
+package llgocmd
 
 import (
 	"os"
@@ -22,7 +22,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+)
+
+var (
+	stdlibImportCfgOnce   sync.Once
+	stdlibImportCfgOutput []byte
+	stdlibImportCfgErr    error
 )
 
 func TestToolCompileGoFlagCompatibility(t *testing.T) {
@@ -40,7 +47,7 @@ func Identity[T any](v T) T { return v }
 			"-d=panic,ssa/check/on", "-p=compat", "-importcfg=importcfg",
 			"-D=.", "-I=.", "-o=compat.o", "valid.go",
 		}
-		compareToolCompileResult(t, dir, args, true, "")
+		checkToolCompileResult(t, dir, args, true, "")
 	})
 
 	t.Run("SSA check seed", func(t *testing.T) {
@@ -55,7 +62,7 @@ func Identity[T any](v T) T { return v }
 			t.Run(tt.name, func(t *testing.T) {
 				dir := t.TempDir()
 				writeToolCompileSource(t, dir, "valid.go", "package compat\n\nfunc F() {}\n")
-				compareToolCompileResult(t, dir, []string{tt.flag, "-o=compat.o", "valid.go"}, true, "")
+				checkToolCompileResult(t, dir, []string{tt.flag, "-o=compat.o", "valid.go"}, true, "")
 			})
 		}
 	})
@@ -66,7 +73,7 @@ func Identity[T any](v T) T { return v }
 
 func Identity[T any](v T) T { return v }
 `)
-		compareToolCompileResult(t, dir, []string{
+		checkToolCompileResult(t, dir, []string{
 			"-lang=go1.17", "-o=generic.o", "generic.go",
 		}, false, "requires go1.18 or later")
 	})
@@ -77,10 +84,10 @@ func Identity[T any](v T) T { return v }
 
 func External()
 `)
-		compareToolCompileResult(t, dir, []string{
+		checkToolCompileResult(t, dir, []string{
 			"-lang=go1.22", "-complete", "-o=nobody.o", "nobody.go",
 		}, false, "missing function body")
-		compareToolCompileResult(t, dir, []string{
+		checkToolCompileResult(t, dir, []string{
 			"-lang=go1.22", "-o=nobody.o", "nobody.go",
 		}, true, "")
 	})
@@ -91,17 +98,15 @@ func External()
 
 var _ = missing
 `)
-		goOutput, llgoOutput := compareToolCompileResult(t, dir, []string{
+		output := checkToolCompileResult(t, dir, []string{
 			"-C", "-e", "-o=invalid.o", "invalid.go",
 		}, false, "undefined: missing")
 		column := regexp.MustCompile(`invalid\.go:3:[0-9]+:`)
-		for name, output := range map[string]string{"go": goOutput, "llgo": llgoOutput} {
-			if column.MatchString(output) {
-				t.Fatalf("%s -C diagnostic contains a column: %s", name, output)
-			}
-			if !strings.Contains(output, "invalid.go:3:") {
-				t.Fatalf("%s -C diagnostic has no line position: %s", name, output)
-			}
+		if column.MatchString(output) {
+			t.Fatalf("%s -C diagnostic contains a column: %s", toolCompilerName, output)
+		}
+		if !strings.Contains(output, "invalid.go:3:") {
+			t.Fatalf("%s -C diagnostic has no line position: %s", toolCompilerName, output)
 		}
 	})
 }
@@ -111,7 +116,7 @@ func TestToolCompileFrontendDiagnosticNormalization(t *testing.T) {
 		dir := t.TempDir()
 		writeToolCompileSource(t, dir, "invalid.go", "package compat\nimport _ \"/foo\"\n")
 		writeToolCompileSource(t, dir, "importcfg", "")
-		compareToolCompileResult(t, dir, []string{
+		checkToolCompileResult(t, dir, []string{
 			"-C", "-e", "-importcfg=importcfg", "-o=invalid.o", "invalid.go",
 		}, false, "import path cannot be absolute path")
 	})
@@ -127,7 +132,7 @@ func f() {
 	var x string
 	_ = x
 }`)
-		compareToolCompileResult(t, dir, []string{
+		checkToolCompileResult(t, dir, []string{
 			"-C", "-e", "-importcfg=importcfg", "-o=invalid.o", "invalid.go",
 		}, false, "go:embed cannot apply to var inside func")
 	})
@@ -140,39 +145,25 @@ func f() {
 import _ "embed"
 //go:embed x.txt // ERROR
 var x string`)
-		compareToolCompileResult(t, dir, []string{
+		checkToolCompileResult(t, dir, []string{
 			"-C", "-e", "-lang=go1.15", "-importcfg=importcfg", "-o=invalid.o", "invalid.go",
 		}, false, "go:embed requires go1.16 or later")
 	})
 
 }
 
-func compareToolCompileResult(t *testing.T, dir string, args []string, wantSuccess bool, wantText string) (goOutput, llgoOutput string) {
+func checkToolCompileResult(t *testing.T, dir string, args []string, wantSuccess bool, wantText string) string {
 	t.Helper()
-
-	goArgs := append([]string{"tool", "compile"}, args...)
-	goCmd := exec.Command("go", goArgs...)
-	goCmd.Dir = dir
-	goCmd.Env = os.Environ()
-	goBytes, goErr := goCmd.CombinedOutput()
-
-	llgoOutput, llgoErr := runLLGoInModule(t, dir, append([]string{"tool", "compile"}, args...)...)
-	goOutput = string(goBytes)
-	if (goErr == nil) != wantSuccess {
-		t.Fatalf("go tool compile success = %v, want %v; output:\n%s", goErr == nil, wantSuccess, goOutput)
-	}
-	if (llgoErr == nil) != wantSuccess {
-		t.Fatalf("llgo tool compile success = %v, want %v; output:\n%s", llgoErr == nil, wantSuccess, llgoOutput)
+	output, err := runToolCompile(t, dir, args...)
+	if (err == nil) != wantSuccess {
+		t.Fatalf("%s tool compile success = %v, want %v; output:\n%s", toolCompilerName, err == nil, wantSuccess, output)
 	}
 	if wantText != "" {
-		if !strings.Contains(goOutput, wantText) {
-			t.Fatalf("go tool compile output does not contain %q:\n%s", wantText, goOutput)
-		}
-		if !strings.Contains(llgoOutput, wantText) {
-			t.Fatalf("llgo tool compile output does not contain %q:\n%s", wantText, llgoOutput)
+		if !strings.Contains(output, wantText) {
+			t.Fatalf("%s tool compile output does not contain %q:\n%s", toolCompilerName, wantText, output)
 		}
 	}
-	return goOutput, llgoOutput
+	return output
 }
 
 func writeToolCompileSource(t *testing.T, dir, name, content string) {
@@ -184,12 +175,14 @@ func writeToolCompileSource(t *testing.T, dir, name, content string) {
 
 func writeToolCompileStdlibImportCfg(t *testing.T, dir string) {
 	t.Helper()
-	cmd := exec.Command("go", "list", "-export", "-f", "{{if .Export}}packagefile {{.ImportPath}}={{.Export}}{{end}}", "std")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOENV=off", "GOFLAGS=")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("list stdlib export files: %v\n%s", err, output)
+	stdlibImportCfgOnce.Do(func() {
+		cmd := exec.Command("go", "list", "-export", "-f", "{{if .Export}}packagefile {{.ImportPath}}={{.Export}}{{end}}", "std")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "GOENV=off", "GOFLAGS=")
+		stdlibImportCfgOutput, stdlibImportCfgErr = cmd.CombinedOutput()
+	})
+	if stdlibImportCfgErr != nil {
+		t.Fatalf("list stdlib export files: %v\n%s", stdlibImportCfgErr, stdlibImportCfgOutput)
 	}
-	writeToolCompileSource(t, dir, "importcfg", string(output))
+	writeToolCompileSource(t, dir, "importcfg", string(stdlibImportCfgOutput))
 }

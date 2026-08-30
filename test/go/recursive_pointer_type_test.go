@@ -16,73 +16,52 @@
 
 package gotest
 
-import (
-	"os"
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
-const recursivePointerTypeProbe = `package main
+type recursiveLink *recursiveLink
+type recursivePeano *recursivePeano
 
-type Link *Link
-type Peano *Peano
-
-func box(v Link) *Link {
-	p := new(Link)
+func boxRecursiveLink(v recursiveLink) *recursiveLink {
+	p := new(recursiveLink)
 	*p = v
 	return p
 }
 
-func unbox(p *Link) Link {
+func unboxRecursiveLink(p *recursiveLink) recursiveLink {
 	return *p
 }
 
-func makePeano(n int) *Peano {
+func makeRecursivePeano(n int) *recursivePeano {
 	if n == 0 {
 		return nil
 	}
-	p := Peano(makePeano(n - 1))
+	p := recursivePeano(makeRecursivePeano(n - 1))
 	return &p
 }
 
-var countArg Peano
-var countResult int
+var recursivePeanoCountArg recursivePeano
+var recursivePeanoCountResult int
 
-func countPeano() {
-	if countArg == nil {
-		countResult = 0
+func countRecursivePeano() {
+	if recursivePeanoCountArg == nil {
+		recursivePeanoCountResult = 0
 		return
 	}
-	countArg = *countArg
-	countPeano()
-	countResult++
+	recursivePeanoCountArg = *recursivePeanoCountArg
+	countRecursivePeano()
+	recursivePeanoCountResult++
 }
-
-func main() {
-	sentinel := Link(new(Link))
-	p := box(sentinel)
-	if unbox(p) != sentinel {
-		panic("recursive pointer type lost value")
-	}
-
-	countArg = makePeano(4096)
-	countPeano()
-	if countResult != 4096 {
-		panic("recursive Peano pointer count failed")
-	}
-}
-`
 
 func TestRecursivePointerTypeBuilds(t *testing.T) {
-	dir := t.TempDir()
-	mainFile := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(mainFile, []byte(recursivePointerTypeProbe), 0644); err != nil {
-		t.Fatal(err)
+	sentinel := recursiveLink(new(recursiveLink))
+	p := boxRecursiveLink(sentinel)
+	if unboxRecursiveLink(p) != sentinel {
+		t.Fatal("recursive pointer type lost value")
 	}
 
-	runGoCmd(t, dir, "run", mainFile)
-
-	root := findLLGoRoot(t)
-	t.Setenv("LLGO_ROOT", root)
-	runGoCmd(t, root, "run", "./cmd/llgo", "run", mainFile)
+	recursivePeanoCountArg = recursivePeano(makeRecursivePeano(4096))
+	countRecursivePeano()
+	if recursivePeanoCountResult != 4096 {
+		t.Fatalf("recursive Peano pointer count = %d, want 4096", recursivePeanoCountResult)
+	}
 }

@@ -17,128 +17,52 @@
 package gotest
 
 import (
-	"os"
-	"path/filepath"
+	"github.com/xgo-dev/llgo/test/go/testdata/stringconversion"
 	"testing"
 )
 
-const stringConversionProbe = `package main
-
-func runesFromInt64(v int64) []rune {
-	var out []rune
-	for _, r := range string(v) {
-		out = append(out, r)
-	}
-	return out
-}
-
-func runesFromUint64(v uint64) []rune {
-	var out []rune
-	for _, r := range string(v) {
-		out = append(out, r)
-	}
-	return out
-}
-
-func check(name string, got []rune, want rune) {
+func checkConvertedRune(t *testing.T, name string, got []rune, want rune) {
+	t.Helper()
 	if len(got) != 1 || got[0] != want {
-		panic(name)
+		t.Fatalf("%s = %U, want [%U]", name, got, want)
 	}
 }
-
-func main() {
-	check("int64", runesFromInt64(0x1F642), '\U0001F642')
-	check("int64-out-of-range", runesFromInt64(0x110000), '\uFFFD')
-	check("uint64", runesFromUint64(0x1F642), '\U0001F642')
-	check("uint64-out-of-range", runesFromUint64(0x110000), '\uFFFD')
-}
-`
-
-const emptyStringConversionProbe = `package main
-
-type mystring string
-type mybytes []byte
-type myrunes []rune
-
-func checkBytes(s []byte, name string) {
-	if len(s) != 0 {
-		panic("len(" + name + ") != 0")
-	}
-	if s == nil {
-		panic(name + " == nil")
-	}
-}
-
-func checkRunes(s []rune, name string) {
-	if len(s) != 0 {
-		panic("len(" + name + ") != 0")
-	}
-	if s == nil {
-		panic(name + " == nil")
-	}
-}
-
-func main() {
-	checkBytes([]byte(""), "[]byte(\"\")")
-	checkBytes([]byte(mystring("")), "[]byte(mystring(\"\"))")
-	checkBytes(mybytes(""), "mybytes(\"\")")
-	checkBytes(mybytes(mystring("")), "mybytes(mystring(\"\"))")
-
-	checkRunes([]rune(""), "[]rune(\"\")")
-	checkRunes([]rune(mystring("")), "[]rune(mystring(\"\"))")
-	checkRunes(myrunes(""), "myrunes(\"\")")
-	checkRunes(myrunes(mystring("")), "myrunes(mystring(\"\"))")
-}
-`
 
 func TestStringConversionFromWideIntegers(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(file, []byte(stringConversionProbe), 0644); err != nil {
-		t.Fatal(err)
+	checkConvertedRune(t, "int64", stringconversion.RunesFromInt64(0x1F642), '\U0001F642')
+	checkConvertedRune(t, "int64-out-of-range", stringconversion.RunesFromInt64(0x110000), '\uFFFD')
+	checkConvertedRune(t, "uint64", stringconversion.RunesFromUint64(0x1F642), '\U0001F642')
+	checkConvertedRune(t, "uint64-out-of-range", stringconversion.RunesFromUint64(0x110000), '\uFFFD')
+}
+
+func checkConvertedBytes(t *testing.T, s []byte, name string) {
+	t.Helper()
+	if len(s) != 0 {
+		t.Fatalf("len(%s) = %d, want 0", name, len(s))
 	}
-	repoRoot := findRepoRoot(t)
-	runStringConversionProbe(t, dir, "go", "run", file)
-	t.Setenv("LLGO_ROOT", repoRoot)
-	runStringConversionProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)
+	if s == nil {
+		t.Fatalf("%s is nil", name)
+	}
+}
+
+func checkConvertedRunes(t *testing.T, s []rune, name string) {
+	t.Helper()
+	if len(s) != 0 {
+		t.Fatalf("len(%s) = %d, want 0", name, len(s))
+	}
+	if s == nil {
+		t.Fatalf("%s is nil", name)
+	}
 }
 
 func TestEmptyStringToByteRuneSlicesNonNil(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(file, []byte(emptyStringConversionProbe), 0644); err != nil {
-		t.Fatal(err)
-	}
-	repoRoot := findRepoRoot(t)
-	runStringConversionProbe(t, dir, "go", "run", file)
-	t.Setenv("LLGO_ROOT", repoRoot)
-	runStringConversionProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)
-}
+	checkConvertedBytes(t, stringconversion.BytesFromString(), "[]byte(\"\")")
+	checkConvertedBytes(t, stringconversion.BytesFromNamedString(), "[]byte(mystring(\"\"))")
+	checkConvertedBytes(t, stringconversion.NamedBytesFromString(), "mybytes(\"\")")
+	checkConvertedBytes(t, stringconversion.NamedBytesFromNamedString(), "mybytes(mystring(\"\"))")
 
-func runStringConversionProbe(t *testing.T, dir, name string, args ...string) {
-	t.Helper()
-	cmd := commandForTest(t, dir, name, args...)
-	cmd.Env = os.Environ()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s %v failed: %v\n%s", name, args, err, out)
-	}
-}
-
-func findRepoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("repo root not found")
-		}
-		dir = parent
-	}
+	checkConvertedRunes(t, stringconversion.RunesFromString(), "[]rune(\"\")")
+	checkConvertedRunes(t, stringconversion.RunesFromNamedString(), "[]rune(mystring(\"\"))")
+	checkConvertedRunes(t, stringconversion.NamedRunesFromString(), "myrunes(\"\")")
+	checkConvertedRunes(t, stringconversion.NamedRunesFromNamedString(), "myrunes(mystring(\"\"))")
 }

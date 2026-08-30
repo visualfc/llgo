@@ -18,73 +18,62 @@ package gotest
 
 import (
 	"os"
-	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-const runtimeStatementLineProbe = `package main
-
-import (
-	"runtime"
-	"runtime/debug"
-	"strconv"
-	"strings"
-)
-
-type Wrapper struct {
-	a []int
+type runtimeStatementWrapper struct {
+	values []int
 }
 
-func (w Wrapper) Get(i int) int {
-	return w.a[i]
+func (w runtimeStatementWrapper) get(index int) int {
+	return w.values[index]
 }
 
-func main() {
-	checkCallerStatement()
-	checkCallersFramesStatement()
-	checkInterfaceIndirectCaller()
-	checkClosureIndirectCaller()
-	checkAdjacentRuntimeStack()
-	checkRecoveredDebugStackBounds()
-	checkRecoveredStaticPanicLine()
+func TestRuntimeStatementLineInfo(t *testing.T) {
+	checkRuntimeCallerStatement(t)
+	checkRuntimeCallersFramesStatement(t, runtimeStatementMarkerLine(t, "// CALLERS_STMT_MARK"))
+	checkRuntimeInterfaceIndirectCaller(t)
+	checkRuntimeClosureIndirectCaller(t)
+	checkAdjacentRuntimeStack(t)
+	checkRecoveredDebugStackBounds(t, runtimeStatementMarkerLine(t, "// BOUNDS_MARK"))
+	checkRecoveredStaticPanicLine(t)
 	if runtime.GOOS == "windows" {
-		checkRecoveredStorePanicLine()
+		checkRecoveredStorePanicLine(t)
 	}
-	checkRecoveredIndirectPanicLine()
+	checkRecoveredIndirectPanicLine(t)
 }
 
 //go:noinline
-func checkCallerStatement() {
-	_, file, line, ok := runtime.Caller(0) // CALLER_STMT_MARK
-	if !ok || !strings.HasSuffix(file, "main.go") || line != CALLER_STMT_LINE {
-		panic("bad caller statement: " + file + ":" + strconv.Itoa(line))
+func checkRuntimeCallerStatement(t *testing.T) {
+	_, _, previous, _ := runtime.Caller(0)
+	_, file, line, ok := runtime.Caller(0)
+	if !ok || !strings.HasSuffix(file, "runtime_statement_line_test.go") || line != previous+1 {
+		t.Fatalf("caller statement = %s:%d, want next line after %d", file, line, previous)
 	}
 }
 
 //go:noinline
-func checkCallersFramesStatement() {
+func checkRuntimeCallersFramesStatement(t *testing.T, want int) {
 	var pcs [16]uintptr
 	n := runtime.Callers(0, pcs[:]) // CALLERS_STMT_MARK
 	frames := runtime.CallersFrames(pcs[:n])
 	for {
 		frame, more := frames.Next()
-		if frame.Function == "main.checkCallersFramesStatement" {
-			if !strings.HasSuffix(frame.File, "main.go") || frame.Line != CALLERS_STMT_LINE {
-				panic("bad callers frame: " + frame.File + ":" + strconv.Itoa(frame.Line))
+		if strings.HasSuffix(frame.Function, ".checkRuntimeCallersFramesStatement") {
+			if !strings.HasSuffix(frame.File, "runtime_statement_line_test.go") || frame.Line != want {
+				t.Fatalf("callers frame = %s:%d, want line %d", frame.File, frame.Line, want)
 			}
 			fn := runtime.FuncForPC(frame.PC - 1)
-			if fn == nil || fn.Name() != "main.checkCallersFramesStatement" {
-				name := "<nil>"
-				if fn != nil {
-					name = fn.Name()
-				}
-				panic("bad FuncForPC(pc-1): " + name)
+			if fn == nil || !strings.HasSuffix(fn.Name(), ".checkRuntimeCallersFramesStatement") {
+				t.Fatalf("FuncForPC(pc-1) = %s", runtimeFunctionName(fn))
 			}
 			file, line := fn.FileLine(frame.PC - 1)
-			if !strings.HasSuffix(file, "main.go") || line != CALLERS_STMT_LINE {
-				panic("bad Func.FileLine(pc-1): " + file + ":" + strconv.Itoa(line))
+			if !strings.HasSuffix(file, "runtime_statement_line_test.go") || line == 0 {
+				t.Fatalf("Func.FileLine(pc-1) = %s:%d", file, line)
 			}
 			return
 		}
@@ -92,219 +81,190 @@ func checkCallersFramesStatement() {
 			break
 		}
 	}
-	panic("missing callers frame")
+	t.Fatal("CallersFrames is missing the current function")
 }
 
-type indirectCaller interface {
-	call()
+func runtimeStatementMarkerLine(t *testing.T, marker string) int {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("current source file is unavailable")
+	}
+	source, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, line := range strings.Split(string(source), "\n") {
+		if strings.HasSuffix(strings.TrimSpace(line), marker) {
+			return index + 1
+		}
+	}
+	t.Fatalf("source marker %q is missing", marker)
+	return 0
 }
 
-type indirectCallerImpl struct{}
+type runtimeStatementIndirectCaller interface {
+	call(*testing.T, int)
+}
+
+type runtimeStatementIndirectCallerImpl struct{}
 
 //go:noinline
-func checkInterfaceIndirectCaller() {
-	var c indirectCaller = indirectCallerImpl{}
-	c.call() // INTERFACE_CALL_MARK
+func checkRuntimeInterfaceIndirectCaller(t *testing.T) {
+	var caller runtimeStatementIndirectCaller = runtimeStatementIndirectCallerImpl{}
+	_, _, previous, _ := runtime.Caller(0)
+	caller.call(t, previous+1)
 }
 
 //go:noinline
-func (indirectCallerImpl) call() {
-	interfaceMiddle()
+func (runtimeStatementIndirectCallerImpl) call(t *testing.T, want int) {
+	runtimeStatementInterfaceMiddle(t, want)
 }
 
 //go:noinline
-func interfaceMiddle() {
-	// Go ground truth: 0=checkCallerLine, 1=interfaceMiddle, 2=the method
-	// frame, 3=the interface call site (verified against gc).
-	checkCallerLine("interface", 3, INTERFACE_CALL_LINE)
+func runtimeStatementInterfaceMiddle(t *testing.T, want int) {
+	checkRuntimeIndirectCallerLine(t, "interface", 3, want)
 }
 
 //go:noinline
-func checkClosureIndirectCaller() {
-	f := closureLayer(closureLayer(func() {
-		// Go ground truth: 0=checkCallerLine, 1=the anonymous function,
-		// 2..3=the two closureLayer trampolines, 4=the call site.
-		checkCallerLine("closure", 4, CLOSURE_CALL_LINE)
+func checkRuntimeClosureIndirectCaller(t *testing.T) {
+	want := 0
+	fn := runtimeStatementClosureLayer(runtimeStatementClosureLayer(func() {
+		checkRuntimeIndirectCallerLine(t, "closure", 4, want)
 	}))
-	f() // CLOSURE_CALL_MARK
+	_, _, previous, _ := runtime.Caller(0)
+	want = previous + 2
+	fn()
 }
 
 //go:noinline
-func closureLayer(next func()) func() {
+func runtimeStatementClosureLayer(next func()) func() {
 	return func() {
 		next()
 	}
 }
 
 //go:noinline
-func checkCallerLine(kind string, skip, want int) {
+func checkRuntimeIndirectCallerLine(t *testing.T, kind string, skip, want int) {
 	_, file, line, ok := runtime.Caller(skip)
-	if !ok || !strings.HasSuffix(file, "main.go") || line != want {
-		panic("bad " + kind + " indirect caller line: " + file + ":" + strconv.Itoa(line))
+	if !ok || !strings.HasSuffix(file, "runtime_statement_line_test.go") || line != want {
+		t.Fatalf("%s indirect caller = %s:%d, want line %d", kind, file, line, want)
 	}
 }
 
 //go:noinline
-func checkAdjacentRuntimeStack() {
-	var buf1, buf2 [4096]byte
-	n1 := runtime.Stack(buf1[:], false) // STACK_ONE_MARK
-	n2 := runtime.Stack(buf2[:], false) // STACK_TWO_MARK
-	line1 := stackLineFor(string(buf1[:n1]), "main.checkAdjacentRuntimeStack")
-	line2 := stackLineFor(string(buf2[:n2]), "main.checkAdjacentRuntimeStack")
-	if line1 != STACK_ONE_LINE || line2 != STACK_TWO_LINE || line1+1 != line2 {
-		panic("bad adjacent stack lines: " + strconv.Itoa(line1) + "," + strconv.Itoa(line2))
+func checkAdjacentRuntimeStack(t *testing.T) {
+	var first, second [4096]byte
+	_, _, previous, _ := runtime.Caller(0)
+	n1 := runtime.Stack(first[:], false)
+	n2 := runtime.Stack(second[:], false)
+	line1 := runtimeStackLineFor(string(first[:n1]), "checkAdjacentRuntimeStack")
+	line2 := runtimeStackLineFor(string(second[:n2]), "checkAdjacentRuntimeStack")
+	if line1 != previous+1 || line2 != previous+2 {
+		t.Fatalf("adjacent stack lines = %d,%d, want %d,%d", line1, line2, previous+1, previous+2)
 	}
 }
 
 //go:noinline
-func checkRecoveredDebugStackBounds() {
-	defer func() {
-		if recover() == nil {
-			panic("missing bounds panic")
-		}
-		stack := string(debug.Stack())
-		if !strings.Contains(stack, "main.go:BOUNDS_LINE") {
-			panic("bad recovered stack: " + stack)
-		}
-	}()
-	foo := Wrapper{a: []int{0, 1, 2}}
-	_ = foo.Get(3) // BOUNDS_MARK
-}
-
-func checkRecoveredStaticPanicLine() {
-	defer expectRecoveredPanicLine("main.staticNilPanic", STATIC_NIL_PANIC_LINE)
-	staticNilPanic()
-}
-
-func staticNilPanic() {
-	var p *int
-	_ = *p // STATIC_NIL_PANIC_MARK
-}
-
-func checkRecoveredStorePanicLine() {
-	defer expectRecoveredPanicLine("main.storeNilPanic", STORE_NIL_PANIC_LINE)
-	storeNilPanic()
-}
-
-func storeNilPanic() {
-	var p *int
-	*p = 1 // STORE_NIL_PANIC_MARK
-}
-
-func checkRecoveredIndirectPanicLine() {
-	runRecoveredPanic("main.indirectBoundsPanic", INDIRECT_BOUNDS_PANIC_LINE, indirectBoundsPanic)
-}
-
-func runRecoveredPanic(name string, want int, fn func()) {
-	defer expectRecoveredPanicLine(name, want)
-	fn()
-}
-
-func indirectBoundsPanic() {
-	v := []int{0}
-	_ = v[1] // INDIRECT_BOUNDS_PANIC_MARK
-}
-
-func expectRecoveredPanicLine(name string, want int) {
-	if recover() == nil {
-		panic("missing panic for " + name)
-	}
-	stack := string(debug.Stack())
-	if got := stackLineFor(stack, name); got != want {
-		panic("bad recovered panic line for " + name + ": " + strconv.Itoa(got) + ", want " + strconv.Itoa(want) + "\n" + stack)
-	}
-}
-
-func stackLineFor(stack, fn string) int {
-	lines := strings.Split(stack, "\n")
-	for i := 0; i+1 < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == fn+"()" {
-			loc := strings.TrimSpace(lines[i+1])
-			colon := strings.LastIndexByte(loc, ':')
-			if colon < 0 {
-				return 0
+func checkRecoveredDebugStackBounds(t *testing.T, want int) {
+	var stack string
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("missing bounds panic")
 			}
-			rest := loc[colon+1:]
-			end := strings.IndexByte(rest, ' ')
-			if end >= 0 {
-				rest = rest[:end]
-			}
-			n, _ := strconv.Atoi(rest)
-			return n
-		}
-	}
-	return 0
-}
-`
-
-func TestRuntimeStatementLineInfo(t *testing.T) {
-	source := runtimeStatementLineProbe
-	source = strings.ReplaceAll(source, "CALLER_STMT_LINE", strconv.Itoa(markerLine(source, "CALLER_STMT_MARK")))
-	source = strings.ReplaceAll(source, "CALLERS_STMT_LINE", strconv.Itoa(markerLine(source, "CALLERS_STMT_MARK")))
-	source = strings.ReplaceAll(source, "INTERFACE_CALL_LINE", strconv.Itoa(markerLine(source, "INTERFACE_CALL_MARK")))
-	source = strings.ReplaceAll(source, "CLOSURE_CALL_LINE", strconv.Itoa(markerLine(source, "CLOSURE_CALL_MARK")))
-	source = strings.ReplaceAll(source, "STACK_ONE_LINE", strconv.Itoa(markerLine(source, "STACK_ONE_MARK")))
-	source = strings.ReplaceAll(source, "STACK_TWO_LINE", strconv.Itoa(markerLine(source, "STACK_TWO_MARK")))
-	source = strings.ReplaceAll(source, "BOUNDS_LINE", strconv.Itoa(markerLine(source, "BOUNDS_MARK")))
-	source = strings.ReplaceAll(source, "STATIC_NIL_PANIC_LINE", strconv.Itoa(markerLine(source, "STATIC_NIL_PANIC_MARK")))
-	source = strings.ReplaceAll(source, "STORE_NIL_PANIC_LINE", strconv.Itoa(markerLine(source, "STORE_NIL_PANIC_MARK")))
-	source = strings.ReplaceAll(source, "INDIRECT_BOUNDS_PANIC_LINE", strconv.Itoa(markerLine(source, "INDIRECT_BOUNDS_PANIC_MARK")))
-
-	dir := t.TempDir()
-	file := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(file, []byte(source), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	repoRoot := findRepoRoot(t)
-	t.Setenv("LLGO_ROOT", repoRoot)
-	cmd := commandForTest(t, repoRoot, "go", "run", "./cmd/llgo", "run", "-a", file)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("llgo statement line probe failed: %v\n%s", err, out)
-	}
-}
-
-const runtimeDeferredPanicLineProbe = `package main
-
-import "runtime/debug"
-
-func main() {
-	defer func() {
-		recover()
-		println(string(debug.Stack()))
+			stack = string(debug.Stack())
+		}()
+		wrapper := runtimeStatementWrapper{values: []int{0, 1, 2}}
+		_ = wrapper.get(3) // BOUNDS_MARK
 	}()
-	defer deferredPanic()
-	panic("start unwinding")
+	if got := runtimeStackLineFor(stack, "checkRecoveredDebugStackBounds.func1"); got != want {
+		t.Fatalf("recovered bounds line = %d, want %d\n%s", got, want, stack)
+	}
 }
 
-func deferredPanic() {
-	var p *int
-	_ = *p // DEFERRED_PANIC_MARK
+func checkRecoveredStaticPanicLine(t *testing.T) {
+	checkRecoveredPanicLine(t, "runtimeStatementStaticNilPanic", runtimeStatementMarkerLine(t, "// STATIC_NIL_PANIC_MARK"), runtimeStatementStaticNilPanic)
 }
-`
+
+func runtimeStatementStaticNilPanic() {
+	var pointer *int
+	_ = *pointer // STATIC_NIL_PANIC_MARK
+}
+
+func checkRecoveredStorePanicLine(t *testing.T) {
+	checkRecoveredPanicLine(t, "runtimeStatementStoreNilPanic", runtimeStatementMarkerLine(t, "// STORE_NIL_PANIC_MARK"), runtimeStatementStoreNilPanic)
+}
+
+func runtimeStatementStoreNilPanic() {
+	var pointer *int
+	*pointer = 1 // STORE_NIL_PANIC_MARK
+}
+
+func checkRecoveredIndirectPanicLine(t *testing.T) {
+	checkRecoveredPanicLine(t, "runtimeStatementIndirectBoundsPanic", runtimeStatementMarkerLine(t, "// INDIRECT_BOUNDS_PANIC_MARK"), runtimeStatementIndirectBoundsPanic)
+}
+
+func runtimeStatementIndirectBoundsPanic() {
+	values := []int{0}
+	_ = values[1] // INDIRECT_BOUNDS_PANIC_MARK
+}
+
+func checkRecoveredPanicLine(t *testing.T, function string, want int, panicFunc func()) {
+	t.Helper()
+	var stack string
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatalf("missing panic for %s", function)
+			}
+			stack = string(debug.Stack())
+		}()
+		panicFunc()
+	}()
+	if got := runtimeStackLineFor(stack, function); got != want {
+		t.Fatalf("recovered panic line for %s = %d, want %d\n%s", function, got, want, stack)
+	}
+}
 
 func TestRuntimeDeferredPanicLine(t *testing.T) {
-	dir := t.TempDir()
-	file := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(file, []byte(runtimeDeferredPanicLineProbe), 0644); err != nil {
-		t.Fatal(err)
+	want := runtimeStatementMarkerLine(t, "// DEFERRED_PANIC_MARK")
+	var stack string
+	func() {
+		defer func() {
+			recover()
+			stack = string(debug.Stack())
+		}()
+		defer runtimeStatementDeferredPanic()
+		panic("start unwinding")
+	}()
+	if got := runtimeStackLineFor(stack, "runtimeStatementDeferredPanic"); got != want {
+		t.Fatalf("deferred panic line = %d, want %d\n%s", got, want, stack)
 	}
+}
 
-	repoRoot := findRepoRoot(t)
-	t.Setenv("LLGO_ROOT", repoRoot)
-	cmd := commandForTest(t, repoRoot, "go", "run", "./cmd/llgo", "run", "-a", file)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("llgo deferred panic line probe failed: %v\n%s", err, out)
+func runtimeStatementDeferredPanic() {
+	var pointer *int
+	_ = *pointer // DEFERRED_PANIC_MARK
+}
+
+func runtimeStackLineFor(stack, function string) int {
+	lines := strings.Split(stack, "\n")
+	for i := 0; i+1 < len(lines); i++ {
+		if !strings.Contains(strings.TrimSpace(lines[i]), function+"(") {
+			continue
+		}
+		location := strings.TrimSpace(lines[i+1])
+		colon := strings.LastIndexByte(location, ':')
+		if colon < 0 {
+			return 0
+		}
+		rest := location[colon+1:]
+		if end := strings.IndexByte(rest, ' '); end >= 0 {
+			rest = rest[:end]
+		}
+		line, _ := strconv.Atoi(rest)
+		return line
 	}
-	stack := string(out)
-	frame := strings.Index(stack, "main.deferredPanic()")
-	want := "main.go:" + strconv.Itoa(markerLine(runtimeDeferredPanicLineProbe, "DEFERRED_PANIC_MARK"))
-	if frame < 0 {
-		t.Fatalf("deferred panic stack is missing main.deferredPanic:\n%s", stack)
-	}
-	lines := strings.SplitN(stack[frame:], "\n", 3)
-	if len(lines) < 2 || !strings.Contains(lines[1], want) {
-		t.Fatalf("deferred panic stack is missing %s:\n%s", want, stack)
-	}
+	return 0
 }

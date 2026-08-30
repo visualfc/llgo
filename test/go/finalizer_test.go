@@ -17,12 +17,25 @@
 package gotest
 
 import (
+	"os"
+	"os/exec"
 	"runtime"
 	"testing"
 	"time"
 )
 
+const finalizerTinyObjectsChildEnv = "LLGO_TEST_FINALIZER_TINY_OBJECTS_CHILD"
+
 func TestRuntimeSetFinalizerTinyObjects(t *testing.T) {
+	if os.Getenv(finalizerTinyObjectsChildEnv) == "" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestRuntimeSetFinalizerTinyObjects$")
+		cmd.Env = append(os.Environ(), finalizerTinyObjectsChildEnv+"=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("tiny-object finalizer child failed: %v\n%s", err, output)
+		}
+		return
+	}
+
 	const n = 32
 	finalized := make(chan int32, n)
 	created := make(chan struct{})

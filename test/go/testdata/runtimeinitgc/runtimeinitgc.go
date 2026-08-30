@@ -14,18 +14,25 @@
  * limitations under the License.
  */
 
-package gotest
+package runtimeinitgc
 
-import (
-	_ "github.com/xgo-dev/llgo/test/go/testdata/initorder/a"
-	_ "github.com/xgo-dev/llgo/test/go/testdata/initorder/b"
-	"github.com/xgo-dev/llgo/test/go/testdata/initorder/tracker"
-	"strings"
-	"testing"
+import "runtime"
+
+var (
+	Before      runtime.MemStats
+	After       runtime.MemStats
+	Initialized bool
 )
 
-func TestPackageInitializationUsesLexicalReadyOrder(t *testing.T) {
-	if got, want := strings.Join(tracker.Order, ","), "b,z,a"; got != want {
-		t.Fatalf("package init order = %q, want %q", got, want)
-	}
+func init() {
+	done := make(chan struct{})
+	go func() {
+		done <- struct{}{}
+	}()
+	<-done
+
+	runtime.ReadMemStats(&Before)
+	runtime.GC()
+	runtime.ReadMemStats(&After)
+	Initialized = true
 }

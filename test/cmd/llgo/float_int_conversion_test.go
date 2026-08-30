@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-package gotest
+package llgocmd
 
 import (
-	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -65,24 +63,15 @@ func TestFloatToIntegerConversionSemantics(t *testing.T) {
 	if err := os.WriteFile(file, []byte(floatIntConversionProbe), 0644); err != nil {
 		t.Fatal(err)
 	}
-	run := func(dir, name string, args ...string) []byte {
-		t.Helper()
-		cmd := exec.Command(name, args...)
-		cmd.Dir = dir
-		cmd.Env = os.Environ()
-		out, err := cmd.Output()
-		if err != nil {
-			var stderr []byte
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				stderr = exitErr.Stderr
-			}
-			t.Fatalf("%s %v failed: %v\n%s", name, args, err, stderr)
-		}
-		return out
+	want, err := runGoCompiler(t, dir, "run", file)
+	if err != nil {
+		t.Fatalf("go float-to-integer probe failed: %v\n%s", err, want)
 	}
-	want := run(filepath.Dir(file), "go", "run", file)
-	got := run(dir, acceptanceLLGoBinary(t), "run", file)
-	if !bytes.Equal(got, want) {
-		t.Fatalf("float-to-integer conversions differ from gc\ngc:\n%s\nllgo:\n%s", want, got)
+	got, err := runCompiler(t, dir, "run", file)
+	if err != nil {
+		t.Fatalf("%s float-to-integer probe failed: %v\n%s", toolCompilerName, err, got)
+	}
+	if got != want {
+		t.Fatalf("%s float-to-integer conversions differ from gc\ngc:\n%s\n%s:\n%s", toolCompilerName, want, toolCompilerName, got)
 	}
 }

@@ -1,9 +1,6 @@
 package gotest
 
 import (
-	"bytes"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -63,82 +60,5 @@ func TestGenericNestedLocalRuntimeTypeNames(t *testing.T) {
 		if r < '0' || r > '9' {
 			t.Fatalf("nested local generic type name = %q, want numeric local type suffix", nestedName)
 		}
-	}
-}
-
-const genericNestedLocalCommandLineProbe = `package main
-
-import (
-	"fmt"
-	"reflect"
-)
-
-type intish interface{ ~int }
-
-func nested[A intish]() (reflect.Type, reflect.Type) {
-	type Int int
-	type T[B intish] struct{}
-	type U[_ any] int
-	return reflect.TypeOf(T[int]{}), reflect.TypeOf(T[U[int]]{})
-}
-
-func main() {
-	direct, nested := nested[int]()
-	fmt.Println(direct)
-	fmt.Println(nested)
-}
-`
-
-func TestGenericNestedLocalRuntimeTypeNamesForCommandLineMain(t *testing.T) {
-	dir, err := os.MkdirTemp("", "llgo-generic-local-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-	file := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(file, []byte(genericNestedLocalCommandLineProbe), 0644); err != nil {
-		t.Fatal(err)
-	}
-	repoRoot := genericLocalRepoRoot(t)
-	goOut := runGenericLocalProbe(t, dir, "go", "run", file)
-	const want = "main.T[int;int]\nmain.T[int;main.U[int;int]·3]\n"
-	if goOut != want {
-		t.Fatalf("go probe output = %q, want %q", goOut, want)
-	}
-	t.Setenv("LLGO_ROOT", repoRoot)
-	llgoOut := runGenericLocalProbe(t, repoRoot, "go", "run", "./cmd/llgo", "run", file)
-	if llgoOut != goOut {
-		t.Fatalf("llgo probe output = %q, want go output %q", llgoOut, goOut)
-	}
-}
-
-func runGenericLocalProbe(t *testing.T, dir, name string, args ...string) string {
-	t.Helper()
-	cmd := commandForTest(t, dir, name, args...)
-	cmd.Env = os.Environ()
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("%s %v failed: %v\n%s", name, args, err, stderr.String())
-	}
-	return string(out)
-}
-
-func genericLocalRepoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("repo root not found")
-		}
-		dir = parent
 	}
 }

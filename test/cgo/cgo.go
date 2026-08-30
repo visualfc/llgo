@@ -5,6 +5,7 @@ package cgo
 
 /*
 #include <errno.h>
+#include <stdlib.h>
 
 typedef struct { int a; } s4;
 typedef struct { int a; int b; } s8;
@@ -30,8 +31,32 @@ static int c_errno_wrap(int x) {
 	errno = 0;
 	return x + 1;
 }
+
+// volatile: a bare NULL store is UB and clang would otherwise propagate it
+// into unreachable, turning the recursion into an infinite loop.
+static int *volatile llgo_test_fault_null;
+volatile int llgo_test_fault_marks;
+
+void llgo_test_fault_leaf(void) { *llgo_test_fault_null = 42; }
+
+void llgo_test_fault_mid(int depth) {
+	if (depth > 0) {
+		llgo_test_fault_mid(depth - 1);
+		llgo_test_fault_marks++;
+		return;
+	}
+	llgo_test_fault_leaf();
+	llgo_test_fault_marks++;
+}
+
+void llgo_test_fault(int depth) {
+	llgo_test_fault_mid(depth);
+	llgo_test_fault_marks++;
+}
 */
 import "C"
+
+import "unsafe"
 
 func Add(a, b int) int {
 	return int(C.c_add(C.int(a), C.int(b)))
@@ -50,4 +75,17 @@ func SumStructs() (int, error) {
 func ErrnoWrap(v int) (int, error) {
 	r, err := C.c_errno_wrap(C.int(v))
 	return int(r), err
+}
+
+func MallocFree(size uintptr) bool {
+	p := C.malloc(C.size_t(size))
+	if p == nil {
+		return false
+	}
+	C.free(unsafe.Pointer(p))
+	return true
+}
+
+func CauseFault(depth int) {
+	C.llgo_test_fault(C.int(depth))
 }

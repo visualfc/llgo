@@ -14,18 +14,10 @@
  * limitations under the License.
  */
 
-package gotest
+package b
 
-import (
-	_ "github.com/xgo-dev/llgo/test/go/testdata/initorder/a"
-	_ "github.com/xgo-dev/llgo/test/go/testdata/initorder/b"
-	"github.com/xgo-dev/llgo/test/go/testdata/initorder/tracker"
-	"strings"
-	"testing"
-)
+import "github.com/xgo-dev/llgo/test/go/testdata/initorder/tracker"
 
-func TestPackageInitializationUsesLexicalReadyOrder(t *testing.T) {
-	if got, want := strings.Join(tracker.Order, ","), "b,z,a"; got != want {
-		t.Fatalf("package init order = %q, want %q", got, want)
-	}
+func init() {
+	tracker.Add("b")
 }

@@ -8,6 +8,8 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -139,6 +141,23 @@ func f() (value, bool) {
 			fn := buildSSAOrderTestPackageMode(t, src, test.mode)
 			checkReturnLoadAfterMutation(t, fn, "mutate")
 		})
+	}
+}
+
+func TestFixSSAOrderReturnLoadWithDebugRefsIntegration(t *testing.T) {
+	name := "ssa-order-debug"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(t.TempDir(), name)
+	conf := NewDefaultConf(ModeBuild)
+	conf.OutFile = bin
+	conf.LinkOptions.DWARF = DWARFPreserve
+	if _, err := Do([]string{"./testdata/ssaorderdebug"}, conf); err != nil {
+		t.Fatalf("build DebugRef return-order fixture: %v", err)
+	}
+	if got := runBinary(t, bin); got != "RETURN_ORDER_OK\n" {
+		t.Fatalf("DebugRef return-order fixture output = %q", got)
 	}
 }
 
