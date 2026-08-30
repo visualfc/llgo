@@ -99,6 +99,13 @@ func TestAtomicStop(t *testing.T) {
 		return
 	}
 
+	// Keep SIGINT from being inherited as ignored by the helper. A caught
+	// signal is reset to its default disposition by exec, so every helper
+	// must either receive SIGINT through os/signal or terminate from it.
+	parentSignals := make(chan os.Signal, 1)
+	signal.Notify(parentSignals, syscall.SIGINT)
+	defer signal.Stop(parentSignals)
+
 	for i := 0; i < 10; i++ {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestAtomicStop$")
 		cmd.Env = append(os.Environ(), atomicStopHelperEnv+"=1")
@@ -114,15 +121,15 @@ func TestAtomicStop(t *testing.T) {
 			t.Fatalf("iteration %d: %v", i, err)
 		}
 		status, ok := exitErr.Sys().(syscall.WaitStatus)
-		if !ok || !status.Signaled() || status.Signal() != syscall.SIGUSR1 {
+		if !ok || !status.Signaled() || status.Signal() != syscall.SIGINT {
 			t.Fatalf("iteration %d exited unexpectedly: %v\n%s", i, err, out)
 		}
 	}
 }
 
 func runAtomicStopHelper() {
-	if signal.Ignored(syscall.SIGUSR1) {
-		fmt.Println("SIGUSR1 is ignored")
+	if signal.Ignored(syscall.SIGINT) {
+		fmt.Println("SIGINT is ignored")
 		os.Exit(2)
 	}
 
@@ -130,7 +137,7 @@ func runAtomicStopHelper() {
 	lost := false
 	for i := 0; i < 10; i++ {
 		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGUSR1)
+		signal.Notify(c, syscall.SIGINT)
 
 		var stopped sync.WaitGroup
 		stopped.Add(1)
@@ -139,7 +146,7 @@ func runAtomicStopHelper() {
 			signal.Stop(c)
 		}()
 
-		if err := syscall.Kill(pid, syscall.SIGUSR1); err != nil {
+		if err := syscall.Kill(pid, syscall.SIGINT); err != nil {
 			fmt.Printf("kill: %v\n", err)
 			os.Exit(2)
 		}

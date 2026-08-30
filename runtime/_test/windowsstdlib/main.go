@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	_ "unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 	_ "github.com/xgo-dev/llgo/runtime/internal/runtime"
