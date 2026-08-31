@@ -4,10 +4,16 @@ package gotest
 
 import (
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 	_ "unsafe"
 )
+
+type concurrentFinalizerValue struct {
+	value int
+	pad   [64]byte
+}
 
 //go:linkname getBDWGCFinalizeOnDemand C.GC_get_finalize_on_demand
 func getBDWGCFinalizeOnDemand() int32
@@ -99,5 +105,73 @@ func TestRuntimeGCDrainsBDWGCFinalizersOnDemand(t *testing.T) {
 	}
 	if got := len(finalized); got <= n/2 {
 		t.Fatalf("runtime.GC ran only %d/%d on-demand finalizers", got, n)
+	}
+}
+
+func TestRuntimeConcurrentGCFinalizers(t *testing.T) {
+	// Keep finalization inside the concurrent runtime.GC calls below instead
+	// of letting an unrelated allocation drain BDWGC's ready queue first.
+	old := getBDWGCFinalizeOnDemand()
+	setBDWGCFinalizeOnDemand(1)
+	t.Cleanup(func() {
+		setBDWGCFinalizeOnDemand(old)
+	})
+
+	const (
+		// Keep the routine regression small. The opt-in high-load variant lives
+		// in test/_stress/runtime/finalizer.
+		objects = 32
+		workers = 4
+	)
+	finalized := make(chan int, objects)
+	registered := make(chan struct{})
+	go func() {
+		for i := range objects {
+			p := &concurrentFinalizerValue{value: i}
+			runtime.SetFinalizer(p, func(p *concurrentFinalizerValue) {
+				finalized <- p.value
+			})
+		}
+		close(registered)
+	}()
+	<-registered
+
+	seen := make(map[int]bool)
+	deadline := time.After(3 * time.Second)
+	for len(seen) <= objects/2 {
+		var wg sync.WaitGroup
+		wg.Add(workers)
+		for range workers {
+			go func() {
+				defer wg.Done()
+				runtime.GC()
+			}()
+		}
+		wg.Wait()
+
+		for {
+			select {
+			case value := <-finalized:
+				if value < 0 || value >= objects {
+					t.Fatalf("finalizer got %d, want [0,%d)", value, objects)
+				}
+				if seen[value] {
+					t.Fatalf("finalizer got duplicate value %d", value)
+				}
+				seen[value] = true
+			default:
+				goto drained
+			}
+		}
+	drained:
+		if len(seen) > objects/2 {
+			return
+		}
+		runtime.Gosched()
+		select {
+		case <-deadline:
+			t.Fatalf("only %d/%d concurrent finalizers ran", len(seen), objects)
+		default:
+		}
 	}
 }

@@ -1,10 +1,24 @@
 # Runtime stress tests
 
-These tests exercise timer and Unix signal correctness under loads that are too
-expensive for routine pull-request testing. The leading-underscore directory
-and nested module keep them out of the repository's normal `go test ./...` and
+These tests exercise runtime correctness under loads that are too expensive for
+routine pull-request testing. The leading-underscore directory and nested
+module keep them out of the repository's normal `go test ./...` and
 `llgo test ./test/...` patterns. No push, pull-request, scheduled, or daily
 workflow runs them automatically.
+
+## Placement policy
+
+- Keep deterministic, bounded regression coverage that is suitable for every
+  pull request in the normal `test` tree.
+- Put a test here when its useful baseline deliberately requires high
+  concurrency, large live object counts, many repetitions, long timeouts, or a
+  soak profile. A stress test should not be the only regression coverage for a
+  bug when a small routine test is practical.
+- Group runtime suites under `runtime/<subsystem>`. Use
+  `LLGO_STRESS_PROFILE` for scalable counts, give every wait a finite timeout,
+  and document platform or compiler restrictions below.
+- Adding a suite here does not opt it into CI. Run it explicitly against the
+  LLGo revision under test when changing the affected subsystem.
 
 Build LLGo from the revision being tested, then run the suites explicitly:
 
@@ -17,10 +31,12 @@ cd "$repo/test/_stress"
 go test -race -count=3 -timeout=20m ./runtime/timer
 /tmp/llgo-runtime-stress test -count=3 -timeout=20m ./runtime/timer
 /tmp/llgo-runtime-stress test -count=3 -timeout=30m ./runtime/signal
+/tmp/llgo-runtime-stress test -count=3 -timeout=30m ./runtime/finalizer
 ```
 
-The signal suite is LLGo-only and targets Unix hosts. The timer suite also runs
-with the standard Go compiler so the harness can be checked independently.
+The signal suite is LLGo-only and targets Unix hosts. The finalizer suite is
+LLGo-only and targets hosted BDWGC builds. The timer suite also runs with the
+standard Go compiler so the harness can be checked independently.
 
 `LLGO_STRESS_PROFILE` controls the load while preserving the same assertions:
 
@@ -37,8 +53,12 @@ LLGO_STRESS_PROFILE=heavy /tmp/llgo-runtime-stress test \
 ```
 
 The timer suite covers large live heaps, concurrent `Stop`/`Reset` on distinct
-and shared timers, callback bursts, and concurrent sleepers. The four signal
+and shared timers, callback bursts, and concurrent sleepers. The five signal
 tests cover distinct-signal delivery during a lower-number signal storm,
-concurrent registration churn, repeated `Notify`/`Stop`/`Reset` barriers, and
-timer progress while handlers are busy. The flood cases also exercise
-the handler under concurrent delivery pressure.
+concurrent registration churn, repeated `Notify`/`Stop`/`Reset` barriers,
+fatal-signal arbitration in concurrent helper processes while the final
+receiver stops, and timer progress while handlers are busy. The flood cases
+also exercise the handler under concurrent delivery pressure. The finalizer
+suite repeatedly publishes large finalizer batches while many goroutines call
+`runtime.GC`, and checks that queued callbacks are neither corrupted nor
+delivered twice.

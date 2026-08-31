@@ -50,7 +50,7 @@ type finalizerEntry struct {
 
 var finalizerState struct {
 	once psync.Once
-	mu   psync.Mutex
+	mu   psync.Mutex // protects m, head, and tail
 	m    map[uintptr]*finalizerEntry
 	head *finalizerEntry
 	tail *finalizerEntry
@@ -197,8 +197,13 @@ func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
 		return
 	}
 
-	// Keep the object alive until runFinalizers invokes the Go finalizer.
-	// Do not allocate or lock here; BDWGC calls this while collecting.
+	// GC_invoke_finalizers may run on several threads concurrently. BDWGC
+	// releases its allocation lock before invoking client finalizers, including
+	// from its default allocation-time path, so serialize queue publication
+	// with concurrent drainers.
+	finalizerState.mu.Lock()
+	// Keep the object alive until runFinalizers invokes the Go finalizer. The
+	// mutex publishes these writes together with the queue entry.
 	if state == finalizerInterfaceState {
 		(*finalizerInterfaceArg)(entry.arg).data = ptr
 	} else {
@@ -212,6 +217,7 @@ func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
 		finalizerState.tail.next = entry
 		finalizerState.tail = entry
 	}
+	finalizerState.mu.Unlock()
 }
 
 func restoreFinalizer(ptr unsafe.Pointer, entry *finalizerEntry) {
@@ -227,8 +233,10 @@ func restoreFinalizer(ptr unsafe.Pointer, entry *finalizerEntry) {
 func runFinalizers() {
 	finalizerState.once.Do(initFinalizerState)
 	for {
+		finalizerState.mu.Lock()
 		entry := finalizerState.head
 		if entry == nil {
+			finalizerState.mu.Unlock()
 			return
 		}
 		finalizerState.head = entry.next
@@ -236,7 +244,8 @@ func runFinalizers() {
 			finalizerState.tail = nil
 		}
 		entry.next = nil
-		finalizerState.mu.Lock()
+		// A later SetFinalizer may already have installed a replacement entry
+		// for the same object key; do not delete that newer entry.
 		if finalizerState.m[entry.key] == entry {
 			delete(finalizerState.m, entry.key)
 		}
