@@ -504,7 +504,9 @@ jobs:
           windows-arch: ${{ matrix.windows_arch }}
 
       - name: Check Windows native runtime and FFI
-        if: runner.os == 'Windows'
+        # This check is profile-wide rather than package-specific. Run it once
+        # on the first shard instead of duplicating it in every shard.
+        if: runner.os == 'Windows' && matrix.shard_index == '0'
         shell: pwsh
         run: |
           $llgo = Join-Path $env:RUNNER_TEMP 'llgo-bin\llgo.exe'
@@ -543,7 +545,9 @@ jobs:
           fi
 
       - name: Check std symbol coverage
-        if: runner.os == 'Windows' && matrix.windows_arch != 'amd64'
+        # Balance the other profile-wide check onto shard 1 when the profile
+        # is split; unsharded profiles retain their existing coverage.
+        if: runner.os == 'Windows' && matrix.windows_arch != 'amd64' && (matrix.shard_total == '1' || matrix.shard_index == '1')
         shell: bash
         run: bash doc/_readme/scripts/check_std_cover.sh
 
