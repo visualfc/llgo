@@ -28,6 +28,8 @@ _Static_assert(__atomic_always_lock_free(sizeof(unsigned int), 0),
 static int llgo_signal_pipe[2] = {-1, -1};
 static struct sigaction llgo_signal_default_action;
 static unsigned int llgo_signal_delivering;
+/* Raw ABI shared with LLGO_PROF_SIGNAL_* in profile.c and signalMode* in
+ * signal_llgo.go. Keep the numeric values synchronized. */
 enum {
     LLGO_SIGNAL_DEFAULT,
     LLGO_SIGNAL_WANTED,

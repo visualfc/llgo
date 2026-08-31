@@ -26,6 +26,8 @@ const (
 )
 
 const (
+	// Raw ABI shared with LLGO_SIGNAL_* in _wrap/signal.c and
+	// LLGO_PROF_SIGNAL_* in _wrap/profile.c. Keep the values synchronized.
 	signalModeDefault int32 = iota
 	signalModeWanted
 	signalModeIgnored

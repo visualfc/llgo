@@ -36,6 +36,8 @@ func stressCount(t *testing.T, base int) int {
 
 const modeChurnHelperEnv = "LLGO_STRESS_SIGPROF_MODE_CHURN"
 
+const raiserStopTimeout = 30 * time.Second
+
 func TestSIGPROFModeChurnWhileProfiling(t *testing.T) {
 	if os.Getenv(modeChurnHelperEnv) != "1" {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestSIGPROFModeChurnWhileProfiling$", "-test.v")
@@ -89,42 +91,44 @@ func TestSIGPROFModeChurnWhileProfiling(t *testing.T) {
 		select {
 		case <-done:
 			return true
-		case <-time.After(30 * time.Second):
+		case <-time.After(raiserStopTimeout):
 			return false
+		}
+	}
+	requireRaisersStopped := func() {
+		t.Helper()
+		if !stopRaisers() {
+			t.Fatalf("SIGPROF raisers did not stop within %s", raiserStopTimeout)
 		}
 	}
 
 	select {
 	case got := <-notified:
 		if got != syscall.SIGPROF {
-			if !stopRaisers() {
-				t.Fatal("SIGPROF raisers did not stop within 30s")
-			}
+			requireRaisersStopped()
 			t.Fatalf("got initial signal %v, want SIGPROF", got)
 		}
-	case <-time.After(30 * time.Second):
-		if !stopRaisers() {
-			t.Fatal("SIGPROF raisers did not stop within 30s")
-		}
+	case <-time.After(raiserStopTimeout):
+		requireRaisersStopped()
 		t.Fatal("signal flood did not deliver an initial SIGPROF")
 	}
 
 	var profile bytes.Buffer
 	if err := pprof.StartCPUProfile(&profile); err != nil {
-		if !stopRaisers() {
-			t.Fatal("SIGPROF raisers did not stop within 30s")
-		}
+		requireRaisersStopped()
 		t.Fatalf("StartCPUProfile: %v", err)
 	}
 	t.Cleanup(pprof.StopCPUProfile)
 	t.Cleanup(func() {
 		if !stopRaisers() {
-			t.Error("SIGPROF raisers did not stop within 30s")
+			t.Errorf("SIGPROF raisers did not stop within %s", raiserStopTimeout)
 		}
 	})
 
 	var stateFailure string
 	for round := 0; round < rounds; round++ {
+		// Exercise the native WANTED -> DEFAULT edge before the independent
+		// IGNORED -> DEFAULT edge in every round.
 		signal.Notify(notified, syscall.SIGPROF)
 		signal.Stop(notified)
 		signal.Ignore(syscall.SIGPROF)
@@ -138,9 +142,7 @@ func TestSIGPROFModeChurnWhileProfiling(t *testing.T) {
 			break
 		}
 	}
-	if !stopRaisers() {
-		t.Fatal("SIGPROF raisers did not stop within 30s")
-	}
+	requireRaisersStopped()
 	if stateFailure != "" {
 		t.Fatal(stateFailure)
 	}
