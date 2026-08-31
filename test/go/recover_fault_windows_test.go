@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/debug"
 	"runtime/trace"
 	"testing"
 	"unsafe"
@@ -16,6 +17,7 @@ import (
 const (
 	nonNilFaultChildEnv      = "LLGO_TEST_NON_NIL_FAULT"
 	recoverableFaultChildEnv = "LLGO_TEST_RECOVERABLE_FAULT"
+	traceFaultChildEnv       = "LLGO_TEST_TRACE_FAULT"
 )
 
 type traceFaultValue struct {
@@ -28,8 +30,15 @@ func copyTraceFaultValue(x, y *traceFaultValue) {
 }
 
 func enterRecoverableFaultTest(t *testing.T) bool {
+	return enterWindowsFaultTest(
+		t, recoverableFaultChildEnv,
+		"^TestRecoverAfterFaultPreservesNamedResult$",
+	)
+}
+
+func enterWindowsFaultTest(t *testing.T, childEnv, testPattern string) bool {
 	t.Helper()
-	if os.Getenv(recoverableFaultChildEnv) == "1" {
+	if os.Getenv(childEnv) == "1" {
 		return true
 	}
 
@@ -40,10 +49,10 @@ func enterRecoverableFaultTest(t *testing.T) bool {
 	// The child still has to pass the complete fault/panic/recover assertions;
 	// if and when the upstream runtime issue is resolved, revisit this isolation
 	// and the stack-headroom preparation below.
-	cmd := exec.Command(os.Args[0], "-test.run=^TestRecoverAfterFaultPreservesNamedResult$", "-test.v")
-	cmd.Env = append(os.Environ(), recoverableFaultChildEnv+"=1", "GOTRACEBACK=system")
+	cmd := exec.Command(os.Args[0], "-test.run="+testPattern, "-test.v")
+	cmd.Env = append(os.Environ(), childEnv+"=1", "GOTRACEBACK=system")
 	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("recoverable fault child failed: %v\n%s", err, output)
+		t.Fatalf("Windows fault test child failed: %v\n%s", err, output)
 	}
 	return false
 }
@@ -68,10 +77,17 @@ func ensureRecoverableFaultStackHeadroom() {
 
 // Regression test matching GOROOT/test/fixedbugs/issue73748b.go.
 func TestRecoverFaultWhileTracing(t *testing.T) {
+	if !enterWindowsFaultTest(t, traceFaultChildEnv, "^TestRecoverFaultWhileTracing$") {
+		return
+	}
+
+	oldGCPercent := debug.SetGCPercent(-1)
+	defer debug.SetGCPercent(oldGCPercent)
 	if err := trace.Start(io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	defer trace.Stop()
+	ensureRecoverableFaultStackHeadroom()
 
 	var recovered bool
 	func() {
