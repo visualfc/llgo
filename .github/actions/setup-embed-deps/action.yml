@@ -8,10 +8,10 @@ runs:
       if: runner.os == 'macOS'
       shell: bash
       env:
+        HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
-        brew update
-        brew install sdl2
+        brew list --versions sdl2 >/dev/null || brew install sdl2
 
     - name: Install Ubuntu embedded dependencies
       if: runner.os == 'Linux'

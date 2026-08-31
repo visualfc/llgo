@@ -731,8 +731,10 @@ runs:
         )
         brew_install_missing "${opt_deps[@]}"
         
-        brew_install_missing python@3.12 || true # for github.com/goplus/lib/py
-        brew link --overwrite python@3.12
+        # Python is optional and is used only by github.com/goplus/lib/py.
+        if brew_install_missing python@3.12; then
+          brew link --overwrite python@3.12 || true
+        fi
 
     - name: Install Ubuntu dependencies
       if: runner.os == 'Linux'
