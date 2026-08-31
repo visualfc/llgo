@@ -43,9 +43,13 @@ esac
 prepend_runtime_dir() {
   local native_dir=${1:-}
   if [[ -n "$native_dir" ]]; then
-    PATH="$(cygpath -u "$native_dir"):$PATH"
+    local shell_dir
+    shell_dir=$(cygpath -u "$native_dir")
+    PATH="$shell_dir:$PATH"
+    runtime_search_dirs+=("$shell_dir")
   fi
 }
+runtime_search_dirs=()
 case "$LLGO_WINDOWS_ABI" in
   mingw)
     # Cygwin does not reliably preserve MSYS2's native DLL search entries.
@@ -84,21 +88,6 @@ if ! grep -Fq -- "$target" <<<"$trace"; then
   exit 1
 fi
 
-set +e
-output=$($executable 2>&1)
-run_status=$?
-set -e
-if [[ $run_status -ne 0 ]]; then
-  echo "$executable failed with exit code $run_status:" >&2
-  echo "$output" >&2
-  exit "$run_status"
-fi
-want="windows-${LLGO_WINDOWS_ABI}-${LLGO_WINDOWS_ARCH}-host-shell"
-if [[ "$output" != "$want" ]]; then
-  echo "$executable printed '$output', want '$want'" >&2
-  exit 1
-fi
-
 readobj=$(command -v llvm-readobj.exe || command -v llvm-readobj)
 set +e
 imports=$($readobj --coff-imports "$executable" 2>&1)
@@ -109,6 +98,30 @@ if [[ $readobj_status -ne 0 ]]; then
   echo "$imports" >&2
   exit "$readobj_status"
 fi
+
+set +e
+output=$($executable 2>&1)
+run_status=$?
+set -e
+if [[ $run_status -ne 0 ]]; then
+  echo "$executable failed with exit code $run_status:" >&2
+  echo "$output" >&2
+  echo "runtime search directories:" >&2
+  printf '  %s\n' "${runtime_search_dirs[@]}" >&2
+  echo "COFF imports:" >&2
+  echo "$imports" >&2
+  if command -v cygcheck >/dev/null 2>&1; then
+    echo "Cygwin dependency resolution:" >&2
+    cygcheck "$executable" >&2 || true
+  fi
+  exit "$run_status"
+fi
+want="windows-${LLGO_WINDOWS_ABI}-${LLGO_WINDOWS_ARCH}-host-shell"
+if [[ "$output" != "$want" ]]; then
+  echo "$executable printed '$output', want '$want'" >&2
+  exit 1
+fi
+
 forbidden='(msys-2\.0|cygwin1)\.dll'
 if [[ "$LLGO_WINDOWS_ABI" == msvc ]]; then
   forbidden='(msys-2\.0|cygwin1|libwinpthread)\.dll'
