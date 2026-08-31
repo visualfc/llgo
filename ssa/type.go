@@ -473,6 +473,9 @@ func (p Program) toLLVMFields(raw *types.Struct) (fields []llvm.Type) {
 }
 
 func (p Program) toLLVMTuple(t *types.Tuple) llvm.Type {
+	if p.target.effectiveGOARCH() != "386" {
+		return p.ctx.StructType(p.toLLVMTypes(t, t.Len()), false)
+	}
 	fields := make([]*types.Var, t.Len())
 	for i := range fields {
 		// Tuple result names are not part of their type and may be empty or
