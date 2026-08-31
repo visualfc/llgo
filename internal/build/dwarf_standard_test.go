@@ -50,10 +50,10 @@ func TestStandardDWARF(t *testing.T) {
 				// false overlapping ranges, while llvm-dwarfutil cannot normalize
 				// COFF. Retain this verifier fixture's sections; the LLDB integration
 				// tests exercise normal section-GC output.
-				if os.Getenv("LLGO_WINDOWS_ABI") == "msvc" {
-					conf.LinkOptions.ExternalLinkerFlags = "-Xlinker /opt:noref"
-				} else {
+				if os.Getenv("LLGO_WINDOWS_ABI") == "mingw" {
 					conf.LinkOptions.ExternalLinkerFlags = "-Wl,--no-gc-sections"
+				} else {
+					conf.LinkOptions.ExternalLinkerFlags = "-Xlinker /opt:noref"
 				}
 			}
 			// Do resolves the platform extension on an internal config clone, so
