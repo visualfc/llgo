@@ -669,10 +669,22 @@ runs:
       if: runner.os == 'macOS'
       shell: bash
       env:
+        HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
-        brew update
-        
+        brew_install_missing() {
+          local formula
+          local missing=()
+          for formula in "$@"; do
+            if ! brew list --versions "${formula}" >/dev/null; then
+              missing+=("${formula}")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            brew install "${missing[@]}"
+          fi
+        }
+
         # Install LLVM if requested
         if [[ "${{ inputs.install-llvm }}" == "true" ]]; then
           llvm_formula="llvm@${{inputs.llvm-version}}"
@@ -690,7 +702,7 @@ runs:
             esac
           done < <(brew list --formula)
 
-          brew install "${llvm_formula}" "${lld_formula}"
+          brew_install_missing "${llvm_formula}" "${lld_formula}"
           brew link --force --overwrite "${llvm_formula}" "${lld_formula}"
           llvm_bin="$(brew --prefix "${llvm_formula}")/bin"
           lld_bin="$(brew --prefix "${lld_formula}")/bin"
@@ -707,7 +719,7 @@ runs:
         fi
         
         # Install common dependencies
-        brew install bdw-gc openssl libffi libuv
+        brew_install_missing bdw-gc openssl libffi libuv
         brew link --overwrite libffi
 
         # Install optional deps for demos.
@@ -717,9 +729,9 @@ runs:
           cjson       # for github.com/goplus/lib/c/cjson
           sqlite      # for github.com/goplus/lib/c/sqlite
         )
-        brew install "${opt_deps[@]}"
+        brew_install_missing "${opt_deps[@]}"
         
-        brew install python@3.12 || true # for github.com/goplus/lib/py
+        brew_install_missing python@3.12 || true # for github.com/goplus/lib/py
         brew link --overwrite python@3.12
 
     - name: Install Ubuntu dependencies
