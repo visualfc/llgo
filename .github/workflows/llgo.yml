@@ -314,7 +314,10 @@ jobs:
           }
 
       - name: Native debug metadata tests
-        if: ${{ (startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel') || runner.os == 'Windows' }}
+        # This Go test binary links the host LLVM libraries, so a Windows x64
+        # host cannot cross-link it as 386 or ARM64. The target-native LLDB
+        # integration steps above cover debug metadata on those architectures.
+        if: ${{ (startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel') || (runner.os == 'Windows' && matrix.windows_arch == 'amd64') }}
         run: go test -timeout 15m ./internal/build -run '^(TestStandardDWARF|TestWindowsPDBLinkPath)$' -count=1 -v
 
       # Keep shell setup last so its POSIX compatibility tools cannot affect
