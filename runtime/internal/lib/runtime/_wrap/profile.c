@@ -46,6 +46,14 @@ static int llgo_prof_previous_valid;
 static sigjmp_buf llgo_prof_fault_jmp;
 static volatile uintptr_t llgo_prof_fault_owner;
 static volatile int llgo_prof_fault_active;
+static int llgo_prof_previous_signal_mode;
+static int llgo_prof_desired_signal_mode;
+static int llgo_prof_signal_mode_updated;
+
+extern int llgo_signal_profile_begin(int signum);
+extern int llgo_signal_profile_abort(int signum, int mode);
+extern int llgo_signal_profile_finish(int signum, int mode);
+extern int llgo_signal_profile_restore(int signum, int mode);
 #endif
 
 static int llgo_prof_ring_try_lock(void)
@@ -161,12 +169,24 @@ static int llgo_prof_install_signal(void)
 static void llgo_prof_restore_signal(void)
 {
     struct sigaction current;
+    int mode;
+    int updated = llgo_prof_signal_mode_updated;
 
-    if (!llgo_prof_previous_valid || sigaction(SIGPROF, 0, &current) != 0)
+    mode = updated ? llgo_prof_desired_signal_mode
+                   : llgo_prof_previous_signal_mode;
+    llgo_signal_profile_finish(SIGPROF, mode);
+    llgo_prof_signal_mode_updated = 0;
+    if (sigaction(SIGPROF, 0, &current) != 0)
         return;
     /* Do not overwrite a handler installed by foreign code that did not use
-     * the coordinated os/signal path below. */
-    if (llgo_prof_action_is_ours(&current))
+     * the coordinated os/signal path. */
+    if (!llgo_prof_action_is_ours(&current))
+        return;
+    if (updated) {
+        llgo_signal_profile_restore(SIGPROF, mode);
+        return;
+    }
+    if (llgo_prof_previous_valid)
         sigaction(SIGPROF, &llgo_prof_previous_action, 0);
 }
 
@@ -255,13 +275,22 @@ int llgo_cpu_profile_start(int hz)
         errno = saved_errno;
         return 0;
     }
+    llgo_prof_previous_signal_mode = llgo_signal_profile_begin(SIGPROF);
+    if (llgo_prof_previous_signal_mode < 0) {
+        llgo_prof_ring_unlock();
+        errno = saved_errno;
+        return -1;
+    }
     if (llgo_prof_install_signal() != 0) {
+        llgo_signal_profile_abort(SIGPROF,
+                                  llgo_prof_previous_signal_mode);
         llgo_prof_ring_unlock();
         errno = saved_errno;
         return -1;
     }
     llgo_prof_read_index = 0;
     llgo_prof_write_index = 0;
+    llgo_prof_signal_mode_updated = 0;
     __atomic_store_n(&llgo_prof_lost, 0, __ATOMIC_RELAXED);
     __atomic_store_n(&llgo_prof_active, 1, __ATOMIC_RELEASE);
 
@@ -300,6 +329,28 @@ void llgo_cpu_profile_stop(void)
     llgo_prof_restore_signal();
     llgo_prof_ring_unlock();
     errno = saved_errno;
+#endif
+}
+
+/* os/signal must record its desired SIGPROF state without replacing the
+ * active profiler handler or changing the live handler mode. Installing
+ * SIG_DFL even briefly can terminate the process when a timer signal arrives
+ * between that install and the profiler refresh. Exposing DEFAULT to an old
+ * os/signal handler that the kernel selected before profiling began has the
+ * same problem. The Go control plane serializes this with start and stop. */
+int llgo_cpu_profile_update_signal(int mode)
+{
+#if defined(__APPLE__) || defined(__linux__)
+    if (!__atomic_load_n(&llgo_prof_active, __ATOMIC_RELAXED))
+        return 0;
+    if (mode < 0 || mode > 2)
+        return -EINVAL;
+    llgo_prof_desired_signal_mode = mode;
+    llgo_prof_signal_mode_updated = 1;
+    return 1;
+#else
+    (void)mode;
+    return 0;
 #endif
 }
 
