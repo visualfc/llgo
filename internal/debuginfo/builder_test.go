@@ -95,6 +95,31 @@ func TestBuilderWindowsDebuggerMarkerUsesComdat(t *testing.T) {
 	}
 }
 
+func TestBuilderCodeViewRetainsDWARF(t *testing.T) {
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	module := ctx.NewModule("windows-codeview-test")
+	defer module.Dispose()
+	module.SetTarget("x86_64-pc-windows-msvc")
+
+	builder := New(module, Config{EmitCodeView: true})
+	builder.CompileUnit("main.go", "/src/example")
+	builder.Finalize()
+
+	if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("Windows CodeView module is invalid: %v\n%s", err, module.String())
+	}
+	ir := module.String()
+	for _, want := range []string{
+		`!{i32 2, !"CodeView", i32 1}`,
+		`!{i32 7, !"Dwarf Version", i32 4}`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("Windows debug module is missing %q:\n%s", want, ir)
+		}
+	}
+}
+
 func TestBuilderMetadataOperations(t *testing.T) {
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()

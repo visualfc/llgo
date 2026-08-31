@@ -4,7 +4,11 @@ LLDB_TEST_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # Function to find LLDB 18+
 find_lldb() {
-    local lldb_paths=(
+    local lldb_paths=()
+    if [ -n "${LLGO_LLDB:-}" ]; then
+        lldb_paths+=("$LLGO_LLDB")
+    fi
+    lldb_paths+=(
         "/opt/homebrew/bin/lldb"
         "/usr/local/bin/lldb"
         "/usr/bin/lldb"
@@ -29,7 +33,7 @@ find_lldb() {
 # Find LLDB 18+
 LLDB_PATH=$(find_lldb)
 echo "LLDB_PATH: $LLDB_PATH"
-$LLDB_PATH --version
+"$LLDB_PATH" --version
 export LLDB_PATH
 
 # Default package path

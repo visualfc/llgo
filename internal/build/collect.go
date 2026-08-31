@@ -144,6 +144,7 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	m.common.GoGlobalDCE = c.buildConf.goGlobalDCEEnabled()
 	m.common.EnableLTOPlugin = c.buildConf.LTOPlugin.Enabled()
 	m.common.EmitDWARF = shouldEmitDebugInfo(c.buildConf, &c.crossCompile)
+	m.common.EmitCodeView = shouldEmitCodeView(c.buildConf, &c.crossCompile)
 	m.common.PCLNMode = effectivePCLNMode(c.buildConf).String()
 	m.common.DisableBoundsChecks = c.buildConf.DisableBoundsChecks
 	m.common.SaturatingFloatToUint32 = c.buildConf.SaturatingFloatToUint32

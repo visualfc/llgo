@@ -227,6 +227,41 @@ func TestWindowsDebugPointerParameter(t *testing.T) {
 	}
 }
 
+func TestWindows386WideIntegerDebugValue(t *testing.T) {
+	const goarch = "386"
+	fset := token.NewFileSet()
+	file := fset.AddFile("wide.go", -1, 100)
+	pkgTypes := types.NewPackage("example.com/p", "p")
+	variable := types.NewVar(file.Pos(20), pkgTypes, "value", types.Typ[types.Uint64])
+	sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+	object := types.NewFunc(file.Pos(10), pkgTypes, "f", sig)
+
+	prog := NewProgram(&Target{GOOS: "windows", GOARCH: goarch, OptLevel: optlevel.O0})
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", goarch))
+	pkg := prog.NewPackage("p", "example.com/p")
+	pkg.InitDebug("p", "example.com/p", fset)
+	fn := pkg.NewFunc("example.com/p.f", sig, InGo)
+	builder := fn.MakeBody(1)
+	defer builder.Dispose()
+	pos := fset.Position(variable.Pos())
+	builder.DebugFunction(fn, object.Scope(), fset.Position(object.Pos()), pos)
+	debugVar := builder.DIVarAuto(fn, pos, variable.Name(), prog.Uint64())
+	builder.DIValue(variable, prog.IntVal(1<<32|17, prog.Uint64()), debugVar, fn, pos, fn.Block(0))
+	builder.Return()
+	pkg.FinalizeDebug()
+
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("debug metadata is invalid: %v\n%s", err, pkg.Module().String())
+	}
+	ir := pkg.Module().String()
+	for _, want := range []string{"alloca i64", "store i64 4294967313", "#dbg_value(ptr", "DW_OP_deref"} {
+		if !strings.Contains(ir, want) {
+			t.Errorf("Windows/386 wide integer debug value is missing %q:\n%s", want, ir)
+		}
+	}
+}
+
 func TestDIGlobalIgnoresStorageLessFrontendVariable(t *testing.T) {
 	var builder Builder
 	builder.DIGlobal(pyVarExpr(Nil, "attribute"), "module.attribute", token.Position{})

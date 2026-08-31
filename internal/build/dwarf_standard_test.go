@@ -6,6 +6,7 @@ import (
 	"debug/dwarf"
 	"debug/elf"
 	"debug/macho"
+	"debug/pe"
 	"fmt"
 	"io"
 	"os"
@@ -29,8 +30,8 @@ type dwarfNode struct {
 }
 
 func TestStandardDWARF(t *testing.T) {
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		t.Skip("native DWARF integration test requires Mach-O or ELF")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		t.Skip("native DWARF integration test requires Mach-O, ELF, or PE")
 	}
 
 	for _, level := range []optlevel.Level{
@@ -42,8 +43,22 @@ func TestStandardDWARF(t *testing.T) {
 		optlevel.Oz,
 	} {
 		t.Run(level.String(), func(t *testing.T) {
-			bin := filepath.Join(t.TempDir(), "dwarf-standard")
 			conf := NewDefaultConf(ModeBuild)
+			if runtime.GOOS == "windows" {
+				// COFF section GC leaves zero-address tombstones in linked DWARF.
+				// llvm-dwarfdump does not recognize those tombstones and reports
+				// false overlapping ranges, while llvm-dwarfutil cannot normalize
+				// COFF. Retain this verifier fixture's sections; the LLDB integration
+				// tests exercise normal section-GC output.
+				if os.Getenv("LLGO_WINDOWS_ABI") == "mingw" {
+					conf.LinkOptions.ExternalLinkerFlags = "-Wl,--no-gc-sections"
+				} else {
+					conf.LinkOptions.ExternalLinkerFlags = "-Xlinker /opt:noref"
+				}
+			}
+			// Do resolves the platform extension on an internal config clone, so
+			// derive the explicit output path before the build as well.
+			bin := filepath.Join(t.TempDir(), "dwarf-standard"+defaultAppExt(conf))
 			conf.OutFile = bin
 			conf.OptLevel = level
 			conf.LinkOptions.DWARF = DWARFPreserve
@@ -107,6 +122,17 @@ func openNativeDWARF(t *testing.T, bin string) (*dwarf.Data, string) {
 			t.Fatal(err)
 		}
 		return data, dwarfPath
+	case "windows":
+		file, err := pe.Open(bin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = file.Close() })
+		data, err := file.DWARF()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data, bin
 	default:
 		panic("unreachable")
 	}

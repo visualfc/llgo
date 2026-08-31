@@ -335,6 +335,44 @@ func TestCollectFingerprintIncludesEmitDWARF(t *testing.T) {
 	}
 }
 
+func TestCollectFingerprintIncludesEmitCodeView(t *testing.T) {
+	dir := t.TempDir()
+	goFile := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(goFile, []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkg := &aPackage{Package: &packages.Package{
+		PkgPath: "test/pkg",
+		GoFiles: []string{goFile},
+	}}
+	ctx := &context{
+		conf: &packages.Config{},
+		buildConf: &Config{
+			Goos:      "windows",
+			Goarch:    "amd64",
+			Mode:      ModeBuild,
+			BuildMode: BuildModeExe,
+			LinkOptions: LinkOptions{
+				DWARF:               DWARFPreserve,
+				ExternalLinkerFlags: "-Xlinker /debug:full",
+			},
+		},
+		crossCompile: crosscompile.Export{
+			Toolchain: crosscompile.NativeToolchain{ABI: crosscompile.PlatformABIMsvc},
+		},
+	}
+	if err := ctx.collectFingerprint(pkg); err != nil {
+		t.Fatal(err)
+	}
+	data, err := decodeManifest(pkg.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data.Common == nil || !data.Common.EmitDWARF || !data.Common.EmitCodeView {
+		t.Fatalf("PDB manifest does not record both debug formats:\n%s", pkg.Manifest)
+	}
+}
+
 func TestCollectFingerprintIncludesPCLNMode(t *testing.T) {
 	t.Setenv(llgoFuncInfo, "")
 	t.Setenv(llgoFuncInfoSites, "")

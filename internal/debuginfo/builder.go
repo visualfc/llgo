@@ -23,8 +23,9 @@ const (
 // Config describes properties of the generated debug information. Optimized
 // reports what the compilation pipeline does; it does not select any pass.
 type Config struct {
-	Producer  string
-	Optimized bool
+	Producer     string
+	Optimized    bool
+	EmitCodeView bool
 }
 
 // Builder is a package-local owner of an LLVM DIBuilder. Finalize must be
@@ -51,6 +52,12 @@ func New(module llvm.Module, config Config) *Builder {
 	}
 	b.addModuleFlag(2, "Debug Info Version", defaultDebugInfoVersion)
 	b.addModuleFlag(7, "Dwarf Version", defaultDwarfVersion)
+	if config.EmitCodeView {
+		// Keep DWARF enabled as well. LLVM can lower the same source metadata to
+		// both formats: DWARF remains available to LLDB and Go-compatible
+		// traceback consumers, while lld-link can merge CodeView into a PDB.
+		b.addModuleFlag(2, "CodeView", 1)
+	}
 	b.addModuleFlag(1, "wchar_size", 4)
 	b.addModuleFlag(8, "PIC Level", 2)
 	b.addModuleFlag(7, "uwtable", 1)

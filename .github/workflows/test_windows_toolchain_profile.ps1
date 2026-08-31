@@ -70,6 +70,7 @@ $mainSource.Replace('$Profile', $Profile).Replace('$GoArch', $GoArch) |
   Set-Content -Encoding utf8 (Join-Path $sourceDir "main.go")
 
 $llgo = (Get-Command llgo.exe).Source
+$profileClangDir = Split-Path (Get-Command clang.exe).Source
 foreach ($tool in @("clang", "clang++", "llvm-config")) {
   $path = (Get-Command $tool).Source
   if ($Profile -eq "msvc" -and $path -match '(?i)[\\/](msys64|cygwin)[\\/]') {
@@ -161,6 +162,25 @@ try {
   & $env:ComSpec /d /s /c $cmdLine
   Assert-Success "Building with unset CC/CXX from cmd.exe"
   Assert-NativeOutput $cmdExe
+
+  if ($Profile -eq "msvc") {
+    . (Join-Path $env:GITHUB_WORKSPACE ".github\windows\msvc-target.ps1")
+    $target = Get-LLGoWindowsMSVCTarget -GoArch $GoArch
+    $installPath = Find-LLGoVisualStudio2022 -GoArch $GoArch
+    $vsDevCmd = Join-Path $installPath "Common7\Tools\VsDevCmd.bat"
+    $vsDevExe = Join-Path $sourceDir "vsdev.exe"
+    # VsDevCmd prepends Visual Studio's optional bundled Clang. That compiler
+    # does not necessarily install compiler-rt for every selected target (the
+    # ARM64 lane is one example). Keep the standalone full-target LLVM profile
+    # selected by setup-deps ahead of it while retaining DevShell's SDK, CRT,
+    # and linker environment.
+    $vsDevLine = 'call "' + $vsDevCmd + '" -no_logo -arch=' + $target.VisualStudio +
+      ' -host_arch=x64 && set "PATH=' + $profileClangDir + ';%PATH%" && set "CC=" && set "CXX=" && cd /d "' + $sourceDir +
+      '" && "' + $llgo + '" build -o "' + $vsDevExe + '" .'
+    & $env:ComSpec /d /s /c $vsDevLine
+    Assert-Success "Building from a fresh Visual Studio Developer Shell"
+    Assert-NativeOutput $vsDevExe
+  }
 } finally {
   if ($null -eq $savedCC) { Remove-Item Env:CC -ErrorAction SilentlyContinue } else { $env:CC = $savedCC }
   if ($null -eq $savedCXX) { Remove-Item Env:CXX -ErrorAction SilentlyContinue } else { $env:CXX = $savedCXX }

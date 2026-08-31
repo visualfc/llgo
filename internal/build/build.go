@@ -558,6 +558,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		cfg.Mode |= packages.NeedForTest
 	}
 	emitDebugInfo := shouldEmitDebugInfo(conf, &export)
+	emitCodeView := shouldEmitCodeView(conf, &export)
 	frontendOptions := cl.Options{
 		Debug:        emitDebugInfo,
 		DebugSymbols: emitDebugInfo,
@@ -587,6 +588,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
 	prog.EnableLTOPluginMarkers(conf.LTOPlugin.Enabled())
+	prog.EnableCodeViewDebugInfo(emitCodeView)
 	funcInfo := conf.Mode != ModeGen && conf.PCLNMode != PCLNNone
 	prog.EnableFuncInfoMetadata(funcInfo)
 	// Site records are inline-asm fragments inside function bodies. Darwin
@@ -3251,6 +3253,7 @@ func clFiles(ctx *context, files string, pkg *packages.Package, procFile func(li
 func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFile func(linkFile string), verbose bool) {
 	baseName := expFile + filepath.Base(cFile)
 	ext := filepath.Ext(cFile)
+	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
 
 	// default clang++ will use c++ to compile c file,will cause symbol be mangled
 	if ext == ".c" {

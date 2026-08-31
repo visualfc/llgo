@@ -33,6 +33,7 @@ func TestNewBackendProgramSharesPreparedGoState(t *testing.T) {
 	coordinator.EnableFuncInfoMetadata(true)
 	coordinator.EnableFuncInfoSites(true)
 	coordinator.SetDebugInfoOptimized(false)
+	coordinator.EnableCodeViewDebugInfo(true)
 
 	pkg := types.NewPackage("example.com/p", "p")
 	fset := token.NewFileSet()
@@ -82,7 +83,8 @@ func TestNewBackendProgramSharesPreparedGoState(t *testing.T) {
 	}
 	if !backend.disableBoundsChecks || !backend.enableGoGlobalDCE || !backend.enableDeadcodeDrop ||
 		backend.pthreadStackSize != 4096 || !backend.enableLTOPluginMarker ||
-		!backend.enableFuncInfoMetadata || !backend.enableFuncInfoSites || backend.debugInfoOptimized {
+		!backend.enableFuncInfoMetadata || !backend.enableFuncInfoSites || backend.debugInfoOptimized ||
+		!backend.emitCodeViewDebugInfo {
 		t.Fatal("backend Program did not preserve coordinator configuration")
 	}
 }
