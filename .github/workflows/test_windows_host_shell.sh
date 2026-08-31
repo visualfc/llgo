@@ -40,31 +40,6 @@ case "$LLGO_WINDOWS_ABI" in
   *) echo "unsupported Windows ABI: $LLGO_WINDOWS_ABI" >&2; exit 1 ;;
 esac
 
-prepend_runtime_dir() {
-  local native_dir=${1:-}
-  if [[ -n "$native_dir" ]]; then
-    local shell_dir
-    shell_dir=$(cygpath -u "$native_dir")
-    PATH="$shell_dir:$PATH"
-    runtime_search_dirs+=("$shell_dir")
-  fi
-}
-runtime_search_dirs=()
-case "$LLGO_WINDOWS_ABI" in
-  mingw)
-    # Cygwin does not reliably preserve MSYS2's native DLL search entries.
-    # Reapply the activated MinGW runtime profile using this shell's path
-    # syntax; target-architecture DLLs must remain ahead of the host profile.
-    [[ -z "${LLGO_MINGW_HOST_ROOT:-}" ]] || prepend_runtime_dir "$LLGO_MINGW_HOST_ROOT/bin"
-    prepend_runtime_dir "${LLGO_MINGW_TARGET_RUNTIME_BIN:-}"
-    [[ -z "${LLGO_MINGW_TARGET_VCPKG_ROOT:-}" ]] || prepend_runtime_dir "$LLGO_MINGW_TARGET_VCPKG_ROOT/bin"
-    ;;
-  msvc)
-    [[ -z "${LLGO_WINDOWS_VCPKG_ROOT:-}" ]] || prepend_runtime_dir "$LLGO_WINDOWS_VCPKG_ROOT/bin"
-    ;;
-esac
-export PATH
-
 # An amd64 profile can be rediscovered from the shell's native Clang. Other
 # architectures deliberately keep the compiler selected by target activation:
 # the shell's native Clang may identify the right ABI but does not necessarily
@@ -73,8 +48,12 @@ if [[ "$LLGO_WINDOWS_ARCH" == amd64 ]]; then
   unset CC CXX
 fi
 executable="$source_dir/host-shell.exe"
+# MSYS2 translates POSIX-looking arguments before invoking a native Windows
+# program, while Cygwin deliberately does not. Use a native path for tool
+# arguments and retain the shell path for execution and cleanup.
+native_executable=$(cygpath -w "$executable")
 set +e
-trace=$(cd "$source_dir" && "$llgo" build -x -o "$executable" . 2>&1)
+trace=$(cd "$source_dir" && "$llgo" build -x -o "$native_executable" . 2>&1)
 build_status=$?
 set -e
 if [[ $build_status -ne 0 ]]; then
@@ -89,7 +68,6 @@ if ! grep -Fq -- "$target" <<<"$trace"; then
 fi
 
 readobj=$(command -v llvm-readobj.exe || command -v llvm-readobj)
-native_executable=$(cygpath -w "$executable")
 set +e
 imports=$($readobj --coff-imports "$native_executable" 2>&1)
 readobj_status=$?
@@ -107,8 +85,6 @@ set -e
 if [[ $run_status -ne 0 ]]; then
   echo "$executable failed with exit code $run_status:" >&2
   echo "$output" >&2
-  echo "runtime search directories:" >&2
-  printf '  %s\n' "${runtime_search_dirs[@]}" >&2
   echo "COFF imports:" >&2
   echo "$imports" >&2
   if command -v cygcheck >/dev/null 2>&1; then
