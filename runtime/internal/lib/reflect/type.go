@@ -510,6 +510,16 @@ func (t *rtype) Out(i int) Type {
 func toPublicType(typ *abi.Type) Type {
 	if typ.IsClosure() {
 		typ = &toFuncType((*abi.StructType)(unsafe.Pointer(typ))).Type
+	} else if typ.Kind() == abi.Pointer {
+		elem := typ.Elem()
+		if elem == nil || !elem.IsClosure() {
+			return toType(typ)
+		}
+		// A pointer to a function uses a pointer to LLGo's closure struct in
+		// its physical signature. Canonicalize the element before exposing
+		// the reflect.Type, otherwise *NamedFunc from a function parameter is
+		// not identical to PointerTo(TypeOf(NamedFunc)).
+		return PointerTo(toPublicType(elem))
 	}
 	return toType(typ)
 }
