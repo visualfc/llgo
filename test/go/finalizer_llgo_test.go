@@ -118,8 +118,10 @@ func TestRuntimeConcurrentGCFinalizers(t *testing.T) {
 	})
 
 	const (
-		objects = 256
-		workers = 8
+		// Keep the routine regression small. The opt-in high-load variant lives
+		// in test/_stress/runtime/finalizer.
+		objects = 32
+		workers = 4
 	)
 	finalized := make(chan int, objects)
 	registered := make(chan struct{})
