@@ -180,6 +180,7 @@ func hasCOFFPDBFlag(value string) bool {
 			// "/debug:full /debug:none" does not add unused CodeView records.
 			pdb = isCOFFPDBFlag(arg)
 		}
+		// Visit every argument so the last /debug option determines the result.
 		return false
 	})
 	return pdb
