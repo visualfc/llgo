@@ -4,6 +4,13 @@ description: "Install dependencies required for embedded QEMU tests"
 runs:
   using: "composite"
   steps:
+    - name: Refresh Homebrew metadata on Apple Silicon
+      if: runner.os == 'macOS' && runner.arch == 'ARM64'
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: 1
+      run: brew update
+
     - name: Install macOS embedded dependencies
       if: runner.os == 'macOS'
       shell: bash
@@ -11,10 +18,8 @@ runs:
         HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
-        # Refresh metadata explicitly, then preserve a usable runner-provided
-        # SDL installation instead of upgrading it as an incidental side
-        # effect of dependency setup.
-        brew update
+        # Preserve runner-provided packages on Intel, where Homebrew no longer
+        # guarantees bottles. Apple Silicon refreshes metadata in the step above.
         brew list --versions sdl2 >/dev/null || brew install sdl2
 
     - name: Install Ubuntu embedded dependencies

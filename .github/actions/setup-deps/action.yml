@@ -665,6 +665,13 @@ runs:
         llvm-version: ${{ inputs.llvm-version }}
         windows-arch: ${{ inputs.windows-arch }}
 
+    - name: Refresh Homebrew metadata on Apple Silicon
+      if: runner.os == 'macOS' && runner.arch == 'ARM64'
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: 1
+      run: brew update
+
     - name: Install macOS dependencies
       if: runner.os == 'macOS'
       shell: bash
@@ -672,12 +679,9 @@ runs:
         HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
-        # Refresh formula and tap metadata once, but keep usable formulae from
-        # the runner image. A plain `brew install` upgrades outdated formulae;
-        # that can fail when a newly published version temporarily has no
-        # bottle for Intel macOS.
-        brew update
-
+        # Intel macOS is a Homebrew Tier 3 configuration and newly published
+        # formulae may have no Intel bottle. Keep its runner-image metadata and
+        # installed formulae; Apple Silicon refreshes metadata in the step above.
         brew_install_missing() {
           local formula
           local missing=()
