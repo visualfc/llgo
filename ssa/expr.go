@@ -1347,6 +1347,11 @@ func castPtr(b llvm.Builder, x llvm.Value, t llvm.Type) llvm.Value {
 	return llvm.CreateIntToPtr(b, x, t)
 }
 
+// BitCast reinterprets x using t without changing its bits.
+func (b Builder) BitCast(t Type, x Expr) Expr {
+	return Expr{llvm.CreateBitCast(b.impl, x.impl, t.ll), t}
+}
+
 // PtrCast converts a pointer/integer expression to a pointer type.
 func (b Builder) PtrCast(t Type, x Expr) Expr {
 	return Expr{castPtr(b.impl, x.impl, t.ll), t}

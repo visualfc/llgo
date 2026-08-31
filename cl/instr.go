@@ -599,6 +599,13 @@ func (p *context) boolToUint8(b llssa.Builder, args []llssa.Expr) llssa.Expr {
 	panic("boolToUint8(b bool) uint8: invalid arguments")
 }
 
+func (p *context) bitCastIntrinsic(b llssa.Builder, args []llssa.Expr, result types.Type, name string) llssa.Expr {
+	if len(args) != 1 {
+		panic(name + ": invalid arguments")
+	}
+	return b.BitCast(p.type_(result, llssa.InGo), args[0])
+}
+
 // -----------------------------------------------------------------------------
 
 var llgoInstrs = map[string]int{
@@ -657,6 +664,11 @@ var llgoInstrs = map[string]int{
 
 	"asm":       llgoAsm,
 	"stackSave": llgoStackSave,
+
+	"float32FromBits": llgoFloat32FromBits,
+	"float32Bits":     llgoFloat32Bits,
+	"float64FromBits": llgoFloat64FromBits,
+	"float64Bits":     llgoFloat64Bits,
 }
 
 // funcOf returns a function by name and set ftype = goFunc, cFunc, etc.
@@ -2595,6 +2607,18 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 				panic("closureEnv(): called outside an env-bearing function")
 			}
 			ret = p.fn.Env()
+		case llgoFloat32FromBits:
+			args := p.compileValues(b, args, kind)
+			ret = p.bitCastIntrinsic(b, args, types.Typ[types.Float32], "math.Float32frombits")
+		case llgoFloat32Bits:
+			args := p.compileValues(b, args, kind)
+			ret = p.bitCastIntrinsic(b, args, types.Typ[types.Uint32], "math.Float32bits")
+		case llgoFloat64FromBits:
+			args := p.compileValues(b, args, kind)
+			ret = p.bitCastIntrinsic(b, args, types.Typ[types.Float64], "math.Float64frombits")
+		case llgoFloat64Bits:
+			args := p.compileValues(b, args, kind)
+			ret = p.bitCastIntrinsic(b, args, types.Typ[types.Uint64], "math.Float64bits")
 		case llgoUnreachable: // func unreachable()
 			b.Unreachable()
 		case llgoAtomicLoad:

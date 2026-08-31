@@ -97,6 +97,42 @@ func use(env *JmpBuf) int32 {
 	}
 }
 
+func Test386MathBitConversionsAvoidX87Calls(t *testing.T) {
+	const src = `package mathbits
+
+import "math"
+
+func round32(bits uint32) uint32 {
+	return math.Float32bits(math.Float32frombits(bits))
+}
+
+func round64(bits uint64) uint64 {
+	return math.Float64bits(math.Float64frombits(bits))
+}
+`
+	ir386 := compileWithRewritesTarget(t, src, nil, &llssa.Target{GOOS: "windows", GOARCH: "386"})
+	for _, want := range []string{
+		`bitcast i32 %0 to float`,
+		`bitcast float`,
+		`bitcast i64 %0 to double`,
+		`bitcast double`,
+	} {
+		if !strings.Contains(ir386, want) {
+			t.Fatalf("386 math bit conversion is missing %q:\n%s", want, ir386)
+		}
+	}
+	if strings.Contains(ir386, `call float @math.Float32frombits`) ||
+		strings.Contains(ir386, `call double @math.Float64frombits`) {
+		t.Fatalf("386 math frombits conversion still crosses an x87 call boundary:\n%s", ir386)
+	}
+
+	iramd64 := compileWithRewritesTarget(t, src, nil, &llssa.Target{GOOS: "windows", GOARCH: "amd64"})
+	if !strings.Contains(iramd64, `call float @math.Float32frombits`) ||
+		!strings.Contains(iramd64, `call double @math.Float64frombits`) {
+		t.Fatalf("non-386 math calls unexpectedly changed:\n%s", iramd64)
+	}
+}
+
 func TestStdcallDeclarationsCallsAndCallbacks(t *testing.T) {
 	const src = `package stdcalltest
 
