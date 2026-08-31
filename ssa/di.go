@@ -716,7 +716,7 @@ func (b Builder) DIDeclare(variable *types.Var, v Expr, dv DIVar, scope DIScope,
 
 func (b Builder) DIValue(variable *types.Var, v Expr, dv DIVar, scope DIScope, pos token.Position, blk BasicBlock) {
 	ty := v.Type.RawType().Underlying()
-	if !needConstructAddr(ty) {
+	if !b.needDebugAddr(ty, v.Type) {
 		expr := b.di().createExpression(nil)
 		b.di().dbgValue(v, dv, scope, pos, expr, blk)
 	} else {
@@ -724,6 +724,20 @@ func (b Builder) DIValue(variable *types.Var, v Expr, dv DIVar, scope DIScope, p
 		expr := b.di().createExpression([]uint64{opDeref})
 		b.di().dbgValue(dbgPtr, dv, scope, pos, expr, blk)
 	}
+}
+
+func (b Builder) needDebugAddr(t types.Type, typ Type) bool {
+	if needConstructAddr(t) {
+		return true
+	}
+	// On 32-bit Windows, LLVM can lower a wide integer constant to a single
+	// address-sized DWARF stack value. That loses its upper half (notably for
+	// unsigned values), so debuggers report the variable as unavailable. Keep
+	// the complete value in addressable storage and describe it by dereference.
+	basic, ok := t.(*types.Basic)
+	return ok && basic.Info()&types.IsInteger != 0 &&
+		b.Prog.Target().effectiveGOOS() == "windows" &&
+		b.Prog.PointerSize() == 4 && b.Prog.SizeOf(typ) > uint64(b.Prog.PointerSize())
 }
 
 const (
