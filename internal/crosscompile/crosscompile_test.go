@@ -722,16 +722,18 @@ func TestUsesNativePlatformToolchain(t *testing.T) {
 	for _, test := range []struct {
 		name                                   string
 		hostOS, hostArch, targetOS, targetArch string
-		resolveCrossArch, want                 bool
+		resolveWindows, want                   bool
 	}{
 		{name: "same platform", hostOS: "linux", hostArch: "amd64", targetOS: "linux", targetArch: "amd64", want: true},
-		{name: "Windows linked cross architecture", hostOS: "windows", hostArch: "amd64", targetOS: "windows", targetArch: "arm64", resolveCrossArch: true, want: true},
+		{name: "Windows linked cross architecture", hostOS: "windows", hostArch: "amd64", targetOS: "windows", targetArch: "arm64", resolveWindows: true, want: true},
 		{name: "Windows IR-only cross architecture", hostOS: "windows", hostArch: "amd64", targetOS: "windows", targetArch: "arm64"},
+		{name: "Windows linked cross host", hostOS: "darwin", hostArch: "arm64", targetOS: "windows", targetArch: "386", resolveWindows: true, want: true},
+		{name: "Windows IR-only cross host", hostOS: "linux", hostArch: "amd64", targetOS: "windows", targetArch: "amd64"},
 		{name: "non-Windows cross architecture", hostOS: "darwin", hostArch: "arm64", targetOS: "darwin", targetArch: "amd64"},
 		{name: "cross OS", hostOS: "windows", hostArch: "amd64", targetOS: "linux", targetArch: "amd64"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := usesNativePlatformToolchain(test.hostOS, test.hostArch, test.targetOS, test.targetArch, test.resolveCrossArch); got != test.want {
+			if got := usesNativePlatformToolchain(test.hostOS, test.hostArch, test.targetOS, test.targetArch, test.resolveWindows); got != test.want {
 				t.Fatalf("usesNativePlatformToolchain() = %v, want %v", got, test.want)
 			}
 		})

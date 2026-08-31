@@ -46,15 +46,7 @@ jobs:
           - os: ubuntu-latest
             windows_arch: "386"
           - os: windows-2022
-            windows_abi: mingw
             windows_arch: arm64
-          - os: windows-2022
-            windows_abi: mingw
-            windows_arch: "386"
-          - os: windows-2022
-            windows_arch: arm64
-          - os: windows-11-arm
-            windows_abi: mingw
           - os: windows-11-arm
             windows_arch: amd64
           - os: windows-11-arm
@@ -73,7 +65,7 @@ jobs:
       - name: Set up Go for building LLGo and the runner
         uses: ./.github/actions/setup-go
         with:
-          architecture: ${{ startsWith(matrix.os, 'windows') && 'x64' || '' }}
+          architecture: ${{ matrix.os == 'windows-11-arm' && matrix.windows_abi == 'mingw' && 'arm64' || startsWith(matrix.os, 'windows') && 'x64' || '' }}
 
       - name: Build LLGo and the GOROOT runner
         shell: bash
@@ -269,14 +261,18 @@ jobs:
           {
             echo '## GOROOT run summary'
             echo
-            echo "Received $report_count/16 shard reports."
+            echo "Received $report_count/32 shard reports."
             echo
             echo '| Platform / toolchain | Shards | Selected | Observed | Passed | Failed | Skipped |'
             echo '|---|---:|---:|---:|---:|---:|---:|'
             write_row "Darwin · Go $primary_version" darwin/arm64 "$primary_version" 4
             write_row "Linux · Go $primary_version" linux/amd64 "$primary_version" 4
             write_row "Windows MSVC · Go $primary_version" windows-msvc/amd64 "$primary_version" 4
+            write_row "Windows MSVC ARM64 · Go $primary_version" windows-msvc/arm64 "$primary_version" 4
+            write_row "Windows MSVC 386 · Go $primary_version" windows-msvc/386 "$primary_version" 4
             write_row "Windows MinGW · Go $primary_version" windows-mingw/amd64 "$primary_version" 4
+            write_row "Windows MinGW ARM64 · Go $primary_version" windows-mingw/arm64 "$primary_version" 4
+            write_row "Windows MinGW 386 · Go $primary_version" windows-mingw/386 "$primary_version" 4
             echo
             echo '_Passed means the runner classification succeeded; expected xfail/not-applicable failures and classified flakes are counted as Passed._'
             echo
@@ -291,8 +287,8 @@ jobs:
             fi
           } >>"$GITHUB_STEP_SUMMARY"
 
-          if [[ "$report_count" -ne 16 ]]; then
-            echo "error: expected 16 shard reports, got $report_count" >&2
+          if [[ "$report_count" -ne 32 ]]; then
+            echo "error: expected 32 shard reports, got $report_count" >&2
             exit 1
           fi
           if [[ "$GOROOT_RESULT" != success ]]; then

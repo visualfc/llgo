@@ -70,17 +70,26 @@ $mainSource.Replace('$Profile', $Profile).Replace('$GoArch', $GoArch) |
   Set-Content -Encoding utf8 (Join-Path $sourceDir "main.go")
 
 $llgo = (Get-Command llgo.exe).Source
-foreach ($tool in @("clang.exe", "clang++.exe", "llvm-config.exe")) {
+foreach ($tool in @("clang", "clang++", "llvm-config")) {
   $path = (Get-Command $tool).Source
   if ($Profile -eq "msvc" -and $path -match '(?i)[\\/](msys64|cygwin)[\\/]') {
     throw "$tool unexpectedly resolves through a POSIX environment: $path"
   }
-  if ($Profile -eq "mingw" -and $path -notmatch '(?i)[\\/]clang64[\\/]') {
-    throw "$tool does not belong to the independent CLANG64 profile: $path"
+  if ($Profile -eq "mingw") {
+    $profilePattern = switch ($GoArch) {
+      "386" {
+        if ($tool -eq "llvm-config") { '(?i)[\\/]clang64[\\/]' } else { '(?i)[\\/]llgo-mingw-target-tools[\\/]' }
+      }
+      "amd64" { '(?i)[\\/]clang64[\\/]' }
+      "arm64" { '(?i)[\\/]clangarm64[\\/]' }
+    }
+    if ($path -notmatch $profilePattern) {
+      throw "$tool does not belong to the windows/$GoArch MinGW profile: $path"
+    }
   }
 }
 $pkgConfig = (Get-Command pkg-config).Source
-if ($pkgConfig -notmatch '(?i)[\\/]llgo-(msvc|mingw)-tools[\\/]pkg-config\.cmd$') {
+if ($pkgConfig -notmatch '(?i)[\\/]llgo-(msvc|mingw)(-target)?-tools[\\/]pkg-config\.cmd$') {
   throw "pkg-config does not resolve to the profile-local command wrapper: $pkgConfig"
 }
 $pkgConfigShell = Join-Path (Split-Path $pkgConfig) "pkg-config"
@@ -96,11 +105,25 @@ if ($Profile -eq "msvc" -and $env:LLGO_MSYS2_LOCATION) {
 & pkg-config --modversion llvm-19 | Out-Null
 Assert-Success "Reading LLVM metadata through the profile-local pkg-config"
 
-$compilerTarget = (& clang.exe -dumpmachine).Trim()
+$compilerArgs = @()
+if ($Profile -eq "msvc") {
+  # Official LLVM is an x64 host compiler in every MSVC lane. Apply the
+  # activated target explicitly before checking cross-architecture output.
+  $compilerArgs = @("--target=$env:LLGO_WINDOWS_TARGET_TRIPLE")
+}
+$compilerTarget = (& clang @compilerArgs -dumpmachine).Trim()
 Assert-Success "Reading the Clang target"
 $targetPattern = if ($Profile -eq "msvc") { '-windows-msvc$' } else { '-(windows-gnu|mingw32)$' }
 if ($compilerTarget -notmatch $targetPattern) {
   throw "$Profile Clang reports incompatible target $compilerTarget"
+}
+$targetArch = switch ($GoArch) {
+  "386" { "i686" }
+  "amd64" { "x86_64|amd64" }
+  "arm64" { "aarch64" }
+}
+if ($compilerTarget -notmatch "^($targetArch)-") {
+  throw "$Profile Clang reports $compilerTarget for windows/$GoArch"
 }
 
 $savedCC = $env:CC
@@ -118,15 +141,15 @@ try {
   } finally {
     Pop-Location
   }
-  $targetArch = switch ($GoArch) {
+  $canonicalArch = switch ($GoArch) {
     "386" { "i686" }
     "amd64" { "x86_64" }
     "arm64" { "aarch64" }
   }
   $canonicalTarget = if ($Profile -eq "msvc") {
-    "$targetArch-pc-windows-msvc"
+    "$canonicalArch-pc-windows-msvc"
   } else {
-    "$targetArch-w64-windows-gnu"
+    "$canonicalArch-w64-windows-gnu"
   }
   if ($trace -notmatch [regex]::Escape($canonicalTarget)) {
     throw "Unset CC/CXX did not select the canonical $Profile target:`n$trace"

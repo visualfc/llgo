@@ -457,12 +457,12 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 	targetTriple := llvm.GetTargetTripleWithGOARM(goos, goarch, goarm)
 	llgoRoot := env.LLGoROOT()
 	nativePlatformToolchain := usesNativePlatformToolchain(
-		runtime.GOOS, runtime.GOARCH, goos, goarch, nativeInput.ResolveCrossArch,
+		runtime.GOOS, runtime.GOARCH, goos, goarch, nativeInput.ResolveWindows,
 	)
 
-	// Native Windows resolves its compiler and dependencies as one coherent
-	// profile below. Do not download or reject an unrelated embedded Clang
-	// installation before that profile has a chance to resolve.
+	// Linked Windows output resolves its compiler and dependencies as one
+	// coherent profile below, including when the LLGo host is macOS or Linux.
+	// Do not inspect an unrelated embedded Clang before that profile resolves.
 	var clangRoot string
 	if !(nativePlatformToolchain && goos == "windows") {
 		clangRoot, err = getESPClangRoot(forceEspClang)
@@ -692,9 +692,11 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 	return
 }
 
-func usesNativePlatformToolchain(hostGOOS, hostGOARCH, targetGOOS, targetGOARCH string, resolveCrossArch bool) bool {
-	return hostGOOS == targetGOOS &&
-		(hostGOARCH == targetGOARCH || targetGOOS == "windows" && resolveCrossArch)
+func usesNativePlatformToolchain(hostGOOS, hostGOARCH, targetGOOS, targetGOARCH string, resolveWindows bool) bool {
+	if targetGOOS == "windows" && resolveWindows {
+		return true
+	}
+	return hostGOOS == targetGOOS && hostGOARCH == targetGOARCH
 }
 
 // UseTarget loads configuration from a target name (e.g., "rp2040", "wasi")

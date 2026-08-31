@@ -7,12 +7,18 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
+	"runtime/debug"
 	"runtime/trace"
 	"testing"
 	"unsafe"
 )
 
-const nonNilFaultChildEnv = "LLGO_TEST_NON_NIL_FAULT"
+const (
+	nonNilFaultChildEnv      = "LLGO_TEST_NON_NIL_FAULT"
+	recoverableFaultChildEnv = "LLGO_TEST_RECOVERABLE_FAULT"
+	traceFaultChildEnv       = "LLGO_TEST_TRACE_FAULT"
+)
 
 type traceFaultValue struct {
 	a [16]int
@@ -23,12 +29,65 @@ func copyTraceFaultValue(x, y *traceFaultValue) {
 	*x = *y
 }
 
+func enterRecoverableFaultTest(t *testing.T) bool {
+	return enterWindowsFaultTest(
+		t, recoverableFaultChildEnv,
+		"^TestRecoverAfterFaultPreservesNamedResult$",
+	)
+}
+
+func enterWindowsFaultTest(t *testing.T, childEnv, testPattern string) bool {
+	t.Helper()
+	if os.Getenv(childEnv) == "1" {
+		return true
+	}
+
+	// Keep a possible host Go runtime defect from corrupting the parent test
+	// process. The process-level 0xc0000005 observed in CI may be an instance of
+	// golang/go#81238, where Windows exception recovery can write below a
+	// goroutine stack and corrupt the adjacent heap on some hosts.
+	// The child still has to pass the complete fault/panic/recover assertions;
+	// if and when the upstream runtime issue is resolved, revisit this isolation
+	// and the stack-headroom preparation below.
+	cmd := exec.Command(os.Args[0], "-test.run="+testPattern, "-test.v")
+	cmd.Env = append(os.Environ(), childEnv+"=1", "GOTRACEBACK=system")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Windows fault test child failed: %v\n%s", err, output)
+	}
+	return false
+}
+
+//go:noinline
+func growRecoverableFaultStack(depth int) {
+	var frame [1024]byte
+	frame[0] = byte(depth)
+	if depth != 0 {
+		growRecoverableFaultStack(depth - 1)
+	}
+	runtime.KeepAlive(&frame)
+}
+
+func ensureRecoverableFaultStackHeadroom() {
+	// Grow and then unwind the goroutine stack before raising the exception.
+	// About 64 one-KiB frames provide headroom for the host-dependent Windows
+	// exception context suspected in golang/go#81238. This preserves the real
+	// protected-page fault while avoiding the issue's near-stack-boundary setup.
+	growRecoverableFaultStack(64)
+}
+
 // Regression test matching GOROOT/test/fixedbugs/issue73748b.go.
 func TestRecoverFaultWhileTracing(t *testing.T) {
+	if !enterWindowsFaultTest(t, traceFaultChildEnv, "^TestRecoverFaultWhileTracing$") {
+		return
+	}
+
+	oldGCPercent := debug.SetGCPercent(-1)
+	defer debug.SetGCPercent(oldGCPercent)
 	if err := trace.Start(io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	defer trace.Stop()
+	ensureRecoverableFaultStackHeadroom()
 
 	var recovered bool
 	func() {

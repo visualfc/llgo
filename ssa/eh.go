@@ -19,6 +19,7 @@ package ssa
 import (
 	"go/token"
 	"go/types"
+	"strings"
 	"unsafe"
 
 	"github.com/xgo-dev/llvm"
@@ -159,6 +160,12 @@ func (b Builder) windowsSetjmp(jb Expr) Expr {
 		// LLGo owns Go defer unwinding, and RtlUnwind cannot leave a vectored
 		// exception handler that interrupted generated Go code reliably.
 		name = "_setjmpex"
+		triple := strings.ToLower(prog.target.Spec().Triple)
+		if strings.Contains(triple, "windows-gnu") || strings.Contains(triple, "mingw") {
+			// MinGW exposes the same intrinsic entry point under its GNU CRT
+			// spelling; unlike the setjmp macro this lets LLGo pass a nil frame.
+			name = "__intrinsic_setjmpex"
+		}
 		params = types.NewTuple(
 			ptrParam,
 			types.NewParam(token.NoPos, nil, "", prog.VoidPtr().raw.Type),

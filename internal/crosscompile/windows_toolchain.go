@@ -21,11 +21,11 @@ type NativeToolchainInput struct {
 	ExternalFlags  []string
 	Dir            string
 	Environ        []string
-	// ResolveCrossArch selects the host's native Windows toolchain when a
-	// Windows process produces linked output for another Windows architecture.
+	// ResolveWindows selects a Windows native-format toolchain when linked
+	// output is produced for another architecture or from a non-Windows host.
 	// Pure IR generation leaves it false so multi-target golden tests do not
-	// depend on the host compiler's architecture or ABI profile.
-	ResolveCrossArch bool
+	// depend on an installed compiler's architecture or ABI profile.
+	ResolveWindows bool
 }
 
 type toolIdentity struct {
@@ -186,7 +186,7 @@ func requireClangGNUDriver(setting string, command []string, identity toolIdenti
 	if strings.Contains(strings.ToLower(identity.version), "clang") {
 		return nil
 	}
-	return fmt.Errorf("%s %q uses an unsupported driver (%s); native Windows currently requires Clang's GNU-compatible driver", setting, command[0], identity.version)
+	return fmt.Errorf("%s %q uses an unsupported driver (%s); Windows builds currently require Clang's GNU-compatible driver", setting, command[0], identity.version)
 }
 
 func compatibleWindowsToolchains(a, b NativeToolchain) error {

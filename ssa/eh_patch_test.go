@@ -91,7 +91,7 @@ func TestWindowsSetjmpABI(t *testing.T) {
 	}{
 		{name: "386", arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
 		{name: "amd64-msvc", arch: "amd64", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
-		{name: "amd64-gnu", arch: "amd64", llvmTarget: "x86_64-w64-windows-gnu", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
+		{name: "amd64-gnu", arch: "amd64", llvmTarget: "x86_64-w64-windows-gnu", setjmp: "@__intrinsic_setjmpex", longjmp: "@llgo_longjmp"},
 		{name: "arm64", arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
 	}
 	for _, test := range tests {
@@ -142,7 +142,7 @@ func TestWindowsDirectSetjmpABI(t *testing.T) {
 	}{
 		{name: "386", arch: "386", setjmp: "@_setjmp3", longjmp: "@longjmp"},
 		{name: "amd64-msvc", arch: "amd64", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
-		{name: "amd64-gnu", arch: "amd64", llvmTarget: "x86_64-w64-windows-gnu", setjmp: "@_setjmpex", longjmp: "@llgo_longjmp"},
+		{name: "amd64-gnu", arch: "amd64", llvmTarget: "x86_64-w64-windows-gnu", setjmp: "@__intrinsic_setjmpex", longjmp: "@llgo_longjmp"},
 		{name: "arm64", arch: "arm64", setjmp: "@llgo_setjmp", longjmp: "@llgo_longjmp"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

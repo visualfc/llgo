@@ -1,0 +1,103 @@
+name: "Test cross-host Windows build"
+description: "Install one Windows GNU target and build representative artifacts without executing them"
+inputs:
+  llgo:
+    description: "Unix-hosted LLGo compiler path"
+    required: true
+  windows-arch:
+    description: "Windows target GOARCH"
+    required: true
+  llvm-version:
+    description: "LLGo host LLVM major version"
+    required: false
+    default: "19"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Windows GNU target
+      uses: ./.github/actions/setup-llvm-mingw
+      with:
+        llvm-version: ${{ inputs.llvm-version }}
+        windows-arch: ${{ inputs.windows-arch }}
+
+    - name: Activate Windows GNU target
+      uses: ./.github/actions/activate-windows-target
+      with:
+        windows-abi: mingw
+        windows-arch: ${{ inputs.windows-arch }}
+
+    - name: Build and inspect Windows GNU artifacts
+      shell: bash
+      env:
+        LLGO_CROSS_COMPILER: ${{ inputs.llgo }}
+        LLGO_CROSS_GOARCH: ${{ inputs.windows-arch }}
+      run: |
+        set -euo pipefail
+        if [[ "$GOOS/$GOARCH" != "windows/$LLGO_CROSS_GOARCH" ]]; then
+          echo "active target is $GOOS/$GOARCH, want windows/$LLGO_CROSS_GOARCH" >&2
+          exit 1
+        fi
+        if [[ ! -x "$LLGO_CROSS_COMPILER" ]]; then
+          echo "LLGo host compiler is not executable: $LLGO_CROSS_COMPILER" >&2
+          exit 1
+        fi
+        # Use the target-selecting wrappers exported by activation so callers
+        # do not need to assemble compiler flags and the host compiler cannot
+        # be selected accidentally through PATH.
+        export PATH="$LLGO_MINGW_TARGET_TOOLS:$PATH"
+        export CC="$LLGO_MINGW_TARGET_TOOLS/clang"
+        export CXX="$LLGO_MINGW_TARGET_TOOLS/clang++"
+        export PKG_CONFIG="$LLGO_MINGW_TARGET_TOOLS/pkg-config"
+        unset PKG_CONFIG_PATH
+
+        output_dir="$RUNNER_TEMP/llgo-windows-cross-$LLGO_CROSS_GOARCH"
+        mkdir -p "$output_dir"
+        artifacts=()
+        for package in \
+          windowsempty \
+          windowsruntime \
+          windowsffi \
+          windowsstdlib \
+          windowsnetwork; do
+          output="$output_dir/$package.exe"
+          (
+            cd runtime
+            "$LLGO_CROSS_COMPILER" build -p=2 -o "$output" "./_test/$package"
+          )
+          artifacts+=("$output")
+        done
+
+        # Compile, but do not execute, both the general language suite and the
+        # Windows-specific OS/runtime suite. Native R11 jobs execute the same
+        # surfaces; this lane verifies that no host SDK or ABI leaks into them.
+        for package in go windows; do
+          output="$output_dir/test-$package.exe"
+          "$LLGO_CROSS_COMPILER" test -c -o "$output" "./test/$package"
+          artifacts+=("$output")
+        done
+
+        case "$LLGO_CROSS_GOARCH" in
+          386) machine='IMAGE_FILE_MACHINE_I386' ;;
+          amd64) machine='IMAGE_FILE_MACHINE_AMD64' ;;
+          arm64) machine='IMAGE_FILE_MACHINE_ARM64' ;;
+          *)
+            echo "unsupported Windows target architecture: $LLGO_CROSS_GOARCH" >&2
+            exit 1
+            ;;
+        esac
+        for artifact in "${artifacts[@]}"; do
+          file "$artifact"
+          headers="$(llvm-readobj --file-headers "$artifact")"
+          if ! grep -Fq "$machine" <<<"$headers"; then
+            echo "$artifact is not a windows/$LLGO_CROSS_GOARCH PE/COFF image:" >&2
+            echo "$headers" >&2
+            exit 1
+          fi
+          imports="$(llvm-readobj --coff-imports "$artifact")"
+          if grep -Eqi '(msys-2\.0|cygwin1)\.dll' <<<"$imports"; then
+            echo "$artifact depends on an unsupported POSIX-emulation runtime:" >&2
+            echo "$imports" >&2
+            exit 1
+          fi
+        done

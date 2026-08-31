@@ -43,9 +43,19 @@ jobs:
             windows_abi: msvc
             windows_arch: arm64
             host_go_arch: x64
+          - os: windows-11-arm
+            llvm: 19
+            windows_abi: mingw
+            windows_arch: arm64
+            host_go_arch: arm64
           - os: windows-2022
             llvm: 19
             windows_abi: msvc
+            windows_arch: "386"
+            host_go_arch: x64
+          - os: windows-2022
+            llvm: 19
+            windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
     runs-on: ${{matrix.os}}
@@ -176,6 +186,22 @@ jobs:
         shell: bash
         run: |
           echo "Testing ESP32-C3 startup regressions..."
+          if [[ "$RUNNER_OS" == "Windows" && "${{ matrix.windows_abi }}" == "mingw" ]]; then
+            # Native target activation can put an architecture-limited
+            # llvm-mingw bundle first on PATH. Inspect the RISC-V firmware
+            # with the architecture-native host LLVM tools instead; this does
+            # not change the compiler/linker profile selected by LLGo.
+            host_llvm_bin="$(cygpath -u "$LLGO_MINGW_HOST_ROOT")/bin"
+            export LLVM_OBJDUMP="$host_llvm_bin/llvm-objdump.exe"
+            export LLVM_NM="$host_llvm_bin/llvm-nm.exe"
+            export LLVM_READELF="$host_llvm_bin/llvm-readelf.exe"
+            for llvm_tool in "$LLVM_OBJDUMP" "$LLVM_NM" "$LLVM_READELF"; do
+              if [[ ! -x "$llvm_tool" ]]; then
+                echo "required host LLVM inspection tool not found: $llvm_tool" >&2
+                exit 1
+              fi
+            done
+          fi
           # esptool inspects target firmware but runs on the CI host. For a
           # cross-architecture Windows lane, use the x64 host Python so pip
           # can install its native dependencies without cross-building them.
@@ -210,7 +236,9 @@ jobs:
         run: sudo apt-get install -y lldb-${{matrix.llvm}}
 
       - name: Install MinGW LLDB for integration tests
-        if: ${{ matrix.os == 'windows-2022' && matrix.windows_abi == 'mingw' }}
+        # R12 qualifies debugger behavior for the new GNU architectures. Keep
+        # R11 focused on their language/runtime and C interoperability gates.
+        if: ${{ matrix.os == 'windows-2022' && matrix.windows_abi == 'mingw' && matrix.windows_arch == 'amd64' }}
         shell: msys2 {0}
         env:
           MSYS2_LLDB_PACKAGE_VERSION: "19.1.7-1"
@@ -265,7 +293,7 @@ jobs:
           }
 
       - name: LLDB integration tests (MinGW)
-        if: ${{ matrix.windows_abi == 'mingw' }}
+        if: ${{ matrix.windows_abi == 'mingw' && matrix.windows_arch == 'amd64' }}
         shell: msys2 {0}
         run: |
           # Git Bash prepends its own MinGW runtime DLLs to PATH. Use the
@@ -347,6 +375,15 @@ jobs:
             windows_abi: msvc
             windows_arch: arm64
             host_go_arch: x64
+          - os: windows-11-arm
+            llvm: 19
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
+            windows_abi: mingw
+            windows_arch: arm64
+            host_go_arch: arm64
           - os: windows-2022
             llvm: 19
             go_version: "1.27"
@@ -354,6 +391,15 @@ jobs:
             shard_index: "0"
             shard_total: "1"
             windows_abi: msvc
+            windows_arch: "386"
+            host_go_arch: x64
+          - os: windows-2022
+            llvm: 19
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
+            windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
     runs-on: ${{matrix.os}}
@@ -485,6 +531,43 @@ jobs:
           file hello.wasm
 
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
+
+  windows-gnu-cross:
+    name: windows GNU cross (${{ matrix.os }}, ${{ matrix.windows_arch }})
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+        windows_arch: [amd64, arm64, "386"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install host dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Go for building llgo
+        uses: ./.github/actions/setup-go
+        with:
+          go-version: "1.27.0"
+
+      - name: Build Unix host compiler
+        shell: bash
+        run: |
+          go build -p=2 -o "$RUNNER_TEMP/llgo-host" ./cmd/llgo
+          # This development binary lives outside LLGO_ROOT/bin. Point it at
+          # the checkout explicitly so standard-library source patches are
+          # available to the following cross-host builds.
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Test cross-host windows/${{ matrix.windows_arch }}
+        uses: ./.github/actions/test-windows-cross
+        with:
+          llgo: ${{ runner.temp }}/llgo-host
+          windows-arch: ${{ matrix.windows_arch }}
 
   wasm-runtime:
     name: wasm-runtime (Go 1.24 and 1.27)

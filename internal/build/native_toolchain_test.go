@@ -14,7 +14,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/crosscompile"
 )
 
-func TestUsesNativeWindowsToolchain(t *testing.T) {
+func TestUsesWindowsToolchainProfile(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		hostOS string
@@ -23,13 +23,16 @@ func TestUsesNativeWindowsToolchain(t *testing.T) {
 	}{
 		{name: "native Windows", hostOS: "windows", conf: Config{Goos: "windows", Goarch: "amd64"}, want: true},
 		{name: "cross-architecture Windows", hostOS: "windows", conf: Config{Goos: "windows", Goarch: "arm64"}, want: true},
+		{name: "cross-host Windows build", hostOS: "darwin", conf: Config{Goos: "windows", Goarch: "arm64", Mode: ModeBuild}, want: true},
+		{name: "cross-host Windows test", hostOS: "linux", conf: Config{Goos: "windows", Goarch: "386", Mode: ModeTest}, want: true},
+		{name: "cross-host Windows IR", hostOS: "darwin", conf: Config{Goos: "windows", Goarch: "arm64", Mode: ModeGen}},
 		{name: "named target", hostOS: "windows", conf: Config{Goos: "windows", Goarch: "amd64", Target: "esp32c3"}},
 		{name: "cross OS", hostOS: "windows", conf: Config{Goos: "linux", Goarch: "amd64"}},
 		{name: "non-Windows host", hostOS: "darwin", conf: Config{Goos: "darwin", Goarch: "arm64"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := usesNativeWindowsToolchain(test.hostOS, &test.conf); got != test.want {
-				t.Fatalf("usesNativeWindowsToolchain() = %v, want %v", got, test.want)
+			if got := usesWindowsToolchainProfile(test.hostOS, &test.conf); got != test.want {
+				t.Fatalf("usesWindowsToolchainProfile() = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -48,12 +51,15 @@ func TestParseNativeToolchainInput(t *testing.T) {
 		ExternalLinker:      `clang "--target=x86_64-pc-windows-msvc"`,
 		ExternalLinkerFlags: `'/debug:dwarf' /incremental:no`,
 	}
-	got, err := parseNativeToolchainInput(commands, options)
+	got, err := parseNativeToolchainInput(commands, options, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Dir != commands.dir || !reflect.DeepEqual(got.Environ, commands.environ) {
 		t.Fatalf("invocation state = dir %q env %q", got.Dir, got.Environ)
+	}
+	if !got.ResolveWindows {
+		t.Fatal("ResolveWindows = false, want true")
 	}
 	for name, values := range map[string]struct {
 		got  []string
@@ -88,7 +94,7 @@ func TestParseNativeToolchainInputErrors(t *testing.T) {
 		{name: "unterminated extldflags", options: LinkOptions{ExternalLinkerFlags: `'/debug`}, wantErr: "could not parse -extldflags"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := parseNativeToolchainInput(commandEnv{environ: test.environ}, test.options)
+			_, err := parseNativeToolchainInput(commandEnv{environ: test.environ}, test.options, false)
 			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 				t.Fatalf("error = %v, want substring %q", err, test.wantErr)
 			}
@@ -96,11 +102,24 @@ func TestParseNativeToolchainInputErrors(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsMalformedNativeToolchainInput(t *testing.T) {
+	t.Setenv("CC", "'clang")
+	conf := NewDefaultConf(ModeBuild)
+	conf.Goos = "windows"
+	conf.Goarch = "amd64"
+	conf.GOAMD64 = "v1"
+
+	_, err := Build(Invocation{Config: conf, Dir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "could not parse CC") {
+		t.Fatalf("Build() error = %v, want malformed CC error", err)
+	}
+}
+
 func TestParseNativeToolchainInputAcceptsEmptyLinkerFlags(t *testing.T) {
 	got, err := parseNativeToolchainInput(commandEnv{}, LinkOptions{
 		ExternalLinker:      "  ",
 		ExternalLinkerFlags: "\t",
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

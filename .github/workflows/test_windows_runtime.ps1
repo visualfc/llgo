@@ -24,29 +24,27 @@ New-Item -ItemType Directory $out | Out-Null
 $env:LLGO_ROOT = $root
 $env:LLGO_BUILD_CACHE = "off"
 
-# Each lane executes its selected architecture below. Also compile the raw
-# SyscallN bridge for every Go-supported Windows architecture so a change in
-# one lane cannot silently break assembly selected by another lane.
+# Compile the raw SyscallN bridge with this lane's target compiler. The CI
+# matrix gives every Go-supported Windows architecture its own job, so keeping
+# this probe target-local avoids mixing architecture-specific toolchains.
 $syscallAsm = Join-Path $root "runtime\internal\lib\runtime\_wrap\syscall_windows.S"
 $targetSuffix = if ($Profile -eq "msvc") { "pc-windows-msvc" } else { "w64-windows-gnu" }
-foreach ($syscallTarget in @(
-  @{ Triple = "i686-$targetSuffix"; Symbol = "_llgo_windows_syscall" },
-  @{ Triple = "x86_64-$targetSuffix"; Symbol = "llgo_windows_syscall" },
-  @{ Triple = "aarch64-$targetSuffix"; Symbol = "llgo_windows_syscall" }
-)) {
-  $syscallObj = Join-Path $out ("syscall-{0}.obj" -f $syscallTarget.Triple)
-  & $clangExe "--target=$($syscallTarget.Triple)" -c $syscallAsm -o $syscallObj
-  if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-  }
-  $symbols = & $llvmNmExe --defined-only $syscallObj | Out-String
-  if (-not $symbols.Contains($syscallTarget.Symbol)) {
-    throw "$($syscallTarget.Triple) bridge is missing $($syscallTarget.Symbol)"
-  }
-  if ($syscallTarget.Triple.StartsWith("i686-") -and
-      $symbols -notmatch '(?m)^00000001 [aA] @feat\.00\r?$') {
-    throw "$($syscallTarget.Triple) bridge is not marked SafeSEH-compatible"
-  }
+$syscallTarget = switch ($GoArch) {
+  "386" { @{ Triple = "i686-$targetSuffix"; Symbol = "_llgo_windows_syscall" } }
+  "amd64" { @{ Triple = "x86_64-$targetSuffix"; Symbol = "llgo_windows_syscall" } }
+  "arm64" { @{ Triple = "aarch64-$targetSuffix"; Symbol = "llgo_windows_syscall" } }
+}
+$syscallObj = Join-Path $out ("syscall-{0}.obj" -f $syscallTarget.Triple)
+& $clangExe "--target=$($syscallTarget.Triple)" -c $syscallAsm -o $syscallObj
+if ($LASTEXITCODE -ne 0) {
+  exit $LASTEXITCODE
+}
+$symbols = & $llvmNmExe --defined-only $syscallObj | Out-String
+if (-not $symbols.Contains($syscallTarget.Symbol)) {
+  throw "$($syscallTarget.Triple) bridge is missing $($syscallTarget.Symbol)"
+}
+if ($GoArch -eq "386" -and $symbols -notmatch '(?m)^00000001 [aA] @feat\.00\r?$') {
+  throw "$($syscallTarget.Triple) bridge is not marked SafeSEH-compatible"
 }
 
 $runtime = Join-Path $out "windows-runtime-smoke.exe"
