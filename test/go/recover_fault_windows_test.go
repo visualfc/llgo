@@ -35,11 +35,11 @@ func enterRecoverableFaultTest(t *testing.T) bool {
 
 	// Keep a possible host Go runtime defect from corrupting the parent test
 	// process. The process-level 0xc0000005 observed in CI may be an instance of
-	// golang/go#81238: Windows exception recovery can use more space below SP
-	// than Go 1.27 reserves on hosts with large XSTATE contexts.
+	// golang/go#81238, where Windows exception recovery can write below a
+	// goroutine stack and corrupt the adjacent heap on some hosts.
 	// The child still has to pass the complete fault/panic/recover assertions;
-	// once the minimum supported Go release contains the upstream fix, revisit
-	// this isolation and the stack-headroom preparation below.
+	// if and when the upstream runtime issue is resolved, revisit this isolation
+	// and the stack-headroom preparation below.
 	cmd := exec.Command(os.Args[0], "-test.run=^TestRecoverAfterFaultPreservesNamedResult$", "-test.v")
 	cmd.Env = append(os.Environ(), recoverableFaultChildEnv+"=1", "GOTRACEBACK=system")
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -60,9 +60,9 @@ func growRecoverableFaultStack(depth int) {
 
 func ensureRecoverableFaultStackHeadroom() {
 	// Grow and then unwind the goroutine stack before raising the exception.
-	// The 64 one-KiB frames exceed the reported 8 KiB XSTATE-size difference.
-	// This preserves the real protected-page fault while avoiding the specific
-	// near-stack-boundary condition described by golang/go#81238.
+	// About 64 one-KiB frames provide headroom for the host-dependent Windows
+	// exception context suspected in golang/go#81238. This preserves the real
+	// protected-page fault while avoiding the issue's near-stack-boundary setup.
 	growRecoverableFaultStack(64)
 }
 
