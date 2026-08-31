@@ -1,42 +1,32 @@
 package main
 
-import (
-	"time"
+import "time"
 
-	"github.com/goplus/lib/c"
-)
-
-// Small demo showing timer fire, stop, and reset behavior.
+// Exercise clock, Duration, timer stop/reset and AfterFunc in one case. Long
+// deadlines are stopped; only channel completion is used as synchronization.
 func main() {
-	c.Printf(c.Str("start: %s\n"), time.Now().Format(time.StampMilli))
-
-	// Timer that fires after 300ms.
-	t := time.NewTimer(300 * time.Millisecond)
-
-	go func() {
-		<-t.C
-		c.Printf(c.Str("timer fired: %s\n"), time.Now().Format(time.StampMilli))
-	}()
-
-	// Stop and reset to fire later.
-	if t.Stop() {
-		c.Printf(c.Str("timer stopped before first fire\n"))
+	start := time.Now()
+	if start.String() == "" {
+		panic("time string")
 	}
-	t.Reset(600 * time.Millisecond)
+	future := start.Add(time.Hour)
+	if time.Until(future) <= 0 || time.Since(start) < 0 {
+		panic("clock arithmetic")
+	}
 
-	// Schedule a function via AfterFunc.
+	t := time.NewTimer(time.Hour)
+	if !t.Stop() {
+		panic("new timer already fired")
+	}
+	t.Reset(time.Millisecond)
+	<-t.C
+	<-time.After(0)
+
 	done := make(chan struct{})
-	time.AfterFunc(150*time.Millisecond, func() {
-		c.Printf(c.Str("afterfunc: %s\n"), time.Now().Format(time.StampMilli))
-		close(done)
-	})
-
+	after := time.AfterFunc(time.Millisecond, func() { close(done) })
 	<-done
-	// The timer may have fired in the goroutine; wait for it once.
-	time.Sleep(50 * time.Millisecond)
-	select {
-	case <-t.C:
-	default:
+	if after.Stop() {
+		panic("AfterFunc reported stopped after completion")
 	}
-	c.Printf(c.Str("done: %s\n"), time.Now().Format(time.StampMilli))
+	println("timer ok")
 }

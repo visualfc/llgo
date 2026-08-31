@@ -7,6 +7,7 @@ import (
 )
 
 func main() {
+	verifySyscallAPI()
 	msg := []byte("Hello from Syscall!\n")
 	writeFile := syscall.NewLazyDLL("kernel32.dll").NewProc("WriteFile")
 	var written uint32

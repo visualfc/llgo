@@ -7,286 +7,123 @@ if [ "${1:-}" = "--embedded" ]; then
   shift
 fi
 
-# llgo run subdirectories under _demo that contain *.go files
-jobs="${LLGO_DEMO_JOBS:-1}"
+# Keep the scheduler deliberately small: directory consolidation owns coverage,
+# while this script only selects the few specialized profiles and runs them.
+jobs="${LLGO_DEMO_JOBS:-4}"
+if [ "$mode" = "embedded" ] && [ -z "${LLGO_DEMO_JOBS:-}" ]; then
+  # The first case for each target warms an expensive shared build cache. Run
+  # embedded cases sequentially by default so that cold work happens once.
+  jobs=1
+fi
+case "$jobs" in
+  ""|*[!0-9]*|0)
+    echo "LLGO_DEMO_JOBS must be a positive integer" >&2
+    exit 2
+    ;;
+esac
+
 llgo_run_flags=()
 if [ -n "${LLGO_DEMO_LLGORUN_FLAGS:-}" ]; then
   read -r -a llgo_run_flags <<< "${LLGO_DEMO_LLGORUN_FLAGS}"
 fi
-if [ "${jobs}" -gt 1 ]; then
-  if [ "${BASH_VERSINFO[0]}" -lt 5 ] || { [ "${BASH_VERSINFO[0]}" -eq 5 ] && [ "${BASH_VERSINFO[1]}" -lt 1 ]; }; then
-    echo "warning: LLGO_DEMO_JOBS=${jobs} requested but bash ${BASH_VERSION} lacks 'wait -n -p'; running sequentially" >&2
-    jobs=1
-  fi
-fi
+
 tmp_root="$(mktemp -d)"
 trap 'rm -rf "$tmp_root"' EXIT
-
-cases=()
-if [ "$mode" = "embedded" ]; then
-  while IFS= read -r dir; do
-    cases+=("$dir")
-  done < <(find ./_demo/go ./_demo/c -name '*.go' -print | xargs -n1 dirname | sort -u)
-else
-  search_dirs=(./_demo/go/* ./_demo/py/* ./_demo/c/*)
-  for d in "${search_dirs[@]}"; do
-    if [ -d "$d" ] && [ -n "$(ls "$d"/*.go 2>/dev/null)" ]; then
-      cases+=("$d")
-    fi
-  done
-fi
-
-embedded_targets=()
-emulator=0
-if [ "$mode" = "embedded" ]; then
-  emulator=1
-  embedded_targets=(esp32 esp32c3-basic)
-fi
-
-ignore_esp32=(
-  "./_demo/c/asmcall" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/c/asmfullcall" # panic: cannot build SSA for packages
-  "./_demo/c/cabisret" # timeout: emulator did not auto-exit
-  "./_demo/c/cargs" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/c/cexec" # link error: ld.lld undefined symbol execlp
-  "./_demo/c/cgofull" # fast fail: build constraints exclude all Go files
-  "./_demo/c/cgofull/pymod1" # fast fail: build constraints exclude all Go files
-  "./_demo/c/cgofull/pymod2" # fast fail: build constraints exclude all Go files
-  "./_demo/c/concat" # link error: ld.lld undefined symbol stderr
-  "./_demo/c/cppintf" # C++ compile error: libc++ reports "No thread API"
-  "./_demo/c/cppintf/foo" # C++ compile error: libc++ reports "No thread API"
-  "./_demo/c/cppmintf" # C++ compile error: libc++ reports "No thread API"
-  "./_demo/c/cppmintf/foo" # C++ compile error: libc++ reports "No thread API"
-  "./_demo/c/cppstr" # C++ compile error: libc++ reports "No thread API"
-  "./_demo/c/crand" # fast fail: build constraints exclude all Go files in lib/c/time
-  "./_demo/c/ctime" # fast fail: build constraints exclude all Go files in lib/c/time
-  "./_demo/c/getcwd" # timeout: emulator did not auto-exit
-  "./_demo/c/hello" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/c/llama2-c" # fast fail: build constraints exclude all Go files in lib/c/time
-  "./_demo/c/netdbdemo" # link error: ld.lld undefined symbol getaddrinfo
-  "./_demo/c/setjmp" # panic: cannot build SSA for packages
-  "./_demo/c/socket/client" # link error: ld.lld undefined symbol socket
-  "./_demo/c/socket/server" # link error: ld.lld undefined symbol socket
-  "./_demo/c/stacksave" # fast fail: build constraints exclude all Go files
-  "./_demo/c/syncdebug" # fast fail: build constraints exclude all Go files in pthread/sync
-  "./_demo/c/thread" # link error: ld.lld undefined symbol GC_pthread_create
-  "./_demo/go/abimethod" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/async" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/async/timeout" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/cabi" # runtime output: fatal error
-  "./_demo/go/cgo" # fast fail: build constraints exclude all Go files
-  "./_demo/go/checkfile" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/commandrun" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/createtemp-1654" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/defer" # runtime output: fatal error
-  "./_demo/go/embedunexport-1598" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/export" # timeout: emulator did not auto-exit
-  "./_demo/go/failed/stacktrace" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gobuild" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gobuild-1389" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/goimporter-1389" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/goroutine" # timeout: emulator did not auto-exit
-  "./_demo/go/gotime" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gotoken" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gotypes" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/issue1538" # timeout: emulator did not auto-exit
-  "./_demo/go/issue1538-floatcvtuint-over" # timeout: emulator did not auto-exit
-  "./_demo/go/logdemo" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/maphash" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/mimeheader" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/mkdirdemo" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/netip" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/osfile" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/oslookpath" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/oswritestring" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/randcrypt" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/randdemo" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/readdir" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectcallfn" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectchanof" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectconv" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectcopy" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectembed" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectempty" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectfunc" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectfnconv" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectfntype" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectifacecall" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectindirect" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectmake" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectmakefn" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectmethod" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectname-1412" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectnamedfn" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectnew" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectpointerto" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectpkgpath" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectslice" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectsliceat" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectstructof" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectvisiblefields" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/return-1605" # runtime output: fatal error
-  "./_demo/go/runtime" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/sync" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/syscall" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/syscallraw" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/sysexec" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/sysopen-1654" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/texttemplate" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/timedur" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/timer" # panic: internal/bytealg selected .s files require plan9asm translation
-)
-
-ignore_esp32c3_basic=(
-  "./_demo/go/mkdirdemo" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/c/asmcall" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/c/asmfullcall" # panic: cannot build SSA for packages (undefined: verify)
-  "./_demo/go/atomicfn" #ld.lld: error: undefined symbol: __atomic_fetch_add_4
-  "./_demo/c/cargs" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/c/catomic" # link error: ld.lld undefined symbol __atomic_store
-  "./_demo/c/cexec" # link error: ld.lld undefined symbol execlp
-  "./_demo/c/cgofull" # fast fail: build constraints exclude all Go files
-  "./_demo/c/cgofull/pymod1" # fast fail: build constraints exclude all Go files
-  "./_demo/c/cgofull/pymod2" # fast fail: build constraints exclude all Go files
-  "./_demo/c/concat" # link error: ld.lld undefined symbol stderr
-  "./_demo/c/cppstr" # C++ compile error: '<string>' file not found
-  "./_demo/c/crand" # fast fail: build constraints exclude all Go files in lib/c/time
-  "./_demo/c/ctime" # fast fail: build constraints exclude all Go files in lib/c/time
-  "./_demo/c/getcwd" # timeout: emulator did not auto-exit
-  "./_demo/c/hello" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/c/llama2-c" # fast fail: build constraints exclude all Go files in lib/c/time
-  "./_demo/c/netdbdemo" # link error: ld.lld undefined symbol getaddrinfo
-  "./_demo/c/setjmp" # panic: cannot build SSA for packages (undefined SigjmpBuf/Siglongjmp)
-  "./_demo/c/socket/client" # link error: ld.lld undefined symbol socket
-  "./_demo/c/socket/server" # link error: ld.lld undefined symbol socket
-  "./_demo/c/stacksave" # fast fail: build constraints exclude all Go files
-  "./_demo/c/syncdebug" # fast fail: build constraints exclude all Go files in pthread/sync
-  "./_demo/c/thread" # link error: ld.lld undefined symbol GC_pthread_create
-  "./_demo/go/abimethod" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/async" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/async/timeout" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/checkfile" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/commandrun" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/createtemp-1654" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/cgo" # fast fail: build constraints exclude all Go files
-  "./_demo/go/embedunexport-1598" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/export" # link error: ld.lld undefined symbol __atomic_fetch_or_4
-  "./_demo/go/failed/stacktrace" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gobuild" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gobuild-1389" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/goimporter-1389" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/goroutine" # timeout: emulator did not auto-exit
-  "./_demo/go/gotime" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gotoken" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/gotypes" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/logdemo" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/maphash" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/mimeheader" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/netip" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/osfile" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/oslookpath" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/oswritestring" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/randcrypt" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/randdemo" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/readdir" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectcallfn" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectchanof" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectconv" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectfunc" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectfnconv" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectfntype" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectifacecall" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectindirect" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectcopy" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectembed" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectempty" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectmethod" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectmake" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectmakefn" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectname-1412" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectnamedfn" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectnew" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectpointerto" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectpkgpath" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectslice" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectsliceat" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectstructof" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/reflectvisiblefields" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/runtime" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/sync" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/sysopen-1654" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/syscall" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/syscallraw" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/sysexec" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/texttemplate" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/timedur" # panic: internal/bytealg selected .s files require plan9asm translation
-  "./_demo/go/timer" # panic: internal/bytealg selected .s files require plan9asm translation
-)
-
-should_ignore() {
-  local dir="$1"
-  local target="$2"
-  case "$target" in
-    esp32)
-      for ignore in "${ignore_esp32[@]}"; do
-        if [ "$dir" = "$ignore" ]; then
-          return 0
-        fi
-      done
-      ;;
-    esp32c3-basic)
-      for ignore in "${ignore_esp32c3_basic[@]}"; do
-        if [ "$dir" = "$ignore" ]; then
-          return 0
-        fi
-      done
-      ;;
-  esac
-  return 1
-}
-
-is_model_demo() {
-  case "$1" in
-    ./_demo/c/llama2-c)
-      return 0
-      ;;
-  esac
-  return 1
-}
 
 run_dirs=()
 run_targets=()
 run_labels=()
+emulator=0
+
+add_case() {
+  run_dirs+=("$1")
+  run_targets+=("$2")
+  run_labels+=("$3")
+}
 
 if [ "$mode" = "embedded" ]; then
-  for target in "${embedded_targets[@]}"; do
-    for d in "${cases[@]}"; do
-      if should_ignore "$d" "$target"; then
-        echo "SKIP $d (target=$target)"
-        continue
-      fi
-      run_dirs+=("$d")
-      run_targets+=("$target")
-      run_labels+=("$d (target=$target)")
-    done
+  emulator=1
+
+  # Positive target lists avoid recursively treating support packages as demos.
+  esp32_cases=(
+    ./_demo/c/catomic
+    ./_demo/c/hello
+    ./_demo/c/qsort
+    ./_demo/go/ifaceconv
+    ./_demo/go/linkname
+  )
+  esp32c3_cases=(
+    ./_demo/c/hello
+    ./_demo/c/qsort
+    ./_demo/go/cabi
+    ./_demo/go/ifaceconv
+    ./_demo/go/issue1538
+    ./_demo/go/linkname
+  )
+  for d in "${esp32_cases[@]}"; do
+    add_case "$d" esp32 "$d (target=esp32)"
+  done
+  for d in "${esp32c3_cases[@]}"; do
+    add_case "$d" esp32c3-basic "$d (target=esp32c3-basic)"
   done
 else
+  cases=()
+  use_lto=0
+  use_globaldce=0
+  use_deadcodedrop=0
+  for flag in "${llgo_run_flags[@]}"; do
+    case "$flag" in
+      -lto=full) use_lto=1 ;;
+      -globaldce) use_globaldce=1 ;;
+      -deadcodedrop) use_deadcodedrop=1 ;;
+    esac
+  done
+
+  if [ "$use_lto" -eq 1 ] && [ "$use_globaldce" -eq 1 ]; then
+    cases=(
+      ./_demo/c/asmfullcall
+      ./_demo/c/cgofull
+      ./_demo/c/cabisret
+      ./_demo/c/cppintf
+      ./_demo/go/cabi
+      ./_demo/go/export
+      ./_demo/go/reflect
+      ./_demo/go/stdlib
+      ./_demo/go/sync
+    )
+  elif [ "$use_deadcodedrop" -eq 1 ]; then
+    cases=(
+      ./_demo/c/asmfullcall
+      ./_demo/c/cgofull
+      ./_demo/c/cabisret
+      ./_demo/go/cabi
+      ./_demo/go/reflect
+      ./_demo/go/stdlib
+      ./_demo/go/sync
+    )
+  else
+    search_dirs=(./_demo/go/* ./_demo/py/* ./_demo/c/*)
+    for d in "${search_dirs[@]}"; do
+      if [ -d "$d" ] && [ -n "$(ls "$d"/*.go 2>/dev/null)" ]; then
+        cases+=("$d")
+      fi
+    done
+  fi
+
   for d in "${cases[@]}"; do
-    if [ "${RUNNER_OS:-}" = "Windows" ]; then
-      case "$d" in
-        ./_demo/c/syncdebug|./_demo/c/thread)
-          echo "SKIP $d (c/pthread exposes the native POSIX API and is not applicable to Windows)"
-          continue
-          ;;
-      esac
+    if [ "${RUNNER_OS:-}" = "Windows" ] && [ "$d" = "./_demo/c/thread" ]; then
+      echo "SKIP $d (c/pthread exposes the native POSIX API and is not applicable to Windows)"
+      continue
     fi
-    if is_model_demo "$d" && [ "${LLGO_RUN_MODEL_DEMOS:-0}" != "1" ]; then
+    if [ "$d" = "./_demo/c/llama2-c" ] && [ "${LLGO_RUN_MODEL_DEMOS:-0}" != "1" ]; then
       echo "SKIP $d (model demo runs in scheduled Model Demo workflow)"
       continue
     fi
-    run_dirs+=("$d")
-    run_targets+=("")
-    run_labels+=("$d")
+    if [ "$d" = "./_demo/c/helloc" ]; then
+      echo "SKIP $d (WASI C-FFI demo runs in the cross-compile workflow)"
+      continue
+    fi
+    add_case "$d" "" "$d"
   done
 fi
 
@@ -297,34 +134,66 @@ failed_cases=""
 run_case() {
   local dir="$1"
   local target="$2"
+  local output_dir="$3"
+  local output executable
+  local -a cmd
   if [ -n "$target" ]; then
     echo "Testing $dir (target=$target)"
   else
     echo "Testing $dir"
   fi
-  cmd=(llgo run)
-  cmd+=("${llgo_run_flags[@]}")
+
   if [ -n "$target" ]; then
+    cmd=(llgo run)
+    cmd+=("${llgo_run_flags[@]}")
     cmd+=("-target=$target")
-  fi
-  if [ "$emulator" -eq 1 ]; then
-    cmd+=("-emulator")
-  fi
-  cmd+=(".")
-  if (cd "$dir" && GOWORK=off "${cmd[@]}"); then
-    echo "PASS"
-  else
+    if [ "$emulator" -eq 1 ]; then
+      cmd+=("-emulator")
+    fi
+    cmd+=(".")
+    if (cd "$dir" && GOTOOLCHAIN=local GOWORK=off "${cmd[@]}"); then
+      echo "PASS"
+      return
+    fi
     echo "FAIL"
     return 1
   fi
+
+  mkdir -p "$output_dir"
+  output="$output_dir/demo"
+  if [ "${RUNNER_OS:-}" = "Windows" ]; then
+    # Match cmd/go's Windows convention: an explicit -o is exact, so request
+    # the executable suffix when the artifact must be launched by os/exec.
+    output="$output.exe"
+  fi
+  cmd=(llgo build)
+  cmd+=("${llgo_run_flags[@]}")
+  cmd+=("-p=1" "-o" "$output" ".")
+  if ! (cd "$dir" && GOTOOLCHAIN=local GOWORK=off "${cmd[@]}"); then
+    echo "FAIL"
+    return 1
+  fi
+  executable="$output"
+  if [ ! -f "$executable" ] && [ -f "$output.exe" ]; then
+    executable="$output.exe"
+  fi
+  if (cd "$dir" && "$executable"); then
+    echo "PASS"
+    return
+  fi
+  echo "FAIL"
+  return 1
 }
 
 if [ "$jobs" -le 1 ] || [ "$total" -le 1 ]; then
+  idx=0
   for i in "${!run_dirs[@]}"; do
     d="${run_dirs[$i]}"
     target="${run_targets[$i]}"
     label="${run_labels[$i]}"
-    if ! run_case "$d" "$target"; then
+    idx=$((idx+1))
+    output_dir="$tmp_root/$(printf '%04d' "$idx")"
+    if ! run_case "$d" "$target" "$output_dir"; then
       failed=$((failed+1))
       failed_cases="$failed_cases\n* :x: $label"
     fi
@@ -335,63 +204,60 @@ else
   active_logs=()
   idx=0
 
-  for i in "${!run_dirs[@]}"; do
-    d="${run_dirs[$i]}"
-    target="${run_targets[$i]}"
-    label="${run_labels[$i]}"
-    idx=$((idx+1))
-    log="$tmp_root/$(printf '%04d' "$idx").log"
-    (run_case "$d" "$target") >"$log" 2>&1 &
-    pid=$!
-    active_pids+=("$pid")
-    active_dirs+=("$label")
-    active_logs+=("$log")
-
-    while [ "${#active_pids[@]}" -ge "$jobs" ]; do
-      finished_pid=""
+  wait_for_one() {
+    finished_pid=""
+    if [ "${BASH_VERSINFO[0]}" -gt 5 ] || { [ "${BASH_VERSINFO[0]}" -eq 5 ] && [ "${BASH_VERSINFO[1]}" -ge 1 ]; }; then
       if wait -n -p finished_pid; then
         finished_status=0
       else
         finished_status=$?
       fi
-      for i in "${!active_pids[@]}"; do
-        if [ "${active_pids[$i]}" = "$finished_pid" ]; then
-          cat "${active_logs[$i]}"
-          if [ "$finished_status" -ne 0 ]; then
-            failed=$((failed+1))
-            failed_cases="$failed_cases\n* :x: ${active_dirs[$i]}"
-          fi
-          unset 'active_pids[i]' 'active_dirs[i]' 'active_logs[i]'
-          active_pids=("${active_pids[@]}")
-          active_dirs=("${active_dirs[@]}")
-          active_logs=("${active_logs[@]}")
-          break
-        fi
-      done
-    done
-  done
-
-  while [ "${#active_pids[@]}" -gt 0 ]; do
-    finished_pid=""
-    if wait -n -p finished_pid; then
-      finished_status=0
     else
-      finished_status=$?
+      # Bash 3.2 has no wait -n. Waiting for the oldest job keeps the
+      # implementation portable while still running up to $jobs cases.
+      finished_pid="${active_pids[0]}"
+      if wait "$finished_pid"; then
+        finished_status=0
+      else
+        finished_status=$?
+      fi
     fi
-    for i in "${!active_pids[@]}"; do
-      if [ "${active_pids[$i]}" = "$finished_pid" ]; then
-        cat "${active_logs[$i]}"
-          if [ "$finished_status" -ne 0 ]; then
-            failed=$((failed+1))
-            failed_cases="$failed_cases\n* :x: ${active_dirs[$i]}"
-          fi
-        unset 'active_pids[i]' 'active_dirs[i]' 'active_logs[i]'
+    for active_index in "${!active_pids[@]}"; do
+      if [ "${active_pids[$active_index]}" = "$finished_pid" ]; then
+        cat "${active_logs[$active_index]}"
+        if [ "$finished_status" -ne 0 ]; then
+          failed=$((failed+1))
+          failed_cases="$failed_cases\n* :x: ${active_dirs[$active_index]}"
+        fi
+        unset 'active_pids[active_index]' 'active_dirs[active_index]' 'active_logs[active_index]'
         active_pids=("${active_pids[@]}")
         active_dirs=("${active_dirs[@]}")
         active_logs=("${active_logs[@]}")
         break
       fi
     done
+  }
+
+  for i in "${!run_dirs[@]}"; do
+    d="${run_dirs[$i]}"
+    target="${run_targets[$i]}"
+    label="${run_labels[$i]}"
+    idx=$((idx+1))
+    log="$tmp_root/$(printf '%04d' "$idx").log"
+    output_dir="$tmp_root/$(printf '%04d' "$idx")"
+    (run_case "$d" "$target" "$output_dir") >"$log" 2>&1 &
+    pid=$!
+    active_pids+=("$pid")
+    active_dirs+=("$label")
+    active_logs+=("$log")
+
+    while [ "${#active_pids[@]}" -ge "$jobs" ]; do
+      wait_for_one
+    done
+  done
+
+  while [ "${#active_pids[@]}" -gt 0 ]; do
+    wait_for_one
   done
 fi
 

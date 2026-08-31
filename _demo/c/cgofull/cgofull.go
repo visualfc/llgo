@@ -8,6 +8,8 @@ package main
 #cgo !windows,amd64 CFLAGS: -D_UNIX64
 #cgo pkg-config: python3-embed
 #include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
 #include <Python.h>
 #include "foo.h"
 typedef struct {
@@ -81,6 +83,15 @@ static void test_void() {
 	printf("test_void\n");
 }
 
+static int c_errno_wrap(int x) {
+	if (x < 0) {
+		errno = ERANGE;
+		return -1;
+	}
+	errno = 0;
+	return x + 1;
+}
+
 typedef int (*Cb)(int);
 
 extern int go_callback(int);
@@ -90,7 +101,11 @@ extern int c_callback(int i);
 static void test_callback(Cb cb) {
 	printf("test_callback, cb: %p, go_callback: %p, c_callback: %p\n", cb, go_callback, c_callback);
 	printf("test_callback, *cb: %p, *go_callback: %p, *c_callback: %p\n", *(void**)cb, *(void**)(go_callback), *(void**)(c_callback));
-	printf("cb result: %d\n", cb(123));
+	int result = cb(123);
+	if (result != 124) {
+		abort();
+	}
+	printf("cb result: %d\n", result);
 	printf("done\n");
 }
 
@@ -134,6 +149,12 @@ func main() {
 	fmt.Println(C.MY_VERSION)
 	fmt.Println(int(C.MY_CODE))
 	C.test_void()
+	if _, err := C.c_errno_wrap(-1); err == nil {
+		panic("expected errno for c_errno_wrap(-1)")
+	}
+	if value, err := C.c_errno_wrap(9); err != nil || value != 10 {
+		panic("unexpected c_errno_wrap success result")
+	}
 
 	println("call run_callback")
 	C.run_callback()
@@ -149,9 +170,20 @@ func main() {
 func runPy() {
 	Initialize()
 	defer Finalize()
-	Run("print('Hello, Python!')")
-	C.PyObject_Print((*C.PyObject)(unsafe.Pointer(pymod1.Float(1.23))), C.stderr, 0)
-	C.PyObject_Print((*C.PyObject)(unsafe.Pointer(pymod2.Long(123))), C.stdout, 0)
+	if err := Run("value = 40 + 2"); err != nil {
+		panic(err)
+	}
+	floatObject := (*C.PyObject)(unsafe.Pointer(pymod1.Float(1.23)))
+	if got := float64(C.PyFloat_AsDouble(floatObject)); got != 1.23 {
+		panic("unexpected Python float")
+	}
+	longObject := (*C.PyObject)(unsafe.Pointer(pymod2.Long(123)))
+	if got := int64(C.PyLong_AsLongLong(longObject)); got != 123 {
+		panic("unexpected Python long")
+	}
 	// test _Cgo_use
-	C.PyObject_Print((*C.PyObject)(unsafe.Pointer(C.PyComplex_FromDoubles(C.double(1.23), C.double(4.56)))), C.stdout, 0)
+	complexObject := C.PyComplex_FromDoubles(C.double(1.23), C.double(4.56))
+	if real, imag := float64(C.PyComplex_RealAsDouble(complexObject)), float64(C.PyComplex_ImagAsDouble(complexObject)); real != 1.23 || imag != 4.56 {
+		panic("unexpected Python complex")
+	}
 }

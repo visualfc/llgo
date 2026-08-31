@@ -7,9 +7,13 @@ import (
 //llgo:link asmFull llgo.asm
 func asmFull(instruction string, regs map[string]any) uintptr { return 0 }
 
+//llgo:link asm llgo.asm
+func asm(instruction string) {}
+
 var testVar = 0
 
 func main() {
+	asm("nop")
 	verify()
 }
 

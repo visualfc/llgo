@@ -32,7 +32,9 @@ func (p *Bar) sqrt(v float64) float64 {
 }
 
 func main() {
+	testCPPString()
 	bar := NewBar(1)
 	foo.F(&bar.Callback)
 	foo.G(&bar.Callback)
+	testMulti()
 }

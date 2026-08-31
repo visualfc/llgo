@@ -1,5 +1,7 @@
 package main
 
+import "github.com/xgo-dev/llgo/_demo/go/ifaceconv/promotion"
+
 // Tests of interface conversions and type assertions.
 
 type I0 interface {
@@ -80,6 +82,16 @@ func main() {
 	if I1(i1) == nil {
 		panic("C1 I1(i1) was nil")
 	}
+
+	// Preserve #1559: an embedded method from another package keeps the
+	// identity of that package's unexported interface method.
+	type promotedGame struct{ *promotion.Game }
+	var promoted any = &promotedGame{&promotion.Game{}}
+	gamer, ok := promoted.(promotion.Gamer)
+	if !ok {
+		panic("promoted unexported method identity")
+	}
+	gamer.Load()
 
 	println("pass")
 }
