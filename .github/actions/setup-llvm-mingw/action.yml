@@ -108,7 +108,6 @@ runs:
         $manifestRoot = Join-Path $env:GITHUB_WORKSPACE ".github\windows\vcpkg"
         $llvmMingwRoot = Join-Path $env:RUNNER_TOOL_CACHE "llvm-mingw\20250114\ucrt-x86_64"
         $llvmMingwBin = Join-Path $llvmMingwRoot "bin"
-        $llvmMingwRuntimeBin = Join-Path $llvmMingwRoot "i686-w64-mingw32\bin"
         $env:PATH = "$llvmMingwBin;$env:PATH"
 
         & git clone --no-checkout https://github.com/microsoft/vcpkg.git $sourceRoot
@@ -176,7 +175,7 @@ runs:
 
         $pkgconf = $env:LLGO_MINGW_HOST_PKGCONF
         $hostPC = $env:LLGO_MINGW_HOST_PC_DIR
-        if (-not (Test-Path $pkgconf) -or -not (Test-Path $hostPC)) {
+        if (-not $pkgconf -or -not $hostPC -or -not (Test-Path $pkgconf) -or -not (Test-Path $hostPC)) {
           throw "The CLANG64 host pkg-config profile is unavailable"
         }
         # Only LLVM belongs to the x64 host. Runtime dependencies must resolve
