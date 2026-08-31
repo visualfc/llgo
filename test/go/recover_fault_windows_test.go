@@ -7,12 +7,16 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"runtime/trace"
 	"testing"
 	"unsafe"
 )
 
-const nonNilFaultChildEnv = "LLGO_TEST_NON_NIL_FAULT"
+const (
+	nonNilFaultChildEnv      = "LLGO_TEST_NON_NIL_FAULT"
+	recoverableFaultChildEnv = "LLGO_TEST_RECOVERABLE_FAULT"
+)
 
 type traceFaultValue struct {
 	a [16]int
@@ -21,6 +25,45 @@ type traceFaultValue struct {
 //go:noinline
 func copyTraceFaultValue(x, y *traceFaultValue) {
 	*x = *y
+}
+
+func enterRecoverableFaultTest(t *testing.T) bool {
+	t.Helper()
+	if os.Getenv(recoverableFaultChildEnv) == "1" {
+		return true
+	}
+
+	// Keep a possible host Go runtime defect from corrupting the parent test
+	// process. The process-level 0xc0000005 observed in CI may be an instance of
+	// golang/go#81238: Windows exception recovery can use more space below SP
+	// than Go 1.27 reserves on hosts with large XSTATE contexts.
+	// The child still has to pass the complete fault/panic/recover assertions;
+	// once the minimum supported Go release contains the upstream fix, revisit
+	// this isolation and the stack-headroom preparation below.
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRecoverAfterFaultPreservesNamedResult$", "-test.v")
+	cmd.Env = append(os.Environ(), recoverableFaultChildEnv+"=1", "GOTRACEBACK=system")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("recoverable fault child failed: %v\n%s", err, output)
+	}
+	return false
+}
+
+//go:noinline
+func growRecoverableFaultStack(depth int) {
+	var frame [1024]byte
+	frame[0] = byte(depth)
+	if depth != 0 {
+		growRecoverableFaultStack(depth - 1)
+	}
+	runtime.KeepAlive(&frame)
+}
+
+func ensureRecoverableFaultStackHeadroom() {
+	// Grow and then unwind the goroutine stack before raising the exception.
+	// The 64 one-KiB frames exceed the reported 8 KiB XSTATE-size difference.
+	// This preserves the real protected-page fault while avoiding the specific
+	// near-stack-boundary condition described by golang/go#81238.
+	growRecoverableFaultStack(64)
 }
 
 // Regression test matching GOROOT/test/fixedbugs/issue73748b.go.
