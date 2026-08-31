@@ -320,6 +320,8 @@ class LLDBDebugger:
         self.debugger.SetAsync(False)
         self.target: Optional[lldb.SBTarget] = None
         self.process: Optional[lldb.SBProcess] = None
+        self.frame: Optional[lldb.SBFrame] = None
+        self.breakpoint_line: Optional[int] = None
         self.type_mapping: Dict[str, str] = {
             'long': 'int',
             'unsigned long': 'uint',
@@ -357,15 +359,51 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"Expected one breakpoint at {file_spec}:{line_number}, "
                 f"found {bp.GetNumLocations()}")
+        location = bp.GetLocationAtIndex(0)
+        line_entry = location.GetAddress().GetLineEntry()
+        self.breakpoint_line = (
+            line_entry.GetLine() if line_entry.IsValid() else line_number)
         return bp
 
-    def run_to_breakpoint(self) -> None:
+    def run_to_breakpoint(self, file_spec: str, line_number: int) -> None:
         if not self.process:
             self.process = self.target.LaunchSimple(None, None, os.getcwd())
         else:
             self.process.Continue()
         if self.process.GetState() != lldb.eStateStopped:
             raise LLDBTestException("Process didn't stop at breakpoint")
+
+        # Windows/386 reports the WoW64 exception dispatcher as frame zero
+        # while handling a software breakpoint. Select the source frame that
+        # owns the requested breakpoint before inspecting its variables.
+        thread = self.process.GetSelectedThread()
+        expected_file = os.path.normcase(os.path.basename(file_spec))
+        expected_line = self.breakpoint_line or line_number
+        locations: List[str] = []
+        for index in range(thread.GetNumFrames()):
+            frame = thread.GetFrameAtIndex(index)
+            line_entry = frame.GetLineEntry()
+            if not line_entry.IsValid():
+                continue
+            source = line_entry.GetFileSpec().GetFilename() or ""
+            source_line = line_entry.GetLine()
+            locations.append(
+                f"{index}:{frame.GetFunctionName() or '<unknown>'} "
+                f"at {source}:{source_line}")
+            if (os.path.normcase(source) == expected_file and
+                    source_line == expected_line):
+                thread.SetSelectedFrame(index)
+                self.frame = frame
+                return
+        raise LLDBTestException(
+            f"No frame for breakpoint {file_spec}:{line_number} "
+            f"(resolved line {expected_line}); "
+            f"frames: {', '.join(locations)}")
+
+    def get_selected_frame(self) -> lldb.SBFrame:
+        if not self.frame or not self.frame.IsValid():
+            raise LLDBTestException("Breakpoint source frame was not selected")
+        return self.frame
 
     def get_variable_value(self, var_expression: str) -> Optional[str]:
         value = self.get_variable(var_expression)
@@ -374,8 +412,8 @@ class LLDBDebugger:
         return None
 
     def get_variable(self, var_expression: str) -> Optional[lldb.SBValue]:
-        frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
-        return llgo_plugin.evaluate_expression(frame, var_expression)
+        return llgo_plugin.evaluate_expression(
+            self.get_selected_frame(), var_expression)
 
     def get_variable_summary(self, var_expression: str) -> Optional[str]:
         value = self.get_variable(var_expression)
@@ -399,12 +437,11 @@ class LLDBDebugger:
         return ", ".join(children)
 
     def get_all_variable_names(self) -> Set[str]:
-        frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
+        frame = self.get_selected_frame()
         return set(var.GetName() for var in frame.GetVariables(True, True, False, True))
 
     def get_current_function_name(self) -> str:
-        frame = self.process.GetSelectedThread().GetFrameAtIndex(0)
-        return frame.GetFunctionName()
+        return self.get_selected_frame().GetFunctionName()
 
     def get_frame_names(self) -> List[str]:
         thread = self.process.GetSelectedThread()
@@ -505,7 +542,7 @@ def execute_tests(executable_path: str, test_cases: List[TestCase], verbose: boo
                     f"{line_number} ({test_case.marker})")
             debugger.setup()
             debugger.set_breakpoint(test_case.source_file, line_number)
-            debugger.run_to_breakpoint()
+            debugger.run_to_breakpoint(test_case.source_file, line_number)
             if not results.case_results:
                 debugger.require_print_error(
                     "slice[bad]", "Unable to evaluate expression")
