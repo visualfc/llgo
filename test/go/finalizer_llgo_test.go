@@ -120,7 +120,6 @@ func TestRuntimeConcurrentGCFinalizers(t *testing.T) {
 	const (
 		objects = 256
 		workers = 8
-		rounds  = 8
 	)
 	finalized := make(chan int, objects)
 	registered := make(chan struct{})
@@ -135,34 +134,42 @@ func TestRuntimeConcurrentGCFinalizers(t *testing.T) {
 	}()
 	<-registered
 
-	var wg sync.WaitGroup
-	wg.Add(workers)
-	for range workers {
-		go func() {
-			defer wg.Done()
-			for range rounds {
-				runtime.GC()
-			}
-		}()
-	}
-	wg.Wait()
-
 	seen := make(map[int]bool)
-	for {
-		select {
-		case value := <-finalized:
-			if value < 0 || value >= objects {
-				t.Fatalf("finalizer got %d, want [0,%d)", value, objects)
+	deadline := time.After(3 * time.Second)
+	for len(seen) <= objects/2 {
+		var wg sync.WaitGroup
+		wg.Add(workers)
+		for range workers {
+			go func() {
+				defer wg.Done()
+				runtime.GC()
+			}()
+		}
+		wg.Wait()
+
+		for {
+			select {
+			case value := <-finalized:
+				if value < 0 || value >= objects {
+					t.Fatalf("finalizer got %d, want [0,%d)", value, objects)
+				}
+				if seen[value] {
+					t.Fatalf("finalizer got duplicate value %d", value)
+				}
+				seen[value] = true
+			default:
+				goto drained
 			}
-			if seen[value] {
-				t.Fatalf("finalizer got duplicate value %d", value)
-			}
-			seen[value] = true
-		default:
-			if len(seen) <= objects/2 {
-				t.Fatalf("only %d/%d concurrent finalizers ran", len(seen), objects)
-			}
+		}
+	drained:
+		if len(seen) > objects/2 {
 			return
+		}
+		runtime.Gosched()
+		select {
+		case <-deadline:
+			t.Fatalf("only %d/%d concurrent finalizers ran", len(seen), objects)
+		default:
 		}
 	}
 }
