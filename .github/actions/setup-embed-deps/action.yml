@@ -11,6 +11,10 @@ runs:
         HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
+        # Refresh metadata explicitly, then preserve a usable runner-provided
+        # SDL installation instead of upgrading it as an incidental side
+        # effect of dependency setup.
+        brew update
         brew list --versions sdl2 >/dev/null || brew install sdl2
 
     - name: Install Ubuntu embedded dependencies

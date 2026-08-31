@@ -672,6 +672,12 @@ runs:
         HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
+        # Refresh formula and tap metadata once, but keep usable formulae from
+        # the runner image. A plain `brew install` upgrades outdated formulae;
+        # that can fail when a newly published version temporarily has no
+        # bottle for Intel macOS.
+        brew update
+
         brew_install_missing() {
           local formula
           local missing=()
