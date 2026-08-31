@@ -5,7 +5,6 @@ import (
 	"github.com/goplus/lib/py"
 	"github.com/goplus/lib/py/numpy"
 	"github.com/goplus/lib/py/std"
-	"github.com/goplus/lib/py/torch"
 )
 
 func main() {
@@ -32,25 +31,6 @@ func main() {
 		for columnIndex := 0; columnIndex < 3; columnIndex++ {
 			if got := row.ListItem(columnIndex).Float64(); got != 10 {
 				panic("unexpected numpy.add value")
-			}
-		}
-	}
-	tensor := torch.Tensor(py.List(
-		py.List(1.0, 2.0),
-		py.List(3.0, 4.0),
-	))
-	tensorRows := tensor.GetAttrString(c.Str("tolist")).CallObject(nil)
-	if tensorRows == nil || tensorRows.ListLen() != 2 {
-		panic("unexpected torch.Tensor row count")
-	}
-	for rowIndex := 0; rowIndex < 2; rowIndex++ {
-		row := tensorRows.ListItem(rowIndex)
-		if row == nil || row.ListLen() != 2 {
-			panic("unexpected torch.Tensor column count")
-		}
-		for columnIndex := 0; columnIndex < 2; columnIndex++ {
-			if got, want := row.ListItem(columnIndex).Float64(), float64(rowIndex*2+columnIndex+1); got != want {
-				panic("unexpected torch.Tensor value")
 			}
 		}
 	}

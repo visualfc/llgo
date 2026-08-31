@@ -307,6 +307,46 @@ func TestFuncInfoTableMaterializesEntrySites(t *testing.T) {
 	}
 }
 
+func TestWin32FuncInfoUsesExactEntryForAddressTakenFunction(t *testing.T) {
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	prog.EnableFuncInfoMetadata(true)
+	prog.EnableFuncInfoSites(true)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "windows",
+			Goarch:    "386",
+		},
+	}
+	pkg := prog.NewPackage("example.com/p", "example.com/p")
+	for _, name := range []string{"example.com/p.direct", "example.com/p.addressed"} {
+		pkg.EmitFuncInfo(name, name, "p.go", 1, 1)
+		pkg.NewFunc(name, llssa.NoArgsNoRet, llssa.InGo).MakeBody(1).Return()
+	}
+	addressed := pkg.Module().NamedFunction("example.com/p.addressed")
+	keep := llvm.AddGlobal(pkg.Module(), addressed.Type(), "example.com/p.funcValue")
+	keep.SetInitializer(addressed)
+
+	emitFuncInfoEntrySites(ctx, pkg)
+	ir := pkg.String()
+	if got := strings.Count(ir, `.long ${0:c}`); got != 1 {
+		t.Fatalf("Win32 exact-entry record count = %d, want 1:\n%s", got, ir)
+	}
+	if !strings.Contains(ir, `"X"(ptr @"example.com/p.addressed")`) {
+		t.Fatalf("Win32 address-taken function is not the exact-entry operand:\n%s", ir)
+	}
+	if got := strings.Count(ir, ".long .Lllgo_funcinfo_entry_anchor_"); got != 1 {
+		t.Fatalf("Win32 anchor entry record count = %d, want 1:\n%s", got, ir)
+	}
+	buf, err := prog.TargetMachine().EmitToMemoryBuffer(pkg.Module(), llvm.ObjectFile)
+	if err != nil {
+		t.Fatalf("emit Win32 exact-entry COFF object: %v\n%s", err, ir)
+	}
+	buf.Dispose()
+}
+
 func TestFuncInfoTableSitesDisabledKeepsTables(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	src := prog.NewPackage("example.com/p", "example.com/p")
@@ -614,6 +654,23 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 				} {
 					if !strings.Contains(ir, want) {
 						t.Fatalf("missing COFF entry site %q:\n%s", want, ir)
+					}
+				}
+				if c.goarch == "386" {
+					for _, sentinel := range []string{
+						funcInfoEntryCOFFStartSymbol, funcInfoEntryCOFFEndSymbol,
+						pcSiteCOFFStartSymbol, pcSiteCOFFEndSymbol,
+					} {
+						want := `@` + sentinel + ` = private constant { ptr, i64 } zeroinitializer`
+						if !strings.Contains(ir, want) {
+							t.Fatalf("32-bit COFF sentinel does not use its natural 16-byte Windows ABI layout; missing %q:\n%s", want, ir)
+						}
+					}
+					if want := `@"__llgo_funcinfo_symbol_index$data" = private unnamed_addr constant [2 x { i64, i32 }]`; !strings.Contains(ir, want) {
+						t.Fatalf("32-bit funcinfo symbol index does not use its natural 16-byte Windows ABI stride; missing %q:\n%s", want, ir)
+					}
+					if want := `.long 0\0A.quad `; !strings.Contains(ir, want) {
+						t.Fatalf("32-bit COFF entry site does not pad its uint64 ID to offset 8; missing %q:\n%s", want, ir)
 					}
 				}
 			}

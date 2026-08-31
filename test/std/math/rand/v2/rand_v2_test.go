@@ -16,6 +16,14 @@ func newDetRand() *rand.Rand {
 	return rand.New(rand.NewPCG(1, 2))
 }
 
+func expectedInt(x uint64) int {
+	return int(uint(x) << 1 >> 1)
+}
+
+func expectedUint(x uint64) uint {
+	return uint(x)
+}
+
 func TestRandDeterministicPCG(t *testing.T) {
 	r1 := newDetRand()
 	r2 := newDetRand()
@@ -26,7 +34,7 @@ func TestRandDeterministicPCG(t *testing.T) {
 	}
 
 	r := newDetRand()
-	if got := r.Int(); got != 4969059760275911952 {
+	if got := r.Int(); got != expectedInt(4969059760275911952) {
 		t.Fatalf("Int got %d", got)
 	}
 	if got := r.Int32(); got != 1323786710 {
@@ -71,10 +79,10 @@ func TestRandDeterministicPCG(t *testing.T) {
 	if got := r.UintN(21); got != 8 {
 		t.Fatalf("UintN got %d", got)
 	}
-	if got := r.Uint(); got != 14454429957748299131 {
+	if got := r.Uint(); got != expectedUint(14454429957748299131) {
 		t.Fatalf("Uint got %d", got)
 	}
-	if got := r.Int(); got != 4257872588489500903 {
+	if got := r.Int(); got != expectedInt(4257872588489500903) {
 		t.Fatalf("Int second got %d", got)
 	}
 }

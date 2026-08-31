@@ -119,7 +119,6 @@ func pyVarExpr(mod Expr, name string) Expr {
 // Zero returns a zero constant expression.
 func (p Program) Zero(t Type) Expr {
 	var ret llvm.Value
-	_, isNamed := t.raw.Type.(*types.Named)
 	switch u := t.raw.Type.Underlying().(type) {
 	case *types.Basic:
 		kind := u.Kind()
@@ -151,11 +150,7 @@ func (p Program) Zero(t Type) Expr {
 		for i := 0; i < n; i++ {
 			flds[i] = p.Zero(p.rawType(u.Field(i).Type())).impl
 		}
-		if isNamed {
-			ret = llvm.ConstNamedStruct(t.ll, flds)
-		} else {
-			ret = p.ctx.ConstStruct(flds, false)
-		}
+		ret = p.constStructValue(t, flds)
 	case *types.Slice:
 		ret = p.Zero(p.rtType("Slice")).impl
 	case *types.Array:
@@ -342,20 +337,20 @@ func (b Builder) Str(v string) Expr {
 	prog := b.Prog
 	data := b.Pkg.createGlobalStr(v)
 	size := llvm.ConstInt(prog.tyInt(), uint64(len(v)), false)
-	return Expr{aggregateValue(b.impl, prog.rtString(), data, size), prog.String()}
+	return b.aggregateValue(prog.String(), data, size)
 }
 
 // unsafeString(data *byte, size int) string
 func (b Builder) unsafeString(data, size llvm.Value) Expr {
 	prog := b.Prog
-	return Expr{aggregateValue(b.impl, prog.rtString(), data, size), prog.String()}
+	return b.aggregateValue(prog.String(), data, size)
 }
 
 // unsafeSlice(data *T, size, cap int) []T
 func (b Builder) unsafeSlice(data Expr, size, cap llvm.Value) Expr {
 	prog := b.Prog
 	tslice := prog.Slice(prog.Elem(data.Type))
-	return Expr{aggregateValue(b.impl, prog.rtSlice(), data.impl, size, cap), tslice}
+	return b.aggregateValue(tslice, data.impl, size, cap)
 }
 
 func (b Builder) checkedUnsafeString(data, size Expr) Expr {
@@ -735,10 +730,9 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 				if typ.Field(i).Name() == "_" {
 					continue
 				}
-				ft := prog.Type(typ.Field(i).Type(), InGo)
-				fx := b.impl.CreateExtractValue(x.impl, i, "")
-				fy := b.impl.CreateExtractValue(y.impl, i, "")
-				r := b.BinOp(token.EQL, Expr{fx, ft}, Expr{fy, ft})
+				fx := b.getField(x, i)
+				fy := b.getField(y, i)
+				r := b.BinOp(token.EQL, fx, fy)
 				ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
 			}
 			switch op {
@@ -980,12 +974,11 @@ func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 		}
 	} else if t.kind == vkStruct {
 		xt := types.Unalias(x.RawType()).Underlying().(*types.Struct)
-		agg := llvm.Undef(t.ll)
+		fields := make([]llvm.Value, xt.NumFields())
 		for i := 0; i < xt.NumFields(); i++ {
-			field := b.impl.CreateExtractValue(x.impl, i, "")
-			agg = b.impl.CreateInsertValue(agg, field, i, "")
+			fields[i] = b.getField(x, i).impl
 		}
-		ret.impl = agg
+		ret.impl = b.aggregateValue(t, fields...).impl
 	} else {
 		if x.impl.Type().String() == t.ll.String() {
 			ret.impl = x.impl
@@ -1177,6 +1170,9 @@ func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 	if target.effectiveGOARCH() == "amd64" && !saturatingUint32 {
 		return castFloatToIntAMD64(b, x, typ, dstSize)
 	}
+	if target.effectiveGOARCH() == "386" && !saturatingUint32 {
+		return castFloatToInt386(b, x, typ, dstSize)
+	}
 	if typ.kind == vkUnsigned {
 		if dstSize < 4 {
 			// Go's converthash transition only changes float-to-uint32.
@@ -1208,11 +1204,11 @@ func castFloatToInt(b Builder, x llvm.Value, typ Type) llvm.Value {
 func castFloatToIntAMD64(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm.Value {
 	if typ.kind == vkUnsigned {
 		if dstSize < 4 {
-			tmp := castFloatToSignedIntAMD64(b, x, b.Prog.Int32(), 32)
+			tmp := castFloatToSignedIntX86(b, x, b.Prog.Int32(), 32)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
 		if dstSize == 4 {
-			tmp := castFloatToSignedIntAMD64(b, x, b.Prog.Int64(), 64)
+			tmp := castFloatToSignedIntX86(b, x, b.Prog.Int64(), 64)
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
 
@@ -1220,22 +1216,49 @@ func castFloatToIntAMD64(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm
 		high := llvm.CreateFCmp(b.impl, llvm.FloatOGE, x, cutoff)
 		adjusted := b.impl.CreateFSub(x, cutoff, "")
 		input := llvm.CreateSelect(b.impl, high, adjusted, x)
-		ret := castFloatToSignedIntAMD64(b, input, b.Prog.Int64(), 64)
+		ret := castFloatToSignedIntX86(b, input, b.Prog.Int64(), 64)
 		highBit := llvm.ConstInt(typ.ll, uint64(1)<<63, false)
 		zero := llvm.ConstNull(typ.ll)
 		return b.impl.CreateOr(ret, llvm.CreateSelect(b.impl, high, highBit, zero), "")
 	}
 	if dstSize < 8 {
-		tmp := castFloatToSignedIntAMD64(b, x, b.Prog.Int32(), 32)
+		tmp := castFloatToSignedIntX86(b, x, b.Prog.Int32(), 32)
 		if dstSize < 4 {
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
 		return tmp
 	}
-	return castFloatToSignedIntAMD64(b, x, typ, 64)
+	return castFloatToSignedIntX86(b, x, typ, 64)
 }
 
-func castFloatToSignedIntAMD64(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {
+// castFloatToInt386 mirrors gc's 386 split: the native CVTT instruction
+// handles signed 32-bit conversions, while 64-bit and unsigned-word results
+// use the software conversion inherited from runtime/vlrt.go.
+func castFloatToInt386(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm.Value {
+	if dstSize < 4 || (typ.kind != vkUnsigned && dstSize == 4) {
+		tmp := castFloatToSignedIntX86(b, x, b.Prog.Int32(), 32)
+		if dstSize < 4 {
+			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
+		}
+		return tmp
+	}
+
+	input := x
+	if b.Prog.td.TypeAllocSize(x.Type()) == 4 {
+		input = llvm.CreateFPExt(b.impl, x, b.Prog.Float64().ll)
+	}
+	fn := "Float64ToInt64"
+	if typ.kind == vkUnsigned {
+		fn = "Float64ToUint64"
+	}
+	ret := b.InlineCall(b.Pkg.rtFunc(fn), Expr{input, b.Prog.Float64()}).impl
+	if dstSize < 8 {
+		ret = llvm.CreateTrunc(b.impl, ret, typ.ll)
+	}
+	return ret
+}
+
+func castFloatToSignedIntX86(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {
 	bound := floatPow2(bits - 1)
 	lower := llvm.ConstFloat(x.Type(), -bound)
 	upper := llvm.ConstFloat(x.Type(), bound)
@@ -1322,6 +1345,11 @@ func castPtr(b llvm.Builder, x llvm.Value, t llvm.Type) llvm.Value {
 		return llvm.CreatePointerCast(b, x, t)
 	}
 	return llvm.CreateIntToPtr(b, x, t)
+}
+
+// BitCast reinterprets x using t without changing its bits.
+func (b Builder) BitCast(t Type, x Expr) Expr {
+	return Expr{llvm.CreateBitCast(b.impl, x.impl, t.ll), t}
 }
 
 // PtrCast converts a pointer/integer expression to a pointer type.

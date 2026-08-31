@@ -655,6 +655,10 @@ const (
 	llgoAtomicAddReturnNew = llgoInstrBase + 0x46
 	llgoBoolToUint8        = llgoInstrBase + 0x47
 	llgoClosureEnv         = llgoInstrBase + 0x48
+	llgoFloat32FromBits    = llgoInstrBase + 0x49
+	llgoFloat32Bits        = llgoInstrBase + 0x4a
+	llgoFloat64FromBits    = llgoInstrBase + 0x4b
+	llgoFloat64Bits        = llgoInstrBase + 0x4c
 
 	llgoAtomicOpLast = llgoAtomicOpBase + int(llssa.OpUMin)
 )
@@ -759,6 +763,23 @@ func (p *context) funcName(fn *ssa.Function) (*types.Package, string, int) {
 	// See: $(GOROOT)/src/hash/maphash/maphash.go: escapeForHash.
 	if orgName == "hash/maphash.escapeForHash" {
 		return nil, "skip", llgoInstr
+	}
+	// The 386 C ABI returns floating-point values through x87. Loading a
+	// signaling NaN into x87 quiets it, so a normal call to the standard
+	// library's pointer-based frombits helpers would not preserve the bit
+	// pattern promised by package math. Lower all four bit conversions at the
+	// caller on 386, matching the Go compiler's intrinsic treatment.
+	if target := p.prog.Target(); target != nil && target.GOARCH == "386" {
+		switch orgName {
+		case "math.Float32frombits":
+			return nil, "float32FromBits", llgoInstr
+		case "math.Float32bits":
+			return nil, "float32Bits", llgoInstr
+		case "math.Float64frombits":
+			return nil, "float64FromBits", llgoInstr
+		case "math.Float64bits":
+			return nil, "float64Bits", llgoInstr
+		}
 	}
 	return pkg, funcName(pkg, fn, false), goFunc
 }

@@ -21,6 +21,11 @@ type NativeToolchainInput struct {
 	ExternalFlags  []string
 	Dir            string
 	Environ        []string
+	// ResolveCrossArch selects the host's native Windows toolchain when a
+	// Windows process produces linked output for another Windows architecture.
+	// Pure IR generation leaves it false so multi-target golden tests do not
+	// depend on the host compiler's architecture or ABI profile.
+	ResolveCrossArch bool
 }
 
 type toolIdentity struct {
@@ -50,9 +55,26 @@ func resolveWindowsToolchain(goarch string, input NativeToolchainInput, probe to
 	if err != nil {
 		return Export{}, fmt.Errorf("probe CC %q: %w", cc[0], err)
 	}
-	toolchain, err := windowsToolchainForTriple(goarch, ccIdentity.target)
+	toolchainArch := goarch
+	if implicitCC {
+		// The default compiler identifies the installed Windows ABI profile,
+		// while GOARCH remains the target-architecture authority. This lets an
+		// x64 host Clang target ARM64 or 386 without requiring CC solely to add
+		// --target. Explicit CC commands remain architecture-checked below.
+		toolchainArch, err = goarchForTargetTriple(ccIdentity.target)
+		if err != nil {
+			return Export{}, fmt.Errorf("CC %q: %w", cc[0], err)
+		}
+	}
+	toolchain, err := windowsToolchainForTriple(toolchainArch, ccIdentity.target)
 	if err != nil {
 		return Export{}, fmt.Errorf("CC %q: %w", cc[0], err)
+	}
+	if implicitCC && toolchainArch != goarch {
+		toolchain.TargetTriple, err = windowsTargetTriple(goarch, toolchain.ABI)
+		if err != nil {
+			return Export{}, err
+		}
 	}
 	if err := requireClangGNUDriver("CC", cc, ccIdentity); err != nil {
 		return Export{}, err

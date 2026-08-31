@@ -13,6 +13,10 @@ inputs:
     description: "Native Windows toolchain profile: msvc or mingw"
     required: false
     default: "msvc"
+  windows-arch:
+    description: "Windows target GOARCH: 386, amd64, or arm64"
+    required: false
+    default: "amd64"
 
 runs:
   using: "composite"
@@ -24,7 +28,14 @@ runs:
         if ("${{ inputs.windows-abi }}" -notin @("msvc", "mingw")) {
           throw "Unsupported Windows ABI profile: ${{ inputs.windows-abi }}"
         }
+        if ("${{ inputs.windows-arch }}" -notin @("386", "amd64", "arm64")) {
+          throw "Unsupported Windows target architecture: ${{ inputs.windows-arch }}"
+        }
+        if ("${{ inputs.windows-abi }}" -eq "mingw" -and "${{ inputs.windows-arch }}" -ne "amd64") {
+          throw "The MinGW profile currently supports windows/amd64; other GNU architectures are qualified in R11"
+        }
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_ABI=${{ inputs.windows-abi }}"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_ARCH=${{ inputs.windows-arch }}"
 
     - name: Cache full-target Windows LLVM
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
@@ -97,13 +108,99 @@ runs:
         path: ${{ runner.tool_cache }}\llgo-llvm\LLVM-19.1.3-Windows-X64
         key: llgo-llvm-19.1.3-full-target-windows-x64-1077267ca353a1e236055ed4b57d6a404d09c40b01bd27dc882870395cdc1aae
 
+    - name: Cache Windows cross-target compiler-rt builtins
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64'
+      id: windows_target_builtins_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\${{ inputs.windows-arch }}
+        key: ${{ inputs.windows-arch == 'arm64' && 'llgo-compiler-rt-19.1.3-windows-arm64-20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9-native-lldb-v1' || 'llgo-compiler-rt-19.1.3-windows-386-9bab022d175ff27e35db517b71d3e428027d75ffff0d0195ccc9f20ce5a20d4f' }}
+
+    - name: Install Windows cross-target compiler-rt builtins
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64' && steps.windows_target_builtins_cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      env:
+        LLVM_VERSION: "19.1.3"
+        LLVM_INSTALLER_ARCH: ${{ inputs.windows-arch == 'arm64' && 'woa64' || 'win32' }}
+        LLVM_INSTALLER_SHA256: ${{ inputs.windows-arch == 'arm64' && '20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9' || '9bab022d175ff27e35db517b71d3e428027d75ffff0d0195ccc9f20ce5a20d4f' }}
+        LLVM_BUILTINS_ARCH: ${{ inputs.windows-arch == 'arm64' && 'aarch64' || 'i386' }}
+      run: |
+        $ErrorActionPreference = "Stop"
+
+        # The upstream x64 full-target archive supplies the host LLVM tools
+        # but only x64 compiler-rt. Extract the target library from the
+        # matching official package. Windows on ARM also needs the native
+        # LLDB from that package: x64 LLDB can launch an ARM64 process under
+        # emulation, but it cannot reliably read register-located variables.
+        $installerName = "LLVM-$env:LLVM_VERSION-$env:LLVM_INSTALLER_ARCH.exe"
+        $installer = Join-Path $env:RUNNER_TEMP $installerName
+        $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$installerName"
+        & curl.exe --fail --location --retry 5 --retry-all-errors --output $installer $url
+        if ($LASTEXITCODE -ne 0) {
+          throw "Downloading the LLVM ${{ inputs.windows-arch }} installer failed with exit code $LASTEXITCODE"
+        }
+        $actual = (Get-FileHash -Algorithm SHA256 $installer).Hash
+        if (-not $actual.Equals($env:LLVM_INSTALLER_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
+          throw "LLVM ${{ inputs.windows-arch }} installer SHA-256 is $actual, want $env:LLVM_INSTALLER_SHA256"
+        }
+
+        $extractRoot = Join-Path $env:RUNNER_TEMP "llgo-llvm-${{ inputs.windows-arch }}-extract"
+        $sevenZip = Join-Path $env:ProgramFiles "7-Zip\7z.exe"
+        if (-not (Test-Path $sevenZip)) {
+          throw "7-Zip was not found at $sevenZip"
+        }
+        $builtinsRelative = "lib\clang\19\lib\windows\clang_rt.builtins-$env:LLVM_BUILTINS_ARCH.lib"
+        $extractPaths = @($builtinsRelative)
+        if ("${{ inputs.windows-arch }}" -eq "arm64") {
+          $extractPaths += @(
+            "bin\lldb.exe",
+            "bin\liblldb.dll",
+            "bin\lldb-argdumper.exe",
+            "bin\lldb-server.exe",
+            "lib\site-packages\lldb\*"
+          )
+        }
+        & $sevenZip x -y "-o$extractRoot" $installer @extractPaths
+        if ($LASTEXITCODE -ne 0) {
+          throw "Extracting the LLVM ${{ inputs.windows-arch }} builtins failed with exit code $LASTEXITCODE"
+        }
+        $source = Join-Path $extractRoot $builtinsRelative
+        if (-not (Test-Path $source)) {
+          throw "The LLVM ${{ inputs.windows-arch }} compiler-rt builtins were not found at $source"
+        }
+        $cacheRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\$env:LLVM_VERSION\${{ inputs.windows-arch }}"
+        New-Item -ItemType Directory -Force $cacheRoot | Out-Null
+        Copy-Item -LiteralPath $source -Destination $cacheRoot
+        if ("${{ inputs.windows-arch }}" -eq "arm64") {
+          $lldbRoot = Join-Path $cacheRoot "lldb"
+          New-Item -ItemType Directory -Force $lldbRoot | Out-Null
+          Copy-Item -LiteralPath (Join-Path $extractRoot "bin") -Destination $lldbRoot -Recurse
+          Copy-Item -LiteralPath (Join-Path $extractRoot "lib") -Destination $lldbRoot -Recurse
+          foreach ($required in @(
+            (Join-Path $lldbRoot "bin\lldb.exe"),
+            (Join-Path $lldbRoot "bin\liblldb.dll"),
+            (Join-Path $lldbRoot "lib\site-packages\lldb\__init__.py")
+          )) {
+            if (-not (Test-Path $required)) {
+              throw "The native Windows ARM64 LLDB installation is incomplete: $required"
+            }
+          }
+        }
+
+    - name: Save Windows cross-target compiler-rt builtins
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && inputs.windows-arch != 'amd64' && steps.windows_target_builtins_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.3\${{ inputs.windows-arch }}
+        key: ${{ inputs.windows-arch == 'arm64' && 'llgo-compiler-rt-19.1.3-windows-arm64-20a4a1094f813f7c548b2ff0a23bdc7f56ef0773c9aa1041d31ba56269b298a9-native-lldb-v1' || 'llgo-compiler-rt-19.1.3-windows-386-9bab022d175ff27e35db517b71d3e428027d75ffff0d0195ccc9f20ce5a20d4f' }}
+
     - name: Cache Windows MSVC dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
       id: windows_vcpkg_cache
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
-        key: llgo-vcpkg-x64-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+        key: llgo-vcpkg-${{ inputs.windows-arch }}-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Install Windows MSVC dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && steps.windows_vcpkg_cache.outputs.cache-hit != 'true'
@@ -116,6 +213,8 @@ runs:
         $sourceRoot = Join-Path $env:RUNNER_TEMP "llgo-vcpkg-source"
         $installRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-vcpkg\$env:VCPKG_MANIFEST_HASH"
         $manifestRoot = Join-Path $env:GITHUB_WORKSPACE ".github\windows\vcpkg"
+        . (Join-Path $env:GITHUB_WORKSPACE ".github\windows\msvc-target.ps1")
+        $target = Get-LLGoWindowsMSVCTarget -GoArch "${{ inputs.windows-arch }}"
 
         # Version overrides refer to historical Git tree objects. Keep the
         # complete Git object database rather than a source ZIP or partial
@@ -134,7 +233,8 @@ runs:
           throw "Bootstrapping vcpkg failed with exit code $LASTEXITCODE"
         }
         & (Join-Path $sourceRoot "vcpkg.exe") install `
-          --triplet x64-windows `
+          "--triplet=$($target.VcpkgTriplet)" `
+          --host-triplet=x64-windows `
           "--x-manifest-root=$manifestRoot" `
           "--x-install-root=$installRoot" `
           --clean-after-build
@@ -147,7 +247,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.tool_cache }}\llgo-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
-        key: llgo-vcpkg-x64-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
+        key: llgo-vcpkg-${{ inputs.windows-arch }}-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Configure standalone Windows LLVM, SDK, and dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
@@ -165,58 +265,33 @@ runs:
         $llvmBin = Join-Path $llvmRoot "bin"
         $llvmConfig = Join-Path $llvmBin "llvm-config.exe"
         $vcpkgRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-vcpkg\$env:VCPKG_MANIFEST_HASH"
-        $vcpkgTripletRoot = Join-Path $vcpkgRoot "x64-windows"
-        $pkgconf = Join-Path $vcpkgTripletRoot "tools\pkgconf\pkgconf.exe"
+        . (Join-Path $env:GITHUB_WORKSPACE ".github\windows\msvc-target.ps1")
+        $target = Get-LLGoWindowsMSVCTarget -GoArch "${{ inputs.windows-arch }}"
+        $vcpkgTripletRoot = Join-Path $vcpkgRoot $target.VcpkgTriplet
+        $vcpkgHostRoot = Join-Path $vcpkgRoot "x64-windows"
+        $pkgconf = Join-Path $vcpkgHostRoot "tools\pkgconf\pkgconf.exe"
         if (-not (Test-Path (Join-Path $vcpkgTripletRoot "include\gc\gc.h"))) {
-          throw "The cached x64-windows dependency installation is incomplete"
+          throw "The cached $($target.VcpkgTriplet) dependency installation is incomplete"
         }
         if (-not (Test-Path $pkgconf)) {
           throw "The native pkgconf executable was not installed at $pkgconf"
         }
 
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         # LLVM 19 predates the Visual Studio 18 STL compatibility floor. Keep
         # this pinned lane on VS 2022 instead of selecting a newer toolset
         # merely because the runner image also happens to contain one.
-        $installPath = & $vswhere -latest -products * -version '[17.0,18.0)' `
-          -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
-          -property installationPath
-        if (-not $installPath) {
-          throw "Visual Studio 2022 C++ tools required by LLVM 19 were not found"
-        }
-        Import-Module "$installPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-        Enter-VsDevShell -VsInstallPath $installPath `
-          -SkipAutomaticLocation `
-          -DevCmdArguments "-arch=x64 -host_arch=x64"
+        # LLGo itself and the LLVM Go bindings are x64 host programs even when
+        # this job will later execute ARM64 or 386 output. Target SDK variables
+        # are activated only after the host compiler has been installed.
+        $null = Enter-LLGoVisualStudio2022 -GoArch "amd64"
 
         # Clang emits the MSVC ABI but uses the SDK/UCRT selected by the
-        # Visual Studio developer environment. Persist only the target search
-        # variables and native tools needed by later composite-action callers.
-        foreach ($name in @(
-          "INCLUDE",
-          "LIB",
-          "LIBPATH",
-          "UCRTVersion",
-          "UniversalCRTSdkDir",
-          "VCINSTALLDIR",
-          "VCToolsInstallDir",
-          "VCToolsVersion",
-          "WindowsSdkDir",
-          "WindowsSDKVersion"
-        )) {
-          $value = [Environment]::GetEnvironmentVariable($name)
-          if ($value) {
-            Add-Content -Encoding utf8 $env:GITHUB_ENV "$name=$value"
-          }
-        }
+        # Visual Studio developer environment. Persist the x64 host search
+        # variables and tools used to build the LLGo compiler itself.
+        Export-LLGoVisualStudioEnvironment
         # Enter-VsDevShell only updates this action process. Export the native
         # SDK tools needed by later composite actions without persisting its
         # complete PATH (which can include unrelated runner-image toolchains).
-        @("cl.exe", "lib.exe", "link.exe", "dumpbin.exe", "nmake.exe", "rc.exe", "mt.exe") |
-          ForEach-Object { Split-Path (Get-Command $_).Source } |
-          Select-Object -Unique |
-          ForEach-Object { Add-Content -Encoding utf8 $env:GITHUB_PATH $_ }
-
         $pcDir = Join-Path $env:RUNNER_TEMP "llgo-pkgconfig"
         New-Item -ItemType Directory -Force $pcDir | Out-Null
         $cflags = ((& $llvmConfig --cflags) -join " ").Trim().Replace('\', '/')
@@ -353,22 +428,32 @@ runs:
         # Go's Windows external linker detects LLD through the compiler command
         # prefix. Without this option it emits a GNU ld linker script that the
         # native MSVC linker dialect cannot consume.
-        # The upstream full-target LLVM archive and the x64-windows vcpkg
-        # triplet use the dynamic MSVC runtime. Make cgo objects match them so
-        # lld-link does not reject mixed /MT and /MD RuntimeLibrary directives.
+        # The upstream full-target LLVM archive uses the dynamic MSVC runtime.
+        # Make host cgo objects match it so lld-link does not reject mixed /MT
+        # and /MD RuntimeLibrary directives.
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=dll"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=dll -std=c++17"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_TRIPLE=$($target.Triple)"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_VCPKG_TRIPLET=$($target.VcpkgTriplet)"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_VCPKG_ROOT=$vcpkgTripletRoot"
         Add-Content -Encoding utf8 $env:GITHUB_PATH $fileCheckRoot
         Add-Content -Encoding utf8 $env:GITHUB_PATH $llvmBin
-        Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $vcpkgTripletRoot "bin")
+        if ($target.GoArch -eq "amd64") {
+          Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $vcpkgTripletRoot "bin")
+        }
         # GITHUB_PATH is prepended in reverse write order. Add the wrapper
         # last so plain `pkg-config` always selects the profile-local command.
         Add-Content -Encoding utf8 $env:GITHUB_PATH $nativeTools
 
         $lldb = Join-Path $llvmBin "lldb.exe"
+        if ($target.GoArch -eq "arm64") {
+          $lldbRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\$env:LLVM_VERSION\arm64\lldb"
+          $lldb = Join-Path $lldbRoot "bin\lldb.exe"
+          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_LLDB_PYTHONPATH=$(Join-Path $lldbRoot 'lib\site-packages')"
+        }
         if (-not (Test-Path $lldb)) {
-          throw "lldb.exe was not found in the standalone LLVM archive"
+          throw "lldb.exe was not found for Windows $($target.GoArch)"
         }
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_LLDB=$lldb"
 
@@ -380,13 +465,28 @@ runs:
         if ($targetsBuilt -notcontains "WebAssembly") {
           throw "LLVM lacks the WebAssembly backend required by Windows-host cross-compilation: $targetsBuilt"
         }
-        $target = (& (Join-Path $llvmBin "clang.exe") -dumpmachine).Trim()
-        if ($target -ne "x86_64-pc-windows-msvc") {
-          throw "Standalone Clang defaults to $target, want x86_64-pc-windows-msvc"
+        $defaultTarget = (& (Join-Path $llvmBin "clang.exe") -dumpmachine).Trim()
+        if ($defaultTarget -ne "x86_64-pc-windows-msvc") {
+          throw "Standalone Clang defaults to $defaultTarget, want x86_64-pc-windows-msvc"
         }
         $builtins = (& (Join-Path $llvmBin "clang.exe") --target=x86_64-pc-windows-msvc --rtlib=compiler-rt -print-libgcc-file-name).Trim()
         if (-not (Test-Path $builtins)) {
           throw "Clang's MSVC compiler-rt builtins were not found at $builtins"
+        }
+        $targetBuiltins = (& (Join-Path $llvmBin "clang.exe") "--target=$($target.Triple)" --rtlib=compiler-rt -print-libgcc-file-name).Trim()
+        if ($target.GoArch -ne "amd64" -and -not (Test-Path $targetBuiltins)) {
+          $builtinsArch = if ($target.GoArch -eq "arm64") { "aarch64" } else { "i386" }
+          $cachedBuiltins = Join-Path $env:RUNNER_TOOL_CACHE "llgo-compiler-rt\$env:LLVM_VERSION\$($target.GoArch)\clang_rt.builtins-$builtinsArch.lib"
+          if (-not (Test-Path $cachedBuiltins)) {
+            throw "The cached Windows $($target.GoArch) compiler-rt builtins were not found at $cachedBuiltins"
+          }
+          # Let the x64 host Clang driver discover the target library through
+          # its normal resource-dir lookup, exactly as it does for x86/x64.
+          New-Item -ItemType Directory -Force (Split-Path $targetBuiltins) | Out-Null
+          Copy-Item -LiteralPath $cachedBuiltins -Destination $targetBuiltins
+        }
+        if (-not (Test-Path $targetBuiltins)) {
+          throw "Clang's $($target.Triple) compiler-rt builtins were not found at $targetBuiltins"
         }
         foreach ($package in @("llvm-${{ inputs.llvm-version }}", "bdw-gc", "libffi", "libuv", "openssl", "libcjson", "sqlite3", "zlib")) {
           & $pkgconfWrapper --modversion $package

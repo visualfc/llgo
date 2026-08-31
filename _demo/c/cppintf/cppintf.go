@@ -15,8 +15,8 @@ func NewBar(a c.Int) *Bar {
 	return &Bar{
 		Callback: foo.Callback{
 			Vptr: &foo.CallbackVtbl{
-				Val:  c.Func((*Bar).getA),
-				Calc: c.Func((*Bar).sqrt),
+				Val:  callbackVal(),
+				Calc: callbackCalc(),
 			},
 		},
 		a: a,

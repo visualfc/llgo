@@ -1,4 +1,4 @@
-//go:build !baremetal && windows && (amd64 || arm64)
+//go:build !baremetal && windows && (386 || amd64 || arm64)
 
 package runtime
 

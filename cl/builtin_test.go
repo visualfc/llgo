@@ -26,7 +26,6 @@ import (
 	"go/types"
 	"strings"
 	"testing"
-	"unsafe"
 
 	llssa "github.com/xgo-dev/llgo/ssa"
 	"github.com/xgo-dev/llvm"
@@ -547,20 +546,18 @@ func TestIsAllocVargs(t *testing.T) {
 
 func ssaSlice(refs ...ssa.Instruction) *ssa.Slice {
 	a := &ssa.Slice{}
-	setRefs(unsafe.Pointer(a), refs...)
+	setRefs(a, refs...)
 	return a
 }
 
 func ssaAlloc(refs ...ssa.Instruction) *ssa.Alloc {
 	a := &ssa.Alloc{}
-	setRefs(unsafe.Pointer(a), refs...)
+	setRefs(a, refs...)
 	return a
 }
 
-func setRefs(v unsafe.Pointer, refs ...ssa.Instruction) {
-	off := unsafe.Offsetof(ssa.Alloc{}.Comment) - unsafe.Sizeof([]int(nil))
-	ptr := uintptr(v) + off
-	*(*[]ssa.Instruction)(unsafe.Pointer(ptr)) = refs
+func setRefs(v ssa.Value, refs ...ssa.Instruction) {
+	*v.Referrers() = refs
 }
 
 func TestRecvTypeName(t *testing.T) {
@@ -687,7 +684,7 @@ func TestErrAsm(t *testing.T) {
 		nonConstKey := &ssa.Parameter{}
 		mapUpdate := &ssa.MapUpdate{Key: nonConstKey}
 		referrers := []ssa.Instruction{mapUpdate}
-		setRefs(unsafe.Pointer(makeMap), referrers...)
+		setRefs(makeMap, referrers...)
 		strConst := &ssa.Const{
 			Value: constant.MakeString("nop"),
 		}
@@ -696,7 +693,7 @@ func TestErrAsm(t *testing.T) {
 	test("asmFull(RegisterNotFound)", func(ctx *context) {
 		makeMap := &ssa.MakeMap{}
 		referrers := []ssa.Instruction{}
-		setRefs(unsafe.Pointer(makeMap), referrers...)
+		setRefs(makeMap, referrers...)
 		strConst := &ssa.Const{
 			Value: constant.MakeString("test {missing}"),
 		}
@@ -706,7 +703,7 @@ func TestErrAsm(t *testing.T) {
 		makeMap := &ssa.MakeMap{}
 		unknownRef := &ssa.Return{}
 		referrers := []ssa.Instruction{unknownRef}
-		setRefs(unsafe.Pointer(makeMap), referrers...)
+		setRefs(makeMap, referrers...)
 		strConst := &ssa.Const{
 			Value: constant.MakeString("test"),
 		}

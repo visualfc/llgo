@@ -18,6 +18,7 @@ package ssa
 
 import (
 	"fmt"
+	"go/token"
 	"go/types"
 	"unsafe"
 
@@ -438,14 +439,16 @@ func (p Program) toLLVMNamedStruct(name string, raw *types.Named, st *types.Stru
 	typ := &aType{t, rawType{raw}, kind}
 	p.named[name] = typ
 	p.typs.Set(raw, typ)
-	fields := p.toLLVMFields(st)
+	fields, layout := p.toLLVMStructBody(st, p.hasNativeStructLayout(raw))
 	t.StructSetBody(fields, false)
+	p.setStructLayout(raw, layout)
 	return typ
 }
 
 func (p Program) toLLVMStruct(raw *types.Struct) (ret llvm.Type, kind valueKind) {
-	fields := p.toLLVMFields(raw)
+	fields, layout := p.toLLVMStructBody(raw, false)
 	ret = p.ctx.StructType(fields, false)
+	p.setStructLayout(raw, layout)
 	if IsClosure(raw) {
 		kind = vkClosure
 	} else {
@@ -470,7 +473,22 @@ func (p Program) toLLVMFields(raw *types.Struct) (fields []llvm.Type) {
 }
 
 func (p Program) toLLVMTuple(t *types.Tuple) llvm.Type {
-	return p.ctx.StructType(p.toLLVMTypes(t, t.Len()), false)
+	if p.target.effectiveGOARCH() != "386" {
+		return p.ctx.StructType(p.toLLVMTypes(t, t.Len()), false)
+	}
+	fields := make([]*types.Var, t.Len())
+	for i := range fields {
+		// Tuple result names are not part of their type and may be empty or
+		// repeated. Give the layout-only struct unique private field names.
+		fields[i] = types.NewField(token.NoPos, nil, fmt.Sprintf("_llgo%d", i), t.At(i).Type(), false)
+	}
+	// Multiple results are represented as an anonymous LLVM aggregate. Keep
+	// its physical layout identical to the equivalent Go struct: on 386,
+	// i64 and double fields are only four-byte aligned. Calls and returns are
+	// otherwise liable to disagree about offsets across package boundaries.
+	body, layout := p.toLLVMStructBody(types.NewStruct(fields, nil), false)
+	p.setStructLayout(t, layout)
+	return p.ctx.StructType(body, false)
 }
 
 func (p Program) toLLVMTypes(t *types.Tuple, n int) (ret []llvm.Type) {

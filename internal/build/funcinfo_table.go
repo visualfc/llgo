@@ -866,12 +866,19 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 	llvmCtx := mod.Context()
 	builder := llvmCtx.NewBuilder()
 	defer builder.Dispose()
-	asmType := llvm.FunctionType(llvmCtx.VoidType(), nil, false)
+	noArgsAsmType := llvm.FunctionType(llvmCtx.VoidType(), nil, false)
 	ptrDirective := ".quad"
 	align := "3"
+	recordPadding := ""
 	if ctx.prog.PointerSize() == 4 {
 		ptrDirective = ".long"
 		align = "2"
+		if siteFormat == siteObjectCOFF {
+			// The Windows C ABI aligns the following uint64 to offset 8. Keep
+			// inline records identical to the natural LLVM struct used for the
+			// COFF boundary sentinels and to the Windows/386 runtime declaration.
+			recordPadding = ".long 0\n"
+		}
 	}
 	for fn := mod.FirstFunction(); !fn.IsNil(); fn = llvm.NextFunction(fn) {
 		if fn.IsDeclaration() || fn.BasicBlocksCount() == 0 {
@@ -893,16 +900,45 @@ func emitFuncInfoEntrySites(ctx *context, pkg llssa.Package) {
 			builder.SetInsertPointBefore(first)
 		}
 		anchor := siteAnchorLabel(siteFormat, "funcinfo_entry")
+		entryPC := anchor
+		asmType := noArgsAsmType
+		constraints := ""
+		var args []llvm.Value
+		if siteFormat == siteObjectCOFF && ctx.prog.PointerSize() == 4 && functionAddressTaken(fn) {
+			// Win32 has no PE unwind table from which the runtime can recover an
+			// exact function boundary. Address-taken functions are already kept
+			// live by the program, so their associative record may safely carry
+			// the true entry instead of the post-prologue inline-asm anchor. This
+			// lets FuncForPC distinguish a function value from an ordinary PC in
+			// the tail of the preceding function without retaining any otherwise
+			// dead function.
+			entryPC = "${0:c}"
+			asmType = llvm.FunctionType(llvmCtx.VoidType(), []llvm.Type{fn.Type()}, false)
+			constraints = "X"
+			args = []llvm.Value{fn}
+		}
 		instruction := anchor + ":\n" +
 			entrySiteInfo.push(siteFormat, anchor) + "\n" +
 			".p2align " + align + "\n" +
 			entrySiteInfo.recordSymbol(siteFormat, "funcinfo_entry") +
-			ptrDirective + " " + anchor + "\n" +
+			ptrDirective + " " + entryPC + "\n" +
+			recordPadding +
 			".quad " + uint64Hex(symbolID) + "\n" +
 			".popsection"
-		asm := llvm.InlineAsm(asmType, instruction, "", true, false, llvm.InlineAsmDialectATT, false)
-		builder.CreateCall(asmType, asm, nil, "")
+		asm := llvm.InlineAsm(asmType, instruction, constraints, true, false, llvm.InlineAsmDialectATT, false)
+		builder.CreateCall(asmType, asm, args, "")
 	}
+}
+
+func functionAddressTaken(fn llvm.Value) bool {
+	for use := fn.FirstUse(); !use.IsNil(); use = use.NextUse() {
+		user := use.User()
+		if (!user.IsACallInst().IsNil() || !user.IsAInvokeInst().IsNil()) && user.CalledValue() == fn {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func funcInfoSymbolID(symbol string) uint64 {

@@ -96,10 +96,48 @@ func (prog Program) ConstStruct(t Type, values []Expr) Expr {
 	for i, value := range values {
 		fields[i] = value.impl
 	}
-	if _, ok := t.raw.Type.(*types.Named); ok {
-		return Expr{llvm.ConstNamedStruct(t.ll, fields), t}
+	return Expr{prog.constStructValue(t, fields), t}
+}
+
+func (prog Program) constStructValue(t Type, values []llvm.Value) llvm.Value {
+	return prog.constStructValueAs(t, t.ll, values)
+}
+
+// constStructValueAs constructs a constant using the exact LLVM type owned by
+// its destination. LLVM may uniquify an otherwise equivalent identified
+// struct while linking modules, so global initializers must not use a second
+// Type instance merely because it has the same Go shape.
+func (prog Program) constStructValueAs(t Type, structType llvm.Type, values []llvm.Value) llvm.Value {
+	elements := structType.StructElementTypes()
+	fields := make([]llvm.Value, len(elements))
+	for i, value := range values {
+		fields[i] = prog.wrapStructConstantAs(t, structType, i, value)
 	}
-	return Expr{prog.ctx.ConstStruct(fields, false), t}
+	for i := len(values); i < len(fields); i++ {
+		fields[i] = llvm.ConstNull(elements[i])
+	}
+	if structType.StructName() != "" {
+		return llvm.ConstNamedStruct(structType, fields)
+	}
+	return prog.ctx.ConstStruct(fields, structType.IsStructPacked())
+}
+
+func (prog Program) wrapStructConstant(t Type, index int, value llvm.Value) llvm.Value {
+	return prog.wrapStructConstantAs(t, t.ll, index, value)
+}
+
+func (prog Program) wrapStructConstantAs(t Type, structType llvm.Type, index int, value llvm.Value) llvm.Value {
+	layout, ok := prog.structLayout(t)
+	if !ok || index >= len(layout.wrapped) || !layout.wrapped[index] {
+		return value
+	}
+	elem := structType.StructElementTypes()[index]
+	parts := elem.StructElementTypes()
+	values := []llvm.Value{value}
+	if len(parts) == 2 {
+		values = append(values, llvm.ConstNull(parts[1]))
+	}
+	return prog.ctx.ConstStruct(values, true)
 }
 
 // Undefined global string var by names

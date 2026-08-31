@@ -56,7 +56,9 @@ func PrintHex(v uint64) {
 func PrintPointer(p unsafe.Pointer) {
 	// Match Go's builtin print/println pointer formatting (0x... even for nil).
 	c.Fprintf(c.Stderr, c.Str("0x"))
-	c.Fprintf(c.Stderr, printFormatPrefixHex, uintptr(p))
+	// %llx consumes an unsigned long long. On 32-bit targets, passing uintptr
+	// directly leaves the upper half of the variadic argument unspecified.
+	c.Fprintf(c.Stderr, printFormatPrefixHex, uint64(uintptr(p)))
 }
 
 func PrintSlice(s Slice) {

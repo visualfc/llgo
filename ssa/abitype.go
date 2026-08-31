@@ -172,17 +172,17 @@ func (b Builder) abiStructFields(t *types.Struct, name string) llvm.Value {
 	g := b.Pkg.VarOf(name)
 	if g == nil {
 		ft := prog.rtType("structfield")
-		typ := prog.Type(t, InGo)
+		offsets := b.abiStructFieldOffsets(t)
 		fields := make([]llvm.Value, n)
 		for i := 0; i < n; i++ {
 			f := t.Field(i)
 			var values []llvm.Value
 			values = append(values, b.Str(f.Name()).impl)
 			values = append(values, b.abiType(abi.PublicType(f.Type())).impl)
-			values = append(values, prog.IntVal(prog.OffsetOf(typ, i), prog.Uintptr()).impl)
+			values = append(values, prog.IntVal(uint64(offsets[i]), prog.Uintptr()).impl)
 			values = append(values, b.Str(t.Tag(i)).impl)
 			values = append(values, prog.BoolVal(f.Embedded()).impl)
-			fields[i] = llvm.ConstNamedStruct(ft.ll, values)
+			fields[i] = prog.constStructValue(ft, values)
 		}
 		atyp := prog.rawType(types.NewArray(ft.RawType(), int64(n)))
 		data := Expr{llvm.ConstArray(ft.ll, fields), atyp}
@@ -192,11 +192,19 @@ func (b Builder) abiStructFields(t *types.Struct, name string) llvm.Value {
 		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 	}
 	size := uint64(n)
-	return llvm.ConstNamedStruct(prog.rtType("Slice").ll, []llvm.Value{
+	return prog.constStructValue(prog.rtType("Slice"), []llvm.Value{
 		g.impl,
 		prog.IntVal(size, prog.Int()).impl,
 		prog.IntVal(size, prog.Int()).impl,
 	})
+}
+
+func (b Builder) abiStructFieldOffsets(t *types.Struct) []int64 {
+	fields := make([]*types.Var, t.NumFields())
+	for i := range fields {
+		fields[i] = t.Field(i)
+	}
+	return b.Prog.abi.Sizes.Offsetsof(fields)
 }
 
 /*
@@ -232,7 +240,7 @@ func (b Builder) abiInterfaceImethods(t *types.Interface, name string) llvm.Valu
 			values = append(values, b.Str(name).impl)
 			ftyp := funcType(prog, f.Type())
 			values = append(values, b.abiType(ftyp).impl)
-			fields[i] = llvm.ConstNamedStruct(ft.ll, values)
+			fields[i] = prog.constStructValue(ft, values)
 		}
 		atyp := prog.rawType(types.NewArray(ft.RawType(), int64(n)))
 		data := Expr{llvm.ConstArray(ft.ll, fields), atyp}
@@ -242,7 +250,7 @@ func (b Builder) abiInterfaceImethods(t *types.Interface, name string) llvm.Valu
 		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 	}
 	size := uint64(n)
-	return llvm.ConstNamedStruct(prog.rtType("Slice").ll, []llvm.Value{
+	return prog.constStructValue(prog.rtType("Slice"), []llvm.Value{
 		g.impl,
 		prog.IntVal(size, prog.Int()).impl,
 		prog.IntVal(size, prog.Int()).impl,
@@ -270,7 +278,7 @@ func (b Builder) abiTuples(t *types.Tuple, name string) llvm.Value {
 		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 	}
 	size := uint64(n)
-	return llvm.ConstNamedStruct(prog.rtType("Slice").ll, []llvm.Value{
+	return prog.constStructValue(prog.rtType("Slice"), []llvm.Value{
 		g.impl,
 		prog.IntVal(size, prog.Int()).impl,
 		prog.IntVal(size, prog.Int()).impl,
@@ -517,7 +525,7 @@ func (b Builder) abiUncommonType(t types.Type, methods []*types.Selection) llvm.
 	fields = append(fields, prog.IntVal(uint64(mcount), prog.Uint16()).impl)
 	fields = append(fields, prog.IntVal(uint64(xcount), prog.Uint16()).impl)
 	fields = append(fields, prog.IntVal(moff, prog.Uint32()).impl)
-	return llvm.ConstNamedStruct(ft.ll, fields)
+	return prog.constStructValue(ft, fields)
 }
 
 /*
@@ -547,7 +555,7 @@ func (b Builder) abiUncommonMethods(t types.Type, methods []*types.Selection) ll
 		values = append(values, b.abiType(ftyp).impl)
 		values = append(values, ifn)
 		values = append(values, tfn)
-		fields[i] = llvm.ConstNamedStruct(ft.ll, values)
+		fields[i] = prog.constStructValue(ft, values)
 		if mb := b.Pkg.metaBuilder; mb != nil {
 			mtypeName, _ := prog.abi.TypeName(ftyp)
 			mb.AddMethodSlot(mb.Sym(typeName), fullName, mb.Sym(mtypeName), mb.Sym(ifn.Name()), mb.Sym(tfn.Name()))
@@ -688,12 +696,12 @@ func (b Builder) abiType(t types.Type) Expr {
 		fields := commonFields
 		if len(extendedFields) != 0 {
 			fields = append([]llvm.Value{
-				llvm.ConstNamedStruct(prog.AbiType().ll, fields),
+				prog.constStructValue(prog.AbiType(), fields),
 			}, extendedFields...)
 		}
 		if hasUncommon {
 			fields = []llvm.Value{
-				llvm.ConstNamedStruct(prog.Type(rt, InGo).ll, fields),
+				prog.constStructValue(prog.Type(rt, InGo), fields),
 				b.abiUncommonType(t, methods),
 				b.abiUncommonMethods(t, methods),
 			}
@@ -701,7 +709,7 @@ func (b Builder) abiType(t types.Type) Expr {
 				pkg.abiTypeWithUncommon[g.impl] = struct{}{}
 			}
 		}
-		g.impl.SetInitializer(llvm.ConstNamedStruct(g.impl.GlobalValueType(), fields))
+		g.impl.SetInitializer(prog.constStructValueAs(prog.Type(typ, InGo), g.impl.GlobalValueType(), fields))
 		g.impl.SetGlobalConstant(true)
 		b.Pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
 		if prog.enableGoGlobalDCE {
@@ -815,7 +823,7 @@ func (p Package) getAbiTypesFor(name string, filter func(sym *AbiSymbol) bool) E
 	size := uint64(len(names))
 	typ := prog.Slice(prog.AbiTypePtr())
 	g := p.doNewVar(name+"$slice", prog.Pointer(typ))
-	g.impl.SetInitializer(llvm.ConstNamedStruct(typ.ll, []llvm.Value{
+	g.impl.SetInitializer(prog.constStructValueAs(typ, g.impl.GlobalValueType(), []llvm.Value{
 		array.impl,
 		prog.IntVal(size, prog.Int()).impl,
 		prog.IntVal(size, prog.Int()).impl,

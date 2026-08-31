@@ -263,7 +263,7 @@ func (p *stringPool) offset(s string) (uint32, error) {
 		p.offsets[s] = uoff
 		return uoff, nil
 	}
-	if len(p.data)+len(s)+1 > math.MaxUint32 {
+	if uint64(len(p.data))+uint64(len(s))+1 > math.MaxUint32 {
 		return 0, fmt.Errorf("funcinfo string table exceeds 4 GiB")
 	}
 	off := uint32(len(p.data))

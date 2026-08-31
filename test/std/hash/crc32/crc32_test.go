@@ -30,7 +30,7 @@ func TestChecksumVariants(t *testing.T) {
 
 	ieee := crc32.ChecksumIEEE([]byte("123456789"))
 	if ieee != 0xcbf43926 {
-		t.Fatalf("ChecksumIEEE=%#x want %#x", ieee, 0xcbf43926)
+		t.Fatalf("ChecksumIEEE=%#x want %#x", ieee, uint32(0xcbf43926))
 	}
 
 	if tab := crc32.MakeTable(crc32.IEEE); tab != crc32.IEEETable {
@@ -46,7 +46,7 @@ func TestUpdateMatchesChecksum(t *testing.T) {
 		crc = crc32.Update(crc, tab, []byte(part))
 	}
 	if crc != 0xcbf43926 {
-		t.Fatalf("Update(IEEETable)=%#x want %#x", crc, 0xcbf43926)
+		t.Fatalf("Update(IEEETable)=%#x want %#x", crc, uint32(0xcbf43926))
 	}
 
 	ptrTab := crc32.MakeTable(crc32.Castagnoli)

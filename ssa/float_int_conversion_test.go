@@ -19,6 +19,7 @@
 package ssa
 
 import (
+	"go/token"
 	"go/types"
 	"strings"
 	"testing"
@@ -49,6 +50,58 @@ func TestAMD64FloatToIntegerConversionIR(t *testing.T) {
 			fn := pkg.NewFunc(tt.name, sig, InGo)
 			b := fn.MakeBody(1)
 			b.Return(b.Convert(prog.Type(tt.typ, InGo), fn.Param(0)))
+
+			ir := fn.impl.String()
+			for _, want := range tt.wants {
+				if !strings.Contains(ir, want) {
+					t.Errorf("conversion IR missing %q:\n%s", want, ir)
+				}
+			}
+		})
+	}
+}
+
+func Test386FloatToIntegerConversionIR(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	runtimePkg := types.NewPackage(PkgRuntime, "runtime")
+	params := types.NewTuple(types.NewVar(token.NoPos, runtimePkg, "d", types.Typ[types.Float64]))
+	for _, resultType := range []struct {
+		name string
+		typ  types.Type
+	}{
+		{name: "Float64ToInt64", typ: types.Typ[types.Int64]},
+		{name: "Float64ToUint64", typ: types.Typ[types.Uint64]},
+	} {
+		results := types.NewTuple(types.NewVar(token.NoPos, runtimePkg, "", resultType.typ))
+		sig := types.NewSignatureType(nil, nil, nil, params, results, false)
+		if err := runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, resultType.name, sig)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prog.SetRuntime(runtimePkg)
+	pkg := prog.NewPackage("floatconvert386", "floatconvert386")
+
+	tests := []struct {
+		name  string
+		src   *types.Basic
+		dst   *types.Basic
+		wants []string
+	}{
+		{name: "I32", src: types.Typ[types.Float64], dst: types.Typ[types.Int32], wants: []string{"fptosi double", "to i32", "i32 -2147483648"}},
+		{name: "I64", src: types.Typ[types.Float64], dst: types.Typ[types.Int64], wants: []string{"Float64ToInt64", "(double"}},
+		{name: "U32", src: types.Typ[types.Float64], dst: types.Typ[types.Uint32], wants: []string{"Float64ToUint64", "trunc i64", "to i32"}},
+		{name: "U64", src: types.Typ[types.Float64], dst: types.Typ[types.Uint64], wants: []string{"Float64ToUint64", "(double"}},
+		{name: "F32ToI64", src: types.Typ[types.Float32], dst: types.Typ[types.Int64], wants: []string{"fpext float", "to double", "Float64ToInt64"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := types.NewTuple(types.NewParam(0, nil, "x", tt.src))
+			results := types.NewTuple(types.NewParam(0, nil, "", tt.dst))
+			sig := types.NewSignatureType(nil, nil, nil, params, results, false)
+			fn := pkg.NewFunc(tt.name, sig, InGo)
+			b := fn.MakeBody(1)
+			b.Return(b.Convert(prog.Type(tt.dst, InGo), fn.Param(0)))
 
 			ir := fn.impl.String()
 			for _, want := range tt.wants {

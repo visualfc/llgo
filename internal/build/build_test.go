@@ -1490,7 +1490,7 @@ func TestLTOEnabledExplicitOverride(t *testing.T) {
 	}
 }
 
-func TestArchiverPrefersLLVMArForLTO(t *testing.T) {
+func TestArchiverPrefersLLVMArForLTOAndCOFF(t *testing.T) {
 	td := t.TempDir()
 	llvmAr := testToolPath(td, "llvm-ar")
 	if err := os.WriteFile(llvmAr, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -1499,11 +1499,19 @@ func TestArchiverPrefersLLVMArForLTO(t *testing.T) {
 	t.Setenv("PATH", td)
 	t.Setenv("LLGO_AR", "")
 
-	if got := (&context{buildConf: &Config{LTO: lto.Off}}).archiver(); got != "ar" {
+	ctx := &context{buildConf: &Config{LTO: lto.Off}}
+	if got := ctx.archiver(); got != "ar" {
 		t.Fatalf("archiver without lto = %q, want ar", got)
 	}
-	if got := (&context{buildConf: &Config{LTO: lto.Full}}).archiver(); got != llvmAr {
+	ctx.buildConf.LTO = lto.Full
+	if got := ctx.archiver(); got != llvmAr {
 		t.Fatalf("archiver with full lto = %q, want %q", got, llvmAr)
+	}
+	ctx.buildConf.LTO = lto.Off
+	ctx.crossCompile.CC = "clang"
+	ctx.crossCompile.Toolchain.ObjectFormat = crosscompile.ObjectFormatCOFF
+	if got := ctx.archiver(); got != llvmAr {
+		t.Fatalf("archiver for COFF = %q, want %q", got, llvmAr)
 	}
 }
 

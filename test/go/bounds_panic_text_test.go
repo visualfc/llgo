@@ -55,6 +55,24 @@ func TestBoundsPanicText(t *testing.T) {
 			},
 		},
 		{
+			name: "wide unsigned index with in-range low word",
+			want: "runtime error: index out of range [4294967297] with length 3",
+			f: func() {
+				s := []int{1, 2, 3}
+				i := uint64(1)<<32 + 1
+				_ = s[i]
+			},
+		},
+		{
+			name: "wide signed index with in-range low word",
+			want: "runtime error: index out of range [-4294967295]",
+			f: func() {
+				s := []int{1, 2, 3}
+				i := int64(-1)<<32 + 1
+				_ = s[i]
+			},
+		},
+		{
 			name: "slice high capacity",
 			want: "runtime error: slice bounds out of range [:4] with capacity 3",
 			f: func() {

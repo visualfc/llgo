@@ -16,9 +16,10 @@ concurrency:
 
 jobs:
   llgo:
-    name: llgo (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go current)
-    timeout-minutes: 60
+    name: llgo (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, LLVM ${{ matrix.llvm }}, Go current)
+    timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || 60 }}
     strategy:
+      fail-fast: false
       matrix:
         # Build the compiler and run compiler-owned integration checks once per
         # native toolchain profile, always with .go-version.
@@ -30,9 +31,23 @@ jobs:
           - os: windows-2022
             llvm: 19
             windows_abi: msvc
+            windows_arch: amd64
+            host_go_arch: x64
           - os: windows-2022
             llvm: 19
             windows_abi: mingw
+            windows_arch: amd64
+            host_go_arch: x64
+          - os: windows-11-arm
+            llvm: 19
+            windows_abi: msvc
+            windows_arch: arm64
+            host_go_arch: x64
+          - os: windows-2022
+            llvm: 19
+            windows_abi: msvc
+            windows_arch: "386"
+            host_go_arch: x64
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -41,21 +56,32 @@ jobs:
         with:
           llvm-version: ${{matrix.llvm}}
           windows-abi: ${{ matrix.windows_abi || 'msvc' }}
+          windows-arch: ${{ matrix.windows_arch || 'amd64' }}
       - name: Install embedded dependencies
         uses: ./.github/actions/setup-embed-deps
       - name: Setup demo dependencies
         uses: ./.github/actions/setup-demo-deps
         with:
           windows-abi: ${{ matrix.windows_abi || 'msvc' }}
+          windows-arch: ${{ matrix.windows_arch || 'amd64' }}
 
       - name: Set up Go for build
         uses: ./.github/actions/setup-go
+        with:
+          architecture: ${{ matrix.host_go_arch || '' }}
 
       - name: Install
         shell: bash
         run: |
           go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Activate native Windows target
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/activate-windows-target
+        with:
+          windows-abi: ${{ matrix.windows_abi }}
+          windows-arch: ${{ matrix.windows_arch }}
 
       - name: Test Hello World with go.mod 1.21 through 1.26
         if: matrix.os == 'ubuntu-latest'
@@ -75,9 +101,12 @@ jobs:
         run: dev/test_runtime_go_versions.sh
 
       - name: Validate the native Windows toolchain profile
-        if: ${{ matrix.os == 'windows-2022' }}
+        if: runner.os == 'Windows'
         shell: pwsh
-        run: .\.github\workflows\test_windows_toolchain_profile.ps1 -Profile "${{ matrix.windows_abi }}"
+        run: >-
+          .\.github\workflows\test_windows_toolchain_profile.ps1
+          -Profile "${{ matrix.windows_abi }}"
+          -GoArch "${{ matrix.windows_arch || 'amd64' }}"
 
       - name: Test demo without RPATH (expect failure)
         if: runner.os != 'Windows'
@@ -105,7 +134,15 @@ jobs:
         run: bash .github/workflows/test_demo.sh
 
       - name: Test demos (embedded target)
+        if: runner.os != 'Windows' || matrix.windows_arch != 'arm64'
         run: bash .github/workflows/test_demo.sh --embedded
+
+      # Espressif only publishes an x86-64 Windows QEMU. Its runtime coverage
+      # stays on the x64 Windows lanes; the ARM64 runner still compiles every
+      # applicable firmware case with the same LLGo host toolchain.
+      - name: Test demos (embedded target, build only)
+        if: runner.os == 'Windows' && matrix.windows_arch == 'arm64'
+        run: bash .github/workflows/test_demo.sh --embedded-build-only
 
       - name: Test C header generation
         shell: bash
@@ -123,24 +160,44 @@ jobs:
           chmod +x verify_export.sh
           ./verify_export.sh
 
-      - name: Test ESP serial smoke (build + emulator)
+      - name: Test ESP serial smoke
         shell: bash
         run: |
           echo "Testing ESP32/ESP32-C3 build + emulator smoke..."
           cd _demo/embed
           chmod +x test-esp-serial-startup.sh
-          ./test-esp-serial-startup.sh
+          args=()
+          if [[ "$RUNNER_OS" == "Windows" && "${{ matrix.windows_arch }}" == "arm64" ]]; then
+            args+=(--build-only)
+          fi
+          ./test-esp-serial-startup.sh "${args[@]}"
 
       - name: Test ESP32-C3 startup regression
         shell: bash
         run: |
           echo "Testing ESP32-C3 startup regressions..."
+          # esptool inspects target firmware but runs on the CI host. For a
+          # cross-architecture Windows lane, use the x64 host Python so pip
+          # can install its native dependencies without cross-building them.
+          if [[ "$RUNNER_OS" == "Windows" && -n "${LLGO_WINDOWS_PYTHON_HOME:-}" ]]; then
+            host_python_home="$(cygpath -u "$LLGO_WINDOWS_PYTHON_HOME")"
+            export PATH="$host_python_home:$PATH"
+          fi
           python -m pip install esptool==5.1.0
           cd _demo/embed
           chmod +x test_esp32c3_startup.sh
-          ./test_esp32c3_startup.sh
+          args=()
+          if [[ "$RUNNER_OS" == "Windows" && "${{ matrix.windows_arch }}" == "arm64" ]]; then
+            args+=(--build-only)
+          fi
+          ./test_esp32c3_startup.sh "${args[@]}"
 
       - name: _xtool build tests
+        # _xtool contains host developer utilities that link the host LLVM and
+        # Python libraries. Windows amd64 already covers that build; the 386
+        # and ARM64 lanes qualify target programs and cannot link those x64
+        # host libraries into target-native tools.
+        if: runner.os != 'Windows' || matrix.windows_arch == 'amd64'
         run: |
           cd _xtool
           llgo build -v ./...
@@ -175,20 +232,37 @@ jobs:
           echo "LLGO_LLDB=$(cygpath -m "$lldb_path")" >> "$GITHUB_ENV"
 
       - name: LLDB integration tests
-        if: ${{ matrix.os != 'windows-2022' }}
+        if: runner.os != 'Windows'
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
 
+      # Windows/386 debugging is qualified in R12. The x64 LLDB follows the
+      # WoW64 exception dispatcher instead of the 32-bit source frame, so its
+      # variable results are not evidence for or against R10 runtime support.
       - name: LLDB integration tests (MSVC)
-        if: ${{ matrix.windows_abi == 'msvc' }}
+        if: ${{ matrix.windows_abi == 'msvc' && matrix.windows_arch != '386' }}
         shell: pwsh
         run: |
-          # The upstream LLVM archive records its build runner's Python home.
-          # setup-demo-deps installs that exact Python patch release.
-          $env:PYTHONHOME = $env:LLGO_WINDOWS_PYTHON_HOME
+          if ("${{ matrix.windows_arch }}" -eq "arm64") {
+            # Use the native debugger and Python runtime. The x64 debugger can
+            # start an ARM64 process through Windows emulation, but LLDB then
+            # reports register-located locals as unavailable.
+            $env:PYTHONHOME = $env:LLGO_WINDOWS_LLDB_PYTHON_HOME
+            $env:PYTHONPATH = $env:LLGO_WINDOWS_LLDB_PYTHONPATH
+            $env:PYTHONUTF8 = "1"
+            $env:PYTHONIOENCODING = "utf-8"
+            $env:PATH = "$env:LLGO_WINDOWS_LLDB_PYTHON_HOME;$env:PATH"
+          } else {
+            # The upstream x64 LLVM archive records its build runner's Python
+            # home. setup-demo-deps installs that exact Python patch release.
+            $env:PYTHONHOME = $env:LLGO_WINDOWS_PYTHON_HOME
+          }
           Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
+          if ($LASTEXITCODE -ne 0) {
+            throw "LLDB integration tests failed with exit code $LASTEXITCODE"
+          }
 
       - name: LLDB integration tests (MinGW)
         if: ${{ matrix.windows_abi == 'mingw' }}
@@ -204,8 +278,8 @@ jobs:
         run: go test -timeout 15m ./internal/build -run '^TestStandardDWARF$' -count=1 -v
 
   test:
-    name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})
-    timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 40 }}
+    name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})
+    timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 40 }}
     strategy:
       fail-fast: false
       matrix:
@@ -253,6 +327,8 @@ jobs:
             shard_index: "0"
             shard_total: "1"
             windows_abi: msvc
+            windows_arch: amd64
+            host_go_arch: x64
           - os: windows-2022
             llvm: 19
             go_version: "1.27"
@@ -260,6 +336,26 @@ jobs:
             shard_index: "0"
             shard_total: "1"
             windows_abi: mingw
+            windows_arch: amd64
+            host_go_arch: x64
+          - os: windows-11-arm
+            llvm: 19
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
+            windows_abi: msvc
+            windows_arch: arm64
+            host_go_arch: x64
+          - os: windows-2022
+            llvm: 19
+            go_version: "1.27"
+            lane: full
+            shard_index: "0"
+            shard_total: "1"
+            windows_abi: msvc
+            windows_arch: "386"
+            host_go_arch: x64
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@v7
@@ -268,14 +364,18 @@ jobs:
         with:
           llvm-version: ${{matrix.llvm}}
           windows-abi: ${{ matrix.windows_abi || 'msvc' }}
+          windows-arch: ${{ matrix.windows_arch || 'amd64' }}
       - name: Install further optional dependencies for demos
         if: matrix.lane == 'full'
         uses: ./.github/actions/setup-demo-deps
         with:
           windows-abi: ${{ matrix.windows_abi || 'msvc' }}
+          windows-arch: ${{ matrix.windows_arch || 'amd64' }}
 
       - name: Set up Go for build
         uses: ./.github/actions/setup-go
+        with:
+          architecture: ${{ matrix.host_go_arch || '' }}
 
       - name: Build LLGo and test tools
         shell: bash
@@ -284,6 +384,13 @@ jobs:
           echo "$RUNNER_TEMP/llgo-bin" >> "$GITHUB_PATH"
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
+      - name: Activate native Windows target
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/activate-windows-target
+        with:
+          windows-abi: ${{ matrix.windows_abi }}
+          windows-arch: ${{ matrix.windows_arch }}
+
       - name: Check Windows native runtime and FFI
         if: runner.os == 'Windows'
         shell: pwsh
@@ -291,7 +398,8 @@ jobs:
           $llgo = Join-Path $env:RUNNER_TEMP 'llgo-bin\llgo.exe'
           .\.github\workflows\test_windows_runtime.ps1 `
             -LLGo $llgo `
-            -Profile "${{ matrix.windows_abi }}"
+            -Profile "${{ matrix.windows_abi }}" `
+            -GoArch "${{ matrix.windows_arch || 'amd64' }}"
 
       - name: Run versioned LLGo tests
         env:
@@ -321,6 +429,11 @@ jobs:
           else
             dev/test_go_version.sh "${{ matrix.go_version }}"
           fi
+
+      - name: Check std symbol coverage
+        if: runner.os == 'Windows' && matrix.windows_arch != 'amd64'
+        shell: bash
+        run: bash doc/_readme/scripts/check_std_cover.sh
 
       - name: Test Hello World with Go 1.20
         if: matrix.lane == 'compatibility'

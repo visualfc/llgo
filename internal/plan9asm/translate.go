@@ -34,6 +34,9 @@ type ModuleTranslation struct {
 type TranslateOptions struct {
 	AnnotateSource bool
 	GOARM          string
+	// X87Mode controls explicit 386 x87 assembly lowering. The zero value uses
+	// the Go-compatible hardware lowering.
+	X87Mode extplan9asm.X87Mode
 }
 
 func TranslateFileForPkg(pkg *packages.Package, sfile string, goos string, goarch string, overlay map[string][]byte) (*FileTranslation, error) {
@@ -112,6 +115,7 @@ func TranslateSourceModuleForPkgWithOptions(pkg *packages.Package, sfile string,
 		GOOS:           goos,
 		GOARCH:         goarch,
 		TargetTriple:   intllvm.GetTargetTripleWithGOARM(goos, goarch, opt.GOARM),
+		X87Mode:        opt.X87Mode,
 		AnnotateSource: opt.AnnotateSource,
 		ResolveSym:     resolve,
 		KeepFunc:       keep,
@@ -207,6 +211,17 @@ func extraAsmSigsAndDeclMap(pkgPath string, goarch string) map[string]extplan9as
 	}
 	if pkgPath == "internal/bytealg" {
 		switch goarch {
+		case "386":
+			manual["internal/bytealg.cmpbody"] = extplan9asm.FuncSig{
+				Args:    []extplan9asm.LLVMType{extplan9asm.Ptr, extplan9asm.I32, extplan9asm.Ptr, extplan9asm.I32, extplan9asm.Ptr},
+				Ret:     extplan9asm.Void,
+				ArgRegs: []extplan9asm.Reg{extplan9asm.SI, extplan9asm.BX, extplan9asm.DI, extplan9asm.DX, extplan9asm.AX},
+			}
+			manual["internal/bytealg.memeqbody"] = extplan9asm.FuncSig{
+				Args:    []extplan9asm.LLVMType{extplan9asm.Ptr, extplan9asm.Ptr, extplan9asm.I32, extplan9asm.Ptr},
+				Ret:     extplan9asm.Void,
+				ArgRegs: []extplan9asm.Reg{extplan9asm.SI, extplan9asm.DI, extplan9asm.BX, extplan9asm.AX},
+			}
 		case "arm":
 			manual["internal/bytealg.cmpbody"] = extplan9asm.FuncSig{
 				Args:    []extplan9asm.LLVMType{extplan9asm.Ptr, "i32", extplan9asm.Ptr, "i32", extplan9asm.Ptr},

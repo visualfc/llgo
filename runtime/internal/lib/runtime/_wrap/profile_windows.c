@@ -109,11 +109,6 @@ static volatile int llgo_prof_ring_lock;
 static volatile int llgo_prof_active;
 static volatile int llgo_prof_sampler_running;
 static volatile uint64_t llgo_prof_lost;
-/* Test-only synchronization state. With no target registered, normal
- * profiling adds one atomic load per captured thread; the fetch-add only runs
- * when a test thread matches. */
-static volatile llgo_dword llgo_prof_test_thread_id;
-static volatile uint64_t llgo_prof_test_thread_samples;
 static llgo_handle llgo_prof_thread;
 static llgo_handle llgo_prof_stop_event;
 
@@ -143,8 +138,21 @@ static void llgo_prof_drop(void)
     __atomic_fetch_add(&llgo_prof_lost, 1, __ATOMIC_RELAXED);
 }
 
-#if defined(_WIN64) && (defined(_M_ARM64) || defined(__aarch64__) ||           \
-                        defined(_M_X64) || defined(__x86_64__))
+#if defined(_M_IX86) || defined(__i386__)
+/* Win32 CONTEXT is the 716-byte i386 layout from winnt.h. Unlike Win64 it
+ * has no 16-byte aligned XMM register block; Ebp and Eip are the control-state
+ * words used by LLGo's frame-pointer walk. Keep these constants beside the
+ * Win64 layouts so SDK-free cross builds and native MSVC builds agree. */
+#define LLGO_PROF_CONTEXT_SUPPORTED 1
+#define LLGO_PROF_CONTEXT_SIZE 716
+#define LLGO_PROF_CONTEXT_FLAGS_OFFSET 0
+#define LLGO_PROF_CONTEXT_PC_OFFSET 184
+#define LLGO_PROF_CONTEXT_FP_OFFSET 180
+#define LLGO_PROF_CONTEXT_CONTROL 0x00010001UL
+
+#elif defined(_WIN64) &&                                                    \
+    (defined(_M_ARM64) || defined(__aarch64__) || defined(_M_X64) ||       \
+     defined(__x86_64__))
 #define LLGO_PROF_CONTEXT_SUPPORTED 1
 
 #if defined(_M_ARM64) || defined(__aarch64__)
@@ -161,6 +169,11 @@ static void llgo_prof_drop(void)
 #define LLGO_PROF_CONTEXT_CONTROL 0x00100001UL
 #endif
 
+#else
+#define LLGO_PROF_CONTEXT_SUPPORTED 0
+#endif
+
+#if LLGO_PROF_CONTEXT_SUPPORTED
 static llgo_uintptr llgo_prof_context_word(const unsigned char *context,
                                            size_t offset)
 {
@@ -225,8 +238,6 @@ static int llgo_prof_capture(llgo_handle thread,
     llgo_prof_walk_frames(sample, fp);
     return 1;
 }
-#else
-#define LLGO_PROF_CONTEXT_SUPPORTED 0
 #endif
 
 static void llgo_prof_record(const struct llgo_prof_sample *sample)
@@ -290,14 +301,8 @@ static void llgo_prof_sample_process(void)
                 ResumeThread(thread);
             }
             CloseHandle(thread);
-            if (captured) {
+            if (captured)
                 llgo_prof_record(&sample);
-                if (entry.thread_id ==
-                    __atomic_load_n(&llgo_prof_test_thread_id,
-                                    __ATOMIC_ACQUIRE))
-                    __atomic_fetch_add(&llgo_prof_test_thread_samples, 1,
-                                       __ATOMIC_RELEASE);
-            }
         } while (Thread32Next(snapshot, &entry));
     }
     CloseHandle(snapshot);
@@ -460,24 +465,4 @@ int llgo_cpu_profile_test_fault_recovery(void)
 #else
     return -1;
 #endif
-}
-
-uint64_t llgo_cpu_profile_test_current_thread_samples(void)
-{
-    llgo_dword thread_id = GetCurrentThreadId();
-
-    if (__atomic_load_n(&llgo_prof_test_thread_id, __ATOMIC_ACQUIRE) !=
-        thread_id) {
-        __atomic_store_n(&llgo_prof_test_thread_id, 0, __ATOMIC_RELEASE);
-        /* The following thread-id release publishes the zeroed counter. */
-        __atomic_store_n(&llgo_prof_test_thread_samples, 0, __ATOMIC_RELAXED);
-        __atomic_store_n(&llgo_prof_test_thread_id, thread_id,
-                         __ATOMIC_RELEASE);
-    }
-    return __atomic_load_n(&llgo_prof_test_thread_samples, __ATOMIC_ACQUIRE);
-}
-
-void llgo_cpu_profile_test_clear_thread(void)
-{
-    __atomic_store_n(&llgo_prof_test_thread_id, 0, __ATOMIC_RELEASE);
 }

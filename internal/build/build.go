@@ -492,11 +492,12 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
 	forceEspClang := conf.ForceEspClang || conf.Target != ""
 	nativeInput := crosscompile.NativeToolchainInput{}
-	if usesNativeWindowsToolchain(runtime.GOOS, runtime.GOARCH, conf) {
+	if usesNativeWindowsToolchain(runtime.GOOS, conf) {
 		nativeInput, err = parseNativeToolchainInput(commands, conf.LinkOptions)
 		if err != nil {
 			return nil, err
 		}
+		nativeInput.ResolveCrossArch = conf.Mode != ModeGen
 	}
 	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
 	if err != nil {
@@ -918,9 +919,12 @@ func removeOutFmts(outFmts *OutFmtDetails) {
 	}
 }
 
-func usesNativeWindowsToolchain(hostGOOS, hostGOARCH string, conf *Config) bool {
-	return conf.Target == "" && hostGOOS == "windows" &&
-		conf.Goos == hostGOOS && conf.Goarch == hostGOARCH
+func usesNativeWindowsToolchain(hostGOOS string, conf *Config) bool {
+	// Windows can execute a host-architecture LLGo compiler while Clang targets
+	// another Windows architecture (for example, x64 LLGo producing ARM64 or
+	// 386 programs). The selected CC target, not the compiler process's GOARCH,
+	// defines the physical ABI that must be resolved below.
+	return conf.Target == "" && hostGOOS == "windows" && conf.Goos == hostGOOS
 }
 
 func parseNativeToolchainInput(commands commandEnv, options LinkOptions) (crosscompile.NativeToolchainInput, error) {
@@ -2107,8 +2111,9 @@ func linuxExportDynamicArgs(ctx *context) []string {
 }
 
 // archiver returns the archiving tool to use for the current context.
-// For wasm targets and LTO builds, it prefers llvm-ar because linkers need
-// LLVM-aware archive indexes for wasm objects and bitcode members.
+// For COFF or wasm targets, and for LTO builds, it prefers llvm-ar because
+// linkers need LLVM-aware archive indexes for COFF objects, wasm objects, and
+// bitcode members.
 func (c *context) archiver() string {
 	// Allow user override before probing any implicit toolchain path.
 	if ar := os.Getenv("LLGO_AR"); ar != "" {
@@ -2118,7 +2123,8 @@ func (c *context) archiver() string {
 	if llvmAr := siblingTool(c.crossCompile.CC, "llvm-ar"); llvmAr != "" {
 		return llvmAr
 	}
-	if c.buildConf.ltoEnabled() || c.buildConf.Goarch == "wasm" || strings.Contains(c.crossCompile.LLVMTarget, "wasm") {
+	if c.crossCompile.Toolchain.ObjectFormat == crosscompile.ObjectFormatCOFF ||
+		c.buildConf.ltoEnabled() || c.buildConf.Goarch == "wasm" || strings.Contains(c.crossCompile.LLVMTarget, "wasm") {
 		if llvmAr, err := exec.LookPath("llvm-ar"); err == nil {
 			return llvmAr
 		}

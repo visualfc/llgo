@@ -264,12 +264,7 @@ func TestRotateLeft(t *testing.T) {
 		t.Fatal("RotateLeft32 should wrap shift amount")
 	}
 
-	var y uint
-	if bits.UintSize == 64 {
-		y = 0xC000000000000000
-	} else {
-		y = 0xC0000000
-	}
+	y := ^uint(0) - (^uint(0) >> 2)
 	if bits.RotateLeft(y, bits.UintSize) != y {
 		t.Fatal("RotateLeft should wrap full width")
 	}

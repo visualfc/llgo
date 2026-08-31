@@ -7,7 +7,33 @@ import (
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/cabi"
+	llruntime "github.com/xgo-dev/llgo/runtime"
+	extplan9asm "github.com/xgo-dev/plan9asm"
 )
+
+func TestPlan9AsmTranslateOptions(t *testing.T) {
+	tests := []struct {
+		name string
+		conf Config
+		want extplan9asm.X87Mode
+	}{
+		{name: "386 default", conf: Config{Goarch: "386"}, want: extplan9asm.X87Auto},
+		{name: "386 sse2", conf: Config{Goarch: "386", GO386: "sse2"}, want: extplan9asm.X87Auto},
+		{name: "386 softfloat", conf: Config{Goarch: "386", GO386: "softfloat"}, want: extplan9asm.X87Software},
+		{name: "other architecture", conf: Config{Goarch: "amd64", GO386: "softfloat"}, want: extplan9asm.X87Auto},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := plan9asmTranslateOptions(&test.conf)
+			if got.GOARM != test.conf.GOARM {
+				t.Fatalf("GOARM = %q, want %q", got.GOARM, test.conf.GOARM)
+			}
+			if got.X87Mode != test.want {
+				t.Fatalf("X87Mode = %v, want %v", got.X87Mode, test.want)
+			}
+		})
+	}
+}
 
 func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
 	conf := &Config{Goarch: "arm64", AbiMode: cabi.ModeAllFunc}
@@ -16,6 +42,28 @@ func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
 	}
 	if hasAltPkgForTarget(conf, "internal/runtime/sys") {
 		t.Fatal("internal/runtime/sys should use its source patch instead of an alt package")
+	}
+}
+
+func TestPlan9AsmDefaultsSupport386(t *testing.T) {
+	conf := &Config{Goarch: "386", AbiMode: cabi.ModeAllFunc}
+	for _, pkgPath := range []string{
+		"internal/bytealg",
+		"internal/chacha8rand",
+		"internal/cpu",
+		"internal/runtime/atomic",
+		"internal/runtime/syscall/windows",
+		"math",
+	} {
+		if !plan9asmEnabledByDefault(conf, pkgPath) {
+			t.Errorf("plan9asm should be enabled by default for %s on 386", pkgPath)
+		}
+		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "386") {
+			t.Errorf("%s should retain the Go 386 assembly implementation", pkgPath)
+		}
+	}
+	if !hasAltPkgForTarget(conf, "runtime") {
+		t.Fatal("runtime should keep using the LLGo alternate package")
 	}
 }
 

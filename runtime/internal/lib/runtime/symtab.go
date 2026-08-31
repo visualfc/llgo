@@ -177,21 +177,11 @@ var runtimeFuncInfoCount uintptr
 //go:linkname runtimeFuncInfoHashMask __llgo_funcinfo_hash_mask
 var runtimeFuncInfoHashMask uintptr
 
-type runtimeFuncInfoSymbolIndexRecord struct {
-	symbolID  uint64
-	funcIndex uint32
-}
-
 //go:linkname runtimeFuncInfoSymbolIndex __llgo_funcinfo_symbol_index
 var runtimeFuncInfoSymbolIndex *runtimeFuncInfoSymbolIndexRecord
 
 //go:linkname runtimeFuncInfoSymbolIndexCount __llgo_funcinfo_symbol_index_count
 var runtimeFuncInfoSymbolIndexCount uintptr
-
-type runtimeFuncInfoEntryRecord struct {
-	pc       uintptr
-	symbolID uint64
-}
 
 //go:linkname runtimeFuncInfoEntryStart __llgo_funcinfo_entry_start
 var runtimeFuncInfoEntryStart *runtimeFuncInfoEntryRecord
@@ -212,11 +202,6 @@ var runtimePCLineTable *runtimePCLineRecord
 
 //go:linkname runtimePCLineCount __llgo_pcline_count
 var runtimePCLineCount uintptr
-
-type runtimePCSiteRecord struct {
-	pc uintptr
-	id uint64
-}
 
 //go:linkname runtimePCSiteStart __llgo_pcsite_start
 var runtimePCSiteStart *runtimePCSiteRecord
@@ -267,15 +252,7 @@ const (
 	runtimePCMinFuncSize    = uintptr(16)
 	runtimePCFindBucketSize = uintptr(256) * runtimePCMinFuncSize
 	runtimePCFindSubbucket  = 16
-	runtimeFuncPCEntrySlack = 64
 )
-
-// Win64 entry-slack validation uses the same PE unwind lookup as the platform
-// stack walker. The branch that references it is a compile-time false path on
-// every other target, so no Windows symbol or code reaches those binaries.
-//
-//go:linkname c_windowsLookupFunctionEntry C.llgo_windows_lookup_function_entry
-func c_windowsLookupFunctionEntry(pc uintptr, imageBase *uintptr) unsafe.Pointer
 
 var runtimeFuncPCInitState uint32
 var runtimeFuncPCFrames []runtimeFuncPCFrame
@@ -1454,13 +1431,6 @@ func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
 	if pc == 0 || prebuiltFuncPCTablePresent() {
 		return pcSymbol{}, false
 	}
-	if GOOS == "windows" && (GOARCH == "amd64" || GOARCH == "arm64") {
-		var imageBase uintptr
-		if entry := c_windowsLookupFunctionEntry(pc, &imageBase); entry != nil &&
-			imageBase+uintptr(*(*uint32)(entry)) != pc {
-			return pcSymbol{}, false
-		}
-	}
 	bestDelta := uintptr(runtimeFuncPCEntrySlack) + 1
 	bestIndex := uint32(0)
 	if runtimeFuncInfoEntryStart != nil && runtimeFuncInfoEntryEnd != nil {
@@ -1470,6 +1440,9 @@ func coldFuncInfoEntryLookup(pc uintptr) (pcSymbol, bool) {
 			unsafe.Sizeof(*runtimeFuncInfoEntryStart), pc, bestDelta)
 	}
 	if bestIndex == 0 {
+		return pcSymbol{}, false
+	}
+	if bestDelta != 0 && !runtimeFuncPCMayUseEntrySlack(pc) {
 		return pcSymbol{}, false
 	}
 	return pcSymbolForFuncInfoIndex(pc, pc, bestIndex)
@@ -1529,15 +1502,8 @@ func funcPCFrameForEntryPC(pc uintptr) (pcSymbol, bool) {
 	}
 	frame := frames[lo]
 	if frame.entry != pc {
-		if frame.entry-pc > runtimeFuncPCEntrySlack {
+		if frame.entry-pc > runtimeFuncPCEntrySlack || !runtimeFuncPCMayUseEntrySlack(pc) {
 			return pcSymbol{}, false
-		}
-		if GOOS == "windows" && (GOARCH == "amd64" || GOARCH == "arm64") {
-			var imageBase uintptr
-			if entry := c_windowsLookupFunctionEntry(pc, &imageBase); entry != nil &&
-				imageBase+uintptr(*(*uint32)(entry)) != pc {
-				return pcSymbol{}, false
-			}
 		}
 	}
 	return pcSymbolForFuncInfoIndex(pc, pc, frame.funcIndex)

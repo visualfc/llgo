@@ -16,6 +16,9 @@ import (
 //go:linkname c_windowsCaptureContext C.llgo_windows_capture_context
 func c_windowsCaptureContext(context *windowsFaultContext, pcOffset uintptr) unsafe.Pointer
 
+//go:linkname c_windowsLookupFunctionEntry C.llgo_windows_lookup_function_entry
+func c_windowsLookupFunctionEntry(pc uintptr, imageBase *uintptr) unsafe.Pointer
+
 //go:linkname c_windowsVirtualUnwind C.llgo_windows_virtual_unwind
 func c_windowsVirtualUnwind(imageBase, pc uintptr, functionEntry unsafe.Pointer, context *windowsFaultContext, establisherFrame *uintptr) unsafe.Pointer
 
@@ -105,23 +108,6 @@ func windowsContextCallers(context *windowsFaultContext, skip int, pc []uintptr,
 		callee = caller
 	}
 	return n
-}
-
-func pcSymbolIsWrapper(sym pcSymbol) bool {
-	return uint32(sym.startLine)&runtimeFuncInfoLineWrapper != 0
-}
-
-// elideWrapperCalling mirrors Go's runtime.elideWrapperCalling. A generated
-// wrapper normally has no logical stack frame, but must remain visible when
-// its own receiver/conversion check called a panic helper instead of the
-// wrapped method.
-func elideWrapperCalling(callee string) bool {
-	switch callee {
-	case "runtime.gopanic", "runtime.sigpanic", "runtime.panicwrap",
-		"github.com/xgo-dev/llgo/runtime/internal/runtime.PanicWrapNilPointer":
-		return false
-	}
-	return true
 }
 
 //go:noinline

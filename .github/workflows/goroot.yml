@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   goroot:
-    name: GOROOT (${{ matrix.os }}${{ startsWith(matrix.os, 'windows') && format(', {0}', matrix.windows_abi) || '' }}, Go current, shard ${{ matrix.shard-index }}/4)
+    name: GOROOT (${{ matrix.os }}${{ startsWith(matrix.os, 'windows') && format(', {0}, {1}', matrix.windows_abi, matrix.windows_arch) || '' }}, Go current, shard ${{ matrix.shard-index }}/4)
     timeout-minutes: 180
     env:
       GOPROXY: https://proxy.golang.org,direct
@@ -28,14 +28,37 @@ jobs:
         # complete corpus only with the current Go release. Older user-source
         # releases have focused coverage in the LLGo workflow. Recent shards
         # take 24-49 minutes each and are not short enough to combine.
-        os: [macos-latest, ubuntu-latest, windows-2022]
+        os: [macos-latest, ubuntu-latest, windows-2022, windows-11-arm]
         windows_abi: [msvc, mingw]
+        windows_arch: [amd64, arm64, "386"]
         shard-index: ["0", "1", "2", "3"]
         exclude:
           - os: macos-latest
             windows_abi: mingw
           - os: ubuntu-latest
             windows_abi: mingw
+          - os: macos-latest
+            windows_arch: arm64
+          - os: macos-latest
+            windows_arch: "386"
+          - os: ubuntu-latest
+            windows_arch: arm64
+          - os: ubuntu-latest
+            windows_arch: "386"
+          - os: windows-2022
+            windows_abi: mingw
+            windows_arch: arm64
+          - os: windows-2022
+            windows_abi: mingw
+            windows_arch: "386"
+          - os: windows-2022
+            windows_arch: arm64
+          - os: windows-11-arm
+            windows_abi: mingw
+          - os: windows-11-arm
+            windows_arch: amd64
+          - os: windows-11-arm
+            windows_arch: "386"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -45,9 +68,12 @@ jobs:
         with:
           llvm-version: 19
           windows-abi: ${{ matrix.windows_abi }}
+          windows-arch: ${{ matrix.windows_arch }}
 
       - name: Set up Go for building LLGo and the runner
         uses: ./.github/actions/setup-go
+        with:
+          architecture: ${{ startsWith(matrix.os, 'windows') && 'x64' || '' }}
 
       - name: Build LLGo and the GOROOT runner
         shell: bash
@@ -67,6 +93,13 @@ jobs:
           fi
           echo "LLGO_GOROOT_RUNNER=$runner" >> "$GITHUB_ENV"
           echo "LLGO_TEST_LLGO=$llgo" >> "$GITHUB_ENV"
+
+      - name: Activate native Windows target
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/activate-windows-target
+        with:
+          windows-abi: ${{ matrix.windows_abi }}
+          windows-arch: ${{ matrix.windows_arch }}
 
       - name: Show toolchain versions
         run: |
@@ -108,6 +141,7 @@ jobs:
         env:
           MATRIX_OS: ${{ matrix.os }}
           WINDOWS_ABI: ${{ matrix.windows_abi }}
+          WINDOWS_ARCH: ${{ matrix.windows_arch }}
           SHARD_INDEX: ${{ matrix.shard-index }}
         run: |
           GO_VERSION="$(tr -d '[:space:]' < .go-version)"
@@ -120,7 +154,9 @@ jobs:
           if [[ "$MATRIX_OS" == "macos-latest" ]]; then
             platform=darwin/arm64
           elif [[ "$MATRIX_OS" == "windows-2022" ]]; then
-            platform="windows-${WINDOWS_ABI}/amd64"
+            platform="windows-${WINDOWS_ABI}/${WINDOWS_ARCH}"
+          elif [[ "$MATRIX_OS" == "windows-11-arm" ]]; then
+            platform="windows-${WINDOWS_ABI}/${WINDOWS_ARCH}"
           fi
 
           selected=$(sed -nE 's/.* shard=[^ ]+ cases=([0-9]+) directive_mode=.*/\1/p' "$log" | tail -1)
@@ -166,7 +202,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: goroot-stat-${{ matrix.os }}-${{ matrix.windows_abi }}-current-${{ matrix.shard-index }}
+          name: goroot-stat-${{ matrix.os }}-${{ matrix.windows_abi }}-${{ matrix.windows_arch }}-current-${{ matrix.shard-index }}
           path: ${{ runner.temp }}/goroot-report
           if-no-files-found: error
           retention-days: 7

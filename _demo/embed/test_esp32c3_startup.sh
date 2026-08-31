@@ -12,6 +12,24 @@
 
 set -e
 
+BUILD_ONLY=0
+case "${1:-}" in
+    --build-only)
+        BUILD_ONLY=1
+        shift
+        ;;
+    "")
+        ;;
+    *)
+        echo "usage: $0 [--build-only]" >&2
+        exit 2
+        ;;
+esac
+if [ "$#" -ne 0 ]; then
+    echo "usage: $0 [--build-only]" >&2
+    exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Create temp dir inside _demo/embed/ to use existing go.mod
 TEMP_DIR="$SCRIPT_DIR/.test_tmp_$$"
@@ -240,6 +258,13 @@ else
         echo "$BIN_INFO" | grep -A20 "Segments Information"
         exit 1
     fi
+fi
+
+if [ "$BUILD_ONLY" -eq 1 ]; then
+    echo ""
+    echo "=== Build and startup metadata tests passed ==="
+    echo "✓ ESP32-C3 firmware, newlib startup, and BIN constructor coverage are valid"
+    exit 0
 fi
 
 echo ""

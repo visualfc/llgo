@@ -2,7 +2,10 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$LLGo,
   [ValidateSet("msvc", "mingw")]
-  [string]$Profile = "msvc"
+  [string]$Profile = "msvc",
+  [Parameter(Mandatory = $true)]
+  [ValidateSet("386", "amd64", "arm64")]
+  [string]$GoArch
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,9 +24,9 @@ New-Item -ItemType Directory $out | Out-Null
 $env:LLGO_ROOT = $root
 $env:LLGO_BUILD_CACHE = "off"
 
-# The common Windows runner executes amd64 binaries. Compile the raw SyscallN
-# bridge for every Go-supported Windows architecture so target-ABI regressions
-# do not wait for native 386 or ARM64 runners.
+# Each lane executes its selected architecture below. Also compile the raw
+# SyscallN bridge for every Go-supported Windows architecture so a change in
+# one lane cannot silently break assembly selected by another lane.
 $syscallAsm = Join-Path $root "runtime\internal\lib\runtime\_wrap\syscall_windows.S"
 $targetSuffix = if ($Profile -eq "msvc") { "pc-windows-msvc" } else { "w64-windows-gnu" }
 foreach ($syscallTarget in @(
@@ -39,6 +42,10 @@ foreach ($syscallTarget in @(
   $symbols = & $llvmNmExe --defined-only $syscallObj | Out-String
   if (-not $symbols.Contains($syscallTarget.Symbol)) {
     throw "$($syscallTarget.Triple) bridge is missing $($syscallTarget.Symbol)"
+  }
+  if ($syscallTarget.Triple.StartsWith("i686-") -and
+      $symbols -notmatch '(?m)^00000001 [aA] @feat\.00\r?$') {
+    throw "$($syscallTarget.Triple) bridge is not marked SafeSEH-compatible"
   }
 }
 
@@ -73,6 +80,18 @@ try {
   -ReadObj $readObjExe `
   -Artifacts @($runtime, $stdlib, $ffi, $empty, $coreFault, $network)
 
+$expectedMachine = switch ($GoArch) {
+  "386" { "IMAGE_FILE_MACHINE_I386" }
+  "amd64" { "IMAGE_FILE_MACHINE_AMD64" }
+  "arm64" { "IMAGE_FILE_MACHINE_ARM64" }
+}
+foreach ($artifact in @($runtime, $stdlib, $ffi, $empty, $coreFault, $network)) {
+  $headers = (& $readObjExe --file-headers $artifact | Out-String)
+  if ($LASTEXITCODE -ne 0 -or -not $headers.Contains($expectedMachine)) {
+    throw "$artifact is not a windows/$GoArch PE image:`n$headers"
+  }
+}
+
 Write-Host "==> windows-runtime-smoke.exe"
 & $runtime
 if ($LASTEXITCODE -ne 0) {
@@ -81,16 +100,19 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "==> windows-runtime-smoke.exe (unrecovered fault)"
 $env:LLGO_TEST_UNRECOVERED_FAULT = "1"
-$savedErrorActionPreference = $ErrorActionPreference
+$faultStdout = Join-Path $out "unrecovered-fault.stdout"
+$faultStderr = Join-Path $out "unrecovered-fault.stderr"
 try {
-  # Windows PowerShell 5 turns redirected native stderr into a terminating
-  # NativeCommandError. This invocation is expected to fail and its stderr is
-  # the value asserted below.
-  $ErrorActionPreference = "Continue"
-  $faultOutput = & $runtime 2>&1 | Out-String
-  $faultExitCode = $LASTEXITCODE
+  # Capture native streams as files. Windows PowerShell 5 otherwise converts
+  # stderr into formatted NativeCommandError records and may wrap a panic line
+  # at the console width before the assertion sees it.
+  $faultProcess = Start-Process -FilePath $runtime `
+    -Wait -PassThru -NoNewWindow `
+    -RedirectStandardOutput $faultStdout `
+    -RedirectStandardError $faultStderr
+  $faultExitCode = $faultProcess.ExitCode
+  $faultOutput = (Get-Content -Raw $faultStdout) + (Get-Content -Raw $faultStderr)
 } finally {
-  $ErrorActionPreference = $savedErrorActionPreference
   Remove-Item Env:LLGO_TEST_UNRECOVERED_FAULT
 }
 Write-Host $faultOutput

@@ -1,6 +1,24 @@
 #!/bin/bash
-# ESP serial targets smoke test (emulator run only).
+# ESP serial targets smoke test.
 set -euo pipefail
+
+mode="emulator"
+case "${1:-}" in
+    --build-only)
+        mode="build-only"
+        shift
+        ;;
+    "")
+        ;;
+    *)
+        echo "usage: $0 [--build-only]" >&2
+        exit 2
+        ;;
+esac
+if [ "$#" -ne 0 ]; then
+    echo "usage: $0 [--build-only]" >&2
+    exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR="$SCRIPT_DIR/.test_tmp_$$"
@@ -12,13 +30,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-run_emulator_smoke() {
+run_target_smoke() {
     local target="$1"
     local label="$2"
     local case_dir="$3"
     local expected_file="$4"
 
     echo ""
+    if [ "$mode" = "build-only" ]; then
+        echo "=== Smoke: $label firmware build ==="
+        local output="$TEMP_DIR/${target}-$(basename "$case_dir").elf"
+        llgo build -a -target="$target" -o "$output" "$case_dir"
+        test -f "$output"
+        echo "✓ PASS: $label firmware built"
+        return
+    fi
+
     echo "=== Smoke: $label emulator output ==="
 
     local run_out_file
@@ -82,8 +109,8 @@ run_case() {
         exit 1
     fi
 
-    run_emulator_smoke "esp32c3-basic" "ESP32-C3 [$case_name]" "$case_dir" "$expected_file"
-    run_emulator_smoke "esp32" "ESP32 [$case_name]" "$case_dir" "$expected_file"
+    run_target_smoke "esp32c3-basic" "ESP32-C3 [$case_name]" "$case_dir" "$expected_file"
+    run_target_smoke "esp32" "ESP32 [$case_name]" "$case_dir" "$expected_file"
 }
 
 run_all_cases() {
@@ -113,10 +140,14 @@ fi
 cd "$SCRIPT_DIR"
 
 echo ""
-echo "=== ESP Serial Smoke Tests: Emulator Run ==="
+echo "=== ESP Serial Smoke Tests: $mode ==="
 run_all_cases
 
 echo ""
 echo "=== Smoke Tests Passed ==="
-echo "✓ ESP32-C3 and ESP32 emulator smoke passed for all serial testcases"
+if [ "$mode" = "build-only" ]; then
+    echo "✓ ESP32-C3 and ESP32 firmware builds passed for all serial testcases"
+else
+    echo "✓ ESP32-C3 and ESP32 emulator smoke passed for all serial testcases"
+fi
 echo "✓ Cases are discovered only from testdata/esp32-serial (main.go + expect.txt)"

@@ -174,6 +174,15 @@ llgo_windows_syscall:
 
 #elif defined(__i386__)
 
+	/* This object defines no exception handlers. Mark it SafeSEH-compatible so
+	 * the 32-bit MSVC linker can retain its default /safeseh policy. */
+	.def @feat.00;
+	.scl 3;
+	.type 0;
+	.endef
+	.globl @feat.00
+	.set @feat.00, 1
+
 	.text
 	.globl _llgo_windows_syscall
 	.def _llgo_windows_syscall;

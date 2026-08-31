@@ -355,60 +355,7 @@ func (b *Builder) Kind(t types.Type) abi.Kind {
 }
 
 func (b *Builder) Align(t types.Type) uintptr {
-	switch t := types.Unalias(t).(type) {
-	case *types.Basic:
-		switch t.Kind() {
-		case types.Bool:
-			return 1
-		case types.Int8, types.Uint8:
-			return 1
-		case types.Int16, types.Uint16:
-			return 2
-		case types.Int32, types.Uint32:
-			return 4
-		case types.Int64, types.Uint64:
-			return 8
-		case types.Int, types.Uint, types.Uintptr, types.UnsafePointer:
-			return b.PtrSize
-		case types.Float32:
-			return 4
-		case types.Float64:
-			return 8
-		case types.Complex64:
-			return 4
-		case types.Complex128:
-			return 8
-		case types.String:
-			return b.PtrSize
-		}
-	case *types.Pointer:
-		return b.PtrSize
-	case *types.Slice:
-		return b.PtrSize
-	case *types.Signature:
-		return b.PtrSize
-	case *types.Interface:
-		return b.PtrSize
-	case *types.Struct:
-		var typalign uintptr = 1
-		n := t.NumFields()
-		for i := 0; i < n; i++ {
-			ft := t.Field(i).Type()
-			if align := b.Align(ft); align > typalign {
-				typalign = align
-			}
-		}
-		return typalign
-	case *types.Map:
-		return b.PtrSize
-	case *types.Array:
-		return b.Align(t.Elem())
-	case *types.Chan:
-		return b.PtrSize
-	case *types.Named:
-		return b.Align(t.Underlying())
-	}
-	panic("unsupported align: " + t.String())
+	return uintptr(b.Sizes.Alignof(t))
 }
 
 func (b *Builder) FieldAlign(t types.Type) uintptr {

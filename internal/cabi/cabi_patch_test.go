@@ -407,6 +407,155 @@ func checkTypeInfo(t *testing.T, tr *Transformer, typ llvm.Type, index int, kind
 	return info
 }
 
+func TestWindows386CABILowersGoAggregateToNativeLayout(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+
+	// This is the private SSA representation of Go struct { X int8; Y int64 }:
+	// Y is at offset 4 and the whole value has four-byte alignment. Native MSVC
+	// C instead lays out the equivalent structure as { i8, i64 }, with Y at 8.
+	bytePadding := llvm.ArrayType(ctx.Int8Type(), 3)
+	goType := ctx.StructType([]llvm.Type{
+		ctx.StructType([]llvm.Type{ctx.Int8Type(), bytePadding}, true),
+		ctx.StructType([]llvm.Type{ctx.Int64Type()}, true),
+		llvm.ArrayType(ctx.Int32Type(), 0),
+	}, false)
+	nativeType, changed := windows386NativeAggregateType(ctx, goType)
+	if !changed {
+		t.Fatal("Go/386 aggregate layout was not recognized")
+	}
+	if got, want := nativeType.String(), "{ i8, i64 }"; got != want {
+		t.Fatalf("native aggregate type = %s, want %s", got, want)
+	}
+	tr := NewTransformer(prog, "i686-pc-windows-msvc", "", ModeCFunc, true)
+	if got, want := tr.td.ElementOffset(goType, 1), uint64(4); got != want {
+		t.Fatalf("Go aggregate second field offset = %d, want %d", got, want)
+	}
+	if got, want := tr.td.ElementOffset(nativeType, 1), uint64(8); got != want {
+		t.Fatalf("native aggregate second field offset = %d, want %d", got, want)
+	}
+
+	mod := ctx.NewModule("windows-386-go-c-layout")
+	defer mod.Dispose()
+	ft := llvm.FunctionType(goType, []llvm.Type{goType}, false)
+	callee := llvm.AddFunction(mod, "cRoundTrip", ft)
+	caller := llvm.AddFunction(mod, "example.com/p.call", ft)
+	b := ctx.NewBuilder()
+	defer b.Dispose()
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(caller, "entry"))
+	b.CreateRet(llvm.CreateCall(b, ft, callee, []llvm.Value{caller.Param(0)}))
+	exported := llvm.AddFunction(mod, "exportRoundTrip", ft)
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(exported, "entry"))
+	b.CreateRet(exported.Param(0))
+	callback := llvm.AddFunction(mod, "example.com/p.callback", ft)
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(callback, "entry"))
+	b.CreateRet(callback.Param(0))
+	registerType := llvm.FunctionType(ctx.VoidType(), []llvm.Type{llvm.PointerType(ft, 0)}, false)
+	register := llvm.AddFunction(mod, "registerRoundTrip", registerType)
+	useCallback := llvm.AddFunction(mod, "example.com/p.useCallback", llvm.FunctionType(ctx.VoidType(), nil, false))
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(useCallback, "entry"))
+	b.CreateCall(registerType, register, []llvm.Value{callback}, "")
+	b.CreateRetVoid()
+	goArray := llvm.ArrayType(goType, 2)
+	arrayFT := llvm.FunctionType(goArray, []llvm.Type{goArray}, false)
+	arrayCallee := llvm.AddFunction(mod, "cArrayRoundTrip", arrayFT)
+	arrayCaller := llvm.AddFunction(mod, "example.com/p.callArray", arrayFT)
+	b.SetInsertPointAtEnd(ctx.AddBasicBlock(arrayCaller, "entry"))
+	b.CreateRet(llvm.CreateCall(b, arrayFT, arrayCallee, []llvm.Value{arrayCaller.Param(0)}))
+
+	tr.TransformModule("test", mod)
+	lowered := mod.NamedFunction("cRoundTrip").String()
+	for _, want := range []string{"sret({ i8, i64 })", "byval({ i8, i64 }) align 4"} {
+		if !strings.Contains(lowered, want) {
+			t.Fatalf("native aggregate declaration does not contain %q:\n%s", want, lowered)
+		}
+	}
+	arrayLowered := mod.NamedFunction("cArrayRoundTrip").String()
+	for _, want := range []string{"sret([2 x { i8, i64 }])", "byval([2 x { i8, i64 }]) align 4"} {
+		if !strings.Contains(arrayLowered, want) {
+			t.Fatalf("native aggregate array declaration does not contain %q:\n%s", want, arrayLowered)
+		}
+	}
+	for _, name := range []string{"exportRoundTrip", "__llgo_cdecl$example.com/p.callback"} {
+		fn := mod.NamedFunction(name)
+		if fn.IsNil() {
+			t.Fatalf("missing native aggregate bridge %s:\n%s", name, mod.String())
+		}
+		for _, want := range []string{"sret({ i8, i64 })", "byval({ i8, i64 }) align 4"} {
+			if got := fn.String(); !strings.Contains(got, want) {
+				t.Fatalf("native aggregate bridge %s does not contain %q:\n%s", name, want, got)
+			}
+		}
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("invalid Go/native aggregate bridge: %v\n%s", err, mod.String())
+	}
+}
+
+func TestWindows386AggregateLayoutMismatchPanics(t *testing.T) {
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	one := ctx.StructType([]llvm.Type{ctx.Int32Type()}, false)
+	two := ctx.StructType([]llvm.Type{ctx.Int32Type(), ctx.Int32Type()}, false)
+	marker := llvm.ArrayType(ctx.Int32Type(), 0)
+	if !windows386GoAlignmentMarker(marker) {
+		t.Fatal("zero-length integer array was not recognized as an alignment marker")
+	}
+	if windows386GoAlignmentMarker(llvm.ArrayType(ctx.Int32Type(), 1)) {
+		t.Fatal("non-empty integer array was recognized as an alignment marker")
+	}
+
+	tests := []struct {
+		name       string
+		source     llvm.Type
+		native     llvm.Type
+		fromNative bool
+		want       string
+	}{
+		{name: "extra Go field to native", source: two, native: one, want: "aggregate field"},
+		{name: "extra Go field from native", source: two, native: one, fromNative: true, want: "aggregate field"},
+		{name: "missing Go field to native", source: one, native: two, want: "aggregate field"},
+		{name: "missing Go field from native", source: one, native: two, fromNative: true, want: "aggregate field"},
+		{name: "unsupported kind to native", source: ctx.Int32Type(), native: ctx.Int64Type(), want: "i32"},
+		{name: "unsupported kind from native", source: ctx.Int32Type(), native: ctx.Int64Type(), fromNative: true, want: "i32"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mod := ctx.NewModule(test.name)
+			defer mod.Dispose()
+			input := test.source
+			if test.fromNative {
+				input = test.native
+			}
+			fn := llvm.AddFunction(mod, "mismatch", llvm.FunctionType(ctx.VoidType(), []llvm.Type{input}, false))
+			b := ctx.NewBuilder()
+			defer b.Dispose()
+			b.SetInsertPointAtEnd(ctx.AddBasicBlock(fn, "entry"))
+
+			defer func() {
+				got := recover()
+				if got == nil {
+					t.Fatal("layout mismatch did not panic")
+				}
+				message, ok := got.(string)
+				if !ok || !strings.Contains(message, test.want) {
+					t.Fatalf("layout mismatch panic = %v, want diagnostic containing %q", got, test.want)
+				}
+			}()
+			if test.fromNative {
+				windows386AggregateFromNative(b, fn.Param(0), test.source, test.native)
+			} else {
+				windows386AggregateToNative(b, fn.Param(0), test.source, test.native)
+			}
+		})
+	}
+}
+
 func TestMSVCCallAndCallbackLowering(t *testing.T) {
 	llvm.InitializeAllTargets()
 	llvm.InitializeAllTargetMCs()
@@ -640,6 +789,93 @@ entry:
 	defer assembly.Dispose()
 	if got := string(assembly.Bytes()); !strings.Contains(got, "_consume@4") {
 		t.Fatalf("stdcall declaration did not use MSVC x86 symbol decoration:\n%s", got)
+	}
+}
+
+func TestMSVC386RegisterAggregateReturnPreservesLoadedValue(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+
+	const testIR = `
+%Pair = type { ptr, ptr }
+%Holder = type { %Pair }
+
+define %Pair @read(ptr %holder) {
+entry:
+  %field = getelementptr inbounds %Holder, ptr %holder, i32 0, i32 0
+  %saved = load %Pair, ptr %field, align 4
+  store %Pair zeroinitializer, ptr %field, align 4
+  ret %Pair %saved
+}
+
+define %Pair @readDirect(ptr %holder) {
+entry:
+  %field = getelementptr inbounds %Holder, ptr %holder, i32 0, i32 0
+  %saved = load %Pair, ptr %field, align 4
+  ret %Pair %saved
+}
+`
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "register_return.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
+	defer prog.Dispose()
+	NewTransformer(prog, "i686-pc-windows-msvc", "", ModeAllFunc, true).TransformModule("test", mod)
+
+	fn := mod.NamedFunction("read")
+	if got := fn.GlobalValueType().ReturnType().String(); got != "i64" {
+		t.Fatalf("lowered return type = %s, want i64:\n%s", got, fn.String())
+	}
+	var ret llvm.Value
+	for block := fn.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			if !instruction.IsAReturnInst().IsNil() {
+				ret = instruction
+			}
+		}
+	}
+	if ret.IsNil() || ret.OperandsCount() != 1 {
+		t.Fatalf("lowered return instruction not found:\n%s", fn.String())
+	}
+	value := ret.Operand(0).IsALoadInst()
+	if value.IsNil() || value.Operand(0).IsAAllocaInst().IsNil() {
+		t.Fatalf("lowered return reloads the mutated source instead of the saved value:\n%s", fn.String())
+	}
+	direct := mod.NamedFunction("readDirect")
+	var directReturn llvm.Value
+	for block := direct.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
+			if !instruction.IsAReturnInst().IsNil() {
+				directReturn = instruction
+			}
+		}
+	}
+	if directReturn.IsNil() || directReturn.OperandsCount() != 1 {
+		t.Fatalf("lowered direct return instruction not found:\n%s", direct.String())
+	}
+	directValue := directReturn.Operand(0).IsALoadInst()
+	if directValue.IsNil() || !directValue.Operand(0).IsAAllocaInst().IsNil() {
+		t.Fatalf("adjacent load/return did not retain the direct return path:\n%s", direct.String())
+	}
+	if got := directValue.Alignment(); got != 4 {
+		t.Fatalf("direct aggregate return alignment = %d, want 4:\n%s", got, direct.String())
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("lowered module is invalid: %v\n%s", err, mod.String())
 	}
 }
 
