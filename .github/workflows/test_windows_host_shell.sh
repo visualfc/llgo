@@ -89,8 +89,9 @@ if ! grep -Fq -- "$target" <<<"$trace"; then
 fi
 
 readobj=$(command -v llvm-readobj.exe || command -v llvm-readobj)
+native_executable=$(cygpath -w "$executable")
 set +e
-imports=$($readobj --coff-imports "$executable" 2>&1)
+imports=$($readobj --coff-imports "$native_executable" 2>&1)
 readobj_status=$?
 set -e
 if [[ $readobj_status -ne 0 ]]; then
