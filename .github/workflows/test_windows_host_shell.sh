@@ -40,7 +40,34 @@ case "$LLGO_WINDOWS_ABI" in
   *) echo "unsupported Windows ABI: $LLGO_WINDOWS_ABI" >&2; exit 1 ;;
 esac
 
-unset CC CXX
+prepend_runtime_dir() {
+  local native_dir=${1:-}
+  if [[ -n "$native_dir" ]]; then
+    PATH="$(cygpath -u "$native_dir"):$PATH"
+  fi
+}
+case "$LLGO_WINDOWS_ABI" in
+  mingw)
+    # Cygwin does not reliably preserve MSYS2's native DLL search entries.
+    # Reapply the activated MinGW runtime profile using this shell's path
+    # syntax; target-architecture DLLs must remain ahead of the host profile.
+    [[ -z "${LLGO_MINGW_HOST_ROOT:-}" ]] || prepend_runtime_dir "$LLGO_MINGW_HOST_ROOT/bin"
+    prepend_runtime_dir "${LLGO_MINGW_TARGET_RUNTIME_BIN:-}"
+    [[ -z "${LLGO_MINGW_TARGET_VCPKG_ROOT:-}" ]] || prepend_runtime_dir "$LLGO_MINGW_TARGET_VCPKG_ROOT/bin"
+    ;;
+  msvc)
+    [[ -z "${LLGO_WINDOWS_VCPKG_ROOT:-}" ]] || prepend_runtime_dir "$LLGO_WINDOWS_VCPKG_ROOT/bin"
+    ;;
+esac
+export PATH
+
+# An amd64 profile can be rediscovered from the shell's native Clang. Other
+# architectures deliberately keep the compiler selected by target activation:
+# the shell's native Clang may identify the right ABI but does not necessarily
+# contain the requested architecture's CRT and libraries.
+if [[ "$LLGO_WINDOWS_ARCH" == amd64 ]]; then
+  unset CC CXX
+fi
 executable="$source_dir/host-shell.exe"
 set +e
 trace=$(cd "$source_dir" && "$llgo" build -x -o "$executable" . 2>&1)
