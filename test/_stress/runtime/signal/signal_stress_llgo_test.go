@@ -3,8 +3,10 @@
 package signalstress
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sync"
 	"sync/atomic"
@@ -180,6 +182,93 @@ func TestNotifyStopResetBarrier(t *testing.T) {
 		}
 		signal.Reset(syscall.SIGWINCH)
 	}
+}
+
+const atomicStopStressHelperEnv = "LLGO_STRESS_ATOMIC_SIGNAL_STOP"
+
+func TestAtomicStopRace(t *testing.T) {
+	if os.Getenv(atomicStopStressHelperEnv) == "1" {
+		runAtomicStopStressHelper(t, stressCount(t, 128))
+		return
+	}
+
+	// Keep SIGINT from being inherited as ignored by the helper. Each raced
+	// signal must either reach the stopping channel or take the default action.
+	parentSignals := make(chan os.Signal, 1)
+	signal.Notify(parentSignals, syscall.SIGINT)
+	defer signal.Stop(parentSignals)
+
+	helpers := stressCount(t, 64)
+	results := make(chan atomicStopResult, helpers)
+	for helper := 0; helper < helpers; helper++ {
+		go func(helper int) {
+			cmd := exec.Command(os.Args[0], "-test.run=^TestAtomicStopRace$")
+			cmd.Env = append(os.Environ(), atomicStopStressHelperEnv+"=1")
+			out, err := cmd.CombinedOutput()
+			results <- atomicStopResult{helper, out, err}
+		}(helper)
+	}
+	for received := 0; received < helpers; received++ {
+		result := <-results
+		if bytes.Contains(result.out, []byte("lost signal")) {
+			t.Errorf("helper %d dropped a signal during Stop:\n%s",
+				result.helper, result.out)
+			continue
+		}
+		if result.err == nil {
+			continue
+		}
+		exitErr, ok := result.err.(*exec.ExitError)
+		if !ok {
+			t.Errorf("helper %d: %v", result.helper, result.err)
+			continue
+		}
+		status, ok := exitErr.Sys().(syscall.WaitStatus)
+		if !ok || !status.Signaled() || status.Signal() != syscall.SIGINT {
+			t.Errorf("helper %d exited unexpectedly: %v\n%s",
+				result.helper, result.err, result.out)
+		}
+	}
+}
+
+type atomicStopResult struct {
+	helper int
+	out    []byte
+	err    error
+}
+
+func runAtomicStopStressHelper(t *testing.T, tries int) {
+	t.Helper()
+	if signal.Ignored(syscall.SIGINT) {
+		fmt.Println("SIGINT is ignored")
+		os.Exit(2)
+	}
+
+	pid := syscall.Getpid()
+	for try := 0; try < tries; try++ {
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT)
+
+		var stopped sync.WaitGroup
+		stopped.Add(1)
+		go func() {
+			defer stopped.Done()
+			signal.Stop(c)
+		}()
+
+		if err := syscall.Kill(pid, syscall.SIGINT); err != nil {
+			fmt.Printf("kill: %v\n", err)
+			os.Exit(2)
+		}
+		select {
+		case <-c:
+		case <-time.After(2 * time.Second):
+			fmt.Printf("lost signal on try %d\n", try)
+			os.Exit(3)
+		}
+		stopped.Wait()
+	}
+	os.Exit(0)
 }
 
 func TestConcurrentNotifyStopDuringSignalFlood(t *testing.T) {

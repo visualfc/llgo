@@ -53,10 +53,12 @@ LLGO_STRESS_PROFILE=heavy /tmp/llgo-runtime-stress test \
 ```
 
 The timer suite covers large live heaps, concurrent `Stop`/`Reset` on distinct
-and shared timers, callback bursts, and concurrent sleepers. The four signal
+and shared timers, callback bursts, and concurrent sleepers. The five signal
 tests cover distinct-signal delivery during a lower-number signal storm,
-concurrent registration churn, repeated `Notify`/`Stop`/`Reset` barriers, and
-timer progress while handlers are busy. The flood cases also exercise
-the handler under concurrent delivery pressure. The finalizer suite repeatedly
-publishes large finalizer batches while many goroutines call `runtime.GC`, and
-checks that queued callbacks are neither corrupted nor delivered twice.
+concurrent registration churn, repeated `Notify`/`Stop`/`Reset` barriers,
+fatal-signal arbitration in concurrent helper processes while the final
+receiver stops, and timer progress while handlers are busy. The flood cases
+also exercise the handler under concurrent delivery pressure. The finalizer
+suite repeatedly publishes large finalizer batches while many goroutines call
+`runtime.GC`, and checks that queued callbacks are neither corrupted nor
+delivered twice.

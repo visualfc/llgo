@@ -26,7 +26,14 @@ _Static_assert(__atomic_always_lock_free(sizeof(unsigned int), 0),
 #endif
 
 static int llgo_signal_pipe[2] = {-1, -1};
+static struct sigaction llgo_signal_default_action;
 static unsigned int llgo_signal_delivering;
+enum {
+    LLGO_SIGNAL_DEFAULT,
+    LLGO_SIGNAL_WANTED,
+    LLGO_SIGNAL_IGNORED,
+};
+static unsigned int llgo_signal_modes[LLGO_SIGNAL_COUNT];
 static unsigned int llgo_signal_pending[LLGO_SIGNAL_WORDS];
 /* Only the dedicated signal reader accesses this snapshot. */
 static unsigned int llgo_signal_received[LLGO_SIGNAL_WORDS];
@@ -43,6 +50,25 @@ static void llgo_signal_handler(int signum)
     __atomic_add_fetch(&llgo_signal_delivering, 1, __ATOMIC_SEQ_CST);
     if (llgo_signal_pipe[1] >= 0 && signum > 0 &&
         signum < LLGO_SIGNAL_COUNT) {
+        unsigned int mode = __atomic_load_n(&llgo_signal_modes[signum],
+                                             __ATOMIC_SEQ_CST);
+
+        if (mode == LLGO_SIGNAL_IGNORED)
+            goto done;
+        if (mode != LLGO_SIGNAL_WANTED) {
+            /* The kernel may select this handler immediately before Stop
+             * restores SIG_DFL, then enter it only after Stop's pipe barrier.
+             * In that case the signal must take its default action rather
+             * than be queued after the stopping channel has been removed. */
+            if (sigaction(signum, &llgo_signal_default_action, 0) != 0)
+                _exit(128 + signum);
+            __atomic_sub_fetch(&llgo_signal_delivering, 1,
+                               __ATOMIC_SEQ_CST);
+            if (raise(signum) != 0)
+                _exit(128 + signum);
+            errno = saved_errno;
+            return;
+        }
         bit = 1U << ((unsigned int)signum & 31U);
         old = __atomic_fetch_or(&llgo_signal_pending[(unsigned int)signum / 32U],
                                 bit, __ATOMIC_SEQ_CST);
@@ -56,6 +82,7 @@ static void llgo_signal_handler(int signum)
             } while (count < 0 && errno == EINTR);
         }
     }
+done:
     __atomic_sub_fetch(&llgo_signal_delivering, 1, __ATOMIC_SEQ_CST);
     errno = saved_errno;
 }
@@ -68,6 +95,11 @@ int llgo_signal_init(void)
         return llgo_signal_pipe[0];
     if (pipe(llgo_signal_pipe) != 0)
         return -errno;
+
+    memset(&llgo_signal_default_action, 0,
+           sizeof(llgo_signal_default_action));
+    llgo_signal_default_action.sa_handler = SIG_DFL;
+    sigemptyset(&llgo_signal_default_action.sa_mask);
 
     flags = fcntl(llgo_signal_pipe[1], F_GETFL, 0);
     if (flags < 0 || fcntl(llgo_signal_pipe[1], F_SETFL,
@@ -90,34 +122,65 @@ fail:
 int llgo_signal_enable(int signum)
 {
     struct sigaction action;
+    unsigned int previous;
+    int code;
+
+    if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT)
+        return EINVAL;
 
     memset(&action, 0, sizeof(action));
     action.sa_handler = llgo_signal_handler;
     sigemptyset(&action.sa_mask);
     action.sa_flags = SA_RESTART;
-    return sigaction(signum, &action, 0);
+    previous = __atomic_exchange_n(&llgo_signal_modes[signum],
+                                   LLGO_SIGNAL_WANTED, __ATOMIC_SEQ_CST);
+    if (sigaction(signum, &action, 0) == 0)
+        return 0;
+    code = errno;
+    __atomic_store_n(&llgo_signal_modes[signum], previous,
+                     __ATOMIC_SEQ_CST);
+    return code;
 }
 
 int llgo_signal_disable(int signum)
 {
-    struct sigaction action;
+    unsigned int previous;
+    int code;
 
-    memset(&action, 0, sizeof(action));
-    action.sa_handler = SIG_DFL;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-    return sigaction(signum, &action, 0);
+    if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT)
+        return EINVAL;
+
+    previous = __atomic_exchange_n(&llgo_signal_modes[signum],
+                                   LLGO_SIGNAL_DEFAULT, __ATOMIC_SEQ_CST);
+    if (sigaction(signum, &llgo_signal_default_action, 0) == 0)
+        return 0;
+    code = errno;
+    __atomic_store_n(&llgo_signal_modes[signum], previous,
+                     __ATOMIC_SEQ_CST);
+    return code;
 }
 
 int llgo_signal_ignore(int signum)
 {
     struct sigaction action;
+    unsigned int previous;
+    int code;
+
+    if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT)
+        return EINVAL;
 
     memset(&action, 0, sizeof(action));
     action.sa_handler = SIG_IGN;
     sigemptyset(&action.sa_mask);
     action.sa_flags = 0;
-    return sigaction(signum, &action, 0);
+    previous = __atomic_exchange_n(&llgo_signal_modes[signum],
+                                   LLGO_SIGNAL_IGNORED, __ATOMIC_SEQ_CST);
+    if (sigaction(signum, &action, 0) == 0)
+        return 0;
+    code = errno;
+    __atomic_store_n(&llgo_signal_modes[signum], previous,
+                     __ATOMIC_SEQ_CST);
+    return code;
 }
 
 int llgo_signal_ignore_pipe(void)
