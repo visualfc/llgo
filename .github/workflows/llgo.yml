@@ -370,8 +370,10 @@ jobs:
         # selects a real target toolchain and matching alternate module file.
         # Go 1.20-1.26 share one focused compatibility lane. Go 1.27 is the
         # primary release and runs the complete test tree on every native
-        # toolchain profile. Its Ubuntu shards remain separate because recent
-        # runs take about 25 minutes each and would exceed 30 minutes combined.
+        # toolchain profile. Ubuntu remains split because each shard takes
+        # about 25 minutes. Four recent full runs put Windows ARM64 MSVC at
+        # 45-48 minutes, so it is the only other profile split here; the next
+        # slowest profiles stay below 35 minutes and avoid duplicate setup.
         include:
           - os: ubuntu-latest
             llvm: 19
@@ -426,7 +428,16 @@ jobs:
             go_version: "1.27"
             lane: full
             shard_index: "0"
-            shard_total: "1"
+            shard_total: "2"
+            windows_abi: msvc
+            windows_arch: arm64
+            host_go_arch: x64
+          - os: windows-11-arm
+            llvm: 19
+            go_version: "1.27"
+            lane: full
+            shard_index: "1"
+            shard_total: "2"
             windows_abi: msvc
             windows_arch: arm64
             host_go_arch: x64
