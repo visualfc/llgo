@@ -96,6 +96,7 @@ ignored_targets=()
 warned_targets=()
 failed_targets=()
 targets_to_build=()
+delegated_targets=()
 
 # Define ignore list based on test directory
 case "$test_dir" in
@@ -208,6 +209,18 @@ fi
 
 # Process each target
 for target in "${targets_to_build[@]}"; do
+	# WebAssembly ecosystem profiles need their own linker, output form, and
+	# runtime probe. The wasm-runtime CI job exercises them instead of treating
+	# JS modules, WASI modules, components, and freestanding libraries as a
+	# generic hello.elf embedded target.
+	case "$target" in
+		emscripten|emscripten-memory64|wasi|wasip1|wasip2|wasm|wasm-unknown)
+			echo 🔀 $target "(covered by WebAssembly profile tests)"
+			delegated_targets+=("$target")
+			continue
+			;;
+	esac
+
 	# Check if target is in ignore list
 	if [[ " ${ignore_list[@]} " =~ " ${target} " ]]; then
 		echo 🔕 $target "(ignored)"
@@ -239,6 +252,12 @@ echo "----------------------------------------"
 # Output successful targets
 echo "Successful targets (${#successful_targets[@]} total):"
 for target in "${successful_targets[@]}"; do
+	echo "$target"
+done
+
+echo ""
+echo "WebAssembly profile targets (${#delegated_targets[@]} total):"
+for target in "${delegated_targets[@]}"; do
 	echo "$target"
 done
 

@@ -663,6 +663,13 @@ jobs:
           dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
+      - name: Test WebAssembly target profiles
+        shell: bash
+        env:
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+          LLGO_BUILD_CACHE: "off"
+        run: dev/test_wasm_target_profiles.sh
+
       - name: Build standard runtime for wasm
         shell: bash
         env:
