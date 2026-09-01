@@ -25,6 +25,14 @@ const (
 	signalWords = (signalCount + 31) / 32
 )
 
+const (
+	// Raw ABI shared with LLGO_SIGNAL_* in _wrap/signal.c and
+	// LLGO_PROF_SIGNAL_* in _wrap/profile.c. Keep the values synchronized.
+	signalModeDefault int32 = iota
+	signalModeWanted
+	signalModeIgnored
+)
+
 var (
 	sigInitState uint32
 	sigReadFD    c.Int
@@ -190,7 +198,13 @@ func ensureSignalState(sig uint32) *sigState {
 func setSignalHandler(sig uint32, enabled bool) c.Int {
 	locked := cpuProfileSignalLock(sig)
 	var code c.Int
+	mode := signalModeDefault
 	if enabled {
+		mode = signalModeWanted
+	}
+	if handled, updateCode := cpuProfileSignalUpdate(sig, mode); handled {
+		code = c.Int(updateCode)
+	} else if enabled {
 		code = c_signalEnable(c.Int(sig))
 	} else {
 		code = c_signalDisable(c.Int(sig))
@@ -201,7 +215,12 @@ func setSignalHandler(sig uint32, enabled bool) c.Int {
 
 func setSignalIgnored(sig uint32) c.Int {
 	locked := cpuProfileSignalLock(sig)
-	code := c_signalIgnore(c.Int(sig))
+	var code c.Int
+	if handled, updateCode := cpuProfileSignalUpdate(sig, signalModeIgnored); handled {
+		code = c.Int(updateCode)
+	} else {
+		code = c_signalIgnore(c.Int(sig))
+	}
 	cpuProfileSignalUnlock(locked)
 	return code
 }

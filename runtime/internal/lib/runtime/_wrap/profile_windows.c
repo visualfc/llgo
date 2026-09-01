@@ -390,13 +390,13 @@ int llgo_cpu_profile_start(int hz)
 #endif
 }
 
-void llgo_cpu_profile_stop(void)
+int llgo_cpu_profile_stop(void)
 {
     llgo_handle thread;
     llgo_handle event;
 
     if (!__atomic_exchange_n(&llgo_prof_active, 0, __ATOMIC_ACQ_REL))
-        return;
+        return 0;
     thread = llgo_prof_thread;
     event = llgo_prof_stop_event;
     if (event != 0)
@@ -409,6 +409,7 @@ void llgo_cpu_profile_stop(void)
         CloseHandle(event);
     llgo_prof_thread = 0;
     llgo_prof_stop_event = 0;
+    return 0;
 }
 
 int llgo_cpu_profile_refresh_signal(void) { return 0; }

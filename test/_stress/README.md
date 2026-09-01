@@ -31,10 +31,12 @@ cd "$repo/test/_stress"
 go test -race -count=3 -timeout=20m ./runtime/timer
 /tmp/llgo-runtime-stress test -count=3 -timeout=20m ./runtime/timer
 /tmp/llgo-runtime-stress test -count=3 -timeout=30m ./runtime/signal
+/tmp/llgo-runtime-stress test -count=3 -timeout=30m ./runtime/cpuprof
 /tmp/llgo-runtime-stress test -count=3 -timeout=30m ./runtime/finalizer
 ```
 
-The signal suite is LLGo-only and targets Unix hosts. The finalizer suite is
+The signal suite is LLGo-only and targets Unix hosts. The CPU profile suite is
+LLGo-only and targets supported Darwin and Linux hosts. The finalizer suite is
 LLGo-only and targets hosted BDWGC builds. The timer suite also runs with the
 standard Go compiler so the harness can be checked independently.
 
@@ -58,7 +60,9 @@ tests cover distinct-signal delivery during a lower-number signal storm,
 concurrent registration churn, repeated `Notify`/`Stop`/`Reset` barriers,
 fatal-signal arbitration in concurrent helper processes while the final
 receiver stops, and timer progress while handlers are busy. The flood cases
-also exercise the handler under concurrent delivery pressure. The finalizer
-suite repeatedly publishes large finalizer batches while many goroutines call
+also exercise the handler under concurrent delivery pressure. The CPU profile
+suite changes the logical SIGPROF mode under a continuous signal flood to
+regress fatal native-handler replacement windows. The finalizer suite
+repeatedly publishes large finalizer batches while many goroutines call
 `runtime.GC`, and checks that queued callbacks are neither corrupted nor
 delivered twice.

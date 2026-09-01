@@ -28,6 +28,8 @@ _Static_assert(__atomic_always_lock_free(sizeof(unsigned int), 0),
 static int llgo_signal_pipe[2] = {-1, -1};
 static struct sigaction llgo_signal_default_action;
 static unsigned int llgo_signal_delivering;
+/* Raw ABI shared with LLGO_PROF_SIGNAL_* in profile.c and signalMode* in
+ * signal_llgo.go. Keep the numeric values synchronized. */
 enum {
     LLGO_SIGNAL_DEFAULT,
     LLGO_SIGNAL_WANTED,
@@ -37,6 +39,23 @@ static unsigned int llgo_signal_modes[LLGO_SIGNAL_COUNT];
 static unsigned int llgo_signal_pending[LLGO_SIGNAL_WORDS];
 /* Only the dedicated signal reader accesses this snapshot. */
 static unsigned int llgo_signal_received[LLGO_SIGNAL_WORDS];
+
+static void llgo_signal_handler(int signum);
+
+static void llgo_signal_wanted_action(struct sigaction *action)
+{
+    memset(action, 0, sizeof(*action));
+    action->sa_handler = llgo_signal_handler;
+    sigemptyset(&action->sa_mask);
+    action->sa_flags = SA_RESTART;
+}
+
+static void llgo_signal_ignored_action(struct sigaction *action)
+{
+    memset(action, 0, sizeof(*action));
+    action->sa_handler = SIG_IGN;
+    sigemptyset(&action->sa_mask);
+}
 
 static void llgo_signal_handler(int signum)
 {
@@ -128,10 +147,7 @@ int llgo_signal_enable(int signum)
     if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT)
         return EINVAL;
 
-    memset(&action, 0, sizeof(action));
-    action.sa_handler = llgo_signal_handler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = SA_RESTART;
+    llgo_signal_wanted_action(&action);
     previous = __atomic_exchange_n(&llgo_signal_modes[signum],
                                    LLGO_SIGNAL_WANTED, __ATOMIC_SEQ_CST);
     if (sigaction(signum, &action, 0) == 0)
@@ -169,10 +185,7 @@ int llgo_signal_ignore(int signum)
     if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT)
         return EINVAL;
 
-    memset(&action, 0, sizeof(action));
-    action.sa_handler = SIG_IGN;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
+    llgo_signal_ignored_action(&action);
     previous = __atomic_exchange_n(&llgo_signal_modes[signum],
                                    LLGO_SIGNAL_IGNORED, __ATOMIC_SEQ_CST);
     if (sigaction(signum, &action, 0) == 0)
@@ -181,6 +194,64 @@ int llgo_signal_ignore(int signum)
     __atomic_store_n(&llgo_signal_modes[signum], previous,
                      __ATOMIC_SEQ_CST);
     return code;
+}
+
+/* CPU profiling owns the native SIGPROF disposition while active. Keep the
+ * live os/signal handler mode ignored for that whole interval: a handler the
+ * kernel selected just before profiling began may enter late and must not
+ * forward a timer signal to SIG_DFL. */
+int llgo_signal_profile_begin(int signum)
+{
+    if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT)
+        return -EINVAL;
+    return (int)__atomic_exchange_n(&llgo_signal_modes[signum],
+                                    LLGO_SIGNAL_IGNORED,
+                                    __ATOMIC_SEQ_CST);
+}
+
+/* Restore the exact live mode when profiling failed before its handler or
+ * timer became active. Unlike a completed Stop, this path has no pending
+ * profiling signal that requires DEFAULT to be normalized to IGNORED. */
+int llgo_signal_profile_abort(int signum, int mode)
+{
+    if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT ||
+        mode < LLGO_SIGNAL_DEFAULT || mode > LLGO_SIGNAL_IGNORED)
+        return EINVAL;
+    __atomic_store_n(&llgo_signal_modes[signum], (unsigned int)mode,
+                     __ATOMIC_SEQ_CST);
+    return 0;
+}
+
+int llgo_signal_profile_finish(int signum, int mode)
+{
+    unsigned int live_mode;
+
+    if (signum <= 0 || signum >= LLGO_SIGNAL_COUNT ||
+        mode < LLGO_SIGNAL_DEFAULT || mode > LLGO_SIGNAL_IGNORED)
+        return EINVAL;
+    live_mode = mode == LLGO_SIGNAL_WANTED ? LLGO_SIGNAL_WANTED
+                                           : LLGO_SIGNAL_IGNORED;
+    __atomic_store_n(&llgo_signal_modes[signum], live_mode,
+                     __ATOMIC_SEQ_CST);
+    return 0;
+}
+
+/* Apply the os/signal state requested while profiling was active. Default is
+ * restored as ignore, matching the Go runtime's protection against a final
+ * pending profiling signal. */
+int llgo_signal_profile_restore(int signum, int mode)
+{
+    struct sigaction action;
+
+    if (llgo_signal_profile_finish(signum, mode) != 0)
+        return EINVAL;
+    if (mode == LLGO_SIGNAL_WANTED)
+        llgo_signal_wanted_action(&action);
+    else
+        llgo_signal_ignored_action(&action);
+    if (sigaction(signum, &action, 0) == 0)
+        return 0;
+    return errno;
 }
 
 int llgo_signal_ignore_pipe(void)

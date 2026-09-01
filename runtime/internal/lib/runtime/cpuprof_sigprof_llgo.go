@@ -22,7 +22,7 @@ const (
 func c_cpuProfileStart(hz int32) int32
 
 //go:linkname c_cpuProfileStop C.llgo_cpu_profile_stop
-func c_cpuProfileStop()
+func c_cpuProfileStop() int32
 
 //go:linkname c_cpuProfileDrain C.llgo_cpu_profile_drain
 func c_cpuProfileDrain(pcs, lengths unsafe.Pointer, maxRecords, maxStack int32, lost *uint64, empty *int32) int32
@@ -93,7 +93,9 @@ func SetCPUProfileRate(hz int) {
 
 	if hz == 0 {
 		if latomic.LoadInt32(&cpuProfileRate) != 0 {
-			c_cpuProfileStop()
+			if c_cpuProfileStop() != 0 {
+				print("runtime: failed to restore CPU profiling signal handler.\n")
+			}
 			latomic.StoreInt32(&cpuProfileRate, 0)
 		}
 		return
