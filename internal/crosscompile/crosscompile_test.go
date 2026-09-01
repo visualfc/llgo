@@ -161,6 +161,9 @@ func TestUseCrossCompileSDK(t *testing.T) {
 						if slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
 							t.Errorf("single-worker WASI imports host memory: %v", export.LDFLAGS)
 						}
+						if !slices.Contains(export.LDFLAGS, "-Wl,--stack-first") {
+							t.Errorf("single-worker WASI does not fix the Asyncify stack layout: %v", export.LDFLAGS)
+						}
 					} else if tc.name == "Same Platform" {
 						// For same platform, we expect sysroot only on macOS
 						if runtime.GOOS == "darwin" && !hasSysroot {

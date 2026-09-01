@@ -676,6 +676,12 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-Wl,--allow-undefined",
 			"-Wl,--export-memory",
 			"-Wl,--initial-memory=67108864", // 64MB
+			// Some LLVM 19 wasm-ld distributions place static data before the
+			// process stack by default. The single-worker runtime and Binaryen
+			// Asyncify switch __stack_pointer; that host-dependent layout traps
+			// with an out-of-bounds access under WAMR on Linux. Put the process
+			// stack first so the post-link layout is stable on every host.
+			"-Wl,--stack-first",
 			"-mbulk-memory",
 			"-mmultimemory",
 			"-z", "stack-size=10485760", // 10MB
