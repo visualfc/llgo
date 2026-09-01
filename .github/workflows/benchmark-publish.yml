@@ -17,4 +17,13 @@ jobs:
     uses: xgo-dev/setup-benchmark-go-action/.github/workflows/publish.yml@v1.0.6
     with:
       run_id: ${{ github.event.workflow_run.id }}
+      artifact_pattern: go-benchmark-llgo-baseline-*
       config_path: .github/llgo-benchmark.yml
+
+  publish-wasm:
+    if: github.event.workflow_run.conclusion == 'success'
+    uses: xgo-dev/setup-benchmark-go-action/.github/workflows/publish.yml@v1.0.6
+    with:
+      run_id: ${{ github.event.workflow_run.id }}
+      artifact_pattern: go-benchmark-llgo-wasm-*
+      config_path: .github/llgo-wasm-benchmark.yml
