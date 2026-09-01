@@ -484,6 +484,25 @@ func (p Program) Linkname(name string) (link string, ok bool) {
 	return
 }
 
+// SetWasmImport records a //go:wasmimport directive before its declaration is
+// lowered into the package's LLVM module.
+func (p Program) SetWasmImport(name, module, importName string) {
+	p.packageSyntax.mu.Lock()
+	p.packageSyntax.wasmImports[name] = wasmImport{module: module, name: importName}
+	p.packageSyntax.mu.Unlock()
+}
+
+// WasmImport returns the WebAssembly host import attached to name.
+func (p Program) WasmImport(name string) (module, importName string, ok bool) {
+	p.packageSyntax.mu.RLock()
+	entry, ok := p.packageSyntax.wasmImports[name]
+	p.packageSyntax.mu.RUnlock()
+	if ok {
+		module, importName = entry.module, entry.name
+	}
+	return
+}
+
 // HasLinknameTarget reports whether a declaration aliases target. It lets
 // build-time dead-code decisions preserve symbols that another package can
 // reference only through //go:linkname.

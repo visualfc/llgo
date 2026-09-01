@@ -660,7 +660,7 @@ func TestCallerFrameTrackingEligibility(t *testing.T) {
 		{name: "enabled user package", pkgPath: "example.com/foo", track: true, want: true},
 		{name: "disabled flag", pkgPath: "example.com/foo", want: false},
 		{name: "named target", pkgPath: "example.com/foo", track: true, targetName: "esp32", want: false},
-		{name: "wasm", pkgPath: "example.com/foo", track: true, goarch: "wasm", want: false},
+		{name: "wasm", pkgPath: "example.com/foo", track: true, goarch: "wasm", want: true},
 		{name: "stdlib", pkgPath: "fmt", track: true, want: true},
 		{name: "runtime", pkgPath: "runtime", track: true, want: false},
 		{name: "llgo runtime", pkgPath: llssa.PkgRuntime, track: true, want: false},

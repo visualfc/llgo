@@ -902,7 +902,7 @@ func (p *context) shouldTrackCallerFrames() bool {
 	if !p.runtimeCallerFuncs[p.goFn] {
 		return false
 	}
-	if target := p.prog.Target(); target != nil && (target.Target != "" || target.GOARCH == "wasm") {
+	if target := p.prog.Target(); target != nil && target.Target != "" && target.GOARCH != "wasm" {
 		return false
 	}
 	return canTrackCallerFramesForPackage(p.pkg.Path())

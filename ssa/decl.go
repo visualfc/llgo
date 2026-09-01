@@ -589,4 +589,12 @@ func (p Function) DisableTailCalls() {
 	p.impl.AddFunctionAttr(attr)
 }
 
+// SetWasmImport maps an external function declaration to a WebAssembly host
+// import. LLVM preserves these attributes through the final wasm link.
+func (p Function) SetWasmImport(module, name string) {
+	ctx := p.Pkg.mod.Context()
+	p.impl.AddFunctionAttr(ctx.CreateStringAttribute("wasm-import-module", module))
+	p.impl.AddFunctionAttr(ctx.CreateStringAttribute("wasm-import-name", name))
+}
+
 // -----------------------------------------------------------------------------
