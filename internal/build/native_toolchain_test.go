@@ -207,3 +207,30 @@ func TestNativeToolchainCommands(t *testing.T) {
 		return cmd.Link("input")
 	})
 }
+
+func TestIRCompilerUsesMatchingLLVMForEmscriptenMemory64(t *testing.T) {
+	ctx := &context{crossCompile: crosscompile.Export{
+		CC:      "emcc",
+		CCArgs:  []string{"--emcc-prefix"},
+		CCFLAGS: []string{"-target", "wasm64-unknown-emscripten"},
+	}}
+	config := ctx.irClangConfig()
+	if config.CC != "emcc" || !reflect.DeepEqual(config.CCArgs, []string{"--emcc-prefix"}) {
+		t.Fatalf("default IR compiler = %q %q, want emcc command", config.CC, config.CCArgs)
+	}
+
+	ctx.crossCompile.WasmABI = crosscompile.WasmABIEmscriptenMemory64
+	config = ctx.irClangConfig()
+	if config.CC != "clang" || len(config.CCArgs) != 0 {
+		t.Fatalf("Memory64 IR compiler = %q %q, want matching LLVM clang", config.CC, config.CCArgs)
+	}
+	wantFlags := []string{
+		"-target", "wasm64-unknown-emscripten",
+		"-mllvm", "-combiner-global-alias-analysis=false",
+		"-mllvm", "-enable-emscripten-sjlj",
+		"-mllvm", "-disable-lsr",
+	}
+	if !reflect.DeepEqual(config.CCFLAGS, wantFlags) {
+		t.Fatalf("Memory64 IR compiler flags = %q", config.CCFLAGS)
+	}
+}

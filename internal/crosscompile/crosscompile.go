@@ -60,6 +60,7 @@ type Export struct {
 	FormatDetail string // For uf2, it's uf2FamilyID
 	Emulator     string // Emulator command template (e.g., "qemu-system-arm -M {} -kernel {}")
 	DebugInfo    DebugInfoPolicy
+	WasmPostLink WasmPostLink
 
 	// Flashing/Debugging configuration
 	Device flash.Device // Device configuration for flashing/debugging
@@ -156,6 +157,12 @@ const (
 	CXXRuntimeUnknown CXXRuntimeFlavor = ""
 	CXXRuntimeMSVC    CXXRuntimeFlavor = "msvc"
 )
+
+// WasmPostLink describes transformations required after the core module is
+// linked. Build orchestration owns tool discovery and atomic output handling.
+type WasmPostLink struct {
+	Asyncify bool
+}
 
 // DebugInfoPolicy describes how a selected linker handles debug information.
 // Build orchestration consumes this typed capability instead of inferring it
@@ -643,6 +650,9 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-matomics",
 			"-mbulk-memory",
 		}
+		if wasiThreads {
+			export.CCFLAGS = append(export.CCFLAGS, "-pthread")
+		}
 		export.CFLAGS = []string{
 			"-I" + includeDir,
 			"-Qunused-arguments",
@@ -650,12 +660,20 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		}
 		// Add WebAssembly linker flags
 		export.LDFLAGS = append(export.LDFLAGS, export.CCFLAGS...)
+		export.LDFLAGS = append(export.LDFLAGS, "-fwasm-exceptions")
+		if ltoMode.Enabled() {
+			export.LDFLAGS = append(export.LDFLAGS, "-Wl,--mllvm=-wasm-enable-sjlj")
+		}
+		export.CCFLAGS = append(
+			export.CCFLAGS,
+			"-fwasm-exceptions",
+			"-mllvm", "-wasm-enable-sjlj",
+		)
 		export.LDFLAGS = append(export.LDFLAGS, []string{
 			"-Wno-override-module",
 			"-Wl,--error-limit=0",
 			"-L" + libDir,
 			"-Wl,--allow-undefined",
-			"-Wl,--import-memory,", // unknown import: `env::memory` has not been defined
 			"-Wl,--export-memory",
 			"-Wl,--initial-memory=67108864", // 64MB
 			"-mbulk-memory",
@@ -672,21 +690,18 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-lwasi-emulated-getpid",
 			"-lwasi-emulated-process-clocks",
 			"-lwasi-emulated-signal",
-			"-fwasm-exceptions",
-			"-mllvm", "-wasm-enable-sjlj",
 		}...)
 		// Add thread support if enabled
 		if wasiThreads {
-			export.CCFLAGS = append(
-				export.CCFLAGS,
-				"-pthread",
-			)
-			export.LDFLAGS = append(export.LDFLAGS, export.CCFLAGS...)
+			export.BuildTags = append(export.BuildTags, "llgo.wasi_threads")
 			export.LDFLAGS = append(
 				export.LDFLAGS,
+				"-Wl,--import-memory",
 				"-lwasi-emulated-pthread",
 				"-lpthread",
 			)
+		} else {
+			export.WasmPostLink.Asyncify = true
 		}
 
 	case "js":
@@ -710,6 +725,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		export.CFLAGS = []string{}
 		// Add WebAssembly linker flags for Emscripten
 		export.LDFLAGS = []string{
+			emscriptenLinkLevel(level).Flag(),
 			"-target", targetTriple,
 			"-Wno-override-module",
 			"-Wl,--error-limit=0",
@@ -734,6 +750,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-sWASM=1",
 			"-sEXPORT_ALL=1",
 			"-sASYNCIFY=1",
+			"-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async",
 			"-sSTACK_SIZE=5242880", // 5MB
 		}...)
 	default:
@@ -741,6 +758,20 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		return
 	}
 	return
+}
+
+func emscriptenLinkLevel(level optlevel.Level) optlevel.Level {
+	// Emscripten 6.0.8 runs JS/wasm MetaDCE at -O3, -Os, and -Oz. That pass
+	// removes the Asyncify control exports from LLGo's already-linked module
+	// while leaving generated JS references to them, so the executable fails
+	// before main. Keep the requested level for every source/object compile and
+	// use the highest link level that does not enable the broken MetaDCE pass.
+	switch level {
+	case optlevel.O3, optlevel.Os, optlevel.Oz:
+		return optlevel.O2
+	default:
+		return level
+	}
 }
 
 func appendUniqueStrings(dst []string, values ...string) []string {
@@ -1117,6 +1148,9 @@ func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThread
 					export.LDFLAGS[i] = emscriptenNamedEnvironment
 				}
 			}
+			// Asyncify otherwise keeps Node alive after exit(2), so fatal runtime
+			// errors neither terminate the process nor produce a useful status.
+			export.LDFLAGS = appendUniqueStrings(export.LDFLAGS, "-sEXIT_RUNTIME=1")
 		}
 		return export, nil
 	default:

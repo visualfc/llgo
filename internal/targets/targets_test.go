@@ -4,6 +4,7 @@ package targets
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -329,6 +330,40 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 				if !strings.Contains(config.Emulator, wantRunner) {
 					t.Errorf("emulator %q does not instantiate Emscripten module output", config.Emulator)
 				}
+			}
+		})
+	}
+}
+
+func TestEmscriptenRunnersForwardProgramArguments(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed")
+	}
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(t.TempDir(), "module.mjs")
+	const source = `export default async function(config) {
+	if (JSON.stringify(config.arguments) !== '["-test.run=TestOne","value"]') {
+		throw new Error('arguments: ' + JSON.stringify(config.arguments));
+	}
+	const module = { ENV: {} };
+	for (const hook of config.preRun) hook(module);
+	if (module.ENV.LLGO_RUNNER_TEST !== 'present') {
+		throw new Error('environment was not forwarded');
+	}
+}`
+	if err := os.WriteFile(module, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, runner := range []string{"emscripten-runner.mjs", "emscripten-memory64-runner.mjs"} {
+		t.Run(runner, func(t *testing.T) {
+			cmd := exec.Command(node, filepath.Join(root, "targets", runner), module, "-test.run=TestOne", "value")
+			cmd.Env = append(os.Environ(), "LLGO_RUNNER_TEST=present")
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("runner failed: %v\n%s", err, output)
 			}
 		})
 	}

@@ -151,6 +151,16 @@ func TestUseCrossCompileSDK(t *testing.T) {
 						if !hasResourceDir {
 							t.Error("Missing -resource-dir flag in CCFLAGS")
 						}
+						if !slices.Contains(export.CCFLAGS, "-fwasm-exceptions") ||
+							!hasMllvmOption(export.CCFLAGS, "-wasm-enable-sjlj") {
+							t.Errorf("CCFLAGS do not enable WebAssembly SjLj lowering: %v", export.CCFLAGS)
+						}
+						if !export.WasmPostLink.Asyncify {
+							t.Error("WASI target does not request Asyncify post-link processing")
+						}
+						if slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
+							t.Errorf("single-worker WASI imports host memory: %v", export.LDFLAGS)
+						}
 					} else if tc.name == "Same Platform" {
 						// For same platform, we expect sysroot only on macOS
 						if runtime.GOOS == "darwin" && !hasSysroot {
@@ -196,6 +206,41 @@ func TestUseCrossCompileSDK(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUseWASIThreadsImportsMemory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires WASI SDK")
+	}
+	export, err := use("wasip1", "wasm", true, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(export.CCFLAGS, "-pthread") {
+		t.Fatalf("CCFLAGS do not enable WASI threads: %v", export.CCFLAGS)
+	}
+	if !slices.Contains(export.BuildTags, "llgo.wasi_threads") {
+		t.Fatalf("BuildTags do not select the WASI pthread backend: %v", export.BuildTags)
+	}
+	if !slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
+		t.Fatalf("LDFLAGS do not import shared host memory: %v", export.LDFLAGS)
+	}
+	if export.WasmPostLink.Asyncify {
+		t.Fatal("WASI pthread mode requests single-worker Asyncify processing")
+	}
+}
+
+func TestUseWASILTOEnablesSjLjAtLink(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires WASI SDK")
+	}
+	export, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Thin, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(export.LDFLAGS, "-Wl,--mllvm=-wasm-enable-sjlj") {
+		t.Fatalf("LDFLAGS do not enable Wasm SjLj for LTO: %v", export.LDFLAGS)
 	}
 }
 
@@ -387,8 +432,17 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 			if got := ccMemory64 && ldMemory64; got != test.memory64 {
 				t.Errorf("wasm64 compile/link target present = %v, want %v; CCFLAGS=%v LDFLAGS=%v", got, test.memory64, export.CCFLAGS, export.LDFLAGS)
 			}
+			if !slices.Contains(export.CCFLAGS, "-O2") || !slices.Contains(export.LDFLAGS, "-O2") {
+				t.Errorf("Emscripten optimization level is not consistent across compile/link: CCFLAGS=%v LDFLAGS=%v", export.CCFLAGS, export.LDFLAGS)
+			}
 			if !slices.Contains(export.LDFLAGS, "-sENVIRONMENT=web,worker,node") {
 				t.Errorf("named target does not enable its Node emulator: %v", export.LDFLAGS)
+			}
+			if !slices.Contains(export.LDFLAGS, "-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async") {
+				t.Errorf("named target does not mark the interruptible host wait as async: %v", export.LDFLAGS)
+			}
+			if !slices.Contains(export.LDFLAGS, "-sEXIT_RUNTIME=1") {
+				t.Errorf("named target does not let fatal Asyncify programs exit: %v", export.LDFLAGS)
 			}
 			wantRunner := "emscripten-runner.mjs"
 			if test.memory64 {
@@ -397,6 +451,26 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 			if strings.Contains(export.Emulator, "{root}") || !strings.Contains(export.Emulator, wantRunner) ||
 				!strings.Contains(export.Emulator, "{}") {
 				t.Errorf("named target emulator was not resolved: %q", export.Emulator)
+			}
+		})
+	}
+}
+
+func TestEmscriptenAsyncifyLinkOptimization(t *testing.T) {
+	for _, level := range []optlevel.Level{optlevel.O3, optlevel.Os, optlevel.Oz} {
+		t.Run(level.Name(), func(t *testing.T) {
+			export, err := Use("", "", "emscripten", false, false, level, lto.Off, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(export.CCFLAGS, level.Flag()) {
+				t.Fatalf("compiler flags %v do not preserve requested %s", export.CCFLAGS, level)
+			}
+			if !slices.Contains(export.LDFLAGS, "-O2") || slices.Contains(export.LDFLAGS, level.Flag()) {
+				t.Fatalf("link flags %v do not avoid Emscripten MetaDCE for %s", export.LDFLAGS, level)
+			}
+			if slices.Contains(export.LDFLAGS, "-sASSERTIONS=1") {
+				t.Fatalf("link flags use assertions to disable MetaDCE: %v", export.LDFLAGS)
 			}
 		})
 	}
@@ -424,8 +498,11 @@ func TestWASIProfileTargets(t *testing.T) {
 					t.Errorf("build tags %v do not contain %q", export.BuildTags, tag)
 				}
 			}
-			if !slices.Contains(export.LDFLAGS, "-Wl,--import-memory,") {
-				t.Fatalf("WASI profile lost its existing imported-memory contract: %v", export.LDFLAGS)
+			if slices.Contains(export.LDFLAGS, "-Wl,--import-memory,") || slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
+				t.Fatalf("single-worker WASI unexpectedly imports host memory: %v", export.LDFLAGS)
+			}
+			if !export.WasmPostLink.Asyncify {
+				t.Fatal("single-worker WASI does not request Asyncify post-link processing")
 			}
 		})
 	}
@@ -454,8 +531,11 @@ func TestRawWasmStandardTagsRemainUnqualified(t *testing.T) {
 	if wasi.WasmABI != WasmABIUnspecified || wasi.LLVMTarget != "" {
 		t.Fatalf("raw wasip1/wasm was relabeled as ABI %q, LLVM profile %q", wasi.WasmABI, wasi.LLVMTarget)
 	}
-	if !slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory,") {
-		t.Fatal("raw WASI compatibility profile unexpectedly changed its imported-memory contract")
+	if slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory,") || slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory") {
+		t.Fatal("raw single-worker WASI unexpectedly imports host memory")
+	}
+	if !wasi.WasmPostLink.Asyncify {
+		t.Fatal("raw single-worker WASI does not request Asyncify post-link processing")
 	}
 	if slices.Contains(wasi.BuildTags, "llgo.wasm.wasi") {
 		t.Fatalf("raw wasip1/wasm acquired a WASI C-profile source tag: %v", wasi.BuildTags)

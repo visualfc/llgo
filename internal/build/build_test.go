@@ -37,6 +37,33 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if mode := os.Getenv("LLGO_TEST_WASM_OPT_HELPER"); mode != "" {
+		if argsFile := os.Getenv("ARGS_FILE"); argsFile != "" {
+			_ = os.WriteFile(argsFile, []byte(strings.Join(os.Args[1:], "\n")+"\n"), 0o666)
+		}
+		if mode == "fail" {
+			os.Exit(7)
+		}
+		var input, output string
+		for i := 1; i < len(os.Args); i++ {
+			if os.Args[i] == "-o" && i+1 < len(os.Args) {
+				output = os.Args[i+1]
+				if i > 1 {
+					input = os.Args[i-1]
+				}
+				break
+			}
+		}
+		data, err := os.ReadFile(input)
+		if err == nil {
+			err = os.WriteFile(output, data, 0o666)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(8)
+		}
+		os.Exit(0)
+	}
 	if os.Getenv("LLGO_TEST_PKG_CONFIG_HELPER") == "1" {
 		if len(os.Args) > 1 && os.Args[1] == "--libs" {
 			fmt.Print("-L/request/lib -lrequest")
@@ -118,6 +145,20 @@ func TestConfigCloneDoesNotAliasInput(t *testing.T) {
 	}
 	if got := (*Config)(nil).clone(); got != nil {
 		t.Fatalf("nil Config clone = %#v", got)
+	}
+}
+
+func TestUseShadowStack(t *testing.T) {
+	t.Setenv(llgoShadowStack, "0")
+	if !useShadowStack("wasm") {
+		t.Fatal("WebAssembly must use the software shadow stack")
+	}
+	if useShadowStack("amd64") {
+		t.Fatal("native target unexpectedly enabled the shadow stack")
+	}
+	t.Setenv(llgoShadowStack, "1")
+	if !useShadowStack("amd64") {
+		t.Fatal("native target did not honor LLGO_SHADOW_STACK=1")
 	}
 }
 
@@ -816,6 +857,73 @@ func TestEmscriptenCTypeSourceSelection(t *testing.T) {
 				t.Errorf("GoFiles %v unexpectedly contain %s", pkg.GoFiles, test.omit)
 			}
 		})
+	}
+}
+
+func TestWasmRuntimeBackendSelection(t *testing.T) {
+	runtimeDir := filepath.Join(env.LLGoRuntimeDir(), "internal", "runtime")
+	for _, test := range []struct {
+		name, goos string
+		tags       []string
+		want, omit []string
+	}{
+		{
+			name: "raw JS and Emscripten profiles", goos: "js", tags: []string{"llgo", "nogc"},
+			want: []string{"g_wasm.go", "os_wasm.go", "proc_wasm.go", "runqueue_wasm.go", "fatal_emscripten.go"},
+			omit: []string{"g_tls.go", "os_pthread.go", "proc_pthread.go", "fatal_default.go"},
+		},
+		{
+			name: "legacy wasm alias", goos: "js", tags: []string{"llgo", "tinygo.wasm", "nogc"},
+			want: []string{"g_wasm.go", "os_wasm.go", "proc_wasm.go", "runqueue_wasm.go", "fatal_emscripten.go"},
+			omit: []string{"g_tls.go", "os_pthread.go", "proc_pthread.go", "fatal_default.go"},
+		},
+		{
+			name: "single-worker WASI", goos: "wasip1", tags: []string{"llgo", "nogc"},
+			want: []string{"g_wasm.go", "os_wasm.go", "proc_wasip1.go", "runqueue_wasm.go", "fatal_wasip1.go"},
+			omit: []string{"g_tls.go", "os_pthread.go", "proc_pthread.go", "fatal_default.go"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := gobuild.Default
+			ctx.GOOS = test.goos
+			ctx.GOARCH = "wasm"
+			ctx.BuildTags = test.tags
+			pkg, err := ctx.ImportDir(runtimeDir, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected := make(map[string]bool, len(pkg.GoFiles)+len(pkg.CgoFiles))
+			for _, name := range append(pkg.GoFiles, pkg.CgoFiles...) {
+				selected[name] = true
+			}
+			for _, name := range test.want {
+				if !selected[name] {
+					t.Errorf("%s was not selected; GoFiles=%v", name, pkg.GoFiles)
+				}
+			}
+			for _, name := range test.omit {
+				if selected[name] {
+					t.Errorf("%s was unexpectedly selected", name)
+				}
+			}
+		})
+	}
+}
+
+func TestWasmStandardRuntimeBackendSelection(t *testing.T) {
+	runtimeDir := filepath.Join(env.LLGoRuntimeDir(), "internal", "lib", "runtime")
+	ctx := gobuild.Default
+	ctx.GOOS = "wasip1"
+	ctx.GOARCH = "wasm"
+	ctx.BuildTags = []string{"llgo", "nogc"}
+	pkg, err := ctx.ImportDir(runtimeDir, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"link_wasm_llgo.go", "nanotime_wasm_llgo.go", "poll_wasip1_llgo.go", "time_wasm_llgo.go"} {
+		if !slices.Contains(pkg.GoFiles, want) {
+			t.Errorf("%s was not selected; GoFiles=%v", want, pkg.GoFiles)
+		}
 	}
 }
 
@@ -1725,6 +1833,17 @@ func TestFullRpathArgs(t *testing.T) {
 	want := []string{"-rpath", "/first", "-rpath", "/second"}
 	if got := fullRpathArgs(elf, linkArgs); !slices.Equal(got, want) {
 		t.Fatalf("ELF rpath arguments = %q, want %q", got, want)
+	}
+}
+
+func TestWASIThreadsAreOptIn(t *testing.T) {
+	t.Setenv(llgoWasiThreads, "")
+	if IsWasiThreadsEnabled() {
+		t.Fatal("WASI threads are enabled by default")
+	}
+	t.Setenv(llgoWasiThreads, "1")
+	if !IsWasiThreadsEnabled() {
+		t.Fatal("WASI threads opt-in was ignored")
 	}
 }
 

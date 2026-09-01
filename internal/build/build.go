@@ -576,7 +576,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		DebugSymbols: emitDebugInfo,
 		Trace:        IsTraceEnabled(),
 		ExportRename: conf.Target != "",
-		ShadowStack:  isEnvOn(llgoShadowStack, false),
+		ShadowStack:  useShadowStack(conf.Goarch),
 	}
 	preloadOptions := frontendOptions
 	llssaInitOnce.Do(func() {
@@ -869,6 +869,13 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	return allPkgs, errors.Join(linkErrs...)
 }
 
+func useShadowStack(goarch string) bool {
+	// WebAssembly has no inspectable native return addresses. Its runtime
+	// callers implementation therefore relies on LLGo's selective software
+	// shadow stack; native targets retain the opt-in diagnostic behavior.
+	return goarch == "wasm" || isEnvOn(llgoShadowStack, false)
+}
+
 func linkInitialPackage(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, verbose, discardOutput bool) (*testProgram, error) {
 	name := defaultExecutableName(pkg.PkgPath)
 	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1, &ctx.crossCompile)
@@ -1058,10 +1065,9 @@ func DefaultBuildTags(goarch, target string) string {
 
 func defaultBuildTags(goarch, target string) string {
 	tags := "llgo,math_big_pure_go,purego"
-	// Raw GOOS/GOARCH wasm builds do not have a target configuration that
-	// selects a collector. BDWGC is not available in either wasm host, so use
-	// the supported collector-free runtime unless a named target supplies its
-	// own runtime configuration.
+	// Preserve the collector-free compatibility runtime for raw wasm builds.
+	// Named profiles add this tag after target resolution; R2 replaces it once
+	// suspended roots are visible to the wasm collector.
 	if goarch == "wasm" && target == "" {
 		tags += ",nogc"
 	}
@@ -1309,6 +1315,40 @@ func (c *context) compiler() *clang.Cmd {
 	cmd.Env = slices.Clone(c.commands.environ)
 	cmd.Verbose = c.shouldPrintCommands(false)
 	return cmd
+}
+
+// irCompiler compiles LLVM IR produced by LLGo itself. Emscripten's bundled
+// clang remains authoritative for C/C++ sources and final linking, but recent
+// Emscripten releases bundle an LLVM backend that cannot select some valid
+// wasm64 loads emitted by the LLVM version linked into LLGo. Use that matching
+// LLVM installation for Memory64 IR so the producer and consumer agree, while
+// preserving emcc's sysroot, Embind, and JavaScript glue at the C ABI boundary.
+func (c *context) irCompiler() *clang.Cmd {
+	cmd := clang.NewCompiler(c.irClangConfig())
+	cmd.Dir = c.commands.dir
+	cmd.Env = slices.Clone(c.commands.environ)
+	cmd.Verbose = c.shouldPrintCommands(false)
+	return cmd
+}
+
+func (c *context) irClangConfig() clang.Config {
+	config := c.clangConfig()
+	if c.crossCompile.WasmABI == crosscompile.WasmABIEmscriptenMemory64 {
+		// cmd/llgo puts the LLVM installation selected at build time first in
+		// PATH. Do not inherit emcc's command prefix here: only its target and
+		// optimization flags are relevant when consuming LLVM IR. Preserve the
+		// backend settings emcc normally supplies: the SjLj pass lowers the
+		// setjmp/longjmp used by LLGo's panic path, while the other two keep its
+		// WebAssembly code-generation policy unchanged.
+		config.CC = "clang"
+		config.CCArgs = nil
+		config.CCFLAGS = append(slices.Clone(config.CCFLAGS),
+			"-mllvm", "-combiner-global-alias-analysis=false",
+			"-mllvm", "-enable-emscripten-sjlj",
+			"-mllvm", "-disable-lsr",
+		)
+	}
+	return config
 }
 
 func (c *context) cxxCompiler() *clang.Cmd {
@@ -1802,12 +1842,15 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	linkArgs = append(linkArgs, darwinSymbols.linkerArgs...)
 	ctx.stripDarwinLTOLocals = darwinSymbols.stripLTOLocals
 
-	err = linkObjFiles(ctx, outputPath, linkInputs, linkArgs, verbose)
+	linkOutput, err := prepareWasmLinkOutput(ctx.buildConf, &ctx.crossCompile, outputPath)
 	if err != nil {
 		return err
 	}
-
-	return nil
+	defer cleanupWasmLinkOutput(linkOutput, outputPath)
+	if err := linkObjFiles(ctx, linkOutput, linkInputs, linkArgs, verbose); err != nil {
+		return err
+	}
+	return publishWasmLinkOutput(ctx, linkOutput, outputPath, verbose)
 }
 
 func fullRpathArgs(toolchain crosscompile.NativeToolchain, linkArgs []string) (rpathArgs []string) {
@@ -2020,7 +2063,7 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 				if printCmds {
 					fmt.Fprintln(os.Stderr, "clang", args)
 				}
-				if err := ctx.compiler().Compile(args...); err != nil {
+				if err := ctx.irCompiler().Compile(args...); err != nil {
 					return fmt.Errorf("failed to compile %s: %v", objFile, err)
 				}
 				compiledObjFiles = append(compiledObjFiles, oFile)
@@ -2335,7 +2378,10 @@ func needStart(ctx *context) bool {
 		return !isWasmTarget(ctx.buildConf.Goos)
 	}
 	switch ctx.buildConf.Target {
-	case "wasip2":
+	case "wasi", "wasip1", "wasip2":
+		// WASI libc owns _start and calls __main_argc_argv after initializing
+		// argc/argv and its process state. Defining LLGo's generic weak _start
+		// makes current wasi-libc select __main_void and drop the Go entry.
 		return false
 	default:
 		// since newlib-esp32 provides _start, we don't need to provide a fake _start function
@@ -2728,7 +2774,7 @@ func exportObjectWithClang(ctx *context, pkgPath string, exportFile string, data
 		fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", f.Name(), pkgPath)
 		fmt.Fprintln(os.Stderr, "clang", args)
 	}
-	cmd := ctx.compiler()
+	cmd := ctx.irCompiler()
 	return objFile.Name(), cmd.Compile(args...)
 }
 
@@ -3251,7 +3297,7 @@ func shouldRunLLVMPasses(mode Mode) bool {
 }
 
 func IsWasiThreadsEnabled() bool {
-	return isEnvOn(llgoWasiThreads, true)
+	return isEnvOn(llgoWasiThreads, false)
 }
 
 func IsFullRpathEnabled() bool {
