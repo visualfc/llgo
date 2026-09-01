@@ -777,6 +777,10 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	if cpu == "" {
 		return export, fmt.Errorf("target '%s' does not have a valid CPU configuration", targetName)
 	}
+	wasmABI := WasmABI(config.WasmABI)
+	if !wasmABI.valid() {
+		return Export{}, fmt.Errorf("target %q has unsupported WebAssembly ABI profile %q", targetName, config.WasmABI)
+	}
 
 	// Espressif's Windows toolchain only ships the ESP backends. Use the
 	// full MSYS2 LLVM distribution for other embedded targets (for example
@@ -800,10 +804,7 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	export.BuildTags = config.BuildTags
 	export.GOOS = config.GOOS
 	export.GOARCH = config.GOARCH
-	export.WasmABI = WasmABI(config.WasmABI)
-	if !export.WasmABI.valid() {
-		return Export{}, fmt.Errorf("target %q has unsupported WebAssembly ABI profile %q", targetName, config.WasmABI)
-	}
+	export.WasmABI = wasmABI
 	export.ExtraFiles = config.ExtraFiles
 	export.LLVMTarget = config.LLVMTarget
 	export.TargetABI = config.TargetABI

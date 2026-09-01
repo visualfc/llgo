@@ -462,6 +462,99 @@ func TestRawWasmStandardTagsRemainUnqualified(t *testing.T) {
 	}
 }
 
+func writeWasmTargetFixture(t *testing.T, name, config string) {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "runtime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "runtime", "go.mod"),
+		[]byte("module github.com/xgo-dev/llgo/runtime\n"), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "targets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if name != "" {
+		if err := os.WriteFile(filepath.Join(root, "targets", name+".json"), []byte(config), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("LLGO_ROOT", root)
+}
+
+func TestWasmProfileValidationErrors(t *testing.T) {
+	if _, err := useWithGOARMAndToolchain(
+		"js", "wasm", "", false, false, optlevel.O2, lto.Off, false,
+		NativeToolchainInput{}, WasmABI("invalid"),
+	); err == nil || !strings.Contains(err.Error(), "unsupported WebAssembly ABI profile") {
+		t.Fatalf("invalid direct profile error = %v", err)
+	}
+
+	t.Run("generic target", func(t *testing.T) {
+		writeWasmTargetFixture(t, "invalid-wasm", `{
+			"llvm-target":"wasm32-unknown-unknown",
+			"cpu":"generic",
+			"goos":"linux",
+			"goarch":"wasm",
+			"wasm-abi":"invalid"
+		}`)
+		_, err := UseTarget("invalid-wasm", optlevel.O2, lto.Off)
+		if err == nil || !strings.Contains(err.Error(), "unsupported WebAssembly ABI profile") {
+			t.Fatalf("invalid target profile error = %v", err)
+		}
+	})
+
+	t.Run("missing named target", func(t *testing.T) {
+		writeWasmTargetFixture(t, "", "")
+		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		if err == nil || !strings.Contains(err.Error(), "failed to resolve target emscripten") {
+			t.Fatalf("missing named target error = %v", err)
+		}
+	})
+
+	t.Run("invalid named profile", func(t *testing.T) {
+		writeWasmTargetFixture(t, "emscripten", `{
+			"llvm-target":"wasm32-unknown-emscripten",
+			"goos":"js",
+			"goarch":"wasm",
+			"wasm-abi":"invalid"
+		}`)
+		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		if err == nil || !strings.Contains(err.Error(), "unsupported WebAssembly ABI profile") {
+			t.Fatalf("invalid named profile error = %v", err)
+		}
+	})
+
+	t.Run("invalid named platform", func(t *testing.T) {
+		writeWasmTargetFixture(t, "emscripten", `{
+			"llvm-target":"wasm32-unknown-emscripten",
+			"goos":"plan9",
+			"goarch":"wasm",
+			"wasm-abi":"emscripten"
+		}`)
+		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		if err == nil || !strings.Contains(err.Error(), "unsupported GOOS for WebAssembly") {
+			t.Fatalf("invalid named platform error = %v", err)
+		}
+	})
+
+	t.Run("LLVM target mismatch", func(t *testing.T) {
+		writeWasmTargetFixture(t, "emscripten", `{
+			"llvm-target":"wasm32-wrong-emscripten",
+			"goos":"js",
+			"goarch":"wasm",
+			"wasm-abi":"emscripten"
+		}`)
+		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		if err == nil || !strings.Contains(err.Error(), "requires \"wasm32-unknown-emscripten\"") {
+			t.Fatalf("mismatched target error = %v", err)
+		}
+	})
+}
+
 func TestUseTargetWindowsSystemClang(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows host toolchain selection")

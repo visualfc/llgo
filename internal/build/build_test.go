@@ -781,6 +781,7 @@ func TestEffectiveWasmTypeSizes(t *testing.T) {
 		{"WASI Preview 1", "wasm", crosscompile.WasmABIWASIPreview1, 4},
 		{"WASI Preview 2", "arm", crosscompile.WasmABIWASIPreview2, 4},
 		{"freestanding wasm32", "arm", crosscompile.WasmABIFreestanding, 4},
+		{"unknown profile", "wasm", crosscompile.WasmABI("unknown"), 16},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			got := effectiveTypeSizes(base, test.arch, test.abi).Sizeof(types.Typ[types.Uintptr])
