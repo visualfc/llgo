@@ -268,8 +268,10 @@ func TestLinkMainPkgRejectsPackageInitCycle(t *testing.T) {
 func TestGenMainModuleWASIAsyncifyEntry(t *testing.T) {
 	llvm.InitializeAllTargets()
 	t.Setenv(llgoStdioNobuf, "")
+	prog := llssa.NewProgram(nil)
+	installLocalContextTestRuntime(prog)
 	ctx := &context{
-		prog: llssa.NewProgram(nil),
+		prog: prog,
 		buildConf: &Config{
 			BuildMode: BuildModeExe,
 			Goos:      "wasip1",
@@ -315,6 +317,12 @@ func TestGenMainModuleWASIAsyncifyEntry(t *testing.T) {
 	}
 	entry := ir[entryStart:]
 	entry = entry[:strings.Index(entry, "}\n")+2]
+	assertInOrder(t, entry,
+		"EnterLocalContext",
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.init"()`,
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.RunWasmMain"()`,
+		"LeaveLocalContext",
+	)
 	if strings.Contains(entry, `call void @"example.com/dependency.init"()`) ||
 		strings.Contains(entry, `call void @"example.com/foo.init"()`) ||
 		strings.Contains(entry, `call void @"example.com/foo.main"()`) {
@@ -664,20 +672,7 @@ func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
 	llvm.InitializeAllTargets()
 	t.Setenv(llgoStdioNobuf, "")
 	prog := llssa.NewProgram(nil)
-	runtimePkg := types.NewPackage(llssa.PkgRuntime, "runtime")
-	contextName := types.NewTypeName(token.NoPos, runtimePkg, "LocalContext", nil)
-	contextType := types.NewNamed(contextName, types.NewStruct(nil, nil), nil)
-	runtimePkg.Scope().Insert(contextName)
-	contextPointer := types.NewPointer(contextType)
-	enterParams := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer))
-	enterResults := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]))
-	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "EnterLocalContext", types.NewSignatureType(nil, nil, nil, enterParams, enterResults, false)))
-	leaveParams := types.NewTuple(
-		types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer),
-		types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]),
-	)
-	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "LeaveLocalContext", types.NewSignatureType(nil, nil, nil, leaveParams, nil, false)))
-	prog.SetRuntime(runtimePkg)
+	installLocalContextTestRuntime(prog)
 	prog.SetLocalityInfo("example.com/state.Value", llssa.LocalityInfo{Locality: llssa.GoroutineLocal})
 	prog.SetLocalStorage("example.com/state.Value", llssa.LocalStoragePackage)
 	ctx := &context{
@@ -695,6 +690,23 @@ func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
 		"call void @runtime.main()",
 		"LeaveLocalContext",
 	)
+}
+
+func installLocalContextTestRuntime(prog llssa.Program) {
+	runtimePkg := types.NewPackage(llssa.PkgRuntime, "runtime")
+	contextName := types.NewTypeName(token.NoPos, runtimePkg, "LocalContext", nil)
+	contextType := types.NewNamed(contextName, types.NewStruct(nil, nil), nil)
+	runtimePkg.Scope().Insert(contextName)
+	contextPointer := types.NewPointer(contextType)
+	enterParams := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer))
+	enterResults := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]))
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "EnterLocalContext", types.NewSignatureType(nil, nil, nil, enterParams, enterResults, false)))
+	leaveParams := types.NewTuple(
+		types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer),
+		types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]),
+	)
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "LeaveLocalContext", types.NewSignatureType(nil, nil, nil, leaveParams, nil, false)))
+	prog.SetRuntime(runtimePkg)
 }
 
 func assertInOrder(t *testing.T, s string, wants ...string) {

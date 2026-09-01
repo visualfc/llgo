@@ -468,7 +468,11 @@ func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa
 	}
 	b := fn.MakeBody(1)
 	var localCtx, previousLocalCtx llssa.Expr
-	hasLocalContext := prog.NeedsLocalContext()
+	// The single-worker runtime itself uses owner-local state even when the
+	// user program has no TLS/GLS declarations. Root that state on the host
+	// entry stack before runtime.init and keep it installed while logical Go
+	// stacks are dispatched by RunWasmMain.
+	hasLocalContext := prog.NeedsLocalContext() || fns.wasmRunMain != nil
 	if hasLocalContext {
 		localCtx, previousLocalCtx = b.EnterLocalContext()
 	}
