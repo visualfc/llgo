@@ -610,7 +610,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// final-PC sites for sidecar construction.
 	prog.EnableFuncInfoSites(shouldEnablePCLNSites(conf, funcInfo, emitDebugInfo))
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
-		sizes = effectiveTypeSizes(sizes, export.WasmABI)
+		sizes = effectiveTypeSizes(sizes, arch, export.WasmABI)
 		return prog.TypeSizes(sizes)
 	}
 	dedup := packages.NewDeduper()
@@ -1046,7 +1046,16 @@ func defaultBuildTags(goarch, target string) string {
 	return tags
 }
 
-func effectiveTypeSizes(sizes types.Sizes, wasmABI crosscompile.WasmABI) types.Sizes {
+func effectiveTypeSizes(sizes types.Sizes, arch string, wasmABI crosscompile.WasmABI) types.Sizes {
+	if wasmABI == crosscompile.WasmABIUnspecified {
+		// Preserve main's current raw wasm layout until G1/G2 completes the
+		// official Go ABI. Crucially, this temporary implementation gap does
+		// not add a C-ecosystem source tag or cache identity.
+		if arch == "wasm" {
+			return &types.StdSizes{WordSize: 4, MaxAlign: 4}
+		}
+		return sizes
+	}
 	switch wasmABI {
 	case crosscompile.WasmABIEmscripten, crosscompile.WasmABIWASIPreview1,
 		crosscompile.WasmABIWASIPreview2, crosscompile.WasmABIFreestanding:

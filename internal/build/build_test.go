@@ -770,18 +770,20 @@ func TestEffectiveWasmTypeSizes(t *testing.T) {
 	base := &types.StdSizes{WordSize: 16, MaxAlign: 16}
 	for _, test := range []struct {
 		name string
+		arch string
 		abi  crosscompile.WasmABI
 		want int64
 	}{
-		{"unspecified", crosscompile.WasmABIUnspecified, 16},
-		{"Emscripten wasm32", crosscompile.WasmABIEmscripten, 4},
-		{"Emscripten Memory64", crosscompile.WasmABIEmscriptenMemory64, 8},
-		{"WASI Preview 1", crosscompile.WasmABIWASIPreview1, 4},
-		{"WASI Preview 2", crosscompile.WasmABIWASIPreview2, 4},
-		{"freestanding wasm32", crosscompile.WasmABIFreestanding, 4},
+		{"unspecified native", "amd64", crosscompile.WasmABIUnspecified, 16},
+		{"raw wasm compatibility", "wasm", crosscompile.WasmABIUnspecified, 4},
+		{"Emscripten wasm32", "wasm", crosscompile.WasmABIEmscripten, 4},
+		{"Emscripten Memory64", "wasm", crosscompile.WasmABIEmscriptenMemory64, 8},
+		{"WASI Preview 1", "wasm", crosscompile.WasmABIWASIPreview1, 4},
+		{"WASI Preview 2", "arm", crosscompile.WasmABIWASIPreview2, 4},
+		{"freestanding wasm32", "arm", crosscompile.WasmABIFreestanding, 4},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			got := effectiveTypeSizes(base, test.abi).Sizeof(types.Typ[types.Uintptr])
+			got := effectiveTypeSizes(base, test.arch, test.abi).Sizeof(types.Typ[types.Uintptr])
 			if got != test.want {
 				t.Fatalf("uintptr size = %d, want %d", got, test.want)
 			}

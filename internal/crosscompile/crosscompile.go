@@ -485,16 +485,6 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 	if !wasmABI.valid() {
 		return export, fmt.Errorf("unsupported WebAssembly ABI profile %q", wasmABI)
 	}
-	if goarch == "wasm" && wasmABI == WasmABIUnspecified {
-		switch goos {
-		case "js":
-			// Preserve the current raw GOOS/GOARCH behavior until the separate
-			// official-Go ABI profile is complete.
-			wasmABI = WasmABIEmscripten
-		case "wasip1":
-			wasmABI = WasmABIWASIPreview1
-		}
-	}
 	targetTriple := llvm.GetTargetTripleWithGOARM(goos, goarch, goarm)
 	switch wasmABI {
 	case WasmABIEmscripten:
@@ -609,9 +599,10 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 	if goarch != "wasm" {
 		return
 	}
-	export.WasmABI = wasmABI
-	export.LLVMTarget = targetTriple
-	export.BuildTags = wasmABIBuildTags(wasmABI)
+	if wasmABI != WasmABIUnspecified {
+		export.WasmABI = wasmABI
+		export.LLVMTarget = targetTriple
+	}
 	export.DebugInfo.OmitLinkFlags = []string{"-Wl,-S"}
 
 	// Configure based on GOOS
@@ -696,6 +687,13 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		}
 
 	case "js":
+		if wasmABI == WasmABIUnspecified {
+			// Preserve the existing raw js/wasm driver while keeping its source
+			// constraints unqualified: js && wasm denotes the official Go
+			// platform, not an Emscripten C profile. The Go ABI gap is closed by
+			// the separate G1/G2 work.
+			targetTriple = "wasm32-unknown-emscripten"
+		}
 		// Emscripten configuration using system installation
 		// Specify emcc as the compiler
 		export.CC = "emcc"
@@ -740,21 +738,6 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		return
 	}
 	return
-}
-
-func wasmABIBuildTags(abi WasmABI) []string {
-	switch abi {
-	case WasmABIEmscripten:
-		return []string{"llgo.wasm.emscripten"}
-	case WasmABIEmscriptenMemory64:
-		return []string{"llgo.wasm.emscripten", "llgo.wasm.emscripten.memory64"}
-	case WasmABIWASIPreview1, WasmABIWASIPreview2:
-		return []string{"llgo.wasm.wasi"}
-	case WasmABIFreestanding:
-		return []string{"llgo.wasm.freestanding"}
-	default:
-		return nil
-	}
 }
 
 func appendUniqueStrings(dst []string, values ...string) []string {

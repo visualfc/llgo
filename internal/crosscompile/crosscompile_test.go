@@ -427,28 +427,34 @@ func TestWASIProfileTargets(t *testing.T) {
 	}
 }
 
-func TestRawWasmCompatibilityProfiles(t *testing.T) {
+func TestRawWasmStandardTagsRemainUnqualified(t *testing.T) {
 	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if js.WasmABI != WasmABIEmscripten || js.LLVMTarget != "wasm32-unknown-emscripten" {
-		t.Fatalf("raw js/wasm = ABI %q, LLVM %q", js.WasmABI, js.LLVMTarget)
+	if js.WasmABI != WasmABIUnspecified || js.LLVMTarget != "" {
+		t.Fatalf("raw js/wasm was relabeled as ABI %q, LLVM profile %q", js.WasmABI, js.LLVMTarget)
 	}
 	if !slices.Contains(js.LDFLAGS, "-sENVIRONMENT=web,worker") ||
 		slices.Contains(js.LDFLAGS, "-sENVIRONMENT=web,worker,node") {
 		t.Fatalf("raw js/wasm host environment unexpectedly changed: %v", js.LDFLAGS)
+	}
+	if slices.Contains(js.BuildTags, "llgo.wasm.emscripten") {
+		t.Fatalf("raw js/wasm acquired an Emscripten source tag: %v", js.BuildTags)
 	}
 
 	wasi, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wasi.WasmABI != WasmABIWASIPreview1 || wasi.LLVMTarget != "wasm32-unknown-wasip1" {
-		t.Fatalf("raw wasip1/wasm = ABI %q, LLVM %q", wasi.WasmABI, wasi.LLVMTarget)
+	if wasi.WasmABI != WasmABIUnspecified || wasi.LLVMTarget != "" {
+		t.Fatalf("raw wasip1/wasm was relabeled as ABI %q, LLVM profile %q", wasi.WasmABI, wasi.LLVMTarget)
 	}
 	if !slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory,") {
 		t.Fatal("raw WASI compatibility profile unexpectedly changed its imported-memory contract")
+	}
+	if slices.Contains(wasi.BuildTags, "llgo.wasm.wasi") {
+		t.Fatalf("raw wasip1/wasm acquired a WASI C-profile source tag: %v", wasi.BuildTags)
 	}
 }
 
