@@ -379,28 +379,54 @@ func TestEmscriptenRunnersConsumeExitStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	module := filepath.Join(t.TempDir(), "module.mjs")
-	const source = `export default async function(config) {
-	const status = Number(config.arguments[0]);
-	config.onExit(status);
+	const source = `function exitStatus(status) {
 	const error = new Error('Program terminated with exit(' + status + ')');
 	error.name = 'ExitStatus';
 	error.status = status;
-	throw error;
+	return error;
+}
+export default async function(config) {
+	const status = Number(config.arguments[0]);
+	const mode = config.arguments[1];
+	config.onExit(status);
+	switch (mode) {
+	case 'factory-rejection':
+		throw exitStatus(status);
+	case 'late-exception':
+		setTimeout(() => { throw exitStatus(status); }, 0);
+		return;
+	case 'late-rejection':
+		Promise.reject(exitStatus(status));
+		return;
+	case 'ordinary-error': {
+		const error = new Error('ordinary failure');
+		error.status = status;
+		throw error;
+	}
+	default:
+		throw new Error('unknown mode: ' + mode);
+	}
 }`
 	if err := os.WriteFile(module, []byte(source), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, runner := range []string{"emscripten-runner.mjs", "emscripten-memory64-runner.mjs"} {
 		t.Run(runner, func(t *testing.T) {
-			command := func(status string) *exec.Cmd {
-				return exec.Command(node, filepath.Join(root, "targets", runner), module, status)
+			command := func(status, mode string) *exec.Cmd {
+				return exec.Command(node, filepath.Join(root, "targets", runner), module, status, mode)
 			}
-			if output, err := command("0").CombinedOutput(); err != nil {
-				t.Fatalf("runner rejected normal ExitStatus: %v\n%s", err, output)
+			for _, mode := range []string{"factory-rejection", "late-exception", "late-rejection"} {
+				if output, err := command("0", mode).CombinedOutput(); err != nil {
+					t.Fatalf("runner rejected normal %s ExitStatus: %v\n%s", mode, err, output)
+				}
+				output, err := command("7", mode).CombinedOutput()
+				if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 7 {
+					t.Fatalf("runner %s nonzero ExitStatus = %v, want exit 7\n%s", mode, err, output)
+				}
 			}
-			output, err := command("7").CombinedOutput()
-			if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 7 {
-				t.Fatalf("runner nonzero ExitStatus = %v, want exit 7\n%s", err, output)
+			output, err := command("0", "ordinary-error").CombinedOutput()
+			if err == nil {
+				t.Fatalf("runner consumed an ordinary error with a status field:\n%s", output)
 			}
 		})
 	}
