@@ -57,6 +57,13 @@ Other targets may not provide every OS service or implementation-specific runtim
 | WebAssembly | `js/wasm` and `wasip1/wasm` builds; WASI and Emscripten CI coverage |
 | Embedded | [`-target`](doc/Embedded_Cmd.md) configurations for supported boards and MCUs, with selected QEMU/emulator smoke tests |
 
+Named WebAssembly targets select an ecosystem C ABI independently of the Go
+source tags: `-target emscripten` (and the legacy `-target wasm` alias) emits an
+ES module plus its sibling wasm32 module, `-target emscripten-memory64` emits the
+same pair with an LP64 C data model, and `-target wasi`/`-target wasip1` emits a
+WASI Preview 1 module. Raw `GOOS=js/wasip1 GOARCH=wasm` remains a separate
+compatibility path reserved for convergence with the standard Go platform ABI.
+
 
 ## C/C++ support
 

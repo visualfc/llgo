@@ -306,6 +306,12 @@ func defaultAppExt(conf *Config) string {
 			case "wasi", "wasip1", "wasip2", "wasm-unknown":
 				return ".wasm"
 			}
+			// Preserve the historical extension for custom/future WASI and
+			// WebAssembly profiles. Emscripten profiles are listed above because
+			// their executable is JavaScript glue rather than the sibling module.
+			if strings.HasPrefix(conf.Target, "wasi") || strings.HasPrefix(conf.Target, "wasm") {
+				return ".wasm"
+			}
 			return ".elf"
 		}
 

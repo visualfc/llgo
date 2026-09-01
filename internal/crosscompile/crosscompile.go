@@ -37,9 +37,9 @@ type Export struct {
 	// outputs. It is independent of the host shell and remains empty for named
 	// embedded/WebAssembly targets that drive their linker directly.
 	Toolchain NativeToolchain
-	// WasmABI is the selected WebAssembly ecosystem ABI. Unlike GOOS/GOARCH
-	// and build tags, it is authoritative for pointer layout, C ABI lowering,
-	// toolchain flags, and package-cache separation.
+	// WasmABI is the selected WebAssembly ecosystem ABI. Unlike GOOS/GOARCH,
+	// it is authoritative for pointer layout, toolchain flags, and package-cache
+	// separation; the validated profile also selects its C data-model tags.
 	WasmABI WasmABI
 
 	// Additional fields from target configuration

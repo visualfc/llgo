@@ -535,9 +535,9 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		CABIOnly:                conf.AbiMode == cabi.ModeCFunc,
 	}
 	tags := defaultBuildTags(conf.Goarch, conf.Target) + "," + target.ClosureEnvBuildTag()
-	// R0 preserves the existing collector-free wasm runtime. A later runtime
-	// PR replaces this with the non-moving collector after suspended roots and
-	// safepoints are implemented for every profile.
+	// R0 preserves the existing collector-free wasm runtime. The named target
+	// metadata therefore declares gc=none as well. A later runtime PR updates
+	// both after suspended roots and safepoints are implemented for each profile.
 	if conf.Target != "" && export.WasmABI != crosscompile.WasmABIUnspecified {
 		tags += ",nogc"
 	}

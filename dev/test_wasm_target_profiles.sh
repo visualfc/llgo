@@ -20,16 +20,12 @@ assert_wasm_module() {
 }
 
 run_node() {
-	local module="$1"
-	local feature_flag="${2:-}"
-	local node_args=()
-	if [[ -n "${feature_flag}" ]]; then
-		node_args+=("${feature_flag}")
-	fi
+	local runner="$1"
+	local module="$2"
 	if command -v timeout >/dev/null 2>&1; then
-		timeout 60s "${node_cmd}" "${node_args[@]}" "${repo_root}/targets/emscripten-runner.mjs" "${module}"
+		timeout 60s "${node_cmd}" "${repo_root}/targets/${runner}" "${module}"
 	else
-		"${node_cmd}" "${node_args[@]}" "${repo_root}/targets/emscripten-runner.mjs" "${module}"
+		"${node_cmd}" "${repo_root}/targets/${runner}" "${module}"
 	fi
 }
 
@@ -37,17 +33,14 @@ build_emscripten() {
 	local target="$1"
 	local name="$2"
 	local module="${work_dir}/${name}.mjs"
+	local runner="emscripten-runner.mjs"
+	if [[ "${target}" == "emscripten-memory64" ]]; then
+		runner="emscripten-memory64-runner.mjs"
+	fi
 
 	"${llgo_cmd}" build -target "${target}" -o "${module}" "${fixture}"
 	assert_wasm_module "${work_dir}/${name}.wasm"
-	if ! run_node "${module}"; then
-		# Node versions that implement Memory64 behind a feature flag still
-		# provide the same executable contract. Retry only that target.
-		if [[ "${target}" != "emscripten-memory64" ]]; then
-			return 1
-		fi
-		run_node "${module}" --experimental-wasm-memory64
-	fi
+	run_node "${runner}" "${module}"
 }
 
 build_wasi() {

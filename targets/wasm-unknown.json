@@ -10,7 +10,7 @@
 	"linker":        "wasm-ld",
 	"rtlib":         "compiler-rt",
 	"scheduler":     "none",
-	"gc":            "leaking",
+	"gc":            "none",
 	"default-stack-size": 4096,
 	"cflags": [
 		"-mnontrapping-fptoint",

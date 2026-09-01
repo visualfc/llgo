@@ -23,6 +23,11 @@ func TestWebAssemblyTargetDefaultExtension(t *testing.T) {
 			t.Errorf("target %q extension = %q, want .wasm", target, got)
 		}
 	}
+	for _, target := range []string{"wasip3", "wasm-custom"} {
+		if got := defaultAppExt(&Config{BuildMode: BuildModeExe, Target: target}); got != ".wasm" {
+			t.Errorf("future/custom target %q extension = %q, want .wasm", target, got)
+		}
+	}
 	if got := defaultAppExt(&Config{BuildMode: BuildModeExe, Target: "esp32"}); got != ".elf" {
 		t.Errorf("embedded target extension = %q, want .elf", got)
 	}

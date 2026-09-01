@@ -9,7 +9,7 @@
 	"wasm-abi":      "wasi-preview2",
 	"linker":        "wasm-ld",
 	"rtlib":         "compiler-rt",
-	"gc":            "precise",
+	"gc":            "none",
 	"scheduler":     "asyncify",
 	"default-stack-size": 65536,
 	"cflags": [
