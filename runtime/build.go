@@ -82,8 +82,6 @@ func SourcePatchReplacesAsmForGOARCH(path, goarch string) bool {
 var sourcePatchPkgs = map[string]struct{}{
 	"crypto/internal/constanttime": {},
 	"crypto/internal/sysrand":      {},
-	"internal/bytealg":             {},
-	"internal/chacha8rand":         {},
 	"internal/runtime/atomic":      {},
 	"internal/runtime/maps":        {},
 	"internal/runtime/sys":         {},
@@ -98,9 +96,7 @@ var sourcePatchPkgs = map[string]struct{}{
 }
 
 var sourcePatchAsmPkgs = map[string]map[string]struct{}{
-	"internal/bytealg":        {"wasm": {}},
-	"internal/chacha8rand":    {"wasm": {}},
-	"internal/runtime/atomic": {"arm": {}, "wasm": {}},
+	"internal/runtime/atomic": {"arm": {}},
 	"sync/atomic":             {"*": {}},
 	"syscall":                 {"*": {}},
 }

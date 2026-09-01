@@ -67,8 +67,14 @@ func TestPlan9AsmDefaultsSupport386(t *testing.T) {
 }
 
 func TestPlan9AsmDefaultsSupportWasm(t *testing.T) {
-	conf := &Config{Goarch: "wasm", AbiMode: cabi.ModeAllFunc}
-	for _, pkgPath := range []string{"crypto/internal/boring/sig", "math"} {
+	conf := &Config{Goarch: "wasm"}
+	for _, pkgPath := range []string{
+		"crypto/internal/boring/sig",
+		"internal/bytealg",
+		"internal/chacha8rand",
+		"internal/runtime/atomic",
+		"math",
+	} {
 		if !plan9asmEnabledByDefault(conf, pkgPath) {
 			t.Errorf("plan9asm should be enabled by default for %s on wasm", pkgPath)
 		}

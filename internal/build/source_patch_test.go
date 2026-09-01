@@ -135,21 +135,18 @@ func logPackageErrors(t *testing.T, pkg *packages.Package, seen map[string]bool)
 	}
 }
 
-func TestWasmSourcePatchReplacesAsm(t *testing.T) {
-	for _, pkgPath := range []string{"internal/bytealg", "internal/chacha8rand", "internal/runtime/atomic"} {
-		if !llruntime.HasSourcePatchPkg(pkgPath) {
-			t.Fatalf("%s should be registered as a source patch package", pkgPath)
+func TestWasmKeepsStandardLibraryAssembly(t *testing.T) {
+	for _, pkgPath := range []string{"internal/bytealg", "internal/chacha8rand"} {
+		if llruntime.HasSourcePatchPkg(pkgPath) {
+			t.Fatalf("%s should use its standard-library wasm implementation", pkgPath)
 		}
-		if !llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "wasm") {
-			t.Fatalf("%s wasm assembly should be replaced by its source patch", pkgPath)
+	}
+	for _, pkgPath := range []string{"internal/runtime/atomic", "crypto/internal/boring/sig", "math"} {
+		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "wasm") {
+			t.Fatalf("%s should retain the Go wasm assembly implementation", pkgPath)
 		}
 		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "arm64") {
 			t.Fatalf("%s native assembly should remain enabled", pkgPath)
-		}
-	}
-	for _, pkgPath := range []string{"crypto/internal/boring/sig", "math"} {
-		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "wasm") {
-			t.Fatalf("%s should retain the Go wasm assembly implementation", pkgPath)
 		}
 	}
 
@@ -169,8 +166,8 @@ func TestWasmSourcePatchReplacesAsm(t *testing.T) {
 		"internal/runtime/atomic/atomic_wasm.s",
 	} {
 		path := filepath.Join(runtime.GOROOT(), "src", filepath.FromSlash(file))
-		if got := string(overlay[path]); got != "// replaced by LLGo source patch\n" {
-			t.Fatalf("overlay[%q] = %q, want assembly replacement", path, got)
+		if got, ok := overlay[path]; ok {
+			t.Fatalf("overlay[%q] unexpectedly replaces standard-library assembly with %q", path, got)
 		}
 	}
 }
@@ -421,11 +418,11 @@ func TestRuntimeMapsTypeStringPatchMatchesGo125(t *testing.T) {
 func TestCompilePkgSFilesSkipsSourcePatchedAssembly(t *testing.T) {
 	got, err := compilePkgSFiles(
 		&context{
-			buildConf:  &Config{Goarch: "wasm"},
-			patchFiles: map[string][]string{"internal/bytealg": {"bytealg_wasm.go"}},
+			buildConf:  &Config{Goarch: "amd64"},
+			patchFiles: map[string][]string{"sync/atomic": {"atomic.go"}},
 		},
 		nil,
-		&packages.Package{PkgPath: "internal/bytealg"},
+		&packages.Package{PkgPath: "sync/atomic"},
 		false,
 	)
 	if err != nil {
@@ -439,22 +436,19 @@ func TestCompilePkgSFilesSkipsSourcePatchedAssembly(t *testing.T) {
 func TestSourcePatchAssemblyMatchError(t *testing.T) {
 	goroot := t.TempDir()
 	runtimeDir := t.TempDir()
-	const pkgPath = "internal/bytealg"
+	const pkgPath = "sync/atomic"
 	srcDir := filepath.Join(goroot, "src", filepath.FromSlash(pkgPath))
 	patchDir := filepath.Join(runtimeDir, "_patch", filepath.FromSlash(pkgPath))
 
 	if err := os.MkdirAll(filepath.Join(srcDir, "adir"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	mustWriteFile(t, filepath.Join(srcDir, "bad_wasm.s"), "//go:build (\n")
-	mustWriteFile(t, filepath.Join(patchDir, "bytealg_wasm.go"), `//go:build wasm
-
-package bytealg
-`)
+	mustWriteFile(t, filepath.Join(srcDir, "bad_amd64.s"), "//go:build (\n")
+	mustWriteFile(t, filepath.Join(patchDir, "atomic.go"), "package atomic\n")
 
 	_, _, _, err := applySourcePatchForPkg(nil, nil, runtimeDir, goroot, pkgPath, sourcePatchBuildContext{
-		goos:   "js",
-		goarch: "wasm",
+		goos:   "linux",
+		goarch: "amd64",
 	})
 	if err == nil || !strings.Contains(err.Error(), "match stdlib assembly file") {
 		t.Fatalf("applySourcePatchForPkg error = %v, want assembly match error", err)

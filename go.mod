@@ -29,4 +29,4 @@ replace github.com/xgo-dev/llgo/runtime => ./runtime
 
 // Use the WebAssembly Plan 9 assembly lowering under review until its
 // xgo-dev/plan9asm release is available.
-replace github.com/xgo-dev/plan9asm => github.com/cpunion/plan9asm v0.0.0-20260901081019-6a741fb3e0d5
+replace github.com/xgo-dev/plan9asm => github.com/cpunion/plan9asm v0.0.0-20260901160518-57691310f87a
