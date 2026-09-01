@@ -139,7 +139,7 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 			fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", objPath, pkg.PkgPath)
 			fmt.Fprintln(os.Stderr, "clang", args)
 		}
-		if err := ctx.compiler().Compile(args...); err != nil {
+		if err := ctx.irCompiler().Compile(args...); err != nil {
 			os.Remove(objPath)
 			return nil, fmt.Errorf("%s: clang compile asm ll for %s: %w", pkg.PkgPath, sfile, err)
 		}
@@ -217,7 +217,7 @@ type plan9AsmSigCacheKey struct {
 var plan9AsmSigCache sync.Map // key: plan9AsmSigCacheKey, value: map[string]struct{}
 
 func archSupportsPlan9AsmDefaults(goarch string) bool {
-	return goarch == "386" || goarch == "arm64" || goarch == "amd64"
+	return goarch == "386" || goarch == "arm64" || goarch == "amd64" || goarch == "wasm"
 }
 
 type plan9asmPkgsEnvMode int
