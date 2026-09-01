@@ -54,7 +54,8 @@ func Generate(fileOrPkg string) GeneratedIR {
 }
 
 // GenerateWithConf is Generate with caller-provided target and frontend
-// settings.
+// settings. Any ModuleHook on input is ignored because generation manages the
+// hook used to capture the requested phase.
 func GenerateWithConf(fileOrPkg string, input *build.Config) GeneratedIR {
 	generated, _ := generateWithConf(fileOrPkg, input, PhasePreABI)
 	return generated
@@ -68,7 +69,8 @@ func GeneratePostABI(fileOrPkg string) GeneratedIR {
 }
 
 // GeneratePostABIWithConf is GeneratePostABI with caller-provided target and
-// frontend settings.
+// frontend settings. Any ModuleHook on input is ignored because generation
+// manages phase capture internally.
 func GeneratePostABIWithConf(fileOrPkg string, input *build.Config) GeneratedIR {
 	generated, _ := generateWithConf(fileOrPkg, input, PhasePostABI)
 	return generated
@@ -84,31 +86,82 @@ func generateWithConf(fileOrPkg string, input *build.Config, phase Phase) (Gener
 	// Cache hits can skip the module production needed by snapshot generation.
 	conf.ForceRebuild = true
 
-	preABI := make(map[string]GeneratedIR)
+	var preABI GeneratedIR
+	var preABICaptured bool
 	switch phase {
 	case PhasePostABI:
 		conf.ModuleHook = nil
 	case PhasePreABI:
+		target := resolveGenerationTarget(fileOrPkg)
 		conf.ModuleHook = func(pkg build.Package) {
-			preABI[pkg.PkgPath] = snapshotGeneratedIR(pkg)
+			if !target.matches(pkg.PkgPath, pkg.GoFiles) {
+				return
+			}
+			preABI = snapshotGeneratedIR(pkg)
+			preABICaptured = true
 		}
 	default:
 		panic(fmt.Sprintf("unknown llgen phase %q", phase))
 	}
 	pkg, err := genFromConf(fileOrPkg, conf)
 	check(err)
+	defer pkg.LPkg.Prog.Dispose()
+
 	goFiles := append([]string(nil), pkg.GoFiles...)
-	generated := snapshotGeneratedIR(pkg)
-	if phase == PhasePreABI {
-		var ok bool
-		generated, ok = preABI[pkg.PkgPath]
-		if !ok {
-			pkg.LPkg.Prog.Dispose()
+	var generated GeneratedIR
+	if phase == PhasePostABI {
+		generated = snapshotGeneratedIR(pkg)
+	} else {
+		if !preABICaptured {
 			panic(fmt.Sprintf("pre-ABI module for %q was not generated", pkg.PkgPath))
 		}
+		generated = preABI
 	}
-	pkg.LPkg.Prog.Dispose()
 	return generated, goFiles
+}
+
+type generationTarget struct {
+	pattern    string
+	sourcePath string
+	sourceDir  bool
+}
+
+func resolveGenerationTarget(pattern string) generationTarget {
+	target := generationTarget{pattern: pattern}
+	abs, err := filepath.Abs(pattern)
+	if err != nil {
+		return target
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return target
+	}
+	target.sourcePath = filepath.Clean(abs)
+	target.sourceDir = info.IsDir()
+	return target
+}
+
+func (target generationTarget) matches(pkgPath string, goFiles []string) bool {
+	if pkgPath == target.pattern {
+		return true
+	}
+	if target.sourcePath == "" {
+		return false
+	}
+	for _, goFile := range goFiles {
+		path, err := filepath.Abs(goFile)
+		if err != nil {
+			continue
+		}
+		path = filepath.Clean(path)
+		if target.sourceDir {
+			path = filepath.Dir(path)
+		}
+		if path == target.sourcePath {
+			return true
+		}
+	}
+	return false
 }
 
 func snapshotGeneratedIR(pkg build.Package) GeneratedIR {

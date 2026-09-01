@@ -395,14 +395,6 @@ func plan9asmDisabledByEnv() bool {
 	return parsePlan9AsmPkgsEnv(Plan9ASMPkgs()).mode == plan9asmEnvNone
 }
 
-func plan9asmEnabledByEnv(pkgPath string) bool {
-	cfg := parsePlan9AsmPkgsEnv(Plan9ASMPkgs())
-	if cfg.mode == plan9asmEnvAll {
-		return true
-	}
-	return cfg.mode == plan9asmEnvSelected && cfg.pkgs[pkgPath]
-}
-
 func plan9asmEnabledByDefault(conf *Config, pkgPath string) bool {
 	if conf == nil {
 		return false

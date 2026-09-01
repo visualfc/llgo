@@ -27,7 +27,7 @@ import (
 
 var (
 	phase = flag.String("phase", string(llgen.PhasePreABI), "compiler phase to capture (pre-abi or post-abi)")
-	abi   = flag.Int("abi", 0, "deprecated compatibility alias (0 = pre-abi, 2 = post-abi)")
+	abi   = flag.Int("abi", 0, "deprecated; use -phase instead (0 = pre-abi, 2 = post-abi)")
 )
 
 func main() {
