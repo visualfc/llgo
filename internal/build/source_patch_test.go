@@ -13,35 +13,48 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xgo-dev/llgo/internal/crosscompile"
 	"github.com/xgo-dev/llgo/internal/env"
 	"github.com/xgo-dev/llgo/internal/packages"
 	llruntime "github.com/xgo-dev/llgo/runtime"
 )
 
 func TestWasmRuntimeSourcePatchTypeChecks(t *testing.T) {
-	for _, goos := range []string{"js", "wasip1"} {
-		t.Run(goos, func(t *testing.T) {
-			cfgEnv := append(os.Environ(), "GOOS="+goos, "GOARCH=wasm")
+	for _, test := range []struct {
+		name       string
+		goos       string
+		abi        crosscompile.WasmABI
+		buildFlags []string
+	}{
+		{name: "raw js wasm32", goos: "js"},
+		{name: "legacy wasm alias", goos: "js", abi: crosscompile.WasmABIEmscripten, buildFlags: []string{"-tags=llgo.wasm.emscripten,tinygo.wasm,nogc"}},
+		{name: "Emscripten wasm32", goos: "js", abi: crosscompile.WasmABIEmscripten, buildFlags: []string{"-tags=llgo.wasm.emscripten,nogc"}},
+		{name: "Emscripten Memory64", goos: "js", abi: crosscompile.WasmABIEmscriptenMemory64, buildFlags: []string{"-tags=llgo.wasm.emscripten,llgo.wasm.emscripten.memory64,nogc"}},
+		{name: "WASI wasm32", goos: "wasip1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cfgEnv := append(os.Environ(), "GOOS="+test.goos, "GOARCH=wasm")
 			goroot, goversion, err := env.GOROOTAndGOVERSIONWithEnv(cfgEnv)
 			if err != nil {
 				t.Fatal(err)
 			}
 			overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), goroot, sourcePatchBuildContext{
-				goos:      goos,
-				goarch:    "wasm",
-				goversion: goversion,
+				goos:       test.goos,
+				goarch:     "wasm",
+				goversion:  goversion,
+				buildFlags: test.buildFlags,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			pkgs, err := packages.LoadEx(nil, func(types.Sizes, string, string) types.Sizes {
-				return &types.StdSizes{WordSize: 4, MaxAlign: 4}
+			pkgs, err := packages.LoadEx(nil, func(sizes types.Sizes, _ string, arch string) types.Sizes {
+				return effectiveTypeSizes(sizes, arch, test.abi)
 			}, &packages.Config{
-				Mode:    loadSyntax | packages.NeedDeps | packages.NeedModule | packages.NeedExportFile,
-				Env:     cfgEnv,
-				Fset:    token.NewFileSet(),
-				Overlay: overlay,
+				Mode:       loadSyntax | packages.NeedDeps | packages.NeedModule | packages.NeedExportFile,
+				Env:        cfgEnv,
+				Fset:       token.NewFileSet(),
+				Overlay:    overlay,
+				BuildFlags: test.buildFlags,
 			}, "runtime")
 			if err != nil {
 				t.Fatal(err)
@@ -51,9 +64,58 @@ func TestWasmRuntimeSourcePatchTypeChecks(t *testing.T) {
 			}
 			if pkgs[0].IllTyped {
 				logPackageErrors(t, pkgs[0], make(map[string]bool))
-				t.Fatal("runtime did not type-check with wasm32 sizes")
+				t.Fatal("runtime did not type-check")
 			}
 		})
+	}
+}
+
+func TestEmscriptenRuntimeHostImportsUseCABI(t *testing.T) {
+	conf := NewDefaultConf(ModeGen)
+	conf.Target = "emscripten"
+	var runtimeIR string
+	var sysrandIR string
+	conf.ModuleHook = func(pkg Package) {
+		if pkg.PkgPath == "runtime" {
+			runtimeIR = pkg.LPkg.String()
+		} else if pkg.PkgPath == "crypto/internal/sysrand" {
+			sysrandIR = pkg.LPkg.String()
+		}
+	}
+	pkgs, err := Do([]string{"./testdata/wasm-host"}, conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 1 {
+		t.Fatalf("generated %d packages, want 1", len(pkgs))
+	}
+	if runtimeIR == "" {
+		t.Fatal("runtime module was not observed")
+	}
+	if sysrandIR == "" {
+		t.Fatal("crypto/internal/sysrand module was not observed")
+	}
+	marker := "@runtime.getRandomData"
+	at := strings.Index(runtimeIR, marker)
+	if at < 0 {
+		t.Fatalf("runtime module does not contain %s", marker)
+	}
+	lineStart := strings.LastIndex(runtimeIR[:at], "\n") + 1
+	lineEnd := strings.Index(runtimeIR[at:], "\n")
+	if lineEnd < 0 {
+		lineEnd = len(runtimeIR)
+	} else {
+		lineEnd += at
+	}
+	line := runtimeIR[lineStart:lineEnd]
+	if !strings.HasPrefix(line, "define ") {
+		t.Fatalf("runtime.getRandomData is not defined by the Emscripten C-ABI bridge: %s", line)
+	}
+	if !strings.Contains(sysrandIR, marker) {
+		t.Fatalf("crypto/internal/sysrand does not call %s", marker)
+	}
+	if strings.Contains(sysrandIR, `"wasm-import-name"="runtime.getRandomData"`) {
+		t.Fatal("crypto/internal/sysrand retains the official gojs host import in the Emscripten profile")
 	}
 }
 
@@ -73,7 +135,7 @@ func logPackageErrors(t *testing.T, pkg *packages.Package, seen map[string]bool)
 	}
 }
 
-func TestWasmBytealgSourcePatchReplacesAsm(t *testing.T) {
+func TestWasmSourcePatchReplacesAsm(t *testing.T) {
 	for _, pkgPath := range []string{"internal/bytealg", "internal/chacha8rand", "internal/runtime/atomic"} {
 		if !llruntime.HasSourcePatchPkg(pkgPath) {
 			t.Fatalf("%s should be registered as a source patch package", pkgPath)
@@ -83,6 +145,11 @@ func TestWasmBytealgSourcePatchReplacesAsm(t *testing.T) {
 		}
 		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "arm64") {
 			t.Fatalf("%s native assembly should remain enabled", pkgPath)
+		}
+	}
+	for _, pkgPath := range []string{"crypto/internal/boring/sig", "math"} {
+		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "wasm") {
+			t.Fatalf("%s should retain the Go wasm assembly implementation", pkgPath)
 		}
 	}
 
