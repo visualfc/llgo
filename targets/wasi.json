@@ -1,3 +1,24 @@
 {
-    "inherits": ["wasip1"]
+	"llvm-target": "wasm32-unknown-wasip1",
+	"cpu": "generic",
+	"features": "+bulk-memory,+mutable-globals,+nontrapping-fptoint,+sign-ext,-multivalue,-reference-types",
+	"build-tags": ["llgo.wasm.wasi"],
+	"goos": "wasip1",
+	"goarch": "wasm",
+	"wasm-abi": "wasi-preview1",
+	"linker": "wasm-ld",
+	"libc": "wasi-libc",
+	"rtlib": "compiler-rt",
+	"cflags": [
+		"-mbulk-memory",
+		"-mnontrapping-fptoint",
+		"-mno-multivalue",
+		"-mno-reference-types",
+		"-msign-ext"
+	],
+	"ldflags": [
+		"--stack-first",
+		"--no-demangle"
+	],
+	"emulator": "wasmtime run --dir={tmpDir}::/tmp {}"
 }

@@ -272,7 +272,9 @@ func resolveBuildConfig(input *Config) (*Config, error) {
 	if conf.BuildMode == "" {
 		conf.BuildMode = BuildModeExe
 	}
-	if conf.AppExt == "" {
+	// A named target may replace GOOS/GOARCH below. Delay its inferred
+	// executable extension until target resolution has completed.
+	if conf.AppExt == "" && conf.Target == "" {
 		conf.AppExt = defaultAppExt(conf)
 	}
 	if conf.BuildMode != BuildModeExe {
@@ -509,6 +511,9 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
 	}
+	if conf.AppExt == "" {
+		conf.AppExt = defaultAppExt(conf)
+	}
 	applyBuildModeCompileFlags(conf.BuildMode, export.Toolchain, &export)
 	if err := validateLinkOptions(conf, &export); err != nil {
 		return nil, err
@@ -524,11 +529,18 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		GOARM64:                 conf.GOARM64,
 		Target:                  conf.Target,
 		LLVMTarget:              export.LLVMTarget,
+		WasmABI:                 string(export.WasmABI),
 		OptLevel:                conf.OptLevel,
 		SaturatingFloatToUint32: conf.SaturatingFloatToUint32,
 		CABIOnly:                conf.AbiMode == cabi.ModeCFunc,
 	}
 	tags := defaultBuildTags(conf.Goarch, conf.Target) + "," + target.ClosureEnvBuildTag()
+	// R0 preserves the existing collector-free wasm runtime. A later runtime
+	// PR replaces this with the non-moving collector after suspended roots and
+	// safepoints are implemented for every profile.
+	if conf.Target != "" && export.WasmABI != crosscompile.WasmABIUnspecified {
+		tags += ",nogc"
+	}
 	if conf.PCLNMode == PCLNExternal {
 		// Select the optional runtime loader as part of the normal package
 		// cache key. Embedded and none builds do not compile any loader or
@@ -598,9 +610,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// final-PC sites for sidecar construction.
 	prog.EnableFuncInfoSites(shouldEnablePCLNSites(conf, funcInfo, emitDebugInfo))
 	sizes := func(sizes types.Sizes, compiler, arch string) types.Sizes {
-		if arch == "wasm" {
-			sizes = &types.StdSizes{WordSize: 4, MaxAlign: 4}
-		}
+		sizes = effectiveTypeSizes(sizes, export.WasmABI)
 		return prog.TypeSizes(sizes)
 	}
 	dedup := packages.NewDeduper()
@@ -1034,6 +1044,18 @@ func defaultBuildTags(goarch, target string) string {
 		tags += ",nogc"
 	}
 	return tags
+}
+
+func effectiveTypeSizes(sizes types.Sizes, wasmABI crosscompile.WasmABI) types.Sizes {
+	switch wasmABI {
+	case crosscompile.WasmABIEmscripten, crosscompile.WasmABIWASIPreview1,
+		crosscompile.WasmABIWASIPreview2, crosscompile.WasmABIFreestanding:
+		return &types.StdSizes{WordSize: 4, MaxAlign: 4}
+	case crosscompile.WasmABIEmscriptenMemory64:
+		return &types.StdSizes{WordSize: 8, MaxAlign: 8}
+	default:
+		return sizes
+	}
 }
 
 func allowMissingFunctionBodies(initial []*packages.Package) {

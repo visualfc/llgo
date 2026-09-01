@@ -766,6 +766,56 @@ func TestWasmRuntimeAvoidsNativeHostDependencies(t *testing.T) {
 	}
 }
 
+func TestEffectiveWasmTypeSizes(t *testing.T) {
+	base := &types.StdSizes{WordSize: 16, MaxAlign: 16}
+	for _, test := range []struct {
+		name string
+		abi  crosscompile.WasmABI
+		want int64
+	}{
+		{"unspecified", crosscompile.WasmABIUnspecified, 16},
+		{"Emscripten wasm32", crosscompile.WasmABIEmscripten, 4},
+		{"Emscripten Memory64", crosscompile.WasmABIEmscriptenMemory64, 8},
+		{"WASI Preview 1", crosscompile.WasmABIWASIPreview1, 4},
+		{"WASI Preview 2", crosscompile.WasmABIWASIPreview2, 4},
+		{"freestanding wasm32", crosscompile.WasmABIFreestanding, 4},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got := effectiveTypeSizes(base, test.abi).Sizeof(types.Typ[types.Uintptr])
+			if got != test.want {
+				t.Fatalf("uintptr size = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestEmscriptenCTypeSourceSelection(t *testing.T) {
+	runtimeDir := filepath.Join(env.LLGoRuntimeDir(), "internal", "clite")
+	for _, test := range []struct {
+		name, tag, want, omit string
+	}{
+		{"wasm32", "llgo.wasm.emscripten", "ctypes_wasm.go", "ctypes_wasm_memory64.go"},
+		{"Memory64", "llgo.wasm.emscripten.memory64", "ctypes_wasm_memory64.go", "ctypes_wasm.go"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := gobuild.Default
+			ctx.GOOS = "js"
+			ctx.GOARCH = "wasm"
+			ctx.BuildTags = []string{"llgo", test.tag}
+			pkg, err := ctx.ImportDir(runtimeDir, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(pkg.GoFiles, test.want) {
+				t.Errorf("GoFiles %v do not contain %s", pkg.GoFiles, test.want)
+			}
+			if slices.Contains(pkg.GoFiles, test.omit) {
+				t.Errorf("GoFiles %v unexpectedly contain %s", pkg.GoFiles, test.omit)
+			}
+		})
+	}
+}
+
 func TestWindowsRuntimeSyscallVersionSelection(t *testing.T) {
 	runtimeDir := filepath.Join(env.LLGoRuntimeDir(), "internal", "lib", "runtime")
 	releaseTags := func(lastMinor int) []string {

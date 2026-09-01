@@ -37,6 +37,7 @@ type Target struct {
 	GOARM64                 string // "v8.0" (default) through "v9.5", with optional extensions
 	Target                  string // target name from -target flag (e.g., "esp32", "arm7tdmi", "wasi")
 	LLVMTarget              string // physical LLVM target selected by a target configuration
+	WasmABI                 string // explicit WebAssembly ecosystem ABI/profile
 	OptLevel                optlevel.Level
 	SaturatingFloatToUint32 bool
 	CABIOnly                bool // C ABI lowering is limited to native function boundaries (-abi=1)
@@ -151,13 +152,20 @@ func (p *Target) Spec() (spec TargetSpec) {
 	// Named embedded targets keep their existing backend triple here: their
 	// external compiler may support a target such as Xtensa that the host LLVM
 	// library used to build LLGo does not register.
-	if p.Target == "" && p.LLVMTarget != "" {
+	if p.LLVMTarget != "" && (p.Target == "" || p.WasmABI != "") {
 		spec.Triple = p.LLVMTarget
 	}
 	// Build validates these settings before constructing Target. Spec also
 	// accepts hand-built Targets, so it intentionally uses each resolver's
 	// documented Go-default fallback when its error cannot be returned here.
-	switch goarch {
+	backendArch := goarch
+	if p.WasmABI != "" && strings.HasPrefix(p.LLVMTarget, "wasm") {
+		// Some legacy freestanding/component target configs borrow linux/arm
+		// only for source selection. Their physical backend remains wasm and
+		// must not receive ARM CPU features.
+		backendArch = "wasm"
+	}
+	switch backendArch {
 	case "386":
 		spec.CPU = "pentium4"
 		go386, _ := archcfg.Resolve386(p.goArchitectureSetting(p.GO386))

@@ -1,5 +1,5 @@
-//go:build wasip1 || (js && wasm && !llgo.wasm.emscripten.memory64)
-// +build wasip1 js,wasm,!llgo.wasm.emscripten.memory64
+//go:build js && wasm && llgo.wasm.emscripten.memory64
+// +build js,wasm,llgo.wasm.emscripten.memory64
 
 /*
  * Copyright (c) 2024 The XGo Authors (xgo.dev). All rights reserved.
@@ -19,8 +19,8 @@
 
 package c
 
-// WASI Preview 1 and Emscripten's default wasm32 ABI use 32-bit C long.
+// Emscripten's full Memory64 mode uses the wasm64 LP64 C data model.
 type (
-	Long  = int32
-	Ulong = uint32
+	Long  = int64
+	Ulong = uint64
 )

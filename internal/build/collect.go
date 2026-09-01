@@ -131,6 +131,7 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	}
 	m.common.Target = c.buildConf.Target
 	m.common.TargetABI = c.crossCompile.TargetABI
+	m.common.WasmABI = string(c.crossCompile.WasmABI)
 	m.common.PlatformABI = string(c.crossCompile.Toolchain.ABI)
 	m.common.ObjectFormat = string(c.crossCompile.Toolchain.ObjectFormat)
 	m.common.DriverFlavor = string(c.crossCompile.Toolchain.Driver)

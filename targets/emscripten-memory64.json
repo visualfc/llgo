@@ -1,0 +1,6 @@
+{
+	"inherits": ["emscripten"],
+	"llvm-target": "wasm64-unknown-emscripten",
+	"build-tags": ["llgo.wasm.emscripten.memory64"],
+	"wasm-abi": "emscripten-memory64"
+}

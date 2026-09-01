@@ -12,6 +12,22 @@ import (
 	"github.com/xgo-dev/llgo/internal/flash"
 )
 
+func TestWebAssemblyTargetDefaultExtension(t *testing.T) {
+	for _, target := range []string{"emscripten", "emscripten-memory64", "wasm"} {
+		if got := defaultAppExt(&Config{BuildMode: BuildModeExe, Target: target}); got != ".mjs" {
+			t.Errorf("target %q extension = %q, want .mjs", target, got)
+		}
+	}
+	for _, target := range []string{"wasi", "wasip1", "wasip2", "wasm-unknown"} {
+		if got := defaultAppExt(&Config{BuildMode: BuildModeExe, Target: target}); got != ".wasm" {
+			t.Errorf("target %q extension = %q, want .wasm", target, got)
+		}
+	}
+	if got := defaultAppExt(&Config{BuildMode: BuildModeExe, Target: "esp32"}); got != ".elf" {
+		t.Errorf("embedded target extension = %q, want .elf", got)
+	}
+}
+
 func sameHostPath(got, want string) bool {
 	return got == want || got != "" && want != "" && filepath.Clean(got) == filepath.Clean(want)
 }

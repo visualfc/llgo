@@ -17,6 +17,7 @@
 package ssa
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/xgo-dev/llvm"
@@ -72,6 +73,38 @@ func TestTargetSpecUsesResolvedLLVMTarget(t *testing.T) {
 	pkg := prog.NewPackage("p", "example.com/p")
 	if got := pkg.Module().Target(); got != target.LLVMTarget {
 		t.Fatalf("module target = %q, want %q", got, target.LLVMTarget)
+	}
+}
+
+func TestNamedWasmProfileUsesResolvedLLVMTarget(t *testing.T) {
+	target := &Target{
+		GOOS:       "js",
+		GOARCH:     "wasm",
+		Target:     "emscripten-memory64",
+		LLVMTarget: "wasm64-unknown-emscripten",
+		WasmABI:    "emscripten-memory64",
+	}
+	if got := target.Spec().Triple; got != target.LLVMTarget {
+		t.Fatalf("target triple = %q, want resolved wasm profile target %q", got, target.LLVMTarget)
+	}
+
+	// Non-wasm named embedded targets intentionally retain their established
+	// backend selection behavior.
+	embedded := &Target{GOOS: "linux", GOARCH: "arm", Target: "custom", LLVMTarget: "thumbv6m-unknown-unknown-eabi"}
+	if got := embedded.Spec().Triple; got == embedded.LLVMTarget {
+		t.Fatalf("generic named target unexpectedly used physical LLVM target %q", got)
+	}
+
+	freestanding := &Target{
+		GOOS:       "linux",
+		GOARCH:     "arm",
+		Target:     "wasm-unknown",
+		LLVMTarget: "wasm32-unknown-unknown",
+		WasmABI:    "freestanding",
+	}
+	spec := freestanding.Spec()
+	if spec.Triple != freestanding.LLVMTarget || spec.CPU != "generic" || !strings.Contains(spec.Features, "+bulk-memory") {
+		t.Fatalf("freestanding wasm spec = %+v", spec)
 	}
 }
 

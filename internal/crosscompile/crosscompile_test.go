@@ -354,6 +354,104 @@ func TestUseTarget(t *testing.T) {
 	}
 }
 
+func TestEmscriptenTargetProfiles(t *testing.T) {
+	tests := []struct {
+		name       string
+		wantABI    WasmABI
+		wantTriple string
+		wantTags   []string
+		memory64   bool
+	}{
+		{"emscripten", WasmABIEmscripten, "wasm32-unknown-emscripten", []string{"llgo.wasm.emscripten"}, false},
+		{"wasm", WasmABIEmscripten, "wasm32-unknown-emscripten", []string{"llgo.wasm.emscripten", "tinygo.wasm"}, false},
+		{"emscripten-memory64", WasmABIEmscriptenMemory64, "wasm64-unknown-emscripten", []string{"llgo.wasm.emscripten", "llgo.wasm.emscripten.memory64"}, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			export, err := Use("", "", test.name, false, false, optlevel.O2, lto.Off, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if export.WasmABI != test.wantABI || export.LLVMTarget != test.wantTriple ||
+				export.GOOS != "js" || export.GOARCH != "wasm" || export.CC != "emcc" {
+				t.Fatalf("export = ABI %q, LLVM %q, %s/%s, CC %q",
+					export.WasmABI, export.LLVMTarget, export.GOOS, export.GOARCH, export.CC)
+			}
+			for _, tag := range test.wantTags {
+				if !slices.Contains(export.BuildTags, tag) {
+					t.Errorf("build tags %v do not contain %q", export.BuildTags, tag)
+				}
+			}
+			ccMemory64 := slices.Contains(export.CCFLAGS, "wasm64-unknown-emscripten")
+			ldMemory64 := slices.Contains(export.LDFLAGS, "wasm64-unknown-emscripten")
+			if got := ccMemory64 && ldMemory64; got != test.memory64 {
+				t.Errorf("wasm64 compile/link target present = %v, want %v; CCFLAGS=%v LDFLAGS=%v", got, test.memory64, export.CCFLAGS, export.LDFLAGS)
+			}
+			if !slices.Contains(export.LDFLAGS, "-sENVIRONMENT=web,worker,node") {
+				t.Errorf("named target does not enable its Node emulator: %v", export.LDFLAGS)
+			}
+			if strings.Contains(export.Emulator, "{root}") || !strings.Contains(export.Emulator, "emscripten-runner.mjs") ||
+				!strings.Contains(export.Emulator, "{}") {
+				t.Errorf("named target emulator was not resolved: %q", export.Emulator)
+			}
+		})
+	}
+}
+
+func TestWASIProfileTargets(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		wantTags []string
+	}{
+		{"wasi", []string{"llgo.wasm.wasi"}},
+		{"wasip1", []string{"llgo.wasm.wasi", "tinygo.wasm"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			export, err := Use("", "", test.name, false, false, optlevel.O2, lto.Off, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if export.WasmABI != WasmABIWASIPreview1 || export.LLVMTarget != "wasm32-unknown-wasip1" ||
+				export.GOOS != "wasip1" || export.GOARCH != "wasm" {
+				t.Fatalf("export = ABI %q, LLVM %q, %s/%s", export.WasmABI, export.LLVMTarget, export.GOOS, export.GOARCH)
+			}
+			for _, tag := range test.wantTags {
+				if !slices.Contains(export.BuildTags, tag) {
+					t.Errorf("build tags %v do not contain %q", export.BuildTags, tag)
+				}
+			}
+			if !slices.Contains(export.LDFLAGS, "-Wl,--import-memory,") {
+				t.Fatalf("WASI profile lost its existing imported-memory contract: %v", export.LDFLAGS)
+			}
+		})
+	}
+}
+
+func TestRawWasmCompatibilityProfiles(t *testing.T) {
+	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if js.WasmABI != WasmABIEmscripten || js.LLVMTarget != "wasm32-unknown-emscripten" {
+		t.Fatalf("raw js/wasm = ABI %q, LLVM %q", js.WasmABI, js.LLVMTarget)
+	}
+	if !slices.Contains(js.LDFLAGS, "-sENVIRONMENT=web,worker") ||
+		slices.Contains(js.LDFLAGS, "-sENVIRONMENT=web,worker,node") {
+		t.Fatalf("raw js/wasm host environment unexpectedly changed: %v", js.LDFLAGS)
+	}
+
+	wasi, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wasi.WasmABI != WasmABIWASIPreview1 || wasi.LLVMTarget != "wasm32-unknown-wasip1" {
+		t.Fatalf("raw wasip1/wasm = ABI %q, LLVM %q", wasi.WasmABI, wasi.LLVMTarget)
+	}
+	if !slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory,") {
+		t.Fatal("raw WASI compatibility profile unexpectedly changed its imported-memory contract")
+	}
+}
+
 func TestUseTargetWindowsSystemClang(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows host toolchain selection")
