@@ -277,6 +277,13 @@ jobs:
             rm -f .benchmark/wasm-base-benchmark.yml
             echo 'trusted-config=false' >> "$GITHUB_OUTPUT"
           fi
+          if git cat-file -e "$base_sha:targets/emscripten.json" 2>/dev/null &&
+             git cat-file -e "$base_sha:targets/emscripten-memory64.json" 2>/dev/null &&
+             git cat-file -e "$base_sha:targets/wasi.json" 2>/dev/null; then
+            echo 'compatible-base=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'compatible-base=false' >> "$GITHUB_OUTPUT"
+          fi
           echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
           echo "Computed pull request merge-base: $base_sha (head: ${{ github.event.pull_request.head.sha }})"
 
@@ -315,7 +322,10 @@ jobs:
         uses: ./.github/actions/setup-go
 
       - name: Measure pull request base
-        if: github.event_name == 'pull_request'
+        if: >-
+          github.event_name == 'pull_request' &&
+          steps.wasm-merge-base.outputs.compatible-base == 'true'
+        id: measure-wasm-base
         shell: bash
         run: |
           benchmark/wasm/run.sh \
@@ -342,14 +352,20 @@ jobs:
           {
             echo '### WebAssembly build benchmark'
             echo
-            echo 'The base and pull request revision were measured sequentially on this runner.'
+            if [[ '${{ steps.measure-wasm-base.outcome }}' == success ]]; then
+              echo 'The base and pull request revision were measured sequentially on this runner.'
+            else
+              echo 'The merge-base predates the WebAssembly target profiles, so only the pull request revision was measured.'
+            fi
             echo
             echo '<details><summary>Raw benchmark data</summary>'
             echo
             echo '```text'
-            echo 'base:'
-            cat .benchmark/wasm-base-results/benchmark.txt
-            echo
+            if [[ '${{ steps.measure-wasm-base.outcome }}' == success ]]; then
+              echo 'base:'
+              cat .benchmark/wasm-base-results/benchmark.txt
+              echo
+            fi
             echo 'pull request:'
             cat .benchmark/wasm-results/benchmark.txt
             echo '```'
@@ -373,6 +389,7 @@ jobs:
           benchmark-file: .benchmark/wasm-results/benchmark.txt
           baseline-benchmark-file: >-
             ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
                 '.benchmark/wasm-base-results/benchmark.txt' || '' }}
           baseline-repository: ${{ github.event.pull_request.base.repo.full_name || '' }}
           baseline-sha: ${{ steps.wasm-merge-base.outputs.sha || '' }}
