@@ -586,6 +586,9 @@ jobs:
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
 
+      - name: Set up Binaryen
+        uses: ./.github/actions/setup-binaryen
+
       - name: Restore LLGo and cache WAMR
         uses: ./.github/actions/setup-llgo-cache
         with:
@@ -675,6 +678,19 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Set up Binaryen
+        uses: ./.github/actions/setup-binaryen
+
+      - name: Set up Wasmtime
+        uses: bytecodealliance/actions/wasmtime/setup@v1
+        with:
+          version: "39.0.1"
+
+      - name: Set up wasm-tools
+        uses: bytecodealliance/actions/wasm-tools/setup@v1
+        with:
+          version: "1.243.0"
+
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
 
@@ -696,3 +712,10 @@ jobs:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
           LLGO_BUILD_CACHE: "off"
         run: dev/test_wasm_runtime_go_versions.sh 1.24 1.27
+
+      - name: Test single-worker wasm schedulers
+        shell: bash
+        env:
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+          LLGO_BUILD_CACHE: "off"
+        run: dev/test_wasm_single_worker.sh
