@@ -2,7 +2,6 @@ package c
 
 import (
 	"go/build"
-	"slices"
 	"testing"
 )
 
@@ -27,7 +26,14 @@ func TestWasmCTypeFileSelection(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.Contains(pkg.GoFiles, test.want) {
+			found := false
+			for _, name := range pkg.GoFiles {
+				if name == test.want {
+					found = true
+					break
+				}
+			}
+			if !found {
 				t.Fatalf("GoFiles = %v, want %s", pkg.GoFiles, test.want)
 			}
 		})
