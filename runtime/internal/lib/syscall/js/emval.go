@@ -4,7 +4,7 @@
 package js
 
 import (
-	_ "unsafe"
+	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 	_ "github.com/xgo-dev/llgo/runtime/internal/embind"
@@ -19,75 +19,179 @@ var (
 )
 
 var (
-	valueUndefined = Value{2}
-	valueNull      = Value{4}
-	valueTrue      = Value{6}
-	valueFalse     = Value{8}
+	valueUndefined = Value{ref: 2}
+	valueNull      = Value{ref: 4}
+	valueTrue      = Value{ref: 6}
+	valueFalse     = Value{ref: 8}
 	valueNaN       = emval_get_global(c.Str("NaN"))
 	valueZero      = emval_new_double(0)
 )
 
-//go:linkname emval_get_global C.llgo_emval_get_global
-func emval_get_global(name *c.Char) Value
+func valueFromEmval(handle uintptr) Value {
+	return Value{ref: ref(handle)}
+}
 
-//go:linkname emval_new_double C.llgo_emval_new_double
-func emval_new_double(v float64) Value
+func (v Value) emvalHandle() uintptr {
+	if v.ref == 0 {
+		return uintptr(valueUndefined.ref)
+	}
+	return uintptr(v.ref)
+}
 
-//go:linkname emval_new_string C.llgo_emval_new_string
-func emval_new_string(str *c.Char) Value
+func emval_get_global(name *c.Char) Value {
+	return valueFromEmval(cEmvalGetGlobal(name))
+}
 
-//go:linkname emval_new_object C.llgo_emval_new_object
-func emval_new_object() Value
+func emval_get_module_property(name *c.Char) Value {
+	return valueFromEmval(cEmvalGetModuleProperty(name))
+}
 
-//go:linkname emval_new_array C.llgo_emval_new_array
-func emval_new_array() Value
+func emval_install_invoke()              { cEmvalInstallInvoke() }
+func emval_take_pending_invoke() uintptr { return cEmvalTakePendingInvoke() }
 
-//go:linkname emval_set_property C.llgo_emval_set_property
-func emval_set_property(object Value, key Value, value Value)
+func emval_new_double(v float64) Value { return valueFromEmval(cEmvalNewDouble(v)) }
+func emval_new_string(str *c.Char) Value {
+	return valueFromEmval(cEmvalNewString(str))
+}
+func emval_new_object() Value { return valueFromEmval(cEmvalNewObject()) }
+func emval_new_array() Value  { return valueFromEmval(cEmvalNewArray()) }
 
-//go:linkname emval_get_property C.llgo_emval_get_property
-func emval_get_property(object Value, key Value) Value
+func emval_set_property(object, key, value Value) {
+	cEmvalSetProperty(object.emvalHandle(), key.emvalHandle(), value.emvalHandle())
+}
 
-//go:linkname emval_delete C.llgo_emval_delete
-func emval_delete(object Value, property Value) bool
+func emval_get_property(object, key Value) Value {
+	return valueFromEmval(cEmvalGetProperty(object.emvalHandle(), key.emvalHandle()))
+}
 
-//go:linkname emval_is_number C.llgo_emval_is_number
-func emval_is_number(object Value) bool
+func emval_delete(object, property Value) bool {
+	return cEmvalDelete(object.emvalHandle(), property.emvalHandle())
+}
 
-//go:linkname emval_is_string C.llgo_emval_is_string
-func emval_is_string(object Value) bool
+func emval_is_number(object Value) bool { return cEmvalIsNumber(object.emvalHandle()) }
+func emval_is_string(object Value) bool { return cEmvalIsString(object.emvalHandle()) }
+func emval_in(item, object Value) bool {
+	return cEmvalIn(item.emvalHandle(), object.emvalHandle())
+}
+func emval_typeof(value Value) Value {
+	return valueFromEmval(cEmvalTypeof(value.emvalHandle()))
+}
+func emval_instanceof(object, constructor Value) bool {
+	return cEmvalInstanceof(object.emvalHandle(), constructor.emvalHandle())
+}
+func emval_as_double(v Value) float64 { return cEmvalAsDouble(v.emvalHandle()) }
+func emval_as_string(v Value) string  { return cEmvalAsString(v.emvalHandle()) }
+func emval_equals(first, second Value) bool {
+	return cEmvalEquals(first.emvalHandle(), second.emvalHandle())
+}
 
-//go:linkname emval_in C.llgo_emval_in
-func emval_in(item Value, object Value) bool
+func emvalArgs(args *Value, nargs c.Int) []uintptr {
+	if nargs == 0 {
+		return nil
+	}
+	values := unsafe.Slice(args, int(nargs))
+	handles := make([]uintptr, len(values))
+	for i := range values {
+		handles[i] = values[i].emvalHandle()
+	}
+	return handles
+}
 
-//go:linkname emval_typeof C.llgo_emval_typeof
-func emval_typeof(value Value) Value
+func emval_method_call(object Value, name *c.Char, args *Value, nargs c.Int, err *c.Int) Value {
+	handles := emvalArgs(args, nargs)
+	var data *uintptr
+	if len(handles) != 0 {
+		data = &handles[0]
+	}
+	return valueFromEmval(cEmvalMethodCall(object.emvalHandle(), name, data, nargs, err))
+}
 
-//go:linkname emval_instanceof C.llgo_emval_instanceof
-func emval_instanceof(object Value, constructor Value) bool
+func emval_call(fn Value, args *Value, nargs c.Int, kind c.Int, err *c.Int) Value {
+	handles := emvalArgs(args, nargs)
+	var data *uintptr
+	if len(handles) != 0 {
+		data = &handles[0]
+	}
+	return valueFromEmval(cEmvalCall(fn.emvalHandle(), data, nargs, kind, err))
+}
 
-//go:linkname emval_as_double C.llgo_emval_as_double
-func emval_as_double(v Value) float64
+func emval_memory_view_uint8(length c.SizeT, data *c.Uint8T) Value {
+	return valueFromEmval(cEmvalMemoryViewUint8(length, data))
+}
 
-//go:linkname emval_as_string C.llgo_emval_as_string
-func emval_as_string(v Value) string
+func emval_dump(v Value) { cEmvalDump(v.emvalHandle()) }
 
-//go:linkname emval_equals C.llgo_emval_equals
-func emval_equals(first Value, second Value) bool
+//go:linkname cEmvalGetGlobal C.llgo_emval_get_global
+func cEmvalGetGlobal(name *c.Char) uintptr
 
-//go:linkname emval_method_call C.llgo_emval_method_call
-func emval_method_call(object Value, name *c.Char, args *Value, nargs c.Int, err *c.Int) Value
+//go:linkname cEmvalGetModuleProperty C.llgo_emval_get_module_property
+func cEmvalGetModuleProperty(name *c.Char) uintptr
 
-// emval_call kind: FUNCTION = 0, CONSTRUCTOR = 1
-//
-//go:linkname emval_call C.llgo_emval_call
-func emval_call(fn Value, args *Value, nargs c.Int, kind c.Int, err *c.Int) Value
+//go:linkname cEmvalInstallInvoke C.llgo_emval_install_invoke
+func cEmvalInstallInvoke()
 
-//go:linkname emval_memory_view_uint8 C.llgo_emval_memory_view_uint8
-func emval_memory_view_uint8(length c.SizeT, data *c.Uint8T) Value
+//go:linkname cEmvalTakePendingInvoke C.llgo_emval_take_pending_invoke
+func cEmvalTakePendingInvoke() uintptr
 
-//go:linkname emval_dump C.llgo_emval_dump
-func emval_dump(v Value)
+//go:linkname cEmvalDecref C.llgo_emval_decref
+func cEmvalDecref(value uintptr)
+
+//go:linkname cEmvalNewDouble C.llgo_emval_new_double
+func cEmvalNewDouble(v float64) uintptr
+
+//go:linkname cEmvalNewString C.llgo_emval_new_string
+func cEmvalNewString(str *c.Char) uintptr
+
+//go:linkname cEmvalNewObject C.llgo_emval_new_object
+func cEmvalNewObject() uintptr
+
+//go:linkname cEmvalNewArray C.llgo_emval_new_array
+func cEmvalNewArray() uintptr
+
+//go:linkname cEmvalSetProperty C.llgo_emval_set_property
+func cEmvalSetProperty(object, key, value uintptr)
+
+//go:linkname cEmvalGetProperty C.llgo_emval_get_property
+func cEmvalGetProperty(object, key uintptr) uintptr
+
+//go:linkname cEmvalDelete C.llgo_emval_delete
+func cEmvalDelete(object, property uintptr) bool
+
+//go:linkname cEmvalIsNumber C.llgo_emval_is_number
+func cEmvalIsNumber(object uintptr) bool
+
+//go:linkname cEmvalIsString C.llgo_emval_is_string
+func cEmvalIsString(object uintptr) bool
+
+//go:linkname cEmvalIn C.llgo_emval_in
+func cEmvalIn(item, object uintptr) bool
+
+//go:linkname cEmvalTypeof C.llgo_emval_typeof
+func cEmvalTypeof(value uintptr) uintptr
+
+//go:linkname cEmvalInstanceof C.llgo_emval_instanceof
+func cEmvalInstanceof(object, constructor uintptr) bool
+
+//go:linkname cEmvalAsDouble C.llgo_emval_as_double
+func cEmvalAsDouble(v uintptr) float64
+
+//go:linkname cEmvalAsString C.llgo_emval_as_string
+func cEmvalAsString(v uintptr) string
+
+//go:linkname cEmvalEquals C.llgo_emval_equals
+func cEmvalEquals(first, second uintptr) bool
+
+//go:linkname cEmvalMethodCall C.llgo_emval_method_call
+func cEmvalMethodCall(object uintptr, name *c.Char, args *uintptr, nargs c.Int, err *c.Int) uintptr
+
+//go:linkname cEmvalCall C.llgo_emval_call
+func cEmvalCall(fn uintptr, args *uintptr, nargs c.Int, kind c.Int, err *c.Int) uintptr
+
+//go:linkname cEmvalMemoryViewUint8 C.llgo_emval_memory_view_uint8
+func cEmvalMemoryViewUint8(length c.SizeT, data *c.Uint8T) uintptr
+
+//go:linkname cEmvalDump C.llgo_emval_dump
+func cEmvalDump(v uintptr)
 
 //export llgo_export_string_from
 func llgo_export_string_from(data *c.Char, size c.Int) string {
