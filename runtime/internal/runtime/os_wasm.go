@@ -1,4 +1,4 @@
-//go:build !windows && (!llgo || !wasm || (wasip1 && llgo.wasi_threads))
+//go:build llgo && wasm && !(wasip1 && llgo.wasi_threads)
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -18,28 +18,6 @@
 
 package runtime
 
-import (
-	"unsafe"
-
-	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/thread"
-)
-
-// Detached pthreads do not leave a native handle owned by the M.
+// mOS is empty for the single-worker WebAssembly backend. The host owns the
+// physical worker instead of creating one for each M.
 type mOS struct{}
-
-// newosproc provides the current host-thread backend for newm.
-func newosproc(mp *m, stackSize uintptr) int {
-	return int(thread.CreateDetached(
-		stackSize,
-		thread.RoutineFunc(mstart),
-		c.Pointer(unsafe.Pointer(mp)),
-	))
-}
-
-func goexitBackend(gp *g) {
-	leaveCurrentLocalContext()
-	mp := gp.m
-	mexit(mp)
-	thread.Exit()
-}

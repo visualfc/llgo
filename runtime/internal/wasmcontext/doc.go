@@ -1,5 +1,3 @@
-//go:build !windows && (!llgo || !wasm || (wasip1 && llgo.wasi_threads))
-
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
@@ -16,30 +14,7 @@
  * limitations under the License.
  */
 
-package runtime
-
-import (
-	"unsafe"
-
-	c "github.com/xgo-dev/llgo/runtime/internal/clite"
-	"github.com/xgo-dev/llgo/runtime/internal/thread"
-)
-
-// Detached pthreads do not leave a native handle owned by the M.
-type mOS struct{}
-
-// newosproc provides the current host-thread backend for newm.
-func newosproc(mp *m, stackSize uintptr) int {
-	return int(thread.CreateDetached(
-		stackSize,
-		thread.RoutineFunc(mstart),
-		c.Pointer(unsafe.Pointer(mp)),
-	))
-}
-
-func goexitBackend(gp *g) {
-	leaveCurrentLocalContext()
-	mp := gp.m
-	mexit(mp)
-	thread.Exit()
-}
+// Package wasmcontext owns suspended WebAssembly execution contexts and their
+// backend-specific storage. Runtime schedulers provide root-aware allocation
+// callbacks during context creation and do not inspect the resulting buffers.
+package wasmcontext
