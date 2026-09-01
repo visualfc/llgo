@@ -172,8 +172,7 @@ func main() {
 
 Additional demos are available in the `_demo` directory (prefixed with `_` so the `go` command skips them):
 
-* [hello](_demo/c/hello/hello.go): call C `printf` to print `Hello world`
-* [concat](_demo/c/concat/concat.go): call C `fprintf` with `stderr`
+* [hello](_demo/c/hello/main.go): call C `printf` and `fprintf` with Go and C strings
 * [qsort](_demo/c/qsort/qsort.go): call a C function that takes a callback (e.g. `qsort`)
 
 To run a demo (see [How to install](#how-to-install) if `llgo` isn't installed yet):
@@ -298,15 +297,13 @@ Here we define two 3x3 matrices a and b, add them to get x, and then print the r
 
 The `_demo/py/` directory contains some python related demos:
 
-* [callpy](_demo/py/callpy/callpy.go): call Python standard library function `math.sqrt`
-* [pi](_demo/py/pi/pi.go): print python constants `math.pi`
-* [statistics](_demo/py/statistics/statistics.go): define a python list and call `statistics.mean` to get the mean
-* [matrix](_demo/py/matrix/matrix.go): a basic `numpy` demo
+* [basic](_demo/py/basic/main.go): call Python math, statistics, variadic builtin, iterator, and print APIs
+* [scientific](_demo/py/matrix/matrix.go): convert nested lists through NumPy and PyTorch
 
 To run these demos (If you haven't installed `llgo` yet, please refer to [How to install](#how-to-install)):
 
 ```sh
-cd <demo-directory>  # eg. cd _demo/py/callpy
+cd <demo-directory>  # eg. cd _demo/py/basic
 llgo run .
 ```
 
