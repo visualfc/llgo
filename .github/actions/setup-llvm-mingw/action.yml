@@ -40,10 +40,10 @@ runs:
             ;;
         esac
 
-    - name: Restore llvm-mingw
+    - name: Cache llvm-mingw
       if: runner.os == 'Windows'
       id: llvm_mingw_cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}\llvm-mingw\20250114\ucrt-x86_64
         key: llvm-mingw-20250114-ucrt-x86_64-9395d95c089611e6cd728c9a07219ffc5ac706e0c719833a2f7e64a706a81541
@@ -80,17 +80,10 @@ runs:
         }
         Move-Item -LiteralPath $source.FullName -Destination $installRoot
 
-    - name: Save llvm-mingw
-      if: runner.os == 'Windows' && steps.llvm_mingw_cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}\llvm-mingw\20250114\ucrt-x86_64
-        key: llvm-mingw-20250114-ucrt-x86_64-9395d95c089611e6cd728c9a07219ffc5ac706e0c719833a2f7e64a706a81541
-
-    - name: Restore llvm-mingw target dependencies
+    - name: Cache llvm-mingw target dependencies
       if: runner.os == 'Windows'
       id: llvm_mingw_vcpkg_cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}\llgo-mingw-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}\386
         key: llgo-llvm-mingw-20250114-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
@@ -131,13 +124,6 @@ runs:
         if ($LASTEXITCODE -ne 0) {
           throw "Installing llvm-mingw 386 dependencies failed with exit code $LASTEXITCODE"
         }
-
-    - name: Save llvm-mingw target dependencies
-      if: runner.os == 'Windows' && steps.llvm_mingw_vcpkg_cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}\llgo-mingw-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}\386
-        key: llgo-llvm-mingw-20250114-ucrt-386-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Configure llvm-mingw target
       if: runner.os == 'Windows'
@@ -232,10 +218,10 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_TRIPLE=i686-w64-windows-gnu"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_MINGW_TARGET_VCPKG_ROOT=$vcpkgRoot"
 
-    - name: Restore cross-host llvm-mingw
+    - name: Cache cross-host llvm-mingw
       if: runner.os != 'Windows' && env.LLGO_MINGW_CROSS_ROOT == ''
       id: cross_host_llvm_mingw_cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}/llvm-mingw/20250114/ucrt-${{ runner.os }}-${{ runner.arch }}
         key: llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && '80b2e7ade71ba2dfe9e8d27fe47ae5738b1fb8d34e057faa2beef3070392f2d6' || 'a16f52dee819797248e6c7d63b8b1e50a92119f45767ecd8e9633d1733b896e2' }}
@@ -284,17 +270,10 @@ runs:
         fi
         mv "$source_root" "$install_root"
 
-    - name: Save cross-host llvm-mingw
-      if: runner.os != 'Windows' && env.LLGO_MINGW_CROSS_ROOT == '' && steps.cross_host_llvm_mingw_cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}/llvm-mingw/20250114/ucrt-${{ runner.os }}-${{ runner.arch }}
-        key: llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ runner.os == 'macOS' && '80b2e7ade71ba2dfe9e8d27fe47ae5738b1fb8d34e057faa2beef3070392f2d6' || 'a16f52dee819797248e6c7d63b8b1e50a92119f45767ecd8e9633d1733b896e2' }}
-
-    - name: Restore cross-host target dependencies
+    - name: Cache cross-host target dependencies
       if: runner.os != 'Windows'
       id: cross_host_vcpkg_cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}/llgo-mingw-vcpkg/${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}/${{ runner.os }}-${{ runner.arch }}/${{ inputs.windows-arch }}
         key: llgo-llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.windows-arch }}-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
@@ -341,13 +320,6 @@ runs:
           "--x-manifest-root=$manifest_root" \
           "--x-install-root=$install_root" \
           --clean-after-build
-
-    - name: Save cross-host target dependencies
-      if: runner.os != 'Windows' && steps.cross_host_vcpkg_cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}/llgo-mingw-vcpkg/${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}/${{ runner.os }}-${{ runner.arch }}/${{ inputs.windows-arch }}
-        key: llgo-llvm-mingw-20250114-ucrt-${{ runner.os }}-${{ runner.arch }}-${{ inputs.windows-arch }}-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Configure cross-host llvm-mingw target
       if: runner.os != 'Windows'

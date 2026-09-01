@@ -19,16 +19,16 @@ runs:
       uses: ./.github/actions/setup-go
     - name: Restore Linux sysroot cache
       id: cache-linux-sysroot
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@v6
       with:
         path: .sysroot/linux.tar.gz
         key: ${{ inputs.linux-cache-key }}
     - name: Populate Linux sysroot
       run: tar -xzvf .sysroot/linux.tar.gz -C .sysroot
       shell: bash
-    - name: Restore ESP Clang cache
+    - name: Cache ESP Clang
       id: cache-esp-clang
-      uses: actions/cache/restore@v5
+      uses: actions/cache@v6
       with:
         path: ${{ inputs.esp-clang-cache-path }}
         key: esp-clang-${{ hashFiles('.github/workflows/download_esp_clang.sh') }}
@@ -36,12 +36,6 @@ runs:
       if: steps.cache-esp-clang.outputs.cache-hit != 'true'
       run: bash .github/workflows/download_esp_clang.sh
       shell: bash
-    - name: Save ESP Clang cache
-      if: steps.cache-esp-clang.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
-      with:
-        path: ${{ inputs.esp-clang-cache-path }}
-        key: esp-clang-${{ hashFiles('.github/workflows/download_esp_clang.sh') }}
     - name: Check file
       run: tree .sysroot
       shell: bash

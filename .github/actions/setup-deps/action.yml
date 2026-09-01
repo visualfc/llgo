@@ -37,10 +37,12 @@ runs:
     - name: Cache full-target Windows LLVM
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
       id: windows_llvm_cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}\llgo-llvm\LLVM-19.1.3-Windows-X64
-        key: llgo-llvm-19.1.3-full-target-windows-x64-1077267ca353a1e236055ed4b57d6a404d09c40b01bd27dc882870395cdc1aae
+        # Configuration later installs the selected compiler-rt builtins into
+        # this tree, so each target architecture must own an immutable cache.
+        key: llgo-llvm-19.1.3-full-target-windows-${{ inputs.windows-arch }}-1077267ca353a1e236055ed4b57d6a404d09c40b01bd27dc882870395cdc1aae
 
     - name: Install full-target Windows LLVM
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && steps.windows_llvm_cache.outputs.cache-hit != 'true'
@@ -98,17 +100,10 @@ runs:
         Move-Item -LiteralPath $extractedRoot.FullName -Destination $installRoot
         Remove-Item -LiteralPath $archive, $tar.FullName
 
-    - name: Save full-target Windows LLVM
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && steps.windows_llvm_cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}\llgo-llvm\LLVM-19.1.3-Windows-X64
-        key: llgo-llvm-19.1.3-full-target-windows-x64-1077267ca353a1e236055ed4b57d6a404d09c40b01bd27dc882870395cdc1aae
-
     - name: Cache target-native Windows LLVM support
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-arch != 'amd64'
       id: windows_target_llvm_cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.7\${{ inputs.windows-arch }}
         key: ${{ inputs.windows-arch == 'arm64' && 'llgo-compiler-rt-19.1.7-windows-arm64-08d871c9a20caf0987ede1a4e44d489e28854c9f2fff3da98b486891f4856e05-native-lldb-v1' || 'llgo-compiler-rt-19.1.7-windows-386-3d7044fa307d3183e4ee2a98e12dd0523ced58f1d1c95c5e057694fb75beb51a-native-lldb-v1' }}
@@ -180,17 +175,10 @@ runs:
           }
         }
 
-    - name: Save target-native Windows LLVM support
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-arch != 'amd64' && steps.windows_target_llvm_cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}\llgo-compiler-rt\19.1.7\${{ inputs.windows-arch }}
-        key: ${{ inputs.windows-arch == 'arm64' && 'llgo-compiler-rt-19.1.7-windows-arm64-08d871c9a20caf0987ede1a4e44d489e28854c9f2fff3da98b486891f4856e05-native-lldb-v1' || 'llgo-compiler-rt-19.1.7-windows-386-3d7044fa307d3183e4ee2a98e12dd0523ced58f1d1c95c5e057694fb75beb51a-native-lldb-v1' }}
-
     - name: Cache Windows MSVC dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
       id: windows_vcpkg_cache
-      uses: actions/cache/restore@v4
+      uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}\llgo-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
         key: llgo-vcpkg-${{ inputs.windows-arch }}-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
@@ -234,13 +222,6 @@ runs:
         if ($LASTEXITCODE -ne 0) {
           throw "Installing vcpkg dependencies failed with exit code $LASTEXITCODE"
         }
-
-    - name: Save Windows MSVC dependencies
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && steps.windows_vcpkg_cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v4
-      with:
-        path: ${{ runner.tool_cache }}\llgo-vcpkg\${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
-        key: llgo-vcpkg-${{ inputs.windows-arch }}-windows-${{ hashFiles('.github/windows/vcpkg/vcpkg.json') }}
 
     - name: Configure standalone Windows LLVM, SDK, and dependencies
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
@@ -684,14 +665,36 @@ runs:
         llvm-version: ${{ inputs.llvm-version }}
         windows-arch: ${{ inputs.windows-arch }}
 
+    - name: Refresh Homebrew metadata on Apple Silicon
+      if: runner.os == 'macOS' && runner.arch == 'ARM64'
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: 1
+      run: brew update
+
     - name: Install macOS dependencies
       if: runner.os == 'macOS'
       shell: bash
       env:
+        HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
-        brew update
-        
+        # Intel macOS is a Homebrew Tier 3 configuration and newly published
+        # formulae may have no Intel bottle. Keep its runner-image metadata and
+        # installed formulae; Apple Silicon refreshes metadata in the step above.
+        brew_install_missing() {
+          local formula
+          local missing=()
+          for formula in "$@"; do
+            if ! brew list --versions "${formula}" >/dev/null; then
+              missing+=("${formula}")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            brew install "${missing[@]}"
+          fi
+        }
+
         # Install LLVM if requested
         if [[ "${{ inputs.install-llvm }}" == "true" ]]; then
           llvm_formula="llvm@${{inputs.llvm-version}}"
@@ -709,7 +712,7 @@ runs:
             esac
           done < <(brew list --formula)
 
-          brew install "${llvm_formula}" "${lld_formula}"
+          brew_install_missing "${llvm_formula}" "${lld_formula}"
           brew link --force --overwrite "${llvm_formula}" "${lld_formula}"
           llvm_bin="$(brew --prefix "${llvm_formula}")/bin"
           lld_bin="$(brew --prefix "${lld_formula}")/bin"
@@ -726,7 +729,7 @@ runs:
         fi
         
         # Install common dependencies
-        brew install bdw-gc openssl libffi libuv
+        brew_install_missing bdw-gc openssl libffi libuv
         brew link --overwrite libffi
 
         # Install optional deps for demos.
@@ -736,10 +739,12 @@ runs:
           cjson       # for github.com/goplus/lib/c/cjson
           sqlite      # for github.com/goplus/lib/c/sqlite
         )
-        brew install "${opt_deps[@]}"
+        brew_install_missing "${opt_deps[@]}"
         
-        brew install python@3.12 || true # for github.com/goplus/lib/py
-        brew link --overwrite python@3.12
+        # Python is optional and is used only by github.com/goplus/lib/py.
+        if brew_install_missing python@3.12; then
+          brew link --overwrite python@3.12 || true
+        fi
 
     - name: Install Ubuntu dependencies
       if: runner.os == 'Linux'

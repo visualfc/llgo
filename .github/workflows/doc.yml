@@ -47,16 +47,22 @@ jobs:
           source doc/_readme/scripts/run.sh
 
   local_install:
-    name: local install (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }})
+    name: local ${{ matrix.install_mode == 'full' && 'full ' || '' }}install (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }})
     timeout-minutes: 30
     strategy:
       matrix:
+        install_mode: [default, full]
+        platform: [macos, ubuntu, windows-msvc, windows-mingw]
         include:
-          - os: macos-latest
-          - os: ubuntu-latest
-          - os: windows-2022
+          - platform: macos
+            os: macos-latest
+          - platform: ubuntu
+            os: ubuntu-latest
+          - platform: windows-msvc
+            os: windows-2022
             windows_abi: msvc
-          - os: windows-2022
+          - platform: windows-mingw
+            os: windows-2022
             windows_abi: mingw
     runs-on: ${{matrix.os}}
     steps:
@@ -74,10 +80,14 @@ jobs:
 
       - name: Install dependencies on Ubuntu
         if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
         run: |
           set -e
           set -x
           source doc/_readme/scripts/install_ubuntu.sh
+          if [[ "${{ matrix.install_mode }}" == "full" ]]; then
+            echo "PATH=/usr/lib/llvm-19/bin:$PATH" >> "$GITHUB_ENV"
+          fi
 
       - name: Set up Python 3.12 on Windows
         if: startsWith(matrix.os, 'windows')
@@ -111,84 +121,12 @@ jobs:
               command git "$@"
             fi
           }
-          source doc/_readme/scripts/install_llgo.sh
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-
-      - name: Test doc code blocks
-        shell: bash
-        run: |
-          set -e
-          set -x
-          source doc/_readme/scripts/run.sh
-
-  local_install_full:
-    name: local full install (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }})
-    timeout-minutes: 30
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-          - os: ubuntu-latest
-          - os: windows-2022
-            windows_abi: msvc
-          - os: windows-2022
-            windows_abi: mingw
-    runs-on: ${{matrix.os}}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Go
-        uses: ./.github/actions/setup-go
-
-      - name: Install dependencies on macOS
-        if: startsWith(matrix.os, 'macos')
-        run: |
-          set -e
-          set -x
-          source doc/_readme/scripts/install_macos.sh
-
-      - name: Install dependencies on Ubuntu
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-          set -e
-          set -x
-          source doc/_readme/scripts/install_ubuntu.sh
-          echo "PATH=/usr/lib/llvm-19/bin:$PATH" >> $GITHUB_ENV
-
-      - name: Set up Python 3.12 on Windows
-        if: startsWith(matrix.os, 'windows')
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies on Windows
-        if: startsWith(matrix.os, 'windows')
-        uses: ./.github/actions/setup-deps
-        with:
-          windows-abi: ${{ matrix.windows_abi || 'msvc' }}
-
-      - name: Install llgo with tools
-        shell: bash
-        run: |
-          set -e
-          set -x
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            python_lib=$(python -c 'import os, sys; print(os.path.join(sys.base_prefix, "libs", f"python{sys.version_info.major}{sys.version_info.minor}"))')
-            export LLGO_LIB_PYTHON="$python_lib"
-            export LLGO_STDIO_NOBUF=1
-            echo "LLGO_LIB_PYTHON=$LLGO_LIB_PYTHON" >> "$GITHUB_ENV"
-            echo "LLGO_STDIO_NOBUF=$LLGO_STDIO_NOBUF" >> "$GITHUB_ENV"
+          if [[ "${{ matrix.install_mode }}" == "full" ]]; then
+            source doc/_readme/scripts/install_full.sh
+          else
+            source doc/_readme/scripts/install_llgo.sh
           fi
-          git() {
-            if [ "$1" = "clone" ]; then
-              # do nothing because we already have the branch
-              cd ..
-            else
-              command git "$@"
-            fi
-          }
-          source doc/_readme/scripts/install_full.sh
-          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Test doc code blocks
         shell: bash
