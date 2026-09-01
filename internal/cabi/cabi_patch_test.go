@@ -1198,6 +1198,15 @@ entry:
   ret i64 %result
 }
 
+define i64 @reuse_natural_alignment(%Aggregate %value) {
+entry:
+  %copy = alloca %Aggregate
+  store %Aggregate %value, ptr %copy
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field
+  ret i64 %result
+}
+
 define i64 @reject_preinit_escape(%Aggregate %value) {
 entry:
   %copy = alloca %Aggregate, align 8
@@ -1228,6 +1237,33 @@ define i64 @reject_stronger_alignment(%Aggregate %value) {
 entry:
   %copy = alloca %Aggregate, align 32
   store %Aggregate %value, ptr %copy, align 32
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+
+define i64 @reject_wrong_allocated_type(%Aggregate %value) {
+entry:
+  %copy = alloca i8, align 8
+  store %Aggregate %value, ptr %copy, align 8
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+
+define i64 @reject_multiple_elements(%Aggregate %value) {
+entry:
+  %copy = alloca %Aggregate, i64 2, align 8
+  store %Aggregate %value, ptr %copy, align 8
+  %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
+  %result = load i64, ptr %copy.field, align 8
+  ret i64 %result
+}
+
+define i64 @reject_dynamic_elements(%Aggregate %value, i64 %count) {
+entry:
+  %copy = alloca %Aggregate, i64 %count, align 8
+  store %Aggregate %value, ptr %copy, align 8
   %copy.field = getelementptr inbounds %Aggregate, ptr %copy, i32 0, i32 1
   %result = load i64, ptr %copy.field, align 8
   ret i64 %result
@@ -1282,7 +1318,18 @@ entry:
 			if strings.Contains(memsetCopy, "getelementptr inbounds %Aggregate, ptr %copy") {
 				t.Fatalf("C ABI lowering did not reuse storage after a direct memset:\n%s", memsetCopy)
 			}
-			for _, name := range []string{"reject_preinit_escape", "reject_conditional_init", "reject_stronger_alignment"} {
+			naturalAlignment := mod.NamedFunction("reuse_natural_alignment").String()
+			if strings.Contains(naturalAlignment, "getelementptr inbounds %Aggregate, ptr %copy") {
+				t.Fatalf("C ABI lowering did not use the alloca type's natural alignment:\n%s", naturalAlignment)
+			}
+			for _, name := range []string{
+				"reject_preinit_escape",
+				"reject_conditional_init",
+				"reject_stronger_alignment",
+				"reject_wrong_allocated_type",
+				"reject_multiple_elements",
+				"reject_dynamic_elements",
+			} {
 				got := mod.NamedFunction(name).String()
 				if !strings.Contains(got, "getelementptr inbounds %Aggregate, ptr %copy") {
 					t.Fatalf("C ABI lowering reused an unproven parameter home in %s:\n%s", name, got)
@@ -1292,6 +1339,66 @@ entry:
 				t.Fatalf("lowered parameter-copy module is invalid: %v\n%s", err, mod.String())
 			}
 		})
+	}
+}
+
+func TestCanReuseParamHomeRequiresEntryBlockOrder(t *testing.T) {
+	const testIR = `
+%Aggregate = type { i64, i64, i64 }
+
+define void @non_entry_alloca(%Aggregate %value) {
+entry:
+  br label %body
+body:
+  %copy = alloca %Aggregate, align 8
+  store %Aggregate %value, ptr %copy, align 8
+  ret void
+}
+
+define void @init_before_alloca(%Aggregate %value) {
+entry:
+  %source = alloca %Aggregate, align 8
+  store %Aggregate %value, ptr %source, align 8
+  %copy = alloca %Aggregate, align 8
+  ret void
+}
+`
+
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	path := filepath.Join(t.TempDir(), "param_home_order.ll")
+	if err := os.WriteFile(path, []byte(testIR), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Dispose()
+
+	nonEntry := mod.NamedFunction("non_entry_alloca")
+	entry := nonEntry.EntryBasicBlock()
+	body := llvm.NextBasicBlock(entry)
+	alloc := body.FirstInstruction()
+	initStore := llvm.NextInstruction(alloc)
+	if canReuseParamHome(alloc, initStore, entry, nonEntry.Param(0).Type(), 8, 8) {
+		t.Fatal("parameter home outside the entry block was accepted")
+	}
+
+	earlierInit := mod.NamedFunction("init_before_alloca")
+	entry = earlierInit.EntryBasicBlock()
+	initStore = llvm.NextInstruction(entry.FirstInstruction())
+	alloc = llvm.NextInstruction(initStore)
+	alloc.SetAlignment(0)
+	if alloc.Alignment() != 0 {
+		t.Fatalf("failed to clear candidate alloca alignment: got %d", alloc.Alignment())
+	}
+	if canReuseParamHome(alloc, initStore, entry, earlierInit.Param(0).Type(), 8, 8) {
+		t.Fatal("parameter initialization before its candidate alloca was accepted")
 	}
 }
 
