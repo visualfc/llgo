@@ -322,7 +322,11 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 				}
 			}
 			if strings.HasPrefix(test.name, "emscripten") || test.name == "wasm" {
-				if !strings.Contains(config.Emulator, "emscripten-runner.mjs") {
+				wantRunner := "emscripten-runner.mjs"
+				if test.name == "emscripten-memory64" {
+					wantRunner = "emscripten-memory64-runner.mjs"
+				}
+				if !strings.Contains(config.Emulator, wantRunner) {
 					t.Errorf("emulator %q does not instantiate Emscripten module output", config.Emulator)
 				}
 			}

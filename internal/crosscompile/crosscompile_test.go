@@ -390,7 +390,11 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 			if !slices.Contains(export.LDFLAGS, "-sENVIRONMENT=web,worker,node") {
 				t.Errorf("named target does not enable its Node emulator: %v", export.LDFLAGS)
 			}
-			if strings.Contains(export.Emulator, "{root}") || !strings.Contains(export.Emulator, "emscripten-runner.mjs") ||
+			wantRunner := "emscripten-runner.mjs"
+			if test.memory64 {
+				wantRunner = "emscripten-memory64-runner.mjs"
+			}
+			if strings.Contains(export.Emulator, "{root}") || !strings.Contains(export.Emulator, wantRunner) ||
 				!strings.Contains(export.Emulator, "{}") {
 				t.Errorf("named target emulator was not resolved: %q", export.Emulator)
 			}

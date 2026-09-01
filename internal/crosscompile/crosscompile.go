@@ -93,6 +93,9 @@ const (
 	WasmABIWASIPreview1       WasmABI = "wasi-preview1"
 	WasmABIWASIPreview2       WasmABI = "wasi-preview2"
 	WasmABIFreestanding       WasmABI = "freestanding"
+
+	emscriptenBrowserEnvironment = "-sENVIRONMENT=web,worker"
+	emscriptenNamedEnvironment   = "-sENVIRONMENT=web,worker,node"
 )
 
 func (abi WasmABI) valid() bool {
@@ -721,7 +724,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			// "-Wl,--export=malloc", "-Wl,--export=free",
 		}
 		export.LDFLAGS = append(export.LDFLAGS, []string{
-			"-sENVIRONMENT=web,worker",
+			emscriptenBrowserEnvironment,
 			"-DPLATFORM_WEB",
 			"-sEXPORT_KEEPALIVE=1",
 			"-sEXPORT_ES6=1",
@@ -731,7 +734,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-sWASM=1",
 			"-sEXPORT_ALL=1",
 			"-sASYNCIFY=1",
-			"-sSTACK_SIZE=5242880", // 50MB
+			"-sSTACK_SIZE=5242880", // 5MB
 		}...)
 	default:
 		err = errors.New("unsupported GOOS for WebAssembly: " + goos)
@@ -1094,9 +1097,14 @@ func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThread
 		if err != nil {
 			return export, err
 		}
+		if export.LLVMTarget != config.LLVMTarget {
+			return export, fmt.Errorf(
+				"target %q declares LLVM target %q, but WebAssembly ABI profile %q requires %q",
+				targetName, config.LLVMTarget, wasmABI, export.LLVMTarget,
+			)
+		}
 		export.GOOS = config.GOOS
 		export.GOARCH = config.GOARCH
-		export.LLVMTarget = config.LLVMTarget
 		export.Emulator = env.ExpandEnvWithDefault(config.Emulator, buildEnvMap(env.LLGoROOT()), "{}")
 		export.BuildTags = appendUniqueStrings(export.BuildTags, config.BuildTags...)
 		if wasmABI == WasmABIEmscripten || wasmABI == WasmABIEmscriptenMemory64 {
@@ -1104,8 +1112,8 @@ func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThread
 			// Emscripten targets also promise their configured Node emulator, so
 			// enable that host without changing raw output or its glue size.
 			for i, flag := range export.LDFLAGS {
-				if flag == "-sENVIRONMENT=web,worker" {
-					export.LDFLAGS[i] = "-sENVIRONMENT=web,worker,node"
+				if flag == emscriptenBrowserEnvironment {
+					export.LDFLAGS[i] = emscriptenNamedEnvironment
 				}
 			}
 		}
