@@ -214,7 +214,7 @@ func TestUseCrossCompileSDK(t *testing.T) {
 
 func TestUseWASIThreadsImportsMemory(t *testing.T) {
 	if testing.Short() {
-		t.Skip("requires WASI SDK")
+		t.Skip("skipping the external WASI SDK link test in short mode")
 	}
 	export, err := use("wasip1", "wasm", true, false, optlevel.O2, lto.Off, false)
 	if err != nil {
@@ -236,7 +236,7 @@ func TestUseWASIThreadsImportsMemory(t *testing.T) {
 
 func TestUseWASILTOEnablesSjLjAtLink(t *testing.T) {
 	if testing.Short() {
-		t.Skip("requires WASI SDK")
+		t.Skip("skipping the external WASI SDK link test in short mode")
 	}
 	export, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Thin, false)
 	if err != nil {

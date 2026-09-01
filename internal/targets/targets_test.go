@@ -338,7 +338,7 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 func TestEmscriptenRunnersForwardProgramArguments(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("node is not installed")
+		t.Fatalf("node is required to test the Emscripten runners: %v", err)
 	}
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -364,6 +364,43 @@ func TestEmscriptenRunnersForwardProgramArguments(t *testing.T) {
 			cmd.Env = append(os.Environ(), "LLGO_RUNNER_TEST=present")
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("runner failed: %v\n%s", err, output)
+			}
+		})
+	}
+}
+
+func TestEmscriptenRunnersConsumeExitStatus(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatalf("node is required to test the Emscripten runners: %v", err)
+	}
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(t.TempDir(), "module.mjs")
+	const source = `export default async function(config) {
+	const status = Number(config.arguments[0]);
+	config.onExit(status);
+	const error = new Error('Program terminated with exit(' + status + ')');
+	error.name = 'ExitStatus';
+	error.status = status;
+	throw error;
+}`
+	if err := os.WriteFile(module, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, runner := range []string{"emscripten-runner.mjs", "emscripten-memory64-runner.mjs"} {
+		t.Run(runner, func(t *testing.T) {
+			command := func(status string) *exec.Cmd {
+				return exec.Command(node, filepath.Join(root, "targets", runner), module, status)
+			}
+			if output, err := command("0").CombinedOutput(); err != nil {
+				t.Fatalf("runner rejected normal ExitStatus: %v\n%s", err, output)
+			}
+			output, err := command("7").CombinedOutput()
+			if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 7 {
+				t.Fatalf("runner nonzero ExitStatus = %v, want exit 7\n%s", err, output)
 			}
 		})
 	}
