@@ -21,13 +21,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/xgo-dev/llgo/internal/build"
 	"github.com/xgo-dev/llgo/internal/llgen"
 	"github.com/xgo-dev/llgo/xtool/env/llvm"
 )
 
 var (
-	abi = flag.Int("abi", 0, "ABI mode (default 0). 0 = none, 1 = cfunc, 2 = allfunc.")
+	phase = flag.String("phase", string(llgen.PhasePreABI), "compiler phase to capture (pre-abi or post-abi)")
+	abi   = flag.Int("abi", 0, "deprecated compatibility alias (0 = pre-abi, 2 = post-abi)")
 )
 
 func main() {
@@ -37,5 +37,42 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Usage: llgen [flags] <pkg>")
 		return
 	}
-	llgen.SmartDoFileEx(flag.Args()[0], build.AbiMode(*abi))
+
+	phaseSet := false
+	abiSet := false
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "phase":
+			phaseSet = true
+		case "abi":
+			abiSet = true
+		}
+	})
+	selected, err := selectPhase(*phase, phaseSet, *abi, abiSet)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	llgen.SmartDoFileAtPhase(flag.Args()[0], selected)
+}
+
+func selectPhase(phaseValue string, phaseSet bool, abiValue int, abiSet bool) (llgen.Phase, error) {
+	if phaseSet && abiSet {
+		return "", fmt.Errorf("-phase and deprecated -abi cannot be used together")
+	}
+	if abiSet {
+		switch abiValue {
+		case 0:
+			return llgen.PhasePreABI, nil
+		case 2:
+			return llgen.PhasePostABI, nil
+		default:
+			return "", fmt.Errorf("invalid -abi=%d: use 0 (pre-abi) or 2 (post-abi)", abiValue)
+		}
+	}
+	selected := llgen.Phase(phaseValue)
+	if selected != llgen.PhasePreABI && selected != llgen.PhasePostABI {
+		return "", fmt.Errorf("invalid -phase=%q: use pre-abi or post-abi", selected)
+	}
+	return selected, nil
 }

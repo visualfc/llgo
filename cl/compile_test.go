@@ -33,7 +33,6 @@ import (
 	"github.com/xgo-dev/llgo/cl/cltest"
 	"github.com/xgo-dev/llgo/internal/build"
 	"github.com/xgo-dev/llgo/internal/buildenv"
-	"github.com/xgo-dev/llgo/internal/cabi"
 	"github.com/xgo-dev/llgo/internal/llgen"
 	"github.com/xgo-dev/llgo/internal/lto"
 	llssa "github.com/xgo-dev/llgo/ssa"
@@ -505,20 +504,12 @@ func TestLTOPluginFrontendInterfaceMethodTypeIDs(t *testing.T) {
 func runTestltoLTOPluginAggregateABI(t *testing.T, fixture string) string {
 	t.Helper()
 	conf := testltoLTOPluginConf(t, build.ModeGen)
-	// Apply a fixed LP64 ABI below so the aggregate form is tested on every host.
-	conf.AbiMode = cabi.ModeNone
+	// Use a fixed LP64 target so the aggregate form is tested on every host.
+	conf.Goos = "linux"
+	conf.Goarch = "arm64"
+	conf.Target = ""
 	plugin := conf.LTOPlugin.Path
-	pkgs, err := build.Do([]string{fixture}, conf)
-	if err != nil {
-		t.Fatalf("generate aggregate string module: %v", err)
-	}
-	if len(pkgs) != 1 {
-		t.Fatalf("generate aggregate string module: got %d packages", len(pkgs))
-	}
-	cabi.NewTransformer(pkgs[0].LPkg.Prog, "arm64-unknown-linux", "", cabi.ModeAllFunc, true).
-		TransformModule(pkgs[0].PkgPath, pkgs[0].LPkg.Module())
-	aggregateIR := pkgs[0].LPkg.String()
-	pkgs[0].LPkg.Prog.Dispose()
+	aggregateIR := llgen.GeneratePostABIWithConf(fixture, conf).Text
 	if !strings.Contains(aggregateIR, `runtime.String" "llgo.reflect.methodbyname.name"`) {
 		t.Fatalf("MethodByName string argument was not captured in aggregate form:\n%s", aggregateIR)
 	}

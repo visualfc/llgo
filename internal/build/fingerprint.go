@@ -116,7 +116,6 @@ func (s *envSection) empty() bool {
 }
 
 type commonSection struct {
-	AbiMode                 string       `yaml:"ABI_MODE,omitempty"`
 	BuildTags               []string     `yaml:"BUILD_TAGS,omitempty"`
 	Target                  string       `yaml:"TARGET,omitempty"`
 	TargetABI               string       `yaml:"TARGET_ABI,omitempty"`
@@ -155,7 +154,7 @@ type commonSection struct {
 }
 
 func (s *commonSection) empty() bool {
-	return s.AbiMode == "" && len(s.BuildTags) == 0 && s.Target == "" && s.TargetABI == "" && s.WasmABI == "" &&
+	return len(s.BuildTags) == 0 && s.Target == "" && s.TargetABI == "" && s.WasmABI == "" &&
 		s.PlatformABI == "" && s.ObjectFormat == "" && s.DriverFlavor == "" && s.LinkerFlavor == "" &&
 		s.TargetTriple == "" && s.CRTFlavor == "" && s.CXXRuntime == "" &&
 		s.SDKVersion == "" && s.CRTVersion == "" && s.ToolsetVersion == "" &&

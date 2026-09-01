@@ -351,11 +351,10 @@ func TestStdcallFuncvalWithoutAdapter(t *testing.T) {
 
 func TestStdcallFuncvalAdapterSelection(t *testing.T) {
 	tests := []struct {
-		name     string
-		arch     string
-		cabiOnly bool
-		named    bool
-		want     bool
+		name  string
+		arch  string
+		named bool
+		want  bool
 	}{
 		{name: "386-direct", arch: "386", want: true},
 		{name: "386-named", arch: "386", named: true, want: true},
@@ -363,11 +362,10 @@ func TestStdcallFuncvalAdapterSelection(t *testing.T) {
 		{name: "amd64-named", arch: "amd64", named: true},
 		{name: "arm64-direct", arch: "arm64"},
 		{name: "arm64-named", arch: "arm64", named: true},
-		{name: "legacy-cabi-only", arch: "amd64", cabiOnly: true, named: true, want: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			prog := NewProgram(&Target{GOOS: "windows", GOARCH: test.arch, CABIOnly: test.cabiOnly})
+			prog := NewProgram(&Target{GOOS: "windows", GOARCH: test.arch})
 			defer prog.Dispose()
 			sig := types.NewSignatureType(nil, nil, nil, nil, nil, false)
 			pkg := prog.NewPackage("p", "example.com/p")

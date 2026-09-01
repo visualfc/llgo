@@ -8,14 +8,6 @@ import (
 	"github.com/xgo-dev/llvm"
 )
 
-type Mode int
-
-const (
-	ModeNone Mode = iota
-	ModeCFunc
-	ModeAllFunc
-)
-
 func targetArch(llvmTarget string) string {
 	if pos := strings.Index(llvmTarget, "-"); pos != -1 {
 		llvmTarget = llvmTarget[:pos]
@@ -57,19 +49,7 @@ func usesWindowsCABI(target *ssa.Target, llvmTarget string) bool {
 	return windows
 }
 
-func isCOFFTarget(target *ssa.Target, llvmTarget string) bool {
-	if llvmTarget == "" || !strings.Contains(llvmTarget, "-") {
-		return target != nil && target.GOOS == "windows"
-	}
-	for _, part := range strings.Split(strings.ToLower(llvmTarget), "-")[1:] {
-		if part == "windows" || part == "win32" || strings.Contains(part, "mingw") || strings.Contains(part, "cygwin") {
-			return true
-		}
-	}
-	return false
-}
-
-func NewTransformer(prog ssa.Program, llvmTarget string, targetAbi string, mode Mode, optimize bool) *Transformer {
+func NewTransformer(prog ssa.Program, llvmTarget string, targetAbi string, optimize bool) *Transformer {
 	target := prog.Target()
 	arch := target.GOARCH
 	if llvmTarget != "" {
@@ -79,8 +59,6 @@ func NewTransformer(prog ssa.Program, llvmTarget string, targetAbi string, mode 
 		prog:     prog,
 		td:       prog.TargetData(),
 		arch:     arch,
-		coff:     isCOFFTarget(target, llvmTarget),
-		mode:     mode,
 		optimize: optimize,
 	}
 	if usesWindowsCABI(target, llvmTarget) {
@@ -121,15 +99,9 @@ type Transformer struct {
 	prog     ssa.Program
 	td       llvm.TargetData
 	arch     string
-	coff     bool
 	sys      TypeInfoSys
-	mode     Mode
 	optimize bool
 	skipFns  map[string]struct{}
-}
-
-func (p *Transformer) isCFunc(name string) bool {
-	return !strings.Contains(name, ".")
 }
 
 // SetSkipFuncs configures function full names that should not be transformed.
@@ -171,70 +143,29 @@ func (p *Transformer) TransformModule(path string, m llvm.Module) {
 	ctx := m.Context()
 	var fns []llvm.Value
 	var callInstrs []CallInstr
-	switch p.mode {
-	case ModeNone:
-		return
-	case ModeCFunc:
-		fn := m.FirstFunction()
-		for !fn.IsNil() {
-			if !p.shouldSkipFunc(fn.Name()) && p.isCFunc(fn.Name()) {
-				p.transformFuncCall(m, fn)
-				if p.isWrapFunctionType(ctx, fn.GlobalValueType()) {
-					fns = append(fns, fn)
-				}
-			}
-			bb := fn.FirstBasicBlock()
-			for !bb.IsNil() {
-				instr := bb.FirstInstruction()
-				for !instr.IsNil() {
-					if call := instr.IsACallInst(); !call.IsNil() {
-						if p.shouldSkipCall(call) {
-							instr = llvm.NextInstruction(instr)
-							continue
-						}
-						callee := call.CalledValue()
-						// ModeCFunc only targets direct C symbol calls. Indirect calls
-						// (callee name is empty under opaque pointers) may be Go closure
-						// invocations and must keep Go-level signatures.
-						if callee.IsAFunction().IsNil() || !p.isCFunc(callee.Name()) {
-							instr = llvm.NextInstruction(instr)
-							continue
-						}
-						if p.isWrapFunctionType(ctx, call.CalledFunctionType()) {
-							callInstrs = append(callInstrs, CallInstr{call, fn})
-						}
-					}
-					instr = llvm.NextInstruction(instr)
-				}
-				bb = llvm.NextBasicBlock(bb)
-			}
-			fn = llvm.NextFunction(fn)
+	fn := m.FirstFunction()
+	for !fn.IsNil() {
+		if !p.shouldSkipFunc(fn.Name()) && p.isWrapFunctionType(ctx, fn.GlobalValueType()) {
+			fns = append(fns, fn)
 		}
-	case ModeAllFunc:
-		fn := m.FirstFunction()
-		for !fn.IsNil() {
-			if !p.shouldSkipFunc(fn.Name()) && p.isWrapFunctionType(ctx, fn.GlobalValueType()) {
-				fns = append(fns, fn)
-			}
-			bb := fn.FirstBasicBlock()
-			for !bb.IsNil() {
-				instr := bb.FirstInstruction()
-				for !instr.IsNil() {
-					if call := instr.IsACallInst(); !call.IsNil() {
-						if p.shouldSkipCall(call) {
-							instr = llvm.NextInstruction(instr)
-							continue
-						}
-						if p.isWrapFunctionType(ctx, call.CalledFunctionType()) {
-							callInstrs = append(callInstrs, CallInstr{call, fn})
-						}
+		bb := fn.FirstBasicBlock()
+		for !bb.IsNil() {
+			instr := bb.FirstInstruction()
+			for !instr.IsNil() {
+				if call := instr.IsACallInst(); !call.IsNil() {
+					if p.shouldSkipCall(call) {
+						instr = llvm.NextInstruction(instr)
+						continue
 					}
-					instr = llvm.NextInstruction(instr)
+					if p.isWrapFunctionType(ctx, call.CalledFunctionType()) {
+						callInstrs = append(callInstrs, CallInstr{call, fn})
+					}
 				}
-				bb = llvm.NextBasicBlock(bb)
+				instr = llvm.NextInstruction(instr)
 			}
-			fn = llvm.NextFunction(fn)
+			bb = llvm.NextBasicBlock(bb)
 		}
+		fn = llvm.NextFunction(fn)
 	}
 	for _, call := range callInstrs {
 		p.transformCallInstr(m, ctx, call.call, call.fn)
@@ -326,10 +257,6 @@ func sretAttribute(ctx llvm.Context, typ llvm.Type) llvm.Attribute {
 
 func alignAttribute(ctx llvm.Context, align int) llvm.Attribute {
 	return ctx.CreateEnumAttribute(llvm.AttributeKindID("align"), uint64(align))
-}
-
-func funcInlineHint(ctx llvm.Context) llvm.Attribute {
-	return ctx.CreateEnumAttribute(llvm.AttributeKindID("inlinehint"), 0)
 }
 
 func funcNoUnwind(ctx llvm.Context) llvm.Attribute {
@@ -886,146 +813,6 @@ func (p *Transformer) transformCallInstr(m llvm.Module, ctx llvm.Context, call l
 	return true
 }
 
-func (p *Transformer) transformFuncCall(m llvm.Module, fn llvm.Value) {
-	u := fn.FirstUse()
-	ctx := m.Context()
-	for !u.IsNil() {
-		if call := u.User().IsACallInst(); !call.IsNil() {
-			n := call.OperandsCount()
-			for i := 0; i < n; i++ {
-				op := call.Operand(i)
-				if op == fn {
-					continue
-				}
-				if gv := op.IsAGlobalValue(); !gv.IsNil() {
-					if ft := gv.GlobalValueType(); ft.TypeKind() == llvm.FunctionTypeKind {
-						if p.isCFunc(gv.Name()) {
-							continue
-						}
-						if p.isWrapFunctionType(ctx, ft) {
-							if wrap, ok := p.transformCallbackFunc(m, gv); ok {
-								call.SetOperand(i, wrap)
-							}
-						}
-					}
-				}
-			}
-		}
-		u = u.NextUse()
-	}
-}
-
-func (p *Transformer) transformCallbackFunc(m llvm.Module, fn llvm.Value) (wrap llvm.Value, ok bool) {
-	ctx := m.Context()
-	info := p.GetFuncInfo(ctx, fn.GlobalValueType())
-	if !info.HasWrap() {
-		return fn, false
-	}
-
-	nft, attrs, paramMap := p.transformFuncType(ctx, &info)
-
-	fname := fn.Name()
-	wrapName := "__llgo_cdecl$" + fname
-	callConv := fn.FunctionCallConv()
-	if callConv == llvm.X86StdcallCallConv {
-		wrapName = "__llgo_stdcall$" + fname
-	}
-	if wrapFunc := m.NamedFunction(wrapName); !wrapFunc.IsNil() {
-		return wrapFunc, true
-	}
-	wrapFunc := llvm.AddFunction(m, wrapName, nft)
-	wrapFunc.SetFunctionCallConv(callConv)
-	wrapFunc.SetLinkage(llvm.LinkOnceAnyLinkage)
-	if p.coff {
-		comdat := m.Comdat(wrapName)
-		comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
-		wrapFunc.SetComdat(comdat)
-	}
-	wrapFunc.AddFunctionAttr(funcInlineHint(ctx))
-
-	for i, list := range attrs {
-		for _, attr := range list {
-			wrapFunc.AddAttributeAtIndex(i, attr)
-		}
-	}
-	copyClosureEnvFunctionAttrs(fn, wrapFunc, paramMap)
-
-	b := ctx.NewBuilder()
-	block := ctx.AddBasicBlock(wrapFunc, "entry")
-	b.SetInsertPointAtEnd(block)
-
-	var nparams []llvm.Value
-	params := wrapFunc.Params()
-	index := 0
-	if info.Return.Kind == AttrPointer {
-		index++
-	}
-	for _, ti := range info.Params {
-		switch ti.Kind {
-		default:
-			nparams = append(nparams, params[index])
-		case AttrVoid:
-			// none
-		case AttrPointer:
-			nparams = append(nparams, aggregateFromNative(b, ti, loadIndirectParam(b, ti, params[index])))
-		case AttrWidthType:
-			iptr := llvm.CreateAlloca(b, ti.Type1)
-			b.CreateStore(params[index], iptr)
-			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
-			native := b.CreateLoad(ti.nativeType(), ptr, "")
-			nparams = append(nparams, aggregateFromNative(b, ti, native))
-		case AttrWidthType2:
-			typ := ctx.StructType([]llvm.Type{ti.Type1, ti.Type2}, false)
-			iptr := llvm.CreateAlloca(b, typ)
-			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 0, ""))
-			index++
-			b.CreateStore(params[index], b.CreateStructGEP(typ, iptr, 1, ""))
-			ptr := b.CreateBitCast(iptr, llvm.PointerType(ti.nativeType(), 0), "")
-			native := b.CreateLoad(ti.nativeType(), ptr, "")
-			nparams = append(nparams, aggregateFromNative(b, ti, native))
-		case AttrExtract:
-			nsubs := ti.nativeType().StructElementTypesCount()
-			nv := llvm.Undef(ti.nativeType())
-			for i := 0; i < nsubs; i++ {
-				nv = b.CreateInsertValue(nv, params[index], i, "")
-				index++
-			}
-			nparams = append(nparams, aggregateFromNative(b, ti, nv))
-			continue
-		}
-		index++
-	}
-
-	switch info.Return.Kind {
-	case AttrVoid:
-		call := llvm.CreateCall(b, info.Type, fn, nparams)
-		call.SetInstructionCallConv(callConv)
-		copyClosureEnvFunctionAttrsToCall(fn, call)
-		b.CreateRetVoid()
-	case AttrPointer:
-		ret := llvm.CreateCall(b, info.Type, fn, nparams)
-		ret.SetInstructionCallConv(callConv)
-		copyClosureEnvFunctionAttrsToCall(fn, ret)
-		b.CreateStore(aggregateToNative(b, info.Return, ret), params[0])
-		b.CreateRetVoid()
-	case AttrWidthType, AttrWidthType2:
-		ret := llvm.CreateCall(b, info.Type, fn, nparams)
-		ret.SetInstructionCallConv(callConv)
-		copyClosureEnvFunctionAttrsToCall(fn, ret)
-		ptr := llvm.CreateAlloca(b, info.Return.nativeType())
-		b.CreateStore(aggregateToNative(b, info.Return, ret), ptr)
-		returnType := nft.ReturnType()
-		iptr := b.CreateBitCast(ptr, llvm.PointerType(returnType, 0), "")
-		b.CreateRet(b.CreateLoad(returnType, iptr, ""))
-	default:
-		ret := llvm.CreateCall(b, info.Type, fn, nparams)
-		ret.SetInstructionCallConv(callConv)
-		copyClosureEnvFunctionAttrsToCall(fn, ret)
-		b.CreateRet(ret)
-	}
-	return wrapFunc, true
-}
-
 var closureEnvAttributeKinds = []uint{
 	llvm.AttributeKindID("nest"),
 	llvm.AttributeKindID("swiftself"),
@@ -1052,16 +839,6 @@ func copyClosureEnvCallAttrs(from, to llvm.Value, paramMap []int) {
 		for _, kind := range closureEnvAttributeKinds {
 			if attr := from.GetCallSiteEnumAttribute(oldIndex+1, kind); !attr.IsNil() {
 				to.AddCallSiteAttribute(newIndex, attr)
-			}
-		}
-	}
-}
-
-func copyClosureEnvFunctionAttrsToCall(from, to llvm.Value) {
-	for i := 0; i < from.GlobalValueType().ParamTypesCount(); i++ {
-		for _, kind := range closureEnvAttributeKinds {
-			if attr := from.GetEnumAttributeAtIndex(i+1, kind); !attr.IsNil() {
-				to.AddCallSiteAttribute(i+1, attr)
 			}
 		}
 	}

@@ -31,7 +31,7 @@ func TestManifestBuilder_Build(t *testing.T) {
 	m := newManifestBuilder()
 	m.env.Goarch = "arm64"
 	m.env.Goos = "darwin"
-	m.common.AbiMode = "2"
+	m.common.Target = "native"
 	m.pkg.PkgPath = "example.com/foo"
 
 	content := m.Build()
@@ -43,7 +43,7 @@ func TestManifestBuilder_Build(t *testing.T) {
 	if data.Env.Goarch != "arm64" || data.Env.Goos != "darwin" {
 		t.Fatalf("env section mismatch: %+v", data.Env)
 	}
-	if data.Common.AbiMode != "2" {
+	if data.Common.Target != "native" {
 		t.Fatalf("common section mismatch: %+v", data.Common)
 	}
 	if data.Package.PkgPath != "example.com/foo" {

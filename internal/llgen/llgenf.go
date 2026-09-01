@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/xgo-dev/llgo/internal/build"
-	"github.com/xgo-dev/llgo/internal/cabi"
 	"github.com/xgo-dev/llgo/internal/goflags"
 	"github.com/xgo-dev/llgo/internal/targets"
 )
@@ -36,6 +35,14 @@ type GeneratedIR struct {
 	Target string
 }
 
+// Phase identifies the compiler phase at which LLVM IR is captured.
+type Phase string
+
+const (
+	PhasePreABI  Phase = "pre-abi"
+	PhasePostABI Phase = "post-abi"
+)
+
 func GenFrom(fileOrPkg string) string {
 	return Generate(fileOrPkg).Text
 }
@@ -47,9 +54,10 @@ func Generate(fileOrPkg string) GeneratedIR {
 }
 
 // GenerateWithConf is Generate with caller-provided target and frontend
-// settings. It uses generation mode and does not invoke ModuleHook.
+// settings.
 func GenerateWithConf(fileOrPkg string, input *build.Config) GeneratedIR {
-	return generateWithConf(fileOrPkg, input, cabi.ModeNone)
+	generated, _ := generateWithConf(fileOrPkg, input, PhasePreABI)
+	return generated
 }
 
 // GeneratePostABI returns the module after aggregate and target ABI lowering
@@ -60,46 +68,57 @@ func GeneratePostABI(fileOrPkg string) GeneratedIR {
 }
 
 // GeneratePostABIWithConf is GeneratePostABI with caller-provided target and
-// frontend settings. It uses generation mode and does not invoke ModuleHook.
+// frontend settings.
 func GeneratePostABIWithConf(fileOrPkg string, input *build.Config) GeneratedIR {
-	return generateWithConf(fileOrPkg, input, cabi.ModeAllFunc)
+	generated, _ := generateWithConf(fileOrPkg, input, PhasePostABI)
+	return generated
 }
 
-func generateWithConf(fileOrPkg string, input *build.Config, abiMode cabi.Mode) GeneratedIR {
+func generateWithConf(fileOrPkg string, input *build.Config, phase Phase) (GeneratedIR, []string) {
 	conf := &build.Config{}
 	if input != nil {
 		*conf = *input
 	}
 	conf.Mode = build.ModeGen
-	conf.AbiMode = abiMode
 	conf.GenLL = true
-	conf.ModuleHook = nil
 	// Cache hits can skip the module production needed by snapshot generation.
 	conf.ForceRebuild = true
+
+	preABI := make(map[string]GeneratedIR)
+	switch phase {
+	case PhasePostABI:
+		conf.ModuleHook = nil
+	case PhasePreABI:
+		conf.ModuleHook = func(pkg build.Package) {
+			preABI[pkg.PkgPath] = snapshotGeneratedIR(pkg)
+		}
+	default:
+		panic(fmt.Sprintf("unknown llgen phase %q", phase))
+	}
 	pkg, err := genFromConf(fileOrPkg, conf)
 	check(err)
-	return consumeGeneratedIR(pkg)
+	goFiles := append([]string(nil), pkg.GoFiles...)
+	generated := snapshotGeneratedIR(pkg)
+	if phase == PhasePreABI {
+		var ok bool
+		generated, ok = preABI[pkg.PkgPath]
+		if !ok {
+			pkg.LPkg.Prog.Dispose()
+			panic(fmt.Sprintf("pre-ABI module for %q was not generated", pkg.PkgPath))
+		}
+	}
+	pkg.LPkg.Prog.Dispose()
+	return generated, goFiles
 }
 
-func consumeGeneratedIR(pkg build.Package) GeneratedIR {
+func snapshotGeneratedIR(pkg build.Package) GeneratedIR {
 	target := pkg.LPkg.Prog.Target()
-	out := GeneratedIR{
+	return GeneratedIR{
 		Text:   pkg.LPkg.String(),
 		GOOS:   target.GOOS,
 		GOARCH: target.GOARCH,
 		Target: target.Target,
 	}
-	pkg.LPkg.Prog.Dispose()
-	return out
-}
-
-func genFrom(pkgPath string, abiMode build.AbiMode) (build.Package, error) {
-	conf := &build.Config{
-		Mode:    build.ModeGen,
-		AbiMode: abiMode,
-		GenLL:   true,
-	}
-	return genFromConf(pkgPath, conf)
 }
 
 func genFromConf(pkgPath string, conf *build.Config) (build.Package, error) {
@@ -178,15 +197,18 @@ func applyFlagsFile(conf *build.Config, flagsFile string) error {
 }
 
 func SmartDoFile(pkgPath string) {
-	SmartDoFileEx(pkgPath, 0)
+	SmartDoFileAtPhase(pkgPath, PhasePreABI)
 }
 
-func SmartDoFileEx(pkgPath string, abiMode build.AbiMode) {
-	pkg, err := genFrom(pkgPath, abiMode)
-	check(err)
+// SmartDoFileAtPhase writes the package module captured at phase.
+func SmartDoFileAtPhase(pkgPath string, phase Phase) {
+	generated, goFiles := generateWithConf(pkgPath, nil, phase)
+	if len(goFiles) == 0 {
+		panic(fmt.Sprintf("package %q has no Go files", pkgPath))
+	}
 
 	const autgenFile = "llgo_autogen.ll"
-	dir, _ := filepath.Split(pkg.GoFiles[0])
+	dir, _ := filepath.Split(goFiles[0])
 	outFile := dir + autgenFile
 
 	b, err := os.ReadFile(outFile)
@@ -194,7 +216,7 @@ func SmartDoFileEx(pkgPath string, abiMode build.AbiMode) {
 		return // skip to gen
 	}
 
-	if err = os.WriteFile(outFile, []byte(pkg.LPkg.String()), 0644); err != nil {
+	if err := os.WriteFile(outFile, []byte(generated.Text), 0644); err != nil {
 		panic(err)
 	}
 }

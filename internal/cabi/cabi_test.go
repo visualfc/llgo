@@ -17,7 +17,6 @@ import (
 )
 
 var (
-	modes = []cabi.Mode{cabi.ModeNone, cabi.ModeCFunc, cabi.ModeAllFunc}
 	archs = []string{"amd64", "arm64", "riscv64", "armv6", "i386"}
 )
 
@@ -35,9 +34,8 @@ func init() {
 	}
 }
 
-func buildConf(mode cabi.Mode, arch string) (conf *build.Config, targetAbi string) {
+func buildConf(arch string) (conf *build.Config, targetAbi string) {
 	conf = build.NewDefaultConf(build.ModeGen)
-	conf.AbiMode = mode
 	conf.Goarch = arch
 	conf.Goos = "linux"
 	switch arch {
@@ -72,15 +70,13 @@ func buildConf(mode cabi.Mode, arch string) (conf *build.Config, targetAbi strin
 }
 
 func TestBuild(t *testing.T) {
-	for _, mode := range modes {
-		for _, arch := range archs {
-			conf, _ := buildConf(mode, arch)
-			pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
-			if err != nil {
-				t.Fatalf("build error: %v-%v %v", arch, mode, err)
-			}
-			pkgs[0].LPkg.Prog.Dispose()
+	for _, arch := range archs {
+		conf, _ := buildConf(arch)
+		pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
+		if err != nil {
+			t.Fatalf("build error: %v %v", arch, err)
 		}
+		pkgs[0].LPkg.Prog.Dispose()
 	}
 }
 
@@ -106,9 +102,12 @@ func TestABI(t *testing.T) {
 }
 
 func testArch(t *testing.T, arch string, archDir string, files []string) {
-	conf, targetAbi := buildConf(cabi.ModeAllFunc, arch)
+	conf, targetAbi := buildConf(arch)
+	preABI := make(map[string]string)
 	if targetAbi != "" {
-		conf.AbiMode = cabi.ModeNone
+		conf.ModuleHook = func(pkg build.Package) {
+			preABI[pkg.PkgPath] = pkg.LPkg.String()
+		}
 	}
 	for _, file := range files {
 		pkgs, err := build.Do([]string{filepath.Join("./_testdata/demo", file)}, conf)
@@ -126,11 +125,33 @@ func testArch(t *testing.T, arch string, archDir string, files []string) {
 			t.Fatalf("parser IR error %v", arch)
 		}
 		pkg := pkgs[0].LPkg
+		actual := pkg.Module()
+		customABI := false
 		if targetAbi != "" {
-			tr := cabi.NewTransformer(pkg.Prog, conf.Target, targetAbi, cabi.ModeAllFunc, false)
-			tr.TransformModule(file, pkg.Module())
+			pre, ok := preABI[pkgs[0].PkgPath]
+			if !ok {
+				t.Fatalf("pre-ABI module for %q was not captured", pkgs[0].PkgPath)
+			}
+			preFile := filepath.Join(t.TempDir(), "pre.ll")
+			if err := os.WriteFile(preFile, []byte(pre), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			preBuf, err := llvm.NewMemoryBufferFromFile(preFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err = ctx.ParseIR(preBuf)
+			if err != nil {
+				t.Fatalf("parse pre-ABI IR error: %v", err)
+			}
+			customABI = true
+			tr := cabi.NewTransformer(pkg.Prog, conf.Target, targetAbi, false)
+			tr.TransformModule(file, actual)
 		}
-		testModule(t, context{arch: arch, file: file}, pkg.Prog.TargetData(), pkg.Module(), m)
+		testModule(t, context{arch: arch, file: file}, pkg.Prog.TargetData(), actual, m)
+		if customABI {
+			actual.Dispose()
+		}
 		m.Dispose()
 		ctx.Dispose()
 		pkg.Prog.Dispose()
@@ -353,7 +374,7 @@ entry:
 	}
 
 	// Build minimal config for CABI transformation
-	conf, _ := buildConf(cabi.ModeAllFunc, "arm64")
+	conf, _ := buildConf("arm64")
 	pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
 	if err != nil {
 		t.Fatalf("Failed to build demo: %v", err)
@@ -364,7 +385,7 @@ entry:
 
 	// Apply CABI transformation with optimize=true
 	// This tests the code path that previously had the memcpy bug
-	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
+	tr := cabi.NewTransformer(prog, "", "", true)
 	tr.TransformModule("test", mod)
 
 	// Get transformed function IR
@@ -429,13 +450,13 @@ entry:
 	}
 	defer mod.Dispose()
 
-	conf, _ := buildConf(cabi.ModeAllFunc, arch)
+	conf, _ := buildConf(arch)
 	pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
 	if err != nil {
 		t.Fatalf("Failed to build demo: %v", err)
 	}
 	defer pkgs[0].LPkg.Prog.Dispose()
-	tr := cabi.NewTransformer(pkgs[0].LPkg.Prog, "", "", cabi.ModeAllFunc, true)
+	tr := cabi.NewTransformer(pkgs[0].LPkg.Prog, "", "", true)
 	tr.TransformModule("test", mod)
 
 	caller := mod.NamedFunction("caller")
@@ -457,71 +478,8 @@ entry:
 	}
 }
 
-// TestModeCFunc_SkipIndirectCallWrapping verifies that ModeCFunc does not
-// rewrite indirect calls. In opaque-pointer IR, indirect callees have empty
-// names and must not be treated as C symbol calls.
-func TestModeCFunc_SkipIndirectCallWrapping(t *testing.T) {
-	testIR := `; ModuleID = 'test'
-source_filename = "test"
-
-%Slice = type { ptr, i64, i64 }
-@fp = global { ptr, ptr } zeroinitializer, align 8
-
-define i32 @"pkg.caller"(%Slice %0) {
-entry:
-  %1 = load { ptr, ptr }, ptr @fp, align 8
-  %2 = extractvalue { ptr, ptr } %1, 1
-  %3 = extractvalue { ptr, ptr } %1, 0
-  %4 = call i32 %3(ptr %2, i32 0, %Slice %0)
-  ret i32 %4
-}
-`
-
-	ctx := llvm.NewContext()
-	defer ctx.Dispose()
-
-	tmpfile := filepath.Join(t.TempDir(), "modecfunc_indirect.ll")
-	if err := os.WriteFile(tmpfile, []byte(testIR), 0644); err != nil {
-		t.Fatalf("Failed to write test IR: %v", err)
-	}
-
-	buf, err := llvm.NewMemoryBufferFromFile(tmpfile)
-	if err != nil {
-		t.Fatalf("Failed to read test IR: %v", err)
-	}
-	mod, err := ctx.ParseIR(buf)
-	if err != nil {
-		t.Fatalf("Failed to parse test IR: %v", err)
-	}
-	defer mod.Dispose()
-
-	conf, _ := buildConf(cabi.ModeCFunc, "arm64")
-	pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
-	if err != nil {
-		t.Fatalf("Failed to build demo: %v", err)
-	}
-	prog := pkgs[0].LPkg.Prog
-	defer prog.Dispose()
-
-	tr := cabi.NewTransformer(prog, "", "", cabi.ModeCFunc, true)
-	tr.TransformModule("test", mod)
-
-	caller := mod.NamedFunction("pkg.caller")
-	if caller.IsNil() {
-		t.Fatal("caller not found")
-	}
-	ir := caller.String()
-
-	if strings.Contains(ir, "alloca %Slice") {
-		t.Fatalf("indirect call was unexpectedly rewritten:\n%s", ir)
-	}
-	if !strings.Contains(ir, "call i32 %3(ptr %2, i32 0, %Slice %0)") {
-		t.Fatalf("indirect call signature changed unexpectedly:\n%s", ir)
-	}
-}
-
-// TestModeAllFunc_SkipFuncs verifies function-level opt-out in ModeAllFunc.
-func TestModeAllFunc_SkipFuncs(t *testing.T) {
+// TestSkipFuncs verifies function-level opt-out from C ABI transformation.
+func TestSkipFuncs(t *testing.T) {
 	testIR := `; ModuleID = 'test'
 source_filename = "test"
 
@@ -539,7 +497,7 @@ entry:
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()
 
-	tmpfile := filepath.Join(t.TempDir(), "modeall_skipfuncs.ll")
+	tmpfile := filepath.Join(t.TempDir(), "skipfuncs.ll")
 	if err := os.WriteFile(tmpfile, []byte(testIR), 0644); err != nil {
 		t.Fatalf("Failed to write test IR: %v", err)
 	}
@@ -554,7 +512,7 @@ entry:
 	}
 	defer mod.Dispose()
 
-	conf, _ := buildConf(cabi.ModeAllFunc, "arm64")
+	conf, _ := buildConf("arm64")
 	pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
 	if err != nil {
 		t.Fatalf("Failed to build demo: %v", err)
@@ -562,7 +520,7 @@ entry:
 	prog := pkgs[0].LPkg.Prog
 	defer prog.Dispose()
 
-	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
+	tr := cabi.NewTransformer(prog, "", "", true)
 	tr.SetSkipFuncs([]string{"pkg.asm"})
 	tr.TransformModule("test", mod)
 
@@ -591,7 +549,7 @@ entry:
 	}
 }
 
-func TestModeAllFunc_SkipTypedslicecopy(t *testing.T) {
+func TestSkipTypedslicecopy(t *testing.T) {
 	testIR := `; ModuleID = 'test'
 source_filename = "test"
 
@@ -610,7 +568,7 @@ entry:
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()
 
-	tmpfile := filepath.Join(t.TempDir(), "modeall_skip_typedslicecopy.ll")
+	tmpfile := filepath.Join(t.TempDir(), "skip_typedslicecopy.ll")
 	if err := os.WriteFile(tmpfile, []byte(testIR), 0644); err != nil {
 		t.Fatalf("Failed to write test IR: %v", err)
 	}
@@ -625,7 +583,7 @@ entry:
 	}
 	defer mod.Dispose()
 
-	conf, _ := buildConf(cabi.ModeAllFunc, "arm64")
+	conf, _ := buildConf("arm64")
 	pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
 	if err != nil {
 		t.Fatalf("Failed to build demo: %v", err)
@@ -633,7 +591,7 @@ entry:
 	prog := pkgs[0].LPkg.Prog
 	defer prog.Dispose()
 
-	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
+	tr := cabi.NewTransformer(prog, "", "", true)
 	tr.SetSkipFuncs([]string{"github.com/xgo-dev/llgo/runtime/internal/runtime.Typedslicecopy"})
 	tr.TransformModule("test", mod)
 
@@ -662,7 +620,7 @@ entry:
 	}
 }
 
-func TestModeAllFunc_KeepInlineAsmCallSignature(t *testing.T) {
+func TestKeepInlineAsmCallSignature(t *testing.T) {
 	testIR := `; ModuleID = 'test'
 source_filename = "test"
 
@@ -676,7 +634,7 @@ entry:
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()
 
-	tmpfile := filepath.Join(t.TempDir(), "modeall_inline_asm.ll")
+	tmpfile := filepath.Join(t.TempDir(), "inline_asm.ll")
 	if err := os.WriteFile(tmpfile, []byte(testIR), 0644); err != nil {
 		t.Fatalf("Failed to write test IR: %v", err)
 	}
@@ -691,7 +649,7 @@ entry:
 	}
 	defer mod.Dispose()
 
-	conf, _ := buildConf(cabi.ModeAllFunc, "amd64")
+	conf, _ := buildConf("amd64")
 	pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
 	if err != nil {
 		t.Fatalf("Failed to build demo: %v", err)
@@ -699,7 +657,7 @@ entry:
 	prog := pkgs[0].LPkg.Prog
 	defer prog.Dispose()
 
-	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
+	tr := cabi.NewTransformer(prog, "", "", true)
 	tr.TransformModule("test", mod)
 
 	fn := mod.NamedFunction("internal/cpu.cpuid")
@@ -719,9 +677,9 @@ entry:
 	}
 }
 
-// TestModeAllFunc_RuntimeSliceWrap verifies that runtime Slice also follows
-// ABI2 CABI rewriting, while unrelated large aggregates keep normal wrapping.
-func TestModeAllFunc_RuntimeSliceWrap(t *testing.T) {
+// TestRuntimeSliceWrap verifies that runtime Slice follows C ABI rewriting,
+// while unrelated large aggregates keep normal wrapping.
+func TestRuntimeSliceWrap(t *testing.T) {
 	testIR := `; ModuleID = 'test'
 source_filename = "test"
 
@@ -757,7 +715,7 @@ entry:
 	}
 	defer mod.Dispose()
 
-	conf, _ := buildConf(cabi.ModeAllFunc, "amd64")
+	conf, _ := buildConf("amd64")
 	pkgs, err := build.Do([]string{"./_testdata/demo/demo.go"}, conf)
 	if err != nil {
 		t.Fatalf("Failed to build demo: %v", err)
@@ -765,7 +723,7 @@ entry:
 	prog := pkgs[0].LPkg.Prog
 	defer prog.Dispose()
 
-	tr := cabi.NewTransformer(prog, "", "", cabi.ModeAllFunc, true)
+	tr := cabi.NewTransformer(prog, "", "", true)
 	tr.TransformModule("test", mod)
 
 	keep := mod.NamedFunction("pkg.keep")
