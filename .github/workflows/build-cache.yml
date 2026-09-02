@@ -50,7 +50,7 @@ jobs:
           # This workflow deliberately clears package objects to test cache
           # behavior, so restoring that large directory would be pure waste.
           build-cache-mode: off
-          wamr-cache-mode: ${{ github.event_name == 'push' && 'readwrite' || 'restore' }}
+          wamr-cache-mode: readwrite
 
       - name: Install WAMR (for wasm tests)
         shell: bash

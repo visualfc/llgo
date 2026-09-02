@@ -62,11 +62,10 @@ jobs:
       - name: Set up LLGo cache
         uses: ./.github/actions/setup-llgo-cache
         with:
-          # Main publishes the exact snapshot reused by pull requests. PR jobs
-          # are restore-only so they cannot race to populate their shared base
-          # commit key with branch-specific objects.
-          build-cache-mode: ${{ github.event_name == 'push' && 'readwrite' || 'restore' }}
-          crosscompile-cache-mode: ${{ github.event_name == 'push' && 'readwrite' || 'restore' }}
+          # PR caches are isolated from main by GitHub's cache scope. Let the
+          # first run populate its merge-commit snapshot so retries can reuse it.
+          build-cache-mode: readwrite
+          crosscompile-cache-mode: readwrite
 
       - name: Install further optional dependencies for demos
         uses: ./.github/actions/setup-demo-deps
