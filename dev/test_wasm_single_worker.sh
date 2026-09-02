@@ -14,11 +14,14 @@ trap 'rm -rf "${work_dir}"' EXIT
 export LLGO_WASM_TEST_ENV=wasm-env-ok
 
 run_with_timeout() {
+	run_with_timeout_limit 180s "$@"
+}
+
+run_with_timeout_limit() {
+	local limit="$1"
+	shift
 	if command -v timeout >/dev/null 2>&1; then
-		# Binaryen's post-Asyncify optimization of the standard-library test
-		# binary takes about 85 seconds on a local arm64 host. Keep a bounded
-		# timeout while leaving enough headroom for shared CI runners.
-		timeout 180s "$@"
+		timeout "${limit}" "$@"
 	else
 		"$@"
 	fi
@@ -73,7 +76,12 @@ run_llgo_test() {
 	local name="$2"
 	local output="${work_dir}/${name}.out"
 
-	run_with_timeout "${llgo_cmd}" test -target "${target}" -emulator \
+	# Binaryen's post-Asyncify processing of this standard-library test takes
+	# about 165 seconds on a local arm64 host and exceeded 180 seconds on the
+	# shared x86-64 runner. Keep execution bounded without treating normal
+	# compiler variance as a scheduler failure.
+	echo "testing public llgo test command for ${target}"
+	run_with_timeout_limit 300s "${llgo_cmd}" test -target "${target}" -emulator \
 		-v -count=1 -timeout=30s "${test_fixture}" 2>&1 | tee "${output}"
 	grep -Fq "PASS" "${output}"
 }
