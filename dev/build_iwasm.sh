@@ -7,17 +7,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # Match os.UserCacheDir, which backs internal/env.LLGoCacheDir.
-case "$(uname -s)" in
-    Darwin)
-        LLGO_CACHE_DIR="${HOME}/Library/Caches/llgo"
-        ;;
-    MINGW*|MSYS*|CYGWIN*)
-        LLGO_CACHE_DIR="${LOCALAPPDATA}/llgo"
-        ;;
-    *)
-        LLGO_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/llgo"
-        ;;
-esac
+source "${SCRIPT_DIR}/llgo_cache_dir.sh"
+LLGO_CACHE_DIR="$(llgo_cache_dir)"
 
 IWASM_BIN_DIR="${LLGO_CACHE_DIR}/bin"
 WAMR_VERSION="WAMR-2.4.5"

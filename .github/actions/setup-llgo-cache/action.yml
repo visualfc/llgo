@@ -49,21 +49,8 @@ runs:
             ;;
         esac
 
-        case "$RUNNER_OS" in
-          macOS)
-            cache_root="$HOME/Library/Caches/llgo"
-            ;;
-          Linux)
-            cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/llgo"
-            ;;
-          Windows)
-            cache_root="$LOCALAPPDATA/llgo"
-            ;;
-          *)
-            echo "Unsupported runner OS: $RUNNER_OS" >&2
-            exit 1
-            ;;
-        esac
+        source dev/llgo_cache_dir.sh
+        cache_root="$(llgo_cache_dir)"
 
         profile="${LLGO_WINDOWS_ABI:-native}-${LLGO_WINDOWS_ARCH:-native}"
         clang_version="$(clang --version | sed -nE '1s/.*version ([0-9]+([.][0-9]+)+).*/\1/p')"

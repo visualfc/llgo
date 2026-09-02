@@ -14,6 +14,7 @@ NC='\033[0m' # No Color
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SNAPSHOTS_DIR="$SCRIPT_DIR/snapshots"
+source "$SCRIPT_DIR/../../dev/llgo_cache_dir.sh"
 
 # Create temp directory for build outputs
 get_temp_dir() {
@@ -36,25 +37,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Determine cache directory based on platform
-get_cache_dir() {
-    case "$(uname -s)" in
-        Darwin)
-            echo "$HOME/Library/Caches/llgo/build"
-            ;;
-        Linux)
-            echo "${XDG_CACHE_HOME:-$HOME/.cache}/llgo/build"
-            ;;
-        MINGW*|MSYS*|CYGWIN*)
-            echo "$LOCALAPPDATA/llgo/build"
-            ;;
-        *)
-            echo "$HOME/.cache/llgo/build"
-            ;;
-    esac
-}
-
-CACHE_DIR="$(get_cache_dir)"
+CACHE_ROOT="$(llgo_cache_dir)"
+CACHE_DIR="$CACHE_ROOT/build"
 
 # Helper function to clear cache
 clear_cache() {
@@ -295,20 +279,15 @@ run_test_suite "native" \
 
 # Run WASM tests - always use iwasm from the os.UserCacheDir-compatible
 # location shared with dev/build_iwasm.sh.
+LLGO_IWASM_DIR="$CACHE_ROOT/bin"
 IWASM_NAME="iwasm"
 case "$(uname -s)" in
-    Darwin)
-        LLGO_IWASM_DIR="$HOME/Library/Caches/llgo/bin"
-        ;;
     MINGW*|MSYS*|CYGWIN*)
         # This script runs under Git Bash. Keep the native cache location,
         # but convert it before the command is reparsed by eval below;
         # otherwise backslashes in C:\Users\... are consumed as escapes.
-        LLGO_IWASM_DIR="$(cygpath -u "$LOCALAPPDATA")/llgo/bin"
+        LLGO_IWASM_DIR="$(cygpath -u "$CACHE_ROOT")/bin"
         IWASM_NAME="iwasm.exe"
-        ;;
-    *)
-        LLGO_IWASM_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/llgo/bin"
         ;;
 esac
 LLGO_IWASM="$LLGO_IWASM_DIR/$IWASM_NAME"
