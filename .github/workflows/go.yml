@@ -37,7 +37,7 @@ jobs:
           - os: windows-2022
             llvm: 19
             windows_abi: mingw
-    runs-on: ${{matrix.os}}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -189,7 +189,7 @@ jobs:
   dev-lto-globaldce:
     name: Dev LTO GlobalDCE
     timeout-minutes: 60
-    runs-on: ubuntu-latest
+    runs-on: [qiniu, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v7
 
@@ -270,7 +270,7 @@ jobs:
   dev-go-methoddrop:
     name: Dev Go Method Drop
     timeout-minutes: 60
-    runs-on: ubuntu-latest
+    runs-on: [qiniu, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v7
 

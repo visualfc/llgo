@@ -19,7 +19,7 @@ jobs:
         os:
           - macos-latest
           - ubuntu-latest
-    runs-on: ${{matrix.os}}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
@@ -64,7 +64,7 @@ jobs:
           - platform: windows-mingw
             os: windows-2022
             windows_abi: mingw
-    runs-on: ${{matrix.os}}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 

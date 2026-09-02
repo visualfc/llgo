@@ -51,7 +51,7 @@ jobs:
             windows_arch: amd64
           - os: windows-11-arm
             windows_arch: "386"
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
@@ -203,7 +203,7 @@ jobs:
     name: GOROOT summary
     if: always()
     needs: goroot
-    runs-on: ubuntu-latest
+    runs-on: [qiniu, ubuntu-24.04]
     steps:
       - name: Download shard statistics
         uses: actions/download-artifact@v8

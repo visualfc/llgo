@@ -58,7 +58,7 @@ jobs:
             windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
-    runs-on: ${{matrix.os}}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -477,7 +477,7 @@ jobs:
             windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
-    runs-on: ${{matrix.os}}
+    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -576,7 +576,7 @@ jobs:
         # artifact smoke tests.
         os: [ubuntu-latest]
         llvm: [19]
-    runs-on: ${{matrix.os}}
+    runs-on: [qiniu, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -626,7 +626,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-latest]
         windows_arch: [amd64, arm64, "386"]
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os == 'ubuntu-24.04' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
@@ -658,7 +658,7 @@ jobs:
   wasm-runtime:
     name: wasm-runtime (Go 1.24 and 1.27)
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    runs-on: [qiniu, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
