@@ -2,15 +2,37 @@ version: 1
 id: llgo-wasm
 title: LLGo WebAssembly build benchmarks
 site-path: benchmark/wasm
-include: "^BenchmarkWasmBuild/"
+include: "^BenchmarkWasm(Size|Build)/"
 groups:
-  wasm: "^WasmBuild/"
+  wasm-size: "^WasmSize/"
+  wasm-build: "^WasmBuild/"
 views:
-  wasm:
-    title: WebAssembly build measurements
+  wasm-size:
+    title: WebAssembly output sizes
     select:
-      groups: "^wasm$"
-      metrics: "^(module-bytes|glue-bytes|build-ns)$"
+      groups: "^wasm-size$"
+      metrics: "^(module-bytes|glue-bytes)$"
+    table:
+      rows: [benchmark]
+      columns: [metric]
+      missing: error
+      empty: error
+      dimensions:
+        benchmark:
+          title: Profile and compiler
+          trim-prefix: BenchmarkWasmSize/
+      metrics:
+        module-bytes:
+          title: Wasm module
+          format: bytes
+        glue-bytes:
+          title: Generated JS glue
+          format: bytes
+  wasm-build:
+    title: LLGo WebAssembly build measurements
+    select:
+      groups: "^wasm-build$"
+      metrics: "^build-ns$"
     table:
       rows: [benchmark]
       columns: [metric]
@@ -21,12 +43,6 @@ views:
           title: Profile
           trim-prefix: BenchmarkWasmBuild/
       metrics:
-        module-bytes:
-          title: Wasm module
-          format: bytes
-        glue-bytes:
-          title: JS glue
-          format: bytes
         build-ns:
           title: Build
           format: duration-ns

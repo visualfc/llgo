@@ -25,8 +25,8 @@ func TestRunCLICollectsEveryWasmProfile(t *testing.T) {
 	var calls int
 	runner := func(_ context.Context, dir string, env []string, name string, args ...string) error {
 		calls++
-		if dir != root || name != "fake-llgo" {
-			t.Fatalf("runner = (%q, %q), want (%q, fake-llgo)", dir, name, root)
+		if dir != root || (name != "fake-llgo" && name != "fake-go") {
+			t.Fatalf("runner = (%q, %q), want (%q, fake-llgo or fake-go)", dir, name, root)
 		}
 		output := args[slices.Index(args, "-o")+1]
 		if err := os.WriteFile(strings.TrimSuffix(output, filepath.Ext(output))+".wasm", []byte("\x00asmfixture"), 0o644); err != nil {
@@ -40,12 +40,13 @@ func TestRunCLICollectsEveryWasmProfile(t *testing.T) {
 	if code := runMain(context.Background(), io.Discard, []string{
 		"-root", root,
 		"-llgo", "fake-llgo",
+		"-go", "fake-go",
 		"-out", out,
 		"-build-runs", "1",
 	}, runner); code != 0 {
 		t.Fatalf("runMain exit code = %d, want 0", code)
 	}
-	if want := len(wasmProfiles) * 2; calls != want {
+	if want := len(wasmProfiles)*2 + len(goWasmProfiles); calls != want {
 		t.Fatalf("build calls = %d, want %d", calls, want)
 	}
 	data, err := os.ReadFile(filepath.Join(out, "benchmark.txt"))
@@ -54,9 +55,71 @@ func TestRunCLICollectsEveryWasmProfile(t *testing.T) {
 	}
 	text := string(data)
 	for _, profile := range wasmProfiles {
-		if !strings.Contains(text, "BenchmarkWasmBuild/"+profile.name+" ") {
-			t.Errorf("result omits %s:\n%s", profile.name, text)
+		if !strings.Contains(text, "BenchmarkWasmSize/"+profile.name+"/LLGo ") ||
+			!strings.Contains(text, "BenchmarkWasmBuild/"+profile.name+" ") {
+			t.Errorf("result omits LLGo %s measurements:\n%s", profile.name, text)
 		}
+	}
+	for _, profile := range goWasmProfiles {
+		if !strings.Contains(text, "BenchmarkWasmSize/"+profile.name+"/Go ") {
+			t.Errorf("result omits official Go %s size:\n%s", profile.name, text)
+		}
+	}
+}
+
+func TestMeasureGoProfile(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(t.TempDir(), "out")
+	fixture := filepath.Join(root, "main.go")
+	profile := goWasmProfile{name: "js", goos: "js"}
+	var gotEnv []string
+	result, err := measureGoProfile(context.Background(), func(_ context.Context, dir string, env []string, name string, args ...string) error {
+		if dir != root || name != "fake-go" {
+			t.Fatalf("runner = (%q, %q), want (%q, fake-go)", dir, name, root)
+		}
+		gotEnv = slices.Clone(env)
+		output := args[slices.Index(args, "-o")+1]
+		return os.WriteFile(output, []byte("\x00asmfixture"), 0o644)
+	}, nil, root, "fake-go", out, fixture, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.name != "js" || result.moduleBytes != int64(len("\x00asmfixture")) {
+		t.Fatalf("measurement = %+v", result)
+	}
+	if !slices.Contains(gotEnv, "GOOS=js") || !slices.Contains(gotEnv, "GOARCH=wasm") {
+		t.Fatalf("Go WebAssembly environment = %v", gotEnv)
+	}
+}
+
+func TestMeasureGoProfileReportsBuildFailure(t *testing.T) {
+	want := errors.New("go build failed")
+	_, err := measureGoProfile(context.Background(), func(context.Context, string, []string, string, ...string) error {
+		return want
+	}, nil, t.TempDir(), "fake-go", t.TempDir(), "main.go", goWasmProfile{name: "wasip1", goos: "wasip1"})
+	if !errors.Is(err, want) {
+		t.Fatalf("measureGoProfile error = %v, want %v", err, want)
+	}
+}
+
+func TestMeasureGoProfileReportsOutputFailures(t *testing.T) {
+	root := t.TempDir()
+	out := filepath.Join(t.TempDir(), "out")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "bin"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	profile := goWasmProfile{name: "js", goos: "js"}
+	if _, err := measureGoProfile(context.Background(), nil, nil, root, "fake-go", out, "main.go", profile); err == nil {
+		t.Fatal("measureGoProfile unexpectedly accepted a blocked output directory")
+	}
+
+	if _, err := measureGoProfile(context.Background(), func(context.Context, string, []string, string, ...string) error {
+		return nil
+	}, nil, root, "fake-go", t.TempDir(), "main.go", profile); err == nil || !strings.Contains(err.Error(), "inspect wasm module") {
+		t.Fatalf("missing-module error = %v", err)
 	}
 }
 
@@ -208,7 +271,7 @@ func TestMeasureProfileFailures(t *testing.T) {
 }
 
 func TestWriteResultsReturnsFilesystemError(t *testing.T) {
-	err := writeResults(filepath.Join(t.TempDir(), "missing", "benchmark.txt"), nil)
+	err := writeResults(filepath.Join(t.TempDir(), "missing", "benchmark.txt"), nil, nil)
 	if err == nil {
 		t.Fatal("writeResults unexpectedly succeeded")
 	}

@@ -40,6 +40,11 @@ type wasmProfile struct {
 	hasJSGlue bool
 }
 
+type goWasmProfile struct {
+	name string
+	goos string
+}
+
 var wasmProfiles = []wasmProfile{
 	// GOOS/GOARCH entries measure the current implementation without
 	// claiming the official-Go ABI contract assigned to the later G1/G2 work.
@@ -48,6 +53,14 @@ var wasmProfiles = []wasmProfile{
 	{name: "ec32", target: "emscripten", outputExt: ".mjs", hasJSGlue: true},
 	{name: "ec64", target: "emscripten-memory64", outputExt: ".mjs", hasJSGlue: true},
 	{name: "wc32", target: "wasi", outputExt: ".wasm"},
+}
+
+// The official Go compiler has no Emscripten or Memory64 ABI mode. Keep its
+// size references limited to the two profiles that describe the same
+// GOOS/GOARCH contract instead of presenting a C-ABI build as equivalent.
+var goWasmProfiles = []goWasmProfile{
+	{name: "js", goos: "js"},
+	{name: "wasip1", goos: "wasip1"},
 }
 
 type commandRunner func(context.Context, string, []string, string, ...string) error
@@ -76,6 +89,7 @@ func runCLI(ctx context.Context, args []string, runner commandRunner) error {
 	flags.SetOutput(io.Discard)
 	root := flags.String("root", ".", "LLGo repository root")
 	llgo := flags.String("llgo", "llgo", "LLGo command")
+	goCommand := flags.String("go", "go", "Go command")
 	out := flags.String("out", filepath.Join("benchmark", "wasm", "out"), "result directory")
 	buildRuns := flags.Int("build-runs", 3, "build repetitions per profile")
 	if err := flags.Parse(args); err != nil {
@@ -114,7 +128,15 @@ func runCLI(ctx context.Context, args []string, runner commandRunner) error {
 		}
 		measurements = append(measurements, result)
 	}
-	return writeResults(filepath.Join(absOut, "benchmark.txt"), measurements)
+	goSizes := make([]measurement, 0, len(goWasmProfiles))
+	for _, profile := range goWasmProfiles {
+		result, err := measureGoProfile(ctx, runner, env, absRoot, *goCommand, absOut, fixture, profile)
+		if err != nil {
+			return fmt.Errorf("build official Go %s: %w", profile.name, err)
+		}
+		goSizes = append(goSizes, result)
+	}
+	return writeResults(filepath.Join(absOut, "benchmark.txt"), measurements, goSizes)
 }
 
 func measureProfile(
@@ -184,6 +206,29 @@ func measureProfile(
 	}, nil
 }
 
+func measureGoProfile(
+	ctx context.Context,
+	runner commandRunner,
+	env []string,
+	root, goCommand, out, fixture string,
+	profile goWasmProfile,
+) (measurement, error) {
+	profileDir := filepath.Join(out, "bin", "go-"+profile.name)
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		return measurement{}, err
+	}
+	output := filepath.Join(profileDir, "program.wasm")
+	profileEnv := append(slices.Clone(env), "GOOS="+profile.goos, "GOARCH=wasm")
+	if err := runner(ctx, root, profileEnv, goCommand, "build", "-o", output, fixture); err != nil {
+		return measurement{}, err
+	}
+	moduleBytes, err := wasmModuleSize(output)
+	if err != nil {
+		return measurement{}, err
+	}
+	return measurement{name: profile.name, moduleBytes: moduleBytes}, nil
+}
+
 func wasmModuleSize(path string) (int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -210,7 +255,7 @@ func medianDuration(values []time.Duration) time.Duration {
 	return values[len(values)/2]
 }
 
-func writeResults(path string, measurements []measurement) error {
+func writeResults(path string, measurements, goSizes []measurement) error {
 	var output strings.Builder
 	fmt.Fprintf(&output, "goos: %s\ngoarch: %s\npkg: github.com/xgo-dev/llgo/benchmark/wasm\n", runtime.GOOS, runtime.GOARCH)
 	for _, unit := range []string{"module-bytes", "glue-bytes"} {
@@ -220,11 +265,25 @@ func writeResults(path string, measurements []measurement) error {
 	for _, result := range measurements {
 		fmt.Fprintf(
 			&output,
-			"BenchmarkWasmBuild/%s 1 %d module-bytes %d glue-bytes %d build-ns\n",
+			"BenchmarkWasmSize/%s/LLGo 1 %d module-bytes %d glue-bytes\n",
 			result.name,
 			result.moduleBytes,
 			result.glueBytes,
+		)
+		fmt.Fprintf(
+			&output,
+			"BenchmarkWasmBuild/%s 1 %d build-ns\n",
+			result.name,
 			result.build.Nanoseconds(),
+		)
+	}
+	for _, result := range goSizes {
+		fmt.Fprintf(
+			&output,
+			"BenchmarkWasmSize/%s/Go 1 %d module-bytes %d glue-bytes\n",
+			result.name,
+			result.moduleBytes,
+			result.glueBytes,
 		)
 	}
 	return os.WriteFile(path, []byte(output.String()), 0o644)
