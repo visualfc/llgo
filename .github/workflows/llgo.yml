@@ -386,7 +386,6 @@ jobs:
         # slowest profiles stay below 35 minutes and avoid duplicate setup.
         include:
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
             llvm: 19
             go_version: "1.20-1.26"
             lane: compatibility
@@ -394,7 +393,6 @@ jobs:
             shard_total: "1"
             check_symbols: true
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
             llvm: 19
             go_version: "1.27"
             lane: full
@@ -403,7 +401,6 @@ jobs:
             check_symbols: true
             std_buildmodes: true
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
             llvm: 19
             go_version: "1.27"
             lane: full
@@ -481,7 +478,7 @@ jobs:
             windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
