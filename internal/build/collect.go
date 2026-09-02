@@ -125,7 +125,6 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 
 // collectCommonInputs collects common build configuration inputs.
 func (c *context) collectCommonInputs(m *manifestBuilder) {
-	m.common.AbiMode = fmt.Sprintf("%d", c.buildConf.AbiMode)
 	if c.buildConf.Tags != "" {
 		m.common.BuildTags = strings.Split(c.buildConf.Tags, ",")
 	}

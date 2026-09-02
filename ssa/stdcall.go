@@ -168,13 +168,11 @@ func (b Builder) stdcallCallback(typ types.Type, fn Expr) Expr {
 }
 
 // needsStdcallFuncval reports whether fn needs an ABI adapter before it can be
-// represented by an ordinary Go func value. Under the normal all-function C
-// ABI, only 32-bit stdcall differs from the funcval call convention. Keep the
-// CABI-only compatibility branch until the legacy ABI modes are removed.
+// represented by an ordinary Go func value. Only 32-bit stdcall differs from
+// the ordinary funcval call convention.
 func (b Builder) needsStdcallFuncval(fn Expr) bool {
 	if b.Prog.isStdcallType(fn.raw.Type) {
-		return b.Prog.Target().CABIOnly ||
-			b.Prog.stdcallCallConv() == llvm.X86StdcallCallConv
+		return b.Prog.stdcallCallConv() == llvm.X86StdcallCallConv
 	}
 	direct := fn.impl.IsAFunction()
 	return !direct.IsNil() && direct.FunctionCallConv() == llvm.X86StdcallCallConv

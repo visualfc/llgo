@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	llabi "github.com/xgo-dev/llgo/internal/abi"
-	"github.com/xgo-dev/llgo/internal/cabi"
 	"github.com/xgo-dev/llgo/internal/packages"
 	llplan9asm "github.com/xgo-dev/llgo/internal/plan9asm"
 	llruntime "github.com/xgo-dev/llgo/runtime"
@@ -83,7 +82,7 @@ func compilePkgSFiles(ctx *context, aPkg *aPackage, pkg *packages.Package, verbo
 		mod := tr.Module
 
 		// Apply cabi rewrites to translated asm modules for declaration-driven
-		// aggregates (slice/string/interface headers) under ABI2.
+		// aggregates (slice/string/interface headers).
 		// runtime asm uses hand-written calling conventions and must stay on
 		// original Go ABI semantics.
 		if pkg.PkgPath != "runtime" {
@@ -324,10 +323,6 @@ func cabiSkipFuncsForPlan9Asm(ctx *context, pkgPath string, mod gllvm.Module) []
 	if ctx == nil || mod.IsNil() || ctx.buildConf == nil {
 		return nil
 	}
-	if ctx.buildConf.AbiMode != cabi.ModeAllFunc {
-		return nil
-	}
-
 	// Plan9 asm modules are translated to LLVM and transformed by cabi in
 	// compilePkgSFiles. Most packages should not skip any rewrite.
 	//
@@ -393,23 +388,11 @@ func hasAltPkgForTarget(conf *Config, pkgPath string) bool {
 	if plan9asmEnabledByDefault(conf, pkgPath) && !plan9asmDisabledByEnv() {
 		return false
 	}
-	// In ABI0/1, allow explicit env opt-in to prefer plan9asm over alt.
-	if conf != nil && conf.AbiMode != cabi.ModeAllFunc && plan9asmEnabledByEnv(pkgPath) {
-		return false
-	}
 	return true
 }
 
 func plan9asmDisabledByEnv() bool {
 	return parsePlan9AsmPkgsEnv(Plan9ASMPkgs()).mode == plan9asmEnvNone
-}
-
-func plan9asmEnabledByEnv(pkgPath string) bool {
-	cfg := parsePlan9AsmPkgsEnv(Plan9ASMPkgs())
-	if cfg.mode == plan9asmEnvAll {
-		return true
-	}
-	return cfg.mode == plan9asmEnvSelected && cfg.pkgs[pkgPath]
 }
 
 func plan9asmEnabledByDefault(conf *Config, pkgPath string) bool {

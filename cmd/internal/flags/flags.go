@@ -38,7 +38,6 @@ var Target string
 var Emulator bool
 var Port string
 var BaudRate int
-var AbiMode int
 var CheckLinkArgs bool
 var CheckLLFiles bool
 var GenLLFiles bool
@@ -225,7 +224,6 @@ func AddBuildFlags(fs *flag.FlagSet) {
 	fs.StringVar(&BuildEnv, "buildenv", "", "Build environment")
 	fs.Var(&PthreadStackSize, "pthread-stack-size", "Stack size for pthread-backed goroutines, e.g. 32MB or 1024KB (0 uses the platform default)")
 	if buildenv.Dev {
-		fs.IntVar(&AbiMode, "abi", 2, "ABI mode (default 2). 0 = none, 1 = cfunc, 2 = allfunc.")
 		fs.BoolVar(&CheckLinkArgs, "check-linkargs", false, "check link args valid")
 		fs.BoolVar(&CheckLLFiles, "check-llfiles", false, "check .ll files valid")
 		fs.BoolVar(&GenLLFiles, "gen-llfiles", false, "generate .ll files for pkg export")
@@ -427,7 +425,6 @@ func UpdateConfig(conf *build.Config) error {
 		conf.GenExpect = Gen
 	}
 	if buildenv.Dev {
-		conf.AbiMode = build.AbiMode(AbiMode)
 		conf.CheckLinkArgs = CheckLinkArgs
 		conf.CheckLLFiles = CheckLLFiles
 		conf.GenLL = GenLLFiles

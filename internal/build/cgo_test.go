@@ -537,15 +537,14 @@ func TestCompilePackageModuleLowersWindowsCgoImportPointer(t *testing.T) {
 		t.Fatal(err)
 	}
 	conf := &Config{
-		Goos:    "windows",
-		Goarch:  "amd64",
-		AbiMode: cabi.ModeAllFunc,
+		Goos:   "windows",
+		Goarch: "amd64",
 	}
 	ctx := &context{
 		prog:         prog,
 		mode:         ModeGen,
 		buildConf:    conf,
-		cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", conf.AbiMode, true),
+		cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", true),
 	}
 	pkg := &aPackage{
 		Package: &packages.Package{PkgPath: "syscall"},
@@ -588,15 +587,14 @@ func TestCompilePackageModuleReportsWindowsCgoImportError(t *testing.T) {
 		t.Fatal(err)
 	}
 	conf := &Config{
-		Goos:    "windows",
-		Goarch:  "amd64",
-		AbiMode: cabi.ModeAllFunc,
+		Goos:   "windows",
+		Goarch: "amd64",
 	}
 	ctx := &context{
 		prog:         prog,
 		mode:         ModeGen,
 		buildConf:    conf,
-		cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", conf.AbiMode, true),
+		cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", true),
 	}
 	pkg := &aPackage{
 		Package: &packages.Package{PkgPath: "syscall", Syntax: []*ast.File{file}},
@@ -624,16 +622,15 @@ func TestCompilePackageModulePropagatesSFileErrors(t *testing.T) {
 			defer prog.Dispose()
 			lpkg := prog.NewPackage("example.com/p", "example.com/p")
 			conf := &Config{
-				Goos:    "linux",
-				Goarch:  "amd64",
-				AbiMode: cabi.ModeAllFunc,
+				Goos:   "linux",
+				Goarch: "amd64",
 			}
 			ctx := &context{
 				prog:         prog,
 				mode:         ModeBuild,
 				buildConf:    conf,
 				sfilesFrozen: true,
-				cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", conf.AbiMode, true),
+				cTransformer: cabi.NewTransformer(prog, target.Spec().Triple, "", true),
 			}
 			pkg := &aPackage{
 				Package: &packages.Package{ID: "example.com/p", PkgPath: "example.com/p"},

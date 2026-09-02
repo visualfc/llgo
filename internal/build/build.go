@@ -99,8 +99,6 @@ func ValidateBuildMode(mode string) error {
 	}
 }
 
-type AbiMode = cabi.Mode
-
 const (
 	debugBuild = packages.DebugPackagesLoad
 )
@@ -154,8 +152,7 @@ type Config struct {
 	RunArgs            []string
 	Mode               Mode
 	BuildMode          BuildMode // Build mode: exe, c-archive, c-shared
-	AbiMode            AbiMode
-	GenExpect          bool // only valid for ModeCmpTest
+	GenExpect          bool      // only valid for ModeCmpTest
 	Verbose            bool
 	PrintPackages      bool // print package paths after successful compilation
 	PrintCommands      bool
@@ -384,7 +381,6 @@ func NewDefaultConf(mode Mode) *Config {
 		BinPath:            bin,
 		Mode:               mode,
 		BuildMode:          BuildModeExe,
-		AbiMode:            cabi.ModeAllFunc,
 		OmitDWARFByDefault: mode != ModeGen,
 		PCLNMode:           PCLNEmbedded,
 	}
@@ -532,7 +528,6 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		WasmABI:                 string(export.WasmABI),
 		OptLevel:                conf.OptLevel,
 		SaturatingFloatToUint32: conf.SaturatingFloatToUint32,
-		CABIOnly:                conf.AbiMode == cabi.ModeCFunc,
 	}
 	tags := defaultBuildTags(conf.Goarch, conf.Target) + "," + target.ClosureEnvBuildTag()
 	// R0 preserves the existing collector-free wasm runtime. The named target
@@ -546,9 +541,6 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		// cache key. Embedded and none builds do not compile any loader or
 		// sidecar probing code.
 		tags += ",llgo_pclntab_external"
-	}
-	if conf.AbiMode == cabi.ModeAllFunc {
-		tags += ",llgo_abi_2"
 	}
 	if conf.Tags != "" {
 		tags += "," + conf.Tags
@@ -783,7 +775,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		crossCompile:    export,
 		commands:        commands,
 		frontendOptions: frontendOptions,
-		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, conf.AbiMode, cabiOptimize),
+		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, cabiOptimize),
 		buildTrace:      buildTrace,
 	}
 	defer ctx.closePackageMetas()
@@ -1248,7 +1240,6 @@ func (c *context) newBackendSession() backendSession {
 			prog,
 			c.crossCompile.LLVMTarget,
 			c.crossCompile.TargetABI,
-			c.buildConf.AbiMode,
 			!shouldEmitDebugInfo(c.buildConf, &c.crossCompile),
 		),
 	}

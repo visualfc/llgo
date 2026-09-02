@@ -1,4 +1,4 @@
-//go:build llgo_abi_2
+//go:build llgo
 
 package reflect
 

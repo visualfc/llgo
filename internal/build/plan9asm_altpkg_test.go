@@ -6,7 +6,6 @@ package build
 import (
 	"testing"
 
-	"github.com/xgo-dev/llgo/internal/cabi"
 	llruntime "github.com/xgo-dev/llgo/runtime"
 	extplan9asm "github.com/xgo-dev/plan9asm"
 )
@@ -36,7 +35,7 @@ func TestPlan9AsmTranslateOptions(t *testing.T) {
 }
 
 func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
-	conf := &Config{Goarch: "arm64", AbiMode: cabi.ModeAllFunc}
+	conf := &Config{Goarch: "arm64"}
 	if !plan9asmEnabledByDefault(conf, "internal/runtime/sys") {
 		t.Fatal("plan9asm should be enabled by default for internal/runtime/sys on arm64")
 	}
@@ -46,7 +45,7 @@ func TestInternalRuntimeSysUsesPlan9AsmWithoutAltPkg(t *testing.T) {
 }
 
 func TestPlan9AsmDefaultsSupport386(t *testing.T) {
-	conf := &Config{Goarch: "386", AbiMode: cabi.ModeAllFunc}
+	conf := &Config{Goarch: "386"}
 	for _, pkgPath := range []string{
 		"internal/bytealg",
 		"internal/chacha8rand",
@@ -68,12 +67,12 @@ func TestPlan9AsmDefaultsSupport386(t *testing.T) {
 }
 
 func TestInternalRuntimeAtomicUsesSourcePatchOnArm(t *testing.T) {
-	conf := &Config{Goarch: "arm", AbiMode: cabi.ModeAllFunc}
+	conf := &Config{Goarch: "arm"}
 	if hasAltPkgForTarget(conf, "internal/runtime/atomic") {
 		t.Fatal("internal/runtime/atomic should use its source patch on arm")
 	}
 
-	conf = &Config{Goarch: "arm64", AbiMode: cabi.ModeAllFunc}
+	conf = &Config{Goarch: "arm64"}
 	if hasAltPkgForTarget(conf, "internal/runtime/atomic") {
 		t.Fatal("internal/runtime/atomic should keep plan9asm/std paths on arm64")
 	}

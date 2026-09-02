@@ -113,3 +113,33 @@ func TestGeneratePostABIIsExplicit(t *testing.T) {
 		t.Fatalf("missing effective target: %+v", postABI)
 	}
 }
+
+func TestGenerationTargetMatchesOnlyRequestedPackage(t *testing.T) {
+	targetDir := t.TempDir()
+	targetFile := filepath.Join(targetDir, "main.go")
+	if err := os.WriteFile(targetFile, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dependencyFile := filepath.Join(t.TempDir(), "dep.go")
+	if err := os.WriteFile(dependencyFile, []byte("package dep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	directoryTarget := resolveGenerationTarget(targetDir)
+	if !directoryTarget.matches("example/main", []string{targetFile}) {
+		t.Fatal("directory target did not match its package source")
+	}
+	if directoryTarget.matches("example/dep", []string{dependencyFile}) {
+		t.Fatal("directory target matched a dependency")
+	}
+
+	fileTarget := resolveGenerationTarget(targetFile)
+	if !fileTarget.matches("command-line-arguments", []string{targetFile}) {
+		t.Fatal("file target did not match its package source")
+	}
+
+	importTarget := resolveGenerationTarget("example.com/project/pkg")
+	if !importTarget.matches("example.com/project/pkg", []string{dependencyFile}) {
+		t.Fatal("import target did not match its package path")
+	}
+}

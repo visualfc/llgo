@@ -68,12 +68,12 @@ func TestTargetArchAndNewTransformerArchSelection(t *testing.T) {
 		{"i686-w64-windows-gnu", "", "386", func(sys TypeInfoSys) bool { _, ok := sys.(*TypeInfoWindows386); return ok }},
 	}
 	for _, tc := range tests {
-		tr := NewTransformer(prog, tc.target, tc.abi, ModeCFunc, true)
+		tr := NewTransformer(prog, tc.target, tc.abi, true)
 		if tr.arch != tc.arch {
 			t.Fatalf("NewTransformer(%q).arch = %q, want %q", tc.target, tr.arch, tc.arch)
 		}
-		if tr.mode != ModeCFunc || !tr.optimize {
-			t.Fatalf("NewTransformer did not preserve mode/optimize: mode=%v optimize=%v", tr.mode, tr.optimize)
+		if !tr.optimize {
+			t.Fatal("NewTransformer did not preserve optimize")
 		}
 		if !tc.check(tr.sys) {
 			t.Fatalf("NewTransformer(%q) selected unexpected sys implementation %T", tc.target, tr.sys)
@@ -81,36 +81,10 @@ func TestTargetArchAndNewTransformerArchSelection(t *testing.T) {
 	}
 	windowsProg := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "amd64"})
 	defer windowsProg.Dispose()
-	if tr := NewTransformer(windowsProg, "", "", ModeCFunc, true); tr.arch != "amd64" {
+	if tr := NewTransformer(windowsProg, "", "", true); tr.arch != "amd64" {
 		t.Fatalf("implicit Windows transformer arch = %q, want amd64", tr.arch)
 	} else if _, ok := tr.sys.(*TypeInfoWindowsAmd64); !ok {
 		t.Fatalf("implicit Windows transformer selected %T, want *TypeInfoWindowsAmd64", tr.sys)
-	}
-}
-
-func TestCOFFTargetDetection(t *testing.T) {
-	windows := &llssa.Target{GOOS: "windows", GOARCH: "amd64"}
-	linux := &llssa.Target{GOOS: "linux", GOARCH: "amd64"}
-	tests := []struct {
-		name   string
-		target *llssa.Target
-		triple string
-		want   bool
-	}{
-		{name: "native Windows", target: windows, want: true},
-		{name: "Windows arch only", target: windows, triple: "x86_64", want: true},
-		{name: "MSVC", target: linux, triple: "x86_64-pc-windows-msvc", want: true},
-		{name: "MinGW", target: linux, triple: "x86_64-w64-mingw32", want: true},
-		{name: "Cygwin", target: linux, triple: "x86_64-pc-cygwin", want: true},
-		{name: "Linux", target: linux, triple: "x86_64-unknown-linux-gnu", want: false},
-		{name: "Darwin", target: windows, triple: "arm64-apple-darwin", want: false},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := isCOFFTarget(test.target, test.triple); got != test.want {
-				t.Fatalf("isCOFFTarget(%q) = %v, want %v", test.triple, got, test.want)
-			}
-		})
 	}
 }
 
@@ -137,7 +111,7 @@ func TestWindowsComdatPreservedByCABILowering(t *testing.T) {
 
 	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "amd64"})
 	defer prog.Dispose()
-	NewTransformer(prog, "x86_64-pc-windows-msvc", "", ModeAllFunc, true).TransformModule("test", mod)
+	NewTransformer(prog, "x86_64-pc-windows-msvc", "", true).TransformModule("test", mod)
 
 	lowered := mod.NamedFunction("generic")
 	if lowered.IsNil() {
@@ -152,52 +126,6 @@ func TestWindowsComdatPreservedByCABILowering(t *testing.T) {
 	}
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("lowered COMDAT module is invalid: %v\n%s", err, mod.String())
-	}
-}
-
-func TestCallbackWrapperComdatMatchesObjectFormat(t *testing.T) {
-	llvm.InitializeAllTargets()
-	llvm.InitializeAllTargetMCs()
-	llvm.InitializeAllTargetInfos()
-
-	for _, test := range []struct {
-		name   string
-		goos   string
-		triple string
-		want   bool
-	}{
-		{name: "COFF", goos: "windows", triple: "x86_64-pc-windows-msvc", want: true},
-		{name: "ELF", goos: "linux", triple: "x86_64-unknown-linux-gnu", want: false},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			ctx := llvm.NewContext()
-			defer ctx.Dispose()
-			mod := ctx.NewModule("callback")
-			defer mod.Dispose()
-			large := ctx.StructType([]llvm.Type{ctx.Int64Type(), ctx.Int64Type(), ctx.Int64Type()}, false)
-			callback := llvm.AddFunction(mod, "main.callback", llvm.FunctionType(ctx.VoidType(), []llvm.Type{large}, false))
-			b := ctx.NewBuilder()
-			defer b.Dispose()
-			b.SetInsertPointAtEnd(ctx.AddBasicBlock(callback, "entry"))
-			b.CreateRetVoid()
-
-			prog := llssa.NewProgram(&llssa.Target{GOOS: test.goos, GOARCH: "amd64"})
-			defer prog.Dispose()
-			tr := NewTransformer(prog, test.triple, "", ModeAllFunc, true)
-			wrapper, ok := tr.transformCallbackFunc(mod, callback)
-			if !ok {
-				t.Fatalf("callback wrapper was not required:\n%s", mod.String())
-			}
-			if got := wrapper.Comdat().C != nil; got != test.want {
-				t.Fatalf("callback wrapper has COMDAT = %v, want %v:\n%s", got, test.want, wrapper.String())
-			}
-			if test.want && wrapper.Comdat().SelectionKind() != llvm.AnyComdatSelectionKind {
-				t.Fatalf("callback wrapper COMDAT selection is not any:\n%s", wrapper.String())
-			}
-			if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
-				t.Fatalf("callback wrapper module is invalid: %v\n%s", err, mod.String())
-			}
-		})
 	}
 }
 
@@ -241,7 +169,7 @@ entry:
 
 	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "arm64"})
 	defer prog.Dispose()
-	NewTransformer(prog, "aarch64-pc-windows-msvc", "", ModeAllFunc, true).TransformModule("test", mod)
+	NewTransformer(prog, "aarch64-pc-windows-msvc", "", true).TransformModule("test", mod)
 
 	ir := mod.String()
 	for _, function := range []string{"callee", "caller"} {
@@ -388,7 +316,7 @@ func TestMSVCAggregateClassification(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: test.goarch})
 			defer prog.Dispose()
-			tr := NewTransformer(prog, test.triple, "", ModeCFunc, true)
+			tr := NewTransformer(prog, test.triple, "", true)
 			ctx := llvm.NewContext()
 			defer ctx.Dispose()
 			test.check(t, ctx, tr)
@@ -432,7 +360,7 @@ func TestWindows386CABILowersGoAggregateToNativeLayout(t *testing.T) {
 	if got, want := nativeType.String(), "{ i8, i64 }"; got != want {
 		t.Fatalf("native aggregate type = %s, want %s", got, want)
 	}
-	tr := NewTransformer(prog, "i686-pc-windows-msvc", "", ModeCFunc, true)
+	tr := NewTransformer(prog, "i686-pc-windows-msvc", "", true)
 	if got, want := tr.td.ElementOffset(goType, 1), uint64(4); got != want {
 		t.Fatalf("Go aggregate second field offset = %d, want %d", got, want)
 	}
@@ -481,16 +409,22 @@ func TestWindows386CABILowersGoAggregateToNativeLayout(t *testing.T) {
 			t.Fatalf("native aggregate array declaration does not contain %q:\n%s", want, arrayLowered)
 		}
 	}
-	for _, name := range []string{"exportRoundTrip", "__llgo_cdecl$example.com/p.callback"} {
+	for _, name := range []string{"exportRoundTrip", "example.com/p.callback"} {
 		fn := mod.NamedFunction(name)
 		if fn.IsNil() {
-			t.Fatalf("missing native aggregate bridge %s:\n%s", name, mod.String())
+			t.Fatalf("missing lowered native aggregate function %s:\n%s", name, mod.String())
 		}
 		for _, want := range []string{"sret({ i8, i64 })", "byval({ i8, i64 }) align 4"} {
 			if got := fn.String(); !strings.Contains(got, want) {
-				t.Fatalf("native aggregate bridge %s does not contain %q:\n%s", name, want, got)
+				t.Fatalf("lowered native aggregate function %s does not contain %q:\n%s", name, want, got)
 			}
 		}
+	}
+	if got := useCallback.String(); !strings.Contains(got, `ptr @"example.com/p.callback"`) {
+		t.Fatalf("lowered callback was not passed directly:\n%s", got)
+	}
+	if legacy := mod.NamedFunction("__llgo_cdecl$example.com/p.callback"); !legacy.IsNil() {
+		t.Fatalf("unexpected legacy callback wrapper:\n%s", legacy.String())
 	}
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("invalid Go/native aggregate bridge: %v\n%s", err, mod.String())
@@ -605,22 +539,22 @@ entry:
 		goarch      string
 		triple      string
 		declaration []string
-		wrapper     []string
+		callback    []string
 	}{
 		{
 			name: "amd64", goarch: "amd64", triple: "x86_64-pc-windows-msvc",
 			declaration: []string{"declare void @cOdd(ptr sret(%Odd)", "ptr)"},
-			wrapper:     []string{"define linkonce void @\"__llgo_cdecl$main.callback\"(ptr sret(%Odd)", "ptr %"},
+			callback:    []string{"define void @main.callback(ptr sret(%Odd)", "ptr %"},
 		},
 		{
 			name: "arm64", goarch: "arm64", triple: "aarch64-pc-windows-msvc",
 			declaration: []string{"declare i24 @cOdd(i64)"},
-			wrapper:     []string{"define linkonce i24 @\"__llgo_cdecl$main.callback\"(i64 %"},
+			callback:    []string{"define i24 @main.callback(i64 %"},
 		},
 		{
 			name: "386", goarch: "386", triple: "i686-pc-windows-msvc",
 			declaration: []string{"declare void @cOdd(ptr sret(%Odd)", "ptr byval(%Odd) align 4"},
-			wrapper:     []string{"define linkonce void @\"__llgo_cdecl$main.callback\"(ptr sret(%Odd)", "ptr byval(%Odd) align 4"},
+			callback:    []string{"define void @main.callback(ptr sret(%Odd)", "ptr byval(%Odd) align 4"},
 		},
 	}
 	for _, test := range tests {
@@ -643,7 +577,7 @@ entry:
 
 			prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: test.goarch})
 			defer prog.Dispose()
-			tr := NewTransformer(prog, test.triple, "", ModeCFunc, true)
+			tr := NewTransformer(prog, test.triple, "", true)
 			tr.TransformModule("test", mod)
 
 			for _, want := range test.declaration {
@@ -651,14 +585,20 @@ entry:
 					t.Fatalf("lowered declaration does not contain %q:\n%s", want, got)
 				}
 			}
-			wrapper := mod.NamedFunction("__llgo_cdecl$main.callback")
-			if wrapper.IsNil() {
-				t.Fatalf("callback wrapper was not generated:\n%s", mod.String())
+			callback := mod.NamedFunction("main.callback")
+			if callback.IsNil() {
+				t.Fatalf("lowered callback was not found:\n%s", mod.String())
 			}
-			for _, want := range test.wrapper {
-				if got := wrapper.String(); !strings.Contains(got, want) {
-					t.Fatalf("lowered callback wrapper does not contain %q:\n%s", want, got)
+			for _, want := range test.callback {
+				if got := callback.String(); !strings.Contains(got, want) {
+					t.Fatalf("lowered callback does not contain %q:\n%s", want, got)
 				}
+			}
+			if legacy := mod.NamedFunction("__llgo_cdecl$main.callback"); !legacy.IsNil() {
+				t.Fatalf("unexpected legacy callback wrapper:\n%s", legacy.String())
+			}
+			if got := mod.NamedFunction("main.passCallback").String(); !strings.Contains(got, "ptr @main.callback") {
+				t.Fatalf("lowered callback was not passed directly:\n%s", got)
 			}
 			if got := mod.NamedFunction("main.call").String(); !strings.Contains(got, "call ") || !strings.Contains(got, "@cOdd(") {
 				t.Fatalf("call site was not preserved and lowered:\n%s", got)
@@ -736,7 +676,7 @@ entry:
 
 	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
 	defer prog.Dispose()
-	NewTransformer(prog, "i686-pc-windows-msvc", "", ModeCFunc, true).TransformModule("test", mod)
+	NewTransformer(prog, "i686-pc-windows-msvc", "", true).TransformModule("test", mod)
 
 	consume := mod.NamedFunction("consume")
 	if got := consume.FunctionCallConv(); got != llvm.X86StdcallCallConv {
@@ -757,27 +697,23 @@ entry:
 	if got := loweredCall.InstructionCallConv(); got != llvm.X86StdcallCallConv {
 		t.Fatalf("lowered call calling convention = %v, want x86_stdcallcc", got)
 	}
-	callbackWrapper := mod.NamedFunction("__llgo_stdcall$main.callback")
-	if callbackWrapper.IsNil() {
-		t.Fatalf("lowered stdcall callback wrapper not found:\n%s", mod.String())
-	}
-	if got := callbackWrapper.FunctionCallConv(); got != llvm.X86StdcallCallConv {
-		t.Fatalf("callback wrapper calling convention = %v, want x86_stdcallcc", got)
-	}
-	var callbackCall llvm.Value
 	callback := mod.NamedFunction("main.callback")
-	for block := callbackWrapper.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
-		for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
-			if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue() == callback {
-				callbackCall = call
-			}
+	if callback.IsNil() {
+		t.Fatalf("lowered stdcall callback not found:\n%s", mod.String())
+	}
+	if got := callback.FunctionCallConv(); got != llvm.X86StdcallCallConv {
+		t.Fatalf("callback calling convention = %v, want x86_stdcallcc", got)
+	}
+	for _, want := range []string{"ptr sret(%Odd)", "ptr byval(%Odd) align 4"} {
+		if got := callback.String(); !strings.Contains(got, want) {
+			t.Fatalf("lowered callback does not contain %q:\n%s", want, got)
 		}
 	}
-	if callbackCall.IsNil() {
-		t.Fatalf("callback wrapper does not call the original callback:\n%s", callbackWrapper.String())
+	if legacy := mod.NamedFunction("__llgo_stdcall$main.callback"); !legacy.IsNil() {
+		t.Fatalf("unexpected legacy stdcall callback wrapper:\n%s", legacy.String())
 	}
-	if got := callbackCall.InstructionCallConv(); got != llvm.X86StdcallCallConv {
-		t.Fatalf("callback wrapper call convention = %v, want x86_stdcallcc", got)
+	if got := caller.String(); !strings.Contains(got, "call void @registerCallback(ptr @main.callback)") {
+		t.Fatalf("lowered stdcall callback was not passed directly:\n%s", got)
 	}
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("MSVC stdcall module is invalid: %v\n%s", err, mod.String())
@@ -834,7 +770,7 @@ entry:
 
 	prog := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "386"})
 	defer prog.Dispose()
-	NewTransformer(prog, "i686-pc-windows-msvc", "", ModeAllFunc, true).TransformModule("test", mod)
+	NewTransformer(prog, "i686-pc-windows-msvc", "", true).TransformModule("test", mod)
 
 	fn := mod.NamedFunction("read")
 	if got := fn.GlobalValueType().ReturnType().String(); got != "i64" {
@@ -930,7 +866,7 @@ entry:
 
 	prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
 	defer prog.Dispose()
-	tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
+	tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", true)
 	tr.TransformModule("test", mod)
 
 	nest := llvm.AttributeKindID("nest")
@@ -965,7 +901,7 @@ entry:
 	}
 }
 
-func TestClosureEnvAttributePreservedByCallbackWrapper(t *testing.T) {
+func TestClosureEnvAttributesPreservedByCABI(t *testing.T) {
 	llvm.InitializeAllTargets()
 	llvm.InitializeAllTargetMCs()
 	llvm.InitializeAllTargetInfos()
@@ -993,7 +929,7 @@ entry:
 				t.Run(attrName, func(t *testing.T) {
 					ctx := llvm.NewContext()
 					defer ctx.Dispose()
-					path := filepath.Join(t.TempDir(), "closure_env_callback.ll")
+					path := filepath.Join(t.TempDir(), "closure_env.ll")
 					ir := strings.NewReplacer(
 						"RETURN", returnCase.typ,
 						"RET", returnCase.ret,
@@ -1014,37 +950,21 @@ entry:
 
 					prog := llssa.NewProgram(&llssa.Target{GOOS: "linux", GOARCH: "amd64"})
 					defer prog.Dispose()
-					tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
-					callback := mod.NamedFunction("callback")
-					wrapper, ok := tr.transformCallbackFunc(mod, callback)
-					if !ok {
-						t.Fatalf("callback wrapper was not required:\n%s", mod.String())
-					}
+					NewTransformer(prog, "amd64-unknown-linux-gnu", "", true).TransformModule("test", mod)
 
+					callback := mod.NamedFunction("callback")
 					kind := llvm.AttributeKindID(attrName)
-					var wrapperHasAttr bool
-					for i := 1; i <= wrapper.GlobalValueType().ParamTypesCount(); i++ {
-						if !wrapper.GetEnumAttributeAtIndex(i, kind).IsNil() {
-							wrapperHasAttr = true
-							break
+					count := 0
+					for i := 1; i <= callback.GlobalValueType().ParamTypesCount(); i++ {
+						if !callback.GetEnumAttributeAtIndex(i, kind).IsNil() {
+							count++
 						}
 					}
-					if !wrapperHasAttr {
-						t.Fatalf("callback wrapper lost/remapped %s:\n%s", attrName, wrapper.String())
-					}
-					var callbackCall llvm.Value
-					for block := wrapper.FirstBasicBlock(); !block.IsNil(); block = llvm.NextBasicBlock(block) {
-						for instruction := block.FirstInstruction(); !instruction.IsNil(); instruction = llvm.NextInstruction(instruction) {
-							if call := instruction.IsACallInst(); !call.IsNil() && call.CalledValue() == callback {
-								callbackCall = call
-							}
-						}
-					}
-					if callbackCall.IsNil() || callbackCall.GetCallSiteEnumAttribute(1, kind).IsNil() {
-						t.Fatalf("callback wrapper call lost %s:\n%s", attrName, wrapper.String())
+					if count != 1 {
+						t.Fatalf("C ABI lowering retained %d %s attributes, want 1:\n%s", count, attrName, callback.String())
 					}
 					if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
-						t.Fatalf("C ABI callback closure-env module is invalid: %v\n%s", err, mod.String())
+						t.Fatalf("C ABI closure-env module is invalid: %v\n%s", err, mod.String())
 					}
 				})
 			}
@@ -1104,7 +1024,7 @@ func TestRuntimeHeaderWrapAndTypeInfo(t *testing.T) {
 
 	prog := llssa.NewProgram(nil)
 	defer prog.Dispose()
-	tr := NewTransformer(prog, "", "", ModeAllFunc, false)
+	tr := NewTransformer(prog, "", "", false)
 
 	ctx := llvm.NewContext()
 	ptr := llvm.PointerType(ctx.Int8Type(), 0)
@@ -1161,7 +1081,7 @@ attributes #0 = { "llgo.reflect.methodbyname"="value" }
 
 	prog := llssa.NewProgram(nil)
 	defer prog.Dispose()
-	tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", ModeAllFunc, true)
+	tr := NewTransformer(prog, "amd64-unknown-linux-gnu", "", true)
 	tr.TransformModule("test", mod)
 
 	caller := mod.NamedFunction("caller")
@@ -1218,7 +1138,7 @@ entry:
 
 	prog := llssa.NewProgram(nil)
 	defer prog.Dispose()
-	tr := NewTransformer(prog, "arm64-apple-darwin", "", ModeAllFunc, true)
+	tr := NewTransformer(prog, "arm64-apple-darwin", "", true)
 	tr.TransformModule("test", mod)
 
 	callee := mod.NamedFunction("callee").String()
