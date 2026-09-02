@@ -301,7 +301,10 @@ case "$(uname -s)" in
         LLGO_IWASM_DIR="$HOME/Library/Caches/llgo/bin"
         ;;
     MINGW*|MSYS*|CYGWIN*)
-        LLGO_IWASM_DIR="$LOCALAPPDATA/llgo/bin"
+        # This script runs under Git Bash. Keep the native cache location,
+        # but convert it before the command is reparsed by eval below;
+        # otherwise backslashes in C:\Users\... are consumed as escapes.
+        LLGO_IWASM_DIR="$(cygpath -u "$LOCALAPPDATA")/llgo/bin"
         IWASM_NAME="iwasm.exe"
         ;;
     *)
