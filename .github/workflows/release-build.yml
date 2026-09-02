@@ -157,6 +157,7 @@ jobs:
             goarch: arm64
             go-mod-version: "1.27"
           - os: ubuntu-latest
+            runner: [qiniu, ubuntu-24.04]
             goos: linux
             goarch: amd64
             go-mod-version: "1.27"
@@ -164,7 +165,7 @@ jobs:
             goos: linux
             goarch: arm64
             go-mod-version: "1.27"
-    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
+    runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies

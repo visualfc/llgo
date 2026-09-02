@@ -51,7 +51,10 @@ jobs:
             windows_arch: amd64
           - os: windows-11-arm
             windows_arch: "386"
-    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
+        include:
+          - os: ubuntu-latest
+            runner: [qiniu, ubuntu-24.04]
+    runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 

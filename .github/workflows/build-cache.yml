@@ -24,6 +24,7 @@ jobs:
           - os: macos-latest
             llvm: 19
           - os: ubuntu-latest
+            runner: [qiniu, ubuntu-24.04]
             llvm: 19
           - os: windows-2022
             llvm: 19
@@ -31,7 +32,7 @@ jobs:
           - os: windows-2022
             llvm: 19
             windows_abi: mingw
-    runs-on: ${{ matrix.os == 'ubuntu-latest' && fromJSON('["qiniu", "ubuntu-24.04"]') || matrix.os }}
+    runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
