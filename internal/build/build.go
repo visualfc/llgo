@@ -1178,8 +1178,9 @@ type context struct {
 	llvmVersion  string
 
 	// go list derived file lists (SFiles, etc.)
-	sfilesCache  map[string][]string // pkg.ID -> absolute .s/.S file paths
-	sfilesFrozen bool
+	sfilesCache    map[string][]string // pkg.ID -> absolute .s/.S file paths
+	sfilesFrozen   bool
+	llgoFilesCache map[*packages.Package][]llgoFileInput
 
 	// plan9asm package policy parsed from env.
 	plan9asmOnce  sync.Once
@@ -3267,27 +3268,48 @@ func WasmRuntime() string {
 }
 
 func concatPkgLinkFiles(ctx *context, pkg *packages.Package, verbose bool) (parts []string) {
-	llgoPkgLinkFiles(ctx, pkg, func(linkFile string) {
-		parts = append(parts, linkFile)
-	}, verbose)
+	for _, input := range llgoPkgFileInputs(ctx, pkg) {
+		clFile(ctx, input.compilerArgs, input.path, pkg.ExportFile, pkg.PkgPath, func(linkFile string) {
+			parts = append(parts, linkFile)
+		}, verbose)
+	}
 	return
 }
 
+type llgoFileInput struct {
+	path         string
+	compilerArgs []string
+}
+
 // const LLGoFiles = "file1; file2; ..."
-func llgoPkgLinkFiles(ctx *context, pkg *packages.Package, procFile func(linkFile string), verbose bool) {
-	if o := pkg.Types.Scope().Lookup("LLGoFiles"); o != nil {
-		val := o.(*types.Const).Val()
-		if val.Kind() == constant.String {
-			clFiles(ctx, constant.StringVal(val), pkg, procFile, verbose)
+func llgoPkgFileInputs(ctx *context, pkg *packages.Package) []llgoFileInput {
+	if inputs, ok := ctx.llgoFilesCache[pkg]; ok {
+		return inputs
+	}
+	if ctx.llgoFilesCache == nil {
+		ctx.llgoFilesCache = make(map[*packages.Package][]llgoFileInput)
+	}
+
+	var inputs []llgoFileInput
+	if pkg.Types != nil {
+		if object, ok := pkg.Types.Scope().Lookup("LLGoFiles").(*types.Const); ok {
+			value := object.Val()
+			if value.Kind() == constant.String {
+				inputs = parseLLGoFileInputs(ctx, constant.StringVal(value), pkg)
+			}
 		}
 	}
+	ctx.llgoFilesCache[pkg] = inputs
+	return inputs
 }
 
 // files = "file1; file2; ..."
 // files = "$(pkg-config --cflags xxx): file1; file2; ..."
-func clFiles(ctx *context, files string, pkg *packages.Package, procFile func(linkFile string), verbose bool) {
+func parseLLGoFileInputs(ctx *context, files string, pkg *packages.Package) []llgoFileInput {
+	if len(pkg.GoFiles) == 0 {
+		return nil
+	}
 	dir := filepath.Dir(pkg.GoFiles[0])
-	expFile := pkg.ExportFile
 	args := make([]string, 0, 16)
 	if strings.HasPrefix(files, "$") { // has cflags
 		if pos := strings.IndexByte(files, ':'); pos > 0 {
@@ -3296,10 +3318,18 @@ func clFiles(ctx *context, files string, pkg *packages.Package, procFile func(li
 			args = append(args, cflags...)
 		}
 	}
+	var inputs []llgoFileInput
 	for _, file := range strings.Split(files, ";") {
-		cFile := filepath.Join(dir, strings.TrimSpace(file))
-		clFile(ctx, args, cFile, expFile, pkg.PkgPath, procFile, verbose)
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+		inputs = append(inputs, llgoFileInput{
+			path:         filepath.Join(dir, file),
+			compilerArgs: slices.Clone(args),
+		})
 	}
+	return inputs
 }
 
 func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFile func(linkFile string), verbose bool) {
@@ -3315,28 +3345,38 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFil
 	// If GenLL is enabled, first emit .ll for debugging, then compile to .o
 	printCmds := ctx.shouldPrintCommands(verbose)
 	if ctx.buildConf.GenLL {
-		llFile := baseName + ".ll"
+		llFile, err := genLLGoFileOutput(cFile, ".ll")
+		check(err)
+		defer os.Remove(llFile)
 		llArgs := append(slices.Clone(args), "-emit-llvm", "-S", "-o", llFile, "-c", cFile)
 		if printCmds {
 			fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", llFile, pkgPath)
 			fmt.Fprintln(os.Stderr, "clang", llArgs)
 		}
 		cmd := ctx.compilerForSource(cFile)
-		err := cmd.Compile(llArgs...)
-		check(err)
+		check(cmd.Compile(llArgs...))
+		check(os.Chmod(llFile, 0o644))
+		check(copyFileAtomic(llFile, baseName+".ll"))
 	}
 
 	// Always compile to .o for linking
-	objFile := baseName + ".o"
+	objFile, err := genLLGoFileOutput(cFile, ".o")
+	check(err)
 	objArgs := append(args, "-o", objFile, "-c", cFile)
 	if printCmds {
 		fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", objFile, pkgPath)
 		fmt.Fprintln(os.Stderr, "clang", objArgs)
 	}
 	cmd := ctx.compilerForSource(cFile)
-	err := cmd.Compile(objArgs...)
-	check(err)
+	if err := cmd.Compile(objArgs...); err != nil {
+		os.Remove(objFile)
+		check(err)
+	}
 	procFile(objFile)
+}
+
+func genLLGoFileOutput(source, ext string) (string, error) {
+	return genTempOutputFile("llgofile-"+filepath.Base(source), ext)
 }
 
 func (c *context) compilerForSource(path string) *clang.Cmd {

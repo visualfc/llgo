@@ -296,6 +296,7 @@ func (ctx *context) newBackendTask(session backendSession) *context {
 		buildTrace:      ctx.buildTrace,
 		sfilesCache:     ctx.sfilesCache,
 		sfilesFrozen:    true,
+		llgoFilesCache:  ctx.llgoFilesCache,
 		plan9asmReady:   true,
 		plan9asmMode:    ctx.plan9asmMode,
 		plan9asmPkgs:    ctx.plan9asmPkgs,

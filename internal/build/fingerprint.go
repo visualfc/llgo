@@ -172,11 +172,13 @@ type packageSection struct {
 	GoFiles     []fileDigest     `yaml:"go_files,omitempty"`
 	AltGoFiles  []fileDigest     `yaml:"alt_go_files,omitempty"`
 	OtherFiles  []fileDigest     `yaml:"other_files,omitempty"`
+	LLGoFiles   []llgoFileDigest `yaml:"llgo_files,omitempty"`
 	RewriteVars orderedStringMap `yaml:"rewrite_vars,omitempty"`
 }
 
 func (s *packageSection) empty() bool {
-	return s.PkgPath == "" && s.PkgID == "" && len(s.GoFiles) == 0 && len(s.AltGoFiles) == 0 && len(s.OtherFiles) == 0 && len(s.RewriteVars) == 0
+	return s.PkgPath == "" && s.PkgID == "" && len(s.GoFiles) == 0 && len(s.AltGoFiles) == 0 &&
+		len(s.OtherFiles) == 0 && len(s.LLGoFiles) == 0 && len(s.RewriteVars) == 0
 }
 
 // manifestBuilder builds manifest text with sorted sections.
@@ -297,6 +299,44 @@ type fileDigest struct {
 	Size        int64  `yaml:"size"`
 	ModTime     int64  `yaml:"mtime"`
 	OverlayHash string `yaml:"overlay_hash,omitempty"`
+}
+
+// llgoFileDigest records the content and per-file flags of an LLGoFiles input.
+// These files are declared through a Go constant, so go list does not include
+// them in OtherFiles and file metadata alone cannot safely key their objects.
+type llgoFileDigest struct {
+	Path         string   `yaml:"path"`
+	ContentHash  string   `yaml:"content_hash"`
+	CompilerArgs []string `yaml:"compiler_args,omitempty"`
+}
+
+func digestLLGoFileInputs(inputs []llgoFileInput, overlay map[string][]byte) ([]llgoFileDigest, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+	digests := make([]llgoFileDigest, 0, len(inputs))
+	for _, input := range inputs {
+		content, ok := overlay[input.path]
+		if !ok {
+			var err error
+			content, err = os.ReadFile(input.path)
+			if err != nil {
+				return nil, fmt.Errorf("read file %q: %w", input.path, err)
+			}
+		}
+		digests = append(digests, llgoFileDigest{
+			Path:         input.path,
+			ContentHash:  digestBytes(content),
+			CompilerArgs: append([]string(nil), input.compilerArgs...),
+		})
+	}
+	sort.Slice(digests, func(i, j int) bool {
+		if digests[i].Path != digests[j].Path {
+			return digests[i].Path < digests[j].Path
+		}
+		return strings.Join(digests[i].CompilerArgs, "\x00") < strings.Join(digests[j].CompilerArgs, "\x00")
+	})
+	return digests, nil
 }
 
 // digestFiles calculates digests for multiple files.

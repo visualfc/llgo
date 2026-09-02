@@ -229,6 +229,16 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 		m.pkg.OtherFiles = otherList
 	}
 
+	llgoInputs := append([]llgoFileInput(nil), llgoPkgFileInputs(c, p)...)
+	if pkg.AltPkg != nil {
+		llgoInputs = append(llgoInputs, llgoPkgFileInputs(c, pkg.AltPkg.Package)...)
+	}
+	llgoFiles, err := digestLLGoFileInputs(llgoInputs, c.buildConf.Overlay)
+	if err != nil {
+		return fmt.Errorf("digest LLGoFiles: %w", err)
+	}
+	m.pkg.LLGoFiles = llgoFiles
+
 	// Rewrite vars
 	if len(pkg.rewriteVars) > 0 {
 		rewrites := make(map[string]string, len(pkg.rewriteVars))
