@@ -20,11 +20,6 @@ var (
 	nextFuncID uint32 = 1
 )
 
-func init() {
-	emval_install_invoke()
-	llruntime.RegisterWasmCallbackPoll(pollCallbacks)
-}
-
 // Func is a wrapped Go function to be called by JavaScript.
 type Func struct {
 	Value // the JavaScript function that invokes the Go function
@@ -44,6 +39,10 @@ type Func struct {
 // Func.Release must be called to free up resources when the function will not be invoked any more.
 func FuncOf(fn func(this Value, args []Value) any) Func {
 	funcsMu.Lock()
+	if len(funcs) == 0 {
+		emval_install_invoke()
+		llruntime.RegisterWasmCallbackPoll(pollCallbacks)
+	}
 	id := nextFuncID
 	nextFuncID++
 	funcs[id] = fn
@@ -84,6 +83,9 @@ func itoa(buf []byte, val uint64) []byte {
 func (c Func) Release() {
 	funcsMu.Lock()
 	delete(funcs, c.id)
+	if len(funcs) == 0 {
+		llruntime.RegisterWasmCallbackPoll(nil)
+	}
 	funcsMu.Unlock()
 }
 
@@ -113,6 +115,12 @@ func dispatchCallback(handle uintptr) {
 }
 
 func pollCallbacks() {
+	// The host sets a byte in wasm memory when it enqueues the first event, so
+	// an idle scheduler does not cross the wasm/JavaScript boundary merely to
+	// inspect an empty JavaScript array.
+	if !emval_has_pending_invoke() {
+		return
+	}
 	for {
 		handle := emval_take_pending_invoke()
 		if handle == 0 {

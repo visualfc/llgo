@@ -26,9 +26,9 @@ type _js struct{}
 type ref uint64
 
 type Value struct {
-	_     [0]func()
+	_     [0]func() // uncomparable; to make == not compile
 	ref   ref
-	gcPtr *ref
+	gcPtr *ref // releases the owned emval handle when Value is unreachable
 }
 
 func floatValue(f float64) Value {

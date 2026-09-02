@@ -16,6 +16,8 @@ const LLGoFiles = "_wrap/host_wasm.c"
 func hostWait(nanoseconds uint64)
 
 // Wait returns control to the host until the requested duration has elapsed.
+// An Emscripten host callback may wake it earlier after publishing runnable
+// work; WASI waits for the full duration.
 func Wait(nanoseconds uint64) {
 	hostWait(nanoseconds)
 }

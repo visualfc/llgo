@@ -8,7 +8,7 @@ import _ "unsafe"
 // to Node/the WASI host and resume before another timer mutation can run. It
 // therefore uses the shared Go-style timer heap without a native mutex. The
 // scheduler calls wasmPollTimers at cooperative scheduling points and
-// wasmNextTimer when it has no runnable G.
+// wasmTimerWait when it has no runnable G.
 
 var (
 	timerSchedulerHeap []*timerState

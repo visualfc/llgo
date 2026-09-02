@@ -8,6 +8,7 @@ node_cmd="${NODE:-node}"
 wasmtime_cmd="${WASMTIME:-wasmtime}"
 scheduler_fixture="${repo_root}/internal/build/testdata/wasm-scheduler"
 timer_fixture="${repo_root}/internal/build/testdata/wasm-timers"
+callback_fixture="${repo_root}/internal/build/testdata/wasm-callback"
 test_fixture="${repo_root}/internal/build/testdata/wasm-test"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/llgo-wasm-single-worker.XXXXXX")"
 trap 'rm -rf "${work_dir}"' EXIT
@@ -109,6 +110,11 @@ expect_failure "fatal error: no goroutines (main called runtime.Goexit) - deadlo
 run_emscripten emscripten emscripten-runner.mjs "${timer_fixture}" "wasm timers ok" "timers-emscripten"
 run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs "${timer_fixture}" "wasm timers ok" "timers-memory64"
 run_wasi wasi "${timer_fixture}" "wasm timers ok" "timers-wasi"
+
+# A registered JS callback is a host wake source even when no Go timer exists.
+# This catches treating an empty timer heap as an immediate deadlock.
+run_emscripten emscripten emscripten-runner.mjs "${callback_fixture}" "wasm callback-only wake ok" "callback-emscripten"
+run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs "${callback_fixture}" "wasm callback-only wake ok" "callback-memory64"
 
 # Keep the legacy named aliases executable while raw js/wasm remains the
 # browser/worker-only compatibility path defined by R0.

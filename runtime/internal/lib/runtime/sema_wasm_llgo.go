@@ -20,6 +20,31 @@ type wasmWaitQueue struct {
 	tail *wasmWaiter
 }
 
+// The single-worker scheduler never manipulates wait queues concurrently.
+// Reuse waiter records after their G resumes, matching the role of the native
+// runtime's sudog cache without adding a lock or an allocation to each park.
+var wasmWaiterFree *wasmWaiter
+
+func acquireWasmWaiter(ticket uint32) *wasmWaiter {
+	w := wasmWaiterFree
+	if w == nil {
+		w = new(wasmWaiter)
+	} else {
+		wasmWaiterFree = w.next
+	}
+	w.next = nil
+	w.waiter = llruntime.CurrentSchedulerWaiter()
+	w.ticket = ticket
+	return w
+}
+
+func releaseWasmWaiter(w *wasmWaiter) {
+	w.waiter = llruntime.SchedulerWaiter{}
+	w.ticket = 0
+	w.next = wasmWaiterFree
+	wasmWaiterFree = w
+}
+
 func (q *wasmWaitQueue) push(w *wasmWaiter, lifo bool) {
 	if lifo {
 		w.next = q.head
@@ -90,9 +115,10 @@ func semaAcquire(addr *uint32, lifo bool) {
 	if value != 0 && atomic.CompareAndSwapUint32(addr, value, value-1) {
 		return
 	}
-	w := &wasmWaiter{waiter: llruntime.CurrentSchedulerWaiter()}
+	w := acquireWasmWaiter(0)
 	semaQueue(addr).push(w, lifo)
 	w.waiter.Park()
+	releaseWasmWaiter(w)
 }
 
 func semaRelease(addr *uint32, handoff bool) {
@@ -234,12 +260,10 @@ func sync_runtime_notifyListWait(l *notifyList, ticket uint32) {
 	if ticketLess(ticket, atomic.LoadUint32(&l.notify)) {
 		return
 	}
-	w := &wasmWaiter{
-		waiter: llruntime.CurrentSchedulerWaiter(),
-		ticket: ticket,
-	}
+	w := acquireWasmWaiter(ticket)
 	notifyQueue(l).push(w, false)
 	w.waiter.Park()
+	releaseWasmWaiter(w)
 }
 
 //go:linkname sync_runtime_notifyListNotifyAll sync.runtime_notifyListNotifyAll

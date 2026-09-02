@@ -54,10 +54,6 @@ func (ctx *Context) Init(entry Entry, arg unsafe.Pointer, stackSize uintptr, all
 	return true
 }
 
-func (ctx *Context) Ready() bool {
-	return ctx.asyncifyStack != nil
-}
-
 func (ctx *Context) Close(free func(unsafe.Pointer)) {
 	freeStorage(ctx.stack, ctx.asyncifyStack, free)
 	*ctx = Context{}

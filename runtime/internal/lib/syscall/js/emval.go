@@ -4,6 +4,7 @@
 package js
 
 import (
+	"runtime"
 	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
@@ -28,7 +29,15 @@ var (
 )
 
 func valueFromEmval(handle uintptr) Value {
-	return Value{ref: ref(handle)}
+	if handle == 0 {
+		return Value{}
+	}
+	p := new(ref)
+	*p = ref(handle)
+	runtime.SetFinalizer(p, func(p *ref) {
+		cEmvalDecref(uintptr(*p))
+	})
+	return Value{ref: *p, gcPtr: p}
 }
 
 func (v Value) emvalHandle() uintptr {
@@ -47,6 +56,7 @@ func emval_get_module_property(name *c.Char) Value {
 }
 
 func emval_install_invoke()              { cEmvalInstallInvoke() }
+func emval_has_pending_invoke() bool     { return cEmvalHasPendingInvoke() }
 func emval_take_pending_invoke() uintptr { return cEmvalTakePendingInvoke() }
 
 func emval_new_double(v float64) Value { return valueFromEmval(cEmvalNewDouble(v)) }
@@ -132,6 +142,9 @@ func cEmvalInstallInvoke()
 
 //go:linkname cEmvalTakePendingInvoke C.llgo_emval_take_pending_invoke
 func cEmvalTakePendingInvoke() uintptr
+
+//go:linkname cEmvalHasPendingInvoke C.llgo_emval_has_pending_invoke
+func cEmvalHasPendingInvoke() bool
 
 //go:linkname cEmvalDecref C.llgo_emval_decref
 func cEmvalDecref(value uintptr)

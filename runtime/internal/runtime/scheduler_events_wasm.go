@@ -5,9 +5,7 @@
 
 package runtime
 
-import (
-	"github.com/xgo-dev/llgo/runtime/internal/wasmevent"
-)
+import "github.com/xgo-dev/llgo/runtime/internal/wasmevent"
 
 var (
 	wasmPollTimersHook   func()
@@ -50,7 +48,15 @@ func waitWasmRunq() *g {
 		}
 		wait, active := wasmTimerWaitHook()
 		if !active {
-			return nil
+			// A registered Emscripten callback can publish runnable work even
+			// when the Go timer heap is empty. Yield for the longest host wait;
+			// llgo_wasm_host_wake interrupts it as soon as an event arrives.
+			// WASI never registers this JS callback hook and retains immediate
+			// deadlock detection in the no-timer case.
+			if wasmCallbackPollHook == nil {
+				return nil
+			}
+			wait = ^uint64(0)
 		}
 		if wait != 0 {
 			wasmevent.Wait(wait)

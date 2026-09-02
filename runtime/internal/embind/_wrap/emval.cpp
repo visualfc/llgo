@@ -1,4 +1,5 @@
 #include <string>
+#include <stdint.h>
 #include <emscripten.h>
 #include <emscripten/val.h>
 #include <emscripten/bind.h>
@@ -100,11 +101,15 @@ EM_VAL llgo_emval_get_module_property(const char *name) {
     return val::module_property(name).release_ownership();
 }
 
-EM_JS(void, llgo_emval_install_invoke, (), {
+static volatile uint8_t llgo_emval_invoke_pending;
+
+EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *pending_flag), {
     const pending = [];
+    const pendingFlag = Number(pending_flag);
     Module['llgoWasmPendingInvokes'] = pending;
     Module['_llgo_invoke'] = function(event) {
         pending.push(event);
+        HEAPU8[pendingFlag] = 1;
         const state = Module['llgoWasmHostWait'];
         if (state !== undefined && state.wake !== undefined) {
             const wake = state.wake;
@@ -115,12 +120,29 @@ EM_JS(void, llgo_emval_install_invoke, (), {
     };
 });
 
+void llgo_emval_install_invoke(void) {
+    llgo_emval_invoke_pending = 0;
+    llgo_emval_install_invoke_js(const_cast<uint8_t *>(&llgo_emval_invoke_pending));
+}
+
+bool llgo_emval_has_pending_invoke(void) {
+    return llgo_emval_invoke_pending != 0;
+}
+
 EM_VAL llgo_emval_take_pending_invoke(void) {
-    val pending = val::module_property("llgoWasmPendingInvokes");
-    if (pending.isUndefined() || pending["length"].as<unsigned>() == 0) {
+    if (llgo_emval_invoke_pending == 0) {
         return 0;
     }
-    return pending.call<val>("shift").release_ownership();
+    val pending = val::module_property("llgoWasmPendingInvokes");
+    if (pending.isUndefined() || pending["length"].as<unsigned>() == 0) {
+        llgo_emval_invoke_pending = 0;
+        return 0;
+    }
+    val event = pending.call<val>("shift");
+    if (pending["length"].as<unsigned>() == 0) {
+        llgo_emval_invoke_pending = 0;
+    }
+    return event.release_ownership();
 }
 
 EM_VAL llgo_emval_new_double(double v) {

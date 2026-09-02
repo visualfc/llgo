@@ -55,8 +55,9 @@ void llgo_wasm_host_wait(uint64_t nanoseconds) {
 		milliseconds++;
 	}
 #if defined(__EMSCRIPTEN__)
-	if (milliseconds > UINT32_MAX) {
-		milliseconds = UINT32_MAX;
+	/* JavaScript engines accept setTimeout delays up to signed 32-bit max. */
+	if (milliseconds > INT_MAX) {
+		milliseconds = INT_MAX;
 	}
 	/*
 	 * Yield through Asyncify until either the deadline expires or a host

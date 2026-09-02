@@ -62,10 +62,6 @@ func (ctx *Context) InitCurrent(alloc func(uintptr) unsafe.Pointer) bool {
 	return true
 }
 
-func (ctx *Context) Ready() bool {
-	return ctx.asyncifyStack != nil
-}
-
 func (ctx *Context) Close(free func(unsafe.Pointer)) {
 	freeStorage(ctx.stack, ctx.asyncifyStack, free)
 	*ctx = Context{}
