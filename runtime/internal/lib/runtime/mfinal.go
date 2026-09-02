@@ -48,16 +48,20 @@ type finalizerEntry struct {
 	explicitEnv bool
 }
 
+// BDWGC may invoke a callback during an allocation made while mu is held, so
+// the callback queue must use an independent lock.
 var finalizerState struct {
-	once psync.Once
-	mu   psync.Mutex // protects m, head, and tail
-	m    map[uintptr]*finalizerEntry
-	head *finalizerEntry
-	tail *finalizerEntry
+	once    psync.Once
+	mu      psync.Mutex // protects m
+	queueMu psync.Mutex // protects head and tail
+	m       map[uintptr]*finalizerEntry
+	head    *finalizerEntry
+	tail    *finalizerEntry
 }
 
 func initFinalizerState() {
 	finalizerState.mu.Init(nil)
+	finalizerState.queueMu.Init(nil)
 	finalizerState.m = make(map[uintptr]*finalizerEntry)
 }
 
@@ -201,7 +205,7 @@ func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
 	// releases its allocation lock before invoking client finalizers, including
 	// from its default allocation-time path, so serialize queue publication
 	// with concurrent drainers.
-	finalizerState.mu.Lock()
+	finalizerState.queueMu.Lock()
 	// Keep the object alive until runFinalizers invokes the Go finalizer. The
 	// mutex publishes these writes together with the queue entry.
 	if state == finalizerInterfaceState {
@@ -217,7 +221,7 @@ func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
 		finalizerState.tail.next = entry
 		finalizerState.tail = entry
 	}
-	finalizerState.mu.Unlock()
+	finalizerState.queueMu.Unlock()
 }
 
 func restoreFinalizer(ptr unsafe.Pointer, entry *finalizerEntry) {
@@ -233,10 +237,10 @@ func restoreFinalizer(ptr unsafe.Pointer, entry *finalizerEntry) {
 func runFinalizers() {
 	finalizerState.once.Do(initFinalizerState)
 	for {
-		finalizerState.mu.Lock()
+		finalizerState.queueMu.Lock()
 		entry := finalizerState.head
 		if entry == nil {
-			finalizerState.mu.Unlock()
+			finalizerState.queueMu.Unlock()
 			return
 		}
 		finalizerState.head = entry.next
@@ -244,8 +248,11 @@ func runFinalizers() {
 			finalizerState.tail = nil
 		}
 		entry.next = nil
+		finalizerState.queueMu.Unlock()
+
 		// A later SetFinalizer may already have installed a replacement entry
 		// for the same object key; do not delete that newer entry.
+		finalizerState.mu.Lock()
 		if finalizerState.m[entry.key] == entry {
 			delete(finalizerState.m, entry.key)
 		}
