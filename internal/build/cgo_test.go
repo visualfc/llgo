@@ -338,6 +338,79 @@ import "unsafe"
 	}
 }
 
+func buildCgoTestFile(t *testing.T, dir, preamble string) (*ast.File, *aPackage, *context) {
+	t.Helper()
+	src := "package demo\n\n/*\n" + preamble + "\n*/\nimport \"unsafe\"\n"
+	goFile := filepath.Join(dir, "demo.go")
+	if err := os.WriteFile(goFile, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, goFile, src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := &aPackage{Package: &packages.Package{
+		Fset:       fset,
+		PkgPath:    "example.com/demo",
+		ExportFile: filepath.Join(dir, "demo.a"),
+	}}
+	ctx := &context{
+		conf:      &packages.Config{},
+		buildConf: &Config{Goos: runtime.GOOS, Goarch: runtime.GOARCH},
+		commands: commandEnv{
+			dir:     dir,
+			environ: os.Environ(),
+		},
+	}
+	return file, pkg, ctx
+}
+
+func TestBuildCgoCompilesSourcesAndPreambles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "extra.c"), []byte("int extra_value = 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file, pkg, ctx := buildCgoTestFile(t, dir, "int preamble_value = 2;")
+	objects, _, err := buildCgo(ctx, pkg, []*ast.File{file}, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer removeFiles(objects)
+	if len(objects) != 2 {
+		t.Fatalf("buildCgo objects = %v, want source and preamble objects", objects)
+	}
+	for _, object := range objects {
+		if _, err := os.Stat(object); err != nil {
+			t.Fatalf("compiled object %q: %v", object, err)
+		}
+	}
+}
+
+func TestBuildCgoReportsSourceAndPreambleCompileErrors(t *testing.T) {
+	t.Run("source", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "broken.c"), []byte("this is not C;\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		file, pkg, ctx := buildCgoTestFile(t, dir, "")
+		if _, _, err := buildCgo(ctx, pkg, []*ast.File{file}, nil, false); err == nil {
+			t.Fatal("buildCgo unexpectedly compiled an invalid C source")
+		}
+	})
+
+	t.Run("preamble assembly", func(t *testing.T) {
+		dir := t.TempDir()
+		// Clang accepts this during the syntax and preprocessor probes used to
+		// discover cgo symbols, but its assembler rejects the directive when
+		// clFile performs the real object compilation.
+		file, pkg, ctx := buildCgoTestFile(t, dir, `__asm__(".llgo_invalid_directive");`)
+		if _, _, err := buildCgo(ctx, pkg, []*ast.File{file}, nil, false); err == nil {
+			t.Fatal("buildCgo unexpectedly compiled an invalid preamble directive")
+		}
+	})
+}
+
 func TestParseCgoCollectsCXXFiles(t *testing.T) {
 	dir := t.TempDir()
 	src := `package demo

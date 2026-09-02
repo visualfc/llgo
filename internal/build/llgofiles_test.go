@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,6 +94,11 @@ func TestLLGoFileInputsFrozenCache(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("frozen LLGoFiles cache hit = %#v, want %#v", got, want)
 	}
+
+	other := llgoFilesTestPackage(t, t.TempDir(), "other.c")
+	if _, err := llgoPkgFileInputs(ctx, other); err == nil {
+		t.Fatal("nonempty frozen LLGoFiles cache miss unexpectedly succeeded")
+	}
 }
 
 func TestLLGoFilesFingerprintUsesContent(t *testing.T) {
@@ -149,6 +155,170 @@ func TestLLGoFileOutputsAreProcessPrivate(t *testing.T) {
 	if first == second {
 		t.Fatalf("two LLGoFiles compilations selected the same object path %q", first)
 	}
+}
+
+func llgoFilesBuildContext(dir string, genLL bool) *context {
+	return &context{
+		conf:      &packages.Config{},
+		buildConf: &Config{GenLL: genLL},
+		commands: commandEnv{
+			dir:     dir,
+			environ: os.Environ(),
+		},
+	}
+}
+
+func TestLLGoFileCompilationLifecycle(t *testing.T) {
+	t.Run("GenLL success", func(t *testing.T) {
+		dir := t.TempDir()
+		source := filepath.Join(dir, "wrap.c")
+		if err := os.WriteFile(source, []byte("int answer(void) { return 42; }\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		exportFile := filepath.Join(dir, "fixture.a")
+		object, err := clFile(llgoFilesBuildContext(dir, true), nil, source, exportFile, "example.com/fixture", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(object)
+		published := exportFile + filepath.Base(source) + ".ll"
+		defer os.Remove(published)
+		if info, err := os.Stat(published); err != nil {
+			t.Fatal(err)
+		} else if info.Mode().Perm() != 0o644 {
+			t.Fatalf("published LLVM IR mode = %o, want 644", info.Mode().Perm())
+		}
+	})
+
+	t.Run("temporary output errors", func(t *testing.T) {
+		blocker := filepath.Join(t.TempDir(), "not-a-directory")
+		if err := os.WriteFile(blocker, []byte("block"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+			t.Setenv(key, blocker)
+		}
+		for _, tt := range []struct {
+			name   string
+			genLL  bool
+			needle string
+		}{
+			{name: "LLVM IR", genLL: true, needle: "temporary LLVM IR output"},
+			{name: "object", needle: "temporary object output"},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				ctx := llgoFilesBuildContext("", tt.genLL)
+				if _, err := clFile(ctx, nil, "wrap.c", "fixture.a", "example.com/fixture", false); err == nil || !strings.Contains(err.Error(), tt.needle) {
+					t.Fatalf("clFile error = %v, want %q", err, tt.needle)
+				}
+			})
+		}
+	})
+
+	t.Run("LLVM IR compile error", func(t *testing.T) {
+		dir := t.TempDir()
+		source := filepath.Join(dir, "broken.c")
+		if err := os.WriteFile(source, []byte("this is not C;\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := clFile(llgoFilesBuildContext(dir, true), nil, source, filepath.Join(dir, "fixture.a"), "example.com/fixture", false); err == nil || !strings.Contains(err.Error(), "to LLVM IR") {
+			t.Fatalf("clFile error = %v, want LLVM IR compile error", err)
+		}
+	})
+
+	t.Run("LLVM IR publish error", func(t *testing.T) {
+		dir := t.TempDir()
+		source := filepath.Join(dir, "wrap.c")
+		if err := os.WriteFile(source, []byte("int answer(void) { return 42; }\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		blocker := filepath.Join(dir, "not-a-directory")
+		if err := os.WriteFile(blocker, []byte("block"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := clFile(llgoFilesBuildContext(dir, true), nil, source, blocker+string(os.PathSeparator), "example.com/fixture", false); err == nil || !strings.Contains(err.Error(), "publish LLVM IR") {
+			t.Fatalf("clFile error = %v, want publish error", err)
+		}
+	})
+
+	t.Run("object compile error", func(t *testing.T) {
+		dir := t.TempDir()
+		source := filepath.Join(dir, "broken.c")
+		if err := os.WriteFile(source, []byte("this is not C;\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := clFile(llgoFilesBuildContext(dir, false), nil, source, filepath.Join(dir, "fixture.a"), "example.com/fixture", false); err == nil || !strings.Contains(err.Error(), "compile ") {
+			t.Fatalf("clFile error = %v, want object compile error", err)
+		}
+	})
+}
+
+func TestConcatPkgLinkFilesCleansPartialOutputs(t *testing.T) {
+	dir := t.TempDir()
+	valid := filepath.Join(dir, "valid.c")
+	if err := os.WriteFile(valid, []byte("int answer(void) { return 42; }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkg := llgoFilesTestPackage(t, dir, "valid.c;missing.c")
+	ctx := llgoFilesBuildContext(dir, false)
+	ctx.llgoFilesCache = map[*packages.Package][]llgoFileInput{
+		pkg: {
+			{path: valid},
+			{path: filepath.Join(dir, "missing.c")},
+		},
+	}
+	parts, err := concatPkgLinkFiles(ctx, pkg, false)
+	if err == nil {
+		t.Fatal("concatPkgLinkFiles unexpectedly succeeded")
+	}
+	if len(parts) != 1 {
+		t.Fatalf("partial outputs = %v, want one compiled object", parts)
+	}
+	if _, statErr := os.Stat(parts[0]); !os.IsNotExist(statErr) {
+		t.Fatalf("partial object was not removed: %v", statErr)
+	}
+
+	frozen := &context{llgoFilesFrozen: true}
+	if _, err := concatPkgLinkFiles(frozen, pkg, false); err == nil {
+		t.Fatal("concatPkgLinkFiles accepted an unprepared frozen cache")
+	}
+}
+
+func TestCollectPackageInputsReportsLLGoFilesErrors(t *testing.T) {
+	t.Run("primary list", func(t *testing.T) {
+		pkg := llgoFilesTestPackage(t, t.TempDir(), "wrap.c")
+		ctx := &context{buildConf: &Config{}, llgoFilesFrozen: true}
+		err := ctx.collectPackageInputs(newManifestBuilder(), &aPackage{Package: pkg})
+		if err == nil || !strings.Contains(err.Error(), "list LLGoFiles") {
+			t.Fatalf("collectPackageInputs error = %v, want primary list error", err)
+		}
+	})
+
+	t.Run("alternate list", func(t *testing.T) {
+		pkg := llgoFilesTestPackage(t, t.TempDir(), "wrap.c")
+		alt := llgoFilesTestPackage(t, t.TempDir(), "alt.c")
+		ctx := &context{
+			buildConf:       &Config{},
+			llgoFilesCache:  map[*packages.Package][]llgoFileInput{pkg: nil},
+			llgoFilesFrozen: true,
+		}
+		err := ctx.collectPackageInputs(newManifestBuilder(), &aPackage{
+			Package: pkg,
+			AltPkg:  &packages.Cached{Package: alt},
+		})
+		if err == nil || !strings.Contains(err.Error(), "list alternate LLGoFiles") {
+			t.Fatalf("collectPackageInputs error = %v, want alternate list error", err)
+		}
+	})
+
+	t.Run("digest", func(t *testing.T) {
+		pkg := llgoFilesTestPackage(t, t.TempDir(), "missing.c")
+		ctx := &context{buildConf: &Config{}}
+		err := ctx.collectPackageInputs(newManifestBuilder(), &aPackage{Package: pkg})
+		if err == nil || !strings.Contains(err.Error(), "digest LLGoFiles") {
+			t.Fatalf("collectPackageInputs error = %v, want digest error", err)
+		}
+	})
 }
 
 func TestCleanupTemporaryObjFilesPreservesOtherMembers(t *testing.T) {
