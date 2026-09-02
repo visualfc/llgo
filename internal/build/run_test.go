@@ -155,6 +155,20 @@ func TestRunNativeTestProgramsSequential(t *testing.T) {
 	}
 }
 
+func TestRunNativeTestProgramsCompileOnly(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	result := runNativeTestPrograms(commandEnv{}, []testProgram{{
+		app:     filepath.Join(t.TempDir(), "must-not-run"),
+		pkgName: "compile-only",
+	}}, &Config{CompileOnly: true}, &stdout, &stderr)
+	if result != (testRunResult{}) {
+		t.Fatalf("runNativeTestPrograms result = %+v, want no execution", result)
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("compile-only test produced output: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
 func TestRunTestProgramsLimitAndFailure(t *testing.T) {
 	started := make(chan struct{}, 4)
 	release := make(chan struct{})
