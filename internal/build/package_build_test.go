@@ -557,6 +557,7 @@ func TestNewBackendTaskUsesPackageLocalState(t *testing.T) {
 		commands:        commandEnv{dir: t.TempDir()},
 		frontendOptions: cl.Options{Debug: true},
 		sfilesCache:     map[string][]string{"example.com/p": {"asm.s"}},
+		llgoFilesCache:  make(map[*packages.Package][]llgoFileInput),
 		plan9asmReady:   true,
 		plan9asmMode:    plan9asmEnvSelected,
 		plan9asmPkgs:    map[string]bool{"example.com/p": true},
@@ -569,9 +570,15 @@ func TestNewBackendTaskUsesPackageLocalState(t *testing.T) {
 	if task.buildConf != coordinator.buildConf || task.conf != coordinator.conf {
 		t.Fatal("backend task did not retain immutable build inputs")
 	}
-	if !task.sfilesFrozen || !task.plan9asmReady || task.plan9asmMode != plan9asmEnvSelected {
+	if !task.sfilesFrozen || !task.llgoFilesFrozen || !task.plan9asmReady || task.plan9asmMode != plan9asmEnvSelected {
 		t.Fatalf("backend task state = %+v", task)
 	}
+	probe := &packages.Package{ID: "example.com/probe"}
+	task.llgoFilesCache[probe] = nil
+	if _, ok := coordinator.llgoFilesCache[probe]; !ok {
+		t.Fatal("backend task did not retain the prepared LLGoFiles cache")
+	}
+	delete(task.llgoFilesCache, probe)
 	if !task.frontendOptions.Debug || task.commands.dir != coordinator.commands.dir {
 		t.Fatal("backend task lost invocation settings")
 	}

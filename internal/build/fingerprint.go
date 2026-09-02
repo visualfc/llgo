@@ -310,23 +310,31 @@ type llgoFileDigest struct {
 	CompilerArgs []string `yaml:"compiler_args,omitempty"`
 }
 
-func digestLLGoFileInputs(inputs []llgoFileInput, overlay map[string][]byte) ([]llgoFileDigest, error) {
+func digestLLGoFileInputs(ctx *context, inputs []llgoFileInput, overlay map[string][]byte) ([]llgoFileDigest, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
+	if ctx.llgoFileHashCache == nil {
+		ctx.llgoFileHashCache = make(map[string]string)
+	}
 	digests := make([]llgoFileDigest, 0, len(inputs))
 	for _, input := range inputs {
-		content, ok := overlay[input.path]
+		contentHash, ok := ctx.llgoFileHashCache[input.path]
 		if !ok {
-			var err error
-			content, err = os.ReadFile(input.path)
-			if err != nil {
-				return nil, fmt.Errorf("read file %q: %w", input.path, err)
+			content, overlaid := overlay[input.path]
+			if !overlaid {
+				var err error
+				content, err = os.ReadFile(input.path)
+				if err != nil {
+					return nil, fmt.Errorf("read file %q: %w", input.path, err)
+				}
 			}
+			contentHash = digestBytes(content)
+			ctx.llgoFileHashCache[input.path] = contentHash
 		}
 		digests = append(digests, llgoFileDigest{
 			Path:         input.path,
-			ContentHash:  digestBytes(content),
+			ContentHash:  contentHash,
 			CompilerArgs: append([]string(nil), input.compilerArgs...),
 		})
 	}

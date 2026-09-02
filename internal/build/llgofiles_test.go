@@ -52,7 +52,10 @@ func TestLLGoFileInputsResolvePathsAndFlags(t *testing.T) {
 	dir := t.TempDir()
 	pkg := llgoFilesTestPackage(t, dir, "$LLGO_TEST_CFLAGS: wrap.c; ; wrap.S")
 	ctx := &context{commands: commandEnv{environ: []string{"LLGO_TEST_CFLAGS=-DVALUE=1"}}}
-	inputs := llgoPkgFileInputs(ctx, pkg)
+	inputs, err := llgoPkgFileInputs(ctx, pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(inputs) != 2 {
 		t.Fatalf("LLGoFiles inputs = %#v, want two files", inputs)
 	}
@@ -65,8 +68,30 @@ func TestLLGoFileInputsResolvePathsAndFlags(t *testing.T) {
 		}
 	}
 	pkg.GoFiles = nil
-	if inputs := llgoPkgFileInputs(&context{}, pkg); len(inputs) != 0 {
+	inputs, err = llgoPkgFileInputs(&context{}, pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs) != 0 {
 		t.Fatalf("LLGoFiles inputs without a package source directory = %#v, want none", inputs)
+	}
+}
+
+func TestLLGoFileInputsFrozenCache(t *testing.T) {
+	pkg := llgoFilesTestPackage(t, t.TempDir(), "wrap.c")
+	ctx := &context{llgoFilesFrozen: true}
+	if _, err := llgoPkgFileInputs(ctx, pkg); err == nil {
+		t.Fatal("frozen LLGoFiles cache miss unexpectedly succeeded")
+	}
+
+	want := []llgoFileInput{{path: "cached.c"}}
+	ctx.llgoFilesCache = map[*packages.Package][]llgoFileInput{pkg: want}
+	got, err := llgoPkgFileInputs(ctx, pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("frozen LLGoFiles cache hit = %#v, want %#v", got, want)
 	}
 }
 
@@ -77,9 +102,7 @@ func TestLLGoFilesFingerprintUsesContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg := llgoFilesTestPackage(t, dir, "wrap.c")
-	ctx := &context{buildConf: &Config{}}
-
-	fingerprint := func() (string, llgoFileDigest) {
+	fingerprint := func(ctx *context) (string, llgoFileDigest) {
 		manifest := newManifestBuilder()
 		if err := ctx.collectPackageInputs(manifest, &aPackage{Package: pkg}); err != nil {
 			t.Fatal(err)
@@ -90,7 +113,7 @@ func TestLLGoFilesFingerprintUsesContent(t *testing.T) {
 		return manifest.Fingerprint(), manifest.pkg.LLGoFiles[0]
 	}
 
-	before, beforeFile := fingerprint()
+	before, beforeFile := fingerprint(&context{buildConf: &Config{}})
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +126,7 @@ func TestLLGoFilesFingerprintUsesContent(t *testing.T) {
 	if err := os.Chtimes(path, time.Unix(0, info.ModTime().UnixNano()), time.Unix(0, info.ModTime().UnixNano())); err != nil {
 		t.Fatal(err)
 	}
-	after, afterFile := fingerprint()
+	after, afterFile := fingerprint(&context{buildConf: &Config{}})
 	if before == after {
 		t.Fatal("LLGoFiles content change did not change the package fingerprint")
 	}
@@ -128,13 +151,36 @@ func TestLLGoFileOutputsAreProcessPrivate(t *testing.T) {
 	}
 }
 
+func TestCleanupTemporaryObjFilesPreservesOtherMembers(t *testing.T) {
+	dir := t.TempDir()
+	temporary := filepath.Join(dir, "temporary.o")
+	stable := filepath.Join(dir, "stable.o")
+	for _, path := range []string{temporary, stable} {
+		if err := os.WriteFile(path, []byte("object"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pkg := &aPackage{ObjFiles: []string{temporary, stable}, tempObjFiles: []string{temporary}}
+	pkg.cleanupTemporaryObjFiles()
+	if _, err := os.Stat(temporary); !os.IsNotExist(err) {
+		t.Fatalf("temporary object still exists: %v", err)
+	}
+	if _, err := os.Stat(stable); err != nil {
+		t.Fatalf("stable archive member was removed: %v", err)
+	}
+	if pkg.tempObjFiles != nil {
+		t.Fatalf("temporary object tracking = %#v, want nil", pkg.tempObjFiles)
+	}
+}
+
 func TestDigestLLGoFileInputsEdges(t *testing.T) {
-	if digests, err := digestLLGoFileInputs(nil, nil); err != nil || digests != nil {
+	ctx := &context{}
+	if digests, err := digestLLGoFileInputs(ctx, nil, nil); err != nil || digests != nil {
 		t.Fatalf("empty digests = %#v, %v; want nil, nil", digests, err)
 	}
 
 	path := filepath.Join(t.TempDir(), "overlay.c")
-	digests, err := digestLLGoFileInputs([]llgoFileInput{
+	digests, err := digestLLGoFileInputs(ctx, []llgoFileInput{
 		{path: path, compilerArgs: []string{"-DZ=1"}},
 		{path: path, compilerArgs: []string{"-DA=1"}},
 	}, map[string][]byte{path: []byte("overlay content")})
@@ -147,7 +193,30 @@ func TestDigestLLGoFileInputsEdges(t *testing.T) {
 	}
 
 	missing := filepath.Join(t.TempDir(), "missing.c")
-	if _, err := digestLLGoFileInputs([]llgoFileInput{{path: missing}}, nil); err == nil {
+	if _, err := digestLLGoFileInputs(ctx, []llgoFileInput{{path: missing}}, nil); err == nil {
 		t.Fatal("digesting a missing LLGoFiles input unexpectedly succeeded")
+	}
+}
+
+func TestDigestLLGoFileInputsMemoizesContent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cached.c")
+	if err := os.WriteFile(path, []byte("int value = 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &context{}
+	inputs := []llgoFileInput{{path: path}}
+	first, err := digestLLGoFileInputs(ctx, inputs, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	second, err := digestLLGoFileInputs(ctx, inputs, nil)
+	if err != nil {
+		t.Fatalf("memoized digest re-read removed input: %v", err)
+	}
+	if !reflect.DeepEqual(second, first) {
+		t.Fatalf("memoized digest = %#v, want %#v", second, first)
 	}
 }

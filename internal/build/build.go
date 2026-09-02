@@ -1178,9 +1178,11 @@ type context struct {
 	llvmVersion  string
 
 	// go list derived file lists (SFiles, etc.)
-	sfilesCache    map[string][]string // pkg.ID -> absolute .s/.S file paths
-	sfilesFrozen   bool
-	llgoFilesCache map[*packages.Package][]llgoFileInput
+	sfilesCache       map[string][]string // pkg.ID -> absolute .s/.S file paths
+	sfilesFrozen      bool
+	llgoFilesCache    map[*packages.Package][]llgoFileInput
+	llgoFilesFrozen   bool
+	llgoFileHashCache map[string]string // absolute path -> content digest
 
 	// plan9asm package policy parsed from env.
 	plan9asmOnce  sync.Once
@@ -1379,6 +1381,7 @@ func normalizeToArchive(ctx *context, aPkg *aPackage, verbose bool) error {
 		return fmt.Errorf("create archive for %s: %w", aPkg.PkgPath, err)
 	}
 
+	aPkg.cleanupTemporaryObjFiles()
 	aPkg.ObjFiles = nil
 	aPkg.ArchiveFile = archivePath
 	return nil
@@ -2470,8 +2473,12 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 	if err != nil {
 		return fmt.Errorf("build cgo of %v failed: %v", pkgPath, err)
 	}
-	aPkg.ObjFiles = append(aPkg.ObjFiles, cgoLLFiles...)
-	aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, pkg, printCmds)...)
+	aPkg.appendTemporaryObjFiles(cgoLLFiles...)
+	llgoFiles, err := concatPkgLinkFiles(ctx, pkg, printCmds)
+	if err != nil {
+		return fmt.Errorf("build LLGoFiles of %v failed: %w", pkgPath, err)
+	}
+	aPkg.appendTemporaryObjFiles(llgoFiles...)
 	if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.Package.Syntax, printCmds); err != nil {
 		return err
 	} else {
@@ -2484,8 +2491,12 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		if e != nil {
 			return fmt.Errorf("build cgo of %v failed: %v", pkgPath, e)
 		}
-		aPkg.ObjFiles = append(aPkg.ObjFiles, altLLFiles...)
-		aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, aPkg.AltPkg.Package, printCmds)...)
+		aPkg.appendTemporaryObjFiles(altLLFiles...)
+		altLLGoFiles, err := concatPkgLinkFiles(ctx, aPkg.AltPkg.Package, printCmds)
+		if err != nil {
+			return fmt.Errorf("build alternate LLGoFiles of %v failed: %w", pkgPath, err)
+		}
+		aPkg.appendTemporaryObjFiles(altLLGoFiles...)
 		if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.AltPkg.Syntax, printCmds); err != nil {
 			return err
 		} else {
@@ -2840,17 +2851,30 @@ type aPackage struct {
 	NeedRt     bool
 	NeedPyInit bool
 
-	LinkArgs    []string
-	ObjFiles    []string               // file-backed archive members: .o or .ll
-	ObjBuffers  []packageArchiveBuffer // LLVM-produced in-memory archive members
-	ArchiveFile string                 // archive file: .a (output of archiver, used for linking)
-	Meta        *meta.PackageMeta
-	rewriteVars map[string]string
+	LinkArgs     []string
+	ObjFiles     []string               // file-backed archive members: .o or .ll
+	ObjBuffers   []packageArchiveBuffer // LLVM-produced in-memory archive members
+	ArchiveFile  string                 // archive file: .a (output of archiver, used for linking)
+	Meta         *meta.PackageMeta
+	rewriteVars  map[string]string
+	tempObjFiles []string // process-private C/C++/assembly objects consumed by ArchiveFile
 
 	// Cache related fields
 	Fingerprint string // fingerprint digest
 	Manifest    string // manifest text content
 	CacheHit    bool   // whether cache was hit
+}
+
+func (p *aPackage) appendTemporaryObjFiles(files ...string) {
+	p.ObjFiles = append(p.ObjFiles, files...)
+	p.tempObjFiles = append(p.tempObjFiles, files...)
+}
+
+func (p *aPackage) cleanupTemporaryObjFiles() {
+	for _, file := range p.tempObjFiles {
+		_ = os.Remove(file)
+	}
+	p.tempObjFiles = nil
 }
 
 type Package = *aPackage
@@ -3267,13 +3291,24 @@ func WasmRuntime() string {
 	return defaultEnv(llgoWasmRuntime, defaultWasmRuntime)
 }
 
-func concatPkgLinkFiles(ctx *context, pkg *packages.Package, verbose bool) (parts []string) {
-	for _, input := range llgoPkgFileInputs(ctx, pkg) {
-		clFile(ctx, input.compilerArgs, input.path, pkg.ExportFile, pkg.PkgPath, func(linkFile string) {
-			parts = append(parts, linkFile)
-		}, verbose)
+func concatPkgLinkFiles(ctx *context, pkg *packages.Package, verbose bool) (parts []string, err error) {
+	inputs, err := llgoPkgFileInputs(ctx, pkg)
+	if err != nil {
+		return nil, err
 	}
-	return
+	defer func() {
+		if err != nil {
+			removeFiles(parts)
+		}
+	}()
+	for _, input := range inputs {
+		linkFile, compileErr := clFile(ctx, input.compilerArgs, input.path, pkg.ExportFile, pkg.PkgPath, verbose)
+		if compileErr != nil {
+			return parts, compileErr
+		}
+		parts = append(parts, linkFile)
+	}
+	return parts, nil
 }
 
 type llgoFileInput struct {
@@ -3282,12 +3317,18 @@ type llgoFileInput struct {
 }
 
 // const LLGoFiles = "file1; file2; ..."
-func llgoPkgFileInputs(ctx *context, pkg *packages.Package) []llgoFileInput {
-	if inputs, ok := ctx.llgoFilesCache[pkg]; ok {
-		return inputs
-	}
+func llgoPkgFileInputs(ctx *context, pkg *packages.Package) ([]llgoFileInput, error) {
 	if ctx.llgoFilesCache == nil {
+		if ctx.llgoFilesFrozen {
+			return nil, fmt.Errorf("package %s LLGoFiles were not prepared before backend execution", pkg.PkgPath)
+		}
 		ctx.llgoFilesCache = make(map[*packages.Package][]llgoFileInput)
+	}
+	if inputs, ok := ctx.llgoFilesCache[pkg]; ok {
+		return inputs, nil
+	}
+	if ctx.llgoFilesFrozen {
+		return nil, fmt.Errorf("package %s LLGoFiles were not prepared before backend execution", pkg.PkgPath)
 	}
 
 	var inputs []llgoFileInput
@@ -3300,7 +3341,7 @@ func llgoPkgFileInputs(ctx *context, pkg *packages.Package) []llgoFileInput {
 		}
 	}
 	ctx.llgoFilesCache[pkg] = inputs
-	return inputs
+	return inputs, nil
 }
 
 // files = "file1; file2; ..."
@@ -3332,7 +3373,7 @@ func parseLLGoFileInputs(ctx *context, files string, pkg *packages.Package) []ll
 	return inputs
 }
 
-func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFile func(linkFile string), verbose bool) {
+func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, verbose bool) (string, error) {
 	baseName := expFile + filepath.Base(cFile)
 	ext := filepath.Ext(cFile)
 	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
@@ -3346,7 +3387,9 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFil
 	printCmds := ctx.shouldPrintCommands(verbose)
 	if ctx.buildConf.GenLL {
 		llFile, err := genLLGoFileOutput(cFile, ".ll")
-		check(err)
+		if err != nil {
+			return "", fmt.Errorf("create temporary LLVM IR output for %s: %w", cFile, err)
+		}
 		defer os.Remove(llFile)
 		llArgs := append(slices.Clone(args), "-emit-llvm", "-S", "-o", llFile, "-c", cFile)
 		if printCmds {
@@ -3354,14 +3397,23 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFil
 			fmt.Fprintln(os.Stderr, "clang", llArgs)
 		}
 		cmd := ctx.compilerForSource(cFile)
-		check(cmd.Compile(llArgs...))
-		check(os.Chmod(llFile, 0o644))
-		check(copyFileAtomic(llFile, baseName+".ll"))
+		if err := cmd.Compile(llArgs...); err != nil {
+			return "", fmt.Errorf("compile %s to LLVM IR: %w", cFile, err)
+		}
+		published := baseName + ".ll"
+		if err := copyFileAtomic(llFile, published); err != nil {
+			return "", fmt.Errorf("publish LLVM IR for %s: %w", cFile, err)
+		}
+		if err := os.Chmod(published, 0o644); err != nil {
+			return "", fmt.Errorf("set LLVM IR permissions for %s: %w", cFile, err)
+		}
 	}
 
 	// Always compile to .o for linking
 	objFile, err := genLLGoFileOutput(cFile, ".o")
-	check(err)
+	if err != nil {
+		return "", fmt.Errorf("create temporary object output for %s: %w", cFile, err)
+	}
 	objArgs := append(args, "-o", objFile, "-c", cFile)
 	if printCmds {
 		fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", objFile, pkgPath)
@@ -3369,10 +3421,16 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFil
 	}
 	cmd := ctx.compilerForSource(cFile)
 	if err := cmd.Compile(objArgs...); err != nil {
-		os.Remove(objFile)
-		check(err)
+		_ = os.Remove(objFile)
+		return "", fmt.Errorf("compile %s: %w", cFile, err)
 	}
-	procFile(objFile)
+	return objFile, nil
+}
+
+func removeFiles(files []string) {
+	for _, file := range files {
+		_ = os.Remove(file)
+	}
 }
 
 func genLLGoFileOutput(source, ext string) (string, error) {

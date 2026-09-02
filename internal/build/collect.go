@@ -229,11 +229,19 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 		m.pkg.OtherFiles = otherList
 	}
 
-	llgoInputs := append([]llgoFileInput(nil), llgoPkgFileInputs(c, p)...)
-	if pkg.AltPkg != nil {
-		llgoInputs = append(llgoInputs, llgoPkgFileInputs(c, pkg.AltPkg.Package)...)
+	llgoInputs, err := llgoPkgFileInputs(c, p)
+	if err != nil {
+		return fmt.Errorf("list LLGoFiles: %w", err)
 	}
-	llgoFiles, err := digestLLGoFileInputs(llgoInputs, c.buildConf.Overlay)
+	llgoInputs = append([]llgoFileInput(nil), llgoInputs...)
+	if pkg.AltPkg != nil {
+		altInputs, err := llgoPkgFileInputs(c, pkg.AltPkg.Package)
+		if err != nil {
+			return fmt.Errorf("list alternate LLGoFiles: %w", err)
+		}
+		llgoInputs = append(llgoInputs, altInputs...)
+	}
+	llgoFiles, err := digestLLGoFileInputs(c, llgoInputs, c.buildConf.Overlay)
 	if err != nil {
 		return fmt.Errorf("digest LLGoFiles: %w", err)
 	}
