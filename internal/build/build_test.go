@@ -1023,10 +1023,10 @@ func TestExtest(t *testing.T) {
 		t.Errorf("PASS count = %d, want 4; output:\n%s", count, got)
 	}
 	for _, pkg := range []string{
-		"github.com/goplus/llgo/cl/_testgo/runextest",
-		"github.com/goplus/llgo/cl/_testgo/runextest/bar",
-		"github.com/goplus/llgo/cl/_testgo/runextest/bar/barinner",
-		"github.com/goplus/llgo/cl/_testgo/runextest/foo",
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest",
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest/bar",
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest/bar/barinner",
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest/foo",
 	} {
 		if !strings.Contains(got, "ok  \t"+pkg+"\n") {
 			t.Errorf("output does not contain result for %s:\n%s", pkg, got)

@@ -69,7 +69,7 @@ func TestLinkInitialPackagePropagatesOutputCreationError(t *testing.T) {
 	ctx := &context{initial: []*packages.Package{{}, {}}}
 	conf := multiBuildConfig()
 	conf.Mode = ModeRun
-	err := linkInitialPackage(ctx, &packages.Package{PkgPath: "example.com/tool"}, nil, conf, false, false)
+	_, err := linkInitialPackage(ctx, &packages.Package{PkgPath: "example.com/tool"}, nil, conf, false, false)
 	if err == nil {
 		t.Fatalf("temporary output creation error = %v", err)
 	}
