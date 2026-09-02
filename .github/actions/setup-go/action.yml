@@ -12,6 +12,13 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Configure Go environment
+      shell: bash
+      run: |
+        echo "GOPATH=${GITHUB_WORKSPACE}/.cache/go" >> "$GITHUB_ENV"
+        echo "GOMODCACHE=${GITHUB_WORKSPACE}/.cache/go/pkg/mod" >> "$GITHUB_ENV"
+        echo "GOCACHE=/tmp/go-build-cache" >> "$GITHUB_ENV"
+
     - name: Set up the LLGo build toolchain
       if: inputs.go-version == ''
       uses: actions/setup-go@v7
