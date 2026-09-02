@@ -1447,7 +1447,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		if v, ok := p.bvals[iv]; ok {
 			return v
 		}
-		log.Panicln("unreachable:", iv)
+		// Do not format iv through its String method here. An incomplete SSA
+		// instruction can panic while formatting, hiding this compiler error and,
+		// on affected Windows hosts, turning the diagnostic into a hardware fault.
+		log.Panicf("unreachable: %T\n", iv)
 	}
 	switch v := iv.(type) {
 	case *ssa.Call:

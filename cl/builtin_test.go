@@ -20,6 +20,7 @@
 package cl
 
 import (
+	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/token"
@@ -623,8 +624,16 @@ func TestErrCompileValue(t *testing.T) {
 
 func TestErrCompileInstrOrValue(t *testing.T) {
 	defer func() {
-		if r := recover(); r == nil {
+		r := recover()
+		if r == nil {
 			t.Fatal("compileInstrOrValue: no error?")
+		}
+		got := fmt.Sprint(r)
+		if !strings.Contains(got, "unreachable: *ssa.Call") {
+			t.Fatalf("compileInstrOrValue error = %q", got)
+		}
+		if strings.Contains(got, "PANIC=String method") {
+			t.Fatalf("compileInstrOrValue formatted the malformed SSA value: %q", got)
 		}
 	}()
 	ctx := &context{
