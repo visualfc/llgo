@@ -5,6 +5,8 @@ package targets
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -285,6 +287,50 @@ func TestResolverWithRealTargets(t *testing.T) {
 			t.Logf("Resolved target %s: LLVM=%s, CPU=%s, GOOS=%s, GOARCH=%s",
 				targetName, config.LLVMTarget, config.CPU, config.GOOS, config.GOARCH)
 		}
+	}
+}
+
+func TestWebAssemblyProfileTargets(t *testing.T) {
+	resolver := NewDefaultResolver()
+	tests := []struct {
+		name, llvmTarget, goos, goarch, wasmABI string
+		wantTags                                []string
+	}{
+		{"emscripten", "wasm32-unknown-emscripten", "js", "wasm", "emscripten", []string{"llgo.wasm.emscripten"}},
+		{"emscripten-memory64", "wasm64-unknown-emscripten", "js", "wasm", "emscripten-memory64", []string{"llgo.wasm.emscripten", "llgo.wasm.emscripten.memory64"}},
+		{"wasm", "wasm32-unknown-emscripten", "js", "wasm", "emscripten", []string{"llgo.wasm.emscripten", "tinygo.wasm"}},
+		{"wasi", "wasm32-unknown-wasip1", "wasip1", "wasm", "wasi-preview1", []string{"llgo.wasm.wasi"}},
+		{"wasip1", "wasm32-unknown-wasip1", "wasip1", "wasm", "wasi-preview1", []string{"llgo.wasm.wasi", "tinygo.wasm"}},
+		{"wasm-unknown", "wasm32-unknown-unknown", "linux", "arm", "freestanding", []string{"llgo.wasm.freestanding", "tinygo.wasm", "wasm_unknown"}},
+		{"wasip2", "wasm32-unknown-wasi", "linux", "arm", "wasi-preview2", []string{"llgo.wasm.wasi", "tinygo.wasm", "wasip2"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config, err := resolver.Resolve(test.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.LLVMTarget != test.llvmTarget || config.GOOS != test.goos ||
+				config.GOARCH != test.goarch || config.WasmABI != test.wasmABI {
+				t.Fatalf("profile = LLVM %q, %s/%s, ABI %q; want LLVM %q, %s/%s, ABI %q",
+					config.LLVMTarget, config.GOOS, config.GOARCH, config.WasmABI,
+					test.llvmTarget, test.goos, test.goarch, test.wasmABI)
+			}
+			for _, tag := range test.wantTags {
+				if !slices.Contains(config.BuildTags, tag) {
+					t.Errorf("build tags %v do not contain %q", config.BuildTags, tag)
+				}
+			}
+			if strings.HasPrefix(test.name, "emscripten") || test.name == "wasm" {
+				wantRunner := "emscripten-runner.mjs"
+				if test.name == "emscripten-memory64" {
+					wantRunner = "emscripten-memory64-runner.mjs"
+				}
+				if !strings.Contains(config.Emulator, wantRunner) {
+					t.Errorf("emulator %q does not instantiate Emscripten module output", config.Emulator)
+				}
+			}
+		})
 	}
 }
 

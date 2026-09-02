@@ -57,6 +57,13 @@ Other targets may not provide every OS service or implementation-specific runtim
 | WebAssembly | `js/wasm` and `wasip1/wasm` builds; WASI and Emscripten CI coverage |
 | Embedded | [`-target`](doc/Embedded_Cmd.md) configurations for supported boards and MCUs, with selected QEMU/emulator smoke tests |
 
+Named WebAssembly targets select an ecosystem C ABI independently of the Go
+source tags: `-target emscripten` (and the legacy `-target wasm` alias) emits an
+ES module plus its sibling wasm32 module, `-target emscripten-memory64` emits the
+same pair with an LP64 C data model, and `-target wasi`/`-target wasip1` emits a
+WASI Preview 1 module. Raw `GOOS=js/wasip1 GOARCH=wasm` remains a separate
+compatibility path reserved for convergence with the standard Go platform ABI.
+
 
 ## C/C++ support
 
@@ -165,8 +172,7 @@ func main() {
 
 Additional demos are available in the `_demo` directory (prefixed with `_` so the `go` command skips them):
 
-* [hello](_demo/c/hello/hello.go): call C `printf` to print `Hello world`
-* [concat](_demo/c/concat/concat.go): call C `fprintf` with `stderr`
+* [hello](_demo/c/hello/main.go): call C `printf` and `fprintf` with Go and C strings
 * [qsort](_demo/c/qsort/qsort.go): call a C function that takes a callback (e.g. `qsort`)
 
 To run a demo (see [How to install](#how-to-install) if `llgo` isn't installed yet):
@@ -291,15 +297,13 @@ Here we define two 3x3 matrices a and b, add them to get x, and then print the r
 
 The `_demo/py/` directory contains some python related demos:
 
-* [callpy](_demo/py/callpy/callpy.go): call Python standard library function `math.sqrt`
-* [pi](_demo/py/pi/pi.go): print python constants `math.pi`
-* [statistics](_demo/py/statistics/statistics.go): define a python list and call `statistics.mean` to get the mean
-* [matrix](_demo/py/matrix/matrix.go): a basic `numpy` demo
+* [basic](_demo/py/basic/main.go): call Python math, statistics, variadic builtin, iterator, and print APIs
+* [scientific](_demo/py/matrix/matrix.go): convert nested lists through NumPy and PyTorch
 
 To run these demos (If you haven't installed `llgo` yet, please refer to [How to install](#how-to-install)):
 
 ```sh
-cd <demo-directory>  # eg. cd _demo/py/callpy
+cd <demo-directory>  # eg. cd _demo/py/basic
 llgo run .
 ```
 

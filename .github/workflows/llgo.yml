@@ -655,6 +655,14 @@ jobs:
         with:
           version: "4.0.21"
 
+      - name: Set up Node for Emscripten Memory64
+        # Emscripten 4.0.21's Memory64 glue rejects Node versions older than
+        # 23. setup-emsdk currently bundles Node 22, so select an active LTS
+        # runtime explicitly for execution without changing emcc itself.
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
 
@@ -662,6 +670,13 @@ jobs:
         run: |
           dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Test WebAssembly target profiles
+        shell: bash
+        env:
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+          LLGO_BUILD_CACHE: "off"
+        run: dev/test_wasm_target_profiles.sh
 
       - name: Build standard runtime for wasm
         shell: bash

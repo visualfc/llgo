@@ -1,3 +1,8 @@
 {
-    "inherits": ["wasip1"]
+	"llvm-target": "wasm32-unknown-wasip1",
+	"build-tags": ["llgo.wasm.wasi"],
+	"goos": "wasip1",
+	"goarch": "wasm",
+	"wasm-abi": "wasi-preview1",
+	"emulator": "wasmtime run --dir={tmpDir}::/tmp {}"
 }

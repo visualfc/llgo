@@ -102,6 +102,28 @@ func TestCollectFingerprint(t *testing.T) {
 	}
 }
 
+func TestWasmABISeparatesPackageFingerprints(t *testing.T) {
+	fingerprint := func(abi crosscompile.WasmABI) (*commonSection, string) {
+		ctx := &context{
+			buildConf:    &Config{Goos: "js", Goarch: "wasm", Target: "emscripten"},
+			crossCompile: crosscompile.Export{WasmABI: abi},
+		}
+		manifest := newManifestBuilder()
+		ctx.collectCommonInputs(manifest)
+		return &manifest.common, manifest.Fingerprint()
+	}
+
+	wasm32, fp32 := fingerprint(crosscompile.WasmABIEmscripten)
+	wasm64, fp64 := fingerprint(crosscompile.WasmABIEmscriptenMemory64)
+	if wasm32.WasmABI != string(crosscompile.WasmABIEmscripten) ||
+		wasm64.WasmABI != string(crosscompile.WasmABIEmscriptenMemory64) {
+		t.Fatalf("manifest WASM_ABI fields = %q, %q", wasm32.WasmABI, wasm64.WasmABI)
+	}
+	if fp32 == fp64 {
+		t.Fatal("Emscripten wasm32 and Memory64 reused the same package fingerprint")
+	}
+}
+
 func TestNativeToolchainIdentityParticipatesInFingerprint(t *testing.T) {
 	base := crosscompile.Export{
 		CC:             "clang",
