@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -185,8 +186,16 @@ func TestLLGoFileCompilationLifecycle(t *testing.T) {
 		defer os.Remove(published)
 		if info, err := os.Stat(published); err != nil {
 			t.Fatal(err)
-		} else if info.Mode().Perm() != 0o644 {
-			t.Fatalf("published LLVM IR mode = %o, want 644", info.Mode().Perm())
+		} else {
+			wantMode := os.FileMode(0o644)
+			if runtime.GOOS == "windows" {
+				// Windows records only the read-only attribute, so os.Stat reports
+				// every writable regular file as 0666 even after Chmod(0644).
+				wantMode = 0o666
+			}
+			if got := info.Mode().Perm(); got != wantMode {
+				t.Fatalf("published LLVM IR mode = %o, want %o", got, wantMode)
+			}
 		}
 	})
 
