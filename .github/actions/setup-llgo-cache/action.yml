@@ -62,9 +62,15 @@ runs:
         esac
 
         profile="${LLGO_WINDOWS_ABI:-native}-${LLGO_WINDOWS_ARCH:-native}"
+        clang_version="$(clang --version | sed -nE '1s/.*version ([0-9]+([.][0-9]+)+).*/\1/p')"
+        if [ -z "$clang_version" ]; then
+          echo "Unable to determine the active Clang version" >&2
+          exit 1
+        fi
         echo "root=$cache_root" >> "$GITHUB_OUTPUT"
         echo "profile=$profile" >> "$GITHUB_OUTPUT"
         echo "go-version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+        echo "clang-version=$clang_version" >> "$GITHUB_OUTPUT"
 
     # Cross-compilation downloads are versioned by their destination names.
     # Keep them independent from package objects so a compiler commit does not
@@ -74,14 +80,14 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: ${{ steps.llgo_cache.outputs.root }}/crosscompile
-        key: llgo-crosscompile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/crosscompile/**/*.go') }}
+        key: llgo-crosscompile-v1-${{ runner.os }}-${{ runner.arch }}-clang-${{ steps.llgo_cache.outputs.clang-version }}-${{ hashFiles('internal/crosscompile/**/*.go') }}
 
     - name: Cache LLGo cross-compilation downloads
       if: inputs.crosscompile-cache-mode == 'readwrite'
       uses: actions/cache@v6
       with:
         path: ${{ steps.llgo_cache.outputs.root }}/crosscompile
-        key: llgo-crosscompile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/crosscompile/**/*.go') }}
+        key: llgo-crosscompile-v1-${{ runner.os }}-${{ runner.arch }}-clang-${{ steps.llgo_cache.outputs.clang-version }}-${{ hashFiles('internal/crosscompile/**/*.go') }}
 
     # Build entries already contain source and toolchain fingerprints. Keep one
     # exact snapshot per main commit: pull requests reuse their base snapshot,
@@ -92,14 +98,14 @@ runs:
       uses: actions/cache/restore@v6
       with:
         path: ${{ steps.llgo_cache.outputs.root }}/build
-        key: llgo-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ steps.llgo_cache.outputs.go-version }}-${{ github.event.pull_request.base.sha || github.sha }}
+        key: llgo-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ steps.llgo_cache.outputs.go-version }}-clang-${{ steps.llgo_cache.outputs.clang-version }}-${{ github.event.pull_request.base.sha || github.sha }}
 
     - name: Cache LLGo package builds
       if: inputs.build-cache-mode == 'readwrite'
       uses: actions/cache@v6
       with:
         path: ${{ steps.llgo_cache.outputs.root }}/build
-        key: llgo-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ steps.llgo_cache.outputs.go-version }}-${{ github.event.pull_request.base.sha || github.sha }}
+        key: llgo-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ steps.llgo_cache.outputs.go-version }}-clang-${{ steps.llgo_cache.outputs.clang-version }}-${{ github.event.pull_request.base.sha || github.sha }}
 
     - name: Restore WAMR
       if: inputs.wamr-cache-mode == 'restore'
