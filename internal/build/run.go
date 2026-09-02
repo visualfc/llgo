@@ -199,11 +199,6 @@ func runNative(ctx *context, app, pkgDir, pkgName string, conf *Config, mode Mod
 		if s := cmd.ProcessState; s != nil {
 			mockable.Exit(s.ExitCode())
 		}
-	case ModeTest:
-		program := testProgram{app: app, pkgDir: pkgDir, pkgName: pkgName}
-		if err := runNativeTest(ctx.commands, program, conf, os.Stdout, os.Stderr); err != nil {
-			ctx.testFail = true
-		}
 	case ModeCmpTest:
 		cmpTest(ctx.commands, pkgDir, pkgName, app, conf.GenExpect, conf.RunArgs)
 	}

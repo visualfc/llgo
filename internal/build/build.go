@@ -177,8 +177,9 @@ type Config struct {
 	// go/packages. Callers use internal/goflags to parse supported compiler and
 	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
-	// BuildParallelism is the package-level concurrency requested by Go's -p
-	// build flag. Zero uses the Go default, GOMAXPROCS.
+	// BuildParallelism is the package-build and test-run concurrency requested
+	// by Go's -p build flag. The two phases do not overlap. Zero uses the Go
+	// default, GOMAXPROCS.
 	BuildParallelism int
 	// BuildTrace is an optional Chrome Trace Event JSON output path. Relative
 	// paths are resolved from the build invocation directory.
@@ -186,9 +187,11 @@ type Config struct {
 	// TestRunSequential disables concurrent test binary execution when test
 	// flags share output paths or otherwise require one active binary.
 	TestRunSequential bool
-	TestFailFast      bool
-	TestJSON          bool
-	LinkOptions       LinkOptions
+	// TestFailFast stops launching test binaries after the first failure.
+	TestFailFast bool
+	// TestJSON suppresses parent-generated plain-text success summaries.
+	TestJSON    bool
+	LinkOptions LinkOptions
 	// OmitDWARFByDefault controls linked builds only when -w was not
 	// explicitly specified. Explicit -w and -w=false always win.
 	OmitDWARFByDefault bool
@@ -859,7 +862,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// attempted above and their link errors are returned together.
 	fallback = nil
 	ctx.disposeBackendPrograms()
-	if len(linkErrs) == 0 && len(testPrograms) != 0 {
+	if mode == ModeTest && len(linkErrs) == 0 && len(testPrograms) != 0 {
 		result := runNativeTestPrograms(ctx.commands, testPrograms, conf, os.Stdout, os.Stderr)
 		ctx.testFail = result.failed
 		if result.skipped != 0 {
