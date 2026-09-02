@@ -20,27 +20,31 @@ runs:
     - name: Resolve LLGo cache profile
       id: llgo_cache
       shell: bash
+      env:
+        BUILD_CACHE_MODE: ${{ inputs.build-cache-mode }}
+        CROSSCOMPILE_CACHE_MODE: ${{ inputs.crosscompile-cache-mode }}
+        WAMR_CACHE_MODE: ${{ inputs.wamr-cache-mode }}
       run: |
         set -euo pipefail
 
-        case "${{ inputs.build-cache-mode }}" in
+        case "$BUILD_CACHE_MODE" in
           off|restore|readwrite) ;;
           *)
-            echo "Unsupported LLGo build cache mode: ${{ inputs.build-cache-mode }}" >&2
+            echo "Unsupported LLGo build cache mode: $BUILD_CACHE_MODE" >&2
             exit 1
             ;;
         esac
-        case "${{ inputs.crosscompile-cache-mode }}" in
+        case "$CROSSCOMPILE_CACHE_MODE" in
           off|restore|readwrite) ;;
           *)
-            echo "Unsupported cross-compilation cache mode: ${{ inputs.crosscompile-cache-mode }}" >&2
+            echo "Unsupported cross-compilation cache mode: $CROSSCOMPILE_CACHE_MODE" >&2
             exit 1
             ;;
         esac
-        case "${{ inputs.wamr-cache-mode }}" in
+        case "$WAMR_CACHE_MODE" in
           off|restore|readwrite) ;;
           *)
-            echo "Unsupported WAMR cache mode: ${{ inputs.wamr-cache-mode }}" >&2
+            echo "Unsupported WAMR cache mode: $WAMR_CACHE_MODE" >&2
             exit 1
             ;;
         esac

@@ -293,18 +293,22 @@ run_test_suite "native" \
     "" \
     "$BUILD_TEMP_DIR/buildcache.out"
 
-# Run WASM tests - always use iwasm from llgo cache directory
-# Determine cache directory based on platform
-if [ "$(uname -s)" = "Darwin" ]; then
-    LLGO_IWASM_DIR="$HOME/Library/Caches/llgo/bin"
-else
-    LLGO_IWASM_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/llgo/bin"
-fi
-
-LLGO_IWASM="$LLGO_IWASM_DIR/iwasm"
+# Run WASM tests - always use iwasm from the os.UserCacheDir-compatible
+# location shared with dev/build_iwasm.sh.
+IWASM_NAME="iwasm"
 case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) LLGO_IWASM+=".exe" ;;
+    Darwin)
+        LLGO_IWASM_DIR="$HOME/Library/Caches/llgo/bin"
+        ;;
+    MINGW*|MSYS*|CYGWIN*)
+        LLGO_IWASM_DIR="$LOCALAPPDATA/llgo/bin"
+        IWASM_NAME="iwasm.exe"
+        ;;
+    *)
+        LLGO_IWASM_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/llgo/bin"
+        ;;
 esac
+LLGO_IWASM="$LLGO_IWASM_DIR/$IWASM_NAME"
 
 # Build iwasm if it doesn't exist in llgo cache
 if [ ! -f "$LLGO_IWASM" ]; then

@@ -585,7 +585,7 @@ jobs:
       - name: Restore LLGo and cache WAMR
         uses: ./.github/actions/setup-llgo-cache
         with:
-          wamr-cache-mode: readwrite
+          wamr-cache-mode: ${{ github.event_name == 'push' && 'readwrite' || 'restore' }}
 
       - name: Install WAMR
         shell: bash
