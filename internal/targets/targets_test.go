@@ -331,6 +331,14 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 					t.Errorf("emulator %q does not instantiate Emscripten module output", config.Emulator)
 				}
 			}
+			if test.name == "wasi" || test.name == "wasip1" {
+				// R1 translates LLVM's legacy Wasm SjLj encoding to standardized
+				// exnref instructions after Asyncify instrumentation. Wasmtime keeps
+				// that proposal opt-in, so the inherited public emulator must enable it.
+				if !strings.Contains(config.Emulator, "-W exceptions=y") {
+					t.Errorf("emulator %q does not enable the exception proposal", config.Emulator)
+				}
+			}
 		})
 	}
 }
