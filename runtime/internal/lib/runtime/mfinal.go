@@ -48,19 +48,17 @@ type finalizerEntry struct {
 	explicitEnv bool
 }
 
-// BDWGC may invoke a callback during an allocation made while mu is held, so
-// the callback queue must use an independent lock.
 var finalizerState struct {
-	once    psync.Once
-	mu      psync.Mutex // protects m
-	queueMu psync.Mutex // protects head and tail
-	m       map[uintptr]*finalizerEntry
-	head    *finalizerEntry
-	tail    *finalizerEntry
+	once       psync.Once
+	registryMu psync.Mutex // protects m
+	queueMu    psync.Mutex // protects queue state and callback argument publication
+	m          map[uintptr]*finalizerEntry
+	head       *finalizerEntry
+	tail       *finalizerEntry
 }
 
 func initFinalizerState() {
-	finalizerState.mu.Init(nil)
+	finalizerState.registryMu.Init(nil)
 	finalizerState.queueMu.Init(nil)
 	finalizerState.m = make(map[uintptr]*finalizerEntry)
 }
@@ -81,13 +79,13 @@ func SetFinalizer(obj any, finalizer any) {
 	finalizerState.once.Do(initFinalizerState)
 	key := hideFinalizerPtr(objPtr)
 
-	finalizerState.mu.Lock()
+	finalizerState.registryMu.Lock()
 	if old := finalizerState.m[key]; old != nil {
 		atomic.Store(&old.state, finalizerStopped)
 		delete(finalizerState.m, key)
 		restoreFinalizer(objPtr, old)
 	}
-	finalizerState.mu.Unlock()
+	finalizerState.registryMu.Unlock()
 
 	finalizerFace := (*eface)(unsafe.Pointer(&finalizer))
 	if finalizerFace._type == nil {
@@ -124,9 +122,9 @@ func SetFinalizer(obj any, finalizer any) {
 	entry.prevFn = oldFn
 	entry.prevCb = oldCb
 
-	finalizerState.mu.Lock()
+	finalizerState.registryMu.Lock()
 	finalizerState.m[key] = entry
-	finalizerState.mu.Unlock()
+	finalizerState.registryMu.Unlock()
 }
 
 func prepareFinalizerArgument(objType, argType *abi.Type) (*ffi.Type, unsafe.Pointer, bool) {
@@ -205,6 +203,8 @@ func setFinalizerCallback(ptr unsafe.Pointer, cb unsafe.Pointer) {
 	// releases its allocation lock before invoking client finalizers, including
 	// from its default allocation-time path, so serialize queue publication
 	// with concurrent drainers.
+	// Do not acquire registryMu here: this callback may run during an allocation
+	// made while registryMu is held.
 	finalizerState.queueMu.Lock()
 	// Keep the object alive until runFinalizers invokes the Go finalizer. The
 	// mutex publishes these writes together with the queue entry.
@@ -252,16 +252,18 @@ func runFinalizers() {
 
 		// A later SetFinalizer may already have installed a replacement entry
 		// for the same object key; do not delete that newer entry.
-		finalizerState.mu.Lock()
+		finalizerState.registryMu.Lock()
 		if finalizerState.m[entry.key] == entry {
 			delete(finalizerState.m, entry.key)
 		}
-		finalizerState.mu.Unlock()
+		finalizerState.registryMu.Unlock()
 
 		state := atomic.Load(&entry.state)
 		if state != finalizerStopped {
 			callFinalizer(entry, state == finalizerInterfaceState)
 		}
+		// A finalizerEntry is registered and dequeued at most once, so no
+		// callback can race this release of its retained argument.
 		entry.arg = nil
 	}
 }
