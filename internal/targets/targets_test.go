@@ -317,6 +317,9 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 					config.LLVMTarget, config.GOOS, config.GOARCH, config.WasmABI,
 					test.llvmTarget, test.goos, test.goarch, test.wasmABI)
 			}
+			if config.CPU != "generic" {
+				t.Errorf("CPU = %q, want generic", config.CPU)
+			}
 			for _, tag := range test.wantTags {
 				if !slices.Contains(config.BuildTags, tag) {
 					t.Errorf("build tags %v do not contain %q", config.BuildTags, tag)

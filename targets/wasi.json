@@ -1,5 +1,6 @@
 {
 	"llvm-target": "wasm32-unknown-wasip1",
+	"cpu": "generic",
 	"build-tags": ["llgo.wasm.wasi"],
 	"goos": "wasip1",
 	"goarch": "wasm",

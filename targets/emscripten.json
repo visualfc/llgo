@@ -1,5 +1,6 @@
 {
 	"llvm-target": "wasm32-unknown-emscripten",
+	"cpu": "generic",
 	"build-tags": ["llgo.wasm.emscripten"],
 	"goos": "js",
 	"goarch": "wasm",
