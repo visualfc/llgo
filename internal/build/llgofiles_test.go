@@ -50,7 +50,7 @@ func llgoFilesTestPackage(t *testing.T, dir, value string) *packages.Package {
 
 func TestLLGoFileInputsResolvePathsAndFlags(t *testing.T) {
 	dir := t.TempDir()
-	pkg := llgoFilesTestPackage(t, dir, "$LLGO_TEST_CFLAGS: wrap.c; wrap.S")
+	pkg := llgoFilesTestPackage(t, dir, "$LLGO_TEST_CFLAGS: wrap.c; ; wrap.S")
 	ctx := &context{commands: commandEnv{environ: []string{"LLGO_TEST_CFLAGS=-DVALUE=1"}}}
 	inputs := llgoPkgFileInputs(ctx, pkg)
 	if len(inputs) != 2 {
@@ -63,6 +63,10 @@ func TestLLGoFileInputsResolvePathsAndFlags(t *testing.T) {
 		if got, want := inputs[i].compilerArgs, []string{"-DVALUE=1"}; !reflect.DeepEqual(got, want) {
 			t.Errorf("input %d compiler args = %q, want %q", i, got, want)
 		}
+	}
+	pkg.GoFiles = nil
+	if inputs := llgoPkgFileInputs(&context{}, pkg); len(inputs) != 0 {
+		t.Fatalf("LLGoFiles inputs without a package source directory = %#v, want none", inputs)
 	}
 }
 
@@ -121,5 +125,29 @@ func TestLLGoFileOutputsAreProcessPrivate(t *testing.T) {
 	defer os.Remove(second)
 	if first == second {
 		t.Fatalf("two LLGoFiles compilations selected the same object path %q", first)
+	}
+}
+
+func TestDigestLLGoFileInputsEdges(t *testing.T) {
+	if digests, err := digestLLGoFileInputs(nil, nil); err != nil || digests != nil {
+		t.Fatalf("empty digests = %#v, %v; want nil, nil", digests, err)
+	}
+
+	path := filepath.Join(t.TempDir(), "overlay.c")
+	digests, err := digestLLGoFileInputs([]llgoFileInput{
+		{path: path, compilerArgs: []string{"-DZ=1"}},
+		{path: path, compilerArgs: []string{"-DA=1"}},
+	}, map[string][]byte{path: []byte("overlay content")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(digests) != 2 || !reflect.DeepEqual(digests[0].CompilerArgs, []string{"-DA=1"}) ||
+		digests[0].ContentHash != digestBytes([]byte("overlay content")) {
+		t.Fatalf("overlay digests = %#v", digests)
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing.c")
+	if _, err := digestLLGoFileInputs([]llgoFileInput{{path: missing}}, nil); err == nil {
+		t.Fatal("digesting a missing LLGoFiles input unexpectedly succeeded")
 	}
 }
