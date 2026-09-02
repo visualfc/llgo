@@ -1,16 +1,9 @@
 name: "Setup Embedded Dependencies"
-description: "Install dependencies required for embedded QEMU tests"
+description: "Install embedded QEMU dependencies after the common LLGo dependencies"
 
 runs:
   using: "composite"
   steps:
-    - name: Refresh Homebrew metadata on Apple Silicon
-      if: runner.os == 'macOS' && runner.arch == 'ARM64'
-      shell: bash
-      env:
-        HOMEBREW_NO_AUTO_UPDATE: 1
-      run: brew update
-
     - name: Install macOS embedded dependencies
       if: runner.os == 'macOS'
       shell: bash
@@ -18,15 +11,15 @@ runs:
         HOMEBREW_NO_AUTO_UPDATE: 1
         HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
       run: |
-        # Preserve runner-provided packages on Intel, where Homebrew no longer
-        # guarantees bottles. Apple Silicon refreshes metadata in the step above.
+        # setup-deps runs before this action and refreshes Homebrew metadata on
+        # Apple Silicon. Do not repeat that network operation here.
         brew list --versions sdl2 >/dev/null || brew install sdl2
 
     - name: Install Ubuntu embedded dependencies
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        sudo apt-get update
+        # setup-deps has already refreshed apt metadata in every caller.
         sudo apt-get install -y libsdl2-2.0-0 libslirp0
 
     - name: Cache ESP QEMU toolchains

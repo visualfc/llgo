@@ -1,0 +1,116 @@
+name: "Set up LLGo CI cache"
+description: "Restore LLGo package builds, cross-compilation toolchains, and WAMR"
+inputs:
+  build-cache-mode:
+    description: "LLGo package build cache mode: off, restore, or readwrite"
+    required: false
+    default: "restore"
+  crosscompile-cache-mode:
+    description: "Cross-compilation download cache mode: off, restore, or readwrite"
+    required: false
+    default: "restore"
+  wamr-cache-mode:
+    description: "WAMR cache mode: off, restore, or readwrite"
+    required: false
+    default: "off"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve LLGo cache profile
+      id: llgo_cache
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        case "${{ inputs.build-cache-mode }}" in
+          off|restore|readwrite) ;;
+          *)
+            echo "Unsupported LLGo build cache mode: ${{ inputs.build-cache-mode }}" >&2
+            exit 1
+            ;;
+        esac
+        case "${{ inputs.crosscompile-cache-mode }}" in
+          off|restore|readwrite) ;;
+          *)
+            echo "Unsupported cross-compilation cache mode: ${{ inputs.crosscompile-cache-mode }}" >&2
+            exit 1
+            ;;
+        esac
+        case "${{ inputs.wamr-cache-mode }}" in
+          off|restore|readwrite) ;;
+          *)
+            echo "Unsupported WAMR cache mode: ${{ inputs.wamr-cache-mode }}" >&2
+            exit 1
+            ;;
+        esac
+
+        case "$RUNNER_OS" in
+          macOS)
+            cache_root="$HOME/Library/Caches/llgo"
+            ;;
+          Linux)
+            cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/llgo"
+            ;;
+          Windows)
+            cache_root="$LOCALAPPDATA/llgo"
+            ;;
+          *)
+            echo "Unsupported runner OS: $RUNNER_OS" >&2
+            exit 1
+            ;;
+        esac
+
+        profile="${LLGO_WINDOWS_ABI:-native}-${LLGO_WINDOWS_ARCH:-native}"
+        echo "root=$cache_root" >> "$GITHUB_OUTPUT"
+        echo "profile=$profile" >> "$GITHUB_OUTPUT"
+        echo "go-version=$(go env GOVERSION)" >> "$GITHUB_OUTPUT"
+
+    # Cross-compilation downloads are versioned by their destination names.
+    # Keep them independent from package objects so a compiler commit does not
+    # re-upload ESP Clang, WASI SDK, newlib, picolibc, or compiler-rt.
+    - name: Restore LLGo cross-compilation downloads
+      if: inputs.crosscompile-cache-mode == 'restore'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.llgo_cache.outputs.root }}/crosscompile
+        key: llgo-crosscompile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/crosscompile/**/*.go') }}
+
+    - name: Cache LLGo cross-compilation downloads
+      if: inputs.crosscompile-cache-mode == 'readwrite'
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.llgo_cache.outputs.root }}/crosscompile
+        key: llgo-crosscompile-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('internal/crosscompile/**/*.go') }}
+
+    # Build entries already contain source and toolchain fingerprints. Keep one
+    # exact snapshot per main commit: pull requests reuse their base snapshot,
+    # while avoiding a restore chain that would retain obsolete fingerprints
+    # and make this cache grow without bound.
+    - name: Restore LLGo package build cache
+      if: inputs.build-cache-mode == 'restore'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.llgo_cache.outputs.root }}/build
+        key: llgo-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ steps.llgo_cache.outputs.go-version }}-${{ github.event.pull_request.base.sha || github.sha }}
+
+    - name: Cache LLGo package builds
+      if: inputs.build-cache-mode == 'readwrite'
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.llgo_cache.outputs.root }}/build
+        key: llgo-build-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ steps.llgo_cache.outputs.go-version }}-${{ github.event.pull_request.base.sha || github.sha }}
+
+    - name: Restore WAMR
+      if: inputs.wamr-cache-mode == 'restore'
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.llgo_cache.outputs.root }}/bin
+        key: llgo-iwasm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ hashFiles('dev/build_iwasm.sh', 'dev/patches/wamr-*.patch') }}
+
+    - name: Cache WAMR
+      if: inputs.wamr-cache-mode == 'readwrite'
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.llgo_cache.outputs.root }}/bin
+        key: llgo-iwasm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.llgo_cache.outputs.profile }}-${{ hashFiles('dev/build_iwasm.sh', 'dev/patches/wamr-*.patch') }}

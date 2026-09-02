@@ -80,6 +80,9 @@ jobs:
         with:
           architecture: ${{ matrix.host_go_arch || '' }}
 
+      - name: Restore LLGo cache
+        uses: ./.github/actions/setup-llgo-cache
+
       - name: Install
         shell: bash
         run: |
@@ -578,6 +581,11 @@ jobs:
 
       - name: Set up Go for building llgo
         uses: ./.github/actions/setup-go
+
+      - name: Restore LLGo and cache WAMR
+        uses: ./.github/actions/setup-llgo-cache
+        with:
+          wamr-cache-mode: readwrite
 
       - name: Install WAMR
         shell: bash

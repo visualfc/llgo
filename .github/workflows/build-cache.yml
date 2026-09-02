@@ -44,6 +44,14 @@ jobs:
       - name: Set up Go
         uses: ./.github/actions/setup-go
 
+      - name: Restore LLGo and cache WAMR
+        uses: ./.github/actions/setup-llgo-cache
+        with:
+          # This workflow deliberately clears package objects to test cache
+          # behavior, so restoring that large directory would be pure waste.
+          build-cache-mode: off
+          wamr-cache-mode: readwrite
+
       - name: Install WAMR (for wasm tests)
         shell: bash
         run: bash dev/build_iwasm.sh
