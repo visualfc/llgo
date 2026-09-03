@@ -18,7 +18,9 @@ runs:
       with:
         go-version-file: .go-version
         architecture: ${{ inputs.architecture }}
-        cache: false
+        cache: true
+        cache-dependency-path: |
+          **/go.sum
 
     - name: Set up an explicit Go toolchain
       if: inputs.go-version != ''
@@ -26,7 +28,9 @@ runs:
       with:
         go-version: ${{ inputs.go-version }}
         architecture: ${{ inputs.architecture }}
-        cache: false
+        cache: true
+        cache-dependency-path: |
+          **/go.sum
 
     - name: Verify Go installation
       shell: bash

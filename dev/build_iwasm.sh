@@ -6,15 +6,30 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-# Determine cache directory based on platform
-if [ "$(uname -s)" = "Darwin" ]; then
-    LLGO_CACHE_DIR="${HOME}/Library/Caches/llgo"
-else
-    LLGO_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/llgo"
-fi
+# Match os.UserCacheDir, which backs internal/env.LLGoCacheDir.
+source "${SCRIPT_DIR}/llgo_cache_dir.sh"
+LLGO_CACHE_DIR="$(llgo_cache_dir)"
 
 IWASM_BIN_DIR="${LLGO_CACHE_DIR}/bin"
 WAMR_VERSION="WAMR-2.4.5"
+
+IWASM_NAME="iwasm"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        IWASM_NAME="iwasm.exe"
+        ;;
+esac
+
+# CI restores this versioned output before invoking the helper. The cache key
+# includes this script and its pinned patch, so an existing binary is already
+# the exact build requested here and does not need another clone and rebuild.
+if [ -f "${IWASM_BIN_DIR}/${IWASM_NAME}" ]; then
+    echo "Using cached iwasm at ${IWASM_BIN_DIR}/${IWASM_NAME}"
+    if [ -n "${GITHUB_PATH:-}" ]; then
+        printf '%s\n' "${IWASM_BIN_DIR}" >> "${GITHUB_PATH}"
+    fi
+    exit 0
+fi
 
 echo "Building iwasm for llgo WASM testing..."
 echo "Target directory: ${IWASM_BIN_DIR}"
@@ -30,7 +45,6 @@ cd "${TEMP_DIR}"
 echo "Cloning wasm-micro-runtime ${WAMR_VERSION}..."
 git clone --branch "${WAMR_VERSION}" --depth 1 https://github.com/wasm-micro-runtime/wasm-micro-runtime.git
 
-IWASM_NAME="iwasm"
 CMAKE_GENERATOR_ARGS=()
 case "$(uname -s)" in
     Darwin)

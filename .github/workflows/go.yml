@@ -59,6 +59,14 @@ jobs:
       - name: Set up Go
         uses: ./.github/actions/setup-go
 
+      - name: Set up LLGo cache
+        uses: ./.github/actions/setup-llgo-cache
+        with:
+          # PR caches are isolated from main by GitHub's cache scope. Let the
+          # first run populate its merge-commit snapshot so retries can reuse it.
+          build-cache-mode: readwrite
+          crosscompile-cache-mode: readwrite
+
       - name: Install further optional dependencies for demos
         uses: ./.github/actions/setup-demo-deps
         with:
