@@ -20,11 +20,15 @@ package build
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/xgo-dev/llgo/internal/packages"
+	llssa "github.com/xgo-dev/llgo/ssa"
 )
 
 func TestCanUseNativeTestDAG(t *testing.T) {
@@ -357,5 +361,68 @@ func TestSeparatedLinkPhaseValidation(t *testing.T) {
 	}
 	if err := executeMainLink(nil, nil, false); err == nil {
 		t.Fatal("executeMainLink accepted a nil plan")
+	}
+}
+
+func TestRunNativeTestDAGPropagatesPackageFailures(t *testing.T) {
+	t.Run("preparation", func(t *testing.T) {
+		fset, pkg := invalidEmbedPackage(t)
+		conf := &Config{Mode: ModeTest}
+		ctx := &context{
+			conf:      &packages.Config{Fset: fset},
+			mode:      ModeGen,
+			buildConf: conf,
+		}
+		_, err := runNativeTestDAG(ctx, []*aPackage{pkg}, nil, conf, false)
+		if err == nil || !strings.Contains(err.Error(), "only allowed in Go files that import") {
+			t.Fatalf("preparation error = %v", err)
+		}
+	})
+
+	t.Run("package node", func(t *testing.T) {
+		fset, pkg := invalidEmbedPackage(t)
+		coordinator := llssa.NewProgram(&llssa.Target{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH})
+		defer coordinator.Dispose()
+		conf := &Config{Mode: ModeTest, BuildMode: BuildModeExe, Goos: runtime.GOOS, Goarch: runtime.GOARCH}
+		ctx := &context{
+			conf:      &packages.Config{Fset: fset},
+			prog:      coordinator,
+			mode:      ModeTest,
+			buildConf: conf,
+		}
+		_, err := runNativeTestDAG(ctx, []*aPackage{pkg}, nil, conf, false)
+		if err == nil || !strings.Contains(err.Error(), "only allowed in Go files that import") {
+			t.Fatalf("package node error = %v", err)
+		}
+	})
+}
+
+func TestRunNativeTestDAGPropagatesPlanFailure(t *testing.T) {
+	root := &packages.Package{
+		ID:      "example.com/cycle.test",
+		PkgPath: "example.com/cycle.test",
+		Name:    "main",
+		Imports: make(map[string]*packages.Package),
+	}
+	root.Imports["self"] = root
+	conf := &Config{Mode: ModeTest, BuildMode: BuildModeExe}
+	ctx := &context{
+		mode:      ModeTest,
+		buildConf: conf,
+		commands:  commandEnv{dir: t.TempDir()},
+		pkgs:      make(map[*packages.Package]Package),
+		pkgByID:   make(map[string]Package),
+	}
+	readStderr := captureStderr(t)
+	result, err := runNativeTestDAG(ctx, nil, []*packages.Package{root}, conf, false)
+	stderr := readStderr()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.links[0].err == nil || !strings.Contains(result.links[0].err.Error(), "contains a cycle") {
+		t.Fatalf("link result error = %v", result.links[0].err)
+	}
+	if !result.tests.failed || !strings.Contains(stderr, "FAIL\texample.com/cycle [build failed]") {
+		t.Fatalf("test result = %+v; stderr = %q", result.tests, stderr)
 	}
 }
