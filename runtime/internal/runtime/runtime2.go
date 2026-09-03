@@ -19,10 +19,11 @@ package runtime
 import "unsafe"
 
 // These G and P states intentionally keep the values used by the Go runtime.
-// Only states reachable by the current 1:1 backend are defined here.
+// Only states reachable by the current backends are defined here.
 const (
 	_Grunnable = 1
 	_Grunning  = 2
+	_Gwaiting  = 4
 	_Gdead     = 6
 )
 
@@ -34,9 +35,9 @@ const (
 
 // g holds state owned by one LLGo goroutine.
 //
-// The current host-thread backend gives every G its own M and P. Fields that only
-// make sense once LLGo can suspend and resume a G (saved registers, wait state,
-// and stack roots) belong here when those facilities are added.
+// A backend decides the M/P ownership model: pthread gives every G its own M/P,
+// while the WebAssembly fiber scheduler shares one M/P across its Gs. Suspended
+// execution state is held by the backend-specific runtimeContext.
 type g struct {
 	defer_       *Defer
 	panic_       unsafe.Pointer
@@ -68,9 +69,8 @@ type m struct {
 	os   mOS
 }
 
-// p represents the scheduling resources attached to an M. The host-thread backend
-// currently binds one P to one M; a later M:N scheduler can retain this object
-// while replacing that fixed binding with a P pool and run queues.
+// p represents the scheduling resources attached to an M. Native backends bind
+// one P per M; the single-worker WebAssembly backend shares one M/P across Gs.
 type p struct {
 	id     int32
 	status uint32

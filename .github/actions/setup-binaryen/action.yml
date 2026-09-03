@@ -1,0 +1,69 @@
+name: "Setup Binaryen"
+description: "Install a pinned Binaryen release"
+inputs:
+  version:
+    description: "Binaryen release version"
+    required: false
+    default: "132"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Binaryen
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        version="${{ inputs.version }}"
+        case "$(uname -s):$(uname -m)" in
+          Linux:x86_64) platform="x86_64-linux" ;;
+          Linux:aarch64|Linux:arm64) platform="aarch64-linux" ;;
+          Darwin:x86_64) platform="x86_64-macos" ;;
+          Darwin:arm64) platform="arm64-macos" ;;
+          *)
+            echo "Unsupported Binaryen host: $(uname -s) $(uname -m)" >&2
+            exit 1
+            ;;
+        esac
+
+        archive="binaryen-version_${version}-${platform}.tar.gz"
+        base_url="https://github.com/WebAssembly/binaryen/releases/download/version_${version}"
+        cd "$RUNNER_TEMP"
+        curl --retry 3 --retry-all-errors -fsSLO "${base_url}/${archive}"
+        curl --retry 3 --retry-all-errors -fsSLO "${base_url}/${archive}.sha256"
+        if command -v sha256sum >/dev/null; then
+          sha256sum --check "${archive}.sha256"
+        else
+          shasum -a 256 --check "${archive}.sha256"
+        fi
+        tar -xzf "$archive" -C "$RUNNER_TEMP"
+        echo "$RUNNER_TEMP/binaryen-version_${version}/bin" >> "$GITHUB_PATH"
+
+    - name: Install Binaryen on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        $version = "${{ inputs.version }}"
+        $platform = switch ($env:PROCESSOR_ARCHITECTURE) {
+          "AMD64" { "x86_64-windows" }
+          "ARM64" { "arm64-windows" }
+          default { throw "Unsupported Binaryen Windows host: $env:PROCESSOR_ARCHITECTURE" }
+        }
+        $archive = "binaryen-version_$version-$platform.tar.gz"
+        $baseUrl = "https://github.com/WebAssembly/binaryen/releases/download/version_$version"
+        $archivePath = Join-Path $env:RUNNER_TEMP $archive
+        $checksumPath = "$archivePath.sha256"
+        & curl.exe --fail --location --retry 3 --retry-all-errors --output $archivePath "$baseUrl/$archive"
+        if ($LASTEXITCODE -ne 0) { throw "Downloading Binaryen failed with exit code $LASTEXITCODE" }
+        & curl.exe --fail --location --retry 3 --retry-all-errors --output $checksumPath "$baseUrl/$archive.sha256"
+        if ($LASTEXITCODE -ne 0) { throw "Downloading the Binaryen checksum failed with exit code $LASTEXITCODE" }
+        $expected = ((Get-Content -LiteralPath $checksumPath -Raw).Trim() -split '\s+')[0]
+        $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash
+        if (-not $actual.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) {
+          throw "Binaryen archive SHA-256 is $actual, want $expected"
+        }
+        & tar.exe -xzf $archivePath -C $env:RUNNER_TEMP
+        if ($LASTEXITCODE -ne 0) { throw "Extracting Binaryen failed with exit code $LASTEXITCODE" }
+        Add-Content -Encoding utf8 $env:GITHUB_PATH (Join-Path $env:RUNNER_TEMP "binaryen-version_$version\bin")

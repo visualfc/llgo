@@ -4,6 +4,7 @@ package targets
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -316,6 +317,9 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 					config.LLVMTarget, config.GOOS, config.GOARCH, config.WasmABI,
 					test.llvmTarget, test.goos, test.goarch, test.wasmABI)
 			}
+			if config.CPU != "generic" {
+				t.Errorf("CPU = %q, want generic", config.CPU)
+			}
 			for _, tag := range test.wantTags {
 				if !slices.Contains(config.BuildTags, tag) {
 					t.Errorf("build tags %v do not contain %q", config.BuildTags, tag)
@@ -329,6 +333,111 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 				if !strings.Contains(config.Emulator, wantRunner) {
 					t.Errorf("emulator %q does not instantiate Emscripten module output", config.Emulator)
 				}
+			}
+			if test.name == "wasi" || test.name == "wasip1" {
+				// R1 translates LLVM's legacy Wasm SjLj encoding to standardized
+				// exnref instructions after Asyncify instrumentation. Wasmtime keeps
+				// that proposal opt-in, so the inherited public emulator must enable it.
+				if !strings.Contains(config.Emulator, "-W exceptions=y") {
+					t.Errorf("emulator %q does not enable the exception proposal", config.Emulator)
+				}
+			}
+		})
+	}
+}
+
+func TestEmscriptenRunnersForwardProgramArguments(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatalf("node is required to test the Emscripten runners: %v", err)
+	}
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(t.TempDir(), "module.mjs")
+	const source = `export default async function(config) {
+	if (JSON.stringify(config.arguments) !== '["-test.run=TestOne","value"]') {
+		throw new Error('arguments: ' + JSON.stringify(config.arguments));
+	}
+	const module = { ENV: {} };
+	for (const hook of config.preRun) hook(module);
+	if (module.ENV.LLGO_RUNNER_TEST !== 'present') {
+		throw new Error('environment was not forwarded');
+	}
+}`
+	if err := os.WriteFile(module, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, runner := range []string{"emscripten-runner.mjs", "emscripten-memory64-runner.mjs"} {
+		t.Run(runner, func(t *testing.T) {
+			cmd := exec.Command(node, filepath.Join(root, "targets", runner), module, "-test.run=TestOne", "value")
+			cmd.Env = append(os.Environ(), "LLGO_RUNNER_TEST=present")
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("runner failed: %v\n%s", err, output)
+			}
+		})
+	}
+}
+
+func TestEmscriptenRunnersConsumeExitStatus(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatalf("node is required to test the Emscripten runners: %v", err)
+	}
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(t.TempDir(), "module.mjs")
+	const source = `function exitStatus(status) {
+	const error = new Error('Program terminated with exit(' + status + ')');
+	error.name = 'ExitStatus';
+	error.status = status;
+	return error;
+}
+export default async function(config) {
+	const status = Number(config.arguments[0]);
+	const mode = config.arguments[1];
+	config.onExit(status);
+	switch (mode) {
+	case 'factory-rejection':
+		throw exitStatus(status);
+	case 'late-exception':
+		setTimeout(() => { throw exitStatus(status); }, 0);
+		return;
+	case 'late-rejection':
+		Promise.reject(exitStatus(status));
+		return;
+	case 'ordinary-error': {
+		const error = new Error('ordinary failure');
+		error.status = status;
+		throw error;
+	}
+	default:
+		throw new Error('unknown mode: ' + mode);
+	}
+}`
+	if err := os.WriteFile(module, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, runner := range []string{"emscripten-runner.mjs", "emscripten-memory64-runner.mjs"} {
+		t.Run(runner, func(t *testing.T) {
+			command := func(status, mode string) *exec.Cmd {
+				return exec.Command(node, filepath.Join(root, "targets", runner), module, status, mode)
+			}
+			for _, mode := range []string{"factory-rejection", "late-exception", "late-rejection"} {
+				if output, err := command("0", mode).CombinedOutput(); err != nil {
+					t.Fatalf("runner rejected normal %s ExitStatus: %v\n%s", mode, err, output)
+				}
+				output, err := command("7", mode).CombinedOutput()
+				if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 7 {
+					t.Fatalf("runner %s nonzero ExitStatus = %v, want exit 7\n%s", mode, err, output)
+				}
+			}
+			output, err := command("0", "ordinary-error").CombinedOutput()
+			if err == nil {
+				t.Fatalf("runner consumed an ordinary error with a status field:\n%s", output)
 			}
 		})
 	}

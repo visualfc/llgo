@@ -250,3 +250,149 @@ jobs:
                 '.benchmark/base-results/benchmark.txt' || '' }}
           platform-id: ${{ matrix.id }}
           platform-label: ${{ matrix.display }}
+
+  wasm-benchmark:
+    name: benchmark (WebAssembly)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GOMAXPROCS: "2"
+      LLGO_ROOT: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Determine pull request merge-base
+        if: github.event_name == 'pull_request'
+        id: wasm-merge-base
+        shell: bash
+        run: |
+          git fetch https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git ${{ github.event.pull_request.base.ref }}
+          base_sha=$(git merge-base FETCH_HEAD ${{ github.event.pull_request.head.sha }})
+          mkdir -p .benchmark
+          if git show "${{ github.event.pull_request.base.sha }}:.github/llgo-wasm-benchmark.yml" > .benchmark/wasm-base-benchmark.yml; then
+            echo 'trusted-config=true' >> "$GITHUB_OUTPUT"
+          else
+            rm -f .benchmark/wasm-base-benchmark.yml
+            echo 'trusted-config=false' >> "$GITHUB_OUTPUT"
+          fi
+          if git cat-file -e "$base_sha:targets/emscripten.json" 2>/dev/null &&
+             git cat-file -e "$base_sha:targets/emscripten-memory64.json" 2>/dev/null &&
+             git cat-file -e "$base_sha:targets/wasi.json" 2>/dev/null; then
+            echo 'compatible-base=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'compatible-base=false' >> "$GITHUB_OUTPUT"
+          fi
+          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "Computed pull request merge-base: $base_sha (head: ${{ github.event.pull_request.head.sha }})"
+
+      - name: Check out pull request base source
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.base.repo.full_name }}
+          ref: ${{ steps.wasm-merge-base.outputs.sha }}
+          path: .benchmark/wasm-base-source
+          persist-credentials: false
+
+      - name: Check out pull request head source
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: .benchmark/wasm-head-source
+          persist-credentials: false
+
+      - name: Install dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: 19
+
+      - name: Set up Emscripten
+        uses: emscripten-core/setup-emsdk@v15
+        with:
+          version: "4.0.21"
+
+      - name: Set up Binaryen
+        uses: ./.github/actions/setup-binaryen
+
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+
+      - name: Measure pull request base
+        if: >-
+          github.event_name == 'pull_request' &&
+          steps.wasm-merge-base.outputs.compatible-base == 'true'
+        id: measure-wasm-base
+        shell: bash
+        run: |
+          benchmark/wasm/run.sh \
+            .benchmark/wasm-base-source \
+            .benchmark/wasm-base-llgo \
+            .benchmark/wasm-base-results
+
+      - name: Measure current revision
+        shell: bash
+        run: |
+          source_root=.
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            source_root=.benchmark/wasm-head-source
+          fi
+          benchmark/wasm/run.sh \
+            "$source_root" \
+            .benchmark/wasm-llgo \
+            .benchmark/wasm-results
+
+      - name: Summarize pull request WebAssembly measurements
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          {
+            echo '### WebAssembly build benchmark'
+            echo
+            if [[ '${{ steps.measure-wasm-base.outcome }}' == success ]]; then
+              echo 'The base and pull request revision were measured sequentially on this runner.'
+            else
+              echo 'The merge-base predates the WebAssembly target profiles, so only the pull request revision was measured.'
+            fi
+            echo
+            echo '<details><summary>Raw benchmark data</summary>'
+            echo
+            echo '```text'
+            if [[ '${{ steps.measure-wasm-base.outcome }}' == success ]]; then
+              echo 'base:'
+              cat .benchmark/wasm-base-results/benchmark.txt
+              echo
+            fi
+            echo 'pull request:'
+            cat .benchmark/wasm-results/benchmark.txt
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record WebAssembly benchmark result
+        # A pull request may introduce this suite before the trusted target
+        # branch knows its configuration. Its paired measurements remain in
+        # the job summary; artifact publication begins after the configuration
+        # lands, without letting pull request code select publisher rules.
+        if: >-
+          github.event_name != 'pull_request' ||
+          steps.wasm-merge-base.outputs.trusted-config == 'true'
+        uses: xgo-dev/setup-benchmark-go-action@v1.0.6
+        with:
+          config: >-
+            ${{ github.event_name == 'pull_request' &&
+                '.benchmark/wasm-base-benchmark.yml' ||
+                '.github/llgo-wasm-benchmark.yml' }}
+          benchmark-file: .benchmark/wasm-results/benchmark.txt
+          baseline-benchmark-file: >-
+            ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
+                '.benchmark/wasm-base-results/benchmark.txt' || '' }}
+          baseline-repository: ${{ github.event.pull_request.base.repo.full_name || '' }}
+          baseline-sha: ${{ steps.wasm-merge-base.outputs.sha || '' }}
+          baseline-ref: ${{ github.event.pull_request.base.ref || '' }}
+          platform-id: wasm-linux
+          platform-label: WebAssembly

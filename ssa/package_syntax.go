@@ -28,6 +28,7 @@ import (
 type packageSyntaxData struct {
 	mu                   sync.RWMutex
 	linknames            map[string]string
+	wasmImports          map[string]wasmImport
 	exports              map[string]string
 	closureEnvDirectives map[closureEnvDirectiveKey]none
 	parsedPackages       map[*types.Package]struct{}
@@ -38,12 +39,18 @@ type packageSyntaxData struct {
 func newPackageSyntaxData() *packageSyntaxData {
 	return &packageSyntaxData{
 		linknames:            make(map[string]string),
+		wasmImports:          make(map[string]wasmImport),
 		exports:              make(map[string]string),
 		closureEnvDirectives: make(map[closureEnvDirectiveKey]none),
 		parsedPackages:       make(map[*types.Package]struct{}),
 		noInterface:          make(map[string]none),
 		typeBackgrounds:      make(map[string]Background),
 	}
+}
+
+type wasmImport struct {
+	module string
+	name   string
 }
 
 // SetPackageExport records an export directive before the LLVM Package that

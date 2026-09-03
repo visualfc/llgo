@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && (!llgo || !wasm || (wasip1 && llgo.wasi_threads))
 
 /*
  * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
@@ -37,8 +37,9 @@ func newosproc(mp *m, stackSize uintptr) int {
 	))
 }
 
-func exitCurrentM() {
-	mp := getg().m
+func goexitBackend(gp *g) {
+	leaveCurrentLocalContext()
+	mp := gp.m
 	mexit(mp)
 	thread.Exit()
 }

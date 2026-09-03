@@ -1,8 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-if (process.argv.length !== 3) {
-	throw new Error("usage: node emscripten-memory64-runner.mjs <module.mjs>");
+import "./emscripten-node-polyfills.mjs";
+import { runEmscriptenModule } from "./emscripten-exit-status.mjs";
+
+if (process.argv.length < 3) {
+	throw new Error("usage: node emscripten-memory64-runner.mjs <module.mjs> [arguments...]");
 }
 
 // A memory section whose limits use the memory64 flag. Older Node releases
@@ -21,7 +24,7 @@ if (!WebAssembly.validate(memory64Probe)) {
 	}
 	const child = spawnSync(
 		process.execPath,
-		["--experimental-wasm-memory64", fileURLToPath(import.meta.url), process.argv[2]],
+		["--experimental-wasm-memory64", fileURLToPath(import.meta.url), ...process.argv.slice(2)],
 		{
 			stdio: "inherit",
 			env: { ...process.env, LLGO_MEMORY64_NODE_RETRY: "1" },
@@ -37,4 +40,11 @@ const loaded = await import(pathToFileURL(process.argv[2]));
 if (typeof loaded.default !== "function") {
 	throw new Error(`${process.argv[2]} does not export an Emscripten module factory`);
 }
-await loaded.default();
+await runEmscriptenModule(loaded.default, {
+	arguments: process.argv.slice(3),
+	preRun: [module => {
+		if (module.ENV != null) {
+			Object.assign(module.ENV, process.env);
+		}
+	}],
+});

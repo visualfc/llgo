@@ -88,8 +88,9 @@ func handleThreadCreateFailureDuringExit() {
 	processExitLock.Lock()
 }
 
-func exitCurrentM() {
-	mp := getg().m
+func goexitBackend(gp *g) {
+	leaveCurrentLocalContext()
+	mp := gp.m
 	mexit(mp)
 	thread.Exit()
 }

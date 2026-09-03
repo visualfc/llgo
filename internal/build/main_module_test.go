@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xgo-dev/llgo/internal/crosscompile"
 	"github.com/xgo-dev/llvm"
 
 	"github.com/xgo-dev/llgo/internal/packages"
@@ -261,6 +262,125 @@ func TestLinkMainPkgRejectsPackageInitCycle(t *testing.T) {
 	}
 	if err := linkMainPkg(ctx, cycle, nil, "", false); err == nil || !strings.Contains(err.Error(), "contains a cycle") {
 		t.Fatalf("linkMainPkg cycle error = %v, want cycle error", err)
+	}
+}
+
+func TestGenMainModuleWASIAsyncifyEntry(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoStdioNobuf, "")
+	prog := llssa.NewProgram(nil)
+	installLocalContextTestRuntime(prog)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "wasip1",
+			Goarch:    "wasm",
+			Target:    "wasi",
+		},
+		crossCompile: crosscompile.Export{
+			WasmPostLink: crosscompile.WasmPostLink{Asyncify: true},
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
+		packageInits: []string{"example.com/dependency.init"},
+	})
+	ir := mod.LPkg.String()
+	checks := []string{
+		`define hidden ptr @__llgo_wasm_main(ptr %0)`,
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.init"()`,
+		`call void @"example.com/dependency.init"()`,
+		`call void @"example.com/foo.init"()`,
+		`call void @"example.com/foo.main"()`,
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.RunWasmMain"()`,
+	}
+	for _, want := range checks {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("WASI main module IR missing %q:\n%s", want, ir)
+		}
+	}
+	taskStart := strings.Index(ir, "define hidden ptr @__llgo_wasm_main(")
+	task := ir[taskStart:]
+	task = task[:strings.Index(task, "}\n")+2]
+	assertInOrder(t, task,
+		`call void @"example.com/dependency.init"()`,
+		`call void @"example.com/foo.init"()`,
+		`call void @"example.com/foo.main"()`,
+	)
+	entryStart := strings.Index(ir, "define hidden i32 @__main_argc_argv(")
+	if entryStart < 0 {
+		t.Fatalf("WASI main module missing host entry:\n%s", ir)
+	}
+	if strings.Contains(ir, "define weak void @_start()") {
+		t.Fatalf("WASI main module replaced wasi-libc _start:\n%s", ir)
+	}
+	entry := ir[entryStart:]
+	entry = entry[:strings.Index(entry, "}\n")+2]
+	assertInOrder(t, entry,
+		"EnterLocalContext",
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.init"()`,
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.RunWasmMain"()`,
+		"LeaveLocalContext",
+	)
+	if strings.Contains(entry, `call void @"example.com/dependency.init"()`) ||
+		strings.Contains(entry, `call void @"example.com/foo.init"()`) ||
+		strings.Contains(entry, `call void @"example.com/foo.main"()`) {
+		t.Fatalf("WASI system-stack entry calls package main directly:\n%s", entry)
+	}
+}
+
+func TestNeedsWasmRuntimeScheduler(t *testing.T) {
+	tests := []struct {
+		name   string
+		conf   Config
+		target crosscompile.Export
+		want   bool
+	}{
+		{
+			name: "emscripten",
+			conf: Config{BuildMode: BuildModeExe},
+			target: crosscompile.Export{
+				WasmABI: crosscompile.WasmABIEmscripten,
+			},
+			want: true,
+		},
+		{
+			name: "emscripten_memory64",
+			conf: Config{BuildMode: BuildModeExe},
+			target: crosscompile.Export{
+				WasmABI: crosscompile.WasmABIEmscriptenMemory64,
+			},
+			want: true,
+		},
+		{
+			name: "wasi_asyncify",
+			conf: Config{BuildMode: BuildModeExe},
+			target: crosscompile.Export{
+				WasmPostLink: crosscompile.WasmPostLink{Asyncify: true},
+			},
+			want: true,
+		},
+		{
+			name: "emscripten_library",
+			conf: Config{BuildMode: BuildModeCArchive},
+			target: crosscompile.Export{
+				WasmABI: crosscompile.WasmABIEmscripten,
+			},
+		},
+		{
+			name:   "freestanding",
+			conf:   Config{BuildMode: BuildModeExe},
+			target: crosscompile.Export{WasmABI: crosscompile.WasmABIFreestanding},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := &context{buildConf: &test.conf, crossCompile: test.target}
+			if got := needsWasmRuntimeScheduler(ctx); got != test.want {
+				t.Fatalf("needsWasmRuntimeScheduler() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
@@ -552,20 +672,7 @@ func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
 	llvm.InitializeAllTargets()
 	t.Setenv(llgoStdioNobuf, "")
 	prog := llssa.NewProgram(nil)
-	runtimePkg := types.NewPackage(llssa.PkgRuntime, "runtime")
-	contextName := types.NewTypeName(token.NoPos, runtimePkg, "LocalContext", nil)
-	contextType := types.NewNamed(contextName, types.NewStruct(nil, nil), nil)
-	runtimePkg.Scope().Insert(contextName)
-	contextPointer := types.NewPointer(contextType)
-	enterParams := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer))
-	enterResults := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]))
-	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "EnterLocalContext", types.NewSignatureType(nil, nil, nil, enterParams, enterResults, false)))
-	leaveParams := types.NewTuple(
-		types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer),
-		types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]),
-	)
-	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "LeaveLocalContext", types.NewSignatureType(nil, nil, nil, leaveParams, nil, false)))
-	prog.SetRuntime(runtimePkg)
+	installLocalContextTestRuntime(prog)
 	prog.SetLocalityInfo("example.com/state.Value", llssa.LocalityInfo{Locality: llssa.GoroutineLocal})
 	prog.SetLocalStorage("example.com/state.Value", llssa.LocalStoragePackage)
 	ctx := &context{
@@ -583,6 +690,23 @@ func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
 		"call void @runtime.main()",
 		"LeaveLocalContext",
 	)
+}
+
+func installLocalContextTestRuntime(prog llssa.Program) {
+	runtimePkg := types.NewPackage(llssa.PkgRuntime, "runtime")
+	contextName := types.NewTypeName(token.NoPos, runtimePkg, "LocalContext", nil)
+	contextType := types.NewNamed(contextName, types.NewStruct(nil, nil), nil)
+	runtimePkg.Scope().Insert(contextName)
+	contextPointer := types.NewPointer(contextType)
+	enterParams := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer))
+	enterResults := types.NewTuple(types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]))
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "EnterLocalContext", types.NewSignatureType(nil, nil, nil, enterParams, enterResults, false)))
+	leaveParams := types.NewTuple(
+		types.NewParam(token.NoPos, runtimePkg, "ctx", contextPointer),
+		types.NewParam(token.NoPos, runtimePkg, "previous", types.Typ[types.Uintptr]),
+	)
+	runtimePkg.Scope().Insert(types.NewFunc(token.NoPos, runtimePkg, "LeaveLocalContext", types.NewSignatureType(nil, nil, nil, leaveParams, nil, false)))
+	prog.SetRuntime(runtimePkg)
 }
 
 func assertInOrder(t *testing.T, s string, wants ...string) {

@@ -23,8 +23,12 @@ type _js struct{}
 
 // Value represents a JavaScript value. The zero value is the JavaScript value "undefined".
 // Values can be checked for equality with the Equal method.
+type ref uint64
+
 type Value struct {
-	ref uintptr
+	_     [0]func() // uncomparable; to make == not compile
+	ref   ref
+	gcPtr *ref // releases the owned emval handle when Value is unreachable
 }
 
 func floatValue(f float64) Value {
@@ -83,7 +87,7 @@ func Undefined() Value {
 
 // IsUndefined reports whether v is the JavaScript value "undefined".
 func (v Value) IsUndefined() bool {
-	return v.ref == valueUndefined.ref
+	return v.ref == 0 || v.ref == valueUndefined.ref
 }
 
 // Null returns the JavaScript value "null".
@@ -229,6 +233,9 @@ func (t Type) isObject() bool {
 // Type returns the JavaScript type of the value v. It is similar to JavaScript's typeof operator,
 // except that it returns TypeNull instead of TypeObject for null.
 func (v Value) Type() Type {
+	if v.ref == 0 {
+		return TypeUndefined
+	}
 	switch v.ref {
 	case valueUndefined.ref:
 		return TypeUndefined

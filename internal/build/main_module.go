@@ -30,6 +30,7 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/xgo-dev/llgo/internal/crosscompile"
 	"github.com/xgo-dev/llgo/internal/packages"
 	llssa "github.com/xgo-dev/llgo/ssa"
 	llvm "github.com/xgo-dev/llvm"
@@ -64,6 +65,21 @@ const (
 func needsRuntimeMainFrame(ctx *context) bool {
 	conf := ctx.buildConf
 	return conf.BuildMode == BuildModeExe && !isWasmTarget(conf.Goos) && conf.PCLNMode != PCLNNone
+}
+
+func needsWasmRuntimeScheduler(ctx *context) bool {
+	if ctx.buildConf.BuildMode != BuildModeExe {
+		return false
+	}
+	if ctx.crossCompile.WasmPostLink.Asyncify {
+		return true
+	}
+	switch ctx.crossCompile.WasmABI {
+	case crosscompile.WasmABIEmscripten, crosscompile.WasmABIEmscriptenMemory64:
+		return true
+	default:
+		return false
+	}
 }
 
 // genMainModule generates the main entry module for an llgo program.
@@ -123,8 +139,9 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		pyFinalize = declareNoArgFunc(mainPkg, "Py_Finalize")
 	}
 
+	wasmRuntimeScheduler := needsWasmRuntimeScheduler(ctx)
 	var rtInit llssa.Function
-	if cfg.rtInit {
+	if cfg.rtInit || wasmRuntimeScheduler {
 		rtInit = declareNoArgFunc(mainPkg, rtPkgPath+".init")
 	}
 	var processExit llssa.Function
@@ -191,10 +208,16 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		return mainAPkg
 	}
 
+	var wasmRunMain llssa.Function
+	if wasmRuntimeScheduler {
+		defineWasmMainTask(mainPkg, packageInits, mainInit, mainMain)
+		wasmRunMain = declareNoArgFunc(mainPkg, rtPkgPath+".RunWasmMain")
+	}
 	entryFn := defineEntryFunction(ctx, mainPkg, argcVar, argvVar, argvValueType, entryFunctions{
 		runtimeStub:  runtimeStub,
 		mainInit:     mainInit,
 		mainMain:     mainMain,
+		wasmRunMain:  wasmRunMain,
 		pyInit:       pyInit,
 		pyFinalize:   pyFinalize,
 		rtInit:       rtInit,
@@ -412,6 +435,7 @@ type entryFunctions struct {
 	runtimeStub  llssa.Function
 	mainInit     llssa.Function
 	mainMain     llssa.Function
+	wasmRunMain  llssa.Function
 	pyInit       llssa.Function
 	pyFinalize   llssa.Function
 	rtInit       llssa.Function
@@ -444,7 +468,11 @@ func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa
 	}
 	b := fn.MakeBody(1)
 	var localCtx, previousLocalCtx llssa.Expr
-	hasLocalContext := prog.NeedsLocalContext()
+	// The single-worker runtime itself uses owner-local state even when the
+	// user program has no TLS/GLS declarations. Root that state on the host
+	// entry stack before runtime.init and keep it installed while logical Go
+	// stacks are dispatched by RunWasmMain.
+	hasLocalContext := prog.NeedsLocalContext() || fns.wasmRunMain != nil
 	if hasLocalContext {
 		localCtx, previousLocalCtx = b.EnterLocalContext()
 	}
@@ -490,11 +518,15 @@ func emitRuntimeMainBody(b llssa.Builder, fns entryFunctions) {
 		b.Call(fns.abiInit.Expr)
 	}
 	b.Call(fns.runtimeStub.Expr)
-	for _, init := range fns.packageInits {
-		b.Call(init.Expr)
+	if fns.wasmRunMain != nil {
+		b.Call(fns.wasmRunMain.Expr)
+	} else {
+		for _, init := range fns.packageInits {
+			b.Call(init.Expr)
+		}
+		b.Call(fns.mainInit.Expr)
+		b.Call(fns.mainMain.Expr)
 	}
-	b.Call(fns.mainInit.Expr)
-	b.Call(fns.mainMain.Expr)
 	if fns.pyFinalize != nil {
 		b.Call(fns.pyFinalize.Expr)
 	}
@@ -505,6 +537,24 @@ func emitRuntimeMainBody(b llssa.Builder, fns entryFunctions) {
 		// threads and violates that guarantee.
 		b.Call(fns.processExit.Expr, b.Prog.IntVal(0, b.Prog.Int32()))
 	}
+}
+
+func defineWasmMainTask(pkg llssa.Package, packageInits []llssa.Function, mainInit, mainMain llssa.Function) {
+	prog := pkg.Prog
+	sig := newSignature(
+		[]types.Type{types.Typ[types.UnsafePointer]},
+		[]types.Type{types.Typ[types.UnsafePointer]},
+	)
+	fn := pkg.NewFunc("__llgo_wasm_main", sig, llssa.InC)
+	fnVal := pkg.Module().NamedFunction("__llgo_wasm_main")
+	fnVal.SetVisibility(llvm.HiddenVisibility)
+	b := fn.MakeBody(1)
+	for _, init := range packageInits {
+		b.Call(init.Expr)
+	}
+	b.Call(mainInit.Expr)
+	b.Call(mainMain.Expr)
+	b.Return(prog.Nil(prog.VoidPtr()))
 }
 
 func defineStart(pkg llssa.Package, entry llssa.Function, argvType llssa.Type) {

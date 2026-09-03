@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && (!llgo || !js || !wasm || !llgo.wasm.emscripten)
 
 package runtime
 

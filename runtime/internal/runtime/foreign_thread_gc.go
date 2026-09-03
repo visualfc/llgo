@@ -1,4 +1,4 @@
-//go:build llgo && !nogc && !baremetal
+//go:build llgo && !nogc && !baremetal && (!wasm || (wasip1 && llgo.wasi_threads))
 
 package runtime
 
@@ -28,7 +28,7 @@ func destroyForeignG(ptr c.Pointer) {
 	gp := (*g)(ptr)
 	// Capture collector ownership before destroyG releases context.root and
 	// invalidates gp.context.
-	attached := gp != nil && gp.context != nil && gp.context.foreignThreadAttached
+	attached := gp != nil && gp.context != nil && gp.context.platform.foreignThreadAttached
 	destroyG(ptr)
 	// This is the last Go operation in the TLS destructor. A foreign thread
 	// that entered through a C boundary can now leave the collector safely.
@@ -45,7 +45,7 @@ func EnterForeignThread() bool {
 	// Runtime-created threads are registered by the collector-aware thread
 	// creation API. Their G has no TLS lifecycle because mexit owns teardown.
 	if gp != nil {
-		if gp.context != nil && gp.context.foreignThreadAttached {
+		if gp.context != nil && gp.context.platform.foreignThreadAttached {
 			return false
 		}
 		if !currentGHasLifecycle {
@@ -90,7 +90,7 @@ func retainForeignThreadRegistration() bool {
 	// Ensure the existing G lifecycle key will release the manual GC
 	// registration when this host thread exits.
 	gp := getg()
-	gp.context.foreignThreadAttached = true
+	gp.context.platform.foreignThreadAttached = true
 	ready = true
 	return true
 }

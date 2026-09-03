@@ -66,6 +66,24 @@ func TestPlan9AsmDefaultsSupport386(t *testing.T) {
 	}
 }
 
+func TestPlan9AsmDefaultsSupportWasm(t *testing.T) {
+	conf := &Config{Goarch: "wasm"}
+	for _, pkgPath := range []string{
+		"crypto/internal/boring/sig",
+		"internal/bytealg",
+		"internal/chacha8rand",
+		"internal/runtime/atomic",
+		"math",
+	} {
+		if !plan9asmEnabledByDefault(conf, pkgPath) {
+			t.Errorf("plan9asm should be enabled by default for %s on wasm", pkgPath)
+		}
+		if llruntime.SourcePatchReplacesAsmForGOARCH(pkgPath, "wasm") {
+			t.Errorf("%s should retain the Go wasm assembly implementation", pkgPath)
+		}
+	}
+}
+
 func TestInternalRuntimeAtomicUsesSourcePatchOnArm(t *testing.T) {
 	conf := &Config{Goarch: "arm"}
 	if hasAltPkgForTarget(conf, "internal/runtime/atomic") {

@@ -310,6 +310,7 @@ func collectDeclarationDirectivesWithOptions(prog llssa.Program, fset *token.Fil
 	directives := directive.ParseGroup(doc)
 	linkCollected := false
 	hasClosureEnv := false
+	wasmImportSeen := false
 	for n := len(directives) - 1; n >= 0; n-- {
 		item := directives[n]
 		switch item.Name {
@@ -335,6 +336,15 @@ func collectDeclarationDirectivesWithOptions(prog llssa.Program, fset *token.Fil
 		case "llgo:env":
 			if funcPos.IsValid() {
 				hasClosureEnv = true
+			}
+		case "go:wasmimport":
+			if !funcPos.IsValid() || wasmImportSeen {
+				continue
+			}
+			wasmImportSeen = true
+			fields := strings.Fields(item.Args)
+			if len(fields) == 2 {
+				prog.SetWasmImport(fullName, fields[0], fields[1])
 			}
 		}
 	}

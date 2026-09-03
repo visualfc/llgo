@@ -323,6 +323,40 @@ func plain() {}
 	}
 }
 
+func TestParsePkgSyntaxCollectsWasmImportDirectives(t *testing.T) {
+	const src = `package p
+//go:wasmimport old_module old_name
+//go:wasmimport wasi_snapshot_preview1 fd_read
+func fdRead()
+
+//go:wasmimport ignored_for_variable ignored
+var value int
+
+//go:wasmimport ignored_older valid
+//go:wasmimport malformed
+func malformed()
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := llssa.NewProgram(nil)
+	pkg := types.NewPackage("example.com/p", "p")
+	if err := ParsePkgSyntax(prog, fset, pkg, []*ast.File{file}); err != nil {
+		t.Fatal(err)
+	}
+	module, name, ok := prog.WasmImport("example.com/p.fdRead")
+	if !ok || module != "wasi_snapshot_preview1" || name != "fd_read" {
+		t.Fatalf("WasmImport(fdRead) = (%q, %q, %v), want (wasi_snapshot_preview1, fd_read, true)", module, name, ok)
+	}
+	for _, symbol := range []string{"value", "malformed"} {
+		if module, name, ok := prog.WasmImport("example.com/p." + symbol); ok {
+			t.Fatalf("WasmImport(%s) = (%q, %q, true), want no import", symbol, module, name)
+		}
+	}
+}
+
 func TestCollectDeclarationDirectivesIgnoresOtherDirectives(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	doc := &ast.CommentGroup{List: []*ast.Comment{

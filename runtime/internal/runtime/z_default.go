@@ -36,10 +36,8 @@ func Rethrow(link *Defer) {
 		}
 	} else if gp.goexit {
 		// Goexit must run deferred functions before terminating the current
-		// goroutine. Reuse the longjmp-based defer unwinding:
-		// 1) If we have a defer frame, longjmp to it so it can execute defers.
-		// 2) Once we've unwound past the last frame (link==nil), terminate the
-		//    current host thread.
+		// goroutine through the selected scheduler backend. Reuse the
+		// longjmp-based defer unwinding until the final defer frame is gone.
 		gp.defer_ = link
 		if link != nil {
 			c.Siglongjmp(link.Addr, 1)
@@ -47,7 +45,6 @@ func Rethrow(link *Defer) {
 		if gp.isMain {
 			markMainExited()
 		}
-		leaveCurrentLocalContext()
-		exitCurrentM()
+		goexitBackend(gp)
 	}
 }

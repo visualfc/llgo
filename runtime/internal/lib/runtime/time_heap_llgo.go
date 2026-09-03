@@ -19,20 +19,9 @@ import (
 // it keeps timers in a 4-ary heap and advances periodic timers from their
 // intended deadline instead of from callback completion.
 
-const (
-	timerHeapArity = 4
-	maxTimerWhen   = int64(1<<63 - 1)
-	// Bound one native wait so a deadline saturated at maxTimerWhen does not
-	// overflow the platform timespec conversion.
-	maxTimerCondWait = int64(24 * 60 * 60 * 1e9)
-)
-
-type timerState struct {
-	r         *runtimeTimer
-	callback  runtimeTimerCallback
-	heapIndex int
-	active    bool
-}
+// Bound one native wait so a deadline saturated at maxTimerWhen does not
+// overflow the platform timespec conversion.
+const maxTimerCondWait = int64(24 * 60 * 60 * 1e9)
 
 var (
 	timerSchedulerOnce psync.Once
@@ -188,124 +177,4 @@ func timerSchedulerWaitDuration(when, now int64) int64 {
 		return maxTimerCondWait
 	}
 	return wait
-}
-
-func timerNextWhen(when, period, now int64) int64 {
-	delay := now - when
-	if delay < 0 {
-		delay = 0
-	}
-	next := when + period*(1+delay/period)
-	if next < 0 {
-		next = maxTimerWhen
-	}
-	return next
-}
-
-//go:linkname timeSleep time.Sleep
-func timeSleep(ns int64) {
-	if ns <= 0 {
-		return
-	}
-	when := runtimeNano() + ns
-	if when < 0 {
-		when = maxTimerWhen
-	}
-	done := make(chan struct{}, 1)
-	r := &runtimeTimer{
-		when: when,
-		f:    timeSleepWake,
-		arg:  done,
-	}
-	startRuntimeTimer(r)
-	<-done
-}
-
-func timerHeapLess(i, j int) bool {
-	return timerSchedulerHeap[i].r.when < timerSchedulerHeap[j].r.when
-}
-
-func timerHeapSwap(i, j int) {
-	timerSchedulerHeap[i], timerSchedulerHeap[j] = timerSchedulerHeap[j], timerSchedulerHeap[i]
-	timerSchedulerHeap[i].heapIndex = i
-	timerSchedulerHeap[j].heapIndex = j
-}
-
-func timerHeapAdd(st *timerState) {
-	st.heapIndex = len(timerSchedulerHeap)
-	timerSchedulerHeap = append(timerSchedulerHeap, st)
-	timerHeapSiftUp(st.heapIndex)
-}
-
-func timerHeapRemove(i int) {
-	n := len(timerSchedulerHeap) - 1
-	removed := timerSchedulerHeap[i]
-	if i != n {
-		timerHeapSwap(i, n)
-	}
-	timerSchedulerHeap[n] = nil
-	timerSchedulerHeap = timerSchedulerHeap[:n]
-	removed.heapIndex = -1
-	if i != n && !timerHeapSiftDown(i) {
-		timerHeapSiftUp(i)
-	}
-}
-
-func timerHeapSiftUp(i int) {
-	for i > 0 {
-		p := (i - 1) / timerHeapArity
-		if !timerHeapLess(i, p) {
-			return
-		}
-		timerHeapSwap(i, p)
-		i = p
-	}
-}
-
-func timerHeapSiftDown(i int) bool {
-	moved := false
-	for {
-		child := timerHeapArity*i + 1
-		if child >= len(timerSchedulerHeap) {
-			return moved
-		}
-		best := child
-		limit := child + timerHeapArity
-		if limit > len(timerSchedulerHeap) {
-			limit = len(timerSchedulerHeap)
-		}
-		for candidate := child + 1; candidate < limit; candidate++ {
-			if timerHeapLess(candidate, best) {
-				best = candidate
-			}
-		}
-		if !timerHeapLess(best, i) {
-			return moved
-		}
-		timerHeapSwap(i, best)
-		i = best
-		moved = true
-	}
-}
-
-//go:linkname time_now time.now
-func time_now() (sec int64, nsec int32, mono int64) {
-	sec, nsec = walltime()
-	mono = runtimeNano()
-	return
-}
-
-//go:linkname time_runtimeNow time.runtimeNow
-func time_runtimeNow() (sec int64, nsec int32, mono int64) {
-	return time_now()
-}
-
-//go:linkname time_runtimeNano time.runtimeNano
-func time_runtimeNano() int64 {
-	return runtimeNano()
-}
-
-//go:linkname time_runtimeIsBubbled time.runtimeIsBubbled
-func time_runtimeIsBubbled() bool {
-	return false
 }

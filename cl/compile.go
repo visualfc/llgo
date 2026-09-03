@@ -623,6 +623,14 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			fn = pkg.NewFuncEx(name, sig, llssa.Background(ftype), false, p.needsLinkOnce(f))
 		}
 	}
+	if p.prog.Target().GOARCH == "wasm" {
+		if decl, ok := f.Syntax().(*ast.FuncDecl); ok {
+			fullName, _ := astFuncName(llssa.PathOf(pkgTypes), decl)
+			if module, importName, ok := p.prog.WasmImport(fullName); ok {
+				fn.SetWasmImport(module, importName)
+			}
+		}
+	}
 	noInlineDirective := hasNoInlineDirective(f)
 	runtimeStackNoInline := needsRuntimeStackNoInline(pkgTypes, f)
 	pcLineNoInline := p.needsPCLineNoInline(f)
@@ -1439,7 +1447,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		if v, ok := p.bvals[iv]; ok {
 			return v
 		}
-		log.Panicln("unreachable:", iv)
+		// Do not format iv through its String method here. An incomplete SSA
+		// instruction can panic while formatting, hiding this compiler error and,
+		// on affected Windows hosts, turning the diagnostic into a hardware fault.
+		log.Panicf("unreachable: %T\n", iv)
 	}
 	switch v := iv.(type) {
 	case *ssa.Call:

@@ -1,8 +1,9 @@
 {
 	"llvm-target": "wasm32-unknown-wasip1",
+	"cpu": "generic",
 	"build-tags": ["llgo.wasm.wasi"],
 	"goos": "wasip1",
 	"goarch": "wasm",
 	"wasm-abi": "wasi-preview1",
-	"emulator": "wasmtime run --dir={tmpDir}::/tmp {}"
+	"emulator": "wasmtime run -W exceptions=y --dir={tmpDir}::/tmp {}"
 }

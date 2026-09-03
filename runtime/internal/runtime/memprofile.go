@@ -61,6 +61,11 @@ var memProfileBuckets = [...]memProfileBucket{
 	{size: 1073741824},
 }
 
+// Keep the bucket scan out of allocation call sites. Inlining it duplicates
+// the scan and atomic update in every small allocator wrapper, which makes
+// otherwise unrelated runtime backend changes perturb native binary size.
+//
+//go:noinline
 func recordMemProfileAlloc(size uintptr) {
 	if size == 0 {
 		return
