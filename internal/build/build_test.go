@@ -1484,6 +1484,16 @@ func TestTestOutputFileLogic(t *testing.T) {
 	}
 }
 
+func TestCompileOnlyNamedTargetDoesNotExecute(t *testing.T) {
+	// A named target without -emulator normally enters the flash/serial-monitor
+	// path. Compile-only must return after linking instead; otherwise even a
+	// WebAssembly test attempts to discover a serial port.
+	conf := &Config{Mode: ModeTest, Target: "emscripten", CompileOnly: true}
+	if err := runNamedTarget(nil, "wasm-test.mjs", nil, nil, conf, false); err != nil {
+		t.Fatalf("compile-only named target tried to execute: %v", err)
+	}
+}
+
 func TestTestMultiplePackagesWithOutputFile(t *testing.T) {
 	// Test that -o flag errors with multiple test packages
 	cfg := &Config{
