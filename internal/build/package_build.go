@@ -22,7 +22,23 @@ import (
 
 	"github.com/xgo-dev/llgo/cl"
 	"github.com/xgo-dev/llgo/internal/packages"
+	llssa "github.com/xgo-dev/llgo/ssa"
 )
+
+// packageLinkSnapshot is the LLVM-free part of an isolated package needed by
+// later root link plans. Keeping it on aPackage lets the package worker destroy
+// its Program immediately instead of extending that Program's lifetime to the
+// last root that imports it.
+type packageLinkSnapshot struct {
+	needAbiInit     int
+	methodByIndex   map[int]none
+	methodByName    map[string]none
+	abiSymbols      map[string]none
+	abiTypes        []llssa.AbiTypeInfo
+	funcInfo        []funcInfoRecord
+	pcLineInfo      []pcLineRecord
+	hasLocalExports bool
+}
 
 type packageBuildTask struct {
 	pkg       *aPackage
@@ -272,20 +288,48 @@ func (ctx *context) executeIsolatedPackage(task *packageBuildTask, verbose bool)
 	if task.needsRuntimeSignals() {
 		task.pkg.setNeedRuntimeOrPyInit(task.pkg.LPkg.NeedRuntime, task.pkg.LPkg.NeedPyInit)
 	}
-	// Linking still consumes live package state: method tables, globals,
-	// funcinfo/PCLN, C exports, and DCE source modules. Cache hits still rebuild
-	// that frontend module in the isolated Program, skip backend emission, and
-	// keep the module alive until every link has completed.
+	// Cache hits still rebuild the frontend module in the isolated Program even
+	// though they skip backend emission. Linking needs a small metadata subset of
+	// that module in addition to the cached archive.
 	//
-	// LPkg retains the Program that owns its LLVM context. Ownership therefore
-	// moves to the coordinator on every success, not only when dead-code
-	// dropping is enabled.
+	// LPkg retains the Program that owns its LLVM context. Ownership moves to the
+	// caller on success: the native test DAG snapshots the metadata and disposes
+	// it at this package node; other build paths dispose it at their build-level
+	// ownership boundary.
 	return nil
 }
 
-// disposeBackendPackage releases an isolated package Program after the last
-// coordinator link plan has copied its whole-program metadata. Entry-module
-// workers consume only that Go-owned snapshot, object paths, and link args.
+// snapshotBackendPackage copies all link-time metadata out of one isolated
+// Program. It must run on the same package worker before that Program is
+// disposed; root link plans consume only the resulting Go-owned values.
+func (ctx *context) snapshotBackendPackage(pkg *aPackage) {
+	if pkg == nil || pkg.LPkg == nil {
+		return
+	}
+	lpkg := pkg.LPkg
+	snapshot := &packageLinkSnapshot{
+		needAbiInit:     lpkg.NeedAbiInit,
+		methodByIndex:   make(map[int]none, len(lpkg.MethodByIndex)),
+		methodByName:    make(map[string]none, len(lpkg.MethodByName)),
+		abiSymbols:      linkedModuleGlobals([]Package{pkg}),
+		abiTypes:        append([]llssa.AbiTypeInfo(nil), lpkg.Prog.AbiTypes()...),
+		hasLocalExports: hasLocalCExports(lpkg),
+	}
+	for index := range lpkg.MethodByIndex {
+		snapshot.methodByIndex[index] = none{}
+	}
+	for name := range lpkg.MethodByName {
+		snapshot.methodByName[name] = none{}
+	}
+	if ctx.buildConf.PCLNMode != PCLNNone {
+		snapshot.funcInfo = readFuncInfo(lpkg.Module())
+		snapshot.pcLineInfo = readPCLineInfo(lpkg.Module())
+	}
+	pkg.linkSnapshot = snapshot
+}
+
+// disposeBackendPackage releases an isolated package Program. Callers must
+// first snapshot metadata if later root link plans still need the package.
 func (ctx *context) disposeBackendPackage(pkg *aPackage) {
 	if pkg == nil || pkg.LPkg == nil {
 		return

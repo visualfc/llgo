@@ -259,15 +259,16 @@ type nativeTestDAGResult struct {
 
 // The native test DAG is deliberately split at LLVM ownership boundaries:
 //
-//	package backend+.a publication -> coordinator link plan snapshot
-//	-> isolated entry .o -> link/finalize -> test run
+//	package backend+.a -> package link snapshot+Program disposal
+//	-> coordinator root link plan -> isolated entry .o
+//	-> link/finalize -> test run
 //
 // All non-coordinator nodes share the single -p budget. A link-plan node is
-// coordinator-only because several roots may reference the same package LLVM
-// Program and LLVM does not support concurrent access to one Context here.
-// Its output is LLVM-free, so entry generation can use a fresh Program. Once
-// the last plan snapshot has consumed a package, that package Program is
-// released before downstream link and run work continues.
+// coordinator-only because patched packages may still belong to the shared
+// coordinator Program, which LLVM does not permit workers to read concurrently.
+// Isolated package workers publish LLVM-free snapshots and dispose their own
+// Programs first. Root plans consume those snapshots, so entry generation can
+// use a fresh Program and downstream link/run work retains no package Context.
 func canUseNativeTestDAG(ctx *context, count int) bool {
 	return count > 1 && ctx != nil && ctx.buildConf != nil &&
 		ctx.mode == ModeTest && ctx.buildConf.Target == "" &&
@@ -301,6 +302,13 @@ func prepareNativeTestPackageTasks(ctx *context, pkgs []*aPackage, verbose bool)
 
 func runNativeTestDAG(ctx *context, allPkgs []*aPackage, roots []*packages.Package, conf *Config, verbose bool) (nativeTestDAGResult, error) {
 	result := nativeTestDAGResult{links: make([]testLinkResult, len(roots))}
+	defer func() {
+		for _, pkg := range allPkgs {
+			if pkg != nil {
+				pkg.linkSnapshot = nil
+			}
+		}
+	}()
 	packageTasks, err := prepareNativeTestPackageTasks(ctx, allPkgs, verbose)
 	if err != nil {
 		return result, err
@@ -317,12 +325,28 @@ func runNativeTestDAG(ctx *context, allPkgs []*aPackage, roots []*packages.Packa
 			priority: dagPriorityPackageBase,
 			class:    dagPackage,
 			run: func() error {
-				return tracePackageBuild(ctx, task, verbose, true, true)
+				if err := tracePackageBuild(ctx, task, verbose, true, true); err != nil {
+					return err
+				}
+				span := ctx.buildTrace.startWorker("link-snapshot", task.pkg.PkgPath)
+				ctx.snapshotBackendPackage(task.pkg)
+				ctx.disposeBackendPackage(task.pkg)
+				span.done()
+				return nil
 			},
 		})
 	}
 
 	prepared := make([]*initialPackageLink, len(roots))
+	defer func() {
+		// Scheduler cancellation and fail-fast may leave a planned test without
+		// a run node. Successful runs have already removed the same directories.
+		for _, link := range prepared {
+			if link != nil && link.outFmts.tempDir != "" {
+				removeOutFmts(link.outFmts)
+			}
+		}
+	}()
 	runResults := make([]testProgramResult, len(roots))
 	packageFanout := make([]int, len(packageTasks))
 	packageConsumers := make(map[*aPackage]int, len(packageTasks))
@@ -356,6 +380,7 @@ func runNativeTestDAG(ctx *context, allPkgs []*aPackage, roots []*packages.Packa
 				for _, pkg := range consumerPackages {
 					packageConsumers[pkg]--
 					if packageConsumers[pkg] == 0 {
+						pkg.linkSnapshot = nil
 						ctx.disposeBackendPackage(pkg)
 					}
 				}
@@ -368,7 +393,7 @@ func runNativeTestDAG(ctx *context, allPkgs []*aPackage, roots []*packages.Packa
 		nodes = append(nodes, buildDAGNode{
 			name:         "entry object " + root.PkgPath,
 			dependencies: []int{planIndex},
-			priority:     dagPriorityPrepareLink,
+			priority:     dagPriorityLink,
 			class:        dagLink,
 			run: func() error {
 				return buildInitialPackageEntry(ctx, prepared[rootIndex], verbose, true)

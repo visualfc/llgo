@@ -30,9 +30,10 @@ import (
 )
 
 type testProgram struct {
-	app     string
-	pkgDir  string
-	pkgName string
+	app              string
+	pkgDir           string
+	pkgName          string
+	temporaryOutputs *OutFmtDetails
 }
 
 type testRunResult struct {
@@ -47,6 +48,7 @@ type testProgramResult struct {
 }
 
 func runNativeTest(commands commandEnv, program testProgram, conf *Config, stdout, stderr io.Writer) error {
+	defer removeOutFmts(program.temporaryOutputs)
 	if conf.PrintCommands {
 		fmt.Fprintf(stderr, "%s %s\n", program.app, strings.Join(conf.RunArgs, " "))
 	}
@@ -68,6 +70,13 @@ func runNativeTest(commands commandEnv, program testProgram, conf *Config, stdou
 }
 
 func runNativeTestPrograms(commands commandEnv, programs []testProgram, conf *Config, stdout, stderr io.Writer) testRunResult {
+	defer func() {
+		// Fail-fast can leave programs unstarted; reclaim their implicit outputs
+		// as well as the ones runNativeTest already removed.
+		for _, program := range programs {
+			removeOutFmts(program.temporaryOutputs)
+		}
+	}()
 	// "go test -c" links test binaries but never executes them. Keep this
 	// check at the batch execution boundary so it also applies when several
 	// test roots were linked from one shared build graph.

@@ -121,6 +121,8 @@ type OutFmtDetails struct {
 	Img  string // Image output file path (.img)
 	Uf2  string // UF2 output file path (.uf2)
 	Zip  string // ZIP/DFU output file path (.zip)
+
+	tempDir string // LLGo-owned directory removed with implicit test outputs
 }
 
 // ModuleHook observes a package module immediately after it is generated and
@@ -930,7 +932,7 @@ func prepareInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*a
 		return nil, err
 	}
 	if err := buildInitialPackageEntry(ctx, link, verbose, false); err != nil {
-		if discardOutput {
+		if discardOutput || link.outFmts.tempDir != "" {
 			removeOutFmts(link.outFmts)
 		}
 		return nil, err
@@ -952,7 +954,7 @@ func planInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*aPac
 	preparation, err := planMainLink(ctx, pkg, allPkgs)
 	prepareSpan.done()
 	if err != nil {
-		if discardOutput {
+		if discardOutput || outFmts.tempDir != "" {
 			removeOutFmts(outFmts)
 		}
 		return nil, err
@@ -998,9 +1000,12 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 	// completed roots do not retain their metadata while other tests run.
 	plan := link.plan
 	link.plan = nil
-	if link.discardOutput {
-		defer removeOutFmts(link.outFmts)
-	}
+	cleanupTemp := link.outFmts.tempDir != ""
+	defer func() {
+		if link.discardOutput || cleanupTemp {
+			removeOutFmts(link.outFmts)
+		}
+	}()
 	var linkSpan *buildTraceSpan
 	if worker {
 		linkSpan = ctx.buildTrace.startWorker("link", link.pkg.PkgPath)
@@ -1049,11 +1054,16 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 	case ModeRun, ModeTest, ModeCmpTest:
 		if link.conf.Target == "" {
 			if link.conf.Mode == ModeTest {
-				return &testProgram{
+				program := &testProgram{
 					app:     link.outFmts.Out,
 					pkgDir:  link.pkg.Dir,
 					pkgName: strings.TrimSuffix(link.pkg.PkgPath, ".test"),
-				}, nil
+				}
+				if cleanupTemp {
+					program.temporaryOutputs = link.outFmts
+					cleanupTemp = false // runNativeTest now owns the temporary output.
+				}
+				return program, nil
 			}
 			return nil, runNative(linkCtx, link.outFmts.Out, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode)
 		}
@@ -1084,6 +1094,15 @@ func newLinkExecutionContext(ctx *context, plan *mainLinkPlan) *context {
 }
 
 func removeOutFmts(outFmts *OutFmtDetails) {
+	if outFmts == nil {
+		return
+	}
+	if outFmts.tempDir != "" {
+		// tempDir comes only from os.MkdirTemp in buildOutFmts and contains all
+		// intermediate sidecars as well as the final test executable.
+		_ = os.RemoveAll(outFmts.tempDir)
+		return
+	}
 	for _, output := range []string{
 		outFmts.Out, outFmts.PCLN, outFmts.Bin, outFmts.Hex,
 		outFmts.Img, outFmts.Uf2, outFmts.Zip,
@@ -1351,7 +1370,14 @@ func (c *context) backendAbiTypes(pkgs []Package) []llssa.AbiTypeInfo {
 	seen := make(map[llssa.Program]none)
 	var infos []llssa.AbiTypeInfo
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
+		if pkg == nil {
+			continue
+		}
+		if pkg.linkSnapshot != nil {
+			infos = append(infos, pkg.linkSnapshot.abiTypes...)
+			continue
+		}
+		if pkg.LPkg == nil {
 			continue
 		}
 		prog := pkg.LPkg.Prog
@@ -1876,9 +1902,10 @@ type mainLinkPlan struct {
 }
 
 // mainLinkPreparation separates shared package inspection from entry-module
-// emission. planMainLink runs on the coordinator because linkedOrder contains
-// LLVM-owned packages shared by several roots. Every other field is a Go-owned
-// snapshot and must remain safe to consume after those Programs are disposed.
+// emission. planMainLink runs on the coordinator because linkedOrder may still
+// contain packages owned by the shared coordinator Program. Every other field
+// is a Go-owned snapshot and must remain safe to consume after isolated package
+// Programs are disposed.
 // linkedOrder is kept only for the coordinator-only dead-code-drop path; the
 // native test DAG is disabled when that mode is active, so its workers must
 // never dereference linkedOrder.
@@ -1906,9 +1933,9 @@ func prepareMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage, outp
 	return buildMainLink(ctx, pkg, preparation, outputPath, verbose)
 }
 
-// planMainLink snapshots all package-owned state needed to generate an entry
-// module. Native test DAG callers must invoke it as a coordinator node before
-// releasing the linked package Programs.
+// planMainLink combines package-owned snapshots into the state needed to
+// generate one entry module. Native test DAG callers invoke it on the
+// coordinator; isolated package Programs may already have been disposed.
 func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainLinkPreparation, error) {
 	needRuntime := false
 	needPyInit := false
@@ -1940,12 +1967,22 @@ func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainL
 		need1, need2 := aPkg.isNeedRuntimeOrPyInit()
 		needRuntime = needRuntime || need1
 		needPyInit = needPyInit || need2
-		needAbiInit |= aPkg.LPkg.NeedAbiInit
-		for k, _ := range aPkg.LPkg.MethodByIndex {
-			methodByIndex[k] = none{}
-		}
-		for k, _ := range aPkg.LPkg.MethodByName {
-			methodByName[k] = none{}
+		if snapshot := aPkg.linkSnapshot; snapshot != nil {
+			needAbiInit |= snapshot.needAbiInit
+			for k := range snapshot.methodByIndex {
+				methodByIndex[k] = none{}
+			}
+			for k := range snapshot.methodByName {
+				methodByName[k] = none{}
+			}
+		} else {
+			needAbiInit |= aPkg.LPkg.NeedAbiInit
+			for k := range aPkg.LPkg.MethodByIndex {
+				methodByIndex[k] = none{}
+			}
+			for k := range aPkg.LPkg.MethodByName {
+				methodByName[k] = none{}
+			}
 		}
 
 		linkArgs = append(linkArgs, aPkg.LinkArgs...)
@@ -2192,7 +2229,16 @@ func linkedModuleGlobals(pkgs []Package) map[string]none {
 	}
 	seen := make(map[string]none)
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
+		if pkg == nil {
+			continue
+		}
+		if pkg.linkSnapshot != nil {
+			for name := range pkg.linkSnapshot.abiSymbols {
+				seen[name] = none{}
+			}
+			continue
+		}
+		if pkg.LPkg == nil {
 			continue
 		}
 		for g := pkg.LPkg.Module().FirstGlobal(); !g.IsNil(); g = gllvm.NextGlobal(g) {
@@ -3102,8 +3148,9 @@ type aPackage struct {
 	AltPkg *packages.Cached
 	LPkg   llssa.Package
 
-	NeedRt     bool
-	NeedPyInit bool
+	NeedRt       bool
+	NeedPyInit   bool
+	linkSnapshot *packageLinkSnapshot
 
 	LinkArgs     []string
 	ObjFiles     []string               // file-backed archive members: .o or .ll

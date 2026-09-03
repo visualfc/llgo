@@ -182,10 +182,23 @@ func buildOutFmts(pkgName string, conf *Config, multiPkg bool, crossCompile *cro
 
 	// Determine base name and directory
 	baseName, dir := determineBaseNameAndDir(pkgName, conf, multiPkg)
+	if conf.Target == "" && conf.Mode == ModeTest && !conf.CompileOnly && conf.OutFile == "" {
+		// codesign examines an executable's parent directory while deciding
+		// whether it belongs to a bundle. Keep each implicit test binary in a
+		// small LLGo-owned directory instead of making every link scan the shared
+		// system temp directory. The directory is removed after the test runs.
+		var err error
+		details.tempDir, err = os.MkdirTemp("", "llgo-test-*")
+		if err != nil {
+			return nil, err
+		}
+		dir = details.tempDir
+	}
 
 	// Build output path
 	outputPath, err := buildOutputPath(baseName, dir, conf, multiPkg, conf.AppExt)
 	if err != nil {
+		removeOutFmts(details)
 		return nil, err
 	}
 	details.Out = outputPath

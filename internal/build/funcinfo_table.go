@@ -82,10 +82,16 @@ type funcInfoSymbolIndexRecord struct {
 func collectFuncInfo(pkgs []Package) []funcInfoRecord {
 	seen := make(map[string]funcInfoRecord)
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
+		if pkg == nil {
 			continue
 		}
-		for _, rec := range readFuncInfo(pkg.LPkg.Module()) {
+		var records []funcInfoRecord
+		if pkg.linkSnapshot != nil {
+			records = pkg.linkSnapshot.funcInfo
+		} else if pkg.LPkg != nil {
+			records = readFuncInfo(pkg.LPkg.Module())
+		}
+		for _, rec := range records {
 			if rec.symbol == "" {
 				continue
 			}
@@ -111,10 +117,16 @@ func collectPCLineInfo(pkgs []Package) []pcLineRecord {
 	var out []pcLineRecord
 	seen := make(map[uint64]none)
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
+		if pkg == nil {
 			continue
 		}
-		for _, rec := range readPCLineInfo(pkg.LPkg.Module()) {
+		var records []pcLineRecord
+		if pkg.linkSnapshot != nil {
+			records = pkg.linkSnapshot.pcLineInfo
+		} else if pkg.LPkg != nil {
+			records = readPCLineInfo(pkg.LPkg.Module())
+		}
+		for _, rec := range records {
 			if rec.id == 0 || rec.symbol == "" {
 				continue
 			}
