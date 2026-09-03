@@ -131,6 +131,11 @@ jobs:
 
           go_test=(go test)
           if [[ "$RUNNER_OS" == Windows ]]; then
+            # Quarantine only the otherwise-impossible testing.T channel
+            # corruption associated with golang/go#81238. The wrapper retries
+            # before ignoring it and preserves every ordinary test failure.
+            go_test=(bash dev/go_test_windows.sh go test)
+
             # Go's internal linker cannot consume every GNU COFF import
             # archive used by the race runtime and LLVM. Use the configured
             # Clang driver for the host test binaries instead of excluding
