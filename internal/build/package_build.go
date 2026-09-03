@@ -283,6 +283,21 @@ func (ctx *context) executeIsolatedPackage(task *packageBuildTask, verbose bool)
 	return nil
 }
 
+// disposeBackendPackage releases an isolated package Program after the last
+// coordinator link plan has copied its whole-program metadata. Entry-module
+// workers consume only that Go-owned snapshot, object paths, and link args.
+func (ctx *context) disposeBackendPackage(pkg *aPackage) {
+	if pkg == nil || pkg.LPkg == nil {
+		return
+	}
+	prog := pkg.LPkg.Prog
+	if prog == nil || prog == ctx.prog {
+		return
+	}
+	pkg.LPkg = nil
+	prog.Dispose()
+}
+
 func (ctx *context) newBackendTask(session backendSession) *context {
 	// preparePackageBuilds populated every task's SFiles and LLGoFiles entries
 	// before workers start. Backend tasks share those maps read-only; a frozen
