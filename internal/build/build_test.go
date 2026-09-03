@@ -1484,7 +1484,7 @@ func TestTestOutputFileLogic(t *testing.T) {
 	}
 }
 
-func TestCompileOnlyNamedTargetDoesNotExecute(t *testing.T) {
+func TestCompileOnlyNamedTargetWithoutEmulatorDoesNotExecute(t *testing.T) {
 	// A named target without -emulator normally enters the flash/serial-monitor
 	// path. Compile-only must return after linking instead; otherwise even a
 	// WebAssembly test attempts to discover a serial port.
