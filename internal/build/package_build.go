@@ -148,6 +148,7 @@ func tracePackageBuild(ctx *context, task *packageBuildTask, verbose, isolated, 
 }
 
 func buildPackage(ctx *context, task *packageBuildTask, verbose, isolated bool) error {
+	defer task.pkg.cleanupTemporaryObjFiles()
 	var err error
 	if isolated {
 		err = ctx.executeIsolatedPackage(task, verbose)
@@ -273,8 +274,9 @@ func (ctx *context) executeIsolatedPackage(task *packageBuildTask, verbose bool)
 }
 
 func (ctx *context) newBackendTask(session backendSession) *context {
-	// preparePackageBuilds populated every task's SFiles entry before workers start.
-	// Backend tasks share that map read-only; a frozen miss returns an error.
+	// preparePackageBuilds populated every task's SFiles and LLGoFiles entries
+	// before workers start. Backend tasks share those maps read-only; a frozen
+	// miss returns an error instead of mutating coordinator state concurrently.
 	return &context{
 		conf:            ctx.conf,
 		progSSA:         ctx.progSSA,
@@ -296,6 +298,8 @@ func (ctx *context) newBackendTask(session backendSession) *context {
 		buildTrace:      ctx.buildTrace,
 		sfilesCache:     ctx.sfilesCache,
 		sfilesFrozen:    true,
+		llgoFilesCache:  ctx.llgoFilesCache,
+		llgoFilesFrozen: true,
 		plan9asmReady:   true,
 		plan9asmMode:    ctx.plan9asmMode,
 		plan9asmPkgs:    ctx.plan9asmPkgs,

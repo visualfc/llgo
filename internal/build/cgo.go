@@ -67,6 +67,12 @@ static void* _Cmalloc(size_t size) {
 var cgoExternRE = regexp.MustCompile(`^(_cgo_[^_]+_(C2func|Cfunc|Cmacro)_)(.*)$`)
 
 func buildCgo(ctx *context, pkg *aPackage, files []*ast.File, externs []string, verbose bool) (llfiles, cgoLdflags []string, err error) {
+	defer func() {
+		if err != nil {
+			removeFiles(llfiles)
+			llfiles = nil
+		}
+	}()
 	buildCtx := build.Default
 	if ctx.buildConf.Goos != "" {
 		buildCtx.GOOS = ctx.buildConf.Goos
@@ -116,9 +122,11 @@ func buildCgo(ctx *context, pkg *aPackage, files []*ast.File, externs []string, 
 		if src.isCXX {
 			args = append(args, cxxflags...)
 		}
-		clFile(ctx, args, src.path, pkg.ExportFile, pkg.PkgPath, func(linkFile string) {
-			llfiles = append(llfiles, linkFile)
-		}, verbose)
+		linkFile, compileErr := clFile(ctx, args, src.path, pkg.ExportFile, pkg.PkgPath, verbose)
+		if compileErr != nil {
+			return nil, nil, compileErr
+		}
+		llfiles = append(llfiles, linkFile)
 	}
 	cgoSymbols := collectCgoSymbols(externs)
 	for _, preamble := range preambles {
@@ -136,9 +144,11 @@ func buildCgo(ctx *context, pkg *aPackage, files []*ast.File, externs []string, 
 		if err = os.WriteFile(tmpName, []byte(code+"\n\n"+externDecls), 0644); err != nil {
 			return nil, nil, fmt.Errorf("failed to write temp file: %v", err)
 		}
-		clFile(ctx, cflags, tmpName, pkg.ExportFile, pkg.PkgPath, func(linkFile string) {
-			llfiles = append(llfiles, linkFile)
-		}, verbose)
+		linkFile, compileErr := clFile(ctx, cflags, tmpName, pkg.ExportFile, pkg.PkgPath, verbose)
+		if compileErr != nil {
+			return nil, nil, compileErr
+		}
+		llfiles = append(llfiles, linkFile)
 	}
 	for _, ldflag := range ldflags {
 		cgoLdflags = append(cgoLdflags, safesplit.SplitPkgConfigFlags(ldflag)...)

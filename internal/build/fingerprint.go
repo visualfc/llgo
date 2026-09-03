@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -172,11 +173,13 @@ type packageSection struct {
 	GoFiles     []fileDigest     `yaml:"go_files,omitempty"`
 	AltGoFiles  []fileDigest     `yaml:"alt_go_files,omitempty"`
 	OtherFiles  []fileDigest     `yaml:"other_files,omitempty"`
+	LLGoFiles   []llgoFileDigest `yaml:"llgo_files,omitempty"`
 	RewriteVars orderedStringMap `yaml:"rewrite_vars,omitempty"`
 }
 
 func (s *packageSection) empty() bool {
-	return s.PkgPath == "" && s.PkgID == "" && len(s.GoFiles) == 0 && len(s.AltGoFiles) == 0 && len(s.OtherFiles) == 0 && len(s.RewriteVars) == 0
+	return s.PkgPath == "" && s.PkgID == "" && len(s.GoFiles) == 0 && len(s.AltGoFiles) == 0 &&
+		len(s.OtherFiles) == 0 && len(s.LLGoFiles) == 0 && len(s.RewriteVars) == 0
 }
 
 // manifestBuilder builds manifest text with sorted sections.
@@ -297,6 +300,62 @@ type fileDigest struct {
 	Size        int64  `yaml:"size"`
 	ModTime     int64  `yaml:"mtime"`
 	OverlayHash string `yaml:"overlay_hash,omitempty"`
+}
+
+// llgoFileDigest records the preprocessed content and per-file flags of an
+// LLGoFiles input. These files are declared through a Go constant, so go list
+// does not include either them or their local includes in OtherFiles.
+type llgoFileDigest struct {
+	Path             string   `yaml:"path"`
+	PreprocessedHash string   `yaml:"preprocessed_hash"`
+	OverlayHash      string   `yaml:"overlay_hash,omitempty"`
+	CompilerArgs     []string `yaml:"compiler_args,omitempty"`
+}
+
+func digestLLGoFileInputs(ctx *context, inputs []llgoFileInput, overlay map[string][]byte) ([]llgoFileDigest, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+	if ctx.llgoFileHashCache == nil {
+		ctx.llgoFileHashCache = make(map[llgoFileHashKey]string)
+	}
+	digests := make([]llgoFileDigest, 0, len(inputs))
+	for _, input := range inputs {
+		compilerArgs := llgoFileCompilerArgs(ctx, input.compilerArgs, input.path)
+		cacheKey := llgoFileHashKey{
+			path:         input.path,
+			compilerArgs: strings.Join(compilerArgs, "\x00"),
+		}
+		preprocessedHash, ok := ctx.llgoFileHashCache[cacheKey]
+		if !ok {
+			hash := sha256.New()
+			cmd := ctx.compilerForSource(input.path)
+			cmd.Stdout = hash
+			preprocessArgs := append(slices.Clone(compilerArgs), "-E", input.path)
+			if err := cmd.Compile(preprocessArgs...); err != nil {
+				return nil, fmt.Errorf("preprocess file %q: %w", input.path, err)
+			}
+			preprocessedHash = hex.EncodeToString(hash.Sum(nil))
+			ctx.llgoFileHashCache[cacheKey] = preprocessedHash
+		}
+		overlayHash := ""
+		if content, ok := overlay[input.path]; ok {
+			overlayHash = digestBytes(content)
+		}
+		digests = append(digests, llgoFileDigest{
+			Path:             input.path,
+			PreprocessedHash: preprocessedHash,
+			OverlayHash:      overlayHash,
+			CompilerArgs:     append([]string(nil), input.compilerArgs...),
+		})
+	}
+	sort.Slice(digests, func(i, j int) bool {
+		if digests[i].Path != digests[j].Path {
+			return digests[i].Path < digests[j].Path
+		}
+		return strings.Join(digests[i].CompilerArgs, "\x00") < strings.Join(digests[j].CompilerArgs, "\x00")
+	})
+	return digests, nil
 }
 
 // digestFiles calculates digests for multiple files.

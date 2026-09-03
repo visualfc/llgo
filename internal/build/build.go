@@ -1178,8 +1178,11 @@ type context struct {
 	llvmVersion  string
 
 	// go list derived file lists (SFiles, etc.)
-	sfilesCache  map[string][]string // pkg.ID -> absolute .s/.S file paths
-	sfilesFrozen bool
+	sfilesCache       map[string][]string // pkg.ID -> absolute .s/.S file paths
+	sfilesFrozen      bool
+	llgoFilesCache    map[*packages.Package][]llgoFileInput
+	llgoFilesFrozen   bool
+	llgoFileHashCache map[llgoFileHashKey]string
 
 	// plan9asm package policy parsed from env.
 	plan9asmOnce  sync.Once
@@ -1378,6 +1381,7 @@ func normalizeToArchive(ctx *context, aPkg *aPackage, verbose bool) error {
 		return fmt.Errorf("create archive for %s: %w", aPkg.PkgPath, err)
 	}
 
+	aPkg.cleanupTemporaryObjFiles()
 	aPkg.ObjFiles = nil
 	aPkg.ArchiveFile = archivePath
 	return nil
@@ -2469,8 +2473,12 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 	if err != nil {
 		return fmt.Errorf("build cgo of %v failed: %v", pkgPath, err)
 	}
-	aPkg.ObjFiles = append(aPkg.ObjFiles, cgoLLFiles...)
-	aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, pkg, printCmds)...)
+	aPkg.appendTemporaryObjFiles(cgoLLFiles...)
+	llgoFiles, err := concatPkgLinkFiles(ctx, pkg, printCmds)
+	if err != nil {
+		return fmt.Errorf("build LLGoFiles of %v failed: %w", pkgPath, err)
+	}
+	aPkg.appendTemporaryObjFiles(llgoFiles...)
 	if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.Package.Syntax, printCmds); err != nil {
 		return err
 	} else {
@@ -2483,8 +2491,12 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 		if e != nil {
 			return fmt.Errorf("build cgo of %v failed: %v", pkgPath, e)
 		}
-		aPkg.ObjFiles = append(aPkg.ObjFiles, altLLFiles...)
-		aPkg.ObjFiles = append(aPkg.ObjFiles, concatPkgLinkFiles(ctx, aPkg.AltPkg.Package, printCmds)...)
+		aPkg.appendTemporaryObjFiles(altLLFiles...)
+		altLLGoFiles, err := concatPkgLinkFiles(ctx, aPkg.AltPkg.Package, printCmds)
+		if err != nil {
+			return fmt.Errorf("build alternate LLGoFiles of %v failed: %w", pkgPath, err)
+		}
+		aPkg.appendTemporaryObjFiles(altLLGoFiles...)
 		if aliasObjs, err := buildGoCgoAliasObjects(ctx, pkgPath, aPkg.AltPkg.Syntax, printCmds); err != nil {
 			return err
 		} else {
@@ -2839,17 +2851,30 @@ type aPackage struct {
 	NeedRt     bool
 	NeedPyInit bool
 
-	LinkArgs    []string
-	ObjFiles    []string               // file-backed archive members: .o or .ll
-	ObjBuffers  []packageArchiveBuffer // LLVM-produced in-memory archive members
-	ArchiveFile string                 // archive file: .a (output of archiver, used for linking)
-	Meta        *meta.PackageMeta
-	rewriteVars map[string]string
+	LinkArgs     []string
+	ObjFiles     []string               // file-backed archive members: .o or .ll
+	ObjBuffers   []packageArchiveBuffer // LLVM-produced in-memory archive members
+	ArchiveFile  string                 // archive file: .a (output of archiver, used for linking)
+	Meta         *meta.PackageMeta
+	rewriteVars  map[string]string
+	tempObjFiles []string // process-private C/C++/assembly objects consumed by ArchiveFile
 
 	// Cache related fields
 	Fingerprint string // fingerprint digest
 	Manifest    string // manifest text content
 	CacheHit    bool   // whether cache was hit
+}
+
+func (p *aPackage) appendTemporaryObjFiles(files ...string) {
+	p.ObjFiles = append(p.ObjFiles, files...)
+	p.tempObjFiles = append(p.tempObjFiles, files...)
+}
+
+func (p *aPackage) cleanupTemporaryObjFiles() {
+	for _, file := range p.tempObjFiles {
+		_ = os.Remove(file)
+	}
+	p.tempObjFiles = nil
 }
 
 type Package = *aPackage
@@ -3266,28 +3291,71 @@ func WasmRuntime() string {
 	return defaultEnv(llgoWasmRuntime, defaultWasmRuntime)
 }
 
-func concatPkgLinkFiles(ctx *context, pkg *packages.Package, verbose bool) (parts []string) {
-	llgoPkgLinkFiles(ctx, pkg, func(linkFile string) {
+func concatPkgLinkFiles(ctx *context, pkg *packages.Package, verbose bool) (parts []string, err error) {
+	inputs, err := llgoPkgFileInputs(ctx, pkg)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			removeFiles(parts)
+		}
+	}()
+	for _, input := range inputs {
+		linkFile, compileErr := clFile(ctx, input.compilerArgs, input.path, pkg.ExportFile, pkg.PkgPath, verbose)
+		if compileErr != nil {
+			return parts, compileErr
+		}
 		parts = append(parts, linkFile)
-	}, verbose)
-	return
+	}
+	return parts, nil
+}
+
+type llgoFileInput struct {
+	path         string
+	compilerArgs []string
+}
+
+type llgoFileHashKey struct {
+	path         string
+	compilerArgs string
 }
 
 // const LLGoFiles = "file1; file2; ..."
-func llgoPkgLinkFiles(ctx *context, pkg *packages.Package, procFile func(linkFile string), verbose bool) {
-	if o := pkg.Types.Scope().Lookup("LLGoFiles"); o != nil {
-		val := o.(*types.Const).Val()
-		if val.Kind() == constant.String {
-			clFiles(ctx, constant.StringVal(val), pkg, procFile, verbose)
+func llgoPkgFileInputs(ctx *context, pkg *packages.Package) ([]llgoFileInput, error) {
+	if ctx.llgoFilesCache == nil {
+		if ctx.llgoFilesFrozen {
+			return nil, fmt.Errorf("package %s LLGoFiles were not prepared before backend execution", pkg.PkgPath)
+		}
+		ctx.llgoFilesCache = make(map[*packages.Package][]llgoFileInput)
+	}
+	if inputs, ok := ctx.llgoFilesCache[pkg]; ok {
+		return inputs, nil
+	}
+	if ctx.llgoFilesFrozen {
+		return nil, fmt.Errorf("package %s LLGoFiles were not prepared before backend execution", pkg.PkgPath)
+	}
+
+	var inputs []llgoFileInput
+	if pkg.Types != nil {
+		if object, ok := pkg.Types.Scope().Lookup("LLGoFiles").(*types.Const); ok {
+			value := object.Val()
+			if value.Kind() == constant.String {
+				inputs = parseLLGoFileInputs(ctx, constant.StringVal(value), pkg)
+			}
 		}
 	}
+	ctx.llgoFilesCache[pkg] = inputs
+	return inputs, nil
 }
 
 // files = "file1; file2; ..."
 // files = "$(pkg-config --cflags xxx): file1; file2; ..."
-func clFiles(ctx *context, files string, pkg *packages.Package, procFile func(linkFile string), verbose bool) {
+func parseLLGoFileInputs(ctx *context, files string, pkg *packages.Package) []llgoFileInput {
+	if len(pkg.GoFiles) == 0 {
+		return nil
+	}
 	dir := filepath.Dir(pkg.GoFiles[0])
-	expFile := pkg.ExportFile
 	args := make([]string, 0, 16)
 	if strings.HasPrefix(files, "$") { // has cflags
 		if pos := strings.IndexByte(files, ':'); pos > 0 {
@@ -3296,47 +3364,90 @@ func clFiles(ctx *context, files string, pkg *packages.Package, procFile func(li
 			args = append(args, cflags...)
 		}
 	}
+	var inputs []llgoFileInput
 	for _, file := range strings.Split(files, ";") {
-		cFile := filepath.Join(dir, strings.TrimSpace(file))
-		clFile(ctx, args, cFile, expFile, pkg.PkgPath, procFile, verbose)
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+		inputs = append(inputs, llgoFileInput{
+			path:         filepath.Join(dir, file),
+			compilerArgs: slices.Clone(args),
+		})
 	}
+	return inputs
 }
 
-func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, procFile func(linkFile string), verbose bool) {
+func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, verbose bool) (string, error) {
 	baseName := expFile + filepath.Base(cFile)
-	ext := filepath.Ext(cFile)
-	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
-
-	// default clang++ will use c++ to compile c file,will cause symbol be mangled
-	if ext == ".c" {
-		args = append(args, "-x", "c")
-	}
+	args = llgoFileCompilerArgs(ctx, args, cFile)
 
 	// If GenLL is enabled, first emit .ll for debugging, then compile to .o
 	printCmds := ctx.shouldPrintCommands(verbose)
 	if ctx.buildConf.GenLL {
-		llFile := baseName + ".ll"
+		llFile, err := genLLGoFileOutput(cFile, ".ll")
+		if err != nil {
+			return "", fmt.Errorf("create temporary LLVM IR output for %s: %w", cFile, err)
+		}
+		defer os.Remove(llFile)
 		llArgs := append(slices.Clone(args), "-emit-llvm", "-S", "-o", llFile, "-c", cFile)
 		if printCmds {
 			fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", llFile, pkgPath)
 			fmt.Fprintln(os.Stderr, "clang", llArgs)
 		}
 		cmd := ctx.compilerForSource(cFile)
-		err := cmd.Compile(llArgs...)
-		check(err)
+		if err := cmd.Compile(llArgs...); err != nil {
+			return "", fmt.Errorf("compile %s to LLVM IR: %w", cFile, err)
+		}
+		published := baseName + ".ll"
+		if err := copyFileAtomic(llFile, published); err != nil {
+			return "", fmt.Errorf("publish LLVM IR for %s: %w", cFile, err)
+		}
+		if err := os.Chmod(published, 0o644); err != nil {
+			return "", fmt.Errorf("set LLVM IR permissions for %s: %w", cFile, err)
+		}
 	}
 
 	// Always compile to .o for linking
-	objFile := baseName + ".o"
+	objFile, err := genLLGoFileOutput(cFile, ".o")
+	if err != nil {
+		return "", fmt.Errorf("create temporary object output for %s: %w", cFile, err)
+	}
 	objArgs := append(args, "-o", objFile, "-c", cFile)
 	if printCmds {
 		fmt.Fprintf(os.Stderr, "# compiling %s for pkg: %s\n", objFile, pkgPath)
 		fmt.Fprintln(os.Stderr, "clang", objArgs)
 	}
 	cmd := ctx.compilerForSource(cFile)
-	err := cmd.Compile(objArgs...)
-	check(err)
-	procFile(objFile)
+	if err := cmd.Compile(objArgs...); err != nil {
+		_ = os.Remove(objFile)
+		return "", fmt.Errorf("compile %s: %w", cFile, err)
+	}
+	return objFile, nil
+}
+
+// llgoFileCompilerArgs returns the source-specific arguments shared by the
+// fingerprint preprocessor pass and the object compilation pass. Keeping this
+// in one place prevents cache keys from drifting away from compilation.
+func llgoFileCompilerArgs(ctx *context, args []string, source string) []string {
+	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
+
+	// A configured C++ driver would otherwise treat a .c input as C++ and
+	// mangle its symbols.
+	if filepath.Ext(source) == ".c" {
+		args = append(args, "-x", "c")
+	}
+	return args
+}
+
+func removeFiles(files []string) {
+	for _, file := range files {
+		_ = os.Remove(file)
+	}
+}
+
+func genLLGoFileOutput(source, ext string) (string, error) {
+	return genTempOutputFile("llgofile-"+filepath.Base(source), ext)
 }
 
 func (c *context) compilerForSource(path string) *clang.Cmd {

@@ -229,6 +229,29 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 		m.pkg.OtherFiles = otherList
 	}
 
+	// ModeGen returns the in-memory Go LLVM module before C/C++/assembly
+	// LLGoFiles are compiled or archived, so it must not require the target
+	// native compiler merely to fingerprint unused link inputs.
+	if c.mode != ModeGen {
+		llgoInputs, err := llgoPkgFileInputs(c, p)
+		if err != nil {
+			return fmt.Errorf("list LLGoFiles: %w", err)
+		}
+		llgoInputs = append([]llgoFileInput(nil), llgoInputs...)
+		if pkg.AltPkg != nil {
+			altInputs, err := llgoPkgFileInputs(c, pkg.AltPkg.Package)
+			if err != nil {
+				return fmt.Errorf("list alternate LLGoFiles: %w", err)
+			}
+			llgoInputs = append(llgoInputs, altInputs...)
+		}
+		llgoFiles, err := digestLLGoFileInputs(c, llgoInputs, c.buildConf.Overlay)
+		if err != nil {
+			return fmt.Errorf("digest LLGoFiles: %w", err)
+		}
+		m.pkg.LLGoFiles = llgoFiles
+	}
+
 	// Rewrite vars
 	if len(pkg.rewriteVars) > 0 {
 		rewrites := make(map[string]string, len(pkg.rewriteVars))
