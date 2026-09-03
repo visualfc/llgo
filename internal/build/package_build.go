@@ -94,13 +94,28 @@ func buildPackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) er
 	if len(tasks) == 0 {
 		return nil
 	}
+	isolated, err := preparePackageGroup(ctx, tasks, verbose)
+	if err != nil {
+		return err
+	}
+	return runBoundedPackageJobs(ctx.buildConf.parallelism(), isolated, func(index int) error {
+		return tracePackageBuild(ctx, tasks[index], verbose, true, true)
+	})
+}
+
+// preparePackageGroup completes coordinator-only preparation and package
+// builds, returning the indexes whose isolated backends may run concurrently.
+func preparePackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) ([]int, error) {
+	if len(tasks) == 0 {
+		return nil, nil
+	}
 	prepareSpan := ctx.buildTrace.startCoordinator("prepare packages", map[string]any{
 		"count":   len(tasks),
 		"runtime": tasks[0].isRuntime(),
 	})
 	if err := preparePackageBuilds(ctx, tasks, verbose); err != nil {
 		prepareSpan.done()
-		return err
+		return nil, err
 	}
 	prepareSpan.done()
 
@@ -116,15 +131,10 @@ func buildPackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) er
 			continue
 		}
 		if err := tracePackageBuild(ctx, task, verbose, task.isolated, false); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	if err := runBoundedPackageJobs(ctx.buildConf.parallelism(), isolated, func(index int) error {
-		return tracePackageBuild(ctx, tasks[index], verbose, true, true)
-	}); err != nil {
-		return err
-	}
-	return nil
+	return isolated, nil
 }
 
 func tracePackageBuild(ctx *context, task *packageBuildTask, verbose, isolated, worker bool) (err error) {

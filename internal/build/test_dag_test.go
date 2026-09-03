@@ -1,0 +1,258 @@
+//go:build !llgo
+
+/*
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package build
+
+import (
+	"errors"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestCanUseNativeTestDAG(t *testing.T) {
+	base := &context{mode: ModeTest, buildConf: &Config{BuildMode: BuildModeExe}}
+	if !canUseNativeTestDAG(base, 2) {
+		t.Fatal("two native test roots did not enable the DAG")
+	}
+	for _, test := range []struct {
+		name  string
+		ctx   *context
+		count int
+	}{
+		{name: "one link", ctx: base, count: 1},
+		{name: "build mode", ctx: &context{mode: ModeBuild, buildConf: &Config{BuildMode: BuildModeExe}}, count: 2},
+		{name: "embedded", ctx: &context{mode: ModeTest, buildConf: &Config{BuildMode: BuildModeExe, Target: "rp2040"}}, count: 2},
+		{name: "archive", ctx: &context{mode: ModeTest, buildConf: &Config{BuildMode: BuildModeCArchive}}, count: 2},
+		{name: "nil context", count: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if canUseNativeTestDAG(test.ctx, test.count) {
+				t.Fatal("DAG unexpectedly enabled")
+			}
+		})
+	}
+}
+
+func TestRunBuildDAGPipelinesReadyBranches(t *testing.T) {
+	var mu sync.Mutex
+	var events []string
+	record := func(event string) {
+		mu.Lock()
+		events = append(events, event)
+		mu.Unlock()
+	}
+	firstPackageDone := make(chan struct{})
+	releaseSecondPackage := make(chan struct{})
+	nodes := []buildDAGNode{
+		{name: "first package", priority: 3, class: dagPackage, run: func() error {
+			record("package-1")
+			close(firstPackageDone)
+			return nil
+		}},
+		{name: "second package", priority: 3, class: dagPackage, run: func() error {
+			<-firstPackageDone
+			<-releaseSecondPackage
+			record("package-2")
+			return nil
+		}},
+		{name: "prepare", dependencies: []int{0}, priority: 2, class: dagLink, coordinator: true, run: func() error {
+			record("prepare")
+			return nil
+		}},
+		{name: "link", dependencies: []int{2}, priority: 1, class: dagLink, run: func() error {
+			record("link")
+			return nil
+		}},
+		{name: "test", dependencies: []int{3}, priority: 0, class: dagTest, run: func() error {
+			record("test")
+			close(releaseSecondPackage)
+			return nil
+		}},
+	}
+	results, err := runBuildDAG(nodes, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, result := range results {
+		if result.err != nil || result.blocked {
+			t.Fatalf("node %d result = %+v", index, result)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	positions := make(map[string]int, len(events))
+	for index, event := range events {
+		positions[event] = index
+	}
+	if !(positions["package-1"] < positions["prepare"] &&
+		positions["prepare"] < positions["link"] &&
+		positions["link"] < positions["test"] &&
+		positions["test"] < positions["package-2"]) {
+		t.Fatalf("DAG did not pipeline the ready branch: %v", events)
+	}
+}
+
+func TestRunBuildDAGBoundsWorkersAndPropagatesFailure(t *testing.T) {
+	wantErr := errors.New("package failed")
+	release := make(chan struct{})
+	started := make(chan struct{}, 3)
+	var active atomic.Int32
+	var maximum atomic.Int32
+	worker := func(err error) func() error {
+		return func() error {
+			current := active.Add(1)
+			for {
+				observed := maximum.Load()
+				if current <= observed || maximum.CompareAndSwap(observed, current) {
+					break
+				}
+			}
+			started <- struct{}{}
+			<-release
+			active.Add(-1)
+			return err
+		}
+	}
+	var dependentRan atomic.Bool
+	nodes := []buildDAGNode{
+		{name: "failure", class: dagPackage, run: worker(wantErr)},
+		{name: "success one", class: dagPackage, run: worker(nil)},
+		{name: "success two", class: dagPackage, run: worker(nil)},
+		{name: "blocked", dependencies: []int{0}, class: dagLink, run: func() error {
+			dependentRan.Store(true)
+			return nil
+		}},
+	}
+	done := make(chan []buildDAGNodeResult, 1)
+	go func() {
+		results, err := runBuildDAG(nodes, 2, false)
+		if err != nil {
+			t.Errorf("runBuildDAG: %v", err)
+		}
+		done <- results
+	}()
+	<-started
+	<-started
+	if got := maximum.Load(); got != 2 {
+		t.Fatalf("maximum concurrent workers = %d, want 2", got)
+	}
+	close(release)
+	results := <-done
+	if !errors.Is(results[0].err, wantErr) {
+		t.Fatalf("failure result = %v, want %v", results[0].err, wantErr)
+	}
+	if !results[3].blocked || dependentRan.Load() {
+		t.Fatalf("dependent result = %+v, ran = %v", results[3], dependentRan.Load())
+	}
+}
+
+func TestRunBuildDAGKeepsProducerCapacity(t *testing.T) {
+	producerRelease := make(chan struct{})
+	testRelease := make(chan struct{})
+	defer func() {
+		for _, release := range []chan struct{}{producerRelease, testRelease} {
+			select {
+			case <-release:
+			default:
+				close(release)
+			}
+		}
+	}()
+	started := make(chan buildDAGClass, 3)
+	nodes := []buildDAGNode{
+		{name: "producer", class: dagPackage, run: func() error {
+			started <- dagPackage
+			<-producerRelease
+			return nil
+		}},
+		{name: "test one", class: dagTest, priority: dagPriorityTest, run: func() error {
+			started <- dagTest
+			<-testRelease
+			return nil
+		}},
+		{name: "test two", class: dagTest, priority: dagPriorityTest, run: func() error {
+			started <- dagTest
+			<-testRelease
+			return nil
+		}},
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := runBuildDAG(nodes, 3, false)
+		done <- err
+	}()
+
+	first, second := <-started, <-started
+	if first == second {
+		t.Fatalf("initial node classes = %v, %v; want one producer and one test", first, second)
+	}
+	select {
+	case class := <-started:
+		t.Fatalf("started extra %v node while producer work remained", class)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(producerRelease)
+	if class := <-started; class != dagTest {
+		t.Fatalf("node after producer completion = %v, want test", class)
+	}
+	close(testRelease)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunBuildDAGHonorsClassLimitAndDynamicSkip(t *testing.T) {
+	var activeTests atomic.Int32
+	var maximumTests atomic.Int32
+	var failed atomic.Bool
+	var skipped atomic.Int32
+	nodes := make([]buildDAGNode, 4)
+	for index := range nodes {
+		index := index
+		nodes[index] = buildDAGNode{
+			name:     "test",
+			priority: 0,
+			class:    dagTest,
+			skip:     failed.Load,
+			skipped:  func() { skipped.Add(1) },
+			run: func() error {
+				current := activeTests.Add(1)
+				if current > maximumTests.Load() {
+					maximumTests.Store(current)
+				}
+				activeTests.Add(-1)
+				if index == 0 {
+					failed.Store(true)
+				}
+				return nil
+			},
+		}
+	}
+	_, err := runBuildDAG(nodes, 4, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := maximumTests.Load(); got != 1 {
+		t.Fatalf("maximum concurrent tests = %d, want 1", got)
+	}
+	if got := skipped.Load(); got != 3 {
+		t.Fatalf("skipped tests = %d, want 3", got)
+	}
+}

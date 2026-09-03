@@ -236,8 +236,8 @@ func AddBuildFlags(fs *flag.FlagSet) {
 }
 
 // AddBuildTraceFlag adds the build-scheduler trace flag. It is intentionally
-// separate from AddBuildFlags because only "llgo build" owns a single trace
-// output file; test and run may coordinate multiple child invocations.
+// separate from AddBuildFlags for commands that execute one traced build
+// invocation, currently "llgo build" and "llgo test".
 func AddBuildTraceFlag(fs *flag.FlagSet) {
 	BuildTrace = ""
 	fs.StringVar(&BuildTrace, "debug-trace", "", "Write a Chrome/Perfetto build-scheduler trace to file")
