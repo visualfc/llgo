@@ -1005,13 +1005,32 @@ func TestExtest(t *testing.T) {
 		outputChan <- data.String()
 	}()
 
-	mockRun([]string{"../../cl/_testgo/runextest/..."}, &Config{Mode: ModeTest})
+	var testingBuilds int
+	conf := &Config{Mode: ModeTest, BuildParallelism: 2}
+	conf.ModuleHook = func(pkg Package) {
+		if pkg.PkgPath == "testing" {
+			testingBuilds++
+		}
+	}
+	mockRun([]string{"../../cl/_testgo/runextest/..."}, conf)
 
 	w.Close()
 	got := <-outputChan
-	expected := "PASS\nPASS\nPASS\nPASS\n"
-	if got != expected {
-		t.Errorf("Expected output %q, but got %q", expected, got)
+	if testingBuilds != 1 {
+		t.Errorf("testing package builds = %d, want 1 shared build", testingBuilds)
+	}
+	if count := strings.Count(got, "PASS\n"); count != 4 {
+		t.Errorf("PASS count = %d, want 4; output:\n%s", count, got)
+	}
+	for _, pkg := range []string{
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest",
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest/bar",
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest/bar/barinner",
+		"github.com/xgo-dev/llgo/cl/_testgo/runextest/foo",
+	} {
+		if !strings.Contains(got, "ok  \t"+pkg+"\n") {
+			t.Errorf("output does not contain result for %s:\n%s", pkg, got)
+		}
 	}
 }
 
