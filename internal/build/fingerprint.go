@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -301,13 +302,14 @@ type fileDigest struct {
 	OverlayHash string `yaml:"overlay_hash,omitempty"`
 }
 
-// llgoFileDigest records the content and per-file flags of an LLGoFiles input.
-// These files are declared through a Go constant, so go list does not include
-// them in OtherFiles and file metadata alone cannot safely key their objects.
+// llgoFileDigest records the preprocessed content and per-file flags of an
+// LLGoFiles input. These files are declared through a Go constant, so go list
+// does not include either them or their local includes in OtherFiles.
 type llgoFileDigest struct {
-	Path         string   `yaml:"path"`
-	ContentHash  string   `yaml:"content_hash"`
-	CompilerArgs []string `yaml:"compiler_args,omitempty"`
+	Path             string   `yaml:"path"`
+	PreprocessedHash string   `yaml:"preprocessed_hash"`
+	OverlayHash      string   `yaml:"overlay_hash,omitempty"`
+	CompilerArgs     []string `yaml:"compiler_args,omitempty"`
 }
 
 func digestLLGoFileInputs(ctx *context, inputs []llgoFileInput, overlay map[string][]byte) ([]llgoFileDigest, error) {
@@ -315,27 +317,36 @@ func digestLLGoFileInputs(ctx *context, inputs []llgoFileInput, overlay map[stri
 		return nil, nil
 	}
 	if ctx.llgoFileHashCache == nil {
-		ctx.llgoFileHashCache = make(map[string]string)
+		ctx.llgoFileHashCache = make(map[llgoFileHashKey]string)
 	}
 	digests := make([]llgoFileDigest, 0, len(inputs))
 	for _, input := range inputs {
-		contentHash, ok := ctx.llgoFileHashCache[input.path]
+		compilerArgs := llgoFileCompilerArgs(ctx, input.compilerArgs, input.path)
+		cacheKey := llgoFileHashKey{
+			path:         input.path,
+			compilerArgs: strings.Join(compilerArgs, "\x00"),
+		}
+		preprocessedHash, ok := ctx.llgoFileHashCache[cacheKey]
 		if !ok {
-			content, overlaid := overlay[input.path]
-			if !overlaid {
-				var err error
-				content, err = os.ReadFile(input.path)
-				if err != nil {
-					return nil, fmt.Errorf("read file %q: %w", input.path, err)
-				}
+			hash := sha256.New()
+			cmd := ctx.compilerForSource(input.path)
+			cmd.Stdout = hash
+			preprocessArgs := append(slices.Clone(compilerArgs), "-E", input.path)
+			if err := cmd.Compile(preprocessArgs...); err != nil {
+				return nil, fmt.Errorf("preprocess file %q: %w", input.path, err)
 			}
-			contentHash = digestBytes(content)
-			ctx.llgoFileHashCache[input.path] = contentHash
+			preprocessedHash = hex.EncodeToString(hash.Sum(nil))
+			ctx.llgoFileHashCache[cacheKey] = preprocessedHash
+		}
+		overlayHash := ""
+		if content, ok := overlay[input.path]; ok {
+			overlayHash = digestBytes(content)
 		}
 		digests = append(digests, llgoFileDigest{
-			Path:         input.path,
-			ContentHash:  contentHash,
-			CompilerArgs: append([]string(nil), input.compilerArgs...),
+			Path:             input.path,
+			PreprocessedHash: preprocessedHash,
+			OverlayHash:      overlayHash,
+			CompilerArgs:     append([]string(nil), input.compilerArgs...),
 		})
 	}
 	sort.Slice(digests, func(i, j int) bool {

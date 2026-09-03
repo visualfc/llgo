@@ -1182,7 +1182,7 @@ type context struct {
 	sfilesFrozen      bool
 	llgoFilesCache    map[*packages.Package][]llgoFileInput
 	llgoFilesFrozen   bool
-	llgoFileHashCache map[string]string // absolute path -> content digest
+	llgoFileHashCache map[llgoFileHashKey]string
 
 	// plan9asm package policy parsed from env.
 	plan9asmOnce  sync.Once
@@ -3316,6 +3316,11 @@ type llgoFileInput struct {
 	compilerArgs []string
 }
 
+type llgoFileHashKey struct {
+	path         string
+	compilerArgs string
+}
+
 // const LLGoFiles = "file1; file2; ..."
 func llgoPkgFileInputs(ctx *context, pkg *packages.Package) ([]llgoFileInput, error) {
 	if ctx.llgoFilesCache == nil {
@@ -3375,13 +3380,7 @@ func parseLLGoFileInputs(ctx *context, files string, pkg *packages.Package) []ll
 
 func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, verbose bool) (string, error) {
 	baseName := expFile + filepath.Base(cFile)
-	ext := filepath.Ext(cFile)
-	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
-
-	// default clang++ will use c++ to compile c file,will cause symbol be mangled
-	if ext == ".c" {
-		args = append(args, "-x", "c")
-	}
+	args = llgoFileCompilerArgs(ctx, args, cFile)
 
 	// If GenLL is enabled, first emit .ll for debugging, then compile to .o
 	printCmds := ctx.shouldPrintCommands(verbose)
@@ -3425,6 +3424,20 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, verbose
 		return "", fmt.Errorf("compile %s: %w", cFile, err)
 	}
 	return objFile, nil
+}
+
+// llgoFileCompilerArgs returns the source-specific arguments shared by the
+// fingerprint preprocessor pass and the object compilation pass. Keeping this
+// in one place prevents cache keys from drifting away from compilation.
+func llgoFileCompilerArgs(ctx *context, args []string, source string) []string {
+	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
+
+	// A configured C++ driver would otherwise treat a .c input as C++ and
+	// mangle its symbols.
+	if filepath.Ext(source) == ".c" {
+		args = append(args, "-x", "c")
+	}
+	return args
 }
 
 func removeFiles(files []string) {

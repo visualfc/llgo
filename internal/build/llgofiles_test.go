@@ -137,8 +137,48 @@ func TestLLGoFilesFingerprintUsesContent(t *testing.T) {
 	if before == after {
 		t.Fatal("LLGoFiles content change did not change the package fingerprint")
 	}
-	if beforeFile.ContentHash == afterFile.ContentHash {
-		t.Fatal("LLGoFiles content change did not change its content hash")
+	if beforeFile.PreprocessedHash == afterFile.PreprocessedHash {
+		t.Fatal("LLGoFiles content change did not change its preprocessed hash")
+	}
+}
+
+func TestLLGoFilesFingerprintUsesIncludedContent(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "wrap.c")
+	header := filepath.Join(dir, "value.h")
+	if err := os.WriteFile(source, []byte("#include \"value.h\"\nint value = VALUE;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(header, []byte("#define VALUE 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkg := llgoFilesTestPackage(t, dir, "wrap.c")
+	fingerprint := func() (string, llgoFileDigest) {
+		ctx := &context{buildConf: &Config{}}
+		manifest := newManifestBuilder()
+		if err := ctx.collectPackageInputs(manifest, &aPackage{Package: pkg}); err != nil {
+			t.Fatal(err)
+		}
+		return manifest.Fingerprint(), manifest.pkg.LLGoFiles[0]
+	}
+
+	before, beforeFile := fingerprint()
+	info, err := os.Stat(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(header, []byte("#define VALUE 2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(header, time.Unix(0, info.ModTime().UnixNano()), time.Unix(0, info.ModTime().UnixNano())); err != nil {
+		t.Fatal(err)
+	}
+	after, afterFile := fingerprint()
+	if before == after {
+		t.Fatal("included LLGoFiles content change did not change the package fingerprint")
+	}
+	if beforeFile.PreprocessedHash == afterFile.PreprocessedHash {
+		t.Fatal("included LLGoFiles content change did not change its preprocessed hash")
 	}
 }
 
@@ -353,12 +393,15 @@ func TestCleanupTemporaryObjFilesPreservesOtherMembers(t *testing.T) {
 }
 
 func TestDigestLLGoFileInputsEdges(t *testing.T) {
-	ctx := &context{}
+	ctx := &context{buildConf: &Config{}}
 	if digests, err := digestLLGoFileInputs(ctx, nil, nil); err != nil || digests != nil {
 		t.Fatalf("empty digests = %#v, %v; want nil, nil", digests, err)
 	}
 
 	path := filepath.Join(t.TempDir(), "overlay.c")
+	if err := os.WriteFile(path, []byte("int value;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	digests, err := digestLLGoFileInputs(ctx, []llgoFileInput{
 		{path: path, compilerArgs: []string{"-DZ=1"}},
 		{path: path, compilerArgs: []string{"-DA=1"}},
@@ -367,7 +410,7 @@ func TestDigestLLGoFileInputsEdges(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(digests) != 2 || !reflect.DeepEqual(digests[0].CompilerArgs, []string{"-DA=1"}) ||
-		digests[0].ContentHash != digestBytes([]byte("overlay content")) {
+		digests[0].OverlayHash != digestBytes([]byte("overlay content")) {
 		t.Fatalf("overlay digests = %#v", digests)
 	}
 
@@ -382,7 +425,7 @@ func TestDigestLLGoFileInputsMemoizesContent(t *testing.T) {
 	if err := os.WriteFile(path, []byte("int value = 1;\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ctx := &context{}
+	ctx := &context{buildConf: &Config{}}
 	inputs := []llgoFileInput{{path: path}}
 	first, err := digestLLGoFileInputs(ctx, inputs, nil)
 	if err != nil {
