@@ -1142,6 +1142,23 @@ func TestExtest(t *testing.T) {
 	}
 }
 
+func TestExtestNativeTestDAG(t *testing.T) {
+	mockRun([]string{"../../cl/_testgo/runextest/..."}, &Config{Mode: ModeTest, BuildParallelism: 2})
+}
+
+func TestExtestNativeTestDAGFailFast(t *testing.T) {
+	mockRun([]string{"../../cl/_testgo/runextest/..."}, &Config{
+		Mode:              ModeTest,
+		BuildParallelism:  2,
+		RunArgs:           []string{"-test.not-a-real-flag"},
+		TestRunSequential: true,
+		TestFailFast:      true,
+	})
+	if got := mockable.ExitCode(); got != 1 {
+		t.Fatalf("mocked exit code = %d, want 1", got)
+	}
+}
+
 func TestCmpTest(t *testing.T) {
 	mockRun([]string{"../../cl/_testgo/runtest"}, &Config{Mode: ModeCmpTest})
 }

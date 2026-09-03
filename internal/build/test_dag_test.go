@@ -20,6 +20,7 @@ package build
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -307,5 +308,54 @@ func TestRunBuildDAGHonorsClassLimitAndDynamicSkip(t *testing.T) {
 	}
 	if got := skipped.Load(); got != 3 {
 		t.Fatalf("skipped tests = %d, want 3", got)
+	}
+}
+
+func TestRunBuildDAGRejectsInvalidGraphs(t *testing.T) {
+	t.Run("invalid dependency", func(t *testing.T) {
+		_, err := runBuildDAG([]buildDAGNode{{name: "invalid", dependencies: []int{1}}}, 1, false)
+		if err == nil || !strings.Contains(err.Error(), "invalid dependency 1") {
+			t.Fatalf("invalid dependency error = %v", err)
+		}
+	})
+
+	t.Run("cycle", func(t *testing.T) {
+		_, err := runBuildDAG([]buildDAGNode{
+			{name: "first", dependencies: []int{1}},
+			{name: "second", dependencies: []int{0}},
+		}, 1, false)
+		if err == nil || !strings.Contains(err.Error(), "stalled with 0/2 nodes complete") {
+			t.Fatalf("cycle error = %v", err)
+		}
+	})
+}
+
+func TestRunBuildDAGRecoversNodePanics(t *testing.T) {
+	wantErr := errors.New("error panic")
+	results, err := runBuildDAG([]buildDAGNode{
+		{name: "nil", coordinator: true},
+		{name: "error", coordinator: true, run: func() error { panic(wantErr) }},
+		{name: "value", coordinator: true, run: func() error { panic("value panic") }},
+	}, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].err != nil {
+		t.Fatalf("nil node error = %v", results[0].err)
+	}
+	if !errors.Is(results[1].err, wantErr) {
+		t.Fatalf("error panic result = %v, want %v", results[1].err, wantErr)
+	}
+	if got := results[2].err; got == nil || !strings.Contains(got.Error(), "node 2 (value) panicked: value panic") {
+		t.Fatalf("value panic result = %v", got)
+	}
+}
+
+func TestSeparatedLinkPhaseValidation(t *testing.T) {
+	if _, err := buildMainLink(nil, nil, nil, "", false); err == nil {
+		t.Fatal("buildMainLink accepted a nil preparation")
+	}
+	if err := executeMainLink(nil, nil, false); err == nil {
+		t.Fatal("executeMainLink accepted a nil plan")
 	}
 }
