@@ -1,9 +1,6 @@
 name: "Setup GoReleaser"
 description: "Setup GoReleaser environment"
 inputs:
-  linux-cache-key:
-    description: "Linux sysroot cache key"
-    required: true
   esp-clang-cache-path:
     description: "ESP Clang cache path (internal use)"
     required: false
@@ -17,12 +14,6 @@ runs:
   steps:
     - name: Set up Go
       uses: ./.github/actions/setup-go
-    - name: Restore Linux sysroot cache
-      id: cache-linux-sysroot
-      uses: actions/cache/restore@v6
-      with:
-        path: .sysroot/linux.tar.gz
-        key: ${{ inputs.linux-cache-key }}
     - name: Populate Linux sysroot
       run: tar -xzvf .sysroot/linux.tar.gz -C .sysroot
       shell: bash
