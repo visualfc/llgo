@@ -5,12 +5,12 @@ go 1.27.0
 require (
 	github.com/goplus/cobra v1.9.12 //xgo:class
 	github.com/goplus/gogen v1.23.5
-	github.com/goplus/lib v0.5.0
+	github.com/goplus/lib v0.5.1
 	github.com/goplus/mod v0.22.0
 	github.com/mattn/go-tty v0.0.8
 	github.com/qiniu/x v1.18.3
 	github.com/xgo-dev/llgo/runtime v0.0.0-00010101000000-000000000000
-	github.com/xgo-dev/llvm v0.9.7
+	github.com/xgo-dev/llvm v0.9.9
 	github.com/xgo-dev/plan9asm v0.5.2
 	go.bug.st/serial v1.6.4
 	go.yaml.in/yaml/v3 v3.0.5

@@ -5,8 +5,8 @@ ARG BASE_IMAGE=ubuntu:${UBUNTU_VERSION}
 FROM ${BASE_IMAGE} AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG LLVM_VERSION=19
-ARG GO_VERSION=1.24.2
+ARG LLVM_VERSION=22
+ARG GO_VERSION=1.27.0
 ARG CARGS_VERSION=1.0.0
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi-dev \
     libcjson-dev \
     libsqlite3-dev \
+    libuv1-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # LLVM/Clang toolchain (matches .github/actions/setup-deps for Ubuntu).
@@ -43,18 +44,15 @@ RUN set -eux; \
     exit 1; \
   fi; \
   apt-get update; \
-  if ! apt-get install -y --no-install-recommends \
+  apt-get install -y --no-install-recommends \
     llvm-${LLVM_VERSION}-dev \
     clang-${LLVM_VERSION} \
     libclang-${LLVM_VERSION}-dev \
     lld-${LLVM_VERSION} \
+    lldb-${LLVM_VERSION} \
     libunwind-${LLVM_VERSION}-dev \
     libc++-${LLVM_VERSION}-dev \
-  ; then \
-    echo "apt.llvm.org install failed; falling back to distro LLVM packages" >&2; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends llvm clang lld libunwind-dev libc++-dev; \
-  fi; \
+  ; \
   if command -v "clang-${LLVM_VERSION}" >/dev/null 2>&1; then \
     ln -sf "$(command -v "clang-${LLVM_VERSION}")" /usr/local/bin/clang; \
   fi; \
@@ -67,6 +65,10 @@ RUN set -eux; \
   if command -v "ld.lld-${LLVM_VERSION}" >/dev/null 2>&1; then \
     ln -sf "$(command -v "ld.lld-${LLVM_VERSION}")" /usr/local/bin/ld.lld; \
   fi; \
+  test "$(llvm-config-${LLVM_VERSION} --version | cut -d. -f1)" = "${LLVM_VERSION}"; \
+  test "$(clang-${LLVM_VERSION} -dumpversion | cut -d. -f1)" = "${LLVM_VERSION}"; \
+  ld.lld-${LLVM_VERSION} --version | grep -Eq "(^|[[:space:]])${LLVM_VERSION}\."; \
+  lldb-${LLVM_VERSION} --version | head -n 1 | grep -Eq "(^|[[:space:]])${LLVM_VERSION}\."; \
   rm -rf /var/lib/apt/lists/*
 
 # Go toolchain (pin like CI to avoid toolchain auto-download flakiness).

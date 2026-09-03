@@ -5,6 +5,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,7 +49,7 @@ func checkDownloadAndExtractWasiSDK(dir string) (wasiSdkRoot string, err error) 
 }
 
 // checkDownloadAndExtractESPClang downloads and extracts ESP Clang binaries and libraries
-func checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, dir string) error {
+func checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, expectedSHA256, dir string) error {
 	// Check if already exists
 	if _, err := os.Stat(dir); err == nil {
 		return nil
@@ -71,7 +73,7 @@ func checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, dir strin
 
 	// Use temporary extraction directory for ESP Clang special handling
 	tempExtractDir := dir + ".extract"
-	if err := downloadAndExtractArchive(clangUrl, tempExtractDir, description); err != nil {
+	if err := downloadAndExtractArchiveWithChecksum(clangUrl, tempExtractDir, description, expectedSHA256); err != nil {
 		return err
 	}
 	defer os.RemoveAll(tempExtractDir)
@@ -88,10 +90,10 @@ func checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, dir strin
 	return nil
 }
 
-// installESPClangLicense places the complete LLVM license next to an ESP Clang
-// toolchain. The upstream archive currently contains only a short license
-// pointer under include/llvm/Support; LLGo source trees and release archives
-// carry the complete Apache-2.0 WITH LLVM-exception text under LICENSES.
+// installESPClangLicense places LLGo's canonical LLVM license next to an ESP
+// Clang toolchain. LLVM 22 payloads also preserve their component license
+// bundle, while this root-level file keeps the existing LLGo installation
+// contract stable for older payloads and consumers.
 func installESPClangLicense(clangDir string) error {
 	license, err := os.ReadFile(filepath.Join(env.LLGoROOT(), "LICENSES", espClangLicenseFile))
 	if err != nil {
@@ -191,6 +193,10 @@ func lockReleaseError(unlockErr, closeErr error) error {
 
 // downloadAndExtractArchive downloads and extracts an archive to the destination directory (without locking)
 func downloadAndExtractArchive(url, destDir, description string) error {
+	return downloadAndExtractArchiveWithChecksum(url, destDir, description, "")
+}
+
+func downloadAndExtractArchiveWithChecksum(url, destDir, description, expectedSHA256 string) error {
 	fmt.Fprintf(os.Stderr, "Downloading %s...\n", description)
 
 	// Use temporary extraction directory
@@ -207,6 +213,15 @@ func downloadAndExtractArchive(url, destDir, description string) error {
 	localFile := filepath.Join(tempDir, filename)
 	if err := downloadFile(url, localFile); err != nil {
 		return fmt.Errorf("failed to download %s from %s: %w", description, url, err)
+	}
+	if expectedSHA256 != "" {
+		actualSHA256, err := fileSHA256(localFile)
+		if err != nil {
+			return fmt.Errorf("calculate %s checksum: %w", description, err)
+		}
+		if !strings.EqualFold(actualSHA256, expectedSHA256) {
+			return fmt.Errorf("%s checksum mismatch: got %s, want %s", description, actualSHA256, expectedSHA256)
+		}
 	}
 
 	// Extract the archive
@@ -236,6 +251,19 @@ func downloadAndExtractArchive(url, destDir, description string) error {
 
 	fmt.Fprintf(os.Stderr, "%s downloaded and extracted successfully.\n", description)
 	return nil
+}
+
+func fileSHA256(filename string) (string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func downloadFile(url, filepath string) error {

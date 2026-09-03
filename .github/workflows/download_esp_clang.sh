@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-ESP_CLANG_VERSION="19.1.2_20250905-3"
+ESP_CLANG_VERSION="22.1.4_20260902-1"
 BASE_URL="https://github.com/goplus/espressif-llvm-project-prebuilt/releases/download/${ESP_CLANG_VERSION}"
 LLVM_LICENSE="LICENSES/XGo-LLVM-Apache-2.0-WITH-LLVM-exception.txt"
 

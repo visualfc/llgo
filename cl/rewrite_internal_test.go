@@ -215,14 +215,16 @@ func use() { f() }
 			want: "stdcall is only defined for Windows targets",
 		},
 		{
-			name: "unsupported Windows architecture", goos: "windows", goarch: "mips",
+			// The official Windows LLVM archive omits the Mips backend. RISC-V is
+			// present but remains unsupported by the Windows stdcall contract.
+			name: "unsupported Windows architecture", goos: "windows", goarch: "riscv64",
 			src: `package p
 import _ "unsafe"
 //go:linkname f stdcall.f
 func f()
 func use() { f() }
 `,
-			want: "stdcall is not supported on windows/mips",
+			want: "stdcall is not supported on windows/riscv64",
 		},
 		{
 			name: "variadic function", goos: "windows", goarch: "386",

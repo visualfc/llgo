@@ -6,6 +6,20 @@ set -euo pipefail
 : "${LLGO_WINDOWS_ABI:?LLGO_WINDOWS_ABI is required}"
 : "${LLGO_WINDOWS_ARCH:?LLGO_WINDOWS_ARCH is required}"
 
+# setup-msys2's minimal PATH deliberately excludes inherited host tools. Keep
+# the selected Go toolchain and, for MSVC, the standalone LLVM and profile-local
+# pkg-config wrapper available to LLGo. cygpath keeps the same contract usable
+# from both MSYS2 and Cygwin.
+for native_dir in \
+  "${LLGO_HOST_GO_BIN:-}" \
+  "${LLGO_WINDOWS_HOST_LLVM_BIN:-}" \
+  "${LLGO_WINDOWS_MSVC_TOOLS:-}" \
+  "${LLGO_WINDOWS_TARGET_RUNTIME_BIN:-}"; do
+  if [[ -n "$native_dir" ]]; then
+    export PATH="$(cygpath -u "$native_dir"):$PATH"
+  fi
+done
+
 if [[ -n "${LLGO_TEST_COMPILER:-}" ]]; then
   llgo=$(cygpath -u "$LLGO_TEST_COMPILER")
 else
