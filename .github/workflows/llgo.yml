@@ -369,7 +369,9 @@ jobs:
 
   test:
     name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})
-    timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 45 || 40 }}
+    # The macOS full test phase alone can normally exceed 41 minutes; leave
+    # enough headroom for setup and cleanup instead of racing a 45-minute cap.
+    timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || startsWith(matrix.os, 'windows') && 60 || startsWith(matrix.os, 'macos') && 60 || 40 }}
     strategy:
       fail-fast: false
       matrix:
