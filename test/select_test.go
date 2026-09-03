@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// These tests may run alongside CPU-intensive package builds. Their deadline
+// detects a lost wakeup, so leave enough headroom for a loaded CI scheduler.
+const selectProgressTimeout = 5 * time.Second
+
 func TestSelectRecvWakesForBlockedUnbufferedSend(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		res := make(chan struct{})
@@ -37,14 +41,14 @@ func TestSelectRecvWakesForBlockedUnbufferedSend(t *testing.T) {
 
 		select {
 		case <-sendDone:
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(selectProgressTimeout):
 			close(done)
 			t.Fatalf("iteration %d: unbuffered send did not wake select receiver", i)
 		}
 
 		select {
 		case <-received:
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(selectProgressTimeout):
 			close(done)
 			t.Fatalf("iteration %d: select receiver did not receive sent value", i)
 		}
@@ -77,7 +81,7 @@ func TestSelectMixedUnbufferedPeersMakeProgress(t *testing.T) {
 		for j := 0; j < 2; j++ {
 			select {
 			case <-done:
-			case <-time.After(200 * time.Millisecond):
+			case <-time.After(selectProgressTimeout):
 				t.Fatalf("iteration %d: mixed unbuffered select peers did not make progress", i)
 			}
 		}
