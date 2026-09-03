@@ -67,6 +67,21 @@ func main() {
 	if fn1(t) != fn2(t) {
 		panic("error")
 	}
+	testGrowingClosureMap()
+}
+
+func testGrowingClosureMap() {
+	const entries = 64
+	functions := make(map[int]func() int)
+	for i := range entries {
+		value := i + 1000
+		functions[i] = func() int { return value }
+	}
+	for i := range entries {
+		if got := functions[i](); got != i+1000 {
+			panic("map growth corrupted a closure")
+		}
+	}
 }
 
 func (t *typ) String() string {

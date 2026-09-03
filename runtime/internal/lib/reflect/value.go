@@ -2969,6 +2969,12 @@ func (f flag) panicNotMap() {
 // copyVal returns a Value containing the map key or value at ptr,
 // allocating a new variable as needed.
 func copyVal(typ *abi.Type, fl flag, ptr unsafe.Pointer) Value {
+	if typ.IsClosure() {
+		// Maps retain LLGo's physical two-word closure descriptor so bucket
+		// evacuation copies both the code and environment pointers. Expose the
+		// semantic Go kind on the reflected value, just as unpackEface does.
+		fl = fl&^flagKindMask | flag(Func)
+	}
 	if typ.IfaceIndir() {
 		// Copy result so future changes to the map
 		// won't change the underlying value.

@@ -328,7 +328,10 @@ func (b Builder) abiExtendedFields(t types.Type, name string, global llvm.Value)
 		hasher := b.aggregateValue(prog.Type(hashFunc, InGo), hash.impl, env.impl)
 		fields = []llvm.Value{
 			b.abiType(abi.PublicType(t.Key())).impl,
-			b.abiType(abi.PublicType(t.Elem())).impl,
+			// Map operations use Elem for physical copies during bucket
+			// evacuation. Keep LLGo's two-word closure representation here;
+			// reflect converts it back to the public function type in Elem.
+			b.abiType(t.Elem()).impl,
 			b.abiType(bucket).impl,
 			hasher.impl,
 			prog.IntVal(uint64(keySize), prog.Byte()).impl,
