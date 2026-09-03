@@ -20,9 +20,11 @@ package build
 
 import (
 	"bytes"
+	"container/heap"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/xgo-dev/llgo/internal/packages"
 )
@@ -50,6 +52,7 @@ type buildDAGNode struct {
 	complete     func(error)
 	skip         func() bool
 	skipped      func()
+	blocked      func()
 }
 
 type buildDAGNodeResult struct {
@@ -68,6 +71,35 @@ type buildDAGState struct {
 	blocked    bool
 }
 
+type buildDAGReadyItem struct {
+	index    int
+	priority int
+	order    int
+}
+
+func (item buildDAGReadyItem) less(other buildDAGReadyItem) bool {
+	return item.priority < other.priority ||
+		item.priority == other.priority && item.order < other.order
+}
+
+type buildDAGReadyQueue []buildDAGReadyItem
+
+func (queue buildDAGReadyQueue) Len() int { return len(queue) }
+func (queue buildDAGReadyQueue) Less(i, j int) bool {
+	return queue[i].less(queue[j])
+}
+func (queue buildDAGReadyQueue) Swap(i, j int) { queue[i], queue[j] = queue[j], queue[i] }
+func (queue *buildDAGReadyQueue) Push(value any) {
+	*queue = append(*queue, value.(buildDAGReadyItem))
+}
+func (queue *buildDAGReadyQueue) Pop() any {
+	old := *queue
+	last := len(old) - 1
+	item := old[last]
+	*queue = old[:last]
+	return item
+}
+
 func runBuildDAG(nodes []buildDAGNode, parallelism int, sequentialTests bool) ([]buildDAGNodeResult, error) {
 	results := make([]buildDAGNodeResult, len(nodes))
 	states := make([]buildDAGState, len(nodes))
@@ -81,10 +113,24 @@ func runBuildDAG(nodes []buildDAGNode, parallelism int, sequentialTests bool) ([
 		}
 	}
 
-	ready := make([]int, 0, len(nodes))
+	readyNonTests := make(buildDAGReadyQueue, 0, len(nodes))
+	readyTests := make(buildDAGReadyQueue, 0, len(nodes))
+	readyBlocked := make(buildDAGReadyQueue, 0)
+	readyOrder := 0
+	pushReady := func(index int) {
+		item := buildDAGReadyItem{index: index, priority: nodes[index].priority, order: readyOrder}
+		readyOrder++
+		if states[index].blocked {
+			heap.Push(&readyBlocked, item)
+		} else if nodes[index].class == dagTest {
+			heap.Push(&readyTests, item)
+		} else {
+			heap.Push(&readyNonTests, item)
+		}
+	}
 	for index := range nodes {
 		if states[index].remaining == 0 {
-			ready = append(ready, index)
+			pushReady(index)
 		}
 	}
 	workers := max(1, parallelism)
@@ -117,44 +163,40 @@ func runBuildDAG(nodes []buildDAGNode, parallelism int, sequentialTests bool) ([
 		if skipped && nodes[index].skipped != nil {
 			nodes[index].skipped()
 		}
+		if blocked && nodes[index].blocked != nil {
+			nodes[index].blocked()
+		}
 		failed := err != nil || blocked
 		for _, dependent := range state.dependents {
 			next := &states[dependent]
 			next.remaining--
 			next.blocked = next.blocked || failed
 			if next.remaining == 0 {
-				ready = append(ready, dependent)
+				pushReady(dependent)
 			}
 		}
 	}
 
 	popReady := func() (int, bool) {
-		selected := -1
-		for pos, index := range ready {
-			node := nodes[index]
-			state := states[index]
-			if !state.blocked {
-				// Test execution overlaps production, but package/link work is
-				// the long pole in full CI. Keep all but one slot advancing it
-				// until every test target exists.
-				if node.class == dagTest && unfinishedNonTests > 0 &&
-					(workers == 1 || activeTests >= 1) {
-					continue
-				}
-				if node.class == dagTest && activeTests >= testLimit {
-					continue
-				}
-			}
-			if selected < 0 || node.priority < nodes[ready[selected]].priority {
-				selected = pos
-			}
+		if readyBlocked.Len() > 0 {
+			return heap.Pop(&readyBlocked).(buildDAGReadyItem).index, true
 		}
-		if selected < 0 {
+		testReady := readyTests.Len() > 0 && activeTests < testLimit
+		// Test execution overlaps production, but package/link work is the
+		// long pole in full CI. After starting one test, prefer every ready
+		// producer; if only active producers remain, tests may fill otherwise
+		// idle slots instead of forming a serial build tail.
+		if testReady && unfinishedNonTests > 0 &&
+			(workers == 1 || activeTests >= 1 && readyNonTests.Len() > 0) {
+			testReady = false
+		}
+		if !testReady && readyNonTests.Len() == 0 {
 			return 0, false
 		}
-		index := ready[selected]
-		ready = append(ready[:selected], ready[selected+1:]...)
-		return index, true
+		if testReady && (readyNonTests.Len() == 0 || readyTests[0].less(readyNonTests[0])) {
+			return heap.Pop(&readyTests).(buildDAGReadyItem).index, true
+		}
+		return heap.Pop(&readyNonTests).(buildDAGReadyItem).index, true
 	}
 
 	runWorker := func(index int) {
@@ -430,8 +472,22 @@ func runNativeTestDAG(ctx *context, allPkgs []*aPackage, roots []*packages.Packa
 			skipped: func() {
 				result.tests.skipped++
 			},
+			blocked: func() {
+				result.tests.failed = true
+				fmt.Fprintf(os.Stderr, "FAIL\t%s [build failed]\n", strings.TrimSuffix(root.PkgPath, ".test"))
+			},
 			run: func() error {
-				program := *result.links[rootIndex].program
+				linked := result.links[rootIndex].program
+				if linked == nil {
+					err := fmt.Errorf("link %s completed without a test program", root.PkgPath)
+					runResults[rootIndex] = testProgramResult{
+						program: testProgram{pkgName: strings.TrimSuffix(root.PkgPath, ".test")},
+						output:  []byte(err.Error() + "\n"),
+						err:     err,
+					}
+					return err
+				}
+				program := *linked
 				var output bytes.Buffer
 				span := ctx.buildTrace.startWorker("test", program.pkgName)
 				defer span.done()

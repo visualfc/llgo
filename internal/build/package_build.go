@@ -120,7 +120,7 @@ func buildPackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) er
 }
 
 // preparePackageGroup completes coordinator-only preparation and package
-// builds, returning the indexes whose isolated backends may run concurrently.
+// builds, returning the indexes whose backends are eligible for worker execution.
 func preparePackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) ([]int, error) {
 	if len(tasks) == 0 {
 		return nil, nil

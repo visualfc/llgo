@@ -131,6 +131,7 @@ func TestRunBuildDAGBoundsWorkersAndPropagatesFailure(t *testing.T) {
 		}
 	}
 	var dependentRan atomic.Bool
+	var blockedCalled atomic.Bool
 	nodes := []buildDAGNode{
 		{name: "failure", class: dagPackage, run: worker(wantErr)},
 		{name: "success one", class: dagPackage, run: worker(nil)},
@@ -138,7 +139,7 @@ func TestRunBuildDAGBoundsWorkersAndPropagatesFailure(t *testing.T) {
 		{name: "blocked", dependencies: []int{0}, class: dagLink, run: func() error {
 			dependentRan.Store(true)
 			return nil
-		}},
+		}, blocked: func() { blockedCalled.Store(true) }},
 	}
 	done := make(chan []buildDAGNodeResult, 1)
 	go func() {
@@ -158,12 +159,13 @@ func TestRunBuildDAGBoundsWorkersAndPropagatesFailure(t *testing.T) {
 	if !errors.Is(results[0].err, wantErr) {
 		t.Fatalf("failure result = %v, want %v", results[0].err, wantErr)
 	}
-	if !results[3].blocked || dependentRan.Load() {
-		t.Fatalf("dependent result = %+v, ran = %v", results[3], dependentRan.Load())
+	if !results[3].blocked || dependentRan.Load() || !blockedCalled.Load() {
+		t.Fatalf("dependent result = %+v, ran = %v, blocked callback = %v",
+			results[3], dependentRan.Load(), blockedCalled.Load())
 	}
 }
 
-func TestRunBuildDAGKeepsProducerCapacity(t *testing.T) {
+func TestRunBuildDAGFillsCapacityAtProducerTail(t *testing.T) {
 	producerRelease := make(chan struct{})
 	testRelease := make(chan struct{})
 	defer func() {
@@ -199,19 +201,70 @@ func TestRunBuildDAGKeepsProducerCapacity(t *testing.T) {
 		done <- err
 	}()
 
-	first, second := <-started, <-started
-	if first == second {
-		t.Fatalf("initial node classes = %v, %v; want one producer and one test", first, second)
+	counts := map[buildDAGClass]int{}
+	for range 3 {
+		select {
+		case class := <-started:
+			counts[class]++
+		case <-time.After(time.Second):
+			t.Fatalf("workers remained idle at producer tail; started classes = %v", counts)
+		}
 	}
-	select {
-	case class := <-started:
-		t.Fatalf("started extra %v node while producer work remained", class)
-	case <-time.After(100 * time.Millisecond):
+	if counts[dagPackage] != 1 || counts[dagTest] != 2 {
+		t.Fatalf("initial node classes = %v, want one producer and two tests", counts)
 	}
 	close(producerRelease)
-	if class := <-started; class != dagTest {
-		t.Fatalf("node after producer completion = %v, want test", class)
+	close(testRelease)
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
+}
+
+func TestRunBuildDAGPrefersReadyProducersAfterOneTest(t *testing.T) {
+	producerRelease := make(chan struct{})
+	testRelease := make(chan struct{})
+	defer func() {
+		for _, release := range []chan struct{}{producerRelease, testRelease} {
+			select {
+			case <-release:
+			default:
+				close(release)
+			}
+		}
+	}()
+	started := make(chan buildDAGClass, 4)
+	worker := func(class buildDAGClass, release <-chan struct{}) func() error {
+		return func() error {
+			started <- class
+			<-release
+			return nil
+		}
+	}
+	nodes := []buildDAGNode{
+		{name: "producer one", priority: dagPriorityPackageBase, class: dagPackage, run: worker(dagPackage, producerRelease)},
+		{name: "producer two", priority: dagPriorityPackageBase, class: dagPackage, run: worker(dagPackage, producerRelease)},
+		{name: "test one", priority: dagPriorityTest, class: dagTest, run: worker(dagTest, testRelease)},
+		{name: "test two", priority: dagPriorityTest, class: dagTest, run: worker(dagTest, testRelease)},
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := runBuildDAG(nodes, 3, false)
+		done <- err
+	}()
+
+	counts := map[buildDAGClass]int{}
+	for range 3 {
+		select {
+		case class := <-started:
+			counts[class]++
+		case <-time.After(time.Second):
+			t.Fatalf("workers remained idle; started classes = %v", counts)
+		}
+	}
+	if counts[dagPackage] != 2 || counts[dagTest] != 1 {
+		t.Fatalf("initial node classes = %v, want two producers and one test", counts)
+	}
+	close(producerRelease)
 	close(testRelease)
 	if err := <-done; err != nil {
 		t.Fatal(err)
