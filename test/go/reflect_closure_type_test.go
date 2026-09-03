@@ -59,6 +59,10 @@ func TestReflectClosureNestedTypeString(t *testing.T) {
 	dynamicCaptured := "dynamic"
 	dynamicFunction := func(s string) string { return dynamicCaptured + s }
 	dynamicType := reflect.MapOf(reflect.TypeOf(0), reflect.TypeOf(dynamicFunction))
+	staticType := reflect.TypeOf(map[int]func(string) string{})
+	if dynamicType != staticType {
+		t.Fatalf("reflect.MapOf type = %v (%p), want canonical %v (%p)", dynamicType, dynamicType, staticType, staticType)
+	}
 	dynamic := reflect.MakeMap(dynamicType)
 	dynamic.SetMapIndex(reflect.ValueOf(0), reflect.ValueOf(dynamicFunction))
 	dynamicValue := dynamic.MapIndex(reflect.ValueOf(0))

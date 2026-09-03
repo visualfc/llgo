@@ -1524,7 +1524,7 @@ func MapOf(key, elem Type) Type {
 	s := "map[" + stringFor(ktyp) + "]" + stringFor(publicElem)
 	for _, tt := range typesByString(s) {
 		mt := (*mapType)(unsafe.Pointer(tt))
-		if mt.Key == ktyp && mt.Elem == etyp {
+		if mt.Key == ktyp && toPublicType(mt.Elem).common() == publicElem {
 			ti, _ := lookupCache.LoadOrStore(ckey, toRType(tt))
 			return ti.(Type)
 		}
