@@ -123,6 +123,7 @@ jobs:
       # Every host uploads coverage: OS-specific ELF, Mach-O, and COFF paths
       # plus per-OS runtime shims are otherwise invisible to codecov/patch.
       - name: Test with coverage
+        id: test_coverage
         # Compiler fixtures build and run many programs under coverage; leave
         # enough headroom for the slower native toolchains.
         shell: bash
@@ -131,11 +132,6 @@ jobs:
 
           go_test=(go test)
           if [[ "$RUNNER_OS" == Windows ]]; then
-            # Quarantine only the otherwise-impossible testing.T channel
-            # corruption associated with golang/go#81238. The wrapper retries
-            # before ignoring it and preserves every ordinary test failure.
-            go_test=(bash dev/go_test_windows.sh go test)
-
             # Go's internal linker cannot consume every GNU COFF import
             # archive used by the race runtime and LLVM. Use the configured
             # Clang driver for the host test binaries instead of excluding
@@ -145,6 +141,12 @@ jobs:
               export LLGO_REQUIRE_MSVC=1
             fi
             export LLGO_STDIO_NOBUF=1
+            # Only the main batch contains the test package tree affected by
+            # golang/go#81238. Its wrapper accepts the single exact fatal
+            # signature, records the quarantine, and preserves other failures.
+            main_go_test=(bash dev/go_test_windows.sh "${go_test[@]}")
+          else
+            main_go_test=("${go_test[@]}")
           fi
 
           # Keep the direct language-behavior suite in a separate profile so
@@ -154,7 +156,7 @@ jobs:
           go list ./... \
             | grep -v '^github.com/xgo-dev/llgo/test/go$' \
             | grep -v '^github.com/xgo-dev/llgo/cl$' \
-            | xargs "${go_test[@]}" -timeout 45m -coverprofile="coverage-main.txt" -covermode=atomic \
+            | xargs "${main_go_test[@]}" -timeout 45m -coverprofile="coverage-main.txt" -covermode=atomic \
                 -bench '^BenchmarkGo126' -benchtime=1x
 
           # Compiler fixtures owned by cl exercise ssa in-process. Instrument
@@ -177,6 +179,7 @@ jobs:
         run: bash doc/_readme/scripts/check_std_cover.sh
 
       - name: Upload coverage reports to Codecov
+        if: steps.test_coverage.outputs.windows_runtime_corruption != 'true'
         uses: codecov/codecov-action@v7
         with:
           token: ${{secrets.CODECOV_TOKEN}}
