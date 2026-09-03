@@ -182,6 +182,19 @@ func TestLLGoFilesFingerprintUsesIncludedContent(t *testing.T) {
 	}
 }
 
+func TestModeGenFingerprintSkipsLLGoFiles(t *testing.T) {
+	dir := t.TempDir()
+	pkg := llgoFilesTestPackage(t, dir, "missing.c")
+	ctx := &context{mode: ModeGen, buildConf: &Config{Mode: ModeGen}}
+	manifest := newManifestBuilder()
+	if err := ctx.collectPackageInputs(manifest, &aPackage{Package: pkg}); err != nil {
+		t.Fatalf("ModeGen fingerprint required an unused LLGoFiles compiler: %v", err)
+	}
+	if manifest.pkg.LLGoFiles != nil {
+		t.Fatalf("ModeGen LLGoFiles manifest = %#v, want nil", manifest.pkg.LLGoFiles)
+	}
+}
+
 func TestLLGoFileOutputsAreProcessPrivate(t *testing.T) {
 	first, err := genLLGoFileOutput("wrap.c", ".o")
 	if err != nil {
