@@ -1912,8 +1912,9 @@ func (p *context) arrayCompareAddr(b llssa.Builder, v ssa.Value) llssa.Expr {
 }
 
 // structZeroCompareAddr reuses the source address for an immediately compared
-// aggregate load. The other operand must be a zero value, so no second load or
-// side effect can occur between the snapshot and comparison.
+// aggregate load. The other operand is a zero constant, so there is no second
+// load, and structZeroCompareLoad has verified that no executable instruction
+// occurs before the comparison, so the address still holds the loaded value.
 func (p *context) structZeroCompareAddr(b llssa.Builder, value, other ssa.Value, comparison *ssa.BinOp) llssa.Expr {
 	load := structZeroCompareLoad(value, other, comparison)
 	if load == nil {

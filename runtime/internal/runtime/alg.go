@@ -211,12 +211,15 @@ func memequal0(p, q unsafe.Pointer) bool {
 	return true
 }
 func memequalzero(p unsafe.Pointer, size uintptr) bool {
-	for i := uintptr(0); i < size; i++ {
-		if *(*byte)(add(p, i)) != 0 {
+	zero := unsafe.Pointer(&zeroVal[0])
+	for size > maxZero {
+		if !memequal(p, zero, maxZero) {
 			return false
 		}
+		p = add(p, maxZero)
+		size -= maxZero
 	}
-	return true
+	return memequal(p, zero, size)
 }
 func memequal8(p, q unsafe.Pointer) bool {
 	return *(*int8)(p) == *(*int8)(q)

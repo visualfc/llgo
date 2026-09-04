@@ -755,8 +755,8 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 }
 
 // CanInlineStructEqual reports whether direct field comparisons keep the
-// module compact. Larger structs use their runtime equality algorithm,
-// matching the array path and avoiding pathological aggregate IR.
+// module compact. It uses a four-field budget similar to array comparisons,
+// plus a size cap because struct fields can themselves be large aggregates.
 func CanInlineStructEqual(t *types.Struct, size uint64, pointerSize int) bool {
 	return t.NumFields() <= 4 && size <= uint64(4*pointerSize)
 }

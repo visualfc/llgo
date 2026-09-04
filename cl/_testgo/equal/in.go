@@ -47,6 +47,11 @@ package main
 // CHECK: %[[STRUCT_RAW_NE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.structequal"
 // CHECK: %[[STRUCT_NE:[0-9]+]] = xor i1 %[[STRUCT_RAW_NE]], true
 // CHECK: call void @main.assert(i1 %[[STRUCT_NE]])
+// CHECK: %[[ZERO_EQ:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.memequalzero"
+// CHECK: call void @main.assert(i1 %[[ZERO_EQ]])
+// CHECK: %[[ZERO_RAW_NE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.memequalzero"
+// CHECK: %[[ZERO_NE:[0-9]+]] = xor i1 %[[ZERO_RAW_NE]], true
+// CHECK: call void @main.assert(i1 %[[ZERO_NE]])
 
 // Slices compare with nil through their data pointer. Check the non-empty and
 // zero-length/non-zero-capacity make paths separately.
@@ -137,6 +142,13 @@ func init() {
 	assert(x == y)
 	assert(x != z)
 	assert(y != z)
+	var large struct{ data [2049]byte }
+	assert(large == struct{ data [2049]byte }{})
+	large.data[1024] = 1
+	assert(large != struct{ data [2049]byte }{})
+	large.data[1024] = 0
+	large.data[2048] = 1
+	assert(large != struct{ data [2049]byte }{})
 }
 
 // slice
