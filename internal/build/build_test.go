@@ -1690,6 +1690,9 @@ func TestShouldHideClangImplicitWasmOptOnlyForWasmPostLinkClang(t *testing.T) {
 
 func writeExecutable(t *testing.T, path string) {
 	t.Helper()
+	if runtime.GOOS == "windows" && filepath.Ext(path) == "" {
+		path += ".exe"
+	}
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}

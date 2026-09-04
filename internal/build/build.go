@@ -1712,7 +1712,7 @@ func pathEntryHasExecutable(dir, name string) bool {
 	}
 	for _, candidate := range executableNames(name) {
 		info, err := os.Stat(filepath.Join(dir, candidate))
-		if err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		if err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
 			return true
 		}
 	}
