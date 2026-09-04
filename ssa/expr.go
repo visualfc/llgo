@@ -724,23 +724,7 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 		case vkArray:
 			return b.arrayBinOp(op, x, y, Nil, Nil)
 		case vkStruct:
-			typ := x.raw.Type.Underlying().(*types.Struct)
-			ret := prog.BoolVal(true)
-			for i, n := 0, typ.NumFields(); i < n; i++ {
-				if typ.Field(i).Name() == "_" {
-					continue
-				}
-				fx := b.getField(x, i)
-				fy := b.getField(y, i)
-				r := b.BinOp(token.EQL, fx, fy)
-				ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
-			}
-			switch op {
-			case token.EQL:
-				return ret
-			case token.NEQ:
-				return Expr{b.impl.CreateNot(ret.impl, ""), tret}
-			}
+			return b.StructBinOp(op, x, y, Nil, Nil)
 		case vkSlice:
 			dx := b.impl.CreateExtractValue(x.impl, 0, "")
 			dy := b.impl.CreateExtractValue(y.impl, 0, "")
@@ -768,6 +752,88 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 		}
 	}
 	panic("todo")
+}
+
+// CanInlineStructEqual reports whether direct field comparisons keep the
+// module compact. Larger structs use their runtime equality algorithm,
+// matching the array path and avoiding pathological aggregate IR.
+func CanInlineStructEqual(t *types.Struct, size uint64, pointerSize int) bool {
+	return t.NumFields() <= 4 && size <= uint64(4*pointerSize)
+}
+
+// StructBinOp compares two struct values while allowing the frontend to reuse
+// an operand address when it has proved that doing so preserves value semantics.
+func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
+	if x.kind != vkStruct || y.kind != vkStruct {
+		panic("StructBinOp requires struct operands")
+	}
+	if op != token.EQL && op != token.NEQ {
+		panic("StructBinOp requires an equality operator")
+	}
+	prog := b.Prog
+	tret := prog.Bool()
+	typ := x.raw.Type.Underlying().(*types.Struct)
+	if CanInlineStructEqual(typ, uint64(prog.abi.Size(typ)), prog.PointerSize()) {
+		ret := prog.BoolVal(true)
+		for i, n := 0, typ.NumFields(); i < n; i++ {
+			if typ.Field(i).Name() == "_" {
+				continue
+			}
+			fx := b.getField(x, i)
+			fy := b.getField(y, i)
+			r := b.BinOp(token.EQL, fx, fy)
+			ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
+		}
+		if op == token.NEQ {
+			ret.impl = llvm.CreateNot(b.impl, ret.impl)
+		}
+		return ret
+	}
+
+	zeroX := xaddr.IsNil() && !x.impl.IsAConstantAggregateZero().IsNil()
+	zeroY := yaddr.IsNil() && !y.impl.IsAConstantAggregateZero().IsNil()
+	if prog.abi.IsRegularMemory(typ) && (zeroX && !yaddr.IsNil() || zeroY && !xaddr.IsNil()) {
+		addr := xaddr
+		if zeroX {
+			addr = yaddr
+		}
+		addr = b.PtrCast(prog.VoidPtr(), addr)
+		ret := b.Call(b.Pkg.rtFunc("memequalzero"), addr, prog.IntVal(prog.SizeOf(x.Type), prog.Uintptr()))
+		if op == token.NEQ {
+			ret.impl = llvm.CreateNot(b.impl, ret.impl)
+		}
+		return ret
+	}
+
+	var sp Expr
+	if xaddr.IsNil() || yaddr.IsNil() {
+		sp = b.StackSave()
+	}
+	if xaddr.IsNil() {
+		xaddr = b.toPtr(x)
+	} else {
+		xaddr = b.PtrCast(prog.VoidPtr(), xaddr)
+	}
+	if yaddr.IsNil() {
+		yaddr = b.toPtr(y)
+	} else {
+		yaddr = b.PtrCast(prog.VoidPtr(), yaddr)
+	}
+	var ret Expr
+	if prog.abi.IsRegularMemory(typ) {
+		ret = b.Call(b.Pkg.rtFunc("memequal"), xaddr, yaddr, prog.IntVal(prog.SizeOf(x.Type), prog.Uintptr()))
+	} else {
+		equal := b.Pkg.rtEnvFunc("structequal")
+		equal = b.aggregateValue(prog.Type(equalFunc, InGo), equal.impl, b.abiType(x.raw.Type).impl)
+		ret = b.Call(equal, xaddr, yaddr)
+	}
+	if !sp.IsNil() {
+		b.StackRestore(sp)
+	}
+	if op == token.NEQ {
+		ret.impl = llvm.CreateNot(b.impl, ret.impl)
+	}
+	return ret
 }
 
 // CanInlineArrayEqual reports whether comparing an array element by element is

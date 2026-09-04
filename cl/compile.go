@@ -1494,6 +1494,22 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 				y = p.compileValueAs(b, v.Y, v.X.Type())
 			}
 			ret = b.ArrayBinOp(v.Op, x, y, xaddr, yaddr)
+		} else if typ, ok := v.X.Type().Underlying().(*types.Struct); ok && (v.Op == token.EQL || v.Op == token.NEQ) {
+			xaddr, yaddr := llssa.Nil, llssa.Nil
+			size := p.prog.SizeOf(p.type_(v.X.Type(), llssa.InGo))
+			if !llssa.CanInlineStructEqual(typ, size, p.prog.PointerSize()) {
+				xaddr = p.structZeroCompareAddr(b, v.X, v.Y, v)
+				yaddr = p.structZeroCompareAddr(b, v.Y, v.X, v)
+			}
+			x := p.prog.Zero(p.type_(v.X.Type(), llssa.InGo))
+			if xaddr.IsNil() {
+				x = p.compileValueAs(b, v.X, v.Y.Type())
+			}
+			y := p.prog.Zero(p.type_(v.Y.Type(), llssa.InGo))
+			if yaddr.IsNil() {
+				y = p.compileValueAs(b, v.Y, v.X.Type())
+			}
+			ret = b.StructBinOp(v.Op, x, y, xaddr, yaddr)
 		} else {
 			x := p.compileValueAs(b, v.X, v.Y.Type())
 			y := p.compileValueAs(b, v.Y, v.X.Type())
@@ -1504,7 +1520,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			if _, ok := p.methodNilDerefChecks[v]; ok {
 				return p.compileCheckedDeref(b, v)
 			}
-			if canElideArrayCompareLoad(v) {
+			if canElideArrayCompareLoad(v) || p.canElideStructZeroCompareLoad(v) {
 				return
 			}
 			effectfulArrayDeref := isEffectfulArrayPointerDeref(v)
@@ -1893,6 +1909,80 @@ func (p *context) arrayCompareAddr(b llssa.Builder, v ssa.Value) llssa.Expr {
 		return llssa.Nil
 	}
 	return p.compileValue(b, addr)
+}
+
+// structZeroCompareAddr reuses the source address for an immediately compared
+// aggregate load. The other operand must be a zero value, so no second load or
+// side effect can occur between the snapshot and comparison.
+func (p *context) structZeroCompareAddr(b llssa.Builder, value, other ssa.Value, comparison *ssa.BinOp) llssa.Expr {
+	load := structZeroCompareLoad(value, other, comparison)
+	if load == nil {
+		return llssa.Nil
+	}
+	addr := p.compileValue(b, load.X)
+	p.recordPanicSite(b, load.Pos())
+	p.assertNilDerefBase(b, load.X)
+	b.AssertNilDeref(addr)
+	return addr
+}
+
+func (p *context) canElideStructZeroCompareLoad(load *ssa.UnOp) bool {
+	if load == nil {
+		return false
+	}
+	refs, ok := nonDebugReferrers(load)
+	if !ok || len(refs) != 1 {
+		return false
+	}
+	comparison, ok := refs[0].(*ssa.BinOp)
+	if !ok || (comparison.Op != token.EQL && comparison.Op != token.NEQ) {
+		return false
+	}
+	typ, ok := load.Type().Underlying().(*types.Struct)
+	if !ok {
+		return false
+	}
+	size := p.prog.SizeOf(p.type_(load.Type(), llssa.InGo))
+	if llssa.CanInlineStructEqual(typ, size, p.prog.PointerSize()) {
+		return false
+	}
+	other := comparison.X
+	if other == load {
+		other = comparison.Y
+	}
+	return structZeroCompareLoad(load, other, comparison) != nil
+}
+
+func structZeroCompareLoad(value, other ssa.Value, comparison *ssa.BinOp) *ssa.UnOp {
+	load, ok := value.(*ssa.UnOp)
+	if !ok || load.Op != token.MUL || load.Block() == nil || load.Block() != comparison.Block() {
+		return nil
+	}
+	zero, ok := other.(*ssa.Const)
+	if !ok || zero.Value != nil {
+		return nil
+	}
+	if _, ok := zero.Type().Underlying().(*types.Struct); !ok {
+		return nil
+	}
+	seenLoad := false
+	for _, instruction := range load.Block().Instrs {
+		switch instruction {
+		case load:
+			seenLoad = true
+		case comparison:
+			if seenLoad {
+				return load
+			}
+		default:
+			if seenLoad {
+				if _, ok := instruction.(*ssa.DebugRef); !ok {
+					return nil
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // canElideArrayCompareLoad reports whether every executable use of load is a

@@ -210,6 +210,14 @@ func memequalptr(p, q unsafe.Pointer) bool {
 func memequal0(p, q unsafe.Pointer) bool {
 	return true
 }
+func memequalzero(p unsafe.Pointer, size uintptr) bool {
+	for i := uintptr(0); i < size; i++ {
+		if *(*byte)(add(p, i)) != 0 {
+			return false
+		}
+	}
+	return true
+}
 func memequal8(p, q unsafe.Pointer) bool {
 	return *(*int8)(p) == *(*int8)(q)
 }

@@ -2727,6 +2727,59 @@ func TestCanInlineArrayEqual(t *testing.T) {
 	}
 }
 
+func TestStructEqualLowering(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkg := prog.NewPackage("main", "main")
+	compare := func(name string, typ *types.Struct) string {
+		sig := types.NewSignatureType(nil, nil, nil,
+			types.NewTuple(
+				types.NewVar(token.NoPos, nil, "x", typ),
+				types.NewVar(token.NoPos, nil, "y", typ),
+			),
+			types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool])),
+			false,
+		)
+		fn := pkg.NewFunc(name, sig, InGo)
+		b := fn.MakeBody(1)
+		b.Return(b.BinOp(token.EQL, fn.Param(0), fn.Param(1)))
+		return pkg.Module().NamedFunction(name).String()
+	}
+	field := func(name string, typ types.Type) *types.Var {
+		return types.NewVar(token.NoPos, nil, name, typ)
+	}
+
+	small := compare("smallStruct", types.NewStruct([]*types.Var{
+		field("a", types.Typ[types.Int]), field("b", types.Typ[types.Int]),
+	}, nil))
+	if strings.Contains(small, "memequal") || strings.Contains(small, "structequal") {
+		t.Fatalf("small struct comparison was not inlined:\n%s", small)
+	}
+	regular := compare("largeRegularStruct", types.NewStruct([]*types.Var{
+		field("value", types.NewArray(types.Typ[types.Uint8], 1024)),
+	}, nil))
+	if !strings.Contains(regular, ".memequal") || strings.Contains(regular, "extractvalue [1024 x i8]") {
+		t.Fatalf("large regular struct comparison was not lowered to memequal:\n%s", regular)
+	}
+	nonMemory := compare("largeNonMemoryStruct", types.NewStruct([]*types.Var{
+		field("value", types.NewArray(types.Typ[types.String], 5)),
+	}, nil))
+	if !strings.Contains(nonMemory, ".structequal") || strings.Contains(nonMemory, "extractvalue [5 x { ptr, i64 }]") {
+		t.Fatalf("large semantic struct comparison was not lowered to structequal:\n%s", nonMemory)
+	}
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("struct comparison module is invalid: %v\n%s", err, pkg.String())
+	}
+}
+
 func TestUnOp(t *testing.T) {
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("bar", "foo/bar")

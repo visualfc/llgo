@@ -37,20 +37,16 @@ package main
 // CHECK: %[[ARRAY_NE:[0-9]+]] = xor i1 %{{[0-9]+}}, true
 // CHECK: call void @main.assert(i1 %[[ARRAY_NE]])
 
-// Structs delegate string and interface fields to their semantic equality
-// helpers and combine both results before asserting the aggregate result.
+// Large structs delegate to their type-specific semantic equality helper
+// instead of expanding every field into aggregate extracts in LLVM IR.
 // CHECK-LABEL: define void @"main.init#3"(){{.*}} {
-// CHECK: %[[STRUCT_L:[0-9]+]] = load %main.T, ptr %{{[0-9]+}}
-// CHECK: %[[STRUCT_R:[0-9]+]] = load %main.T, ptr %{{[0-9]+}}
-// CHECK: %[[STRING_L:[0-9]+]] = extractvalue %main.T %[[STRUCT_L]], 2
-// CHECK: %[[STRING_R:[0-9]+]] = extractvalue %main.T %[[STRUCT_R]], 2
-// CHECK: %[[STRING_EQ:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %[[STRING_L]], %"{{.*}}/runtime/internal/runtime.String" %[[STRING_R]])
-// CHECK: %[[WITH_STRING:[0-9]+]] = and i1 %{{[0-9]+}}, %[[STRING_EQ]]
-// CHECK: %[[EFACE_L:[0-9]+]] = extractvalue %main.T %[[STRUCT_L]], 3
-// CHECK: %[[EFACE_R:[0-9]+]] = extractvalue %main.T %[[STRUCT_R]], 3
-// CHECK: %[[EFACE_EQ:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"(%"{{.*}}/runtime/internal/runtime.eface" %[[EFACE_L]], %"{{.*}}/runtime/internal/runtime.eface" %[[EFACE_R]])
-// CHECK: %[[STRUCT_EQ:[0-9]+]] = and i1 %[[WITH_STRING]], %[[EFACE_EQ]]
+// CHECK: %[[STRUCT_EQ:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.structequal"
 // CHECK: call void @main.assert(i1 %[[STRUCT_EQ]])
+// CHECK: %[[STRUCT_EQ2:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.structequal"
+// CHECK: call void @main.assert(i1 %[[STRUCT_EQ2]])
+// CHECK: %[[STRUCT_RAW_NE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.structequal"
+// CHECK: %[[STRUCT_NE:[0-9]+]] = xor i1 %[[STRUCT_RAW_NE]], true
+// CHECK: call void @main.assert(i1 %[[STRUCT_NE]])
 
 // Slices compare with nil through their data pointer. Check the non-empty and
 // zero-length/non-zero-capacity make paths separately.
