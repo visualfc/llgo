@@ -466,3 +466,42 @@ func TestRunNativeTestDAGPropagatesPlanFailure(t *testing.T) {
 		t.Fatalf("compile-only result = %+v", result)
 	}
 }
+
+func TestRunNativeTestDAGPropagatesEntryFailure(t *testing.T) {
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	root := &packages.Package{
+		ID:      "example.com/entry.test",
+		PkgPath: "example.com/entry.test",
+		Name:    "main",
+		Imports: make(map[string]*packages.Package),
+	}
+	conf := &Config{
+		Mode:      ModeTest,
+		BuildMode: BuildModeExe,
+		Goos:      runtime.GOOS,
+		Goarch:    runtime.GOARCH,
+	}
+	ctx := &context{
+		prog:      prog,
+		mode:      ModeTest,
+		buildConf: conf,
+		commands:  commandEnv{dir: t.TempDir()},
+		pkgs:      make(map[*packages.Package]Package),
+		pkgByID:   make(map[string]Package),
+	}
+	ctx.crossCompile.ExtraFiles = []string{"missing-entry-file.c"}
+
+	readStderr := captureStderr(t)
+	result, err := runNativeTestDAG(ctx, nil, []*packages.Package{root}, conf, false)
+	stderr := readStderr()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.links[0].err == nil || !strings.Contains(result.links[0].err.Error(), "extra file not found") {
+		t.Fatalf("entry result error = %v", result.links[0].err)
+	}
+	if !result.tests.failed || !strings.Contains(stderr, "FAIL\texample.com/entry [build failed]") {
+		t.Fatalf("test result = %+v; stderr = %q", result.tests, stderr)
+	}
+}

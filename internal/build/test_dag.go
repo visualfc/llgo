@@ -443,6 +443,10 @@ func runNativeTestDAG(ctx *context, allPkgs []*aPackage, roots []*packages.Packa
 			complete: func(err error) {
 				if err != nil {
 					result.links[rootIndex].err = err
+					if link := prepared[rootIndex]; link != nil {
+						removeOutFmts(link.outFmts)
+						prepared[rootIndex] = nil
+					}
 				}
 			},
 		})
