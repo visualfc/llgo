@@ -2065,6 +2065,21 @@ func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 	}
 }
 
+func TestDevLTOGlobalDCERejectsParallelDeadcodeEntry(t *testing.T) {
+	if !buildenv.Dev {
+		t.Skip("deadcode drop requires a development build")
+	}
+	ctx := &context{buildConf: &Config{DeadcodeDrop: true}}
+	link := &initialPackageLink{preparation: &mainLinkPreparation{}}
+	if err := buildInitialPackageEntry(ctx, link, false, true); err == nil ||
+		!strings.Contains(err.Error(), "does not support dead-code drop") {
+		t.Fatalf("parallel deadcode entry error = %v", err)
+	}
+	if link.preparation != nil {
+		t.Fatal("failed entry retained its consumed preparation")
+	}
+}
+
 func TestDeadcodeDropEnabled(t *testing.T) {
 	tests := []struct {
 		name string

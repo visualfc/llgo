@@ -20,6 +20,7 @@ package build
 
 import (
 	"errors"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -332,6 +333,17 @@ func TestRunBuildDAGRejectsInvalidGraphs(t *testing.T) {
 			t.Fatalf("cycle error = %v", err)
 		}
 	})
+
+	t.Run("progress before cycle", func(t *testing.T) {
+		_, err := runBuildDAG([]buildDAGNode{
+			{name: "independent", coordinator: true},
+			{name: "first", dependencies: []int{2}},
+			{name: "second", dependencies: []int{1}},
+		}, 1, false)
+		if err == nil || !strings.Contains(err.Error(), "stalled with 1/3 nodes complete") {
+			t.Fatalf("partially completed cycle error = %v", err)
+		}
+	})
 }
 
 func TestRunBuildDAGRecoversNodePanics(t *testing.T) {
@@ -361,6 +373,25 @@ func TestSeparatedLinkPhaseValidation(t *testing.T) {
 	}
 	if err := executeMainLink(nil, nil, false); err == nil {
 		t.Fatal("executeMainLink accepted a nil plan")
+	}
+}
+
+func TestExecuteInitialPackageLinkPropagatesStagingFailure(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "missing", "test.wasm")
+	conf := &Config{BuildMode: BuildModeExe}
+	ctx := &context{buildConf: conf}
+	ctx.crossCompile.WasmPostLink.Asyncify = true
+	link := &initialPackageLink{
+		pkg:     &packages.Package{PkgPath: "example.com/test.test"},
+		conf:    conf,
+		outFmts: &OutFmtDetails{Out: output},
+		plan:    &mainLinkPlan{outputPath: output},
+	}
+	if _, err := executeInitialPackageLink(ctx, link, false, false); err == nil {
+		t.Fatal("executeInitialPackageLink succeeded with a missing staging directory")
+	}
+	if link.plan != nil {
+		t.Fatal("failed link retained its consumed plan")
 	}
 }
 
