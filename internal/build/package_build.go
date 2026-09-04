@@ -18,6 +18,7 @@ package build
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/xgo-dev/llgo/cl"
@@ -41,21 +42,45 @@ type packageLinkSnapshot struct {
 }
 
 type packageBuildTask struct {
-	pkg       *aPackage
-	kind      int
-	kindParam string
-	skip      bool
-	isolated  bool
-	parallel  bool
+	pkg             *aPackage
+	kind            int
+	kindParam       string
+	ssaInstructions int64
+	skip            bool
+	isolated        bool
+	parallel        bool
 }
 
 func newPackageBuildTask(pkg *aPackage) *packageBuildTask {
 	kind, kindParam := cl.PkgKindOf(pkg.Types)
 	return &packageBuildTask{
-		pkg:       pkg,
-		kind:      kind,
-		kindParam: kindParam,
+		pkg:             pkg,
+		kind:            kind,
+		kindParam:       kindParam,
+		ssaInstructions: pkg.ssaInstructions,
 	}
+}
+
+func (task *packageBuildTask) estimatedBackendCost() int64 {
+	if task.skip || task.pkg.CacheHit {
+		return 0
+	}
+	return task.ssaInstructions
+}
+
+func sortPackageIndexesByEstimatedCost(tasks []*packageBuildTask, indexes []int) {
+	slices.SortStableFunc(indexes, func(left, right int) int {
+		leftCost := tasks[left].estimatedBackendCost()
+		rightCost := tasks[right].estimatedBackendCost()
+		switch {
+		case leftCost > rightCost:
+			return -1
+		case leftCost < rightCost:
+			return 1
+		default:
+			return 0
+		}
+	})
 }
 
 func (t *packageBuildTask) isRuntime() bool {
@@ -150,6 +175,7 @@ func preparePackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) 
 			return nil, err
 		}
 	}
+	sortPackageIndexesByEstimatedCost(tasks, isolated)
 	return isolated, nil
 }
 
@@ -168,6 +194,7 @@ func tracePackageBuild(ctx *context, task *packageBuildTask, verbose, isolated, 
 	traceSpan.setArg("package_id", task.pkg.ID)
 	traceSpan.setArg("class", class)
 	traceSpan.setArg("archive_publication", !task.pkg.CacheHit)
+	traceSpan.setArg("ssa_instructions", task.ssaInstructions)
 	ctx.buildTrace.flowFromSSA(task.pkg.ID, traceSpan)
 	defer traceSpan.done()
 	return buildPackage(ctx, task, verbose, isolated)

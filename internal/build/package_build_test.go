@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -67,6 +68,20 @@ func TestPackageBuildTaskSpecialKinds(t *testing.T) {
 	}})
 	if !runtime.isRuntime() {
 		t.Fatalf("runtime package was not marked runtime: %+v", runtime)
+	}
+}
+
+func TestPackageBackendCostOrdersUncachedSSA(t *testing.T) {
+	tasks := []*packageBuildTask{
+		{pkg: &aPackage{}, ssaInstructions: 10},
+		{pkg: &aPackage{}, ssaInstructions: 100},
+		{pkg: &aPackage{CacheHit: true}, ssaInstructions: 1000},
+		{pkg: &aPackage{}, ssaInstructions: 2000, skip: true},
+	}
+	indexes := []int{0, 1, 2, 3}
+	sortPackageIndexesByEstimatedCost(tasks, indexes)
+	if !slices.Equal(indexes, []int{1, 0, 2, 3}) {
+		t.Fatalf("estimated backend order = %v, want [1 0 2 3]", indexes)
 	}
 }
 
@@ -226,6 +241,62 @@ func TestBuildSSAPkgsEmptyAndNilEntries(t *testing.T) {
 	prog := ssa.NewProgram(token.NewFileSet(), ssa.SanityCheckFunctions)
 	pkg := prog.CreatePackage(types.NewPackage("example.com/ssa", "ssa"), nil, nil, true)
 	buildSSAPkgs(ctx, []ssaBuildEntry{{pkg: pkg}, {pkg: pkg}})
+}
+
+func TestSyntaxNodeCount(t *testing.T) {
+	fset := token.NewFileSet()
+	small, err := parser.ParseFile(fset, "small.go", "package p\nvar x int\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large, err := parser.ParseFile(fset, "large.go", "package p\nfunc f() { x := 1; x++; _ = x }\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, wantMin := syntaxNodeCount([]*ast.File{large}), syntaxNodeCount([]*ast.File{small}); got <= wantMin {
+		t.Fatalf("large syntax nodes = %d, want more than %d", got, wantMin)
+	}
+}
+
+func TestRecordPackageSSAInstructions(t *testing.T) {
+	fset := token.NewFileSet()
+	check := func(path, source string) (*types.Package, *ast.File, *types.Info) {
+		file, err := parser.ParseFile(fset, path+".go", source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info := &types.Info{
+			Types:      make(map[ast.Expr]types.TypeAndValue),
+			Defs:       make(map[*ast.Ident]types.Object),
+			Uses:       make(map[*ast.Ident]types.Object),
+			Implicits:  make(map[ast.Node]types.Object),
+			Scopes:     make(map[ast.Node]*types.Scope),
+			Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		}
+		checked, err := (&types.Config{}).Check(path, fset, []*ast.File{file}, info)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return checked, file, info
+	}
+	checked, file, info := check("example.com/p", "package p\nfunc F(x int) int { return x + 1 }\n")
+	altTypes, altFile, altInfo := check("example.com/alt", "package alt\nfunc F(x int) int { return (x + 1) * 2 }\n")
+	prog := ssa.NewProgram(fset, ssa.InstantiateGenerics)
+	ssaPkg := prog.CreatePackage(checked, []*ast.File{file}, info, true)
+	prog.CreatePackage(altTypes, []*ast.File{altFile}, altInfo, true)
+	prog.Build()
+	pkg := &aPackage{
+		Package: &packages.Package{ID: checked.Path()},
+		SSA:     ssaPkg,
+		AltPkg:  &packages.Cached{Types: altTypes},
+	}
+	ctx := &context{progSSA: prog, pkgs: map[*packages.Package]Package{pkg.Package: pkg}}
+	recordPackageSSAInstructions(ctx)
+	if pkg.ssaInstructions == 0 {
+		t.Fatal("recorded zero SSA instructions for a non-empty function")
+	}
+	recordPackageSSAInstructions(nil)
+	recordPackageSSAInstructions(&context{})
 }
 func TestCanUseIsolatedBackend(t *testing.T) {
 	ctx := &context{

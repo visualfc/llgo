@@ -37,6 +37,7 @@ import (
 	"sync/atomic"
 
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 
 	"github.com/xgo-dev/llgo/cl"
 	llabi "github.com/xgo-dev/llgo/internal/abi"
@@ -808,6 +809,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		return nil, err
 	}
 	buildSSAPkgs(ctx, append(append(altEntries, pkgEntries...), depEntries...))
+	recordPackageSSAInstructions(ctx)
 	callerSpan := buildTrace.startCoordinator("precompute caller tracking", nil)
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
@@ -1604,14 +1606,25 @@ func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, er
 	// Resolve the lazy Plan 9 policy before workers start.
 	_ = ctx.plan9asmEnabled("")
 
-	// Build non-runtime packages first, so we know whether runtime is actually needed.
+	// Host links always include runtime, so put ordinary and runtime packages in
+	// the same cost-ordered worker pool. This avoids making runtime wait behind
+	// the longest ordinary backend without adding another scheduling boundary.
+	if ctx.buildConf.Target == "" {
+		normalTasks = append(normalTasks, runtimeTasks...)
+		if err := buildPackageGroup(ctx, normalTasks, verbose); err != nil {
+			return nil, err
+		}
+		return pkgs, nil
+	}
+
+	// Cross builds still defer all runtime preparation until ordinary package
+	// results show it is needed; unused target runtimes must remain untouched.
 	if err := buildPackageGroup(ctx, normalTasks, verbose); err != nil {
 		return nil, err
 	}
 	needRuntime, needPyInit := packageRuntimeNeeds(normalTasks)
 
-	// Only build runtime packages when required (or host build with empty Target).
-	if needRuntime || needPyInit || ctx.buildConf.Target == "" {
+	if needRuntime || needPyInit {
 		if err := buildPackageGroup(ctx, runtimeTasks, verbose); err != nil {
 			return nil, err
 		}
@@ -3109,10 +3122,11 @@ func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) er
 }
 
 type ssaBuildEntry struct {
-	id       string
-	pkg      *ssa.Package
-	syntax   []*ast.File
-	fixOrder bool
+	id         string
+	pkg        *ssa.Package
+	syntax     []*ast.File
+	fixOrder   bool
+	complexity int64
 }
 
 func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.Package, conf *Config, verbose bool) []ssaBuildEntry {
@@ -3148,9 +3162,10 @@ type aPackage struct {
 	AltPkg *packages.Cached
 	LPkg   llssa.Package
 
-	NeedRt       bool
-	NeedPyInit   bool
-	linkSnapshot *packageLinkSnapshot
+	NeedRt          bool
+	NeedPyInit      bool
+	ssaInstructions int64
+	linkSnapshot    *packageLinkSnapshot
 
 	LinkArgs     []string
 	ObjFiles     []string               // file-backed archive members: .o or .ll
@@ -3239,6 +3254,9 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 	if len(entries) == 0 {
 		return
 	}
+	rankSpan := ctx.buildTrace.startCoordinator("rank SSA packages", map[string]any{
+		"entries": len(entries),
+	})
 	unique := make([]ssaBuildEntry, 0, len(entries))
 	index := make(map[*ssa.Package]int, len(entries))
 	for _, entry := range entries {
@@ -3250,8 +3268,21 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 			continue
 		}
 		index[entry.pkg] = len(unique)
+		entry.complexity = syntaxNodeCount(entry.syntax)
 		unique = append(unique, entry)
 	}
+	slices.SortStableFunc(unique, func(left, right ssaBuildEntry) int {
+		switch {
+		case left.complexity > right.complexity:
+			return -1
+		case left.complexity < right.complexity:
+			return 1
+		default:
+			return 0
+		}
+	})
+	rankSpan.setArg("packages", len(unique))
+	rankSpan.done()
 	jobs := make(chan ssaBuildEntry, len(unique))
 	var wg sync.WaitGroup
 	for range min(ctx.buildConf.parallelism(), len(unique)) {
@@ -3262,6 +3293,7 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 				pkgPath := entry.pkg.Pkg.Path()
 				traceSpan := ctx.buildTrace.startWorker("ssa", pkgPath)
 				traceSpan.setArg("package_id", entry.id)
+				traceSpan.setArg("syntax_nodes", entry.complexity)
 				func() {
 					defer traceSpan.done()
 					entry.pkg.Build()
@@ -3282,6 +3314,52 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 		}
 	}
 	repairSpan.done()
+}
+
+func syntaxNodeCount(files []*ast.File) (nodes int64) {
+	for _, file := range files {
+		ast.Inspect(file, func(node ast.Node) bool {
+			if node != nil {
+				nodes++
+			}
+			return true
+		})
+	}
+	return
+}
+
+// recordPackageSSAInstructions makes backend ordering a single linear pass
+// over the SSA that was already built. It includes methods, wrappers, and
+// closures without repeating a whole-program reachability scan per package.
+func recordPackageSSAInstructions(ctx *context) {
+	if ctx == nil || ctx.progSSA == nil {
+		return
+	}
+	span := ctx.buildTrace.startCoordinator("count SSA instructions", nil)
+	defer span.done()
+	counts := make(map[*ssa.Package]int64)
+	var total int64
+	for fn := range ssautil.AllFunctions(ctx.progSSA) {
+		if fn == nil || fn.Pkg == nil {
+			continue
+		}
+		for _, block := range fn.Blocks {
+			instructions := int64(len(block.Instrs))
+			counts[fn.Pkg] += instructions
+			total += instructions
+		}
+	}
+	for _, pkg := range ctx.pkgs {
+		if pkg == nil {
+			continue
+		}
+		pkg.ssaInstructions = counts[pkg.SSA]
+		if pkg.AltPkg != nil && pkg.AltPkg.Types != nil {
+			pkg.ssaInstructions += counts[ctx.progSSA.Package(pkg.AltPkg.Types)]
+		}
+	}
+	span.setArg("packages", len(counts))
+	span.setArg("instructions", total)
 }
 
 func formatPackageError(err packages.Error, noColumn bool) string {
