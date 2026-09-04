@@ -1069,7 +1069,18 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 			}
 			return nil, runNative(linkCtx, link.outFmts.Out, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode)
 		}
-		return nil, runNamedTarget(linkCtx, link.outFmts.Out, envMap, link.pkg, link.conf, verbose)
+		// runInEmulator returns before inspecting the emulator when -c is set.
+		// Route compile-only tests there instead of treating the target as a device.
+		if link.conf.Emulator || link.conf.CompileOnly {
+			return nil, runInEmulator(linkCtx.commands, linkCtx.crossCompile.Emulator, envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
+		}
+		if err := flash.FlashDevice(linkCtx.crossCompile.Device, envMap, linkCtx.buildConf.Port, verbose); err != nil {
+			return nil, err
+		}
+		return nil, monitor.Monitor(monitor.MonitorConfig{
+			Port: linkCtx.buildConf.Port, Target: link.conf.Target, Executable: link.outFmts.Out,
+			BaudRate: link.conf.BaudRate, SerialPort: linkCtx.crossCompile.Device.SerialPort,
+		}, verbose)
 	}
 	return nil, nil
 }
@@ -1084,24 +1095,6 @@ func newLinkExecutionContext(ctx *context, plan *mainLinkPlan) *context {
 		pclnExternal:         plan.pclnExternal,
 		stripDarwinLTOLocals: plan.stripDarwinLTOLocals,
 	}
-}
-
-func runNamedTarget(ctx *context, executable string, envMap map[string]string, pkg *packages.Package, conf *Config, verbose bool) error {
-	// go test -c stops after producing the requested artifact. In particular,
-	// it must not treat a named target without an emulator as hardware to flash.
-	if conf.Mode == ModeTest && conf.CompileOnly {
-		return nil
-	}
-	if conf.Emulator {
-		return runInEmulator(ctx.commands, ctx.crossCompile.Emulator, envMap, pkg.Dir, pkg.PkgPath, conf, conf.Mode, verbose)
-	}
-	if err := flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose); err != nil {
-		return err
-	}
-	return monitor.Monitor(monitor.MonitorConfig{
-		Port: ctx.buildConf.Port, Target: conf.Target, Executable: executable,
-		BaudRate: conf.BaudRate, SerialPort: ctx.crossCompile.Device.SerialPort,
-	}, verbose)
 }
 
 func removeOutFmts(outFmts *OutFmtDetails) {
