@@ -2803,8 +2803,8 @@ func TestStructEqualLowering(t *testing.T) {
 	nonMemory := compare("largeNonMemoryStruct", types.NewStruct([]*types.Var{
 		field("value", types.NewArray(types.Typ[types.String], 5)),
 	}, nil), token.EQL, 0, 0)
-	if !strings.Contains(nonMemory, ".structequal") || strings.Contains(nonMemory, "extractvalue [5 x { ptr, i64 }]") {
-		t.Fatalf("large semantic struct comparison was not lowered to structequal:\n%s", nonMemory)
+	if strings.Contains(nonMemory, ".structequal") || !strings.Contains(nonMemory, ".arrayequal") {
+		t.Fatalf("large semantic struct comparison was not kept field-wise:\n%s", nonMemory)
 	}
 	fiveFields := types.NewStruct([]*types.Var{
 		field("a", types.Typ[types.Uint8]), field("b", types.Typ[types.Uint8]),

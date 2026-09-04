@@ -31,6 +31,10 @@ type large struct {
 	value [4096]byte
 }
 
+type semantic struct {
+	value [5]string
+}
+
 func immediate(p *large) bool {
 	return *p == large{}
 }
@@ -39,6 +43,10 @@ func snapshot(p *large, mutate func()) bool {
 	v := *p
 	mutate()
 	return v == large{}
+}
+
+func semanticZero(p *semantic) bool {
+	return *p == semantic{}
 }
 `
 	_, mod := mustCompileLLPkgFromSrc(t, source)
@@ -61,5 +69,11 @@ func snapshot(p *large, mutate func()) bool {
 	}
 	if !strings.Contains(snapshot, ".memequal") || !strings.Contains(snapshot, "load %foo.large") {
 		t.Fatalf("comparison after a call did not preserve its value snapshot:\n%s", snapshot)
+	}
+
+	semantic := mustNamedFunction(t, mod, "foo.semanticZero").String()
+	if strings.Contains(semantic, ".memequalzero") || strings.Contains(semantic, ".structequal") ||
+		!strings.Contains(semantic, ".arrayequal") || !strings.Contains(semantic, "load %foo.semantic") {
+		t.Fatalf("semantic zero comparison did not remain field-wise:\n%s", semantic)
 	}
 }

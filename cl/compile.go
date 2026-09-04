@@ -1497,7 +1497,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		} else if typ, ok := v.X.Type().Underlying().(*types.Struct); ok && (v.Op == token.EQL || v.Op == token.NEQ) {
 			xaddr, yaddr := llssa.Nil, llssa.Nil
 			size := p.prog.SizeOf(p.type_(v.X.Type(), llssa.InGo))
-			if !llssa.CanInlineStructEqual(typ, size, p.prog.PointerSize()) {
+			if p.prog.IsRegularMemory(v.X.Type()) && !llssa.CanInlineStructEqual(typ, size, p.prog.PointerSize()) {
 				xaddr = p.structZeroCompareAddr(b, v.X, v.Y, v)
 				yaddr = p.structZeroCompareAddr(b, v.Y, v.X, v)
 			}
@@ -1941,6 +1941,9 @@ func (p *context) canElideStructZeroCompareLoad(load *ssa.UnOp) bool {
 	}
 	typ, ok := load.Type().Underlying().(*types.Struct)
 	if !ok {
+		return false
+	}
+	if !p.prog.IsRegularMemory(load.Type()) {
 		return false
 	}
 	size := p.prog.SizeOf(p.type_(load.Type(), llssa.InGo))

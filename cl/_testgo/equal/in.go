@@ -37,21 +37,26 @@ package main
 // CHECK: %[[ARRAY_NE:[0-9]+]] = xor i1 %{{[0-9]+}}, true
 // CHECK: call void @main.assert(i1 %[[ARRAY_NE]])
 
-// Large structs delegate to their type-specific semantic equality helper
-// instead of expanding every field into aggregate extracts in LLVM IR.
+// Semantic structs retain field-wise comparison, including the interface
+// equality calls whose order and panic behavior are observable. Large regular
+// structs use the bytewise zero helper without materializing the aggregate.
 // CHECK-LABEL: define void @"main.init#3"(){{.*}} {
-// CHECK: %[[STRUCT_EQ:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.structequal"
-// CHECK: call void @main.assert(i1 %[[STRUCT_EQ]])
-// CHECK: %[[STRUCT_EQ2:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.structequal"
-// CHECK: call void @main.assert(i1 %[[STRUCT_EQ2]])
-// CHECK: %[[STRUCT_RAW_NE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.structequal"
-// CHECK: %[[STRUCT_NE:[0-9]+]] = xor i1 %[[STRUCT_RAW_NE]], true
+// CHECK: %[[ZERO_STRING:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"({{.*}}zeroinitializer, {{.*}}zeroinitializer)
+// CHECK: %[[ZERO_IFACE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"({{.*}}zeroinitializer, {{.*}}zeroinitializer)
+// CHECK: call void @main.assert(i1 %{{[0-9]+}})
+// CHECK: extractvalue %main.T %{{[0-9]+}}, 0
+// CHECK: %[[STRUCT_STRING:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"
+// CHECK: %[[STRUCT_IFACE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"
+// CHECK: call void @main.assert(i1 %{{[0-9]+}})
+// CHECK: %[[STRUCT_RAW_NE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.EfaceEqual"
+// CHECK: %[[STRUCT_NE:[0-9]+]] = xor i1 %{{[0-9]+}}, true
 // CHECK: call void @main.assert(i1 %[[STRUCT_NE]])
 // CHECK: %[[ZERO_EQ:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.memequalzero"
 // CHECK: call void @main.assert(i1 %[[ZERO_EQ]])
 // CHECK: %[[ZERO_RAW_NE:[0-9]+]] = call i1 @"{{.*}}/runtime/internal/runtime.memequalzero"
 // CHECK: %[[ZERO_NE:[0-9]+]] = xor i1 %[[ZERO_RAW_NE]], true
 // CHECK: call void @main.assert(i1 %[[ZERO_NE]])
+// CHECK-NOT: runtime.structequal
 
 // Slices compare with nil through their data pointer. Check the non-empty and
 // zero-length/non-zero-capacity make paths separately.

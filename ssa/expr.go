@@ -763,6 +763,9 @@ func CanInlineStructEqual(t *types.Struct, size uint64, pointerSize int) bool {
 
 // StructBinOp compares two struct values while allowing the frontend to reuse
 // an operand address when it has proved that doing so preserves value semantics.
+// Non-regular structs remain field-wise so their semantic comparisons preserve
+// the established ordering and panic behavior; source addresses are used only
+// for regular-memory structs.
 func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 	if x.kind != vkStruct || y.kind != vkStruct {
 		panic("StructBinOp requires struct operands")
@@ -773,7 +776,9 @@ func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 	prog := b.Prog
 	tret := prog.Bool()
 	typ := x.raw.Type.Underlying().(*types.Struct)
-	if CanInlineStructEqual(typ, uint64(prog.abi.Size(typ)), prog.PointerSize()) {
+	size := uint64(prog.abi.Size(typ))
+	regular := prog.abi.IsRegularMemory(typ)
+	if !regular || CanInlineStructEqual(typ, size, prog.PointerSize()) {
 		ret := prog.BoolVal(true)
 		for i, n := 0, typ.NumFields(); i < n; i++ {
 			if typ.Field(i).Name() == "_" {
@@ -792,7 +797,7 @@ func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 
 	zeroX := xaddr.IsNil() && !x.impl.IsAConstantAggregateZero().IsNil()
 	zeroY := yaddr.IsNil() && !y.impl.IsAConstantAggregateZero().IsNil()
-	if prog.abi.IsRegularMemory(typ) && (zeroX && !yaddr.IsNil() || zeroY && !xaddr.IsNil()) {
+	if zeroX && !yaddr.IsNil() || zeroY && !xaddr.IsNil() {
 		addr := xaddr
 		if zeroX {
 			addr = yaddr
@@ -819,14 +824,7 @@ func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 	} else {
 		yaddr = b.PtrCast(prog.VoidPtr(), yaddr)
 	}
-	var ret Expr
-	if prog.abi.IsRegularMemory(typ) {
-		ret = b.Call(b.Pkg.rtFunc("memequal"), xaddr, yaddr, prog.IntVal(prog.SizeOf(x.Type), prog.Uintptr()))
-	} else {
-		equal := b.Pkg.rtEnvFunc("structequal")
-		equal = b.aggregateValue(prog.Type(equalFunc, InGo), equal.impl, b.abiType(x.raw.Type).impl)
-		ret = b.Call(equal, xaddr, yaddr)
-	}
+	ret := b.Call(b.Pkg.rtFunc("memequal"), xaddr, yaddr, prog.IntVal(prog.SizeOf(x.Type), prog.Uintptr()))
 	if !sp.IsNil() {
 		b.StackRestore(sp)
 	}
