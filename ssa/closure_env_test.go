@@ -261,6 +261,64 @@ func TestWasmDynamicClosureUsesTwoExplicitTypedEdges(t *testing.T) {
 	}
 }
 
+func TestWasm64DynamicClosureCodeGenAfterOptimization(t *testing.T) {
+	Initialize(InitAllTargets | InitAllTargetInfos | InitAllTargetMCs | InitAllAsmPrinters)
+	for _, pipeline := range []string{"default<Oz>", "lto<Oz>"} {
+		for _, kind := range []string{"plain", "captured"} {
+			t.Run(pipeline+"/"+kind, func(t *testing.T) {
+				prog := NewProgram(&Target{
+					GOOS:       "js",
+					GOARCH:     "wasm",
+					LLVMTarget: "wasm64-unknown-emscripten",
+				})
+				defer prog.Dispose()
+				setTestRuntime(t, prog)
+				pkg := prog.NewPackage("p", "example.com/p")
+
+				params := types.NewTuple(types.NewVar(token.NoPos, nil, "x", types.Typ[types.Int]))
+				results := types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Int]))
+				sig := types.NewSignatureType(nil, nil, nil, params, results, false)
+				var value func(Builder) Expr
+				if kind == "plain" {
+					entry := pkg.NewFunc("plain", sig, InGo)
+					entry.impl.SetLinkage(llvm.InternalLinkage)
+					body := entry.MakeBody(1)
+					body.Return(entry.Param(0))
+					value = func(b Builder) Expr { return b.MakeClosure(entry.Expr, nil) }
+				} else {
+					envStruct := types.NewStruct(
+						[]*types.Var{types.NewField(token.NoPos, nil, "capture", types.Typ[types.Int], false)},
+						nil,
+					)
+					entry := newMatrixEnvEntry(pkg, "captured", sig, envStruct)
+					entry.impl.SetLinkage(llvm.InternalLinkage)
+					value = func(b Builder) Expr {
+						return b.MakeClosure(entry.Expr, []Expr{prog.Val(7)})
+					}
+				}
+				newMatrixCaller(pkg, "call", sig, value)
+
+				mod := pkg.Module()
+				pbo := llvm.NewPassBuilderOptions()
+				defer pbo.Dispose()
+				if err := mod.RunPasses(pipeline, prog.TargetMachine(), pbo); err != nil {
+					t.Fatal(err)
+				}
+				if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+					t.Fatalf("optimized wasm64 closure module is invalid: %v\n%s", err, mod.String())
+				}
+				// Assembly emission exercises instruction selection without depending
+				// on per-function section options supplied by the package build path.
+				asm, err := prog.TargetMachine().EmitToMemoryBuffer(mod, llvm.AssemblyFile)
+				if err != nil {
+					t.Fatalf("emit optimized wasm64 closure assembly: %v\n%s", err, mod.String())
+				}
+				asm.Dispose()
+			})
+		}
+	}
+}
+
 func TestNativeDynamicClosureIdentityBarrierSurvivesO2(t *testing.T) {
 	for _, pipeline := range []string{"default<O2>", "lto<O2>"} {
 		t.Run(pipeline, func(t *testing.T) {
