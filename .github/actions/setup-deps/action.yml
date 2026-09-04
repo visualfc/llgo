@@ -409,13 +409,6 @@ runs:
         MSYS2_ARG_CONV_EXCL='*' exec "$pkgconfUnix" --dont-define-prefix "--with-path=$pcDirUnix" "--with-path=$vcpkgLibPCUnix" "--with-path=$vcpkgSharePCUnix" "`$@"
         "@ | Set-Content -Encoding ascii $pkgconfShell
 
-        foreach ($package in @("llvm-${{ inputs.llvm-version }}")) {
-          & $pkgconfWrapper --modversion $package
-          if ($LASTEXITCODE -ne 0) {
-            throw "MSVC pkg-config metadata for $package is unavailable"
-          }
-        }
-
         $gcLibFlags = ((& $pkgconfWrapper --libs bdw-gc) -join " ").Trim() -split '\s+'
         if ($LASTEXITCODE -ne 0) {
           throw "pkgconf failed to resolve bdw-gc libraries"
@@ -439,13 +432,10 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=static -std=c++17"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_HOST_CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=static"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_HOST_CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=static -std=c++17"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_HOST_LLVM_BIN=$llvmBin"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_MSVC_TOOLS=$nativeTools"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_TRIPLE=$($target.Triple)"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_VCPKG_TRIPLET=$($target.VcpkgTriplet)"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_VCPKG_ROOT=$vcpkgTripletRoot"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_RUNTIME_BIN=$(Join-Path $vcpkgTripletRoot 'bin')"
         Add-Content -Encoding utf8 $env:GITHUB_PATH $fileCheckRoot
         Add-Content -Encoding utf8 $env:GITHUB_PATH $llvmBin
         if ($target.GoArch -eq "amd64") {

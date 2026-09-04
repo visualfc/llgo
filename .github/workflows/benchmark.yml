@@ -318,9 +318,6 @@ jobs:
         with:
           version: "4.0.21"
 
-      - name: Use Emscripten's target LLVM
-        run: echo "EM_LLVM_ROOT=${EMSDK}/upstream/bin" >> "$GITHUB_ENV"
-
       - name: Set up Binaryen
         uses: ./.github/actions/setup-binaryen
 

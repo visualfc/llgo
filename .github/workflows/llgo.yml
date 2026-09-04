@@ -210,27 +210,14 @@ jobs:
               fi
             done
           fi
-          # esptool inspects target firmware but runs on the CI host. PyPI has
-          # no Windows ARM64 cryptography wheel, and this image-info test does
-          # not import espsecure (the only esptool component that uses it).
-          # Install the pure test dependency closure instead of trying to
-          # build cryptography and OpenSSL on the runner. The 386 lane uses
-          # x64 host Python and its normal wheels.
-          if [[ "$RUNNER_OS" == "Windows" && "${{ matrix.windows_arch }}" == "arm64" ]]; then
-            python -m pip install --no-deps esptool==5.1.0
-            python -m pip install \
-              'bitstring!=4.2.0,>=3.1.6' \
-              'pyserial>=3.3' \
-              'reedsolo<1.8,>=1.5.3' \
-              'PyYAML>=5.1' \
-              intelhex rich_click 'click<9'
-          else
-            if [[ "$RUNNER_OS" == "Windows" && -n "${LLGO_WINDOWS_PYTHON_HOME:-}" ]]; then
-              host_python_home="$(cygpath -u "$LLGO_WINDOWS_PYTHON_HOME")"
-              export PATH="$host_python_home:$PATH"
-            fi
-            python -m pip install esptool==5.1.0
+          # esptool inspects target firmware but runs on the CI host. For a
+          # cross-architecture Windows lane, use the x64 host Python so pip
+          # can install its native dependencies without cross-building them.
+          if [[ "$RUNNER_OS" == "Windows" && -n "${LLGO_WINDOWS_PYTHON_HOME:-}" ]]; then
+            host_python_home="$(cygpath -u "$LLGO_WINDOWS_PYTHON_HOME")"
+            export PATH="$host_python_home:$PATH"
           fi
+          python -m pip install esptool==5.1.0
           cd _demo/embed
           chmod +x test_esp32c3_startup.sh
           args=()
@@ -359,9 +346,16 @@ jobs:
             throw "Native debug metadata tests failed with exit code $LASTEXITCODE"
           }
 
-      # setup-deps already installs the architecture-matched MSYS2 environment
-      # for every Windows ABI. Reuse it here: setup-msys2 refuses to install a
-      # second environment over the existing runner-temp/msys64 directory.
+      # Keep shell setup last so its POSIX compatibility tools cannot affect
+      # the native compiler, runtime, demo, or debugger qualification above.
+      - name: Set up the MSYS2 host shell for MSVC
+        if: ${{ matrix.windows_abi == 'msvc' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          path-type: inherit
+          update: false
+
       - name: Test from the MSYS2 host shell
         if: ${{ runner.os == 'Windows' }}
         shell: msys2 {0}
@@ -699,9 +693,6 @@ jobs:
         uses: emscripten-core/setup-emsdk@v15
         with:
           version: "4.0.21"
-
-      - name: Use Emscripten's target LLVM
-        run: echo "EM_LLVM_ROOT=${EMSDK}/upstream/bin" >> "$GITHUB_ENV"
 
       - name: Set up Node for Emscripten Memory64
         # Emscripten 4.0.21's Memory64 glue rejects Node versions older than

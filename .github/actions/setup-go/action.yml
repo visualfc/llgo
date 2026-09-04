@@ -79,8 +79,3 @@ runs:
         echo "Go binary: $(command -v go)"
         go version
         go env GOROOT
-
-        if [[ "$RUNNER_OS" == Windows ]]; then
-          host_go_bin="$(dirname "$(command -v go)")"
-          echo "LLGO_HOST_GO_BIN=$(cygpath -w "$host_go_bin")" >> "$GITHUB_ENV"
-        fi
