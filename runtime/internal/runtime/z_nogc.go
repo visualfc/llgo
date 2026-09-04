@@ -28,6 +28,9 @@ import (
 // AllocU allocates uninitialized memory.
 func AllocU(size uintptr) unsafe.Pointer {
 	ret := c.Malloc(size)
+	if ret == nil && size != 0 {
+		panic("out of memory")
+	}
 	recordMemProfileAlloc(size)
 	return ret
 }
