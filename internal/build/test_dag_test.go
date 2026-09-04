@@ -425,4 +425,13 @@ func TestRunNativeTestDAGPropagatesPlanFailure(t *testing.T) {
 	if !result.tests.failed || !strings.Contains(stderr, "FAIL\texample.com/cycle [build failed]") {
 		t.Fatalf("test result = %+v; stderr = %q", result.tests, stderr)
 	}
+
+	conf.CompileOnly = true
+	result, err = runNativeTestDAG(ctx, nil, []*packages.Package{root}, conf, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.links[0].err == nil || result.tests.failed || result.tests.skipped != 0 {
+		t.Fatalf("compile-only result = %+v", result)
+	}
 }

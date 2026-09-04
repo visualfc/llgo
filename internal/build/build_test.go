@@ -1038,6 +1038,13 @@ func TestIsFuncInfoEnabled(t *testing.T) {
 }
 
 func TestLinkedModuleGlobalsSkipsDeclarations(t *testing.T) {
+	if got := linkedModuleGlobals(nil); got != nil {
+		t.Fatalf("empty linked globals = %#v, want nil", got)
+	}
+	if got := linkedModuleGlobals([]Package{&aPackage{}}); len(got) != 0 {
+		t.Fatalf("backend-free linked globals = %#v, want empty", got)
+	}
+
 	prog := llssa.NewProgram(nil)
 	lpkg := prog.NewPackage("example.com/p", "example.com/p")
 	mod := lpkg.Module()
