@@ -1484,6 +1484,42 @@ func TestTestOutputFileLogic(t *testing.T) {
 	}
 }
 
+func TestNamedTargetCompileOnlyUsesEmulatorPath(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want bool
+	}{
+		{
+			name: "normal target run uses device path",
+			conf: &Config{Mode: ModeRun},
+		},
+		{
+			name: "test run without -c uses device path",
+			conf: &Config{Mode: ModeTest},
+		},
+		{
+			name: "explicit emulator uses emulator path",
+			conf: &Config{Mode: ModeRun, Emulator: true},
+			want: true,
+		},
+		{
+			name: "compile only test uses non executing emulator path",
+			conf: &Config{Mode: ModeTest, CompileOnly: true},
+			want: true,
+		},
+		{
+			name: "compile only is ignored outside test mode",
+			conf: &Config{Mode: ModeBuild, CompileOnly: true},
+		},
+	}
+	for _, test := range tests {
+		if got := namedTargetUsesEmulatorPath(test.conf); got != test.want {
+			t.Errorf("%s: namedTargetUsesEmulatorPath() = %v, want %v", test.name, got, test.want)
+		}
+	}
+}
+
 func TestTestMultiplePackagesWithOutputFile(t *testing.T) {
 	// Test that -o flag errors with multiple test packages
 	cfg := &Config{

@@ -1069,9 +1069,7 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 			}
 			return nil, runNative(linkCtx, link.outFmts.Out, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode)
 		}
-		// runInEmulator returns before inspecting the emulator when -c is set.
-		// Route compile-only tests there instead of treating the target as a device.
-		if link.conf.Emulator || link.conf.CompileOnly {
+		if namedTargetUsesEmulatorPath(link.conf) {
 			return nil, runInEmulator(linkCtx.commands, linkCtx.crossCompile.Emulator, envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
 		}
 		if err := flash.FlashDevice(linkCtx.crossCompile.Device, envMap, linkCtx.buildConf.Port, verbose); err != nil {
@@ -1095,6 +1093,15 @@ func newLinkExecutionContext(ctx *context, plan *mainLinkPlan) *context {
 		pclnExternal:         plan.pclnExternal,
 		stripDarwinLTOLocals: plan.stripDarwinLTOLocals,
 	}
+}
+
+func namedTargetUsesEmulatorPath(conf *Config) bool {
+	if conf.Emulator {
+		return true
+	}
+	// runInEmulator returns before inspecting the emulator when -c is set.
+	// Route compile-only tests there instead of treating the target as a device.
+	return conf.Mode == ModeTest && conf.CompileOnly
 }
 
 func removeOutFmts(outFmts *OutFmtDetails) {
