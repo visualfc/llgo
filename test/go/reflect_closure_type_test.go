@@ -38,6 +38,40 @@ func TestReflectClosureNestedTypeString(t *testing.T) {
 	if got, want := elem.Kind(), reflect.Func; got != want {
 		t.Fatalf("slice element kind = %v, want %v", got, want)
 	}
+	mapElem := reflect.TypeOf(map[int]func(int) bool{}).Elem()
+	if got, want := mapElem.String(), "func(int) bool"; got != want {
+		t.Fatalf("map element type = %q, want %q", got, want)
+	}
+	if got, want := mapElem.Kind(), reflect.Func; got != want {
+		t.Fatalf("map element kind = %v, want %v", got, want)
+	}
+
+	captured := 42
+	functions := map[int]func() int{0: func() int { return captured }}
+	value := reflect.ValueOf(functions).MapIndex(reflect.ValueOf(0))
+	if got, want := value.Kind(), reflect.Func; got != want {
+		t.Fatalf("map value kind = %v, want %v", got, want)
+	}
+	if got := value.Interface().(func() int)(); got != captured {
+		t.Fatalf("map value returned %d, want %d", got, captured)
+	}
+
+	dynamicCaptured := "dynamic"
+	dynamicFunction := func(s string) string { return dynamicCaptured + s }
+	dynamicType := reflect.MapOf(reflect.TypeOf(0), reflect.TypeOf(dynamicFunction))
+	staticType := reflect.TypeOf(map[int]func(string) string{})
+	if dynamicType != staticType {
+		t.Fatalf("reflect.MapOf type = %v (%p), want canonical %v (%p)", dynamicType, dynamicType, staticType, staticType)
+	}
+	dynamic := reflect.MakeMap(dynamicType)
+	dynamic.SetMapIndex(reflect.ValueOf(0), reflect.ValueOf(dynamicFunction))
+	dynamicValue := dynamic.MapIndex(reflect.ValueOf(0))
+	if got, want := dynamicValue.Kind(), reflect.Func; got != want {
+		t.Fatalf("dynamic map value kind = %v, want %v", got, want)
+	}
+	if got, want := dynamicValue.Interface().(func(string) string)(" map"), "dynamic map"; got != want {
+		t.Fatalf("dynamic map value returned %q, want %q", got, want)
+	}
 }
 
 func TestReflectClosurePointerTypeIdentity(t *testing.T) {

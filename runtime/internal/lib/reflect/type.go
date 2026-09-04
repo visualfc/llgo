@@ -1501,23 +1501,30 @@ func funcStr(ft *funcType) string {
 // not implement Go's == operator), MapOf panics.
 func MapOf(key, elem Type) Type {
 	ktyp := key.common()
-	etyp := elem.common()
+	publicElem := elem.common()
+	etyp := publicElem
+	if etyp.Kind() == abi.Func {
+		// Map bucket operations copy elements using the element descriptor.
+		// Use LLGo's physical two-word closure there; Elem converts it back
+		// to the public function type returned by this API.
+		etyp = closureOf(etyp.FuncType())
+	}
 
 	if ktyp.Equal == nil {
 		panic("reflect.MapOf: invalid key type " + stringFor(ktyp))
 	}
 
 	// Look in cache.
-	ckey := cacheKey{Map, ktyp, etyp, 0}
+	ckey := cacheKey{Map, ktyp, publicElem, 0}
 	if mt, ok := lookupCache.Load(ckey); ok {
 		return mt.(Type)
 	}
 
 	// Look in known types.
-	s := "map[" + stringFor(ktyp) + "]" + stringFor(etyp)
+	s := "map[" + stringFor(ktyp) + "]" + stringFor(publicElem)
 	for _, tt := range typesByString(s) {
 		mt := (*mapType)(unsafe.Pointer(tt))
-		if mt.Key == ktyp && mt.Elem == etyp {
+		if mt.Key == ktyp && toPublicType(mt.Elem).common() == publicElem {
 			ti, _ := lookupCache.LoadOrStore(ckey, toRType(tt))
 			return ti.(Type)
 		}
@@ -1530,7 +1537,7 @@ func MapOf(key, elem Type) Type {
 	mt := **(**mapType)(unsafe.Pointer(&imap))
 	mt.Str_ = s
 	mt.TFlag = 0
-	mt.Hash = fnv1(etyp.Hash, 'm', byte(ktyp.Hash>>24), byte(ktyp.Hash>>16), byte(ktyp.Hash>>8), byte(ktyp.Hash))
+	mt.Hash = fnv1(publicElem.Hash, 'm', byte(ktyp.Hash>>24), byte(ktyp.Hash>>16), byte(ktyp.Hash>>8), byte(ktyp.Hash))
 	mt.Key = ktyp
 	mt.Elem = etyp
 	mt.Bucket = bucketOf(ktyp, etyp)
