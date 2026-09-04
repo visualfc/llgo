@@ -200,15 +200,6 @@ package main
 	}
 }
 
-func TestNormalizeLLVMIRVersionSpellings(t *testing.T) {
-	input := "  %1 = getelementptr inbounds nuw { ptr }, ptr %0, i32 0\n" +
-		"declare void @f(ptr captures(none) readonly)\n"
-	want := "  %1 = getelementptr inbounds { ptr }, ptr %0, i32 0\n" +
-		"declare void @f(ptr nocapture readonly)\n"
-	if got := normalizeLLVMIR(input); got != want {
-		t.Fatalf("normalizeLLVMIR() = %q, want %q", got, want)
-	}
-}
 func TestHasMarker(t *testing.T) {
 	dir := t.TempDir()
 

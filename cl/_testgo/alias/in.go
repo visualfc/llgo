@@ -29,15 +29,15 @@ func main() {
 // CHECK-LABEL: define void @"main.(*Point).Move"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]], double %[[TMP1:[0-9]+]], double %[[TMP2:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = load double, ptr %[[TMP3]], align 8
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = fadd double %[[TMP4]], %[[TMP1]]
-// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   store double %[[TMP5]], ptr %[[TMP6]], align 8
-// CHECK-NEXT:   %[[TMP7:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP7:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP8:[0-9]+]] = load double, ptr %[[TMP7]], align 8
 // CHECK-NEXT:   %[[TMP9:[0-9]+]] = fadd double %[[TMP8]], %[[TMP2]]
-// CHECK-NEXT:   %[[TMP10:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP10:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   store double %[[TMP9]], ptr %[[TMP10]], align 8
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -45,15 +45,15 @@ func main() {
 // CHECK-LABEL: define void @"main.(*Point).Scale"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]], double %[[TMP1:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = load double, ptr %[[TMP2]], align 8
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = fmul double %[[TMP3]], %[[TMP1]]
-// CHECK-NEXT:   %[[TMP5:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP5:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   store double %[[TMP4]], ptr %[[TMP5]], align 8
-// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP7:[0-9]+]] = load double, ptr %[[TMP6]], align 8
 // CHECK-NEXT:   %[[TMP8:[0-9]+]] = fmul double %[[TMP7]], %[[TMP1]]
-// CHECK-NEXT:   %[[TMP9:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP9:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   store double %[[TMP8]], ptr %[[TMP9]], align 8
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -61,15 +61,15 @@ func main() {
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP0:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 0
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   store double 1.000000e+00, ptr %[[TMP1]], align 8
 // CHECK-NEXT:   store double 2.000000e+00, ptr %[[TMP2]], align 8
 // CHECK-NEXT:   call void @"main.(*Point).Scale"(ptr %[[TMP0]], double 2.000000e+00)
 // CHECK-NEXT:   call void @"main.(*Point).Move"(ptr %[[TMP0]], double 3.000000e+00, double 4.000000e+00)
-// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = load double, ptr %[[TMP3]], align 8
-// CHECK-NEXT:   %[[TMP5:[0-9]+]] = getelementptr inbounds %main.Point, ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP5:[0-9]+]] = getelementptr inbounds nuw %main.Point, ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP6:[0-9]+]] = load double, ptr %[[TMP5]], align 8
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintFloat"(double %[[TMP4]])
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)

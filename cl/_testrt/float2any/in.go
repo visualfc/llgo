@@ -79,7 +79,7 @@ func main() {
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP5]], i8 0, i64 16, i1 false)
 // CHECK-NEXT:   %[[TMP6:[0-9]+]] = load %main.eface, ptr %[[TMP1]], align 8
 // CHECK-NEXT:   store %main.eface %[[TMP6]], ptr %[[TMP5]], align 8
-// CHECK-NEXT:   %[[TMP7:[0-9]+]] = getelementptr inbounds %main.eface, ptr %[[TMP5]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP7:[0-9]+]] = getelementptr inbounds nuw %main.eface, ptr %[[TMP5]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP8:[0-9]+]] = load ptr, ptr %[[TMP7]], align 8
 // CHECK-NEXT:   %[[TMP9:[0-9]+]] = load i32, ptr %[[TMP8]], align 4
 // CHECK-NEXT:   %[[TMP10:[0-9]+]] = icmp ne i32 %[[TMP9]], 1078530011
@@ -136,11 +136,11 @@ func main() {
 // CHECK-NEXT:   store %main.eface %[[TMP6]], ptr %[[TMP5]], align 8
 // CHECK-NEXT:   %[[TMP7:[0-9]+]] = alloca %main.u64parts, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP7]], i8 0, i64 8, i1 false)
-// CHECK-NEXT:   %[[TMP8:[0-9]+]] = getelementptr inbounds %main.eface, ptr %[[TMP5]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP8:[0-9]+]] = getelementptr inbounds nuw %main.eface, ptr %[[TMP5]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP9:[0-9]+]] = load ptr, ptr %[[TMP8]], align 8
 // CHECK-NEXT:   %[[TMP10:[0-9]+]] = load %main.u64parts, ptr %[[TMP9]], align 4
 // CHECK-NEXT:   store %main.u64parts %[[TMP10]], ptr %[[TMP7]], align 4
-// CHECK-NEXT:   %[[TMP11:[0-9]+]] = getelementptr inbounds %main.u64parts, ptr %[[TMP7]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP11:[0-9]+]] = getelementptr inbounds nuw %main.u64parts, ptr %[[TMP7]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP12:[0-9]+]] = load i32, ptr %[[TMP11]], align 4
 // CHECK-NEXT:   %[[TMP13:[0-9]+]] = icmp ne i32 %[[TMP12]], 1405670641
 // CHECK-NEXT:   br i1 %[[TMP13]], label %_llgo_[[BB3:[0-9]+]], label %_llgo_[[BB5:[0-9]+]]
@@ -163,7 +163,7 @@ func main() {
 // CHECK-NEXT:   ret void
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB5]]:
-// CHECK-NEXT:   %[[TMP18:[0-9]+]] = getelementptr inbounds %main.u64parts, ptr %[[TMP7]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP18:[0-9]+]] = getelementptr inbounds nuw %main.u64parts, ptr %[[TMP7]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP19:[0-9]+]] = load i32, ptr %[[TMP18]], align 4
 // CHECK-NEXT:   %[[TMP20:[0-9]+]] = icmp ne i32 %[[TMP19]], 1074340347
 // CHECK-NEXT:   br i1 %[[TMP20]], label %_llgo_[[BB3]], label %_llgo_[[BB4]]

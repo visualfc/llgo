@@ -125,7 +125,7 @@ type M interface {
 
 // CHECK-LABEL: define i64 @main.T.Invoke(%main.T %0){{.*}} {
 // CHECK: store %main.T %0, ptr [[T_INVOKE_ADDR:%[0-9]+]]
-// CHECK: [[T_INVOKE_FIELD:%[0-9]+]] = getelementptr inbounds %main.T, ptr [[T_INVOKE_ADDR]], i32 0, i32 0
+// CHECK: [[T_INVOKE_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.T, ptr [[T_INVOKE_ADDR]], i32 0, i32 0
 // CHECK-NEXT: [[T_INVOKE_STRING:%[0-9]+]] = load %"{{.*}}String", ptr [[T_INVOKE_FIELD]]
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}String" [[T_INVOKE_STRING]])
 // CHECK: ret i64 0
@@ -181,7 +181,7 @@ type M interface {
 
 // CHECK-LABEL: define i64 @main.T5.Invoke(%main.T5 %0){{.*}} {
 // CHECK: store %main.T5 %0, ptr [[T5_INVOKE_ADDR:%[0-9]+]]
-// CHECK: [[T5_FIELD:%[0-9]+]] = getelementptr inbounds %main.T5, ptr [[T5_INVOKE_ADDR]], i32 0, i32 0
+// CHECK: [[T5_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.T5, ptr [[T5_INVOKE_ADDR]], i32 0, i32 0
 // CHECK-NEXT: [[T5_ITEM:%[0-9]+]] = load i64, ptr [[T5_FIELD]]
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 [[T5_ITEM]])
 // CHECK: ret i64 5

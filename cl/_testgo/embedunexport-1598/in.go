@@ -26,7 +26,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = alloca %main.Wrapped, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP1]], i8 0, i64 8, i1 false)
 // CHECK-NEXT:   store %main.Wrapped %[[TMP0]], ptr %[[TMP1]], align 8
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %main.Wrapped, ptr %[[TMP1]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %main.Wrapped, ptr %[[TMP1]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = load ptr, ptr %[[TMP2]], align 8
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testdata/embedunexport.(*Base).Name"(ptr %[[TMP3]])
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %[[TMP4]]
@@ -38,7 +38,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = alloca %main.Wrapped, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP2]], i8 0, i64 8, i1 false)
 // CHECK-NEXT:   store %main.Wrapped %[[TMP0]], ptr %[[TMP2]], align 8
-// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds %main.Wrapped, ptr %[[TMP2]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds nuw %main.Wrapped, ptr %[[TMP2]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = load ptr, ptr %[[TMP3]], align 8
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/embedunexport.(*Base).setName"(ptr %[[TMP4]], %"{{.*}}/runtime/internal/runtime.String" %[[TMP1]])
 // CHECK-NEXT:   ret void
@@ -47,7 +47,7 @@ func main() {
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.(*Wrapped).Name"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds %main.Wrapped, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw %main.Wrapped, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = load ptr, ptr %[[TMP1]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testdata/embedunexport.(*Base).Name"(ptr %[[TMP2]])
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %[[TMP3]]
@@ -56,7 +56,7 @@ func main() {
 // CHECK-LABEL: define void @"main.(*Wrapped).{{.*}}/cl/_testdata/embedunexport.setName"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]], %"{{.*}}/runtime/internal/runtime.String" %[[TMP1:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %main.Wrapped, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %main.Wrapped, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = load ptr, ptr %[[TMP2]], align 8
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/embedunexport.(*Base).setName"(ptr %[[TMP3]], %"{{.*}}/runtime/internal/runtime.String" %[[TMP1]])
 // CHECK-NEXT:   ret void

@@ -4,11 +4,11 @@ package main
 // Cover the distinct deferred function-value forms in this test without
 // pinning the defer-node layout or basic blocks.
 // CHECK-LABEL: define void @"main.(*Handler).SetHandler"(ptr %0, { ptr, ptr } %1){{.*}} {
-// CHECK: [[HANDLER_FIELD:%.*]] = getelementptr inbounds %main.Handler, ptr %0, i32 0, i32 0
+// CHECK: [[HANDLER_FIELD:%.*]] = getelementptr inbounds nuw %main.Handler, ptr %0, i32 0, i32 0
 // CHECK: store { ptr, ptr } %1, ptr [[HANDLER_FIELD]]
 
 // CHECK-LABEL: define void @"main.(*Processor).SetCallback"(ptr %0, { ptr, ptr } %1){{.*}} {
-// CHECK: [[PROCESSOR_FIELD:%.*]] = getelementptr inbounds %main.Processor, ptr %0, i32 0, i32 0
+// CHECK: [[PROCESSOR_FIELD:%.*]] = getelementptr inbounds nuw %main.Processor, ptr %0, i32 0, i32 0
 // CHECK: store { ptr, ptr } %1, ptr [[PROCESSOR_FIELD]]
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
@@ -46,9 +46,9 @@ package main
 // CHECK-LABEL: define void @main.testDeferFieldAccess(){{.*}} {
 // The field value, rather than its declaration, is the pair placed into the defer record.
 // CHECK: [[FIELD_HOLDER:%.*]] = alloca %main.FuncHolder
-// CHECK: [[FIELD_STORE_SLOT:%.*]] = getelementptr inbounds %main.FuncHolder, ptr [[FIELD_HOLDER]], i32 0, i32 0
+// CHECK: [[FIELD_STORE_SLOT:%.*]] = getelementptr inbounds nuw %main.FuncHolder, ptr [[FIELD_HOLDER]], i32 0, i32 0
 // CHECK: store volatile { ptr, ptr } { ptr @"main.testDeferFieldAccess$1", ptr null }, ptr [[FIELD_STORE_SLOT]]
-// CHECK: [[FIELD_LOAD_SLOT:%.*]] = getelementptr inbounds %main.FuncHolder, ptr [[FIELD_HOLDER]], i32 0, i32 0
+// CHECK: [[FIELD_LOAD_SLOT:%.*]] = getelementptr inbounds nuw %main.FuncHolder, ptr [[FIELD_HOLDER]], i32 0, i32 0
 // CHECK: [[FIELD_FN:%.*]] = load volatile { ptr, ptr }, ptr [[FIELD_LOAD_SLOT]]
 // CHECK: call ptr @"{{.*}}/runtime/internal/runtime.GetThreadDefer"()
 // CHECK: store { ptr, ptr } [[FIELD_FN]], ptr %{{.*}}

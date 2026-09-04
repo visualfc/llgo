@@ -28,7 +28,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT:   store { ptr, ptr } %[[TMP0]], ptr %[[TMP1]], align 8
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = call nonnull ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
-// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds { ptr }, ptr %[[TMP2]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds nuw { ptr }, ptr %[[TMP2]], i32 0, i32 0
 // CHECK-NEXT:   store ptr %[[TMP1]], ptr %[[TMP3]], align 8
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = insertvalue { ptr, ptr } { ptr @"main.main$1$1", ptr undef }, ptr %[[TMP2]], 1
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP4]], 1

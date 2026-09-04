@@ -49,7 +49,7 @@ import "C"
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: [[MEMORY:%[0-9]+]] = call ptr @malloc(i64 64)
 // CHECK: call ptr @"{{.*}}GetThreadDefer"()
-// CHECK: [[HEAD:%[0-9]+]] = getelementptr inbounds %"{{.*}}Defer", ptr %{{[0-9]+}}, i32 0, i32 5
+// CHECK: [[HEAD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr %{{[0-9]+}}, i32 0, i32 5
 // CHECK: [[C_CALLBACK:%[0-9]+]] = load ptr, ptr @main._Cfpvar_fp_c_callback
 // CHECK-NEXT: [[C_CALLBACK_PTR:%[0-9]+]] = call ptr @main._Cgo_ptr(ptr [[C_CALLBACK]])
 // CHECK-NEXT: call i32 @main._Cfunc_invoke_callback(ptr [[C_CALLBACK_PTR]], i32 39)

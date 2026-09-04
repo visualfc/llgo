@@ -62,17 +62,17 @@ func (m *M[T]) check(align, offset1, offset2 uintptr) {
 // CHECK: call void @"main.(*M[int64]).check"(ptr %[[INT64]], i64 8, i64 16, i64 8)
 
 // CHECK-LABEL: define linkonce void @"main.(*M[bool]).check"(
-// CHECK: getelementptr inbounds %"main.M[bool]", ptr %{{[0-9]+}}, i32 0, i32 2
+// CHECK: getelementptr inbounds nuw %"main.M[bool]", ptr %{{[0-9]+}}, i32 0, i32 2
 // CHECK: icmp ne i64 1, %{{[0-9]+}}
-// CHECK: getelementptr inbounds %"main.M[bool]", ptr %{{[0-9]+}}, i32 0, i32 2
+// CHECK: getelementptr inbounds nuw %"main.M[bool]", ptr %{{[0-9]+}}, i32 0, i32 2
 // CHECK: icmp ne i64 8, %{{[0-9]+}}
-// CHECK: getelementptr inbounds %"main.N[bool]", ptr %{{[0-9]+}}, i32 0, i32 1
+// CHECK: getelementptr inbounds nuw %"main.N[bool]", ptr %{{[0-9]+}}, i32 0, i32 1
 // CHECK: icmp ne i64 1, %{{[0-9]+}}
 
 // CHECK-LABEL: define linkonce void @"main.(*M[int64]).check"(
-// CHECK: getelementptr inbounds %"main.M[int64]", ptr %{{[0-9]+}}, i32 0, i32 2
+// CHECK: getelementptr inbounds nuw %"main.M[int64]", ptr %{{[0-9]+}}, i32 0, i32 2
 // CHECK: icmp ne i64 8, %{{[0-9]+}}
-// CHECK: getelementptr inbounds %"main.M[int64]", ptr %{{[0-9]+}}, i32 0, i32 2
+// CHECK: getelementptr inbounds nuw %"main.M[int64]", ptr %{{[0-9]+}}, i32 0, i32 2
 // CHECK: icmp ne i64 16, %{{[0-9]+}}
-// CHECK: getelementptr inbounds %"main.N[int64]", ptr %{{[0-9]+}}, i32 0, i32 1
+// CHECK: getelementptr inbounds nuw %"main.N[int64]", ptr %{{[0-9]+}}, i32 0, i32 1
 // CHECK: icmp ne i64 8, %{{[0-9]+}}

@@ -59,17 +59,10 @@ func LoadSpec(pkgDir string) (Spec, error) {
 }
 
 func Check(spec Spec, actual string, targetPrefixes ...string) error {
-	actual = normalizeLLVMIR(actual)
 	if len(targetPrefixes) == 0 {
 		return filecheck.Match(spec.Path, actual)
 	}
 	return filecheck.MatchWithTargetPrefixes(spec.Path, actual, targetPrefixes...)
-}
-
-func normalizeLLVMIR(ir string) string {
-	ir = strings.ReplaceAll(ir, "getelementptr inbounds nuw ", "getelementptr inbounds ")
-	ir = strings.ReplaceAll(ir, " captures(none)", " nocapture")
-	return ir
 }
 
 func FindMarkedSourceFile(dir string) (string, bool, error) {

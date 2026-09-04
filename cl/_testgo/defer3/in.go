@@ -10,10 +10,10 @@ package main
 // CHECK-LABEL: define void @main.fail(){{.*}} {
 // CHECK: [[D3_FAIL_PREV:%[0-9]+]] = call ptr @"{{.*}}GetThreadDefer"()
 // CHECK: [[D3_FAIL_FRAME:%[0-9]+]] = call ptr @"{{.*}}AllocU"(i64 48)
-// CHECK: [[D3_FAIL_PREV_SLOT:%[0-9]+]] = getelementptr inbounds %"{{.*}}Defer", ptr [[D3_FAIL_FRAME]], i32 0, i32 2
+// CHECK: [[D3_FAIL_PREV_SLOT:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[D3_FAIL_FRAME]], i32 0, i32 2
 // CHECK-NEXT: store ptr [[D3_FAIL_PREV]], ptr [[D3_FAIL_PREV_SLOT]]
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[D3_FAIL_FRAME]])
-// CHECK: [[D3_FAIL_HEAD:%[0-9]+]] = getelementptr inbounds %"{{.*}}Defer", ptr [[D3_FAIL_FRAME]], i32 0, i32 5
+// CHECK: [[D3_FAIL_HEAD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[D3_FAIL_FRAME]], i32 0, i32 5
 // CHECK: call void @"{{.*}}Rethrow"(ptr [[D3_FAIL_PREV]])
 // CHECK: [[D3_FAIL_OLD_HEAD:%[0-9]+]] = load ptr, ptr [[D3_FAIL_HEAD]]
 // CHECK-NEXT: [[D3_FAIL_NODE:%[0-9]+]] = call ptr @"{{.*}}AllocU"(i64 32)

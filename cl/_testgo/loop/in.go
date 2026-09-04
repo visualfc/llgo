@@ -10,7 +10,7 @@ package main
 // CHECK: [[FRAME:%.*]] = call ptr @"{{.*}}AllocU"(i64 48)
 // CHECK: store ptr [[PREV_DEFER]], ptr {{%.*}}
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[FRAME]])
-// CHECK: [[HEAD:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
+// CHECK: [[HEAD:%.*]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
 // CHECK: [[I:%.*]] = phi i64 [ 0, %{{.*}} ], [ [[NEXT_I:%.*]], %{{.*}} ]
 // CHECK: [[IN_RANGE:%.*]] = icmp slt i64 [[I]], 3
 // CHECK: br i1 [[IN_RANGE]], label %{{.*}}, label %{{.*}}

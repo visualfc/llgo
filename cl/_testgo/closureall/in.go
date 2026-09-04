@@ -110,10 +110,10 @@ func makeWithFree(base int) Fn {
 // CHECK: call i64 @main.globalAdd(i64 1, i64 2)
 // A bound pointer method stores the receiver in the closure environment.
 // CHECK: [[S:%.*]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK-NEXT: [[S_FIELD:%[0-9]+]] = getelementptr inbounds %main.S, ptr [[S]], i32 0, i32 0
+// CHECK-NEXT: [[S_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.S, ptr [[S]], i32 0, i32 0
 // CHECK-NEXT: store i64 5, ptr [[S_FIELD]]
 // CHECK: [[METHOD_ENV:%.*]] = call nonnull ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
-// CHECK: [[METHOD_ENV_SLOT:%.*]] = getelementptr inbounds { ptr }, ptr [[METHOD_ENV]], i32 0, i32 0
+// CHECK: [[METHOD_ENV_SLOT:%.*]] = getelementptr inbounds nuw { ptr }, ptr [[METHOD_ENV]], i32 0, i32 0
 // CHECK: store ptr [[S]], ptr [[METHOD_ENV_SLOT]]
 // CHECK: [[METHOD_FN:%.*]] = insertvalue { ptr, ptr } { ptr @"main.(*S).Add$bound", ptr undef }, ptr [[METHOD_ENV]], 1
 // CHECK: [[METHOD_CALL_ENV:%.*]] = extractvalue { ptr, ptr } [[METHOD_FN]], 1
@@ -131,7 +131,7 @@ func makeWithFree(base int) Fn {
 // CHECK: [[IFACE_OK:%.*]] = icmp ne ptr [[IFACE_TYPE]], null
 // CHECK: br i1 [[IFACE_OK]], label %{{.*}}, label %{{.*}}
 // CHECK: [[IFACE_METHOD_ENV:%.*]] = call nonnull ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 16)
-// CHECK: [[IFACE_METHOD_SLOT:%.*]] = getelementptr inbounds { %"{{.*}}iface" }, ptr [[IFACE_METHOD_ENV]], i32 0, i32 0
+// CHECK: [[IFACE_METHOD_SLOT:%.*]] = getelementptr inbounds nuw { %"{{.*}}iface" }, ptr [[IFACE_METHOD_ENV]], i32 0, i32 0
 // CHECK: store %"{{.*}}iface" [[IFACE]], ptr [[IFACE_METHOD_SLOT]]
 // CHECK: [[IFACE_METHOD:%.*]] = insertvalue { ptr, ptr } { ptr @"main.interface{Add(int) int}.Add$bound", ptr undef }, ptr [[IFACE_METHOD_ENV]], 1
 // CHECK: [[IFACE_CALL_ENV:%.*]] = extractvalue { ptr, ptr } [[IFACE_METHOD]], 1
@@ -158,7 +158,7 @@ func makeWithFree(base int) Fn {
 // CHECK: [[BASE_ADDR:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK-NEXT: store i64 %0, ptr [[BASE_ADDR]]
 // CHECK-NEXT: [[WITH_FREE_ENV_OUT:%[0-9]+]] = call nonnull ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
-// CHECK-NEXT: [[WITH_FREE_ENV_SLOT:%[0-9]+]] = getelementptr inbounds { ptr }, ptr [[WITH_FREE_ENV_OUT]], i32 0, i32 0
+// CHECK-NEXT: [[WITH_FREE_ENV_SLOT:%[0-9]+]] = getelementptr inbounds nuw { ptr }, ptr [[WITH_FREE_ENV_OUT]], i32 0, i32 0
 // CHECK-NEXT: store ptr [[BASE_ADDR]], ptr [[WITH_FREE_ENV_SLOT]]
 // CHECK-NEXT: [[WITH_FREE_FN:%[0-9]+]] = insertvalue { ptr, ptr } { ptr @"main.makeWithFree$1", ptr undef }, ptr [[WITH_FREE_ENV_OUT]], 1
 // CHECK-NEXT: [[WITH_FREE_OUT:%[0-9]+]] = alloca %main.Fn

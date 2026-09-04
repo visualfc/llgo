@@ -18,9 +18,9 @@ package main
 // CHECK-NEXT: [[RETURN_PAIR:%[0-9]+]] = insertvalue { %main.state, i64 } [[RETURN_PAIR0]], i64 [[RETURN_MUTATED]], 1
 // CHECK-NEXT: ret { %main.state, i64 } [[RETURN_PAIR]]
 // CHECK-LABEL: define i64 @"main.(*state).mutate"(ptr %0, i64 %1){{.*}} {
-// CHECK: [[MUTATE_FIELD:%[0-9]+]] = getelementptr inbounds %main.state, ptr %0, i32 0, i32 0
+// CHECK: [[MUTATE_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.state, ptr %0, i32 0, i32 0
 // CHECK-NEXT: store i64 %1, ptr [[MUTATE_FIELD]]
-// CHECK: [[MUTATE_RESULT_FIELD:%[0-9]+]] = getelementptr inbounds %main.state, ptr %0, i32 0, i32 0
+// CHECK: [[MUTATE_RESULT_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.state, ptr %0, i32 0, i32 0
 // CHECK-NEXT: [[MUTATE_VALUE:%[0-9]+]] = load i64, ptr [[MUTATE_RESULT_FIELD]]
 // CHECK-NEXT: ret i64 [[MUTATE_VALUE]]
 

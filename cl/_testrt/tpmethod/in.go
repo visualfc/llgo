@@ -56,7 +56,7 @@ func main() {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = alloca %"main.Tuple[error]", align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP1]], i8 0, i64 16, i1 false)
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %"main.Tuple[error]", ptr %[[TMP1]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %"main.Tuple[error]", ptr %[[TMP1]], i32 0, i32 0
 // CHECK-NEXT:   store %"{{.*}}/runtime/internal/runtime.iface" zeroinitializer, ptr %[[TMP2]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = load %"main.Tuple[error]", ptr %[[TMP1]], align 8
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP0]], 1
@@ -95,7 +95,7 @@ func main() {
 // CHECK-SAME: { ptr, ptr } %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %"main.future[main.Tuple[error]]", ptr %[[TMP1]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %"main.future[main.Tuple[error]]", ptr %[[TMP1]], i32 0, i32 0
 // CHECK-NEXT:   store { ptr, ptr } %[[TMP0]], ptr %[[TMP2]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface$DoRJPuBst8Lp1uEP2e7OnwiP-bLraZwFmeGcjrik3Mw", ptr @"*_llgo_main.future[main.Tuple[error]]")
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr %[[TMP3]], 0
@@ -109,7 +109,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = alloca %"main.Tuple[error]", align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP1]], i8 0, i64 16, i1 false)
 // CHECK-NEXT:   store %"main.Tuple[error]" %[[TMP0]], ptr %[[TMP1]], align 8
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %"main.Tuple[error]", ptr %[[TMP1]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %"main.Tuple[error]", ptr %[[TMP1]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = load %"{{.*}}/runtime/internal/runtime.iface", ptr %[[TMP2]], align 8
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.iface" %[[TMP3]]
 // CHECK-NEXT: }
@@ -117,7 +117,7 @@ func main() {
 // CHECK-LABEL: define linkonce void @"main.(*future[main.Tuple[error]]).Then"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]], { ptr, ptr } %[[TMP1:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %"main.future[main.Tuple[error]]", ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %"main.future[main.Tuple[error]]", ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = load { ptr, ptr }, ptr %[[TMP2]], align 8
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 1
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = extractvalue { ptr, ptr } %[[TMP3]], 0
