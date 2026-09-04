@@ -33,6 +33,7 @@ func TestESPClangHostDownload(t *testing.T) {
 	}{
 		{"darwin", "arm64", "aarch64-apple-darwin"},
 		{"linux", "amd64", "x86_64-linux-gnu"},
+		{"windows", "386", "x86_64-w64-mingw32"},
 		{"windows", "amd64", "x86_64-w64-mingw32"},
 		{"windows", "arm64", "x86_64-w64-mingw32"},
 	}
@@ -644,27 +645,23 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 	})
 }
 
-func TestUseTargetWindowsSystemClang(t *testing.T) {
+func TestUseTargetWindowsESPClang(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("Windows host toolchain selection")
+	}
+
+	originalCacheRoot := cacheRoot
+	cacheDir := t.TempDir()
+	cacheRoot = func() string { return cacheDir }
+	t.Cleanup(func() { cacheRoot = originalCacheRoot })
+	embeddedRoot := filepath.Join(cacheDir, "crosscompile", "esp-clang-"+espClangVersion)
+	if err := os.MkdirAll(embeddedRoot, 0o755); err != nil {
+		t.Fatal(err)
 	}
 
 	export, err := UseTarget("rp2040", optlevel.Oz, lto.Thin)
 	if err != nil {
 		t.Fatal(err)
-	}
-	embeddedRoot := os.Getenv("LLGO_WINDOWS_EMBEDDED_CLANG_ROOT")
-	if embeddedRoot == "" {
-		if export.CC != "clang++" {
-			t.Fatalf("RP2040 compiler on Windows = %q, want clang++", export.CC)
-		}
-		if export.ClangRoot != "" {
-			t.Fatalf("RP2040 Clang root on Windows = %q, want system toolchain", export.ClangRoot)
-		}
-		if export.Linker != "ld.lld" {
-			t.Fatalf("RP2040 linker on Windows = %q, want ld.lld", export.Linker)
-		}
-		return
 	}
 	wantCC := filepath.Join(embeddedRoot, "bin", "clang++")
 	if export.CC != wantCC || export.ClangRoot != embeddedRoot {
@@ -717,26 +714,6 @@ func TestUseTargetESPClangDownloadError(t *testing.T) {
 	_, err := UseTarget("esp-test", optlevel.Oz, lto.Thin)
 	if err == nil || !strings.Contains(err.Error(), "404 Not Found") {
 		t.Fatalf("UseTarget(esp-test) error = %v, want download 404", err)
-	}
-}
-
-func TestUseSystemClangForTarget(t *testing.T) {
-	for _, test := range []struct {
-		goos      string
-		target    string
-		buildTags []string
-		want      bool
-	}{
-		{goos: "windows", target: "thumbv6m-unknown-unknown-eabi", want: true},
-		{goos: "windows", target: "avr", want: true},
-		{goos: "windows", target: "riscv32-esp-elf", buildTags: []string{"esp"}, want: false},
-		{goos: "windows", target: "xtensa", buildTags: []string{"esp32", "esp"}, want: false},
-		{goos: "windows", target: "xtensa", want: false},
-		{goos: "linux", target: "thumbv6m-unknown-unknown-eabi", want: false},
-	} {
-		if got := useSystemClangForTarget(test.goos, test.target, test.buildTags); got != test.want {
-			t.Errorf("useSystemClangForTarget(%q, %q, %v) = %v, want %v", test.goos, test.target, test.buildTags, got, test.want)
-		}
 	}
 }
 

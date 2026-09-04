@@ -221,16 +221,16 @@ var (
 	wasiMacosSubdir = "wasi-sdk-25.0-x86_64-macos"
 	espClangBaseUrl = "https://github.com/goplus/espressif-llvm-project-prebuilt/releases/download/" + espClangVersion
 	espClangSHA256  = map[string]string{
-		"aarch64-apple-darwin": "591979dbd9f64deda430e15463fd298ed16763b98ecd113ec39f56e6da6e6238",
-		"aarch64-linux-gnu":    "1affb7d6b2b86a9b3918bb4765e36605e995389623e31adc37dac7390bc486c7",
-		"x86_64-apple-darwin":  "079a5f1d4f1b85af1dfcc53d6ba67b663f0965e38a99703325b4e1ccb9c24de0",
-		"x86_64-linux-gnu":     "41ee105b0cc69ee395fdc7eabc7885844db84e5424148591c8922abccfb6c296",
-		"x86_64-w64-mingw32":   "4e2f88c0ca685547270ea921f3c1012722445468889e01bd68662083a477dd2e",
+		"aarch64-apple-darwin": "fcd3f70db3b05a8815ea156b09778de017a4a3f2d5ba11cbc5fbb205b1daa3fc",
+		"aarch64-linux-gnu":    "628a7f94ac8f392506ee59034525d05db8cc466c15a01f089df229a2a7c661cb",
+		"x86_64-apple-darwin":  "06018f283b3af1ba38523823c633a3517f1580571c48bfb46d53f5bfc0056ff7",
+		"x86_64-linux-gnu":     "0fc09b634fcbc00f91f1a1d3d023e6491f213de941939c374590e40f69961ecc",
+		"x86_64-w64-mingw32":   "3d32533daec8be08e608496eff817798eb7d3c25f07a02de1f1c94c0a0bbb8b3",
 	}
 )
 
 const (
-	espClangVersion         = "22.1.4_20260902-1"
+	espClangVersion         = "22.1.4_20260905"
 	espClangWindowsPlatform = "x86_64-w64-mingw32"
 )
 
@@ -345,9 +345,10 @@ func getESPClangPlatform(goos, goarch string) string {
 		}
 	case "windows":
 		switch goarch {
-		case "amd64", "arm64":
+		case "386", "amd64", "arm64":
 			// The Windows payload is x86-64 hosted. Windows on ARM64 runs it
-			// through the system's x64 emulation layer.
+			// through the system's x64 emulation layer; 32-bit LLGo hosts run
+			// it as a separate 64-bit process.
 			return espClangWindowsPlatform
 		}
 	}
@@ -818,30 +819,15 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 		return Export{}, fmt.Errorf("target %q has unsupported WebAssembly ABI profile %q", targetName, config.WasmABI)
 	}
 
-	// Espressif's Windows toolchain only ships the ESP backends. Use the
-	// full MSYS2 LLVM distribution for other embedded targets (for example
-	// ARM and AVR), while retaining the established ESP toolchain selection
-	// on Unix hosts and for ESP targets. The MSVC profile keeps this external
-	// embedded compiler outside PATH so it cannot change the native ABI.
-	var clangRoot string
-	if useSystemClangForTarget(runtime.GOOS, target, config.BuildTags) {
-		clangRoot = os.Getenv("LLGO_WINDOWS_EMBEDDED_CLANG_ROOT")
-		if clangRoot == "" {
-			export.CC = "clang++"
-		} else {
-			export.ClangRoot = clangRoot
-			export.CC = filepath.Join(clangRoot, "bin", "clang++")
-		}
-	} else {
-		var clangErr error
-		clangRoot, clangErr = getESPClangRoot(true)
-		if clangErr != nil {
-			err = clangErr
-			return
-		}
-		export.ClangRoot = clangRoot
-		export.CC = filepath.Join(clangRoot, "bin", "clang++")
+	// The downloaded Espressif toolchain carries all backends used by LLGo's
+	// embedded profiles on every supported host.
+	clangRoot, clangErr := getESPClangRoot(true)
+	if clangErr != nil {
+		err = clangErr
+		return
 	}
+	export.ClangRoot = clangRoot
+	export.CC = filepath.Join(clangRoot, "bin", "clang++")
 
 	// Convert target config to Export - only export necessary fields
 	export.BuildTags = config.BuildTags
@@ -1079,18 +1065,6 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	export.LDFLAGS = append(ldflags, expandedLDFlags...)
 
 	return export, nil
-}
-
-func useSystemClangForTarget(hostGOOS, targetTriple string, buildTags []string) bool {
-	if hostGOOS != "windows" || strings.HasPrefix(targetTriple, "xtensa") {
-		return false
-	}
-	for _, tag := range buildTags {
-		if tag == "esp" {
-			return false
-		}
-	}
-	return true
 }
 
 // Use extends the original Use function to support target-based configuration

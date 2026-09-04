@@ -75,7 +75,7 @@ development- and test-only modules are not included.
 ## LLVM/Clang
 
 LLGo can download the Espressif-maintained ESP LLVM/Clang 22 toolchain
-[`22.1.4_20260902-1`](https://github.com/goplus/espressif-llvm-project-prebuilt/releases/tag/22.1.4_20260902-1).
+[`22.1.4_20260905`](https://github.com/goplus/espressif-llvm-project-prebuilt/releases/tag/22.1.4_20260905).
 
 Current LLGo release archives use the LLVM 22 payload and include it under
 `crosscompile/clang`, because the shipped `llgo` executable dynamically links
