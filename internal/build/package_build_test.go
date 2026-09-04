@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -67,6 +68,20 @@ func TestPackageBuildTaskSpecialKinds(t *testing.T) {
 	}})
 	if !runtime.isRuntime() {
 		t.Fatalf("runtime package was not marked runtime: %+v", runtime)
+	}
+}
+
+func TestPackageBackendCostOrdersUncachedSSA(t *testing.T) {
+	tasks := []*packageBuildTask{
+		{pkg: &aPackage{}, ssaInstructions: 10},
+		{pkg: &aPackage{}, ssaInstructions: 100},
+		{pkg: &aPackage{CacheHit: true}, ssaInstructions: 1000},
+		{pkg: &aPackage{}, ssaInstructions: 2000, skip: true},
+	}
+	indexes := []int{0, 1, 2, 3}
+	sortPackageIndexesByEstimatedCost(tasks, indexes)
+	if !slices.Equal(indexes, []int{1, 0, 2, 3}) {
+		t.Fatalf("estimated backend order = %v, want [1 0 2 3]", indexes)
 	}
 }
 
@@ -226,6 +241,62 @@ func TestBuildSSAPkgsEmptyAndNilEntries(t *testing.T) {
 	prog := ssa.NewProgram(token.NewFileSet(), ssa.SanityCheckFunctions)
 	pkg := prog.CreatePackage(types.NewPackage("example.com/ssa", "ssa"), nil, nil, true)
 	buildSSAPkgs(ctx, []ssaBuildEntry{{pkg: pkg}, {pkg: pkg}})
+}
+
+func TestSyntaxNodeCount(t *testing.T) {
+	fset := token.NewFileSet()
+	small, err := parser.ParseFile(fset, "small.go", "package p\nvar x int\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	large, err := parser.ParseFile(fset, "large.go", "package p\nfunc f() { x := 1; x++; _ = x }\n", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, wantMin := syntaxNodeCount([]*ast.File{large}), syntaxNodeCount([]*ast.File{small}); got <= wantMin {
+		t.Fatalf("large syntax nodes = %d, want more than %d", got, wantMin)
+	}
+}
+
+func TestRecordPackageSSAInstructions(t *testing.T) {
+	fset := token.NewFileSet()
+	check := func(path, source string) (*types.Package, *ast.File, *types.Info) {
+		file, err := parser.ParseFile(fset, path+".go", source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info := &types.Info{
+			Types:      make(map[ast.Expr]types.TypeAndValue),
+			Defs:       make(map[*ast.Ident]types.Object),
+			Uses:       make(map[*ast.Ident]types.Object),
+			Implicits:  make(map[ast.Node]types.Object),
+			Scopes:     make(map[ast.Node]*types.Scope),
+			Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		}
+		checked, err := (&types.Config{}).Check(path, fset, []*ast.File{file}, info)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return checked, file, info
+	}
+	checked, file, info := check("example.com/p", "package p\nfunc F(x int) int { return x + 1 }\n")
+	altTypes, altFile, altInfo := check("example.com/alt", "package alt\nfunc F(x int) int { return (x + 1) * 2 }\n")
+	prog := ssa.NewProgram(fset, ssa.InstantiateGenerics)
+	ssaPkg := prog.CreatePackage(checked, []*ast.File{file}, info, true)
+	prog.CreatePackage(altTypes, []*ast.File{altFile}, altInfo, true)
+	prog.Build()
+	pkg := &aPackage{
+		Package: &packages.Package{ID: checked.Path()},
+		SSA:     ssaPkg,
+		AltPkg:  &packages.Cached{Types: altTypes},
+	}
+	ctx := &context{progSSA: prog, pkgs: map[*packages.Package]Package{pkg.Package: pkg}}
+	recordPackageSSAInstructions(ctx)
+	if pkg.ssaInstructions == 0 {
+		t.Fatal("recorded zero SSA instructions for a non-empty function")
+	}
+	recordPackageSSAInstructions(nil)
+	recordPackageSSAInstructions(&context{})
 }
 func TestCanUseIsolatedBackend(t *testing.T) {
 	ctx := &context{
@@ -445,6 +516,109 @@ func TestExecuteIsolatedPackageReleasesProgramWithoutModule(t *testing.T) {
 	})
 }
 
+func TestSnapshotBackendPackageAndConsumers(t *testing.T) {
+	coordinator := llssa.NewProgram(nil)
+	defer coordinator.Dispose()
+	isolated := llssa.NewProgram(nil)
+	disposed := false
+	defer func() {
+		if !disposed {
+			isolated.Dispose()
+		}
+	}()
+
+	lpkg := isolated.NewPackage("p", "example.com/p")
+	lpkg.NeedAbiInit = 3
+	lpkg.RecordReflectMethodByIndex("example.com/p.useIndex", 7)
+	lpkg.RecordReflectMethodByName("example.com/p.useName", "Method")
+	pkg := &aPackage{
+		Package: &packages.Package{ID: "example.com/p", PkgPath: "example.com/p", Name: "main"},
+		LPkg:    lpkg,
+	}
+	ctx := &context{prog: coordinator, buildConf: &Config{PCLNMode: PCLNNone}}
+	ctx.snapshotBackendPackage(pkg)
+	snapshot := pkg.linkSnapshot
+	if snapshot == nil || snapshot.needAbiInit != 3 {
+		t.Fatalf("link snapshot = %+v", snapshot)
+	}
+	if _, ok := snapshot.methodByIndex[7]; !ok {
+		t.Fatalf("snapshot method indexes = %v", snapshot.methodByIndex)
+	}
+	if _, ok := snapshot.methodByName["Method"]; !ok {
+		t.Fatalf("snapshot method names = %v", snapshot.methodByName)
+	}
+
+	snapshot.abiSymbols = map[string]none{"example.com/p.global": {}}
+	snapshot.abiTypes = []llssa.AbiTypeInfo{{Name: "example.com/p.Type", Raw: types.Typ[types.Int]}}
+	snapshot.funcInfo = []funcInfoRecord{{symbol: "example.com/p.fn", name: "Fn"}}
+	snapshot.pcLineInfo = []pcLineRecord{{id: 1, symbol: "example.com/p.fn", line: 12}}
+	snapshot.hasLocalExports = true
+	if infos := ctx.backendAbiTypes([]Package{pkg}); len(infos) != 1 || infos[0].Name != "example.com/p.Type" {
+		t.Fatalf("snapshot ABI types = %#v", infos)
+	}
+	if globals := linkedModuleGlobals([]Package{nil, pkg}); len(globals) != 1 {
+		t.Fatalf("snapshot globals = %v", globals)
+	}
+	if records := collectFuncInfo([]Package{pkg}); len(records) != 1 || records[0].symbol != "example.com/p.fn" {
+		t.Fatalf("snapshot funcinfo = %+v", records)
+	}
+	if records := collectPCLineInfo([]Package{pkg}); len(records) != 1 || records[0].id != 1 {
+		t.Fatalf("snapshot pcline = %+v", records)
+	}
+	if !mainPackageHasExports([]*aPackage{pkg}) {
+		t.Fatal("snapshot C export was not detected")
+	}
+
+	ctx.disposeBackendPackage(pkg)
+	disposed = true
+	if pkg.LPkg != nil {
+		t.Fatal("disposed package retained LPkg")
+	}
+	pkg.ExportFile = "p.a"
+	pkg.ArchiveFile = "p.a"
+	dependency := &aPackage{
+		Package: &packages.Package{
+			ID:         "example.com/dependency",
+			PkgPath:    "example.com/dependency",
+			Name:       "dependency",
+			ExportFile: "dependency.a",
+		},
+		LPkg: coordinator.NewPackage("dependency", "example.com/dependency"),
+	}
+	dependency.LPkg.NeedAbiInit = 4
+	dependency.LPkg.RecordReflectMethodByIndex("example.com/dependency.useIndex", 8)
+	dependency.LPkg.RecordReflectMethodByName("example.com/dependency.useName", "OtherMethod")
+	pkg.Imports = map[string]*packages.Package{dependency.PkgPath: dependency.Package}
+	ctx.pkgs = map[*packages.Package]Package{pkg.Package: pkg, dependency.Package: dependency}
+	ctx.pkgByID = map[string]Package{pkg.ID: pkg, dependency.ID: dependency}
+	preparation, err := planMainLink(ctx, pkg.Package, []*aPackage{dependency, pkg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preparation.gen.abiInit != 7 {
+		t.Fatalf("planned ABI init = %d, want 7", preparation.gen.abiInit)
+	}
+	for _, index := range []int{7, 8} {
+		if _, ok := preparation.gen.methodByIndex[index]; !ok {
+			t.Fatalf("planned method indexes = %v", preparation.gen.methodByIndex)
+		}
+	}
+	for _, name := range []string{"Method", "OtherMethod"} {
+		if _, ok := preparation.gen.methodByName[name]; !ok {
+			t.Fatalf("planned method names = %v", preparation.gen.methodByName)
+		}
+	}
+	ctx.snapshotBackendPackage(nil)
+	ctx.snapshotBackendPackage(&aPackage{})
+	ctx.disposeBackendPackage(nil)
+	ctx.disposeBackendPackage(&aPackage{})
+	coordinatorPkg := &aPackage{LPkg: coordinator.NewPackage("coordinator", "example.com/coordinator")}
+	ctx.disposeBackendPackage(coordinatorPkg)
+	if coordinatorPkg.LPkg == nil {
+		t.Fatal("package owned by coordinator was disposed")
+	}
+}
+
 func TestPkgSFilesRejectsUnpreparedBackendRead(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "asm.s"), []byte("TEXT ·f(SB),$0-0\n\tRET\n"), 0o644); err != nil {
@@ -546,6 +720,9 @@ func TestBuildPackageGroupEmpty(t *testing.T) {
 	ctx := &context{buildConf: &Config{}}
 	if err := buildPackageGroup(ctx, nil, false); err != nil {
 		t.Fatalf("empty package group = %v", err)
+	}
+	if isolated, err := preparePackageGroup(nil, nil, false); err != nil || isolated != nil {
+		t.Fatalf("empty package preparation = %v, %v", isolated, err)
 	}
 }
 

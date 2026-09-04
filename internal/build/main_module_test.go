@@ -7,6 +7,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -262,6 +263,31 @@ func TestLinkMainPkgRejectsPackageInitCycle(t *testing.T) {
 	}
 	if err := linkMainPkg(ctx, cycle, nil, "", false); err == nil || !strings.Contains(err.Error(), "contains a cycle") {
 		t.Fatalf("linkMainPkg cycle error = %v, want cycle error", err)
+	}
+}
+
+func TestPrepareMainLinkBuildsEntryPlan(t *testing.T) {
+	llvm.InitializeAllTargets()
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      runtime.GOOS,
+			Goarch:    runtime.GOARCH,
+		},
+		pkgs:    make(map[*packages.Package]Package),
+		pkgByID: make(map[string]Package),
+	}
+	pkg := &packages.Package{ID: "example.com/main", PkgPath: "example.com/main"}
+	plan, err := prepareMainLink(ctx, pkg, nil, "main.out", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer removeFiles(plan.linkInputs)
+	if plan.outputPath != "main.out" || len(plan.linkInputs) == 0 {
+		t.Fatalf("link plan = %+v", plan)
 	}
 }
 

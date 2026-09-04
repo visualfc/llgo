@@ -531,7 +531,6 @@ jobs:
           LLGO_BUILD_CACHE: "1"
           LLGO_TEST_BENCH_GO126: "1"
           LLGO_TEST_CHECK_SYMBOLS: ${{ matrix.check_symbols && '1' || '0' }}
-          LLGO_TEST_JOBS: ${{ startsWith(matrix.os, 'windows') && '2' || startsWith(matrix.os, 'macos') && '3' || '4' }}
           LLGO_TEST_STD_BUILDMODES: ${{ matrix.std_buildmodes && '1' || '0' }}
           SHARD_INDEX: ${{ matrix.shard_index }}
           SHARD_TOTAL: ${{ matrix.shard_total }}

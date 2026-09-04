@@ -10,12 +10,14 @@ import (
 )
 
 func TestBuildFlagsWiring(t *testing.T) {
-	if goBuildFlags.Flag != &Cmd.Flag || Cmd.Flag.Lookup("ldflags") == nil || Cmd.Flag.Lookup("buildmode") == nil {
+	if goBuildFlags.Flag != &Cmd.Flag || Cmd.Flag.Lookup("ldflags") == nil ||
+		Cmd.Flag.Lookup("buildmode") == nil || Cmd.Flag.Lookup("debug-trace") == nil {
 		t.Fatal("test build flags are not bound to the test command")
 	}
 }
 
 func resetTestFlags() {
+	flags.BuildTrace = ""
 	flags.Verbose = false
 	flags.TestRun = ""
 	flags.TestBench = ""

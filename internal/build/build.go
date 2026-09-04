@@ -37,6 +37,7 @@ import (
 	"sync/atomic"
 
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 
 	"github.com/xgo-dev/llgo/cl"
 	llabi "github.com/xgo-dev/llgo/internal/abi"
@@ -121,6 +122,8 @@ type OutFmtDetails struct {
 	Img  string // Image output file path (.img)
 	Uf2  string // UF2 output file path (.uf2)
 	Zip  string // ZIP/DFU output file path (.zip)
+
+	tempDir string // LLGo-owned directory removed with implicit test outputs
 }
 
 // ModuleHook observes a package module immediately after it is generated and
@@ -174,9 +177,8 @@ type Config struct {
 	// go/packages. Callers use internal/goflags to parse supported compiler and
 	// linker semantics into typed Config fields before calling Do.
 	GoBuildFlags []string
-	// BuildParallelism is the package-build and test-run concurrency requested
-	// by Go's -p build flag. The two phases do not overlap. Zero uses the Go
-	// default, GOMAXPROCS.
+	// BuildParallelism is the package-build, test-link, and test-run concurrency
+	// requested by Go's -p build flag. Zero uses the Go default, GOMAXPROCS.
 	BuildParallelism int
 	// BuildTrace is an optional Chrome Trace Event JSON output path. Relative
 	// paths are resolved from the build invocation directory.
@@ -807,12 +809,48 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		return nil, err
 	}
 	buildSSAPkgs(ctx, append(append(altEntries, pkgEntries...), depEntries...))
+	recordPackageSSAInstructions(ctx)
 	callerSpan := buildTrace.startCoordinator("precompute caller tracking", nil)
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
 
 	allPkgs := append([]*aPackage{}, pkgs...)
 	allPkgs = append(allPkgs, depPkgs...)
+	var nativeTestRoots []*packages.Package
+	if mode == ModeTest && !inv.compileOnly {
+		for _, pkg := range initial {
+			if needLink(pkg, mode) {
+				nativeTestRoots = append(nativeTestRoots, pkg)
+			}
+		}
+	}
+	if canUseNativeTestDAG(ctx, len(nativeTestRoots)) {
+		dagResult, buildErr := runNativeTestDAG(ctx, allPkgs, nativeTestRoots, conf, verbose)
+		fallback = nil
+		ctx.disposeBackendPrograms()
+		var errs []error
+		if buildErr != nil {
+			errs = append(errs, buildErr)
+		}
+		for index, result := range dagResult.links {
+			if result.err == nil {
+				continue
+			}
+			if inv.disableMultiFallback {
+				errs = append(errs, result.err)
+			} else {
+				errs = append(errs, fmt.Errorf("%s: %w", nativeTestRoots[index].PkgPath, result.err))
+			}
+		}
+		ctx.testFail = dagResult.tests.failed
+		if dagResult.tests.skipped != 0 {
+			fmt.Fprintf(os.Stderr, "FAIL\t%d package(s) skipped by -failfast\n", dagResult.tests.skipped)
+		}
+		if ctx.testFail {
+			mockable.Exit(1)
+		}
+		return allPkgs, errors.Join(errs...)
+	}
 	allPkgs, err = buildAllPkgs(ctx, allPkgs, verbose)
 	if err != nil {
 		return nil, err
@@ -827,10 +865,6 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		return nil, fmt.Errorf("initial package not found")
 	}
 
-	// buildAllPkgs has already used the existing bounded package scheduler.
-	// Test-main linking still uses coordinator-owned state, so keep links
-	// sequential and collect only the finished native binaries for concurrent
-	// execution below.
 	linkMultiple := mode == ModeBuild && len(initial) > 1
 	var linkErrs []error
 	var testPrograms []testProgram
@@ -876,79 +910,201 @@ func useShadowStack(goarch string) bool {
 	return goarch == "wasm" || isEnvOn(llgoShadowStack, false)
 }
 
+type initialPackageLink struct {
+	pkg           *packages.Package
+	allPkgs       []*aPackage
+	conf          *Config
+	outFmts       *OutFmtDetails
+	preparation   *mainLinkPreparation
+	plan          *mainLinkPlan
+	discardOutput bool
+}
+
 func linkInitialPackage(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, verbose, discardOutput bool) (*testProgram, error) {
+	link, err := prepareInitialPackageLink(ctx, pkg, allPkgs, conf, verbose, discardOutput)
+	if err != nil {
+		return nil, err
+	}
+	return executeInitialPackageLink(ctx, link, verbose, false)
+}
+
+func prepareInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, verbose, discardOutput bool) (*initialPackageLink, error) {
+	link, err := planInitialPackageLink(ctx, pkg, allPkgs, conf, discardOutput)
+	if err != nil {
+		return nil, err
+	}
+	if err := buildInitialPackageEntry(ctx, link, verbose, false); err != nil {
+		if discardOutput || link.outFmts.tempDir != "" {
+			removeOutFmts(link.outFmts)
+		}
+		return nil, err
+	}
+	return link, nil
+}
+
+func planInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, discardOutput bool) (*initialPackageLink, error) {
 	name := defaultExecutableName(pkg.PkgPath)
 	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1, &ctx.crossCompile)
 	if err != nil {
 		return nil, err
 	}
-	if discardOutput {
-		defer removeOutFmts(outFmts)
-	}
 	resolveOutputs(ctx.commands.dir, outFmts)
-	linkSpan := ctx.buildTrace.startCoordinator("link "+pkg.PkgPath, map[string]any{
+	prepareSpan := ctx.buildTrace.startCoordinator("plan link "+pkg.PkgPath, map[string]any{
 		"package": pkg.PkgPath,
 		"output":  outFmts.Out,
 	})
-	err = linkMainPkg(ctx, pkg, allPkgs, outFmts.Out, verbose)
-	linkSpan.done()
+	preparation, err := planMainLink(ctx, pkg, allPkgs)
+	prepareSpan.done()
+	if err != nil {
+		if discardOutput || outFmts.tempDir != "" {
+			removeOutFmts(outFmts)
+		}
+		return nil, err
+	}
+	return &initialPackageLink{
+		pkg: pkg, allPkgs: allPkgs, conf: conf, outFmts: outFmts, preparation: preparation,
+		discardOutput: discardOutput,
+	}, nil
+}
+
+func buildInitialPackageEntry(ctx *context, link *initialPackageLink, verbose, worker bool) error {
+	// The preparation can contain full-program PCLN snapshots. Transfer it to
+	// this phase so the DAG does not retain one snapshot per root during tests.
+	preparation := link.preparation
+	link.preparation = nil
+	entryCtx := ctx
+	var entrySpan *buildTraceSpan
+	if worker {
+		if ctx.buildConf.deadcodeDropEnabled() {
+			return errors.New("parallel entry generation does not support dead-code drop")
+		}
+		session := ctx.newBackendSession()
+		defer session.prog.Dispose()
+		entryCtx = ctx.newBackendTask(session)
+		entrySpan = ctx.buildTrace.startWorker("entry-object", link.pkg.PkgPath)
+		entrySpan.setArg("output", link.outFmts.Out)
+	} else {
+		entrySpan = ctx.buildTrace.startCoordinator("entry object "+link.pkg.PkgPath, map[string]any{
+			"package": link.pkg.PkgPath,
+			"output":  link.outFmts.Out,
+		})
+	}
+	plan, err := buildMainLink(entryCtx, link.pkg, preparation, link.outFmts.Out, verbose)
+	entrySpan.done()
+	if err == nil {
+		link.plan = plan
+	}
+	return err
+}
+
+func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, worker bool) (*testProgram, error) {
+	// PCLN finalization is the last consumer of the link plan. Keep it local so
+	// completed roots do not retain their metadata while other tests run.
+	plan := link.plan
+	link.plan = nil
+	cleanupTemp := link.outFmts.tempDir != ""
+	defer func() {
+		if link.discardOutput || cleanupTemp {
+			removeOutFmts(link.outFmts)
+		}
+	}()
+	var linkSpan *buildTraceSpan
+	if worker {
+		linkSpan = ctx.buildTrace.startWorker("link", link.pkg.PkgPath)
+	} else {
+		linkSpan = ctx.buildTrace.startCoordinator("link "+link.pkg.PkgPath, map[string]any{
+			"package": link.pkg.PkgPath,
+			"output":  link.outFmts.Out,
+		})
+	}
+	linkCtx := newLinkExecutionContext(ctx, plan)
+	err := func() error {
+		defer linkSpan.done()
+		if err := executeMainLink(linkCtx, plan, verbose); err != nil {
+			return err
+		}
+		if err := finalizeRuntimePCLN(linkCtx, link.outFmts, verbose); err != nil {
+			return err
+		}
+		return finalizeDarwinSizeExecutable(linkCtx, link.outFmts.Out, verbose)
+	}()
 	if err != nil {
 		return nil, err
 	}
-	if err := finalizeRuntimePCLN(ctx, outFmts, verbose); err != nil {
-		return nil, err
-	}
-	if err := finalizeDarwinSizeExecutable(ctx, outFmts.Out, verbose); err != nil {
-		return nil, err
-	}
-	if conf.Mode == ModeBuild && conf.SizeReport {
-		if err := reportBinarySize(outFmts.Out, conf.SizeFormat, conf.SizeLevel, allPkgs); err != nil {
+	if link.conf.Mode == ModeBuild && link.conf.SizeReport {
+		if err := reportBinarySize(link.outFmts.Out, link.conf.SizeFormat, link.conf.SizeLevel, link.allPkgs); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: size report failed: %v\n", err)
 		}
 	}
-	if ctx.buildConf.BuildMode == BuildModeCArchive || ctx.buildConf.BuildMode == BuildModeCShared {
-		libname := strings.TrimSuffix(filepath.Base(outFmts.Out), conf.AppExt)
-		headerPath := filepath.Join(filepath.Dir(outFmts.Out), libname) + ".h"
-		return nil, header.GenHeaderFile(ctx.prog, cHeaderPackages(allPkgs), libname, headerPath, verbose)
+	if linkCtx.buildConf.BuildMode == BuildModeCArchive || linkCtx.buildConf.BuildMode == BuildModeCShared {
+		libname := strings.TrimSuffix(filepath.Base(link.outFmts.Out), link.conf.AppExt)
+		headerPath := filepath.Join(filepath.Dir(link.outFmts.Out), libname) + ".h"
+		return nil, header.GenHeaderFile(linkCtx.prog, cHeaderPackages(link.allPkgs), libname, headerPath, verbose)
 	}
 
-	envMap := outFmts.ToEnvMap()
-	if conf.Target != "" {
-		if err := firmware.ConvertFormats(ctx.crossCompile.BinaryFormat, ctx.crossCompile.FormatDetail, envMap); err != nil {
+	envMap := link.outFmts.ToEnvMap()
+	if link.conf.Target != "" {
+		if err := firmware.ConvertFormats(linkCtx.crossCompile.BinaryFormat, linkCtx.crossCompile.FormatDetail, envMap); err != nil {
 			return nil, err
 		}
 	}
-	switch conf.Mode {
+	switch link.conf.Mode {
 	case ModeInstall:
-		if conf.Target != "" {
-			return nil, flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose)
+		if link.conf.Target != "" {
+			return nil, flash.FlashDevice(linkCtx.crossCompile.Device, envMap, linkCtx.buildConf.Port, verbose)
 		}
 	case ModeRun, ModeTest, ModeCmpTest:
-		if conf.Target == "" {
-			if conf.Mode == ModeTest {
-				return &testProgram{
-					app:     outFmts.Out,
-					pkgDir:  pkg.Dir,
-					pkgName: strings.TrimSuffix(pkg.PkgPath, ".test"),
-				}, nil
+		if link.conf.Target == "" {
+			if link.conf.Mode == ModeTest {
+				program := &testProgram{
+					app:     link.outFmts.Out,
+					pkgDir:  link.pkg.Dir,
+					pkgName: strings.TrimSuffix(link.pkg.PkgPath, ".test"),
+				}
+				if cleanupTemp {
+					program.temporaryOutputs = link.outFmts
+					cleanupTemp = false // runNativeTest now owns the temporary output.
+				}
+				return program, nil
 			}
-			return nil, runNative(ctx, outFmts.Out, pkg.Dir, pkg.PkgPath, conf, conf.Mode)
+			return nil, runNative(linkCtx, link.outFmts.Out, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode)
 		}
-		if conf.Emulator {
-			return nil, runInEmulator(ctx.commands, ctx.crossCompile.Emulator, envMap, pkg.Dir, pkg.PkgPath, conf, conf.Mode, verbose)
+		if link.conf.Emulator {
+			return nil, runInEmulator(linkCtx.commands, linkCtx.crossCompile.Emulator, envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
 		}
-		if err := flash.FlashDevice(ctx.crossCompile.Device, envMap, ctx.buildConf.Port, verbose); err != nil {
+		if err := flash.FlashDevice(linkCtx.crossCompile.Device, envMap, linkCtx.buildConf.Port, verbose); err != nil {
 			return nil, err
 		}
 		return nil, monitor.Monitor(monitor.MonitorConfig{
-			Port: ctx.buildConf.Port, Target: conf.Target, Executable: outFmts.Out,
-			BaudRate: conf.BaudRate, SerialPort: ctx.crossCompile.Device.SerialPort,
+			Port: linkCtx.buildConf.Port, Target: link.conf.Target, Executable: link.outFmts.Out,
+			BaudRate: link.conf.BaudRate, SerialPort: linkCtx.crossCompile.Device.SerialPort,
 		}, verbose)
 	}
 	return nil, nil
 }
 
+func newLinkExecutionContext(ctx *context, plan *mainLinkPlan) *context {
+	return &context{
+		prog:                 ctx.prog,
+		mode:                 ctx.mode,
+		buildConf:            ctx.buildConf,
+		crossCompile:         ctx.crossCompile,
+		commands:             ctx.commands,
+		pclnExternal:         plan.pclnExternal,
+		stripDarwinLTOLocals: plan.stripDarwinLTOLocals,
+	}
+}
+
 func removeOutFmts(outFmts *OutFmtDetails) {
+	if outFmts == nil {
+		return
+	}
+	if outFmts.tempDir != "" {
+		// tempDir comes only from os.MkdirTemp in buildOutFmts and contains all
+		// intermediate sidecars as well as the final test executable.
+		_ = os.RemoveAll(outFmts.tempDir)
+		return
+	}
 	for _, output := range []string{
 		outFmts.Out, outFmts.PCLN, outFmts.Bin, outFmts.Hex,
 		outFmts.Img, outFmts.Uf2, outFmts.Zip,
@@ -1208,15 +1364,22 @@ type context struct {
 	buildTrace *buildTracer
 }
 
-// backendAbiTypes returns Go-owned type identities from isolated Programs in
-// stable linked-package order. The Programs remain alive while the entry
-// module recreates target-local declarations, but no LLVM value crosses a
-// Context boundary.
+// backendAbiTypes snapshots Go-owned type identities from isolated Programs
+// in stable linked-package order. Entry generation may consume the result in
+// another Program after the source Programs have been disposed; no LLVM value
+// may cross that ownership boundary.
 func (c *context) backendAbiTypes(pkgs []Package) []llssa.AbiTypeInfo {
 	seen := make(map[llssa.Program]none)
 	var infos []llssa.AbiTypeInfo
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
+		if pkg == nil {
+			continue
+		}
+		if pkg.linkSnapshot != nil {
+			infos = append(infos, pkg.linkSnapshot.abiTypes...)
+			continue
+		}
+		if pkg.LPkg == nil {
 			continue
 		}
 		prog := pkg.LPkg.Prog
@@ -1443,14 +1606,25 @@ func buildAllPkgs(ctx *context, pkgs []*aPackage, verbose bool) ([]*aPackage, er
 	// Resolve the lazy Plan 9 policy before workers start.
 	_ = ctx.plan9asmEnabled("")
 
-	// Build non-runtime packages first, so we know whether runtime is actually needed.
+	// Host links always include runtime, so put ordinary and runtime packages in
+	// the same cost-ordered worker pool. This avoids making runtime wait behind
+	// the longest ordinary backend without adding another scheduling boundary.
+	if ctx.buildConf.Target == "" {
+		normalTasks = append(normalTasks, runtimeTasks...)
+		if err := buildPackageGroup(ctx, normalTasks, verbose); err != nil {
+			return nil, err
+		}
+		return pkgs, nil
+	}
+
+	// Cross builds still defer all runtime preparation until ordinary package
+	// results show it is needed; unused target runtimes must remain untouched.
 	if err := buildPackageGroup(ctx, normalTasks, verbose); err != nil {
 		return nil, err
 	}
 	needRuntime, needPyInit := packageRuntimeNeeds(normalTasks)
 
-	// Only build runtime packages when required (or host build with empty Target).
-	if needRuntime || needPyInit || ctx.buildConf.Target == "" {
+	if needRuntime || needPyInit {
 		if err := buildPackageGroup(ctx, runtimeTasks, verbose); err != nil {
 			return nil, err
 		}
@@ -1732,9 +1906,50 @@ func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
 	}
 }
 
+type mainLinkPlan struct {
+	outputPath           string
+	linkInputs           []string
+	linkArgs             []string
+	pclnExternal         *pclnmap.Data
+	stripDarwinLTOLocals bool
+}
+
+// mainLinkPreparation separates shared package inspection from entry-module
+// emission. planMainLink runs on the coordinator because linkedOrder may still
+// contain packages owned by the shared coordinator Program. Every other field
+// is a Go-owned snapshot and must remain safe to consume after isolated package
+// Programs are disposed.
+// linkedOrder is kept only for the coordinator-only dead-code-drop path; the
+// native test DAG is disabled when that mode is active, so its workers must
+// never dereference linkedOrder.
+type mainLinkPreparation struct {
+	linkedOrder          []*aPackage
+	archiveInputs        []string
+	linkArgs             []string
+	gen                  genConfig
+	stripDarwinLTOLocals bool
+}
+
 func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPath string, verbose bool) error {
-	ctx.pclnExternal = nil
-	ctx.stripDarwinLTOLocals = false
+	plan, err := prepareMainLink(ctx, pkg, pkgs, outputPath, verbose)
+	if err != nil {
+		return err
+	}
+	return executeMainLink(ctx, plan, verbose)
+}
+
+func prepareMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPath string, verbose bool) (*mainLinkPlan, error) {
+	preparation, err := planMainLink(ctx, pkg, pkgs)
+	if err != nil {
+		return nil, err
+	}
+	return buildMainLink(ctx, pkg, preparation, outputPath, verbose)
+}
+
+// planMainLink combines package-owned snapshots into the state needed to
+// generate one entry module. Native test DAG callers invoke it on the
+// coordinator; isolated package Programs may already have been disposed.
+func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainLinkPreparation, error) {
 	needRuntime := false
 	needPyInit := false
 	var needAbiInit int
@@ -1765,12 +1980,22 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		need1, need2 := aPkg.isNeedRuntimeOrPyInit()
 		needRuntime = needRuntime || need1
 		needPyInit = needPyInit || need2
-		needAbiInit |= aPkg.LPkg.NeedAbiInit
-		for k, _ := range aPkg.LPkg.MethodByIndex {
-			methodByIndex[k] = none{}
-		}
-		for k, _ := range aPkg.LPkg.MethodByName {
-			methodByName[k] = none{}
+		if snapshot := aPkg.linkSnapshot; snapshot != nil {
+			needAbiInit |= snapshot.needAbiInit
+			for k := range snapshot.methodByIndex {
+				methodByIndex[k] = none{}
+			}
+			for k := range snapshot.methodByName {
+				methodByName[k] = none{}
+			}
+		} else {
+			needAbiInit |= aPkg.LPkg.NeedAbiInit
+			for k := range aPkg.LPkg.MethodByIndex {
+				methodByIndex[k] = none{}
+			}
+			for k := range aPkg.LPkg.MethodByName {
+				methodByName[k] = none{}
+			}
 		}
 
 		linkArgs = append(linkArgs, aPkg.LinkArgs...)
@@ -1796,13 +2021,13 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	}
 	packageInits, err := linkedPackageInitNames(pkg, linkedOrder)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cExports, err := linkedCExports(ctx, linkedOrder)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{
+	gen := genConfig{
 		rtInit:        needRuntime,
 		pyInit:        needPyInit,
 		abiInit:       needAbiInit,
@@ -1814,29 +2039,7 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 		funcInfo:      funcInfo,
 		pcLineInfo:    pcLineInfo,
 		cExports:      cExports,
-	})
-	if len(cExports) != 0 {
-		llabi.LowerLargeAggregates(ctx.prog.TargetData(), entryPkg.LPkg.Module())
-		ctx.cTransformer.TransformModule(entryPkg.LPkg.Path(), entryPkg.LPkg.Module())
 	}
-	if ctx.buildConf.deadcodeDropEnabled() {
-		if err := applyDeadcodeDropOverrides(linkedOrder, entryPkg, needRuntime, verbose); err != nil {
-			return err
-		}
-	}
-	entryObjFile, err := exportObject(ctx, "entry_main", entryPkg.ExportFile, entryPkg.LPkg)
-	if err != nil {
-		return err
-	}
-	linkInputs := []string{entryObjFile}
-
-	// Compile extra files from target configuration
-	extraObjFiles, err := compileExtraFiles(ctx, verbose)
-	if err != nil {
-		return err
-	}
-	linkInputs = append(linkInputs, extraObjFiles...)
-	linkInputs = append(linkInputs, archiveInputs...)
 
 	if IsFullRpathEnabled() {
 		linkArgs = append(linkArgs, fullRpathArgs(ctx.crossCompile.Toolchain, linkArgs)...)
@@ -1844,17 +2047,72 @@ func linkMainPkg(ctx *context, pkg *packages.Package, pkgs []*aPackage, outputPa
 	linkArgs = append(linkArgs, cSharedExportArgs(ctx, linkedOrder)...)
 	darwinSymbols := planDarwinSizeSymbols(ctx, linkedOrder, linkArgs)
 	linkArgs = append(linkArgs, darwinSymbols.linkerArgs...)
-	ctx.stripDarwinLTOLocals = darwinSymbols.stripLTOLocals
 
-	linkOutput, err := prepareWasmLinkOutput(ctx.buildConf, &ctx.crossCompile, outputPath)
+	return &mainLinkPreparation{
+		linkedOrder:          linkedOrder,
+		archiveInputs:        archiveInputs,
+		linkArgs:             linkArgs,
+		gen:                  gen,
+		stripDarwinLTOLocals: darwinSymbols.stripLTOLocals,
+	}, nil
+}
+
+// buildMainLink consumes the LLVM-free portion of preparation. It may run in
+// an isolated backend Program after the package Programs have been released.
+func buildMainLink(ctx *context, pkg *packages.Package, preparation *mainLinkPreparation, outputPath string, verbose bool) (*mainLinkPlan, error) {
+	if preparation == nil {
+		return nil, errors.New("missing main link preparation")
+	}
+	ctx.pclnExternal = nil
+	ctx.stripDarwinLTOLocals = false
+	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &preparation.gen)
+	cExports := preparation.gen.cExports
+	if len(cExports) != 0 {
+		llabi.LowerLargeAggregates(ctx.prog.TargetData(), entryPkg.LPkg.Module())
+		ctx.cTransformer.TransformModule(entryPkg.LPkg.Path(), entryPkg.LPkg.Module())
+	}
+	if ctx.buildConf.deadcodeDropEnabled() {
+		if err := applyDeadcodeDropOverrides(preparation.linkedOrder, entryPkg, preparation.gen.rtInit, verbose); err != nil {
+			return nil, err
+		}
+	}
+	entryObjFile, err := exportObject(ctx, "entry_main", entryPkg.ExportFile, entryPkg.LPkg)
+	if err != nil {
+		return nil, err
+	}
+	linkInputs := []string{entryObjFile}
+
+	// Compile extra files from target configuration
+	extraObjFiles, err := compileExtraFiles(ctx, verbose)
+	if err != nil {
+		return nil, err
+	}
+	linkInputs = append(linkInputs, extraObjFiles...)
+	linkInputs = append(linkInputs, preparation.archiveInputs...)
+	ctx.stripDarwinLTOLocals = preparation.stripDarwinLTOLocals
+
+	return &mainLinkPlan{
+		outputPath:           outputPath,
+		linkInputs:           linkInputs,
+		linkArgs:             preparation.linkArgs,
+		pclnExternal:         ctx.pclnExternal,
+		stripDarwinLTOLocals: preparation.stripDarwinLTOLocals,
+	}, nil
+}
+
+func executeMainLink(ctx *context, plan *mainLinkPlan, verbose bool) error {
+	if plan == nil {
+		return errors.New("missing main link plan")
+	}
+	linkOutput, err := prepareWasmLinkOutput(ctx.buildConf, &ctx.crossCompile, plan.outputPath)
 	if err != nil {
 		return err
 	}
-	defer cleanupWasmLinkOutput(linkOutput, outputPath)
-	if err := linkObjFiles(ctx, linkOutput, linkInputs, linkArgs, verbose); err != nil {
+	defer cleanupWasmLinkOutput(linkOutput, plan.outputPath)
+	if err := linkObjFiles(ctx, linkOutput, plan.linkInputs, plan.linkArgs, verbose); err != nil {
 		return err
 	}
-	return publishWasmLinkOutput(ctx, linkOutput, outputPath, verbose)
+	return publishWasmLinkOutput(ctx, linkOutput, plan.outputPath, verbose)
 }
 
 func fullRpathArgs(toolchain crosscompile.NativeToolchain, linkArgs []string) (rpathArgs []string) {
@@ -1984,7 +2242,16 @@ func linkedModuleGlobals(pkgs []Package) map[string]none {
 	}
 	seen := make(map[string]none)
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.LPkg == nil {
+		if pkg == nil {
+			continue
+		}
+		if pkg.linkSnapshot != nil {
+			for name := range pkg.linkSnapshot.abiSymbols {
+				seen[name] = none{}
+			}
+			continue
+		}
+		if pkg.LPkg == nil {
 			continue
 		}
 		for g := pkg.LPkg.Module().FirstGlobal(); !g.IsNil(); g = gllvm.NextGlobal(g) {
@@ -2855,10 +3122,11 @@ func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) er
 }
 
 type ssaBuildEntry struct {
-	id       string
-	pkg      *ssa.Package
-	syntax   []*ast.File
-	fixOrder bool
+	id         string
+	pkg        *ssa.Package
+	syntax     []*ast.File
+	fixOrder   bool
+	complexity int64
 }
 
 func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.Package, conf *Config, verbose bool) []ssaBuildEntry {
@@ -2894,8 +3162,10 @@ type aPackage struct {
 	AltPkg *packages.Cached
 	LPkg   llssa.Package
 
-	NeedRt     bool
-	NeedPyInit bool
+	NeedRt          bool
+	NeedPyInit      bool
+	ssaInstructions int64
+	linkSnapshot    *packageLinkSnapshot
 
 	LinkArgs     []string
 	ObjFiles     []string               // file-backed archive members: .o or .ll
@@ -2984,6 +3254,9 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 	if len(entries) == 0 {
 		return
 	}
+	rankSpan := ctx.buildTrace.startCoordinator("rank SSA packages", map[string]any{
+		"entries": len(entries),
+	})
 	unique := make([]ssaBuildEntry, 0, len(entries))
 	index := make(map[*ssa.Package]int, len(entries))
 	for _, entry := range entries {
@@ -2995,8 +3268,21 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 			continue
 		}
 		index[entry.pkg] = len(unique)
+		entry.complexity = syntaxNodeCount(entry.syntax)
 		unique = append(unique, entry)
 	}
+	slices.SortStableFunc(unique, func(left, right ssaBuildEntry) int {
+		switch {
+		case left.complexity > right.complexity:
+			return -1
+		case left.complexity < right.complexity:
+			return 1
+		default:
+			return 0
+		}
+	})
+	rankSpan.setArg("packages", len(unique))
+	rankSpan.done()
 	jobs := make(chan ssaBuildEntry, len(unique))
 	var wg sync.WaitGroup
 	for range min(ctx.buildConf.parallelism(), len(unique)) {
@@ -3007,6 +3293,7 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 				pkgPath := entry.pkg.Pkg.Path()
 				traceSpan := ctx.buildTrace.startWorker("ssa", pkgPath)
 				traceSpan.setArg("package_id", entry.id)
+				traceSpan.setArg("syntax_nodes", entry.complexity)
 				func() {
 					defer traceSpan.done()
 					entry.pkg.Build()
@@ -3027,6 +3314,52 @@ func buildSSAPkgs(ctx *context, entries []ssaBuildEntry) {
 		}
 	}
 	repairSpan.done()
+}
+
+func syntaxNodeCount(files []*ast.File) (nodes int64) {
+	for _, file := range files {
+		ast.Inspect(file, func(node ast.Node) bool {
+			if node != nil {
+				nodes++
+			}
+			return true
+		})
+	}
+	return
+}
+
+// recordPackageSSAInstructions makes backend ordering a single linear pass
+// over the SSA that was already built. It includes methods, wrappers, and
+// closures without repeating a whole-program reachability scan per package.
+func recordPackageSSAInstructions(ctx *context) {
+	if ctx == nil || ctx.progSSA == nil {
+		return
+	}
+	span := ctx.buildTrace.startCoordinator("count SSA instructions", nil)
+	defer span.done()
+	counts := make(map[*ssa.Package]int64)
+	var total int64
+	for fn := range ssautil.AllFunctions(ctx.progSSA) {
+		if fn == nil || fn.Pkg == nil {
+			continue
+		}
+		for _, block := range fn.Blocks {
+			instructions := int64(len(block.Instrs))
+			counts[fn.Pkg] += instructions
+			total += instructions
+		}
+	}
+	for _, pkg := range ctx.pkgs {
+		if pkg == nil {
+			continue
+		}
+		pkg.ssaInstructions = counts[pkg.SSA]
+		if pkg.AltPkg != nil && pkg.AltPkg.Types != nil {
+			pkg.ssaInstructions += counts[ctx.progSSA.Package(pkg.AltPkg.Types)]
+		}
+	}
+	span.setArg("packages", len(counts))
+	span.setArg("instructions", total)
 }
 
 func formatPackageError(err packages.Error, noColumn bool) string {

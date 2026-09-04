@@ -1038,6 +1038,13 @@ func TestIsFuncInfoEnabled(t *testing.T) {
 }
 
 func TestLinkedModuleGlobalsSkipsDeclarations(t *testing.T) {
+	if got := linkedModuleGlobals(nil); got != nil {
+		t.Fatalf("empty linked globals = %#v, want nil", got)
+	}
+	if got := linkedModuleGlobals([]Package{&aPackage{}}); len(got) != 0 {
+		t.Fatalf("backend-free linked globals = %#v, want empty", got)
+	}
+
 	prog := llssa.NewProgram(nil)
 	lpkg := prog.NewPackage("example.com/p", "example.com/p")
 	mod := lpkg.Module()
@@ -1139,6 +1146,23 @@ func TestExtest(t *testing.T) {
 		if !strings.Contains(got, "ok  \t"+pkg+"\n") {
 			t.Errorf("output does not contain result for %s:\n%s", pkg, got)
 		}
+	}
+}
+
+func TestExtestNativeTestDAG(t *testing.T) {
+	mockRun([]string{"../../cl/_testgo/runextest/..."}, &Config{Mode: ModeTest, BuildParallelism: 2})
+}
+
+func TestExtestNativeTestDAGFailFast(t *testing.T) {
+	mockRun([]string{"../../cl/_testgo/runextest/..."}, &Config{
+		Mode:              ModeTest,
+		BuildParallelism:  2,
+		RunArgs:           []string{"-test.not-a-real-flag"},
+		TestRunSequential: true,
+		TestFailFast:      true,
+	})
+	if got := mockable.ExitCode(); got != 1 {
+		t.Fatalf("mocked exit code = %d, want 1", got)
 	}
 }
 
@@ -2038,6 +2062,21 @@ func TestDevLTOGlobalDCEDefaultsToFullLTO(t *testing.T) {
 				t.Fatalf("goGlobalDCEEnabled() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDevLTOGlobalDCERejectsParallelDeadcodeEntry(t *testing.T) {
+	if !buildenv.Dev {
+		t.Skip("deadcode drop requires a development build")
+	}
+	ctx := &context{buildConf: &Config{DeadcodeDrop: true}}
+	link := &initialPackageLink{preparation: &mainLinkPreparation{}}
+	if err := buildInitialPackageEntry(ctx, link, false, true); err == nil ||
+		!strings.Contains(err.Error(), "does not support dead-code drop") {
+		t.Fatalf("parallel deadcode entry error = %v", err)
+	}
+	if link.preparation != nil {
+		t.Fatal("failed entry retained its consumed preparation")
 	}
 }
 

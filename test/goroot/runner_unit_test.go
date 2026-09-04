@@ -281,7 +281,8 @@ func TestEffectiveBuildTimeout(t *testing.T) {
 
 func TestRunProgramTimeout(t *testing.T) {
 	if os.Getenv("LLGO_GOROOT_HELPER") == "sleep" {
-		time.Sleep(200 * time.Millisecond)
+		// Leave ample margin for a loaded CI worker to service the 50ms timer.
+		time.Sleep(5 * time.Second)
 		return
 	}
 	disableSystemMemoryLimits(t)

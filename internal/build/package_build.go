@@ -18,28 +18,69 @@ package build
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/xgo-dev/llgo/cl"
 	"github.com/xgo-dev/llgo/internal/packages"
+	llssa "github.com/xgo-dev/llgo/ssa"
 )
 
+// packageLinkSnapshot is the LLVM-free part of an isolated package needed by
+// later root link plans. Keeping it on aPackage lets the package worker destroy
+// its Program immediately instead of extending that Program's lifetime to the
+// last root that imports it.
+type packageLinkSnapshot struct {
+	needAbiInit     int
+	methodByIndex   map[int]none
+	methodByName    map[string]none
+	abiSymbols      map[string]none
+	abiTypes        []llssa.AbiTypeInfo
+	funcInfo        []funcInfoRecord
+	pcLineInfo      []pcLineRecord
+	hasLocalExports bool
+}
+
 type packageBuildTask struct {
-	pkg       *aPackage
-	kind      int
-	kindParam string
-	skip      bool
-	isolated  bool
-	parallel  bool
+	pkg             *aPackage
+	kind            int
+	kindParam       string
+	ssaInstructions int64
+	skip            bool
+	isolated        bool
+	parallel        bool
 }
 
 func newPackageBuildTask(pkg *aPackage) *packageBuildTask {
 	kind, kindParam := cl.PkgKindOf(pkg.Types)
 	return &packageBuildTask{
-		pkg:       pkg,
-		kind:      kind,
-		kindParam: kindParam,
+		pkg:             pkg,
+		kind:            kind,
+		kindParam:       kindParam,
+		ssaInstructions: pkg.ssaInstructions,
 	}
+}
+
+func (task *packageBuildTask) estimatedBackendCost() int64 {
+	if task.skip || task.pkg.CacheHit {
+		return 0
+	}
+	return task.ssaInstructions
+}
+
+func sortPackageIndexesByEstimatedCost(tasks []*packageBuildTask, indexes []int) {
+	slices.SortStableFunc(indexes, func(left, right int) int {
+		leftCost := tasks[left].estimatedBackendCost()
+		rightCost := tasks[right].estimatedBackendCost()
+		switch {
+		case leftCost > rightCost:
+			return -1
+		case leftCost < rightCost:
+			return 1
+		default:
+			return 0
+		}
+	})
 }
 
 func (t *packageBuildTask) isRuntime() bool {
@@ -94,13 +135,28 @@ func buildPackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) er
 	if len(tasks) == 0 {
 		return nil
 	}
+	isolated, err := preparePackageGroup(ctx, tasks, verbose)
+	if err != nil {
+		return err
+	}
+	return runBoundedPackageJobs(ctx.buildConf.parallelism(), isolated, func(index int) error {
+		return tracePackageBuild(ctx, tasks[index], verbose, true, true)
+	})
+}
+
+// preparePackageGroup completes coordinator-only preparation and package
+// builds, returning the indexes whose backends are eligible for worker execution.
+func preparePackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) ([]int, error) {
+	if len(tasks) == 0 {
+		return nil, nil
+	}
 	prepareSpan := ctx.buildTrace.startCoordinator("prepare packages", map[string]any{
 		"count":   len(tasks),
 		"runtime": tasks[0].isRuntime(),
 	})
 	if err := preparePackageBuilds(ctx, tasks, verbose); err != nil {
 		prepareSpan.done()
-		return err
+		return nil, err
 	}
 	prepareSpan.done()
 
@@ -116,15 +172,11 @@ func buildPackageGroup(ctx *context, tasks []*packageBuildTask, verbose bool) er
 			continue
 		}
 		if err := tracePackageBuild(ctx, task, verbose, task.isolated, false); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	if err := runBoundedPackageJobs(ctx.buildConf.parallelism(), isolated, func(index int) error {
-		return tracePackageBuild(ctx, tasks[index], verbose, true, true)
-	}); err != nil {
-		return err
-	}
-	return nil
+	sortPackageIndexesByEstimatedCost(tasks, isolated)
+	return isolated, nil
 }
 
 func tracePackageBuild(ctx *context, task *packageBuildTask, verbose, isolated, worker bool) (err error) {
@@ -142,6 +194,7 @@ func tracePackageBuild(ctx *context, task *packageBuildTask, verbose, isolated, 
 	traceSpan.setArg("package_id", task.pkg.ID)
 	traceSpan.setArg("class", class)
 	traceSpan.setArg("archive_publication", !task.pkg.CacheHit)
+	traceSpan.setArg("ssa_instructions", task.ssaInstructions)
 	ctx.buildTrace.flowFromSSA(task.pkg.ID, traceSpan)
 	defer traceSpan.done()
 	return buildPackage(ctx, task, verbose, isolated)
@@ -262,15 +315,58 @@ func (ctx *context) executeIsolatedPackage(task *packageBuildTask, verbose bool)
 	if task.needsRuntimeSignals() {
 		task.pkg.setNeedRuntimeOrPyInit(task.pkg.LPkg.NeedRuntime, task.pkg.LPkg.NeedPyInit)
 	}
-	// Linking still consumes live package state: method tables, globals,
-	// funcinfo/PCLN, C exports, and DCE source modules. Cache hits still rebuild
-	// that frontend module in the isolated Program, skip backend emission, and
-	// keep the module alive until every link has completed.
+	// Cache hits still rebuild the frontend module in the isolated Program even
+	// though they skip backend emission. Linking needs a small metadata subset of
+	// that module in addition to the cached archive.
 	//
-	// LPkg retains the Program that owns its LLVM context. Ownership therefore
-	// moves to the coordinator on every success, not only when dead-code
-	// dropping is enabled.
+	// LPkg retains the Program that owns its LLVM context. Ownership moves to the
+	// caller on success: the native test DAG snapshots the metadata and disposes
+	// it at this package node; other build paths dispose it at their build-level
+	// ownership boundary.
 	return nil
+}
+
+// snapshotBackendPackage copies all link-time metadata out of one isolated
+// Program. It must run on the same package worker before that Program is
+// disposed; root link plans consume only the resulting Go-owned values.
+func (ctx *context) snapshotBackendPackage(pkg *aPackage) {
+	if pkg == nil || pkg.LPkg == nil {
+		return
+	}
+	lpkg := pkg.LPkg
+	snapshot := &packageLinkSnapshot{
+		needAbiInit:     lpkg.NeedAbiInit,
+		methodByIndex:   make(map[int]none, len(lpkg.MethodByIndex)),
+		methodByName:    make(map[string]none, len(lpkg.MethodByName)),
+		abiSymbols:      linkedModuleGlobals([]Package{pkg}),
+		abiTypes:        append([]llssa.AbiTypeInfo(nil), lpkg.Prog.AbiTypes()...),
+		hasLocalExports: hasLocalCExports(lpkg),
+	}
+	for index := range lpkg.MethodByIndex {
+		snapshot.methodByIndex[index] = none{}
+	}
+	for name := range lpkg.MethodByName {
+		snapshot.methodByName[name] = none{}
+	}
+	if ctx.buildConf.PCLNMode != PCLNNone {
+		snapshot.funcInfo = readFuncInfo(lpkg.Module())
+		snapshot.pcLineInfo = readPCLineInfo(lpkg.Module())
+	}
+	pkg.linkSnapshot = snapshot
+}
+
+// disposeBackendPackage releases an isolated package Program. Callers must
+// first snapshot metadata if later root link plans still need the package.
+func (ctx *context) disposeBackendPackage(pkg *aPackage) {
+	if pkg == nil || pkg.LPkg == nil {
+		return
+	}
+	prog := pkg.LPkg.Prog
+	if prog == nil || prog == ctx.prog {
+		return
+	}
+	pkg.LPkg = nil
+	prog.Dispose()
 }
 
 func (ctx *context) newBackendTask(session backendSession) *context {
