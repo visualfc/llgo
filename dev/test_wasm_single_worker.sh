@@ -89,6 +89,32 @@ run_llgo_test() {
 	grep -Fq "PASS" "${output}"
 }
 
+run_llgo_test_compile_only() {
+	local target="$1"
+	local name="$2"
+	local module
+	case "${target}" in
+	emscripten | emscripten-memory64 | wasm)
+		module="${work_dir}/${name}.mjs"
+		;;
+	*)
+		module="${work_dir}/${name}.wasm"
+		;;
+	esac
+
+	echo "testing public llgo test -c command for ${target}"
+	"${llgo_cmd}" test -target "${target}" -c -o "${module}" "${test_fixture}"
+	case "${module}" in
+	*.mjs)
+		test -s "${module}"
+		wasm-tools validate --features all "${module%.mjs}.wasm"
+		;;
+	*.wasm)
+		wasm-tools validate --features all "${module}"
+		;;
+	esac
+}
+
 # Canonical C-ecosystem profiles exercise the same scheduler semantics under
 # Emscripten wasm32, Emscripten Memory64/LP64, and WASI Preview 1.
 run_emscripten emscripten emscripten-runner.mjs "${scheduler_fixture}" "wasm scheduler ok" "scheduler-emscripten"
@@ -144,5 +170,8 @@ run_wasi wasip1 "${scheduler_fixture}" "wasm scheduler ok" "scheduler-legacy-was
 run_llgo_test emscripten "test-emscripten"
 run_llgo_test emscripten-memory64 "test-memory64"
 run_llgo_test wasi "test-wasi"
+run_llgo_test_compile_only emscripten "test-compile-only-emscripten"
+run_llgo_test_compile_only emscripten-memory64 "test-compile-only-memory64"
+run_llgo_test_compile_only wasi "test-compile-only-wasi"
 
 echo "single-worker WebAssembly scheduler and timer checks passed"

@@ -1622,16 +1622,146 @@ func (c *context) clangConfig() clang.Config {
 func (c *context) linker() *clang.Cmd {
 	config := c.clangConfig()
 	cmd := clang.NewLinker(config)
+	linkerProgram := config.Linker
 	if config.Linker == "" && config.CXX != "" {
 		// Native LLGo historically linked through clang++. Preserve that C++
 		// runtime behavior while allowing CC and CXX to be selected and probed
 		// independently. An explicit -extld keeps Go's precedence.
 		cmd = clang.NewCXXCompiler(config)
+		linkerProgram = config.CXX
+	} else if linkerProgram == "" {
+		linkerProgram = config.CC
 	}
 	cmd.Dir = c.commands.dir
 	cmd.Env = slices.Clone(c.commands.environ)
+	if c.shouldHideClangImplicitWasmOpt(linkerProgram) {
+		cmd.Env = withoutClangImplicitWasmOpt(cmd.Env, linkerProgram)
+	}
 	cmd.Verbose = c.shouldPrintCommands(false)
 	return cmd
+}
+
+func (c *context) shouldHideClangImplicitWasmOpt(linkerProgram string) bool {
+	return c != nil &&
+		c.buildConf != nil &&
+		c.buildConf.Goarch == "wasm" &&
+		c.crossCompile.WasmPostLink.Asyncify &&
+		c.crossCompile.Linker == "" &&
+		clangDriverMayRunWasmOpt(linkerProgram)
+}
+
+func clangDriverMayRunWasmOpt(program string) bool {
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(program)), ".exe")
+	return name == "clang" || name == "clang++" ||
+		strings.HasSuffix(name, "-clang") || strings.HasSuffix(name, "-clang++")
+}
+
+func withoutClangImplicitWasmOpt(environ []string, compiler string) []string {
+	pathValue := lookupEnvValue(environ, "PATH")
+	if pathValue == "" {
+		return environ
+	}
+	compilerDir := resolveToolDirInPath(compiler, pathValue)
+	parts := filepath.SplitList(pathValue)
+	filtered := make([]string, 0, len(parts))
+	changed := false
+	for _, dir := range parts {
+		if pathEntryHasExecutable(dir, "wasm-opt") && !samePathEntry(dir, compilerDir) {
+			changed = true
+			continue
+		}
+		filtered = append(filtered, dir)
+	}
+	if !changed {
+		return environ
+	}
+	return withEnv(environ, "PATH="+strings.Join(filtered, string(os.PathListSeparator)))
+}
+
+func lookupEnvValue(environ []string, name string) string {
+	for i := len(environ) - 1; i >= 0; i-- {
+		key, value, ok := strings.Cut(environ[i], "=")
+		if !ok {
+			continue
+		}
+		if key == name || runtime.GOOS == "windows" && strings.EqualFold(key, name) {
+			return value
+		}
+	}
+	return ""
+}
+
+func resolveToolDirInPath(tool, pathValue string) string {
+	if tool == "" {
+		tool = "clang++"
+	}
+	if filepath.IsAbs(tool) || strings.ContainsAny(tool, `/\`) {
+		return filepath.Dir(tool)
+	}
+	for _, dir := range filepath.SplitList(pathValue) {
+		if pathEntryHasExecutable(dir, tool) {
+			return dir
+		}
+	}
+	return ""
+}
+
+func pathEntryHasExecutable(dir, name string) bool {
+	if dir == "" {
+		dir = "."
+	}
+	for _, candidate := range executableNames(name) {
+		info, err := os.Stat(filepath.Join(dir, candidate))
+		if err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func executableNames(name string) []string {
+	if runtime.GOOS != "windows" || filepath.Ext(name) != "" {
+		return []string{name}
+	}
+	exts := filepath.SplitList(os.Getenv("PATHEXT"))
+	if len(exts) == 0 {
+		exts = []string{".COM", ".EXE", ".BAT", ".CMD"}
+	}
+	names := make([]string, 0, len(exts)+1)
+	names = append(names, name)
+	for _, ext := range exts {
+		if ext == "" {
+			continue
+		}
+		names = append(names, name+ext)
+		names = append(names, name+strings.ToLower(ext))
+	}
+	return names
+}
+
+func samePathEntry(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	a = canonicalPathEntry(a)
+	b = canonicalPathEntry(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func canonicalPathEntry(path string) string {
+	if path == "" {
+		path = "."
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	return filepath.Clean(path)
 }
 
 // shouldPrintCommands reports whether command tracing should be enabled.

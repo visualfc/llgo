@@ -1638,6 +1638,63 @@ func TestExecuteInitialPackageLinkCompileOnlyNamedTargetDoesNotExecute(t *testin
 	}
 }
 
+func TestWithoutClangImplicitWasmOptRemovesStandaloneBinaryenPath(t *testing.T) {
+	binaryenDir := t.TempDir()
+	clangDir := t.TempDir()
+	writeExecutable(t, filepath.Join(binaryenDir, "wasm-opt"))
+	writeExecutable(t, filepath.Join(clangDir, "clang++"))
+
+	got := withoutClangImplicitWasmOpt(
+		[]string{"PATH=" + strings.Join([]string{binaryenDir, clangDir}, string(os.PathListSeparator))},
+		"clang++",
+	)
+	pathValue := lookupEnvValue(got, "PATH")
+	if strings.Contains(pathValue, binaryenDir) {
+		t.Fatalf("PATH still exposes standalone wasm-opt directory: %q", pathValue)
+	}
+	if !strings.Contains(pathValue, clangDir) {
+		t.Fatalf("PATH dropped compiler directory: %q", pathValue)
+	}
+}
+
+func TestWithoutClangImplicitWasmOptKeepsCompilerDirectory(t *testing.T) {
+	toolDir := t.TempDir()
+	writeExecutable(t, filepath.Join(toolDir, "clang++"))
+	writeExecutable(t, filepath.Join(toolDir, "wasm-opt"))
+	environ := []string{"PATH=" + toolDir}
+
+	got := withoutClangImplicitWasmOpt(environ, "clang++")
+	if !slices.Equal(got, environ) {
+		t.Fatalf("withoutClangImplicitWasmOpt changed compiler directory env: got %q want %q", got, environ)
+	}
+}
+
+func TestShouldHideClangImplicitWasmOptOnlyForWasmPostLinkClang(t *testing.T) {
+	ctx := &context{
+		buildConf: &Config{Goarch: "wasm"},
+		crossCompile: crosscompile.Export{
+			WasmPostLink: crosscompile.WasmPostLink{Asyncify: true},
+		},
+	}
+	if !ctx.shouldHideClangImplicitWasmOpt("clang++") {
+		t.Fatal("wasm Asyncify clang link did not hide clang's implicit wasm-opt")
+	}
+	if ctx.shouldHideClangImplicitWasmOpt("emcc") {
+		t.Fatal("Emscripten driver should keep its wasm-opt-visible environment")
+	}
+	ctx.buildConf.Goarch = "arm"
+	if ctx.shouldHideClangImplicitWasmOpt("clang++") {
+		t.Fatal("non-wasm clang link hid wasm-opt")
+	}
+}
+
+func writeExecutable(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTestMultiplePackagesWithOutputFile(t *testing.T) {
 	// Test that -o flag errors with multiple test packages
 	cfg := &Config{
