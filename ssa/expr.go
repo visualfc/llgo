@@ -1386,9 +1386,9 @@ func (b Builder) MakeClosure(fn Expr, bindings []Expr) Expr {
 			data = b.Alloc(tctx, true).impl
 		} else {
 			data = b.aggregateAllocU(tctx, llvmFields(bindings, rawCtx, b)...)
-			// Non-zero closure environments either allocate successfully or the
-			// runtime panics. Preserve that contract at this call site so LLVM can
-			// keep the code/data pair correlated while optimizing dynamic calls.
+			// A non-zero closure environment allocation either succeeds or does not
+			// return. Mark the return value (attribute index 0) non-null so
+			// LLVM can eliminate the impossible no-environment call edge.
 			data.AddCallSiteAttribute(0, prog.ctx.CreateEnumAttribute(llvm.AttributeKindID("nonnull"), 0))
 		}
 	} else if len(bindings) != 0 {
