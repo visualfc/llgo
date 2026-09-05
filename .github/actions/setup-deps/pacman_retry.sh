@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# LLGO_PACMAN_MAX_ATTEMPTS: total transaction attempts (default: 3).
+# LLGO_PACMAN_RETRY_DELAY_SECONDS: delay between attempts (default: 5).
+# Retries intentionally accept any pacman failure, including permanent errors;
+# the bounded attempt count limits the delay before reporting exhaustion.
+
 pacman_command() {
 	command pacman "$@"
 }
