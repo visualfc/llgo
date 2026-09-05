@@ -107,26 +107,23 @@ runs:
       uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}\llgo-windows-support\22.1.8\${{ inputs.windows-arch }}
-        key: llgo-windows-support-22.1.8-${{ inputs.windows-arch }}-${{ inputs.windows-abi }}-16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c-76f44ef1ba6eeb5a65904e9500f042f588fade49952778ce48f0374daa934396-b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35-v1
+        key: llgo-windows-support-22.1.8-${{ inputs.windows-arch }}-${{ inputs.windows-abi }}-16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c-76f44ef1ba6eeb5a65904e9500f042f588fade49952778ce48f0374daa934396-c68b26561883d5c7f33307aeb2b9b6c188eb705808b3f780dfce0be49f4e835d-native-lldb-v2
 
     - name: Install Windows LLDB and target builtins
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && (inputs.windows-abi == 'msvc' || inputs.windows-arch != 'amd64') && steps.windows_target_llvm_cache.outputs.cache-hit != 'true'
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-arch != '386' && (inputs.windows-abi == 'msvc' || inputs.windows-arch != 'amd64') && steps.windows_target_llvm_cache.outputs.cache-hit != 'true'
       shell: pwsh
       env:
         LLVM_VERSION: "22.1.8"
         LLVM_INSTALLER_ARCH: ${{ inputs.windows-arch == 'arm64' && 'woa64' || 'win64' }}
         LLVM_INSTALLER_SHA256: ${{ inputs.windows-arch == 'arm64' && '76f44ef1ba6eeb5a65904e9500f042f588fade49952778ce48f0374daa934396' || '16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c' }}
         LLVM_BUILTINS_ARCH: ${{ inputs.windows-arch == 'arm64' && 'aarch64' || inputs.windows-arch == 'amd64' && 'x86_64' || 'i386' }}
-        LLVM_MINGW_VERSION: "20260616"
-        LLVM_MINGW_SHA256: b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35
       run: |
         $ErrorActionPreference = "Stop"
 
         # The upstream x64 full-target archive supplies the host LLVM tools but
         # omits LLDB and only carries x64 compiler-rt. Official LLVM installers
-        # supply x64/ARM64 LLDB and builtins. LLVM 22 has no Win32 installer, so
-        # the 386 MSVC lane takes LLVM 22.1.8 i386 builtins from the pinned
-        # llvm-mingw release and qualifies the official x64 LLDB under WoW64.
+        # supply x64/ARM64 LLDB and builtins. The separate Win32 step below
+        # uses llvm-mingw's native i686 LLDB and bundled Python.
         $installerName = "LLVM-$env:LLVM_VERSION-$env:LLVM_INSTALLER_ARCH.exe"
         $installer = Join-Path $env:RUNNER_TEMP $installerName
         $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$installerName"
@@ -152,9 +149,7 @@ runs:
           "bin\lldb-server.exe",
           "lib\site-packages\lldb\*"
         )
-        if ("${{ inputs.windows-arch }}" -ne "386") {
-          $extractPaths += $builtinsRelative
-        }
+        $extractPaths += $builtinsRelative
         & $sevenZip x -y "-o$extractRoot" $installer @extractPaths
         if ($LASTEXITCODE -ne 0) {
           throw "Extracting LLVM ${{ inputs.windows-arch }} support failed with exit code $LASTEXITCODE"
@@ -163,23 +158,6 @@ runs:
         New-Item -ItemType Directory -Force $cacheRoot | Out-Null
         if ("${{ inputs.windows-arch }}" -ne "amd64" -and "${{ inputs.windows-abi }}" -eq "msvc") {
           $source = Join-Path $extractRoot $builtinsRelative
-          if ("${{ inputs.windows-arch }}" -eq "386") {
-            $llvmMingwAsset = "llvm-mingw-$env:LLVM_MINGW_VERSION-ucrt-x86_64.zip"
-            $llvmMingwArchive = Join-Path $env:RUNNER_TEMP $llvmMingwAsset
-            $llvmMingwURL = "https://github.com/mstorsjo/llvm-mingw/releases/download/$env:LLVM_MINGW_VERSION/$llvmMingwAsset"
-            & curl.exe --fail --location --retry 5 --retry-all-errors --output $llvmMingwArchive $llvmMingwURL
-            if ($LASTEXITCODE -ne 0) {
-              throw "Downloading the LLVM 22 i386 builtins failed with exit code $LASTEXITCODE"
-            }
-            $llvmMingwActual = (Get-FileHash -Algorithm SHA256 $llvmMingwArchive).Hash
-            if (-not $llvmMingwActual.Equals($env:LLVM_MINGW_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
-              throw "llvm-mingw SHA-256 is $llvmMingwActual, want $env:LLVM_MINGW_SHA256"
-            }
-            $llvmMingwRoot = Join-Path $env:RUNNER_TEMP "llgo-llvm-mingw-builtins"
-            Expand-Archive -LiteralPath $llvmMingwArchive -DestinationPath $llvmMingwRoot
-            $source = Get-ChildItem -LiteralPath $llvmMingwRoot -Recurse -File -Filter "libclang_rt.builtins-i386.a" |
-              Select-Object -First 1 -ExpandProperty FullName
-          }
           if (-not $source -or -not (Test-Path $source)) {
             throw "The LLVM ${{ inputs.windows-arch }} compiler-rt builtins were not found"
           }
@@ -196,6 +174,45 @@ runs:
         )) {
           if (-not (Test-Path $required)) {
             throw "The native Windows ${{ inputs.windows-arch }} LLDB installation is incomplete: $required"
+          }
+        }
+
+    - name: Install native Win32 LLDB and target builtins
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-arch == '386' && steps.windows_target_llvm_cache.outputs.cache-hit != 'true'
+      shell: pwsh
+      env:
+        LLVM_MINGW_VERSION: "20260616"
+        LLVM_MINGW_SHA256: c68b26561883d5c7f33307aeb2b9b6c188eb705808b3f780dfce0be49f4e835d
+      run: |
+        $ErrorActionPreference = "Stop"
+        $asset = "llvm-mingw-$env:LLVM_MINGW_VERSION-ucrt-i686.zip"
+        $archive = Join-Path $env:RUNNER_TEMP $asset
+        $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/$env:LLVM_MINGW_VERSION/$asset"
+        & curl.exe --fail --location --retry 5 --retry-all-errors --output $archive $url
+        if ($LASTEXITCODE -ne 0) {
+          throw "Downloading native Win32 LLDB failed with exit code $LASTEXITCODE"
+        }
+        $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash
+        if (-not $actual.Equals($env:LLVM_MINGW_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
+          throw "llvm-mingw SHA-256 is $actual, want $env:LLVM_MINGW_SHA256"
+        }
+        $extractRoot = Join-Path $env:RUNNER_TEMP "llgo-win32-lldb-extract"
+        Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot
+        $sourceRoot = Join-Path $extractRoot "llvm-mingw-$env:LLVM_MINGW_VERSION-ucrt-i686"
+        $cacheRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-windows-support\22.1.8\386"
+        $lldbRoot = Join-Path $cacheRoot "lldb"
+        New-Item -ItemType Directory -Force $lldbRoot | Out-Null
+        # Preserve the debugger's DLLs and matching Python layout without
+        # adding this i686 toolchain to the compiler or target runtime PATH.
+        Copy-Item -LiteralPath (Join-Path $sourceRoot "bin") -Destination $lldbRoot -Recurse
+        Copy-Item -LiteralPath (Join-Path $sourceRoot "python") -Destination $lldbRoot -Recurse
+        if ("${{ inputs.windows-abi }}" -eq "msvc") {
+          Copy-Item -LiteralPath (Join-Path $sourceRoot "lib\clang\22\lib\windows\libclang_rt.builtins-i386.a") `
+            -Destination (Join-Path $cacheRoot "clang_rt.builtins-i386.lib")
+        }
+        foreach ($required in @("bin\lldb.exe", "bin\liblldb.dll", "python\bin\python3.exe", "python\lib\python3.14\site-packages\lldb\__init__.py")) {
+          if (-not (Test-Path (Join-Path $lldbRoot $required))) {
+            throw "The native Win32 LLDB installation is incomplete: $required"
           }
         }
 

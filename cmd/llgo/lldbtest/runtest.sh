@@ -14,7 +14,6 @@ package_path="$DEFAULT_PACKAGE_PATH"
 verbose=False
 interactive=False
 plugin_path=None
-load_only=False
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -29,10 +28,6 @@ while [[ $# -gt 0 ]]; do
         -p|--plugin)
             plugin_path="\"$2\""
             shift 2
-            ;;
-        --load-only)
-            load_only=True
-            shift
             ;;
         *)
             package_path="$1"
@@ -93,10 +88,8 @@ run_test_suite() {
 
 # Keep the mixed Go/C stack fixture separate: adding foreign calls to the large
 # variable-formatting fixture can change otherwise unrelated DWARF locations.
-if [[ "$load_only" != True ]]; then
-    run_test_suite './debug.out' "['main.go']"
-    run_test_suite './debug-mixed.out' "['mixed/mixed.go', 'mixed/_wrap/mixed.c']" fault
-fi
+run_test_suite './debug.out' "['main.go']"
+run_test_suite './debug-mixed.out' "['mixed/mixed.go', 'mixed/_wrap/mixed.c']" fault
 
 llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
     -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.schema_version == 1 and info.runtime_layout_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown") or os._exit(1)' \

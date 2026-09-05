@@ -283,14 +283,7 @@ jobs:
           $env:PYTHONIOENCODING = "utf-8"
           $env:PATH = "$env:LLGO_WINDOWS_LLDB_PYTHON_HOME;$env:PATH"
           Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
-          if ("${{ matrix.windows_arch }}" -eq "386") {
-            # LLVM 22 does not publish a Win32 LLDB. Its x64 LLDB can load and
-            # inspect 32-bit COFF/DWARF under WoW64, but cannot reliably stop
-            # the 32-bit inferior at source breakpoints.
-            bash cmd/llgo/lldbtest/runtest.sh --load-only -v
-          } else {
-            bash cmd/llgo/lldbtest/runtest.sh -v
-          }
+          bash cmd/llgo/lldbtest/runtest.sh -v
           if ($LASTEXITCODE -ne 0) {
             throw "LLDB integration tests failed with exit code $LASTEXITCODE"
           }
@@ -314,11 +307,7 @@ jobs:
           $env:PYTHONIOENCODING = "utf-8"
           $env:PATH = "$env:LLGO_WINDOWS_LLDB_PYTHON_HOME;$env:PATH"
           Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
-          if ("${{ matrix.windows_arch }}" -eq "386") {
-            bash cmd/llgo/lldbtest/runtest.sh --load-only -v
-          } else {
-            bash cmd/llgo/lldbtest/runtest.sh -v
-          }
+          bash cmd/llgo/lldbtest/runtest.sh -v
           if ($LASTEXITCODE -ne 0) {
             throw "LLDB integration tests failed with exit code $LASTEXITCODE"
           }
