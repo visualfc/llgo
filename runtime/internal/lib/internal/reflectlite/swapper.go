@@ -43,7 +43,7 @@ func Swapper(slice any) func(i, j int) {
 			ps := *(*[]unsafe.Pointer)(v.ptr)
 			return func(i, j int) { ps[i], ps[j] = ps[j], ps[i] }
 		}
-		if typ.Kind() == String {
+		if Kind(typ.Kind()) == String {
 			ss := *(*[]string)(v.ptr)
 			return func(i, j int) { ss[i], ss[j] = ss[j], ss[i] }
 		}
