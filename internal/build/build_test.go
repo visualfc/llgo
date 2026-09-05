@@ -1484,6 +1484,86 @@ func TestTestOutputFileLogic(t *testing.T) {
 	}
 }
 
+func TestNamedTargetCompileOnlyUsesEmulatorPath(t *testing.T) {
+	tests := []struct {
+		name string
+		conf *Config
+		want bool
+	}{
+		{
+			name: "normal target run uses device path",
+			conf: &Config{Mode: ModeRun},
+		},
+		{
+			name: "test run without -c uses device path",
+			conf: &Config{Mode: ModeTest},
+		},
+		{
+			name: "explicit emulator uses emulator path",
+			conf: &Config{Mode: ModeRun, Emulator: true},
+			want: true,
+		},
+		{
+			name: "compile only test uses non executing emulator path",
+			conf: &Config{Mode: ModeTest, CompileOnly: true},
+			want: true,
+		},
+		{
+			name: "compile only is ignored outside test mode",
+			conf: &Config{Mode: ModeBuild, CompileOnly: true},
+		},
+	}
+	for _, test := range tests {
+		if got := namedTargetUsesEmulatorPath(test.conf); got != test.want {
+			t.Errorf("%s: namedTargetUsesEmulatorPath() = %v, want %v", test.name, got, test.want)
+		}
+	}
+}
+
+func TestExecuteInitialPackageLinkCompileOnlyNamedTargetDoesNotExecute(t *testing.T) {
+	// Exercise the production dispatch after a successful link. A named target
+	// without -emulator normally enters the flash/serial-monitor path; -c must
+	// instead stop with the linked artifact in place.
+	t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
+	output := filepath.Join(t.TempDir(), "wasm-test.mjs")
+	conf := &Config{
+		Mode:        ModeTest,
+		Target:      "emscripten",
+		CompileOnly: true,
+		BuildMode:   BuildModeExe,
+		Goos:        runtime.GOOS,
+		Goarch:      runtime.GOARCH,
+		PCLNMode:    PCLNNone,
+	}
+	ctx := &context{
+		mode:      ModeTest,
+		buildConf: conf,
+		crossCompile: crosscompile.Export{
+			CC: os.Args[0],
+		},
+	}
+	link := &initialPackageLink{
+		pkg: &packages.Package{
+			Dir:     t.TempDir(),
+			PkgPath: "example.com/wasm-test.test",
+		},
+		conf:    conf,
+		outFmts: &OutFmtDetails{Out: output},
+		plan:    &mainLinkPlan{outputPath: output},
+	}
+
+	program, err := executeInitialPackageLink(ctx, link, false, false)
+	if err != nil {
+		t.Fatalf("compile-only named target tried to execute: %v", err)
+	}
+	if program != nil {
+		t.Fatalf("compile-only named target returned runnable program: %+v", program)
+	}
+	if data, err := os.ReadFile(output); err != nil || string(data) != "linked" {
+		t.Fatalf("linked output = %q, %v", data, err)
+	}
+}
+
 func TestTestMultiplePackagesWithOutputFile(t *testing.T) {
 	// Test that -o flag errors with multiple test packages
 	cfg := &Config{
