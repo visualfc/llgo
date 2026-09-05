@@ -2,6 +2,14 @@
 
 set -e
 
+# Pin the architecture-specific images from the same Debian 12 index
+# (sha256:6ebd97fa83deb272194a2cf015b3d26a4d538e9ad3a7a79d544c8af5b0a01443).
+# Refresh the index and child digests with `docker buildx imagetools inspect debian:12`.
+# Docker's classic image store cannot retain two platforms under one index
+# digest. The GCC 12 paths in .goreleaser.yaml must match these sysroots.
+LINUX_AMD64_IMAGE=debian:12@sha256:2f65600e1252c5649d2213e1d1ea4d74253d26514dc6530102a875e429245929
+LINUX_ARM64_IMAGE=debian:12@sha256:5eac3978974cfa26a880057766c683e55c5763355d30a8beecbd263e0e1621d9
+
 TMPDIR="$(mktemp -d)"
 export TMPDIR
 trap 'rm -rf "${TMPDIR}"' EXIT
@@ -14,10 +22,17 @@ POPULATE_LINUX_SYSROOT_SCRIPT="$(mktemp)"
 cat > "${POPULATE_LINUX_SYSROOT_SCRIPT}" << EOF
 #!/bin/bash
 
+set -e
+
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get update
-apt-get install -y build-essential zlib1g-dev rsync
+apt-get -o Acquire::Retries=3 update
+apt-get -o Acquire::Retries=3 install -y build-essential zlib1g-dev rsync
+dpkg-query -W libc6 libc6-dev gcc g++ libstdc++6
+test -f /usr/include/c++/12/string
+GCC_TRIPLE="\$(gcc -dumpmachine)"
+test -d "/usr/include/\${GCC_TRIPLE}/c++/12"
+test -d "/usr/lib/gcc/\${GCC_TRIPLE}/12"
 
 error() {
 	echo -e "\$1" >&2
@@ -120,7 +135,7 @@ do-sync() {
 	echo "\${args[@]}"
 	rsync "\${args[@]}"
 
-	exit \$?
+	return \$?
 }
 
 do-sync / /sysroot/
@@ -130,16 +145,15 @@ chmod +x "${POPULATE_LINUX_SYSROOT_SCRIPT}"
 populate_linux_sysroot() {
 	local ARCH="$1"
 	local PREFIX="$2"
+	local IMAGE="$3"
 	docker run \
 		--rm \
 		--platform "linux/${ARCH}" \
 		-v "$(pwd)/${PREFIX}":/sysroot \
-		-v "${POPULATE_LINUX_SYSROOT_SCRIPT}":/populate_linux_sysroot.sh \
-		debian:bullseye \
+		-v "${POPULATE_LINUX_SYSROOT_SCRIPT}":/populate_linux_sysroot.sh:ro \
+		"${IMAGE}" \
 		/populate_linux_sysroot.sh
 }
-# Docker's classic image store keeps only one platform for a tag. Pulling the
-# same tag for two platforms concurrently can replace the image while the other
-# container is starting. Populate the sysroots serially to keep the tag stable.
-populate_linux_sysroot amd64 "${LINUX_AMD64_PREFIX}"
-populate_linux_sysroot arm64 "${LINUX_ARM64_PREFIX}"
+# Populate serially to bound the memory and disk pressure of extraction.
+populate_linux_sysroot amd64 "${LINUX_AMD64_PREFIX}" "${LINUX_AMD64_IMAGE}"
+populate_linux_sysroot arm64 "${LINUX_ARM64_PREFIX}" "${LINUX_ARM64_IMAGE}"
