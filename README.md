@@ -339,8 +339,8 @@ brew link --force --overwrite llvm@22 lld@22 libffi
 ```
 
 Homebrew's versioned LLVM 22 formula does not ship LLDB and there is no
-`lldb@22` formula. LLGo therefore uses the Xcode/Command Line Tools debugger
-reported by `xcrun --find lldb` on both Apple Silicon and Intel macOS.
+`lldb@22` formula. LLGo checks common Homebrew and system locations, then
+`lldb` on `PATH`; use `LLGO_LLDB` or `llgo lldb -lldb` to select one explicitly.
 
 ### on Linux
 

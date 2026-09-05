@@ -62,13 +62,13 @@ func compiledLibraryCacheKey(compilerKey string, flagGroups ...[]string) string 
 	return fmt.Sprintf("%s-%x", compilerKey, digest[:6])
 }
 
-func compiledLibraryDir(baseDir string, config compile.LibConfig, compilerKey string) string {
-	return filepath.Join(baseDir, config.String()+"-"+compilerKey)
+func compiledLibraryDir(baseDir string, config compile.LibConfig, compiledLibraryKey string) string {
+	return filepath.Join(baseDir, config.String()+"-"+compiledLibraryKey)
 }
 
 // getLibcCompileConfigByName retrieves libc compilation configuration by name
 // Returns the actual libc output dir, compilation config and err
-func getLibcCompileConfigByName(baseDir, libcName, target, mcpu, compilerKey string) (outputDir string, cfg compile.CompileConfig, err error) {
+func getLibcCompileConfigByName(baseDir, libcName, target, mcpu, compiledLibraryKey string) (outputDir string, cfg compile.CompileConfig, err error) {
 	if libcName == "" {
 		err = fmt.Errorf("libc name cannot be empty")
 		return
@@ -90,7 +90,7 @@ func getLibcCompileConfigByName(baseDir, libcName, target, mcpu, compilerKey str
 		err = fmt.Errorf("unsupported libc: %s", libcName)
 		return
 	}
-	outputDir = compiledLibraryDir(baseDir, config, compilerKey)
+	outputDir = compiledLibraryDir(baseDir, config, compiledLibraryKey)
 	if needSkipDownload {
 		return outputDir, compileConfig, err
 	}
@@ -104,7 +104,7 @@ func getLibcCompileConfigByName(baseDir, libcName, target, mcpu, compilerKey str
 
 // getRTCompileConfigByName retrieves runtime library compilation configuration by name
 // Returns the actual libc output dir, compilation config and err
-func getRTCompileConfigByName(baseDir, rtName, target, compilerKey string) (outputDir string, cfg compile.CompileConfig, err error) {
+func getRTCompileConfigByName(baseDir, rtName, target, compiledLibraryKey string) (outputDir string, cfg compile.CompileConfig, err error) {
 	if rtName == "" {
 		err = fmt.Errorf("rt name cannot be empty")
 		return
@@ -122,7 +122,7 @@ func getRTCompileConfigByName(baseDir, rtName, target, compilerKey string) (outp
 		err = fmt.Errorf("unsupported rt: %s", rtName)
 		return
 	}
-	outputDir = compiledLibraryDir(baseDir, config, compilerKey)
+	outputDir = compiledLibraryDir(baseDir, config, compiledLibraryKey)
 	if needSkipDownload {
 		return outputDir, compileConfig, err
 	}
