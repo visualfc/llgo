@@ -93,10 +93,11 @@ func TestAfterFuncStop(t *testing.T) {
 	}
 }
 
-// Reset on an active AfterFunc should reschedule the callback.
+// Reset reschedules an AfterFunc and reports whether it was active or expired.
 func TestAfterFuncReset(t *testing.T) {
+	const callbackTimeout = 5 * time.Second
 	var count atomic.Int32
-	fired := make(chan int32, 2)
+	fired := make(chan int32, 2) // Buffered for both expected callbacks.
 	tmr := time.AfterFunc(time.Hour, func() {
 		fired <- count.Add(1)
 	})
@@ -111,10 +112,12 @@ func TestAfterFuncReset(t *testing.T) {
 		if got != 1 {
 			t.Fatalf("first callback count = %d, want 1", got)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(callbackTimeout):
 		t.Fatal("AfterFunc did not fire after active Reset")
 	}
 
+	// The timer becomes inactive before its callback starts. Receiving fired
+	// therefore establishes that this Reset observes an expired timer.
 	if tmr.Reset(30 * time.Millisecond) {
 		t.Fatal("Reset reported an expired AfterFunc as active")
 	}
@@ -123,7 +126,7 @@ func TestAfterFuncReset(t *testing.T) {
 		if got != 2 {
 			t.Fatalf("second callback count = %d, want 2", got)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(callbackTimeout):
 		t.Fatal("AfterFunc did not fire after expired Reset")
 	}
 }
