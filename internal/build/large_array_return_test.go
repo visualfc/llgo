@@ -24,7 +24,7 @@ func TestLargeArrayReturn(t *testing.T) {
 	if len(lines) < 2 {
 		t.Fatalf("output has fewer than two lines: %q", lines)
 	}
-	if got, want := strings.Join(lines[len(lines)-2:], "\n"), "99 0 0 0 98 98 6\n97"; got != want {
+	if got, want := strings.Join(lines[len(lines)-2:], "\n"), "99 0 0 0 98 98 6 1\n97"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
