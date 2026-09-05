@@ -20,7 +20,7 @@ package main
 // CHECK: [[DEFER_FRAME:%[0-9]+]] = call ptr @"{{.*}}AllocU"(i64 48)
 // CHECK: store ptr [[PREVIOUS_DEFER]], ptr %{{[0-9]+}}
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[DEFER_FRAME]])
-// CHECK: [[DEFER_HEAD:%[0-9]+]] = getelementptr inbounds %"{{.*}}Defer", ptr [[DEFER_FRAME]], i32 0, i32 5
+// CHECK: [[DEFER_HEAD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[DEFER_FRAME]], i32 0, i32 5
 // CHECK: [[OUTER_LABEL:%[0-9]+]] = call %"{{.*}}String" @main.label1(%"{{.*}}String" { ptr @[[EXIT_OUTER]], i64 10 }, i64 [[OUTER_I:%[0-9]+]])
 // CHECK: store { ptr, ptr } [[RECORD_FN]], ptr %{{[0-9]+}}
 // CHECK: store %"{{.*}}String" [[OUTER_LABEL]], ptr %{{[0-9]+}}

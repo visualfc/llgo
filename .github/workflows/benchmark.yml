@@ -74,6 +74,7 @@ jobs:
     env:
       GOMAXPROCS: "2"
       LLGO_ROOT: ${{ github.workspace }}
+      GOFLAGS: -tags=llvm22
     steps:
       - uses: actions/checkout@v7
         with:
@@ -112,7 +113,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/setup-deps
         with:
-          llvm-version: 19
+          llvm-version: 22
           windows-abi: ${{ matrix.windows_abi || 'msvc' }}
           windows-arch: ${{ matrix.windows_arch || 'amd64' }}
 
@@ -138,7 +139,7 @@ jobs:
           }
 
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            build_host_compiler .benchmark/base-source .benchmark/base-llgo.exe
+            build_host_compiler .benchmark/base-source .benchmark/base-llgo.exe || true
             build_host_compiler .benchmark/head-source .benchmark/llgo.exe
           else
             build_host_compiler . .benchmark/llgo.exe
@@ -259,6 +260,7 @@ jobs:
     env:
       GOMAXPROCS: "2"
       LLGO_ROOT: ${{ github.workspace }}
+      GOFLAGS: -tags=llvm22
     steps:
       - uses: actions/checkout@v7
         with:
@@ -309,7 +311,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/setup-deps
         with:
-          llvm-version: 19
+          llvm-version: 22
 
       - name: Set up Emscripten
         uses: emscripten-core/setup-emsdk@v15

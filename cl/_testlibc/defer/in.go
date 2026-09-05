@@ -34,8 +34,8 @@ func printf(format *int8, __llgo_va_list ...any) int32
 // CHECK: [[FRAME:%.*]] = call ptr @"{{.*}}AllocU"(i64 48)
 // CHECK: store ptr [[PREV_DEFER]], ptr {{%.*}}
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[FRAME]])
-// CHECK: [[FLAGS:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 1
-// CHECK: [[HEAD:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
+// CHECK: [[FLAGS:%.*]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 1
+// CHECK: [[HEAD:%.*]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
 // True branch: copy the Go string to stable C storage and keep format+argument.
 // CHECK: [[CSTR_BUF:%.*]] = alloca i8, i64 6
 // CHECK-NEXT: [[CSTR:%.*]] = call ptr @"{{.*}}CStrCopy"(ptr [[CSTR_BUF]], %"{{.*}}String" { ptr [[HELLO]], i64 5 })

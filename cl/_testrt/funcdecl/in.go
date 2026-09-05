@@ -25,9 +25,9 @@ import (
 // CHECK-LABEL: define ptr @main.closurePtr(%"{{.*}}runtime.eface" %0){{.*}} {
 // CHECK: %[[EFACE_BOX:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
 // CHECK-NEXT: store %"{{.*}}runtime.eface" %0, ptr %[[EFACE_BOX]]
-// CHECK: %[[CLOSURE_SLOT:[0-9]+]] = getelementptr inbounds %main.rtype, ptr %[[EFACE_BOX]], i32 0, i32 1
+// CHECK: %[[CLOSURE_SLOT:[0-9]+]] = getelementptr inbounds nuw %main.rtype, ptr %[[EFACE_BOX]], i32 0, i32 1
 // CHECK-NEXT: %[[CLOSURE:[0-9]+]] = load ptr, ptr %[[CLOSURE_SLOT]]
-// CHECK-NEXT: %[[CODE_SLOT:[0-9]+]] = getelementptr inbounds { ptr, ptr }, ptr %[[CLOSURE]], i32 0, i32 0
+// CHECK-NEXT: %[[CODE_SLOT:[0-9]+]] = getelementptr inbounds nuw { ptr, ptr }, ptr %[[CLOSURE]], i32 0, i32 0
 // CHECK-NEXT: %[[CODE:[0-9]+]] = load ptr, ptr %[[CODE_SLOT]]
 // CHECK-NEXT: ret ptr %[[CODE]]
 // CHECK-LABEL: define void @main.demo(){{.*}} {

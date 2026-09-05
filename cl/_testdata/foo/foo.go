@@ -9,7 +9,7 @@ package foo
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP0:[0-9]+]] = alloca { i64 }, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP0]], i8 0, i64 8, i1 false)
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds { i64 }, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw { i64 }, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   store i64 1, ptr %[[TMP1]], align 8
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = load { i64 }, ptr %[[TMP0]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
@@ -26,7 +26,7 @@ func Bar() any {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP0:[0-9]+]] = alloca { i64 }, align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP0]], i8 0, i64 8, i1 false)
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds { i64 }, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw { i64 }, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   store i64 1, ptr %[[TMP1]], align 8
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = load { i64 }, ptr %[[TMP0]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
@@ -50,7 +50,7 @@ type Foo struct {
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = alloca %"{{.*}}/cl/_testdata/foo.Foo", align 8
 // CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP1]], i8 0, i64 16, i1 false)
 // CHECK-NEXT:   store %"{{.*}}/cl/_testdata/foo.Foo" %[[TMP0]], ptr %[[TMP1]], align 8
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/foo.Foo", ptr %[[TMP1]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/foo.Foo", ptr %[[TMP1]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = load ptr, ptr %[[TMP2]], align 8
 // CHECK-NEXT:   ret ptr %[[TMP3]]
 // CHECK-NEXT: }

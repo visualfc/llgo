@@ -18,17 +18,17 @@ func main() {
 	// CHECK: [[OUTER_DEFER:%[0-9]+]] = call ptr @"{{.*}}.GetThreadDefer"()
 	// CHECK-NEXT: [[DEFER_JMPBUF:%[0-9]+]] = alloca i8, i64 {{[0-9]+}}, align 1
 	// CHECK-NEXT: [[DEFER_FRAME:%[0-9]+]] = call ptr @"{{.*}}.AllocU"(i64 48)
-	// CHECK: [[FRAME_BUF_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 0
+	// CHECK: [[FRAME_BUF_FIELD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 0
 	// CHECK-NEXT: store ptr [[DEFER_JMPBUF]], ptr [[FRAME_BUF_FIELD]]
-	// CHECK: [[FRAME_PREV_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 2
+	// CHECK: [[FRAME_PREV_FIELD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 2
 	// CHECK-NEXT: store ptr [[OUTER_DEFER]], ptr [[FRAME_PREV_FIELD]]
-	// CHECK: [[FRAME_RESUME_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 3
+	// CHECK: [[FRAME_RESUME_FIELD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 3
 	// CHECK-NEXT: store ptr blockaddress(@main.main, %[[OUTER_RESUME:[A-Za-z0-9_]+]]), ptr [[FRAME_RESUME_FIELD]]
 	// CHECK-NEXT: call void @"{{.*}}.SetThreadDefer"(ptr [[DEFER_FRAME]])
-	// CHECK: [[DEFER_STATE_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 1
-	// CHECK-NEXT: [[DEFER_RESUME_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 3
-	// CHECK-NEXT: [[DEFER_RETHROW_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 4
-	// CHECK-NEXT: [[DEFER_HEAD_FIELD:%[0-9]+]] = getelementptr inbounds %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 5
+	// CHECK: [[DEFER_STATE_FIELD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 1
+	// CHECK-NEXT: [[DEFER_RESUME_FIELD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 3
+	// CHECK-NEXT: [[DEFER_RETHROW_FIELD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 4
+	// CHECK-NEXT: [[DEFER_HEAD_FIELD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}.Defer", ptr [[DEFER_FRAME]], i32 0, i32 5
 	// DARWIN-ARM64: [[SETJMP_RESULT:%[0-9]+]] = call i32 @sigsetjmp(ptr [[DEFER_JMPBUF]], i32 0)
 	// LINUX-AMD64: [[SETJMP_RESULT:%[0-9]+]] = call i32 @__sigsetjmp(ptr [[DEFER_JMPBUF]], i32 0)
 	// WINDOWS-ARM64: [[SETJMP_RESULT:%[0-9]+]] = call i32 @llgo_setjmp(ptr [[DEFER_JMPBUF]])
@@ -43,15 +43,15 @@ func main() {
 	// Plain println defers are registered as linked nodes.  Their state and
 	// payload identify A as the outer defer and B as the inner one.
 	// CHECK: [[DEFER_A_NODE:%[0-9]+]] = call ptr @"{{.*}}.AllocU"(i64 32)
-	// CHECK: [[DEFER_A_STATE:%[0-9]+]] = getelementptr inbounds { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_A_NODE]], i32 0, i32 1
+	// CHECK: [[DEFER_A_STATE:%[0-9]+]] = getelementptr inbounds nuw { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_A_NODE]], i32 0, i32 1
 	// CHECK-NEXT: store i64 0, ptr [[DEFER_A_STATE]]
-	// CHECK-NEXT: [[DEFER_A_ARG:%[0-9]+]] = getelementptr inbounds { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_A_NODE]], i32 0, i32 2
+	// CHECK-NEXT: [[DEFER_A_ARG:%[0-9]+]] = getelementptr inbounds nuw { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_A_NODE]], i32 0, i32 2
 	// CHECK-NEXT: store %"{{.*}}.String" { ptr [[DEFER_A]], i64 1 }, ptr [[DEFER_A_ARG]]
 	// CHECK-NEXT: store ptr [[DEFER_A_NODE]], ptr [[DEFER_HEAD_FIELD]]
 	// CHECK: [[DEFER_B_NODE:%[0-9]+]] = call ptr @"{{.*}}.AllocU"(i64 32)
-	// CHECK: [[DEFER_B_STATE:%[0-9]+]] = getelementptr inbounds { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_B_NODE]], i32 0, i32 1
+	// CHECK: [[DEFER_B_STATE:%[0-9]+]] = getelementptr inbounds nuw { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_B_NODE]], i32 0, i32 1
 	// CHECK-NEXT: store i64 3, ptr [[DEFER_B_STATE]]
-	// CHECK-NEXT: [[DEFER_B_ARG:%[0-9]+]] = getelementptr inbounds { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_B_NODE]], i32 0, i32 2
+	// CHECK-NEXT: [[DEFER_B_ARG:%[0-9]+]] = getelementptr inbounds nuw { ptr, i64, %"{{.*}}.String" }, ptr [[DEFER_B_NODE]], i32 0, i32 2
 	// CHECK-NEXT: store %"{{.*}}.String" { ptr [[DEFER_B]], i64 1 }, ptr [[DEFER_B_ARG]]
 	// CHECK-NEXT: store ptr [[DEFER_B_NODE]], ptr [[DEFER_HEAD_FIELD]]
 	// CHECK: [[MAIN_PANIC_BOX:%[0-9]+]] = call ptr @"{{.*}}.AllocU"(i64 16)

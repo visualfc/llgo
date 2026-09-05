@@ -329,6 +329,11 @@ class LLDBDebugger:
 
     def setup(self) -> None:
         plugin_path = self.plugin_path or llgo_plugin.__file__
+        # These fixtures carry all DWARF needed by the suite. In particular,
+        # do not let a configured debuginfod server turn every fresh inferior
+        # launch into an external-symbol network timeout.
+        self.debugger.HandleCommand(
+            'settings set symbols.enable-external-lookup false')
         self.debugger.HandleCommand(
             f'command script import "{plugin_path}"')
         self.target = self.debugger.CreateTarget(self.executable_path)

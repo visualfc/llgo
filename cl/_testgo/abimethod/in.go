@@ -209,7 +209,7 @@ type I2 interface {
 // CHECK-LABEL: define i64 @main.T.Demo1(%main.T %0){{.*}} {
 // CHECK: [[T_ADDR:%[0-9]+]] = alloca %main.T
 // CHECK: store %main.T %0, ptr [[T_ADDR]]
-// CHECK-NEXT: [[T_N_PTR:%[0-9]+]] = getelementptr inbounds %main.T, ptr [[T_ADDR]], i32 0, i32 0
+// CHECK-NEXT: [[T_N_PTR:%[0-9]+]] = getelementptr inbounds nuw %main.T, ptr [[T_ADDR]], i32 0, i32 0
 // CHECK: [[T_N:%[0-9]+]] = load i64, ptr [[T_N_PTR]]
 // CHECK: ret i64 [[T_N]]
 
@@ -221,12 +221,12 @@ type I2 interface {
 // CHECK: ret i64 [[T_VALUE_RES]]
 
 // CHECK-LABEL: define i64 @"main.(*T).Demo2"(ptr %0){{.*}} {
-// CHECK: [[T2_N_PTR:%[0-9]+]] = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
+// CHECK: [[T2_N_PTR:%[0-9]+]] = getelementptr inbounds nuw %main.T, ptr %0, i32 0, i32 0
 // CHECK: [[T2_N:%[0-9]+]] = load i64, ptr [[T2_N_PTR]]
 // CHECK: ret i64 [[T2_N]]
 
 // CHECK-LABEL: define i64 @"main.(*T).demo3"(ptr %0){{.*}} {
-// CHECK: [[T3_N_PTR:%[0-9]+]] = getelementptr inbounds %main.T, ptr %0, i32 0, i32 0
+// CHECK: [[T3_N_PTR:%[0-9]+]] = getelementptr inbounds nuw %main.T, ptr %0, i32 0, i32 0
 // CHECK: [[T3_N:%[0-9]+]] = load i64, ptr [[T3_N_PTR]]
 // CHECK: ret i64 [[T3_N]]
 
@@ -400,7 +400,7 @@ type I2 interface {
 // The promoted bytes.Buffer.String method remains the implementation behind fmt.Stringer.
 // CHECK-LABEL: define void @main.testAnonymousBuffer(){{.*}} {
 // CHECK: [[BUF_OWNER:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 16)
-// CHECK: [[BUF_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr [[BUF_OWNER]], i32 0, i32 1
+// CHECK: [[BUF_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr [[BUF_OWNER]], i32 0, i32 1
 // CHECK-NEXT: [[BUF:%[0-9]+]] = call ptr @bytes.NewBufferString(
 // CHECK: store ptr [[BUF]], ptr [[BUF_FIELD]]
 // CHECK-NEXT: [[BUF_ITAB:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*{{.*}}/abimethod.struct${{[-A-Za-z0-9_]+}}")
@@ -461,7 +461,7 @@ type I2 interface {
 // Named T and *T select the proper descriptor and dispatch through the requested interface method.
 // CHECK-LABEL: define void @main.testNamed1(){{.*}} {
 // CHECK: [[N1_OBJECT:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK: [[N1_FIELD:%[0-9]+]] = getelementptr inbounds %main.T, ptr [[N1_OBJECT]], i32 0, i32 0
+// CHECK: [[N1_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.T, ptr [[N1_OBJECT]], i32 0, i32 0
 // CHECK-NEXT: store i64 100, ptr [[N1_FIELD]]
 // CHECK-NEXT: [[N1_ITAB:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.T")
 // CHECK-NEXT: [[N1_I0:%[0-9]+]] = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr [[N1_ITAB]], 0
@@ -499,7 +499,7 @@ type I2 interface {
 
 // CHECK-LABEL: define void @main.testNamed3(){{.*}} {
 // CHECK: [[N3_OBJECT:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
-// CHECK: [[N3_FIELD:%[0-9]+]] = getelementptr inbounds %main.T, ptr [[N3_OBJECT]], i32 0, i32 0
+// CHECK: [[N3_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.T, ptr [[N3_OBJECT]], i32 0, i32 0
 // CHECK-NEXT: store i64 100, ptr [[N3_FIELD]]
 // CHECK-NEXT: [[N3_ITAB:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.T")
 // CHECK-NEXT: [[N3_I0:%[0-9]+]] = insertvalue %"{{.*}}/runtime/internal/runtime.iface" undef, ptr [[N3_ITAB]], 0
@@ -518,7 +518,7 @@ type I2 interface {
 
 // Promoted methods must address the embedded field, call the underlying method, and return it.
 // CHECK-LABEL: define i64 @"main.*struct{m int; *main.T}.Demo1"(ptr %0){{.*}} {
-// CHECK: [[SPP1_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
+// CHECK: [[SPP1_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK: [[SPP1_T:%[0-9]+]] = load ptr, ptr [[SPP1_FIELD]]
 // CHECK: [[SPP1_SAFE:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[SPP1_T]])
 // CHECK: [[SPP1_VALUE:%[0-9]+]] = load %main.T, ptr [[SPP1_SAFE]]
@@ -526,13 +526,13 @@ type I2 interface {
 // CHECK: ret i64 [[SPP1_RES]]
 
 // CHECK-LABEL: define i64 @"main.*struct{m int; *main.T}.Demo2"(ptr %0){{.*}} {
-// CHECK: [[SPP2_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
+// CHECK: [[SPP2_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK: [[SPP2_T:%[0-9]+]] = load ptr, ptr [[SPP2_FIELD]]
 // CHECK: [[SPP2_RES:%[0-9]+]] = call i64 @"main.(*T).Demo2"(ptr [[SPP2_T]])
 // CHECK: ret i64 [[SPP2_RES]]
 
 // CHECK-LABEL: define i64 @"main.*struct{m int; *main.T}.demo3"(ptr %0){{.*}} {
-// CHECK: [[SPP3_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
+// CHECK: [[SPP3_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK: [[SPP3_T:%[0-9]+]] = load ptr, ptr [[SPP3_FIELD]]
 // CHECK: [[SPP3_RES:%[0-9]+]] = call i64 @"main.(*T).demo3"(ptr [[SPP3_T]])
 // CHECK: ret i64 [[SPP3_RES]]
@@ -540,7 +540,7 @@ type I2 interface {
 // CHECK-LABEL: define i64 @"main.struct{m int; *main.T}.Demo1"({ i64, ptr } %0){{.*}} {
 // CHECK: [[SVP1_ADDR:%[0-9]+]] = alloca { i64, ptr }
 // CHECK: store { i64, ptr } %0, ptr [[SVP1_ADDR]]
-// CHECK-NEXT: [[SVP1_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr [[SVP1_ADDR]], i32 0, i32 1
+// CHECK-NEXT: [[SVP1_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr [[SVP1_ADDR]], i32 0, i32 1
 // CHECK: [[SVP1_T:%[0-9]+]] = load ptr, ptr [[SVP1_FIELD]]
 // CHECK: [[SVP1_SAFE:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[SVP1_T]])
 // CHECK: [[SVP1_VALUE:%[0-9]+]] = load %main.T, ptr [[SVP1_SAFE]]
@@ -550,7 +550,7 @@ type I2 interface {
 // CHECK-LABEL: define i64 @"main.struct{m int; *main.T}.Demo2"({ i64, ptr } %0){{.*}} {
 // CHECK: [[SVP2_ADDR:%[0-9]+]] = alloca { i64, ptr }
 // CHECK: store { i64, ptr } %0, ptr [[SVP2_ADDR]]
-// CHECK-NEXT: [[SVP2_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr [[SVP2_ADDR]], i32 0, i32 1
+// CHECK-NEXT: [[SVP2_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr [[SVP2_ADDR]], i32 0, i32 1
 // CHECK: [[SVP2_T:%[0-9]+]] = load ptr, ptr [[SVP2_FIELD]]
 // CHECK: [[SVP2_RES:%[0-9]+]] = call i64 @"main.(*T).Demo2"(ptr [[SVP2_T]])
 // CHECK: ret i64 [[SVP2_RES]]
@@ -558,7 +558,7 @@ type I2 interface {
 // CHECK-LABEL: define i64 @"main.struct{m int; *main.T}.demo3"({ i64, ptr } %0){{.*}} {
 // CHECK: [[SVP3_ADDR:%[0-9]+]] = alloca { i64, ptr }
 // CHECK: store { i64, ptr } %0, ptr [[SVP3_ADDR]]
-// CHECK-NEXT: [[SVP3_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr [[SVP3_ADDR]], i32 0, i32 1
+// CHECK-NEXT: [[SVP3_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr [[SVP3_ADDR]], i32 0, i32 1
 // CHECK: [[SVP3_T:%[0-9]+]] = load ptr, ptr [[SVP3_FIELD]]
 // CHECK: [[SVP3_RES:%[0-9]+]] = call i64 @"main.(*T).demo3"(ptr [[SVP3_T]])
 // CHECK: ret i64 [[SVP3_RES]]
@@ -566,30 +566,30 @@ type I2 interface {
 // CHECK-LABEL: define i64 @"main.struct{m int; main.T}.Demo1"({ i64, %main.T } %0){{.*}} {
 // CHECK: [[SVV_ADDR:%[0-9]+]] = alloca { i64, %main.T }
 // CHECK: store { i64, %main.T } %0, ptr [[SVV_ADDR]]
-// CHECK-NEXT: [[SVV_FIELD:%[0-9]+]] = getelementptr inbounds { i64, %main.T }, ptr [[SVV_ADDR]], i32 0, i32 1
+// CHECK-NEXT: [[SVV_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, %main.T }, ptr [[SVV_ADDR]], i32 0, i32 1
 // CHECK: [[SVV_T:%[0-9]+]] = load %main.T, ptr [[SVV_FIELD]]
 // CHECK: [[SVV_RES:%[0-9]+]] = call i64 @main.T.Demo1(%main.T [[SVV_T]])
 // CHECK: ret i64 [[SVV_RES]]
 
 // CHECK-LABEL: define i64 @"main.*struct{m int; main.T}.Demo1"(ptr %0){{.*}} {
-// CHECK: [[SPV1_FIELD:%[0-9]+]] = getelementptr inbounds { i64, %main.T }, ptr %0, i32 0, i32 1
+// CHECK: [[SPV1_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, %main.T }, ptr %0, i32 0, i32 1
 // CHECK: [[SPV1_SAFE:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[SPV1_FIELD]])
 // CHECK: [[SPV1_T:%[0-9]+]] = load %main.T, ptr [[SPV1_SAFE]]
 // CHECK: [[SPV1_RES:%[0-9]+]] = call i64 @main.T.Demo1(%main.T [[SPV1_T]])
 // CHECK: ret i64 [[SPV1_RES]]
 
 // CHECK-LABEL: define i64 @"main.*struct{m int; main.T}.Demo2"(ptr %0){{.*}} {
-// CHECK: [[SPV2_FIELD:%[0-9]+]] = getelementptr inbounds { i64, %main.T }, ptr %0, i32 0, i32 1
+// CHECK: [[SPV2_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, %main.T }, ptr %0, i32 0, i32 1
 // CHECK: [[SPV2_RES:%[0-9]+]] = call i64 @"main.(*T).Demo2"(ptr [[SPV2_FIELD]])
 // CHECK: ret i64 [[SPV2_RES]]
 
 // CHECK-LABEL: define i64 @"main.*struct{m int; main.T}.demo3"(ptr %0){{.*}} {
-// CHECK: [[SPV3_FIELD:%[0-9]+]] = getelementptr inbounds { i64, %main.T }, ptr %0, i32 0, i32 1
+// CHECK: [[SPV3_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, %main.T }, ptr %0, i32 0, i32 1
 // CHECK: [[SPV3_RES:%[0-9]+]] = call i64 @"main.(*T).demo3"(ptr [[SPV3_FIELD]])
 // CHECK: ret i64 [[SPV3_RES]]
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.*struct{m int; *bytes.Buffer}.String"(ptr %0){{.*}} {
-// CHECK: [[BSP_FIELD:%[0-9]+]] = getelementptr inbounds { i64, ptr }, ptr %0, i32 0, i32 1
+// CHECK: [[BSP_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr %0, i32 0, i32 1
 // CHECK: [[BSP_BUFFER:%[0-9]+]] = load ptr, ptr [[BSP_FIELD]]
 // CHECK: [[BSP_STRING:%[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.String" @"bytes.(*Buffer).String"(ptr [[BSP_BUFFER]])
 // CHECK: ret %"{{.*}}/runtime/internal/runtime.String" [[BSP_STRING]]
@@ -598,12 +598,12 @@ type I2 interface {
 // CHECK-LABEL: define linkonce ptr @"main.(*Pointer{{\[.*\]}}).Load"(ptr %0){{.*}} {
 // CHECK: [[LOAD_NIL:%[0-9]+]] = icmp eq ptr %0, null
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[LOAD_NIL]])
-// CHECK: [[LOAD_V:%[0-9]+]] = getelementptr inbounds %"main.Pointer{{\[.*\]}}", ptr %0, i32 0, i32 1
+// CHECK: [[LOAD_V:%[0-9]+]] = getelementptr inbounds nuw %"main.Pointer{{\[.*\]}}", ptr %0, i32 0, i32 1
 // CHECK: [[LOAD_VALUE:%[0-9]+]] = load atomic ptr, ptr [[LOAD_V]] seq_cst
 // CHECK: ret ptr [[LOAD_VALUE]]
 
 // CHECK-LABEL: define linkonce void @"main.(*Pointer{{\[.*\]}}).Store"(ptr %0, ptr %1){{.*}} {
 // CHECK: [[STORE_NIL:%[0-9]+]] = icmp eq ptr %0, null
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[STORE_NIL]])
-// CHECK: [[STORE_V:%[0-9]+]] = getelementptr inbounds %"main.Pointer{{\[.*\]}}", ptr %0, i32 0, i32 1
+// CHECK: [[STORE_V:%[0-9]+]] = getelementptr inbounds nuw %"main.Pointer{{\[.*\]}}", ptr %0, i32 0, i32 1
 // CHECK: store atomic ptr %1, ptr [[STORE_V]] seq_cst

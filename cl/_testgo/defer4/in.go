@@ -13,7 +13,7 @@ package main
 // CHECK: [[D4_FAIL_FRAME:%[0-9]+]] = call ptr @"{{.*}}AllocU"(i64 48)
 // CHECK: store ptr [[D4_FAIL_PREV]], ptr %{{[0-9]+}}
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[D4_FAIL_FRAME]])
-// CHECK: [[D4_FAIL_HEAD:%[0-9]+]] = getelementptr inbounds %"{{.*}}Defer", ptr [[D4_FAIL_FRAME]], i32 0, i32 5
+// CHECK: [[D4_FAIL_HEAD:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[D4_FAIL_FRAME]], i32 0, i32 5
 // CHECK: [[D4_RECOVER_STATE:%[0-9]+]] = call %"{{.*}}recoverState" @"{{.*}}StartRecoverFrame"(ptr @"main.fail$1")
 // CHECK-NEXT: call void @"main.fail$1"()
 // CHECK-NEXT: call void @"{{.*}}EndRecoverFrame"(%"{{.*}}recoverState" [[D4_RECOVER_STATE]])

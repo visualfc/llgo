@@ -10,7 +10,7 @@ type counter struct {
 }
 
 // CHECK-LABEL: define %main.stateFn @main.countState(ptr %0){{.*}} {
-// CHECK: %[[VALUE_PTR1:[0-9]+]] = getelementptr inbounds %main.counter, ptr %0, i32 0, i32 0
+// CHECK: %[[VALUE_PTR1:[0-9]+]] = getelementptr inbounds nuw %main.counter, ptr %0, i32 0, i32 0
 // CHECK-NEXT: %[[OLD_VALUE:[0-9]+]] = load i64, ptr %[[VALUE_PTR1]]
 // CHECK-NEXT: %[[NEW_VALUE:[0-9]+]] = add i64 %[[OLD_VALUE]], 1
 // CHECK: store i64 %[[NEW_VALUE]], ptr %{{[0-9]+}}
@@ -31,8 +31,8 @@ func countState(c *counter) stateFn {
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: %[[COUNTER_OBJ:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 32)
-// CHECK: %[[MAX_SLOT:[0-9]+]] = getelementptr inbounds %main.counter, ptr %[[COUNTER_OBJ]], i32 0, i32 1
-// CHECK-NEXT: %[[STATE_SLOT:[0-9]+]] = getelementptr inbounds %main.counter, ptr %[[COUNTER_OBJ]], i32 0, i32 2
+// CHECK: %[[MAX_SLOT:[0-9]+]] = getelementptr inbounds nuw %main.counter, ptr %[[COUNTER_OBJ]], i32 0, i32 1
+// CHECK-NEXT: %[[STATE_SLOT:[0-9]+]] = getelementptr inbounds nuw %main.counter, ptr %[[COUNTER_OBJ]], i32 0, i32 2
 // CHECK-NEXT: store i64 5, ptr %[[MAX_SLOT]]
 // CHECK-NEXT: store %main.stateFn { ptr @main.countState, ptr null }, ptr %[[STATE_SLOT]]
 // CHECK: %[[STATE:[0-9]+]] = load %main.stateFn, ptr %{{[0-9]+}}

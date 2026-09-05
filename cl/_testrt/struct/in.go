@@ -6,10 +6,10 @@ import _ "unsafe"
 
 // CHECK-LABEL: define void @main.Foo.Print(%main.Foo %0){{.*}} {
 // CHECK: store %main.Foo %0, ptr [[PRINT_RECEIVER:%[0-9]+]]
-// CHECK: [[PRINT_OK_FIELD:%[0-9]+]] = getelementptr inbounds %main.Foo, ptr [[PRINT_RECEIVER]], i32 0, i32 1
+// CHECK: [[PRINT_OK_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.Foo, ptr [[PRINT_RECEIVER]], i32 0, i32 1
 // CHECK-NEXT: [[PRINT_OK:%[0-9]+]] = load i1, ptr [[PRINT_OK_FIELD]]
 // CHECK-NEXT: br i1 [[PRINT_OK]], label %{{.*}}, label %{{.*}}
-// CHECK: [[PRINT_VALUE_FIELD:%[0-9]+]] = getelementptr inbounds %main.Foo, ptr [[PRINT_RECEIVER]], i32 0, i32 0
+// CHECK: [[PRINT_VALUE_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.Foo, ptr [[PRINT_RECEIVER]], i32 0, i32 0
 // CHECK-NEXT: [[PRINT_VALUE:%[0-9]+]] = load i32, ptr [[PRINT_VALUE_FIELD]]
 // CHECK-NEXT: call void (ptr, ...) @printf(ptr @main.format, i32 [[PRINT_VALUE]])
 

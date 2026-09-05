@@ -63,7 +63,7 @@ func main() {
 // CHECK-LABEL: define i64 @main.S.one(%main.S %0){{.*}} {
 // CHECK: [[S_ONE_ADDR:%[0-9]+]] = alloca %main.S
 // CHECK: store %main.S %0, ptr [[S_ONE_ADDR]]
-// CHECK-NEXT: [[S_ONE_FIELD:%[0-9]+]] = getelementptr inbounds %main.S, ptr [[S_ONE_ADDR]], i32 0, i32 0
+// CHECK-NEXT: [[S_ONE_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.S, ptr [[S_ONE_ADDR]], i32 0, i32 0
 // CHECK-NEXT: [[S_ONE_IFACE:%[0-9]+]] = load %"{{.*}}iface", ptr [[S_ONE_FIELD]]
 // CHECK: [[S_ONE_DATA:%.*]] = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}iface" [[S_ONE_IFACE]])
 // CHECK: [[S_ONE_ITAB:%.*]] = extractvalue %"{{.*}}iface" [[S_ONE_IFACE]], 0
@@ -79,7 +79,7 @@ func main() {
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @main.S.two(%main.S %0){{.*}} {
 // CHECK: [[S_TWO_ADDR:%[0-9]+]] = alloca %main.S
 // CHECK: store %main.S %0, ptr [[S_TWO_ADDR]]
-// CHECK-NEXT: [[S_TWO_FIELD:%[0-9]+]] = getelementptr inbounds %main.S, ptr [[S_TWO_ADDR]], i32 0, i32 0
+// CHECK-NEXT: [[S_TWO_FIELD:%[0-9]+]] = getelementptr inbounds nuw %main.S, ptr [[S_TWO_ADDR]], i32 0, i32 0
 // CHECK-NEXT: [[S_TWO_IFACE:%[0-9]+]] = load %"{{.*}}iface", ptr [[S_TWO_FIELD]]
 // CHECK: [[S_TWO_DATA:%.*]] = call ptr @"{{.*}}/runtime/internal/runtime.IfacePtrData"(%"{{.*}}iface" [[S_TWO_IFACE]])
 // CHECK: [[S_TWO_ITAB:%.*]] = extractvalue %"{{.*}}iface" [[S_TWO_IFACE]], 0

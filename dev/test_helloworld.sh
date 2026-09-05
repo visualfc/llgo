@@ -26,7 +26,7 @@ module hello
 
 go ${mod_version}
 
-require github.com/goplus/lib v0.3.1
+require github.com/goplus/lib v0.5.1
 EOF
 cat >"${hello_dir}/main.go" <<'EOF'
 package main

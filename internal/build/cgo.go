@@ -451,7 +451,7 @@ func parseCgoPreambleWithCommandEnv(commands commandEnv, pos token.Position, tex
 // #cgo pkg-config: python3
 // #cgo windows CFLAGS: -IC:/Python312/include
 // #cgo windows LDFLAGS: -LC:/Python312/libs -lpython312
-// #cgo linux CPPFLAGS: -I/usr/lib/llvm-19/include -D_GNU_SOURCE
+// #cgo linux CPPFLAGS: -I/usr/lib/llvm-22/include -D_GNU_SOURCE
 // #cgo CFLAGS: -I/usr/include/python3.12
 // #cgo CXXFLAGS: -I/usr/include/c++/v1
 // #cgo LDFLAGS: -L/usr/lib/python3.12/config-3.12-x86_64-linux-gnu -lpython3.12

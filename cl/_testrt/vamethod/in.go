@@ -55,21 +55,21 @@ func main() {
 // CHECK-SAME: %main.CFmt %[[VALUE:[0-9]+]], ...){{.*}} {
 // CHECK: %[[VALUESLOT:[0-9]+]] = alloca %main.CFmt, align 8
 // CHECK: store %main.CFmt %[[VALUE]], ptr %[[VALUESLOT]], align 8
-// CHECK: %[[VALUEFIELD:[0-9]+]] = getelementptr inbounds %main.CFmt, ptr %[[VALUESLOT]], i32 0, i32 0
+// CHECK: %[[VALUEFIELD:[0-9]+]] = getelementptr inbounds nuw %main.CFmt, ptr %[[VALUESLOT]], i32 0, i32 0
 // CHECK: %[[VALUEFMT:[0-9]+]] = load ptr, ptr %[[VALUEFIELD]], align 8
 // CHECK: %[[VALUERET:[0-9]+]] = call i32 (ptr, ...) @printf(ptr %[[VALUEFMT]])
 // CHECK: ret i32 %[[VALUERET]]
 
 // CHECK-LABEL: define i32 @"main.(*CFmt).Printf"(
 // CHECK-SAME: ptr %[[PTR:[0-9]+]], ...){{.*}} {
-// CHECK: %[[PTRFIELD:[0-9]+]] = getelementptr inbounds %main.CFmt, ptr %[[PTR]], i32 0, i32 0
+// CHECK: %[[PTRFIELD:[0-9]+]] = getelementptr inbounds nuw %main.CFmt, ptr %[[PTR]], i32 0, i32 0
 // CHECK: %[[PTRFMT:[0-9]+]] = load ptr, ptr %[[PTRFIELD]], align 8
 // CHECK: %[[PTRRET:[0-9]+]] = call i32 (ptr, ...) @printf(ptr %[[PTRFMT]])
 // CHECK: ret i32 %[[PTRRET]]
 
 // CHECK-LABEL: define void @"main.(*CFmt).SetFormat"(
 // CHECK-SAME: ptr %[[SELF:[0-9]+]], ptr %[[FORMAT:[0-9]+]]){{.*}} {
-// CHECK: %[[FORMATFIELD:[0-9]+]] = getelementptr inbounds %main.CFmt, ptr %[[SELF]], i32 0, i32 0
+// CHECK: %[[FORMATFIELD:[0-9]+]] = getelementptr inbounds nuw %main.CFmt, ptr %[[SELF]], i32 0, i32 0
 // CHECK: store ptr %[[FORMAT]], ptr %[[FORMATFIELD]], align 8
 
 // Direct calls pass the receiver's loaded format pointer. Interface calls use
@@ -77,11 +77,11 @@ func main() {
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: %[[CFMT:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 8)
 // CHECK: call void @"main.(*CFmt).SetFormat"(ptr %[[CFMT]], ptr @{{[0-9]+}})
-// CHECK: %[[DIRECTFIELD1:[0-9]+]] = getelementptr inbounds %main.CFmt, ptr %[[CFMT]], i32 0, i32 0
+// CHECK: %[[DIRECTFIELD1:[0-9]+]] = getelementptr inbounds nuw %main.CFmt, ptr %[[CFMT]], i32 0, i32 0
 // CHECK: %[[DIRECTFMT1:[0-9]+]] = load ptr, ptr %[[DIRECTFIELD1]], align 8
 // CHECK: call i32 (ptr, ...) @printf(ptr %[[DIRECTFMT1]], ptr @{{[0-9]+}}, i64 100)
 // CHECK: call void @"main.(*CFmt).SetFormat"(ptr %[[CFMT]], ptr @{{[0-9]+}})
-// CHECK: %[[DIRECTFIELD2:[0-9]+]] = getelementptr inbounds %main.CFmt, ptr %[[CFMT]], i32 0, i32 0
+// CHECK: %[[DIRECTFIELD2:[0-9]+]] = getelementptr inbounds nuw %main.CFmt, ptr %[[CFMT]], i32 0, i32 0
 // CHECK: %[[DIRECTFMT2:[0-9]+]] = load ptr, ptr %[[DIRECTFIELD2]], align 8
 // CHECK: call i32 (ptr, ...) @printf(ptr %[[DIRECTFMT2]], i64 200, ptr @{{[0-9]+}})
 // CHECK: %[[EBOX:[0-9]+]] = insertvalue %"{{.*}}/runtime/internal/runtime.eface" { ptr @"*_llgo_main.CFmt", ptr undef }, ptr %{{[0-9]+}}, 1

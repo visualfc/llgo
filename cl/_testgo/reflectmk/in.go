@@ -115,7 +115,7 @@ func methodByName(name string) {
 // CHECK-DAG: %[[METHOD_SLOT:[0-9]+]] = alloca %reflect.Method
 // CHECK-DAG: %[[METHOD:[0-9]+]] = call %reflect.Method %{{[0-9]+}}(ptr %{{[0-9]+}}, i64 0)
 // CHECK-DAG: store %reflect.Method %[[METHOD]], ptr %[[METHOD_SLOT]]
-// CHECK-DAG: %[[METHOD_NAME_PTR:[0-9]+]] = getelementptr inbounds %reflect.Method, ptr %[[METHOD_SLOT]], i32 0, i32 0
+// CHECK-DAG: %[[METHOD_NAME_PTR:[0-9]+]] = getelementptr inbounds nuw %reflect.Method, ptr %[[METHOD_SLOT]], i32 0, i32 0
 // CHECK-DAG: %[[METHOD_NAME:[0-9]+]] = load %"{{.*}}/runtime/internal/runtime.String", ptr %[[METHOD_NAME_PTR]]
 // CHECK-DAG: call i1 @"{{.*}}/runtime/internal/runtime.StringEqual"(%"{{.*}}/runtime/internal/runtime.String" %[[METHOD_NAME]],{{.*}})
 // CHECK-DAG: %[[NAMED_METHOD:[0-9]+]] = call { %reflect.Method, i1 } %{{[0-9]+}}(ptr %{{[0-9]+}}, %"{{.*}}/runtime/internal/runtime.String" { ptr @{{[0-9]+}}, i64 6 })

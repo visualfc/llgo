@@ -63,7 +63,7 @@ func main() {
 // CHECK-SAME: i64 %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 72)
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %"{{.*}}/runtime/abi.Type", ptr %[[TMP1]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/runtime/abi.Type", ptr %[[TMP1]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = icmp uge i64 %[[TMP0]], 25
 // CHECK-NEXT:   br i1 %[[TMP3]], label %_llgo_[[BB1:[0-9]+]], label %_llgo_[[BB2:[0-9]+]]
 // CHECK-EMPTY:
@@ -74,9 +74,9 @@ func main() {
 // CHECK-NEXT: _llgo_[[BB2]]:
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds i64, ptr @main.sizeBasicTypes, i64 %[[TMP0]]
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = load i64, ptr %[[TMP4]], align 8
-// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds %"{{.*}}/runtime/abi.Type", ptr %[[TMP1]], i32 0, i32 2
+// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/runtime/abi.Type", ptr %[[TMP1]], i32 0, i32 2
 // CHECK-NEXT:   %[[TMP7:[0-9]+]] = trunc i64 %[[TMP0]] to i32
-// CHECK-NEXT:   %[[TMP8:[0-9]+]] = getelementptr inbounds %"{{.*}}/runtime/abi.Type", ptr %[[TMP1]], i32 0, i32 6
+// CHECK-NEXT:   %[[TMP8:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/runtime/abi.Type", ptr %[[TMP1]], i32 0, i32 6
 // CHECK-NEXT:   %[[TMP9:[0-9]+]] = trunc i64 %[[TMP0]] to i8
 // CHECK-NEXT:   store i64 %[[TMP5]], ptr %[[TMP2]], align 8
 // CHECK-NEXT:   store i32 %[[TMP7]], ptr %[[TMP6]], align 4
@@ -108,10 +108,10 @@ func main() {
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP0:[0-9]+]] = call ptr @main.Basic(i64 24)
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds %"{{.*}}/runtime/abi.Type", ptr %[[TMP0]], i32 0, i32 6
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/runtime/abi.Type", ptr %[[TMP0]], i32 0, i32 6
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = load i8, ptr %[[TMP1]], align 1
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = zext i8 %[[TMP2]] to i64
-// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds %"{{.*}}/runtime/abi.Type", ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/runtime/abi.Type", ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = load i64, ptr %[[TMP4]], align 8
 // CHECK-NEXT:   %[[TMP6:[0-9]+]] = call i32 (ptr, ...) @printf(ptr @[[GLOB0]], i64 %[[TMP3]], i64 %[[TMP5]])
 // CHECK-NEXT:   ret void

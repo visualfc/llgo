@@ -17,8 +17,8 @@ type Rectangle struct {
 // CHECK-SAME: double %[[TMP0:[0-9]+]], double %[[TMP1:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 24)
-// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP2]], i32 0, i32 0
-// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP2]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP2]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP2]], i32 0, i32 1
 // CHECK-NEXT:   store double %[[TMP0]], ptr %[[TMP3]], align 8
 // CHECK-NEXT:   store double %[[TMP1]], ptr %[[TMP4]], align 8
 // CHECK-NEXT:   ret ptr %[[TMP2]]
@@ -31,9 +31,9 @@ func NewRectangle(width, height float64) *Rectangle {
 // CHECK-LABEL: define double @"{{.*}}/cl/_testdata/geometry1370.(*Rectangle).Area"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = load double, ptr %[[TMP1]], align 8
-// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP3:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP4:[0-9]+]] = load double, ptr %[[TMP3]], align 8
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = fmul double %[[TMP2]], %[[TMP4]]
 // CHECK-NEXT:   ret double %[[TMP5]]
@@ -44,7 +44,7 @@ func (r *Rectangle) Area() float64 { return r.Width * r.Height }
 // CHECK-LABEL: define i64 @"{{.*}}/cl/_testdata/geometry1370.(*Rectangle).GetID"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 2
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 2
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = load i64, ptr %[[TMP1]], align 8
 // CHECK-NEXT:   ret i64 %[[TMP2]]
 // CHECK-NEXT: }
@@ -54,7 +54,7 @@ func (r *Rectangle) GetID() int { return r.id }
 // CHECK-LABEL: define void @"{{.*}}/cl/_testdata/geometry1370.(*Rectangle).setID"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]], i64 %[[TMP1:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 2
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 2
 // CHECK-NEXT:   store i64 %[[TMP1]], ptr %[[TMP2]], align 8
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
@@ -64,13 +64,13 @@ func (r *Rectangle) setID(id int) { r.id = id }
 // CHECK-LABEL: define i1 @"{{.*}}/cl/_testdata/geometry1370.(*Rectangle).validate"(
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = load double, ptr %[[TMP1]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = fcmp ogt double %[[TMP2]], 0.000000e+00
 // CHECK-NEXT:   br i1 %[[TMP3]], label %_llgo_[[BB1:[0-9]+]], label %_llgo_[[BB2:[0-9]+]]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB1]]:
-// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/geometry1370.Rectangle", ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = load double, ptr %[[TMP4]], align 8
 // CHECK-NEXT:   %[[TMP6:[0-9]+]] = fcmp ogt double %[[TMP5]], 0.000000e+00
 // CHECK-NEXT:   br label %_llgo_[[BB2]]

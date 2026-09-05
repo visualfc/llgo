@@ -91,9 +91,9 @@ func main() {
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = extractvalue { %main.bar, i1 } %[[TMP1]], 0
 // CHECK-NEXT:   store %main.bar %[[TMP2]], ptr %[[TMP0]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = extractvalue { %main.bar, i1 } %[[TMP1]], 1
-// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds %main.bar, ptr %[[TMP0]], i32 0, i32 0
+// CHECK-NEXT:   %[[TMP4:[0-9]+]] = getelementptr inbounds nuw %main.bar, ptr %[[TMP0]], i32 0, i32 0
 // CHECK-NEXT:   %[[TMP5:[0-9]+]] = load ptr, ptr %[[TMP4]], align 8
-// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds %main.bar, ptr %[[TMP0]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP6:[0-9]+]] = getelementptr inbounds nuw %main.bar, ptr %[[TMP0]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP7:[0-9]+]] = load float, ptr %[[TMP6]], align 4
 // CHECK-NEXT:   %[[TMP8:[0-9]+]] = xor i1 %[[TMP3]], true
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr %[[TMP5]])
@@ -116,7 +116,7 @@ func main() {
 // CHECK-NEXT:   %[[TMP15:[0-9]+]] = extractvalue { %"{{.*}}/cl/_testdata/foo.Foo", i1 } %[[TMP13]], 1
 // CHECK-NEXT:   %[[TMP16:[0-9]+]] = load %"{{.*}}/cl/_testdata/foo.Foo", ptr %[[TMP10]], align 8
 // CHECK-NEXT:   %[[TMP17:[0-9]+]] = call ptr @"{{.*}}/cl/_testdata/foo.Foo.Pb"(%"{{.*}}/cl/_testdata/foo.Foo" %[[TMP16]])
-// CHECK-NEXT:   %[[TMP18:[0-9]+]] = getelementptr inbounds %"{{.*}}/cl/_testdata/foo.Foo", ptr %[[TMP10]], i32 0, i32 1
+// CHECK-NEXT:   %[[TMP18:[0-9]+]] = getelementptr inbounds nuw %"{{.*}}/cl/_testdata/foo.Foo", ptr %[[TMP10]], i32 0, i32 1
 // CHECK-NEXT:   %[[TMP19:[0-9]+]] = load float, ptr %[[TMP18]], align 4
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintPointer"(ptr %[[TMP17]])
 // CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.PrintByte"(i8 32)

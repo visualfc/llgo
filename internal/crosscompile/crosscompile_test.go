@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xgo-dev/llgo/internal/crosscompile/compile"
 	"github.com/xgo-dev/llgo/internal/lto"
 	"github.com/xgo-dev/llgo/internal/optlevel"
 	"github.com/xgo-dev/llgo/internal/xtool/llvm"
@@ -29,12 +30,12 @@ func TestESPClangHostDownload(t *testing.T) {
 	tests := []struct {
 		goos, goarch string
 		wantPlatform string
-		wantVersion  string
 	}{
-		{"darwin", "arm64", "aarch64-apple-darwin", espClangVersion},
-		{"linux", "amd64", "x86_64-linux-gnu", espClangVersion},
-		{"windows", "amd64", espClangWindowsPlatform, espClangWindowsVersion},
-		{"windows", "arm64", espClangWindowsPlatform, espClangWindowsVersion},
+		{"darwin", "arm64", "aarch64-apple-darwin"},
+		{"linux", "amd64", "x86_64-linux-gnu"},
+		{"windows", "386", "x86_64-w64-mingw32"},
+		{"windows", "amd64", "x86_64-w64-mingw32"},
+		{"windows", "arm64", "x86_64-w64-mingw32"},
 	}
 	for _, test := range tests {
 		platform := getESPClangPlatform(test.goos, test.goarch)
@@ -42,10 +43,38 @@ func TestESPClangHostDownload(t *testing.T) {
 			t.Errorf("getESPClangPlatform(%q, %q) = %q, want %q", test.goos, test.goarch, platform, test.wantPlatform)
 			continue
 		}
-		_, version := espClangDownload(platform)
-		if version != test.wantVersion {
-			t.Errorf("espClangDownload(%q) version = %q, want %q", platform, version, test.wantVersion)
+		if espClangSHA256[platform] == "" {
+			t.Errorf("ESP Clang %s %s has no checksum", espClangVersion, platform)
 		}
+	}
+}
+
+func TestESPClangRejectsMissingChecksum(t *testing.T) {
+	writeWasmTargetFixture(t, "", "")
+	checksums := espClangSHA256
+	espClangSHA256 = nil
+	t.Cleanup(func() { espClangSHA256 = checksums })
+
+	root, err := getESPClangRoot(true)
+	platform := getESPClangPlatform(runtime.GOOS, runtime.GOARCH)
+	if platform == "" {
+		if err == nil || !strings.Contains(err.Error(), "is not supported for download") {
+			t.Fatalf("unsupported host error = %v", err)
+		}
+		return
+	}
+	if root != "" || err == nil || err.Error() != "missing ESP Clang checksum for "+platform {
+		t.Fatalf("getESPClangRoot() = %q, %v; want missing checksum error", root, err)
+	}
+}
+
+func TestCompileWithConfigRejectsFileAsOutputDir(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "output")
+	if err := os.WriteFile(output, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := compileWithConfig(compile.CompileConfig{}, output, compile.CompileOptions{}); err == nil || !strings.Contains(err.Error(), "create compiled library cache") {
+		t.Fatalf("compileWithConfig error = %v", err)
 	}
 }
 
@@ -101,10 +130,9 @@ func TestUseCrossCompileSDK(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Set environment variable for cache directory
-	oldEnv := os.Getenv("LLGO_CACHE_DIR")
-	os.Setenv("LLGO_CACHE_DIR", tempDir)
-	defer os.Setenv("LLGO_CACHE_DIR", oldEnv)
+	originalCacheRoot := cacheRoot
+	cacheRoot = func() string { return tempDir }
+	defer func() { cacheRoot = originalCacheRoot }()
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -336,12 +364,10 @@ func TestUseTarget(t *testing.T) {
 			if !slices.Contains(export.LDFLAGS, "-S") {
 				t.Fatalf("target %s declares AlwaysOmit without linker -S: %v", tc.targetName, export.LDFLAGS)
 			}
-
 			// Check if LLVM target is in CCFLAGS
 			if tc.expectLLVM != "" {
 				found := false
-				expectedLLVM := clangDriverTargetForHost(runtime.GOOS, tc.expectLLVM, export.BuildTags)
-				expectedFlag := "--target=" + expectedLLVM
+				expectedFlag := "--target=" + tc.expectLLVM
 				for _, flag := range export.CCFLAGS {
 					if flag == expectedFlag {
 						found = true
@@ -638,23 +664,26 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 	})
 }
 
-func TestUseTargetWindowsSystemClang(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Windows host toolchain selection")
+func TestUseTargetESPClang(t *testing.T) {
+	// Use the real toolchain: UseTarget queries its version for the library
+	// cache key and builds the target libraries before returning.
+	embeddedRoot, err := getESPClangRoot(true)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	export, err := UseTarget("rp2040", optlevel.Oz, lto.Thin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if export.CC != "clang++" {
-		t.Fatalf("RP2040 compiler on Windows = %q, want clang++", export.CC)
+	wantCC := filepath.Join(embeddedRoot, "bin", "clang++")
+	if export.CC != wantCC || export.ClangRoot != embeddedRoot {
+		t.Fatalf("RP2040 compiler = %q under %q, want %q under %q",
+			export.CC, export.ClangRoot, wantCC, embeddedRoot)
 	}
-	if export.ClangRoot != "" {
-		t.Fatalf("RP2040 Clang root on Windows = %q, want system toolchain", export.ClangRoot)
-	}
-	if export.Linker != "ld.lld" {
-		t.Fatalf("RP2040 linker on Windows = %q, want ld.lld", export.Linker)
+	wantLinker := filepath.Join(embeddedRoot, "bin", "ld.lld")
+	if export.Linker != wantLinker {
+		t.Fatalf("RP2040 linker = %q, want %q", export.Linker, wantLinker)
 	}
 }
 
@@ -687,59 +716,17 @@ func TestUseTargetESPClangDownloadError(t *testing.T) {
 
 	originalCacheRoot := cacheRoot
 	originalBaseURL := espClangBaseUrl
-	originalWindowsBaseURL := espClangWindowsBaseUrl
 	cacheDir := t.TempDir()
 	cacheRoot = func() string { return cacheDir }
 	espClangBaseUrl = server.URL
-	espClangWindowsBaseUrl = server.URL
 	t.Cleanup(func() {
 		cacheRoot = originalCacheRoot
 		espClangBaseUrl = originalBaseURL
-		espClangWindowsBaseUrl = originalWindowsBaseURL
 	})
 
 	_, err := UseTarget("esp-test", optlevel.Oz, lto.Thin)
 	if err == nil || !strings.Contains(err.Error(), "404 Not Found") {
 		t.Fatalf("UseTarget(esp-test) error = %v, want download 404", err)
-	}
-}
-
-func TestUseSystemClangForTarget(t *testing.T) {
-	for _, test := range []struct {
-		goos      string
-		target    string
-		buildTags []string
-		want      bool
-	}{
-		{goos: "windows", target: "thumbv6m-unknown-unknown-eabi", want: true},
-		{goos: "windows", target: "avr", want: true},
-		{goos: "windows", target: "riscv32-esp-elf", buildTags: []string{"esp"}, want: false},
-		{goos: "windows", target: "xtensa", buildTags: []string{"esp32", "esp"}, want: false},
-		{goos: "windows", target: "xtensa", want: false},
-		{goos: "linux", target: "thumbv6m-unknown-unknown-eabi", want: false},
-	} {
-		if got := useSystemClangForTarget(test.goos, test.target, test.buildTags); got != test.want {
-			t.Errorf("useSystemClangForTarget(%q, %q, %v) = %v, want %v", test.goos, test.target, test.buildTags, got, test.want)
-		}
-	}
-}
-
-func TestClangDriverTargetForHost(t *testing.T) {
-	for _, test := range []struct {
-		goos      string
-		target    string
-		buildTags []string
-		want      string
-	}{
-		{goos: "windows", target: "xtensa", buildTags: []string{"esp32", "esp"}, want: "xtensa-esp-unknown-elf"},
-		{goos: "windows", target: "xtensa", want: "xtensa"},
-		{goos: "windows", target: "riscv32-esp-elf", buildTags: []string{"esp"}, want: "riscv32-esp-elf"},
-		{goos: "linux", target: "xtensa", buildTags: []string{"esp"}, want: "xtensa"},
-		{goos: "darwin", target: "xtensa", buildTags: []string{"esp"}, want: "xtensa"},
-	} {
-		if got := clangDriverTargetForHost(test.goos, test.target, test.buildTags); got != test.want {
-			t.Errorf("clangDriverTargetForHost(%q, %q, %v) = %q, want %q", test.goos, test.target, test.buildTags, got, test.want)
-		}
 	}
 }
 

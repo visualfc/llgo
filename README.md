@@ -310,9 +310,10 @@ llgo run .
 ## Dependencies
 
 - [Go 1.27](https://go.dev) for building LLGo; CI validates user packages separately with Go 1.20 through Go 1.27
-- [LLVM 19](https://llvm.org)
-- [Clang 19](https://clang.llvm.org)
-- [LLD 19](https://lld.llvm.org)
+- [LLVM 22](https://llvm.org)
+- [Clang 22](https://clang.llvm.org)
+- [LLD 22](https://lld.llvm.org)
+- [LLDB](https://lldb.llvm.org) (LLVM 22 packages on Linux/Windows; Xcode's Apple LLDB on macOS)
 - [pkg-config 0.29+](https://gitlab.freedesktop.org/pkg-config/pkg-config)
 - [bdwgc/libgc 8.0+](https://www.hboehm.info/gc/)
 - [libffi](https://sourceware.org/libffi/)
@@ -330,12 +331,16 @@ Follow these steps to install the `llgo` command, whose usage is similar to the 
 
 ```sh
 brew update
-brew install llvm@19 lld@19 bdw-gc openssl cjson libffi pkg-config
+brew install llvm@22 lld@22 bdw-gc openssl cjson libffi libuv pkg-config
 brew install python@3.12 # optional
-brew link --overwrite llvm@19 lld@19 libffi
+brew link --force --overwrite llvm@22 lld@22 libffi
 # curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
 ./install.sh
 ```
+
+Homebrew's versioned LLVM 22 formula does not ship LLDB and there is no
+`lldb@22` formula. LLGo checks common Homebrew and system locations, then
+`lldb` on `PATH`; use `LLGO_LLDB` or `llgo lldb -lldb` to select one explicitly.
 
 ### on Linux
 
@@ -344,10 +349,10 @@ brew link --overwrite llvm@19 lld@19 libffi
 <!-- embedme doc/_readme/scripts/install_ubuntu.sh#L2-L1000 -->
 
 ```sh
-echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-19 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list
 wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
 sudo apt-get update
-sudo apt-get install -y llvm-19-dev clang-19 libclang-19-dev lld-19 libunwind-19-dev libc++-19-dev pkg-config libgc-dev libssl-dev zlib1g-dev libffi-dev libcjson-dev libsqlite3-dev
+sudo apt-get install -y llvm-22-dev clang-22 libclang-22-dev lld-22 lldb-22 libunwind-22-dev libc++-22-dev pkg-config libgc-dev libssl-dev zlib1g-dev libffi-dev libcjson-dev libsqlite3-dev libuv1-dev
 sudo apt-get install -y python3.12-dev # optional
 #curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
 ./install.sh
@@ -356,14 +361,27 @@ sudo apt-get install -y python3.12-dev # optional
 #### Alpine Linux
 
 ```sh
-apk add go llvm19-dev clang19-dev lld19 pkgconf gc-dev libunwind-dev openssl-dev zlib-dev
+apk add go llvm22-dev clang22-dev lld22 lldb pkgconf gc-dev libunwind-dev openssl-dev zlib-dev libffi-dev cjson-dev sqlite-dev libuv-dev
 apk add python3-dev # optional
 apk add g++ # build only
-export LLVM_CONFIG=/usr/lib/llvm19/bin/llvm-config
+export LLVM_CONFIG=/usr/lib/llvm22/bin/llvm-config
 export CGO_CPPFLAGS="$($LLVM_CONFIG --cppflags)"
 export CGO_CXXFLAGS=-std=c++17
 export CGO_LDFLAGS="$($LLVM_CONFIG --ldflags) $($LLVM_CONFIG --libs all)"
 curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
+```
+
+#### Fedora Linux 44 or newer
+
+Fedora 44 and 45 ship LLVM 22 as the default LLVM stack. Fedora 43 still
+ships LLVM 21 and is not a supported default-toolchain environment for this
+LLGo release.
+
+```sh
+sudo dnf install -y llvm-devel clang-devel lld lldb libcxx-devel llvm-libunwind-devel \
+  pkgconf-pkg-config gc-devel openssl-devel libffi-devel libuv-devel \
+  cjson-devel sqlite-devel zlib-ng-compat-devel
+llvm-config --version # must report 22.x
 ```
 
 docker alpine 386 llgo environment
@@ -375,7 +393,34 @@ llgo run .
 
 ### on Windows
 
-TODO
+The recommended GNU-hosted setup is an MSYS2 `CLANG64` shell. Install the LLVM
+22 stack and LLGo's native dependencies, then provide the versioned pkg-config
+metadata used by the Go/C++ bindings:
+
+```sh
+pacman -S --needed \
+  mingw-w64-clang-x86_64-{clang,llvm,llvm-tools,lld,lldb,compiler-rt,libc++,libunwind} \
+  mingw-w64-clang-x86_64-{gc,libffi,libuv,openssl,cjson,sqlite3,zlib,pkgconf}
+test "$(llvm-config --version | cut -d. -f1)" = 22
+pc_dir="$MINGW_PREFIX/lib/pkgconfig"
+mkdir -p "$pc_dir"
+printf '%s\n' \
+  'Name: LLVM 22' \
+  'Description: LLVM 22 host compiler and linker flags' \
+  "Version: $(llvm-config --version)" \
+  "Cflags: $(llvm-config --cflags)" \
+  "Libs: $(llvm-config --ldflags --libs all --system-libs)" \
+  > "$pc_dir/llvm-22.pc"
+```
+
+The native MSVC CI profile uses LLVM's official 22.1.8 development archive for
+headers, libraries, Clang, LLD, and all code-generation backends. That archive
+does not contain LLDB, so the profile also extracts LLDB from the matching
+official `win64` or `woa64` installer. LLVM 22 has no official Win32 installer;
+the Windows 386 lane uses the LLVM 22.1.8-based llvm-mingw 20260616 builtins and
+qualifies the official x64 LLDB under WoW64. The complete pinned setup,
+checksums, and generated `llvm-22.pc` are in
+`.github/actions/setup-deps/action.yml`.
 
 ### Install from source
 

@@ -219,16 +219,20 @@ func nativeDebugInfoPolicy(toolchain NativeToolchain) DebugInfoPolicy {
 var (
 	wasiSdkUrl      = "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-x86_64-macos.tar.gz"
 	wasiMacosSubdir = "wasi-sdk-25.0-x86_64-macos"
+	espClangBaseUrl = "https://github.com/goplus/espressif-llvm-project-prebuilt/releases/download/" + espClangVersion
+	espClangSHA256  = map[string]string{
+		"aarch64-apple-darwin": "fcd3f70db3b05a8815ea156b09778de017a4a3f2d5ba11cbc5fbb205b1daa3fc",
+		"aarch64-linux-gnu":    "628a7f94ac8f392506ee59034525d05db8cc466c15a01f089df229a2a7c661cb",
+		"x86_64-apple-darwin":  "06018f283b3af1ba38523823c633a3517f1580571c48bfb46d53f5bfc0056ff7",
+		"x86_64-linux-gnu":     "0fc09b634fcbc00f91f1a1d3d023e6491f213de941939c374590e40f69961ecc",
+		"x86_64-w64-mingw32":   "3d32533daec8be08e608496eff817798eb7d3c25f07a02de1f1c94c0a0bbb8b3",
+	}
 )
 
-var (
-	espClangBaseUrl        = "https://github.com/goplus/espressif-llvm-project-prebuilt/releases/download/19.1.2_20250905-3"
-	espClangVersion        = "19.1.2_20250905-3"
-	espClangWindowsBaseUrl = "https://github.com/espressif/llvm-project/releases/download/esp-19.1.2_20250312"
-	espClangWindowsVersion = "19.1.2_20250312"
+const (
+	espClangVersion         = "22.1.4_20260905"
+	espClangWindowsPlatform = "x86_64-w64-mingw32"
 )
-
-const espClangWindowsPlatform = "x86_64-w64-mingw32"
 
 // cacheRoot can be overridden for testing
 var cacheRoot = env.LLGoCacheDir
@@ -299,14 +303,18 @@ func getESPClangRoot(forceEspClang bool) (clangRoot string, err error) {
 	// Try to download ESP Clang if platform is supported
 	platformSuffix := getESPClangPlatform(runtime.GOOS, runtime.GOARCH)
 	if platformSuffix != "" {
-		baseURL, version := espClangDownload(platformSuffix)
-		cacheClangDir := filepath.Join(cacheRoot(), "crosscompile", "esp-clang-"+version)
+		checksum, ok := espClangSHA256[platformSuffix]
+		if !ok {
+			err = fmt.Errorf("missing ESP Clang checksum for %s", platformSuffix)
+			return
+		}
+		cacheClangDir := filepath.Join(cacheRoot(), "crosscompile", "esp-clang-"+espClangVersion)
 		if _, err = os.Stat(cacheClangDir); err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
 				return
 			}
 			fmt.Fprintln(os.Stderr, "ESP Clang not found in LLGO_ROOT or cache, will download.")
-			if err = checkDownloadAndExtractESPClang(baseURL, version, platformSuffix, cacheClangDir); err != nil {
+			if err = checkDownloadAndExtractESPClang(espClangBaseUrl, espClangVersion, platformSuffix, checksum, cacheClangDir); err != nil {
 				return
 			}
 		}
@@ -334,28 +342,17 @@ func getESPClangPlatform(goos, goarch string) string {
 			return "x86_64-linux-gnu"
 		case "arm64":
 			return "aarch64-linux-gnu"
-		case "arm":
-			return "arm-linux-gnueabihf"
 		}
 	case "windows":
 		switch goarch {
-		case "amd64", "arm64":
-			// Espressif publishes an x86-64 Windows host toolchain. Windows on
-			// ARM64 runs it through the system's x64 emulation layer.
+		case "386", "amd64", "arm64":
+			// The Windows payload is x86-64 hosted. Windows on ARM64 runs it
+			// through the system's x64 emulation layer; 32-bit LLGo hosts run
+			// it as a separate 64-bit process.
 			return espClangWindowsPlatform
 		}
 	}
 	return ""
-}
-
-func espClangDownload(platformSuffix string) (baseURL, version string) {
-	if platformSuffix == espClangWindowsPlatform {
-		// The LLGo-hosted 20250905 build does not publish a Windows archive.
-		// Use Espressif's official LLVM 19 Windows build instead of constructing
-		// a URL that can only return 404.
-		return espClangWindowsBaseUrl, espClangWindowsVersion
-	}
-	return espClangBaseUrl, espClangVersion
 }
 
 // ldFlagsFromFileName extracts the library name from a filename for use in linker flags
@@ -370,6 +367,9 @@ func compileWithConfig(
 	compileConfig compile.CompileConfig,
 	outputDir string, options compile.CompileOptions,
 ) (ldflags []string, err error) {
+	if err = os.MkdirAll(outputDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create compiled library cache %q: %w", outputDir, err)
+	}
 	ldflags = append(ldflags, "-nostdlib", "-L"+outputDir)
 
 	for _, group := range compileConfig.Groups {
@@ -819,23 +819,15 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 		return Export{}, fmt.Errorf("target %q has unsupported WebAssembly ABI profile %q", targetName, config.WasmABI)
 	}
 
-	// Espressif's Windows toolchain only ships the ESP backends. Use the
-	// full MSYS2 LLVM distribution for other embedded targets (for example
-	// ARM and AVR), while retaining the established ESP toolchain selection
-	// on Unix hosts and for ESP targets.
-	var clangRoot string
-	if useSystemClangForTarget(runtime.GOOS, target, config.BuildTags) {
-		export.CC = "clang++"
-	} else {
-		var clangErr error
-		clangRoot, clangErr = getESPClangRoot(true)
-		if clangErr != nil {
-			err = clangErr
-			return
-		}
-		export.ClangRoot = clangRoot
-		export.CC = filepath.Join(clangRoot, "bin", "clang++")
+	// The downloaded Espressif toolchain carries all backends used by LLGo's
+	// embedded profiles on every supported host.
+	clangRoot, clangErr := getESPClangRoot(true)
+	if clangErr != nil {
+		err = clangErr
+		return
 	}
+	export.ClangRoot = clangRoot
+	export.CC = filepath.Join(clangRoot, "bin", "clang++")
 
 	// Convert target config to Export - only export necessary fields
 	export.BuildTags = config.BuildTags
@@ -880,7 +872,7 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	ldflags := []string{"-S", "--icf=none"}
 	ccflags := []string{level.Flag()}
 	cflags := []string{"-Wno-override-module", "-Qunused-arguments", "-Wno-unused-command-line-argument"}
-	clangTarget := clangDriverTargetForHost(runtime.GOOS, config.LLVMTarget, config.BuildTags)
+	clangTarget := config.LLVMTarget
 	if clangTarget != "" {
 		cflags = append(cflags, "--target="+clangTarget)
 		ccflags = append(ccflags, "--target="+clangTarget)
@@ -1005,9 +997,17 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	if config.LinkerScript != "" {
 		ldflags = append(ldflags, "-T", config.LinkerScript)
 	}
-	ldflags = append(ldflags, "-L", env.LLGoROOT()) // search targets/*.ld
-
 	var libcIncludeDir []string
+	var compiledLibraryKey string
+	if config.Libc != "" || config.RTLib != "" {
+		var compilerKey string
+		compilerKey, err = compilerCacheKey(export.CC)
+		if err != nil {
+			return
+		}
+		compiledLibraryKey = compiledLibraryCacheKey(compilerKey, ccflags, ldflags)
+	}
+	ldflags = append(ldflags, "-L", env.LLGoROOT()) // search targets/*.ld
 
 	if config.Libc != "" {
 		var outputDir string
@@ -1015,7 +1015,7 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 		var compileConfig compile.CompileConfig
 		baseDir := filepath.Join(cacheRoot(), "crosscompile")
 
-		outputDir, compileConfig, err = getLibcCompileConfigByName(baseDir, config.Libc, config.LLVMTarget, config.CPU)
+		outputDir, compileConfig, err = getLibcCompileConfigByName(baseDir, config.Libc, config.LLVMTarget, config.CPU, compiledLibraryKey)
 		if err != nil {
 			return
 		}
@@ -1041,7 +1041,7 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 		var compileConfig compile.CompileConfig
 		baseDir := filepath.Join(cacheRoot(), "crosscompile")
 
-		outputDir, compileConfig, err = getRTCompileConfigByName(baseDir, config.RTLib, config.LLVMTarget)
+		outputDir, compileConfig, err = getRTCompileConfigByName(baseDir, config.RTLib, config.LLVMTarget, compiledLibraryKey)
 		if err != nil {
 			return
 		}
@@ -1065,33 +1065,6 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 	export.LDFLAGS = append(ldflags, expandedLDFlags...)
 
 	return export, nil
-}
-
-func useSystemClangForTarget(hostGOOS, targetTriple string, buildTags []string) bool {
-	if hostGOOS != "windows" || strings.HasPrefix(targetTriple, "xtensa") {
-		return false
-	}
-	for _, tag := range buildTags {
-		if tag == "esp" {
-			return false
-		}
-	}
-	return true
-}
-
-// clangDriverTargetForHost returns the target spelling accepted by the host
-// Clang driver. LLGo's Unix ESP toolchains use the historical "xtensa"
-// spelling, but Espressif's official Windows distribution selects its Xtensa
-// multilibs using the canonical GCC-compatible triple.
-func clangDriverTargetForHost(hostGOOS, llvmTarget string, buildTags []string) string {
-	if hostGOOS == "windows" && llvmTarget == "xtensa" {
-		for _, tag := range buildTags {
-			if tag == "esp" {
-				return "xtensa-esp-unknown-elf"
-			}
-		}
-	}
-	return llvmTarget
 }
 
 // Use extends the original Use function to support target-based configuration

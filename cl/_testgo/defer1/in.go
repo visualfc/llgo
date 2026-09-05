@@ -16,8 +16,8 @@ package main
 // CHECK: [[FRAME:%.*]] = call ptr @"{{.*}}AllocU"(i64 48)
 // CHECK: store ptr [[PREV_DEFER]], ptr {{%.*}}
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[FRAME]])
-// CHECK: [[FLAGS:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 1
-// CHECK: [[HEAD:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
+// CHECK: [[FLAGS:%.*]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 1
+// CHECK: [[HEAD:%.*]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
 // True branch: capture s, then bye, as distinct nodes and flag bits.
 // CHECK: [[HELLO_FLAGS0:%.*]] = load i64, ptr [[FLAGS]]
 // CHECK-NEXT: [[HELLO_FLAGS:%.*]] = or i64 [[HELLO_FLAGS0]], 1
@@ -111,7 +111,7 @@ func main() {
 // CHECK-LABEL: define void @main.zLoopJoin(){{.*}} {
 // CHECK: [[LOOP_FRAME:%[0-9]+]] = call ptr @"{{.*}}AllocU"(i64 48)
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[LOOP_FRAME]])
-// CHECK: [[LOOP_FLAGS:%[0-9]+]] = getelementptr inbounds %"{{.*}}Defer", ptr [[LOOP_FRAME]], i32 0, i32 1
+// CHECK: [[LOOP_FLAGS:%[0-9]+]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[LOOP_FRAME]], i32 0, i32 1
 // CHECK: [[FIRST_INDEX:%[0-9]+]] = phi i64
 // CHECK: [[OLD_LOOP_FLAGS:%[0-9]+]] = load i64, ptr [[LOOP_FLAGS]]
 // CHECK-NEXT: [[NEW_LOOP_FLAGS:%[0-9]+]] = or i64 [[OLD_LOOP_FLAGS]], 1

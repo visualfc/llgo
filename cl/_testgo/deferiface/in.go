@@ -23,13 +23,13 @@ func main() {
 }
 
 // CHECK-LABEL: define void @"main.(*item).Reset"(ptr %0){{.*}} {
-// CHECK: [[RESET_VALUE_PTR:%.*]] = getelementptr inbounds %main.item, ptr %0, i32 0, i32 0
+// CHECK: [[RESET_VALUE_PTR:%.*]] = getelementptr inbounds nuw %main.item, ptr %0, i32 0, i32 0
 // CHECK-NEXT: [[RESET_VALUE:%.*]] = load i64, ptr [[RESET_VALUE_PTR]]
 // CHECK: call void @"{{.*}}PrintInt"(i64 [[RESET_VALUE]])
 
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: [[ITEM:%.*]] = call ptr @"{{.*}}AllocZ"(i64 8)
-// CHECK-NEXT: [[ITEM_VALUE:%.*]] = getelementptr inbounds %main.item, ptr [[ITEM]], i32 0, i32 0
+// CHECK-NEXT: [[ITEM_VALUE:%.*]] = getelementptr inbounds nuw %main.item, ptr [[ITEM]], i32 0, i32 0
 // CHECK-NEXT: store i64 42, ptr [[ITEM_VALUE]]
 // CHECK: [[ITEM_ITAB:%.*]] = call ptr @"{{.*}}NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_main.item")
 // CHECK-NEXT: [[ITEM_IFACE0:%.*]] = insertvalue %"{{.*}}iface" undef, ptr [[ITEM_ITAB]], 0
@@ -49,15 +49,15 @@ func main() {
 // CHECK: [[FRAME:%.*]] = call ptr @"{{.*}}AllocU"(i64 48)
 // CHECK: store ptr [[PREV_DEFER]], ptr {{%.*}}
 // CHECK: call void @"{{.*}}SetThreadDefer"(ptr [[FRAME]])
-// CHECK: [[HEAD:%.*]] = getelementptr inbounds %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
+// CHECK: [[HEAD:%.*]] = getelementptr inbounds nuw %"{{.*}}Defer", ptr [[FRAME]], i32 0, i32 5
 // CHECK: [[HEAD_CANDIDATE:%.*]] = load ptr, ptr [[HEAD]]
 // CHECK-NEXT: icmp ne ptr [[HEAD_CANDIDATE]], null
 // CHECK: call void @"{{.*}}Rethrow"(ptr [[PREV_DEFER]])
 // CHECK: [[OLD_HEAD:%.*]] = load ptr, ptr [[HEAD]]
 // CHECK: [[NODE:%.*]] = call ptr @"{{.*}}AllocU"(i64 32)
-// CHECK: [[NODE_PREV:%.*]] = getelementptr inbounds { ptr, i64, { ptr, ptr } }, ptr [[NODE]], i32 0, i32 0
+// CHECK: [[NODE_PREV:%.*]] = getelementptr inbounds nuw { ptr, i64, { ptr, ptr } }, ptr [[NODE]], i32 0, i32 0
 // CHECK-NEXT: store ptr [[OLD_HEAD]], ptr [[NODE_PREV]]
-// CHECK: [[NODE_CALL:%.*]] = getelementptr inbounds { ptr, i64, { ptr, ptr } }, ptr [[NODE]], i32 0, i32 2
+// CHECK: [[NODE_CALL:%.*]] = getelementptr inbounds nuw { ptr, i64, { ptr, ptr } }, ptr [[NODE]], i32 0, i32 2
 // CHECK-NEXT: store { ptr, ptr } [[RESET_CALL]], ptr [[NODE_CALL]]
 // CHECK-NEXT: store ptr [[NODE]], ptr [[HEAD]]
 // CHECK: call void @"{{.*}}PrintString"(%"{{.*}}String" { ptr @{{[0-9]+}}, i64 4 })

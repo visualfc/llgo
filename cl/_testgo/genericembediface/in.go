@@ -47,7 +47,7 @@ func main() {
 // CHECK: [[H_REF_IFACE0:%.*]] = insertvalue %"{{.*}}iface" undef, ptr [[H_REF_ITAB]], 0
 // CHECK: [[H_REF_IFACE:%.*]] = insertvalue %"{{.*}}iface" [[H_REF_IFACE0]], ptr [[H_DYN_DATA]], 1
 // CHECK: [[H_GENERIC_STREAM:%.*]] = call ptr @"{{.*}}AllocZ"(i64 16)
-// CHECK: [[H_STREAM_FIELD:%.*]] = getelementptr inbounds %"{{.*}}GenericServerStream[main.Request,main.Response]", ptr [[H_GENERIC_STREAM]], i32 0, i32 0
+// CHECK: [[H_STREAM_FIELD:%.*]] = getelementptr inbounds nuw %"{{.*}}GenericServerStream[main.Request,main.Response]", ptr [[H_GENERIC_STREAM]], i32 0, i32 0
 // CHECK: store %"{{.*}}iface" %1, ptr [[H_STREAM_FIELD]]
 // CHECK: [[H_STREAM_ITAB:%.*]] = call ptr @"{{.*}}NewItab"(ptr @"_llgo_iface${{[-A-Za-z0-9_]+}}", ptr @"*_llgo_{{.*}}GenericServerStream[main.Request,main.Response]")
 // CHECK: [[H_STREAM_IFACE0:%.*]] = insertvalue %"{{.*}}iface" undef, ptr [[H_STREAM_ITAB]], 0
@@ -101,7 +101,7 @@ func main() {
 // Both instantiated forwarding methods load the embedded ServerStream method and
 // preserve its receiver across the recover-frame alias used for interface calls.
 // CHECK-LABEL: define linkonce %"{{.*}}String" @"{{.*}}/streamlib.(*GenericServerStream[main.Request,main.Response]).Context"(ptr %0){{.*}} {
-// CHECK: [[GP_FIELD:%.*]] = getelementptr inbounds %"{{.*}}GenericServerStream[main.Request,main.Response]", ptr %0, i32 0, i32 0
+// CHECK: [[GP_FIELD:%.*]] = getelementptr inbounds nuw %"{{.*}}GenericServerStream[main.Request,main.Response]", ptr %0, i32 0, i32 0
 // CHECK: [[GP_IFACE:%.*]] = load %"{{.*}}iface", ptr [[GP_FIELD]]
 // CHECK: [[GP_DATA:%.*]] = call ptr @"{{.*}}IfacePtrData"(%"{{.*}}iface" [[GP_IFACE]])
 // CHECK: [[GP_ITAB:%.*]] = extractvalue %"{{.*}}iface" [[GP_IFACE]], 0
@@ -118,7 +118,7 @@ func main() {
 // CHECK: ret %"{{.*}}String" [[GP_RESULT]]
 
 // CHECK-LABEL: define linkonce %"{{.*}}String" @"{{.*}}/streamlib.GenericServerStream[main.Request,main.Response].Context"(%"{{.*}}GenericServerStream[main.Request,main.Response]" %0){{.*}} {
-// CHECK: [[GV_FIELD:%.*]] = getelementptr inbounds %"{{.*}}GenericServerStream[main.Request,main.Response]", ptr {{%.*}}, i32 0, i32 0
+// CHECK: [[GV_FIELD:%.*]] = getelementptr inbounds nuw %"{{.*}}GenericServerStream[main.Request,main.Response]", ptr {{%.*}}, i32 0, i32 0
 // CHECK: [[GV_IFACE:%.*]] = load %"{{.*}}iface", ptr [[GV_FIELD]]
 // CHECK: [[GV_DATA:%.*]] = call ptr @"{{.*}}IfacePtrData"(%"{{.*}}iface" [[GV_IFACE]])
 // CHECK: [[GV_ITAB:%.*]] = extractvalue %"{{.*}}iface" [[GV_IFACE]], 0

@@ -17,8 +17,8 @@ type S []int
 // CHECK: %[[POINTS:[0-9]+]] = alloca [3 x %main.point]
 // CHECK: %[[POINT2_DST:[0-9]+]] = getelementptr inbounds %main.point, ptr %[[POINTS]], i64 2
 // CHECK: %[[POINT2_TMP:[0-9]+]] = alloca %main.point
-// CHECK: %[[POINT2_INIT_X:[0-9]+]] = getelementptr inbounds %main.point, ptr %[[POINT2_TMP]], i32 0, i32 0
-// CHECK: %[[POINT2_INIT_Y:[0-9]+]] = getelementptr inbounds %main.point, ptr %[[POINT2_TMP]], i32 0, i32 1
+// CHECK: %[[POINT2_INIT_X:[0-9]+]] = getelementptr inbounds nuw %main.point, ptr %[[POINT2_TMP]], i32 0, i32 0
+// CHECK: %[[POINT2_INIT_Y:[0-9]+]] = getelementptr inbounds nuw %main.point, ptr %[[POINT2_TMP]], i32 0, i32 1
 // CHECK: store i64 5, ptr %[[POINT2_INIT_X]]
 // CHECK: store i64 6, ptr %[[POINT2_INIT_Y]]
 // CHECK: %[[POINT2_VALUE:[0-9]+]] = load %main.point, ptr %[[POINT2_TMP]]
@@ -27,9 +27,9 @@ type S []int
 // CHECK: %[[POINT2:[0-9]+]] = getelementptr inbounds %main.point, ptr %[[POINTS]], i64 2
 // CHECK: %[[SELECTED_POINT:[0-9]+]] = load %main.point, ptr %[[POINT2]]
 // CHECK: store %main.point %[[SELECTED_POINT]], ptr %[[POINT]]
-// CHECK: %[[POINT_X:[0-9]+]] = getelementptr inbounds %main.point, ptr %[[POINT]], i32 0, i32 0
+// CHECK: %[[POINT_X:[0-9]+]] = getelementptr inbounds nuw %main.point, ptr %[[POINT]], i32 0, i32 0
 // CHECK: load i64, ptr %[[POINT_X]]
-// CHECK: %[[POINT_Y:[0-9]+]] = getelementptr inbounds %main.point, ptr %[[POINT]], i32 0, i32 1
+// CHECK: %[[POINT_Y:[0-9]+]] = getelementptr inbounds nuw %main.point, ptr %[[POINT]], i32 0, i32 1
 // CHECK: load i64, ptr %[[POINT_Y]]
 
 // Nested arrays select row 1 before indexing its two elements.

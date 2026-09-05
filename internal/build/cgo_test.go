@@ -31,11 +31,11 @@ func TestParseCgoDeclFlags(t *testing.T) {
 	}{
 		{
 			name: "CPPFLAGS with tag",
-			line: "#cgo linux CPPFLAGS: -I/usr/lib/llvm-19/include -D_GNU_SOURCE",
+			line: "#cgo linux CPPFLAGS: -I/usr/lib/llvm-22/include -D_GNU_SOURCE",
 			want: []cgoDecl{
 				{
 					tag:    "linux",
-					cflags: []string{"-I/usr/lib/llvm-19/include", "-D_GNU_SOURCE"},
+					cflags: []string{"-I/usr/lib/llvm-22/include", "-D_GNU_SOURCE"},
 				},
 			},
 		},

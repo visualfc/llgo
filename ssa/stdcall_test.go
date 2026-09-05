@@ -110,7 +110,10 @@ func TestStdcallCallConventions(t *testing.T) {
 		want   string
 	}{
 		{target: &Target{GOOS: "linux", GOARCH: "amd64"}, want: "only defined for Windows"},
-		{target: &Target{GOOS: "windows", GOARCH: "mips"}, want: "not supported on windows/mips"},
+		// LLVM's official Windows package does not build the Mips backend.
+		// RISC-V exercises the same unsupported-stdcall path while remaining a
+		// target that the package can instantiate.
+		{target: &Target{GOOS: "windows", GOARCH: "riscv64"}, want: "not supported on windows/riscv64"},
 	} {
 		prog := NewProgram(test.target)
 		requireStdcallPanic(t, test.want, func() { prog.stdcallCallConv() })

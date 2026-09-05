@@ -170,7 +170,12 @@ func TestWindowsDirectSetjmpABI(t *testing.T) {
 }
 
 func TestWindowsSetjmpRejectsUnsupportedArchitecture(t *testing.T) {
-	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "windows", GOARCH: "mips"})
+	// The official Windows LLVM package does not include the Mips backend.
+	// RISC-V is present in every LLVM 22 payload used by LLGo and remains an
+	// unsupported Windows setjmp architecture, which is the contract under test.
+	prog := ssatest.NewProgram(t, &ssa.Target{
+		GOOS: "windows", GOARCH: "riscv64", LLVMTarget: "riscv64-unknown-unknown",
+	})
 	pkg := prog.NewPackage("foo", "foo")
 	fn := pkg.NewFunc("f", ssa.NoArgsNoRet, ssa.InGo)
 	b := fn.MakeBody(1)

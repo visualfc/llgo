@@ -90,7 +90,7 @@ jobs:
           set -x
           source doc/_readme/scripts/install_ubuntu.sh
           if [[ "${{ matrix.install_mode }}" == "full" ]]; then
-            echo "PATH=/usr/lib/llvm-19/bin:$PATH" >> "$GITHUB_ENV"
+            echo "PATH=/usr/lib/llvm-22/bin:$PATH" >> "$GITHUB_ENV"
           fi
 
       - name: Set up Python 3.12 on Windows

@@ -13,7 +13,7 @@ func (t *T) Invoke() {
 
 // CHECK-LABEL: define void @main.dump(%"{{.*}}/runtime/internal/runtime.eface" %0){{.*}} {
 // CHECK: store %"{{.*}}eface" %0, ptr [[DUMP_ADDR:%[-A-Za-z0-9_.]+]]
-// CHECK: [[DUMP_TYPE_FIELD:%.*]] = getelementptr inbounds %main.eface, ptr [[DUMP_ADDR]], i32 0, i32 0
+// CHECK: [[DUMP_TYPE_FIELD:%.*]] = getelementptr inbounds nuw %main.eface, ptr [[DUMP_ADDR]], i32 0, i32 0
 // CHECK: [[DUMP_TYPE:%.*]] = load ptr, ptr [[DUMP_TYPE_FIELD]]
 // CHECK: call void @main.dumpTyp(ptr [[DUMP_TYPE]], %"{{.*}}String" zeroinitializer)
 func dump(v any) {
@@ -56,11 +56,11 @@ func dumpTyp(t *abi.Type, sep string) {
 
 // CHECK-LABEL: define void @main.dumpUncommon(ptr %0, %"{{.*}}/runtime/internal/runtime.String" %1){{.*}} {
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}String" %1)
-// CHECK: [[PKG_FIELD:%.*]] = getelementptr inbounds %"{{.*}}UncommonType", ptr %0, i32 0, i32 0
+// CHECK: [[PKG_FIELD:%.*]] = getelementptr inbounds nuw %"{{.*}}UncommonType", ptr %0, i32 0, i32 0
 // CHECK: [[PKG_PATH:%.*]] = load %"{{.*}}String", ptr [[PKG_FIELD]]
-// CHECK: [[MCOUNT_FIELD:%.*]] = getelementptr inbounds %"{{.*}}UncommonType", ptr %0, i32 0, i32 1
+// CHECK: [[MCOUNT_FIELD:%.*]] = getelementptr inbounds nuw %"{{.*}}UncommonType", ptr %0, i32 0, i32 1
 // CHECK: [[MCOUNT:%.*]] = load i16, ptr [[MCOUNT_FIELD]]
-// CHECK: [[XCOUNT_FIELD:%.*]] = getelementptr inbounds %"{{.*}}UncommonType", ptr %0, i32 0, i32 2
+// CHECK: [[XCOUNT_FIELD:%.*]] = getelementptr inbounds nuw %"{{.*}}UncommonType", ptr %0, i32 0, i32 2
 // CHECK: [[XCOUNT:%.*]] = load i16, ptr [[XCOUNT_FIELD]]
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintString"(%"{{.*}}String" [[PKG_PATH]])
 // CHECK: [[MCOUNT64:%.*]] = zext i16 [[MCOUNT]] to i64

@@ -83,8 +83,8 @@ func main() {
 
 // CHECK-LABEL: define linkonce void @"main.(*T[string,int]).Demo"(
 // CHECK-SAME: ptr %[[PTR:[0-9]+]]){{.*}} {
-// CHECK: getelementptr inbounds %"main.T[string,int]", ptr %[[PTR]], i32 0, i32 0
-// CHECK: getelementptr inbounds %"main.T[string,int]", ptr %[[PTR]], i32 0, i32 1
+// CHECK: getelementptr inbounds nuw %"main.T[string,int]", ptr %[[PTR]], i32 0, i32 0
+// CHECK: getelementptr inbounds nuw %"main.T[string,int]", ptr %[[PTR]], i32 0, i32 1
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintString"
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintInt"
 

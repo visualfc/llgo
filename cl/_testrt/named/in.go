@@ -56,10 +56,10 @@ func main() {
 // CHECK: %[[ROOT:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AllocZ"(i64 64)
 // CHECK: store ptr %[[ROOT]], ptr %[[ROOTSLOT]], align 8
 // CHECK: %[[ENV:[0-9]+]] = call nonnull ptr @"{{.*}}/runtime/internal/runtime.AllocU"(i64 8)
-// CHECK: %[[ENVSLOT:[0-9]+]] = getelementptr inbounds { ptr }, ptr %[[ENV]], i32 0, i32 0
+// CHECK: %[[ENVSLOT:[0-9]+]] = getelementptr inbounds nuw { ptr }, ptr %[[ENV]], i32 0, i32 0
 // CHECK: store ptr %[[ROOTSLOT]], ptr %[[ENVSLOT]], align 8
 // CHECK: %[[CLOSURE:[0-9]+]] = insertvalue { ptr, ptr } { ptr @"main.main$1", ptr undef }, ptr %[[ENV]], 1
-// CHECK: %[[CHECKFIELD:[0-9]+]] = getelementptr inbounds %main.mspan, ptr %{{[0-9]+}}, i32 0, i32 5
+// CHECK: %[[CHECKFIELD:[0-9]+]] = getelementptr inbounds nuw %main.mspan, ptr %{{[0-9]+}}, i32 0, i32 5
 // CHECK: store { ptr, ptr } %[[CLOSURE]], ptr %[[CHECKFIELD]], align 8
 // CHECK: %[[PAIR1:[0-9]+]] = load { ptr, ptr }, ptr %{{[0-9]+}}, align 8
 // CHECK: %[[ENV1:[0-9]+]] = extractvalue { ptr, ptr } %[[PAIR1]], 1
@@ -67,8 +67,8 @@ func main() {
 // CHECK: %__llgo_funcval_code = call ptr asm "", "=r,0"(ptr %[[CODE1]])
 // ARM64: %[[FIRST:[0-9]+]] = call i64 %__llgo_funcval_code(ptr swiftself %[[ENV1]], i64 -2)
 // AMD64: %[[FIRST:[0-9]+]] = call i64 %__llgo_funcval_code(ptr nest %[[ENV1]], i64 -2)
-// CHECK: getelementptr inbounds %main.minfo, ptr %{{[0-9]+}}, i32 0, i32 0
-// CHECK: getelementptr inbounds %main.mspan, ptr %{{[0-9]+}}, i32 0, i32 5
+// CHECK: getelementptr inbounds nuw %main.minfo, ptr %{{[0-9]+}}, i32 0, i32 0
+// CHECK: getelementptr inbounds nuw %main.mspan, ptr %{{[0-9]+}}, i32 0, i32 5
 // CHECK: %[[PAIR2:[0-9]+]] = load { ptr, ptr }, ptr %{{[0-9]+}}, align 8
 // CHECK: %[[ENV2:[0-9]+]] = extractvalue { ptr, ptr } %[[PAIR2]], 1
 // CHECK: %[[CODE2:[0-9]+]] = extractvalue { ptr, ptr } %[[PAIR2]], 0
@@ -83,7 +83,7 @@ func main() {
 // CHECK: %[[CAPTURE:[0-9]+]] = load { ptr }, ptr %[[CENV]], align 8
 // CHECK: %[[CAPTUREDSLOT:[0-9]+]] = extractvalue { ptr } %[[CAPTURE]], 0
 // CHECK: %[[CAPTUREDROOT:[0-9]+]] = load ptr, ptr %[[CAPTUREDSLOT]], align 8
-// CHECK: %[[VALUEFIELD:[0-9]+]] = getelementptr inbounds %main.mspan, ptr %[[CAPTUREDROOT]], i32 0, i32 4
+// CHECK: %[[VALUEFIELD:[0-9]+]] = getelementptr inbounds nuw %main.mspan, ptr %[[CAPTUREDROOT]], i32 0, i32 4
 // CHECK: %[[VALUE:[0-9]+]] = load i64, ptr %[[VALUEFIELD]], align 8
 // CHECK: %[[PRODUCT:[0-9]+]] = mul i64 %[[VALUE]], %[[ARG]]
 // CHECK: ret i64 %[[PRODUCT]]
