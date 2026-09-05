@@ -1733,13 +1733,7 @@ func appendExternalLinkArgs(ctx *context, aPkg *aPackage, spec string) {
 	} else {
 		linkFile := expdArgs[0]
 		dir, lib := filepath.Split(linkFile)
-		linkArg := "-l" + lib
-		// LLGo packages use "c++" as the portable spelling for the target C++
-		// standard library. The MSVC ABI provides that library as msvcprt.lib.
-		if lib == "c++" && ctx.crossCompile.Toolchain.CXXRuntime == crosscompile.CXXRuntimeMSVC {
-			linkArg = "-lmsvcprt"
-		}
-		pkgLinkArgs = append(pkgLinkArgs, linkArg)
+		pkgLinkArgs = append(pkgLinkArgs, "-l"+lib)
 		if dir != "" {
 			pkgLinkArgs = append(pkgLinkArgs, "-L"+dir)
 			atomic.AddInt32(&ctx.nLibdir, 1)

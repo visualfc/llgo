@@ -107,7 +107,7 @@ runs:
       uses: actions/cache@v6
       with:
         path: ${{ runner.tool_cache }}\llgo-windows-support\22.1.8\${{ inputs.windows-arch }}
-        key: llgo-windows-support-22.1.8-${{ inputs.windows-arch }}-16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c-76f44ef1ba6eeb5a65904e9500f042f588fade49952778ce48f0374daa934396-b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35-v1
+        key: llgo-windows-support-22.1.8-${{ inputs.windows-arch }}-${{ inputs.windows-abi }}-16e5709785fef73c854646241c4a92c5cd574318d1b33c63330dd7721903e55c-76f44ef1ba6eeb5a65904e9500f042f588fade49952778ce48f0374daa934396-b9b68a4d276e16fa25802aaba458e4638f64b3884c290aaccdc2d87083b6ca35-v1
 
     - name: Install Windows LLDB and target builtins
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && (inputs.windows-abi == 'msvc' || inputs.windows-arch != 'amd64') && steps.windows_target_llvm_cache.outputs.cache-hit != 'true'
@@ -125,7 +125,7 @@ runs:
         # The upstream x64 full-target archive supplies the host LLVM tools but
         # omits LLDB and only carries x64 compiler-rt. Official LLVM installers
         # supply x64/ARM64 LLDB and builtins. LLVM 22 has no Win32 installer, so
-        # the 386 lane takes the exact LLVM 22.1.8 i386 builtins from the pinned
+        # the 386 MSVC lane takes LLVM 22.1.8 i386 builtins from the pinned
         # llvm-mingw release and qualifies the official x64 LLDB under WoW64.
         $installerName = "LLVM-$env:LLVM_VERSION-$env:LLVM_INSTALLER_ARCH.exe"
         $installer = Join-Path $env:RUNNER_TEMP $installerName
@@ -161,7 +161,7 @@ runs:
         }
         $cacheRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-windows-support\$env:LLVM_VERSION\${{ inputs.windows-arch }}"
         New-Item -ItemType Directory -Force $cacheRoot | Out-Null
-        if ("${{ inputs.windows-arch }}" -ne "amd64") {
+        if ("${{ inputs.windows-arch }}" -ne "amd64" -and "${{ inputs.windows-abi }}" -eq "msvc") {
           $source = Join-Path $extractRoot $builtinsRelative
           if ("${{ inputs.windows-arch }}" -eq "386") {
             $llvmMingwAsset = "llvm-mingw-$env:LLVM_MINGW_VERSION-ucrt-x86_64.zip"
