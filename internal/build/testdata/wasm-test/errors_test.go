@@ -3,6 +3,7 @@ package wasmtest
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"testing"
 )
 
@@ -43,4 +44,21 @@ func TestErrorsAsTargets(t *testing.T) {
 			errors.As(err, target)
 		}()
 	}
+}
+
+func TestReflectliteSwapperKinds(t *testing.T) {
+	// sort.Slice uses reflectlite.Swapper, including its string fast path.
+	values := []string{"charlie", "alpha", "bravo"}
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+	if values[0] != "alpha" || values[1] != "bravo" || values[2] != "charlie" {
+		t.Fatalf("sort.Slice = %v", values)
+	}
+
+	// Formatting ValueError also crosses the Kind-to-runtime-Kind boundary.
+	defer func() {
+		if got := fmt.Sprint(recover()); got != "reflect: call of Swapper on int Value" {
+			t.Fatalf("sort.Slice panic = %q", got)
+		}
+	}()
+	sort.Slice(42, func(i, j int) bool { return i < j })
 }
