@@ -49,6 +49,25 @@ func TestESPClangHostDownload(t *testing.T) {
 	}
 }
 
+func TestESPClangRejectsMissingChecksum(t *testing.T) {
+	writeWasmTargetFixture(t, "", "")
+	checksums := espClangSHA256
+	espClangSHA256 = nil
+	t.Cleanup(func() { espClangSHA256 = checksums })
+
+	root, err := getESPClangRoot(true)
+	platform := getESPClangPlatform(runtime.GOOS, runtime.GOARCH)
+	if platform == "" {
+		if err == nil || !strings.Contains(err.Error(), "is not supported for download") {
+			t.Fatalf("unsupported host error = %v", err)
+		}
+		return
+	}
+	if root != "" || err == nil || err.Error() != "missing ESP Clang checksum for "+platform {
+		t.Fatalf("getESPClangRoot() = %q, %v; want missing checksum error", root, err)
+	}
+}
+
 func TestCompileWithConfigRejectsFileAsOutputDir(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "output")
 	if err := os.WriteFile(output, nil, 0o644); err != nil {

@@ -1104,6 +1104,14 @@ func TestInstallESPClangLicenseWriteFailure(t *testing.T) {
 	}
 }
 
+func TestFileSHA256Errors(t *testing.T) {
+	for _, filename := range []string{filepath.Join(t.TempDir(), "missing"), t.TempDir()} {
+		if checksum, err := fileSHA256(filename); err == nil || checksum != "" {
+			t.Errorf("fileSHA256(%q) = %q, %v; want no checksum and an error", filename, checksum, err)
+		}
+	}
+}
+
 func TestESPClangRejectsChecksumMismatch(t *testing.T) {
 	archivePath := createTestTarGz(t, map[string]string{"esp-clang/bin/clang": "fake"})
 	defer os.Remove(archivePath)
