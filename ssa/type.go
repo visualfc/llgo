@@ -224,6 +224,11 @@ func (p Program) PointerSize() int {
 	return p.ptrSize
 }
 
+// IsRegularMemory reports whether values of typ may be compared bytewise.
+func (p Program) IsRegularMemory(typ types.Type) bool {
+	return p.abi.IsRegularMemory(typ)
+}
+
 func (p Program) Slice(typ Type) Type {
 	return p.rawType(types.NewSlice(typ.raw.Type))
 }

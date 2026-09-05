@@ -2727,6 +2727,125 @@ func TestCanInlineArrayEqual(t *testing.T) {
 	}
 }
 
+func TestStructEqualLowering(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	prog.SetRuntime(func() *types.Package {
+		pkg, err := importer.For("source", nil).Import(PkgRuntime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pkg
+	})
+	pkg := prog.NewPackage("main", "main")
+	compare := func(name string, typ *types.Struct, op token.Token, addrMask, zeroMask uint) string {
+		sig := types.NewSignatureType(nil, nil, nil,
+			types.NewTuple(
+				types.NewVar(token.NoPos, nil, "x", typ),
+				types.NewVar(token.NoPos, nil, "y", typ),
+			),
+			types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool])),
+			false,
+		)
+		fn := pkg.NewFunc(name, sig, InGo)
+		b := fn.MakeBody(1)
+		x, y := fn.Param(0), fn.Param(1)
+		xaddr, yaddr := Nil, Nil
+		if addrMask&1 != 0 {
+			xaddr = b.AllocaT(x.Type)
+			b.Store(xaddr, x)
+		}
+		if addrMask&2 != 0 {
+			yaddr = b.AllocaT(y.Type)
+			b.Store(yaddr, y)
+		}
+		if zeroMask&1 != 0 {
+			x = prog.Zero(x.Type)
+		}
+		if zeroMask&2 != 0 {
+			y = prog.Zero(y.Type)
+		}
+		b.Return(b.StructBinOp(op, x, y, xaddr, yaddr))
+		return pkg.Module().NamedFunction(name).String()
+	}
+	field := func(name string, typ types.Type) *types.Var {
+		return types.NewVar(token.NoPos, nil, name, typ)
+	}
+
+	smallType := types.NewStruct([]*types.Var{
+		field("a", types.Typ[types.Int]), field("_", types.Typ[types.Int]),
+		field("b", types.Typ[types.Int]),
+	}, nil)
+	small := compare("smallStruct", smallType, token.NEQ, 0, 0)
+	if strings.Contains(small, "memequal") || strings.Contains(small, "structequal") {
+		t.Fatalf("small struct comparison was not inlined:\n%s", small)
+	}
+	regularType := types.NewStruct([]*types.Var{
+		field("value", types.NewArray(types.Typ[types.Uint8], 1024)),
+	}, nil)
+	regular := compare("largeRegularStruct", regularType, token.EQL, 0, 0)
+	if !strings.Contains(regular, ".memequal") || strings.Contains(regular, "extractvalue [1024 x i8]") {
+		t.Fatalf("large regular struct comparison was not lowered to memequal:\n%s", regular)
+	}
+	regularAddr := compare("largeRegularStructAddr", regularType, token.NEQ, 3, 0)
+	if !strings.Contains(regularAddr, ".memequal") {
+		t.Fatalf("addressed regular struct comparison was not lowered to memequal:\n%s", regularAddr)
+	}
+	zeroLeft := compare("largeZeroLeft", regularType, token.EQL, 2, 1)
+	if !strings.Contains(zeroLeft, ".memequalzero") {
+		t.Fatalf("left zero comparison did not reuse the right address:\n%s", zeroLeft)
+	}
+	zeroRight := compare("largeZeroRight", regularType, token.NEQ, 1, 2)
+	if !strings.Contains(zeroRight, ".memequalzero") {
+		t.Fatalf("right zero comparison did not reuse the left address:\n%s", zeroRight)
+	}
+	nonMemory := compare("largeNonMemoryStruct", types.NewStruct([]*types.Var{
+		field("value", types.NewArray(types.Typ[types.String], 5)),
+	}, nil), token.EQL, 0, 0)
+	if strings.Contains(nonMemory, ".structequal") || !strings.Contains(nonMemory, ".arrayequal") {
+		t.Fatalf("large semantic struct comparison was not kept field-wise:\n%s", nonMemory)
+	}
+	fiveFields := types.NewStruct([]*types.Var{
+		field("a", types.Typ[types.Uint8]), field("b", types.Typ[types.Uint8]),
+		field("c", types.Typ[types.Uint8]), field("d", types.Typ[types.Uint8]),
+		field("e", types.Typ[types.Uint8]),
+	}, nil)
+	if CanInlineStructEqual(fiveFields, 5, prog.PointerSize()) {
+		t.Fatal("five-field struct comparison was inlined")
+	}
+
+	sig := types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(
+			types.NewVar(token.NoPos, nil, "x", smallType),
+			types.NewVar(token.NoPos, nil, "y", smallType),
+		),
+		types.NewTuple(types.NewVar(token.NoPos, nil, "", types.Typ[types.Bool])),
+		false,
+	)
+	fn := pkg.NewFunc("invalidStructCompare", sig, InGo)
+	b := fn.MakeBody(1)
+	mustPanic := func(want string, call func()) {
+		t.Helper()
+		defer func() {
+			if got := recover(); got != want {
+				t.Fatalf("panic = %v, want %q", got, want)
+			}
+		}()
+		call()
+	}
+	mustPanic("StructBinOp requires struct operands", func() {
+		b.StructBinOp(token.EQL, prog.Val(1), prog.Val(2), Nil, Nil)
+	})
+	mustPanic("StructBinOp requires an equality operator", func() {
+		b.StructBinOp(token.ADD, fn.Param(0), fn.Param(1), Nil, Nil)
+	})
+	b.Return(prog.BoolVal(false))
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("struct comparison module is invalid: %v\n%s", err, pkg.String())
+	}
+}
+
 func TestUnOp(t *testing.T) {
 	prog := NewProgram(nil)
 	pkg := prog.NewPackage("bar", "foo/bar")
