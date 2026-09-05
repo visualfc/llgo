@@ -645,17 +645,11 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 	})
 }
 
-func TestUseTargetWindowsESPClang(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Windows host toolchain selection")
-	}
-
-	originalCacheRoot := cacheRoot
-	cacheDir := t.TempDir()
-	cacheRoot = func() string { return cacheDir }
-	t.Cleanup(func() { cacheRoot = originalCacheRoot })
-	embeddedRoot := filepath.Join(cacheDir, "crosscompile", "esp-clang-"+espClangVersion)
-	if err := os.MkdirAll(embeddedRoot, 0o755); err != nil {
+func TestUseTargetESPClang(t *testing.T) {
+	// Use the real toolchain: UseTarget queries its version for the library
+	// cache key and builds the target libraries before returning.
+	embeddedRoot, err := getESPClangRoot(true)
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -665,12 +659,12 @@ func TestUseTargetWindowsESPClang(t *testing.T) {
 	}
 	wantCC := filepath.Join(embeddedRoot, "bin", "clang++")
 	if export.CC != wantCC || export.ClangRoot != embeddedRoot {
-		t.Fatalf("RP2040 compiler on Windows = %q under %q, want %q under %q",
+		t.Fatalf("RP2040 compiler = %q under %q, want %q under %q",
 			export.CC, export.ClangRoot, wantCC, embeddedRoot)
 	}
 	wantLinker := filepath.Join(embeddedRoot, "bin", "ld.lld")
 	if export.Linker != wantLinker {
-		t.Fatalf("RP2040 linker on Windows = %q, want %q", export.Linker, wantLinker)
+		t.Fatalf("RP2040 linker = %q, want %q", export.Linker, wantLinker)
 	}
 }
 
