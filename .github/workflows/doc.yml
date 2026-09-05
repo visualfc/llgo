@@ -19,7 +19,10 @@ jobs:
         os:
           - macos-latest
           - ubuntu-latest
-    runs-on: ${{matrix.os}}
+        include:
+          - os: ubuntu-latest
+            runner: [qiniu, ubuntu-24.04]
+    runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
@@ -58,13 +61,14 @@ jobs:
             os: macos-latest
           - platform: ubuntu
             os: ubuntu-latest
+            runner: [qiniu, ubuntu-24.04]
           - platform: windows-msvc
             os: windows-2022
             windows_abi: msvc
           - platform: windows-mingw
             os: windows-2022
             windows_abi: mingw
-    runs-on: ${{matrix.os}}
+    runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 

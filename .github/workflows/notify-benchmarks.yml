@@ -22,7 +22,7 @@ permissions:
 jobs:
   classifier-tests:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: [qiniu, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v7
       - name: Test benchmark change classifier
@@ -30,7 +30,7 @@ jobs:
 
   dispatch:
     if: github.repository == 'xgo-dev/llgo' && github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: [qiniu, ubuntu-24.04]
     env:
       # Set this repository variable to the temporary personal repository
       # before the migration, then remove it to use xgo-dev/benchmarks.
