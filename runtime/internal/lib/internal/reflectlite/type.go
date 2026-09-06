@@ -76,21 +76,33 @@ type Type interface {
 
 // A Kind represents the specific kind of type that a Type represents.
 // The zero Kind is not a valid kind.
-type Kind = abi.Kind
+// Match the selected Go version's Kind rather than LLGo's word-sized abi.Kind.
+// Since Go 1.23, Type.Kind's interface ABI must return uint8, including on
+// wasm64 targets.
+type Kind kindRepr
 
-const Ptr = abi.Pointer
+func (k Kind) String() string { return abi.Kind(k).String() }
 
 const (
-	// Import-and-export these constants as necessary
-	Interface = abi.Interface
-	Slice     = abi.Slice
-	String    = abi.String
-	Struct    = abi.Struct
+	// Keep every kind used by reflectlite in the version-selected local type.
+	Invalid       = Kind(abi.Invalid)
+	Array         = Kind(abi.Array)
+	Chan          = Kind(abi.Chan)
+	Func          = Kind(abi.Func)
+	Interface     = Kind(abi.Interface)
+	Map           = Kind(abi.Map)
+	Ptr           = Kind(abi.Pointer)
+	Slice         = Kind(abi.Slice)
+	String        = Kind(abi.String)
+	Struct        = Kind(abi.Struct)
+	UnsafePointer = Kind(abi.UnsafePointer)
 )
 
 type rtype struct {
 	*abi.Type
 }
+
+func (t rtype) Kind() Kind { return Kind(t.Type.Kind()) }
 
 // uncommonType is present only for defined types or types with methods
 // (if T is a defined type, the uncommonTypes for T and *T have methods).
@@ -161,7 +173,7 @@ func (t rtype) PkgPath() string {
 	if t.TFlag&abi.TFlagNamed == 0 {
 		return ""
 	}
-	if t.Kind() == abi.UnsafePointer {
+	if t.Type.Kind() == abi.UnsafePointer {
 		return "unsafe"
 	}
 	ut := t.uncommon()
@@ -391,7 +403,7 @@ func haveIdenticalUnderlyingType(T, V *abi.Type, cmpTags bool) bool {
 		}
 		return true
 
-	case Interface:
+	case abi.Interface:
 		t := (*interfaceType)(unsafe.Pointer(T))
 		v := (*interfaceType)(unsafe.Pointer(V))
 		if len(t.Methods) == 0 && len(v.Methods) == 0 {
@@ -404,7 +416,7 @@ func haveIdenticalUnderlyingType(T, V *abi.Type, cmpTags bool) bool {
 	case abi.Map:
 		return haveIdenticalType(T.Key(), V.Key(), cmpTags) && haveIdenticalType(T.Elem(), V.Elem(), cmpTags)
 
-	case Ptr, abi.Slice:
+	case abi.Pointer, abi.Slice:
 		return haveIdenticalType(T.Elem(), V.Elem(), cmpTags)
 
 	case abi.Struct:
