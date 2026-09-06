@@ -9,8 +9,8 @@ After the existing Windows dependency setup and target activation, run:
 The script uses the activated `LLGO_WINDOWS_ABI` and `LLGO_WINDOWS_ARCH`, does
 not download dependencies, and builds a native C executable with optimization
 and frame pointers enabled. Each compiler, inspection, and execution process
-has a 30-second deadline. Output and diagnostics remain in the reported temporary
-directory for investigation.
+has a configurable deadline (30 seconds by default). Output and diagnostics
+remain in the reported temporary directory for investigation.
 
 The harness includes the production `profile_windows.c` in its test translation
 unit. A native worker publishes its real
