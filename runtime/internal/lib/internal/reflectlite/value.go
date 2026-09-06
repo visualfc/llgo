@@ -205,7 +205,7 @@ func (f flag) mustBeExported() {
 // or it is not addressable.
 func (f flag) mustBeAssignable() {
 	if f == 0 {
-		panic(&ValueError{methodName(), Kind(abi.Invalid)})
+		panic(&ValueError{methodName(), Invalid})
 	}
 	// Assignable if addressable and not read-only.
 	if f&flagRO != 0 {
@@ -295,7 +295,7 @@ func valueInterface(v Value) any {
 func (v Value) IsNil() bool {
 	k := v.kind()
 	switch k {
-	case Kind(abi.Chan), Kind(abi.Func), Kind(abi.Map), Ptr, Kind(abi.UnsafePointer):
+	case Chan, Func, Map, Ptr, UnsafePointer:
 		// if v.flag&flagMethod != 0 {
 		// 	return false
 		// }
@@ -344,12 +344,12 @@ func (v Value) Len() int {
 	case String:
 		// String is bigger than a word; assume flagIndir.
 		return (*unsafeheaderString)(v.ptr).Len
-	case Kind(abi.Array):
+	case Array:
 		tt := (*arrayType)(unsafe.Pointer(v.typ))
 		return int(tt.Len)
-	case Kind(abi.Chan):
+	case Chan:
 		return chanlen(v.pointer())
-	case Kind(abi.Map):
+	case Map:
 		return maplen(v.pointer())
 	}
 	panic(&ValueError{"reflect.Value.Len", v.kind()})
@@ -358,7 +358,7 @@ func (v Value) Len() int {
 // NumMethod returns the number of exported methods in the value's method set.
 func (v Value) numMethod() int {
 	if v.typ == nil {
-		panic(&ValueError{"reflectlite.Value.NumMethod", Kind(abi.Invalid)})
+		panic(&ValueError{"reflectlite.Value.NumMethod", Invalid})
 	}
 	return v.typ.NumMethod()
 }
@@ -385,7 +385,7 @@ func (v Value) Set(x Value) {
 func (v Value) Type() Type {
 	f := v.flag
 	if f == 0 {
-		panic(&ValueError{"reflectlite.Value.Type", Kind(abi.Invalid)})
+		panic(&ValueError{"reflectlite.Value.Type", Invalid})
 	}
 	// closure func
 	if v.typ.IsClosure() {

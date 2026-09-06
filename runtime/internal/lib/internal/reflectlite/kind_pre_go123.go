@@ -2,5 +2,5 @@
 
 package reflectlite
 
-// Go 1.20-1.22 use a word-sized Kind.
+// Go versions before 1.23 use a word-sized Kind.
 type kindRepr = uint

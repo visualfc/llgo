@@ -77,19 +77,25 @@ type Type interface {
 // A Kind represents the specific kind of type that a Type represents.
 // The zero Kind is not a valid kind.
 // Match the selected Go version's Kind rather than LLGo's word-sized abi.Kind.
-// Since Go 1.23, Type.Kind's interface ABI must return uint8 on wasm64 too.
+// Since Go 1.23, Type.Kind's interface ABI must return uint8, including on
+// wasm64 targets.
 type Kind kindRepr
 
 func (k Kind) String() string { return abi.Kind(k).String() }
 
-const Ptr = Kind(abi.Pointer)
-
 const (
-	// Import-and-export these constants as necessary
-	Interface = Kind(abi.Interface)
-	Slice     = Kind(abi.Slice)
-	String    = Kind(abi.String)
-	Struct    = Kind(abi.Struct)
+	// Keep every kind used by reflectlite in the version-selected local type.
+	Invalid       = Kind(abi.Invalid)
+	Array         = Kind(abi.Array)
+	Chan          = Kind(abi.Chan)
+	Func          = Kind(abi.Func)
+	Interface     = Kind(abi.Interface)
+	Map           = Kind(abi.Map)
+	Ptr           = Kind(abi.Pointer)
+	Slice         = Kind(abi.Slice)
+	String        = Kind(abi.String)
+	Struct        = Kind(abi.Struct)
+	UnsafePointer = Kind(abi.UnsafePointer)
 )
 
 type rtype struct {
