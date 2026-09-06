@@ -1,0 +1,58 @@
+# Exercise the real Go/cgo parser and the archive cache's integrity boundary.
+param([string]$Go = 'go')
+
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'release-lib.ps1')
+$temporary = Join-Path ([IO.Path]::GetTempPath()) ('llgo-release-build-' + [Guid]::NewGuid())
+New-Item -ItemType Directory $temporary | Out-Null
+$savedEnvironment = @{}
+foreach ($name in @('CGO_ENABLED', 'CGO_LDFLAGS', 'CGO_CPPFLAGS', 'CGO_CFLAGS', 'CGO_CXXFLAGS', 'GOOS', 'GOARCH', 'GOWORK')) {
+  $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+}
+
+try {
+  # A cache hit must still match the pin. The invalid URL makes accidental
+  # network access on this path fail rather than hide a cache regression.
+  $seed = Join-Path $temporary 'seed'
+  [IO.File]::WriteAllText($seed, 'verified release payload')
+  $sha256 = (Get-FileHash -Algorithm SHA256 $seed).Hash.ToLowerInvariant()
+  $cache = Join-Path $temporary 'cache'
+  New-Item -ItemType Directory $cache | Out-Null
+  $archive = Join-Path $cache "$sha256.tar.xz"
+  Copy-Item $seed $archive
+  $arguments = @{ URL = 'https://invalid.invalid/payload'; SHA256 = $sha256; CacheDirectory = $cache }
+  if ((Get-ReleaseArchive @arguments) -ne $archive) { throw 'The verified cache was not reused' }
+  [IO.File]::WriteAllText($archive, 'tampered release payload')
+  $rejected = $false
+  try { $null = Get-ReleaseArchive @arguments } catch {
+    if ($_.Exception.Message -notmatch 'SHA-256.*expected') { throw }
+    $rejected = $true
+  }
+  if (-not $rejected) { throw 'A corrupted cached archive was accepted' }
+
+  foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $null) }
+  $env:CGO_ENABLED = '1'
+  $env:GOWORK = 'off'
+  Set-Content (Join-Path $temporary 'go.mod') "module release-cgo-test`n`ngo 1.20`n"
+  Set-Content (Join-Path $temporary 'main.go') "package main`nimport `"C`"`nfunc main() {}`n"
+  Push-Location $temporary
+  try {
+    # Compile, but do not execute: Windows CI may be using an x64 bootstrap
+    # compiler on an ARM64 host. Cover both the CI path and a spaced SDK path.
+    foreach ($directory in @('lib', 'LLVM SDK/lib')) {
+      $libraryDirectory = Join-Path $temporary $directory
+      New-Item -ItemType Directory -Force $libraryDirectory | Out-Null
+      $env:CGO_LDFLAGS = Get-ReleaseMSVCLinkFlags -LibraryDirectory $libraryDirectory
+      & $Go build -o (Join-Path $temporary 'cgo-test.exe') .
+      if ($LASTEXITCODE -ne 0) { throw 'The release CGO_LDFLAGS failed a real Go build' }
+    }
+  } finally {
+    Pop-Location
+  }
+  Write-Host 'Passed cached archive integrity and CGO linker argument checks'
+} finally {
+  foreach ($name in $savedEnvironment.Keys) {
+    [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+  }
+  Remove-Item -LiteralPath $temporary -Recurse -Force
+}
