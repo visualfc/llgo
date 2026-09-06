@@ -94,7 +94,7 @@ run_llgo_test_compile_only() {
 	local name="$2"
 	local module
 	case "${target}" in
-	emscripten | emscripten-memory64 | wasm)
+	emscripten | emscripten-memory64)
 		module="${work_dir}/${name}.mjs"
 		;;
 	*)
@@ -103,7 +103,8 @@ run_llgo_test_compile_only() {
 	esac
 
 	echo "testing public llgo test -c command for ${target}"
-	"${llgo_cmd}" test -target "${target}" -c -o "${module}" "${test_fixture}"
+	run_with_timeout_limit 300s "${llgo_cmd}" test -target "${target}" -c \
+		-o "${module}" "${test_fixture}"
 	case "${module}" in
 	*.mjs)
 		test -s "${module}"

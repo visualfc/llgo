@@ -1641,6 +1641,8 @@ func (c *context) linker() *clang.Cmd {
 	return cmd
 }
 
+// shouldHideClangImplicitWasmOpt reports whether clang could run wasm-opt
+// before LLGo's configured Asyncify post-link pass.
 func (c *context) shouldHideClangImplicitWasmOpt(linkerProgram string) bool {
 	return c != nil &&
 		c.buildConf != nil &&
@@ -1650,25 +1652,43 @@ func (c *context) shouldHideClangImplicitWasmOpt(linkerProgram string) bool {
 		clangDriverMayRunWasmOpt(linkerProgram)
 }
 
+// clangDriverMayRunWasmOpt identifies clang drivers. Emscripten drivers are
+// deliberately excluded because they manage their own wasm-opt pipeline.
 func clangDriverMayRunWasmOpt(program string) bool {
 	name := strings.TrimSuffix(strings.ToLower(filepath.Base(program)), ".exe")
 	return name == "clang" || name == "clang++" ||
 		strings.HasSuffix(name, "-clang") || strings.HasSuffix(name, "-clang++")
 }
 
+// withoutClangImplicitWasmOpt hides standalone Binaryen installations from a
+// clang link while retaining the directory that supplies the compiler itself.
+// If the compiler directory cannot be identified safely, it leaves PATH alone.
 func withoutClangImplicitWasmOpt(environ []string, compiler string) []string {
 	pathValue := lookupEnvValue(environ, "PATH")
 	if pathValue == "" {
 		return environ
 	}
 	compilerDir := resolveToolDirInPath(compiler, pathValue)
+	if compilerDir == "" {
+		return environ
+	}
+	canonicalCompilerDir, err := canonicalPathEntry(compilerDir)
+	if err != nil {
+		return environ
+	}
 	parts := filepath.SplitList(pathValue)
 	filtered := make([]string, 0, len(parts))
 	changed := false
 	for _, dir := range parts {
-		if pathEntryHasExecutable(dir, "wasm-opt") && !samePathEntry(dir, compilerDir) {
-			changed = true
-			continue
+		if pathEntryHasExecutable(dir, "wasm-opt") {
+			canonicalDir, err := canonicalPathEntry(dir)
+			if err != nil {
+				return environ
+			}
+			if !sameCanonicalPath(canonicalDir, canonicalCompilerDir) {
+				changed = true
+				continue
+			}
 		}
 		filtered = append(filtered, dir)
 	}
@@ -1678,6 +1698,8 @@ func withoutClangImplicitWasmOpt(environ []string, compiler string) []string {
 	return withEnv(environ, "PATH="+strings.Join(filtered, string(os.PathListSeparator)))
 }
 
+// lookupEnvValue returns the last well-formed value for name, matching the
+// platform's environment-key case rules.
 func lookupEnvValue(environ []string, name string) string {
 	for i := len(environ) - 1; i >= 0; i-- {
 		key, value, ok := strings.Cut(environ[i], "=")
@@ -1691,6 +1713,8 @@ func lookupEnvValue(environ []string, name string) string {
 	return ""
 }
 
+// resolveToolDirInPath returns the PATH entry that supplies tool, or the
+// containing directory when tool already contains a path.
 func resolveToolDirInPath(tool, pathValue string) string {
 	if tool == "" {
 		tool = "clang++"
@@ -1706,6 +1730,8 @@ func resolveToolDirInPath(tool, pathValue string) string {
 	return ""
 }
 
+// pathEntryHasExecutable reports whether dir contains an executable named
+// name, including PATHEXT variants on Windows.
 func pathEntryHasExecutable(dir, name string) bool {
 	if dir == "" {
 		dir = "."
@@ -1719,6 +1745,8 @@ func pathEntryHasExecutable(dir, name string) bool {
 	return false
 }
 
+// executableNames returns the filenames Windows or Unix would consider for an
+// executable name in one PATH entry.
 func executableNames(name string) []string {
 	if runtime.GOOS != "windows" || filepath.Ext(name) != "" {
 		return []string{name}
@@ -1734,34 +1762,32 @@ func executableNames(name string) []string {
 			continue
 		}
 		names = append(names, name+ext)
-		names = append(names, name+strings.ToLower(ext))
 	}
 	return names
 }
 
-func samePathEntry(a, b string) bool {
-	if a == "" || b == "" {
-		return false
-	}
-	a = canonicalPathEntry(a)
-	b = canonicalPathEntry(b)
+// sameCanonicalPath compares already-canonicalized paths using platform rules.
+func sameCanonicalPath(a, b string) bool {
 	if runtime.GOOS == "windows" {
 		return strings.EqualFold(a, b)
 	}
 	return a == b
 }
 
-func canonicalPathEntry(path string) string {
+// canonicalPathEntry makes a PATH entry absolute and resolves its symlinks.
+func canonicalPathEntry(path string) (string, error) {
 	if path == "" {
 		path = "."
 	}
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
 	}
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		path = resolved
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", err
 	}
-	return filepath.Clean(path)
+	return filepath.Clean(resolved), nil
 }
 
 // shouldPrintCommands reports whether command tracing should be enabled.

@@ -662,6 +662,17 @@ func TestWithEnvLastValueWins(t *testing.T) {
 	}
 }
 
+func TestWithEnvWindowsKeyCasing(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows environment keys are case-insensitive")
+	}
+	got := withEnv([]string{"Path=old", "PATH=older", "KEEP=value"}, "PATH=new")
+	want := []string{"KEEP=value", "PATH=new"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("withEnv = %q, want %q", got, want)
+	}
+}
+
 func TestWithResolvedGoToolchain(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -1669,6 +1680,37 @@ func TestWithoutClangImplicitWasmOptKeepsCompilerDirectory(t *testing.T) {
 	}
 }
 
+func TestWithoutClangImplicitWasmOptKeepsEnvironmentWhenCompilerMissing(t *testing.T) {
+	binaryenDir := t.TempDir()
+	writeExecutable(t, filepath.Join(binaryenDir, "wasm-opt"))
+	environ := []string{"PATH=" + binaryenDir}
+
+	got := withoutClangImplicitWasmOpt(environ, "clang++")
+	if !slices.Equal(got, environ) {
+		t.Fatalf("withoutClangImplicitWasmOpt changed env without a compiler: got %q want %q", got, environ)
+	}
+}
+
+func TestWithoutClangImplicitWasmOptKeepsEnvironmentOnCanonicalizationFailure(t *testing.T) {
+	binaryenDir := t.TempDir()
+	writeExecutable(t, filepath.Join(binaryenDir, "wasm-opt"))
+	missingCompiler := filepath.Join(t.TempDir(), "missing", "clang++")
+	environ := []string{"PATH=" + binaryenDir}
+
+	got := withoutClangImplicitWasmOpt(environ, missingCompiler)
+	if !slices.Equal(got, environ) {
+		t.Fatalf("withoutClangImplicitWasmOpt changed env after canonicalization failure: got %q want %q", got, environ)
+	}
+}
+
+func TestWithoutClangImplicitWasmOptKeepsEmptyPath(t *testing.T) {
+	environ := []string{"OTHER=value"}
+	got := withoutClangImplicitWasmOpt(environ, "clang++")
+	if !slices.Equal(got, environ) {
+		t.Fatalf("withoutClangImplicitWasmOpt changed env without PATH: got %q want %q", got, environ)
+	}
+}
+
 func TestShouldHideClangImplicitWasmOptOnlyForWasmPostLinkClang(t *testing.T) {
 	ctx := &context{
 		buildConf: &Config{Goarch: "wasm"},
@@ -1685,6 +1727,36 @@ func TestShouldHideClangImplicitWasmOptOnlyForWasmPostLinkClang(t *testing.T) {
 	ctx.buildConf.Goarch = "arm"
 	if ctx.shouldHideClangImplicitWasmOpt("clang++") {
 		t.Fatal("non-wasm clang link hid wasm-opt")
+	}
+	ctx.buildConf.Goarch = "wasm"
+	ctx.crossCompile.WasmPostLink.Asyncify = false
+	if ctx.shouldHideClangImplicitWasmOpt("clang++") {
+		t.Fatal("non-Asyncify wasm link hid wasm-opt")
+	}
+	ctx.crossCompile.WasmPostLink.Asyncify = true
+	ctx.crossCompile.Linker = "custom-linker"
+	if ctx.shouldHideClangImplicitWasmOpt("clang++") {
+		t.Fatal("explicit external linker hid wasm-opt")
+	}
+	if (*context)(nil).shouldHideClangImplicitWasmOpt("clang++") {
+		t.Fatal("nil context hid wasm-opt")
+	}
+}
+
+func TestClangDriverMayRunWasmOpt(t *testing.T) {
+	tests := map[string]bool{
+		"clang":                  true,
+		"clang++":                true,
+		"wasm32-unknown-clang":   true,
+		"wasm32-unknown-clang++": true,
+		"clang.exe":              true,
+		"emcc":                   false,
+		"wasm-ld":                false,
+	}
+	for program, want := range tests {
+		if got := clangDriverMayRunWasmOpt(program); got != want {
+			t.Errorf("clangDriverMayRunWasmOpt(%q) = %v, want %v", program, got, want)
+		}
 	}
 }
 
