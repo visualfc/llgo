@@ -25,7 +25,6 @@ jobs:
         # native toolchain profile, always with .go-version.
         include:
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
             llvm: 22
           - os: macos-latest
             llvm: 22
@@ -59,7 +58,7 @@ jobs:
             windows_abi: mingw
             windows_arch: "386"
             host_go_arch: x64
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
