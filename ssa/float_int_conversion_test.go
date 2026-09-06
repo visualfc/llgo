@@ -112,3 +112,58 @@ func Test386FloatToIntegerConversionIR(t *testing.T) {
 		})
 	}
 }
+
+// Check the conversion width as well as signedness: directly saturating to a
+// narrow Go type would change the required wide-conversion-then-truncation.
+func TestSaturatingFloatToIntegerConversionIR(t *testing.T) {
+	for _, arch := range []string{"arm64", "riscv64", "wasm"} {
+		t.Run(arch, func(t *testing.T) {
+			target := &Target{GOOS: "linux", GOARCH: arch}
+			if arch == "wasm" {
+				target.GOOS = "wasip1"
+			}
+			prog := NewProgram(target)
+			defer prog.Dispose()
+			pkg := prog.NewPackage("floatconvert", "floatconvert")
+			for _, src := range []struct {
+				typ    *types.Basic
+				suffix string
+			}{
+				{types.Typ[types.Float32], "f32"},
+				{types.Typ[types.Float64], "f64"},
+			} {
+				for _, dst := range []struct {
+					typ       *types.Basic
+					intrinsic string
+					trunc     string
+				}{
+					{types.Typ[types.Int8], "fptosi.sat.i32", "trunc i32"},
+					{types.Typ[types.Int16], "fptosi.sat.i32", "trunc i32"},
+					{types.Typ[types.Int32], "fptosi.sat.i32", ""},
+					{types.Typ[types.Int64], "fptosi.sat.i64", ""},
+					{types.Typ[types.Uint8], "fptosi.sat.i32", "trunc i32"},
+					{types.Typ[types.Uint16], "fptosi.sat.i32", "trunc i32"},
+					{types.Typ[types.Uint32], "fptosi.sat.i64", "trunc i64"},
+					{types.Typ[types.Uint64], "fptoui.sat.i64", ""},
+				} {
+					name := src.suffix + "To" + dst.typ.Name()
+					t.Run(name, func(t *testing.T) {
+						params := types.NewTuple(types.NewParam(0, nil, "x", src.typ))
+						results := types.NewTuple(types.NewParam(0, nil, "", dst.typ))
+						fn := pkg.NewFunc(name, types.NewSignatureType(nil, nil, nil, params, results, false), InGo)
+						b := fn.MakeBody(1)
+						b.Return(b.Convert(prog.Type(dst.typ, InGo), fn.Param(0)))
+						ir := fn.impl.String()
+						want := "@llvm." + dst.intrinsic + "." + src.suffix + "("
+						if !strings.Contains(ir, want) || !strings.Contains(ir, dst.trunc) {
+							t.Fatalf("conversion IR missing %q or %q:\n%s", want, dst.trunc, ir)
+						}
+						if strings.Contains(ir, "fcmp") || strings.Contains(ir, "select") {
+							t.Fatalf("conversion still emits manual saturation guards:\n%s", ir)
+						}
+					})
+				}
+			}
+		})
+	}
+}

@@ -44,36 +44,28 @@ func zMixedUntypedFloat(i64 int64, u64 uint64) (uint64, int64, int64, uint64) {
 	return u64, i64, c, d
 }
 
-// The conversion sequence differs by target. Check the saturation boundaries,
-// conversion opcode, and final saturation selection without snapshotting every
-// temporary and block name.
+// Saturating targets use intrinsics while amd64 keeps its legacy CVTT
+// behavior. uint32 must still convert through signed i64 before truncation.
 // CHECK-LABEL: define i32 @main.f32ToI32(
-// ARM64: fcmp ole float {{.*}}, 0xC1E0000000000000
+// ARM64: call i32 @llvm.fptosi.sat.i32.f32(float
 // AMD64: fcmp olt float {{.*}}, 0xC1E0000000000000
-// CHECK: fcmp oge float {{.*}}, 0x41E0000000000000
-// CHECK: fcmp uno float
-// CHECK: fptosi float {{.*}} to i32
-// ARM64: select i1 {{.*}}, i32 -2147483648, i32
-// ARM64: select i1 {{.*}}, i32 2147483647, i32
+// AMD64: fcmp oge float {{.*}}, 0x41E0000000000000
+// AMD64: fcmp uno float
+// AMD64: fptosi float {{.*}} to i32
 // AMD64: select i1 {{.*}}, i32 -2147483648, i32
 // CHECK: ret i32
 
 // CHECK-LABEL: define i32 @main.f32ToU32(
-// ARM64: fcmp ole float {{.*}}, 0xC3E0000000000000
+// ARM64: call i64 @llvm.fptosi.sat.i64.f32(float
 // AMD64: fcmp olt float {{.*}}, 0xC3E0000000000000
-// CHECK: fcmp oge float {{.*}}, 0x43E0000000000000
-// CHECK: fptosi float {{.*}} to i64
-// ARM64: select i1 {{.*}}, i64 -9223372036854775808, i64
-// ARM64: select i1 {{.*}}, i64 9223372036854775807, i64
+// AMD64: fcmp oge float {{.*}}, 0x43E0000000000000
+// AMD64: fptosi float {{.*}} to i64
 // AMD64: select i1 {{.*}}, i64 -9223372036854775808, i64
 // CHECK: trunc i64 {{.*}} to i32
 // CHECK: ret i32
 
 // CHECK-LABEL: define i64 @main.f64ToUintptr(
-// ARM64: fcmp olt double {{.*}}, 0.000000e+00
-// ARM64: fcmp oge double {{.*}}, 0x43F0000000000000
-// ARM64: fptoui double {{.*}} to i64
-// ARM64: select i1 {{.*}}, i64 -1, i64
+// ARM64: call i64 @llvm.fptoui.sat.i64.f64(double
 // AMD64: fcmp oge double {{.*}}, 0x43E0000000000000
 // AMD64: fsub double {{.*}}, 0x43E0000000000000
 // AMD64: fptosi double {{.*}} to i64
