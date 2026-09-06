@@ -77,19 +77,22 @@ func TestCondSkip(t *testing.T) {
 
 func TestConcurrentAccess(t *testing.T) {
 	var mu sync.Mutex
+	var wg sync.WaitGroup
 	counter := 0
 
 	// Test concurrent access to mutex
+	wg.Add(10)
 	for i := 0; i < 10; i++ {
 		go func() {
 			mu.Lock()
 			counter++
 			mu.Unlock()
+			wg.Done()
 		}()
 	}
 
 	// Wait for all goroutines to complete
-	time.Sleep(100 * time.Millisecond)
+	wg.Wait()
 
 	if counter != 10 {
 		t.Fatalf("Expected counter = 10, got %d", counter)
