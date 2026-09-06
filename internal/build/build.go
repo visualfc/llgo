@@ -1621,29 +1621,32 @@ func (c *context) clangConfig() clang.Config {
 
 func (c *context) linker() *clang.Cmd {
 	config := c.clangConfig()
-	cmd := clang.NewLinker(config)
 	linkerProgram := config.Linker
-	if config.Linker == "" && config.CXX != "" {
+	useCXX := config.Linker == "" && config.CXX != ""
+	if useCXX {
 		// Native LLGo historically linked through clang++. Preserve that C++
 		// runtime behavior while allowing CC and CXX to be selected and probed
 		// independently. An explicit -extld keeps Go's precedence.
-		cmd = clang.NewCXXCompiler(config)
 		linkerProgram = config.CXX
 	} else if linkerProgram == "" {
 		linkerProgram = config.CC
 	}
+	if c.shouldDisableClangImplicitWasmOpt(linkerProgram) {
+		config.LDFLAGS = append(slices.Clone(config.LDFLAGS), "--no-wasm-opt")
+	}
+	cmd := clang.NewLinker(config)
+	if useCXX {
+		cmd = clang.NewCXXCompiler(config)
+	}
 	cmd.Dir = c.commands.dir
 	cmd.Env = slices.Clone(c.commands.environ)
-	if c.shouldHideClangImplicitWasmOpt(linkerProgram) {
-		cmd.Env = withoutClangImplicitWasmOpt(cmd.Env, linkerProgram)
-	}
 	cmd.Verbose = c.shouldPrintCommands(false)
 	return cmd
 }
 
-// shouldHideClangImplicitWasmOpt reports whether clang could run wasm-opt
-// before LLGo's configured Asyncify post-link pass.
-func (c *context) shouldHideClangImplicitWasmOpt(linkerProgram string) bool {
+// shouldDisableClangImplicitWasmOpt reports whether LLGo owns the wasm-opt
+// pipeline and must disable clang's implicit post-link optimization.
+func (c *context) shouldDisableClangImplicitWasmOpt(linkerProgram string) bool {
 	return c != nil &&
 		c.buildConf != nil &&
 		c.buildConf.Goarch == "wasm" &&
@@ -1658,136 +1661,6 @@ func clangDriverMayRunWasmOpt(program string) bool {
 	name := strings.TrimSuffix(strings.ToLower(filepath.Base(program)), ".exe")
 	return name == "clang" || name == "clang++" ||
 		strings.HasSuffix(name, "-clang") || strings.HasSuffix(name, "-clang++")
-}
-
-// withoutClangImplicitWasmOpt hides standalone Binaryen installations from a
-// clang link while retaining the directory that supplies the compiler itself.
-// If the compiler directory cannot be identified safely, it leaves PATH alone.
-func withoutClangImplicitWasmOpt(environ []string, compiler string) []string {
-	pathValue := lookupEnvValue(environ, "PATH")
-	if pathValue == "" {
-		return environ
-	}
-	compilerDir := resolveToolDirInPath(compiler, pathValue)
-	if compilerDir == "" {
-		return environ
-	}
-	canonicalCompilerDir, err := canonicalPathEntry(compilerDir)
-	if err != nil {
-		return environ
-	}
-	parts := filepath.SplitList(pathValue)
-	filtered := make([]string, 0, len(parts))
-	changed := false
-	for _, dir := range parts {
-		if pathEntryHasExecutable(dir, "wasm-opt") {
-			canonicalDir, err := canonicalPathEntry(dir)
-			if err != nil {
-				return environ
-			}
-			if !sameCanonicalPath(canonicalDir, canonicalCompilerDir) {
-				changed = true
-				continue
-			}
-		}
-		filtered = append(filtered, dir)
-	}
-	if !changed {
-		return environ
-	}
-	return withEnv(environ, "PATH="+strings.Join(filtered, string(os.PathListSeparator)))
-}
-
-// lookupEnvValue returns the last well-formed value for name, matching the
-// platform's environment-key case rules.
-func lookupEnvValue(environ []string, name string) string {
-	for i := len(environ) - 1; i >= 0; i-- {
-		key, value, ok := strings.Cut(environ[i], "=")
-		if !ok {
-			continue
-		}
-		if key == name || runtime.GOOS == "windows" && strings.EqualFold(key, name) {
-			return value
-		}
-	}
-	return ""
-}
-
-// resolveToolDirInPath returns the PATH entry that supplies tool, or the
-// containing directory when tool already contains a path.
-func resolveToolDirInPath(tool, pathValue string) string {
-	if tool == "" {
-		tool = "clang++"
-	}
-	if filepath.IsAbs(tool) || strings.ContainsAny(tool, `/\`) {
-		return filepath.Dir(tool)
-	}
-	for _, dir := range filepath.SplitList(pathValue) {
-		if pathEntryHasExecutable(dir, tool) {
-			return dir
-		}
-	}
-	return ""
-}
-
-// pathEntryHasExecutable reports whether dir contains an executable named
-// name, including PATHEXT variants on Windows.
-func pathEntryHasExecutable(dir, name string) bool {
-	if dir == "" {
-		dir = "."
-	}
-	for _, candidate := range executableNames(name) {
-		info, err := os.Stat(filepath.Join(dir, candidate))
-		if err == nil && !info.IsDir() && (runtime.GOOS == "windows" || info.Mode()&0o111 != 0) {
-			return true
-		}
-	}
-	return false
-}
-
-// executableNames returns the filenames Windows or Unix would consider for an
-// executable name in one PATH entry.
-func executableNames(name string) []string {
-	if runtime.GOOS != "windows" || filepath.Ext(name) != "" {
-		return []string{name}
-	}
-	exts := filepath.SplitList(os.Getenv("PATHEXT"))
-	if len(exts) == 0 {
-		exts = []string{".COM", ".EXE", ".BAT", ".CMD"}
-	}
-	names := make([]string, 0, len(exts)+1)
-	names = append(names, name)
-	for _, ext := range exts {
-		if ext == "" {
-			continue
-		}
-		names = append(names, name+ext)
-	}
-	return names
-}
-
-// sameCanonicalPath compares already-canonicalized paths using platform rules.
-func sameCanonicalPath(a, b string) bool {
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(a, b)
-	}
-	return a == b
-}
-
-// canonicalPathEntry makes a PATH entry absolute and resolves its symlinks.
-func canonicalPathEntry(path string) (string, error) {
-	if path == "" {
-		path = "."
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	resolved, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Clean(resolved), nil
 }
 
 // shouldPrintCommands reports whether command tracing should be enabled.

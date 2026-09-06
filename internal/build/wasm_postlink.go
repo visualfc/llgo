@@ -54,6 +54,16 @@ func wasmPostLinkArgs(target *crosscompile.Export, input, output string, debug b
 	return append(args, input, "-o", output)
 }
 
+func wasmPreAsyncifyArgs(target *crosscompile.Export, input, output string, level optlevel.Level) []string {
+	if target == nil || !target.WasmPostLink.Asyncify || !level.IsValid() || level == optlevel.O0 {
+		return nil
+	}
+	// Clang normally runs this optimization after wasm-ld. Keep it explicit so
+	// LLGo can disable clang's implicit wasm-opt pass without changing the
+	// established optimization order or binary size.
+	return []string{level.Flag(), input, "-o", output}
+}
+
 func prepareWasmLinkOutput(conf *Config, target *crosscompile.Export, output string) (string, error) {
 	if !needsWasmPostLink(conf, target) {
 		return output, nil
@@ -100,6 +110,18 @@ func postLinkWasm(ctx *context, input, output string, verbose bool) error {
 		return fmt.Errorf("WebAssembly Asyncify requires wasm-opt; install Binaryen or set WASMOPT: %w", err)
 	}
 
+	preAsyncifyArgs := wasmPreAsyncifyArgs(
+		&ctx.crossCompile,
+		input,
+		input,
+		ctx.buildConf.OptLevel,
+	)
+	if preAsyncifyArgs != nil {
+		if err := runWasmOpt(resolved, preAsyncifyArgs, verbose, ctx); err != nil {
+			return fmt.Errorf("wasm-opt pre-Asyncify optimization failed: %w", err)
+		}
+	}
+
 	tmpName, err := createClosedTemp(
 		filepath.Dir(output),
 		"."+filepath.Base(output)+".wasm-opt-*",
@@ -116,17 +138,21 @@ func postLinkWasm(ctx *context, input, output string, verbose bool) error {
 		shouldEmitDebugInfo(ctx.buildConf, &ctx.crossCompile),
 		ctx.buildConf.OptLevel,
 	)
-	if ctx.shouldPrintCommands(verbose) {
-		fmt.Fprintln(os.Stderr, resolved, args)
-	}
-	cmd := exec.Command(resolved, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := runWasmOpt(resolved, args, verbose, ctx); err != nil {
 		return fmt.Errorf("wasm-opt Asyncify failed: %w", err)
 	}
 	if err := os.Rename(tmpName, output); err != nil {
 		return err
 	}
 	return nil
+}
+
+func runWasmOpt(resolved string, args []string, verbose bool, ctx *context) error {
+	if ctx.shouldPrintCommands(verbose) {
+		fmt.Fprintln(os.Stderr, resolved, args)
+	}
+	cmd := exec.Command(resolved, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }

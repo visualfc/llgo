@@ -72,14 +72,14 @@ func withEnv(environ []string, values ...string) []string {
 	keys := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		if key, _, ok := strings.Cut(value, "="); ok {
-			keys[normalizedEnvKey(key)] = struct{}{}
+			keys[key] = struct{}{}
 		}
 	}
 	ret := make([]string, 0, len(environ)+len(values))
 	for _, value := range environ {
 		key, _, ok := strings.Cut(value, "=")
 		// Drop malformed passthrough entries: exec.Cmd requires KEY=VALUE.
-		if _, replace := keys[normalizedEnvKey(key)]; ok && replace {
+		if _, replace := keys[key]; ok && replace {
 			continue
 		}
 		if ok {
@@ -87,15 +87,6 @@ func withEnv(environ []string, values ...string) []string {
 		}
 	}
 	return append(ret, values...)
-}
-
-// normalizedEnvKey preserves Unix key semantics and folds Windows keys to
-// match the case-insensitive environment seen by child processes.
-func normalizedEnvKey(key string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToUpper(key)
-	}
-	return key
 }
 
 func withResolvedGoToolchain(environ []string, goversion string) []string {

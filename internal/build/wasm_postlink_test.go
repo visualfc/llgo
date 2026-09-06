@@ -42,12 +42,16 @@ func wasmPostLinkTestContext() *context {
 }
 
 func writeWasmOptTestTool(t *testing.T, dir string) string {
+	return writeBuildTestTool(t, dir, "wasm-opt")
+}
+
+func writeBuildTestTool(t *testing.T, dir, name string) string {
 	t.Helper()
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	tool := filepath.Join(dir, "wasm-opt")
+	tool := filepath.Join(dir, name)
 	if filepath.Ext(executable) == ".exe" {
 		tool += ".exe"
 	}
@@ -80,6 +84,26 @@ func TestWasmPostLinkArgs(t *testing.T) {
 	}
 	if got := wasmPostLinkArgs(&crosscompile.Export{}, "in", "out", false, optlevel.O2); got != nil {
 		t.Fatalf("wasmPostLinkArgs(disabled) = %v, want nil", got)
+	}
+}
+
+func TestWasmPreAsyncifyArgs(t *testing.T) {
+	target := &crosscompile.Export{WasmPostLink: crosscompile.WasmPostLink{Asyncify: true}}
+	if got, want := wasmPreAsyncifyArgs(target, "in.wasm", "out.wasm", optlevel.Oz),
+		[]string{"-Oz", "in.wasm", "-o", "out.wasm"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("wasmPreAsyncifyArgs() = %v, want %v", got, want)
+	}
+	if got := wasmPreAsyncifyArgs(target, "in", "out", optlevel.O0); got != nil {
+		t.Fatalf("wasmPreAsyncifyArgs(O0) = %v, want nil", got)
+	}
+	if got := wasmPreAsyncifyArgs(target, "in", "out", optlevel.Unset); got != nil {
+		t.Fatalf("wasmPreAsyncifyArgs(unset) = %v, want nil", got)
+	}
+	if got := wasmPreAsyncifyArgs(nil, "in", "out", optlevel.O2); got != nil {
+		t.Fatalf("wasmPreAsyncifyArgs(nil) = %v, want nil", got)
+	}
+	if got := wasmPreAsyncifyArgs(&crosscompile.Export{}, "in", "out", optlevel.O2); got != nil {
+		t.Fatalf("wasmPreAsyncifyArgs(disabled) = %v, want nil", got)
 	}
 }
 
@@ -190,8 +214,8 @@ func TestPostLinkWasmPublishesOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(args); !strings.Contains(got, "--asyncify\n--translate-to-exnref\n-O2\n") ||
-		!strings.Contains(got, input+"\n-o\n") {
+	if got := string(args); !strings.Contains(got, "---\n-O2\n"+input+"\n-o\n") ||
+		!strings.Contains(got, "---\n--asyncify\n--translate-to-exnref\n-O2\n"+input+"\n-o\n") {
 		t.Fatalf("wasm-opt args = %q", got)
 	}
 }
@@ -211,12 +235,36 @@ func TestPostLinkWasmReportsToolFailure(t *testing.T) {
 	t.Setenv("LLGO_TEST_WASM_OPT_HELPER", "fail")
 
 	ctx := wasmPostLinkTestContext()
+	ctx.buildConf.OptLevel = optlevel.O0
 	err := postLinkWasm(ctx, input, output, false)
 	if err == nil || !strings.Contains(err.Error(), "wasm-opt Asyncify failed") {
 		t.Fatalf("postLinkWasm() error = %v", err)
 	}
 	if data, err := os.ReadFile(output); err != nil || string(data) != "old" {
 		t.Fatalf("failed post-link changed final output: %q, %v", data, err)
+	}
+}
+
+func TestPostLinkWasmReportsPreAsyncifyFailure(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "linked.wasm")
+	output := filepath.Join(dir, "app.wasm")
+	if err := os.WriteFile(input, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(output, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tool := writeWasmOptTestTool(t, dir)
+	t.Setenv("WASMOPT", tool)
+	t.Setenv("LLGO_TEST_WASM_OPT_HELPER", "fail")
+
+	err := postLinkWasm(wasmPostLinkTestContext(), input, output, false)
+	if err == nil || !strings.Contains(err.Error(), "wasm-opt pre-Asyncify optimization failed") {
+		t.Fatalf("postLinkWasm() error = %v", err)
+	}
+	if data, err := os.ReadFile(output); err != nil || string(data) != "old" {
+		t.Fatalf("failed pre-optimization changed final output: %q, %v", data, err)
 	}
 }
 
