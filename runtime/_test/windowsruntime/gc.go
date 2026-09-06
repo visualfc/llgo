@@ -16,6 +16,24 @@ func makeWindowsGCProbe(finalized chan<- int) {
 	})
 }
 
+func checkThreadLifecycleGC() {
+	const workers = 64
+	done := make(chan *windowsGCProbe)
+	for worker := 0; worker < workers; worker++ {
+		probe := &windowsGCProbe{value: worker}
+		go func(probe *windowsGCProbe) {
+			done <- probe
+		}(probe)
+		got := <-done
+		if got == nil || got.value != worker {
+			panic("Windows GC corrupted a short-lived worker root")
+		}
+		if worker%16 == 15 {
+			runtime.GC()
+		}
+	}
+}
+
 func checkConcurrentGC() {
 	const workers = 4
 	ready := make(chan struct{}, workers)
@@ -59,6 +77,7 @@ func checkConcurrentGC() {
 }
 
 func checkGC() {
+	checkThreadLifecycleGC()
 	checkConcurrentGC()
 
 	finalized := make(chan int, 1)
