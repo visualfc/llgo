@@ -40,3 +40,40 @@ func TestAllocatorNonNull(t *testing.T) {
 		}
 	}
 }
+
+func TestZeroSizeAllocatorsShareBase(t *testing.T) {
+	base := rt.AllocU(0)
+	base = atomic.LoadPointer(&base)
+	if base == nil {
+		t.Fatal("zero-sized allocation returned nil")
+	}
+	var zero uintptr
+	for i := 0; i < 100; i++ {
+		// Keep the size dynamic so calls exercise the runtime zero-size path.
+		size := atomic.LoadUintptr(&zero)
+		for _, alloc := range []struct {
+			name string
+			fn   func(uintptr) unsafe.Pointer
+		}{
+			{"AllocU", rt.AllocU},
+			{"AllocZ", rt.AllocZ},
+			{"AllocRoot", rt.AllocRoot},
+		} {
+			ptr := alloc.fn(size)
+			ptr = atomic.LoadPointer(&ptr)
+			if ptr != base {
+				t.Fatalf("%s(0) = %p, want shared base %p", alloc.name, ptr, base)
+			}
+			if alloc.name == "AllocRoot" {
+				// Repeated frees of the static base must never reach a heap allocator.
+				rt.FreeRoot(ptr)
+			}
+		}
+	}
+	ptr := rt.AllocRoot(16)
+	if ptr == base {
+		t.Fatal("nonzero allocation returned zerobase")
+	}
+	*(*uintptr)(ptr) = 42
+	rt.FreeRoot(ptr)
+}

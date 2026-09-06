@@ -25,13 +25,12 @@ import (
 )
 
 // AllocU allocates uninitialized memory and returns a non-nil pointer or panics.
-// A zero-byte request still allocates at least one byte.
+// Zero-byte requests return the shared zerobase without allocating.
 func AllocU(size uintptr) unsafe.Pointer {
-	n := size
-	if n == 0 {
-		n = 1
+	if size == 0 {
+		return unsafe.Pointer(&zerobase)
 	}
-	ret := c.Malloc(n)
+	ret := c.Malloc(size)
 	if ret == nil {
 		panic("out of memory")
 	}
@@ -48,7 +47,7 @@ func AllocZ(size uintptr) unsafe.Pointer {
 
 func AllocRoot(size uintptr) unsafe.Pointer {
 	if size == 0 {
-		size = 1
+		return unsafe.Pointer(&zerobase)
 	}
 	ret := c.Malloc(size)
 	if ret == nil {
@@ -58,6 +57,9 @@ func AllocRoot(size uintptr) unsafe.Pointer {
 }
 
 func FreeRoot(ptr unsafe.Pointer) {
+	if ptr == unsafe.Pointer(&zerobase) {
+		return
+	}
 	c.Free(ptr)
 }
 

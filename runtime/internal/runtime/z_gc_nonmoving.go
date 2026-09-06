@@ -25,8 +25,11 @@ import (
 )
 
 // AllocU allocates uninitialized memory and returns a non-nil pointer or panics.
-// tinygogc returns a non-nil sentinel for zero-byte requests.
+// Zero-byte requests return the shared zerobase without allocating.
 func AllocU(size uintptr) unsafe.Pointer {
+	if size == 0 {
+		return unsafe.Pointer(&zerobase)
+	}
 	ret := tinygogc.Alloc(size)
 	if ret == nil {
 		panic("out of memory")
@@ -40,6 +43,9 @@ func AllocZ(size uintptr) unsafe.Pointer {
 }
 
 func AllocRoot(size uintptr) unsafe.Pointer {
+	if size == 0 {
+		return unsafe.Pointer(&zerobase)
+	}
 	ret := tinygogc.Alloc(size)
 	if ret == nil {
 		panic("out of memory")
@@ -48,5 +54,8 @@ func AllocRoot(size uintptr) unsafe.Pointer {
 }
 
 func FreeRoot(ptr unsafe.Pointer) {
+	if ptr == unsafe.Pointer(&zerobase) {
+		return
+	}
 	tinygogc.Free(ptr)
 }
