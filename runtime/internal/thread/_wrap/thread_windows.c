@@ -114,9 +114,9 @@ int llgo_win_thread_create_detached(llgo_size_t stack_size,
     if (stack_size != 0)
         flags |= llgo_stack_size_is_a_reservation;
 #if defined(LLGO_USE_BDWGC)
-    /* Goroutine entry can use the C runtime. BDWGC documents that its
-     * CreateThread wrapper leaks CRT thread state; beginthreadex supplies the
-     * matching CRT initialization and teardown around the same GC wrapper. */
+    /* Goroutine entry can use the C runtime. BDWGC warns that its CreateThread
+     * wrapper can leak CRT resources; beginthreadex supplies matching CRT
+     * initialization and teardown around the same GC wrapper. */
     thread = (llgo_handle)GC_beginthreadex(
         0, (llgo_uint)stack_size, llgo_crt_thread_entry, data,
         (llgo_uint)flags, 0);
