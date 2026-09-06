@@ -34,18 +34,18 @@ runs:
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_ABI=${{ inputs.windows-abi }}"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_ARCH=${{ inputs.windows-arch }}"
 
-    - name: Cache full-target Windows LLVM
+    - name: Cache compressed full-target Windows LLVM archive
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
-      id: windows_llvm_cache
       uses: actions/cache@v6
       with:
-        path: ${{ runner.tool_cache }}\llgo-llvm\clang+llvm-22.1.8-x86_64-pc-windows-msvc
-        # Configuration later installs target compiler-rt builtins into this
-        # tree, so each target architecture must own an immutable cache.
-        key: llgo-llvm-22.1.8-full-target-windows-${{ inputs.windows-arch }}-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
+        # All MSVC profiles use the same x64 host LLVM. Cache its compressed
+        # immutable input once instead of three 1.2 GiB extracted trees; the
+        # target-specific builtins and LLDB remain in the caches below.
+        path: ${{ runner.tool_cache }}\llgo-llvm-archives\clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz
+        key: llgo-llvm-archive-22.1.8-x86_64-pc-windows-msvc-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
 
     - name: Install full-target Windows LLVM
-      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc' && steps.windows_llvm_cache.outputs.cache-hit != 'true'
+      if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
       shell: pwsh
       env:
         # The development archive contains llvm-config, headers, libraries,
@@ -60,12 +60,16 @@ runs:
         }
 
         $archiveName = "clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc.tar.xz"
-        $archive = Join-Path $env:RUNNER_TEMP $archiveName
-        $urlAsset = $archiveName.Replace("+", "%2B")
-        $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$urlAsset"
-        & curl.exe --fail --location --retry 5 --retry-all-errors --output $archive $url
-        if ($LASTEXITCODE -ne 0) {
-          throw "Downloading LLVM failed with exit code $LASTEXITCODE"
+        $archiveParent = Join-Path $env:RUNNER_TOOL_CACHE "llgo-llvm-archives"
+        $archive = Join-Path $archiveParent $archiveName
+        New-Item -ItemType Directory -Force $archiveParent | Out-Null
+        if (-not (Test-Path $archive)) {
+          $urlAsset = $archiveName.Replace("+", "%2B")
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$env:LLVM_VERSION/$urlAsset"
+          & curl.exe --fail --location --retry 5 --retry-all-errors --output $archive $url
+          if ($LASTEXITCODE -ne 0) {
+            throw "Downloading LLVM failed with exit code $LASTEXITCODE"
+          }
         }
         $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash
         if (-not $actual.Equals($env:LLVM_ARCHIVE_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
@@ -99,7 +103,7 @@ runs:
           throw "llvm-config.exe was not found in the full-target LLVM archive"
         }
         Move-Item -LiteralPath $extractedRoot.FullName -Destination $installRoot
-        Remove-Item -LiteralPath $archive, $tar.FullName
+        Remove-Item -LiteralPath $tar.FullName
 
     - name: Cache Windows LLDB and target builtins
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && (inputs.windows-abi == 'msvc' || inputs.windows-arch != 'amd64')
@@ -276,7 +280,7 @@ runs:
 
         $llvmRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-llvm\clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc"
         if (-not (Test-Path (Join-Path $llvmRoot "bin\llvm-config.exe"))) {
-          throw "The cached full-target LLVM installation is incomplete: $llvmRoot"
+          throw "The full-target LLVM installation is incomplete: $llvmRoot"
         }
         $llvmBin = Join-Path $llvmRoot "bin"
         $llvmConfig = Join-Path $llvmBin "llvm-config.exe"
