@@ -59,8 +59,8 @@ func keyGet(index c.Uint) c.Pointer
 //go:linkname keySet C.llgo_win_fls_set
 func keySet(index c.Uint, destructor KeyDestructor, value c.Pointer) c.Int
 
-// CreateDetached starts a detached host thread. GC-enabled builds select
-// GC_CreateThread in the accompanying C shim; nogc builds select CreateThread.
+// CreateDetached starts a detached host thread. GC-enabled builds select the
+// collector's CRT-aware entry point; nogc builds select CreateThread.
 func CreateDetached(stackSize uintptr, routine RoutineFunc, arg c.Pointer) c.Int {
 	return createDetached(stackSize, routine, arg)
 }
