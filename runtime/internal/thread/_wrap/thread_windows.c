@@ -5,6 +5,7 @@
  * needed only by the final native link.
  */
 typedef __SIZE_TYPE__ llgo_size_t;
+typedef __UINTPTR_TYPE__ llgo_uintptr_t;
 typedef unsigned long llgo_dword;
 typedef unsigned int llgo_uint;
 typedef int llgo_bool;
@@ -17,6 +18,7 @@ typedef void *llgo_handle;
 #endif
 
 typedef llgo_dword(LLGO_WINAPI *llgo_win_thread_start)(void *arg);
+typedef llgo_uint(LLGO_WINAPI *llgo_crt_thread_start)(void *arg);
 typedef void(LLGO_WINAPI *llgo_win_fls_callback)(void *value);
 
 __declspec(dllimport) llgo_handle LLGO_WINAPI CreateThread(
@@ -38,10 +40,10 @@ __declspec(dllimport) llgo_bool LLGO_WINAPI
 FlsSetValue(llgo_dword index, void *value);
 
 #if defined(LLGO_USE_BDWGC)
-llgo_handle LLGO_WINAPI GC_CreateThread(
-    void *attributes, llgo_size_t stack_size, llgo_win_thread_start start,
-    void *arg, llgo_dword flags, llgo_dword *thread_id);
-void LLGO_WINAPI GC_ExitThread(llgo_dword exit_code);
+llgo_uintptr_t GC_beginthreadex(
+    void *security, llgo_uint stack_size, llgo_crt_thread_start start,
+    void *arg, llgo_uint flags, llgo_uint *thread_id);
+void GC_endthreadex(llgo_uint exit_code);
 #endif
 
 enum {
@@ -69,13 +71,26 @@ typedef struct {
     void *arg;
 } llgo_thread_start_data;
 
-static llgo_dword LLGO_WINAPI llgo_thread_start(void *raw)
+static void llgo_thread_run(void *raw)
 {
     llgo_thread_start_data data = *(llgo_thread_start_data *)raw;
     HeapFree(GetProcessHeap(), 0, raw);
     data.routine(data.arg);
+}
+
+#if !defined(LLGO_USE_BDWGC)
+static llgo_dword LLGO_WINAPI llgo_thread_start(void *raw)
+{
+    llgo_thread_run(raw);
     return 0;
 }
+#else
+static llgo_uint LLGO_WINAPI llgo_crt_thread_entry(void *raw)
+{
+    llgo_thread_run(raw);
+    return 0;
+}
+#endif
 
 int llgo_win_thread_create_detached(llgo_size_t stack_size,
                                     llgo_thread_routine routine, void *arg)
@@ -87,6 +102,10 @@ int llgo_win_thread_create_detached(llgo_size_t stack_size,
 
     if (routine == 0)
         return 87; /* ERROR_INVALID_PARAMETER */
+#if defined(LLGO_USE_BDWGC)
+    if (stack_size > (llgo_size_t)0xffffffffU)
+        return 87;
+#endif
     data = (llgo_thread_start_data *)HeapAlloc(
         GetProcessHeap(), 0, sizeof(*data));
     if (data == 0)
@@ -96,12 +115,24 @@ int llgo_win_thread_create_detached(llgo_size_t stack_size,
     if (stack_size != 0)
         flags |= llgo_stack_size_is_a_reservation;
 #if defined(LLGO_USE_BDWGC)
-    thread = GC_CreateThread(0, stack_size, llgo_thread_start, data, flags, 0);
+    /* Goroutine entry can use the C runtime. BDWGC warns that its CreateThread
+     * wrapper can leak CRT resources; beginthreadex supplies matching CRT
+     * initialization and teardown around the same GC wrapper.
+     * See BDWGC doc/README.win32. */
+    thread = (llgo_handle)GC_beginthreadex(
+        0, (llgo_uint)stack_size, llgo_crt_thread_entry, data,
+        (llgo_uint)flags, 0);
 #else
     thread = CreateThread(0, stack_size, llgo_thread_start, data, flags, 0);
 #endif
     if (thread == 0) {
+#if defined(LLGO_USE_BDWGC)
+        /* GC_beginthreadex reports errno. The Go caller only tests for zero,
+         * so return a fixed nonzero failure sentinel, not a translated errno. */
+        error = llgo_error_not_enough_memory;
+#else
         error = GetLastError();
+#endif
         HeapFree(GetProcessHeap(), 0, data);
         return (int)error;
     }
@@ -112,7 +143,7 @@ int llgo_win_thread_create_detached(llgo_size_t stack_size,
 void llgo_win_thread_exit(void)
 {
 #if defined(LLGO_USE_BDWGC)
-    GC_ExitThread(0);
+    GC_endthreadex(0);
 #else
     ExitThread(0);
 #endif
