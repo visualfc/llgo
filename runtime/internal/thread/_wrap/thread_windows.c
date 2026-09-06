@@ -5,6 +5,7 @@
  * needed only by the final native link.
  */
 typedef __SIZE_TYPE__ llgo_size_t;
+typedef __UINTPTR_TYPE__ llgo_uintptr_t;
 typedef unsigned long llgo_dword;
 typedef unsigned int llgo_uint;
 typedef int llgo_bool;
@@ -39,7 +40,7 @@ __declspec(dllimport) llgo_bool LLGO_WINAPI
 FlsSetValue(llgo_dword index, void *value);
 
 #if defined(LLGO_USE_BDWGC)
-llgo_size_t GC_beginthreadex(
+llgo_uintptr_t GC_beginthreadex(
     void *security, llgo_uint stack_size, llgo_crt_thread_start start,
     void *arg, llgo_uint flags, llgo_uint *thread_id);
 void GC_endthreadex(llgo_uint exit_code);
@@ -116,7 +117,8 @@ int llgo_win_thread_create_detached(llgo_size_t stack_size,
 #if defined(LLGO_USE_BDWGC)
     /* Goroutine entry can use the C runtime. BDWGC warns that its CreateThread
      * wrapper can leak CRT resources; beginthreadex supplies matching CRT
-     * initialization and teardown around the same GC wrapper. */
+     * initialization and teardown around the same GC wrapper.
+     * See BDWGC doc/README.win32. */
     thread = (llgo_handle)GC_beginthreadex(
         0, (llgo_uint)stack_size, llgo_crt_thread_entry, data,
         (llgo_uint)flags, 0);
@@ -125,8 +127,8 @@ int llgo_win_thread_create_detached(llgo_size_t stack_size,
 #endif
     if (thread == 0) {
 #if defined(LLGO_USE_BDWGC)
-        /* GC_beginthreadex reports errno, while the Go-facing contract only
-         * needs a stable nonzero failure code. */
+        /* GC_beginthreadex reports errno. The Go caller only tests for zero,
+         * so return a fixed nonzero failure sentinel, not a translated errno. */
         error = llgo_error_not_enough_memory;
 #else
         error = GetLastError();

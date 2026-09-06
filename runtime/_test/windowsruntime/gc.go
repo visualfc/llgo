@@ -19,11 +19,23 @@ func makeWindowsGCProbe(finalized chan<- int) {
 func checkThreadLifecycleGC() {
 	const workers = 64
 	done := make(chan *windowsGCProbe)
+	// LLGo's native backend creates an OS thread for each goroutine. Alternate
+	// normal returns and Goexit to exercise both CRT-aware thread exit paths.
+	// Receiving done checks the deferred result, not completion of OS teardown.
 	for worker := 0; worker < workers; worker++ {
 		probe := &windowsGCProbe{value: worker}
-		go func(probe *windowsGCProbe) {
-			done <- probe
-		}(probe)
+		go func(probe *windowsGCProbe, useGoexit bool) {
+			defer func() {
+				if recover() != nil {
+					panic("Windows GC thread lifecycle worker panicked")
+				}
+				done <- probe
+			}()
+			if useGoexit {
+				runtime.Goexit()
+				panic("Windows runtime.Goexit returned")
+			}
+		}(probe, worker%2 != 0)
 		got := <-done
 		if got == nil || got.value != worker {
 			panic("Windows GC corrupted a short-lived worker root")

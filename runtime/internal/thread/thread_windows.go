@@ -61,6 +61,8 @@ func keySet(index c.Uint, destructor KeyDestructor, value c.Pointer) c.Int
 
 // CreateDetached starts a detached host thread. GC-enabled builds select the
 // collector's CRT-aware entry point; nogc builds select CreateThread.
+// The collector's entry point takes a 32-bit stack size, so GC-enabled builds
+// reject stackSize > 0xffffffff bytes with a nonzero return.
 func CreateDetached(stackSize uintptr, routine RoutineFunc, arg c.Pointer) c.Int {
 	return createDetached(stackSize, routine, arg)
 }
