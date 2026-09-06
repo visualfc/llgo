@@ -115,11 +115,9 @@ func main() {
 
 Because calls into C compile to native calls against the C ABI, there is no Go-to-C stack or scheduler transition, so frequent C calls stay cheap.
 
-On Windows, bind APIs declared with `WINAPI` or `__stdcall` through the
-`stdcall.` namespace. The convention is distinct on 386; Windows amd64 and
-arm64 use their unified native C ABI. An explicitly decorated 386 name such as
-`_MessageBoxW@16` is also accepted and is normalized to `MessageBoxW` on
-64-bit targets.
+#### Windows API
+
+On Windows, bind APIs declared with `WINAPI` or `__stdcall` through the `stdcall.` namespace. The convention is distinct on 386; Windows amd64 and arm64 use their unified native C ABI. An explicitly decorated 386 name such as `_MessageBoxW@16` is also accepted and is normalized to `MessageBoxW` on 64-bit targets.
 
 ```go
 //go:linkname MessageBoxW stdcall.MessageBoxW
@@ -129,10 +127,7 @@ func MessageBoxW(hwnd uintptr, text, caption *uint16, flags uint32) int32
 type Callback func(context uintptr) uintptr
 ```
 
-`stdcall.` declarations and `//llgo:type stdcall` apply only to non-variadic
-function types. A native callback is one function pointer, so a Go callback
-must be a direct function reference; pass state through an explicit context
-pointer rather than a capturing closure.
+`stdcall.` declarations and `//llgo:type stdcall` apply only to non-variadic function types. A native callback is one function pointer, so a Go callback must be a direct function reference; pass state through an explicit context pointer rather than a capturing closure.
 
 ### C/C++ standard libraries
 
@@ -338,9 +333,7 @@ brew link --force --overwrite llvm@22 lld@22 libffi
 ./install.sh
 ```
 
-Homebrew's versioned LLVM 22 formula does not ship LLDB and there is no
-`lldb@22` formula. LLGo checks common Homebrew and system locations, then
-`lldb` on `PATH`; use `LLGO_LLDB` or `llgo lldb -lldb` to select one explicitly.
+Homebrew's versioned LLVM 22 formula does not ship LLDB and there is no `lldb@22` formula. LLGo checks common Homebrew and system locations, then `lldb` on `PATH`; use `LLGO_LLDB` or `llgo lldb -lldb` to select one explicitly.
 
 ### on Linux
 
@@ -393,24 +386,11 @@ llgo run .
 
 ### on Windows
 
-The release workflow builds four integrated Windows archives:
-`llgo<VERSION>.windows-{amd64,arm64}-{msvc,mingw}.tar.gz`. Check the
-[release assets](https://github.com/xgo-dev/llgo/releases) for availability in
-each version. Add the extracted `bin` directory to `PATH`; the archives keep
-the same `runtime`, `targets`, and `crosscompile/clang` layout as Unix releases.
-The MSVC compiler links LLVM statically; MinGW archives include the native
-LLVM and C++ DLL dependencies beside `llgo.exe`.
+The release workflow builds four integrated Windows archives: `llgo<VERSION>.windows-{amd64,arm64}-{msvc,mingw}.tar.gz`. Check the [release assets](https://github.com/xgo-dev/llgo/releases) for availability in each version. Add the extracted `bin` directory to `PATH`; the archives keep the same `runtime`, `targets`, and `crosscompile/clang` layout as Unix releases. The MSVC compiler links LLVM statically; MinGW archives include the native LLVM and C++ DLL dependencies beside `llgo.exe`. 
 
-Use the archive matching your native architecture and toolchain profile. Native
-programs still need the corresponding SDK/CRT, Clang, and dependencies described
-below: Visual Studio's C++ developer environment for MSVC, or MSYS2 `CLANG64`
-(`amd64`) / `CLANGARM64` (`arm64`) for MinGW. The bundled ESP Clang remains the
-upstream x64 Windows payload, including in ARM64 archives, and runs through
-Windows' x64 emulation there; `llgo.exe` itself is native ARM64 in those archives.
+Use the archive matching your native architecture and toolchain profile. Native programs still need the corresponding SDK/CRT, Clang, and dependencies described below: Visual Studio's C++ developer environment for MSVC, or MSYS2 `CLANG64` (`amd64`) / `CLANGARM64` (`arm64`) for MinGW. The bundled ESP Clang remains the upstream x64 Windows payload, including in ARM64 archives, and runs through Windows' x64 emulation there; `llgo.exe` itself is native ARM64 in those archives.
 
-The recommended GNU-hosted setup is an MSYS2 `CLANG64` shell. Install the LLVM
-22 stack and LLGo's native dependencies, then provide the versioned pkg-config
-metadata used by the Go/C++ bindings:
+The recommended GNU-hosted setup is an MSYS2 `CLANG64` shell. Install the LLVM 22 stack and LLGo's native dependencies, then provide the versioned pkg-config metadata used by the Go/C++ bindings:
 
 ```sh
 pacman -S --needed \
@@ -428,14 +408,8 @@ printf '%s\n' \
   > "$pc_dir/llvm-22.pc"
 ```
 
-The native MSVC CI profile uses LLVM's official 22.1.8 development archive for
-headers, libraries, Clang, LLD, and all code-generation backends. That archive
-does not contain LLDB, so the profile also extracts LLDB from the matching
-official `win64` or `woa64` installer. LLVM 22 has no official Win32 installer;
-the Windows 386 lane uses the LLVM 22.1.8-based llvm-mingw 20260616 builtins and
-qualifies the official x64 LLDB under WoW64. The complete pinned setup,
-checksums, and generated `llvm-22.pc` are in
-`.github/actions/setup-deps/action.yml`.
+The native MSVC CI profile uses LLVM's official 22.1.8 development archive for headers, libraries, Clang, LLD, and all code-generation backends. That archive does not contain LLDB, so the profile also extracts LLDB from the matching official `win64` or `woa64` installer. LLVM 22 has no official Win32 installer; the Windows 386 lane uses the LLVM 22.1.8-based llvm-mingw 20260616 builtins and qualifies the official x64 LLDB under WoW64. The complete pinned setup, checksums, and generated `llvm-22.pc` are in `.github/actions/setup-deps/action.yml`.
+
 
 ### Install from source
 
