@@ -1296,8 +1296,8 @@ func castFloatToIntAMD64(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm
 }
 
 // castFloatToInt386 mirrors gc's 386 split: the native CVTT instruction
-// handles signed 32-bit conversions, while 64-bit and unsigned-word results
-// use the software conversion inherited from runtime/vlrt.go.
+// handles signed 32-bit conversions. Unsigned words truncate a signed 64-bit
+// x87 conversion; 64-bit results use the software conversion from runtime/vlrt.go.
 func castFloatToInt386(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm.Value {
 	if dstSize < 4 || (typ.kind != vkUnsigned && dstSize == 4) {
 		tmp := castFloatToSignedIntX86(b, x, b.Prog.Int32(), 32)
@@ -1305,6 +1305,15 @@ func castFloatToInt386(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm.V
 			return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 		}
 		return tmp
+	}
+
+	if dstSize == 4 {
+		// gc's runtime.float64touint32 uses x87 FISTP to signed i64 and
+		// returns its low word. NaN and signed-i64 overflow produce the
+		// integer-indefinite value, whose low word is zero. The software
+		// uint64 conversion instead wraps some of these out-of-range inputs.
+		tmp := castFloatToSignedIntX86(b, x, b.Prog.Int64(), 64)
+		return llvm.CreateTrunc(b.impl, tmp, typ.ll)
 	}
 
 	input := x
@@ -1315,11 +1324,7 @@ func castFloatToInt386(b Builder, x llvm.Value, typ Type, dstSize uint64) llvm.V
 	if typ.kind == vkUnsigned {
 		fn = "Float64ToUint64"
 	}
-	ret := b.InlineCall(b.Pkg.rtFunc(fn), Expr{input, b.Prog.Float64()}).impl
-	if dstSize < 8 {
-		ret = llvm.CreateTrunc(b.impl, ret, typ.ll)
-	}
-	return ret
+	return b.InlineCall(b.Pkg.rtFunc(fn), Expr{input, b.Prog.Float64()}).impl
 }
 
 func castFloatToSignedIntX86(b Builder, x llvm.Value, typ Type, bits uint64) llvm.Value {

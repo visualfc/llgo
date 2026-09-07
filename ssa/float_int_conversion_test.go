@@ -90,7 +90,10 @@ func Test386FloatToIntegerConversionIR(t *testing.T) {
 	}{
 		{name: "I32", src: types.Typ[types.Float64], dst: types.Typ[types.Int32], wants: []string{"fptosi double", "to i32", "i32 -2147483648"}},
 		{name: "I64", src: types.Typ[types.Float64], dst: types.Typ[types.Int64], wants: []string{"Float64ToInt64", "(double"}},
-		{name: "U32", src: types.Typ[types.Float64], dst: types.Typ[types.Uint32], wants: []string{"Float64ToUint64", "trunc i64", "to i32"}},
+		{name: "U32", src: types.Typ[types.Float64], dst: types.Typ[types.Uint32], wants: []string{"fcmp olt double", "fcmp oge double", "fptosi double", "i64 -9223372036854775808", "trunc i64", "to i32"}},
+		{name: "Uint", src: types.Typ[types.Float64], dst: types.Typ[types.Uint], wants: []string{"fptosi double", "i64 -9223372036854775808", "trunc i64", "to i32"}},
+		{name: "Uintptr", src: types.Typ[types.Float64], dst: types.Typ[types.Uintptr], wants: []string{"fptosi double", "i64 -9223372036854775808", "trunc i64", "to i32"}},
+		{name: "F32ToU32", src: types.Typ[types.Float32], dst: types.Typ[types.Uint32], wants: []string{"fptosi float", "i64 -9223372036854775808", "trunc i64", "to i32"}},
 		{name: "U64", src: types.Typ[types.Float64], dst: types.Typ[types.Uint64], wants: []string{"Float64ToUint64", "(double"}},
 		{name: "F32ToI64", src: types.Typ[types.Float32], dst: types.Typ[types.Int64], wants: []string{"fpext float", "to double", "Float64ToInt64"}},
 	}

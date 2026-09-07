@@ -3,7 +3,6 @@
 package cl
 
 import (
-	"go/types"
 	"strings"
 	"testing"
 
@@ -28,14 +27,6 @@ func F64(x float64) uint32 { return uint32(x) }
 					SaturatingFloatToUint32: saturating,
 				})
 				defer prog.Dispose()
-				if arch == "386" {
-					// The host runtime import omits this 386-only declaration.
-					rt := types.NewPackage(llssa.PkgRuntime, "runtime")
-					params := types.NewTuple(types.NewParam(0, rt, "x", types.Typ[types.Float64]))
-					results := types.NewTuple(types.NewParam(0, rt, "", types.Typ[types.Uint64]))
-					rt.Scope().Insert(types.NewFunc(0, rt, "Float64ToUint64", types.NewSignatureType(nil, nil, nil, params, results, false)))
-					prog.SetRuntime(rt)
-				}
 				pkg, err := NewPackage(prog, ssaPkg, files)
 				if err != nil {
 					t.Fatal(err)
@@ -47,8 +38,6 @@ func F64(x float64) uint32 { return uint32(x) }
 						want = "@llvm.fptoui.sat.i32." + strings.ToLower(name) + "("
 					} else if arch == "arm64" {
 						want = "@llvm.fptosi.sat.i64." + strings.ToLower(name) + "("
-					} else if arch == "386" {
-						want = "Float64ToUint64"
 					}
 					if !strings.Contains(ir, want) {
 						t.Fatalf("%s conversion IR missing %q in %s mode:\n%s", name, want, mode, ir)
