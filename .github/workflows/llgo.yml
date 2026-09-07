@@ -646,8 +646,12 @@ jobs:
           windows-arch: ${{ matrix.windows_arch }}
 
   wasm-runtime:
-    name: wasm-runtime (Go 1.24 and 1.27)
+    name: wasm-runtime (${{ matrix.suite }})
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [runtime, test-command]
     runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7
@@ -691,6 +695,7 @@ jobs:
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
       - name: Test WebAssembly target profiles
+        if: matrix.suite == 'runtime'
         shell: bash
         env:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
@@ -698,6 +703,7 @@ jobs:
         run: dev/test_wasm_target_profiles.sh
 
       - name: Build standard runtime for wasm
+        if: matrix.suite == 'runtime'
         shell: bash
         env:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
@@ -709,4 +715,4 @@ jobs:
         env:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
           LLGO_BUILD_CACHE: "off"
-        run: dev/test_wasm_single_worker.sh
+        run: dev/test_wasm_single_worker.sh "${{ matrix.suite }}"
