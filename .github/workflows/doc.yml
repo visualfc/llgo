@@ -104,6 +104,8 @@ jobs:
       - name: Test default and full local installs
         shell: bash
         run: |
+          # Keep nounset disabled: this wrapper sources the README and
+          # generated virtualenv scripts, which manage optional variables.
           set -eo pipefail
           set -x
 
