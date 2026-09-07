@@ -206,7 +206,7 @@ jobs:
     name: GOROOT summary
     if: always()
     needs: goroot
-    runs-on: [qiniu, ubuntu-24.04-large]
+    runs-on: [qiniu, ubuntu-24.04]
     steps:
       - name: Download shard statistics
         uses: actions/download-artifact@v8
