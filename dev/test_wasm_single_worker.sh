@@ -12,9 +12,18 @@ callback_fixture="${repo_root}/internal/build/testdata/wasm-callback"
 gc_fixture="${repo_root}/internal/build/testdata/wasm-gc"
 lifecycle_fixture="${repo_root}/internal/build/testdata/wasm-lifecycle"
 test_fixture="${repo_root}/internal/build/testdata/wasm-test"
+suite="${1:-all}"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/llgo-wasm-single-worker.XXXXXX")"
 trap 'rm -rf "${work_dir}"' EXIT
 export LLGO_WASM_TEST_ENV=wasm-env-ok
+
+case "${suite}" in
+all | runtime | test-command) ;;
+*)
+	echo "unknown single-worker WebAssembly suite: ${suite}" >&2
+	exit 2
+	;;
+esac
 
 run_with_timeout() {
 	run_with_timeout_limit 180s "$@"
@@ -116,6 +125,7 @@ run_llgo_test_compile_only() {
 	esac
 }
 
+if [[ "${suite}" != "test-command" ]]; then
 # Canonical C-ecosystem profiles exercise the same scheduler semantics under
 # Emscripten wasm32, Emscripten Memory64/LP64, and WASI Preview 1.
 run_emscripten emscripten emscripten-runner.mjs "${scheduler_fixture}" "wasm scheduler ok" "scheduler-emscripten"
@@ -163,7 +173,9 @@ run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs "${callback_fi
 # browser/worker-only compatibility path defined by R0.
 run_emscripten wasm emscripten-runner.mjs "${scheduler_fixture}" "wasm scheduler ok" "scheduler-legacy-wasm"
 run_wasi wasip1 "${scheduler_fixture}" "wasm scheduler ok" "scheduler-legacy-wasip1"
+fi
 
+if [[ "${suite}" != "runtime" ]]; then
 # Exercise test-main generation, process exit, verbose output, and host runners
 # through the public test command. The JS-specific callback case also verifies
 # that host readiness interrupts a longer Go timer wait without re-entering an
@@ -174,5 +186,6 @@ run_llgo_test wasi "test-wasi"
 run_llgo_test_compile_only emscripten "test-compile-only-emscripten"
 run_llgo_test_compile_only emscripten-memory64 "test-compile-only-memory64"
 run_llgo_test_compile_only wasi "test-compile-only-wasi"
+fi
 
-echo "single-worker WebAssembly scheduler and timer checks passed"
+echo "single-worker WebAssembly ${suite} checks passed"
