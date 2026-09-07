@@ -108,9 +108,9 @@ checksum:
   name_template: "{{.ProjectName}}{{.Version}}.checksums.txt"
   # Windows CGO builds run on native Windows runners and arrive as tested
   # integrated archives. The snapshot pass produces the Unix build metadata
-  # they consume; the tag pass includes all eight archives in one checksum file.
+  # they consume; the tag pass includes all four Windows ZIPs in the common checksum file.
   extra_files:
-    - glob: '{{ if not .IsSnapshot }}.windows-dist/llgo{{ .Version }}.windows-*.tar.gz{{ end }}'
+    - glob: '{{ if not .IsSnapshot }}.windows-dist/llgo{{ .Version }}.windows-*.zip{{ end }}'
 
 nfpms:
   - package_name: llgo
@@ -179,4 +179,4 @@ snapshot:
 release:
   prerelease: auto
   extra_files:
-    - glob: '{{ if not .IsSnapshot }}.windows-dist/llgo{{ .Version }}.windows-*.tar.gz{{ end }}'
+    - glob: '{{ if not .IsSnapshot }}.windows-dist/llgo{{ .Version }}.windows-*.zip{{ end }}'

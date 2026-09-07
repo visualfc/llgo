@@ -386,7 +386,9 @@ llgo run .
 
 ### on Windows
 
-The release workflow builds four integrated Windows archives: `llgo<VERSION>.windows-{amd64,arm64}-{msvc,mingw}.tar.gz`. Check the [release assets](https://github.com/xgo-dev/llgo/releases) for availability in each version. Add the extracted `bin` directory to `PATH`; the archives keep the same `runtime`, `targets`, and `crosscompile/clang` layout as Unix releases. The MSVC compiler links LLVM statically; MinGW archives include the native LLVM and C++ DLL dependencies beside `llgo.exe`. 
+The release workflow builds four integrated Windows variants, each as a ZIP: `llgo<VERSION>.windows-{amd64,arm64}-{msvc,mingw}.zip`. Check the [release assets](https://github.com/xgo-dev/llgo/releases) for availability in each version. Add the extracted `bin` directory to `PATH`; the archives keep the same `runtime`, `targets`, and `crosscompile/clang` layout as Unix releases. The MSVC compiler links LLVM statically; MinGW archives include the native LLVM and C++ DLL dependencies beside `llgo.exe`.
+
+See [Windows release dependencies and PowerShell setup](WINDOWS.md) for the external tools, ABI-specific libraries, and pkg-config configuration needed to compile native programs. The document is included in every Windows ZIP.
 
 Use the archive matching your native architecture and toolchain profile. Native programs still need the corresponding SDK/CRT, Clang, and dependencies described below: Visual Studio's C++ developer environment for MSVC, or MSYS2 `CLANG64` (`amd64`) / `CLANGARM64` (`arm64`) for MinGW. The bundled ESP Clang remains the upstream x64 Windows payload, including in ARM64 archives, and runs through Windows' x64 emulation there; `llgo.exe` itself is native ARM64 in those archives.
 
