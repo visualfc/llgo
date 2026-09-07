@@ -19,7 +19,7 @@ jobs:
         os:
           - ubuntu-latest
         llvm: [22]
-    runs-on: [qiniu, ubuntu-24.04-large]
+    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies

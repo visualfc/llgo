@@ -38,7 +38,7 @@ jobs:
           - os: windows-2022
             llvm: 22
             windows_abi: mingw
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ github.repository_owner == 'xgo-dev' && matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -228,7 +228,7 @@ jobs:
   dev-lto-globaldce:
     name: Dev LTO GlobalDCE
     timeout-minutes: 60
-    runs-on: [qiniu, ubuntu-24.04-large]
+    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -309,7 +309,7 @@ jobs:
   dev-go-methoddrop:
     name: Dev Go Method Drop
     timeout-minutes: 60
-    runs-on: [qiniu, ubuntu-24.04-large]
+    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7
 

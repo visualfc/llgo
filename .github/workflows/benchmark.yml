@@ -69,7 +69,7 @@ jobs:
             windows_arch: "386"
             host_go_arch: x64
             timeout: 90
-    runs-on: ${{ matrix.runner || matrix.os }}
+    runs-on: ${{ github.repository_owner == 'xgo-dev' && matrix.runner || matrix.os }}
     timeout-minutes: ${{ matrix.timeout }}
     env:
       GOMAXPROCS: "2"
@@ -255,7 +255,7 @@ jobs:
 
   wasm-benchmark:
     name: benchmark (WebAssembly)
-    runs-on: [qiniu, ubuntu-24.04-large]
+    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       GOMAXPROCS: "2"
