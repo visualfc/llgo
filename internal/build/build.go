@@ -1621,17 +1621,46 @@ func (c *context) clangConfig() clang.Config {
 
 func (c *context) linker() *clang.Cmd {
 	config := c.clangConfig()
-	cmd := clang.NewLinker(config)
-	if config.Linker == "" && config.CXX != "" {
+	linkerProgram := config.Linker
+	useCXX := config.Linker == "" && config.CXX != ""
+	if useCXX {
 		// Native LLGo historically linked through clang++. Preserve that C++
 		// runtime behavior while allowing CC and CXX to be selected and probed
 		// independently. An explicit -extld keeps Go's precedence.
+		linkerProgram = config.CXX
+	} else if linkerProgram == "" {
+		linkerProgram = config.CC
+	}
+	if c.shouldDisableClangImplicitWasmOpt(linkerProgram) {
+		config.LDFLAGS = append(slices.Clone(config.LDFLAGS), "--no-wasm-opt")
+	}
+	cmd := clang.NewLinker(config)
+	if useCXX {
 		cmd = clang.NewCXXCompiler(config)
 	}
 	cmd.Dir = c.commands.dir
 	cmd.Env = slices.Clone(c.commands.environ)
 	cmd.Verbose = c.shouldPrintCommands(false)
 	return cmd
+}
+
+// shouldDisableClangImplicitWasmOpt reports whether LLGo owns the wasm-opt
+// pipeline and must disable clang's implicit post-link optimization.
+func (c *context) shouldDisableClangImplicitWasmOpt(linkerProgram string) bool {
+	return c != nil &&
+		c.buildConf != nil &&
+		c.buildConf.Goarch == "wasm" &&
+		c.crossCompile.WasmPostLink.Asyncify &&
+		c.crossCompile.Linker == "" &&
+		clangDriverMayRunWasmOpt(linkerProgram)
+}
+
+// clangDriverMayRunWasmOpt identifies clang drivers. Emscripten drivers are
+// deliberately excluded because they manage their own wasm-opt pipeline.
+func clangDriverMayRunWasmOpt(program string) bool {
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(program)), ".exe")
+	return name == "clang" || name == "clang++" ||
+		strings.HasSuffix(name, "-clang") || strings.HasSuffix(name, "-clang++")
 }
 
 // shouldPrintCommands reports whether command tracing should be enabled.
