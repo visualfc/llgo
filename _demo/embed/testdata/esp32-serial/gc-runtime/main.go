@@ -1136,6 +1136,9 @@ func testPartialGraphUnlinking() bool {
 	}
 
 	unlinkPartialGraph()
+	// Allocator register spills can retain b or c as conservative stack roots
+	// after unlinking. Clear stale stack values before checking reclamation.
+	scrubStack()
 	_, afterUnlink := collectAndPrint("partial-unlink")
 
 	if partialRoot == nil || partialRoot.id != 10000 {

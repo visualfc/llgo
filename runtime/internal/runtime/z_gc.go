@@ -27,10 +27,14 @@ import (
 	"github.com/xgo-dev/llgo/runtime/internal/sync/atomic"
 )
 
-// AllocU allocates uninitialized memory.
+// AllocU allocates uninitialized memory and returns a non-nil pointer or panics.
+// Zero-byte requests return the shared zerobase without allocating.
 func AllocU(size uintptr) unsafe.Pointer {
+	if size == 0 {
+		return unsafe.Pointer(&zerobase)
+	}
 	ret := bdwgc.Malloc(size)
-	if ret == nil && size != 0 {
+	if ret == nil {
 		panic("out of memory")
 	}
 	recordMemProfileAlloc(size)
@@ -39,16 +43,26 @@ func AllocU(size uintptr) unsafe.Pointer {
 
 // AllocZ allocates zero-initialized memory.
 func AllocZ(size uintptr) unsafe.Pointer {
-	ret := bdwgc.Malloc(size)
-	recordMemProfileAlloc(size)
-	return c.Memset(ret, 0, size)
+	ret := AllocU(size)
+	c.Memset(ret, 0, size)
+	return ret
 }
 
 func AllocRoot(size uintptr) unsafe.Pointer {
-	return bdwgc.MallocUncollectable(size)
+	if size == 0 {
+		return unsafe.Pointer(&zerobase)
+	}
+	ret := bdwgc.MallocUncollectable(size)
+	if ret == nil {
+		panic("out of memory")
+	}
+	return ret
 }
 
 func FreeRoot(ptr unsafe.Pointer) {
+	if ptr == unsafe.Pointer(&zerobase) {
+		return
+	}
 	bdwgc.Free(ptr)
 }
 
