@@ -13,13 +13,16 @@ concurrency:
 
 jobs:
   llgo:
+    name: llgo (${{ matrix.test_dir }}, ${{ matrix.os }}, LLVM ${{ matrix.llvm }})
     timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
+        test_dir: [empty, defer]
         os:
           - ubuntu-latest
         llvm: [22]
-    runs-on: [qiniu, ubuntu-24.04-large]
+    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -35,12 +38,6 @@ jobs:
           go install ./...
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
 
-      - name: Build targets (empty)
-        run: |
-          cd _demo/embed/targetsbuild
-          bash build.sh empty
-
-      - name: Build targets (defer)
-        run: |
-          cd _demo/embed/targetsbuild
-          bash build.sh defer
+      - name: Build targets (${{ matrix.test_dir }})
+        working-directory: _demo/embed/targetsbuild
+        run: bash build.sh "${{ matrix.test_dir }}"
