@@ -226,7 +226,7 @@ jobs:
             ./cl
 
   dev-lto-globaldce:
-    name: Dev LTO GlobalDCE
+    name: Dev LTO GlobalDCE and Go Method Drop
     timeout-minutes: 60
     runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     steps:
@@ -304,32 +304,8 @@ jobs:
           files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt,coverage-dev-lto-globaldce-symbols.txt,coverage-dev-lto-plugin-cl.txt
           flags: dev-lto-globaldce
 
-  # Tests deletion of unreachable Go methods.
-  # See https://github.com/xgo-dev/llgo/issues/1853.
-  dev-go-methoddrop:
-    name: Dev Go Method Drop
-    timeout-minutes: 60
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install dependencies
-        uses: ./.github/actions/setup-deps
-        with:
-          llvm-version: 22
-
-      - name: Set up Go
-        uses: ./.github/actions/setup-go
-
-      - name: Setup demo dependencies
-        uses: ./.github/actions/setup-demo-deps
-
-      - name: Set LLGO_ROOT
-        run: echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> $GITHUB_ENV
-
-      - name: Build llgo with dev tag
-        run: go install -tags=dev ./cmd/llgo
-
+      # Tests deletion of unreachable Go methods.
+      # See https://github.com/xgo-dev/llgo/issues/1853.
       - name: Run Go method drop tests
         run: go test -tags=dev -timeout 30m -run '^TestBuildAndCheckSymbolsFromTestdrop$' ./cl
 
