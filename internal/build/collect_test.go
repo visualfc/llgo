@@ -35,6 +35,46 @@ import (
 	gopackages "golang.org/x/tools/go/packages"
 )
 
+func TestSourcePatchBodyChangesPackageFingerprint(t *testing.T) {
+	dir := t.TempDir()
+	original := filepath.Join(dir, "original.go")
+	patch := filepath.Join(dir, "llgo_patch.go")
+	unused := filepath.Join(dir, "unselected.go")
+	pkg := &aPackage{Package: &packages.Package{
+		ID: "example.test", PkgPath: "example.test",
+		GoFiles: []string{original}, CompiledGoFiles: []string{original, patch},
+	}}
+	ctx := &context{
+		mode: ModeGen,
+		buildConf: &Config{Overlay: map[string][]byte{
+			original: []byte("package p\n"),
+			patch:    []byte("package p\nfunc Value() int { return 1 }\n"),
+		}},
+		sfilesCache: map[string][]string{"example.test": nil},
+	}
+	manifest := func() string {
+		t.Helper()
+		m := newManifestBuilder()
+		if err := ctx.collectPackageInputs(m, pkg); err != nil {
+			t.Fatal(err)
+		}
+		if len(m.pkg.GoFiles) != 2 {
+			t.Fatalf("source patch absent or counted twice: %+v", m.pkg.GoFiles)
+		}
+		return m.Build()
+	}
+	first := manifest()
+	ctx.buildConf.Overlay[patch] = []byte("package p\nfunc Value() int { return 2 }\n")
+	second := manifest()
+	if first == second {
+		t.Fatal("changing only a source patch body did not invalidate the package cache")
+	}
+	ctx.buildConf.Overlay[unused] = []byte("package p\nconst Unused = 1\n")
+	if manifest() != second {
+		t.Fatal("unselected source invalidated the package cache")
+	}
+}
+
 func TestCollectFingerprint(t *testing.T) {
 	td := t.TempDir()
 
