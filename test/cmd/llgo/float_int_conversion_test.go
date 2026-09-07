@@ -44,6 +44,12 @@ func main() {
 		id(float32(-math.MaxFloat32)), id(float32(-one / 0)), id(float32(-1.5)),
 		id(float32(math.NaN())), id(float32(1.5)), id(float32(1 << 31)),
 		id(float32(1 << 32)), id(float32(math.MaxFloat32)), id(float32(one / 0)),
+		id(float32(0)), id(float32(math.Copysign(0, -1))),
+		id(float32(math.SmallestNonzeroFloat32)), id(float32(-math.SmallestNonzeroFloat32)),
+		id(math.Nextafter32(1 << 31, 0)), id(math.Nextafter32(-1 << 31, float32(math.Inf(-1)))),
+		id(math.Nextafter32(1 << 32, 0)), id(float32(-1 << 63)),
+		id(math.Nextafter32(1 << 63, 0)), id(float32(1 << 63)),
+		id(math.Nextafter32(1 << 64, 0)), id(float32(1 << 64)),
 	} {
 		emit(x)
 	}
@@ -51,6 +57,12 @@ func main() {
 		id(-math.MaxFloat64), id(-one / 0), id(-1.5), id(math.NaN()), id(1.5),
 		id(float64(1 << 31)), id(float64(1 << 32)), id(float64(1 << 63)),
 		id(math.MaxFloat64), id(one / 0),
+		id(0.0), id(math.Copysign(0, -1)),
+		id(math.SmallestNonzeroFloat64), id(-math.SmallestNonzeroFloat64),
+		id(math.Nextafter(1 << 31, 0)), id(math.Nextafter(-1 << 31, math.Inf(-1))),
+		id(math.Nextafter(1 << 32, 0)), id(float64(-1 << 63)),
+		id(math.Nextafter(-1 << 63, math.Inf(-1))), id(math.Nextafter(1 << 63, 0)),
+		id(math.Nextafter(1 << 64, 0)), id(float64(1 << 64)),
 	} {
 		emit(x)
 	}
