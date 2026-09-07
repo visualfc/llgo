@@ -53,7 +53,7 @@ jobs:
             windows_arch: "386"
         include:
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
+            runner: [qiniu, ubuntu-24.04-large]
     runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -206,7 +206,7 @@ jobs:
     name: GOROOT summary
     if: always()
     needs: goroot
-    runs-on: [qiniu, ubuntu-24.04]
+    runs-on: [qiniu, ubuntu-24.04-large]
     steps:
       - name: Download shard statistics
         uses: actions/download-artifact@v8

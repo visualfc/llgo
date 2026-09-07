@@ -24,7 +24,7 @@ jobs:
           - os: macos-latest
             llvm: 22
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
+            runner: [qiniu, ubuntu-24.04-large]
             llvm: 22
           - os: windows-2022
             llvm: 22

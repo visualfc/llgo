@@ -21,7 +21,7 @@ jobs:
           - ubuntu-latest
         include:
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
+            runner: [qiniu, ubuntu-24.04-large]
     runs-on: ${{ matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -61,7 +61,7 @@ jobs:
             os: macos-latest
           - platform: ubuntu
             os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04]
+            runner: [qiniu, ubuntu-24.04-large]
           - platform: windows-msvc
             os: windows-2022
             windows_abi: msvc
