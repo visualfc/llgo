@@ -17,10 +17,11 @@
  */
 
 // Package tls provides generic storage backed by the host thread-local
-// storage API. When built with the GC-enabled configuration (llgo && !nogc),
-// TLS slots use scanned, uncollectable BDWGC allocations so their pointers stay
-// visible until the thread-local destructor releases the slot. Builds without
-// GC integration (llgo && nogc) use ordinary calloc/free allocations.
+// storage API. GC-enabled builds (llgo && !baremetal && !wasm && !nogc) use
+// scanned, uncollectable BDWGC slots so their pointers stay visible until the
+// thread-local destructor releases the slot. Non-baremetal llgo builds with nogc or
+// wasm use ordinary calloc/free allocations. Baremetal builds and builds
+// without llgo use no-op handles.
 //
 // Basic usage:
 //
@@ -37,8 +38,9 @@
 //	})
 //
 // Build tags:
-//   - llgo && !nogc: Enables GC-managed slots via BDWGC
-//   - llgo && nogc:  Disables GC integration; TLS acts as plain host TLS
+//   - llgo && !baremetal && !wasm && !nogc: GC-managed slots via BDWGC
+//   - llgo && !baremetal && (nogc || wasm): Plain host TLS via calloc/free
+//   - !llgo || baremetal: No-op handles
 package tls
 
 import (
