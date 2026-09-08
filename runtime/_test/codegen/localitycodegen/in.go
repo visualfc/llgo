@@ -45,13 +45,13 @@ func newPointer() *int {
 	return &backing
 }
 
-//llgo:tls
+//llgointernal:tls
 var scalar int
 
-//llgo:gls
+//llgointernal:gls
 var pointer *int
 
-//llgo:tls
+//llgointernal:tls
 var initialized = newPointer()
 
 func values() (int, *int, *int) {

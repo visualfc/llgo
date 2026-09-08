@@ -184,6 +184,11 @@ func TestRunAndTestFromTestgo(t *testing.T) {
 	cltest.RunAndTestFromDir(t, "", "./_testgo", ignore)
 }
 
+func TestRunAndTestRuntimeCodegen(t *testing.T) {
+	t.Chdir("../runtime")
+	cltest.RunAndTestFromDir(t, "", "./_test/codegen", nil)
+}
+
 func TestRunAndTestFromTestmeta(t *testing.T) {
 	conf := build.NewDefaultConf(build.ModeRun)
 	conf.CollectPackageMeta = true

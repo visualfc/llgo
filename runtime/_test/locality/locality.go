@@ -16,16 +16,16 @@
  * limitations under the License.
  */
 
-package llgoext
+package locality
 
 import (
 	"runtime"
 	"sync/atomic"
 	"testing"
 
-	"github.com/xgo-dev/llgo/test/llgoext/testdata/localitybench"
-	"github.com/xgo-dev/llgo/test/llgoext/testdata/localityfailure"
-	"github.com/xgo-dev/llgo/test/llgoext/testdata/localityscope"
+	"github.com/xgo-dev/llgo/runtime/_test/locality/testdata/localitybench"
+	"github.com/xgo-dev/llgo/runtime/_test/locality/testdata/localityfailure"
+	"github.com/xgo-dev/llgo/runtime/_test/locality/testdata/localityscope"
 )
 
 var initializerSequence int
@@ -35,16 +35,16 @@ func nextLocalValue(base int) int {
 	return base + initializerSequence
 }
 
-//llgo:tls
+//llgointernal:tls
 var tlsCounter int
 
-//llgo:gls
+//llgointernal:gls
 var glsCounter int
 
-//llgo:tls
+//llgointernal:tls
 var initializedTLS = nextLocalValue(100)
 
-//llgo:gls
+//llgointernal:gls
 var initializedGLS = nextLocalValue(200)
 
 type localitySnapshot struct {
@@ -170,7 +170,7 @@ func (recursiveSourceValue) value() int {
 
 var recursiveSource recursiveInitializer = recursiveSourceValue{}
 
-//llgo:gls
+//llgointernal:gls
 var recursiveValue = recursiveSource.value()
 
 func TestRecursiveInitializerObservesPartialValue(t *testing.T) {
@@ -191,7 +191,7 @@ func nextLateValue() int {
 
 // zLate sorts after the package init function in SSA member order.
 //
-//llgo:tls
+//llgointernal:tls
 var zLate = nextLateValue()
 
 func TestLateSortedInitializer(t *testing.T) {
@@ -213,7 +213,7 @@ func newRootedValue() *rootedValue {
 	return &rootedValue{value: 73}
 }
 
-//llgo:gls
+//llgointernal:gls
 var rootedPointer = newRootedValue()
 
 //go:noinline
@@ -257,7 +257,7 @@ func TestLocalContextCleanupAfterThreadExit(t *testing.T) {
 	runtime.GC()
 }
 
-//llgo:gls
+//llgointernal:gls
 var atomicGLS int64
 
 func TestLocalAddressAndAtomicSemantics(t *testing.T) {
@@ -299,7 +299,7 @@ type escapedBlockValue struct {
 	value   int
 }
 
-//llgo:gls
+//llgointernal:gls
 var escapedBlock escapedBlockValue
 
 func TestEscapedPackageBlockAddressSurvivesOwnerExit(t *testing.T) {
@@ -351,7 +351,7 @@ func TestEscapedPackageBlockAddressSurvivesGoexit(t *testing.T) {
 	}
 }
 
-//llgo:gls
+//llgointernal:gls
 var zeroSizedGLS struct{}
 
 func TestZeroSizedNativeLocalAddressIsStable(t *testing.T) {
@@ -449,10 +449,10 @@ func TestCrossPackageMixedInitializerGroup(t *testing.T) {
 
 var benchmarkOrdinary int
 
-//llgo:tls
+//llgointernal:tls
 var benchmarkTLS int
 
-//llgo:gls
+//llgointernal:gls
 var benchmarkGLS int
 
 var benchmarkSink int
@@ -481,10 +481,10 @@ type benchmarkPackageValue struct {
 	value   int
 }
 
-//llgo:tls
+//llgointernal:tls
 var benchmarkTLSPackage benchmarkPackageValue
 
-//llgo:gls
+//llgointernal:gls
 var benchmarkGLSPackage benchmarkPackageValue
 
 //go:noinline

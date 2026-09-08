@@ -21,8 +21,8 @@ package locality
 import "fmt"
 
 const (
-	ThreadDirective    = "//llgo:tls"
-	GoroutineDirective = "//llgo:gls"
+	ThreadDirective    = "//llgointernal:tls"
+	GoroutineDirective = "//llgointernal:gls"
 	InitPrefix         = "__llgo_local_init_"
 )
 

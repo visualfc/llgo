@@ -22,5 +22,5 @@ package runtime
 // and synthetic PCs must move with that goroutine when the backend eventually
 // permits migration between OS threads.
 //
-//llgo:gls
+//llgointernal:gls
 var callerLocationStoreCurrent *callerLocationStore

@@ -80,7 +80,7 @@ func (A) StackedHidden() {}
 	if !prog.PackageSyntaxParsed(pkg) {
 		t.Fatal("package syntax was not marked as parsed")
 	}
-	badFile, err := parser.ParseFile(fset, "bad.go", "package p\n//llgo:tls\nfunc Bad() {}\n", parser.ParseComments)
+	badFile, err := parser.ParseFile(fset, "bad.go", "package p\n//llgointernal:tls\nfunc Bad() {}\n", parser.ParseComments)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,24 +95,33 @@ func TestParsePkgSyntaxReportsLocalityErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		name string
-		src  string
-		want string
+		name  string
+		src   string
+		want  string
+		allow bool
 	}{
 		{
-			name: "function body",
-			src:  "package p\nfunc f() {\n//llgo:gls\nvar value int\n_ = value\n}\n",
-			want: "package-level var",
+			name: "external package",
+			src:  "package p\n//llgointernal:tls\nvar value int\n",
+			want: "only allowed in the Go standard library",
 		},
 		{
-			name: "package var",
-			src:  "package p\n//llgo:tls extra\nvar Value int\n",
-			want: "does not accept arguments",
+			name:  "function body",
+			src:   "package p\nfunc f() {\n//llgointernal:gls\nvar value int\n_ = value\n}\n",
+			want:  "package-level var",
+			allow: true,
 		},
 		{
-			name: "non-var declaration",
-			src:  "package p\n//llgo:gls\nconst Value = 1\n",
-			want: "package-level var",
+			name:  "package var",
+			src:   "package p\n//llgointernal:tls extra\nvar Value int\n",
+			want:  "does not accept arguments",
+			allow: true,
+		},
+		{
+			name:  "non-var declaration",
+			src:   "package p\n//llgointernal:gls\nconst Value = 1\n",
+			want:  "package-level var",
+			allow: true,
 		},
 	}
 	for _, test := range tests {
@@ -123,7 +132,7 @@ func TestParsePkgSyntaxReportsLocalityErrors(t *testing.T) {
 				t.Fatal(err)
 			}
 			pkg := types.NewPackage("example.com/"+strings.ReplaceAll(test.name, " ", "-"), "p")
-			err = ParsePkgSyntax(llssa.NewProgram(nil), fset, pkg, []*ast.File{file})
+			err = ParsePkgSyntaxWithOptions(llssa.NewProgram(nil), fset, pkg, []*ast.File{file}, Options{AllowInternalDirectives: test.allow})
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("ParsePkgSyntax error = %v, want %q", err, test.want)
 			}
@@ -361,7 +370,7 @@ func TestCollectDeclarationDirectivesIgnoresOtherDirectives(t *testing.T) {
 	prog := llssa.NewProgram(nil)
 	doc := &ast.CommentGroup{List: []*ast.Comment{
 		{Text: "//go:noinline"},
-		{Text: "//llgo:tls"},
+		{Text: "//llgointernal:tls"},
 	}}
 	const fullName = "example.com/p.Value"
 	collectDeclarationDirectives(prog, nil, doc, fullName, "Value", token.NoPos)

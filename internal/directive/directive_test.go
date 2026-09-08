@@ -15,7 +15,7 @@ func TestParse(t *testing.T) {
 		{text: "// ordinary"},
 		{text: "//go:"},
 		{text: "//go:noinline", name: "go:noinline", ok: true},
-		{text: "//llgo:tls", name: "llgo:tls", ok: true},
+		{text: "//llgointernal:tls", name: "llgointernal:tls", ok: true},
 		{text: "// llgo:type C", name: "llgo:type", args: "C", ok: true},
 		{text: "//llgo:link\tF C.f", name: "llgo:link", args: "F C.f", ok: true},
 		{text: "//export F", name: "export", args: "F", ok: true},
@@ -38,10 +38,10 @@ func TestParseGroupPreservesSourceOrder(t *testing.T) {
 	doc := &ast.CommentGroup{List: []*ast.Comment{
 		{Text: "// ordinary"},
 		{Text: "//go:noinline"},
-		{Text: "//llgo:tls"},
+		{Text: "//llgointernal:tls"},
 	}}
 	got := ParseGroup(doc)
-	if len(got) != 2 || got[0].Name != "go:noinline" || got[1].Name != "llgo:tls" {
+	if len(got) != 2 || got[0].Name != "go:noinline" || got[1].Name != "llgointernal:tls" {
 		t.Fatalf("ParseGroup = %+v", got)
 	}
 }

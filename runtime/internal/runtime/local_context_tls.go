@@ -22,5 +22,5 @@ package runtime
 // the outer entry frame, so this native TLS slot intentionally has no GC-visible
 // pointer type.
 //
-//llgo:tls
+//llgointernal:tls
 var currentLocalContext uintptr

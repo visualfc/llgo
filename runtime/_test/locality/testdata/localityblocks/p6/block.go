@@ -16,42 +16,16 @@
  * limitations under the License.
  */
 
-package localityfailure
+package p6
 
-const Failure = "locality initializer failed"
+import "unsafe"
 
-var attempts int
+var backing int
 
-func initialize() int {
-	attempts++
-	if attempts > 1 {
-		panic(Failure)
-	}
-	return attempts
-}
+//llgointernal:gls
+var pointer *int
 
-//llgo:tls
-var value = initialize()
+func Prepare() { pointer = &backing }
 
 //go:noinline
-func Value() int { return value }
-
-func Attempts() int { return attempts }
-
-var nilAttempts int
-
-func initializeNil() int {
-	nilAttempts++
-	if nilAttempts > 1 {
-		panic(nil)
-	}
-	return nilAttempts
-}
-
-//llgo:gls
-var nilValue = initializeNil()
-
-//go:noinline
-func NilValue() int { return nilValue }
-
-func NilAttempts() int { return nilAttempts }
+func Read() uintptr { return uintptr(unsafe.Pointer(pointer)) }

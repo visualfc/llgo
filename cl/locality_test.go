@@ -22,6 +22,7 @@ func compileLocalitySource(t *testing.T, src string) (llssa.Program, string) {
 
 func compileLocalitySourceWithOptions(t *testing.T, src string, options Options) (llssa.Program, string) {
 	t.Helper()
+	options.AllowInternalDirectives = true
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", src, parser.ParseComments)
 	if err != nil {
@@ -53,6 +54,14 @@ func compileLocalitySourceWithOptions(t *testing.T, src string, options Options)
 		t.Fatal(err)
 	}
 	return prog, compiled.String()
+}
+
+func newLocalityTestPackage(prog llssa.Program, pkg *ssa.Package, files []*ast.File) (llssa.Package, error) {
+	compiled, _, err := NewPackageExWithEmbedMetaOptions(
+		prog, nil, nil, nil, pkg, files, nil, false,
+		Options{AllowInternalDirectives: true},
+	)
+	return compiled, err
 }
 
 func newLocalityTypeInfo() *types.Info {
@@ -106,7 +115,7 @@ func localityRuntimePackage() *types.Package {
 func TestLocalPackageAccessorUsesDirectTLSCache(t *testing.T) {
 	const src = `package locality
 
-//llgo:gls
+//llgointernal:gls
 var pointer *int
 
 func value() *int { return pointer }
@@ -156,13 +165,13 @@ var backing int
 func scalar() int { return 42 }
 func pointer() *int { return &backing }
 
-//llgo:tls
+//llgointernal:tls
 var tlsScalar = scalar()
-//llgo:tls
+//llgointernal:tls
 var tlsPointer = pointer()
-//llgo:gls
+//llgointernal:gls
 var glsScalar = scalar()
-//llgo:gls
+//llgointernal:gls
 var glsPointer = pointer()
 
 func values() (int, *int, int, *int) {
@@ -219,10 +228,10 @@ func values() (int, *int, int, *int) {
 func TestLocalityDebugInfoOnlyUsesFixedGlobals(t *testing.T) {
 	_, ir := compileLocalitySourceWithOptions(t, `package locality
 
-//llgo:tls
+//llgointernal:tls
 var direct int
 
-//llgo:gls
+//llgointernal:gls
 var pointer *int
 
 func values() (int, *int) { return direct, pointer }
@@ -246,11 +255,11 @@ func TestLocalityInitializersPreserveGoOrderPerKind(t *testing.T) {
 	_, ir := compileLocalitySource(t, `package locality
 
 func mark(value int) int { return value }
-//llgo:tls
+//llgointernal:tls
 var t0 = mark(0)
-//llgo:gls
+//llgointernal:gls
 var g0 = mark(1)
-//llgo:tls
+//llgointernal:tls
 var t1 = mark(2)
 func values() (int, int, int) { return t0, t1, g0 }
 `)
@@ -275,7 +284,7 @@ func values() (int, int, int) { return t0, t1, g0 }
 func TestDirectInitializerStillRequiresFailureContext(t *testing.T) {
 	prog, ir := compileLocalitySource(t, `package locality
 func value() int { return 1 }
-//llgo:tls
+//llgointernal:tls
 var localValue = value()
 func get() int { return localValue }
 `)
@@ -292,9 +301,9 @@ func get() int { return localValue }
 
 func TestZeroValueDirectLocalsNeedNoContext(t *testing.T) {
 	prog, ir := compileLocalitySource(t, `package locality
-//llgo:tls
+//llgointernal:tls
 var threadValue int
-//llgo:gls
+//llgointernal:gls
 var goroutineValue uintptr
 func values() (int, uintptr) { return threadValue, goroutineValue }
 `)
@@ -308,7 +317,7 @@ func values() (int, uintptr) { return threadValue, goroutineValue }
 
 func TestExportedFunctionInstallsLocalContext(t *testing.T) {
 	_, ir := compileLocalitySource(t, `package locality
-//llgo:gls
+//llgointernal:gls
 var pointer *int
 //export Exported
 func Exported(useLocal bool) *int {
@@ -333,7 +342,7 @@ func Exported(useLocal bool) *int {
 
 func TestExportedNativeTLSNeedsNoLocalContext(t *testing.T) {
 	prog, ir := compileLocalitySource(t, `package locality
-//llgo:tls
+//llgointernal:tls
 var scalar int
 //export Exported
 func Exported() int { return scalar }
@@ -362,7 +371,7 @@ func assertTextOrder(t *testing.T, text string, wants ...string) {
 func TestLocalityRejectsLinknameAlias(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", `package locality
-//llgo:gls
+//llgointernal:gls
 var target *int
 //go:linkname alias example.com/locality.target
 var alias *int
@@ -376,7 +385,7 @@ var alias *int
 		t.Fatal(err)
 	}
 	prog := ssatest.NewProgram(t, nil)
-	if err := ParsePkgSyntax(prog, fset, pkg, []*ast.File{file}); err != nil {
+	if err := ParsePkgSyntaxWithOptions(prog, fset, pkg, []*ast.File{file}, Options{AllowInternalDirectives: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := prog.ValidateLocalities(pkg.Path()); err == nil || !strings.Contains(err.Error(), "cannot reference local variable") {
@@ -395,9 +404,9 @@ func TestLocalityCrossPackageAccessUsesFunctions(t *testing.T) {
 	}
 	depFile := parse("dep.go", `package dep
 func initialScalar() int { return 1 }
-//llgo:tls
+//llgointernal:tls
 var scalar = initialScalar()
-//llgo:gls
+//llgointernal:gls
 var pointer *int
 func Values() (int, *int) { return scalar, pointer }
 `)
@@ -432,7 +441,7 @@ func Values() (int, *int) { return dep.Values() }
 		{depPkg, depInfo, []*ast.File{depFile}},
 		{rootPkg, rootInfo, []*ast.File{rootFile}},
 	} {
-		if err := ParsePkgSyntax(prog, fset, input.pkg, input.files); err != nil {
+		if err := ParsePkgSyntaxWithOptions(prog, fset, input.pkg, input.files, Options{AllowInternalDirectives: true}); err != nil {
 			t.Fatal(err)
 		}
 		if err := PrepareLocalVariables(prog, fset, input.pkg, input.info, input.files); err != nil {
@@ -444,10 +453,10 @@ func Values() (int, *int) { return dep.Values() }
 	depSSA := goProg.CreatePackage(depPkg, []*ast.File{depFile}, depInfo, true)
 	rootSSA := goProg.CreatePackage(rootPkg, []*ast.File{rootFile}, rootInfo, true)
 	goProg.Build()
-	if _, err := NewPackage(prog, depSSA, []*ast.File{depFile}); err != nil {
+	if _, err := newLocalityTestPackage(prog, depSSA, []*ast.File{depFile}); err != nil {
 		t.Fatal(err)
 	}
-	root, err := NewPackage(prog, rootSSA, []*ast.File{rootFile})
+	root, err := newLocalityTestPackage(prog, rootSSA, []*ast.File{rootFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,10 +474,10 @@ func Values() (int, *int) { return dep.Values() }
 func TestParseRejectsLocalAliasInitializer(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", `package locality
-//llgo:tls
+//llgointernal:tls
 var target int
 //go:linkname alias example.com/locality.target
-//llgo:tls
+//llgointernal:tls
 var alias = 1
 `, parser.ParseComments)
 	if err != nil {
@@ -480,7 +489,7 @@ var alias = 1
 		t.Fatal(err)
 	}
 	prog := llssa.NewProgram(nil)
-	if err := ParsePkgSyntax(prog, fset, pkg, files); err == nil || !strings.Contains(err.Error(), "cannot apply to a //go:linkname variable") {
+	if err := ParsePkgSyntaxWithOptions(prog, fset, pkg, files, Options{AllowInternalDirectives: true}); err == nil || !strings.Contains(err.Error(), "cannot apply to a //go:linkname variable") {
 		t.Fatalf("ParsePkgSyntax error = %v", err)
 	}
 }
@@ -544,7 +553,7 @@ func TestNewPackageReportsLocalityPreparationErrors(t *testing.T) {
 		{
 			name: "invalid directive",
 			src: `package locality
-//llgo:tls
+//llgointernal:tls
 func invalid() {}
 `,
 			wantError: "applies only to package-level var declarations",
@@ -553,7 +562,7 @@ func invalid() {}
 			name: "unprepared initializer",
 			src: `package locality
 func initialValue() int { return 1 }
-//llgo:tls
+//llgointernal:tls
 var value = initialValue()
 `,
 			parseSyntax: true,
@@ -562,10 +571,10 @@ var value = initialValue()
 		{
 			name: "linkname locality",
 			src: `package locality
-//llgo:tls
+//llgointernal:tls
 var target int
 //go:linkname alias example.com/locality.target
-//llgo:gls
+//llgointernal:gls
 var alias int
 `,
 			wantError: "cannot apply to a //go:linkname variable",
@@ -590,11 +599,11 @@ var alias int
 			ssaPkg.Build()
 			prog := ssatest.NewProgram(t, nil)
 			if tt.parseSyntax {
-				if err := ParsePkgSyntax(prog, fset, pkg, files); err != nil {
+				if err := ParsePkgSyntaxWithOptions(prog, fset, pkg, files, Options{AllowInternalDirectives: true}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if _, err := NewPackage(prog, ssaPkg, files); err == nil || !strings.Contains(err.Error(), tt.wantError) {
+			if _, err := newLocalityTestPackage(prog, ssaPkg, files); err == nil || !strings.Contains(err.Error(), tt.wantError) {
 				t.Fatalf("NewPackage error = %v, want %q", err, tt.wantError)
 			}
 		})
@@ -623,7 +632,7 @@ var value int
 	name := llssa.FullName(pkg, "value")
 	prog.SetLocalityInfo(name, llssa.LocalityInfo{Locality: llssa.ThreadLocal})
 	prog.SetLinkname(name, name+"Alias")
-	if _, err := NewPackage(prog, ssaPkg, files); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
+	if _, err := newLocalityTestPackage(prog, ssaPkg, files); err == nil || !strings.Contains(err.Error(), "cannot use go:linkname") {
 		t.Fatalf("NewPackage locality validation error = %v", err)
 	}
 }
@@ -631,7 +640,7 @@ var value int
 func TestParseRejectsExportedLocalVariable(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "locality.go", `package locality
-//llgo:tls
+//llgointernal:tls
 var Value int
 `, parser.ParseComments)
 	if err != nil {
@@ -643,7 +652,7 @@ var Value int
 		t.Fatal(err)
 	}
 	prog := ssatest.NewProgram(t, nil)
-	if err := ParsePkgSyntax(prog, fset, pkg, files); err == nil || !strings.Contains(err.Error(), "requires an unexported package variable") {
+	if err := ParsePkgSyntaxWithOptions(prog, fset, pkg, files, Options{AllowInternalDirectives: true}); err == nil || !strings.Contains(err.Error(), "requires an unexported package variable") {
 		t.Fatalf("ParsePkgSyntax error = %v", err)
 	}
 }
@@ -719,7 +728,7 @@ func TestPlanLocalPackageDiagnostics(t *testing.T) {
 func TestLocalInitializerNameCollision(t *testing.T) {
 	prog, _ := compileLocalitySource(t, `package locality
 func __llgo_local_init_0() {}
-//llgo:tls
+//llgointernal:tls
 var value = 1
 `)
 	info, ok := prog.VariableLocality("example.com/locality.value")
@@ -732,7 +741,7 @@ func TestNamedPointerLocalUsesPackageStorage(t *testing.T) {
 	prog, ir := compileLocalitySource(t, `package locality
 type Handle struct { Pointer *int }
 func makeHandle() Handle { return Handle{} }
-//llgo:tls
+//llgointernal:tls
 var value = makeHandle()
 func get() Handle { return value }
 `)

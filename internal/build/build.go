@@ -642,6 +642,8 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		defer syntaxErrMu.Unlock()
 		return syntaxErr
 	}
+	// Assigned before package loading invokes the preload callback.
+	var sourcePatchGOROOT string
 	dedup.SetPreload(func(pkg *packages.Package) {
 		if llruntime.SkipToBuild(pkg.PkgPath) {
 			return
@@ -649,7 +651,9 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		if pkg.Name == "main" && pkg.ForTest != "" {
 			pkg.Types.Scope().Insert(types.NewConst(0, pkg.Types, abi.ForTestMarker, types.Typ[types.UntypedBool], constant.MakeBool(true)))
 		}
-		if err := cl.ParsePkgSyntaxWithOptions(prog, cfg.Fset, pkg.Types, pkg.Syntax, preloadOptions); err != nil {
+		options := preloadOptions
+		options.AllowInternalDirectives = isStandardLibraryPackage(pkg, sourcePatchGOROOT)
+		if err := cl.ParsePkgSyntaxWithOptions(prog, cfg.Fset, pkg.Types, pkg.Syntax, options); err != nil {
 			recordSyntaxErr(err)
 		}
 	})
@@ -771,7 +775,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	patches := make(cl.Patches, len(altPkgPaths))
 	altEntries := registerAltSSAPkgs(progSSA, patches, altPkgs[1:], conf, verbose)
 	prepareSpan := buildTrace.startCoordinator("prepare shared backend state", nil)
-	if err := preloadPatchedPackageSyntax(prog, patches, dedup, preloadOptions); err != nil {
+	if err := preloadPatchedPackageSyntax(prog, patches, dedup, preloadOptions, sourcePatchGOROOT); err != nil {
 		prepareSpan.done()
 		return nil, err
 	}
@@ -1529,13 +1533,14 @@ func (c *context) newBackendSession() backendSession {
 // preloadPatchedPackageSyntax prepares the effective types.Package used by
 // patched lowering. Normal and alternate packages are already covered by the
 // packages loader's preload callback, but patch.Types has a distinct identity.
-func preloadPatchedPackageSyntax(prog llssa.Program, patches cl.Patches, dedup packages.Deduper, options cl.Options) error {
+func preloadPatchedPackageSyntax(prog llssa.Program, patches cl.Patches, dedup packages.Deduper, options cl.Options, goroot string) error {
 	paths := make([]string, 0, len(patches))
 	for pkgPath := range patches {
 		paths = append(paths, pkgPath)
 	}
 	slices.Sort(paths)
 	for _, pkgPath := range paths {
+		packageOptions := options
 		patch := patches[pkgPath]
 		alt := dedup.Check(altPkgPathPrefix + pkgPath)
 		if alt == nil || len(alt.Syntax) == 0 || patch.Types == nil {
@@ -1546,12 +1551,22 @@ func preloadPatchedPackageSyntax(prog llssa.Program, patches cl.Patches, dedup p
 		if original := dedup.Check(pkgPath); original != nil {
 			fset = original.Fset
 			files = append(slices.Clone(original.Syntax), files...)
+			packageOptions.AllowInternalDirectives = isStandardLibraryPackage(original.Package, goroot)
 		}
-		if err := cl.ParsePkgSyntaxWithOptions(prog, fset, patch.Types, files, options); err != nil {
+		if err := cl.ParsePkgSyntaxWithOptions(prog, fset, patch.Types, files, packageOptions); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func isStandardLibraryPackage(pkg *packages.Package, goroot string) bool {
+	if pkg == nil || pkg.Module != nil || pkg.PkgPath == "" || pkg.Dir == "" || goroot == "" {
+		return false
+	}
+	first := strings.SplitN(pkg.PkgPath, "/", 2)[0]
+	rel, err := filepath.Rel(filepath.Join(goroot, "src"), pkg.Dir)
+	return err == nil && !strings.Contains(first, ".") && rel != "." && rel != ".." && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func (c *context) compiler() *clang.Cmd {

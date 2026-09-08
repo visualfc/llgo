@@ -16,16 +16,42 @@
  * limitations under the License.
  */
 
-package p0
+package localitybench
 
 import "unsafe"
 
 var backing int
 
-//llgo:gls
+var ordinaryPointer *int
+
+//llgointernal:tls
+var nativePointerBits uintptr
+
+//llgointernal:gls
 var pointer *int
 
-func Prepare() { pointer = &backing }
+//go:noinline
+func Touch() {
+	pointer = &backing
+}
+
+func PrepareReads() {
+	ordinaryPointer = &backing
+	nativePointerBits = uintptr(unsafe.Pointer(&backing))
+	pointer = &backing
+}
 
 //go:noinline
-func Read() uintptr { return uintptr(unsafe.Pointer(pointer)) }
+func ReadOrdinaryGlobal() uintptr {
+	return uintptr(unsafe.Pointer(ordinaryPointer))
+}
+
+//go:noinline
+func ReadNativeTLS() uintptr {
+	return nativePointerBits
+}
+
+//go:noinline
+func ReadGLSPackage() uintptr {
+	return uintptr(unsafe.Pointer(pointer))
+}

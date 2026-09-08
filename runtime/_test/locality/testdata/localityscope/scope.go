@@ -31,10 +31,10 @@ func initSecond() int {
 	return 200 + secondCalls
 }
 
-//llgo:gls
+//llgointernal:gls
 var first = initFirst()
 
-//llgo:gls
+//llgointernal:gls
 var second = initSecond()
 
 func FirstCalls() int  { return firstCalls }
@@ -56,7 +56,7 @@ func initPair() (int, int) {
 	return 300 + pairCalls, 400 + pairCalls
 }
 
-//llgo:gls
+//llgointernal:gls
 var pairFirst, pairSecond = initPair()
 
 func PairCalls() int { return pairCalls }
@@ -72,7 +72,7 @@ func initMixed() (int, *int) {
 	return 600 + mixedCalls, &mixedBacking
 }
 
-//llgo:tls
+//llgointernal:tls
 var mixedScalar, mixedPointer = initMixed()
 
 func MixedCalls() int { return mixedCalls }
