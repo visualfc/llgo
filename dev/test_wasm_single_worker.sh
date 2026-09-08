@@ -125,6 +125,13 @@ run_llgo_test_compile_only() {
 	esac
 }
 
+if [[ "${suite}" == "all" || "${suite}" == "runtime" ]]; then
+# The runtime is a nested Go module and is not covered by root-level go test.
+# Exercise the collector's allocation-free interval helper on the host before
+# the target fixtures check marking, reclamation, and finalizer integration.
+go -C "${repo_root}/runtime" test -count=1 -cover ./internal/runtime/tinygogc
+fi
+
 if [[ "${suite}" != "test-command" ]]; then
 # Canonical C-ecosystem profiles exercise the same scheduler semantics under
 # Emscripten wasm32, Emscripten Memory64/LP64, and WASI Preview 1.

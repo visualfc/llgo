@@ -1,0 +1,51 @@
+/*
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ */
+
+package tinygogc
+
+// markHeadCache memoizes large object intervals during a single collection.
+// Store complemented block indexes, not raw heap addresses or indexes that
+// could accidentally look like heap addresses to conservative root scanning.
+// This follows weak-key encoding; conservative false positives remain possible.
+type markHeadCache struct {
+	ranges [4]markHeadRange
+	next   uint8
+}
+
+type markHeadRange struct {
+	head, end uintptr // complemented indexes; end is exclusive
+}
+
+func (c *markHeadCache) reset() { *c = markHeadCache{} }
+
+func (c *markHeadCache) lookup(block uintptr) (uintptr, bool) {
+	for _, r := range c.ranges {
+		if r.end != 0 && block >= ^r.head && block < ^r.end {
+			return ^r.head, true
+		}
+	}
+	return 0, false
+}
+
+func (c *markHeadCache) remember(head, end uintptr) {
+	// Small objects have cheap head lookup and must not displace stack ranges.
+	if end <= head || end-head < 256 || end == ^uintptr(0) {
+		return
+	}
+	for i := range c.ranges {
+		r := &c.ranges[i]
+		if r.end != 0 && ^r.head == head {
+			if end > ^r.end {
+				r.end = ^end
+			}
+			return
+		}
+	}
+	c.ranges[c.next] = markHeadRange{head: ^head, end: ^end}
+	c.next = (c.next + 1) & 3
+}
