@@ -13,16 +13,46 @@ runs:
   using: "composite"
   steps:
     - name: Configure Go environment
+      id: go_environment
       shell: bash
       run: |
         echo "GOPATH=${RUNNER_TEMP}/go" >> "$GITHUB_ENV"
         echo "GOBIN=${RUNNER_TEMP}/go/bin" >> "$GITHUB_ENV"
         echo "GOMODCACHE=${RUNNER_TEMP}/go/pkg/mod" >> "$GITHUB_ENV"
         echo "GOCACHE=${RUNNER_TEMP}/go-build-cache" >> "$GITHUB_ENV"
+        echo "path=$PATH" >> "$GITHUB_OUTPUT"
+
+    - name: Select Go archive extractor on Windows
+      if: runner.os == 'Windows'
+      id: windows_archive_path
+      shell: powershell
+      run: |
+        $ErrorActionPreference = "Stop"
+        $path = $env:PATH
+        if ("${{ runner.arch }}" -eq "ARM64") {
+          # Match setup-demo-deps' archive workaround. PowerShell 7 can abort
+          # inside ZipFile.ExtractToDirectory on Windows ARM64 before the
+          # tool-cache script's catch/fallback executes. Hide it only from
+          # setup-go so tool-cache selects Windows PowerShell instead.
+          # Use the runner architecture: the installed Go may be x64.
+          $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+          if ($pwsh) {
+            $pwshDir = (Split-Path -Parent $pwsh.Source).TrimEnd('\')
+            $path = (($env:PATH -split ';') | Where-Object {
+              $_ -and $_.Trim().Trim('"').TrimEnd('\') -ine $pwshDir
+            }) -join ';'
+            if ($path -eq $env:PATH) {
+              throw "Failed to remove PowerShell 7 from setup-go's PATH"
+            }
+          }
+        }
+        "path=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
     - name: Set up the LLGo build toolchain
       if: inputs.go-version == ''
       uses: actions/setup-go@v7
+      env:
+        PATH: ${{ steps.windows_archive_path.outputs.path || steps.go_environment.outputs.path }}
       with:
         go-version-file: .go-version
         architecture: ${{ inputs.architecture }}
@@ -33,6 +63,8 @@ runs:
     - name: Set up an explicit Go toolchain
       if: inputs.go-version != ''
       uses: actions/setup-go@v7
+      env:
+        PATH: ${{ steps.windows_archive_path.outputs.path || steps.go_environment.outputs.path }}
       with:
         go-version: ${{ inputs.go-version }}
         architecture: ${{ inputs.architecture }}
