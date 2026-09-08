@@ -54,6 +54,7 @@ func windowsSystemMemoryState(status windowsMemoryStatus) (systemMemoryState, er
 }
 
 func TestWindowsSystemMemoryState(t *testing.T) {
+	guardTestTimeout(t)
 	state, err := readSystemMemoryState()
 	if err != nil {
 		t.Fatal(err)
@@ -64,6 +65,7 @@ func TestWindowsSystemMemoryState(t *testing.T) {
 }
 
 func TestWindowsSystemMemoryStateRejectsInvalidTotals(t *testing.T) {
+	guardTestTimeout(t)
 	_, err := windowsSystemMemoryState(windowsMemoryStatus{
 		totalPhysical:     1024,
 		availablePhysical: 2048,

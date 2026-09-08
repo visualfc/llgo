@@ -92,6 +92,7 @@ func parseDarwinMemorySize(value string) (uint64, error) {
 }
 
 func TestParseDarwinSwapUsage(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name        string
 		output      string

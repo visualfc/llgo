@@ -218,6 +218,7 @@ func (p *gorootProgress) StartCase(index int, casePath string) {
 	p.caseStart = time.Now()
 	p.done = false
 	p.mu.Unlock()
+	fmt.Fprintf(os.Stderr, "goroot case START %d/%d: %s\n", index, p.total, casePath)
 }
 
 func (p *gorootProgress) FinishCase(casePath string) {
@@ -234,9 +235,7 @@ func (p *gorootProgress) FinishCase(casePath string) {
 	p.done = current >= total
 	p.mu.Unlock()
 
-	if *flagProgress > 0 && elapsed >= *flagProgress {
-		fmt.Fprintf(os.Stderr, "goroot case %d/%d done after %s: %s\n", current, total, elapsed.Round(time.Millisecond), casePath)
-	}
+	fmt.Fprintf(os.Stderr, "goroot case END %d/%d: %s (%s)\n", current, total, casePath, elapsed.Round(time.Millisecond))
 }
 
 func (p *gorootProgress) Log() {
@@ -909,6 +908,9 @@ func runProgram(dir, app string, env []string, timeout time.Duration, args ...st
 		return nil, nil, 0, time.Since(start), err
 	}
 	cmd := exec.Command(app, args...)
+	// A descendant may keep stdout/stderr open after the direct child exits.
+	// Do not let the pipe-copy goroutines make Wait unbounded in that case.
+	cmd.WaitDelay = 5 * time.Second
 	configureProcessGroup(cmd)
 	cmd.Dir = dir
 	cmd.Env = upsertEnv(append([]string{}, env...), "PWD="+dir)
@@ -964,7 +966,7 @@ func runProgram(dir, app string, env []string, timeout time.Duration, args ...st
 		case <-timeoutCh:
 			terminationErr = fmt.Errorf("timed out after %s", timeout)
 			killProcessTree(cmd)
-			err = <-waitCh
+			err = waitTerminatedProgram(cmd, waitCh, 10*time.Second)
 			goto finished
 		case <-rssCh:
 			rssBytes, rssErr := processGroupRSS(cmd.Process.Pid)
@@ -978,14 +980,14 @@ func runProgram(dir, app string, env []string, timeout time.Duration, args ...st
 			if *flagMaxRSSMiB > 0 && rssBytes > limitBytes {
 				terminationErr = &resourceLimitError{message: fmt.Sprintf("process-group RSS %s exceeded limit %s", formatBytes(rssBytes), formatBytes(limitBytes))}
 				killProcessTree(cmd)
-				err = <-waitCh
+				err = waitTerminatedProgram(cmd, waitCh, 10*time.Second)
 				goto finished
 			}
 		case <-memoryCh:
 			if memoryErr := checkSystemMemoryPressure(); memoryErr != nil {
 				terminationErr = memoryErr
 				killProcessTree(cmd)
-				err = <-waitCh
+				err = waitTerminatedProgram(cmd, waitCh, 10*time.Second)
 				goto finished
 			}
 		}
@@ -1013,6 +1015,19 @@ finished:
 		return stdout.Bytes(), stderr.Bytes(), exitCode, elapsed, terminationErr
 	}
 	return stdout.Bytes(), stderr.Bytes(), exitCode, elapsed, nil
+}
+
+func waitTerminatedProgram(cmd *exec.Cmd, waitCh <-chan error, grace time.Duration) error {
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case err := <-waitCh:
+		return err
+	case <-timer.C:
+		// Returning captured buffers here would race with a still-running pipe
+		// copier. Fail the runner instead of abandoning a live Wait goroutine.
+		panic(fmt.Sprintf("goroot command %q (pid %d) did not finish within %s after termination", cmd.Args, cmd.Process.Pid, grace))
+	}
 }
 
 func formatBytes(bytes uint64) string {
