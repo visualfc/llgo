@@ -46,7 +46,9 @@ def write_manifest(directory, filename, kind, body):
 
 
 def prepare(artifacts, output, version):
-    if not re.fullmatch(r'[0-9][0-9A-Za-z.+-]*', version):
+    # Match build-release.ps1: GoReleaser snapshots may use a short commit
+    # hash instead of a numeric tag, while paths must remain single components.
+    if not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z.+-]*', version):
         raise ValueError('Invalid release version (omit the leading v)')
     # Verify all four inputs before emitting anything; ABI/architecture mixing
     # and stale hashes must fail before a candidate can reach winget-pkgs.

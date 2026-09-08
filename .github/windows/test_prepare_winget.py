@@ -21,9 +21,9 @@ class WinGetTests(unittest.TestCase):
             for arch in winget.ARCHITECTURES:
                 self.fixture(profile, arch)
 
-    def fixture(self, profile, arch, **overrides):
-        path = self.root / f'llgo1.2.3.windows-{arch}-{profile}.zip'
-        metadata = dict(version='1.2.3', goos='windows', goarch=arch, abi=profile, commit='a' * 40)
+    def fixture(self, profile, arch, version='1.2.3', **overrides):
+        path = self.root / f'llgo{version}.windows-{arch}-{profile}.zip'
+        metadata = dict(version=version, goos='windows', goarch=arch, abi=profile, commit='a' * 40)
         metadata.update(overrides)
         with zipfile.ZipFile(path, 'w') as archive:
             archive.writestr('release.json', json.dumps(metadata))
@@ -49,6 +49,31 @@ class WinGetTests(unittest.TestCase):
                 archive = self.root / f'llgo1.2.3.windows-{arch}-{label.lower()}.zip'
                 self.assertIn(hashlib.sha256(archive.read_bytes()).hexdigest(), text)
                 self.assertIn('/releases/download/v1.2.3/' + archive.name, text)
+
+    def test_snapshot_and_prerelease_versions(self):
+        # GoReleaser's .Summary can be a short commit hash without a tag.
+        for version in ('fb4049f', '123abcd', '1.2.3-rc.1'):
+            with self.subTest(version=version):
+                for profile in winget.PROFILES:
+                    for arch in winget.ARCHITECTURES:
+                        self.fixture(profile, arch, version=version)
+                winget.prepare(self.root, self.output, version)
+                for profile, label in winget.PROFILES.items():
+                    directory = self.output / 'manifests/x/XGo/LLGo' / label / version
+                    self.assertEqual(len(list(directory.glob('*.yaml'))), 3)
+                    text = (directory / f'XGo.LLGo.{label}.installer.yaml').read_text()
+                    self.assertIn(f'PackageVersion: "{version}"', text)
+                    for arch in winget.ARCHITECTURES:
+                        name = f'llgo{version}.windows-{arch}-{profile}.zip'
+                        self.assertIn(f'/releases/download/v{version}/{name}', text)
+                        self.assertIn(hashlib.sha256((self.root / name).read_bytes()).hexdigest(), text)
+
+    def test_unsafe_versions_rejected_before_output(self):
+        for version in ('', '../escape', '/absolute', 'a/b', 'a\\b', 'a b', 'a\nb'):
+            with self.subTest(version=version):
+                with self.assertRaisesRegex(ValueError, 'Invalid release version'):
+                    winget.prepare(self.root, self.output, version)
+                self.assertFalse(self.output.exists())
 
     def test_corrupted_archive_rejected_before_output(self):
         path = self.root / 'llgo1.2.3.windows-arm64-mingw.zip'
