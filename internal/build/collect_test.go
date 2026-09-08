@@ -89,14 +89,14 @@ func TestSourcePatchBodyChangesPackageFingerprint(t *testing.T) {
 		return m.Build()
 	}
 	first := manifest()
-	if err := os.WriteFile(patch, []byte("package p\nfunc Value() int { return 2 }\n"), 0644); err != nil {
+	if err := os.WriteFile(patch, []byte("package p\nfunc Value() int { return 200 }\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	second := manifest()
 	if first == second {
 		t.Fatal("changing only a source patch body did not invalidate the package cache")
 	}
-	if err := os.WriteFile(altPatch, []byte("package p_test\nfunc TestValue() int { return 2 }\n"), 0644); err != nil {
+	if err := os.WriteFile(altPatch, []byte("package p_test\nfunc TestValue() int { return 200 }\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	third := manifest()
