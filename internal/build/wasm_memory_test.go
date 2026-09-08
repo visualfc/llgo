@@ -26,6 +26,9 @@ func TestWASIHeapReachesLinker(t *testing.T) {
 		{name: "single worker default", goos: "wasip1", wantHeap: true},
 		{name: "explicit initial memory", goos: "wasip1", args: []string{"-Wl,--initial-memory=33554432"}},
 		{name: "explicit initial heap", goos: "wasip1", args: []string{"-Wl,--initial-heap=1048576"}},
+		{name: "driver response", goos: "wasip1", args: []string{"@user flags.rsp"}},
+		{name: "linker response", goos: "wasip1", args: []string{"-Wl,@user flags.rsp"}},
+		{name: "configured response", goos: "wasip1", config: []string{"-Xlinker", "@user flags.rsp"}},
 		{name: "shared memory contract", goos: "wasip1", config: []string{"-Wl,--initial-memory=67108864", "-Wl,--import-memory"}},
 		{name: "emscripten unchanged", goos: "js"},
 	} {
@@ -88,8 +91,15 @@ func TestDefaultWASIHeapArgs(t *testing.T) {
 		{name: "CCFLAGS", goos: "wasip1", goarch: "wasm", ccflags: "-Wl,--initial-memory=33554432"},
 		{name: "LDFLAGS", goos: "wasip1", goarch: "wasm", ldflags: "-Xlinker --initial-heap=1048576"},
 		{name: "maximum unchanged", goos: "wasip1", goarch: "wasm", args: []string{"-Wl,--max-memory=268435456"}, wantHeap: true},
-		{name: "unrelated names", goos: "wasip1", goarch: "wasm", args: []string{"data-initial-memory.o", "-Wl,-Map,initial-heap.map"}, wantHeap: true},
-		{name: "response contents not expanded", goos: "wasip1", goarch: "wasm", args: []string{"@initial-memory.rsp"}, wantHeap: true},
+		{name: "unrelated names", goos: "wasip1", goarch: "wasm", args: []string{"data-initial-memory.o", "objects@user.o", "objects,@user.o", "-Wl,-Map,initial-heap.map"}, wantHeap: true},
+		{name: "driver response", goos: "wasip1", goarch: "wasm", args: []string{"@user flags.rsp"}},
+		{name: "linker response", goos: "wasip1", goarch: "wasm", args: []string{"-Wl,@user flags.rsp"}},
+		{name: "combined linker response", goos: "wasip1", goarch: "wasm", args: []string{"-Wl,--export=main,@objects.rsp"}},
+		{name: "xlinker response", goos: "wasip1", goarch: "wasm", args: []string{"-Xlinker", "@user flags.rsp"}},
+		{name: "config response", goos: "wasip1", goarch: "wasm", config: []string{"@user flags.rsp"}},
+		{name: "linker prefix response", goos: "wasip1", goarch: "wasm", prefix: []string{"@user flags.rsp"}},
+		{name: "CCFLAGS response", goos: "wasip1", goarch: "wasm", ccflags: "-O2 -Wl,@user flags.rsp"},
+		{name: "LDFLAGS response", goos: "wasip1", goarch: "wasm", ldflags: "-O2 -Wl,@user flags.rsp"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Setenv("CCFLAGS", test.ccflags)
