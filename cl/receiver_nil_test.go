@@ -156,3 +156,110 @@ func Invoke(p *dep.T, arg func() int) { dep.Call(p, arg, 1); dep.Bound(p, 1)(arg
 		}
 	}
 }
+
+func TestReceiverNilChecksRejectNoPos(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		invalidate func(*ast.CallExpr, []*ast.SelectorExpr)
+		calls      int
+		values     int
+	}{
+		{"valid", func(*ast.CallExpr, []*ast.SelectorExpr) {}, 1, 2},
+		{"call", func(call *ast.CallExpr, _ []*ast.SelectorExpr) { call.Lparen = token.NoPos }, 0, 2},
+		{"selector", func(_ *ast.CallExpr, selectors []*ast.SelectorExpr) { selectors[0].Sel.NamePos = token.NoPos }, 0, 1},
+		{"receiver", func(_ *ast.CallExpr, selectors []*ast.SelectorExpr) {
+			selectors[0].X.(*ast.Ident).NamePos = token.NoPos
+		}, 0, 1},
+		{"bound", func(_ *ast.CallExpr, selectors []*ast.SelectorExpr) { selectors[1].Sel.NamePos = token.NoPos }, 1, 1},
+		{"all", func(call *ast.CallExpr, selectors []*ast.SelectorExpr) {
+			call.Lparen = token.NoPos
+			for _, selector := range selectors {
+				selector.Sel.NamePos = token.NoPos
+			}
+		}, 0, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "receiver.go", `package foo
+type T struct{}
+func (*T) M() {}
+func F(p *T) { p.M(); _ = p.M }
+`, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			info := &types.Info{Selections: make(map[*ast.SelectorExpr]*types.Selection)}
+			if _, err := new(types.Config).Check("foo", fset, []*ast.File{file}, info); err != nil {
+				t.Fatal(err)
+			}
+			var call *ast.CallExpr
+			var selectors []*ast.SelectorExpr
+			ast.Inspect(file, func(node ast.Node) bool {
+				switch node := node.(type) {
+				case *ast.CallExpr:
+					call = node
+				case *ast.SelectorExpr:
+					selectors = append(selectors, node)
+				}
+				return true
+			})
+			test.invalidate(call, selectors)
+			checks := CollectReceiverNilChecks([]*ast.File{file}, info)
+			if test.calls == 0 && test.values == 0 {
+				if checks != nil {
+					t.Fatalf("positionless selections produced checks: %#v", checks)
+				}
+				return
+			}
+			if checks == nil || len(checks.calls) != test.calls || len(checks.values) != test.values {
+				t.Fatalf("checks = %#v, want %d calls and %d values", checks, test.calls, test.values)
+			}
+			for _, table := range []map[token.Pos]receiverNilCheck{checks.calls, checks.values} {
+				for pos, check := range table {
+					if !pos.IsValid() || !check.pos.IsValid() {
+						t.Fatalf("source metadata contains invalid position: key=%v check=%#v", pos, check)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestReceiverNilDerefChecksWithoutSourceMetadata(t *testing.T) {
+	// A nil block is a sentinel: an unnecessary instruction walk would panic.
+	// Neither an ordinary function nor an unrelated synthetic function needs
+	// that walk when no source receiver metadata exists.
+	for _, synthetic := range []string{"", "bound method wrapper for (*T).M"} {
+		fn := &gossa.Function{Synthetic: synthetic, Blocks: []*gossa.BasicBlock{nil}}
+		if checks := collectReceiverNilDerefChecks(fn, nil); checks != nil {
+			t.Fatalf("function %q without source metadata produced checks: %#v", synthetic, checks)
+		}
+	}
+	if checks := collectReceiverNilDerefChecks(nil, nil); checks != nil {
+		t.Fatalf("absent function produced checks: %#v", checks)
+	}
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "wrapper.go", `package foo
+type T struct{}
+func (*T) M() {}
+type P struct { *T }
+func F(p *P) { (*P).M(p) }
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, _, err := ssautil.BuildPackage(new(types.Config), fset, types.NewPackage("foo", "foo"), []*ast.File{file}, gossa.SanityCheckFunctions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protected := 0
+	for fn := range ssautil.AllFunctions(pkg.Prog) {
+		if !isMethodReceiverWrapper(fn) {
+			continue
+		}
+		protected += len(collectReceiverNilDerefChecks(fn, nil))
+	}
+	if protected == 0 {
+		t.Fatal("promoted pointer wrapper lost its receiver-load checks without source metadata")
+	}
+}

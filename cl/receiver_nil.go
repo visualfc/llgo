@@ -15,6 +15,9 @@ import (
 // with FieldAddr, neither of which retains the required nil dereference.
 // The maps are immutable after collection and shared by package lowering.
 type ReceiverNilChecks struct {
+	// AST CallExpr.Lparen matches ssa.CallCommon.Pos; SelectorExpr.Sel.Pos
+	// matches the position of SSA MakeClosure for a bound method value.
+	// NoPos belongs to synthesized SSA, never to either source lookup table.
 	calls  map[token.Pos]receiverNilCheck
 	values map[token.Pos]receiverNilCheck
 }
@@ -32,7 +35,7 @@ func CollectReceiverNilChecks(files []*ast.File, infos ...*types.Info) *Receiver
 	for _, info := range infos {
 		if info != nil {
 			for expr, sel := range info.Selections {
-				if isPointerMethodSelection(sel) {
+				if isPointerMethodSelection(sel) && expr.Pos().IsValid() && expr.Sel.Pos().IsValid() {
 					selections[expr] = receiverNilCheck{expr.Pos(), receiverNeedsAddressCheck(sel)}
 				}
 			}
@@ -52,7 +55,7 @@ func CollectReceiverNilChecks(files []*ast.File, infos ...*types.Info) *Receiver
 				return true
 			}
 			selector, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
-			if check, found := selections[selector]; ok && found {
+			if check, found := selections[selector]; ok && found && call.Lparen.IsValid() {
 				checks.calls[call.Lparen] = check
 			}
 			return true
@@ -117,11 +120,15 @@ func (p *context) checkMethodCallReceiver(b llssa.Builder, call *ssa.CallCommon)
 }
 
 func isPointerMethodWrapperCall(owner *ssa.Function, call *ssa.CallCommon) bool {
-	if owner == nil || !(strings.HasPrefix(owner.Synthetic, "wrapper for ") || strings.HasPrefix(owner.Synthetic, "thunk for ")) {
+	if !isMethodReceiverWrapper(owner) {
 		return false
 	}
 	fn := call.StaticCallee()
 	return fn != nil && fn.Signature.Recv() != nil && isPointerGoType(fn.Signature.Recv().Type())
+}
+
+func isMethodReceiverWrapper(fn *ssa.Function) bool {
+	return fn != nil && (strings.HasPrefix(fn.Synthetic, "wrapper for ") || strings.HasPrefix(fn.Synthetic, "thunk for "))
 }
 
 // collectReceiverNilDerefChecks protects pre-existing pointer loads in the
@@ -129,6 +136,11 @@ func isPointerMethodWrapperCall(owner *ssa.Function, call *ssa.CallCommon) bool 
 // checking at the later method call would leave an earlier null load as UB.
 // Address-only selections have no load and keep their check at call/creation.
 func collectReceiverNilDerefChecks(fn *ssa.Function, checks *ReceiverNilChecks) map[*ssa.UnOp]token.Pos {
+	// Without source metadata only promoted wrappers/thunks can add checks.
+	// Do not scan ordinary bodies when neither source can produce a result.
+	if checks == nil && !isMethodReceiverWrapper(fn) {
+		return nil
+	}
 	var loads map[*ssa.UnOp]token.Pos
 	var mark func(ssa.Value, token.Pos)
 	mark = func(value ssa.Value, pos token.Pos) {
