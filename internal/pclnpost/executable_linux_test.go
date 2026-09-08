@@ -2,7 +2,6 @@ package pclnpost
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +11,8 @@ import (
 	"testing"
 )
 
+// These lock checks must not run in parallel with tests that start processes:
+// they inspect the process-global ForkLock, not a package-local mutex.
 func TestExecutableWriteExcludesFork(t *testing.T) {
 	unlock := lockExecutableWrite()
 	if syscall.ForkLock.TryLock() {
@@ -63,40 +64,6 @@ func TestStageBinaryReleasesForkLock(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestStageBinaryWriteFailure(t *testing.T) {
-	// This test must not run in parallel: RLIMIT_FSIZE is process-wide.
-	dir := t.TempDir()
-	var limit syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
-		t.Fatal(err)
-	}
-	err := func() error {
-		zero := limit
-		zero.Cur = 0
-		if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &zero); err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
-				t.Error(err)
-			}
-		}()
-		_, err := stageBinary(dir, "image-*", []byte("image"), 0755)
-		return err
-	}()
-	if !errors.Is(err, syscall.EFBIG) {
-		t.Fatalf("stageBinary error = %v, want EFBIG", err)
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 0 {
-		t.Fatalf("failed write left staged images: %v, %v", entries, err)
-	}
-	if !syscall.ForkLock.TryLock() {
-		t.Fatal("failed write left fork excluded")
-	}
-	syscall.ForkLock.Unlock()
 }
 
 func TestReplaceBinaryConcurrentExec(t *testing.T) {

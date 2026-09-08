@@ -101,7 +101,13 @@ the file do not release the child's reference, so execution can fail with
 the staged image through closing its writable descriptor on Linux. Go takes
 the write side when forking, so no child can inherit that descriptor. Multiple
 image writers can still overlap, and already-running subprocesses are unaffected.
-The guard must end before verification or signing, which may start subprocesses
+After closing the writer, Linux releases the guard and uses a read-only handle
+for `fsync`, so slow storage cannot hold up process creation during the flush.
+That handle is opened before applying the output mode, which may be execute-only.
+The file is still synced before publication; directory `fsync` alone does
+not ensure file-data durability. The write itself must stay guarded while its
+writable descriptor exists. Other hosts retain sync-before-close behavior.
+The guard also ends before verification or signing, which may start subprocesses
 themselves. Parsing, table generation, linking, and test execution remain outside
 the guard; no execution retry is needed for this publication race.
 
