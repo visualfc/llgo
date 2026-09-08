@@ -21,6 +21,10 @@ type markHeadRange struct {
 	head, end uintptr // complemented indexes; end is exclusive
 }
 
+// Four KiB on wasm32 and eight KiB on wasm64 amortize interval lookup while
+// keeping cheap small-object lookups from displacing large allocations.
+const markHeadMinBlocks = 256
+
 func (c *markHeadCache) reset() { *c = markHeadCache{} }
 
 func (c *markHeadCache) lookup(block uintptr) (uintptr, bool) {
@@ -32,9 +36,11 @@ func (c *markHeadCache) lookup(block uintptr) (uintptr, bool) {
 	return 0, false
 }
 
+// remember accepts either a complete object range or a proven prefix ending
+// just after an interior pointer. Later observations may extend that prefix.
 func (c *markHeadCache) remember(head, end uintptr) {
-	// Small objects have cheap head lookup and must not displace stack ranges.
-	if end <= head || end-head < 256 || end == ^uintptr(0) {
+	// Favor large objects, including the GC-owned Fiber stack storage.
+	if end <= head || end-head < markHeadMinBlocks || end == ^uintptr(0) {
 		return
 	}
 	for i := range c.ranges {
@@ -47,5 +53,5 @@ func (c *markHeadCache) remember(head, end uintptr) {
 		}
 	}
 	c.ranges[c.next] = markHeadRange{head: ^head, end: ^end}
-	c.next = (c.next + 1) & 3
+	c.next = (c.next + 1) % uint8(len(c.ranges))
 }

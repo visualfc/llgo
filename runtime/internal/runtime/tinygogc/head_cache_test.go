@@ -45,8 +45,10 @@ func TestMarkHeadCache(t *testing.T) {
 	if c != (markHeadCache{}) {
 		t.Fatal("collection reset retained prior indexes")
 	}
-	c.remember(0, 256)
+	c.remember(0, markHeadMinBlocks-1)
+	check(0, 0, false)
+	c.remember(0, markHeadMinBlocks)
 	check(0, 0, true)
-	check(255, 0, true)
-	check(256, 0, false)
+	check(markHeadMinBlocks-1, 0, true)
+	check(markHeadMinBlocks, 0, false)
 }
