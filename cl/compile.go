@@ -74,6 +74,9 @@ type Options struct {
 	// PreloadedSyntax means all Program-side source metadata was collected
 	// before lowering and is now shared read-only by backend Programs.
 	PreloadedSyntax bool
+	// ReceiverNilChecks retains pointer-method selection semantics erased
+	// during Go SSA construction. It is collected from checked source info.
+	ReceiverNilChecks *ReceiverNilChecks
 }
 
 // SetDebug sets debug flags.
@@ -151,34 +154,35 @@ type pkgInfo struct {
 type none = struct{}
 
 type context struct {
-	prog                 llssa.Program
-	pkg                  llssa.Package
-	fn                   llssa.Function
-	goFn                 *ssa.Function
-	fset                 *token.FileSet
-	goProg               *ssa.Program
-	goTyps               *types.Package
-	goPkg                *ssa.Package
-	pyMod                string
-	skips                map[string]none
-	loaded               map[*types.Package]*pkgInfo // loaded packages
-	bvals                map[ssa.Value]llssa.Expr    // block values
-	methodNilDerefChecks map[*ssa.UnOp]none
-	vargs                map[*ssa.Alloc][]llssa.Expr // varargs
-	funcs                map[*ssa.Function]llssa.Function
-	linkOnceFns          map[*ssa.Function]none
-	stackDefers          map[*ssa.Function]bool
-	anonDefers           map[*ssa.Function]bool
-	recoverFacts         *recoverFacts
-	debugDIVars          map[*types.Var]llssa.DIVar
-	debugAllocVars       map[*ssa.Alloc]*types.Var
-	runtimeCallerFuncs   map[*ssa.Function]bool
-	panicSiteFuncs       map[*ssa.Function]bool
-	gcRoots              map[ssa.Value][]llssa.Expr
-	gcClosureRoot        llssa.Expr
-	safepointEntry       bool
-	safepoints           map[ssa.Instruction]struct{}
-	pcLineSeq            uint64
+	prog                   llssa.Program
+	pkg                    llssa.Package
+	fn                     llssa.Function
+	goFn                   *ssa.Function
+	fset                   *token.FileSet
+	goProg                 *ssa.Program
+	goTyps                 *types.Package
+	goPkg                  *ssa.Package
+	pyMod                  string
+	skips                  map[string]none
+	loaded                 map[*types.Package]*pkgInfo // loaded packages
+	bvals                  map[ssa.Value]llssa.Expr    // block values
+	methodNilDerefChecks   map[*ssa.UnOp]none
+	receiverNilDerefChecks map[*ssa.UnOp]token.Pos
+	vargs                  map[*ssa.Alloc][]llssa.Expr // varargs
+	funcs                  map[*ssa.Function]llssa.Function
+	linkOnceFns            map[*ssa.Function]none
+	stackDefers            map[*ssa.Function]bool
+	anonDefers             map[*ssa.Function]bool
+	recoverFacts           *recoverFacts
+	debugDIVars            map[*types.Var]llssa.DIVar
+	debugAllocVars         map[*ssa.Alloc]*types.Var
+	runtimeCallerFuncs     map[*ssa.Function]bool
+	panicSiteFuncs         map[*ssa.Function]bool
+	gcRoots                map[ssa.Value][]llssa.Expr
+	gcClosureRoot          llssa.Expr
+	safepointEntry         bool
+	safepoints             map[ssa.Instruction]struct{}
+	pcLineSeq              uint64
 	// The runtime PC-line table stores file and line, but not column. Keep the
 	// last emitted position within one SSA basic block so repeated checks for a
 	// single source line can share an anchor.
@@ -693,6 +697,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		dbgSymsEnabled := p.options.DebugSymbols && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
+			oldReceiverNilDerefChecks := p.receiverNilDerefChecks
 			oldLocalityFunction := p.locality.function
 			oldRecoverSlots, oldImplicitDeferResults := p.recoverSlots, p.implicitDeferResults
 			oldGCRoots, oldGCClosureRoot := p.gcRoots, p.gcClosureRoot
@@ -709,6 +714,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			}
 			defer func() {
 				p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark = oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark
+				p.receiverNilDerefChecks = oldReceiverNilDerefChecks
 				p.locality.function = oldLocalityFunction
 				p.recoverSlots = oldRecoverSlots
 				p.implicitDeferResults = oldImplicitDeferResults
@@ -734,6 +740,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			p.prepareExportedLocalContext(f)
 			p.bvals = make(map[ssa.Value]llssa.Expr)
 			p.methodNilDerefChecks = collectMethodNilDerefChecks(f)
+			p.receiverNilDerefChecks = collectReceiverNilDerefChecks(f, p.options.ReceiverNilChecks)
 			p.prepareCooperativeSafepoints(f, isCgo)
 			p.prepareGCRoots(f, hasCtx)
 			p.initGCRoots(b, f)
@@ -1489,6 +1496,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	}
 	switch v := iv.(type) {
 	case *ssa.Call:
+		p.checkMethodCallReceiver(b, &v.Call)
 		ret = p.call(b, llssa.Call, &v.Call)
 		if p.rangeFuncCallNeedsDeferDrain(&v.Call) {
 			b.DeferStackDrain()
@@ -1552,6 +1560,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 	case *ssa.UnOp:
 		if v.Op == token.MUL {
+			if pos, ok := p.receiverNilDerefChecks[v]; ok {
+				p.recordPanicSite(b, pos)
+				return p.compileCheckedDeref(b, v)
+			}
 			if _, ok := p.methodNilDerefChecks[v]; ok {
 				return p.compileCheckedDeref(b, v)
 			}
@@ -1764,6 +1776,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 		ret = b.MakeMap(t, nReserve)
 	case *ssa.MakeClosure:
+		p.checkBoundMethodReceiver(b, v)
 		fn := p.compileValue(b, v.Fn)
 		var bindings []llssa.Expr
 		goFn, _ := v.Fn.(*ssa.Function)
@@ -2282,12 +2295,14 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		p.recordPanicSite(b, v.Pos())
 		b.MapUpdate(m, key, val)
 	case *ssa.Defer:
+		p.checkMethodCallReceiver(b, &v.Call)
 		if v.DeferStack != nil {
 			p.callDeferStack(b, p.blkInfos[v.Block().Index].Kind, &v.Call, v.DeferStack, v.Parent())
 			return
 		}
 		p.call(b, p.blkInfos[v.Block().Index].Kind, &v.Call)
 	case *ssa.Go:
+		p.checkMethodCallReceiver(b, &v.Call)
 		p.call(b, llssa.Go, &v.Call)
 	case *ssa.RunDefers:
 		p.recordPanicLocation(b, v.Pos())

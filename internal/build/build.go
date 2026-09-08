@@ -2820,6 +2820,11 @@ func preparePackageModule(ctx *context, aPkg *aPackage, verbose bool) ([]string,
 		return nil, fmt.Errorf("load go:embed directives for %s failed: %w", pkgPath, err)
 	}
 	options := ctx.frontendOptions
+	var altTypesInfo *types.Info
+	if aPkg.AltPkg != nil {
+		altTypesInfo = aPkg.AltPkg.TypesInfo
+	}
+	options.ReceiverNilChecks = cl.CollectReceiverNilChecks(syntax, pkg.TypesInfo, altTypesInfo)
 	// Library exports use final-link wrappers to register foreign caller threads
 	// with the collector; Windows shared libraries also initialize lazily. Only
 	// the command package needs alternate export symbols, and command packages
