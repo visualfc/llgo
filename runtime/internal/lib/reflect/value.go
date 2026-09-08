@@ -389,14 +389,7 @@ func (v Value) Addr() Value {
 	// Preserve flagRO instead of using v.flag.ro() so that
 	// v.Addr().Elem() is equivalent to v (#32772)
 	fl := v.flag & flagRO
-	typ := v.typ()
-	if v.typ_.IsClosure() {
-		// Function values use a closure struct as their physical LLGo
-		// representation. Addr must expose the pointer to the semantic Go
-		// function type, just as Type does, rather than *$closure.
-		typ = v.Type().common()
-	}
-	return Value{ptrTo(typ), v.ptr, fl | flag(Pointer)}
+	return Value{ptrTo(v.typ()), v.ptr, fl | flag(Pointer)}
 }
 
 // Bool returns v's underlying value.
