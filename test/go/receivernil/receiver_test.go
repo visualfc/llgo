@@ -1,6 +1,10 @@
 package receivernil
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/xgo-dev/llgo/test/go/receivernil/internal/receiverdep"
+)
 
 var trace string
 var called chan struct{}
@@ -156,5 +160,33 @@ func TestPointerMethodReceiverSavedBeforeArguments(t *testing.T) {
 		if trace != want || panicked != initiallyNil {
 			t.Fatalf("initially nil=%v: trace=%q panic=%v, want trace=%q panic=%v", initiallyNil, trace, panicked, want, initiallyNil)
 		}
+	}
+}
+
+func TestImportedGenericPointerMethodReceiver(t *testing.T) {
+	var nilLeaf *receiverdep.Leaf
+	argument := func() func() {
+		trace += "arg;"
+		return func() { trace += "method;" }
+	}
+	for _, test := range []struct {
+		name  string
+		call  func()
+		trace string
+		panic bool
+	}{
+		{"nil-call", func() { receiverdep.Call(nilLeaf, 1, argument) }, "arg;", true},
+		{"non-nil-call", func() { receiverdep.Call(&receiverdep.Leaf{}, 1, argument) }, "arg;method;", false},
+		{"nil-safe-call", func() { receiverdep.NilSafe(nilLeaf, 1, argument) }, "arg;method;", false},
+		{"nil-bound", func() { receiverdep.Bound(nilLeaf, 1)(argument()) }, "", true},
+		{"non-nil-bound", func() { receiverdep.Bound(&receiverdep.Leaf{}, 1)(argument()) }, "arg;method;", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			trace = ""
+			panicked := invokeAndRecover(test.call)
+			if trace != test.trace || panicked != test.panic {
+				t.Fatalf("trace=%q panic=%v, want trace=%q panic=%v", trace, panicked, test.trace, test.panic)
+			}
+		})
 	}
 }
