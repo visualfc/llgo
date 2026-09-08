@@ -191,6 +191,18 @@ func (c *context) collectCommonInputs(m *manifestBuilder) {
 	}
 }
 
+// Appended source-patch files are selected after go list and therefore are not
+// present in GoFiles. Their source bodies must participate in cache keys too.
+func packageGoSourceInputs(p *packages.Package, sourcePatches []string) []string {
+	files := slices.Clone(p.GoFiles)
+	for _, file := range sourcePatches {
+		if !slices.Contains(files, file) {
+			files = append(files, file)
+		}
+	}
+	return files
+}
+
 // collectPackageInputs collects package-specific inputs.
 func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error {
 	p := pkg.Package
@@ -199,7 +211,7 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 	m.pkg.PkgID = p.ID
 
 	// Go source files
-	goFilesList, err := digestFilesWithOverlay(p.GoFiles, c.buildConf.Overlay)
+	goFilesList, err := digestFilesWithOverlay(packageGoSourceInputs(p, c.patchFiles[p.PkgPath]), c.buildConf.Overlay)
 	if err != nil {
 		return fmt.Errorf("digest go files: %w", err)
 	}
@@ -207,7 +219,8 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 
 	// Alt package files (if any)
 	if pkg.AltPkg != nil {
-		altList, err := digestFilesWithOverlay(pkg.AltPkg.GoFiles, c.buildConf.Overlay)
+		altPath := pkg.AltPkg.Package.PkgPath
+		altList, err := digestFilesWithOverlay(packageGoSourceInputs(pkg.AltPkg.Package, c.patchFiles[altPath]), c.buildConf.Overlay)
 		if err != nil {
 			return fmt.Errorf("digest alt go files: %w", err)
 		}
