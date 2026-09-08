@@ -38,8 +38,15 @@ import (
 func TestSourcePatchBodyChangesPackageFingerprint(t *testing.T) {
 	dir := t.TempDir()
 	original := filepath.Join(dir, "original.go")
-	patch := filepath.Join(dir, "llgo_patch.go")
+	patch := filepath.Join(dir, "_patch", "llgo_patch.go")
+	injected := filepath.Join(dir, "z_llgo_patch_llgo_patch.go")
 	unused := filepath.Join(dir, "unselected.go")
+	if err := os.MkdirAll(filepath.Dir(patch), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(patch, []byte("package p\nfunc Value() int { return 1 }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	pkg := &aPackage{Package: &packages.Package{
 		ID: "example.test", PkgPath: "example.test",
 		GoFiles: []string{original}, CompiledGoFiles: []string{original, patch},
@@ -48,8 +55,9 @@ func TestSourcePatchBodyChangesPackageFingerprint(t *testing.T) {
 		mode: ModeGen,
 		buildConf: &Config{Overlay: map[string][]byte{
 			original: []byte("package p\n"),
-			patch:    []byte("package p\nfunc Value() int { return 1 }\n"),
+			injected: []byte("package p\nfunc Value() int { return 1 }\n"),
 		}},
+		patchFiles:  map[string][]string{"example.test": {patch}},
 		sfilesCache: map[string][]string{"example.test": nil},
 	}
 	manifest := func() string {
@@ -64,7 +72,9 @@ func TestSourcePatchBodyChangesPackageFingerprint(t *testing.T) {
 		return m.Build()
 	}
 	first := manifest()
-	ctx.buildConf.Overlay[patch] = []byte("package p\nfunc Value() int { return 2 }\n")
+	if err := os.WriteFile(patch, []byte("package p\nfunc Value() int { return 2 }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	second := manifest()
 	if first == second {
 		t.Fatal("changing only a source patch body did not invalidate the package cache")
