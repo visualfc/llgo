@@ -62,6 +62,7 @@ func TestCreateSSAPkgKeepsTestPackageIdentities(t *testing.T) {
 			prog := ssa.NewProgram(token.NewFileSet(), ssa.SanityCheckFunctions)
 			ctx := &context{}
 			loaded := make(map[string]*packages.Package)
+			ssaPackages := make(map[string]*ssa.Package)
 			for _, id := range order {
 				pkg := &packages.Package{ID: id, PkgPath: path, Types: types.NewPackage(path, "helper"), TypesInfo: &types.Info{}}
 				pkg.Types.MarkComplete()
@@ -70,6 +71,10 @@ func TestCreateSSAPkgKeepsTestPackageIdentities(t *testing.T) {
 				if !created || got.Pkg != pkg.Types || prog.Package(pkg.Types) != got {
 					t.Fatalf("%s did not register its own SSA package", id)
 				}
+				ssaPackages[id] = got
+			}
+			if ssaPackages[path] == ssaPackages[testID] {
+				t.Fatal("ordinary and test-augmented packages share an SSA package")
 			}
 			for _, id := range order {
 				pkg := loaded[id]
