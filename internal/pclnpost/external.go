@@ -289,30 +289,11 @@ func replaceBinary(path string, raw []byte, sign bool, verify func(string) error
 		return err
 	}
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".pclnpost-*")
+	tmpPath, err := stageBinary(dir, "."+filepath.Base(path)+".pclnpost-*", raw, st.Mode())
 	if err != nil {
 		return err
 	}
-	tmpPath := tmp.Name()
-	defer func() {
-		if tmp != nil {
-			_ = tmp.Close()
-		}
-		_ = os.Remove(tmpPath)
-	}()
-	if err := tmp.Chmod(st.Mode()); err != nil {
-		return err
-	}
-	if _, err := tmp.Write(raw); err != nil {
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	tmp = nil
+	defer os.Remove(tmpPath)
 	if sign {
 		if output, err := exec.Command("codesign", "-f", "-s", "-", tmpPath).CombinedOutput(); err != nil {
 			return fmt.Errorf("codesign: %v: %s", err, output)
@@ -339,4 +320,34 @@ func replaceBinary(path string, raw []byte, sign bool, verify func(string) error
 		_ = d.Close()
 	}
 	return nil
+}
+
+// stageBinary returns a closed executable image. Keep the writable descriptor's
+// entire lifetime inside the fork exclusion, but leave signing, verification,
+// and publication outside it: those operations may themselves start processes.
+func stageBinary(dir, pattern string, raw []byte, mode os.FileMode) (path string, err error) {
+	unlock := lockExecutableWrite()
+	defer unlock()
+	tmp, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", err
+	}
+	path = tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		if err != nil {
+			_ = os.Remove(path)
+		}
+	}()
+	if err = tmp.Chmod(mode); err != nil {
+		return path, err
+	}
+	if _, err = tmp.Write(raw); err != nil {
+		return path, err
+	}
+	if err = tmp.Sync(); err != nil {
+		return path, err
+	}
+	err = tmp.Close()
+	return path, err
 }

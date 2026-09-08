@@ -88,6 +88,23 @@ not PCLN properties and must not introduce function-class-specific sections.
      An unfamiliar segment shape, overlapping relocation/fixup range, signing
      failure, or verification failure leaves the original executable intact.
 
+### Parallel executable publication on Linux
+
+The test DAG waits for linking and postprocessing before executing each image,
+but other roots may start subprocesses while that image is being staged.
+`O_CLOEXEC` does not prevent a forked child from temporarily inheriting its
+writable descriptor. Closing the parent's descriptor and atomically renaming
+the file do not release the child's reference, so execution can fail with
+`ETXTBSY` (see [Go issue 22315](https://go.dev/issue/22315)).
+
+`pclnpost.stageBinary` holds `syscall.ForkLock` for reading from before opening
+the staged image through closing its writable descriptor on Linux. Go takes
+the write side when forking, so no child can inherit that descriptor. Multiple
+image writers can still overlap, and already-running subprocesses are unaffected.
+The guard must end before verification or signing, which may start subprocesses
+themselves. Parsing, table generation, linking, and test execution remain outside
+the guard; no execution retry is needed for this publication race.
+
 ### ASLR
 
 Stored table entries are offsets from the first function PC. The header keeps
