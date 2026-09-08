@@ -289,30 +289,11 @@ func replaceBinary(path string, raw []byte, sign bool, verify func(string) error
 		return err
 	}
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".pclnpost-*")
+	tmpPath, err := stageBinary(dir, "."+filepath.Base(path)+".pclnpost-*", raw, st.Mode())
 	if err != nil {
 		return err
 	}
-	tmpPath := tmp.Name()
-	defer func() {
-		if tmp != nil {
-			_ = tmp.Close()
-		}
-		_ = os.Remove(tmpPath)
-	}()
-	if err := tmp.Chmod(st.Mode()); err != nil {
-		return err
-	}
-	if _, err := tmp.Write(raw); err != nil {
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	tmp = nil
+	defer os.Remove(tmpPath)
 	if sign {
 		if output, err := exec.Command("codesign", "-f", "-s", "-", tmpPath).CombinedOutput(); err != nil {
 			return fmt.Errorf("codesign: %v: %s", err, output)
@@ -339,4 +320,92 @@ func replaceBinary(path string, raw []byte, sign bool, verify func(string) error
 		_ = d.Close()
 	}
 	return nil
+}
+
+type binaryStageFile interface {
+	Name() string
+	Chmod(os.FileMode) error
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+// Per-call file operations let tests exercise I/O failures without changing
+// process-wide resource limits or installing mutable global test hooks.
+type binaryStageFiles struct {
+	createTemp   func(string, string) (binaryStageFile, error)
+	openReadOnly func(string) (binaryStageFile, error)
+}
+
+// stageBinary returns a closed, synced executable image. Keep the writable
+// descriptor's entire lifetime inside the fork exclusion. On Linux, fsync uses
+// a read-only descriptor after releasing the guard, so a slow flush does not
+// block subprocess creation. Signing and verification also remain outside it.
+func stageBinary(dir, pattern string, raw []byte, mode os.FileMode) (path string, err error) {
+	return stageBinaryWithFiles(dir, pattern, raw, mode, binaryStageFiles{
+		createTemp: func(dir, pattern string) (binaryStageFile, error) {
+			return os.CreateTemp(dir, pattern)
+		},
+		openReadOnly: func(path string) (binaryStageFile, error) {
+			return os.Open(path)
+		},
+	})
+}
+
+func stageBinaryWithFiles(dir, pattern string, raw []byte, mode os.FileMode, files binaryStageFiles) (path string, err error) {
+	unlock := lockExecutableWrite()
+	var tmp, reader binaryStageFile
+	defer func() {
+		if tmp != nil {
+			_ = tmp.Close() // Preserve the original I/O error during cleanup.
+		}
+		if unlock != nil {
+			unlock()
+		}
+		if reader != nil {
+			_ = reader.Close()
+		}
+		if err != nil && path != "" {
+			_ = os.Remove(path)
+		}
+	}()
+	tmp, err = files.createTemp(dir, pattern)
+	if err != nil {
+		tmp = nil
+		return "", err
+	}
+	path = tmp.Name()
+	if runtime.GOOS == "linux" {
+		// Open before Chmod: the preserved output mode may be execute-only.
+		reader, err = files.openReadOnly(path)
+		if err != nil {
+			reader = nil
+			return path, err
+		}
+	}
+	if err = tmp.Chmod(mode); err != nil {
+		return path, err
+	}
+	if _, err = tmp.Write(raw); err != nil {
+		return path, err
+	}
+	if runtime.GOOS == "linux" {
+		err = tmp.Close()
+		tmp = nil
+		if err != nil {
+			return path, err
+		}
+		unlock()
+		unlock = nil
+		// A read-only descriptor cannot keep an executable write-busy, even
+		// if another child inherits it. Directory fsync is not a substitute
+		// for syncing file data, so retain the file flush before publication.
+		tmp, reader = reader, nil
+	}
+	if err = tmp.Sync(); err != nil {
+		return path, err
+	}
+	err = tmp.Close()
+	tmp = nil
+	return path, err
 }
