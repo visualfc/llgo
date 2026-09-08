@@ -52,13 +52,20 @@ var sched struct {
 	gstate uint64
 }
 
+// goroutineStackSize is initialized by the compiler as a read-only constant in
+// this package, before any package init or goroutine can run. Zero preserves
+// the backend's default. Keep it without a Go initializer so init cannot
+// overwrite the configured value. The compiler names this symbol through
+// ssa.RuntimeGoroutineStackSizeVar; update both when renaming it.
+var goroutineStackSize uintptr
+
 // NewProc creates a new G running fn.
 //
 // The compiler turns a go statement into a call to NewProc. Unlike the old
 // lowering, this ABI contains no host-thread types: the selected runtime backend
 // decides how to provide an M and execute the G.
-func NewProc(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr) {
-	newprocBackend(fn, arg, stackSize, getg())
+func NewProc(fn goroutineFunc, arg unsafe.Pointer) {
+	newprocBackend(fn, arg, goroutineStackSize, getg())
 }
 
 // newproc1 creates target-independent runnable G state. The selected backend

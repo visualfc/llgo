@@ -102,7 +102,7 @@ func TestGoPanicRoutineDoesNotReturnAfterUnreachable(t *testing.T) {
 	}
 }
 
-func TestGoPassesConfiguredStackSizeToRuntime(t *testing.T) {
+func TestGoDoesNotPassConfiguredStackSizeToRuntime(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	prog.SetPthreadStackSize(32 << 20)
 	pkg := prog.NewPackage("bar", "foo/bar")
@@ -118,15 +118,18 @@ func TestGoPassesConfiguredStackSizeToRuntime(t *testing.T) {
 	if !strings.Contains(ir, `"github.com/xgo-dev/llgo/runtime/internal/runtime.NewProc"`) {
 		t.Fatalf("goroutine should delegate startup to the runtime:\n%s", ir)
 	}
-	if !strings.Contains(ir, "33554432") {
-		t.Fatalf("goroutine should pass the configured stack size:\n%s", ir)
+	if strings.Contains(ir, "33554432") {
+		t.Fatalf("goroutine caller must not embed the configured stack size:\n%s", ir)
+	}
+	if fn := pkg.Module().NamedFunction(ssa.PkgRuntime + ".NewProc"); fn.ParamsCount() != 2 {
+		t.Fatalf("NewProc takes %d parameters, want two", fn.ParamsCount())
 	}
 	if strings.Contains(ir, "pthread") {
 		t.Fatalf("compiler IR should not depend on the pthread backend:\n%s", ir)
 	}
 }
 
-func TestGoPassesZeroStackSizeToRuntimeByDefault(t *testing.T) {
+func TestGoUsesTwoArgumentRuntimeEntryByDefault(t *testing.T) {
 	prog := ssatest.NewProgram(t, nil)
 	pkg := prog.NewPackage("bar", "foo/bar")
 
@@ -143,5 +146,32 @@ func TestGoPassesZeroStackSizeToRuntimeByDefault(t *testing.T) {
 	}
 	if strings.Contains(ir, "pthread") {
 		t.Fatalf("compiler IR should not depend on the pthread backend:\n%s", ir)
+	}
+	if fn := pkg.Module().NamedFunction(ssa.PkgRuntime + ".NewProc"); fn.ParamsCount() != 2 {
+		t.Fatalf("NewProc takes %d parameters, want two", fn.ParamsCount())
+	}
+}
+
+func TestRuntimePthreadStackSizeConstant(t *testing.T) {
+	for _, target := range []*ssa.Target{
+		{GOOS: "linux", GOARCH: "amd64"},
+		{GOOS: "wasip1", GOARCH: "wasm"},
+		{GOOS: "js", GOARCH: "wasm", LLVMTarget: "wasm64-unknown-emscripten"},
+	} {
+		for _, size := range []uint64{0, 32 << 20} {
+			prog := ssatest.NewProgram(t, target)
+			prog.SetPthreadStackSize(size)
+			pkg := prog.NewPackage("runtime", ssa.PkgRuntime)
+			name := ssa.RuntimeGoroutineStackSizeVar
+			g := pkg.NewVarEx(name, prog.Pointer(prog.Uintptr()))
+			prog.InitPthreadStackSize(g)
+			global := pkg.Module().NamedGlobal(name)
+			if !global.IsGlobalConstant() || global.Initializer().ZExtValue() != size {
+				t.Fatalf("runtime stack size: got %s, want constant %d", global.String(), size)
+			}
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/env"
 	"github.com/xgo-dev/llgo/internal/meta"
 	"github.com/xgo-dev/llgo/internal/packages"
+	llssa "github.com/xgo-dev/llgo/ssa"
 	gopackages "golang.org/x/tools/go/packages"
 )
 
@@ -209,6 +210,11 @@ func (c *context) collectPackageInputs(m *manifestBuilder, pkg *aPackage) error 
 
 	m.pkg.PkgPath = p.PkgPath
 	m.pkg.PkgID = p.ID
+	if p.PkgPath == llssa.PkgRuntime {
+		// Only the runtime embeds this setting; goroutine callers have a
+		// configuration-independent ABI. Match SetPthreadStackSize in Build.
+		m.pkg.PthreadStackSize = max(0, c.buildConf.PthreadStackSize)
+	}
 
 	// Go source files
 	goFilesList, err := digestFilesWithOverlay(packageGoSourceInputs(p, c.patchFiles[p.PkgPath]), c.buildConf.Overlay)

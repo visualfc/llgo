@@ -417,6 +417,8 @@ func (p Program) DisableBoundsChecks(disable bool) {
 	p.disableBoundsChecks = disable
 }
 
+// SetPthreadStackSize configures the runtime module's goroutine stack size.
+// Goroutine call sites do not embed this value.
 func (p Program) SetPthreadStackSize(size uint64) {
 	p.pthreadStackSize = size
 }
