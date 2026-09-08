@@ -527,13 +527,19 @@ type I2 interface {
 
 // CHECK-LABEL: define i64 @"main.*struct{m int; *main.T}.Demo2"(ptr %0){{.*}} {
 // CHECK: [[SPP2_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr %0, i32 0, i32 1
-// CHECK: [[SPP2_T:%[0-9]+]] = load ptr, ptr [[SPP2_FIELD]]
+// CHECK: [[SPP2_NIL:%[0-9]+]] = icmp eq ptr %0, null
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[SPP2_NIL]])
+// CHECK: [[SPP2_SAFE:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[SPP2_FIELD]])
+// CHECK: [[SPP2_T:%[0-9]+]] = load ptr, ptr [[SPP2_SAFE]]
 // CHECK: [[SPP2_RES:%[0-9]+]] = call i64 @"main.(*T).Demo2"(ptr [[SPP2_T]])
 // CHECK: ret i64 [[SPP2_RES]]
 
 // CHECK-LABEL: define i64 @"main.*struct{m int; *main.T}.demo3"(ptr %0){{.*}} {
 // CHECK: [[SPP3_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr %0, i32 0, i32 1
-// CHECK: [[SPP3_T:%[0-9]+]] = load ptr, ptr [[SPP3_FIELD]]
+// CHECK: [[SPP3_NIL:%[0-9]+]] = icmp eq ptr %0, null
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[SPP3_NIL]])
+// CHECK: [[SPP3_SAFE:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[SPP3_FIELD]])
+// CHECK: [[SPP3_T:%[0-9]+]] = load ptr, ptr [[SPP3_SAFE]]
 // CHECK: [[SPP3_RES:%[0-9]+]] = call i64 @"main.(*T).demo3"(ptr [[SPP3_T]])
 // CHECK: ret i64 [[SPP3_RES]]
 
@@ -590,7 +596,10 @@ type I2 interface {
 
 // CHECK-LABEL: define %"{{.*}}/runtime/internal/runtime.String" @"main.*struct{m int; *bytes.Buffer}.String"(ptr %0){{.*}} {
 // CHECK: [[BSP_FIELD:%[0-9]+]] = getelementptr inbounds nuw { i64, ptr }, ptr %0, i32 0, i32 1
-// CHECK: [[BSP_BUFFER:%[0-9]+]] = load ptr, ptr [[BSP_FIELD]]
+// CHECK: [[BSP_NIL:%[0-9]+]] = icmp eq ptr %0, null
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[BSP_NIL]])
+// CHECK: [[BSP_SAFE:%[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[BSP_FIELD]])
+// CHECK: [[BSP_BUFFER:%[0-9]+]] = load ptr, ptr [[BSP_SAFE]]
 // CHECK: [[BSP_STRING:%[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.String" @"bytes.(*Buffer).String"(ptr [[BSP_BUFFER]])
 // CHECK: ret %"{{.*}}/runtime/internal/runtime.String" [[BSP_STRING]]
 

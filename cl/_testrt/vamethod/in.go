@@ -63,7 +63,10 @@ func main() {
 // CHECK-LABEL: define i32 @"main.(*CFmt).Printf"(
 // CHECK-SAME: ptr %[[PTR:[0-9]+]], ...){{.*}} {
 // CHECK: %[[PTRFIELD:[0-9]+]] = getelementptr inbounds nuw %main.CFmt, ptr %[[PTR]], i32 0, i32 0
-// CHECK: %[[PTRFMT:[0-9]+]] = load ptr, ptr %[[PTRFIELD]], align 8
+// CHECK: %[[PTRNIL:[0-9]+]] = icmp eq ptr %[[PTR]], null
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %[[PTRNIL]])
+// CHECK: %[[PTRSAFE:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr %[[PTRFIELD]])
+// CHECK: %[[PTRFMT:[0-9]+]] = load ptr, ptr %[[PTRSAFE]], align 8
 // CHECK: %[[PTRRET:[0-9]+]] = call i32 (ptr, ...) @printf(ptr %[[PTRFMT]])
 // CHECK: ret i32 %[[PTRRET]]
 

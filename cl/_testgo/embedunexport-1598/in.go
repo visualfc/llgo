@@ -48,7 +48,10 @@ func main() {
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP1:[0-9]+]] = getelementptr inbounds nuw %main.Wrapped, ptr %[[TMP0]], i32 0, i32 0
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = load ptr, ptr %[[TMP1]], align 8
+// CHECK-NEXT:   %[[NIL:[0-9]+]] = icmp eq ptr %[[TMP0]], null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %[[NIL]])
+// CHECK-NEXT:   %[[SAFE:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr %[[TMP1]])
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = load ptr, ptr %[[SAFE]], align 8
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = call %"{{.*}}/runtime/internal/runtime.String" @"{{.*}}/cl/_testdata/embedunexport.(*Base).Name"(ptr %[[TMP2]])
 // CHECK-NEXT:   ret %"{{.*}}/runtime/internal/runtime.String" %[[TMP3]]
 // CHECK-NEXT: }
@@ -57,7 +60,10 @@ func main() {
 // CHECK-SAME: ptr %[[TMP0:[0-9]+]], %"{{.*}}/runtime/internal/runtime.String" %[[TMP1:[0-9]+]]){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
 // CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds nuw %main.Wrapped, ptr %[[TMP0]], i32 0, i32 0
-// CHECK-NEXT:   %[[TMP3:[0-9]+]] = load ptr, ptr %[[TMP2]], align 8
+// CHECK-NEXT:   %[[NIL:[0-9]+]] = icmp eq ptr %[[TMP0]], null
+// CHECK-NEXT:   call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %[[NIL]])
+// CHECK-NEXT:   %[[SAFE:[0-9]+]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr %[[TMP2]])
+// CHECK-NEXT:   %[[TMP3:[0-9]+]] = load ptr, ptr %[[SAFE]], align 8
 // CHECK-NEXT:   call void @"{{.*}}/cl/_testdata/embedunexport.(*Base).setName"(ptr %[[TMP3]], %"{{.*}}/runtime/internal/runtime.String" %[[TMP1]])
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
