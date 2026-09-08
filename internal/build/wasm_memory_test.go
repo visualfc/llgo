@@ -100,8 +100,9 @@ func TestDefaultWASIHeapArgs(t *testing.T) {
 					Linker: "clang", LinkerArgs: test.prefix, LDFLAGS: test.config,
 				},
 			}
-			before := ctx.linker().LinkArguments(test.args...)
-			got := defaultWASIHeapArgs(ctx, test.args)
+			linker := ctx.linker()
+			before := linker.LinkArguments(test.args...)
+			got := defaultWASIHeapArgs(ctx, linker, test.args)
 			var want []string
 			if test.wantHeap {
 				want = []string{defaultWASIHeapFlag}
@@ -109,15 +110,15 @@ func TestDefaultWASIHeapArgs(t *testing.T) {
 			if !slices.Equal(got, want) {
 				t.Fatalf("flags = %q, want %q", got, want)
 			}
-			if after := ctx.linker().LinkArguments(test.args...); !slices.Equal(before, after) {
+			if after := linker.LinkArguments(test.args...); !slices.Equal(before, after) {
 				t.Fatalf("explicit arguments changed: before %q, after %q", before, after)
 			}
 		})
 	}
-	if got := defaultWASIHeapArgs(nil, nil); len(got) != 0 {
+	if got := defaultWASIHeapArgs(nil, nil, nil); len(got) != 0 {
 		t.Fatalf("nil context: %q", got)
 	}
-	if got := defaultWASIHeapArgs(&context{}, nil); len(got) != 0 {
+	if got := defaultWASIHeapArgs(&context{}, nil, nil); len(got) != 0 {
 		t.Fatalf("missing config: %q", got)
 	}
 }

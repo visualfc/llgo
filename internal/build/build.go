@@ -2492,9 +2492,9 @@ func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose
 	}
 
 	buildArgs = append(buildArgs, objFiles...)
-	buildArgs = append(buildArgs, defaultWASIHeapArgs(ctx, buildArgs)...)
 
 	cmd := ctx.linker()
+	buildArgs = append(buildArgs, defaultWASIHeapArgs(ctx, cmd, buildArgs)...)
 	cmd.Verbose = printCmds
 	if err := cmd.Link(buildArgs...); err != nil {
 		return err

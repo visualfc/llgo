@@ -16,7 +16,11 @@
 
 package build
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/xgo-dev/llgo/internal/clang"
+)
 
 // Retain the previous 64 MiB total minus 10 MiB process-stack heap budget,
 // without capping static data at the remainder of that total. wasm-ld adds this
@@ -25,7 +29,7 @@ import "strings"
 // not change the process stack or impose a maximum linear-memory size.
 const defaultWASIHeapFlag = "-Wl,--initial-heap=56623104"
 
-func defaultWASIHeapArgs(ctx *context, args []string) []string {
+func defaultWASIHeapArgs(ctx *context, linker *clang.Cmd, args []string) []string {
 	if ctx == nil || ctx.buildConf == nil || ctx.buildConf.Goos != "wasip1" || ctx.buildConf.Goarch != "wasm" {
 		return nil
 	}
@@ -35,7 +39,9 @@ func defaultWASIHeapArgs(ctx *context, args []string) []string {
 	// initial-memory size could make an otherwise valid user setting too small.
 	// User-supplied response-file contents are left to the external driver and
 	// are not expanded by this argument inspection.
-	for _, arg := range ctx.linker().LinkArguments(args...) {
+	// Reuse the command that will perform the link. Its MSVC library resolution
+	// is a no-op for WASI targets, so inspecting these flags performs no file I/O.
+	for _, arg := range linker.LinkArguments(args...) {
 		for _, option := range strings.Split(strings.TrimPrefix(arg, "-Wl,"), ",") {
 			if option == "--initial-memory" || strings.HasPrefix(option, "--initial-memory=") ||
 				option == "--initial-heap" || strings.HasPrefix(option, "--initial-heap=") {
