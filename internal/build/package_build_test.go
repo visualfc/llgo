@@ -54,6 +54,34 @@ func TestPackageBuildTask(t *testing.T) {
 	}
 }
 
+func TestCreateSSAPkgKeepsTestPackageIdentities(t *testing.T) {
+	const path = "example.com/helper"
+	const testID = path + " [" + path + ".test]"
+	for _, order := range [][]string{{path, testID}, {testID, path}} {
+		t.Run(order[0], func(t *testing.T) {
+			prog := ssa.NewProgram(token.NewFileSet(), ssa.SanityCheckFunctions)
+			ctx := &context{}
+			loaded := make(map[string]*packages.Package)
+			for _, id := range order {
+				pkg := &packages.Package{ID: id, PkgPath: path, Types: types.NewPackage(path, "helper"), TypesInfo: &types.Info{}}
+				pkg.Types.MarkComplete()
+				loaded[id] = pkg
+				got, created := createSSAPkg(ctx, prog, pkg, false)
+				if !created || got.Pkg != pkg.Types || prog.Package(pkg.Types) != got {
+					t.Fatalf("%s did not register its own SSA package", id)
+				}
+			}
+			for _, id := range order {
+				pkg := loaded[id]
+				got, created := createSSAPkg(ctx, prog, pkg, false)
+				if created || got != prog.Package(pkg.Types) {
+					t.Fatalf("%s did not reuse its own SSA package", id)
+				}
+			}
+		})
+	}
+}
+
 func TestPackageBuildTaskSpecialKinds(t *testing.T) {
 	decl := newPackageBuildTask(&aPackage{Package: &packages.Package{
 		PkgPath: "unsafe",

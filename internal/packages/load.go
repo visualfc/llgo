@@ -328,7 +328,10 @@ func (tc *typecheckContext) typecheckPackage(pkg *Package) {
 		}
 		defer func() {
 			if !pkg.IllTyped && pkg.Types != nil && pkg.Types.Complete() {
-				tc.dedup.set(pkg.PkgPath, &Cached{
+				// The ordinary package and its test-augmented variant share
+				// PkgPath but not types.Package identity. Match the lookup key
+				// above so a later load cannot import the wrong variant.
+				tc.dedup.set(pkg.ID, &Cached{
 					Package:   pkg,
 					Types:     pkg.Types,
 					TypesInfo: pkg.TypesInfo,

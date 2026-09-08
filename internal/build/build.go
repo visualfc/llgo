@@ -3616,7 +3616,10 @@ func applyPatches(ctx *context, p *packages.Package, verbose bool) {
 }
 
 func createSSAPkg(ctx *context, prog *ssa.Program, p *packages.Package, verbose bool) (*ssa.Package, bool) {
-	pkgSSA := prog.ImportedPackage(p.ID)
+	// SSA imports are keyed by types.Package identity. A path lookup can
+	// return the test-augmented variant and leave the ordinary package
+	// unregistered (or vice versa), even though both have the same PkgPath.
+	pkgSSA := prog.Package(p.Types)
 	if pkgSSA == nil {
 		if debugBuild || verbose {
 			log.Println("==> BuildSSA", p.ID)
