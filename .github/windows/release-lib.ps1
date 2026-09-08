@@ -143,7 +143,7 @@ function Expand-ReleaseXz {
   try {
     $archive = Get-ReleaseArchive -URL $URL -SHA256 $SHA256 -CacheDirectory $CacheDirectory
     # Use 7-Zip for xz: the Windows ARM64 runner's bsdtar cannot extract all
-    # upstream sparse xz archives. tar.gz release archives use bsdtar normally.
+    # upstream sparse xz archives.
     $sevenZip = Join-Path $env:ProgramFiles '7-Zip/7z.exe'
     & $sevenZip x -y "-o$temporary" $archive | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Decompressing the release payload failed' }

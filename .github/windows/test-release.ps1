@@ -8,28 +8,28 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'release-lib.ps1')
-$archives = @(Get-ChildItem '.windows-dist' -Filter "*.windows-$GoArch-$Profile.tar.gz")
-if ($archives.Count -ne 1) { throw "Expected exactly one windows/$GoArch/$Profile archive" }
+$archives = @(Get-ChildItem '.windows-dist' -Filter "*.windows-$GoArch-$Profile.zip")
+if ($archives.Count -ne 1) { throw "Expected exactly one windows/$GoArch/$Profile ZIP" }
 $archive = $archives[0]
 $checksumLine = (Get-Content -Raw ($archive.FullName + '.sha256')).Trim()
 $actual = (Get-FileHash -Algorithm SHA256 $archive.FullName).Hash.ToLowerInvariant()
-if ($checksumLine -ne "$actual  $($archive.Name)") { throw 'The Windows archive checksum does not match' }
+if ($checksumLine -ne "$actual  $($archive.Name)") { throw 'The Windows ZIP checksum does not match' }
 
-# A different location, including a space, makes build-tree dependencies and
-# accidentally unquoted paths observable before an archive can be published.
-$releaseRoot = Join-Path $env:RUNNER_TEMP "extracted llgo-$GoArch-$Profile"
+# A different location, including Unicode and spaces, makes build-tree dependencies
+# and accidentally unquoted paths observable before an archive can be published.
+$releaseRoot = Join-Path $env:RUNNER_TEMP "extracted ZIP 空格 llgo-$GoArch-$Profile"
 if (Test-Path $releaseRoot) { Remove-Item -LiteralPath $releaseRoot -Recurse -Force }
-New-Item -ItemType Directory $releaseRoot | Out-Null
-& tar.exe -xzf $archive.FullName -C $releaseRoot
-if ($LASTEXITCODE -ne 0) { throw 'Extracting the integrated Windows archive failed' }
-foreach ($entry in @('bin/llgo.exe', 'runtime/go.mod', 'targets', 'LICENSES', 'THIRD_PARTY_NOTICES.md',
+Expand-Archive -LiteralPath $archive.FullName -DestinationPath $releaseRoot
+& python (Join-Path $PSScriptRoot 'release_zip.py') verify $archive.FullName $releaseRoot
+if ($LASTEXITCODE -ne 0) { throw 'The extracted Windows ZIP is incomplete or has invalid directory records' }
+foreach ($entry in @('bin/llgo.exe', 'runtime/go.mod', 'targets', 'LICENSES', 'WINDOWS.md', 'THIRD_PARTY_NOTICES.md',
     'crosscompile/clang/bin/clang++.exe', 'crosscompile/clang/bin/llvm-readobj.exe',
     'crosscompile/clang/THIRD-PARTY-LICENSES.txt', 'crosscompile/clang/LICENSE-LLVM.txt', 'release.json')) {
   if (-not (Test-Path (Join-Path $releaseRoot $entry))) { throw "Release archive is missing $entry" }
 }
 $metadata = Get-Content -Raw (Join-Path $releaseRoot 'release.json') | ConvertFrom-Json
 if ($metadata.goos -ne 'windows' -or $metadata.goarch -ne $GoArch -or $metadata.abi -ne $Profile -or
-    $archive.Name -ne "llgo$($metadata.version).windows-$GoArch-$Profile.tar.gz") {
+    $archive.Name -ne "llgo$($metadata.version).windows-$GoArch-$Profile.zip") {
   throw 'The archive name, host architecture, and ABI metadata disagree'
 }
 $commit = (& git rev-parse HEAD).Trim()

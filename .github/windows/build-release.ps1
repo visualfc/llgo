@@ -92,7 +92,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Building the Windows release compiler failed' 
 Copy-ReleaseDLLs -ReadObj $readObj -Executable $executable -GoArch $GoArch -Profile $Profile `
   -SourceDirectories @((Join-Path $llvmRoot 'bin'))
 
-foreach ($entry in @('LICENSE', 'LICENSES', 'README.md', 'THIRD_PARTY_NOTICES.md', 'runtime', 'targets')) {
+foreach ($entry in @('LICENSE', 'LICENSES', 'README.md', 'WINDOWS.md', 'THIRD_PARTY_NOTICES.md', 'runtime', 'targets')) {
   Copy-Item -LiteralPath (Join-Path $root $entry) -Destination $stage -Recurse
 }
 if ($Profile -eq 'mingw') {
@@ -133,10 +133,11 @@ Copy-Item -LiteralPath (Join-Path $root 'LICENSES/XGo-LLVM-Apache-2.0-WITH-LLVM-
   esp_clang_host = 'windows/amd64'
 } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $stage 'release.json')
 
-$archiveName = "llgo$($metadata.version).windows-$GoArch-$Profile.tar.gz"
-$archive = Join-Path $root ".windows-dist/$archiveName"
-& tar.exe -czf $archive -C $stage .
-if ($LASTEXITCODE -ne 0) { throw 'Creating the integrated Windows archive failed' }
-$checksum = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
-"$checksum  $archiveName" | Set-Content -Encoding ascii "$archive.sha256"
-Write-Host "Created $archive"
+# Directory records must be STORE for WinGet compatibility.
+$zipName = "llgo$($metadata.version).windows-$GoArch-$Profile.zip"
+$zip = Join-Path $root ".windows-dist/$zipName"
+& python (Join-Path $PSScriptRoot 'release_zip.py') create $zip $stage
+if ($LASTEXITCODE -ne 0) { throw 'Creating or verifying the Windows ZIP failed' }
+$zipChecksum = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+"$zipChecksum  $zipName" | Set-Content -Encoding ascii "$zip.sha256"
+Write-Host "Created $zip"
