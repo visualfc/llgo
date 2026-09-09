@@ -26,12 +26,42 @@ jobs:
       LLGO_STDIO_NOBUF: '1'
     steps:
       - uses: actions/checkout@v7
+      - name: Check the runner exception context before installing dependencies
+        id: context
+        shell: python {0}
+        run: |
+          import json
+          import os
+          import runpy
+          import subprocess
+          from pathlib import Path
+
+          output = Path('diag-results').resolve()
+          output.mkdir(exist_ok=True)
+          host = subprocess.check_output(['pwsh', '-NoProfile', '-Command',
+              'Get-CimInstance Win32_Processor | Select-Object Name, Architecture, NumberOfCores | ConvertTo-Json'], text=True)
+          (output / 'processor.json').write_text(host, encoding='utf-8')
+          print(host, flush=True)
+          helper = runpy.run_path('dev/diagnose_mingw_go.py')
+          context = helper['record_exception_context'](output)
+          large = context['context_bytes'] > 8192
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
+              stream.write(f'large={str(large).lower()}\n')
+          if not large:
+              summary = {'classification': 'small-context-host', 'context': context}
+              (output / 'comparison.json').write_text(json.dumps(summary, indent=2))
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as stream:
+                  stream.write('Small XSTATE host: the AMD control was already verified.\n')
+                  stream.write('Skipping toolchain installation while sampling for an affected host.\n')
       - uses: ./.github/actions/setup-deps
+        if: steps.context.outputs.large == 'true'
         with:
           llvm-version: '22'
           windows-abi: mingw
       - uses: ./.github/actions/setup-go
+        if: steps.context.outputs.large == 'true'
       - name: Prepare native crash capture
+        if: steps.context.outputs.large == 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -46,6 +76,7 @@ jobs:
           }
           Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_DIAG_PROCDUMP=$procdump"
       - name: Record runner and build the original test package
+        if: steps.context.outputs.large == 'true'
         id: build
         shell: pwsh
         run: |
