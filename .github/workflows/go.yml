@@ -16,7 +16,6 @@ concurrency:
 
 jobs:
   test:
-    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: test (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, LLVM ${{ matrix.llvm }}, Go current)
     # The known-good #172 Windows coverage run took about 56 minutes. Leave
     # room for runner variance and the additional shared-matrix checks without
@@ -205,7 +204,6 @@ jobs:
           disable_search: true
 
   macos-lto-plugin:
-    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: macOS LTO plugin
     timeout-minutes: 45
     runs-on: macos-latest
@@ -244,7 +242,6 @@ jobs:
             ./cl
 
   dev-lto-globaldce:
-    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: Dev LTO GlobalDCE and Go Method Drop
     timeout-minutes: 60
     runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
