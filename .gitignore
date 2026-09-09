@@ -8,6 +8,7 @@
 *.so
 *.dylib
 *.a
+!runtime/internal/clite/ffi/wasm32/libffi.a
 
 test.db
 demo.ll

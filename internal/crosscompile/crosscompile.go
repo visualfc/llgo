@@ -97,6 +97,8 @@ const (
 
 	emscriptenBrowserEnvironment = "-sENVIRONMENT=web,worker"
 	emscriptenNamedEnvironment   = "-sENVIRONMENT=web,worker,node"
+	emscriptenAllowTableGrowth   = "-sALLOW_TABLE_GROWTH=1"
+	wasm32LibffiRelDir           = "runtime/internal/clite/ffi/wasm32"
 )
 
 func (abi WasmABI) valid() bool {
@@ -751,6 +753,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-sEXPORT_KEEPALIVE=1",
 			"-sEXPORT_ES6=1",
 			"-sALLOW_MEMORY_GROWTH=1",
+			emscriptenAllowTableGrowth,
 			"-sRESERVED_FUNCTION_POINTERS=1",
 			"-sEXPORTED_RUNTIME_METHODS=cwrap,allocateUTF8,stringToUTF8,UTF8ToString,FS,setValue,getValue",
 			"-sWASM=1",
@@ -759,11 +762,21 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async",
 			"-sSTACK_SIZE=5242880", // 5MB
 		}...)
+		appendEmscriptenLibffiSearchPath(&export, llgoRoot, wasmABI)
 	default:
 		err = errors.New("unsupported GOOS for WebAssembly: " + goos)
 		return
 	}
 	return
+}
+
+func appendEmscriptenLibffiSearchPath(export *Export, llgoRoot string, wasmABI WasmABI) {
+	// Memory64 cannot use the wasm32 archive. An empty LLGO_ROOT leaves -lffi
+	// without a search path; the linker then reports that it cannot find -lffi.
+	if wasmABI == WasmABIEmscriptenMemory64 || llgoRoot == "" {
+		return
+	}
+	export.LDFLAGS = append(export.LDFLAGS, "-L"+filepath.Join(llgoRoot, wasm32LibffiRelDir))
 }
 
 func emscriptenLinkLevel(level optlevel.Level) optlevel.Level {
