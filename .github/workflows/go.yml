@@ -152,9 +152,9 @@ jobs:
               export LLGO_REQUIRE_MSVC=1
             fi
             export LLGO_STDIO_NOBUF=1
-            # Only the main batch contains the test package tree affected by
-            # golang/go#81238. Its wrapper accepts the single exact fatal
-            # signature, records the quarantine, and preserves other failures.
+            # Keep the main batch's existing narrow fatal-signature quarantine.
+            # The separate ./test/go invocation below uses a measured runtime
+            # overlay to reserve enough stack for hardware exception recovery.
             main_go_test=(bash dev/go_test_windows.sh "${go_test[@]}")
           else
             main_go_test=("${go_test[@]}")
