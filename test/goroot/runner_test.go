@@ -902,6 +902,8 @@ func restoreProcessEnv(env []string, key string) []string {
 	return out
 }
 
+var runProgramWaitDelay = 5 * time.Second
+
 func runProgram(dir, app string, env []string, timeout time.Duration, args ...string) ([]byte, []byte, int, time.Duration, error) {
 	start := time.Now()
 	if err := checkSystemMemoryPressure(); err != nil {
@@ -910,7 +912,7 @@ func runProgram(dir, app string, env []string, timeout time.Duration, args ...st
 	cmd := exec.Command(app, args...)
 	// A descendant may keep stdout/stderr open after the direct child exits.
 	// Do not let the pipe-copy goroutines make Wait unbounded in that case.
-	cmd.WaitDelay = 5 * time.Second
+	cmd.WaitDelay = runProgramWaitDelay
 	configureProcessGroup(cmd)
 	cmd.Dir = dir
 	cmd.Env = upsertEnv(append([]string{}, env...), "PWD="+dir)
@@ -962,6 +964,12 @@ func runProgram(dir, app string, env []string, timeout time.Duration, args ...st
 	for {
 		select {
 		case err = <-waitCh:
+			// ErrWaitDelay identifies a pipe-copy timeout after a successful
+			// direct child, but an ExitError masks it after a non-zero exit.
+			// Either error can therefore leave descendants alive.
+			if err != nil {
+				killProcessTree(cmd)
+			}
 			goto finished
 		case <-timeoutCh:
 			terminationErr = fmt.Errorf("timed out after %s", timeout)
