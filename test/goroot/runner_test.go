@@ -429,15 +429,21 @@ func toolchainGoCommand(goroot, goos string) string {
 
 func writeStdlibImportCfg(t *testing.T, goCmd string) string {
 	t.Helper()
+	dir := t.TempDir()
 	cmd := exec.Command(goCmd, "list", "-export", "-f", "{{if .Export}}packagefile {{.ImportPath}}={{.Export}}{{end}}", "std")
-	cmd.Dir = t.TempDir()
+	cmd.Dir = dir
 	cmd.Env = upsertEnv(baselineGoEnv(), "CGO_ENABLED=0")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("list stdlib exports with %s: %v\n%s", goCmd, err, output)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("list stdlib exports with %s: %v\n%s", goCmd, err, stderr.String())
 	}
-	filePath := filepath.Join(t.TempDir(), "stdlib-importcfg")
-	if err := os.WriteFile(filePath, output, 0o644); err != nil {
+	if stderr.Len() != 0 {
+		t.Logf("list stdlib exports with %s wrote to stderr:\n%s", goCmd, stderr.String())
+	}
+	filePath := filepath.Join(dir, "stdlib-importcfg")
+	if err := os.WriteFile(filePath, stdout.Bytes(), 0o644); err != nil {
 		t.Fatalf("write stdlib importcfg: %v", err)
 	}
 	return filePath

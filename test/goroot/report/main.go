@@ -180,8 +180,8 @@ func renderReport(results []caseResult, platforms, versions []string, runURL str
 		fmt.Fprintf(&out, "[Workflow run](%s)\n\n", runURL)
 	}
 	out.WriteString("| Case |")
-	for _, lane := range lanes {
-		fmt.Fprintf(&out, " %s<br>%s |", laneLabel(lane), escapeMarkdown(goSeries(lane.version)))
+	for _, laneKey := range lanes {
+		fmt.Fprintf(&out, " %s<br>%s |", laneLabel(laneKey), escapeMarkdown(goSeries(laneKey.version)))
 	}
 	out.WriteString("\n|---|")
 	for range lanes {
@@ -190,9 +190,9 @@ func renderReport(results []caseResult, platforms, versions []string, runURL str
 	out.WriteByte('\n')
 	for _, casePath := range casePaths {
 		fmt.Fprintf(&out, "| `%s` |", escapeCode(casePath))
-		for _, lane := range lanes {
+		for _, laneKey := range lanes {
 			value := "·"
-			if result, ok := byCase[casePath][lane]; ok {
+			if result, ok := byCase[casePath][laneKey]; ok {
 				value = knownResults[result.result]
 			}
 			fmt.Fprintf(&out, " %s |", value)

@@ -124,7 +124,7 @@ func TestWriteStdlibImportCfgIgnoresRepositoryModule(t *testing.T) {
 	logPath := filepath.Join(dir, "pwd.log")
 	goTool := filepath.Join(dir, "go")
 	envPath := filepath.Join(dir, "env.log")
-	script := fmt.Sprintf("#!/bin/sh\npwd > %q\nprintf '%%s' \"$CGO_ENABLED\" > %q\nprintf 'packagefile runtime=/tmp/runtime.a\\n'\n", logPath, envPath)
+	script := fmt.Sprintf("#!/bin/sh\npwd > %q\nprintf '%%s' \"$CGO_ENABLED\" > %q\nprintf 'diagnostic from go list\\n' >&2\nprintf 'packagefile runtime=/tmp/runtime.a\\n'\n", logPath, envPath)
 	if err := os.WriteFile(goTool, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +147,17 @@ func TestWriteStdlibImportCfgIgnoresRepositoryModule(t *testing.T) {
 	}
 	if strings.TrimSpace(string(commandDir)) == wd {
 		t.Fatalf("go list std ran inside repository package directory %q", wd)
+	}
+	configDirInfo, err := os.Stat(filepath.Dir(configPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	commandDirInfo, err := os.Stat(strings.TrimSpace(string(commandDir)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(configDirInfo, commandDirInfo) {
+		t.Fatalf("import config directory %q differs from command directory %q", filepath.Dir(configPath), strings.TrimSpace(string(commandDir)))
 	}
 	cgoEnabled, err := os.ReadFile(envPath)
 	if err != nil {
