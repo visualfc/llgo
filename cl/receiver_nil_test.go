@@ -263,3 +263,66 @@ func F(p *P) { (*P).M(p) }
 		t.Fatal("promoted pointer wrapper lost its receiver-load checks without source metadata")
 	}
 }
+
+func TestReceiverNilChecksNonLoadReceivers(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "received.go", `package foo
+type T struct{}
+func (*T) M() {}
+type U struct { T }
+func receive(ch <-chan *T) { (<-ch).M() }
+func receiveBound(ch <-chan *T) func() { return (<-ch).M }
+func local() { var value T; value.M(); _ = value.M }
+func promoted(value *U) { value.M() }
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []*ast.File{file}
+	ssaPkg, info, err := ssautil.BuildPackage(new(types.Config), fset, types.NewPackage("foo", "foo"), files, gossa.SanityCheckFunctions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks := CollectReceiverNilChecks(files, info)
+	for _, name := range []string{"receive", "receiveBound", "local"} {
+		// A channel receive is also an SSA UnOp, but is not a pointer
+		// load. Its result can legally be a nil pointer-method receiver.
+		if loads := collectReceiverNilDerefChecks(ssaPkg.Func(name), checks); len(loads) != 0 {
+			t.Fatalf("%s invented receiver pointer loads: %v", name, loads)
+		}
+	}
+	prog := newLLSSAProg(t)
+	defer prog.Dispose()
+	pkg, _, err := newPackageEx(prog, nil, nil, nil, ssaPkg, files, nil, false, Options{ReceiverNilChecks: checks})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"receive", "receiveBound", "local"} {
+		body := mustNamedFunction(t, pkg.Module(), "foo."+name).String()
+		if strings.Contains(body, "AssertNilDeref") {
+			t.Fatalf("%s must permit a received nil or known non-nil local receiver:\n%s", name, body)
+		}
+	}
+	// An unrelated closure with no source metadata requires neither a
+	// receiver check nor a builder. Keep that fast path independent of LLVM.
+	new(context).checkBoundMethodReceiver(nil, new(gossa.MakeClosure))
+	// Selection.Index exposes a mutable slice. Malformed metadata must be
+	// rejected by the existing guard instead of indexing outside the struct.
+	for _, selection := range info.Selections {
+		indices := selection.Index()
+		if len(indices) > 1 {
+			saved := indices[0]
+			indices[0] = 100
+			got := receiverNeedsAddressCheck(selection)
+			indices[0] = saved
+			if got {
+				t.Fatal("invalid embedded-field index produced a receiver check")
+			}
+			return
+		}
+	}
+	t.Fatal("missing promoted selection for the invalid-index guard")
+}
