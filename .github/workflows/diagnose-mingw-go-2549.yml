@@ -14,12 +14,12 @@ concurrency:
 
 jobs:
   reproduce:
-    name: reproduce (windows-2022, mingw, amd64, LLVM 22, Go 1.27)
+    name: reproduce (windows-2025, mingw and pure Go, amd64, LLVM 22, Go 1.27)
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.head.repo.full_name == 'cpunion/llgo' &&
        github.head_ref == 'codex/test-mingw-go-crash-2549-20260909')
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 20
     env:
       LLGO_ROOT: ${{ github.workspace }}

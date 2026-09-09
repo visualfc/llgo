@@ -17,12 +17,13 @@ def main():
     large_context = context["context_bytes"] > 8192
     results = []
 
-    def run(label, command, timeout=180, cwd=root):
+    def run(label, command, timeout=180, cwd=root, env=None):
         log = output / f"{label}.log"
         print(f"START {label}: {command}", flush=True)
         started = time.monotonic()
         with log.open("wb") as stream:
-            process = subprocess.Popen(command, cwd=cwd, stdout=stream, stderr=subprocess.STDOUT)
+            process = subprocess.Popen(command, cwd=cwd, env=env,
+                                       stdout=stream, stderr=subprocess.STDOUT)
             try:
                 status = process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -53,19 +54,31 @@ def main():
                 break
             raise SystemExit("Stock control had a different failure; inspect its log.")
 
-    # Keep the installed SDK and all repository tests unchanged. The overlay
-    # rebuilds the standard runtime only for the commands that explicitly use it.
-    goroot = Path(subprocess.check_output(["go", "env", "GOROOT"], text=True).strip())
-    source = goroot / "src/runtime/stack.go"
-    original = source.read_text(encoding="utf-8")
-    before, after = "goos.IsWindows*4096", "goos.IsWindows*16384"
-    if original.count(before) != 1:
-        raise SystemExit("Unexpected Go stackSystem source; refusing an ambiguous overlay.")
-    patched_source = output / "runtime-stack-16384.go"
-    patched_source.write_text(original.replace(before, after), encoding="utf-8")
-    overlay = output / "runtime-overlay.json"
-    overlay.write_text(json.dumps({"Replace": {str(source): str(patched_source)}}, indent=2))
-    patched_flags = ["-overlay=" + str(overlay), *flags]
+    # This control uses only Go's internal linker, with no MinGW C runtime.
+    pure_env = dict(os.environ, CGO_ENABLED="0")
+    pure_reproduced = False
+    for iteration in range(1, 11):
+        label = f"stock-pure-go-{iteration:03d}"
+        result, raw = run(label, ["go", "test", "-count=1", "-timeout=45m",
+            "-covermode=atomic", "-coverprofile=" + str(output / f"coverage-{label}.txt"),
+            "./test/go"], env=pure_env)
+        text = raw.decode("utf-8", errors="replace")
+        if result["returncode"] != 0:
+            print(text, flush=True)
+            if ("exit status 0xc0000005" in text and
+                    re.search(r"(?m)^FAIL\s+github\.com/xgo-dev/llgo/test/go\s", text) and
+                    "--- FAIL:" not in text):
+                pure_reproduced = True
+                break
+            raise SystemExit("The pure Go control had a different failure.")
+
+    # Use the exact preparation code proposed for the normal Go workflow.
+    prepare = runpy.run_path(str(Path(__file__).with_name("prepare_windows_go_test_runtime.py")))["prepare"]
+    configuration = prepare(output / "go-test-runtime")
+    print("RUNTIME CONFIGURATION " + json.dumps(configuration), flush=True)
+    if configuration.get("reserve_bytes") != 16384:
+        raise SystemExit("This comparison requires an affected host and the 16 KiB workaround.")
+    patched_flags = ["-overlay=" + configuration["overlay"], *flags]
     executable = output / "patched.test.exe"
     built, raw = run("build-patched", ["go", "test", "-c", "-cover", *patched_flags,
                                        "-o", str(executable), "./test/go"], timeout=300)
@@ -83,6 +96,15 @@ def main():
             print(text, flush=True)
             raise SystemExit("The patched runtime still fails the complete test package.")
 
+    for iteration in range(1, 11):
+        label = f"patched-pure-go-{iteration:03d}"
+        result, raw = run(label, ["go", "test", "-overlay=" + configuration["overlay"],
+            "-count=1", "-timeout=45m", "-covermode=atomic",
+            "-coverprofile=" + str(output / f"coverage-{label}.txt"), "./test/go"], env=pure_env)
+        if result["returncode"] != 0:
+            print(raw.decode("utf-8", errors="replace"), flush=True)
+            raise SystemExit("The patched pure Go test command failed.")
+
     count = 200 if large_context else 20
     dumps = output / "patched-dumps"
     dumps.mkdir(exist_ok=True)
@@ -90,6 +112,9 @@ def main():
         "-accepteula", "-ma", "-e", "-t", "-x", str(dumps), str(executable),
         "-test.v", f"-test.count={count}", "-test.timeout=5m"], timeout=330, cwd=root / "test/go")
     text, target_status = helper["captured_process_result"](raw)
+    captured["collector_returncode"] = captured["returncode"]
+    captured["returncode"] = target_status
+    (output / "results.json").write_text(json.dumps(results, indent=2))
     (output / "patched-stress.decoded.log").write_text(text, encoding="utf-8")
     if target_status != 0 or "PASS" not in text.splitlines():
         print("\n".join(text.splitlines()[-160:]), flush=True)
@@ -99,7 +124,9 @@ def main():
 
     summary = {"large_context": large_context, "context": context,
                "stock_reproduced_access_violation": reproduced,
+               "stock_pure_go_reproduced_access_violation": pure_reproduced,
                "patched_go_test_passes": repetitions,
+               "patched_pure_go_test_passes": 10,
                "patched_same_process_passes": count,
                "patched_stress_test_starts": sum(line.startswith("=== RUN") for line in text.splitlines()),
                "classification": "matched-control-fixed" if reproduced else "control-not-reproduced"}
