@@ -161,6 +161,9 @@ xfails:
   - directive: runoutput
     case: index0.go
     reason: LLVM 19 crashes in target object emission while compiling the generated index stress program
+  - directive: runoutput
+    case: rangegen.go
+    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
   - directive: run
     case: fixedbugs/issue34123.go
     reason: LLGo reports the deferred recovery frame two source lines earlier than cmd/compile

@@ -1,5 +1,5 @@
 # GOROOT cases that validate gc-specific implementation details or other behavior
-# outside LLGo compatibility goals. They still run, but their failures are not
+# outside LLGo compatibility goals. They are skipped before execution and are not
 # counted as remaining compatibility xfails. Every entry names the mechanism
 # under test and explains the LLGo design choice that puts it out of scope.
 # Applicability is global: entries must not select a Go version or platform.
@@ -49,9 +49,6 @@ not_applicable:
   - directive: run
     case: nilptr.go
     reason: "not applicable: this case requires explicit nil checks for large-offset array, slice, and struct operations whose derived address may be mapped and therefore not fault; LLGo relies on LLVM and target memory faults for these non-load forms, so reproducing cmd/compile's large-offset nil-check strategy is not currently an LLGo compatibility goal"
-  - directive: runoutput
-    case: rangegen.go
-    reason: "not applicable: after the LLGo rangefunc return fix, this case is blocked by the upstream golang.org/x/tools/go/ssa labeled-goto defect tracked at https://github.com/golang/go/issues/80860 and fixed by https://github.com/golang/tools/pull/666; duplicating the dependency fix inside LLGo is not an LLGo compatibility goal while LLGo waits to update x/tools"
   - directive: errorcheck
     case: escape_array.go
     reason: "not applicable: this case asserts cmd/compile-specific -m escape-analysis diagnostics; LLGo uses go/types plus LLVM and does not reproduce gc compiler diagnostic output; supporting this toolchain-specific behavior is not an LLGo compatibility goal"

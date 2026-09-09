@@ -1,6 +1,8 @@
 package goroot
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -145,12 +147,45 @@ func TestNotApplicableMatch(t *testing.T) {
 		}},
 	}
 	tc := testCase{RelPath: "writebarrier.go", Directive: "errorcheck"}
-	match, reason := cfg.Match("go1.25.0", "darwin/arm64", tc)
+	match, reason := cfg.Match("go1.27.0", "darwin/arm64", tc)
 	if !match {
 		t.Fatal("expected global not-applicable match")
 	}
 	if reason != "not applicable: this case checks gc write barriers; LLGo uses a collector without those barriers, so reproducing them is not an LLGo compatibility goal" {
 		t.Fatalf("reason=%q, want not-applicable reason", reason)
+	}
+}
+
+func TestClassifyCaseResult(t *testing.T) {
+	tests := []struct {
+		name  string
+		err   error
+		xfail bool
+		flaky bool
+		want  caseResult
+	}{
+		{name: "pass", want: caseResultPass},
+		{name: "unexpected pass", xfail: true, want: caseResultUnexpectedPass},
+		{name: "flaky pass", flaky: true, want: caseResultFlakyPass},
+		{name: "unexpected failure", err: errors.New("failed"), want: caseResultUnexpectedFail},
+		{name: "expected failure", err: errors.New("failed"), xfail: true, want: caseResultExpectedFail},
+		{name: "flaky failure", err: errors.New("failed"), flaky: true, want: caseResultFlakyFail},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := classifyCaseResult(tt.err, tt.xfail, tt.flaky); got != tt.want {
+				t.Fatalf("classifyCaseResult() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWriteCaseResult(t *testing.T) {
+	var out bytes.Buffer
+	writeCaseResult(&out, testCase{RelPath: "fixedbugs/issue123.go", Directive: "run"}, caseResultUnexpectedFail)
+	const want = "GOROOT_CASE_RESULT\tfixedbugs/issue123.go\trun\tunexpected-fail\n"
+	if got := out.String(); got != want {
+		t.Fatalf("writeCaseResult() = %q, want %q", got, want)
 	}
 }
 
@@ -208,8 +243,8 @@ func TestStackIsGloballyNotApplicable(t *testing.T) {
 		version  string
 		platform string
 	}{
-		{version: "go1.25.0", platform: "linux/amd64"},
-		{version: "go1.26.5", platform: "darwin/arm64"},
+		{version: "go1.26.7", platform: "linux/amd64"},
+		{version: "go1.27.0", platform: "darwin/arm64"},
 	} {
 		if match, _ := cfg.Match(target.version, target.platform, tc); !match {
 			t.Errorf("stack.go did not match not-applicable for %s/%s", target.version, target.platform)
@@ -227,7 +262,6 @@ func TestObservedNotApplicableCasesAreGlobal(t *testing.T) {
 		{RelPath: "fixedbugs/issue45045.go", Directive: "run"},
 		{RelPath: "fixedbugs/issue54343.go", Directive: "run"},
 		{RelPath: "maymorestack.go", Directive: "run"},
-		{RelPath: "rangegen.go", Directive: "runoutput"},
 		{RelPath: "stack.go", Directive: "run"},
 	}
 	for _, tc := range cases {
@@ -235,8 +269,8 @@ func TestObservedNotApplicableCasesAreGlobal(t *testing.T) {
 			version  string
 			platform string
 		}{
-			{version: "go1.25.0", platform: "linux/amd64"},
-			{version: "go1.26.5", platform: "darwin/arm64"},
+			{version: "go1.26.7", platform: "linux/amd64"},
+			{version: "go1.27.0", platform: "darwin/arm64"},
 		} {
 			if match, _ := cfg.Match(target.version, target.platform, tc); !match {
 				t.Errorf("%s did not match not-applicable for %s/%s", tc.RelPath, target.version, target.platform)
@@ -253,11 +287,12 @@ func TestObservedFailuresHaveXFailClassifications(t *testing.T) {
 		platform string
 		tc       testCase
 	}{
-		{version: "go1.25.0", platform: "darwin/arm64", tc: testCase{RelPath: "index0.go", Directive: "runoutput"}},
-		{version: "go1.25.0", platform: "linux/amd64", tc: testCase{RelPath: "fixedbugs/issue34123.go", Directive: "run"}},
-		{version: "go1.25.0", platform: "darwin/arm64", tc: testCase{RelPath: "fixedbugs/issue52612.go", Directive: "run"}},
-		{version: "go1.25.0", platform: "linux/amd64", tc: testCase{RelPath: "heapsampling.go", Directive: "run"}},
-		{version: "go1.26.5", platform: "linux/amd64", tc: testCase{RelPath: "convert5.go", Directive: "run"}},
+		{version: "go1.27.0", platform: "darwin/arm64", tc: testCase{RelPath: "index0.go", Directive: "runoutput"}},
+		{version: "go1.27.0", platform: "linux/amd64", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
+		{version: "go1.27.0", platform: "linux/amd64", tc: testCase{RelPath: "fixedbugs/issue34123.go", Directive: "run"}},
+		{version: "go1.27.0", platform: "darwin/arm64", tc: testCase{RelPath: "fixedbugs/issue52612.go", Directive: "run"}},
+		{version: "go1.27.0", platform: "linux/amd64", tc: testCase{RelPath: "heapsampling.go", Directive: "run"}},
+		{version: "go1.26.7", platform: "linux/amd64", tc: testCase{RelPath: "convert5.go", Directive: "run"}},
 	}
 	for _, tt := range tests {
 		if match, _ := cfg.Match(tt.version, tt.platform, tt.tc); !match {
@@ -275,8 +310,8 @@ func TestHostUnsafeCasesAreGloballySkipped(t *testing.T) {
 			version  string
 			platform string
 		}{
-			{version: "go1.25.0", platform: "linux/amd64"},
-			{version: "go1.26.5", platform: "darwin/arm64"},
+			{version: "go1.26.7", platform: "linux/amd64"},
+			{version: "go1.27.0", platform: "darwin/arm64"},
 		} {
 			if match, _ := cfg.MatchHostSkip(target.version, target.platform, tc); !match {
 				t.Errorf("%s did not match host skip for %s/%s", casePath, target.version, target.platform)
@@ -299,8 +334,8 @@ func TestTypeparamChansIsGloballyFlaky(t *testing.T) {
 		version  string
 		platform string
 	}{
-		{version: "go1.25.0", platform: "linux/amd64"},
-		{version: "go1.26.5", platform: "darwin/arm64"},
+		{version: "go1.26.7", platform: "linux/amd64"},
+		{version: "go1.27.0", platform: "darwin/arm64"},
 	} {
 		if match, _ := cfg.MatchFlaky(target.version, target.platform, tc); !match {
 			t.Errorf("typeparam/chans.go did not match flake for %s/%s", target.version, target.platform)
@@ -312,7 +347,7 @@ func TestFlakyMatch(t *testing.T) {
 	guardTestTimeout(t)
 	cfg := xfailConfig{
 		Flakes: []xfailEntry{{
-			Version:   "go1.25",
+			Version:   "go1.27",
 			Platform:  "linux/amd64",
 			Directive: "run",
 			Case:      "fixedbugs/issue11256.go",
@@ -320,7 +355,7 @@ func TestFlakyMatch(t *testing.T) {
 		}},
 	}
 	tc := testCase{RelPath: "fixedbugs/issue11256.go", Directive: "run"}
-	match, reason := cfg.MatchFlaky("go1.25.0", "linux/amd64", tc)
+	match, reason := cfg.MatchFlaky("go1.27.0", "linux/amd64", tc)
 	if !match {
 		t.Fatal("expected flaky match")
 	}
@@ -341,11 +376,47 @@ func TestMatchGoVersion(t *testing.T) {
 		{version: "go1.24", goVersion: "go1.24rc1", want: true},
 		{version: "go1.24", goVersion: "go1.24beta1", want: true},
 		{version: "go1.2", goVersion: "go1.24.11", want: false},
-		{version: "go1.25", goVersion: "go1.24.11", want: false},
+		{version: "go1.27", goVersion: "go1.24.11", want: false},
 	}
 	for _, tt := range tests {
 		if got := matchGoVersion(tt.version, tt.goVersion); got != tt.want {
 			t.Fatalf("matchGoVersion(%q, %q)=%v, want %v", tt.version, tt.goVersion, got, tt.want)
+		}
+	}
+}
+
+func TestWindowsExpectationPlatform(t *testing.T) {
+	for _, tt := range []struct {
+		goos string
+		abi  string
+		want string
+	}{
+		{goos: "windows", abi: "msvc", want: "windows-msvc/amd64"},
+		{goos: "windows", abi: "mingw", want: "windows-mingw/amd64"},
+		{goos: "windows", want: "windows/amd64"},
+		{goos: "linux", abi: "msvc", want: "linux/amd64"},
+	} {
+		if got := expectationPlatform(tt.goos, "amd64", tt.abi); got != tt.want {
+			t.Errorf("expectationPlatform(%q, %q) = %q, want %q", tt.goos, tt.abi, got, tt.want)
+		}
+	}
+}
+
+func TestMatchWindowsPlatform(t *testing.T) {
+	for _, tt := range []struct {
+		want  string
+		got   string
+		match bool
+	}{
+		{want: "windows/amd64", got: "windows-msvc/amd64", match: true},
+		{want: "windows/amd64", got: "windows-mingw/amd64", match: true},
+		{want: "windows-msvc/amd64", got: "windows-msvc/amd64", match: true},
+		{want: "windows-msvc/amd64", got: "windows-mingw/amd64", match: false},
+		{want: "windows/arm64", got: "windows-msvc/amd64", match: false},
+		{want: "linux/amd64", got: "linux/amd64", match: true},
+	} {
+		if got := matchPlatform(tt.want, tt.got); got != tt.match {
+			t.Errorf("matchPlatform(%q, %q) = %v, want %v", tt.want, tt.got, got, tt.match)
 		}
 	}
 }

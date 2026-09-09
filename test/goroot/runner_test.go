@@ -94,6 +94,23 @@ type testCase struct {
 	DirectiveArg []string
 }
 
+type caseResult string
+
+const (
+	caseResultPass              caseResult = "pass"
+	caseResultExpectedFail      caseResult = "expected-fail"
+	caseResultUnexpectedFail    caseResult = "unexpected-fail"
+	caseResultUnexpectedPass    caseResult = "unexpected-pass"
+	caseResultFlakyPass         caseResult = "flaky-pass"
+	caseResultFlakyFail         caseResult = "flaky-fail"
+	caseResultNotApplicable     caseResult = "not-applicable"
+	caseResultHostSkip          caseResult = "host-skip"
+	caseResultResourceFail      caseResult = "resource-fail"
+	caseResultConfigurationFail caseResult = "configuration-fail"
+)
+
+const caseResultPrefix = "GOROOT_CASE_RESULT"
+
 type xfailConfig struct {
 	Entries   []xfailEntry   `yaml:"xfails"`
 	Flakes    []xfailEntry   `yaml:"flakes"`
@@ -277,6 +294,8 @@ func TestGoRootRunCases(t *testing.T) {
 	}
 
 	envInfo := loadToolchainEnv(t, goCmd)
+	targetPlatform := expectationPlatform(envInfo.GOOS, envInfo.GOARCH, os.Getenv("LLGO_WINDOWS_ABI"))
+	hostPlatform := expectationPlatform(runtime.GOOS, runtime.GOARCH, os.Getenv("LLGO_WINDOWS_ABI"))
 	testRoot := filepath.Join(goroot, "test")
 	info, err := os.Stat(testRoot)
 	if err != nil {
@@ -327,7 +346,7 @@ func TestGoRootRunCases(t *testing.T) {
 		llgoBin = buildLLGOBinary(t, repoRoot, goCmd)
 	}
 
-	fmt.Fprintf(os.Stderr, "goroot=%s goversion=%s goos=%s goarch=%s shard=%d/%d cases=%d directive_mode=%s\n", goroot, envInfo.GOVERSION, envInfo.GOOS, envInfo.GOARCH, *flagShardI, *flagShardN, len(cases), mode.Name)
+	fmt.Fprintf(os.Stderr, "goroot=%s goversion=%s platform=%s shard=%d/%d cases=%d directive_mode=%s\n", goroot, envInfo.GOVERSION, targetPlatform, *flagShardI, *flagShardN, len(cases), mode.Name)
 	progress, stopProgress := startGorootProgress(len(cases), *flagProgress)
 	defer stopProgress()
 	for i, tc := range cases {
@@ -335,11 +354,23 @@ func TestGoRootRunCases(t *testing.T) {
 		t.Run(tc.RelPath, func(t *testing.T) {
 			progress.StartCase(i+1, tc.RelPath)
 			defer progress.FinishCase(tc.RelPath)
-			if match, reason := xfails.MatchHostSkip(envInfo.GOVERSION, runtime.GOOS+"/"+runtime.GOARCH, tc); match {
+			match, reason := xfails.Match(envInfo.GOVERSION, targetPlatform, tc)
+			flaky, flakyReason := xfails.MatchFlaky(envInfo.GOVERSION, targetPlatform, tc)
+			notApply, notApplyReason := notApplicable.Match(envInfo.GOVERSION, targetPlatform, tc)
+			if match && notApply {
+				writeCaseResult(os.Stdout, tc, caseResultConfigurationFail)
+				t.Fatalf("case matches both xfail and not-applicable expectations: xfail=%s; not applicable=%s", reason, notApplyReason)
+			}
+			if notApply {
+				writeCaseResult(os.Stdout, tc, caseResultNotApplicable)
+				t.Skipf("skipping not-applicable case: %s", notApplyReason)
+			}
+			if match, reason := xfails.MatchHostSkip(envInfo.GOVERSION, hostPlatform, tc); match {
+				writeCaseResult(os.Stdout, tc, caseResultHostSkip)
 				t.Skipf("skipping host-unsafe case: %s", reason)
 			}
 			runTimeout := *flagRunTO
-			if timeout, reason, ok := xfails.MatchTimeout(envInfo.GOVERSION, envInfo.GOOS+"/"+envInfo.GOARCH, tc); ok {
+			if timeout, reason, ok := xfails.MatchTimeout(envInfo.GOVERSION, targetPlatform, tc); ok {
 				runTimeout = timeout
 				t.Logf("using timeout override %s: %s", timeout, reason)
 			}
@@ -347,25 +378,17 @@ func TestGoRootRunCases(t *testing.T) {
 			err := runCase(t, repoRoot, goroot, goCmd, llgoBin, tc, buildTimeout, runTimeout)
 			var resourceErr *resourceLimitError
 			if errors.As(err, &resourceErr) {
+				writeCaseResult(os.Stdout, tc, caseResultResourceFail)
 				t.Fatalf("resource guard stopped case: %v", err)
 			}
-			match, reason := xfails.Match(envInfo.GOVERSION, envInfo.GOOS+"/"+envInfo.GOARCH, tc)
-			flaky, flakyReason := xfails.MatchFlaky(envInfo.GOVERSION, envInfo.GOOS+"/"+envInfo.GOARCH, tc)
-			notApply, notApplyReason := notApplicable.Match(envInfo.GOVERSION, envInfo.GOOS+"/"+envInfo.GOARCH, tc)
-			if match && notApply {
-				t.Fatalf("case matches both xfail and not-applicable expectations: xfail=%s; not applicable=%s", reason, notApplyReason)
-			}
+			writeCaseResult(os.Stdout, tc, classifyCaseResult(err, match, flaky))
 			switch {
-			case err == nil && notApply:
-				t.Logf("not-applicable case passed: %s", notApplyReason)
 			case err == nil && match:
 				t.Logf("xfail case passed: %s", reason)
 			case err == nil && flaky:
 				t.Logf("flaky case passed: %s", flakyReason)
 			case err != nil && match:
 				t.Logf("expected failure: %s", reason)
-			case err != nil && notApply:
-				t.Logf("expected not-applicable failure: %s", notApplyReason)
 			case err != nil && flaky:
 				t.Logf("known flaky failure: %s", flakyReason)
 			case err != nil:
@@ -373,6 +396,27 @@ func TestGoRootRunCases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func classifyCaseResult(err error, xfail, flaky bool) caseResult {
+	switch {
+	case err == nil && xfail:
+		return caseResultUnexpectedPass
+	case err == nil && flaky:
+		return caseResultFlakyPass
+	case err == nil:
+		return caseResultPass
+	case xfail:
+		return caseResultExpectedFail
+	case flaky:
+		return caseResultFlakyFail
+	default:
+		return caseResultUnexpectedFail
+	}
+}
+
+func writeCaseResult(w io.Writer, tc testCase, result caseResult) {
+	fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", caseResultPrefix, tc.RelPath, tc.Directive, result)
 }
 
 func toolchainGoCommand(goroot, goos string) string {
@@ -2230,7 +2274,7 @@ func matchEntry(version, platform, directive, casePattern, goVersion, goPlatform
 	if version != "" && !matchGoVersion(version, goVersion) {
 		return false
 	}
-	if platform != "" && platform != goPlatform {
+	if platform != "" && !matchPlatform(platform, goPlatform) {
 		return false
 	}
 	if directive != "" && directive != tc.Directive {
@@ -2241,6 +2285,24 @@ func matchEntry(version, platform, directive, casePattern, goVersion, goPlatform
 	}
 	ok, err := path.Match(casePattern, tc.RelPath)
 	return err == nil && ok
+}
+
+func expectationPlatform(goos, goarch, windowsABI string) string {
+	if goos == "windows" && (windowsABI == "msvc" || windowsABI == "mingw") {
+		goos += "-" + windowsABI
+	}
+	return goos + "/" + goarch
+}
+
+func matchPlatform(want, got string) bool {
+	if want == got {
+		return true
+	}
+	if strings.HasPrefix(got, "windows-msvc/") || strings.HasPrefix(got, "windows-mingw/") {
+		_, arch, ok := strings.Cut(got, "/")
+		return ok && want == "windows/"+arch
+	}
+	return false
 }
 
 func matchGoVersion(version, goVersion string) bool {
