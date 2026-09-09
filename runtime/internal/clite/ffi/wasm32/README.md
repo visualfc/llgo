@@ -1,7 +1,7 @@
 # Vendored wasm32 libffi
 
-Prebuilt static archive for `js/wasm` Emscripten. WASI and Emscripten
-Memory64 keep the C stub in `_wrap/libffi_wasm_stub.c`.
+Prebuilt static archive for `js/wasm` Emscripten wasm32. WASI keeps the C
+stub in `_wrap/libffi_wasm_stub.c`. Memory64 uses `../wasm64`.
 
 - Upstream: [libffi](https://sourceware.org/libffi/) 3.8.0 (`include/ffi.h`)
 - Target: `wasm32-unknown-emscripten`

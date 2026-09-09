@@ -1,10 +1,9 @@
-//go:build wasm && (!js || llgo.wasm.emscripten.memory64)
+//go:build wasm && !js
 
 package ffi
 
-// libffi's WebAssembly backend currently supports the wasm32 Emscripten ABI
-// but not WASI or wasm64. Emscripten Memory64 (llgo.wasm.emscripten.memory64)
-// lowers to wasm64-unknown-emscripten, so it shares this stub with WASI.
-// Keep the low-level boundary linkable; unsupported calls fail explicitly
-// instead of accidentally linking the host machine's libffi archive.
+// libffi's WebAssembly backend currently supports the Emscripten ABI but not
+// the WASI C ABI. Keep the low-level boundary linkable for WASI test binaries
+// that do not use dynamic reflection; unsupported calls fail explicitly in the
+// stub instead of accidentally linking the host machine's libffi archive.
 const LLGoFiles = "_wrap/libffi_wasm_stub.c"

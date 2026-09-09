@@ -545,18 +545,19 @@ func TestAppendEmscriptenLibffiSearchPath(t *testing.T) {
 		t.Fatalf("empty LLGO_ROOT appended %v", export.LDFLAGS)
 	}
 	appendEmscriptenLibffiSearchPath(&export, "/llgo", WasmABIEmscriptenMemory64)
-	if len(export.LDFLAGS) != 0 {
-		t.Fatalf("memory64 appended %v", export.LDFLAGS)
+	want64 := "-L" + filepath.Join("/llgo", wasm64LibffiRelDir)
+	if !slices.Contains(export.LDFLAGS, want64) {
+		t.Fatalf("memory64 LDFLAGS %v do not search %s", export.LDFLAGS, want64)
 	}
 	appendEmscriptenLibffiSearchPath(&export, "/llgo", WasmABIUnspecified)
-	want := "-L" + filepath.Join("/llgo", wasm32LibffiRelDir)
-	if !slices.Contains(export.LDFLAGS, want) {
-		t.Fatalf("unspecified ABI LDFLAGS %v do not search %s", export.LDFLAGS, want)
+	want32 := "-L" + filepath.Join("/llgo", wasm32LibffiRelDir)
+	if !slices.Contains(export.LDFLAGS, want32) {
+		t.Fatalf("unspecified ABI LDFLAGS %v do not search %s", export.LDFLAGS, want32)
 	}
 	appendEmscriptenLibffiSearchPath(&export, "/llgo", WasmABIEmscripten)
 	n := 0
 	for _, flag := range export.LDFLAGS {
-		if flag == want {
+		if flag == want32 {
 			n++
 		}
 	}
@@ -602,8 +603,15 @@ func TestEmscriptenLibffiSearchPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want64 := "-L" + filepath.Join(root, wasm64LibffiRelDir)
 	if slices.Contains(memory64.LDFLAGS, wantL) {
 		t.Errorf("emscripten-memory64 LDFLAGS %v unexpectedly search the wasm32 libffi archive", memory64.LDFLAGS)
+	}
+	if !slices.Contains(memory64.LDFLAGS, want64) {
+		t.Errorf("emscripten-memory64 LDFLAGS %v do not search %s", memory64.LDFLAGS, want64)
+	}
+	if _, err := os.Stat(filepath.Join(root, wasm64LibffiRelDir, "libffi.a")); err != nil {
+		t.Fatalf("vendored wasm64 libffi archive: %v", err)
 	}
 
 	wasi, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Off, false)

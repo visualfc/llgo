@@ -99,6 +99,7 @@ const (
 	emscriptenNamedEnvironment   = "-sENVIRONMENT=web,worker,node"
 	emscriptenAllowTableGrowth   = "-sALLOW_TABLE_GROWTH=1"
 	wasm32LibffiRelDir           = "runtime/internal/clite/ffi/wasm32"
+	wasm64LibffiRelDir           = "runtime/internal/clite/ffi/wasm64"
 )
 
 func (abi WasmABI) valid() bool {
@@ -771,12 +772,16 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 }
 
 func appendEmscriptenLibffiSearchPath(export *Export, llgoRoot string, wasmABI WasmABI) {
-	// Memory64 cannot use the wasm32 archive. An empty LLGO_ROOT leaves -lffi
-	// without a search path; the linker then reports that it cannot find -lffi.
-	if wasmABI == WasmABIEmscriptenMemory64 || llgoRoot == "" {
+	// An empty LLGO_ROOT leaves -lffi without a search path; the linker then
+	// reports that it cannot find -lffi.
+	if llgoRoot == "" {
 		return
 	}
-	export.LDFLAGS = append(export.LDFLAGS, "-L"+filepath.Join(llgoRoot, wasm32LibffiRelDir))
+	dir := wasm32LibffiRelDir
+	if wasmABI == WasmABIEmscriptenMemory64 {
+		dir = wasm64LibffiRelDir
+	}
+	export.LDFLAGS = append(export.LDFLAGS, "-L"+filepath.Join(llgoRoot, dir))
 }
 
 func emscriptenLinkLevel(level optlevel.Level) optlevel.Level {
