@@ -65,6 +65,11 @@ timeouts:
     case: fixedbugs/issue25897a.go
     timeout: 90s
     reason: the single-P continuous-GC loop needs load-dependent runtime slack on Windows amd64
+  - platform: windows/386
+    directive: run
+    case: fixedbugs/issue25897a.go
+    timeout: 90s
+    reason: the single-P continuous-GC loop needs load-dependent runtime slack on Windows 386
   - version: go1.26
     platform: darwin/arm64
     directive: runoutput
@@ -139,19 +144,43 @@ flakes:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the run timeout on Windows amd64
+  - platform: windows/386
+    directive: run
+    case: fixedbugs/issue25897a.go
+    reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the run timeout on Windows 386
   - version: go1.27
     platform: windows-msvc/386
     directive: run
     case: abi/uglyfib.go
     reason: uglyfib can complete or exceed its run timeout on a loaded Windows MSVC 386 runner
 xfails:
-  - directive: runoutput
+  - version: go1.27
+    platform: windows-mingw/386
+    directive: runoutput
     case: index0.go
-    reason: LLVM 19 crashes in target object emission while compiling the generated index stress program
-  - directive: runoutput
+    reason: LLVM target object emission still fails while compiling the generated index stress program on Windows MinGW 386
+  - platform: darwin/arm64
+    directive: runoutput
     case: rangegen.go
     reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
-  - directive: run
+  - platform: linux/amd64
+    directive: runoutput
+    case: rangegen.go
+    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
+  - platform: windows/amd64
+    directive: runoutput
+    case: rangegen.go
+    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
+  - platform: windows/arm64
+    directive: runoutput
+    case: rangegen.go
+    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
+  - platform: darwin/arm64
+    directive: run
+    case: fixedbugs/issue34123.go
+    reason: LLGo reports the deferred recovery frame two source lines earlier than cmd/compile
+  - platform: linux/amd64
+    directive: run
     case: fixedbugs/issue34123.go
     reason: LLGo reports the deferred recovery frame two source lines earlier than cmd/compile
   - directive: run
@@ -163,26 +192,23 @@ xfails:
   - directive: run
     case: genmeth1.go
     reason: the current go/types and x/tools SSA path panics while instantiating the new generic-method test
-  - version: go1.26
-    platform: linux/amd64
+  - platform: linux/amd64
     directive: run
     case: convert5.go
-    reason: LLGo does not match Go 1.26 linux/amd64 saturation results for out-of-range floating-point conversions
-  - version: go1.27
-    platform: linux/amd64
+    reason: LLGo does not match linux/amd64 saturation results for out-of-range floating-point conversions
+  - platform: windows/amd64
     directive: run
     case: convert5.go
-    reason: LLGo does not match Go 1.27 linux/amd64 saturation results for out-of-range floating-point conversions
-  - version: go1.27
-    platform: windows/amd64
-    directive: run
-    case: convert5.go
-    reason: LLGo does not match Go 1.27 Windows amd64 saturation results for out-of-range floating-point conversions
-  - version: go1.27
-    platform: windows/amd64
+    reason: LLGo does not match Windows amd64 saturation results for out-of-range floating-point conversions
+  - platform: windows/amd64
     directive: run
     case: inline_literal.go
     reason: LLGo returns the wrong result for an inlined closure literal on Windows amd64
+  - version: go1.26
+    platform: windows-mingw/amd64
+    directive: run
+    case: fixedbugs/issue58300.go
+    reason: LLGo emits unexpected runtime output for the unsafe string conversion test on Windows MinGW amd64
   - version: go1.27
     platform: windows/amd64
     directive: run
@@ -198,21 +224,33 @@ xfails:
     directive: run
     case: fixedbugs/bug114.go
     reason: the Go 1.27 baseline cannot build this case in the Windows 386 target environment
+  - version: go1.26
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/bug114.go
+    reason: the Go 1.26 baseline cannot build this case in the Windows MSVC 386 target environment
   - version: go1.27
     platform: windows/386
     directive: run
     case: fixedbugs/bug356.go
     reason: LLGo emits unexpected runtime output for this interface conversion test on Windows 386
-  - version: go1.27
-    platform: windows/386
+  - version: go1.26
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/bug356.go
+    reason: LLGo emits unexpected runtime output for this interface conversion test on Windows MSVC 386
+  - platform: windows/386
     directive: run
     case: gcgort.go
     reason: LLGo fails the concurrent GC stress test on Windows 386
-  - version: go1.27
-    platform: windows/386
+  - platform: windows/386
     directive: run
     case: printbig.go
-    reason: the Go 1.27 baseline cannot build this large-constant case in the Windows 386 target environment
+    reason: the Go baseline cannot build this large-constant case in the Windows 386 target environment
+  - platform: windows-mingw/386
+    directive: run
+    case: fixedbugs/issue23305.go
+    reason: the Go baseline cannot build this cgo case in the Windows MinGW 386 target environment
   - version: go1.27
     platform: windows-msvc/386
     directive: run
@@ -223,56 +261,89 @@ xfails:
     directive: run
     case: fixedbugs/issue34968.go
     reason: the Go 1.27 baseline cannot build this cgo checkptr case in the Windows MSVC 386 target environment
+  - version: go1.26
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue34968.go
+    reason: the Go 1.26 baseline cannot build runtime/cgo because Clang rejects -mthreads in the Windows MSVC 386 target environment
+  - version: go1.26
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue34968.go
+    reason: the Go 1.26 baseline cannot build runtime/cgo because Clang rejects -mthreads in the Windows MSVC amd64 target environment
+  - version: go1.26
+    platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue34968.go
+    reason: the Go 1.26 baseline cannot build runtime/cgo because Clang rejects -mthreads in the Windows MSVC arm64 target environment
   - version: go1.27
     platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue47227.go
     reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
-  - version: go1.27
+  - version: go1.26
     platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue47227.go
+    reason: the Go 1.26 baseline cannot build runtime/cgo because Clang rejects -mthreads in the Windows MSVC 386 target environment
+  - version: go1.26
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue47227.go
+    reason: the Go 1.26 baseline cannot build runtime/cgo because Clang rejects -mthreads in the Windows MSVC amd64 target environment
+  - version: go1.26
+    platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue47227.go
+    reason: the Go 1.26 baseline cannot build runtime/cgo because Clang rejects -mthreads in the Windows MSVC arm64 target environment
+  - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue40954.go
-    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
-  - version: go1.27
-    platform: windows-msvc/amd64
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC 386 target environment
+  - platform: windows-msvc/amd64
     directive: run
     case: fixedbugs/issue40954.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
-  - version: go1.27
-    platform: windows-msvc/386
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
+  - platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue40954.go
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+  - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue46903.go
-    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
-  - version: go1.27
-    platform: windows-msvc/amd64
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC 386 target environment
+  - platform: windows-msvc/amd64
     directive: run
     case: fixedbugs/issue46903.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
-  - version: go1.27
-    platform: windows-msvc/386
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
+  - platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue46903.go
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+  - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue51733.go
-    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
-  - version: go1.27
-    platform: windows-msvc/amd64
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC 386 target environment
+  - platform: windows-msvc/amd64
     directive: run
     case: fixedbugs/issue51733.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
-  - version: go1.27
-    platform: windows-msvc/386
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
+  - platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue51733.go
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+  - platform: windows-msvc/386
     directive: run
     case: fixedbugs/bug514.go
-    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
-  - version: go1.27
-    platform: windows-msvc/amd64
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC 386 target environment
+  - platform: windows-msvc/amd64
     directive: run
     case: fixedbugs/bug514.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
-  - version: go1.27
-    platform: windows-msvc/arm64
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
+  - platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/bug514.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC arm64 target environment
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
   - version: go1.27
     platform: windows-msvc/386
     directive: run
@@ -283,29 +354,37 @@ xfails:
     directive: run
     case: fixedbugs/issue42032.go
     reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
-  - version: go1.27
-    platform: windows-msvc/arm64
+  - platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42032.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC arm64 target environment
-  - version: go1.27
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+  - platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue42076.go
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC 386 target environment
+  - platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue42076.go
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
+  - platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue42076.go
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+  - version: go1.26
     platform: windows-msvc/386
     directive: run
-    case: fixedbugs/issue42076.go
-    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
-  - version: go1.27
+    case: linkmain_run.go
+    reason: the nested baseline go run exits unsuccessfully in the Go 1.26 Windows MSVC 386 target environment
+  - version: go1.26
     platform: windows-msvc/amd64
     directive: run
-    case: fixedbugs/issue42076.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
-  - version: go1.27
+    case: linkmain_run.go
+    reason: the nested baseline go run exits unsuccessfully in the Go 1.26 Windows MSVC amd64 target environment
+  - version: go1.26
     platform: windows-msvc/arm64
     directive: run
-    case: fixedbugs/issue42076.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC arm64 target environment
-  - directive: run
-    case: fixedbugs/issue52612.go
-    reason: LLGo can panic while sync/atomic.Value pins the current goroutine without shared core-runtime procPin hooks
+    case: linkmain_run.go
+    reason: the nested baseline go run exits unsuccessfully in the Go 1.26 Windows MSVC arm64 target environment
   - version: go1.26
     directive: errorcheck
     case: fixedbugs/issue4776.go
