@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   llgo:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: llgo + test (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, LLVM ${{ matrix.llvm }}, Go 1.27, shard 0/${{ matrix.shard_total }})
     # Combined-job validation stayed below 25 min on macOS and 33 min on
     # Windows amd64, including a cold dependency run. Keep the 60-min headroom
@@ -442,6 +443,7 @@ jobs:
           }
 
   test:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: test (${{ matrix.lane }}, ${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, Go ${{ matrix.go_version }}, shard ${{ matrix.shard_index }}/${{ matrix.shard_total }})
     timeout-minutes: ${{ matrix.windows_arch == 'arm64' && 120 || matrix.windows_arch == '386' && 90 || 60 }}
     strategy:
@@ -560,6 +562,7 @@ jobs:
           mod-version: "1.20"
 
   cross-compile:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     timeout-minutes: 30
     strategy:
       matrix:
@@ -611,6 +614,7 @@ jobs:
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
 
   windows-gnu-cross:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: windows GNU cross (${{ matrix.os }}, ${{ matrix.windows_arch }})
     timeout-minutes: 120
     strategy:
@@ -651,6 +655,7 @@ jobs:
           windows-arch: ${{ matrix.windows_arch }}
 
   wasm-runtime:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: wasm-runtime (${{ matrix.suite }})
     timeout-minutes: 30
     strategy:

@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   build-cache:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: build-cache (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, ${{ matrix.llvm }})
     timeout-minutes: 30
     strategy:

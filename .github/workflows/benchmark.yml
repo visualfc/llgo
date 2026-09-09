@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   benchmark:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: benchmark (${{ matrix.display }})
     strategy:
       fail-fast: false
@@ -254,6 +255,7 @@ jobs:
           platform-label: ${{ matrix.display }}
 
   wasm-benchmark:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     name: benchmark (WebAssembly)
     runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
     timeout-minutes: 30

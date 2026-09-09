@@ -36,6 +36,7 @@ def record_exception_context(output_dir):
     }
     (output_dir / "exception-context.json").write_text(json.dumps(info, indent=2))
     print("WINDOWS EXCEPTION CONTEXT " + json.dumps(info), flush=True)
+    return info
 
 
 def captured_process_result(raw):

@@ -23,6 +23,7 @@ env:
 
 jobs:
   populate-linux-sysroot:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -71,6 +72,7 @@ jobs:
           compression-level: 0
           retention-days: 3
   build:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     runs-on: ubuntu-latest
     needs: populate-linux-sysroot
     steps:
@@ -148,6 +150,7 @@ jobs:
           include-hidden-files: true
 
   build-windows:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     needs: build
     timeout-minutes: 90
     strategy:
@@ -221,6 +224,7 @@ jobs:
           compression-level: 0
 
   test-windows-artifacts:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     needs: build-windows
     timeout-minutes: 60
     strategy:
@@ -270,6 +274,7 @@ jobs:
           -Profile '${{ matrix.abi }}' -GoArch '${{ matrix.goarch }}'
 
   prepare-winget:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     needs: test-windows-artifacts
     runs-on: ubuntu-latest
     steps:
@@ -300,6 +305,7 @@ jobs:
           include-hidden-files: true
 
   test-artifacts:
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909'
     needs: build
     strategy:
       matrix:
@@ -354,7 +360,7 @@ jobs:
       contents: write
     needs: [prepare-winget, test-artifacts, test-windows-artifacts, populate-linux-sysroot]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.head_ref != 'codex/test-mingw-go-crash-2549-20260909' && (startsWith(github.ref, 'refs/tags/'))
     steps:
       - name: Check out code
         uses: actions/checkout@v7

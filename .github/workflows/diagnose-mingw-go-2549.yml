@@ -62,20 +62,12 @@ jobs:
           clang --version
           go test -c -cover -covermode=atomic '-ldflags=-linkmode=external -extldflags=-lsynchronization' -o diag-results/go.test.exe ./test/go
           if ($LASTEXITCODE -ne 0) { throw 'Test binary build failed' }
-      - name: Run the original failing coverage command
-        shell: bash
-        run: |
-          set -euo pipefail
-          go clean -testcache
-          go test -ldflags='-linkmode=external -extldflags=-lsynchronization' \
-            -timeout 45m -coverprofile=diag-results/coverage-original.txt \
-            -covermode=atomic ./test/go 2>&1 | tee diag-results/original-command.log
-      - name: Capture exceptions and repeat the full package
+      - name: Compare stock and enlarged exception stack reserve
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: python {0}
         run: |
           import runpy
-          runpy.run_path('dev/diagnose_mingw_go.py', run_name='__main__')
+          runpy.run_path('dev/diagnose_mingw_reserve.py', run_name='__main__')
       - name: Upload test logs and matching executable
         if: always()
         uses: actions/upload-artifact@v7
