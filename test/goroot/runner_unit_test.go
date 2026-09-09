@@ -123,7 +123,8 @@ func TestWriteStdlibImportCfgIgnoresRepositoryModule(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "pwd.log")
 	goTool := filepath.Join(dir, "go")
-	script := fmt.Sprintf("#!/bin/sh\npwd > %q\nprintf 'packagefile runtime=/tmp/runtime.a\\n'\n", logPath)
+	envPath := filepath.Join(dir, "env.log")
+	script := fmt.Sprintf("#!/bin/sh\npwd > %q\nprintf '%%s' \"$CGO_ENABLED\" > %q\nprintf 'packagefile runtime=/tmp/runtime.a\\n'\n", logPath, envPath)
 	if err := os.WriteFile(goTool, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +147,13 @@ func TestWriteStdlibImportCfgIgnoresRepositoryModule(t *testing.T) {
 	}
 	if strings.TrimSpace(string(commandDir)) == wd {
 		t.Fatalf("go list std ran inside repository package directory %q", wd)
+	}
+	cgoEnabled, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(cgoEnabled); got != "0" {
+		t.Fatalf("stdlib export CGO_ENABLED=%q, want 0", got)
 	}
 }
 

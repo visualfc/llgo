@@ -74,7 +74,7 @@ for goroot in "${goroots[@]}"; do
 		goroot_gomaxprocs="${LLGO_GOROOT_GOMAXPROCS:-${GOMAXPROCS:-2}}"
 		if [[ -n "${LLGO_GOROOT_RUNNER:-}" ]]; then
 			cd "$repo_root/test/goroot"
-			test_args=(-test.count=1 -test.timeout=180m)
+			test_args=(-test.run='^TestGoRootRunCases$' -test.count=1 -test.timeout=180m)
 			if [[ "${LLGO_GOROOT_VERBOSE:-0}" != "0" ]]; then
 				test_args+=("-test.v")
 			fi
@@ -87,7 +87,7 @@ for goroot in "${goroots[@]}"; do
 				go_test_args+=("-v")
 			fi
 			run_with_heartbeat env GOMAXPROCS="$goroot_gomaxprocs" \
-				go test -p=1 ./test/goroot "${go_test_args[@]}" \
+				go test -p=1 ./test/goroot "${go_test_args[@]}" -run='^TestGoRootRunCases$' \
 				-count=1 -timeout 180m -args -goroot "$goroot" "${runner_args[@]}"
 		fi
 	)

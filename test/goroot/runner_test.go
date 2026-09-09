@@ -431,7 +431,7 @@ func writeStdlibImportCfg(t *testing.T, goCmd string) string {
 	t.Helper()
 	cmd := exec.Command(goCmd, "list", "-export", "-f", "{{if .Export}}packagefile {{.ImportPath}}={{.Export}}{{end}}", "std")
 	cmd.Dir = t.TempDir()
-	cmd.Env = baselineGoEnv()
+	cmd.Env = upsertEnv(baselineGoEnv(), "CGO_ENABLED=0")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("list stdlib exports with %s: %v\n%s", goCmd, err, output)
