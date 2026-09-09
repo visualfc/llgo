@@ -2,6 +2,8 @@ name: GOROOT
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [labeled]
   schedule:
     # 02:00 Asia/Shanghai (18:00 UTC on the previous day).
     - cron: "0 18 * * *"
@@ -15,6 +17,7 @@ concurrency:
 
 jobs:
   goroot:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'go-test-compat'
     name: GOROOT (${{ matrix.os }}${{ startsWith(matrix.os, 'windows') && format(', {0}, {1}', matrix.windows_abi, matrix.windows_arch) || '' }}, Go ${{ matrix.go-version }}, shard ${{ matrix.shard-index }}/4)
     timeout-minutes: 180
     env:
@@ -249,7 +252,7 @@ jobs:
 
   goroot-summary:
     name: GOROOT summary
-    if: always()
+    if: always() && (github.event_name != 'pull_request' || github.event.label.name == 'go-test-compat')
     needs: goroot
     runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04"]') || 'ubuntu-24.04' }}
     permissions:
