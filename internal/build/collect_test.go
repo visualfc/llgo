@@ -365,6 +365,57 @@ func TestCollectFingerprintDisablesCycles(t *testing.T) {
 	}
 }
 
+func TestCollectFingerprintIncludesPthreadStackSize(t *testing.T) {
+	for _, target := range []struct{ goos, goarch string }{
+		{"linux", "amd64"}, {"windows", "amd64"}, {"js", "wasm"}, {"wasip1", "wasm"},
+	} {
+		t.Run(target.goos+"/"+target.goarch, func(t *testing.T) {
+			for _, pkgPath := range []string{llssa.PkgRuntime, "runtime", "test/stack"} {
+				fingerprints := make(map[int64]string)
+				for _, size := range []int64{0, 256 << 10, 512 << 10, -1} {
+					ctx := &context{
+						conf: &packages.Config{},
+						buildConf: &Config{Goos: target.goos, Goarch: target.goarch,
+							BuildMode: BuildModeExe, PthreadStackSize: size},
+					}
+					pkg := &aPackage{Package: &packages.Package{PkgPath: pkgPath}}
+					if err := ctx.collectFingerprint(pkg); err != nil {
+						t.Fatal(err)
+					}
+					data, err := decodeManifest(pkg.Manifest)
+					if err != nil {
+						t.Fatal(err)
+					}
+					wantSize := max(0, size)
+					if pkgPath != llssa.PkgRuntime {
+						wantSize = 0
+					}
+					if data.Package == nil || data.Package.PthreadStackSize != wantSize {
+						t.Fatalf("stack size %d missing from manifest:\n%s", size, pkg.Manifest)
+					}
+					if got := strings.Contains(pkg.Manifest, "pthread_stack_size:"); got != (wantSize > 0) {
+						t.Fatalf("package stack input presence = %v, want %v:\n%s", got, wantSize > 0, pkg.Manifest)
+					}
+					fingerprints[size] = pkg.Fingerprint
+				}
+				if fingerprints[0] != fingerprints[-1] {
+					t.Fatal("equivalent default stack settings have different fingerprints")
+				}
+				if pkgPath != llssa.PkgRuntime {
+					if fingerprints[0] != fingerprints[256<<10] || fingerprints[0] != fingerprints[512<<10] {
+						t.Fatal("changing the stack size invalidated an unrelated package")
+					}
+				} else if fingerprints[0] == fingerprints[256<<10] || fingerprints[256<<10] == fingerprints[512<<10] || fingerprints[0] == fingerprints[512<<10] {
+					t.Fatal("changing the goroutine stack size did not invalidate cached packages")
+				}
+			}
+		})
+	}
+	if (&packageSection{PthreadStackSize: 256 << 10}).empty() {
+		t.Fatal("non-default stack size must not be omitted from the manifest")
+	}
+}
+
 func TestCollectFingerprintIncludesEmitDWARF(t *testing.T) {
 	td := t.TempDir()
 	goFile := filepath.Join(td, "main.go")

@@ -72,8 +72,20 @@ func (b Builder) Go(fn Expr, buildCall func(Builder, Expr, ...Expr) Expr, args .
 	dataPtr := b.Call(pkg.rtFunc("AllocRoot"), prog.IntVal(prog.SizeOf(t), prog.Uintptr())).impl
 	aggregateInit(b.impl, dataPtr, t.ll, flds...)
 	data := Expr{dataPtr, voidPtr}
-	stackSize := prog.IntVal(prog.pthreadStackSize, prog.Uintptr())
-	b.Call(pkg.rtFunc("NewProc"), pkg.routine(t, fn, buildCall, len(args)), data, stackSize)
+	b.Call(pkg.rtFunc("NewProc"), pkg.routine(t, fn, buildCall, len(args)), data)
+}
+
+// RuntimeGoroutineStackSizeVar names the private configuration global declared
+// in runtime/internal/runtime/proc.go. Keep that declaration in sync; the build
+// cache integration test checks injection into the actual runtime package.
+const RuntimeGoroutineStackSizeVar = PkgRuntime + ".goroutineStackSize"
+
+// InitPthreadStackSize initializes the runtime's private stack configuration.
+// Keeping the immutable value in the runtime module lets LLVM fold it into
+// NewProc without baking build configuration into every goroutine caller.
+func (p Program) InitPthreadStackSize(g Global) {
+	g.Init(p.IntVal(p.pthreadStackSize, p.Uintptr()))
+	g.impl.SetGlobalConstant(true)
 }
 
 func (p Package) routineName() string {

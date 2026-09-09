@@ -21,7 +21,7 @@ package main
 // CHECK: store ptr [[CH1_SLOT]], ptr {{%.*}}
 // CHECK: [[SEND_CLOSURE:%.*]] = insertvalue { ptr, ptr } { ptr @"main.main$1", ptr undef }, ptr [[SEND_ENV]], 1
 // CHECK: store { ptr, ptr } [[SEND_CLOSURE]], ptr {{%.*}}
-// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$1", ptr {{%.*}}, i64 0)
+// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$1", ptr {{%.*}})
 // CHECK: [[CH1_RECV:%.*]] = load ptr, ptr [[CH1_SLOT]]
 // CHECK: [[CH1_RECV_BUF:%.*]] = alloca i64
 // CHECK: call i1 @"{{.*}}ChanRecv"(ptr [[CH1_RECV]], ptr [[CH1_RECV_BUF]], i64 8)
@@ -36,7 +36,7 @@ package main
 // CHECK: store ptr [[CH2_SLOT]], ptr {{%.*}}
 // CHECK: [[CLOSE_CLOSURE:%.*]] = insertvalue { ptr, ptr } { ptr @"main.main$2", ptr undef }, ptr [[CLOSE_ENV]], 1
 // CHECK: store { ptr, ptr } [[CLOSE_CLOSURE]], ptr {{%.*}}
-// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$2", ptr {{%.*}}, i64 0)
+// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$2", ptr {{%.*}})
 // CHECK: [[CH2_RECV:%.*]] = load ptr, ptr [[CH2_SLOT]]
 // CHECK: [[CH2_RECV_BUF:%.*]] = alloca i64
 // CHECK: [[CH2_OK:%.*]] = call i1 @"{{.*}}ChanRecv"(ptr [[CH2_RECV]], ptr [[CH2_RECV_BUF]], i64 8)

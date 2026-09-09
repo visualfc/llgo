@@ -13,8 +13,8 @@ package main
 // CHECK-LABEL: define void @main.recv(){{.*}} {
 // CHECK: [[RECV_CH1_OBJ:%[0-9]+]] = call ptr @"{{.*}}NewChan"(i64 16, i64 0)
 // CHECK: [[RECV_CH2_OBJ:%[0-9]+]] = call ptr @"{{.*}}NewChan"(i64 16, i64 0)
-// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$1", ptr %{{[0-9]+}}, i64 0)
-// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$2", ptr %{{[0-9]+}}, i64 0)
+// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$1", ptr %{{[0-9]+}})
+// CHECK: call void @"{{.*}}NewProc"(ptr @"main._llgo_routine$2", ptr %{{[0-9]+}})
 // CHECK: [[RECV_CH1:%[0-9]+]] = load ptr, ptr %{{[0-9]+}}
 // CHECK-NEXT: [[RECV_CH2:%[0-9]+]] = load ptr, ptr %{{[0-9]+}}
 // CHECK: [[RECV_BUF1:%[0-9]+]] = alloca %"{{.*}}String"

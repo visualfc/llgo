@@ -403,6 +403,10 @@ func (p *context) compileGlobal(pkg llssa.Package, gbl *ssa.Global) {
 	if skip {
 		return
 	}
+	if define && name == llssa.RuntimeGoroutineStackSizeVar {
+		p.prog.InitPthreadStackSize(g)
+		return
+	}
 	if p.tryEmbedGlobalInit(pkg, gbl, g, name) {
 		return
 	}
