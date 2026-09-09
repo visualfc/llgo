@@ -17,11 +17,11 @@
  */
 
 // Package tls provides generic storage backed by the host thread-local
-// storage API. When built with the GC-enabled configuration (llgo && !nogc),
-// TLS slots are automatically registered with the BDWGC garbage collector so
-// pointers stored in thread-local state remain visible to the collector.
-// Builds without GC integration (llgo && nogc) simply use host TLS without
-// root registration.
+// storage API. GC-enabled builds (llgo && !baremetal && !wasm && !nogc) use
+// scanned, uncollectable BDWGC slots so their pointers stay visible until the
+// thread-local destructor releases the slot. Non-baremetal llgo builds with nogc or
+// wasm use ordinary calloc/free allocations. Baremetal builds and builds
+// without llgo use no-op handles.
 //
 // Basic usage:
 //
@@ -38,8 +38,9 @@
 //	})
 //
 // Build tags:
-//   - llgo && !nogc: Enables GC-aware slot registration via BDWGC
-//   - llgo && nogc:  Disables GC integration; TLS acts as plain host TLS
+//   - llgo && !baremetal && !wasm && !nogc: GC-managed slots via BDWGC
+//   - llgo && !baremetal && (nogc || wasm): Plain host TLS via calloc/free
+//   - !llgo || baremetal: No-op handles
 package tls
 
 import (
@@ -93,22 +94,22 @@ func (h Handle[T]) ensureSlot() *slot[T] {
 		return (*slot[T])(ptr)
 	}
 	size := unsafe.Sizeof(slot[T]{})
-	mem := c.Calloc(1, size)
+	mem := allocSlot(size)
 	if mem == nil {
 		panic("tls: failed to allocate thread slot")
 	}
 	s := (*slot[T])(mem)
 	s.destructor = h.destructor
+	// Collector allocation can run finalizers that re-enter this handle.
 	if existing := h.key.Get(); existing != nil {
-		c.Free(mem)
+		freeSlot(mem)
 		return (*slot[T])(existing)
 	}
 	if ret := h.key.Set(mem); ret != 0 {
-		c.Free(mem)
+		freeSlot(mem)
 		c.Fprintf(c.Stderr, c.Str("tls: thread-local value installation failed (error=%d)\n"), ret)
 		panic("tls: failed to set thread local storage value")
 	}
-	registerSlot(s)
 	return s
 }
 
@@ -120,9 +121,8 @@ func slotDestructor[T any](ptr c.Pointer) {
 	if s.destructor != nil {
 		s.destructor(&s.value)
 	}
-	deregisterSlot(s)
 	var zero T
 	s.value = zero
 	s.destructor = nil
-	c.Free(ptr)
+	freeSlot(ptr)
 }

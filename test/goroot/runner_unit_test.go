@@ -14,6 +14,7 @@ import (
 )
 
 func TestPrepareCaseWorkspaceUsesRepositoryModulePath(t *testing.T) {
+	guardTestTimeout(t)
 	repo := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repo, "go.mod"), []byte("module example.com/owner/project\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -39,6 +40,7 @@ func TestPrepareCaseWorkspaceUsesRepositoryModulePath(t *testing.T) {
 }
 
 func TestParseDirective(t *testing.T) {
+	guardTestTimeout(t)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "case.go")
 	if err := os.WriteFile(file, []byte("// run\n\npackage main\n"), 0644); err != nil {
@@ -57,6 +59,7 @@ func TestParseDirective(t *testing.T) {
 }
 
 func TestParseDirectiveWithArgs(t *testing.T) {
+	guardTestTimeout(t)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "case.go")
 	if err := os.WriteFile(file, []byte("// errorcheckandrundir -1\n\npackage ignored\n"), 0644); err != nil {
@@ -75,6 +78,7 @@ func TestParseDirectiveWithArgs(t *testing.T) {
 }
 
 func TestParseDirectiveQuotedArgs(t *testing.T) {
+	guardTestTimeout(t)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "case.go")
 	src := `// runindir -gomodversion "1.23" -gcflags='all=-N -l'
@@ -98,6 +102,7 @@ package ignored
 }
 
 func TestReleaseTagsFor(t *testing.T) {
+	guardTestTimeout(t)
 	got := releaseTagsFor("go1.24.11")
 	want := []string{
 		"go1.1", "go1.2", "go1.3", "go1.4", "go1.5", "go1.6", "go1.7", "go1.8",
@@ -110,6 +115,7 @@ func TestReleaseTagsFor(t *testing.T) {
 }
 
 func TestXFailMatch(t *testing.T) {
+	guardTestTimeout(t)
 	cfg := xfailConfig{
 		Entries: []xfailEntry{{
 			Version:   "go1.24",
@@ -130,6 +136,7 @@ func TestXFailMatch(t *testing.T) {
 }
 
 func TestNotApplicableMatch(t *testing.T) {
+	guardTestTimeout(t)
 	cfg := notApplicableConfig{
 		Entries: []xfailEntry{{
 			Version:   "go1.26",
@@ -149,6 +156,7 @@ func TestNotApplicableMatch(t *testing.T) {
 }
 
 func TestRepositoryExpectationsAreSeparated(t *testing.T) {
+	guardTestTimeout(t)
 	repo := repoRoot(t)
 	xfails := loadXFailConfig(t, repo, filepath.Join("test", "goroot", "xfail.yaml"))
 	notApplicable := loadNotApplicableConfig(t, repo, filepath.Join("test", "goroot", "notapplicable.yaml"))
@@ -187,6 +195,7 @@ func TestRepositoryExpectationsAreSeparated(t *testing.T) {
 }
 
 func TestFlakyMatch(t *testing.T) {
+	guardTestTimeout(t)
 	cfg := xfailConfig{
 		Flakes: []xfailEntry{{
 			Version:   "go1.25",
@@ -207,6 +216,7 @@ func TestFlakyMatch(t *testing.T) {
 }
 
 func TestMatchGoVersion(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		version   string
 		goVersion string
@@ -227,6 +237,7 @@ func TestMatchGoVersion(t *testing.T) {
 }
 
 func TestHostSkipMatch(t *testing.T) {
+	guardTestTimeout(t)
 	cfg := xfailConfig{
 		HostSkips: []xfailEntry{{
 			Version:   "go1.24",
@@ -247,6 +258,7 @@ func TestHostSkipMatch(t *testing.T) {
 }
 
 func TestTimeoutMatch(t *testing.T) {
+	guardTestTimeout(t)
 	cfg := xfailConfig{
 		Timeouts: []timeoutEntry{{
 			Version:   "go1.24",
@@ -271,6 +283,7 @@ func TestTimeoutMatch(t *testing.T) {
 }
 
 func TestEffectiveBuildTimeout(t *testing.T) {
+	guardTestTimeout(t)
 	if got := effectiveBuildTimeout(3*time.Minute, 20*time.Second); got != 3*time.Minute {
 		t.Fatalf("effectiveBuildTimeout()=%s, want 3m", got)
 	}
@@ -280,6 +293,7 @@ func TestEffectiveBuildTimeout(t *testing.T) {
 }
 
 func TestRunProgramTimeout(t *testing.T) {
+	guardTestTimeout(t)
 	if os.Getenv("LLGO_GOROOT_HELPER") == "sleep" {
 		// Leave ample margin for a loaded CI worker to service the 50ms timer.
 		time.Sleep(5 * time.Second)
@@ -315,6 +329,7 @@ func TestRunProgramTimeout(t *testing.T) {
 }
 
 func TestRunProgramRSSLimit(t *testing.T) {
+	guardTestTimeout(t)
 	if !resourceMonitoringSupported() {
 		t.Skip("process-group RSS monitoring is unavailable")
 	}
@@ -354,6 +369,7 @@ func TestRunProgramRSSLimit(t *testing.T) {
 }
 
 func TestValidateSystemMemoryState(t *testing.T) {
+	guardTestTimeout(t)
 	oldMemory := *flagMinMemPct
 	oldSwap := *flagMinSwapMiB
 	*flagMinMemPct = 15
@@ -378,6 +394,7 @@ func TestValidateSystemMemoryState(t *testing.T) {
 }
 
 func TestRunGeneratedProgramUsesProvidedTimeout(t *testing.T) {
+	guardTestTimeout(t)
 	disableSystemMemoryLimits(t)
 	dir := t.TempDir()
 	tool := fakeToolPath(dir, "fake-timeout-tool")
@@ -402,6 +419,7 @@ func TestRunGeneratedProgramUsesProvidedTimeout(t *testing.T) {
 }
 
 func TestNormalizeOutputStripsLogTimestamp(t *testing.T) {
+	guardTestTimeout(t)
 	in := []byte("2026/03/13 00:56:11 listing stdlib export files: open : no such file or directory\n")
 	got := string(normalizeOutput(in))
 	want := "listing stdlib export files: open : no such file or directory\n"
@@ -411,6 +429,7 @@ func TestNormalizeOutputStripsLogTimestamp(t *testing.T) {
 }
 
 func TestShardCases(t *testing.T) {
+	guardTestTimeout(t)
 	cases := []testCase{
 		{RelPath: "a.go"},
 		{RelPath: "b.go"},
@@ -429,6 +448,7 @@ func TestShardCases(t *testing.T) {
 }
 
 func TestDiscoverCasesSkipsMissingDir(t *testing.T) {
+	guardTestTimeout(t)
 	testRoot := t.TempDir()
 	existingDir := filepath.Join(testRoot, "fixedbugs")
 	if err := os.MkdirAll(existingDir, 0o755); err != nil {
@@ -457,6 +477,7 @@ func TestDiscoverCasesSkipsMissingDir(t *testing.T) {
 }
 
 func TestDiscoverCasesRunLikeModeIncludesDirectiveArgs(t *testing.T) {
+	guardTestTimeout(t)
 	testRoot := t.TempDir()
 	dir := filepath.Join(testRoot, "fixedbugs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -487,6 +508,7 @@ func TestDiscoverCasesRunLikeModeIncludesDirectiveArgs(t *testing.T) {
 }
 
 func TestDiscoverCasesCIModeExcludesBuildrundir(t *testing.T) {
+	guardTestTimeout(t)
 	testRoot := t.TempDir()
 	dir := filepath.Join(testRoot, "fixedbugs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -530,6 +552,7 @@ func TestDiscoverCasesCIModeExcludesBuildrundir(t *testing.T) {
 }
 
 func TestParseDirectiveOptions(t *testing.T) {
+	guardTestTimeout(t)
 	opts, err := parseDirectiveOptions("runindir", []string{"-gomodversion", "1.23", "-goexperiment", "fieldtrack", "-ldflags", "-strictdups=2", "-w=0", "arg1"}, 20*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -549,6 +572,7 @@ func TestParseDirectiveOptions(t *testing.T) {
 }
 
 func TestParseCompilerDirectiveOptions(t *testing.T) {
+	guardTestTimeout(t)
 	opts, err := parseDirectiveOptions("errorcheck", []string{
 		"-0", "-lang=go1.17", "-N", "-goexperiment", "fieldtrack",
 	}, 20*time.Second)
@@ -570,6 +594,7 @@ func TestParseCompilerDirectiveOptions(t *testing.T) {
 }
 
 func TestParseRundirCompilerAndLinkerFlags(t *testing.T) {
+	guardTestTimeout(t)
 	opts, err := parseDirectiveOptions("rundir", []string{"-N", "-ldflags", "-w", "-strictdups=2"}, 20*time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -583,6 +608,7 @@ func TestParseRundirCompilerAndLinkerFlags(t *testing.T) {
 }
 
 func TestDirectoryBuildFlagsMatchGoFlagShape(t *testing.T) {
+	guardTestTimeout(t)
 	goFlags, llgoFlags := directoryBuildFlags(directiveOptions{
 		CompilerFlags: []string{"-N", "-l=4"},
 		LinkerFlags:   []string{"-strictdups=2", "-w=0"},
@@ -597,6 +623,7 @@ func TestDirectoryBuildFlagsMatchGoFlagShape(t *testing.T) {
 }
 
 func TestCheckExpectedErrors(t *testing.T) {
+	guardTestTimeout(t)
 	file := filepath.Join(t.TempDir(), "case.go")
 	src := `package p
 var _ = missing // ERROR "undefined: missing"
@@ -611,6 +638,7 @@ var _ = missing // ERROR "undefined: missing"
 }
 
 func TestCheckExpectedErrorsReportsMissingDiagnostic(t *testing.T) {
+	guardTestTimeout(t)
 	file := filepath.Join(t.TempDir(), "case.go")
 	src := `package p
 var _ = missing // ERROR "undefined: missing"
@@ -625,6 +653,7 @@ var _ = missing // ERROR "undefined: missing"
 }
 
 func TestCheckExpectedErrorsNormalizesLexicalDiagnostics(t *testing.T) {
+	guardTestTimeout(t)
 	file := filepath.Join(t.TempDir(), "case.go")
 	src := `package p
 var _ = 0 // ERROR "newline in string"
@@ -671,6 +700,7 @@ var _ = 0 // ERROR "mantissa requires a 'p' exponent"
 }
 
 func TestCheckExpectedErrorsDiscardsPairedMissingCommaDiagnostics(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name      string
 		source    string
@@ -726,6 +756,7 @@ func f(x int /* // GC_ERROR "unexpected newline"
 }
 
 func TestCheckExpectedErrorsKeepsUnrelatedDiagnostics(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name   string
 		src    string
@@ -770,6 +801,7 @@ func TestCheckExpectedErrorsKeepsUnrelatedDiagnostics(t *testing.T) {
 }
 
 func TestCheckExpectedErrorsDiscardsExactParserPair(t *testing.T) {
+	guardTestTimeout(t)
 	file := filepath.Join(t.TempDir(), "case.go")
 	src := "package p\nfunc f() {\n\tif a := 10 { // ERROR \"cannot use a := 10 as value\"\n\t}\n}\n"
 	if err := os.WriteFile(file, []byte(src), 0o644); err != nil {
@@ -794,6 +826,7 @@ func TestCheckExpectedErrorsDiscardsExactParserPair(t *testing.T) {
 }
 
 func TestCheckExpectedErrorsScopesImportAlias(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name, src string
 		wantOK    bool
@@ -816,6 +849,7 @@ func TestCheckExpectedErrorsScopesImportAlias(t *testing.T) {
 }
 
 func TestDiscardPairedParserDiagnosticsIsExactMultiset(t *testing.T) {
+	guardTestTimeout(t)
 	dir := t.TempDir()
 	fileA := filepath.Join(dir, "a", "case.go")
 	fileB := filepath.Join(dir, "b", "case.go")
@@ -838,6 +872,7 @@ func TestDiscardPairedParserDiagnosticsIsExactMultiset(t *testing.T) {
 }
 
 func TestPreferSpecificDiagnostics(t *testing.T) {
+	guardTestTimeout(t)
 	got := preferSpecificDiagnostics([]string{
 		"case.go:18:16: requires go1.22 or later (file declares go1.21)",
 		"/tmp/case.go:18: requires go1.22 or later",
@@ -857,6 +892,7 @@ func TestPreferSpecificDiagnostics(t *testing.T) {
 }
 
 func TestNormalizeCompilerDiagnosticMessage(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name string
 		in   string
@@ -917,6 +953,7 @@ func TestNormalizeCompilerDiagnosticMessage(t *testing.T) {
 }
 
 func TestMatchesExpectedDiagnosticGoTypesAliases(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name     string
 		expected string
@@ -943,6 +980,7 @@ func TestMatchesExpectedDiagnosticGoTypesAliases(t *testing.T) {
 }
 
 func TestCheckExpectedErrorsFiltersDeterministicSecondaryDiagnostics(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name   string
 		source string
@@ -1048,6 +1086,7 @@ func f(s uint) {
 }
 
 func TestCheckExpectedErrorsKeepsUnrelatedTypeDiagnostics(t *testing.T) {
+	guardTestTimeout(t)
 	tests := []struct {
 		name   string
 		source string
@@ -1152,6 +1191,7 @@ func f(s uint) {
 }
 
 func TestCheckExpectedErrorsSeparatesSameBasenameSources(t *testing.T) {
+	guardTestTimeout(t)
 	root := t.TempDir()
 	leftDir := filepath.Join(root, "left")
 	rightDir := filepath.Join(root, "right")
@@ -1180,6 +1220,7 @@ func TestCheckExpectedErrorsSeparatesSameBasenameSources(t *testing.T) {
 }
 
 func TestSecondaryDiagnosticsDoNotCrossSameBasenameSources(t *testing.T) {
+	guardTestTimeout(t)
 	root := t.TempDir()
 	left := filepath.Join(root, "left", "case.go")
 	right := filepath.Join(root, "right", "case.go")
@@ -1220,6 +1261,7 @@ var _ = missing // ERROR "undefined: missing"
 }
 
 func TestSplitSourceFiles(t *testing.T) {
+	guardTestTimeout(t)
 	files, args := splitSourceFiles("index0.go", []string{"./index.go", "arg1", "arg2"})
 	if !reflect.DeepEqual(files, []string{"index0.go", "index.go"}) {
 		t.Fatalf("files=%v, want [index0.go index.go]", files)
@@ -1230,6 +1272,7 @@ func TestSplitSourceFiles(t *testing.T) {
 }
 
 func TestToolchainGoCommand(t *testing.T) {
+	guardTestTimeout(t)
 	goroot := filepath.Join("toolchains", "go1.26.5")
 	for _, tc := range []struct {
 		goos string
@@ -1248,6 +1291,7 @@ func TestToolchainGoCommand(t *testing.T) {
 }
 
 func TestNeedsExternalCgoBaseline(t *testing.T) {
+	guardTestTimeout(t)
 	dir := t.TempDir()
 	cgoFile := filepath.Join(dir, "cgo.go")
 	if err := os.WriteFile(cgoFile, []byte("package main\nimport _ \"runtime/cgo\"\n"), 0o644); err != nil {
@@ -1292,6 +1336,7 @@ func TestNeedsExternalCgoBaseline(t *testing.T) {
 }
 
 func TestRunSingleFileCaseExcludesUnlistedSiblings(t *testing.T) {
+	guardTestTimeout(t)
 	disableSystemMemoryLimits(t)
 	repoRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repoRoot, "go.mod"), []byte("module example.com/llgo\n"), 0o644); err != nil {
@@ -1366,6 +1411,7 @@ func main() {
 }
 
 func TestEnsureModuleWorkspace(t *testing.T) {
+	guardTestTimeout(t)
 	dir := t.TempDir()
 	if err := ensureModuleWorkspace(dir, "llgo-goroot-runoutput", "1.14"); err != nil {
 		t.Fatal(err)
@@ -1381,6 +1427,7 @@ func TestEnsureModuleWorkspace(t *testing.T) {
 }
 
 func TestRunOutputCaseGeneratesWithBaselineGoOnly(t *testing.T) {
+	guardTestTimeout(t)
 	disableSystemMemoryLimits(t)
 	dir := t.TempDir()
 	repoRoot := filepath.Join(dir, "repo")
@@ -1458,6 +1505,7 @@ func disableSystemMemoryLimits(t *testing.T) {
 }
 
 func TestToolchainGoModVersion(t *testing.T) {
+	guardTestTimeout(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "VERSION"), []byte("go1.24.11\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -1472,6 +1520,7 @@ func TestToolchainGoModVersion(t *testing.T) {
 }
 
 func TestStageRundirLayoutRewritesRelativeImports(t *testing.T) {
+	guardTestTimeout(t)
 	srcDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(srcDir, "a.go"), []byte("package a\nconst X = 1\n"), 0o644); err != nil {
 		t.Fatal(err)

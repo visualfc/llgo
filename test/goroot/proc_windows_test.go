@@ -139,6 +139,7 @@ func terminateWindowsProcess(pid uint32) {
 }
 
 func TestWindowsProcessTree(t *testing.T) {
+	guardTestTimeout(t)
 	processes := map[uint32]windowsProcessInfo{
 		10: {parentPID: 1},
 		11: {parentPID: 10},

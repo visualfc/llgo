@@ -6,6 +6,8 @@ copying the upstream source files into this repository.
 The source of truth is an external `GOROOT`. Upstream files stay read-only;
 each case runs in a temporary workspace.
 
+The runner's own unit tests each have a three-minute watchdog, including their subtests and cleanup. Each case logs `goroot case START` and `goroot case END` with its name and elapsed time to stderr; external GOROOT cases also log their path and position in the suite. Helper subprocesses keep their original output contracts. A timeout fails the test process and reports the test name; it is not retried or ignored. This limit does not apply to the external `TestGoRootRunCases` suite, whose individual build/run steps use the budgets below. Child output pipes have a five-second drain limit after exit, and termination is followed by at most ten seconds of waiting before failing the runner. These guards depend on the runner's runtime timers working; they do not replace an external process/job timeout for runtime-wide hangs.
+
 Directive modes:
 
 - `legacy`: `run`

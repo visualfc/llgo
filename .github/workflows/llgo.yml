@@ -149,6 +149,11 @@ jobs:
           export CHECK_STD_SYMBOLS="$RUNNER_TEMP/llgo-bin/check_std_symbols${tool_suffix}"
           dev/test_go_version.sh 1.27
 
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            # The TLS regression lives in the runtime submodule, outside test/.
+            (cd runtime && "$LLGO" test -v -run '^TestSlotGCAllocation$' -count=20 -timeout=2m ./internal/clite/tls)
+          fi
+
       - name: Check std symbol coverage
         # Split profiles leave this profile-wide check on shard 1. Unsharded
         # non-amd64 profiles run it here after their full package test.

@@ -18,11 +18,17 @@
 
 package tls
 
+import c "github.com/xgo-dev/llgo/runtime/internal/clite"
+
 type slot[T any] struct {
 	value      T
 	destructor func(*T)
 }
 
-func registerSlot[T any](s *slot[T]) {}
+func allocSlot(size uintptr) c.Pointer {
+	return c.Calloc(1, size)
+}
 
-func deregisterSlot[T any](s *slot[T]) {}
+func freeSlot(ptr c.Pointer) {
+	c.Free(ptr)
+}
