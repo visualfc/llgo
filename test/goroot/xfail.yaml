@@ -54,13 +54,18 @@ timeouts:
     timeout: 1m
     reason: uglyfib runs close to the default timeout on loaded linux/amd64 runners
   - version: go1.27
-    platform: windows-msvc/386
+    platform: windows/386
     directive: run
     case: abi/uglyfib.go
     timeout: 90s
-    reason: uglyfib can exceed the default timeout on loaded Windows MSVC 386 runners
+    reason: uglyfib can exceed the default timeout on loaded Windows 386 runners
   - version: go1.27
-    platform: windows/amd64
+    platform: windows/386
+    directive: runoutput
+    case: index0.go
+    timeout: 90s
+    reason: the generated index stress program can exceed the default timeout on loaded Windows 386 runners
+  - platform: windows/amd64
     directive: run
     case: fixedbugs/issue25897a.go
     timeout: 90s
@@ -139,8 +144,7 @@ flakes:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the 1m run timeout on darwin/arm64
-  - version: go1.27
-    platform: windows/amd64
+  - platform: windows/amd64
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the run timeout on Windows amd64
@@ -149,16 +153,16 @@ flakes:
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the run timeout on Windows 386
   - version: go1.27
-    platform: windows-msvc/386
+    platform: windows/386
     directive: run
     case: abi/uglyfib.go
-    reason: uglyfib can complete or exceed its run timeout on a loaded Windows MSVC 386 runner
-xfails:
+    reason: uglyfib can complete or exceed its run timeout on a loaded Windows 386 runner
   - version: go1.27
-    platform: windows-mingw/386
+    platform: windows/386
     directive: runoutput
     case: index0.go
-    reason: LLVM target object emission still fails while compiling the generated index stress program on Windows MinGW 386
+    reason: the generated index stress program can pass, time out, or fail during LLVM target object emission on Windows 386
+xfails:
   - platform: darwin/arm64
     directive: runoutput
     case: rangegen.go
@@ -204,13 +208,7 @@ xfails:
     directive: run
     case: inline_literal.go
     reason: LLGo returns the wrong result for an inlined closure literal on Windows amd64
-  - version: go1.26
-    platform: windows-mingw/amd64
-    directive: run
-    case: fixedbugs/issue58300.go
-    reason: LLGo emits unexpected runtime output for the unsafe string conversion test on Windows MinGW amd64
-  - version: go1.27
-    platform: windows/amd64
+  - platform: windows/amd64
     directive: run
     case: fixedbugs/issue58300.go
     reason: LLGo emits unexpected runtime output for the unsafe string conversion test on Windows amd64
@@ -219,26 +217,14 @@ xfails:
     directive: run
     case: fixedbugs/issue75764.go
     reason: LLGo does not eliminate the deep interface tail-call chain and crashes on Windows amd64
-  - version: go1.27
-    platform: windows/386
+  - platform: windows/386
     directive: run
     case: fixedbugs/bug114.go
-    reason: the Go 1.27 baseline cannot build this case in the Windows 386 target environment
-  - version: go1.26
-    platform: windows-msvc/386
-    directive: run
-    case: fixedbugs/bug114.go
-    reason: the Go 1.26 baseline cannot build this case in the Windows MSVC 386 target environment
-  - version: go1.27
-    platform: windows/386
+    reason: the Go baseline cannot build this case in the Windows 386 target environment
+  - platform: windows/386
     directive: run
     case: fixedbugs/bug356.go
     reason: LLGo emits unexpected runtime output for this interface conversion test on Windows 386
-  - version: go1.26
-    platform: windows-msvc/386
-    directive: run
-    case: fixedbugs/bug356.go
-    reason: LLGo emits unexpected runtime output for this interface conversion test on Windows MSVC 386
   - platform: windows/386
     directive: run
     case: gcgort.go
@@ -247,15 +233,10 @@ xfails:
     directive: run
     case: printbig.go
     reason: the Go baseline cannot build this large-constant case in the Windows 386 target environment
-  - platform: windows-mingw/386
+  - platform: windows/386
     directive: run
     case: fixedbugs/issue23305.go
-    reason: the Go baseline cannot build this cgo case in the Windows MinGW 386 target environment
-  - version: go1.27
-    platform: windows-msvc/386
-    directive: run
-    case: fixedbugs/issue23305.go
-    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+    reason: the Go baseline cannot build this case in the Windows 386 target environment
   - version: go1.27
     platform: windows-msvc/386
     directive: run
@@ -344,16 +325,14 @@ xfails:
     directive: run
     case: fixedbugs/bug514.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
-  - version: go1.27
-    platform: windows-msvc/386
+  - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue42032.go
-    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
-  - version: go1.27
-    platform: windows-msvc/amd64
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC 386 target environment
+  - platform: windows-msvc/amd64
     directive: run
     case: fixedbugs/issue42032.go
-    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
+    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
   - platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42032.go

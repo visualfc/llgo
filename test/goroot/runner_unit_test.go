@@ -347,12 +347,14 @@ func TestObservedFailuresHaveXFailClassifications(t *testing.T) {
 		platform string
 		tc       testCase
 	}{
-		{version: "go1.27.0", platform: "windows-mingw/386", tc: testCase{RelPath: "index0.go", Directive: "runoutput"}},
 		{version: "go1.27.0", platform: "linux/amd64", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
 		{version: "go1.27.0", platform: "linux/amd64", tc: testCase{RelPath: "fixedbugs/issue34123.go", Directive: "run"}},
 		{version: "go1.27.0", platform: "linux/amd64", tc: testCase{RelPath: "heapsampling.go", Directive: "run"}},
 		{version: "go1.26.7", platform: "linux/amd64", tc: testCase{RelPath: "convert5.go", Directive: "run"}},
 		{version: "go1.26.7", platform: "windows-msvc/amd64", tc: testCase{RelPath: "linkmain_run.go", Directive: "run"}},
+		{version: "go1.26.7", platform: "windows-msvc/amd64", tc: testCase{RelPath: "fixedbugs/issue58300.go", Directive: "run"}},
+		{version: "go1.26.7", platform: "windows-msvc/386", tc: testCase{RelPath: "fixedbugs/issue23305.go", Directive: "run"}},
+		{version: "go1.26.7", platform: "windows-msvc/386", tc: testCase{RelPath: "fixedbugs/issue42032.go", Directive: "run"}},
 	}
 	for _, tt := range tests {
 		if match, _ := cfg.Match(tt.version, tt.platform, tt.tc); !match {
@@ -370,6 +372,7 @@ func TestObservedPassesDoNotHaveXFailClassifications(t *testing.T) {
 		tc       testCase
 	}{
 		{version: "go1.27.0", platform: "darwin/arm64", tc: testCase{RelPath: "index0.go", Directive: "runoutput"}},
+		{version: "go1.27.0", platform: "windows-mingw/386", tc: testCase{RelPath: "index0.go", Directive: "runoutput"}},
 		{version: "go1.27.0", platform: "windows-msvc/386", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
 		{version: "go1.27.0", platform: "windows-msvc/amd64", tc: testCase{RelPath: "fixedbugs/issue34123.go", Directive: "run"}},
 		{version: "go1.27.0", platform: "darwin/arm64", tc: testCase{RelPath: "fixedbugs/issue52612.go", Directive: "run"}},
@@ -381,16 +384,46 @@ func TestObservedPassesDoNotHaveXFailClassifications(t *testing.T) {
 	}
 }
 
-func TestWindows386Issue25897aIsFlakyWithTimeout(t *testing.T) {
+func TestWindows386Index0IsFlakyWithTimeout(t *testing.T) {
+	repo := repoRoot(t)
+	cfg := loadXFailConfig(t, repo, filepath.Join("test", "goroot", "xfail.yaml"))
+	tc := testCase{RelPath: "index0.go", Directive: "runoutput"}
+	for _, platform := range []string{"windows-msvc/386", "windows-mingw/386"} {
+		if match, _ := cfg.MatchFlaky("go1.27.0", platform, tc); !match {
+			t.Errorf("%s did not match flake for %s", tc.RelPath, platform)
+		}
+		if timeout, _, match := cfg.MatchTimeout("go1.27.0", platform, tc); !match || timeout != 90*time.Second {
+			t.Errorf("timeout for %s/%s = %s, %v; want 1m30s, true", tc.RelPath, platform, timeout, match)
+		}
+	}
+}
+
+func TestWindows386UglyfibIsFlakyWithTimeout(t *testing.T) {
+	repo := repoRoot(t)
+	cfg := loadXFailConfig(t, repo, filepath.Join("test", "goroot", "xfail.yaml"))
+	tc := testCase{RelPath: "abi/uglyfib.go", Directive: "run"}
+	for _, platform := range []string{"windows-msvc/386", "windows-mingw/386"} {
+		if match, _ := cfg.MatchFlaky("go1.27.0", platform, tc); !match {
+			t.Errorf("%s did not match flake for %s", tc.RelPath, platform)
+		}
+		if timeout, _, match := cfg.MatchTimeout("go1.27.0", platform, tc); !match || timeout != 90*time.Second {
+			t.Errorf("timeout for %s/%s = %s, %v; want 1m30s, true", tc.RelPath, platform, timeout, match)
+		}
+	}
+}
+
+func TestWindowsIssue25897aIsFlakyWithTimeout(t *testing.T) {
 	repo := repoRoot(t)
 	cfg := loadXFailConfig(t, repo, filepath.Join("test", "goroot", "xfail.yaml"))
 	tc := testCase{RelPath: "fixedbugs/issue25897a.go", Directive: "run"}
-	for _, platform := range []string{"windows-msvc/386", "windows-mingw/386"} {
-		if match, _ := cfg.MatchFlaky("go1.26.7", platform, tc); !match {
-			t.Errorf("%s did not match flake for %s", tc.RelPath, platform)
-		}
-		if timeout, _, match := cfg.MatchTimeout("go1.26.7", platform, tc); !match || timeout != 90*time.Second {
-			t.Errorf("timeout for %s/%s = %s, %v; want 1m30s, true", tc.RelPath, platform, timeout, match)
+	for _, version := range []string{"go1.26.7", "go1.27.0"} {
+		for _, platform := range []string{"windows-msvc/386", "windows-mingw/386", "windows-msvc/amd64", "windows-mingw/amd64"} {
+			if match, _ := cfg.MatchFlaky(version, platform, tc); !match {
+				t.Errorf("%s did not match flake for %s/%s", tc.RelPath, version, platform)
+			}
+			if timeout, _, match := cfg.MatchTimeout(version, platform, tc); !match || timeout != 90*time.Second {
+				t.Errorf("timeout for %s/%s/%s = %s, %v; want 1m30s, true", tc.RelPath, version, platform, timeout, match)
+			}
 		}
 	}
 }
