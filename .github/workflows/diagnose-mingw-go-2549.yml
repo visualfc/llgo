@@ -31,6 +31,20 @@ jobs:
           llvm-version: '22'
           windows-abi: mingw
       - uses: ./.github/actions/setup-go
+      - name: Prepare native crash capture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'llgo-procdump.zip'
+          $install = Join-Path $env:RUNNER_TEMP 'llgo-procdump'
+          Invoke-WebRequest 'https://download.sysinternals.com/files/Procdump.zip' -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $install -Force
+          $procdump = Join-Path $install 'procdump64.exe'
+          $signature = Get-AuthenticodeSignature -FilePath $procdump
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation') {
+            throw 'ProcDump does not have a valid Microsoft signature'
+          }
+          Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_DIAG_PROCDUMP=$procdump"
       - name: Record runner and build the original test package
         id: build
         shell: pwsh
@@ -56,7 +70,7 @@ jobs:
           go test -ldflags='-linkmode=external -extldflags=-lsynchronization' \
             -timeout 45m -coverprofile=diag-results/coverage-original.txt \
             -covermode=atomic ./test/go 2>&1 | tee diag-results/original-command.log
-      - name: Repeat the full package with per-test logs
+      - name: Capture exceptions and repeat the full package
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: python {0}
         run: |
