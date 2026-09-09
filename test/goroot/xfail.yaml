@@ -1,59 +1,42 @@
+# Windows platform selectors may use windows/ARCH for both ABIs or the more
+# specific windows-msvc/ARCH and windows-mingw/ARCH forms.
 host_skips:
   - directive: run
     case: fixedbugs/issue16016.go
     reason: the test intentionally creates enough goroutines to exhaust LLGo's one-thread-per-goroutine host limit
-  - version: go1.24
-    platform: darwin/arm64
-    directive: runoutput
-    case: rangegen.go
-    reason: go1.24 rangegen runoutput exceeds the darwin/arm64 CI timeout
   - directive: run
     case: chan/goroutines.go
     reason: the test intentionally creates enough goroutines to exhaust LLGo's one-thread-per-goroutine host limit
   - directive: run
     case: chanlinear.go
     reason: the test repeatedly doubles a goroutine-per-channel workload and can exhaust LLGo's one-thread-per-goroutine host limit
-  - version: go1.24
-    platform: darwin/arm64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    reason: go1.24 bug449 generated build exceeds the darwin/arm64 hosted runner resource budget
   - version: go1.26
     platform: darwin/arm64
     directive: runoutput
     case: fixedbugs/bug449.go
     reason: go1.26 bug449 generated build exceeds the darwin/arm64 hosted runner resource budget
-  - version: go1.24
-    platform: linux/amd64
-    directive: runoutput
-    case: fixedbugs/bug449.go
-    reason: go1.24 bug449 generated build exceeds the linux/amd64 hosted runner memory budget
   - version: go1.26
     platform: linux/amd64
     directive: runoutput
     case: fixedbugs/bug449.go
     reason: go1.26 bug449 generated build exceeds the linux/amd64 hosted runner memory budget
 timeouts:
-  - version: go1.26
-    platform: darwin/arm64
+  - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue79186.go
     timeout: 90s
     reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
-  - version: go1.26
-    platform: linux/amd64
+  - platform: linux/amd64
     directive: run
     case: fixedbugs/issue79186.go
     timeout: 90s
     reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
-  - version: go1.26
-    platform: windows/amd64
+  - platform: windows/amd64
     directive: run
     case: fixedbugs/issue79186.go
     timeout: 90s
     reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
-  - version: go1.26
-    platform: windows/arm64
+  - platform: windows/arm64
     directive: run
     case: fixedbugs/issue79186.go
     timeout: 90s
@@ -70,18 +53,24 @@ timeouts:
     case: abi/uglyfib.go
     timeout: 1m
     reason: uglyfib runs close to the default timeout on loaded linux/amd64 runners
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: abi/uglyfib.go
+    timeout: 90s
+    reason: uglyfib can exceed the default timeout on loaded Windows MSVC 386 runners
+  - version: go1.27
+    platform: windows/amd64
+    directive: run
+    case: fixedbugs/issue25897a.go
+    timeout: 90s
+    reason: the single-P continuous-GC loop needs load-dependent runtime slack on Windows amd64
   - version: go1.26
     platform: darwin/arm64
     directive: runoutput
     case: rangegen.go
     timeout: 20m
     reason: rangegen runoutput compiles the generated stress test past 10m on darwin/arm64 CI
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: nosplit.go
-    timeout: 2m
-    reason: nosplit run runs past the default timeout on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -89,13 +78,11 @@ timeouts:
     timeout: 2m
     reason: nosplit run runs past the default timeout on linux/amd64
 flakes:
-  - version: go1.26
-    platform: darwin/arm64
+  - platform: darwin/arm64
     directive: run
     case: fixedbugs/issue79186.go
     reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
-  - version: go1.26
-    platform: linux/amd64
+  - platform: linux/amd64
     directive: run
     case: fixedbugs/issue79186.go
     reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
@@ -109,11 +96,6 @@ flakes:
     directive: run
     case: fixedbugs/issue48898.go
     reason: go1.26 goroot run can either pass or fail on linux/amd64
-  - version: go1.24
-    platform: darwin/arm64
-    directive: runoutput
-    case: rotate0.go
-    reason: rotate0 runoutput can either pass or time out on darwin/arm64
   - version: go1.26
     platform: darwin/arm64
     directive: runoutput
@@ -135,11 +117,6 @@ flakes:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the 1m run timeout on linux/amd64
-  - version: go1.24
-    platform: linux/amd64
-    directive: run
-    case: fixedbugs/issue27695.go
-    reason: concurrent GC can either preserve reflect-call results or expose incomplete result scanning on linux/amd64
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -157,6 +134,16 @@ flakes:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the 1m run timeout on darwin/arm64
+  - version: go1.27
+    platform: windows/amd64
+    directive: run
+    case: fixedbugs/issue25897a.go
+    reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the run timeout on Windows amd64
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: abi/uglyfib.go
+    reason: uglyfib can complete or exceed its run timeout on a loaded Windows MSVC 386 runner
 xfails:
   - directive: runoutput
     case: index0.go
@@ -167,11 +154,155 @@ xfails:
   - directive: run
     case: fixedbugs/issue34123.go
     reason: LLGo reports the deferred recovery frame two source lines earlier than cmd/compile
+  - directive: run
+    case: fixedbugs/issue79762.go
+    reason: LLGo's runtime stack does not report the exact inlined source locations required by this test
+  - directive: run
+    case: fixedbugs/issue80196.go
+    reason: LLGo overflows its native stack while repeatedly assigning the escaped named result in this test
+  - directive: run
+    case: genmeth1.go
+    reason: the current go/types and x/tools SSA path panics while instantiating the new generic-method test
   - version: go1.26
     platform: linux/amd64
     directive: run
     case: convert5.go
     reason: LLGo does not match Go 1.26 linux/amd64 saturation results for out-of-range floating-point conversions
+  - version: go1.27
+    platform: linux/amd64
+    directive: run
+    case: convert5.go
+    reason: LLGo does not match Go 1.27 linux/amd64 saturation results for out-of-range floating-point conversions
+  - version: go1.27
+    platform: windows/amd64
+    directive: run
+    case: convert5.go
+    reason: LLGo does not match Go 1.27 Windows amd64 saturation results for out-of-range floating-point conversions
+  - version: go1.27
+    platform: windows/amd64
+    directive: run
+    case: inline_literal.go
+    reason: LLGo returns the wrong result for an inlined closure literal on Windows amd64
+  - version: go1.27
+    platform: windows/amd64
+    directive: run
+    case: fixedbugs/issue58300.go
+    reason: LLGo emits unexpected runtime output for the unsafe string conversion test on Windows amd64
+  - version: go1.27
+    platform: windows/amd64
+    directive: run
+    case: fixedbugs/issue75764.go
+    reason: LLGo does not eliminate the deep interface tail-call chain and crashes on Windows amd64
+  - version: go1.27
+    platform: windows/386
+    directive: run
+    case: fixedbugs/bug114.go
+    reason: the Go 1.27 baseline cannot build this case in the Windows 386 target environment
+  - version: go1.27
+    platform: windows/386
+    directive: run
+    case: fixedbugs/bug356.go
+    reason: LLGo emits unexpected runtime output for this interface conversion test on Windows 386
+  - version: go1.27
+    platform: windows/386
+    directive: run
+    case: gcgort.go
+    reason: LLGo fails the concurrent GC stress test on Windows 386
+  - version: go1.27
+    platform: windows/386
+    directive: run
+    case: printbig.go
+    reason: the Go 1.27 baseline cannot build this large-constant case in the Windows 386 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue23305.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue34968.go
+    reason: the Go 1.27 baseline cannot build this cgo checkptr case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue47227.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue40954.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue40954.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue46903.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue46903.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue51733.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue51733.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/bug514.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/bug514.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
+  - version: go1.27
+    platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/bug514.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC arm64 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue42032.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue42032.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
+  - version: go1.27
+    platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue42032.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC arm64 target environment
+  - version: go1.27
+    platform: windows-msvc/386
+    directive: run
+    case: fixedbugs/issue42076.go
+    reason: the Go 1.27 baseline cannot build this cgo case in the Windows MSVC 386 target environment
+  - version: go1.27
+    platform: windows-msvc/amd64
+    directive: run
+    case: fixedbugs/issue42076.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC amd64 target environment
+  - version: go1.27
+    platform: windows-msvc/arm64
+    directive: run
+    case: fixedbugs/issue42076.go
+    reason: the Go 1.27 baseline executable is not runnable in the Windows MSVC arm64 target environment
   - directive: run
     case: fixedbugs/issue52612.go
     reason: LLGo can panic while sync/atomic.Value pins the current goroutine without shared core-runtime procPin hooks

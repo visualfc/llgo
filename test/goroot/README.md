@@ -27,6 +27,12 @@ are also skipped. Each not-applicable entry documents both the
 toolchain-specific mechanism under test and why the corresponding behavior is
 not an LLGo compatibility goal.
 
+The GOROOT workflow builds LLGo and this runner with the repository toolchain,
+then runs the complete corpus from the two most recent Go releases. Every run
+publishes the expectation-mismatch table in its Actions summary. The scheduled
+run in `xgo-dev/llgo` also replaces the previous `[GOROOT daily] YYYY-MM-DD`
+issue; manually dispatched and fork runs never modify issues.
+
 Basic usage:
 
 ```bash
