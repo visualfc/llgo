@@ -116,6 +116,58 @@ func TestReleaseTagsFor(t *testing.T) {
 	}
 }
 
+func TestWriteStdlibImportCfgIgnoresRepositoryModule(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake go tool uses a shell script")
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "pwd.log")
+	goTool := filepath.Join(dir, "go")
+	script := fmt.Sprintf("#!/bin/sh\npwd > %q\nprintf 'packagefile runtime=/tmp/runtime.a\\n'\n", logPath)
+	if err := os.WriteFile(goTool, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	configPath := writeStdlibImportCfg(t, goTool)
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(config), "packagefile runtime=/tmp/runtime.a\n"; got != want {
+		t.Fatalf("import config=%q, want %q", got, want)
+	}
+	commandDir, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(commandDir)) == wd {
+		t.Fatalf("go list std ran inside repository package directory %q", wd)
+	}
+}
+
+func TestBaselineEnvironmentsForceLocalToolchain(t *testing.T) {
+	t.Setenv("GOTOOLCHAIN", "auto")
+	for name, env := range map[string][]string{
+		"direct": baselineGoEnv(),
+		"runner": runnerEnv("/repo", "/goroot", "/gopath", nil),
+	} {
+		values := make(map[string]string)
+		for _, item := range env {
+			key, value, ok := strings.Cut(item, "=")
+			if ok {
+				values[key] = value
+			}
+		}
+		if got := values["GOTOOLCHAIN"]; got != "local" {
+			t.Errorf("%s environment GOTOOLCHAIN=%q, want local", name, got)
+		}
+	}
+}
+
 func TestXFailMatch(t *testing.T) {
 	guardTestTimeout(t)
 	cfg := xfailConfig{

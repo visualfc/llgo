@@ -74,11 +74,15 @@ jobs:
           architecture: ${{ matrix.os == 'windows-11-arm' && matrix.windows_abi == 'mingw' && 'arm64' || startsWith(matrix.os, 'windows') && 'x64' || '' }}
 
       - name: Build LLGo and the GOROOT runner
+        id: build-tools
         shell: bash
         run: |
           LLGO_BUILD_GOROOT_RUNNER=1 dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
 
-          echo "LLGO_BUILD_GO_VERSION=$(go env GOVERSION)" >> "$GITHUB_ENV"
+          build_version="$(go env GOVERSION)"
+          build_version="${build_version#go}"
+          echo "go-version=$build_version" >> "$GITHUB_OUTPUT"
+          echo "LLGO_BUILD_GO_VERSION=$build_version" >> "$GITHUB_ENV"
 
           tool_suffix=
           if [[ "$RUNNER_OS" == Windows ]]; then
@@ -108,6 +112,7 @@ jobs:
       # Install the complete distribution after building LLGo and the runner,
       # so those binaries always use .go-version while the corpus can vary.
       - name: Set up target Go
+        if: steps.target-go.outputs.version != steps.build-tools.outputs.go-version
         uses: ./.github/actions/setup-go
         with:
           go-version: ${{ steps.target-go.outputs.version }}
