@@ -21,11 +21,18 @@ Directive modes:
 conventions. Compile-only and diagnostic cases are executed, not omitted from
 the coverage total. Known failures remain executed and are classified through
 `xfail.yaml`. Cases that exercise gc-specific or otherwise inapplicable
-behavior are classified separately through `notapplicable.yaml`, so the xfail
-count continues to represent remaining LLGo compatibility work. Only
-explicitly host-unsafe cases are skipped. Each not-applicable entry documents
-both the toolchain-specific mechanism under test and why the corresponding
-behavior is not an LLGo compatibility goal.
+behavior are skipped globally through `notapplicable.yaml`, so they cannot be
+mistaken for version-specific compatibility work. Explicitly host-unsafe cases
+are also skipped. Each not-applicable entry documents both the
+toolchain-specific mechanism under test and why the corresponding behavior is
+not an LLGo compatibility goal.
+
+The GOROOT workflow builds LLGo and this runner with the repository toolchain,
+then runs the `ci` directive set from the two most recent Go releases. Every run
+publishes the expectation-mismatch table in its Actions summary. The scheduled
+run in `xgo-dev/llgo` also replaces the previous `[GOROOT daily] YYYY-MM-DD`
+issue. A manual dispatch or adding the existing `go-test-compat` label to a
+pull request runs the same matrix without modifying issues.
 
 Basic usage:
 
