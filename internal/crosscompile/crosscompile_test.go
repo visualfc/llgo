@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/crosscompile/compile"
+	"github.com/xgo-dev/llgo/internal/env"
 	"github.com/xgo-dev/llgo/internal/lto"
 	"github.com/xgo-dev/llgo/internal/optlevel"
 	"github.com/xgo-dev/llgo/internal/xtool/llvm"
@@ -467,8 +468,8 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 			if !slices.Contains(export.LDFLAGS, "-sENVIRONMENT=web,worker,node") {
 				t.Errorf("named target does not enable its Node emulator: %v", export.LDFLAGS)
 			}
-			if !slices.Contains(export.LDFLAGS, "-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async") {
-				t.Errorf("named target does not mark the interruptible host wait as async: %v", export.LDFLAGS)
+			if !slices.Contains(export.LDFLAGS, emscriptenAsyncifyImports) {
+				t.Errorf("named target does not mark interruptible host wait and ffi_call_js as async: %v", export.LDFLAGS)
 			}
 			if !slices.Contains(export.LDFLAGS, "-sEXIT_RUNTIME=1") {
 				t.Errorf("named target does not let fatal Asyncify programs exit: %v", export.LDFLAGS)
@@ -534,6 +535,91 @@ func TestWASIProfileTargets(t *testing.T) {
 				t.Fatal("single-worker WASI does not request Asyncify post-link processing")
 			}
 		})
+	}
+}
+
+func TestAppendEmscriptenLibffiSearchPath(t *testing.T) {
+	var export Export
+	appendEmscriptenLibffiSearchPath(&export, "", WasmABIEmscripten)
+	if len(export.LDFLAGS) != 0 {
+		t.Fatalf("empty LLGO_ROOT appended %v", export.LDFLAGS)
+	}
+	appendEmscriptenLibffiSearchPath(&export, "/llgo", WasmABIEmscriptenMemory64)
+	want64 := "-L" + filepath.Join("/llgo", wasm64LibffiRelDir)
+	if !slices.Contains(export.LDFLAGS, want64) {
+		t.Fatalf("memory64 LDFLAGS %v do not search %s", export.LDFLAGS, want64)
+	}
+	appendEmscriptenLibffiSearchPath(&export, "/llgo", WasmABIUnspecified)
+	want32 := "-L" + filepath.Join("/llgo", wasm32LibffiRelDir)
+	if !slices.Contains(export.LDFLAGS, want32) {
+		t.Fatalf("unspecified ABI LDFLAGS %v do not search %s", export.LDFLAGS, want32)
+	}
+	appendEmscriptenLibffiSearchPath(&export, "/llgo", WasmABIEmscripten)
+	n := 0
+	for _, flag := range export.LDFLAGS {
+		if flag == want32 {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("emscripten search path count = %d, want 2 in %v", n, export.LDFLAGS)
+	}
+}
+
+func TestEmscriptenLibffiSearchPath(t *testing.T) {
+	root := env.LLGoROOT()
+	if root == "" {
+		t.Fatal("LLGO_ROOT is required to locate the vendored wasm32 libffi archive")
+	}
+	libDir := filepath.Join(root, wasm32LibffiRelDir)
+	if _, err := os.Stat(filepath.Join(libDir, "libffi.a")); err != nil {
+		t.Fatalf("vendored wasm32 libffi archive: %v", err)
+	}
+	wantL := "-L" + libDir
+
+	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(js.LDFLAGS, emscriptenAllowTableGrowth) {
+		t.Errorf("raw js/wasm LDFLAGS %v do not allow wasm table growth for libffi closures", js.LDFLAGS)
+	}
+	if !slices.Contains(js.LDFLAGS, wantL) {
+		t.Errorf("raw js/wasm LDFLAGS %v do not search %s", js.LDFLAGS, wantL)
+	}
+
+	named, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(named.LDFLAGS, emscriptenAllowTableGrowth) {
+		t.Errorf("emscripten LDFLAGS %v do not allow wasm table growth for libffi closures", named.LDFLAGS)
+	}
+	if !slices.Contains(named.LDFLAGS, wantL) {
+		t.Errorf("emscripten LDFLAGS %v do not search %s", named.LDFLAGS, wantL)
+	}
+
+	memory64, err := Use("", "", "emscripten-memory64", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want64 := "-L" + filepath.Join(root, wasm64LibffiRelDir)
+	if slices.Contains(memory64.LDFLAGS, wantL) {
+		t.Errorf("emscripten-memory64 LDFLAGS %v unexpectedly search the wasm32 libffi archive", memory64.LDFLAGS)
+	}
+	if !slices.Contains(memory64.LDFLAGS, want64) {
+		t.Errorf("emscripten-memory64 LDFLAGS %v do not search %s", memory64.LDFLAGS, want64)
+	}
+	if _, err := os.Stat(filepath.Join(root, wasm64LibffiRelDir, "libffi.a")); err != nil {
+		t.Fatalf("vendored wasm64 libffi archive: %v", err)
+	}
+
+	wasi, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(wasi.LDFLAGS, wantL) || slices.Contains(wasi.LDFLAGS, emscriptenAllowTableGrowth) {
+		t.Errorf("wasip1/wasm LDFLAGS %v unexpectedly include Emscripten libffi flags", wasi.LDFLAGS)
 	}
 }
 

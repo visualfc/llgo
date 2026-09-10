@@ -97,6 +97,13 @@ const (
 
 	emscriptenBrowserEnvironment = "-sENVIRONMENT=web,worker"
 	emscriptenNamedEnvironment   = "-sENVIRONMENT=web,worker,node"
+	emscriptenAllowTableGrowth   = "-sALLOW_TABLE_GROWTH=1"
+	// libffi calls the target through the JS import ffi_call_js. If that
+	// import is not listed, Asyncify cannot unwind a sleeping Go function
+	// invoked by reflect.Value.Call / MakeFunc.
+	emscriptenAsyncifyImports = "-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async,ffi_call_js"
+	wasm32LibffiRelDir        = "runtime/internal/clite/ffi/wasm32"
+	wasm64LibffiRelDir        = "runtime/internal/clite/ffi/wasm64"
 )
 
 func (abi WasmABI) valid() bool {
@@ -751,19 +758,34 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-sEXPORT_KEEPALIVE=1",
 			"-sEXPORT_ES6=1",
 			"-sALLOW_MEMORY_GROWTH=1",
+			emscriptenAllowTableGrowth,
 			"-sRESERVED_FUNCTION_POINTERS=1",
 			"-sEXPORTED_RUNTIME_METHODS=cwrap,allocateUTF8,stringToUTF8,UTF8ToString,FS,setValue,getValue",
 			"-sWASM=1",
 			"-sEXPORT_ALL=1",
 			"-sASYNCIFY=1",
-			"-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async",
+			emscriptenAsyncifyImports,
 			"-sSTACK_SIZE=5242880", // 5MB
 		}...)
+		appendEmscriptenLibffiSearchPath(&export, llgoRoot, wasmABI)
 	default:
 		err = errors.New("unsupported GOOS for WebAssembly: " + goos)
 		return
 	}
 	return
+}
+
+func appendEmscriptenLibffiSearchPath(export *Export, llgoRoot string, wasmABI WasmABI) {
+	// An empty LLGO_ROOT leaves -lffi without a search path; the linker then
+	// reports that it cannot find -lffi.
+	if llgoRoot == "" {
+		return
+	}
+	dir := wasm32LibffiRelDir
+	if wasmABI == WasmABIEmscriptenMemory64 {
+		dir = wasm64LibffiRelDir
+	}
+	export.LDFLAGS = append(export.LDFLAGS, "-L"+filepath.Join(llgoRoot, dir))
 }
 
 func emscriptenLinkLevel(level optlevel.Level) optlevel.Level {
