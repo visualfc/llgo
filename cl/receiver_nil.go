@@ -131,62 +131,6 @@ func isMethodReceiverWrapper(fn *ssa.Function) bool {
 	return fn != nil && (strings.HasPrefix(fn.Synthetic, "wrapper for ") || strings.HasPrefix(fn.Synthetic, "thunk for "))
 }
 
-// collectReceiverNilDerefChecks protects pre-existing pointer loads in the
-// receiver expression before LLVM can assume their bases are non-nil. Merely
-// checking at the later method call would leave an earlier null load as UB.
-// Address-only selections have no load and keep their check at call/creation.
-func collectReceiverNilDerefChecks(fn *ssa.Function, checks *ReceiverNilChecks) map[*ssa.UnOp]token.Pos {
-	// Without source metadata only promoted wrappers/thunks can add checks.
-	// Do not scan ordinary bodies when neither source can produce a result.
-	if checks == nil && !isMethodReceiverWrapper(fn) {
-		return nil
-	}
-	var loads map[*ssa.UnOp]token.Pos
-	var mark func(ssa.Value, token.Pos)
-	mark = func(value ssa.Value, pos token.Pos) {
-		switch value := value.(type) {
-		case *ssa.UnOp:
-			if value.Op != token.MUL {
-				return
-			}
-			if !isKnownNonNilAddr(value.X) && !isWrapNilCheckCall(value.X) {
-				if loads == nil {
-					loads = make(map[*ssa.UnOp]token.Pos)
-				}
-				loads[value] = pos
-			}
-			mark(value.X, pos)
-		case *ssa.FieldAddr:
-			mark(value.X, pos)
-		}
-	}
-	for _, block := range fn.Blocks {
-		for _, instr := range block.Instrs {
-			switch instr := instr.(type) {
-			case ssa.CallInstruction:
-				call := instr.Common()
-				if len(call.Args) == 0 {
-					continue
-				}
-				if isPointerMethodWrapperCall(fn, call) {
-					mark(call.Args[0], fn.Pos())
-				} else if checks != nil {
-					if check, ok := checks.calls[call.Pos()]; ok {
-						mark(call.Args[0], check.pos)
-					}
-				}
-			case *ssa.MakeClosure:
-				if checks != nil && len(instr.Bindings) != 0 {
-					if check, ok := checks.values[instr.Pos()]; ok {
-						mark(instr.Bindings[0], check.pos)
-					}
-				}
-			}
-		}
-	}
-	return loads
-}
-
 func (p *context) checkBoundMethodReceiver(b llssa.Builder, closure *ssa.MakeClosure) {
 	checks := p.options.ReceiverNilChecks
 	if checks == nil || len(closure.Bindings) == 0 {
@@ -204,7 +148,7 @@ func (p *context) checkAddressedMethodReceiver(b llssa.Builder, receiver ssa.Val
 		return
 	}
 	if load, ok := receiver.(*ssa.UnOp); ok && !check.address {
-		if _, protected := p.receiverNilDerefChecks[load]; protected {
+		if _, protected := p.recvNilDerefChecks[load]; protected {
 			return
 		}
 	}

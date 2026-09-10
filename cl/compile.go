@@ -154,35 +154,35 @@ type pkgInfo struct {
 type none = struct{}
 
 type context struct {
-	prog                   llssa.Program
-	pkg                    llssa.Package
-	fn                     llssa.Function
-	goFn                   *ssa.Function
-	fset                   *token.FileSet
-	goProg                 *ssa.Program
-	goTyps                 *types.Package
-	goPkg                  *ssa.Package
-	pyMod                  string
-	skips                  map[string]none
-	loaded                 map[*types.Package]*pkgInfo // loaded packages
-	bvals                  map[ssa.Value]llssa.Expr    // block values
-	methodNilDerefChecks   map[*ssa.UnOp]none
-	receiverNilDerefChecks map[*ssa.UnOp]token.Pos
-	vargs                  map[*ssa.Alloc][]llssa.Expr // varargs
-	funcs                  map[*ssa.Function]llssa.Function
-	linkOnceFns            map[*ssa.Function]none
-	stackDefers            map[*ssa.Function]bool
-	anonDefers             map[*ssa.Function]bool
-	recoverFacts           *recoverFacts
-	debugDIVars            map[*types.Var]llssa.DIVar
-	debugAllocVars         map[*ssa.Alloc]*types.Var
-	runtimeCallerFuncs     map[*ssa.Function]bool
-	panicSiteFuncs         map[*ssa.Function]bool
-	gcRoots                map[ssa.Value][]llssa.Expr
-	gcClosureRoot          llssa.Expr
-	safepointEntry         bool
-	safepoints             map[ssa.Instruction]struct{}
-	pcLineSeq              uint64
+	prog                 llssa.Program
+	pkg                  llssa.Package
+	fn                   llssa.Function
+	goFn                 *ssa.Function
+	fset                 *token.FileSet
+	goProg               *ssa.Program
+	goTyps               *types.Package
+	goPkg                *ssa.Package
+	pyMod                string
+	skips                map[string]none
+	loaded               map[*types.Package]*pkgInfo // loaded packages
+	bvals                map[ssa.Value]llssa.Expr    // block values
+	methodNilDerefChecks map[*ssa.UnOp]none
+	recvNilDerefChecks   map[*ssa.UnOp]token.Pos
+	vargs                map[*ssa.Alloc][]llssa.Expr // varargs
+	funcs                map[*ssa.Function]llssa.Function
+	linkOnceFns          map[*ssa.Function]none
+	stackDefers          map[*ssa.Function]bool
+	anonDefers           map[*ssa.Function]bool
+	recoverFacts         *recoverFacts
+	debugDIVars          map[*types.Var]llssa.DIVar
+	debugAllocVars       map[*ssa.Alloc]*types.Var
+	runtimeCallerFuncs   map[*ssa.Function]bool
+	panicSiteFuncs       map[*ssa.Function]bool
+	gcRoots              map[ssa.Value][]llssa.Expr
+	gcClosureRoot        llssa.Expr
+	safepointEntry       bool
+	safepoints           map[ssa.Instruction]struct{}
+	pcLineSeq            uint64
 	// The runtime PC-line table stores file and line, but not column. Keep the
 	// last emitted position within one SSA basic block so repeated checks for a
 	// single source line can share an anchor.
@@ -697,7 +697,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		dbgSymsEnabled := p.options.DebugSymbols && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
-			oldReceiverNilDerefChecks := p.receiverNilDerefChecks
+			oldRecvNilDerefChecks := p.recvNilDerefChecks
 			oldLocalityFunction := p.locality.function
 			oldRecoverSlots, oldImplicitDeferResults := p.recoverSlots, p.implicitDeferResults
 			oldGCRoots, oldGCClosureRoot := p.gcRoots, p.gcClosureRoot
@@ -714,7 +714,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			}
 			defer func() {
 				p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark = oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark
-				p.receiverNilDerefChecks = oldReceiverNilDerefChecks
+				p.recvNilDerefChecks = oldRecvNilDerefChecks
 				p.locality.function = oldLocalityFunction
 				p.recoverSlots = oldRecoverSlots
 				p.implicitDeferResults = oldImplicitDeferResults
@@ -739,8 +739,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			}
 			p.prepareExportedLocalContext(f)
 			p.bvals = make(map[ssa.Value]llssa.Expr)
-			p.methodNilDerefChecks = collectMethodNilDerefChecks(f)
-			p.receiverNilDerefChecks = collectReceiverNilDerefChecks(f, p.options.ReceiverNilChecks)
+			p.methodNilDerefChecks, p.recvNilDerefChecks = collectMethodNilDerefChecks(f, p.options.ReceiverNilChecks)
 			p.prepareCooperativeSafepoints(f, isCgo)
 			p.prepareGCRoots(f, hasCtx)
 			p.initGCRoots(b, f)
@@ -1560,7 +1559,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 	case *ssa.UnOp:
 		if v.Op == token.MUL {
-			if pos, ok := p.receiverNilDerefChecks[v]; ok {
+			if pos, ok := p.recvNilDerefChecks[v]; ok {
 				p.recordPanicSite(b, pos)
 				return p.compileCheckedDeref(b, v)
 			}

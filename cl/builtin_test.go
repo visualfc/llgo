@@ -403,8 +403,8 @@ func TestCollectMethodNilDerefChecksSkipsDynamicDeferGo(t *testing.T) {
 			},
 		}},
 	}
-	if got := collectMethodNilDerefChecks(fn); len(got) != 0 {
-		t.Fatalf("collectMethodNilDerefChecks() = %v, want no static checks", got)
+	if got, receiverGot := collectMethodNilDerefChecks(fn, nil); len(got) != 0 || len(receiverGot) != 0 {
+		t.Fatalf("collectMethodNilDerefChecks() = %v, %v, want no static checks", got, receiverGot)
 	}
 }
 

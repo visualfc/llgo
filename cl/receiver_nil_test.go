@@ -226,18 +226,6 @@ func F(p *T) { p.M(); _ = p.M }
 }
 
 func TestReceiverNilDerefChecksWithoutSourceMetadata(t *testing.T) {
-	// A nil block is a sentinel: an unnecessary instruction walk would panic.
-	// Neither an ordinary function nor an unrelated synthetic function needs
-	// that walk when no source receiver metadata exists.
-	for _, synthetic := range []string{"", "bound method wrapper for (*T).M"} {
-		fn := &gossa.Function{Synthetic: synthetic, Blocks: []*gossa.BasicBlock{nil}}
-		if checks := collectReceiverNilDerefChecks(fn, nil); checks != nil {
-			t.Fatalf("function %q without source metadata produced checks: %#v", synthetic, checks)
-		}
-	}
-	if checks := collectReceiverNilDerefChecks(nil, nil); checks != nil {
-		t.Fatalf("absent function produced checks: %#v", checks)
-	}
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "wrapper.go", `package foo
 type T struct{}
@@ -257,7 +245,8 @@ func F(p *P) { (*P).M(p) }
 		if !isMethodReceiverWrapper(fn) {
 			continue
 		}
-		protected += len(collectReceiverNilDerefChecks(fn, nil))
+		_, checks := collectMethodNilDerefChecks(fn, nil)
+		protected += len(checks)
 	}
 	if protected == 0 {
 		t.Fatal("promoted pointer wrapper lost its receiver-load checks without source metadata")
@@ -287,7 +276,7 @@ func promoted(value *U) { value.M() }
 	for _, name := range []string{"receive", "receiveBound", "local"} {
 		// A channel receive is also an SSA UnOp, but is not a pointer
 		// load. Its result can legally be a nil pointer-method receiver.
-		if loads := collectReceiverNilDerefChecks(ssaPkg.Func(name), checks); len(loads) != 0 {
+		if _, loads := collectMethodNilDerefChecks(ssaPkg.Func(name), checks); len(loads) != 0 {
 			t.Fatalf("%s invented receiver pointer loads: %v", name, loads)
 		}
 	}
