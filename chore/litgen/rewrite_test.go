@@ -378,11 +378,11 @@ func makeFn() func() { return func() {} }
 			src: `// LITTEST
 package main
 
-//llgo:tls
+//llgointernal:tls
 var fn = func() {}
 `,
 			ir:        initIR,
-			adjacency: "//llgo:tls\nvar fn",
+			adjacency: "//llgointernal:tls\nvar fn",
 		},
 		{
 			name: "variable specification",
@@ -390,12 +390,12 @@ var fn = func() {}
 package main
 
 var (
-	//llgo:tls
+	//llgointernal:tls
 	fn = func() {}
 )
 `,
 			ir:        initIR,
-			adjacency: "\t//llgo:tls\n\tfn =",
+			adjacency: "\t//llgointernal:tls\n\tfn =",
 		},
 	}
 	for _, test := range tests {

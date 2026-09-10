@@ -1058,7 +1058,7 @@ func TestBaremetalRuntimeAvoidsLocalityDirectives(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if bytes.Contains(content, []byte("//llgo:tls")) || bytes.Contains(content, []byte("//llgo:gls")) {
+				if bytes.Contains(content, []byte("//llgointernal:tls")) || bytes.Contains(content, []byte("//llgointernal:gls")) {
 					t.Fatalf("bare-metal runtime selected locality directive in %s", name)
 				}
 			}
@@ -1864,10 +1864,10 @@ func TestPrepareLocalVariablesKeepsAltDeclarationOwners(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "runtime.go", `package runtime
 
-//llgo:gls
+//llgointernal:gls
 var goroutineState *uint32
 
-//llgo:tls
+//llgointernal:tls
 var threadState uintptr
 `, parser.ParseComments)
 	if err != nil {
@@ -2454,38 +2454,59 @@ func TestDoOptimizesUnreachableBodylessCalls(t *testing.T) {
 	}
 }
 
-func TestDoReportsLocalityDirectiveError(t *testing.T) {
+func TestDoRejectsInternalDirectiveOutsideRuntime(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "invalid_locality.go")
 	if err := os.WriteFile(file, []byte(`package invalidlocality
 
-//llgo:tls
+//llgointernal:tls
 func Invalid() {}
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	conf := NewDefaultConf(ModeGen)
-	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "applies only to package-level var declarations") {
-		t.Fatalf("Do error = %v, want locality directive diagnostic", err)
+	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "only allowed in the Go standard library or "+env.LLGoRuntimePkg) {
+		t.Fatalf("Do error = %v, want internal-directive scope diagnostic", err)
+	}
+}
+
+func TestIsStandardLibraryPackage(t *testing.T) {
+	goroot := t.TempDir()
+	src := filepath.Join(goroot, "src")
+	for _, test := range []struct {
+		pkg  *packages.Package
+		want bool
+	}{
+		{pkg: &packages.Package{PkgPath: "fmt", Dir: filepath.Join(src, "fmt")}, want: true},
+		{pkg: &packages.Package{PkgPath: "example.com/pkg", Dir: filepath.Join(src, "example.com", "pkg")}},
+		{pkg: &packages.Package{PkgPath: "fmt", Dir: filepath.Join(goroot, "elsewhere", "fmt")}},
+	} {
+		if got := isStandardLibraryPackage(test.pkg, goroot); got != test.want {
+			t.Fatalf("isStandardLibraryPackage(%+v, %q) = %v, want %v", test.pkg, goroot, got, test.want)
+		}
 	}
 }
 
 func TestDoRejectsLocalityLinkname(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "invalid_locality_alias.go")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+env.LLGoRuntimePkg+"/_test/invalidalias\n\ngo 1.27.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, "invalid_locality_alias.go")
 	if err := os.WriteFile(file, []byte(`package invalidlocalityalias
 
 import _ "unsafe"
 
-//llgo:tls
+//llgointernal:tls
 var target int
 
 //go:linkname alias example.com/target.value
-//llgo:tls
+//llgointernal:tls
 var alias = 1
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	conf := NewDefaultConf(ModeGen)
-	if _, err := Do([]string{file}, conf); err == nil || !strings.Contains(err.Error(), "cannot apply to a //go:linkname variable") {
+	if _, err := Build(Invocation{Args: []string{"."}, Config: conf, Dir: dir}); err == nil || !strings.Contains(err.Error(), "cannot apply to a //go:linkname variable") {
 		t.Fatalf("Do error = %v, want locality linkname diagnostic", err)
 	}
 }
@@ -2502,7 +2523,7 @@ func TestDoReportsAltPackageLocalityDirectiveError(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(runtimePkgDir, "runtime.go"), []byte(`package runtime
 
-//llgo:gls
+//llgointernal:gls
 func Invalid() {}
 `), 0o644); err != nil {
 		t.Fatal(err)

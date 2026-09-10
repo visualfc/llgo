@@ -16,13 +16,13 @@
  * limitations under the License.
  */
 
-package p2
+package p4
 
 import "unsafe"
 
 var backing int
 
-//llgo:gls
+//llgointernal:gls
 var pointer *int
 
 func Prepare() { pointer = &backing }

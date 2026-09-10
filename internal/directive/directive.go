@@ -42,6 +42,8 @@ func Parse(comment *ast.Comment) (Directive, bool) {
 	switch {
 	case strings.HasPrefix(raw, "//go:"):
 		namespace, body = "go:", raw[len("//go:"):]
+	case strings.HasPrefix(raw, "//llgointernal:"):
+		namespace, body = "llgointernal:", raw[len("//llgointernal:"):]
 	case strings.HasPrefix(raw, "//llgo:"):
 		namespace, body = "llgo:", raw[len("//llgo:"):]
 	case strings.HasPrefix(raw, "// llgo:"):

@@ -97,7 +97,8 @@ func TestApplyFlagsFileTargetForms(t *testing.T) {
 }
 
 func TestGeneratePostABIIsExplicit(t *testing.T) {
-	const pkg = "../../cl/_testgo/localitycodegen"
+	t.Chdir("../../runtime")
+	const pkg = "./_test/codegen/localitycodegen"
 	preABI := GenFrom(pkg)
 	postABI := GeneratePostABI(pkg)
 	if preABI == postABI.Text {

@@ -33,13 +33,13 @@ import (
 // GC root; making this a pointer-bearing local variable would require the
 // LocalContext that getg helps bootstrap.
 //
-//llgo:tls
+//llgointernal:tls
 var currentG uintptr
 
 // currentGHasLifecycle records whether the current G was installed in the
 // host TLS destructor sidecar. Runtime-owned M threads leave this false.
 //
-//llgo:tls
+//llgointernal:tls
 var currentGHasLifecycle bool
 
 // gLifecycleKey is not used to locate the current G. It only retains the

@@ -64,6 +64,9 @@ type Options struct {
 	DebugSymbols bool
 	Trace        bool
 	ExportRename bool
+	// AllowInternalDirectives permits directives reserved for LLGo's runtime.
+	// Package loaders set it only for verified Go standard-library sources.
+	AllowInternalDirectives bool
 	// CExportWrappers keeps //export implementations under their Go symbols;
 	// the final-link module supplies the public C entry points.
 	CExportWrappers bool

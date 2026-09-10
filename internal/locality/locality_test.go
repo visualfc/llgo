@@ -60,10 +60,10 @@ func TestMerge(t *testing.T) {
 func TestScanPackageVar(t *testing.T) {
 	fset, file := parseFile(t, `package p
 
-//llgo:tls
+//llgointernal:tls
 var (
 	first int
-	//llgo:gls
+	//llgointernal:gls
 	second int
 )
 `)
@@ -75,7 +75,7 @@ var (
 	fset, file = parseFile(t, `package p
 
 var (
-	//llgo:tls
+	//llgointernal:tls
 	first, second = 1, 2
 )
 `)
@@ -103,32 +103,32 @@ func TestScanPackageVarBranches(t *testing.T) {
 	}{
 		{
 			name: "declaration error",
-			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgo:tls extra")},
+			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgointernal:tls extra")},
 			want: "does not accept arguments",
 		},
 		{
 			name: "spec error",
-			decl: &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{&ast.ValueSpec{Doc: comment("//llgo:gls extra")}}},
+			decl: &ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{&ast.ValueSpec{Doc: comment("//llgointernal:gls extra")}}},
 			want: "does not accept arguments",
 		},
 		{
 			name: "embed conflict",
-			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgo:tls\n//go:embed value.txt"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("Value")}}}},
+			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgointernal:tls\n//go:embed value.txt"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("Value")}}}},
 			want: "//go:embed",
 		},
 		{
 			name: "blank name",
-			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgo:tls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("_")}}}},
+			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgointernal:tls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("_")}}}},
 			want: "blank identifier",
 		},
 		{
 			name: "exported name",
-			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgo:gls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("Value")}}}},
+			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//llgointernal:gls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("Value")}}}},
 			want: "requires an unexported package variable",
 		},
 		{
 			name: "linkname",
-			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//go:linkname value example.com/p.value\n//llgo:tls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("value")}}}},
+			decl: &ast.GenDecl{Tok: token.VAR, Doc: comment("//go:linkname value example.com/p.value\n//llgointernal:tls"), Specs: []ast.Spec{&ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("value")}}}},
 			want: "cannot apply to a //go:linkname variable",
 		},
 	}
@@ -159,7 +159,7 @@ func TestDirectivePlacementDiagnostics(t *testing.T) {
 			name: "grouped import spec",
 			src: `package p
 import (
-	//llgo:tls
+	//llgointernal:tls
 	"unsafe"
 )
 var _ = unsafe.Sizeof(0)
@@ -170,7 +170,7 @@ var _ = unsafe.Sizeof(0)
 			name: "local var",
 			src: `package p
 func f() {
-	//llgo:gls
+	//llgointernal:gls
 	var value int
 	_ = value
 }
@@ -182,7 +182,7 @@ func f() {
 			src: `package p
 func f() {
 	_ = func() {
-		//llgo:tls extra
+		//llgointernal:tls extra
 		var value int
 		_ = value
 	}
@@ -195,7 +195,7 @@ func f() {
 			src: `package p
 func f() {
 	var nested = func() {
-		//llgo:gls
+		//llgointernal:gls
 		var value int
 		_ = value
 	}
@@ -207,7 +207,7 @@ func f() {
 		{
 			name: "function",
 			src: `package p
-//llgo:tls
+//llgointernal:tls
 func f() {}
 `,
 			want: "package-level var",
@@ -229,10 +229,10 @@ func TestDirectiveDiagnostics(t *testing.T) {
 		comment string
 		want    string
 	}{
-		{"//llgo:threadlocal", "use //llgo:tls"},
-		{"//llgo:goroutinelocal", "use //llgo:gls"},
-		{"//llgo:tls extra", "does not accept arguments"},
-		{"//llgo:tls\n//llgo:gls", "cannot apply to the same variable declaration"},
+		{"//llgo:threadlocal", "use //llgointernal:tls"},
+		{"//llgo:goroutinelocal", "use //llgointernal:gls"},
+		{"//llgointernal:tls extra", "does not accept arguments"},
+		{"//llgointernal:tls\n//llgointernal:gls", "cannot apply to the same variable declaration"},
 	}
 	for _, test := range tests {
 		doc := &ast.CommentGroup{}
@@ -253,7 +253,7 @@ func TestDirectiveDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	typeDecl := &ast.GenDecl{Tok: token.TYPE, Specs: []ast.Spec{
-		&ast.TypeSpec{Name: ast.NewIdent("T"), Doc: &ast.CommentGroup{List: []*ast.Comment{{Text: "//llgo:tls"}}}},
+		&ast.TypeSpec{Name: ast.NewIdent("T"), Doc: &ast.CommentGroup{List: []*ast.Comment{{Text: "//llgointernal:tls"}}}},
 	}}
 	if err := ValidateNonPackageVar(nil, typeDecl); err == nil || !strings.Contains(err.Error(), "package-level var") {
 		t.Fatalf("type spec validation error = %v", err)
@@ -294,7 +294,7 @@ func TestInitializerLocalityDiagnostics(t *testing.T) {
 func TestPrepareIsIdempotentAcrossPrograms(t *testing.T) {
 	fset, file := parseFile(t, `package p
 func makeValue() *int { value := 42; return &value }
-//llgo:tls
+//llgointernal:tls
 var value = makeValue()
 `)
 	files := []*ast.File{file}

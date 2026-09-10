@@ -135,9 +135,9 @@ func FromDoc(fset *token.FileSet, doc *ast.CommentGroup) (Kind, token.Pos, error
 	for _, directive := range directive.ParseGroup(doc) {
 		var next Kind
 		switch directive.Name {
-		case "llgo:tls":
+		case "llgointernal:tls":
 			next = Thread
-		case "llgo:gls":
+		case "llgointernal:gls":
 			next = Goroutine
 		case legacyThread:
 			return None, token.NoPos, errorAt(fset, directive.Pos, "//%s is not supported; use %s", legacyThread, ThreadDirective)

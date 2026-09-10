@@ -887,6 +887,9 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 	if prog.PackageSyntaxParsed(pkg) {
 		return nil
 	}
+	if err := validateInternalDirectives(fset, pkg.Path(), files, options.AllowInternalDirectives); err != nil {
+		return err
+	}
 	ctx := &context{prog: prog, options: options}
 	pkgPath := llssa.PathOf(pkg)
 	syms := make(map[string]string)
@@ -954,6 +957,23 @@ func ParsePkgSyntaxWithOptions(prog llssa.Program, fset *token.FileSet, pkg *typ
 	}
 	collectGoLinknames(prog, fileComments, syms)
 	prog.MarkPackageSyntaxParsed(pkg)
+	return nil
+}
+
+func validateInternalDirectives(fset *token.FileSet, pkgPath string, files []*ast.File, allow bool) error {
+	if allow || pkgPath == env.LLGoRuntimePkg || strings.HasPrefix(pkgPath, env.LLGoRuntimePkg+"/") {
+		return nil
+	}
+	for _, file := range files {
+		for _, group := range file.Comments {
+			for _, comment := range group.List {
+				d, ok := directive.Parse(comment)
+				if ok && strings.HasPrefix(d.Name, "llgointernal:") {
+					return fmt.Errorf("%s: //%s is only allowed in the Go standard library or %s", fset.Position(d.Pos), d.Name, env.LLGoRuntimePkg)
+				}
+			}
+		}
+	}
 	return nil
 }
 

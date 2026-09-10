@@ -17,7 +17,7 @@ Prior experiments (`test-defer-dont-free` branch) confirmed the crash disappeare
      goroutine's defer-chain head.
    - The context is allocated with `AllocRoot`, so pointers reachable through
      `g` remain visible to the collector.
-   - A pointer-free `//llgo:tls` `uintptr` slot locates the current `g`. The
+   - A pointer-free `//llgointernal:tls` `uintptr` slot locates the current `g`. The
      slot is only an address cache; the `runtimeContext` allocation is the GC
      root.
    - Bare-metal targets keep the same state in ordinary globals because they
@@ -34,9 +34,9 @@ Prior experiments (`test-defer-dont-free` branch) confirmed the crash disappeare
    - Defer argument nodes and the `runtime.Defer` struct itself are allocated with `aggregateAllocU`, ensuring new memory comes from GC-managed heaps, and nodes are released via `runtime.FreeDeferNode`.
 
 3. **Locality directives**
-   - Runtime state that belongs to a logical goroutine uses `//llgo:gls`.
+   - Runtime state that belongs to a logical goroutine uses `//llgointernal:gls`.
    - Physical scheduler and execution-resource slots that must be available
-     before goroutine-local context setup use `//llgo:tls`.
+     before goroutine-local context setup use `//llgointernal:tls`.
    - TLS and GLS currently share one physical owner because LLGo binds one
      goroutine/P/M to one OS thread. The directive still records the intended
      lifetime so a future scheduler can keep GLS with a migrating goroutine
