@@ -98,8 +98,12 @@ const (
 	emscriptenBrowserEnvironment = "-sENVIRONMENT=web,worker"
 	emscriptenNamedEnvironment   = "-sENVIRONMENT=web,worker,node"
 	emscriptenAllowTableGrowth   = "-sALLOW_TABLE_GROWTH=1"
-	wasm32LibffiRelDir           = "runtime/internal/clite/ffi/wasm32"
-	wasm64LibffiRelDir           = "runtime/internal/clite/ffi/wasm64"
+	// libffi calls the target through the JS import ffi_call_js. If that
+	// import is not listed, Asyncify cannot unwind a sleeping Go function
+	// invoked by reflect.Value.Call / MakeFunc.
+	emscriptenAsyncifyImports = "-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async,ffi_call_js"
+	wasm32LibffiRelDir        = "runtime/internal/clite/ffi/wasm32"
+	wasm64LibffiRelDir        = "runtime/internal/clite/ffi/wasm64"
 )
 
 func (abi WasmABI) valid() bool {
@@ -760,7 +764,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-sWASM=1",
 			"-sEXPORT_ALL=1",
 			"-sASYNCIFY=1",
-			"-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async",
+			emscriptenAsyncifyImports,
 			"-sSTACK_SIZE=5242880", // 5MB
 		}...)
 		appendEmscriptenLibffiSearchPath(&export, llgoRoot, wasmABI)

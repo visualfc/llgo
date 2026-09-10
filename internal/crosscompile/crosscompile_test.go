@@ -468,8 +468,8 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 			if !slices.Contains(export.LDFLAGS, "-sENVIRONMENT=web,worker,node") {
 				t.Errorf("named target does not enable its Node emulator: %v", export.LDFLAGS)
 			}
-			if !slices.Contains(export.LDFLAGS, "-sASYNCIFY_IMPORTS=llgo_wasm_host_wait_async") {
-				t.Errorf("named target does not mark the interruptible host wait as async: %v", export.LDFLAGS)
+			if !slices.Contains(export.LDFLAGS, emscriptenAsyncifyImports) {
+				t.Errorf("named target does not mark interruptible host wait and ffi_call_js as async: %v", export.LDFLAGS)
 			}
 			if !slices.Contains(export.LDFLAGS, "-sEXIT_RUNTIME=1") {
 				t.Errorf("named target does not let fatal Asyncify programs exit: %v", export.LDFLAGS)
