@@ -104,23 +104,33 @@ EM_VAL llgo_emval_get_module_property(const char *name) {
 static volatile uint8_t llgo_emval_invoke_pending;
 
 EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *pending_flag), {
+    // Reinstalling would drop queued host events. Keep the first bridge for
+    // the life of the module.
+    if (Module["_llgo_invoke"]) {
+        return;
+    }
     const pending = [];
     const pendingFlag = Number(pending_flag);
-    Module['llgoWasmPendingInvokes'] = pending;
-    Module['_llgo_invoke'] = function(event) {
+    Module["llgoWasmPendingInvokes"] = pending;
+    Module["_llgo_invoke"] = function(event) {
         pending.push(event);
         HEAPU8[pendingFlag] = 1;
-        const state = Module['llgoWasmHostWait'];
+        const state = Module["llgoWasmHostWait"];
         if (state !== undefined && state.wake !== undefined) {
             const wake = state.wake;
             delete state.wake;
             setTimeout(wake, 0);
         }
-        return true;
     };
 });
 
+static bool llgo_emval_invoke_installed;
+
 void llgo_emval_install_invoke(void) {
+    if (llgo_emval_invoke_installed) {
+        return;
+    }
+    llgo_emval_invoke_installed = true;
     llgo_emval_invoke_pending = 0;
     llgo_emval_install_invoke_js(const_cast<uint8_t *>(&llgo_emval_invoke_pending));
 }
