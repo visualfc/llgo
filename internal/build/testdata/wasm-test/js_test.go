@@ -3,10 +3,40 @@
 package wasmtest
 
 import (
+	"reflect"
 	"syscall/js"
 	"testing"
 	"time"
 )
+
+func TestReflectCallCanSleep(t *testing.T) {
+	delayed := func() {
+		time.Sleep(time.Millisecond)
+		println("woke")
+	}
+	reflect.ValueOf(delayed).Call(nil)
+}
+
+func TestReflectCallComplex128(t *testing.T) {
+	add := func(v complex128) complex128 {
+		return v + complex(1, 2)
+	}
+	got := reflect.ValueOf(add).Call([]reflect.Value{reflect.ValueOf(complex(3, 4))})
+	if len(got) != 1 || got[0].Complex() != complex(4, 6) {
+		t.Fatalf("Call(add) = %v, want [(4+6i)]", got)
+	}
+}
+
+func TestReflectMakeFuncComplex64(t *testing.T) {
+	fn := reflect.MakeFunc(reflect.TypeOf((func(complex64) complex64)(nil)), func(args []reflect.Value) []reflect.Value {
+		v := args[0].Complex()
+		return []reflect.Value{reflect.ValueOf(complex64(v + complex(1, 2)))}
+	})
+	got := fn.Call([]reflect.Value{reflect.ValueOf(complex64(complex(3, 4)))})
+	if len(got) != 1 || got[0].Complex() != complex(4, 6) {
+		t.Fatalf("MakeFunc(complex64) = %v, want [(4+6i)]", got)
+	}
+}
 
 func TestJSValueZeroIsUndefined(t *testing.T) {
 	var value js.Value
