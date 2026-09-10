@@ -121,10 +121,20 @@ jobs:
             -o "$RUNNER_TEMP/llgo-libffi-amd64.obj"
           llvm-readobj --file-headers "$RUNNER_TEMP/llgo-libffi-amd64.obj"
 
+      - name: Prepare the Windows host Go test runtime
+        if: runner.os == 'Windows'
+        id: windows_go_runtime
+        shell: python {0}
+        run: |
+          import runpy
+          runpy.run_path('dev/prepare_windows_go_test_runtime.py', run_name='__main__')
+
       # Every host uploads coverage: OS-specific ELF, Mach-O, and COFF paths
       # plus per-OS runtime shims are otherwise invisible to codecov/patch.
       - name: Test with coverage
         id: test_coverage
+        env:
+          LLGO_GO_TEST_OVERLAY: ${{ steps.windows_go_runtime.outputs.overlay }}
         # Compiler fixtures build and run many programs under coverage; leave
         # enough headroom for the slower native toolchains.
         shell: bash
@@ -142,9 +152,9 @@ jobs:
               export LLGO_REQUIRE_MSVC=1
             fi
             export LLGO_STDIO_NOBUF=1
-            # Only the main batch contains the test package tree affected by
-            # golang/go#81238. Its wrapper accepts the single exact fatal
-            # signature, records the quarantine, and preserves other failures.
+            # Keep the main batch's existing narrow fatal-signature quarantine.
+            # The separate ./test/go invocation below uses a measured runtime
+            # overlay to reserve enough stack for hardware exception recovery.
             main_go_test=(bash dev/go_test_windows.sh "${go_test[@]}")
           else
             main_go_test=("${go_test[@]}")
@@ -167,6 +177,12 @@ jobs:
             -coverpkg=github.com/xgo-dev/llgo/cl,github.com/xgo-dev/llgo/ssa \
             -coverprofile="coverage-compiler.txt" -covermode=atomic \
             -bench '^BenchmarkGo126' -benchtime=1x ./cl
+          # The direct language tests recover hardware faults. Some Windows
+          # hosts need more exception stack than stock Go reserves (golang/go#81238).
+          # Apply the measured workaround only to this host Go test binary.
+          if [[ -n "$LLGO_GO_TEST_OVERLAY" ]]; then
+            go_test+=("-overlay=$LLGO_GO_TEST_OVERLAY")
+          fi
           "${go_test[@]}" -timeout 45m \
             -coverprofile="coverage-test-go.txt" -covermode=atomic ./test/go
 
