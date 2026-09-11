@@ -50,7 +50,7 @@ func TestWasmGCHeadCacheWorkloads(t *testing.T) {
 		t.Fatalf("missing collector operations: %v", functions)
 	}
 	path := filepath.Join(t.TempDir(), "head_cache_test.go")
-	if err := os.WriteFile(path, source.Bytes(), 0600); err != nil {
+	if err := os.WriteFile(path, source.Bytes(), 0644); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := stdctx.WithTimeout(stdctx.Background(), 30*time.Second)
