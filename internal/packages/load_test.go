@@ -51,6 +51,51 @@ func identity[T any](value T) T { return value }
 	}
 }
 
+func TestDeduperKeepsTestPackageIdentities(t *testing.T) {
+	dir := t.TempDir()
+	baseFile := filepath.Join(dir, "helper.go")
+	testFile := filepath.Join(dir, "helper_test.go")
+	writeLoadTestFile(t, baseFile, "package helper\nconst Value = 1\n")
+	writeLoadTestFile(t, testFile, "package helper\nconst TestOnly = 2\n")
+	const path = "example.com/helper"
+	const testID = path + " [" + path + ".test]"
+	for _, order := range [][]string{{path, testID}, {testID, path}} {
+		t.Run(order[0], func(t *testing.T) {
+			dedup := NewDeduper()
+			tc := &typecheckContext{dedup: dedup, cfg: loadTestConfig(dir), fset: token.NewFileSet(), origMode: NeedTypes | NeedTypesInfo}
+			makePackage := func(id string) *Package {
+				pkg := &Package{ID: id, PkgPath: path, Name: "helper", CompiledGoFiles: []string{baseFile}}
+				if id == testID {
+					pkg.CompiledGoFiles = append(pkg.CompiledGoFiles, testFile)
+				}
+				return pkg
+			}
+			loaded := make(map[string]*Package)
+			for _, id := range order {
+				pkg := makePackage(id)
+				tc.typecheckPackage(pkg)
+				if pkg.IllTyped {
+					t.Fatalf("typecheck %s: %v", id, pkg.Errors)
+				}
+				loaded[id] = pkg
+			}
+			for _, id := range order {
+				pkg := makePackage(id)
+				tc.typecheckPackage(pkg)
+				if pkg.Types != loaded[id].Types || pkg.TypesInfo != loaded[id].TypesInfo {
+					t.Errorf("%s did not reuse its own package identity", id)
+				}
+				if got := pkg.Types.Scope().Lookup("TestOnly") != nil; got != (id == testID) {
+					t.Errorf("%s test-only declaration = %v, want %v", id, got, id == testID)
+				}
+			}
+			if loaded[path].Types == loaded[testID].Types {
+				t.Fatal("ordinary and test-augmented packages share a type identity")
+			}
+		})
+	}
+}
+
 func TestNormalizeEmbedDriverDiagnostics(t *testing.T) {
 	tests := []struct {
 		name      string
