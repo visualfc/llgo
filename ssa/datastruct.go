@@ -995,7 +995,9 @@ func (b Builder) Recv(ch Expr, commaOk bool) (ret Expr) {
 	sp := b.StackSave()
 	ptr := b.Alloc(etyp, false)
 	ok := b.InlineCall(b.Pkg.rtFunc("ChanRecv"), ch, ptr, eltSize)
-	val := b.Load(ptr)
+	// The receive buffer becomes invalid at StackRestore. Keep its value load
+	// from being sunk past that lifetime boundary by a target backend.
+	val := b.Load(ptr).SetVolatile(true)
 	b.StackRestore(sp)
 	if commaOk {
 		t := prog.Struct(etyp, prog.Bool())
