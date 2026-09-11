@@ -36,9 +36,9 @@ package main
 // CHECK-NEXT: [[TRY_SELECTED:%[0-9]+]] = extractvalue { i64, i1, i1 } [[TRY_SELECT]], 2
 // CHECK-NEXT: [[TRY_DISPATCH:%[0-9]+]] = select i1 [[TRY_SELECTED]], i64 [[TRY_INDEX]], i64 -1
 // CHECK: [[RECV_DATA1:%[0-9]+]] = extractvalue %"{{.*}}ChanOp" [[RECV_OP1]], 1
-// CHECK-NEXT: [[RECV_VALUE1:%[0-9]+]] = load %"{{.*}}String", ptr [[RECV_DATA1]]
+// CHECK-NEXT: [[RECV_VALUE1:%[0-9]+]] = load volatile %"{{.*}}String", ptr [[RECV_DATA1]]
 // CHECK-NEXT: [[RECV_DATA2:%[0-9]+]] = extractvalue %"{{.*}}ChanOp" [[RECV_OP2]], 1
-// CHECK-NEXT: [[RECV_VALUE2:%[0-9]+]] = load %"{{.*}}String", ptr [[RECV_DATA2]]
+// CHECK-NEXT: [[RECV_VALUE2:%[0-9]+]] = load volatile %"{{.*}}String", ptr [[RECV_DATA2]]
 // CHECK: [[RECV_RESULT0:%[0-9]+]] = insertvalue { i64, i1, %"{{.*}}String", %"{{.*}}String" } undef, i64 [[TRY_DISPATCH]], 0
 // CHECK-NEXT: [[RECV_RESULT1:%[0-9]+]] = insertvalue { i64, i1, %"{{.*}}String", %"{{.*}}String" } [[RECV_RESULT0]], i1 [[TRY_OK]], 1
 // CHECK-NEXT: [[RECV_RESULT2:%[0-9]+]] = insertvalue { i64, i1, %"{{.*}}String", %"{{.*}}String" } [[RECV_RESULT1]], %"{{.*}}String" [[RECV_VALUE1]], 2

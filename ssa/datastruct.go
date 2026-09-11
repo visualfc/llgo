@@ -1077,8 +1077,10 @@ func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
 	for i, s := range states {
 		if !s.Send {
 			etyp := b.Prog.Elem(s.Chan.Type)
+			// The receive buffer was allocated after StackSave and becomes invalid
+			// at StackRestore. Keep its load from being sunk past that boundary.
 			typs = append(typs, etyp)
-			r := b.Load(Expr{b.impl.CreateExtractValue(ops[i].impl, 1, ""), prog.Pointer(etyp)})
+			r := b.Load(Expr{b.impl.CreateExtractValue(ops[i].impl, 1, ""), prog.Pointer(etyp)}).SetVolatile(true)
 			results = append(results, r.impl)
 		}
 	}
