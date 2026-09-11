@@ -130,7 +130,7 @@ func processHasExited(pid int) (bool, error) {
 		return false, err
 	}
 	// A container's PID 1 need not reap orphaned descendants. kill(pid, 0)
-	// still succeeds for a zombie, although SIGKILL has already stopped it.
+	// still succeeds for a zombie, although the process has already terminated.
 	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if os.IsNotExist(err) || errors.Is(err, syscall.ESRCH) {
 		return true, nil // Reaped between the signal probe and the proc read.
@@ -160,6 +160,7 @@ func TestProcStatHasExited(t *testing.T) {
 		{"42 (sleep) R 1 42 0", false, false},
 		{"42 (sleep) Z 1 42 0", true, false},
 		{"42 (a name ) with parentheses) Z 1 42 0", true, false},
+		{"42 (foo)bar) Z 1 42 0", true, false},
 		{"42 (sleep) X 1 42 0", true, false},
 		{"", false, true},
 		{"42 (sleep)", false, true},
