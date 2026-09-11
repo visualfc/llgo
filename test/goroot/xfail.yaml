@@ -188,9 +188,6 @@ xfails:
     case: fixedbugs/issue34123.go
     reason: LLGo reports the deferred recovery frame two source lines earlier than cmd/compile
   - directive: run
-    case: fixedbugs/issue79762.go
-    reason: LLGo's runtime stack does not report the exact inlined source locations required by this test
-  - directive: run
     case: fixedbugs/issue80196.go
     reason: LLGo overflows its native stack while repeatedly assigning the escaped named result in this test
   - directive: run

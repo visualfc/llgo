@@ -15,8 +15,10 @@ type receiver struct {
 // CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.PanicIndex"(i64 0, i64 [[CHECK_RESULTS_LEN]])
 // CHECK-DAG: br label %{{_llgo_[0-9]+}}
 // CHECK-DAG: [[CHECK_FIRST_PTR:%.*]] = getelementptr inbounds %reflect.Value, ptr [[CHECK_RESULTS_PTR]], i64 0
-// CHECK-DAG: [[CHECK_FIRST_SAFE:%.*]] = call ptr @"{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[CHECK_FIRST_PTR]])
-// CHECK-DAG: [[CHECK_FIRST:%.*]] = load %reflect.Value, ptr [[CHECK_FIRST_SAFE]]
+// CHECK-DAG: [[CHECK_FIRST_IS_NIL:%.*]] = icmp eq ptr [[CHECK_FIRST_PTR]], null
+// CHECK-DAG: br i1 [[CHECK_FIRST_IS_NIL]], label %{{.*}}, label %{{.*}}
+// CHECK-DAG: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
+// CHECK-DAG: [[CHECK_FIRST:%.*]] = load %reflect.Value, ptr [[CHECK_FIRST_PTR]]
 // CHECK-DAG: [[CHECK_GOT:%.*]] = call i64 @reflect.Value.Int(%reflect.Value [[CHECK_FIRST]])
 // CHECK-DAG: [[CHECK_BAD:%.*]] = icmp ne i64 [[CHECK_GOT]], 55
 // CHECK-DAG: br i1 [[CHECK_BAD]], label %{{.*}}, label %{{.*}}

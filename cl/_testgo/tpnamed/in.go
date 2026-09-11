@@ -49,7 +49,8 @@ func RunIO[T any](call IO[T]) T {
 // CHECK-NEXT: [[FUTURE_ENV:%[0-9]+]] = extractvalue %"main.Future{{\[\[0\]uint8\]}}" [[FUTURE]], 1
 // CHECK-NEXT: [[FUTURE_CODE:%[0-9]+]] = extractvalue %"main.Future{{\[\[0\]uint8\]}}" [[FUTURE]], 0
 // CHECK-NEXT: [[FUTURE_NIL:%[0-9]+]] = icmp eq ptr [[FUTURE_CODE]], null
-// CHECK-NEXT: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[FUTURE_NIL]])
+// CHECK-NEXT: br i1 [[FUTURE_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
 // ARM64: [[IO_RESULT:%[0-9]+]] = call [0 x i8] %__llgo_funcval_code1(ptr swiftself [[FUTURE_ENV]])
 // AMD64: [[IO_RESULT:%[0-9]+]] = call [0 x i8] %__llgo_funcval_code1(ptr nest [[FUTURE_ENV]])
 // CHECK-NEXT: ret [0 x i8] [[IO_RESULT]]

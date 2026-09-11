@@ -40,15 +40,19 @@ func main() {
 // CHECK: [[ARG0_LEN:%[0-9]+]] = extractvalue %"g{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK: call void @"g{{.*}}/runtime/internal/runtime.PanicIndex"(i64 0, i64 [[ARG0_LEN]])
 // CHECK: [[ARG0_PTR:%[0-9]+]] = getelementptr inbounds %reflect.Value, ptr [[ARG0_DATA]], i64 0
-// CHECK: [[ARG0_SAFE:%[0-9]+]] = call ptr @"g{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[ARG0_PTR]])
-// CHECK-NEXT: [[ARG0:%[0-9]+]] = load %reflect.Value, ptr [[ARG0_SAFE]]
+// CHECK: [[ARG0_IS_NIL:%[0-9]+]] = icmp eq ptr [[ARG0_PTR]], null
+// CHECK: br i1 [[ARG0_IS_NIL]], label %{{.*}}, label %{{.*}}
+// CHECK: call void @"g{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
+// CHECK: [[ARG0:%[0-9]+]] = load %reflect.Value, ptr [[ARG0_PTR]]
 // CHECK-NEXT: [[TEXT:%[0-9]+]] = call %"g{{.*}}/runtime/internal/runtime.String" @reflect.Value.String(%reflect.Value [[ARG0]])
 // CHECK: [[ARG1_DATA:%[0-9]+]] = extractvalue %"g{{.*}}/runtime/internal/runtime.Slice" %0, 0
 // CHECK: [[ARG1_LEN:%[0-9]+]] = extractvalue %"g{{.*}}/runtime/internal/runtime.Slice" %0, 1
 // CHECK: call void @"g{{.*}}/runtime/internal/runtime.PanicIndex"(i64 1, i64 [[ARG1_LEN]])
 // CHECK: [[ARG1_PTR:%[0-9]+]] = getelementptr inbounds %reflect.Value, ptr [[ARG1_DATA]], i64 1
-// CHECK: [[ARG1_SAFE:%[0-9]+]] = call ptr @"g{{.*}}/runtime/internal/runtime.AssertNilDerefPtr"(ptr [[ARG1_PTR]])
-// CHECK-NEXT: [[ARG1:%[0-9]+]] = load %reflect.Value, ptr [[ARG1_SAFE]]
+// CHECK: [[ARG1_IS_NIL:%[0-9]+]] = icmp eq ptr [[ARG1_PTR]], null
+// CHECK: br i1 [[ARG1_IS_NIL]], label %{{.*}}, label %{{.*}}
+// CHECK: call void @"g{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
+// CHECK: [[ARG1:%[0-9]+]] = load %reflect.Value, ptr [[ARG1_PTR]]
 // CHECK-NEXT: [[COUNT:%[0-9]+]] = call i64 @reflect.Value.Int(%reflect.Value [[ARG1]])
 // CHECK-NEXT: [[REPEATED:%[0-9]+]] = call %"g{{.*}}/runtime/internal/runtime.String" @strings.Repeat(%"g{{.*}}/runtime/internal/runtime.String" [[TEXT]], i64 [[COUNT]])
 // CHECK: store %"g{{.*}}/runtime/internal/runtime.String" [[REPEATED]], ptr [[RESULT_TEXT:%[0-9]+]]

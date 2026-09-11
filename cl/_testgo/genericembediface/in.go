@@ -82,7 +82,8 @@ func main() {
 // CHECK: [[SERVER_NIL:%.*]] = icmp eq ptr %0, null
 // CHECK: call void @"{{.*}}PanicWrapNilPointer"(i1 [[SERVER_NIL]], %"{{.*}}String" {{.*}}, %"{{.*}}String" {{.*}})
 // CHECK: [[SERVER_DEREF_NIL:%.*]] = icmp eq ptr %0, null
-// CHECK: call void @"{{.*}}AssertNilDeref"(i1 [[SERVER_DEREF_NIL]])
+// CHECK: br i1 [[SERVER_DEREF_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}AssertNilDeref"(i1 true)
 // CHECK: [[SERVER_RESULT:%.*]] = call %"{{.*}}iface" @main.server.ServerReflectionInfo(%main.server zeroinitializer, %"{{.*}}iface" %1)
 // CHECK: ret %"{{.*}}iface" [[SERVER_RESULT]]
 
@@ -94,7 +95,8 @@ func main() {
 // CHECK: [[STREAM_NIL:%.*]] = icmp eq ptr %0, null
 // CHECK: call void @"{{.*}}PanicWrapNilPointer"(i1 [[STREAM_NIL]], %"{{.*}}String" {{.*}}, %"{{.*}}String" { ptr [[CONTEXT]], i64 7 })
 // CHECK: [[STREAM_DEREF_NIL:%.*]] = icmp eq ptr %0, null
-// CHECK: call void @"{{.*}}AssertNilDeref"(i1 [[STREAM_DEREF_NIL]])
+// CHECK: br i1 [[STREAM_DEREF_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}AssertNilDeref"(i1 true)
 // CHECK: [[STREAM_RESULT:%.*]] = call %"{{.*}}String" @main.stream.Context(%main.stream zeroinitializer)
 // CHECK: ret %"{{.*}}String" [[STREAM_RESULT]]
 

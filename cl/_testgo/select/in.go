@@ -36,9 +36,9 @@ package main
 // CHECK-NEXT: [[TRY_SELECTED:%[0-9]+]] = extractvalue { i64, i1, i1 } [[TRY_SELECT]], 2
 // CHECK-NEXT: [[TRY_DISPATCH:%[0-9]+]] = select i1 [[TRY_SELECTED]], i64 [[TRY_INDEX]], i64 -1
 // CHECK: [[RECV_DATA1:%[0-9]+]] = extractvalue %"{{.*}}ChanOp" [[RECV_OP1]], 1
-// CHECK-NEXT: [[RECV_VALUE1:%[0-9]+]] = load %"{{.*}}String", ptr [[RECV_DATA1]]
+// CHECK-NEXT: [[RECV_VALUE1:%[0-9]+]] = load volatile %"{{.*}}String", ptr [[RECV_DATA1]]
 // CHECK-NEXT: [[RECV_DATA2:%[0-9]+]] = extractvalue %"{{.*}}ChanOp" [[RECV_OP2]], 1
-// CHECK-NEXT: [[RECV_VALUE2:%[0-9]+]] = load %"{{.*}}String", ptr [[RECV_DATA2]]
+// CHECK-NEXT: [[RECV_VALUE2:%[0-9]+]] = load volatile %"{{.*}}String", ptr [[RECV_DATA2]]
 // CHECK: [[RECV_RESULT0:%[0-9]+]] = insertvalue { i64, i1, %"{{.*}}String", %"{{.*}}String" } undef, i64 [[TRY_DISPATCH]], 0
 // CHECK-NEXT: [[RECV_RESULT1:%[0-9]+]] = insertvalue { i64, i1, %"{{.*}}String", %"{{.*}}String" } [[RECV_RESULT0]], i1 [[TRY_OK]], 1
 // CHECK-NEXT: [[RECV_RESULT2:%[0-9]+]] = insertvalue { i64, i1, %"{{.*}}String", %"{{.*}}String" } [[RECV_RESULT1]], %"{{.*}}String" [[RECV_VALUE1]], 2
@@ -94,7 +94,7 @@ package main
 // CHECK-NEXT: [[SEND1_CH_SLOT:%[0-9]+]] = extractvalue { ptr } [[SEND1_ENV]], 0
 // CHECK-NEXT: [[SEND1_CH:%[0-9]+]] = load ptr, ptr [[SEND1_CH_SLOT]]
 // CHECK: call i1 @"{{.*}}ChanRecv"(ptr [[SEND1_CH]], ptr [[SEND1_BUF:%[0-9]+]], i64 8)
-// CHECK-NEXT: [[SEND1_VALUE:%[0-9]+]] = load i64, ptr [[SEND1_BUF]]
+// CHECK-NEXT: [[SEND1_VALUE:%[0-9]+]] = load volatile i64, ptr [[SEND1_BUF]]
 // CHECK: call void @"{{.*}}PrintInt"(i64 [[SEND1_VALUE]])
 // ARM64-LABEL: define void @"main.send$2"(ptr swiftself %0){{.*}} {
 // AMD64-LABEL: define void @"main.send$2"(ptr nest %0){{.*}} {
@@ -102,7 +102,7 @@ package main
 // CHECK-NEXT: [[SEND2_CH_SLOT:%[0-9]+]] = extractvalue { ptr } [[SEND2_ENV]], 0
 // CHECK-NEXT: [[SEND2_CH:%[0-9]+]] = load ptr, ptr [[SEND2_CH_SLOT]]
 // CHECK: call i1 @"{{.*}}ChanRecv"(ptr [[SEND2_CH]], ptr [[SEND2_BUF:%[0-9]+]], i64 8)
-// CHECK-NEXT: [[SEND2_VALUE:%[0-9]+]] = load i64, ptr [[SEND2_BUF]]
+// CHECK-NEXT: [[SEND2_VALUE:%[0-9]+]] = load volatile i64, ptr [[SEND2_BUF]]
 // CHECK: call void @"{{.*}}PrintInt"(i64 [[SEND2_VALUE]])
 
 func main() {

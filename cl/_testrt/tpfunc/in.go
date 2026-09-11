@@ -22,19 +22,22 @@ type Callback[T any] func(*T)
 // All three source literals still dereference and print the same *int argument.
 // CHECK-LABEL: define void @"main.main$1"(ptr %0){{.*}} {
 // CHECK: [[GO_NIL:%[0-9]+]] = icmp eq ptr %0, null
-// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[GO_NIL]])
+// CHECK: br i1 [[GO_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
 // CHECK: [[GO_VALUE:%[0-9]+]] = load i64, ptr %0
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 [[GO_VALUE]])
 
 // CHECK-LABEL: define void @"main.main$2"(ptr %0){{.*}} {
 // CHECK: [[C_NIL:%[0-9]+]] = icmp eq ptr %0, null
-// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[C_NIL]])
+// CHECK: br i1 [[C_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
 // CHECK: [[C_VALUE:%[0-9]+]] = load i64, ptr %0
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 [[C_VALUE]])
 
 // CHECK-LABEL: define void @"main.main$3"(ptr %0){{.*}} {
 // CHECK: [[GENERIC_C_NIL:%[0-9]+]] = icmp eq ptr %0, null
-// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[GENERIC_C_NIL]])
+// CHECK: br i1 [[GENERIC_C_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
 // CHECK: [[GENERIC_C_VALUE:%[0-9]+]] = load i64, ptr %0
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 [[GENERIC_C_VALUE]])
 

@@ -74,6 +74,9 @@ type Options struct {
 	// PreloadedSyntax means all Program-side source metadata was collected
 	// before lowering and is now shared read-only by backend Programs.
 	PreloadedSyntax bool
+	// ReceiverNilChecks retains pointer-method selection semantics erased
+	// during Go SSA construction. It is collected from checked source info.
+	ReceiverNilChecks *ReceiverNilChecks
 }
 
 // SetDebug sets debug flags.
@@ -164,6 +167,7 @@ type context struct {
 	loaded               map[*types.Package]*pkgInfo // loaded packages
 	bvals                map[ssa.Value]llssa.Expr    // block values
 	methodNilDerefChecks map[*ssa.UnOp]none
+	recvNilDerefChecks   map[*ssa.UnOp]token.Pos
 	vargs                map[*ssa.Alloc][]llssa.Expr // varargs
 	funcs                map[*ssa.Function]llssa.Function
 	linkOnceFns          map[*ssa.Function]none
@@ -693,6 +697,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 		dbgSymsEnabled := p.options.DebugSymbols && (f == nil || f.Origin() == nil)
 		p.inits = append(p.inits, func() {
 			oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark := p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark
+			oldRecvNilDerefChecks := p.recvNilDerefChecks
 			oldLocalityFunction := p.locality.function
 			oldRecoverSlots, oldImplicitDeferResults := p.recoverSlots, p.implicitDeferResults
 			oldGCRoots, oldGCClosureRoot := p.gcRoots, p.gcClosureRoot
@@ -709,6 +714,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			}
 			defer func() {
 				p.fn, p.goFn, p.methodNilDerefChecks, p.callerFrameMark = oldFn, oldGoFn, oldMethodNilDerefChecks, oldCallerFrameMark
+				p.recvNilDerefChecks = oldRecvNilDerefChecks
 				p.locality.function = oldLocalityFunction
 				p.recoverSlots = oldRecoverSlots
 				p.implicitDeferResults = oldImplicitDeferResults
@@ -733,7 +739,7 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			}
 			p.prepareExportedLocalContext(f)
 			p.bvals = make(map[ssa.Value]llssa.Expr)
-			p.methodNilDerefChecks = collectMethodNilDerefChecks(f)
+			p.methodNilDerefChecks, p.recvNilDerefChecks = collectMethodNilDerefChecks(f, p.options.ReceiverNilChecks)
 			p.prepareCooperativeSafepoints(f, isCgo)
 			p.prepareGCRoots(f, hasCtx)
 			p.initGCRoots(b, f)
@@ -1489,6 +1495,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 	}
 	switch v := iv.(type) {
 	case *ssa.Call:
+		p.checkMethodCallReceiver(b, &v.Call)
 		ret = p.call(b, llssa.Call, &v.Call)
 		if p.rangeFuncCallNeedsDeferDrain(&v.Call) {
 			b.DeferStackDrain()
@@ -1552,6 +1559,10 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 	case *ssa.UnOp:
 		if v.Op == token.MUL {
+			if pos, ok := p.recvNilDerefChecks[v]; ok {
+				p.recordPanicSite(b, pos)
+				return p.compileCheckedDeref(b, v)
+			}
 			if _, ok := p.methodNilDerefChecks[v]; ok {
 				return p.compileCheckedDeref(b, v)
 			}
@@ -1764,6 +1775,7 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 		}
 		ret = b.MakeMap(t, nReserve)
 	case *ssa.MakeClosure:
+		p.checkBoundMethodReceiver(b, v)
 		fn := p.compileValue(b, v.Fn)
 		var bindings []llssa.Expr
 		goFn, _ := v.Fn.(*ssa.Function)
@@ -2136,6 +2148,9 @@ func instructionPrecedes(before, after ssa.Instruction) bool {
 	return false
 }
 
+// assertNilDerefBase uses pointer-returning checks to rewrite p.bvals. Keep its
+// traversal in sync with emitNilDerefBaseCheck, which emits cold failure
+// branches without replacing cached addresses for delayed receiver checks.
 func (p *context) assertNilDerefBase(b llssa.Builder, addr ssa.Value) {
 	switch addr := addr.(type) {
 	case *ssa.UnOp:
@@ -2282,12 +2297,14 @@ func (p *context) compileInstr(b llssa.Builder, instr ssa.Instruction) {
 		p.recordPanicSite(b, v.Pos())
 		b.MapUpdate(m, key, val)
 	case *ssa.Defer:
+		p.checkMethodCallReceiver(b, &v.Call)
 		if v.DeferStack != nil {
 			p.callDeferStack(b, p.blkInfos[v.Block().Index].Kind, &v.Call, v.DeferStack, v.Parent())
 			return
 		}
 		p.call(b, p.blkInfos[v.Block().Index].Kind, &v.Call)
 	case *ssa.Go:
+		p.checkMethodCallReceiver(b, &v.Call)
 		p.call(b, llssa.Go, &v.Call)
 	case *ssa.RunDefers:
 		p.recordPanicLocation(b, v.Pos())

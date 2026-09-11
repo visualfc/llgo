@@ -161,7 +161,8 @@ type M interface {
 // preserves the signed int8 conversion.
 // CHECK-LABEL: define i64 @"main.(*T3).Invoke"(ptr %0){{.*}} {
 // CHECK: %[[T3_NIL:[0-9]+]] = icmp eq ptr %0, null
-// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 %[[T3_NIL]])
+// CHECK: br i1 %[[T3_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
 // CHECK: %[[T3_VALUE:[0-9]+]] = load i8, ptr %0
 // CHECK: %[[T3_WIDE:[0-9]+]] = sext i8 %[[T3_VALUE]] to i64
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PrintInt"(i64 %[[T3_WIDE]])

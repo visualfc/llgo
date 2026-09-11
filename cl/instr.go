@@ -2355,6 +2355,9 @@ func isWrapNilCheckCall(v ssa.Value) bool {
 	return ok && builtin.Name() == "ssa:wrapnilchk"
 }
 
+// emitNilDerefBaseCheck emits cold failure branches without replacing cached
+// addresses. Keep its traversal in sync with assertNilDerefBase, whose checks
+// instead return safe addresses and rewrite p.bvals for ordinary compilation.
 func (p *context) emitNilDerefBaseCheck(b llssa.Builder, addr ssa.Value) {
 	switch addr := addr.(type) {
 	case *ssa.UnOp:
@@ -2383,8 +2386,13 @@ func (p *context) emitCheckedDerefCheck(b llssa.Builder, arg *ssa.UnOp) {
 func (p *context) compileCheckedDeref(b llssa.Builder, arg *ssa.UnOp) llssa.Expr {
 	p.emitNilDerefBaseCheck(b, arg.X)
 	ptr := p.compileValue(b, arg.X)
-	checked := b.NilDerefCheck(ptr)
-	ret := b.UnOp(token.MUL, checked)
+	// A field address is non-nil once emitNilDerefBaseCheck has validated its
+	// pointer base. Checking the derived address again does not protect the
+	// embedded pointer value loaded from that address.
+	if _, ok := arg.X.(*ssa.FieldAddr); !ok {
+		b.AssertNilDeref(ptr)
+	}
+	ret := b.UnOp(token.MUL, ptr)
 	p.bvals[arg] = ret
 	return ret
 }
@@ -2421,7 +2429,7 @@ func boundValueReceiverNilDerefArg(fn *ssa.Function, bindings []ssa.Value) (*ssa
 	return arg, true
 }
 
-func collectMethodNilDerefChecks(fn *ssa.Function) map[*ssa.UnOp]none {
+func collectMethodNilDerefChecks(fn *ssa.Function, receiverChecks *ReceiverNilChecks) (map[*ssa.UnOp]none, map[*ssa.UnOp]token.Pos) {
 	var checks map[*ssa.UnOp]none
 	mark := func(arg *ssa.UnOp, ok bool) {
 		if !ok {
@@ -2432,9 +2440,41 @@ func collectMethodNilDerefChecks(fn *ssa.Function) map[*ssa.UnOp]none {
 		}
 		checks[arg] = none{}
 	}
+	// Receiver selections may already contain pointer loads. Protect them
+	// before LLVM can treat the load as non-nil; checking only at the later
+	// call would be too late. Fold this into the existing per-function scan.
+	var receiverDerefChecks map[*ssa.UnOp]token.Pos
+	var markReceiver func(ssa.Value, token.Pos)
+	markReceiver = func(value ssa.Value, pos token.Pos) {
+		switch value := value.(type) {
+		case *ssa.UnOp:
+			if value.Op != token.MUL {
+				return
+			}
+			if !isKnownNonNilAddr(value.X) && !isWrapNilCheckCall(value.X) {
+				if receiverDerefChecks == nil {
+					receiverDerefChecks = make(map[*ssa.UnOp]token.Pos)
+				}
+				receiverDerefChecks[value] = pos
+			}
+			markReceiver(value.X, pos)
+		case *ssa.FieldAddr:
+			markReceiver(value.X, pos)
+		}
+	}
 	markCall := func(call *ssa.CallCommon) {
 		if fn, ok := call.Value.(*ssa.Function); ok {
 			mark(valueReceiverNilDerefArg(fn, call.Args))
+		}
+		if len(call.Args) == 0 {
+			return
+		}
+		if isPointerMethodWrapperCall(fn, call) {
+			markReceiver(call.Args[0], fn.Pos())
+		} else if receiverChecks != nil {
+			if check, ok := receiverChecks.calls[call.Pos()]; ok {
+				markReceiver(call.Args[0], check.pos)
+			}
 		}
 	}
 	for _, block := range fn.Blocks {
@@ -2450,10 +2490,15 @@ func collectMethodNilDerefChecks(fn *ssa.Function) map[*ssa.UnOp]none {
 				if bound, ok := instr.Fn.(*ssa.Function); ok {
 					mark(boundValueReceiverNilDerefArg(bound, instr.Bindings))
 				}
+				if receiverChecks != nil && len(instr.Bindings) != 0 {
+					if check, ok := receiverChecks.values[instr.Pos()]; ok {
+						markReceiver(instr.Bindings[0], check.pos)
+					}
+				}
 			}
 		}
 	}
-	return checks
+	return checks, receiverDerefChecks
 }
 
 func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallCommon, ds *explicitDeferStack) (ret llssa.Expr) {
