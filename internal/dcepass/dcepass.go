@@ -129,8 +129,7 @@ func (e *overrideEmitter) cloneConst(v llvm.Value) llvm.Value {
 		return llvm.ConstInt(dstTy, v.ZExtValue(), false)
 	}
 	if !v.IsAConstantFP().IsNil() {
-		value, _ := v.DoubleValue()
-		return llvm.ConstFloat(dstTy, value)
+		return llvm.ConstFloatFromBits(dstTy, v.FloatBits())
 	}
 	if v.IsConstantString() {
 		return e.dst.Context().ConstString(v.ConstGetAsString(), false)

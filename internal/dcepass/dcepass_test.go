@@ -323,6 +323,60 @@ declare half @unsupported_type()
 	})
 }
 
+func TestCloneFloatConstantsAcrossContexts(t *testing.T) {
+	// Wider significands and NaN payloads must survive without converting to
+	// float64. Use parsed source IR so construction is independent of cloning.
+	ir := `
+@negative_zero = constant double 0x8000000000000000
+@signaling_nan = constant double 0x7FF0000000000001
+@float_nan = constant float 0x7FF82468A0000000
+@infinity = constant double 0x7FF0000000000000
+@subnormal = constant double 0x0000000000000001
+@fp80_precision = constant x86_fp80 0xK3FFF8000000000000001
+@fp80_nan = constant x86_fp80 0xK7FFFC000000000000123
+@fp128_precision = constant fp128 0xL00000000000000013FFF000000000000
+@fp128_nan = constant fp128 0xL00000000000001237FFF800000000000
+@ppc_low_only = constant ppc_fp128 0xM00000000000000003FF0000000000000
+@ppc_precision = constant ppc_fp128 0xM3FF00000000000003C90000000000000
+`
+	path := filepath.Join(t.TempDir(), "floats.ll")
+	if err := os.WriteFile(path, []byte(ir), 0600); err != nil {
+		t.Fatal(err)
+	}
+	srcCtx, dstCtx := llvm.NewContext(), llvm.NewContext()
+	defer dstCtx.Dispose()
+	src := parseModule(t, &srcCtx, path)
+	dst := dstCtx.NewModule("cloned-floats")
+	defer dst.Dispose()
+	emitter := newOverrideEmitter(dst)
+	want := make(map[string]string)
+	for global := src.FirstGlobal(); !global.IsNil(); global = llvm.NextGlobal(global) {
+		value := global.Initializer()
+		// Also exercise the recursive path used by ABI metadata initializers.
+		for _, nested := range []bool{false, true} {
+			name := global.Name()
+			if nested {
+				name += "_nested"
+				value = srcCtx.ConstStruct([]llvm.Value{value}, false)
+			}
+			want[name] = value.String()
+			cloned := emitter.cloneConst(value)
+			out := llvm.AddGlobal(dst, cloned.Type(), name)
+			out.SetInitializer(cloned)
+		}
+	}
+	src.Dispose()
+	srcCtx.Dispose()
+	for name, expected := range want {
+		if got := dst.NamedGlobal(name).Initializer().String(); got != expected {
+			t.Errorf("%s: cloned %s, want %s", name, got, expected)
+		}
+	}
+	if err := llvm.VerifyModule(dst, llvm.ReturnStatusAction); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func parseModule(t *testing.T, ctx *llvm.Context, path string) llvm.Module {
 	t.Helper()
 	buf, err := llvm.NewMemoryBufferFromFile(path)
