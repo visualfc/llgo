@@ -997,7 +997,10 @@ func (b Builder) Recv(ch Expr, commaOk bool) (ret Expr) {
 	ok := b.InlineCall(b.Pkg.rtFunc("ChanRecv"), ch, ptr, eltSize)
 	// The receive buffer becomes invalid at StackRestore. Keep its value load
 	// from being sunk past that lifetime boundary by a target backend.
-	val := b.Load(ptr).SetVolatile(true)
+	val := b.Load(ptr)
+	if prog.SizeOf(etyp) != 0 { // Zero-sized Load returns a constant, not an instruction.
+		val.SetVolatile(true)
+	}
 	b.StackRestore(sp)
 	if commaOk {
 		t := prog.Struct(etyp, prog.Bool())
@@ -1082,7 +1085,10 @@ func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
 			// The receive buffer was allocated after StackSave and becomes invalid
 			// at StackRestore. Keep its load from being sunk past that boundary.
 			typs = append(typs, etyp)
-			r := b.Load(Expr{b.impl.CreateExtractValue(ops[i].impl, 1, ""), prog.Pointer(etyp)}).SetVolatile(true)
+			r := b.Load(Expr{b.impl.CreateExtractValue(ops[i].impl, 1, ""), prog.Pointer(etyp)})
+			if prog.SizeOf(etyp) != 0 { // Zero-sized Load returns a constant.
+				r.SetVolatile(true)
+			}
 			results = append(results, r.impl)
 		}
 	}

@@ -25,7 +25,8 @@ package main
 // CHECK: [[CH1_RECV:%.*]] = load ptr, ptr [[CH1_SLOT]]
 // CHECK: [[CH1_RECV_BUF:%.*]] = alloca i64
 // CHECK: call i1 @"{{.*}}ChanRecv"(ptr [[CH1_RECV]], ptr [[CH1_RECV_BUF]], i64 8)
-// CHECK-NEXT: [[CH1_VALUE:%.*]] = load i64, ptr [[CH1_RECV_BUF]]
+// CHECK-NEXT: [[CH1_VALUE:%.*]] = load volatile i64, ptr [[CH1_RECV_BUF]]
+// CHECK-NEXT: call void @llvm.stackrestore
 // CHECK: call void @"{{.*}}PrintInt"(i64 [[CH1_VALUE]])
 // Second channel: capture it in a closer goroutine and preserve the receive ok
 // bit alongside the zero value returned after close.
@@ -40,7 +41,8 @@ package main
 // CHECK: [[CH2_RECV:%.*]] = load ptr, ptr [[CH2_SLOT]]
 // CHECK: [[CH2_RECV_BUF:%.*]] = alloca i64
 // CHECK: [[CH2_OK:%.*]] = call i1 @"{{.*}}ChanRecv"(ptr [[CH2_RECV]], ptr [[CH2_RECV_BUF]], i64 8)
-// CHECK-NEXT: [[CH2_VALUE:%.*]] = load i64, ptr [[CH2_RECV_BUF]]
+// CHECK-NEXT: [[CH2_VALUE:%.*]] = load volatile i64, ptr [[CH2_RECV_BUF]]
+// CHECK-NEXT: call void @llvm.stackrestore
 // CHECK: [[CH2_PAIR0:%.*]] = insertvalue { i64, i1 } undef, i64 [[CH2_VALUE]], 0
 // CHECK-NEXT: [[CH2_PAIR:%.*]] = insertvalue { i64, i1 } [[CH2_PAIR0]], i1 [[CH2_OK]], 1
 // CHECK-NEXT: [[CH2_PRINT_VALUE:%.*]] = extractvalue { i64, i1 } [[CH2_PAIR]], 0
