@@ -12,9 +12,9 @@ import (
 // runtime type descriptors; the test body then exercises lazy pointer-to-this
 // and element links from those descriptors.
 // CHECK-LABEL: define void @main.checkBasicNames(){{.*}} {
-// CHECK: insertvalue %"{{.*}}eface" { ptr @_llgo_int32,
+// CHECK-DAG: insertvalue %"{{.*}}eface" { ptr @_llgo_int32,
+// CHECK-DAG: insertvalue %"{{.*}}eface" { ptr @_llgo_uint8,
 // CHECK: call %"{{.*}}String" @"{{.*}}/runtime/abi.(*Type).String"
-// CHECK: insertvalue %"{{.*}}eface" { ptr @_llgo_uint8,
 // CHECK: call %"{{.*}}String" @"{{.*}}/runtime/abi.(*Type).String"
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: insertvalue %"{{.*}}eface" { ptr @_llgo_main.T,

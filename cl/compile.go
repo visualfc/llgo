@@ -2148,6 +2148,9 @@ func instructionPrecedes(before, after ssa.Instruction) bool {
 	return false
 }
 
+// assertNilDerefBase uses pointer-returning checks to rewrite p.bvals. Keep its
+// traversal in sync with emitNilDerefBaseCheck, which emits cold failure
+// branches without replacing cached addresses for delayed receiver checks.
 func (p *context) assertNilDerefBase(b llssa.Builder, addr ssa.Value) {
 	switch addr := addr.(type) {
 	case *ssa.UnOp:

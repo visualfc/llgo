@@ -81,6 +81,7 @@ func AssertDivideByZero(b bool) {
 	}
 }
 
+//go:noinline
 func AssertNilDeref(b bool) {
 	if b {
 		panic(errorString("invalid memory address or nil pointer dereference"))

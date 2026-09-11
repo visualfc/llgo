@@ -2355,6 +2355,9 @@ func isWrapNilCheckCall(v ssa.Value) bool {
 	return ok && builtin.Name() == "ssa:wrapnilchk"
 }
 
+// emitNilDerefBaseCheck emits cold failure branches without replacing cached
+// addresses. Keep its traversal in sync with assertNilDerefBase, whose checks
+// instead return safe addresses and rewrite p.bvals for ordinary compilation.
 func (p *context) emitNilDerefBaseCheck(b llssa.Builder, addr ssa.Value) {
 	switch addr := addr.(type) {
 	case *ssa.UnOp:
@@ -2383,8 +2386,13 @@ func (p *context) emitCheckedDerefCheck(b llssa.Builder, arg *ssa.UnOp) {
 func (p *context) compileCheckedDeref(b llssa.Builder, arg *ssa.UnOp) llssa.Expr {
 	p.emitNilDerefBaseCheck(b, arg.X)
 	ptr := p.compileValue(b, arg.X)
-	checked := b.NilDerefCheck(ptr)
-	ret := b.UnOp(token.MUL, checked)
+	// A field address is non-nil once emitNilDerefBaseCheck has validated its
+	// pointer base. Checking the derived address again does not protect the
+	// embedded pointer value loaded from that address.
+	if _, ok := arg.X.(*ssa.FieldAddr); !ok {
+		b.AssertNilDeref(ptr)
+	}
+	ret := b.UnOp(token.MUL, ptr)
 	p.bvals[arg] = ret
 	return ret
 }

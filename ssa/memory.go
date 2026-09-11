@@ -366,7 +366,18 @@ func (b Builder) AssertNilDeref(ptr Expr) {
 	}
 	nilPtr := llvm.ConstNull(ptr.impl.Type())
 	isNil := Expr{llvm.CreateICmp(b.impl, llvm.IntEQ, ptr.impl, nilPtr), b.Prog.Bool()}
-	b.InlineCall(b.Pkg.rtFunc("AssertNilDeref"), isNil)
+	// Keep the successful path free of an opaque runtime call. In particular,
+	// field-address checks may fold to false only after LLVM optimization;
+	// calling AssertNilDeref(false) still forces spills across that call.
+	blks := b.Func.MakeBlocks(2)
+	b.If(isNil, blks[0], blks[1])
+	b.SetBlockEx(blks[0], AtEnd, false)
+	b.Call(b.Pkg.rtFunc("AssertNilDeref"), b.Prog.BoolVal(true))
+	// Like the bounds-check failure path, this cannot return normally. Keep
+	// a post-call instruction for panic return-address line information.
+	b.Jump(blks[0])
+	b.SetBlockEx(blks[1], AtEnd, false)
+	b.blk.last = blks[1].last
 }
 
 func (b Builder) NilDerefCheck(ptr Expr) Expr {

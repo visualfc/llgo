@@ -105,6 +105,7 @@ func (p *context) checkMethodCallReceiver(b llssa.Builder, call *ssa.CallCommon)
 	// declared pointer receiver may still legally be nil.
 	if isPointerMethodWrapperCall(p.goFn, call) {
 		p.checkAddressedMethodReceiver(b, call.Args[0], receiverNilCheck{pos: p.goFn.Pos()})
+		return
 	}
 	checks := p.options.ReceiverNilChecks
 	if checks == nil {

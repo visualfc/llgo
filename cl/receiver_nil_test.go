@@ -79,12 +79,16 @@ func savedPromotedExpression(p *P) { f := (*P).M; f(p, arg()) }
 	}
 	// An embedded-pointer receiver has a real load, unlike address-only
 	// promotion. Its guard must dominate that load even when optimization
-	// removes the eventual method's unused receiver argument.
+	// removes the eventual method's unused receiver argument. Once the outer
+	// pointer is checked, the derived field address itself needs no second guard.
 	pointerIR := mustNamedFunction(t, mod, "foo.pointer").String()
-	guard := strings.Index(pointerIR, "AssertNilDerefPtr")
+	guard := strings.Index(pointerIR, "AssertNilDeref")
 	load := strings.Index(pointerIR, "load ptr")
 	if guard < 0 || load < guard {
 		t.Fatalf("embedded receiver pointer load precedes its guard:\n%s", pointerIR)
+	}
+	if strings.Contains(pointerIR, "AssertNilDerefPtr") {
+		t.Fatalf("embedded receiver pointer load rechecks its derived field address:\n%s", pointerIR)
 	}
 	ir := mustNamedFunction(t, mod, "foo.bound").String()
 	if !strings.Contains(ir, "AssertNilDeref") {

@@ -92,7 +92,8 @@ func main() {
 // CHECK: [[C1_NIL:%.*]] = icmp eq ptr %0, null
 // CHECK: call void @"{{.*}}/runtime/internal/runtime.PanicWrapNilPointer"(i1 [[C1_NIL]], %"{{.*}}String" {{.*}}, %"{{.*}}String" {{.*}})
 // CHECK: [[C1_DEREF_NIL:%.*]] = icmp eq ptr %0, null
-// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 [[C1_DEREF_NIL]])
+// CHECK: br i1 [[C1_DEREF_NIL]], label %{{[^,]+}}, label %{{[^ ]+}}
+// CHECK: call void @"{{.*}}/runtime/internal/runtime.AssertNilDeref"(i1 true)
 // CHECK: call void @main.C1.f(%main.C1 zeroinitializer)
 
 // CHECK-LABEL: define void @main.C2.f(%main.C2 %0){{.*}} {
