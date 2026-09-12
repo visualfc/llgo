@@ -39,6 +39,44 @@ func TestReflectMakeFuncComplex64(t *testing.T) {
 	}
 }
 
+func TestJSCallMapsThrownError(t *testing.T) {
+	fs := js.Global().Get("fs")
+	statSync := fs.Get("statSync")
+	if statSync.IsUndefined() {
+		t.Fatal("fs.statSync is required to test thrown JS exception mapping")
+	}
+
+	defer func() {
+		got := recover()
+		if got == nil {
+			t.Fatal("js.Value.Call did not panic")
+		}
+		jsErr, ok := got.(js.Error)
+		if !ok {
+			t.Fatalf("panic = %T %v, want js.Error", got, got)
+		}
+		if code := jsErr.Get("code").String(); code != "ENOENT" {
+			t.Fatalf("js.Error code = %q, want ENOENT", code)
+		}
+	}()
+	fs.Call("statSync", "/llgo-pr2539-definitely-does-not-exist")
+	t.Fatal("js.Value.Call returned")
+}
+
+func TestFSCallMapsSyncException(t *testing.T) {
+	fs := js.Global().Get("fs")
+	if fs.Get("statSync").IsUndefined() {
+		t.Fatal("fs.statSync is required to test sync exception mapping")
+	}
+	_, err := os.Stat("/llgo-pr2539-definitely-does-not-exist")
+	if err == nil {
+		t.Fatal("os.Stat of a missing path succeeded")
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("os.Stat missing path = %v, want os.IsNotExist", err)
+	}
+}
+
 func TestFSCallAsyncFallback(t *testing.T) {
 	fs := js.Global().Get("fs")
 	syncWrite := fs.Get("writeSync")
@@ -60,6 +98,57 @@ func TestFSCallAsyncFallback(t *testing.T) {
 	}
 	if string(got) != want {
 		t.Fatalf("ReadFile = %q, want %q", got, want)
+	}
+}
+
+func TestFSCallKeepsReadAsync(t *testing.T) {
+	testFSCallUsesAsyncPath(t, "read", func() {
+		buf := make([]byte, 1)
+		_, _ = os.Stdin.Read(buf)
+	})
+}
+
+func TestFSCallKeepsFsyncAsync(t *testing.T) {
+	testFSCallUsesAsyncPath(t, "fsync", func() {
+		_ = os.Stdout.Sync()
+	})
+}
+
+func testFSCallUsesAsyncPath(t *testing.T, name string, fn func()) {
+	t.Helper()
+	fs := js.Global().Get("fs")
+	orig := fs.Get(name)
+	origSync := fs.Get(name + "Sync")
+	if orig.IsUndefined() {
+		t.Fatalf("fs.%s is required to test the async path", name)
+	}
+
+	called := make(chan struct{}, 1)
+	fs.Set(name, js.FuncOf(func(this js.Value, args []js.Value) any {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+		if len(args) == 0 {
+			return nil
+		}
+		cb := args[len(args)-1]
+		cb.Invoke(js.Null(), 0)
+		return nil
+	}))
+	t.Cleanup(func() {
+		fs.Set(name, orig)
+		fs.Set(name+"Sync", origSync)
+	})
+	if !origSync.IsUndefined() {
+		fs.Set(name+"Sync", js.Undefined())
+	}
+
+	fn()
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatalf("fs.%s used a sync path instead of the callback API", name)
 	}
 }
 

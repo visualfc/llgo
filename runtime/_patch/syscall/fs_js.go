@@ -4,15 +4,21 @@ package syscall
 
 import "syscall/js"
 
-// fsCall prefers Node's fs.*Sync APIs so file I/O does not park on a js.FuncOf
-// callback. Official Go waits on a buffered channel after fs.write; that
-// nested park aborts LLGo's Emscripten Fiber/Asyncify scheduler. Methods
-// without a Sync counterpart keep the original callback-and-channel path.
+var asyncFSMethods = map[string]bool{
+	"fsync": true,
+	"read":  true,
+}
+
+// fsCall uses sync methods for operations that are normally short-lived, which
+// avoids parking on a js.FuncOf callback in LLGo's scheduler. Potentially
+// blocking operations keep Go's callback-based behavior.
 func fsCall(name string, args ...any) (val js.Value, err error) {
-	syncName := name + "Sync"
-	if !jsFS.Get(syncName).IsUndefined() {
-		defer recoverErr(&err)
-		return jsFS.Call(syncName, args...), nil
+	if !asyncFSMethods[name] {
+		syncName := name + "Sync"
+		if !jsFS.Get(syncName).IsUndefined() {
+			defer recoverErr(&err)
+			return jsFS.Call(syncName, args...), nil
+		}
 	}
 	return fsCallAsync(name, args...)
 }

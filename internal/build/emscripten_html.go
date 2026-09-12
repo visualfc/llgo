@@ -69,7 +69,10 @@ func staleEmscriptenGluePath(driverOut string) string {
 	}
 }
 
-func removeStaleEmscriptenGlue(driverOut string) error {
+func removeStaleEmscriptenGlue(conf *Config, driverOut string) error {
+	if !isEmscriptenJSTarget(conf) {
+		return nil
+	}
 	stale := staleEmscriptenGluePath(driverOut)
 	if stale == "" {
 		return nil
@@ -97,8 +100,27 @@ func publishEmscriptenBrowserHostFrom(ctx *context, output string, verbose bool,
 	return nil
 }
 
+func emscriptenBrowserHostPath(output string) string {
+	return filepath.Join(filepath.Dir(output), wasmFSScriptName)
+}
+
+func emscriptenBrowserHostCollision(output, dst string) (bool, error) {
+	same, err := sameFilePath(output, dst)
+	if err != nil {
+		return false, err
+	}
+	return same, nil
+}
+
 func installEmscriptenBrowserHost(src, output string) error {
-	dst := filepath.Join(filepath.Dir(output), wasmFSScriptName)
+	dst := emscriptenBrowserHostPath(output)
+	same, err := emscriptenBrowserHostCollision(output, dst)
+	if err != nil {
+		return fmt.Errorf("copy %s: %w", wasmFSScriptName, err)
+	}
+	if same {
+		return fmt.Errorf("copy %s: output %s collides with the browser host sidecar", wasmFSScriptName, output)
+	}
 	if err := copyFileAtomic(src, dst); err != nil {
 		return fmt.Errorf("copy %s: %w", wasmFSScriptName, err)
 	}

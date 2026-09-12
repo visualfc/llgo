@@ -36,14 +36,37 @@ func TestRemoveStaleEmscriptenGlue(t *testing.T) {
 	if err := os.WriteFile(stale, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeStaleEmscriptenGlue(html); err != nil {
+	conf := &Config{BuildMode: BuildModeExe, Target: "emscripten", Goos: "js"}
+	if err := removeStaleEmscriptenGlue(conf, html); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Fatalf("stale glue still present: %v", err)
 	}
-	if err := removeStaleEmscriptenGlue(html); err != nil {
+	if err := removeStaleEmscriptenGlue(conf, html); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRemoveStaleEmscriptenGlueSkipsNativeOutputs(t *testing.T) {
+	dir := t.TempDir()
+	js := filepath.Join(dir, "app.js")
+	sibling := filepath.Join(dir, "app.mjs")
+	if err := os.WriteFile(js, []byte("native"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sibling, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeStaleEmscriptenGlue(&Config{BuildMode: BuildModeExe, Goos: "darwin"}, js); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(sibling)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep" {
+		t.Fatalf("native sibling glue = %q, want keep", got)
 	}
 }
 
@@ -61,7 +84,7 @@ func TestRemoveStaleEmscriptenGlueReportsError(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	if err := removeStaleEmscriptenGlue(html); err == nil {
+	if err := removeStaleEmscriptenGlue(&Config{BuildMode: BuildModeExe, Target: "emscripten", Goos: "js"}, html); err == nil {
 		t.Fatal("expected error removing stale glue from a read-only directory")
 	}
 }
@@ -285,6 +308,35 @@ func TestInstallEmscriptenBrowserHostErrors(t *testing.T) {
 	}
 	if err := installEmscriptenBrowserHost(src, htmlPath); err == nil || !strings.Contains(err.Error(), "insert") {
 		t.Fatalf("inject failure = %v", err)
+	}
+}
+
+func TestInstallEmscriptenBrowserHostRejectsOutputCollision(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src", wasmFSScriptName)
+	if err := os.MkdirAll(filepath.Dir(src), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, []byte("/* shim */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out", wasmFSScriptName)
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(out, []byte("export default function Module() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := installEmscriptenBrowserHost(src, out)
+	if err == nil || !strings.Contains(err.Error(), "collides") {
+		t.Fatalf("collision error = %v", err)
+	}
+	got, readErr := os.ReadFile(out)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != "export default function Module() {}\n" {
+		t.Fatalf("output was overwritten: %q", got)
 	}
 }
 

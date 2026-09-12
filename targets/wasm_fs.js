@@ -13,6 +13,8 @@
 //
 // Auto-generated emcc HTML already has a global Module; attach is optional there.
 (function (global) {
+  const NativeTextDecoder = global.TextDecoder;
+
   let attached = null;
 
   function currentModule() {
@@ -31,7 +33,6 @@
 
   if (global.fs) return;
 
-  const NativeTextDecoder = global.TextDecoder;
   let umaskValue = 0o022;
   const pendingLimit = 65536;
 
@@ -111,11 +112,14 @@
   }
 
   function call(callback, fn) {
+    let value;
+    let error;
     try {
-      callback(null, fn());
+      value = fn();
     } catch (e) {
-      callback(toNodeError(e));
+      error = toNodeError(e);
     }
+    callback(error, value);
   }
 
   // Copy off wasm memory / resizable ArrayBuffer views without changing the
@@ -212,11 +216,13 @@
     return emFS().write(streamOf(fd), buf, 0, buf.length, position == null ? undefined : position);
   }
 
+  const asyncHostMethods = { fsync: true, read: true };
+
   function addSyncMethods(fs) {
     const names = Object.keys(fs);
     for (let i = 0; i < names.length; i++) {
       const name = names[i];
-      if (name === "constants" || name.endsWith("Sync") || typeof fs[name] !== "function") continue;
+      if (asyncHostMethods[name] || name === "constants" || name.endsWith("Sync") || typeof fs[name] !== "function") continue;
       if (fs[name + "Sync"]) continue;
       const asyncFn = fs[name];
       fs[name + "Sync"] = function () {
