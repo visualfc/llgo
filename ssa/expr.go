@@ -1748,6 +1748,12 @@ func (b Builder) Do(da DoAction, fn Expr, buildCall func(Builder, Expr, ...Expr)
 // appropriate value based on the comparison.
 func (b Builder) compareSelect(op token.Token, x Expr, y ...Expr) Expr {
 	ret := x
+	if x.kind == vkFloat {
+		for _, v := range y {
+			ret.impl = b.floatMinMax(op, ret.impl, v.impl)
+		}
+		return ret
+	}
 	for _, v := range y {
 		cond := b.BinOp(op, ret, v)
 		sel := llvm.CreateSelect(b.impl, cond.impl, ret.impl, v.impl)
