@@ -156,11 +156,11 @@ func checkToolCompileResult(t *testing.T, dir string, args []string, wantSuccess
 	t.Helper()
 	output, err := runToolCompile(t, dir, args...)
 	if (err == nil) != wantSuccess {
-		t.Fatalf("%s tool compile success = %v, want %v; output:\n%s", toolCompilerName, err == nil, wantSuccess, output)
+		t.Fatalf("%s tool compile success = %v, want %v; error=%T %v; output:\n%s", toolCompilerName, err == nil, wantSuccess, err, err, output)
 	}
 	if wantText != "" {
 		if !strings.Contains(output, wantText) {
-			t.Fatalf("%s tool compile output does not contain %q:\n%s", toolCompilerName, wantText, output)
+			t.Fatalf("%s tool compile output does not contain %q; error=%T %v:\n%s", toolCompilerName, wantText, err, err, output)
 		}
 	}
 	return output
