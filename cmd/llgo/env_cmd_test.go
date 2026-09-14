@@ -50,13 +50,23 @@ func TestEnvGoAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := os.Getenv("PATH")
+	pathWithoutGo := dir
+	for _, pathDir := range filepath.SplitList(path) {
+		if _, err := exec.LookPath(filepath.Join(pathDir, name)); err != nil {
+			pathWithoutGo += string(os.PathListSeparator) + pathDir
+		}
+	}
 	t.Setenv("LLGO_TEST_ENV_CHILD", "1")
 	t.Setenv("GOOS", "wasip1")
 	t.Setenv("GOARCH", "wasm")
 	for _, missing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "real Go after alias", true: "only alias"}[missing], func(t *testing.T) {
 			search := dir
-			if !missing {
+			if missing {
+				// Keep non-Go PATH entries so Windows can still load the test
+				// binary's DLLs while the resolver sees only the self alias.
+				search = pathWithoutGo
+			} else {
 				search += string(os.PathListSeparator) + path
 			}
 			t.Setenv("PATH", search)
