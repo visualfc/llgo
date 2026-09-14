@@ -423,6 +423,14 @@ cd llgo
 ./install.sh
 ```
 
+## Go environment
+
+Use `llgo env GOOS GOARCH` to query Go environment values and `llgo env LLGO_ROOT LLGO_RUNTIME_DIR LLGO_LLVM_VERSION` to inspect the LLGo installation and selected LLVM toolchain. With no variable names it prints both sets. `-json` provides machine-readable output, `-changed` limits the result to explicit settings, and `-target name` adds the resolved `LLGO_TARGET_*` fields for an embedded target without downloading tools or building libraries. Paths for optional packaged tools are empty when the payload is not installed.
+
+Go-only queries are delegated to the underlying Go toolchain and respect its environment and configuration. The `-w` and `-u` flags update the same GOENV configuration as `go env`; LLGo fields are read-only.
+
+A real Go executable must remain in an absolute PATH directory. If `go` is a symlink or hard link to `llgo`, the environment command skips that link and searches the remaining PATH entries instead of invoking itself recursively.
+
 ## Development tools
 
 * [pydump](_xtool/pydump): It is the first production program compiled with `llgo` rather than `go`. It outputs symbol information (functions, variables, and constants) from a Python library in JSON format, preparing for the generation of corresponding packages in `llgo`.
