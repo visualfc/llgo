@@ -139,6 +139,8 @@ func runExtended(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 	for name := range values {
 		names = append(names, name)
 	}
+	// The merged report has no native Go-only order, so keep all Go and LLGo
+	// fields in one deterministic alphabetical sequence.
 	slices.Sort(names)
 	for _, name := range names {
 		if _, err := fmt.Fprintln(stdout, envAssignment(runtime.GOOS, name, values[name])); err != nil {
@@ -269,18 +271,18 @@ func resolveTool(name, extraBin string) string {
 		return ""
 	}
 	if filepath.IsAbs(name) {
-		if _, err := os.Stat(name); err == nil {
-			return name
+		for _, path := range toolCandidates(runtime.GOOS, filepath.Dir(name), filepath.Base(name)) {
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
 		}
 		return ""
 	}
 	if extraBin != "" {
-		path := filepath.Join(extraBin, name)
-		if runtime.GOOS == "windows" && filepath.Ext(path) == "" {
-			path += ".exe"
-		}
-		if _, err := os.Stat(path); err == nil {
-			return path
+		for _, path := range toolCandidates(runtime.GOOS, extraBin, name) {
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
 		}
 	}
 	path, _ := exec.LookPath(name)
@@ -291,10 +293,11 @@ type llvmInfo struct {
 	config string
 	mu     sync.Mutex
 	fields map[string]string
+	tools  map[string]string
 }
 
 func newLLVMInfo() *llvmInfo {
-	return &llvmInfo{config: llvmenv.ConfigBin(), fields: make(map[string]string)}
+	return &llvmInfo{config: llvmenv.ConfigBin(), fields: make(map[string]string), tools: make(map[string]string)}
 }
 
 func (p *llvmInfo) field(flag string) string {
@@ -309,17 +312,41 @@ func (p *llvmInfo) field(flag string) string {
 }
 
 func (p *llvmInfo) tool(name string) string {
+	p.mu.Lock()
+	if value, ok := p.tools[name]; ok {
+		p.mu.Unlock()
+		return value
+	}
+	p.mu.Unlock()
+
+	var value string
 	if binDir := p.field("--bindir"); binDir != "" {
-		path := filepath.Join(binDir, name)
-		if runtime.GOOS == "windows" {
-			path += ".exe"
-		}
-		if _, err := os.Stat(path); err == nil {
-			return path
+		for _, path := range toolCandidates(runtime.GOOS, binDir, name) {
+			if _, err := os.Stat(path); err == nil {
+				value = path
+				break
+			}
 		}
 	}
-	path, _ := exec.LookPath(name)
-	return path
+	if value == "" {
+		value, _ = exec.LookPath(name)
+	}
+	p.mu.Lock()
+	if cached, ok := p.tools[name]; ok {
+		value = cached
+	} else {
+		p.tools[name] = value
+	}
+	p.mu.Unlock()
+	return value
+}
+
+func toolCandidates(goos, dir, name string) []string {
+	path := filepath.Join(dir, name)
+	if goos == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
+		return []string{path, path + ".exe"}
+	}
+	return []string{path}
 }
 
 func commandLine(name string, args ...string) string {
@@ -357,6 +384,7 @@ func joinIfSet(base string, elem ...string) string {
 }
 
 func envAssignment(goos, name, value string) string {
+	value = sanitizeValue(value)
 	if goos == "windows" {
 		var escaped strings.Builder
 		for _, char := range value {
@@ -377,4 +405,13 @@ func envAssignment(goos, name, value string) string {
 		return "set " + name + "=" + escaped.String()
 	}
 	return name + "='" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func sanitizeValue(value string) string {
+	return strings.Map(func(char rune) rune {
+		if char == '\r' || char == '\n' || (!unicode.IsGraphic(char) && !unicode.IsSpace(char)) {
+			return unicode.ReplacementChar
+		}
+		return char
+	}, value)
 }

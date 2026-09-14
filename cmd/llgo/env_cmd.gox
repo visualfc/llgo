@@ -13,7 +13,7 @@
 
 import "github.com/xgo-dev/llgo/cmd/internal/env"
 
-use "env [-json] [-changed] [-target name] [var ...]"
+use "env [-json] [-changed] [-u] [-w] [-target name] [var ...]"
 
 short "Print Go and LLGo environment information"
 

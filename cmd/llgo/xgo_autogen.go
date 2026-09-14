@@ -160,7 +160,7 @@ func (this *Cmd_cmptest) Classfname() string {
 func (this *Cmd_env) Main(_xgo_arg0 string) {
 	this.Command.Main(_xgo_arg0)
 //line cmd/llgo/env_cmd.gox:16:1
-	this.Use("env [-json] [-changed] [-target name] [var ...]")
+	this.Use("env [-json] [-changed] [-u] [-w] [-target name] [var ...]")
 //line cmd/llgo/env_cmd.gox:18:1
 	this.Short("Print Go and LLGo environment information")
 //line cmd/llgo/env_cmd.gox:20:1

@@ -16,7 +16,7 @@ import (
 func TestEnvCommand(t *testing.T) {
 	cmd := &Cmd_env{App: new(App)}
 	cmd.Main("env")
-	if cmd.Command.Command.Use != "env [-json] [-changed] [-target name] [var ...]" || cmd.Classfname() != "env" || !cmd.DisableFlagParsing {
+	if cmd.Command.Command.Use != "env [-json] [-changed] [-u] [-w] [-target name] [var ...]" || cmd.Classfname() != "env" || !cmd.DisableFlagParsing {
 		t.Fatal("env command must pass Go flags and variables through unchanged")
 	}
 	t.Setenv("GOOS", "wasip1")

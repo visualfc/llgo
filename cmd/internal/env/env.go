@@ -23,15 +23,14 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 
 	"github.com/xgo-dev/llgo/cmd/internal/base"
+	"github.com/xgo-dev/llgo/cmd/internal/gotool"
 	"github.com/xgo-dev/llgo/internal/mockable"
 )
 
 var Cmd = &base.Command{
-	UsageLine: "llgo env [-json] [-changed] [-target name] [var ...]",
+	UsageLine: "llgo env [-json] [-changed] [-u] [-w] [-target name] [var ...]",
 	Short:     "Print Go and LLGo environment information",
 	Run:       runCmd,
 }
@@ -61,9 +60,9 @@ func runGo(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	goExe, err := findGo(self, os.Getenv("PATH"))
+	goExe, err := gotool.Find(self, os.Getenv("PATH"))
 	if err != nil {
-		return err
+		return fmt.Errorf("llgo env: %w", err)
 	}
 	// Delegate parsing and formatting to Go, including GOENV, GOTOOLCHAIN,
 	// target overrides and -json/-changed/-w/-u. These describe the underlying
@@ -71,34 +70,4 @@ func runGo(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	cmd := exec.Command(goExe, append([]string{"env"}, args...)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	return cmd.Run()
-}
-
-func findGo(self, pathEnv string) (string, error) {
-	selfInfo, err := os.Stat(self)
-	if err != nil {
-		return "", err
-	}
-	name := "go"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	for _, dir := range filepath.SplitList(pathEnv) {
-		// Like os/exec's default lookup policy, do not run a program found
-		// through a relative PATH entry (including the working directory).
-		if !filepath.IsAbs(dir) {
-			continue
-		}
-		candidate, err := exec.LookPath(filepath.Join(dir, name))
-		if err != nil {
-			continue
-		}
-		info, err := os.Stat(candidate)
-		if err != nil || os.SameFile(selfInfo, info) {
-			// Users may expose llgo as "go" for external build tools. Skip
-			// symlinks and hard links to ourselves instead of recursing.
-			continue
-		}
-		return candidate, nil
-	}
-	return "", errors.New("llgo env: Go toolchain not found in PATH (a go link to llgo is not a Go toolchain)")
 }

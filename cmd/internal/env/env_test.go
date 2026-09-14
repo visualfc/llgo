@@ -196,7 +196,7 @@ func TestExtendedFormattingAndHelpers(t *testing.T) {
 	if err := os.WriteFile(clang, nil, 0755); err != nil {
 		t.Fatal(err)
 	}
-	info := &llvmInfo{config: "unused", fields: map[string]string{"--bindir": dir}}
+	info := &llvmInfo{config: "unused", fields: map[string]string{"--bindir": dir}, tools: make(map[string]string)}
 	if got := info.tool("clang"); got != clang {
 		t.Errorf("tool = %q, want %q", got, clang)
 	}
@@ -246,46 +246,16 @@ func TestExtendedFormattingAndHelpers(t *testing.T) {
 	if got := envAssignment("windows", "X", "%a&b^c\n"); got != "set X=%%a^&b^^c�" {
 		t.Errorf("Windows assignment = %q", got)
 	}
-}
-
-func TestFindGo(t *testing.T) {
-	root := t.TempDir()
-	name := "go"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
+	if got := envAssignment("linux", "X", "safe\x1b[31m\nline"); got != "X='safe�[31m�line'" {
+		t.Errorf("sanitized Unix assignment = %q", got)
 	}
-	write := func(dir string) string {
-		t.Helper()
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte("test executable"), 0755); err != nil {
-			t.Fatal(err)
-		}
-		return path
+	windowsCandidates := toolCandidates("windows", `C:\LLVM\bin`, "ld.lld")
+	if len(windowsCandidates) != 2 || !strings.HasSuffix(windowsCandidates[1], "ld.lld.exe") {
+		t.Errorf("Windows dotted tool candidates = %q", windowsCandidates)
 	}
-	self := write(filepath.Join(root, "self"))
-	tool := write(filepath.Join(root, "tool"))
-	path := strings.Join([]string{".", filepath.Join(root, "missing"), filepath.Dir(self), filepath.Dir(tool)}, string(os.PathListSeparator))
-	if got, err := findGo(self, path); err != nil || got != tool {
-		t.Fatalf("findGo = %q, %v; want %q", got, err, tool)
+	if candidates := toolCandidates("windows", `C:\LLVM\bin`, "clang.exe"); len(candidates) != 1 {
+		t.Errorf("Windows exe candidates = %q", candidates)
 	}
-	if _, err := findGo(self, filepath.Dir(self)); err == nil {
-		t.Fatal("self-only PATH should fail rather than recurse")
-	}
-	if _, err := findGo(filepath.Join(root, "missing-self"), path); err == nil {
-		t.Fatal("missing executable should fail")
-	}
-	t.Run("symlink", func(t *testing.T) {
-		dir := t.TempDir()
-		if err := os.Symlink(self, filepath.Join(dir, name)); err != nil {
-			t.Skipf("cannot create symlink: %v", err)
-		}
-		if _, err := findGo(self, dir); err == nil {
-			t.Fatal("go symlink to llgo should not recurse")
-		}
-	})
 }
 
 func TestRunCmdExitStatus(t *testing.T) {
