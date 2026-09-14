@@ -995,8 +995,9 @@ func (b Builder) Recv(ch Expr, commaOk bool) (ret Expr) {
 	sp := b.StackSave()
 	ptr := b.Alloc(etyp, false)
 	ok := b.InlineCall(b.Pkg.rtFunc("ChanRecv"), ch, ptr, eltSize)
-	// Receive buffers use function-entry slots. Preserve the load-before-restore
-	// ordering when materializing the result of a channel operation.
+	// Receive buffers use function-entry slots and remain valid across
+	// StackRestore. Keep result materialization before restore as a conservative,
+	// consistent ordering for channel receives.
 	val := b.Load(ptr)
 	if prog.SizeOf(etyp) != 0 { // Zero-sized Load returns a constant, not an instruction.
 		val.SetVolatile(true)
@@ -1082,8 +1083,9 @@ func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
 	for i, s := range states {
 		if !s.Send {
 			etyp := b.Prog.Elem(s.Chan.Type)
-			// Receive buffers use function-entry slots; the operation table is
-			// stack-save scoped. Materialize results before restoring the stack.
+			// Receive buffers use function-entry slots and remain valid across
+			// StackRestore. Keep result materialization before restore as a
+			// conservative, consistent ordering for channel receives.
 			typs = append(typs, etyp)
 			r := b.Load(Expr{b.impl.CreateExtractValue(ops[i].impl, 1, ""), prog.Pointer(etyp)})
 			if prog.SizeOf(etyp) != 0 { // Zero-sized Load returns a constant.
