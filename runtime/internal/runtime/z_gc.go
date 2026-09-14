@@ -137,9 +137,12 @@ func runCleanups() {
 			e := head
 			head = e.next
 			e.next = nil
-			// Start outside the queue lock: starting a goroutine can allocate.
-			// A blocked cleanup must not prevent other cleanups from running.
-			go runCleanup(e)
+			// Execute outside the queue lock so allocations made by a callback
+			// can enqueue more cleanups without reentering user code. Hosted
+			// goroutines each own an OS thread: reuse this worker rather than
+			// creating a thread for every cleanup. A long-running callback
+			// delays subsequent callbacks, as with a serial finalizer worker.
+			runCleanup(e)
 		}
 	}
 }
