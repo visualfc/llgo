@@ -84,14 +84,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		targetTags = config.BuildTags
 	}
-	if !query.moduleMode {
+	if query.moduleMode {
+		// Module queries do not use LLGo source-selection tags, but go list -m
+		// still accepts and uses tags explicitly supplied by the caller.
+		if tags := mergeTags(query.tags); len(tags) != 0 {
+			query.goArgs = append([]string{"-tags=" + strings.Join(tags, ",")}, query.goArgs...)
+		}
+	} else {
 		tags := mergeTags(strings.Split(build.DefaultBuildTags(goarch, query.target), ","), targetTags, query.tags)
 		query.goArgs = append([]string{"-tags=" + strings.Join(tags, ",")}, query.goArgs...)
 	}
 
 	cmd := exec.Command(goExe, append([]string{"list"}, query.goArgs...)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
-	cmd.Env = replaceEnv(os.Environ(), "GOOS", goos, "GOARCH", goarch)
+	cmd.Env = gotool.ChildEnv(replaceEnv(os.Environ(), "GOOS", goos, "GOARCH", goarch))
 	return cmd.Run()
 }
 

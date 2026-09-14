@@ -84,6 +84,17 @@ func TestListGoPackagesQuery(t *testing.T) {
 	}
 }
 
+func TestListModuleQueryPreservesUserTags(t *testing.T) {
+	var output bytes.Buffer
+	args := []string{"-m", "-tags=llgo_test_tag", "-f", "{{.Path}}"}
+	if err := run(args, nil, &output, &output); err != nil {
+		t.Fatalf("module list %q: %v, %s", args, err, &output)
+	}
+	if strings.TrimSpace(output.String()) != "github.com/xgo-dev/llgo" {
+		t.Fatalf("module list = %q", &output)
+	}
+}
+
 func TestListSourceSelection(t *testing.T) {
 	module := t.TempDir()
 	write := func(name, content string) {
