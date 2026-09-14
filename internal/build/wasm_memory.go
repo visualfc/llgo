@@ -27,6 +27,7 @@ import (
 // heap reservation after static data and the process stack, so a normal module
 // initially has 64 MiB plus its static data (rounded to Wasm pages). This does
 // not change the process stack or impose a maximum linear-memory size.
+// The 10 MiB value matches -z stack-size=10485760 in crosscompile.go.
 const defaultWASIHeapFlag = "-Wl,--initial-heap=56623104"
 
 func defaultWASIHeapArgs(ctx *context, linker *clang.Cmd, args []string) []string {

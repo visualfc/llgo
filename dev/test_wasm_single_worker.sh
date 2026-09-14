@@ -149,6 +149,7 @@ run_wasi_empty_heap() {
 	local response="${work_dir}/heap-objects.rsp"
 	local module="${work_dir}/gc-wasi-objects.wasm"
 	local heap_flags base heap memory aligned_base boundary_heap boundary_memory
+	local wasm_page_size=65536
 	# An object-only user response file must not acquire an implicit 54 MiB
 	# heap. No response-file parsing is needed to preserve user memory policy.
 	clang --target=wasm32-unknown-unknown -c -x c /dev/null -o "${work_dir}/heap-empty.o"
@@ -161,7 +162,7 @@ run_wasi_empty_heap() {
 		run_wasi wasi "${gc_fixture}" "wasm gc ok" "gc-wasi-objects"
 	read -r base heap memory < <(wasi_heap_layout "${module}")
 	echo "WASI object response: heap base=${heap}, initial memory=${memory}"
-	if (( heap > memory || memory - heap >= 65536 )); then
+	if (( heap > memory || memory - heap >= wasm_page_size )); then
 		echo "unexpected initial heap for object response: base=${heap}, memory=${memory}" >&2
 		exit 1
 	fi
