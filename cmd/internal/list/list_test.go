@@ -34,9 +34,17 @@ func TestParseArgs(t *testing.T) {
 			t.Errorf("parseArgs(%q) succeeded", args)
 		}
 	}
-	module, err := parseArgs([]string{"-m", "-json", "all"})
-	if err != nil || !module.moduleMode {
-		t.Fatalf("module query = %#v, %v", module, err)
+	for _, flag := range []string{"-m", "-m=1", "-m=t", "-m=T", "-m=TRUE", "-m=true", "-m=True"} {
+		module, err := parseArgs([]string{flag, "-json", "all"})
+		if err != nil || !module.moduleMode {
+			t.Errorf("module query %q = %#v, %v", flag, module, err)
+		}
+	}
+	for _, flag := range []string{"-m=0", "-m=f", "-m=FALSE", "-m=false", "-m=False"} {
+		module, err := parseArgs([]string{flag, "-json", "all"})
+		if err != nil || module.moduleMode {
+			t.Errorf("package query %q = %#v, %v", flag, module, err)
+		}
 	}
 }
 
@@ -47,6 +55,10 @@ func TestMergeTagsAndEnvironment(t *testing.T) {
 	environ := replaceEnv([]string{"PATH=/bin", "GOOS=old"}, "GOOS", "linux", "GOARCH", "arm")
 	if !slicesContain(environ, "GOOS=linux") || !slicesContain(environ, "GOARCH=arm") || !slicesContain(environ, "PATH=/bin") {
 		t.Fatalf("replaceEnv = %q", environ)
+	}
+	query := listQuery{moduleMode: true, tags: []string{"user", "board"}}
+	if got := effectiveTags(query, "arm", []string{"board", "target"}); !reflect.DeepEqual(got, []string{"board", "target", "user"}) {
+		t.Fatalf("module target tags = %q", got)
 	}
 }
 

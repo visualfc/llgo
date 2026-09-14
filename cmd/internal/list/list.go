@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/xgo-dev/llgo/cmd/internal/base"
@@ -84,14 +85,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		targetTags = config.BuildTags
 	}
-	if query.moduleMode {
-		// Module queries do not use LLGo source-selection tags, but go list -m
-		// still accepts and uses tags explicitly supplied by the caller.
-		if tags := mergeTags(query.tags); len(tags) != 0 {
-			query.goArgs = append([]string{"-tags=" + strings.Join(tags, ",")}, query.goArgs...)
-		}
-	} else {
-		tags := mergeTags(strings.Split(build.DefaultBuildTags(goarch, query.target), ","), targetTags, query.tags)
+	if tags := effectiveTags(query, goarch, targetTags); len(tags) != 0 {
 		query.goArgs = append([]string{"-tags=" + strings.Join(tags, ",")}, query.goArgs...)
 	}
 
@@ -99,6 +93,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
 	cmd.Env = gotool.ChildEnv(replaceEnv(os.Environ(), "GOOS", goos, "GOARCH", goarch))
 	return cmd.Run()
+}
+
+func effectiveTags(query listQuery, goarch string, targetTags []string) []string {
+	if query.moduleMode {
+		// Module queries omit LLGo defaults but retain target and user tags that
+		// the caller explicitly requested.
+		return mergeTags(targetTags, query.tags)
+	}
+	return mergeTags(strings.Split(build.DefaultBuildTags(goarch, query.target), ","), targetTags, query.tags)
 }
 
 type listQuery struct {
@@ -135,8 +138,14 @@ func parseArgs(args []string) (listQuery, error) {
 		case strings.HasPrefix(arg, "-tags="):
 			query.tags = append(query.tags, splitTags(strings.TrimPrefix(arg, "-tags="))...)
 		default:
-			if arg == "-m" || arg == "-m=true" {
+			if arg == "-m" {
 				query.moduleMode = true
+			} else if value, ok := strings.CutPrefix(arg, "-m="); ok {
+				// Match the boolean spellings accepted by Go flags. Invalid values
+				// remain forwarded so the real go command emits its diagnostic.
+				if enabled, err := strconv.ParseBool(value); err == nil {
+					query.moduleMode = enabled
+				}
 			}
 			query.goArgs = append(query.goArgs, arg)
 		}
