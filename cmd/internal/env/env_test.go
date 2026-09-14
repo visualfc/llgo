@@ -196,11 +196,15 @@ func TestExtendedFormattingAndHelpers(t *testing.T) {
 	if err := os.WriteFile(clang, nil, 0755); err != nil {
 		t.Fatal(err)
 	}
-	info := &llvmInfo{config: "unused", fields: map[string]string{"--bindir": dir}, tools: make(map[string]string)}
+	info := &llvmInfo{
+		config: "unused",
+		fields: map[string]func() string{"--bindir": func() string { return dir }},
+		tools:  make(map[string]func() string),
+	}
 	if got := info.tool("clang"); got != clang {
 		t.Errorf("tool = %q, want %q", got, clang)
 	}
-	info.fields["--bindir"] = filepath.Join(dir, "missing")
+	info.fields["--bindir"] = func() string { return filepath.Join(dir, "missing") }
 	if got := info.tool("go"); got == "" {
 		t.Error("PATH fallback did not find go")
 	}

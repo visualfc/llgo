@@ -69,5 +69,6 @@ func runGo(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// Go toolchain, not LLGo's LLVM backend or its cross-compilation targets.
 	cmd := exec.Command(goExe, append([]string{"env"}, args...)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
+	cmd.Env = gotool.ChildEnv(os.Environ())
 	return cmd.Run()
 }

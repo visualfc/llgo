@@ -43,6 +43,10 @@ func TestFind(t *testing.T) {
 	if _, err := Find(self, dir); err == nil {
 		t.Fatal("symlink to self should fail")
 	}
+	t.Setenv(childGuard, "1")
+	if _, err := Find(self, filepath.Dir(tool)); err == nil || !strings.Contains(err.Error(), "recursive") {
+		t.Fatalf("guarded Find error = %v", err)
+	}
 }
 
 func TestExecutableName(t *testing.T) {
@@ -51,5 +55,12 @@ func TestExecutableName(t *testing.T) {
 	}
 	if got := executableName("linux"); got != "go" {
 		t.Errorf("Unix name = %q", got)
+	}
+}
+
+func TestChildEnv(t *testing.T) {
+	got := ChildEnv([]string{"PATH=/bin"})
+	if len(got) != 2 || got[0] != "PATH=/bin" || got[1] != childGuard+"=1" {
+		t.Fatalf("ChildEnv = %q", got)
 	}
 }

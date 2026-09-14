@@ -105,11 +105,17 @@ func runExtended(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 			names = append(names, name)
 		}
 	}
-	for _, name := range names {
+	type variableValue struct {
+		name, value string
+		set         bool
+	}
+	results := make([]variableValue, len(names))
+	var pending sync.WaitGroup
+	for index, name := range names {
 		get, ok := vars[name]
 		if !ok {
 			if strings.HasPrefix(name, "LLGO_") && !*changed {
-				values[name] = "" // Go also returns an empty value for unknown names.
+				results[index] = variableValue{name: name, set: true} // Go also returns an empty value for unknown names.
 			}
 			continue
 		}
@@ -118,7 +124,20 @@ func runExtended(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 				continue
 			}
 		}
-		values[name] = get()
+		results[index] = variableValue{name: name, set: true}
+		pending.Add(1)
+		go func(index int, get func() string) {
+			defer pending.Done()
+			results[index].value = get()
+		}(index, get)
+	}
+	// A full report probes several independent LLVM and Clang properties. Run
+	// their bounded subprocesses concurrently so slow diagnostics do not add up.
+	pending.Wait()
+	for _, result := range results {
+		if result.set {
+			values[result.name] = result.value
+		}
 	}
 	if *jsonMode {
 		encoder := json.NewEncoder(stdout)
@@ -292,53 +311,44 @@ func resolveTool(name, extraBin string) string {
 type llvmInfo struct {
 	config string
 	mu     sync.Mutex
-	fields map[string]string
-	tools  map[string]string
+	fields map[string]func() string
+	tools  map[string]func() string
 }
 
 func newLLVMInfo() *llvmInfo {
-	return &llvmInfo{config: llvmenv.ConfigBin(), fields: make(map[string]string), tools: make(map[string]string)}
+	return &llvmInfo{config: llvmenv.ConfigBin(), fields: make(map[string]func() string), tools: make(map[string]func() string)}
 }
 
 func (p *llvmInfo) field(flag string) string {
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if value, ok := p.fields[flag]; ok {
-		return value
+	get := p.fields[flag]
+	if get == nil {
+		get = sync.OnceValue(func() string { return commandLine(p.config, flag) })
+		p.fields[flag] = get
 	}
-	value := commandLine(p.config, flag)
-	p.fields[flag] = value
-	return value
+	p.mu.Unlock()
+	return get()
 }
 
 func (p *llvmInfo) tool(name string) string {
 	p.mu.Lock()
-	if value, ok := p.tools[name]; ok {
-		p.mu.Unlock()
-		return value
-	}
-	p.mu.Unlock()
-
-	var value string
-	if binDir := p.field("--bindir"); binDir != "" {
-		for _, path := range toolCandidates(runtime.GOOS, binDir, name) {
-			if _, err := os.Stat(path); err == nil {
-				value = path
-				break
+	get := p.tools[name]
+	if get == nil {
+		get = sync.OnceValue(func() string {
+			if binDir := p.field("--bindir"); binDir != "" {
+				for _, path := range toolCandidates(runtime.GOOS, binDir, name) {
+					if _, err := os.Stat(path); err == nil {
+						return path
+					}
+				}
 			}
-		}
-	}
-	if value == "" {
-		value, _ = exec.LookPath(name)
-	}
-	p.mu.Lock()
-	if cached, ok := p.tools[name]; ok {
-		value = cached
-	} else {
-		p.tools[name] = value
+			value, _ := exec.LookPath(name)
+			return value
+		})
+		p.tools[name] = get
 	}
 	p.mu.Unlock()
-	return value
+	return get()
 }
 
 func toolCandidates(goos, dir, name string) []string {

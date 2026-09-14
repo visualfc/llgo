@@ -23,9 +23,15 @@ import (
 	"runtime"
 )
 
+const childGuard = "LLGO_INTERNAL_GO_TOOL"
+
 // Find returns a real Go executable from an absolute PATH entry. Links to the
-// running LLGo executable are skipped so exposing LLGo as "go" cannot recurse.
+// running LLGo executable are skipped. The child guard also stops recursion
+// through a copied binary or wrapper that invokes LLGo again as "go".
 func Find(self, pathEnv string) (string, error) {
+	if os.Getenv(childGuard) != "" {
+		return "", errors.New("recursive LLGo invocation while locating the Go toolchain")
+	}
 	selfInfo, err := os.Stat(self)
 	if err != nil {
 		return "", err
@@ -45,6 +51,13 @@ func Find(self, pathEnv string) (string, error) {
 		}
 	}
 	return "", errors.New("Go toolchain not found in PATH (a go link to llgo is not a Go toolchain)")
+}
+
+// ChildEnv marks a subprocess as the real Go tool invocation. The Go command
+// ignores this private variable, while an LLGo binary or wrapper reached by
+// mistake fails promptly instead of recursively spawning more processes.
+func ChildEnv(environ []string) []string {
+	return append(environ, childGuard+"=1")
 }
 
 func executableName(goos string) string {
