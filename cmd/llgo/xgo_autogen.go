@@ -4,19 +4,19 @@ package main
 
 import (
 	"fmt"
-	"runtime"
-
 	"github.com/goplus/cobra/xcmd"
 	"github.com/qiniu/x/stringutil"
 	"github.com/xgo-dev/llgo/cmd/internal/build"
 	"github.com/xgo-dev/llgo/cmd/internal/clean"
 	"github.com/xgo-dev/llgo/cmd/internal/compile"
+	"github.com/xgo-dev/llgo/cmd/internal/env"
 	"github.com/xgo-dev/llgo/cmd/internal/install"
 	"github.com/xgo-dev/llgo/cmd/internal/lldb"
 	"github.com/xgo-dev/llgo/cmd/internal/monitor"
 	"github.com/xgo-dev/llgo/cmd/internal/run"
 	"github.com/xgo-dev/llgo/cmd/internal/test"
-	"github.com/xgo-dev/llgo/internal/env"
+	env1 "github.com/xgo-dev/llgo/internal/env"
+	"runtime"
 )
 
 const _ = true
@@ -30,6 +30,10 @@ type Cmd_clean struct {
 	*App
 }
 type Cmd_cmptest struct {
+	xcmd.Command
+	*App
+}
+type Cmd_env struct {
 	xcmd.Command
 	*App
 }
@@ -82,16 +86,17 @@ func (this *App) Main() {
 	_xgo_obj0 := &Cmd_build{App: this}
 	_xgo_obj1 := &Cmd_clean{App: this}
 	_xgo_obj2 := &Cmd_cmptest{App: this}
-	_xgo_obj3 := &Cmd_get{App: this}
-	_xgo_obj4 := &Cmd_install{App: this}
-	_xgo_obj5 := &Cmd_lldb{App: this}
-	_xgo_obj6 := &Cmd_monitor{App: this}
-	_xgo_obj7 := &Cmd_run{App: this}
-	_xgo_obj8 := &Cmd_test{App: this}
-	_xgo_obj9 := &Cmd_tool{App: this}
-	_xgo_obj10 := &Cmd_tool_compile{App: this}
-	_xgo_obj11 := &Cmd_version{App: this}
-	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11)
+	_xgo_obj3 := &Cmd_env{App: this}
+	_xgo_obj4 := &Cmd_get{App: this}
+	_xgo_obj5 := &Cmd_install{App: this}
+	_xgo_obj6 := &Cmd_lldb{App: this}
+	_xgo_obj7 := &Cmd_monitor{App: this}
+	_xgo_obj8 := &Cmd_run{App: this}
+	_xgo_obj9 := &Cmd_test{App: this}
+	_xgo_obj10 := &Cmd_tool{App: this}
+	_xgo_obj11 := &Cmd_tool_compile{App: this}
+	_xgo_obj12 := &Cmd_version{App: this}
+	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11, _xgo_obj12)
 }
 
 //line cmd/llgo/build_cmd.gox:20
@@ -149,6 +154,25 @@ func (this *Cmd_cmptest) Main(_xgo_arg0 string) {
 }
 func (this *Cmd_cmptest) Classfname() string {
 	return "cmptest"
+}
+
+//line cmd/llgo/env_cmd.gox:16
+func (this *Cmd_env) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/env_cmd.gox:16:1
+	this.Use("env [-json] [-changed] [-u] [-w] [-target name] [var ...]")
+//line cmd/llgo/env_cmd.gox:18:1
+	this.Short("Print Go and LLGo environment information")
+//line cmd/llgo/env_cmd.gox:20:1
+	this.FlagOff()
+//line cmd/llgo/env_cmd.gox:22:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/env_cmd.gox:23:1
+		env.Cmd.Run(env.Cmd, args)
+	})
+}
+func (this *Cmd_env) Classfname() string {
+	return "env"
 }
 
 //line cmd/llgo/get_cmd.gox:16
@@ -309,7 +333,7 @@ func (this *Cmd_version) Main(_xgo_arg0 string) {
 //line cmd/llgo/version_cmd.gox:26:1
 	this.Run__0(func() {
 //line cmd/llgo/version_cmd.gox:27:1
-		fmt.Println(stringutil.Concat("llgo ", env.Version(), " ", runtime.GOOS, "/", runtime.GOARCH))
+		fmt.Println(stringutil.Concat("llgo ", env1.Version(), " ", runtime.GOOS, "/", runtime.GOARCH))
 	})
 }
 func (this *Cmd_version) Classfname() string {

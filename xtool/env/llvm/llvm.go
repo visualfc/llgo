@@ -63,6 +63,13 @@ func defaultLLVMConfigBin() string {
 	return ldLLVMConfigBin
 }
 
+// ConfigBin returns the llvm-config executable selected for LLGo. It does not
+// execute the program, so callers can use it for diagnostics even when the
+// configured LLVM installation is incomplete.
+func ConfigBin() string {
+	return defaultLLVMConfigBin()
+}
+
 // -----------------------------------------------------------------------------
 
 // Env represents an LLVM installation.
