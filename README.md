@@ -425,7 +425,7 @@ cd llgo
 
 ## Go environment
 
-Use `llgo env GOOS GOARCH` to query Go environment values and `llgo env LLGO_ROOT LLGO_RUNTIME_DIR LLGO_LLVM_VERSION` to inspect the LLGo installation and selected LLVM toolchain. With no variable names it prints both sets. `-json` provides machine-readable output, `-changed` limits the result to explicit settings, and `-target name` adds the resolved `LLGO_TARGET_*` fields for an embedded target without downloading tools or building libraries. Paths for optional packaged tools are empty when the payload is not installed.
+Use `llgo env GOOS GOARCH` to query Go environment values and `llgo env LLGO_ROOT LLGO_RUNTIME_DIR LLGO_LLVM_VERSION` to inspect the LLGo installation and selected LLVM toolchain. With no variable names it prints both sets. `-json` provides machine-readable output, and `-target name` adds the resolved `LLGO_TARGET_*` fields for an embedded target without downloading tools or building libraries. For `LLGO_*` fields, `-changed` includes only values explicitly set in the process environment and omits derived values; Go fields retain the underlying `go env -changed` behavior. Paths for optional packaged tools are empty when the payload is not installed.
 
 Go-only queries are delegated to the underlying Go toolchain and respect its environment and configuration. The `-w` and `-u` flags update the same GOENV configuration as `go env`; LLGo fields are read-only.
 
