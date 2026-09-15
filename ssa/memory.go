@@ -404,7 +404,7 @@ func (b Builder) AtomicCmpXchg(ptr, old, new Expr) Expr {
 	ret := b.impl.CreateAtomicCmpXchg(
 		ptr.impl, b.toAtomicStorageValue(storageType, old.impl), b.toAtomicStorageValue(storageType, new.impl),
 		llvm.AtomicOrderingSequentiallyConsistent, llvm.AtomicOrderingSequentiallyConsistent, false)
-	resultType := prog.Struct(t, prog.Bool())
+	resultType := prog.commaOk(t)
 	if !prog.needsWidePointerStorage(storageType) && !prog.isNativeStorage(storageType) {
 		return Expr{ret, resultType}
 	}
