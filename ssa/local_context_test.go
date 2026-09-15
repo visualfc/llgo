@@ -45,7 +45,7 @@ func TestBuildLocalPackageAccessor(t *testing.T) {
 	if !strings.Contains(ir, `@"example.com/accessor.cache" = thread_local global i64 0`) {
 		t.Fatalf("direct cache definition not found:\n%s", ir)
 	}
-	if got := strings.Count(ir, "icmp "); got != 1 {
+	if got := strings.Count(ir, "icmp ne i64"); got != 1 {
 		t.Fatalf("accessor comparisons = %d, want one cache check:\n%s", got, ir)
 	}
 	if !strings.Contains(ir, `call ptr @"`+PkgRuntime+`.LocalPackage"(ptr @"example.com/accessor.cache"`) {

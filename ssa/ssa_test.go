@@ -2345,9 +2345,9 @@ func TestConst(t *testing.T) {
 source_filename = "foo/bar"
 
 ; Function Attrs: null_pointer_is_valid
-define i1 @fn() #0 {
+define i8 @fn() #0 {
 _llgo_0:
-  ret i1 true
+  ret i8 1
 }
 
 attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }
@@ -2567,6 +2567,7 @@ source_filename = "foo/bar"
 define i64 @fn(i64 %0) #0 {
 _llgo_0:
   %1 = icmp sgt i64 %0, 0
+  %2 = zext i1 %1 to i8
   br i1 %1, label %_llgo_1, label %_llgo_2
 
 _llgo_1:                                          ; preds = %_llgo_0
@@ -2927,10 +2928,12 @@ source_filename = "foo/bar"
 define i64 @fn(i64 %0, i64 %1, i64 %2) #0 {
 _llgo_0:
   %3 = icmp sgt i64 %0, %1
-  %4 = select i1 %3, i64 %0, i64 %1
-  %5 = icmp sgt i64 %4, %2
-  %6 = select i1 %5, i64 %4, i64 %2
-  ret i64 %6
+  %4 = zext i1 %3 to i8
+  %5 = select i1 %3, i64 %0, i64 %1
+  %6 = icmp sgt i64 %5, %2
+  %7 = zext i1 %6 to i8
+  %8 = select i1 %6, i64 %5, i64 %2
+  ret i64 %8
 }
 
 attributes #0 = { null_pointer_is_valid "frame-pointer"="non-leaf" }

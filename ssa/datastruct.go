@@ -286,17 +286,17 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 	var check Expr
 	if checkMin {
 		zero := llvm.ConstInt(checkIdx.ll, 0, false)
-		check = Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, checkIdx.impl, zero), prog.Bool()}
+		check = b.boolFromI1(llvm.CreateICmp(b.impl, llvm.IntSLT, checkIdx.impl, zero))
 	}
 	if checkMax {
 		// max is a non-negative len/cap value. Unsigned comparison is valid for
 		// both signed and unsigned indexes, and signed negatives fail as large
 		// unsigned values.
-		r := Expr{llvm.CreateICmp(b.impl, llvm.IntUGE, checkIdx.impl, checkLimit.impl), prog.Bool()}
+		r := b.boolFromI1(llvm.CreateICmp(b.impl, llvm.IntUGE, checkIdx.impl, checkLimit.impl))
 		if check.IsNil() {
 			check = r
 		} else {
-			check = Expr{b.impl.CreateOr(r.impl, check.impl, ""), prog.Bool()}
+			check = b.boolOr(r, check)
 		}
 	}
 	if !check.IsNil() {
@@ -904,7 +904,7 @@ func (b Builder) Next(typ Type, iter Expr, isString bool) Expr {
 	ok := b.impl.CreateExtractValue(rets.impl, 0, "")
 	t := prog.Struct(prog.Bool(), ktyp, vtyp)
 	blks := b.Func.MakeBlocks(3)
-	b.If(Expr{ok, prog.Bool()}, blks[0], blks[1])
+	b.If(b.boolFromI1(ok), blks[0], blks[1])
 	b.SetBlockEx(blks[2], AtEnd, false)
 	phi := b.Phi(t)
 	phi.AddIncoming(b, blks[:2], func(i int, blk BasicBlock) Expr {
@@ -1076,7 +1076,7 @@ func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
 		// runtime.TrySelect returns (isel, recvOK, tryOK). recvOK is only meaningful
 		// for receives; selection success is reported by tryOK.
 		tryOK := b.impl.CreateExtractValue(ret.impl, 2, "")
-		chosen = llvm.CreateSelect(b.impl, tryOK, chosen, prog.Val(-1).impl)
+		chosen = llvm.CreateSelect(b.impl, b.boolI1(Expr{tryOK, prog.Bool()}), chosen, prog.Val(-1).impl)
 	}
 	results := []llvm.Value{chosen, recvOK}
 	typs := []Type{prog.Int(), prog.Bool()}

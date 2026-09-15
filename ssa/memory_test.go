@@ -125,6 +125,9 @@ func TestAssertNilDerefColdCall(t *testing.T) {
 				barrierTy := llvm.FunctionType(boolTy, []llvm.Type{boolTy}, false)
 				barrier := llvm.InlineAsm(barrierTy, "", "=r,0", true, false, llvm.InlineAsmDialectATT, false)
 				condition := hb.CreateCall(barrierTy, barrier, []llvm.Value{helper.Param(0)}, "")
+				if condition.Type().TypeKind() == llvm.IntegerTypeKind && condition.Type().IntTypeWidth() != 1 {
+					condition = hb.CreateICmp(llvm.IntNE, condition, llvm.ConstInt(boolTy, 0, false), "")
+				}
 				hb.CreateCondBr(condition, failure, success)
 				hb.SetInsertPointAtEnd(failure)
 				hb.CreateBr(failure)

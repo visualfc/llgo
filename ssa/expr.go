@@ -403,7 +403,7 @@ func (b Builder) checkUnsafeBuiltinBounds(name string, data, size Expr, elemSize
 }
 
 func (b Builder) assertRuntimeError(check llvm.Value, msg string) {
-	b.InlineCall(b.Pkg.rtFunc("AssertRuntimeError"), Expr{check, b.Prog.Bool()}, b.Str(msg))
+	b.InlineCall(b.Pkg.rtFunc("AssertRuntimeError"), b.boolFromI1(check), b.Str(msg))
 }
 
 // -----------------------------------------------------------------------------
@@ -565,7 +565,7 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 					if needsCheck {
 						zero := llvm.ConstInt(y.ll, 0, false)
 						isZero := llvm.CreateICmp(b.impl, llvm.IntEQ, y.impl, zero)
-						check := Expr{isZero, b.Prog.Bool()}
+						check := b.boolFromI1(isZero)
 						b.InlineCall(b.Pkg.rtFunc("AssertDivideByZero"), check)
 						safeY = llvm.CreateSelect(b.impl, isZero, llvm.ConstInt(y.ll, 1, false), y.impl)
 					}
@@ -625,7 +625,7 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 		case token.SHL, token.SHR:
 			if needsNegativeCheck(y) {
 				zero := llvm.ConstInt(y.ll, 0, false)
-				check := Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, y.impl, zero), b.Prog.Bool()}
+				check := b.boolFromI1(llvm.CreateICmp(b.impl, llvm.IntSLT, y.impl, zero))
 				b.InlineCall(b.Pkg.rtFunc("AssertNegativeShift"), check)
 			}
 			xsize, ysize := b.Prog.SizeOf(x.Type), b.Prog.SizeOf(y.Type)
@@ -652,38 +652,37 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 		}
 	case isPredOp(op): // op: == != < <= > >=
 		prog := b.Prog
-		tret := prog.Bool()
 		kind := x.kind
 		switch kind {
 		case vkSigned:
 			pred := intPredOpToLLVM[op-predOpBase]
-			return Expr{llvm.CreateICmp(b.impl, pred, x.impl, y.impl), tret}
+			return b.boolFromI1(llvm.CreateICmp(b.impl, pred, x.impl, y.impl))
 		case vkUnsigned, vkPtr:
 			pred := uintPredOpToLLVM[op-predOpBase]
-			return Expr{llvm.CreateICmp(b.impl, pred, x.impl, y.impl), tret}
+			return b.boolFromI1(llvm.CreateICmp(b.impl, pred, x.impl, y.impl))
 		case vkFloat:
 			pred := floatPredOpToLLVM[op-predOpBase]
-			return Expr{llvm.CreateFCmp(b.impl, pred, x.impl, y.impl), tret}
+			return b.boolFromI1(llvm.CreateFCmp(b.impl, pred, x.impl, y.impl))
 		case vkBool:
 			pred := boolPredOpToLLVM[op-predOpBase]
-			return Expr{llvm.CreateICmp(b.impl, pred, x.impl, y.impl), tret}
+			return b.boolFromI1(llvm.CreateICmp(b.impl, pred, x.impl, y.impl))
 		case vkComplex:
 			switch op {
 			case token.EQL:
 				xr, xi := b.impl.CreateExtractValue(x.impl, 0, ""), b.impl.CreateExtractValue(x.impl, 1, "")
 				yr, yi := b.impl.CreateExtractValue(y.impl, 0, ""), b.impl.CreateExtractValue(y.impl, 1, "")
-				return Expr{llvm.CreateAnd(b.impl,
+				return b.boolFromI1(llvm.CreateAnd(b.impl,
 					llvm.CreateFCmp(b.impl, llvm.FloatOEQ, xr, yr),
 					llvm.CreateFCmp(b.impl, llvm.FloatOEQ, xi, yi),
-				), tret}
+				))
 			case token.NEQ:
 				xr, xi := b.impl.CreateExtractValue(x.impl, 0, ""), b.impl.CreateExtractValue(x.impl, 1, "")
 				yr, yi := b.impl.CreateExtractValue(y.impl, 0, ""), b.impl.CreateExtractValue(y.impl, 1, "")
-				return Expr{b.impl.CreateOr(
+				return b.boolFromI1(b.impl.CreateOr(
 					llvm.CreateFCmp(b.impl, llvm.FloatUNE, xr, yr),
 					llvm.CreateFCmp(b.impl, llvm.FloatUNE, xi, yi),
 					"",
-				), tret}
+				))
 			}
 		case vkString:
 			switch op {
@@ -691,20 +690,17 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 				return b.InlineCall(b.Pkg.rtFunc("StringEqual"), x, y)
 			case token.NEQ:
 				ret := b.InlineCall(b.Pkg.rtFunc("StringEqual"), x, y)
-				ret.impl = llvm.CreateNot(b.impl, ret.impl)
-				return ret
+				return b.boolNot(ret)
 			case token.LSS:
 				return b.InlineCall(b.Pkg.rtFunc("StringLess"), x, y)
 			case token.LEQ:
 				ret := b.InlineCall(b.Pkg.rtFunc("StringLess"), y, x)
-				ret.impl = llvm.CreateNot(b.impl, ret.impl)
-				return ret
+				return b.boolNot(ret)
 			case token.GTR:
 				return b.InlineCall(b.Pkg.rtFunc("StringLess"), y, x)
 			case token.GEQ:
 				ret := b.InlineCall(b.Pkg.rtFunc("StringLess"), x, y)
-				ret.impl = llvm.CreateNot(b.impl, ret.impl)
-				return ret
+				return b.boolNot(ret)
 			}
 		case vkClosure, vkIfaceMethod:
 			x = b.Field(x, 0)
@@ -719,7 +715,7 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 			switch op {
 			case token.EQL, token.NEQ:
 				pred := uintPredOpToLLVM[op-predOpBase]
-				return Expr{llvm.CreateICmp(b.impl, pred, x.impl, y.impl), tret}
+				return b.boolFromI1(llvm.CreateICmp(b.impl, pred, x.impl, y.impl))
 			}
 		case vkArray:
 			return b.arrayBinOp(op, x, y, Nil, Nil)
@@ -730,9 +726,9 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 			dy := b.impl.CreateExtractValue(y.impl, 0, "")
 			switch op {
 			case token.EQL:
-				return Expr{b.impl.CreateICmp(llvm.IntEQ, dx, dy, ""), tret}
+				return b.boolFromI1(b.impl.CreateICmp(llvm.IntEQ, dx, dy, ""))
 			case token.NEQ:
-				return Expr{b.impl.CreateICmp(llvm.IntNE, dx, dy, ""), tret}
+				return b.boolFromI1(b.impl.CreateICmp(llvm.IntNE, dx, dy, ""))
 			}
 		case vkIface, vkEface:
 			toEface := func(x Expr, emtpy bool) Expr {
@@ -746,8 +742,7 @@ func (b Builder) BinOp(op token.Token, x, y Expr) Expr {
 				return b.InlineCall(b.Pkg.rtFunc("EfaceEqual"), toEface(x, x.kind == vkEface), toEface(y, y.kind == vkEface))
 			case token.NEQ:
 				ret := b.InlineCall(b.Pkg.rtFunc("EfaceEqual"), toEface(x, x.kind == vkEface), toEface(y, y.kind == vkEface))
-				ret.impl = llvm.CreateNot(b.impl, ret.impl)
-				return ret
+				return b.boolNot(ret)
 			}
 		}
 	}
@@ -774,7 +769,6 @@ func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 		panic("StructBinOp requires an equality operator")
 	}
 	prog := b.Prog
-	tret := prog.Bool()
 	typ := x.raw.Type.Underlying().(*types.Struct)
 	size := uint64(prog.abi.Size(typ))
 	regular := prog.abi.IsRegularMemory(typ)
@@ -787,10 +781,10 @@ func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 			fx := b.getField(x, i)
 			fy := b.getField(y, i)
 			r := b.BinOp(token.EQL, fx, fy)
-			ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
+			ret = b.boolAnd(ret, r)
 		}
 		if op == token.NEQ {
-			ret.impl = llvm.CreateNot(b.impl, ret.impl)
+			ret = b.boolNot(ret)
 		}
 		return ret
 	}
@@ -805,7 +799,7 @@ func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 		addr = b.PtrCast(prog.VoidPtr(), addr)
 		ret := b.Call(b.Pkg.rtFunc("memequalzero"), addr, prog.IntVal(prog.SizeOf(x.Type), prog.Uintptr()))
 		if op == token.NEQ {
-			ret.impl = llvm.CreateNot(b.impl, ret.impl)
+			ret = b.boolNot(ret)
 		}
 		return ret
 	}
@@ -829,7 +823,7 @@ func (b Builder) StructBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 		b.StackRestore(sp)
 	}
 	if op == token.NEQ {
-		ret.impl = llvm.CreateNot(b.impl, ret.impl)
+		ret = b.boolNot(ret)
 	}
 	return ret
 }
@@ -866,7 +860,6 @@ func (b Builder) ArrayBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 
 func (b Builder) arrayBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 	prog := b.Prog
-	tret := prog.Bool()
 	typ := x.raw.Type.Underlying().(*types.Array)
 	if CanInlineArrayEqual(typ) {
 		elem := prog.Elem(x.Type)
@@ -875,16 +868,16 @@ func (b Builder) arrayBinOp(op token.Token, x, y, xaddr, yaddr Expr) Expr {
 			fx := b.impl.CreateExtractValue(x.impl, i, "")
 			fy := b.impl.CreateExtractValue(y.impl, i, "")
 			r := b.BinOp(token.EQL, Expr{fx, elem}, Expr{fy, elem})
-			ret = Expr{b.impl.CreateAnd(ret.impl, r.impl, ""), tret}
+			ret = b.boolAnd(ret, r)
 		}
 		if op == token.NEQ {
-			ret.impl = llvm.CreateNot(b.impl, ret.impl)
+			ret = b.boolNot(ret)
 		}
 		return ret
 	}
 	ret := b.callArrayEqual(x, y, xaddr, yaddr, typ)
 	if op == token.NEQ {
-		ret.impl = llvm.CreateNot(b.impl, ret.impl)
+		ret = b.boolNot(ret)
 	}
 	return ret
 }
@@ -949,8 +942,7 @@ func (b Builder) UnOp(op token.Token, x Expr) (ret Expr) {
 			panic("unreachable")
 		}
 	case token.NOT:
-		ret.Type = x.Type
-		ret.impl = llvm.CreateNot(b.impl, x.impl)
+		return b.boolNot(x)
 	case token.XOR:
 		ret.Type = x.Type
 		ret.impl = llvm.CreateXor(b.impl, x.impl, llvm.ConstInt(x.Type.ll, ^uint64(0), false))
@@ -1551,10 +1543,9 @@ func (b Builder) callClosure(fn, data Expr, sig *types.Signature, args []Expr) (
 	logicalBlock := b.blk
 	entryBlock := b.impl.GetInsertBlock()
 	blks := b.Func.MakeBlocks(3)
-	hasEnv := Expr{
+	hasEnv := b.boolFromI1(
 		llvm.CreateICmp(b.impl, llvm.IntNE, data.impl, prog.Nil(prog.VoidPtr()).impl),
-		prog.Bool(),
-	}
+	)
 	b.If(hasEnv, blks[0], blks[1])
 
 	b.SetBlockEx(blks[0], AtEnd, false)
@@ -1756,7 +1747,7 @@ func (b Builder) compareSelect(op token.Token, x Expr, y ...Expr) Expr {
 	}
 	for _, v := range y {
 		cond := b.BinOp(op, ret, v)
-		sel := llvm.CreateSelect(b.impl, cond.impl, ret.impl, v.impl)
+		sel := llvm.CreateSelect(b.impl, b.boolI1(cond), ret.impl, v.impl)
 		ret = Expr{sel, ret.Type}
 	}
 	return ret
@@ -1764,7 +1755,7 @@ func (b Builder) compareSelect(op token.Token, x Expr, y ...Expr) Expr {
 
 // SelectValue chooses between two values based on the condition.
 func (b Builder) SelectValue(cond Expr, a Expr, bExpr Expr) Expr {
-	sel := llvm.CreateSelect(b.impl, cond.impl, a.impl, bExpr.impl)
+	sel := llvm.CreateSelect(b.impl, b.boolI1(cond), a.impl, bExpr.impl)
 	return Expr{sel, a.Type}
 }
 
@@ -1789,7 +1780,7 @@ func (b Builder) SliceToArrayPointer(x Expr, typ Type) (ret Expr) {
 	ret.Type = typ
 	if !b.Prog.disableBoundsChecks {
 		max := b.Prog.IntVal(uint64(typ.RawType().Underlying().(*types.Pointer).Elem().Underlying().(*types.Array).Len()), b.Prog.Int())
-		failed := Expr{llvm.CreateICmp(b.impl, llvm.IntSLT, b.SliceLen(x).impl, max.impl), b.Prog.Bool()}
+		failed := b.boolFromI1(llvm.CreateICmp(b.impl, llvm.IntSLT, b.SliceLen(x).impl, max.impl))
 		b.IfThen(failed, func() {
 			b.InlineCall(b.Pkg.rtFunc("PanicSliceConvert"), max, b.SliceLen(x))
 		})

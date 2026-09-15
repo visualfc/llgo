@@ -217,7 +217,7 @@ func nested(pp **large) {
 }
 `)
 	ir := m.String()
-	if got := strings.Count(ir, `runtime.AssertNilDeref"(i1 true)`); got < 2 {
+	if got := strings.Count(ir, `runtime.AssertNilDeref"(i8 1)`); got < 2 {
 		t.Fatalf("compiled IR has %d cold nil-deref guards, want at least 2:\n%s", got, ir)
 	}
 	if strings.Contains(ir, "AssertNilDerefPtr") {

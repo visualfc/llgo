@@ -23,9 +23,10 @@ func (b Builder) UMulOverflow(a, c Expr) Expr {
 	if retTy != resultType.ll {
 		// Normalize before the tuple can escape through a function-value
 		// wrapper, which returns the complete Go aggregate at once.
+		// LLVM overflow flags are i1; Go bool is i8.
 		return b.aggregateValue(resultType,
 			b.impl.CreateExtractValue(ret, 0, ""),
-			b.impl.CreateExtractValue(ret, 1, ""))
+			llvm.CreateZExt(b.impl, b.impl.CreateExtractValue(ret, 1, ""), prog.Bool().ll))
 	}
 	return Expr{ret, resultType}
 }

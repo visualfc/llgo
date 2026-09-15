@@ -237,11 +237,11 @@ func stringLess() bool   { return "a" < "b" }
 	}
 	for _, name := range []string{"intEqual", "stringEqual", "runeEqual", "floatEqual", "complexEqual"} {
 		fn := llvmFunction(t, ir, "foo."+name)
-		if !strings.Contains(fn, "ret i1 false") {
+		if !strings.Contains(fn, "ret i8 0") {
 			t.Fatalf("%s was not folded to false:\n%s", name, fn)
 		}
 	}
-	if fn := llvmFunction(t, ir, "foo.stringLess"); !strings.Contains(fn, "ret i1 true") {
+	if fn := llvmFunction(t, ir, "foo.stringLess"); !strings.Contains(fn, "ret i8 1") {
 		t.Fatalf("stringLess was not folded to true:\n%s", fn)
 	}
 }

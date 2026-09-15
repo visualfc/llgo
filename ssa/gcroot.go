@@ -67,7 +67,7 @@ func (p Function) NewGCRoots(count int) []Expr {
 	sjljReplaying := llvm.CreateLoad(b.impl, prog.Bool().ll, p.gcRootSJLJReplaying())
 	// SJLJ/Asyncify replays discarded function entries on the way back to a
 	// setjmp. Their stack slots must be reused without publishing dead frames.
-	reusingFrame := b.impl.CreateOr(reentered, sjljReplaying, "")
+	reusingFrame := b.impl.CreateOr(reentered, b.boolI1(Expr{sjljReplaying, prog.Bool()}), "")
 
 	frameMap := p.newGCRootMap(count)
 	roots := make([]Expr, count)

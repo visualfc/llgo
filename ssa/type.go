@@ -373,7 +373,10 @@ func (p Program) toType(raw types.Type) Type {
 		case types.Uint, types.Uintptr:
 			return &aType{p.tyInt(), typ, vkUnsigned}
 		case types.Bool:
-			return &aType{p.tyInt1(), typ, vkBool}
+			// Go bool is 1 byte (unsafe.Sizeof(true) == 1). LLVM i1 is a bit
+			// and packs [N]bool / struct fields incorrectly versus Go and C
+			// _Bool. Keep vkBool so icmp/br still know it is a boolean.
+			return &aType{p.tyInt8(), typ, vkBool}
 		case types.Uint8:
 			return &aType{p.tyInt8(), typ, vkUnsigned}
 		case types.Int8:

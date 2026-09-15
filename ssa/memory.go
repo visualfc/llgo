@@ -75,11 +75,12 @@ func aggregateInit(b llvm.Builder, ptr llvm.Value, tll llvm.Type, flds ...llvm.V
 }
 
 func (b Builder) wrapStructField(t Type, index int, value llvm.Value) llvm.Value {
+	elem := t.ll.StructElementTypes()[index]
+	value = b.coerceInt(value, elem)
 	layout, ok := b.Prog.structLayout(t)
 	if !ok || index >= len(layout.wrapped) || !layout.wrapped[index] {
 		return value
 	}
-	elem := t.ll.StructElementTypes()[index]
 	wrapped := llvm.Undef(elem)
 	return b.impl.CreateInsertValue(wrapped, value, 0, "")
 }
@@ -298,7 +299,7 @@ func (b Builder) free(ptr Expr) Expr {
 // declare void @llvm.memset.inline.p0.p0.i64(ptr <dest>, i8 <val>, i64 <len>, i1 <isvolatile>)
 func (b Builder) memset(ptr, val, len, isvolatile Expr) Expr {
 	b.impl.CreateIntrinsic(b.Prog.Void().ll, llvm.LookupIntrinsicID("llvm.memset"), []llvm.Value{
-		ptr.impl, val.impl, len.impl, isvolatile.impl,
+		ptr.impl, val.impl, len.impl, b.boolI1(isvolatile),
 	}, "")
 	return ptr
 }
@@ -378,7 +379,7 @@ func (b Builder) AssertNilDeref(ptr Expr) {
 		return
 	}
 	nilPtr := llvm.ConstNull(ptr.impl.Type())
-	isNil := Expr{llvm.CreateICmp(b.impl, llvm.IntEQ, ptr.impl, nilPtr), b.Prog.Bool()}
+	isNil := b.boolFromI1(llvm.CreateICmp(b.impl, llvm.IntEQ, ptr.impl, nilPtr))
 	// Keep the successful path free of an opaque runtime call. In particular,
 	// field-address checks may fold to false only after LLVM optimization;
 	// calling AssertNilDeref(false) still forces spills across that call.
@@ -463,7 +464,9 @@ func (b Builder) Load(ptr Expr) Expr {
 func (b Builder) Store(ptr, val Expr) Expr {
 	raw := ptr.raw.Type
 	dbgInstrf("Store %v, %v, %v\n", raw, ptr.impl, val.impl)
-	val = checkExpr(val, raw.(*types.Pointer).Elem(), b)
+	elem := raw.(*types.Pointer).Elem()
+	val = checkExpr(val, elem, b)
+	val = b.coerceLLVM(val, b.Prog.Type(elem, InGo))
 	b.assertStaticNilDeref(ptr)
 	return Expr{b.impl.CreateStore(val.impl, ptr.impl), b.Prog.Void()}
 }

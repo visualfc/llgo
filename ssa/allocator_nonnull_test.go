@@ -66,7 +66,7 @@ func TestAllocatorNonNullAcrossModules(t *testing.T) {
 					if got := strings.Contains(ir, "icmp eq ptr"); got != (name == "Nullable") {
 						t.Fatalf("unexpected null check after instcombine:\n%s", ir)
 					}
-					if name != "Nullable" && !strings.Contains(ir, "ret i1 false") {
+					if name != "Nullable" && !strings.Contains(ir, "ret i8 0") && !strings.Contains(ir, "ret i1 false") {
 						t.Fatalf("allocator null check was not folded to false:\n%s", ir)
 					}
 				}
