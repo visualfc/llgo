@@ -78,7 +78,12 @@ func runNativeTest(commands commandEnv, program testProgram, conf *Config, stdou
 	}
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		if !program.coverage {
-			fmt.Fprintf(stderr, "%s: exit code %d\n", program.app, exitErr.ExitCode())
+			if exitErr.Exited() {
+				fmt.Fprintf(stderr, "%s: exit code %d\n", program.app, exitErr.ExitCode())
+			} else {
+				// Signal termination has no exit code; retain the OS reason.
+				fmt.Fprintf(stderr, "%s: %v\n", program.app, exitErr)
+			}
 		}
 	} else {
 		fmt.Fprintf(stderr, "failed to run test %s: %v\n", program.app, err)
