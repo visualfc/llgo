@@ -137,6 +137,32 @@ func TestEmptyRegistry(t *testing.T) {
   preserveFinalizableObjects()
   if metadataReads != 0 { t.Fatalf("empty registry inspected %d heap blocks", metadataReads) }
 }
+func TestMarkedObjectDefersOnlyItsOwnFinalizer(t *testing.T) {
+  resetCollector()
+  retained, eligible := recordFor(1, objectFinalizer), recordFor(7, objectFinalizer)
+  retained.next = eligible
+  finalizers = retained
+  // A conservative root is indistinguishable from a real pointer. A marked
+  // object must stay registered without blocking unrelated candidates.
+  states[1] = blockStateMark
+  preserveFinalizableObjects()
+  if finalizers != retained || retained.next != nil || retained.state != finalizerActive || retained.ready != nil || retained.callback == nil {
+    t.Fatal("marked object lost its pending finalizer")
+  }
+  if f, c := readyCounts(t); f != 1 || c != 0 || readyFinalizers != eligible {
+    t.Fatal("marked object blocked an unrelated finalizer")
+  }
+  // Model the next collection after the retaining root disappears.
+  readyFinalizers = nil
+  states[1] = blockStateHead
+  preserveFinalizableObjects()
+  if finalizers != nil || readyFinalizers != retained {
+    t.Fatal("finalizer did not become ready after its retaining root disappeared")
+  }
+  if f, c := readyCounts(t); f != 1 || c != 0 {
+    t.Fatal("deferred finalizer was queued more than once")
+  }
+}
 func TestInterleavedRecords(t *testing.T) {
   resetCollector()
   // A has two cleanups separated by B's finalizer. C has only a cleanup.
