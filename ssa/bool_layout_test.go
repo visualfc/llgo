@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"unsafe"
+
+	"github.com/xgo-dev/llvm"
 )
 
 func TestBoolClangMemoryLayout(t *testing.T) {
@@ -58,5 +60,17 @@ func TestBoolClangMemoryLayout(t *testing.T) {
 	ir = pkg.String()
 	if !strings.Contains(ir, "@abi.flag = global i8 1") {
 		t.Fatalf("bool global should be i8 in memory:\n%s", ir)
+	}
+
+	arrTy := prog.rawType(types.NewArray(types.Typ[types.Bool], 4))
+	elems := []Expr{prog.BoolVal(true), prog.BoolVal(false), prog.BoolVal(true), prog.BoolVal(false)}
+	init := prog.ConstArray(arrTy, elems)
+	if init.impl.Type() != arrTy.ll {
+		t.Fatalf("[4]bool const type = %s, want %s", init.impl.Type(), arrTy.ll)
+	}
+	table := pkg.NewVarEx("abi.table", prog.Pointer(arrTy))
+	table.Init(init)
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("bool array global failed verify: %v\n%s", err, pkg.String())
 	}
 }

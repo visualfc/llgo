@@ -62,11 +62,16 @@ func (pkg Package) ConstBytes(value []byte) Expr {
 // ConstArray creates an LLVM constant array expression.
 func (prog Program) ConstArray(t Type, values []Expr) Expr {
 	elem := prog.Index(t)
+	mem := prog.llvmMemType(elem)
 	fields := make([]llvm.Value, len(values))
 	for i, value := range values {
-		fields[i] = value.impl
+		v := value.impl
+		if isLLVMInt1(v.Type()) && mem.TypeKind() == llvm.IntegerTypeKind && mem.IntTypeWidth() == 8 {
+			v = prog.boolToMemConst(v)
+		}
+		fields[i] = v
 	}
-	return Expr{llvm.ConstArray(elem.ll, fields), t}
+	return Expr{llvm.ConstArray(mem, fields), t}
 }
 
 // ConstByteArray creates a compact LLVM constant for a Go byte array. Unlike
