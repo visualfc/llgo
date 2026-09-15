@@ -92,6 +92,17 @@ run_browser() {
 		"${module}" "${expected}"
 }
 
+expect_browser_load_failure() {
+	local status=0
+	run_browser "${work_dir}/missing-browser-module.mjs" "must not pass" \
+		> "${work_dir}/browser-failure.out" 2>&1 || status=$?
+	cat "${work_dir}/browser-failure.out"
+	if [[ ${status} -ne 1 ]] || ! grep -Fq "WebAssembly browser module failed:" "${work_dir}/browser-failure.out"; then
+		echo "expected an explicit browser page failure, got exit ${status}" >&2
+		exit 1
+	fi
+}
+
 run_host_call_boundaries() {
 	local module="$1"
 	local mode operation status expected marker
@@ -244,6 +255,7 @@ run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs "${callback_fi
 # A real browser must run both the named Emscripten provider and the raw J32
 # GoJS provider. Reuse the named callback artifact and compile only one extra
 # module so this gate does not duplicate the full Node matrix.
+expect_browser_load_failure
 run_browser "${work_dir}/callback-emscripten.mjs" "wasm callback-only wake ok"
 env GOOS=js GOARCH=wasm "${llgo_cmd}" build -o "${work_dir}/callback-gojs.mjs" "${callback_fixture}"
 wasm-tools validate --features all "${work_dir}/callback-gojs.wasm"
