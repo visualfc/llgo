@@ -16,7 +16,26 @@
 
 package ssa
 
-import "github.com/xgo-dev/llvm"
+import (
+	"go/token"
+	"go/types"
+
+	"github.com/xgo-dev/llvm"
+)
+
+// commaOk is the SSA tuple (T, bool) used by map lookup, recv, and type assert.
+// The bool stays i1, matching a scalar result, not a C struct field.
+func (p Program) commaOk(val Type) Type {
+	return p.resultTuple(val, p.Bool())
+}
+
+func (p Program) resultTuple(ts ...Type) Type {
+	vars := make([]*types.Var, len(ts))
+	for i, t := range ts {
+		vars[i] = types.NewVar(token.NoPos, nil, "", t.RawType())
+	}
+	return p.rawType(types.NewTuple(vars...))
+}
 
 func isLLVMInt1(t llvm.Type) bool {
 	return t.TypeKind() == llvm.IntegerTypeKind && t.IntTypeWidth() == 1

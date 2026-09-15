@@ -378,7 +378,7 @@ func (b Builder) AtomicCmpXchg(ptr, old, new Expr) Expr {
 	ret := b.impl.CreateAtomicCmpXchg(
 		ptr.impl, old.impl, new.impl,
 		llvm.AtomicOrderingSequentiallyConsistent, llvm.AtomicOrderingSequentiallyConsistent, false)
-	return Expr{ret, prog.Struct(t, prog.Bool())}
+	return Expr{ret, prog.commaOk(t)}
 }
 
 func (b Builder) AssertNilDeref(ptr Expr) {
