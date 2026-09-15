@@ -59,7 +59,7 @@ func (b Builder) getField(x Expr, idx int) Expr {
 	tfld := b.Prog.Field(x.Type, idx)
 	fld := llvm.CreateExtractValue(b.impl, x.impl, idx)
 	fld = b.unwrapStructField(x.Type, idx, fld)
-	return Expr{fld, tfld}
+	return b.fromMemory(fld, tfld)
 }
 
 // -----------------------------------------------------------------------------
@@ -156,7 +156,7 @@ func (b Builder) IndexAddr(x, idx Expr) Expr {
 		max := b.SliceLen(x)
 		idx = b.checkIndex(idx, max)
 		indices := []llvm.Value{idx.impl}
-		return Expr{llvm.CreateInBoundsGEP(b.impl, telem.ll, ptr.impl, indices), pt}
+		return Expr{llvm.CreateInBoundsGEP(b.impl, prog.llvmMemType(telem), ptr.impl, indices), pt}
 	case *types.Pointer:
 		ar := t.Elem().Underlying().(*types.Array)
 		max := prog.IntVal(uint64(ar.Len()), prog.Int())
@@ -166,7 +166,7 @@ func (b Builder) IndexAddr(x, idx Expr) Expr {
 		}
 	}
 	indices := []llvm.Value{idx.impl}
-	return Expr{llvm.CreateInBoundsGEP(b.impl, telem.ll, x.impl, indices), pt}
+	return Expr{llvm.CreateInBoundsGEP(b.impl, prog.llvmMemType(telem), x.impl, indices), pt}
 }
 
 func isKnownNonNilArrayBase(v llvm.Value) bool {
@@ -377,7 +377,7 @@ func (b Builder) Index(x, idx Expr, takeAddr func() (addr Expr, zero bool)) Expr
 	}
 	pt := prog.Pointer(telem)
 	indices := []llvm.Value{idx.impl}
-	buf := Expr{llvm.CreateInBoundsGEP(b.impl, telem.ll, ptr.impl, indices), pt}
+	buf := Expr{llvm.CreateInBoundsGEP(b.impl, prog.llvmMemType(telem), ptr.impl, indices), pt}
 	return b.Load(buf)
 }
 
@@ -1075,8 +1075,8 @@ func (b Builder) Select(states []*SelectState, blocking bool) (ret Expr) {
 	if !blocking {
 		// runtime.TrySelect returns (isel, recvOK, tryOK). recvOK is only meaningful
 		// for receives; selection success is reported by tryOK.
-		tryOK := b.impl.CreateExtractValue(ret.impl, 2, "")
-		chosen = llvm.CreateSelect(b.impl, tryOK, chosen, prog.Val(-1).impl)
+		tryOK := b.fromMemory(b.impl.CreateExtractValue(ret.impl, 2, ""), prog.Bool())
+		chosen = llvm.CreateSelect(b.impl, tryOK.impl, chosen, prog.Val(-1).impl)
 	}
 	results := []llvm.Value{chosen, recvOK}
 	typs := []Type{prog.Int(), prog.Bool()}

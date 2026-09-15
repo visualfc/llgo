@@ -75,11 +75,18 @@ func aggregateInit(b llvm.Builder, ptr llvm.Value, tll llvm.Type, flds ...llvm.V
 }
 
 func (b Builder) wrapStructField(t Type, index int, value llvm.Value) llvm.Value {
+	elem := t.ll.StructElementTypes()[index]
+	if isLLVMInt1(value.Type()) {
+		if !value.IsAConstant().IsNil() {
+			value = b.Prog.boolToMemConst(value)
+		} else {
+			value = llvm.CreateZExt(b.impl, value, b.Prog.tyInt8())
+		}
+	}
 	layout, ok := b.Prog.structLayout(t)
 	if !ok || index >= len(layout.wrapped) || !layout.wrapped[index] {
 		return value
 	}
-	elem := t.ll.StructElementTypes()[index]
 	wrapped := llvm.Undef(elem)
 	return b.impl.CreateInsertValue(wrapped, value, 0, "")
 }
@@ -159,7 +166,7 @@ func (b Builder) Alloc(elem Type, heap bool) (ret Expr) {
 		} else {
 			entryBuilder.SetInsertPointAtEnd(entry)
 		}
-		ret = Expr{llvm.CreateAlloca(entryBuilder, elem.ll), prog.VoidPtr()}
+		ret = Expr{llvm.CreateAlloca(entryBuilder, prog.llvmMemType(elem)), prog.VoidPtr()}
 		entryBuilder.Dispose()
 		ret.impl = b.zeroinit(ret, size).impl
 	}
@@ -196,7 +203,7 @@ func (b Builder) Alloca(n Expr) (ret Expr) {
 func (b Builder) AllocaT(t Type) (ret Expr) {
 	dbgInstrf("AllocaT %v\n", t.RawType())
 	prog := b.Prog
-	ret.impl = llvm.CreateAlloca(b.impl, t.ll)
+	ret.impl = llvm.CreateAlloca(b.impl, prog.llvmMemType(t))
 	ret.Type = prog.Pointer(t)
 	return
 }
@@ -456,7 +463,7 @@ func (b Builder) Load(ptr Expr) Expr {
 		b.AssertNilDeref(ptr)
 		return b.Prog.Zero(telem)
 	}
-	return Expr{llvm.CreateLoad(b.impl, telem.ll, ptr.impl), telem}
+	return b.fromMemory(llvm.CreateLoad(b.impl, b.Prog.llvmMemType(telem), ptr.impl), telem)
 }
 
 // Store stores val at the pointer ptr.
@@ -465,7 +472,7 @@ func (b Builder) Store(ptr, val Expr) Expr {
 	dbgInstrf("Store %v, %v, %v\n", raw, ptr.impl, val.impl)
 	val = checkExpr(val, raw.(*types.Pointer).Elem(), b)
 	b.assertStaticNilDeref(ptr)
-	return Expr{b.impl.CreateStore(val.impl, ptr.impl), b.Prog.Void()}
+	return Expr{b.impl.CreateStore(b.toMemory(val), ptr.impl), b.Prog.Void()}
 }
 
 // Advance returns the pointer ptr advanced by offset.
