@@ -59,7 +59,7 @@ func (b Builder) getField(x Expr, idx int) Expr {
 	tfld := b.Prog.Field(x.Type, idx)
 	fld := llvm.CreateExtractValue(b.impl, x.impl, idx)
 	fld = b.unwrapStructField(x.Type, idx, fld)
-	return Expr{fld, tfld}
+	return b.fromMemory(fld, tfld)
 }
 
 // -----------------------------------------------------------------------------

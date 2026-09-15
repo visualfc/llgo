@@ -76,14 +76,31 @@ func (b Builder) aggregateInit(ptr llvm.Value, t Type, flds ...llvm.Value) {
 }
 
 func (b Builder) wrapStructField(t Type, index int, value llvm.Value) llvm.Value {
-	value = b.toStorageValue(b.Prog.aggregateElementType(t, index), value)
+	elemType := b.Prog.aggregateElementType(t, index)
+	elem := t.ll.StructElementTypes()[index]
 	layout, ok := b.Prog.structLayout(t)
-	if !ok || index >= len(layout.wrapped) || !layout.wrapped[index] {
+	wrapped := ok && index < len(layout.wrapped) && layout.wrapped[index]
+	mem := elem
+	if wrapped && mem.TypeKind() == llvm.StructTypeKind && len(mem.StructElementTypes()) > 0 {
+		mem = mem.StructElementTypes()[0]
+	}
+	if elemType.kind == vkBool {
+		// Struct/array fields store bool as i8; SSA tuples keep scalar bool as i1.
+		if isLLVMInt1(value.Type()) && mem.TypeKind() == llvm.IntegerTypeKind && mem.IntTypeWidth() == 8 {
+			if !value.IsAConstant().IsNil() {
+				value = b.Prog.boolToMemConst(value)
+			} else {
+				value = llvm.CreateZExt(b.impl, value, mem)
+			}
+		}
+	} else {
+		value = b.toStorageValue(elemType, value)
+	}
+	if !wrapped {
 		return value
 	}
-	elem := t.ll.StructElementTypes()[index]
-	wrapped := llvm.Undef(elem)
-	return b.impl.CreateInsertValue(wrapped, value, 0, "")
+	w := llvm.Undef(elem)
+	return b.impl.CreateInsertValue(w, value, 0, "")
 }
 
 func (b Builder) unwrapStructField(t Type, index int, value llvm.Value) llvm.Value {
