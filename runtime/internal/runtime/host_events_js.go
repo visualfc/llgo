@@ -22,6 +22,7 @@ func HandleWasmEvent(handler func()) {
 	handler()
 	e.returned = true
 	gopark()
+	// Synchronous JS callbacks unwind in LIFO order, so e is still the tail.
 	wasmJSEvents[len(wasmJSEvents)-1] = nil
 	wasmJSEvents = wasmJSEvents[:len(wasmJSEvents)-1]
 }

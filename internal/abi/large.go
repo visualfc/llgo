@@ -43,6 +43,7 @@ func LowerWasmAggregateCopies(td llvm.TargetData, m llvm.Module, config Aggregat
 	// The pass is monotonic: every rewrite removes one qualifying aggregate
 	// load, and can expose only projections into a strictly nested aggregate.
 	// It never recreates the load or a containing projection it just removed.
+	// The number of rounds follows the input's nesting depth, not a fixed cap.
 	for {
 		count := l.transformStoredLoads(m)
 		if count == 0 {

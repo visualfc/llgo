@@ -3,6 +3,7 @@
 package abi
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,6 +72,52 @@ entry:
 	}
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+	}
+}
+
+func TestLowerWasmAggregateCopiesNestedConvergence(t *testing.T) {
+	for _, depth := range []int{1, 8, 32} {
+		t.Run(fmt.Sprint(depth), func(t *testing.T) {
+			var ir strings.Builder
+			ir.WriteString("%Nest0 = type [4096 x i8]\n")
+			for i := 1; i <= depth; i++ {
+				fmt.Fprintf(&ir, "%%Nest%d = type { %%Nest%d }\n", i, i-1)
+			}
+			ir.WriteString("define void @copy(ptr %src, ptr %dst) {\nentry:\n")
+			fmt.Fprintf(&ir, "  %%v%d = load %%Nest%d, ptr %%src\n", depth, depth)
+			for i := depth; i > 0; i-- {
+				fmt.Fprintf(&ir, "  %%v%d = extractvalue %%Nest%d %%v%d, 0\n", i-1, i, i)
+			}
+			ir.WriteString("  store %Nest0 %v0, ptr %dst\n  ret void\n}\n")
+
+			ctx := llvm.NewContext()
+			defer ctx.Dispose()
+			path := filepath.Join(t.TempDir(), "nested.ll")
+			if err := os.WriteFile(path, []byte(ir.String()), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			buf, err := llvm.NewMemoryBufferFromFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mod, err := ctx.ParseIR(buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer mod.Dispose()
+			td := llvm.NewTargetData("e-p:32:32-i64:64-n32:64-S128")
+			defer td.Dispose()
+			config := AggregateLoweringConfig{GoWordSize: 8, GCRoots: true, Wasm: true}
+			if got := LowerWasmAggregateCopies(td, mod, config); got != depth+1 {
+				t.Fatalf("lowered %d copies, want %d", got, depth+1)
+			}
+			if got := LowerWasmAggregateCopies(td, mod, config); got != 0 {
+				t.Fatalf("second pass lowered %d copies, want 0", got)
+			}
+			if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+			}
+		})
 	}
 }
 
