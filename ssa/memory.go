@@ -76,11 +76,15 @@ func aggregateInit(b llvm.Builder, ptr llvm.Value, tll llvm.Type, flds ...llvm.V
 
 func (b Builder) wrapStructField(t Type, index int, value llvm.Value) llvm.Value {
 	elem := t.ll.StructElementTypes()[index]
-	if isLLVMInt1(value.Type()) {
+	mem := elem
+	if mem.TypeKind() == llvm.StructTypeKind && len(mem.StructElementTypes()) > 0 {
+		mem = mem.StructElementTypes()[0]
+	}
+	if isLLVMInt1(value.Type()) && mem.TypeKind() == llvm.IntegerTypeKind && mem.IntTypeWidth() == 8 {
 		if !value.IsAConstant().IsNil() {
 			value = b.Prog.boolToMemConst(value)
 		} else {
-			value = llvm.CreateZExt(b.impl, value, b.Prog.tyInt8())
+			value = llvm.CreateZExt(b.impl, value, mem)
 		}
 	}
 	layout, ok := b.Prog.structLayout(t)

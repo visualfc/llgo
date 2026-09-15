@@ -479,12 +479,7 @@ func (p Program) toLLVMFields(raw *types.Struct) (fields []llvm.Type) {
 
 func (p Program) toLLVMTuple(t *types.Tuple) llvm.Type {
 	if p.target.effectiveGOARCH() != "386" {
-		n := t.Len()
-		fields := make([]llvm.Type, n)
-		for i := 0; i < n; i++ {
-			fields[i] = p.llvmMemType(p.rawType(p.patch(t.At(i).Type())))
-		}
-		return p.ctx.StructType(fields, false)
+		return p.ctx.StructType(p.toLLVMTypes(t, t.Len()), false)
 	}
 	fields := make([]*types.Var, t.Len())
 	for i := range fields {
