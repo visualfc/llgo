@@ -132,7 +132,14 @@ func (b Builder) dupMalloc(v Expr) Expr {
 //
 //	t0 = local int
 //	t1 = new int
+//
+// Alloc allocates space for a variable of type elem.
 func (b Builder) Alloc(elem Type, heap bool) (ret Expr) {
+	return b.AllocEx(elem, heap, true)
+}
+
+// AllocEx allocates space for a variable of type elem with hoistToEntry control.
+func (b Builder) AllocEx(elem Type, heap bool, hoistToEntry bool) (ret Expr) {
 	dbgInstrf("Alloc %v, %v\n", elem.RawType(), heap)
 	prog := b.Prog
 	pkg := b.Pkg
@@ -156,8 +163,17 @@ func (b Builder) Alloc(elem Type, heap bool) (ret Expr) {
 		// fresh builder on every Alloc turned large functions (e.g.
 		// cmplxdivide.go's init, with thousands of locals) into a severe
 		// compile-time regression (issue #2611).
-		entryBuilder := b.Func.entryAllocaBuilder()
-		alloca := llvm.CreateAlloca(entryBuilder, prog.storageType(elem))
+		// When hoistToEntry is false (e.g. non-loop package initializers), emit
+		// directly in the current block so LLVM's single-block alloca promotion
+		// fast path can eliminate it without multi-block iterated dominance
+		// frontier calculations.
+		var alloca llvm.Value
+		if !hoistToEntry {
+			alloca = llvm.CreateAlloca(b.impl, prog.storageType(elem))
+		} else {
+			entryBuilder := b.Func.entryAllocaBuilder()
+			alloca = llvm.CreateAlloca(entryBuilder, prog.storageType(elem))
+		}
 		prog.requireStorageAlignment(alloca, elem)
 		ret = Expr{alloca, prog.VoidPtr()}
 		ret.impl = b.zeroinit(ret, size).impl
