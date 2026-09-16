@@ -334,6 +334,14 @@ type aFunction struct {
 	gcRootPrev  Expr
 
 	diFunc DIFunction
+
+	// allocaBuilder is a single reusable builder anchored at the entry block,
+	// used to reserve local stack slots. It is created lazily on the first
+	// local Alloc and disposed in EndBuild. Reusing one builder keeps local
+	// allocation O(N) across a function's N locals; deriving the entry-block
+	// position and allocating a builder per Alloc regressed cmplxdivide.go
+	// (see issue #2611).
+	allocaBuilder llvm.Builder
 }
 
 // Function represents a function or method.
@@ -520,6 +528,37 @@ func (p Function) closureCtx(b Builder) Expr {
 func (p Function) FreeVar(b Builder, i int) Expr {
 	ctx := p.closureCtx(b)
 	return b.getField(ctx, i)
+}
+
+// entryAllocaBuilder returns a builder anchored at the entry block, used to
+// reserve local stack slots. The builder is created once per function and
+// reused: each CreateAlloca inserts at the builder's current point (right
+// after the alloca it just emitted), so a function's locals accumulate as a
+// contiguous run at the top of the entry block in declaration order. Resolving
+// the entry position and allocating a builder once — rather than per Alloc —
+// is what keeps large functions such as cmplxdivide.go's init cheap to compile
+// (issue #2611) while still reserving one slot per call.
+func (p Function) entryAllocaBuilder() llvm.Builder {
+	if p.allocaBuilder.C == nil {
+		eb := p.Prog.ctx.NewBuilder()
+		entry := p.impl.FirstBasicBlock()
+		if first := entry.FirstInstruction(); !first.IsNil() {
+			eb.SetInsertPointBefore(first)
+		} else {
+			eb.SetInsertPointAtEnd(entry)
+		}
+		p.allocaBuilder = eb
+	}
+	return p.allocaBuilder
+}
+
+// disposeAllocaBuilder releases the reusable entry-block alloca builder if one
+// was created. Safe to call when no local Alloc happened.
+func (p Function) disposeAllocaBuilder() {
+	if p.allocaBuilder.C != nil {
+		p.allocaBuilder.Dispose()
+		p.allocaBuilder = llvm.Builder{}
+	}
 }
 
 // NewBuilder creates a new Builder for the function.

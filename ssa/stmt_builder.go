@@ -87,6 +87,7 @@ func (b Builder) EndBuild() {
 	b.Func.endDefer(b)
 	b.Func.endGCRoots(b)
 	b.preserveNilCheckCondition()
+	b.Func.disposeAllocaBuilder()
 }
 
 // Dispose disposes of the builder.
