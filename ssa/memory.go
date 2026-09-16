@@ -151,10 +151,11 @@ func (b Builder) Alloc(elem Type, heap bool) (ret Expr) {
 		// A local denotes one slot per call, even if its declaration is inside
 		// a loop. Keep the reservation in the entry block and initialization at
 		// the declaration, otherwise LLVM grows the stack on every iteration.
-		// Reuse the function's cached entry-block builder: resolving the entry
-		// position and allocating a fresh builder on every Alloc turned large
-		// functions (e.g. cmplxdivide.go's init, with thousands of locals) into
-		// a severe compile-time regression (issue #2611).
+		// Reuse the function's cached alloca builder (its insertion point is
+		// re-anchored at the entry block per call): allocating and disposing a
+		// fresh builder on every Alloc turned large functions (e.g.
+		// cmplxdivide.go's init, with thousands of locals) into a severe
+		// compile-time regression (issue #2611).
 		entryBuilder := b.Func.entryAllocaBuilder()
 		alloca := llvm.CreateAlloca(entryBuilder, prog.storageType(elem))
 		prog.requireStorageAlignment(alloca, elem)

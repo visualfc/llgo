@@ -335,12 +335,16 @@ type aFunction struct {
 
 	diFunc DIFunction
 
-	// allocaBuilder is a single reusable builder anchored at the entry block,
-	// used to reserve local stack slots. It is created lazily on the first
-	// local Alloc and disposed in EndBuild. Reusing one builder keeps local
-	// allocation O(N) across a function's N locals; deriving the entry-block
-	// position and allocating a builder per Alloc regressed cmplxdivide.go
-	// (see issue #2611).
+	// allocaBuilder is a single reusable builder used to reserve local stack
+	// slots in the entry block. It is created lazily on the first local Alloc
+	// and disposed in EndBuild. Reusing one builder keeps local allocation
+	// O(N) across a function's N locals; allocating (and disposing) a fresh
+	// builder per Alloc regressed cmplxdivide.go (see issue #2611).
+	//
+	// Deterministic cleanup relies on EndBuild being reached exactly once per
+	// function. If a build path panics before EndBuild the builder is leaked,
+	// but codegen panics abort the process, so the leak is bounded. Do not
+	// rely on this field surviving past EndBuild.
 	allocaBuilder llvm.Builder
 }
 
@@ -530,24 +534,30 @@ func (p Function) FreeVar(b Builder, i int) Expr {
 	return b.getField(ctx, i)
 }
 
-// entryAllocaBuilder returns a builder anchored at the entry block, used to
-// reserve local stack slots. The builder is created once per function and
-// reused: each CreateAlloca inserts at the builder's current point (right
-// after the alloca it just emitted), so a function's locals accumulate as a
-// contiguous run at the top of the entry block in declaration order. Resolving
-// the entry position and allocating a builder once — rather than per Alloc —
-// is what keeps large functions such as cmplxdivide.go's init cheap to compile
-// (issue #2611) while still reserving one slot per call.
+// entryAllocaBuilder returns a builder positioned to reserve a local stack
+// slot in the entry block. The llvm.Builder itself is created once per function
+// and cached — allocating (and disposing) a fresh builder per Alloc was the
+// compile-time regression fixed here (issue #2611). Its insertion point is
+// re-resolved on every call to point before the entry block's first
+// instruction, so each CreateAlloca inserts immediately before it and locals
+// accumulate as a contiguous run at the top of the entry block.
+//
+// Re-resolving is required for correctness, not just tidiness: anchoring once
+// against an empty entry block (SetInsertPointAtEnd) would leave the cursor
+// tracking the growing end of that block, so a later Alloc — reached while
+// compiling a non-entry block after the entry block already has a terminator —
+// would insert its alloca after the terminator and produce an invalid block
+// with no terminator (issue #2611 follow-up). Re-resolving keeps the anchor at
+// the top of the block regardless of what the main builder has appended.
 func (p Function) entryAllocaBuilder() llvm.Builder {
 	if p.allocaBuilder.C == nil {
-		eb := p.Prog.ctx.NewBuilder()
-		entry := p.impl.FirstBasicBlock()
-		if first := entry.FirstInstruction(); !first.IsNil() {
-			eb.SetInsertPointBefore(first)
-		} else {
-			eb.SetInsertPointAtEnd(entry)
-		}
-		p.allocaBuilder = eb
+		p.allocaBuilder = p.Prog.ctx.NewBuilder()
+	}
+	entry := p.impl.FirstBasicBlock()
+	if first := entry.FirstInstruction(); !first.IsNil() {
+		p.allocaBuilder.SetInsertPointBefore(first)
+	} else {
+		p.allocaBuilder.SetInsertPointAtEnd(entry)
 	}
 	return p.allocaBuilder
 }
