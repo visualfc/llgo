@@ -65,6 +65,7 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 
 	unreachableMethod := e.unreachableMethod()
 	dstElemTy := e.cloneType(elemTy)
+	methodFields := dstElemTy.StructElementTypes()
 	methods := make([]llvm.Value, methodsVal.OperandsCount())
 	for i := range methods {
 		orig := methodsVal.Operand(i)
@@ -80,8 +81,8 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 		methods[i] = llvm.ConstNamedStruct(dstElemTy, []llvm.Value{
 			name,
 			mtype,
-			unreachableMethod,
-			unreachableMethod,
+			methodPointerConstant(methodFields[2], unreachableMethod),
+			methodPointerConstant(methodFields[3], unreachableMethod),
 		})
 	}
 	fields[fieldCount-1] = llvm.ConstArray(dstElemTy, methods)
@@ -90,6 +91,22 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 	dstType.SetGlobalConstant(true)
 	dstType.SetLinkage(llvm.ExternalLinkage)
 	copyGlobalAttrs(dstType, srcType)
+}
+
+// methodPointerConstant uses the slot's existing storage type. On wasm32 a Go
+// pointer occupies a wider word: { ptr, integer padding }, with zero high bits.
+// Do not infer the layout from the target or change other uses of the method.
+func methodPointerConstant(typ llvm.Type, fn llvm.Value) llvm.Value {
+	if typ == fn.Type() {
+		return fn
+	}
+	if typ.TypeKind() == llvm.StructTypeKind {
+		fields := typ.StructElementTypes()
+		if len(fields) == 2 && fields[0] == fn.Type() && fields[1].TypeKind() == llvm.IntegerTypeKind {
+			return constStructOfType(typ, []llvm.Value{fn, llvm.ConstNull(fields[1])})
+		}
+	}
+	panic(fmt.Sprintf("dcepass: unsupported method pointer storage type %s", typ))
 }
 
 func (e *overrideEmitter) unreachableMethod() llvm.Value {

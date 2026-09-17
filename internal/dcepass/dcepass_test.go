@@ -28,6 +28,12 @@ func TestEmitStrongTypeOverrides(t *testing.T) {
 				ptrTaskTypeName: {1}, // Run
 			},
 		},
+		{
+			name: "method_slots_wasm32",
+			liveSlots: map[string][]int{
+				taskTypeName: {1}, // Run shares its entry with a dropped slot.
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,6 +56,16 @@ func TestEmitStrongTypeOverrides(t *testing.T) {
 			if err := llvm.VerifyModule(dst, llvm.ReturnStatusAction); err != nil {
 				t.Fatalf("cross-context override is invalid: %v\n%s", err, dst.String())
 			}
+			// LLVM's verifier does not catch every malformed aggregate constant.
+			// The build writes textual IR for Clang, so it must also parse again.
+			roundTripCtx := llvm.NewContext()
+			defer roundTripCtx.Dispose()
+			roundTripPath := filepath.Join(t.TempDir(), "override.ll")
+			if err := os.WriteFile(roundTripPath, []byte(dst.String()), 0600); err != nil {
+				t.Fatal(err)
+			}
+			roundTrip := parseModule(t, &roundTripCtx, roundTripPath)
+			defer roundTrip.Dispose()
 			want, err := os.ReadFile(filepath.Join(dir, "expect.ll"))
 			if err != nil {
 				t.Fatal(err)
