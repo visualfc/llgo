@@ -209,6 +209,10 @@ run_llgo_go_profile_run() {
 }
 
 if [[ "${suite}" != "test-command" ]]; then
+# Check finalizer registry scaling and queue removal without timing or
+# conservative-root assumptions, alongside the real Wasm lifecycle fixtures.
+go -C "${repo_root}" test ./internal/build -run '^TestWasmFinalizerCandidates$' -count=1
+
 # Canonical hosted targets exercise the same scheduler semantics under J32
 # Emscripten, J64 Emscripten Memory64, and W32 WASI Preview 1.
 run_emscripten emscripten emscripten-runner.mjs "${scheduler_fixture}" "wasm scheduler ok" "scheduler-emscripten"
@@ -227,6 +231,24 @@ expect_failure "fatal error: all goroutines are asleep - deadlock!" \
 	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_DEADLOCK=1 "${work_dir}/scheduler-wasi.wasm"
 expect_failure "fatal error: no goroutines (main called runtime.Goexit) - deadlock!" \
 	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_MAIN_GOEXIT=1 "${work_dir}/scheduler-wasi.wasm"
+
+# Reuse the scheduler artifacts to verify that unrecovered panics retain Go
+# function names under every canonical host provider.
+expect_failure "main.panicTracebackCaller" \
+	env LLGO_WASM_SCHEDULER_PANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-runner.mjs" "${work_dir}/scheduler-emscripten.mjs"
+expect_failure "main.panicTracebackCaller" \
+	env LLGO_WASM_SCHEDULER_PANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-memory64-runner.mjs" "${work_dir}/scheduler-memory64.mjs"
+expect_failure "main.panicTracebackCaller" \
+	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_PANIC_TRACEBACK=1 "${work_dir}/scheduler-wasi.wasm"
+
+# A recovered panic rethrown from nested deferred activations keeps the
+# original panic site, matching Go's same-value repanic traceback semantics.
+expect_failure "main.repanicTracebackOrigin" \
+	env LLGO_WASM_SCHEDULER_REPANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-runner.mjs" "${work_dir}/scheduler-emscripten.mjs"
+expect_failure "main.repanicTracebackOrigin" \
+	env LLGO_WASM_SCHEDULER_REPANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-memory64-runner.mjs" "${work_dir}/scheduler-memory64.mjs"
+expect_failure "main.repanicTracebackOrigin" \
+	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_REPANIC_TRACEBACK=1 "${work_dir}/scheduler-wasi.wasm"
 
 # Timers share the Go-derived heap but use different host-wait backends.
 run_emscripten emscripten emscripten-runner.mjs "${timer_fixture}" "wasm timers ok" "timers-emscripten"

@@ -603,6 +603,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	prog.EnableGoGlobalDCE(conf.goGlobalDCEEnabled())
 	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	prog.EnableGCRoots(wasmGC)
+	prog.EnableLogicalGoroutineLocality(usesSingleWorkerWasmScheduler(conf))
 	prog.EnableCooperativeSafepoints(wasmGC)
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
@@ -1316,6 +1317,20 @@ func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 	return enabled, nil
 }
 
+func usesSingleWorkerWasmScheduler(conf *Config) bool {
+	if conf == nil || conf.Goarch != "wasm" {
+		return false
+	}
+	switch conf.Goos {
+	case "js":
+		return true
+	case "wasip1":
+		return !IsWasiThreadsEnabled()
+	default:
+		return false
+	}
+}
+
 func applyWasmGCLinkFlags(conf *Config, export *crosscompile.Export) {
 	if conf.Goos != "js" || conf.Goarch != "wasm" ||
 		(export.WasmProfile != crosscompile.WasmProfileJ32 && export.WasmProfile != crosscompile.WasmProfileJ64) ||
@@ -1330,7 +1345,10 @@ func applyWasmGCLinkFlags(conf *Config, export *crosscompile.Export) {
 func effectiveTypeSizes(sizes types.Sizes, profile crosscompile.WasmProfile) types.Sizes {
 	switch profile {
 	case crosscompile.WasmProfileJ32, crosscompile.WasmProfileJ64, crosscompile.WasmProfileW32:
-		return &types.StdSizes{WordSize: 8, MaxAlign: 8}
+		// StdSizes omits struct tail padding. Its nested-field offsets then
+		// disagree with LLVM's physical layout, so reflected fields and unsafe
+		// constants can address padding instead of the following field.
+		return types.SizesFor("gc", "amd64")
 	default:
 		return sizes
 	}
@@ -2196,9 +2214,8 @@ func buildMainLink(ctx *context, pkg *packages.Package, preparation *mainLinkPre
 	ctx.stripDarwinLTOLocals = false
 	entryPkg := genMainModule(ctx, llssa.PkgRuntime, pkg, &preparation.gen)
 	cExports := preparation.gen.cExports
-	if len(cExports) != 0 {
-		llabi.LowerLargeAggregates(ctx.prog.TargetData(), entryPkg.LPkg.Module())
-		ctx.cTransformer.TransformModule(entryPkg.LPkg.Path(), entryPkg.LPkg.Module())
+	if _, err := lowerMainCExportModule(ctx, entryPkg.LPkg, cExports); err != nil {
+		return nil, err
 	}
 	if ctx.buildConf.deadcodeDropEnabled() {
 		if err := applyDeadcodeDropOverrides(preparation.linkedOrder, entryPkg, preparation.gen.rtInit, verbose); err != nil {
@@ -2851,6 +2868,66 @@ func preparePackageModule(ctx *context, aPkg *aPackage, verbose bool) ([]string,
 	return externs, nil
 }
 
+// lowerLargeAggregates is shared by package, export-wrapper, and translated
+// assembly modules so every late allocation follows the selected GC policy.
+func lowerLargeAggregates(prog llssa.Program, mod gllvm.Module) {
+	llabi.LowerLargeAggregates(prog.TargetData(), mod, llabi.AggregateLoweringConfig{
+		GoWordSize: prog.GoWordSize(),
+		GCRoots:    prog.GCRootsEnabled(),
+		Wasm:       prog.Target().GOARCH == "wasm",
+	})
+}
+
+func lowerMainCExportAggregates(prog llssa.Program, mod gllvm.Module, exports []cExport) bool {
+	if len(exports) == 0 {
+		return false
+	}
+	lowerLargeAggregates(prog, mod)
+	return true
+}
+
+func lowerMainCExportModule(ctx *context, pkg llssa.Package, exports []cExport) (bool, error) {
+	mod := pkg.Module()
+	if !lowerMainCExportAggregates(ctx.prog, mod, exports) {
+		return false, nil
+	}
+	ctx.cTransformer.TransformModule(pkg.Path(), mod)
+	if ctx.buildConf.Goarch != "wasm" {
+		return true, nil
+	}
+
+	// C ABI lowering can introduce 4-64 KiB aggregate snapshots in export
+	// wrappers. Apply the same post-C-ABI Wasm passes as package modules.
+	lowerWasmAggregateCopies(ctx.buildConf.Goarch, ctx.prog.TargetData(), mod, llabi.AggregateLoweringConfig{
+		GoWordSize: ctx.prog.GoWordSize(),
+		GCRoots:    ctx.prog.GCRootsEnabled(),
+		Wasm:       true,
+	})
+	applySizeOptimizationAttributes(mod, ctx.buildConf.OptLevel)
+	if err := optimizeLLVMModule(ctx, pkg.Path(), mod); err != nil {
+		return true, err
+	}
+	localizeWasmStackAddresses(ctx.buildConf.Goarch, mod)
+	return true, nil
+}
+
+func optimizeLLVMModule(ctx *context, pkgPath string, mod gllvm.Module) error {
+	if !ctx.passOpt {
+		return nil
+	}
+	mod.SetDataLayout(ctx.prog.DataLayout())
+	mod.SetTarget(ctx.prog.Target().Spec().Triple)
+	pbo := gllvm.NewPassBuilderOptions()
+	defer pbo.Dispose()
+	if err := gllvm.VerifyModule(mod, gllvm.ReturnStatusAction); err != nil {
+		return fmt.Errorf("verify LLVM module for %v failed: %w", pkgPath, err)
+	}
+	if err := mod.RunPasses(llvmPassPipeline(ctx.buildConf.OptLevel, ctx.buildConf.ltoMode()), ctx.prog.TargetMachine(), pbo); err != nil {
+		return fmt.Errorf("run LLVM passes failed for %v: %w", pkgPath, err)
+	}
+	return nil
+}
+
 // compilePackageModule applies LLVM transforms and emits package objects.
 func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbose bool) error {
 	pkg := aPkg.Package
@@ -2858,7 +2935,7 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 	ret := aPkg.LPkg
 
 	ctx.cTransformer.SetSkipFuncs(cabiSkipFuncsForPlan9Asm(ctx, pkgPath, ret.Module()))
-	llabi.LowerLargeAggregates(ctx.prog.TargetData(), ret.Module())
+	lowerLargeAggregates(ctx.prog, ret.Module())
 	ctx.cTransformer.TransformModule(ret.Path(), ret.Module())
 	ctx.cTransformer.SetSkipFuncs(nil)
 	if ctx.buildConf.Goos == "windows" {
@@ -2870,6 +2947,11 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 			return err
 		}
 	}
+	lowerWasmAggregateCopies(ctx.buildConf.Goarch, ctx.prog.TargetData(), ret.Module(), llabi.AggregateLoweringConfig{
+		GoWordSize: ctx.prog.GoWordSize(),
+		GCRoots:    ctx.prog.GCRootsEnabled(),
+		Wasm:       true,
+	})
 	applySizeOptimizationAttributes(ret.Module(), ctx.buildConf.OptLevel)
 	printCmds := ctx.shouldPrintCommands(verbose)
 	if ctx.mode != ModeGen {
@@ -2890,19 +2972,10 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 	}
 
 	// Run the default LLVM optimization pipeline selected by the requested -O level.
-	if ctx.passOpt {
-		mod := ret.Module()
-		mod.SetDataLayout(ctx.prog.DataLayout())
-		mod.SetTarget(ctx.prog.Target().Spec().Triple)
-		pbo := gllvm.NewPassBuilderOptions()
-		defer pbo.Dispose()
-		if err := gllvm.VerifyModule(mod, gllvm.ReturnStatusAction); err != nil {
-			return fmt.Errorf("verify LLVM module for %v failed: %w", pkgPath, err)
-		}
-		if err := mod.RunPasses(llvmPassPipeline(ctx.buildConf.OptLevel, ctx.buildConf.ltoMode()), ctx.prog.TargetMachine(), pbo); err != nil {
-			return fmt.Errorf("run LLVM passes failed for %v: %w", pkgPath, err)
-		}
+	if err := optimizeLLVMModule(ctx, pkgPath, ret.Module()); err != nil {
+		return err
 	}
+	localizeWasmStackAddresses(ctx.buildConf.Goarch, ret.Module())
 	dropUnusedWindowsTestMain(ctx, aPkg, ret.Module())
 	emitFuncInfoEntrySites(ctx, ret)
 	// ModeGen callers consume the in-memory LLVM module directly. They do not

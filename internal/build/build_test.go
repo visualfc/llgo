@@ -818,6 +818,33 @@ func TestNeedStartWASITargetAliases(t *testing.T) {
 	}
 }
 
+func TestUsesSingleWorkerWasmScheduler(t *testing.T) {
+	tests := []struct {
+		name, goos, goarch string
+		wasiThreads        bool
+		want               bool
+	}{
+		{"Emscripten", "js", "wasm", false, true},
+		{"Emscripten ignores WASI setting", "js", "wasm", true, true},
+		{"single-worker WASI", "wasip1", "wasm", false, true},
+		{"WASI threads", "wasip1", "wasm", true, false},
+		{"unsupported wasm host", "plan9", "wasm", false, false},
+		{"native", "linux", "amd64", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(llgoWasiThreads, strconv.FormatBool(tt.wasiThreads))
+			conf := &Config{Goos: tt.goos, Goarch: tt.goarch}
+			if got := usesSingleWorkerWasmScheduler(conf); got != tt.want {
+				t.Fatalf("usesSingleWorkerWasmScheduler(%s/%s) = %v, want %v", tt.goos, tt.goarch, got, tt.want)
+			}
+		})
+	}
+	if usesSingleWorkerWasmScheduler(nil) {
+		t.Fatal("nil configuration selected the single-worker scheduler")
+	}
+}
+
 func TestWasmRuntimeAvoidsNativeHostDependencies(t *testing.T) {
 	runtimeDir := filepath.Join(env.LLGoRuntimeDir(), "internal", "lib", "runtime")
 	for _, goos := range []string{"js", "wasip1"} {
@@ -884,6 +911,39 @@ func TestEffectiveWasmTypeSizes(t *testing.T) {
 			got := effectiveTypeSizes(base, test.profile).Sizeof(types.Typ[types.Uintptr])
 			if got != test.want {
 				t.Fatalf("uintptr size = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestWasmNestedStructTypeSizes(t *testing.T) {
+	common := types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, nil, "Name", types.Typ[types.String], false),
+		types.NewField(token.NoPos, nil, "ID", types.Typ[types.Int32], false),
+	}, nil)
+	fields := []*types.Var{
+		types.NewField(token.NoPos, nil, "Common", common, false),
+		types.NewField(token.NoPos, nil, "Elem", types.Typ[types.Int32], false),
+	}
+	for _, profile := range []crosscompile.WasmProfile{
+		crosscompile.WasmProfileJ32,
+		crosscompile.WasmProfileJ64,
+		crosscompile.WasmProfileW32,
+	} {
+		t.Run(string(profile), func(t *testing.T) {
+			sizes := effectiveTypeSizes(nil, profile)
+			if got := sizes.Sizeof(common); got != 24 {
+				t.Errorf("nested struct size = %d, want 24 including tail padding", got)
+			}
+			if got := sizes.Offsetsof(fields)[1]; got != 24 {
+				t.Errorf("following field offset = %d, want 24", got)
+			}
+			outer := types.NewStruct(fields, nil)
+			if got := sizes.Sizeof(outer); got != 32 {
+				t.Errorf("outer struct size = %d, want 32", got)
+			}
+			if got := sizes.Sizeof(types.NewArray(outer, 2)); got != 64 {
+				t.Errorf("outer struct array size = %d, want 64", got)
 			}
 		})
 	}
