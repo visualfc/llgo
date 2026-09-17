@@ -37,6 +37,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if os.Getenv("LLGO_TEST_NODE_HELPER") == "1" && strings.TrimSuffix(strings.ToLower(filepath.Base(os.Args[0])), ".exe") == "node" {
+		os.Exit(0)
+	}
 	if mode := os.Getenv("LLGO_TEST_WASM_OPT_HELPER"); mode != "" {
 		if argsFile := os.Getenv("ARGS_FILE"); argsFile != "" {
 			file, err := os.OpenFile(argsFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
@@ -1632,6 +1635,66 @@ func TestExecuteInitialPackageLinkCompileOnlyNamedTargetDoesNotExecute(t *testin
 	}
 	if data, err := os.ReadFile(output); err != nil || string(data) != "linked" {
 		t.Fatalf("linked output = %q, %v", data, err)
+	}
+}
+
+func TestExecuteInitialPackageLinkRawWasmRunUsesHostRunner(t *testing.T) {
+	t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "runtime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "runtime", "go.mod"), []byte("module github.com/xgo-dev/llgo/runtime\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_ROOT", root)
+
+	// Shadow Node with a successful host runner. The test is for post-link
+	// dispatch; JavaScript execution itself is covered by the wasm CI fixture.
+	binDir := t.TempDir()
+	nodeName := "node"
+	if runtime.GOOS == "windows" {
+		nodeName += ".exe"
+	}
+	if err := os.Link(os.Args[0], filepath.Join(binDir, nodeName)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_TEST_NODE_HELPER", "1")
+	pathEnv := binDir + string(os.PathListSeparator) + os.Getenv("PATH")
+	t.Setenv("PATH", pathEnv)
+	commands := commandEnv{environ: withEnv(os.Environ(), "PATH="+pathEnv)}
+	output := filepath.Join(t.TempDir(), "raw-gojs.wasm")
+	conf := &Config{
+		Mode:      ModeRun,
+		BuildMode: BuildModeExe,
+		Goos:      "js",
+		Goarch:    "wasm",
+		PCLNMode:  PCLNNone,
+	}
+	ctx := &context{
+		mode:      ModeRun,
+		buildConf: conf,
+		commands:  commands,
+		crossCompile: crosscompile.Export{
+			CC: os.Args[0],
+		},
+	}
+	link := &initialPackageLink{
+		pkg: &packages.Package{
+			Dir:     t.TempDir(),
+			PkgPath: "example.com/raw-gojs",
+		},
+		conf:    conf,
+		outFmts: &OutFmtDetails{Out: output},
+		plan:    &mainLinkPlan{outputPath: output},
+	}
+
+	program, err := executeInitialPackageLink(ctx, link, true, false)
+	if err != nil {
+		t.Fatalf("raw GoJS run: %v", err)
+	}
+	if program != nil {
+		t.Fatalf("raw GoJS run returned test program: %+v", program)
 	}
 }
 

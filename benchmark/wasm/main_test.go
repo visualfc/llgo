@@ -23,6 +23,7 @@ func TestRunCLICollectsEveryExampleAndProfile(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
+			fixtureRoot := t.TempDir()
 			out := filepath.Join(t.TempDir(), "results")
 			// Specify the acceptance matrix independently of the production lists:
 			// removing an example/profile there must make this test fail.
@@ -44,8 +45,12 @@ func TestRunCLICollectsEveryExampleAndProfile(t *testing.T) {
 			}
 			wantCalls := make(map[string]int)
 			wantMetrics := make(map[string]int)
-			for _, example := range []string{"cprintf", "println", "fmtprintf"} {
-				fixture := filepath.Join(root, "benchmark", "binary_size", example, "main.go")
+			for _, example := range []string{"cprintf", "println", "fmtprintf", "reflectcall"} {
+				fixtureDir := filepath.Join("benchmark", "binary_size")
+				if example == "reflectcall" {
+					fixtureDir = filepath.Join("benchmark", "wasm", "testdata")
+				}
+				fixture := filepath.Join(fixtureRoot, fixtureDir, example, "main.go")
 				if err := os.MkdirAll(filepath.Dir(fixture), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -59,7 +64,7 @@ func TestRunCLICollectsEveryExampleAndProfile(t *testing.T) {
 					}
 					wantCalls[example+"/"+profile+"/fake-llgo"] = 1
 					wantMetrics["BenchmarkWasmSize/"+metricName+"/LLGo"] = 1
-					if example == "println" {
+					if example == "println" || (example == "reflectcall" && profile == "w32-wasi") {
 						wantCalls[example+"/"+profile+"/fake-llgo"] = test.runs + 1
 						wantMetrics["BenchmarkWasmBuild/"+metricName] = 1
 					}
@@ -128,7 +133,7 @@ func TestRunCLICollectsEveryExampleAndProfile(t *testing.T) {
 				}
 				return nil
 			}
-			args := append([]string{"-root", root, "-llgo", "fake-llgo", "-go", "fake-go", "-out", out}, test.flags...)
+			args := append([]string{"-root", root, "-fixture-root", fixtureRoot, "-llgo", "fake-llgo", "-go", "fake-go", "-out", out}, test.flags...)
 			var stderr strings.Builder
 			if code := runMain(context.Background(), &stderr, args, runner); code != 0 {
 				t.Fatalf("runMain exit code = %d: %s", code, stderr.String())

@@ -541,6 +541,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		Target:                  conf.Target,
 		LLVMTarget:              export.LLVMTarget,
 		WasmProfile:             string(export.WasmProfile),
+		WasmProvider:            string(export.WasmProvider),
 		OptLevel:                conf.OptLevel,
 		SaturatingFloatToUint32: conf.SaturatingFloatToUint32,
 	}
@@ -823,6 +824,8 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
 	ctx.frontendOptions.ReceiverNilChecks = collectReceiverNilChecks(initial, altPkgs)
+	configureWasmReflectBridges(ctx)
+	configureWasmFuncInfoEntries(ctx)
 
 	allPkgs := append([]*aPackage{}, pkgs...)
 	allPkgs = append(allPkgs, depPkgs...)
@@ -1065,17 +1068,23 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 		}
 	case ModeRun, ModeTest, ModeCmpTest:
 		if link.conf.Target == "" {
+			runner := goCompatibleWasmRunner(link.conf)
 			if link.conf.Mode == ModeTest {
 				program := &testProgram{
-					app:     link.outFmts.Out,
-					pkgDir:  link.pkg.Dir,
-					pkgName: strings.TrimSuffix(link.pkg.PkgPath, ".test"),
+					app:       link.outFmts.Out,
+					pkgDir:    link.pkg.Dir,
+					pkgName:   strings.TrimSuffix(link.pkg.PkgPath, ".test"),
+					runner:    runner,
+					runnerEnv: envMap,
 				}
 				if cleanupTemp {
 					program.temporaryOutputs = link.outFmts
 					cleanupTemp = false // runNativeTest now owns the temporary output.
 				}
 				return program, nil
+			}
+			if runner != "" && link.conf.Mode == ModeRun {
+				return nil, runInEmulator(linkCtx.commands, runner, envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
 			}
 			return nil, runNative(linkCtx, link.outFmts.Out, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode)
 		}
@@ -1091,6 +1100,32 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 		}, verbose)
 	}
 	return nil, nil
+}
+
+// goCompatibleWasmRunner preserves cmd/go's raw GOOS/GOARCH source selection
+// while routing the linked module through the host adapter required to execute
+// it. Named targets already obtain their runner from the target definition.
+func goCompatibleWasmRunner(conf *Config) string {
+	if conf == nil || conf.Target != "" || conf.Goarch != "wasm" {
+		return ""
+	}
+	switch conf.Goos {
+	case "js":
+		return fmt.Sprintf("node %q --browser-only %q", filepath.Join(env.LLGoROOT(), "targets", "emscripten-runner.mjs"), "{}")
+	case "wasip1":
+		runtimeCommand := WasmRuntime()
+		switch runtimeCommand {
+		case "wasmtime":
+			// Match Go's go_wasip1_wasm_exec helper by exposing the host
+			// filesystem and package working directory to run/test binaries.
+			return `wasmtime run --dir=/ --env PWD --env PATH -W exceptions=y -W multi-memory=y -W max-wasm-stack=8388608 "{}"`
+		case "iwasm":
+			return `iwasm --stack-size=819200000 --heap-size=800000000 "{}"`
+		default:
+			return runtimeCommand + ` "{}"`
+		}
+	}
+	return ""
 }
 
 func newLinkExecutionContext(ctx *context, plan *mainLinkPlan) *context {
@@ -1412,6 +1447,9 @@ type context struct {
 	stripDarwinLTOLocals bool
 
 	buildTrace *buildTracer
+
+	wasmProgramUseOnce sync.Once
+	wasmProgramUse     *wasmProgramUse
 }
 
 // backendAbiTypes snapshots Go-owned type identities from isolated Programs

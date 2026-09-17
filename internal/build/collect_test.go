@@ -202,6 +202,60 @@ func TestWasmProfileAndProviderSeparatePackageFingerprints(t *testing.T) {
 	}
 }
 
+func TestWasmReflectBridgesParticipateInFingerprint(t *testing.T) {
+	fingerprint := func(enabled bool) (*commonSection, string) {
+		prog := llssa.NewProgram(&llssa.Target{
+			GOOS: "wasip1", GOARCH: "wasm", WasmProfile: "w32", WasmProvider: "wasi",
+			WasmReflectBridges: enabled,
+		})
+		defer prog.Dispose()
+		ctx := &context{
+			buildConf:    &Config{Goos: "wasip1", Goarch: "wasm", Target: "wasi"},
+			crossCompile: crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32, WasmProvider: crosscompile.WasmProviderWASI},
+			prog:         prog,
+		}
+		manifest := newManifestBuilder()
+		ctx.collectCommonInputs(manifest)
+		return &manifest.common, manifest.Fingerprint()
+	}
+
+	plain, plainFingerprint := fingerprint(false)
+	bridged, bridgedFingerprint := fingerprint(true)
+	if plain.WasmReflectBridges || !bridged.WasmReflectBridges {
+		t.Fatalf("WASM_REFLECT_BRIDGES fields = %v, %v", plain.WasmReflectBridges, bridged.WasmReflectBridges)
+	}
+	if plainFingerprint == bridgedFingerprint {
+		t.Fatal("reflection bridge programs reused an unbridged package fingerprint")
+	}
+}
+
+func TestWasmFuncInfoEntriesParticipateInFingerprint(t *testing.T) {
+	fingerprint := func(enabled bool) (*commonSection, string) {
+		prog := llssa.NewProgram(&llssa.Target{
+			GOOS: "js", GOARCH: "wasm", WasmProfile: "j32", WasmProvider: "gojs",
+			WasmFuncInfoEntries: enabled,
+		})
+		defer prog.Dispose()
+		ctx := &context{
+			buildConf:    &Config{Goos: "js", Goarch: "wasm"},
+			crossCompile: crosscompile.Export{WasmProfile: crosscompile.WasmProfileJ32, WasmProvider: crosscompile.WasmProviderGoJS},
+			prog:         prog,
+		}
+		manifest := newManifestBuilder()
+		ctx.collectCommonInputs(manifest)
+		return &manifest.common, manifest.Fingerprint()
+	}
+
+	plain, plainFingerprint := fingerprint(false)
+	withEntries, entriesFingerprint := fingerprint(true)
+	if plain.WasmFuncInfoEntries || !withEntries.WasmFuncInfoEntries {
+		t.Fatalf("WASM_FUNCINFO_ENTRIES fields = %v, %v", plain.WasmFuncInfoEntries, withEntries.WasmFuncInfoEntries)
+	}
+	if plainFingerprint == entriesFingerprint {
+		t.Fatal("function-entry programs reused a package fingerprint without entries")
+	}
+}
+
 func TestNativeToolchainIdentityParticipatesInFingerprint(t *testing.T) {
 	base := crosscompile.Export{
 		CC:             "clang",
