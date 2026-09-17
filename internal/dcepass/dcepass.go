@@ -74,7 +74,7 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 			continue
 		}
 		if verbose {
-			fmt.Fprintf(os.Stderr, "[dce] drop method %s[%d] ifn=%s tfn=%s\n", srcType.Name(), i, orig.Operand(2).Name(), orig.Operand(3).Name())
+			fmt.Fprintf(os.Stderr, "[dce] drop method %s[%d] ifn=%s tfn=%s\n", srcType.Name(), i, methodPointerName(orig.Operand(2)), methodPointerName(orig.Operand(3)))
 		}
 		name := e.cloneConst(orig.Operand(0))
 		mtype := e.cloneConst(orig.Operand(1))
@@ -93,8 +93,15 @@ func (e *overrideEmitter) emitTypeOverride(srcType, methodsVal llvm.Value, elemT
 	copyGlobalAttrs(dstType, srcType)
 }
 
-// methodPointerConstant uses the slot's existing storage type. On wasm32 a Go
-// pointer occupies a wider word: { ptr, integer padding }, with zero high bits.
+func methodPointerName(v llvm.Value) string {
+	if !v.IsAConstantStruct().IsNil() && v.OperandsCount() == 2 {
+		v = v.Operand(0)
+	}
+	return v.Name()
+}
+
+// methodPointerConstant uses the slot's existing storage type. On wasm32 the
+// 32-bit pointer is stored in a wider Go slot: { ptr, i32 }, with zero padding.
 // Do not infer the layout from the target or change other uses of the method.
 func methodPointerConstant(typ llvm.Type, fn llvm.Value) llvm.Value {
 	if typ == fn.Type() {

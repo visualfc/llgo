@@ -20,16 +20,19 @@ func TestEmitStrongTypeOverrides(t *testing.T) {
 	tests := []struct {
 		name      string
 		liveSlots map[string][]int
+		wantLog   string
 	}{
 		{
-			name: "method_slots",
+			name:    "method_slots",
+			wantLog: "[dce] drop method _llgo_main.Task[0] ifn=main.(*Task).Drop tfn=main.Task.Drop\n",
 			liveSlots: map[string][]int{
 				taskTypeName:    {1}, // Run
 				ptrTaskTypeName: {1}, // Run
 			},
 		},
 		{
-			name: "method_slots_wasm32",
+			name:    "method_slots_wasm32",
+			wantLog: "[dce] drop method _llgo_main.Task[0] ifn=Drop tfn=Run\n",
 			liveSlots: map[string][]int{
 				taskTypeName: {1}, // Run shares its entry with a dropped slot.
 			},
@@ -47,7 +50,27 @@ func TestEmitStrongTypeOverrides(t *testing.T) {
 			dst := dstCtx.NewModule("dst")
 			defer dst.Dispose()
 
-			EmitStrongTypeOverrides(dst, []llvm.Module{src}, tt.liveSlots, true)
+			logPath := filepath.Join(t.TempDir(), "dce.log")
+			logFile, err := os.Create(logPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			func() {
+				stderr := os.Stderr
+				os.Stderr = logFile
+				defer func() {
+					os.Stderr = stderr
+					logFile.Close()
+				}()
+				EmitStrongTypeOverrides(dst, []llvm.Module{src}, tt.liveSlots, true)
+			}()
+			log, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(log), tt.wantLog) {
+				t.Errorf("verbose log = %q, want line %q", log, tt.wantLog)
+			}
 			for global := dst.FirstGlobal(); !global.IsNil(); global = llvm.NextGlobal(global) {
 				if init := global.Initializer(); !init.IsNil() && global.GlobalValueType().C != init.Type().C {
 					t.Errorf("global %s type %s does not match initializer type %s", global.Name(), global.GlobalValueType(), init.Type())
@@ -58,6 +81,7 @@ func TestEmitStrongTypeOverrides(t *testing.T) {
 			}
 			// LLVM's verifier does not catch every malformed aggregate constant.
 			// The build writes textual IR for Clang, so it must also parse again.
+			// Parsing itself is the check: parseModule fails the test on invalid IR.
 			roundTripCtx := llvm.NewContext()
 			defer roundTripCtx.Dispose()
 			roundTripPath := filepath.Join(t.TempDir(), "override.ll")
@@ -71,6 +95,61 @@ func TestEmitStrongTypeOverrides(t *testing.T) {
 				t.Fatal(err)
 			}
 			qtest.Diff(t, filepath.Join(dir, "expect.ll.new"), []byte(dst.String()), want)
+		})
+	}
+}
+
+func TestMethodPointerConstant(t *testing.T) {
+	ctx := llvm.NewContext()
+	defer ctx.Dispose()
+	mod := ctx.NewModule("method_pointer")
+	defer mod.Dispose()
+	fn := llvm.AddFunction(mod, "method", llvm.FunctionType(ctx.VoidType(), nil, false))
+	ptr := fn.Type()
+	named := ctx.StructCreateNamed("pointer.slot")
+	named.StructSetBody([]llvm.Type{ptr, ctx.Int32Type()}, false)
+
+	for _, typ := range []llvm.Type{
+		ptr,
+		ctx.StructType([]llvm.Type{ptr, ctx.Int32Type()}, false),
+		named,
+		ctx.StructType([]llvm.Type{ptr, ctx.Int16Type()}, true),
+	} {
+		t.Run(typ.String(), func(t *testing.T) {
+			got := methodPointerConstant(typ, fn)
+			if got.Type() != typ {
+				t.Fatalf("type = %s, want exact slot type %s", got.Type(), typ)
+			}
+			if typ == ptr {
+				if got != fn {
+					t.Fatal("bare method pointer changed")
+				}
+			} else if got.Operand(0) != fn || !got.Operand(1).IsNull() {
+				t.Fatalf("slot = %s, want method pointer with zero padding", got)
+			}
+		})
+	}
+
+	for _, tt := range []struct {
+		name string
+		typ  llvm.Type
+	}{
+		{"integer", ctx.Int64Type()},
+		{"different address space", llvm.PointerType(ctx.Int8Type(), 1)},
+		{"empty struct", ctx.StructType(nil, false)},
+		{"missing padding", ctx.StructType([]llvm.Type{ptr}, false)},
+		{"extra field", ctx.StructType([]llvm.Type{ptr, ctx.Int32Type(), ctx.Int32Type()}, false)},
+		{"non-pointer first field", ctx.StructType([]llvm.Type{ctx.Int32Type(), ctx.Int32Type()}, false)},
+		{"non-integer padding", ctx.StructType([]llvm.Type{ptr, ptr}, false)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				want := fmt.Sprintf("dcepass: unsupported method pointer storage type %s", tt.typ)
+				if got := recover(); got != want {
+					t.Fatalf("panic = %v, want %q", got, want)
+				}
+			}()
+			methodPointerConstant(tt.typ, fn)
 		})
 	}
 }
