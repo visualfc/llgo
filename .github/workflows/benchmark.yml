@@ -46,7 +46,7 @@ jobs:
             display: Windows MSVC ARM64
             windows_abi: msvc
             windows_arch: arm64
-            host_go_arch: x64
+            host_go_arch: arm64
             timeout: 120
           - os: windows-11-arm
             id: windows-mingw-arm64

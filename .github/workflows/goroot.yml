@@ -71,7 +71,7 @@ jobs:
       - name: Set up Go for building LLGo and the runner
         uses: ./.github/actions/setup-go
         with:
-          architecture: ${{ matrix.os == 'windows-11-arm' && matrix.windows_abi == 'mingw' && 'arm64' || startsWith(matrix.os, 'windows') && 'x64' || '' }}
+          architecture: ${{ matrix.os == 'windows-11-arm' && 'arm64' || startsWith(matrix.os, 'windows') && 'x64' || '' }}
 
       - name: Build LLGo and the GOROOT runner
         id: build-tools
@@ -116,7 +116,7 @@ jobs:
         uses: ./.github/actions/setup-go
         with:
           go-version: ${{ steps.target-go.outputs.version }}
-          architecture: ${{ matrix.os == 'windows-11-arm' && matrix.windows_abi == 'mingw' && 'arm64' || startsWith(matrix.os, 'windows') && 'x64' || '' }}
+          architecture: ${{ matrix.os == 'windows-11-arm' && 'arm64' || startsWith(matrix.os, 'windows') && 'x64' || '' }}
 
       - name: Select target GOROOT
         shell: bash

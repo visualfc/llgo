@@ -54,7 +54,7 @@ jobs:
             llvm: 22
             windows_abi: msvc
             windows_arch: arm64
-            host_go_arch: x64
+            host_go_arch: arm64
             shard_total: "2"
           - os: windows-11-arm
             llvm: 22
@@ -480,7 +480,7 @@ jobs:
             shard_total: "2"
             windows_abi: msvc
             windows_arch: arm64
-            host_go_arch: x64
+            host_go_arch: arm64
     runs-on: ${{ github.repository_owner == 'xgo-dev' && matrix.runner || matrix.os }}
     steps:
       - uses: actions/checkout@v7

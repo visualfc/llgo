@@ -71,9 +71,10 @@ function Enter-LLGoVisualStudio2022 {
   $target = Get-LLGoWindowsMSVCTarget -GoArch $GoArch
   $installPath = Find-LLGoVisualStudio2022 -GoArch $GoArch
   Import-Module "$installPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+  $hostArch = if ($env:RUNNER_ARCH -eq "ARM64") { "arm64" } else { "x64" }
   Enter-VsDevShell -VsInstallPath $installPath `
     -SkipAutomaticLocation `
-    -DevCmdArguments "-arch=$($target.VisualStudio) -host_arch=x64"
+    -DevCmdArguments "-arch=$($target.VisualStudio) -host_arch=$hostArch"
   return $target
 }
 
