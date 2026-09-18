@@ -403,9 +403,6 @@ func (p Program) toTuple(typ *types.Tuple) Type {
 */
 
 func (p Program) toType(raw types.Type) Type {
-	if typ, ok := cvtGoSSAOpaqueType(raw); ok {
-		return p.rawType(typ)
-	}
 	typ := rawType{raw}
 	switch t := raw.(type) {
 	case *types.Basic:

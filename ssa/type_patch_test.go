@@ -224,10 +224,10 @@ func TestNamedStructLayoutEquivalent(t *testing.T) {
 	}
 }
 
-func buildGoSSAPackageForOpaque(t *testing.T, src string) *gossa.Package {
+func buildGoSSAPackageForInternalTypes(t *testing.T, src string) *gossa.Package {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "opaque.go", src, 0)
+	f, err := parser.ParseFile(fset, "internaltypes.go", src, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,68 +242,58 @@ func buildGoSSAPackageForOpaque(t *testing.T, src string) *gossa.Package {
 	return ssapkg
 }
 
-func TestGoSSAOpaqueTypeConversion(t *testing.T) {
-	ssapkg := buildGoSSAPackageForOpaque(t, `package foo
-
+// x/tools represents iterator and defer-stack handles as named unsafe.Pointer
+// types. They must use the ordinary named-type path and retain pointer storage.
+func TestGoSSAInternalPointerTypes(t *testing.T) {
+	ssapkg := buildGoSSAPackageForInternalTypes(t, `package foo
 func seq(yield func(int) bool) { _ = yield(1) }
-
-func f() {
+func f(m map[string]int) {
 	for v := range seq {
 		defer func() { _ = v }()
 	}
+	for k, v := range m { _, _ = k, v }
 }
 `)
-
-	var deferStackTy types.Type
+	internalTypes := make(map[string]types.Type)
 	for fn := range ssautil.AllFunctions(ssapkg.Prog) {
-		if fn == nil {
-			continue
-		}
-		for _, blk := range fn.Blocks {
-			for _, instr := range blk.Instrs {
-				if d, ok := instr.(*gossa.Defer); ok && d.DeferStack != nil {
-					deferStackTy = d.DeferStack.Type()
-					break
+		for _, block := range fn.Blocks {
+			for _, instr := range block.Instrs {
+				switch instr := instr.(type) {
+				case *gossa.Defer:
+					if instr.DeferStack != nil {
+						internalTypes["defer stack"] = instr.DeferStack.Type()
+					}
+				case *gossa.Range:
+					internalTypes["range iterator"] = instr.Type()
 				}
 			}
-			if deferStackTy != nil {
-				break
-			}
-		}
-		if deferStackTy != nil {
-			break
 		}
 	}
-	if deferStackTy == nil {
-		t.Fatal("missing defer stack type")
-	}
-
-	ptrTy, ok := deferStackTy.(*types.Pointer)
-	if !ok {
-		t.Fatalf("expected pointer defer stack type, got %T", deferStackTy)
-	}
-	if !isGoSSAOpaqueType(ptrTy.Elem()) {
-		t.Fatalf("expected opaque defer stack elem type, got %T", ptrTy.Elem())
-	}
-	if raw, ok := cvtGoSSAOpaqueType(deferStackTy); !ok || raw != types.Typ[types.UnsafePointer] {
-		t.Fatalf("cvtGoSSAOpaqueType = (%v, %v), want (unsafe.Pointer, true)", raw, ok)
-	}
-	if raw, ok := cvtGoSSAOpaqueType(ptrTy.Elem()); !ok || raw != types.Typ[types.UnsafePointer] {
-		t.Fatalf("cvtGoSSAOpaqueType(ptr) = (%v, %v), want (unsafe.Pointer, true)", raw, ok)
-	}
-	if isGoSSAOpaqueType(types.Typ[types.Int]) {
-		t.Fatal("plain int must not be treated as opaque type")
-	}
-	if raw, ok := cvtGoSSAOpaqueType(types.Typ[types.Int]); ok || raw != nil {
-		t.Fatalf("cvtGoSSAOpaqueType(int) = (%v, %v), want (nil, false)", raw, ok)
-	}
-
 	prog := NewProgram(nil)
-	if got := prog.toType(deferStackTy).RawType(); got != types.Typ[types.UnsafePointer] {
-		t.Fatalf("toType(opaque) raw = %v, want unsafe.Pointer", got)
-	}
-	if got := prog.toType(ptrTy.Elem()).RawType(); got != types.Typ[types.UnsafePointer] {
-		t.Fatalf("toType(opaque elem) raw = %v, want unsafe.Pointer", got)
+	t.Cleanup(prog.Dispose)
+	for _, name := range []string{"defer stack", "range iterator"} {
+		t.Run(name, func(t *testing.T) {
+			typ, ok := internalTypes[name].(*types.Named)
+			if !ok {
+				t.Fatalf("expected named handle type, got %T", internalTypes[name])
+			}
+			if typ.Underlying() != types.Typ[types.UnsafePointer] {
+				t.Fatalf("handle underlying type = %v, want unsafe.Pointer", typ.Underlying())
+			}
+			if raw, converted := prog.gocvt.cvtType(typ); converted || raw != typ {
+				t.Fatalf("cvtType = (%v, %v), want unchanged named handle", raw, converted)
+			}
+			got := prog.Type(typ, InGo)
+			if got.RawType() != typ {
+				t.Fatalf("raw type = %v, want %v", got.RawType(), typ)
+			}
+			if got.ll != prog.tyVoidPtr() {
+				t.Fatalf("LLVM type = %v, want pointer", got.ll)
+			}
+			if got := prog.SizeOf(got); got != prog.SizeOf(prog.Type(types.Typ[types.UnsafePointer], InGo)) {
+				t.Fatalf("handle size = %d, want pointer size", got)
+			}
+		})
 	}
 }
 
