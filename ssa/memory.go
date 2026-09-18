@@ -132,7 +132,14 @@ func (b Builder) dupMalloc(v Expr) Expr {
 //
 //	t0 = local int
 //	t1 = new int
+//
+// Alloc allocates space for a variable of type elem.
 func (b Builder) Alloc(elem Type, heap bool) (ret Expr) {
+	return b.AllocEx(elem, heap, true)
+}
+
+// AllocEx allocates space for a variable of type elem with hoistToEntry control.
+func (b Builder) AllocEx(elem Type, heap bool, hoistToEntry bool) (ret Expr) {
 	dbgInstrf("Alloc %v, %v\n", elem.RawType(), heap)
 	prog := b.Prog
 	pkg := b.Pkg
@@ -151,19 +158,24 @@ func (b Builder) Alloc(elem Type, heap bool) (ret Expr) {
 		// A local denotes one slot per call, even if its declaration is inside
 		// a loop. Keep the reservation in the entry block and initialization at
 		// the declaration, otherwise LLVM grows the stack on every iteration.
-		// This builder emits only an alloca. Avoid constructing a full Go
-		// Builder (and its debug-scope cache) on the local-allocation hot path.
-		entryBuilder := prog.ctx.NewBuilder()
-		entry := b.Func.impl.FirstBasicBlock()
-		if first := entry.FirstInstruction(); !first.IsNil() {
-			entryBuilder.SetInsertPointBefore(first)
+		// Reuse the function's cached alloca builder (its insertion point is
+		// re-anchored at the entry block per call): allocating and disposing a
+		// fresh builder on every Alloc turned large functions (e.g.
+		// cmplxdivide.go's init, with thousands of locals) into a severe
+		// compile-time regression (issue #2611).
+		// When hoistToEntry is false (e.g. non-loop package initializers), emit
+		// directly in the current block so LLVM's single-block alloca promotion
+		// fast path can eliminate it without multi-block iterated dominance
+		// frontier calculations.
+		var alloca llvm.Value
+		if !hoistToEntry {
+			alloca = llvm.CreateAlloca(b.impl, prog.storageType(elem))
 		} else {
-			entryBuilder.SetInsertPointAtEnd(entry)
+			entryBuilder := b.Func.entryAllocaBuilder()
+			alloca = llvm.CreateAlloca(entryBuilder, prog.storageType(elem))
 		}
-		alloca := llvm.CreateAlloca(entryBuilder, prog.storageType(elem))
 		prog.requireStorageAlignment(alloca, elem)
 		ret = Expr{alloca, prog.VoidPtr()}
-		entryBuilder.Dispose()
 		ret.impl = b.zeroinit(ret, size).impl
 	}
 	ret.Type = prog.Pointer(elem)

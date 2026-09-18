@@ -1693,7 +1693,15 @@ func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue 
 			return
 		}
 		elem := p.type_(t.Elem(), llssa.InGo)
-		ret = b.Alloc(elem, v.Heap)
+		hoistToEntry := true
+		if p.goFn != nil && (p.goFn.Synthetic == "package initializer" || p.goFn.Name() == "init") {
+			inLoop := false
+			if blk := v.Block(); blk != nil && blk.Index < len(p.blkInfos) {
+				inLoop = p.blkInfos[blk.Index].Kind == llssa.DeferInLoop
+			}
+			hoistToEntry = inLoop
+		}
+		ret = b.AllocEx(elem, v.Heap, hoistToEntry)
 		p.debugAlloc(b, v, ret)
 		p.markRecoverSlot(v)
 		if p.isRecoverSlotAddr(v) {

@@ -86,18 +86,18 @@ func main() {
 
 // CHECK-LABEL: define void @main.init(){{.*}} {
 // CHECK-NEXT: _llgo_[[BB0:[0-9]+]]:
-// CHECK-NEXT:   %[[TMP0:[0-9]+]] = alloca [25 x ptr], align 8
-// CHECK-NEXT:   %[[TMP1:[0-9]+]] = load i1, ptr @"main.init$guard", align 1
-// CHECK-NEXT:   br i1 %[[TMP1]], label %_llgo_[[BB2:[0-9]+]], label %_llgo_[[BB1:[0-9]+]]
+// CHECK-NEXT:   %[[TMP0:[0-9]+]] = load i1, ptr @"main.init$guard", align 1
+// CHECK-NEXT:   br i1 %[[TMP0]], label %_llgo_[[BB2:[0-9]+]], label %_llgo_[[BB1:[0-9]+]]
 // CHECK-EMPTY:
 // CHECK-NEXT: _llgo_[[BB1]]:
 // CHECK-NEXT:   store i1 true, ptr @"main.init$guard", align 1
 // CHECK-NEXT:   call void @"{{.*}}/runtime/abi.init"()
-// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP0]], i8 0, i64 200, i1 false)
-// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds ptr, ptr %[[TMP0]], i64 24
+// CHECK-NEXT:   %[[TMP1:[0-9]+]] = alloca [25 x ptr], align 8
+// CHECK-NEXT:   call void @llvm.memset.p0.i64(ptr %[[TMP1]], i8 0, i64 200, i1 false)
+// CHECK-NEXT:   %[[TMP2:[0-9]+]] = getelementptr inbounds ptr, ptr %[[TMP1]], i64 24
 // CHECK-NEXT:   %[[TMP3:[0-9]+]] = call ptr @main.basicType(i64 24)
 // CHECK-NEXT:   store ptr %[[TMP3]], ptr %[[TMP2]], align 8
-// CHECK-NEXT:   %[[TMP4:[0-9]+]] = load [25 x ptr], ptr %[[TMP0]], align 8
+// CHECK-NEXT:   %[[TMP4:[0-9]+]] = load [25 x ptr], ptr %[[TMP1]], align 8
 // CHECK-NEXT:   store [25 x ptr] %[[TMP4]], ptr @main.basicTypes, align 8
 // CHECK-NEXT:   br label %_llgo_[[BB2]]
 // CHECK-EMPTY:
