@@ -3,10 +3,11 @@
 package cl
 
 import (
+	"testing"
+
 	llssa "github.com/xgo-dev/llgo/ssa"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
-	"testing"
 )
 
 func TestGenericRangeDeferStackOwner(t *testing.T) {
