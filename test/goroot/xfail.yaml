@@ -41,6 +41,11 @@ timeouts:
     case: fixedbugs/issue79186.go
     timeout: 90s
     reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
+  - platform: windows/386
+    directive: run
+    case: fixedbugs/issue79186.go
+    timeout: 90s
+    reason: the 51.2 million-operation RWMutex stress loop needs load-dependent runtime slack
   - version: go1.26
     platform: darwin/arm64
     directive: run
@@ -59,8 +64,7 @@ timeouts:
     case: abi/uglyfib.go
     timeout: 90s
     reason: uglyfib can exceed the default timeout on loaded Windows 386 runners
-  - version: go1.27
-    platform: windows/386
+  - platform: windows/386
     directive: runoutput
     case: index0.go
     timeout: 90s
@@ -75,6 +79,16 @@ timeouts:
     case: fixedbugs/issue25897a.go
     timeout: 90s
     reason: the single-P continuous-GC loop needs load-dependent runtime slack on Windows 386
+  - platform: windows/386
+    directive: run
+    case: fixedbugs/issue30041.go
+    timeout: 90s
+    reason: the continuous-GC and reflect.MakeFunc stress loop needs load-dependent runtime slack on Windows 386
+  - platform: windows/386
+    directive: run
+    case: fixedbugs/issue39541.go
+    timeout: 90s
+    reason: the one-million reflect.MakeFunc concurrent call loop needs load-dependent runtime slack on Windows 386
   - version: go1.26
     platform: darwin/arm64
     directive: runoutput
@@ -93,6 +107,10 @@ flakes:
     case: fixedbugs/issue79186.go
     reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
   - platform: linux/amd64
+    directive: run
+    case: fixedbugs/issue79186.go
+    reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
+  - platform: windows/386
     directive: run
     case: fixedbugs/issue79186.go
     reason: the RWMutex stress test passes when the host is idle but can exceed its timeout under sustained CPU contention
@@ -157,11 +175,18 @@ flakes:
     directive: run
     case: abi/uglyfib.go
     reason: uglyfib can complete or exceed its run timeout on a loaded Windows 386 runner
-  - version: go1.27
-    platform: windows/386
+  - platform: windows/386
     directive: runoutput
     case: index0.go
     reason: the generated index stress program can pass, time out, or fail during LLVM target object emission on Windows 386
+  - platform: windows/386
+    directive: run
+    case: fixedbugs/issue30041.go
+    reason: the continuous-GC and reflect.MakeFunc stress loop can complete or exceed its run timeout on loaded Windows 386 runners
+  - platform: windows/386
+    directive: run
+    case: fixedbugs/issue39541.go
+    reason: the one-million reflect.MakeFunc concurrent call loop can complete or exceed its run timeout on loaded Windows 386 runners
 xfails:
   - platform: darwin/arm64
     directive: runoutput
@@ -179,9 +204,6 @@ xfails:
     directive: runoutput
     case: rangegen.go
     reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
-  - directive: run
-    case: fixedbugs/issue80196.go
-    reason: LLGo overflows its native stack while repeatedly assigning the escaped named result in this test
   - directive: run
     case: genmeth1.go
     reason: the current go/types and x/tools SSA path panics while instantiating the new generic-method test
@@ -201,11 +223,6 @@ xfails:
     directive: run
     case: fixedbugs/issue58300.go
     reason: LLGo emits unexpected runtime output for the unsafe string conversion test on Windows amd64
-  - version: go1.27
-    platform: windows/amd64
-    directive: run
-    case: fixedbugs/issue75764.go
-    reason: LLGo does not eliminate the deep interface tail-call chain and crashes on Windows amd64
   - platform: windows/386
     directive: run
     case: fixedbugs/bug114.go
