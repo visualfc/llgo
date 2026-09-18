@@ -58,8 +58,7 @@ timeouts:
     case: abi/uglyfib.go
     timeout: 1m
     reason: uglyfib runs close to the default timeout on loaded linux/amd64 runners
-  - version: go1.27
-    platform: windows/386
+  - platform: windows/386
     directive: run
     case: abi/uglyfib.go
     timeout: 90s
@@ -170,8 +169,7 @@ flakes:
     directive: run
     case: fixedbugs/issue25897a.go
     reason: reflect-generated goroutines under a single-P continuous-GC loop can complete or exceed the run timeout on Windows 386
-  - version: go1.27
-    platform: windows/386
+  - platform: windows/386
     directive: run
     case: abi/uglyfib.go
     reason: uglyfib can complete or exceed its run timeout on a loaded Windows 386 runner
