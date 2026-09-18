@@ -171,9 +171,8 @@ jobs:
       - name: Set up Go
         uses: ./.github/actions/setup-go
         with:
-          # MSVC uses the x64 bootstrap Clang, with architecture-matched LLVM
-          # libraries and SDK for the resulting llgo.exe. MinGW builds natively.
-          architecture: ${{ matrix.abi == 'mingw' && matrix.goarch == 'arm64' && 'arm64' || 'x64' }}
+          # On windows-11-arm, both MinGW and MSVC build natively.
+          architecture: ${{ matrix.os == 'windows-11-arm' && 'arm64' || 'x64' }}
       - name: Cache ARM64 MSVC release SDK archive
         if: matrix.abi == 'msvc' && matrix.goarch == 'arm64'
         uses: actions/cache@v6

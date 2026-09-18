@@ -38,11 +38,10 @@ runs:
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
       uses: actions/cache@v6
       with:
-        # All MSVC profiles use the same x64 host LLVM. Cache its compressed
-        # immutable input once instead of three 1.2 GiB extracted trees; the
-        # target-specific builtins and LLDB remain in the caches below.
-        path: ${{ runner.tool_cache }}\llgo-llvm-archives\clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz
-        key: llgo-llvm-archive-22.1.8-x86_64-pc-windows-msvc-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
+        # Cache the host architecture's full LLVM archive: x64 on windows-2022
+        # and native ARM64 on windows-11-arm.
+        path: ${{ runner.tool_cache }}\llgo-llvm-archives\${{ runner.arch == 'ARM64' && 'clang+llvm-22.1.8-aarch64-pc-windows-msvc.tar.xz' || 'clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz' }}
+        key: ${{ runner.arch == 'ARM64' && 'llgo-llvm-archive-22.1.8-aarch64-pc-windows-msvc-de718c58ebbc5f61d58c17b90457fcf42983bc2c4a4aba3e010d108713bfd7f1' || 'llgo-llvm-archive-22.1.8-x86_64-pc-windows-msvc-d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234' }}
 
     - name: Install full-target Windows LLVM
       if: runner.os == 'Windows' && inputs.install-llvm == 'true' && inputs.windows-abi == 'msvc'
@@ -52,14 +51,20 @@ runs:
         # Clang, LLD, and the WebAssembly backend required by LLGo's Windows
         # host and WASI cross-compilation paths.
         LLVM_VERSION: "22.1.8"
-        LLVM_ARCHIVE_SHA256: d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234
       run: |
         $ErrorActionPreference = "Stop"
         if ("${{ inputs.llvm-version }}" -ne "22") {
           throw "Unsupported Windows LLVM version: ${{ inputs.llvm-version }}"
         }
 
-        $archiveName = "clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc.tar.xz"
+        $hostArch = if ($env:RUNNER_ARCH -eq "ARM64") { "aarch64" } else { "x86_64" }
+        $expectedSha256 = if ($env:RUNNER_ARCH -eq "ARM64") {
+          "de718c58ebbc5f61d58c17b90457fcf42983bc2c4a4aba3e010d108713bfd7f1"
+        } else {
+          "d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234"
+        }
+
+        $archiveName = "clang+llvm-$env:LLVM_VERSION-$hostArch-pc-windows-msvc.tar.xz"
         $archiveParent = Join-Path $env:RUNNER_TOOL_CACHE "llgo-llvm-archives"
         $archive = Join-Path $archiveParent $archiveName
         New-Item -ItemType Directory -Force $archiveParent | Out-Null
@@ -72,13 +77,13 @@ runs:
           }
         }
         $actual = (Get-FileHash -Algorithm SHA256 $archive).Hash
-        if (-not $actual.Equals($env:LLVM_ARCHIVE_SHA256, [StringComparison]::OrdinalIgnoreCase)) {
-          throw "LLVM archive SHA-256 is $actual, want $env:LLVM_ARCHIVE_SHA256"
+        if (-not $actual.Equals($expectedSha256, [StringComparison]::OrdinalIgnoreCase)) {
+          throw "LLVM archive SHA-256 is $actual, want $expectedSha256"
         }
 
         $extractParent = Join-Path $env:RUNNER_TEMP "llgo-llvm-extract"
         $installParent = Join-Path $env:RUNNER_TOOL_CACHE "llgo-llvm"
-        $installRoot = Join-Path $installParent "clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc"
+        $installRoot = Join-Path $installParent "clang+llvm-$env:LLVM_VERSION-$hostArch-pc-windows-msvc"
         $sevenZip = Join-Path $env:ProgramFiles "7-Zip\7z.exe"
         if (-not (Test-Path $sevenZip)) {
           throw "7-Zip was not found at $sevenZip"
@@ -278,7 +283,11 @@ runs:
       run: |
         $ErrorActionPreference = "Stop"
 
-        $llvmRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-llvm\clang+llvm-$env:LLVM_VERSION-x86_64-pc-windows-msvc"
+        $hostArch = if ($env:RUNNER_ARCH -eq "ARM64") { "aarch64" } else { "x86_64" }
+        $hostTriple = if ($env:RUNNER_ARCH -eq "ARM64") { "aarch64-pc-windows-msvc" } else { "x86_64-pc-windows-msvc" }
+        $hostGoArch = if ($env:RUNNER_ARCH -eq "ARM64") { "arm64" } else { "amd64" }
+
+        $llvmRoot = Join-Path $env:RUNNER_TOOL_CACHE "llgo-llvm\clang+llvm-$env:LLVM_VERSION-$hostArch-pc-windows-msvc"
         if (-not (Test-Path (Join-Path $llvmRoot "bin\llvm-config.exe"))) {
           throw "The full-target LLVM installation is incomplete: $llvmRoot"
         }
@@ -297,13 +306,13 @@ runs:
           throw "The native pkgconf executable was not installed at $pkgconf"
         }
 
-        # LLGo itself and the LLVM Go bindings are x64 host programs even when
+        # LLGo itself and the LLVM Go bindings are host programs even when
         # this job will later execute ARM64 or 386 output. Target SDK variables
         # are activated only after the host compiler has been installed.
-        $null = Enter-LLGoVisualStudio2022 -GoArch "amd64"
+        $null = Enter-LLGoVisualStudio2022 -GoArch $hostGoArch
 
         # Clang emits the MSVC ABI but uses the SDK/UCRT selected by the
-        # Visual Studio developer environment. Persist the x64 host search
+        # Visual Studio developer environment. Persist the host search
         # variables and tools used to build the LLGo compiler itself.
         Export-LLGoVisualStudioEnvironment
         # Enter-VsDevShell only updates this action process. Export the native
@@ -386,7 +395,7 @@ runs:
         }
         $llvmIncludeDir = Join-Path $llvmRoot "include"
         & (Join-Path $llvmBin "clang++.exe") `
-          --target=x86_64-pc-windows-msvc `
+          --target=$hostTriple `
           -fuse-ld=lld `
           -fms-runtime-lib=static `
           -std=c++17 `
@@ -449,10 +458,10 @@ runs:
         # The upstream LLVM 22 development archive builds its static libraries
         # against the static MSVC runtime. Match it in FileCheck and all host
         # cgo objects so lld-link sees one RuntimeLibrary directive.
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=static"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=static -std=c++17"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_HOST_CC=clang --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=static"
-        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_HOST_CXX=clang++ --target=x86_64-pc-windows-msvc -fuse-ld=lld -fms-runtime-lib=static -std=c++17"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CC=clang --target=$hostTriple -fuse-ld=lld -fms-runtime-lib=static"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "CXX=clang++ --target=$hostTriple -fuse-ld=lld -fms-runtime-lib=static -std=c++17"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_HOST_CC=clang --target=$hostTriple -fuse-ld=lld -fms-runtime-lib=static"
+        Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_HOST_CXX=clang++ --target=$hostTriple -fuse-ld=lld -fms-runtime-lib=static -std=c++17"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "CGO_ENABLED=1"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_TARGET_TRIPLE=$($target.Triple)"
         Add-Content -Encoding utf8 $env:GITHUB_ENV "LLGO_WINDOWS_VCPKG_TRIPLET=$($target.VcpkgTriplet)"
@@ -483,21 +492,21 @@ runs:
           throw "LLVM lacks the WebAssembly backend required by Windows-host cross-compilation: $targetsBuilt"
         }
         $defaultTarget = (& (Join-Path $llvmBin "clang.exe") -dumpmachine).Trim()
-        if ($defaultTarget -ne "x86_64-pc-windows-msvc") {
-          throw "Standalone Clang defaults to $defaultTarget, want x86_64-pc-windows-msvc"
+        if ($defaultTarget -ne $hostTriple) {
+          throw "Standalone Clang defaults to $defaultTarget, want $hostTriple"
         }
-        $builtins = (& (Join-Path $llvmBin "clang.exe") --target=x86_64-pc-windows-msvc --rtlib=compiler-rt -print-libgcc-file-name).Trim()
+        $builtins = (& (Join-Path $llvmBin "clang.exe") --target=$hostTriple --rtlib=compiler-rt -print-libgcc-file-name).Trim()
         if (-not (Test-Path $builtins)) {
           throw "Clang's MSVC compiler-rt builtins were not found at $builtins"
         }
         $targetBuiltins = (& (Join-Path $llvmBin "clang.exe") "--target=$($target.Triple)" --rtlib=compiler-rt -print-libgcc-file-name).Trim()
-        if ($target.GoArch -ne "amd64" -and -not (Test-Path $targetBuiltins)) {
+        if ($target.Triple -ne $hostTriple -and -not (Test-Path $targetBuiltins)) {
           $builtinsArch = if ($target.GoArch -eq "arm64") { "aarch64" } else { "i386" }
           $cachedBuiltins = Join-Path $env:RUNNER_TOOL_CACHE "llgo-windows-support\$env:LLVM_TARGET_VERSION\$($target.GoArch)\clang_rt.builtins-$builtinsArch.lib"
           if (-not (Test-Path $cachedBuiltins)) {
             throw "The cached Windows $($target.GoArch) compiler-rt builtins were not found at $cachedBuiltins"
           }
-          # Let the x64 host Clang driver discover the target library through
+          # Let the host Clang driver discover the target library through
           # its normal resource-dir lookup, exactly as it does for x86/x64.
           New-Item -ItemType Directory -Force (Split-Path $targetBuiltins) | Out-Null
           Copy-Item -LiteralPath $cachedBuiltins -Destination $targetBuiltins
