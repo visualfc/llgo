@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"go/token"
 	"go/types"
-	"reflect"
 	"unsafe"
 )
 
@@ -108,9 +107,6 @@ func (p Program) Closure(sig *types.Signature) Type {
 }
 
 func (p goTypes) cvtType(typ types.Type) (raw types.Type, cvt bool) {
-	if raw, ok := cvtGoSSAOpaqueType(typ); ok {
-		return raw, true
-	}
 	switch t := typ.(type) {
 	case *types.Basic:
 	case *types.Pointer:
@@ -161,30 +157,6 @@ func (p goTypes) cvtType(typ types.Type) (raw types.Type, cvt bool) {
 		panic(fmt.Sprintf("cvtType: unexpected type - %T", typ))
 	}
 	return typ, false
-}
-
-func cvtGoSSAOpaqueType(typ types.Type) (types.Type, bool) {
-	if ptr, ok := typ.(*types.Pointer); ok && isGoSSAOpaqueType(ptr.Elem()) {
-		return types.Typ[types.UnsafePointer], true
-	}
-	if isGoSSAOpaqueType(typ) {
-		return types.Typ[types.UnsafePointer], true
-	}
-	return nil, false
-}
-
-func isGoSSAOpaqueType(typ types.Type) bool {
-	// opaqueType is unexported in x/tools/go/ssa with no public detection API.
-	// We fall back to reflection here; TestGoSSAOpaqueTypeConversion guards
-	// against upstream renames or representation changes.
-	rt := reflect.TypeOf(typ)
-	if rt == nil {
-		return false
-	}
-	if rt.Kind() == reflect.Pointer {
-		rt = rt.Elem()
-	}
-	return rt.PkgPath() == "golang.org/x/tools/go/ssa" && rt.Name() == "opaqueType"
 }
 
 func namedLinkname(t *types.Named) string {
@@ -277,9 +249,6 @@ func (p goTypes) namedNeedsTypeConversion(t *types.Named) bool {
 // not a conversion, but another member of that cycle may still require one.
 // Keep its traversal and conversion predicates in lock-step with cvtType.
 func (p goTypes) needsTypeConversion(typ types.Type, query conversionNeedQuery) bool {
-	if _, ok := cvtGoSSAOpaqueType(typ); ok {
-		return true
-	}
 	switch t := typ.(type) {
 	case *types.Basic:
 		return false
