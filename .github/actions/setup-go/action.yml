@@ -9,6 +9,10 @@ inputs:
     description: "Host Go architecture; defaults to the runner architecture"
     required: false
     default: ""
+  cache:
+    description: "Whether actions/setup-go restores and saves the shared Go module/build cache"
+    required: false
+    default: "true"
 runs:
   using: "composite"
   steps:
@@ -53,7 +57,7 @@ runs:
       with:
         go-version-file: .go-version
         architecture: ${{ inputs.architecture }}
-        cache: true
+        cache: ${{ inputs.cache }}
         cache-dependency-path: |
           **/go.sum
 
@@ -64,7 +68,7 @@ runs:
       with:
         go-version: ${{ inputs.go-version }}
         architecture: ${{ inputs.architecture }}
-        cache: true
+        cache: ${{ inputs.cache }}
         cache-dependency-path: |
           **/go.sum
 

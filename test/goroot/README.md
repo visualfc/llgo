@@ -27,12 +27,19 @@ are also skipped. Each not-applicable entry documents both the
 toolchain-specific mechanism under test and why the corresponding behavior is
 not an LLGo compatibility goal.
 
-The GOROOT workflow builds LLGo and this runner with the repository toolchain,
-then runs the `ci` directive set from the two most recent Go releases. Every run
-publishes the expectation-mismatch table in its Actions summary. The scheduled
-run in `xgo-dev/llgo` also replaces the previous `[GOROOT daily] YYYY-MM-DD`
-issue. A manual dispatch or adding the existing `go-test-compat` label to a
-pull request runs the same matrix without modifying issues.
+The external [LLGo compatibility workflows](https://github.com/llgo-compat/ci)
+build LLGo and this runner from a selected repository revision, then run the
+`ci` directive set from the two most recent Go releases. Each platform/shard
+job runs those releases concurrently with isolated LLGo caches, and rotates the
+second release by half the shard count so the same expensive cases do not
+contend in both runners. The especially slow Windows MSVC/ARM64 shard is split
+once more so it does not outlive its hosted runner. The workflow therefore
+publishes 174 logical shard reports from 87 test jobs without duplicating
+toolchain setup across Go versions. Every run publishes the expectation-mismatch
+table in its Actions summary. The daily 01:00 Asia/Shanghai scheduled run
+replaces the previous `[GOROOT periodic] YYYY-MM-DD` issue in the compatibility repository;
+if expectation mismatches occur, `@fennoai` is automatically mentioned for
+triage. A manual dispatch can test any LLGo repository, branch, tag, or commit.
 
 Basic usage:
 
