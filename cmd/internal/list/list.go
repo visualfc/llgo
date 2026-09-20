@@ -26,20 +26,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xgo-dev/llgo/cmd/internal/base"
 	"github.com/xgo-dev/llgo/cmd/internal/gotool"
 	"github.com/xgo-dev/llgo/internal/build"
 	"github.com/xgo-dev/llgo/internal/mockable"
 	"github.com/xgo-dev/llgo/internal/targets"
 )
 
-var Cmd = &base.Command{
-	UsageLine: "llgo list [-target name] [list flags] [packages]",
-	Short:     "List packages using LLGo source-selection rules",
-	Run:       runCmd,
-}
-
-func runCmd(_ *base.Command, args []string) {
+// Main runs the list command with its original argument vector. Unlike normal
+// LLGo commands, list must preserve flags owned by the underlying Go command.
+func Main(args []string) {
 	if err := run(args, os.Stdin, os.Stdout, os.Stderr); err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) && exit.ExitCode() > 0 {
@@ -85,7 +80,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 		targetTags = config.BuildTags
 	}
-	if tags := effectiveTags(query, goarch, targetTags); len(tags) != 0 {
+	if tags := effectiveTags(query, targetTags); len(tags) != 0 {
 		query.goArgs = append([]string{"-tags=" + strings.Join(tags, ",")}, query.goArgs...)
 	}
 
@@ -95,13 +90,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	return cmd.Run()
 }
 
-func effectiveTags(query listQuery, goarch string, targetTags []string) []string {
+func effectiveTags(query listQuery, targetTags []string) []string {
 	if query.moduleMode {
 		// Module queries omit LLGo defaults but retain target and user tags that
 		// the caller explicitly requested.
 		return mergeTags(targetTags, query.tags)
 	}
-	return mergeTags(strings.Split(build.DefaultBuildTags(goarch, query.target), ","), targetTags, query.tags)
+	return mergeTags(strings.Split(build.DefaultBuildTags(), ","), targetTags, query.tags)
 }
 
 type listQuery struct {

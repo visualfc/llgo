@@ -230,12 +230,12 @@ func (this *Cmd_list) Main(_xgo_arg0 string) {
 	this.Use("list [-target name] [list flags] [packages]")
 //line cmd/llgo/list_cmd.gox:18:1
 	this.Short("List packages using LLGo source-selection rules")
-//line cmd/llgo/list_cmd.gox:20:1
-	this.FlagOff()
 //line cmd/llgo/list_cmd.gox:22:1
+	this.FlagOff()
+//line cmd/llgo/list_cmd.gox:24:1
 	this.Run__1(func(args []string) {
-//line cmd/llgo/list_cmd.gox:23:1
-		list.Cmd.Run(list.Cmd, args)
+//line cmd/llgo/list_cmd.gox:25:1
+		list.Main(args)
 	})
 }
 func (this *Cmd_list) Classfname() string {

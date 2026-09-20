@@ -17,8 +17,10 @@ use "list [-target name] [list flags] [packages]"
 
 short "List packages using LLGo source-selection rules"
 
+// This command transparently proxies the evolving go list flag set. Let the
+// Go command parse those flags instead of making Cobra consume or reject them.
 flagOff
 
 run args => {
-	self.Cmd.Run self.Cmd, args
+	self.Main args
 }

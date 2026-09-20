@@ -57,7 +57,7 @@ func TestMergeTagsAndEnvironment(t *testing.T) {
 		t.Fatalf("replaceEnv = %q", environ)
 	}
 	query := listQuery{moduleMode: true, tags: []string{"user", "board"}}
-	if got := effectiveTags(query, "arm", []string{"board", "target"}); !reflect.DeepEqual(got, []string{"board", "target", "user"}) {
+	if got := effectiveTags(query, []string{"board", "target"}); !reflect.DeepEqual(got, []string{"board", "target", "user"}) {
 		t.Fatalf("module target tags = %q", got)
 	}
 }
@@ -169,7 +169,7 @@ func TestListTargetSelectionDoesNotCreateCache(t *testing.T) {
 	}
 }
 
-func TestRunCmdFailure(t *testing.T) {
+func TestMainFailure(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	mockable.EnableMock()
 	defer mockable.DisableMock()
@@ -178,7 +178,7 @@ func TestRunCmdFailure(t *testing.T) {
 			t.Errorf("exit = %v, %d", got, mockable.ExitCode())
 		}
 	}()
-	Cmd.Run(Cmd, nil)
+	Main(nil)
 }
 
 func TestListErrors(t *testing.T) {
