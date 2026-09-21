@@ -255,6 +255,8 @@ func parsePlan9AsmPkgsEnv(raw string) plan9asmPkgsEnv {
 	}
 }
 
+// plan9asmSigsForPkg returns the Plan 9 assembly signatures for pkgPath. The
+// returned map is cached in ctx and must be treated as read-only.
 func plan9asmSigsForPkg(ctx *context, pkgPath string) (map[string]struct{}, error) {
 	if ctx == nil || pkgPath == "" {
 		return nil, nil

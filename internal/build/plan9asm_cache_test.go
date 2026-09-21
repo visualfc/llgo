@@ -43,17 +43,7 @@ func TestPlan9AsmSignatureCacheEmptyResults(t *testing.T) {
 }
 
 func TestPlan9AsmSignatureCacheRetriesErrorsAndReusesSuccess(t *testing.T) {
-	const path = "example.com/asm"
-	dir := t.TempDir()
-	asm := filepath.Join(dir, "foo_amd64.s")
-	typesPkg := types.NewPackage(path, "asm")
-	typesPkg.Scope().Insert(types.NewFunc(token.NoPos, typesPkg, "Foo", types.NewSignatureType(nil, nil, nil, nil, nil, false)))
-	pkg := &packages.Package{ID: path, PkgPath: path, Types: typesPkg, Fset: token.NewFileSet(), Dir: dir, OtherFiles: []string{asm}}
-	ctx := &context{
-		plan9asmReady: true, plan9asmMode: plan9asmEnvAll,
-		buildConf: &Config{Goos: "linux", Goarch: "amd64", Overlay: make(map[string][]byte)},
-		pkgs:      map[*packages.Package]Package{pkg: {Package: pkg}},
-	}
+	ctx, path, asm := newPlan9AsmSignatureTestContext(t)
 	if _, err := plan9asmSigsForPkg(ctx, path); err == nil {
 		t.Fatal("missing assembly source unexpectedly succeeded")
 	}
@@ -73,34 +63,61 @@ func TestPlan9AsmSignatureCacheRetriesErrorsAndReusesSuccess(t *testing.T) {
 }
 
 func TestPlan9AsmSignatureCacheIsPerContext(t *testing.T) {
-	first := &context{plan9asmReady: true, plan9asmMode: plan9asmEnvNone}
+	first, path, asm := newPlan9AsmSignatureTestContext(t)
+	first.buildConf.Overlay[asm] = []byte("TEXT ·Foo(SB),NOSPLIT,$0-0\nRET\n")
 	second := &context{plan9asmReady: true, plan9asmMode: plan9asmEnvNone}
 	load := func(ctx *context) map[string]struct{} {
 		t.Helper()
-		sigs, err := plan9asmSigsForPkg(ctx, "example.com/p")
+		sigs, err := plan9asmSigsForPkg(ctx, path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return sigs
 	}
-	sigs := load(first)
-	sigs["cached"] = struct{}{}
-	if _, ok := load(first)["cached"]; !ok {
-		t.Fatal("same context did not reuse its cached signatures")
+	if _, ok := load(first)[path+".Foo"]; !ok {
+		t.Fatal("first context did not translate Foo")
 	}
-	if _, ok := load(second)["cached"]; ok {
+	if len(load(second)) != 0 {
 		t.Fatal("signature cache leaked between build contexts")
+	}
+	// Removing the source distinguishes a same-context cache hit from a retry.
+	delete(first.buildConf.Overlay, asm)
+	if _, ok := load(first)[path+".Foo"]; !ok {
+		t.Fatal("same context did not reuse its cached signatures")
 	}
 }
 
+func newPlan9AsmSignatureTestContext(t *testing.T) (*context, string, string) {
+	t.Helper()
+	const path = "example.com/asm"
+	dir := t.TempDir()
+	asm := filepath.Join(dir, "foo_amd64.s")
+	typesPkg := types.NewPackage(path, "asm")
+	typesPkg.Scope().Insert(types.NewFunc(token.NoPos, typesPkg, "Foo", types.NewSignatureType(nil, nil, nil, nil, nil, false)))
+	pkg := &packages.Package{ID: path, PkgPath: path, Types: typesPkg, Fset: token.NewFileSet(), Dir: dir, OtherFiles: []string{asm}}
+	return &context{
+		plan9asmReady: true, plan9asmMode: plan9asmEnvAll,
+		buildConf: &Config{Goos: "linux", Goarch: "amd64", Overlay: make(map[string][]byte)},
+		pkgs:      map[*packages.Package]Package{pkg: {Package: pkg}},
+	}, path, asm
+}
+
 func TestPlan9AsmSignatureCacheConcurrentLookup(t *testing.T) {
-	ctx := &context{plan9asmReady: true, plan9asmMode: plan9asmEnvNone}
+	ctx, path, asm := newPlan9AsmSignatureTestContext(t)
+	ctx.buildConf.Overlay[asm] = []byte("TEXT ·Foo(SB),NOSPLIT,$0-0\nRET\n")
+	// Backend tasks own distinct contexts, so production does not concurrently
+	// populate one entry. Exercise concurrent reads of the published map, which
+	// is the operation protected by the cache and its read-only contract.
+	if sigs, err := plan9asmSigsForPkg(ctx, path); err != nil || len(sigs) != 1 {
+		t.Fatalf("populate signature cache: %v, %v", sigs, err)
+	}
 	var wg sync.WaitGroup
 	for range 16 {
 		wg.Go(func() {
 			for range 8 {
-				sigs, err := plan9asmSigsForPkg(ctx, "example.com/p")
-				if err != nil || len(sigs) != 0 {
+				sigs, err := plan9asmSigsForPkg(ctx, path)
+				_, hasFoo := sigs[path+".Foo"]
+				if err != nil || len(sigs) != 1 || !hasFoo {
 					t.Errorf("concurrent signature lookup: %v, %v", sigs, err)
 				}
 			}
