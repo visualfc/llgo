@@ -2,6 +2,7 @@ package build
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 
 	"github.com/xgo-dev/llgo/internal/packages"
@@ -35,25 +36,13 @@ func groupInitialBuilds(ctx *context, alts []*packages.Package) []initialBuildGr
 	}
 	var groups []initialBuildGroup
 	indexes := make(map[initialBuildFeatures]int)
-	var unrootedUse *wasmProgramUse
 	target := ctx.prog.Target()
 	for _, pkg := range ctx.initial {
 		features := initialBuildFeatures{
 			localContext: ctx.prog.NeedsLocalContextForPackages(activeLocalityPackages([]*packages.Package{pkg}, alts)),
 		}
 		if target.GOARCH == "wasm" {
-			roots := wasmReflectRoots(&context{progSSA: ctx.progSSA, initial: []*packages.Package{pkg}})
-			var use *wasmProgramUse
-			if len(roots) == 0 {
-				// Library-style roots use the same conservative function set.
-				// Unlike rooted RTA, this scan can be shared across initials.
-				if unrootedUse == nil {
-					unrootedUse = analyzeWasmProgramUse(ctx.progSSA, nil)
-				}
-				use = unrootedUse
-			} else {
-				use = analyzeWasmProgramUse(ctx.progSSA, roots)
-			}
+			use := analyzeWasmInitialUse(ctx.progSSA, pkg.Types)
 			features.reflectBridges = target.WasmProvider == "wasi" && use.usesWasmReflectBridges()
 			features.funcInfoEntries = ctx.buildConf.BuildMode != BuildModeExe || use.usesRuntimeFuncForPC()
 		}
@@ -74,10 +63,7 @@ func initialGroupInvocations(inv Invocation, ctx *context, groups []initialBuild
 		conf := ctx.buildConf.clone()
 		args := make([]string, len(group.pkgs))
 		for i, pkg := range group.pkgs {
-			args[i] = pkg.PkgPath
-			if ctx.mode == ModeTest {
-				args[i] = strings.TrimSuffix(args[i], ".test")
-			}
+			args[i] = initialGroupLoadArg(ctx, pkg)
 		}
 		// Preserve invocation controls. Normal grouping starts before fallback;
 		// fallback builds one root at a time and therefore cannot enter grouping.
@@ -92,6 +78,28 @@ func initialGroupInvocations(inv Invocation, ctx *context, groups []initialBuild
 		children = append(children, child)
 	}
 	return children
+}
+
+func initialGroupLoadArg(ctx *context, pkg *packages.Package) string {
+	path := pkg.PkgPath
+	if ctx.mode == ModeTest {
+		path = strings.TrimSuffix(path, ".test")
+	}
+	if pkg.Dir == "" || (!strings.HasPrefix(path, "_/") && path != "command-line-arguments") {
+		return path
+	}
+	rel, err := filepath.Rel(ctx.commands.dir, pkg.Dir)
+	if err != nil {
+		return path
+	}
+	if rel == "." {
+		return rel
+	}
+	rel = filepath.ToSlash(rel)
+	if !strings.HasPrefix(rel, ".") {
+		rel = "./" + rel
+	}
+	return rel
 }
 
 func buildInitialGroups(children []Invocation) ([]Package, error) {

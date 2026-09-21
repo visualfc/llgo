@@ -394,27 +394,43 @@ func (p Program) PackageLocalitiesFor(pkg *types.Package) map[string]VariableLoc
 func (p Program) NeedsLocalContext() bool {
 	p.localities.mu.RLock()
 	defer p.localities.mu.RUnlock()
-	return p.localities.needsContext(p.localities.activePackages)
+	return p.localities.needsContext(p.localities.activePackages, nil)
 }
 
 // NeedsLocalContextForPackages reports the startup requirement for one set of
 // concrete packages without changing the shared declaration registry.
 func (p Program) NeedsLocalContextForPackages(pkgs []*types.Package) bool {
 	active := make(map[string]struct{}, len(pkgs))
+	canonical := make(map[string]struct{}, len(pkgs))
 	for _, pkg := range pkgs {
+		if pkg == nil {
+			continue
+		}
 		active[pkg.Path()] = struct{}{}
+		canonical[PathOf(pkg)] = struct{}{}
 	}
 	p.localities.mu.RLock()
 	defer p.localities.mu.RUnlock()
-	return p.localities.needsContext(active)
+	return p.localities.needsContext(active, canonical)
 }
 
-func (p *localityInfos) needsContext(activePackages map[string]struct{}) bool {
+func (p *localityInfos) needsContext(activePackages, canonicalPackages map[string]struct{}) bool {
 	needsContext := func(info VariableLocality) bool {
 		return info.Locality != locality.None && (info.LocalStorage != LocalStorageNativeTLS || hasInitialization(info.Info))
 	}
-	for _, info := range p.ownerlessEntries {
-		if needsContext(info) {
+	belongsToActivePackage := func(name string) bool {
+		if canonicalPackages == nil {
+			return true
+		}
+		for pkgPath := range canonicalPackages {
+			if strings.HasPrefix(name, pkgPath+".") {
+				return true
+			}
+		}
+		return false
+	}
+	for name, info := range p.ownerlessEntries {
+		if belongsToActivePackage(name) && needsContext(info) {
 			return true
 		}
 	}
@@ -432,7 +448,7 @@ func (p *localityInfos) needsContext(activePackages map[string]struct{}) bool {
 		if _, declared := p.declarationEntries[name]; declared {
 			continue
 		}
-		if needsContext(info) {
+		if belongsToActivePackage(name) && needsContext(info) {
 			return true
 		}
 	}

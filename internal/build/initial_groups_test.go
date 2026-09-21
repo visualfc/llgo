@@ -16,6 +16,7 @@ import (
 
 	"github.com/xgo-dev/llgo/internal/packages"
 	llssa "github.com/xgo-dev/llgo/ssa"
+	xpackages "golang.org/x/tools/go/packages"
 )
 
 func TestGroupInitialBuilds(t *testing.T) {
@@ -48,27 +49,21 @@ func TestGroupInitialBuilds(t *testing.T) {
 func TestGroupInitialWasmFeatures(t *testing.T) {
 	for _, provider := range []string{"wasi", "gojs", "emscripten"} {
 		t.Run(provider, func(t *testing.T) {
-			pkg := buildWasmReflectTestProgram(t, `package main; import ("reflect"; "runtime"); func main() { reflect.ValueOf(func() {}).Call(nil); _ = runtime.FuncForPC(0) }`)
-			prog := llssa.NewProgram(&llssa.Target{GOARCH: "wasm", WasmProvider: provider})
-			defer prog.Dispose()
-			// The imported runtime package has no main entry and does not call
-			// either API from its init. The executable does call both APIs.
-			ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe}, initial: []*packages.Package{
-				{Types: pkg.Prog.ImportedPackage("runtime").Pkg}, {Types: pkg.Pkg},
-			}}
-			groups := groupInitialBuilds(ctx, nil)
-			if len(groups) != 2 || groups[0].features.funcInfoEntries || groups[0].features.reflectBridges ||
-				!groups[1].features.funcInfoEntries || groups[1].features.reflectBridges != (provider == "wasi") {
-				t.Fatalf("Wasm features leaked across initial programs: %+v", groups)
-			}
-			// Initials without SSA entry roots conservatively scan all functions;
-			// that identical scan is shared, not repeated for every such initial.
-			ctx.initial = append(ctx.initial,
-				&packages.Package{Types: types.NewPackage("example.com/external1", "external1")},
-				&packages.Package{Types: types.NewPackage("example.com/external2", "external2")})
-			withUnrooted := groupInitialBuilds(ctx, nil)
-			if len(withUnrooted) != 2 || len(withUnrooted[1].pkgs) != 3 || withUnrooted[1].features != groups[1].features {
-				t.Fatalf("incorrect conservative unrooted grouping: %+v", withUnrooted)
+			for _, source := range []string{
+				`package main; import ("reflect"; "runtime"); func main() { reflect.ValueOf(func() {}).Call(nil); _ = runtime.FuncForPC(0) }`,
+				`package library; import ("reflect"; "runtime"); func Use() { reflect.ValueOf(func() {}).Call(nil); _ = runtime.FuncForPC(0) }`,
+			} {
+				pkg := buildWasmReflectTestProgram(t, source)
+				prog := llssa.NewProgram(&llssa.Target{GOARCH: "wasm", WasmProvider: provider})
+				ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe}, initial: []*packages.Package{
+					{Types: types.NewPackage("example.com/plain", "plain")}, {Types: pkg.Pkg},
+				}}
+				groups := groupInitialBuilds(ctx, nil)
+				if len(groups) != 2 || groups[0].features.funcInfoEntries || groups[0].features.reflectBridges ||
+					!groups[1].features.funcInfoEntries || groups[1].features.reflectBridges != (provider == "wasi") {
+					t.Fatalf("Wasm features leaked across initial programs for %s: %+v", pkg.Pkg.Name(), groups)
+				}
+				prog.Dispose()
 			}
 		})
 	}
@@ -225,16 +220,48 @@ func main() { fmt.Println("broken"); missing() }
 	}
 }
 
-func TestInitialGroupUsesOriginalTestPackagePath(t *testing.T) {
-	root := writeMultiBuildModule(t, map[string]string{
-		"first/first_test.go": `package first; import "testing"; func TestFirst(t *testing.T) {}`,
+func TestInitialGroupUsesLoadablePackagePath(t *testing.T) {
+	t.Run("test package", func(t *testing.T) {
+		root := writeMultiBuildModule(t, map[string]string{
+			"first/first_test.go": `package first; import "testing"; func TestFirst(t *testing.T) {}`,
+		})
+		conf := NewDefaultConf(ModeTest)
+		ctx := &context{mode: ModeTest, buildConf: conf, commands: commandEnv{dir: root}}
+		groups := []initialBuildGroup{{pkgs: []*packages.Package{{PkgPath: "example.com/multibuild/first.test"}}}}
+		if _, err := buildInitialGroups(initialGroupInvocations(Invocation{}, ctx, groups)); err != nil {
+			t.Fatal(err)
+		}
 	})
-	conf := NewDefaultConf(ModeTest)
-	ctx := &context{mode: ModeTest, buildConf: conf, commands: commandEnv{dir: root}}
-	groups := []initialBuildGroup{{pkgs: []*packages.Package{{PkgPath: "example.com/multibuild/first.test"}}}}
-	if _, err := buildInitialGroups(initialGroupInvocations(Invocation{}, ctx, groups)); err != nil {
-		t.Fatal(err)
-	}
+
+	t.Run("GOPATH package", func(t *testing.T) {
+		root := t.TempDir()
+		pkgDir := filepath.Join(root, "first")
+		if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(pkgDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		conf := NewDefaultConf(ModeBuild)
+		ctx := &context{mode: ModeBuild, buildConf: conf, commands: commandEnv{dir: root}}
+		groups := []initialBuildGroup{{pkgs: []*packages.Package{{PkgPath: "_/not/loadable", Dir: pkgDir}}}}
+		children := initialGroupInvocations(Invocation{}, ctx, groups)
+		if !slices.Equal(children[0].Args, []string{"./first"}) {
+			t.Fatalf("GOPATH child args = %q", children[0].Args)
+		}
+		current := []initialBuildGroup{{pkgs: []*packages.Package{{PkgPath: "command-line-arguments", Dir: root}}}}
+		if args := initialGroupInvocations(Invocation{}, ctx, current)[0].Args; !slices.Equal(args, []string{"."}) {
+			t.Fatalf("current-directory child args = %q", args)
+		}
+		env := append(os.Environ(), "GO111MODULE=off")
+		loaded, err := xpackages.Load(&xpackages.Config{Mode: xpackages.NeedName, Dir: root, Env: env}, children[0].Args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if xpackages.PrintErrors(loaded) != 0 || len(loaded) != 1 || loaded[0].Name != "main" {
+			t.Fatalf("failed to reload GOPATH child: %+v", loaded)
+		}
+	})
 }
 
 func TestInitialGroupInvocationsDoNotRetainParentPackages(t *testing.T) {
@@ -257,7 +284,12 @@ func TestInitialGroupInvocationsDoNotRetainParentPackages(t *testing.T) {
 		!child.disableMultiFallback || !child.multipleInitials {
 		t.Fatalf("group invocation lost its independent snapshot: %+v", child)
 	}
-	runtime.GC()
+	for range 10 {
+		if parent.Value() == nil {
+			break
+		}
+		runtime.GC()
+	}
 	if parent.Value() != nil {
 		t.Fatal("prepared child still retains the parent package graph")
 	}
