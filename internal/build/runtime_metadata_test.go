@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -73,6 +74,11 @@ func TestRuntimeFreeNativeMetadata(t *testing.T) {
 	for _, mode := range []lto.Mode{lto.Off, lto.Full} {
 		t.Run(mode.String(), func(t *testing.T) {
 			conf := NewDefaultConf(ModeBuild)
+			if runtime.GOOS == "windows" {
+				// An explicit -o file name is exact; Windows execution needs the
+				// suffix before Build resolves its private configuration copy.
+				conf.AppExt = ".exe"
+			}
 			conf.LTO = mode
 			conf.PCLNMode, conf.PCLNModeSet = PCLNEmbedded, true
 			conf.OutFile = filepath.Join(t.TempDir(), "cprintf"+conf.AppExt)
