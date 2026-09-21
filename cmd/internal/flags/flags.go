@@ -291,6 +291,9 @@ var (
 )
 
 func AddTestBinaryFlags(fs *flag.FlagSet) {
+	TestCoverMode = ""
+	TestCoverPkg = ""
+	TestCoverProfile = ""
 	fs.StringVar(&TestRun, "run", "", "Run only tests matching the regular expression")
 	fs.StringVar(&TestBench, "bench", "", "Run benchmarks matching the regular expression")
 	fs.StringVar(&TestTimeout, "timeout", DefaultTestTimeout, "Test timeout duration (e.g., 10m, 30s)")
@@ -298,9 +301,26 @@ func AddTestBinaryFlags(fs *flag.FlagSet) {
 	fs.IntVar(&TestCount, "count", 1, "Run each test and benchmark n times")
 	fs.StringVar(&TestCPU, "cpu", "", "Comma-separated list of GOMAXPROCS values for which the tests or benchmarks should be executed")
 	fs.BoolVar(&TestCover, "cover", false, "Enable coverage analysis")
-	fs.StringVar(&TestCoverMode, "covermode", "", "Coverage mode: set, count, atomic")
-	fs.StringVar(&TestCoverProfile, "coverprofile", "", "Write coverage profile to file")
-	fs.StringVar(&TestCoverPkg, "coverpkg", "", "Apply coverage analysis to packages matching the patterns")
+	fs.Func("covermode", "Coverage mode: set, count, atomic", func(value string) error {
+		switch value {
+		case "", "set", "count", "atomic":
+			TestCoverMode = value
+			TestCover = true
+			return nil
+		default:
+			return fmt.Errorf("valid modes are %q, %q, or %q", "set", "count", "atomic")
+		}
+	})
+	fs.Func("coverprofile", "Write coverage profile to file", func(value string) error {
+		TestCoverProfile = value
+		TestCover = true
+		return nil
+	})
+	fs.Func("coverpkg", "Apply coverage analysis to packages matching the patterns", func(value string) error {
+		TestCoverPkg = value
+		TestCover = true
+		return nil
+	})
 	fs.IntVar(&TestParallel, "parallel", 0, "Maximum number of tests to run simultaneously")
 	fs.BoolVar(&TestFailfast, "failfast", false, "Do not start new tests after the first test failure")
 	fs.BoolVar(&TestJSON, "json", false, "Log verbose output in JSON format")

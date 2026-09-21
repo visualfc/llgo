@@ -3,9 +3,11 @@
 package test
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/xgo-dev/llgo/cmd/internal/base"
 	"github.com/xgo-dev/llgo/cmd/internal/flags"
@@ -39,7 +41,11 @@ func runCmd(cmd *base.Command, args []string) {
 	// Split args at -args to separate llgo flags from test binary args
 	llgoArgs, testBinaryArgs := splitArgsAt(args, "-args")
 
-	if err := cmd.Flag.Parse(llgoArgs); err != nil {
+	flagArgs, err := interspersedTestFlags(&cmd.Flag, llgoArgs)
+	if err == nil {
+		err = cmd.Flag.Parse(flagArgs)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)
 	}
@@ -70,20 +76,62 @@ func runCmd(cmd *base.Command, args []string) {
 	conf.TestFailFast = flags.TestFailfast
 	conf.TestJSON = flags.TestJSON
 	conf.TestRunSequential = testRunsMustBeSequential()
+	if flags.TestCover || flags.TestCoverMode != "" || flags.TestCoverPkg != "" || flags.TestCoverProfile != "" {
+		conf.Coverage = &build.CoverageConfig{
+			Mode:      flags.TestCoverMode,
+			Packages:  flags.TestCoverPkg,
+			Profile:   flags.TestCoverProfile,
+			OutputDir: flags.TestOutputDir,
+		}
+	}
 
 	pkgArgs := cmd.Flag.Args()
-	_, err := build.Do(pkgArgs, conf)
+	_, err = build.Do(pkgArgs, conf)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		if err != build.ErrTestFailed {
+			fmt.Fprintln(os.Stderr, err)
+		} else if !conf.TestJSON {
+			fmt.Fprintln(os.Stdout, "FAIL")
+		}
 		mockable.Exit(1)
 	}
+}
+
+// Go test accepts driver flags on either side of the package list. Move known
+// flags ahead of the package arguments without reordering flags or their values.
+// -args has already been split off, so custom binary flags remain untouched.
+func interspersedTestFlags(fs *flag.FlagSet, args []string) ([]string, error) {
+	var options, packages []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			packages = append(packages, args[i+1:]...)
+			options = append(options, "--")
+			break
+		}
+		name, _, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		f := fs.Lookup(name)
+		if !strings.HasPrefix(arg, "-") || f == nil {
+			packages = append(packages, arg)
+			continue
+		}
+		options = append(options, arg)
+		boolFlag, isBool := f.Value.(interface{ IsBoolFlag() bool })
+		if !hasValue && !(isBool && boolFlag.IsBoolFlag()) {
+			if i+1 == len(args) {
+				return nil, fmt.Errorf("flag needs an argument: -%s", name)
+			}
+			i++
+			options = append(options, args[i])
+		}
+	}
+	return append(options, packages...), nil
 }
 
 func testRunsMustBeSequential() bool {
 	// These flags either name output paths shared by every test binary or, for
 	// fuzzing, require one active test binary. Keep their execution sequential.
-	return flags.TestCoverProfile != "" ||
-		flags.TestCPUProfile != "" ||
+	return flags.TestCPUProfile != "" ||
 		flags.TestMemProfile != "" ||
 		flags.TestBlockProfile != "" ||
 		flags.TestMutexProfile != "" ||
@@ -132,7 +180,6 @@ func buildTestArgs(customArgs []string) []string {
 	appendString(flags.TestList, "-test.list=")
 	appendString(flags.TestSkip, "-test.skip=")
 	appendString(flags.TestCPU, "-test.cpu=")
-	appendString(flags.TestCoverProfile, "-test.coverprofile=")
 
 	appendString(flags.TestTimeout, "-test.timeout=") // always has a default
 	appendBool(flags.TestShort, "-test.short")

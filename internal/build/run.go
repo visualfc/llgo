@@ -30,6 +30,7 @@ import (
 )
 
 type testProgram struct {
+	coverage         bool
 	app              string
 	pkgDir           string
 	pkgName          string
@@ -50,6 +51,9 @@ type testProgramResult struct {
 }
 
 func runNativeTest(commands commandEnv, program testProgram, conf *Config, stdout, stderr io.Writer) error {
+	if conf.coverage != nil {
+		return runCoveredTest(commands, program, conf, stdout, stderr)
+	}
 	defer removeOutFmts(program.temporaryOutputs)
 	if program.runner != "" {
 		// Like native go test, execute each package in its source directory.
@@ -73,7 +77,9 @@ func runNativeTest(commands commandEnv, program testProgram, conf *Config, stdou
 		return nil
 	}
 	if exitErr, ok := err.(*exec.ExitError); ok {
-		fmt.Fprintf(stderr, "%s: exit code %d\n", program.app, exitErr.ExitCode())
+		if !program.coverage {
+			fmt.Fprintf(stderr, "%s: exit code %d\n", program.app, exitErr.ExitCode())
+		}
 	} else {
 		fmt.Fprintf(stderr, "failed to run test %s: %v\n", program.app, err)
 	}
@@ -110,6 +116,9 @@ func reportTestProgramResult(stdout, stderr io.Writer, result testProgramResult,
 		if result.output[len(result.output)-1] != '\n' {
 			fmt.Fprintln(stdout)
 		}
+	}
+	if result.program.coverage {
+		return // Coverage reporting includes the Go-compatible package record.
 	}
 	if result.err != nil {
 		fmt.Fprintf(stderr, "FAIL\t%s\n", result.program.pkgName)

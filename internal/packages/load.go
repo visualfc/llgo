@@ -91,6 +91,7 @@ type aDeduper struct {
 	checked   sync.Map
 	setpath   func(path string, name string) string
 	preload   func(pkg *packages.Package)
+	prepare   func([]*Package, *Config) error
 	llgoFiles map[string][]string
 }
 
@@ -102,6 +103,12 @@ func NewDeduper() Deduper {
 
 func (p Deduper) SetPreload(fn func(pkg *packages.Package)) {
 	p.preload = fn
+}
+
+// SetPrepare installs a graph preprocessing hook before parsing/type checking.
+// The hook may add generated files and their imports (for example, coverage).
+func (p Deduper) SetPrepare(fn func([]*Package, *Config) error) {
+	p.prepare = fn
 }
 
 func (p Deduper) SetPkgPath(fn func(path, name string) string) {
@@ -187,6 +194,11 @@ func LoadExWithGoVersion(dedup Deduper, sizes func(sizes types.Sizes, compiler, 
 	initial, err := packages.Load(&driverCfg, patterns...)
 	if err != nil {
 		return nil, err
+	}
+	if dedup != nil && dedup.prepare != nil {
+		if err := dedup.prepare(initial, &driverCfg); err != nil {
+			return nil, err
+		}
 	}
 
 	fset := driverCfg.Fset
