@@ -2163,8 +2163,17 @@ func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainL
 	var funcInfo []funcInfoRecord
 	var pcLineInfo []pcLineRecord
 	if ctx.buildConf.PCLNMode != PCLNNone {
-		funcInfo = prepareFuncInfoTableRecords(collectFuncInfo(linkedOrder), nil)
-		pcLineInfo = collectPCLineInfo(linkedOrder)
+		// Native links supply runtime archives even for runtime-free programs;
+		// archive extraction may leave all their function bodies out. Select
+		// metadata by semantic runtime use, including generated startup calls,
+		// rather than by the presence of those archives on the link command.
+		// genMainModule supplies runtime.main/runtime.goexit records separately.
+		metadataOrder := linkedOrder
+		if !needRuntime && !needPyInit && !needsWasmRuntimeScheduler(ctx) && (ctx.prog == nil || !ctx.prog.NeedsLocalContext()) {
+			metadataOrder = filterOutRuntimePkgs(linkedOrder)
+		}
+		funcInfo = prepareFuncInfoTableRecords(collectFuncInfo(metadataOrder), nil)
+		pcLineInfo = collectPCLineInfo(metadataOrder)
 	}
 	packageInits, err := linkedPackageInitNames(pkg, linkedOrder)
 	if err != nil {
@@ -2414,6 +2423,20 @@ func linkedModuleGlobals(pkgs []Package) map[string]none {
 func isRuntimePkg(pkgPath string) bool {
 	rtRoot := env.LLGoRuntimePkg
 	return pkgPath == rtRoot || strings.HasPrefix(pkgPath, rtRoot+"/")
+}
+
+// filterOutRuntimePkgs returns the packages in order with the llgo runtime tree
+// removed. It is used to keep runtime metadata out of the synthetic main module
+// when the program does not use runtime functions, regardless of archive inputs.
+func filterOutRuntimePkgs(pkgs []Package) []Package {
+	out := make([]Package, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		if pkg != nil && pkg.Package != nil && isRuntimePkg(pkg.PkgPath) {
+			continue
+		}
+		out = append(out, pkg)
+	}
+	return out
 }
 
 func linkObjFiles(ctx *context, app string, objFiles, linkArgs []string, verbose bool) error {
