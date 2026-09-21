@@ -655,6 +655,32 @@ func TestEmscriptenLibffiSearchPath(t *testing.T) {
 	}
 }
 
+func TestApplyEmscriptenNoffiAsyncify(t *testing.T) {
+	ApplyEmscriptenNoffiAsyncify(nil)
+
+	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(js.LDFLAGS, emscriptenAsyncifyRemove) {
+		t.Fatalf("js/wasm LDFLAGS %v do not keep libffi bind entries out of Asyncify", js.LDFLAGS)
+	}
+	if !slices.Contains(js.LDFLAGS, emscriptenAsyncifyImports) {
+		t.Fatalf("js/wasm LDFLAGS %v do not mark ffi_call_js as async", js.LDFLAGS)
+	}
+
+	ApplyEmscriptenNoffiAsyncify(&js)
+	if slices.Contains(js.LDFLAGS, emscriptenAsyncifyRemove) {
+		t.Fatalf("noffi js/wasm LDFLAGS %v still name missing llgo_reflect_bind*_js patterns", js.LDFLAGS)
+	}
+	if slices.Contains(js.LDFLAGS, emscriptenAsyncifyImports) {
+		t.Fatalf("noffi js/wasm LDFLAGS %v still import ffi_call_js", js.LDFLAGS)
+	}
+	if !slices.Contains(js.LDFLAGS, emscriptenAsyncifyImportsNoffi) {
+		t.Fatalf("noffi js/wasm LDFLAGS %v dropped the host wait import", js.LDFLAGS)
+	}
+}
+
 func TestRawWasmProfiles(t *testing.T) {
 	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
 	if err != nil {
