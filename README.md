@@ -432,6 +432,12 @@ Go-only queries are delegated to the underlying Go toolchain and respect its env
 
 A real Go executable must remain in an absolute PATH directory. If `go` is a symlink or hard link to `llgo`, the environment command skips that link and searches the remaining PATH entries instead of invoking itself recursively.
 
+## Module management
+
+Use `llgo mod init`, `llgo mod tidy`, `llgo mod vendor`, and other `go mod` subcommands to manage modules with the underlying Go toolchain. Arguments, working directory, environment, standard streams, and exit status are preserved. As with `llgo env`, a real Go executable must remain in an absolute PATH directory; links from `go` back to LLGo are skipped to prevent recursion.
+
+Module maintenance does not inject LLGo-specific build tags. Go's `tidy` and `vendor` already consider all build tags except `ignore`, including dependencies imported only by files with `//go:build llgo`.
+
 ## Development tools
 
 * [pydump](_xtool/pydump): It is the first production program compiled with `llgo` rather than `go`. It outputs symbol information (functions, variables, and constants) from a Python library in JSON format, preparing for the generation of corresponding packages in `llgo`.
