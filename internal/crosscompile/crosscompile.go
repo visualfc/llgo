@@ -823,6 +823,15 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		err = errors.New("unsupported GOOS for WebAssembly: " + goos)
 		return
 	}
+	if ltoMode.Enabled() {
+		// Wasm package IR is compiled with clang/emcc -c. Without -flto,
+		// clang fully lowers lto-pre-link IR through wasm isel. Pass the
+		// LTO flag so those compiles emit bitcode and the linker can DCE
+		// unused method-value thunks under -lto=full.
+		flag := ltoMode.ClangFlag()
+		export.CCFLAGS = append(export.CCFLAGS, flag)
+		export.LDFLAGS = append(export.LDFLAGS, flag)
+	}
 	return
 }
 

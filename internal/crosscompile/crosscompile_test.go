@@ -308,6 +308,37 @@ func TestUseWASILTOEnablesSjLjAtLink(t *testing.T) {
 	}
 }
 
+func TestUseWasmLTOCompilesIRToBitcode(t *testing.T) {
+	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Full, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(js.CCFLAGS, "-flto=full") {
+		t.Fatalf("js/wasm CCFLAGS missing -flto=full: %v", js.CCFLAGS)
+	}
+	if !slices.Contains(js.LDFLAGS, "-flto=full") {
+		t.Fatalf("js/wasm LDFLAGS missing -flto=full: %v", js.LDFLAGS)
+	}
+
+	thin, err := use("js", "wasm", false, false, optlevel.O2, lto.Thin, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(thin.CCFLAGS, "-flto=thin") {
+		t.Fatalf("js/wasm CCFLAGS missing -flto=thin: %v", thin.CCFLAGS)
+	}
+
+	off, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range off.CCFLAGS {
+		if strings.HasPrefix(flag, "-flto") {
+			t.Fatalf("js/wasm CCFLAGS unexpectedly enable LTO: %v", off.CCFLAGS)
+		}
+	}
+}
+
 func TestUseTarget(t *testing.T) {
 	// Test cases for target-based configuration
 	testCases := []struct {
