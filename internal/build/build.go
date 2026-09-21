@@ -4044,6 +4044,8 @@ func llgoFileCompilerArgs(ctx *context, args []string, source string) []string {
 	// A configured C++ driver must not change the source language or mangle C
 	// symbols. Put these defaults before explicit flags so cgo can override
 	// the language of generated .c preambles (for example, -x objective-c).
+	// Extensions are case-sensitive: Clang treats .C as C++ and .M as
+	// Objective-C++, so leave those to the driver rather than forcing C.
 	var defaults []string
 	switch filepath.Ext(source) {
 	case ".c":

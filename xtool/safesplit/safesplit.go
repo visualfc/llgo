@@ -18,11 +18,10 @@ package safesplit
 
 import "strings"
 
-// SplitPkgConfigFlags splits a pkg-config outputs string into parts.
-// Each part starts with "-" followed by a single character flag.
-// Spaces after the flag character are ignored.
-// Content is read until the next space, unless escaped with "\".
-// Framework options retain their required separate name argument.
+// SplitPkgConfigFlags splits pkg-config-style output into compiler arguments.
+// It joins a one-character option such as -I or -L to its value, preserving
+// spaces within paths. Other options remain intact, except that -framework and
+// -weak_framework retain their required separate name argument.
 func SplitPkgConfigFlags(s string) []string {
 	var result []string
 	var current strings.Builder

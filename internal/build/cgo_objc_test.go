@@ -23,6 +23,8 @@ func TestLLGoFileCompilerLanguage(t *testing.T) {
 		{name: "C default", file: "p.c", want: []string{"-x", "c"}},
 		{name: "Objective-C default", file: "p.m", want: []string{"-x", "objective-c"}},
 		{name: "C++ extension", file: "p.cpp"},
+		{name: "uppercase C is C++", file: "p.C"},
+		{name: "uppercase M is Objective-C++", file: "p.M"},
 		{name: "explicit Objective-C", file: "p.c", args: []string{"-x", "objective-c"}, want: []string{"-x", "c", "-x", "objective-c"}},
 		{name: "joined language", file: "p.c", args: []string{"-xc++"}, want: []string{"-x", "c", "-xc++"}},
 		{name: "reset language", file: "p.c", args: []string{"-x", "none"}, want: []string{"-x", "c", "-x", "none"}},
