@@ -58,10 +58,13 @@ func exitCode(err error) int {
 	return -1
 }
 
-func TestModInitEditTidy(t *testing.T) {
+func TestModInitEditTidyVendorLLGoDependency(t *testing.T) {
 	setupModuleEnv(t)
+	// Module maintenance must retain imports behind the llgo tag even though
+	// the delegated Go command is not given LLGo-specific build flags.
 	for name, content := range map[string]string{
-		"main.go":    "package main\nimport _ \"example.com/dep\"\nfunc main() {}\n",
+		"main.go":    "package main\nfunc main() {}\n",
+		"llgo.go":    "//go:build llgo\n\npackage main\nimport _ \"example.com/dep\"\n",
 		"dep/go.mod": "module example.com/dep\n\ngo 1.20\n",
 		"dep/dep.go": "package dep\n",
 	} {
@@ -76,6 +79,7 @@ func TestModInitEditTidy(t *testing.T) {
 		{"init", "example.com/app"},
 		{"edit", "-replace=example.com/dep=./dep"},
 		{"tidy"},
+		{"vendor"},
 	} {
 		var output bytes.Buffer
 		if err := run(args, nil, &output, &output); err != nil {
@@ -96,6 +100,10 @@ func TestModInitEditTidy(t *testing.T) {
 	}
 	if info.Module.Path != "example.com/app" || len(info.Require) != 1 || info.Require[0].Path != "example.com/dep" || len(info.Replace) != 1 || info.Replace[0].New.Path != "./dep" {
 		t.Fatalf("unexpected module after tidy: %s", &output)
+	}
+	data, err := os.ReadFile(filepath.Join("vendor", "example.com", "dep", "dep.go"))
+	if err != nil || string(data) != "package dep\n" {
+		t.Fatalf("vendor omitted llgo-only dependency: %q, %v", data, err)
 	}
 }
 

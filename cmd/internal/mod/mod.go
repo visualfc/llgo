@@ -27,6 +27,8 @@ import (
 
 // Main delegates module management to Go, preserving its diagnostics and exit
 // status. Module operations do not use LLGo-specific source-selection flags.
+// In particular, Go's tidy/vendor scan all build tags except ignore, including
+// dependencies imported only by llgo-tagged files; neither accepts -tags.
 func Main(args []string) {
 	if err := run(args, os.Stdin, os.Stdout, os.Stderr); err != nil {
 		var exit *exec.ExitError
