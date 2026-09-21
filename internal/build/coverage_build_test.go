@@ -34,11 +34,13 @@ func TestCoverageBuildAgainstGo(t *testing.T) {
 		packages string
 		lto      lto.Mode
 		files    bool
+		cgo      bool
 	}{
 		{name: "set", mode: "set"},
 		{name: "count", mode: "count"},
 		{name: "atomic", mode: "atomic"},
 		{name: "named files", mode: "count", files: true},
+		{name: "named cgo files", mode: "atomic", cgo: true},
 		// Include main in gc comparisons: Go 1.27 currently omits its exit
 		// hook when -coverpkg selects only dependencies. LLGo must still
 		// install that hook without counting main; test that separately below.
@@ -60,6 +62,27 @@ func TestCoverageBuildAgainstGo(t *testing.T) {
 			input := fixture
 			if tc.files {
 				input += "/main.go"
+			}
+			if tc.cgo {
+				input = filepath.Join(dir, "main.go")
+				const source = `package main
+
+// static int add(int a, int b) { return a + b; }
+import "C"
+import "os"
+
+func main() {
+	if C.add(20, 22) != 42 {
+		panic("incorrect cgo result")
+	}
+	if len(os.Args) > 1 && os.Args[1] == "exit" {
+		os.Exit(7)
+	}
+}
+`
+				if err := os.WriteFile(input, []byte(source), 0600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			var profiles []string
 			var outputs [][]byte

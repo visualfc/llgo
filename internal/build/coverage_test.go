@@ -20,6 +20,7 @@ import (
 
 	"github.com/xgo-dev/llgo/internal/lto"
 	"github.com/xgo-dev/llgo/internal/optlevel"
+	"github.com/xgo-dev/llgo/internal/packages"
 	"golang.org/x/tools/cover"
 )
 
@@ -314,6 +315,62 @@ func TestCoverageParallelProfiles(t *testing.T) {
 	}
 	if err := c.merge(bad); err != nil {
 		t.Fatalf("empty profile from an interrupted test: %v", err)
+	}
+}
+
+func TestCoverageInputs(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "plain.go")
+	cgo := filepath.Join(dir, "cgo.go")
+	testFile := filepath.Join(dir, "plain_test.go")
+	translated := filepath.Join(dir, "translated-cache")
+	translatedTest := filepath.Join(dir, "test-cache")
+	generated := filepath.Join(dir, "wrappers-cache")
+	p := &packages.Package{
+		GoFiles:         []string{plain, cgo, testFile},
+		CompiledGoFiles: []string{plain, generated, translated, testFile, translatedTest},
+	}
+	got, needsCgo := coverageInputs(p)
+	if !needsCgo || !reflect.DeepEqual(got, []string{plain, cgo}) {
+		t.Fatalf("coverage inputs = %v, needs cgo = %v", got, needsCgo)
+	}
+	p.GoFiles = []string{plain, testFile}
+	got, needsCgo = coverageInputs(p)
+	if needsCgo || !reflect.DeepEqual(got, []string{plain}) {
+		t.Fatalf("ordinary inputs = %v, needs cgo = %v", got, needsCgo)
+	}
+}
+
+func TestCoverageCgo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds and runs native cgo tests")
+	}
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_ROOT", root)
+	t.Setenv(llgoBuildCache, "1")
+	const run = "^(TestCgoBasicCall|TestC2funcStructs|TestC2funcErrno|TestCgoMallocWrapperSymbols)$"
+	for _, mode := range []string{"set", "count", "atomic"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			goProfile := filepath.Join(dir, "go.out")
+			cmd := exec.Command("go", "test", "-tags=llgo", "-count=1", "-run="+run,
+				"-covermode="+mode, "-coverprofile="+goProfile, "./test/cgo")
+			cmd.Dir = root
+			if output, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("go test: %v\n%s", err, output)
+			}
+			llgoProfile := filepath.Join(dir, "llgo.out")
+			conf := NewDefaultConf(ModeTest)
+			conf.Coverage = &CoverageConfig{Mode: mode, Profile: llgoProfile}
+			conf.RunArgs = []string{"-test.run=" + run}
+			if _, err := Build(Invocation{Args: []string{"./test/cgo"}, Dir: root, Config: conf}); err != nil {
+				t.Fatal(err)
+			}
+			compareCoverageProfiles(t, goProfile, llgoProfile)
+		})
 	}
 }
 

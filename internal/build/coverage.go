@@ -288,7 +288,7 @@ func (c *coverageBuild) prepare(
 		defer span.done()
 		local := *conf
 		local.Overlay = maps.Clone(conf.Overlay)
-		meta, err := c.instrument(p, &local, goroot, ids[p.PkgPath])
+		meta, err := c.instrument(p, &local, cfg, goroot, ids[p.PkgPath])
 		if err != nil {
 			return fmt.Errorf("cover %s: %w", p.ID, err)
 		}

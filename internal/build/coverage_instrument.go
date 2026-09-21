@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/xgo-dev/llgo/internal/packages"
+	gopackages "golang.org/x/tools/go/packages"
 )
 
 // Hard-coded runtime package IDs belong to the selected Go coverage protocol.
@@ -71,13 +72,26 @@ func addCoverageSource(p *packages.Package, conf *Config, suffix string, data []
 	return name
 }
 
-func (c *coverageBuild) instrument(p *packages.Package, conf *Config, goroot string, pkgID int) (string, error) {
-	var inputs []string
+func coverageInputs(p *packages.Package) (inputs []string, needsCgo bool) {
+	compiled := make(map[string]bool, len(p.CompiledGoFiles))
 	for _, file := range p.CompiledGoFiles {
-		if !strings.HasSuffix(file, "_test.go") {
-			inputs = append(inputs, file)
-		}
+		compiled[file] = true
 	}
+	// GoFiles includes original cgo sources. Instrument before cgo rewriting,
+	// as cmd/go does: generated wrappers and argument-checking closures are
+	// implementation details, not additional user statements to count.
+	for _, file := range p.GoFiles {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		inputs = append(inputs, file)
+		needsCgo = needsCgo || !compiled[file]
+	}
+	return
+}
+
+func (c *coverageBuild) instrument(p *packages.Package, conf *Config, cfg *packages.Config, goroot string, pkgID int) (string, error) {
+	inputs, needsCgo := coverageInputs(p)
 	if len(inputs) == 0 {
 		return "", nil
 	}
@@ -206,12 +220,7 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, goroot str
 	} else {
 		addCoverageSource(p, conf, "vars", vars)
 	}
-	for _, file := range oldFiles {
-		i := slices.Index(inputs, file)
-		if i < 0 {
-			p.CompiledGoFiles = append(p.CompiledGoFiles, file)
-			continue
-		}
+	for i, file := range inputs {
 		body, err := os.ReadFile(outputs[i+1])
 		if err != nil {
 			return "", err
@@ -228,16 +237,65 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, goroot str
 				return "", err
 			}
 		}
-		addCoverageSource(p, conf, fmt.Sprint(i), body)
+		if needsCgo {
+			conf.Overlay[file] = body
+		} else {
+			addCoverageSource(p, conf, fmt.Sprint(i), body)
+		}
 	}
-	if _, err := os.Stat(pcfg.EmitMetaFile); os.IsNotExist(err) {
+	if needsCgo {
+		// Regenerate only this package's cgo outputs using the original build
+		// flags, target environment and overlays. Do not parse/type-check here
+		// or replace graph identities/imports; the shared frontend does that.
+		if err := c.reloadCoverageCgo(p, conf, cfg); err != nil {
+			return "", err
+		}
+	} else {
+		for _, file := range oldFiles {
+			if !slices.Contains(inputs, file) {
+				p.CompiledGoFiles = append(p.CompiledGoFiles, file)
+			}
+		}
+	}
+	if meta, err := os.Stat(pcfg.EmitMetaFile); os.IsNotExist(err) {
 		// Go 1.20/1.21 do not emit standalone metadata for packages without
 		// tests. Do not give their runtime a manifest of nonexistent files.
 		return "", nil
 	} else if err != nil {
 		return "", err
+	} else if meta.Size() == 0 {
+		// Like cmd/go's WriteCoverMetaFilesFile, omit packages with no
+		// functions. Their empty fragments are not valid metadata files.
+		return "", nil
 	}
 	return pcfg.EmitMetaFile, nil
+}
+
+func (c *coverageBuild) reloadCoverageCgo(p *packages.Package, conf *Config, cfg *packages.Config) error {
+	loader := *cfg
+	loader.Mode = packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles
+	loader.Tests = p.ForTest != ""
+	loader.Env = c.commands.environ
+	loader.Overlay = conf.Overlay
+	patterns := []string{p.PkgPath}
+	if p.PkgPath == "command-line-arguments" {
+		patterns = p.GoFiles
+	}
+	loaded, err := gopackages.Load(&loader, patterns...)
+	if err != nil {
+		return err
+	}
+	for _, updated := range loaded {
+		if updated.ID != p.ID {
+			continue
+		}
+		if len(updated.Errors) != 0 {
+			return fmt.Errorf("regenerate covered cgo source: %v", updated.Errors)
+		}
+		p.CompiledGoFiles = updated.CompiledGoFiles
+		return nil
+	}
+	return fmt.Errorf("covered cgo package %q not found", p.ID)
 }
 
 func addCoverageImport(source []byte, alias, path string) ([]byte, error) {
