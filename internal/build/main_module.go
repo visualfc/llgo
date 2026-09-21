@@ -209,6 +209,14 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		defineWasmMainTask(mainPkg, packageInits, mainInit, mainMain)
 		wasmRunMain = declareNoArgFunc(mainPkg, rtPkgPath+".RunWasmMain")
 	}
+	var coverageExit llssa.Function
+	if ctx.buildConf.Coverage != nil {
+		// os.Exit runs this hook through os.runtime_beforeExit. Ordinary
+		// main returns bypass os.Exit, so the generated entry must flush too,
+		// before Windows terminates the process or we leave the local context.
+		coverageExit = mainPkg.NewFunc("runtime.runCoverageExitHook",
+			newSignature([]types.Type{types.Typ[types.Int]}, nil), llssa.InGo)
+	}
 	entryFn := defineEntryFunction(ctx, mainPkg, argcVar, argvVar, argvValueType, entryFunctions{
 		runtimeStub:  runtimeStub,
 		mainInit:     mainInit,
@@ -218,6 +226,7 @@ func genMainModule(ctx *context, rtPkgPath string, pkg *packages.Package, cfg *g
 		pyFinalize:   pyFinalize,
 		rtInit:       rtInit,
 		processExit:  processExit,
+		coverageExit: coverageExit,
 		abiInit:      abiInit,
 		packageInits: packageInits,
 	})
@@ -443,6 +452,7 @@ type entryFunctions struct {
 	pyFinalize   llssa.Function
 	rtInit       llssa.Function
 	processExit  llssa.Function
+	coverageExit llssa.Function
 	abiInit      llssa.Function
 	packageInits []llssa.Function
 }
@@ -532,6 +542,9 @@ func emitRuntimeMainBody(b llssa.Builder, fns entryFunctions) {
 	}
 	if fns.pyFinalize != nil {
 		b.Call(fns.pyFinalize.Expr)
+	}
+	if fns.coverageExit != nil {
+		b.Call(fns.coverageExit.Expr, b.Prog.IntVal(0, b.Prog.Int()))
 	}
 	if fns.processExit != nil {
 		// Go terminates the process as soon as main returns, regardless of

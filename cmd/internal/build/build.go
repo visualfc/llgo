@@ -42,6 +42,7 @@ func init() {
 	flags.AddCommonFlags(&Cmd.Flag)
 	flags.AddCompilerVerboseFlag(&Cmd.Flag)
 	flags.AddBuildFlags(&Cmd.Flag)
+	flags.AddCoverageFlags(&Cmd.Flag)
 	flags.AddBuildTraceFlag(&Cmd.Flag)
 	flags.AddBuildModeFlags(&Cmd.Flag)
 	flags.AddEmulatorFlags(&Cmd.Flag)
@@ -61,6 +62,12 @@ func runCmd(cmd *base.Command, args []string) {
 		mockable.Exit(1)
 	}
 	conf.BuildTrace = flags.BuildTrace
+	if flags.Cover || flags.CoverMode != "" || flags.CoverPkg != "" {
+		conf.Coverage = &build.CoverageConfig{
+			Mode:     flags.CoverMode,
+			Packages: flags.CoverPkg,
+		}
+	}
 	if err := flags.ApplyGoBuildFlags(conf, goBuildFlags.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		mockable.Exit(1)

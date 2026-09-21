@@ -25,7 +25,7 @@ func TestCoverageFlagsAfterPackages(t *testing.T) {
 		if err := fs.Parse(ordered); err != nil {
 			t.Fatal(err)
 		}
-		if !flags.TestCover || flags.TestCoverMode != "count" || flags.TestCoverProfile != "cover.out" {
+		if !flags.Cover || flags.CoverMode != "count" || flags.TestCoverProfile != "cover.out" {
 			t.Fatalf("coverage flags not parsed: %v", args)
 		}
 		if !reflect.DeepEqual(fs.Args(), []string{"."}) {
@@ -56,10 +56,10 @@ func resetTestFlags() {
 	flags.TestShort = false
 	flags.TestCount = 1
 	flags.TestCPU = ""
-	flags.TestCover = false
-	flags.TestCoverMode = ""
+	flags.Cover = false
+	flags.CoverMode = ""
 	flags.TestCoverProfile = ""
-	flags.TestCoverPkg = ""
+	flags.CoverPkg = ""
 	flags.TestParallel = 0
 	flags.TestFailfast = false
 	flags.TestJSON = false
@@ -267,8 +267,8 @@ func TestBuildTestArgs(t *testing.T) {
 			name: "coverage is configured by the build driver",
 			setupFlags: func() {
 				flags.TestCoverProfile = "coverage.out"
-				flags.TestCover = true
-				flags.TestCoverMode = "atomic"
+				flags.Cover = true
+				flags.CoverMode = "atomic"
 			},
 			customArgs: nil,
 			wantAbsent: []string{"-test.cover", "-test.covermode=atomic", "-test.coverprofile=coverage.out"},

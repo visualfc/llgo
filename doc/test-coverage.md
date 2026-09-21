@@ -1,4 +1,4 @@
-# Test coverage
+# Source coverage
 
 LLGo's native test runner supports Go source coverage:
 
@@ -18,6 +18,23 @@ Relative profile paths are resolved from the invocation directory, or from `-out
 
 `-v` and `-json` include the coverage output in normal test output. JSON uses the selected Go toolchain's `test2json`. `testing.CoverMode`, `testing.Coverage`, and `runtime/coverage` share the standard library's registry and reporting code. In particular, Go's test coverage metadata writer is initialized during `M.Run` teardown; writer APIs called before that point have the same limitations as in Go. A covered test executable that exits from `TestMain` without running tests can emit data to `GOCOVERDIR` through its exit hooks.
 
+## Application coverage
+
+`llgo build -cover` instruments a native executable for integration testing, following [Go's application coverage workflow](https://go.dev/doc/build-cover):
+
+```sh
+llgo build -covermode=atomic -o app ./cmd/app
+mkdir coverage-data
+GOCOVERDIR="$PWD/coverage-data" ./app
+go tool covdata percent -i=coverage-data
+go tool covdata textfmt -i=coverage-data -o=cover.out
+go tool cover -html=cover.out
+```
+
+By default, application coverage includes command-line roots and their dependencies in the main module (including workspace main modules), but not external-module or standard-library dependencies. `-coverpkg` overrides that selection, even when it excludes the main package. `-covermode` and `-coverpkg` imply `-cover` for both commands. `-coverprofile` remains a test-only flag; application runs emit Go's binary metadata/counter files, which `go tool covdata` can combine across multiple executions or convert to the text profile format.
+
+An unset `GOCOVERDIR` produces Go's warning without preventing application execution. Normal return from `main` and calls to `os.Exit`, including nonzero exits, emit counters; an unrecovered panic does not flush them, matching Go. The generated native entry calls the coverage exit hook only when coverage is enabled, after `main` (and its deferred calls) returns and before Windows process termination. Test mains continue to use their test teardown protocol; ordinary application mains use `cfile.InitHook(false)` or the selected older Go equivalent.
+
 ## Implementation and invariants
 
 The loader discovers the package graph first. Before the shared parse/type-check pass, independent `go tool cover` invocations run under the build's existing `-p` limit. Their generated sources are installed as stable, package-specific overlays. The subsequent SSA, backend, archive, link, and test work continues through the existing build scheduler. `-debug-trace=trace.json` includes `coverage <package>` worker spans alongside the later stages.
@@ -34,6 +51,10 @@ Every test process gets its own coverage directory and profile fragment. For `-c
 
 ## Scope and validation
 
-This implementation enables native host test executables. Wasm and embedded/emulator targets reject coverage explicitly until their runners can transport coverage files reliably. It does not add fuzz-guidance instrumentation or `llgo build -cover`.
+This implementation enables native host test and application executables. Wasm and embedded/emulator targets reject coverage explicitly until their runners can transport coverage files reliably. C archive/shared-library build modes also reject coverage: they need a defined host-controlled flush lifecycle rather than a Go executable's exit hooks. Fuzz-guidance instrumentation is not included.
 
 `go test ./internal/build -run '^TestCoverage'` exercises exact Go profile comparisons for all three modes, multi-package selection and no-test packages, JSON events, cache reuse/isolation, LTO retention, writer APIs, early exit, and failing test profiles. The multi-package fixture uses a two-process rendezvous: it fails if a common `-coverprofile` accidentally serializes the tests. Protocol validation and concurrent fragment merging have separate unit tests.
+
+`TestCoverageBuildAgainstGo` compares application profiles against `go build -cover` for all three modes, default main-module selection, explicit dependency/external-module selection, and ThinLTO/Full LTO. It combines repeated runs through `go tool covdata`, verifies normal return and nonzero `os.Exit`, and checks the missing-directory warning and unrecovered-panic behavior. Entry-module tests check hook ordering on Linux, macOS, and Windows without adding any hook to an uninstrumented executable.
+
+The differential cases explicitly include main in `-coverpkg`: the local Go 1.27 reference did not emit counter files when main was excluded. LLGo retains reporting hooks in an unselected main without adding its statements to the profile; `TestCoverageBuildUncoveredMain` separately verifies this behavior so dependency-only selection cannot silently lose its data.

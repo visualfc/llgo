@@ -89,6 +89,7 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, goroot str
 	pcfg := coverPkgConfig{
 		PkgPath:      p.PkgPath,
 		PkgName:      p.Name,
+		Local:        p.PkgPath == "command-line-arguments",
 		Granularity:  "perblock",
 		OutConfig:    filepath.Join(dir, "fixup.json"),
 		EmitMetaFile: filepath.Join(dir, fmt.Sprintf("covmeta.%x", hash[:12])),

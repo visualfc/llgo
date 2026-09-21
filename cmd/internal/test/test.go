@@ -76,10 +76,10 @@ func runCmd(cmd *base.Command, args []string) {
 	conf.TestFailFast = flags.TestFailfast
 	conf.TestJSON = flags.TestJSON
 	conf.TestRunSequential = testRunsMustBeSequential()
-	if flags.TestCover || flags.TestCoverMode != "" || flags.TestCoverPkg != "" || flags.TestCoverProfile != "" {
+	if flags.Cover || flags.CoverMode != "" || flags.CoverPkg != "" || flags.TestCoverProfile != "" {
 		conf.Coverage = &build.CoverageConfig{
-			Mode:      flags.TestCoverMode,
-			Packages:  flags.TestCoverPkg,
+			Mode:      flags.CoverMode,
+			Packages:  flags.CoverPkg,
 			Profile:   flags.TestCoverProfile,
 			OutputDir: flags.TestOutputDir,
 		}

@@ -19,8 +19,9 @@ import (
 	gopackages "golang.org/x/tools/go/packages"
 )
 
-// CoverageConfig describes Go's source coverage, independently of test-binary
-// flags. A non-nil configuration enables coverage; Mode defaults to set.
+// CoverageConfig describes Go's source coverage for builds and tests. A non-nil
+// configuration enables coverage; Mode defaults to set. Profile and OutputDir
+// are test-only; application binaries use GOCOVERDIR at execution time.
 type CoverageConfig struct {
 	Mode      string
 	Packages  string
@@ -84,11 +85,17 @@ func newCoverageBuild(conf *Config, commands commandEnv) (*coverageBuild, error)
 	default:
 		return nil, fmt.Errorf("invalid value %q for flag -covermode: valid modes are \"set\", \"count\", or \"atomic\"", options.Mode)
 	}
-	if conf.Mode != ModeTest {
-		return nil, fmt.Errorf("coverage requires llgo test")
+	if conf.Mode != ModeTest && conf.Mode != ModeBuild {
+		return nil, fmt.Errorf("coverage requires llgo build or llgo test")
+	}
+	if conf.Mode == ModeBuild && options.Profile != "" {
+		return nil, fmt.Errorf("-coverprofile requires llgo test; use GOCOVERDIR for covered applications")
+	}
+	if conf.BuildMode != "" && conf.BuildMode != BuildModeExe {
+		return nil, fmt.Errorf("coverage is not yet supported with -buildmode=%s", conf.BuildMode)
 	}
 	if conf.Target != "" || isWasmTarget(conf.Goos) {
-		return nil, fmt.Errorf("coverage is not yet supported by this target's test runner")
+		return nil, fmt.Errorf("coverage is not yet supported on this target")
 	}
 	for _, arg := range conf.RunArgs {
 		if strings.HasPrefix(arg, "-test.fuzz=") && options.Profile != "" {
@@ -153,7 +160,7 @@ func (c *coverageBuild) prepare(
 		}
 	}
 	for _, p := range roots {
-		if p.ForTest == "" && rootPaths[p.PkgPath] && !tested[p.PkgPath] {
+		if conf.Mode == ModeTest && p.ForTest == "" && rootPaths[p.PkgPath] && !tested[p.PkgPath] {
 			c.noTests = append(c.noTests, p)
 		}
 	}
@@ -163,8 +170,26 @@ func (c *coverageBuild) prepare(
 				selected[p.PkgPath] = true
 			}
 		}
+		if conf.Mode == ModeBuild {
+			// go build covers command-line roots and their main-module
+			// dependencies, unlike go test's default of just the tested roots.
+			for _, p := range all {
+				if p.Module != nil && p.Module.Main {
+					selected[p.PkgPath] = true
+				}
+			}
+		}
 	} else {
 		for _, pattern := range strings.Split(c.options.Packages, ",") {
+			if pattern == "all" {
+				// cmd/go's coverage matcher means the entire loaded graph,
+				// including command-line-arguments and test-only dependencies,
+				// not the different package set produced by "go list all".
+				for _, p := range all {
+					selected[p.PkgPath] = true
+				}
+				continue
+			}
 			args := append([]string{"list", "-e", "-f={{.ImportPath}}"}, cfg.BuildFlags...)
 			cmd := c.commands.configure(exec.Command(c.goCommand, append(args, pattern)...))
 			cmd.Dir = cfg.Dir
@@ -183,7 +208,11 @@ func (c *coverageBuild) prepare(
 				}
 			}
 			if !matched {
-				fmt.Fprintf(os.Stderr, "warning: no packages being tested depend on matches for pattern %s\n", pattern)
+				action := "tested"
+				if conf.Mode == ModeBuild {
+					action = "built"
+				}
+				fmt.Fprintf(os.Stderr, "warning: no packages being %s depend on matches for pattern %s\n", action, pattern)
 			}
 		}
 	}
@@ -235,6 +264,10 @@ func (c *coverageBuild) prepare(
 			continue
 		}
 		p.Imports["unsafe"] = byID["unsafe"]
+		if p.Name == "main" {
+			// go tool cover adds this import to instrumented main packages.
+			p.Imports["runtime/coverage"] = byID["runtime/coverage"]
+		}
 		if c.options.Mode == "atomic" {
 			p.Imports["sync/atomic"] = byID["sync/atomic"]
 		}
@@ -292,7 +325,8 @@ func (c *coverageBuild) prepare(
 		}
 	}
 	for _, p := range roots {
-		if !strings.HasSuffix(p.ID, ".test") {
+		isTest := conf.Mode == ModeTest && strings.HasSuffix(p.ID, ".test")
+		if !isTest && (conf.Mode != ModeBuild || p.Name != "main") {
 			continue
 		}
 		covered := ""
@@ -308,17 +342,25 @@ func (c *coverageBuild) prepare(
 			p.Imports["internal/runtime/exithook"] = byID["internal/runtime/exithook"]
 			p.Imports["runtime"] = byID["runtime"]
 			p.Imports["unsafe"] = byID["unsafe"]
-			source = fmt.Sprintf(coverageTestMain, c.options.Mode, covered, selectedPaths)
+			if isTest {
+				source = fmt.Sprintf(coverageTestMain, c.options.Mode, covered, selectedPaths)
+			} else {
+				source = coverageBuildMain
+			}
 		} else {
 			// Go 1.20–1.22 keep reporting in runtime/coverage and register
 			// it directly with testing instead of through testdeps.
 			p.Imports["runtime/coverage"] = byID["runtime/coverage"]
 			p.Imports["unsafe"] = byID["unsafe"]
-			source = legacyCoverageMain(c.options.Mode, covered, c.go120)
+			if isTest {
+				source = legacyCoverageMain(c.options.Mode, covered, c.go120)
+			} else {
+				source = coverageBuildMainLegacy + coverageLegacyExitSupport
+			}
 		}
 		body := []byte(source + coverageExitSupport)
 		// A package replacement also replaces its init import list. Retain
-		// counter-only packages from the original graph as explicit test-main
+		// counter-only packages from the original graph as explicit main
 		// dependencies, without changing the replacement's ordinary imports.
 		var counterPackages []*packages.Package
 		packages.Visit([]*packages.Package{p}, func(dep *packages.Package) bool {
@@ -334,7 +376,7 @@ func (c *coverageBuild) prepare(
 				return err
 			}
 		}
-		addCoverageSource(p, conf, "testmain", body)
+		addCoverageSource(p, conf, "main", body)
 	}
 	cfg.Overlay = conf.Overlay
 	return nil

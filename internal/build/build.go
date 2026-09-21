@@ -228,7 +228,7 @@ type Config struct {
 	// Production callers leave this nil; the provider is evaluated once per Do.
 	TestPythonPackage func() *types.Package
 
-	// Coverage enables source coverage for tests. Nil leaves the normal build
+	// Coverage enables source coverage for builds/tests. Nil leaves the build
 	// unchanged; coverage holds only per-invocation temporary state.
 	Coverage *CoverageConfig
 	coverage *coverageBuild

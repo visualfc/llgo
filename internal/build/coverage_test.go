@@ -104,9 +104,11 @@ func TestCoveragePackageIDs(t *testing.T) {
 
 func TestCoverageMainTemplates(t *testing.T) {
 	for name, source := range map[string]string{
-		"current": fmt.Sprintf(coverageTestMain, "set", "", []string{"p"}),
-		"go120":   legacyCoverageMain("count", " in ./...", true),
-		"go121":   legacyCoverageMain("atomic", "", false),
+		"build":        coverageBuildMain,
+		"build legacy": coverageBuildMainLegacy + coverageLegacyExitSupport,
+		"current":      fmt.Sprintf(coverageTestMain, "set", "", []string{"p"}),
+		"go120":        legacyCoverageMain("count", " in ./...", true),
+		"go121":        legacyCoverageMain("atomic", "", false),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := parser.ParseFile(token.NewFileSet(), "main.go", source+coverageExitSupport, parser.AllErrors); err != nil {
@@ -192,9 +194,18 @@ func TestCoverageOptions(t *testing.T) {
 			Mode:     ModeTest,
 			Coverage: &CoverageConfig{Mode: "invalid"},
 		},
-		"build": {
-			Mode:     ModeBuild,
+		"run": {
+			Mode:     ModeRun,
 			Coverage: &CoverageConfig{},
+		},
+		"build profile": {
+			Mode:     ModeBuild,
+			Coverage: &CoverageConfig{Profile: "cover.out"},
+		},
+		"shared library": {
+			Mode:      ModeBuild,
+			BuildMode: BuildModeCShared,
+			Coverage:  &CoverageConfig{},
 		},
 		"target": {
 			Mode:     ModeTest,

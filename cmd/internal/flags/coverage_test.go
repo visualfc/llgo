@@ -24,7 +24,7 @@ func TestCoverageFlagImplications(t *testing.T) {
 			if err := fs.Parse([]string{option}); err != nil {
 				t.Fatal(err)
 			}
-			if !TestCover {
+			if !Cover {
 				t.Fatal("coverage was not enabled")
 			}
 		})
@@ -35,4 +35,25 @@ func TestCoverageFlagImplications(t *testing.T) {
 	if err := fs.Parse([]string{"-covermode=unknown"}); err == nil {
 		t.Fatal("accepted unknown coverage mode")
 	}
+}
+
+func TestCoverageBuildFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"-cover"},
+		{"-covermode", "atomic"},
+		{"-coverpkg", "./..."},
+	} {
+		fs := flag.NewFlagSet("build", flag.ContinueOnError)
+		AddCoverageFlags(fs)
+		if err := fs.Parse(args); err != nil {
+			t.Fatal(err)
+		}
+		if !Cover {
+			t.Fatalf("coverage not enabled by %v", args)
+		}
+		if fs.Lookup("coverprofile") != nil {
+			t.Fatal("build must not expose test-only -coverprofile")
+		}
+	}
+	Cover, CoverMode, CoverPkg = false, "", ""
 }
