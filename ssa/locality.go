@@ -394,26 +394,42 @@ func (p Program) PackageLocalitiesFor(pkg *types.Package) map[string]VariableLoc
 func (p Program) NeedsLocalContext() bool {
 	p.localities.mu.RLock()
 	defer p.localities.mu.RUnlock()
+	return p.localities.needsContext(p.localities.activePackages)
+}
+
+// NeedsLocalContextForPackages reports the startup requirement for one set of
+// concrete packages without changing the shared declaration registry.
+func (p Program) NeedsLocalContextForPackages(pkgs []*types.Package) bool {
+	active := make(map[string]struct{}, len(pkgs))
+	for _, pkg := range pkgs {
+		active[pkg.Path()] = struct{}{}
+	}
+	p.localities.mu.RLock()
+	defer p.localities.mu.RUnlock()
+	return p.localities.needsContext(active)
+}
+
+func (p *localityInfos) needsContext(activePackages map[string]struct{}) bool {
 	needsContext := func(info VariableLocality) bool {
 		return info.Locality != locality.None && (info.LocalStorage != LocalStorageNativeTLS || hasInitialization(info.Info))
 	}
-	for _, info := range p.localities.ownerlessEntries {
+	for _, info := range p.ownerlessEntries {
 		if needsContext(info) {
 			return true
 		}
 	}
-	for _, entries := range p.localities.declarationEntries {
+	for _, entries := range p.declarationEntries {
 		for owner, info := range entries {
-			if _, active := p.localities.activePackages[owner]; active && needsContext(info) {
+			if _, active := activePackages[owner]; active && needsContext(info) {
 				return true
 			}
 		}
 	}
-	for name, info := range p.localities.entries {
-		if _, ownerless := p.localities.ownerlessEntries[name]; ownerless {
+	for name, info := range p.entries {
+		if _, ownerless := p.ownerlessEntries[name]; ownerless {
 			continue
 		}
-		if _, declared := p.localities.declarationEntries[name]; declared {
+		if _, declared := p.declarationEntries[name]; declared {
 			continue
 		}
 		if needsContext(info) {

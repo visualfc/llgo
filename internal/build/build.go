@@ -483,9 +483,12 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// architecture level as the LLVM build. GOOS/GOARCH retain their existing
 	// per-command handling.
 	commands := commandEnv{dir: dir, environ: withEnv(environ, goarchEnv(conf)...)}
-	buildTrace, err := startBuildTrace(conf.BuildTrace, dir, conf.parallelism())
-	if err != nil {
-		return nil, fmt.Errorf("start build trace: %w", err)
+	buildTrace := inv.parentBuildTrace
+	if buildTrace == nil {
+		buildTrace, err = startBuildTrace(conf.BuildTrace, dir, conf.parallelism())
+		if err != nil {
+			return nil, fmt.Errorf("start build trace: %w", err)
+		}
 	}
 	buildSpan := buildTrace.startCoordinator("build", map[string]any{
 		"packages":    slices.Clone(inv.Args),
@@ -493,8 +496,10 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	})
 	defer func() {
 		buildSpan.done()
-		if closeErr := buildTrace.close(); closeErr != nil {
-			fmt.Fprintf(os.Stderr, "warning: write build trace: %v\n", closeErr)
+		if inv.parentBuildTrace == nil {
+			if closeErr := buildTrace.close(); closeErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: write build trace: %v\n", closeErr)
+			}
 		}
 	}()
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
@@ -825,8 +830,26 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
 	ctx.frontendOptions.ReceiverNilChecks = collectReceiverNilChecks(initial, altPkgs)
-	configureWasmReflectBridges(ctx)
-	configureWasmFuncInfoEntries(ctx)
+	features := inv.initialFeatures
+	if features == nil {
+		groups := groupInitialBuilds(ctx, altPkgs)
+		if len(groups) > 1 {
+			fallback = nil // Each group retains its own normal error recovery.
+			return buildInitialGroups(inv, ctx, groups)
+		}
+		if len(groups) == 1 {
+			features = &groups[0].features
+		}
+	}
+	if features != nil {
+		// RTA over a union of roots can conservatively connect otherwise
+		// independent reflection uses. Keep the per-initial feature decision.
+		target.WasmReflectBridges = features.reflectBridges
+		target.WasmFuncInfoEntries = features.funcInfoEntries
+	} else {
+		configureWasmReflectBridges(ctx)
+		configureWasmFuncInfoEntries(ctx)
+	}
 
 	allPkgs := append([]*aPackage{}, pkgs...)
 	allPkgs = append(allPkgs, depPkgs...)
@@ -879,7 +902,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		return nil, fmt.Errorf("initial package not found")
 	}
 
-	linkMultiple := mode == ModeBuild && len(initial) > 1
+	linkMultiple := mode == ModeBuild && (len(initial) > 1 || inv.multipleInitials)
 	var linkErrs []error
 	var testPrograms []testProgram
 	for _, pkg := range initial {
@@ -3327,16 +3350,26 @@ func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) er
 		}
 	}
 
+	for _, pkg := range activeLocalityPackages(groups...) {
+		prog.ActivateLocalitiesFor(pkg)
+	}
+	return nil
+}
+
+// Match activation for a standalone build, including alternate packages only
+// when their canonical package is reachable from the selected initials.
+func activeLocalityPackages(groups ...[]*packages.Package) []*types.Package {
 	if len(groups) == 0 {
 		return nil
 	}
+	var result []*types.Package
 	active := make(map[string]bool)
 	activate := func(p *packages.Package) {
 		if p.Types == nil || p.IllTyped {
 			return
 		}
 		active[llssa.PathOf(p.Types)] = true
-		prog.ActivateLocalitiesFor(p.Types)
+		result = append(result, p.Types)
 	}
 	packages.Visit(groups[0], nil, activate)
 	for _, roots := range groups[1:] {
@@ -3347,7 +3380,7 @@ func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) er
 			packages.Visit([]*packages.Package{root}, nil, activate)
 		}
 	}
-	return nil
+	return result
 }
 
 type ssaBuildEntry struct {

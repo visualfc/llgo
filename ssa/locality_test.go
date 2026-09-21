@@ -162,6 +162,18 @@ func TestNeedsLocalContextIgnoresInactiveDeclarations(t *testing.T) {
 	if !prog.NeedsLocalContext() {
 		t.Fatal("active alternate package storage did not require a local context")
 	}
+	if prog.NeedsLocalContextForPackages([]*types.Package{std}) {
+		t.Fatal("per-program query used an unrelated active declaration")
+	}
+	if !prog.NeedsLocalContextForPackages([]*types.Package{alt}) {
+		t.Fatal("per-program query ignored the selected alternate declaration")
+	}
+	if prog.NeedsLocalContextForPackages(nil) {
+		t.Fatal("empty package selection used active declarations")
+	}
+	if !prog.NeedsLocalContext() {
+		t.Fatal("per-program query mutated the shared active declarations")
+	}
 }
 
 func TestLocalityMetadataFallbacks(t *testing.T) {

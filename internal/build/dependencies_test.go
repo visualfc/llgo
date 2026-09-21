@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/packages"
+	llssa "github.com/xgo-dev/llgo/ssa"
 )
 
 func TestEffectiveDependenciesIncludesAlternateImports(t *testing.T) {
@@ -56,7 +57,12 @@ func TestLinkedPackageClosureUsesOnlyRootAndEffectiveDependencies(t *testing.T) 
 	base := &packages.Package{ID: "base", ExportFile: "base.a"}
 	altOnly := &packages.Package{ID: "alt-only", ExportFile: "alt.a"}
 	unrelated := &packages.Package{ID: "unrelated", ExportFile: "unrelated.a"}
-	runtimePkg := &packages.Package{ID: "runtime", PkgPath: "github.com/xgo-dev/llgo/runtime", ExportFile: "runtime.a"}
+	runtimePkg := &packages.Package{ID: "runtime", PkgPath: llssa.PkgRuntime, ExportFile: "runtime.a"}
+	// An alternate package prepared only for another initial must not pull its
+	// imports (or their runtime requirements and link arguments) into this link.
+	unrelated.PkgPath = "github.com/xgo-dev/llgo/runtime/internal/lib/fmt"
+	unrelatedDep := &packages.Package{ID: "fmt-dependency", ExportFile: "fmt-dependency.a"}
+	unrelated.Imports = map[string]*packages.Package{unrelatedDep.ID: unrelatedDep}
 	root.Imports = map[string]*packages.Package{"base": base}
 
 	wrapped := func(pkg *packages.Package) *aPackage { return &aPackage{Package: pkg} }
@@ -66,15 +72,18 @@ func TestLinkedPackageClosureUsesOnlyRootAndEffectiveDependencies(t *testing.T) 
 	}}
 	basePkg, altPkg := wrapped(base), wrapped(altOnly)
 	unrelatedPkg, runtimeWrapped := wrapped(unrelated), wrapped(runtimePkg)
+	unrelatedDepPkg := wrapped(unrelatedDep)
 	ctx := &context{
 		pkgs: map[*packages.Package]Package{
 			root: rootPkg, base: basePkg, altOnly: altPkg, unrelated: unrelatedPkg, runtimePkg: runtimeWrapped,
+			unrelatedDep: unrelatedDepPkg,
 		},
 		pkgByID: map[string]Package{
 			"root": rootPkg, "base": basePkg, "alt-only": altPkg, "unrelated": unrelatedPkg, "runtime": runtimeWrapped,
+			unrelatedDep.ID: unrelatedDepPkg,
 		},
 	}
-	gotPkgs := linkedPackageClosure(ctx, root, []*aPackage{rootPkg, basePkg, altPkg, unrelatedPkg, runtimeWrapped})
+	gotPkgs := linkedPackageClosure(ctx, root, []*aPackage{rootPkg, basePkg, altPkg, unrelatedPkg, runtimeWrapped, unrelatedDepPkg})
 	got := make([]string, len(gotPkgs))
 	for i, pkg := range gotPkgs {
 		got[i] = pkg.ID
