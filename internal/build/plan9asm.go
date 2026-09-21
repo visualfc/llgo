@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/xgo-dev/llgo/internal/packages"
 	llplan9asm "github.com/xgo-dev/llgo/internal/plan9asm"
@@ -208,13 +207,6 @@ func shouldSkipDarwinDynimportTrampolineAsm(enabled bool, sfile string, src []by
 		bytes.Contains(src, []byte("_trampoline_addr(SB)"))
 }
 
-type plan9AsmSigCacheKey struct {
-	ctx     *context
-	pkgPath string
-}
-
-var plan9AsmSigCache sync.Map // key: plan9AsmSigCacheKey, value: map[string]struct{}
-
 func archSupportsPlan9AsmDefaults(goarch string) bool {
 	return goarch == "386" || goarch == "arm64" || goarch == "amd64" || goarch == "wasm"
 }
@@ -263,22 +255,23 @@ func parsePlan9AsmPkgsEnv(raw string) plan9asmPkgsEnv {
 	}
 }
 
+// plan9asmSigsForPkg returns the Plan 9 assembly signatures for pkgPath. The
+// returned map is cached in ctx and must be treated as read-only.
 func plan9asmSigsForPkg(ctx *context, pkgPath string) (map[string]struct{}, error) {
 	if ctx == nil || pkgPath == "" {
 		return nil, nil
 	}
-	key := plan9AsmSigCacheKey{ctx: ctx, pkgPath: pkgPath}
-	if v, ok := plan9AsmSigCache.Load(key); ok {
+	if v, ok := ctx.plan9asmSigs.Load(pkgPath); ok {
 		return v.(map[string]struct{}), nil
 	}
 
 	sigs := make(map[string]struct{})
 	if !ctx.plan9asmEnabled(pkgPath) {
-		plan9AsmSigCache.Store(key, sigs)
+		ctx.plan9asmSigs.Store(pkgPath, sigs)
 		return sigs, nil
 	}
 	if hasAltPkgForTarget(ctx.buildConf, pkgPath) && !llruntime.HasAdditiveAltPkgForGOARCH(pkgPath, ctx.buildConf.Goarch) {
-		plan9AsmSigCache.Store(key, sigs)
+		ctx.plan9asmSigs.Store(pkgPath, sigs)
 		return sigs, nil
 	}
 
@@ -290,7 +283,7 @@ func plan9asmSigsForPkg(ctx *context, pkgPath string) (map[string]struct{}, erro
 		}
 	}
 	if pkg == nil {
-		plan9AsmSigCache.Store(key, sigs)
+		ctx.plan9asmSigs.Store(pkgPath, sigs)
 		return sigs, nil
 	}
 
@@ -314,7 +307,7 @@ func plan9asmSigsForPkg(ctx *context, pkgPath string) (map[string]struct{}, erro
 			sigs[name] = struct{}{}
 		}
 	}
-	plan9AsmSigCache.Store(key, sigs)
+	ctx.plan9asmSigs.Store(pkgPath, sigs)
 	return sigs, nil
 }
 

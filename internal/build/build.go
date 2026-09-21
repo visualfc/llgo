@@ -1454,6 +1454,10 @@ type context struct {
 	plan9asmReady bool
 	plan9asmMode  plan9asmPkgsEnvMode
 	plan9asmPkgs  map[string]bool
+	// Per-context, package-path-keyed Plan 9 assembly signature cache. Binding
+	// it to this context's lifetime avoids a global {*context, pkgPath} cache
+	// retaining completed frontend graphs.
+	plan9asmSigs sync.Map // package path -> map[string]struct{}
 
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
