@@ -1807,6 +1807,35 @@ func TestExecuteMainLinkPublishesEmscriptenBrowserHost(t *testing.T) {
 	}
 }
 
+func TestExecuteMainLinkReportsStaleGlueError(t *testing.T) {
+	t.Setenv("LLGO_TEST_LINKER_HELPER", "write-html")
+	dir := t.TempDir()
+	output := filepath.Join(dir, "main.html")
+	stale := filepath.Join(dir, "main.mjs")
+	if err := os.Mkdir(stale, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := &context{
+		mode: ModeBuild,
+		buildConf: &Config{
+			Mode:      ModeBuild,
+			BuildMode: BuildModeExe,
+			Target:    "emscripten",
+			Goos:      "js",
+			Goarch:    "wasm",
+			PCLNMode:  PCLNNone,
+		},
+		crossCompile: crosscompile.Export{CC: os.Args[0]},
+	}
+	err := executeMainLink(ctx, &mainLinkPlan{outputPath: output}, false)
+	if err == nil || !strings.Contains(err.Error(), "stale Emscripten glue") {
+		t.Fatalf("stale glue error = %v", err)
+	}
+}
+
 func TestExecuteMainLinkNativeJSOutputKeepsSiblingMjs(t *testing.T) {
 	t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
 	dir := t.TempDir()

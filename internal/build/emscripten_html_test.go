@@ -95,6 +95,20 @@ func TestRemoveStaleEmscriptenGlueReportsError(t *testing.T) {
 	}
 }
 
+func TestIsEmscriptenNamedTarget(t *testing.T) {
+	if isEmscriptenNamedTarget(nil) {
+		t.Fatal("nil config")
+	}
+	if isEmscriptenNamedTarget(&Config{Target: "wasi"}) {
+		t.Fatal("wasi")
+	}
+	for _, target := range []string{"emscripten", "emscripten-memory64", "wasm"} {
+		if !isEmscriptenNamedTarget(&Config{Target: target}) {
+			t.Fatalf("%s: want named Emscripten target", target)
+		}
+	}
+}
+
 func TestNeedsEmscriptenBrowserHost(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -388,6 +402,31 @@ func TestInstallEmscriptenBrowserHostErrors(t *testing.T) {
 	}
 }
 
+func TestInstallEmscriptenBrowserHostSameFilePathError(t *testing.T) {
+	skipUnreadableDir(t)
+	dir := t.TempDir()
+	outDir := filepath.Join(dir, "out")
+	if err := os.Mkdir(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	htmlPath := filepath.Join(outDir, "main.html")
+	if err := os.WriteFile(htmlPath, []byte(`<html></html>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(dir, "wasm_fs.js")
+	if err := os.WriteFile(src, []byte("/* shim */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(outDir, 0o755) })
+	if err := os.Chmod(outDir, 0); err != nil {
+		t.Fatal(err)
+	}
+	err := installEmscriptenBrowserHost(src, htmlPath)
+	if err == nil || !strings.Contains(err.Error(), "copy") {
+		t.Fatalf("same-path probe error = %v", err)
+	}
+}
+
 func TestCopyFileAtomicSamePath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "wasm_fs.js")
@@ -515,6 +554,111 @@ func TestReplaceFileExistingMissingAfterRename(t *testing.T) {
 	dst := filepath.Join(dir, "missing", "out.js")
 	if err := replaceFile(src, dst); err == nil {
 		t.Fatal("replaceFile succeeded with a missing destination directory")
+	}
+}
+
+func skipUnreadableDir(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod does not revoke owner access on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root can access mode 0 directories")
+	}
+}
+
+func TestSameFilePathStatPermissionError(t *testing.T) {
+	skipUnreadableDir(t)
+	dir := t.TempDir()
+	blocked := filepath.Join(dir, "blocked")
+	if err := os.Mkdir(blocked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(blocked, "src.js")
+	if err := os.WriteFile(src, []byte("/* src */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dir, "dst.js")
+	if err := os.WriteFile(dst, []byte("/* dst */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
+	if err := os.Chmod(blocked, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sameFilePath(src, dst); err == nil {
+		t.Fatal("expected source stat permission error")
+	}
+	if _, err := sameFilePath(dst, src); err == nil {
+		t.Fatal("expected destination stat permission error")
+	}
+}
+
+func TestCopyFileAtomicSameFilePathError(t *testing.T) {
+	skipUnreadableDir(t)
+	dir := t.TempDir()
+	blocked := filepath.Join(dir, "blocked")
+	if err := os.Mkdir(blocked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(blocked, "src.js")
+	if err := os.WriteFile(src, []byte("/* src */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
+	if err := os.Chmod(blocked, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFileAtomic(src, filepath.Join(dir, "dst.js")); err == nil {
+		t.Fatal("copyFileAtomic succeeded when the source path could not be probed")
+	}
+}
+
+func TestReplaceFileRemovePermissionError(t *testing.T) {
+	skipUnreadableDir(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.js")
+	if err := os.WriteFile(src, []byte("/* src */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dstDir := filepath.Join(dir, "dst")
+	if err := os.Mkdir(dstDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dstDir, "dst.js")
+	if err := os.WriteFile(dst, []byte("/* dst */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dstDir, 0o755) })
+	if err := os.Chmod(dstDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceFile(src, dst); err == nil {
+		t.Fatal("replaceFile succeeded in a read-only directory")
+	}
+}
+
+func TestReplaceFileLstatPermissionError(t *testing.T) {
+	skipUnreadableDir(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.js")
+	if err := os.WriteFile(src, []byte("/* src */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dstDir := filepath.Join(dir, "dst")
+	if err := os.Mkdir(dstDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(dstDir, "dst.js")
+	if err := os.WriteFile(dst, []byte("/* dst */\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dstDir, 0o755) })
+	if err := os.Chmod(dstDir, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceFile(src, dst); err == nil {
+		t.Fatal("replaceFile succeeded when the destination could not be lstat'd")
 	}
 }
 

@@ -96,6 +96,46 @@ func TestEmscriptenDriverOutput(t *testing.T) {
 	if got := emscriptenDriverOutput(conf, "main.mjs"); got != "main.mjs" {
 		t.Fatalf("emscriptenDriverOutput(main.mjs) = %q, want main.mjs", got)
 	}
+	if got := emscriptenDriverOutput(nil, "main.wasm"); got != "main.wasm" {
+		t.Fatalf("emscriptenDriverOutput(nil, main.wasm) = %q, want main.wasm", got)
+	}
+	if got := emscriptenDriverOutput(&Config{Target: "wasi"}, "main.wasm"); got != "main.wasm" {
+		t.Fatalf("emscriptenDriverOutput(wasi, main.wasm) = %q, want main.wasm", got)
+	}
+}
+
+func TestExplicitOutputFile(t *testing.T) {
+	if explicitOutputFile(nil, false) {
+		t.Fatal("nil config")
+	}
+	if explicitOutputFile(&Config{Mode: ModeBuild, OutFile: "app"}, true) {
+		t.Fatal("multi-pkg")
+	}
+	if explicitOutputFile(&Config{Mode: ModeBuild}, false) {
+		t.Fatal("empty OutFile")
+	}
+	if explicitOutputFile(&Config{Mode: ModeBuild, OutFile: "out/"}, false) {
+		t.Fatal("trailing slash")
+	}
+	if explicitOutputFile(&Config{Mode: ModeBuild, OutFile: `out\`}, false) {
+		t.Fatal("trailing backslash")
+	}
+	dir := t.TempDir()
+	if explicitOutputFile(&Config{Mode: ModeBuild, OutFile: dir}, false) {
+		t.Fatal("output directory")
+	}
+	if explicitOutputFile(&Config{Mode: ModeRun, OutFile: "app"}, false) {
+		t.Fatal("run mode")
+	}
+	if !explicitOutputFile(&Config{Mode: ModeBuild, OutFile: "app"}, false) {
+		t.Fatal("native file")
+	}
+	if explicitOutputFile(&Config{Mode: ModeBuild, Target: "esp32", OutFile: "app.html"}, false) {
+		t.Fatal("non-js named target")
+	}
+	if !explicitOutputFile(&Config{Mode: ModeBuild, Target: "emscripten", Goos: "js", OutFile: "app.html"}, false) {
+		t.Fatal("emscripten html")
+	}
 }
 
 func TestEmscriptenExplicitOutputPath(t *testing.T) {
