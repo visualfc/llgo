@@ -173,21 +173,7 @@ func (c *coverageBuild) instrument(
 		return "", err
 	}
 	if c.go120 {
-		last := outputs[len(outputs)-1]
-		body, err := os.ReadFile(last)
-		if err != nil {
-			return "", err
-		}
-		marker := []byte("\nvar " + fix.PkgIdVar + " uint32\n")
-		pos := bytes.Index(body, marker)
-		if pos < 0 {
-			return "", fmt.Errorf("Go 1.20 coverage declarations not found")
-		}
-		vars := append([]byte("package "+p.Name+"\n"), body[pos:]...)
-		if err := os.WriteFile(outputs[0], vars, 0600); err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(last, body[:pos], 0600); err != nil {
+		if err := extractLegacyCoverageVars(p.Name, fix.PkgIdVar, outputs[len(outputs)-1], outputs[0]); err != nil {
 			return "", err
 		}
 	}
@@ -277,6 +263,25 @@ func (c *coverageBuild) instrument(
 		return "", nil
 	}
 	return pcfg.EmitMetaFile, nil
+}
+
+// Go 1.20 appends counter declarations to the last instrumented input. Separate
+// them so registration runs before any user initializer reads the package ID.
+func extractLegacyCoverageVars(pkgName, pkgIDVar, input, output string) error {
+	body, err := os.ReadFile(input)
+	if err != nil {
+		return err
+	}
+	marker := []byte("\nvar " + pkgIDVar + " uint32\n")
+	pos := bytes.Index(body, marker)
+	if pos < 0 {
+		return fmt.Errorf("Go 1.20 coverage declarations not found")
+	}
+	vars := append([]byte("package "+pkgName+"\n"), body[pos:]...)
+	if err := os.WriteFile(output, vars, 0600); err != nil {
+		return err
+	}
+	return os.WriteFile(input, body[:pos], 0600)
 }
 
 func (c *coverageBuild) reloadCoverageCgo(p *packages.Package, conf *Config, cfg *packages.Config, baseOverlay map[string][]byte) error {

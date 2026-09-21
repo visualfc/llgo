@@ -102,7 +102,7 @@ func main() {
 						t.Fatalf("go build: %v\n%s", err, output)
 					}
 				} else {
-					conf := NewDefaultConf(ModeBuild)
+					conf := coverageTestConfig(t, ModeBuild)
 					conf.OutFile = app
 					conf.Coverage = &CoverageConfig{Mode: tc.mode, Packages: tc.packages}
 					conf.LTO = tc.lto
@@ -193,7 +193,7 @@ func TestCoverageBuildUncoveredMain(t *testing.T) {
 	t.Setenv("LLGO_ROOT", root)
 	dir := t.TempDir()
 	const dependency = "github.com/xgo-dev/llgo/internal/build/testdata/coverage/dep"
-	conf := NewDefaultConf(ModeBuild)
+	conf := coverageTestConfig(t, ModeBuild)
 	conf.OutFile = filepath.Join(dir, "app")
 	if runtime.GOOS == "windows" {
 		conf.OutFile += ".exe"
@@ -240,7 +240,7 @@ func TestCoverageBuildAllFiles(t *testing.T) {
 	}
 	t.Setenv("LLGO_ROOT", root)
 	dir := t.TempDir()
-	conf := NewDefaultConf(ModeBuild)
+	conf := coverageTestConfig(t, ModeBuild)
 	conf.OutFile = filepath.Join(dir, "app")
 	if runtime.GOOS == "windows" {
 		conf.OutFile += ".exe"

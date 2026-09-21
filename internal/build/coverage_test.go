@@ -24,6 +24,15 @@ import (
 	"golang.org/x/tools/cover"
 )
 
+func coverageTestConfig(t *testing.T, mode Mode) *Config {
+	t.Helper()
+	// Most cases check the coverage protocol, not LLVM optimization. The LTO
+	// cases opt into O2 explicitly; native core CI also exercises default Os.
+	conf := NewDefaultConf(mode)
+	conf.OptLevel = optlevel.O0
+	return conf
+}
+
 func TestCoverageRegistration(t *testing.T) {
 	const source = `package p
 
@@ -31,6 +40,8 @@ var GoCoverP uint32
 var GoCover_0 [4]uint32
 var GoCover_1 [5]uint32
 var GoCoverM = [4]byte{1, 2, 3, 4}
+var unusedA, unusedB int
+func unused() {}
 `
 	fix := coverFixupConfig{
 		MetaVar:            "GoCoverM",
@@ -522,22 +533,20 @@ func TestCoverageCgo(t *testing.T) {
 	}
 	t.Setenv("LLGO_ROOT", root)
 	t.Setenv(llgoBuildCache, "1")
-	const run = "^(TestCgoBasicCall|TestC2funcStructs|TestC2funcErrno|TestCgoMallocWrapperSymbols)$"
+	const fixture = "./internal/build/testdata/coveragecgo"
 	for _, mode := range []string{"set", "count", "atomic"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			goProfile := filepath.Join(dir, "go.out")
-			cmd := exec.Command("go", "test", "-tags=llgo", "-count=1", "-run="+run,
-				"-covermode="+mode, "-coverprofile="+goProfile, "./test/cgo")
+			cmd := exec.Command("go", "test", "-count=1", "-covermode="+mode, "-coverprofile="+goProfile, fixture)
 			cmd.Dir = root
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("go test: %v\n%s", err, output)
 			}
 			llgoProfile := filepath.Join(dir, "llgo.out")
-			conf := NewDefaultConf(ModeTest)
+			conf := coverageTestConfig(t, ModeTest)
 			conf.Coverage = &CoverageConfig{Mode: mode, Profile: llgoProfile}
-			conf.RunArgs = []string{"-test.run=" + run}
-			if _, err := Build(Invocation{Args: []string{"./test/cgo"}, Dir: root, Config: conf}); err != nil {
+			if _, err := Build(Invocation{Args: []string{fixture}, Dir: root, Config: conf}); err != nil {
 				t.Fatal(err)
 			}
 			compareCoverageProfiles(t, goProfile, llgoProfile)
@@ -567,7 +576,7 @@ func TestCoverageAgainstGo(t *testing.T) {
 			if err != nil {
 				t.Fatalf("go test: %v\n%s", err, goOutput)
 			}
-			conf := NewDefaultConf(ModeTest)
+			conf := coverageTestConfig(t, ModeTest)
 			conf.CompileOnly = true
 			conf.OutFile = filepath.Join(dir, "basic.test")
 			if runtime.GOOS == "windows" {
@@ -587,21 +596,25 @@ func TestCoverageAgainstGo(t *testing.T) {
 					fingerprints[pkg.Fingerprint] = mode
 				}
 			}
-			pkgs, err = Build(inv)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var found bool
-			for _, pkg := range pkgs {
-				if pkg.Name == "basic" {
-					found = true
-					if !pkg.CacheHit {
-						t.Error("identical covered package missed the archive cache")
+			// One repeat proves cache reuse; the first build of each mode above
+			// independently checks counter-mode fingerprint isolation.
+			if mode == "set" {
+				pkgs, err = Build(inv)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var found bool
+				for _, pkg := range pkgs {
+					if pkg.Name == "basic" {
+						found = true
+						if !pkg.CacheHit {
+							t.Error("identical covered package missed the archive cache")
+						}
 					}
 				}
-			}
-			if !found {
-				t.Fatal("covered package not built")
+				if !found {
+					t.Fatal("covered package not built")
+				}
 			}
 			llgoProfile := filepath.Join(dir, "llgo.out")
 			cmd = exec.Command(conf.OutFile, "-test.coverprofile="+llgoProfile)
@@ -615,9 +628,12 @@ func TestCoverageAgainstGo(t *testing.T) {
 				}
 			}
 			compareCoverageProfiles(t, goProfile, llgoProfile)
+			if mode == "atomic" {
+				checkCoverageParallelExecution(t, conf.OutFile, fixture, llgoProfile)
+			}
 		})
 	}
-	conf := NewDefaultConf(ModeTest)
+	conf := coverageTestConfig(t, ModeTest)
 	conf.OutFile = filepath.Join(t.TempDir(), "plain.test")
 	pkgs, err := Build(Invocation{
 		Args:   []string{"./internal/build/testdata/coverage/basic"},
@@ -631,6 +647,51 @@ func TestCoverageAgainstGo(t *testing.T) {
 		if pkg.Name == "basic" && fingerprints[pkg.Fingerprint] != "" {
 			t.Fatal("ordinary package reused an instrumented archive key")
 		}
+	}
+}
+
+func checkCoverageParallelExecution(t *testing.T, app, dir, reference string) {
+	t.Helper()
+	// Both processes use an already-linked binary. A rendezvous during Build
+	// would incorrectly treat a slow peer's compilation/linking as serialization.
+	commands := commandEnv{
+		dir:     dir,
+		environ: withEnv(os.Environ(), "LLGO_COVER_BARRIER="+t.TempDir()),
+	}
+	conf := &Config{
+		Mode:             ModeTest,
+		BuildParallelism: 2,
+		Coverage: &CoverageConfig{
+			Mode:    "atomic",
+			Profile: filepath.Join(t.TempDir(), "parallel.out"),
+		},
+	}
+	c, err := newCoverageBuild(conf, commands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.close()
+	conf.coverage = c
+	programs := []testProgram{
+		{app: app, pkgDir: dir, pkgName: "first", coverage: true},
+		{app: app, pkgDir: dir, pkgName: "second", coverage: true},
+	}
+	var stdout, stderr bytes.Buffer
+	if result := runNativeTestPrograms(commands, programs, conf, &stdout, &stderr); result.failed || result.skipped != 0 {
+		t.Fatalf("parallel covered tests: %+v\n%s\n%s", result, &stdout, &stderr)
+	}
+	want, err := cover.ParseProfiles(reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, profile := range want {
+		for i := range profile.Blocks {
+			profile.Blocks[i].Count *= 2
+		}
+	}
+	got, err := cover.ParseProfiles(c.options.Profile)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("parallel profile lost counters: got %+v, want %+v, error %v", got, want, err)
 	}
 }
 
@@ -662,7 +723,7 @@ func TestCoverageLTO(t *testing.T) {
 	t.Setenv("LLGO_ROOT", root)
 	for _, mode := range []lto.Mode{lto.Thin, lto.Full} {
 		t.Run(mode.String(), func(t *testing.T) {
-			conf := NewDefaultConf(ModeTest)
+			conf := coverageTestConfig(t, ModeTest)
 			conf.Coverage = &CoverageConfig{}
 			conf.LTO = mode
 			conf.OptLevel = optlevel.O2
@@ -703,7 +764,7 @@ func TestCoverageMultiPackage(t *testing.T) {
 			if output, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("go test: %v\n%s", err, output)
 			}
-			conf := NewDefaultConf(ModeTest)
+			conf := coverageTestConfig(t, ModeTest)
 			conf.BuildParallelism = 2
 			conf.Coverage = &CoverageConfig{
 				Packages: selection,
@@ -711,8 +772,6 @@ func TestCoverageMultiPackage(t *testing.T) {
 			}
 			conf.TestJSON = true
 			conf.BuildTrace = filepath.Join(dir, "trace.json")
-			// Neither test binary can finish until the other has started.
-			t.Setenv("LLGO_COVER_BARRIER", t.TempDir())
 			output := captureCoverageOutput(t, func() {
 				if _, err := Build(Invocation{Args: []string{pattern}, Dir: root, Config: conf}); err != nil {
 					t.Error(err)
@@ -741,15 +800,16 @@ func TestCoverageMultiPackage(t *testing.T) {
 				var event struct {
 					Action  string
 					Test    string
-					Elapsed float64
+					Elapsed *float64
 				}
 				if err := json.Unmarshal(line, &event); err != nil {
 					t.Fatalf("invalid test2json event: %s: %v", line, err)
 				}
 				if event.Action == "pass" && event.Test == "" {
 					passed++
-					if event.Elapsed <= 0 {
-						t.Errorf("missing package elapsed time: %s", line)
+					// test2json rounds to milliseconds; zero is a valid duration.
+					if event.Elapsed == nil || *event.Elapsed < 0 {
+						t.Errorf("missing or invalid package elapsed time: %s", line)
 					}
 				}
 			}
@@ -796,7 +856,7 @@ func TestCoverageAPIsAndExit(t *testing.T) {
 	for _, mode := range []string{"set", "atomic"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
-			conf := NewDefaultConf(ModeTest)
+			conf := coverageTestConfig(t, ModeTest)
 			conf.Coverage = &CoverageConfig{Mode: mode}
 			conf.CompileOnly = true
 			conf.OutFile = filepath.Join(dir, "api.test")
@@ -853,7 +913,7 @@ func TestCoverageFailedPackage(t *testing.T) {
 	for _, jsonOutput := range []bool{false, true} {
 		t.Run(fmt.Sprintf("json=%t", jsonOutput), func(t *testing.T) {
 			profile := filepath.Join(t.TempDir(), "failed.out")
-			conf := NewDefaultConf(ModeTest)
+			conf := coverageTestConfig(t, ModeTest)
 			conf.Coverage = &CoverageConfig{Profile: profile}
 			conf.TestJSON = jsonOutput
 			conf.RunArgs = []string{"-test.run=TestFailureProfile"}
@@ -909,7 +969,7 @@ func TestCoverageStandardLibrary(t *testing.T) {
 	t.Setenv("LLGO_ROOT", root)
 	dir := t.TempDir()
 	profile := filepath.Join(dir, "cover.out")
-	conf := NewDefaultConf(ModeTest)
+	conf := coverageTestConfig(t, ModeTest)
 	conf.Coverage = &CoverageConfig{
 		Mode:     "atomic",
 		Packages: "all",

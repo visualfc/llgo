@@ -110,7 +110,7 @@ func (c *coverageBuild) merge(profile string) error {
 	header := "mode: " + c.options.Mode + "\n"
 	buf := make([]byte, len(header))
 	n, err := io.ReadFull(f, buf)
-	if n == 0 {
+	if n == 0 && err == io.EOF {
 		return nil
 	}
 	if err != nil || string(buf) != header {

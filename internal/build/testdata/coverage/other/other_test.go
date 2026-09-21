@@ -8,7 +8,7 @@ import (
 )
 
 func TestValue(t *testing.T) {
-	coverutil.WaitForPeer(t, "other", "basic")
+	coverutil.WaitForPeer(t)
 	if other.Value() != 7 {
 		t.Fatal("wrong value")
 	}

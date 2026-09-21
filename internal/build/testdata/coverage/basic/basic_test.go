@@ -7,7 +7,7 @@ import (
 )
 
 func TestBranch(t *testing.T) {
-	coverutil.WaitForPeer(t, "basic", "other")
+	coverutil.WaitForPeer(t)
 	if Initial != 1 || Branch(true) != 1 {
 		t.Fatal("wrong branch")
 	}
