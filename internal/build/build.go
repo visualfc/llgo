@@ -1454,6 +1454,9 @@ type context struct {
 	plan9asmReady bool
 	plan9asmMode  plan9asmPkgsEnvMode
 	plan9asmPkgs  map[string]bool
+	// Signatures live no longer than this build/backend context. A global
+	// cache keyed by *context would retain every completed frontend graph.
+	plan9asmSigs sync.Map // package path -> map[string]struct{}
 
 	// pclnExternal is populated while generating the synthetic main module
 	// and completed with final linked PCs by the post-link externalizer.
