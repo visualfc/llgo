@@ -29,11 +29,26 @@ func TestCoverageFlagImplications(t *testing.T) {
 			}
 		})
 	}
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	AddTestBinaryFlags(fs)
-	if err := fs.Parse([]string{"-covermode=unknown"}); err == nil {
-		t.Fatal("accepted unknown coverage mode")
+}
+
+func TestCoverageFlagDefaultsAndErrors(t *testing.T) {
+	for name, register := range map[string]func(*flag.FlagSet){
+		"build": AddCoverageFlags,
+		"test":  AddTestBinaryFlags,
+	} {
+		t.Run(name, func(t *testing.T) {
+			Cover, CoverMode, CoverPkg = true, "atomic", "./..."
+			fs := flag.NewFlagSet(name, flag.ContinueOnError)
+			fs.SetOutput(io.Discard)
+			register(fs)
+			if Cover || CoverMode != "" || CoverPkg != "" {
+				t.Fatalf("stale coverage flags: %v, %q, %q", Cover, CoverMode, CoverPkg)
+			}
+			const want = `invalid value "unknown" for flag -covermode: valid modes are "set", "count", or "atomic"`
+			if err := fs.Parse([]string{"-covermode=unknown"}); err == nil || err.Error() != want {
+				t.Fatalf("invalid mode error = %v; want %s", err, want)
+			}
+		})
 	}
 }
 

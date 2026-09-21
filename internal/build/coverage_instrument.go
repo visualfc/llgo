@@ -14,6 +14,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,14 +91,21 @@ func coverageInputs(p *packages.Package) (inputs []string, needsCgo bool) {
 	return
 }
 
-func (c *coverageBuild) instrument(p *packages.Package, conf *Config, cfg *packages.Config, goroot string, pkgID int) (string, error) {
+func (c *coverageBuild) instrument(
+	p *packages.Package,
+	conf *Config,
+	cfg *packages.Config,
+	goroot string,
+	pkgID int,
+	baseOverlay map[string][]byte,
+) (string, error) {
 	inputs, needsCgo := coverageInputs(p)
 	if len(inputs) == 0 {
 		return "", nil
 	}
 	hash := sha256.Sum256([]byte(p.ID))
 	dir := filepath.Join(c.dir, fmt.Sprintf("%x", hash[:12]))
-	if err := os.MkdirAll(dir, 0777); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
 	pcfg := coverPkgConfig{
@@ -116,20 +124,20 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, cfg *packa
 		return "", err
 	}
 	configFile := filepath.Join(dir, "pkgcfg.json")
-	if err := os.WriteFile(configFile, data, 0666); err != nil {
+	if err := os.WriteFile(configFile, data, 0600); err != nil {
 		return "", err
 	}
 	outputs := []string{filepath.Join(dir, "covervars.go")}
 	toolInputs := slices.Clone(inputs)
 	for i, input := range inputs {
 		outputs = append(outputs, filepath.Join(dir, fmt.Sprintf("%d.cover.go", i)))
-		if source, ok := conf.Overlay[input]; ok {
+		if source, ok := baseOverlay[input]; ok {
 			inputDir := filepath.Join(dir, fmt.Sprint(i))
-			if err := os.MkdirAll(inputDir, 0777); err != nil {
+			if err := os.MkdirAll(inputDir, 0700); err != nil {
 				return "", err
 			}
 			toolInputs[i] = filepath.Join(inputDir, filepath.Base(input))
-			if err := os.WriteFile(toolInputs[i], source, 0666); err != nil {
+			if err := os.WriteFile(toolInputs[i], source, 0600); err != nil {
 				return "", err
 			}
 		}
@@ -141,7 +149,7 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, cfg *packa
 		// source file; Go 1.21+ writes a separate covervars.go first.
 		toolOutputs = outputs[1:]
 	}
-	if err := os.WriteFile(outlist, []byte(strings.Join(toolOutputs, "\n")), 0666); err != nil {
+	if err := os.WriteFile(outlist, []byte(strings.Join(toolOutputs, "\n")), 0600); err != nil {
 		return "", err
 	}
 	prefix := fmt.Sprintf("GoCover_%x_", hash[:6])
@@ -176,10 +184,10 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, cfg *packa
 			return "", fmt.Errorf("Go 1.20 coverage declarations not found")
 		}
 		vars := append([]byte("package "+p.Name+"\n"), body[pos:]...)
-		if err := os.WriteFile(outputs[0], vars, 0666); err != nil {
+		if err := os.WriteFile(outputs[0], vars, 0600); err != nil {
 			return "", err
 		}
-		if err := os.WriteFile(last, body[:pos], 0666); err != nil {
+		if err := os.WriteFile(last, body[:pos], 0600); err != nil {
 			return "", err
 		}
 	}
@@ -247,7 +255,7 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, cfg *packa
 		// Regenerate only this package's cgo outputs using the original build
 		// flags, target environment and overlays. Do not parse/type-check here
 		// or replace graph identities/imports; the shared frontend does that.
-		if err := c.reloadCoverageCgo(p, conf, cfg); err != nil {
+		if err := c.reloadCoverageCgo(p, conf, cfg, baseOverlay); err != nil {
 			return "", err
 		}
 	} else {
@@ -271,12 +279,16 @@ func (c *coverageBuild) instrument(p *packages.Package, conf *Config, cfg *packa
 	return pcfg.EmitMetaFile, nil
 }
 
-func (c *coverageBuild) reloadCoverageCgo(p *packages.Package, conf *Config, cfg *packages.Config) error {
+func (c *coverageBuild) reloadCoverageCgo(p *packages.Package, conf *Config, cfg *packages.Config, baseOverlay map[string][]byte) error {
 	loader := *cfg
 	loader.Mode = packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles
 	loader.Tests = p.ForTest != ""
 	loader.Env = c.commands.environ
-	loader.Overlay = conf.Overlay
+	// Only cgo needs a merged overlay for a new package load. Keep dependency
+	// patches visible to that loader without returning them as worker output.
+	loader.Overlay = make(map[string][]byte, len(baseOverlay)+len(conf.Overlay))
+	maps.Copy(loader.Overlay, baseOverlay)
+	maps.Copy(loader.Overlay, conf.Overlay)
 	patterns := []string{p.PkgPath}
 	if p.PkgPath == "command-line-arguments" {
 		patterns = p.GoFiles

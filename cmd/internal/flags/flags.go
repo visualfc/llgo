@@ -259,6 +259,7 @@ var (
 )
 
 func AddCoverageFlags(fs *flag.FlagSet) {
+	// BoolVar resets Cover; Func does not reset its backing strings.
 	CoverMode = ""
 	CoverPkg = ""
 	fs.BoolVar(&Cover, "cover", false, "Enable coverage analysis")

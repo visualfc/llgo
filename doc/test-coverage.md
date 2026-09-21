@@ -16,6 +16,8 @@ Without `-coverpkg`, reports select the packages under test. Package patterns us
 
 Relative profile paths are resolved from the invocation directory, or from `-outputdir` when specified. `-c` builds an instrumented test executable without creating the requested profile; run that executable with `-test.coverprofile=cover.out` to collect one. `-coverprofile` cannot be combined with `-fuzz`.
 
+During managed coverage runs, `-gocoverdir` and raw `-test.gocoverdir` / `-test.coverprofile` overrides are rejected: the runner owns each process's private output paths and merges the fragments into `-coverprofile`. Standalone executables produced with `-c` still accept the test binary flags directly.
+
 `-v` and `-json` include the coverage output in normal test output. JSON uses the selected Go toolchain's `test2json`. `testing.CoverMode`, `testing.Coverage`, and `runtime/coverage` share the standard library's registry and reporting code. In particular, Go's test coverage metadata writer is initialized during `M.Run` teardown; writer APIs called before that point have the same limitations as in Go. A covered test executable that exits from `TestMain` without running tests can emit data to `GOCOVERDIR` through its exit hooks.
 
 ## Application coverage

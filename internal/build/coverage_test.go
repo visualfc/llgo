@@ -253,6 +253,90 @@ func TestCoverageFailureResult(t *testing.T) {
 	}
 }
 
+func TestCoveragePrivateFlags(t *testing.T) {
+	dir := t.TempDir()
+	profile := filepath.Join(dir, "cover.out")
+	const previous = "existing profile must survive invalid arguments\n"
+	if err := os.WriteFile(profile, []byte(previous), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"-test.gocoverdir", "--test.gocoverdir",
+		"-test.coverprofile", "--test.coverprofile",
+	} {
+		for _, args := range [][]string{{name + "=elsewhere"}, {name, "elsewhere"}, {name + "="}} {
+			conf := &Config{
+				Mode:     ModeTest,
+				Coverage: &CoverageConfig{Profile: profile},
+				RunArgs:  args,
+			}
+			c, err := newCoverageBuild(conf, commandEnv{dir: dir})
+			if c != nil {
+				c.close()
+			}
+			if err == nil || !strings.Contains(err.Error(), name+" is reserved") {
+				t.Fatalf("private arguments %v: %v", args, err)
+			}
+			data, err := os.ReadFile(profile)
+			if err != nil || string(data) != previous {
+				t.Fatalf("invalid arguments truncated profile: %q, %v", data, err)
+			}
+		}
+	}
+	for name, conf := range map[string]*Config{
+		"disabled": {
+			Mode:    ModeTest,
+			RunArgs: []string{"-test.gocoverdir=elsewhere"},
+		},
+		"compile only": {
+			Mode:        ModeTest,
+			CompileOnly: true,
+			Coverage:    &CoverageConfig{},
+			RunArgs:     []string{"-test.gocoverdir=elsewhere"},
+		},
+		"positional": {
+			Mode:     ModeTest,
+			Coverage: &CoverageConfig{},
+			RunArgs:  []string{"--", "-test.gocoverdir=elsewhere", "-test.coverprofile=elsewhere"},
+		},
+		"similar name": {
+			Mode:     ModeTest,
+			Coverage: &CoverageConfig{},
+			RunArgs:  []string{"-test.gocoverdirectory=elsewhere"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, err := newCoverageBuild(conf, commandEnv{dir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c != nil {
+				c.close()
+			}
+		})
+	}
+}
+
+func TestCoverageNoMetadata(t *testing.T) {
+	c := &coverageBuild{
+		noTests: []*packages.Package{{PkgPath: "example.org/empty"}},
+	}
+	for _, compileOnly := range []bool{false, true} {
+		output := captureCoverageOutput(t, func() {
+			if err := c.reportNoTests(&Config{CompileOnly: compileOnly}); err != nil {
+				t.Fatal(err)
+			}
+		})
+		want := "?   \texample.org/empty\t[no test files]\n"
+		if compileOnly {
+			want = ""
+		}
+		if string(output) != want {
+			t.Fatalf("no-metadata output = %q; want %q", output, want)
+		}
+	}
+}
+
 func TestCoverageParallelProfiles(t *testing.T) {
 	dir := t.TempDir()
 	c, err := newCoverageBuild(&Config{
@@ -338,6 +422,58 @@ func TestCoverageInputs(t *testing.T) {
 	got, needsCgo = coverageInputs(p)
 	if needsCgo || !reflect.DeepEqual(got, []string{plain}) {
 		t.Fatalf("ordinary inputs = %v, needs cgo = %v", got, needsCgo)
+	}
+}
+
+func TestCoverageSourceOverlay(t *testing.T) {
+	for _, cgo := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cgo=%v", cgo), func(t *testing.T) {
+			dir := t.TempDir()
+			input := filepath.Join(dir, "p.go")
+			source := []byte("package p\nfunc F() int { return 73 }\n")
+			if cgo {
+				source = []byte("package p\n// static int f() { return 73; }\nimport \"C\"\nfunc F() int { return int(C.f()) }\n")
+			}
+			base := map[string][]byte{input: source}
+			for i := range 1000 {
+				base[filepath.Join(dir, "unrelated", fmt.Sprintf("%d.go", i))] = []byte("package unrelated\n")
+			}
+			conf := &Config{
+				Mode:     ModeTest,
+				Coverage: &CoverageConfig{},
+				Overlay:  make(map[string][]byte),
+			}
+			commands := commandEnv{dir: dir, environ: os.Environ()}
+			c, err := newCoverageBuild(conf, commands)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer c.close()
+			p := &packages.Package{
+				ID:              "command-line-arguments",
+				PkgPath:         "command-line-arguments",
+				Name:            "p",
+				Dir:             dir,
+				GoFiles:         []string{input},
+				CompiledGoFiles: []string{input},
+			}
+			if cgo {
+				p.CompiledGoFiles = nil
+			}
+			meta, err := c.instrument(p, conf, &packages.Config{Dir: dir}, runtime.GOROOT(), 0, base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta == "" || len(p.CompiledGoFiles) == 0 {
+				t.Fatal("overlay source was not instrumented")
+			}
+			if len(conf.Overlay) != 2 {
+				t.Fatalf("worker returned %d entries; want only counters and instrumented source", len(conf.Overlay))
+			}
+			if len(base) != 1001 || !bytes.Equal(base[input], source) {
+				t.Fatal("instrumentation modified the shared input overlay")
+			}
+		})
 	}
 }
 

@@ -38,11 +38,8 @@ func (c *coverageBuild) reportNoTests(conf *Config) error {
 	for _, p := range c.noTests {
 		var report bytes.Buffer
 		meta := c.metaPaths[p.PkgPath]
-		info, err := os.Stat(meta)
-		if err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if err == nil && info.Size() != 0 {
+		// Instrumentation records only existing, nonempty metadata files.
+		if meta != "" {
 			dir := filepath.Dir(meta)
 			cmd := c.commands.configure(exec.Command(c.goCommand, "tool", "covdata", "percent", "-i="+dir))
 			cmd.Stdout = &report
@@ -84,7 +81,7 @@ func (c *coverageBuild) runArgs(args []string) ([]string, string, error) {
 		return nil, "", err
 	}
 	if len(c.manifest) != 0 {
-		if err := os.WriteFile(filepath.Join(dir, "metafiles.txt"), c.manifest, 0666); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "metafiles.txt"), c.manifest, 0600); err != nil {
 			return nil, "", err
 		}
 	}

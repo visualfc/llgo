@@ -98,6 +98,18 @@ func newCoverageBuild(conf *Config, commands commandEnv) (*coverageBuild, error)
 		return nil, fmt.Errorf("coverage is not yet supported on this target")
 	}
 	for _, arg := range conf.RunArgs {
+		if arg == "--" {
+			break
+		}
+		if conf.Mode == ModeTest && !conf.CompileOnly {
+			name, _, _ := strings.Cut(arg, "=")
+			switch name {
+			case "-test.gocoverdir", "--test.gocoverdir", "-test.coverprofile", "--test.coverprofile":
+				// Each test process needs its own metadata and profile fragment.
+				// Reject overrides before truncating the user's merged profile.
+				return nil, fmt.Errorf("%s is reserved for llgo test coverage; use -coverprofile to select the output profile", name)
+			}
+		}
 		if strings.HasPrefix(arg, "-test.fuzz=") && options.Profile != "" {
 			return nil, fmt.Errorf("cannot use -coverprofile flag with -fuzz flag")
 		}
@@ -276,6 +288,8 @@ func (c *coverageBuild) prepare(
 	// Source instrumentation must finish before the shared type-check pass.
 	// Use the same -p budget as SSA/backend/run work; worker-local overlays
 	// avoid publishing partially instrumented source into the shared graph.
+	// The base overlay stays read-only until all workers finish. Each worker
+	// returns only its changes, without copying every dependency's patches.
 	indexes := make([]int, len(targets))
 	outputs := make([]map[string][]byte, len(targets))
 	metadata := make([]string, len(targets))
@@ -287,8 +301,8 @@ func (c *coverageBuild) prepare(
 		span := c.trace.startWorker("coverage", p.PkgPath)
 		defer span.done()
 		local := *conf
-		local.Overlay = maps.Clone(conf.Overlay)
-		meta, err := c.instrument(p, &local, cfg, goroot, ids[p.PkgPath])
+		local.Overlay = make(map[string][]byte)
+		meta, err := c.instrument(p, &local, cfg, goroot, ids[p.PkgPath], conf.Overlay)
 		if err != nil {
 			return fmt.Errorf("cover %s: %w", p.ID, err)
 		}
