@@ -834,6 +834,9 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	if features == nil {
 		groups := groupInitialBuilds(ctx, altPkgs)
 		if len(groups) > 1 {
+			// Rebuild each group's frontend deliberately: sharing the parent's
+			// union SSA would reintroduce cross-program feature dependencies.
+			// Compatible groups still reuse their package-archive cache entries.
 			fallback = nil // Each group retains its own normal error recovery.
 			return buildInitialGroups(inv, ctx, groups)
 		}
@@ -981,7 +984,10 @@ func prepareInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*a
 
 func planInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, discardOutput bool) (*initialPackageLink, error) {
 	name := defaultExecutableName(pkg.PkgPath)
-	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1, &ctx.crossCompile)
+	// A split group may contain only one initial while still belonging to a
+	// check-only multi-build. Choose a temporary path before linking, not just
+	// cleanup afterward: the default name may already be a user file/directory.
+	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1 || discardOutput, &ctx.crossCompile)
 	if err != nil {
 		return nil, err
 	}

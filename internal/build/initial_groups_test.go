@@ -60,6 +60,15 @@ func TestGroupInitialWasmFeatures(t *testing.T) {
 				!groups[1].features.funcInfoEntries || groups[1].features.reflectBridges != (provider == "wasi") {
 				t.Fatalf("Wasm features leaked across initial programs: %+v", groups)
 			}
+			// Initials without SSA entry roots conservatively scan all functions;
+			// that identical scan is shared, not repeated for every such initial.
+			ctx.initial = append(ctx.initial,
+				&packages.Package{Types: types.NewPackage("example.com/external1", "external1")},
+				&packages.Package{Types: types.NewPackage("example.com/external2", "external2")})
+			withUnrooted := groupInitialBuilds(ctx, nil)
+			if len(withUnrooted) != 2 || len(withUnrooted[1].pkgs) != 3 || withUnrooted[1].features != groups[1].features {
+				t.Fatalf("incorrect conservative unrooted grouping: %+v", withUnrooted)
+			}
 		})
 	}
 }
@@ -76,6 +85,11 @@ func TestMultiBuildRuntimeIsolationAndCache(t *testing.T) {
 	build := func(names []string, warm bool) {
 		t.Helper()
 		conf := NewDefaultConf(ModeBuild)
+		if runtime.GOOS == "windows" {
+			// Build resolves a private Config copy; choose the expected suffix
+			// explicitly instead of reading unresolved conf.AppExt afterward.
+			conf.AppExt = ".exe"
+		}
 		conf.OutFile = t.TempDir() + string(os.PathSeparator)
 		args := make([]string, len(names))
 		for i, name := range names {
@@ -152,6 +166,20 @@ func main() { fmt.Println("broken"); missing() }
 `,
 	})
 	conf := multiBuildConfig()
+	if runtime.GOOS == "windows" {
+		conf.AppExt = ".exe"
+	}
+	// Both names already belong to the user. A check-only grouped build must
+	// neither try to link over the directory nor replace/delete the file.
+	existingDir := filepath.Join(root, "plain"+conf.AppExt)
+	existingFile := filepath.Join(root, "local"+conf.AppExt)
+	if err := os.Mkdir(existingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const sentinel = "existing user file"
+	if err := os.WriteFile(existingFile, []byte(sentinel), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	conf.BuildTrace = filepath.Join(t.TempDir(), "groups.json")
 	if _, err := Build(Invocation{Args: []string{"./cmd/plain", "./cmd/local"}, Config: conf, Dir: root}); err != nil {
 		t.Fatal(err)
@@ -174,10 +202,11 @@ func main() { fmt.Println("broken"); missing() }
 		t.Fatalf("expected parent and two group builds in shared trace, got %d", builds)
 	}
 	conf.BuildTrace = ""
-	for _, name := range []string{"plain", "local"} {
-		if _, err := os.Stat(filepath.Join(root, name+conf.AppExt)); !os.IsNotExist(err) {
-			t.Fatalf("split check-only build published %s: %v", name, err)
-		}
+	if info, err := os.Stat(existingDir); err != nil || !info.IsDir() {
+		t.Fatalf("check-only build changed existing directory: %v", err)
+	}
+	if data, err := os.ReadFile(existingFile); err != nil || string(data) != sentinel {
+		t.Fatalf("check-only build changed existing file: %q, %v", data, err)
 	}
 	conf.OutFile = t.TempDir() + string(os.PathSeparator)
 	_, err = Build(Invocation{Args: []string{"./cmd/broken", "./cmd/plain", "./cmd/local"}, Config: conf, Dir: root})

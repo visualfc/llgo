@@ -10,6 +10,8 @@ import (
 // These settings affect package code, not just the final link. Independent
 // programs may share a backend/cache entry only when these settings agree.
 type initialBuildFeatures struct {
+	// Used to group compatible initials; each child re-derives its active
+	// localities from its own package subset instead of overriding the registry.
 	localContext    bool
 	reflectBridges  bool
 	funcInfoEntries bool
@@ -26,6 +28,7 @@ func groupInitialBuilds(ctx *context, alts []*packages.Package) []initialBuildGr
 	}
 	var groups []initialBuildGroup
 	indexes := make(map[initialBuildFeatures]int)
+	var unrootedUse *wasmProgramUse
 	target := ctx.prog.Target()
 	for _, pkg := range ctx.initial {
 		features := initialBuildFeatures{
@@ -33,7 +36,17 @@ func groupInitialBuilds(ctx *context, alts []*packages.Package) []initialBuildGr
 		}
 		if target.GOARCH == "wasm" {
 			roots := wasmReflectRoots(&context{progSSA: ctx.progSSA, initial: []*packages.Package{pkg}})
-			use := analyzeWasmProgramUse(ctx.progSSA, roots)
+			var use *wasmProgramUse
+			if len(roots) == 0 {
+				// Library-style roots use the same conservative function set.
+				// Unlike rooted RTA, this scan can be shared across initials.
+				if unrootedUse == nil {
+					unrootedUse = analyzeWasmProgramUse(ctx.progSSA, nil)
+				}
+				use = unrootedUse
+			} else {
+				use = analyzeWasmProgramUse(ctx.progSSA, roots)
+			}
 			features.reflectBridges = target.WasmProvider == "wasi" && use.usesWasmReflectBridges()
 			features.funcInfoEntries = ctx.buildConf.BuildMode != BuildModeExe || use.usesRuntimeFuncForPC()
 		}
@@ -62,6 +75,8 @@ func buildInitialGroups(inv Invocation, ctx *context, groups []initialBuildGroup
 				args[i] = strings.TrimSuffix(args[i], ".test")
 			}
 		}
+		// Preserve invocation controls. Normal grouping starts before fallback;
+		// fallback builds one root at a time and therefore cannot enter grouping.
 		child := inv
 		child.Args, child.Config, child.Dir = args, conf, ctx.commands.dir
 		child.multipleInitials = true

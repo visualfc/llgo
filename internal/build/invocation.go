@@ -27,6 +27,7 @@ type Invocation struct {
 	// compiling only initials that can safely share package artifacts.
 	multipleInitials bool
 	initialFeatures  *initialBuildFeatures
+	// A child borrows this tracer; only its owning parent may close/write it.
 	parentBuildTrace *buildTracer
 }
 
