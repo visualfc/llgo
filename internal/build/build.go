@@ -2152,8 +2152,7 @@ func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainL
 	}
 
 	// Only link runtime objects when needed (or for host builds where runtime is always required).
-	linkRuntime := needRuntime || needPyInit || ctx.buildConf.Target == ""
-	if linkRuntime {
+	if needRuntime || needPyInit || ctx.buildConf.Target == "" {
 		linkArgs = append(linkArgs, rtLinkArgs...)
 		archiveInputs = append(archiveInputs, rtLinkInputs...)
 	}
@@ -2164,13 +2163,13 @@ func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainL
 	var funcInfo []funcInfoRecord
 	var pcLineInfo []pcLineRecord
 	if ctx.buildConf.PCLNMode != PCLNNone {
-		// When the runtime tree is not linked into the executable, its function
-		// bodies are absent, so their funcinfo/PC-line metadata must not be copied
-		// into the synthetic main module. Metadata for the generated
-		// runtime.main/runtime.goexit frames is produced by genMainModule, not by
-		// linkedOrder, so excluding the runtime packages here keeps those records.
+		// Native links supply runtime archives even for runtime-free programs;
+		// archive extraction may leave all their function bodies out. Select
+		// metadata by semantic runtime use, including generated startup calls,
+		// rather than by the presence of those archives on the link command.
+		// genMainModule supplies runtime.main/runtime.goexit records separately.
 		metadataOrder := linkedOrder
-		if !linkRuntime {
+		if !needRuntime && !needPyInit && !needsWasmRuntimeScheduler(ctx) && (ctx.prog == nil || !ctx.prog.NeedsLocalContext()) {
 			metadataOrder = filterOutRuntimePkgs(linkedOrder)
 		}
 		funcInfo = prepareFuncInfoTableRecords(collectFuncInfo(metadataOrder), nil)
@@ -2428,7 +2427,7 @@ func isRuntimePkg(pkgPath string) bool {
 
 // filterOutRuntimePkgs returns the packages in order with the llgo runtime tree
 // removed. It is used to keep runtime metadata out of the synthetic main module
-// when the runtime archives are not linked into the executable.
+// when the program does not use runtime functions, regardless of archive inputs.
 func filterOutRuntimePkgs(pkgs []Package) []Package {
 	out := make([]Package, 0, len(pkgs))
 	for _, pkg := range pkgs {
