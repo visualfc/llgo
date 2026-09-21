@@ -363,6 +363,21 @@ func TestShouldScanFFI(t *testing.T) {
 	if shouldScanFFI(&Config{CheckFFI: true, Tags: "llgo_noffi"}) {
 		t.Fatal("explicit noffi tags should not scan")
 	}
+	if shouldScanFFI(&Config{CheckFFI: true, Goos: "wasip1", Goarch: "wasm"}) {
+		t.Fatal("wasip1 should skip the libffi scan")
+	}
+	if shouldScanFFI(&Config{CheckFFI: true, Target: "wasi"}) {
+		t.Fatal("-target wasi should skip the libffi scan")
+	}
+	if shouldScanFFI(&Config{CheckFFI: true, Target: "wasip1"}) {
+		t.Fatal("-target wasip1 should skip the libffi scan")
+	}
+	if !shouldScanFFI(&Config{CheckFFI: true, Goos: "js", Goarch: "wasm"}) {
+		t.Fatal("js/wasm should still scan for libffi")
+	}
+	if wasiSkipsLibffiScan(nil) {
+		t.Fatal("nil config is not a WASI target")
+	}
 }
 
 func TestInvocationUsesExplicitWorkingDirectory(t *testing.T) {

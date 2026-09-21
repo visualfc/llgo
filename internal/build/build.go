@@ -145,7 +145,8 @@ type Config struct {
 	LTO      lto.Mode
 	// CheckFFI selects reflect/runtime without libffi when the package graph
 	// does not use libffi. A Go SSA reachability scan decides this before the
-	// LLVM backend and LTO run, so those stages execute once.
+	// LLVM backend and LTO run, so those stages execute once. WASI Preview 1
+	// skips the scan: it has no host libffi and uses typed reflection bridges.
 	CheckFFI           bool
 	LTOPlugin          lto.PassPlugin
 	BinPath            string
@@ -1004,7 +1005,21 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 var errRestartWithoutFFI = errors.New("restart build without libffi")
 
 func shouldScanFFI(conf *Config) bool {
-	return conf != nil && conf.CheckFFI && !conf.noFFIRestart && !hasBuildTag(conf.Tags, "llgo_noffi")
+	return conf != nil && conf.CheckFFI && !conf.noFFIRestart && !hasBuildTag(conf.Tags, "llgo_noffi") && !wasiSkipsLibffiScan(conf)
+}
+
+// wasiSkipsLibffiScan reports WASI Preview 1 targets. They have no host libffi
+// and use typed reflection bridges, so the noffi restart must not run.
+func wasiSkipsLibffiScan(conf *Config) bool {
+	if conf == nil {
+		return false
+	}
+	switch conf.Goos {
+	case "wasip1", "wasi":
+		return true
+	}
+	target := conf.Target
+	return target == "wasi" || target == "wasip1" || strings.HasPrefix(target, "wasi")
 }
 
 func hasLinkedReflect(pkgs []*aPackage) bool {
