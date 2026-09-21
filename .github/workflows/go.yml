@@ -163,9 +163,9 @@ jobs:
             main_go_test=("${go_test[@]}")
           fi
 
-          # Keep the direct language-behavior suite in a separate profile so
-          # its coverage remains independently visible. Compiler-only source
-          # and diagnostic fixtures are embedded under test/cmd/llgo, so the
+          # Keep the direct language-behavior suite in a separate invocation.
+          # Its host Go coverage is not uploaded: test/ is measured by LLGo.
+          # Compiler-only source and diagnostic fixtures live in test/cmd/llgo;
           # remaining test/go sources pass go test's default vet checks.
           go list ./... \
             | grep -v '^github.com/xgo-dev/llgo/test/go$' \
@@ -186,8 +186,7 @@ jobs:
           if [[ -n "$LLGO_GO_TEST_OVERLAY" ]]; then
             go_test+=("-overlay=$LLGO_GO_TEST_OVERLAY")
           fi
-          "${go_test[@]}" -timeout 45m \
-            -coverprofile="coverage-test-go.txt" -covermode=atomic ./test/go
+          "${go_test[@]}" -timeout 45m ./test/go
 
       - name: Test with embedded emulator env
         env:
@@ -198,13 +197,27 @@ jobs:
         shell: bash
         run: bash doc/_readme/scripts/check_std_cover.sh
 
+      - name: Exclude host Go coverage of test fixtures
+        if: steps.test_coverage.outputs.windows_runtime_corruption != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/scripts/test_filter_host_coverage.py
+          # Keep all host tests, but only LLGo may contribute coverage for
+          # test/. Filter records, not test packages, before Codecov merges them.
+          for profile in coverage-main coverage-compiler; do
+            awk -f .github/scripts/filter_host_coverage.awk \
+              "$profile.txt" > "$profile-host.txt"
+          done
+
       - name: Upload coverage reports to Codecov
         if: steps.test_coverage.outputs.windows_runtime_corruption != 'true'
         uses: codecov/codecov-action@v7
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           use_oidc: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-          files: coverage-main.txt,coverage-compiler.txt,coverage-test-go.txt
+          files: coverage-main-host.txt,coverage-compiler-host.txt
+          flags: go-tests
           disable_search: true
 
   macos-lto-plugin:
@@ -327,6 +340,7 @@ jobs:
           use_oidc: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           files: coverage-dev-globaldce-unit.txt,coverage-dev-lto-globaldce-cl.txt,coverage-dev-lto-globaldce-symbols.txt,coverage-dev-lto-plugin-cl.txt
           flags: dev-lto-globaldce
+          disable_search: true
 
       # Tests deletion of unreachable Go methods.
       # See https://github.com/xgo-dev/llgo/issues/1853.

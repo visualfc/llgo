@@ -298,6 +298,14 @@ test_flags=(-timeout="${LLGO_TEST_TIMEOUT:-20m}" -modfile="${modfile}")
 if [[ -n "${LLGO_TEST_JOBS:-}" ]]; then
 	test_flags=(-p="${LLGO_TEST_JOBS}" "${test_flags[@]}")
 fi
+if [[ -n "${LLGO_TEST_COVERPROFILE:-}" ]]; then
+	# Reuse this invocation, including its package selection and worker budget.
+	# Atomic counters keep concurrent test execution accurately instrumented.
+	test_flags+=(-covermode=atomic "-coverprofile=${LLGO_TEST_COVERPROFILE}")
+	if [[ -n "${LLGO_TEST_COVERPKG:-}" ]]; then
+		test_flags+=("-coverpkg=${LLGO_TEST_COVERPKG}")
+	fi
+fi
 if [[ "${LLGO_TEST_COMPILE_ONLY:-}" == 1 ]]; then
 	test_flags+=(-run='^$')
 fi

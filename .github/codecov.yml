@@ -11,5 +11,14 @@ ignore:
   - "internal/firmware"
   - "internal/flash"
   - "internal/monitor"
-  - "test/go"
   - "xtool"
+
+# test/ is measured only by LLGo. The host Go workflow filters those records
+# before uploading; a global ignore would also discard the LLGo coverage.
+flags:
+  go-tests:
+    carryforward: false
+  llgo-tests:
+    paths:
+      - "test/"
+    carryforward: false
