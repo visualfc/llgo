@@ -12,6 +12,7 @@ import (
 	"github.com/xgo-dev/llgo/cmd/internal/env"
 	"github.com/xgo-dev/llgo/cmd/internal/install"
 	"github.com/xgo-dev/llgo/cmd/internal/lldb"
+	"github.com/xgo-dev/llgo/cmd/internal/mod"
 	"github.com/xgo-dev/llgo/cmd/internal/monitor"
 	"github.com/xgo-dev/llgo/cmd/internal/run"
 	"github.com/xgo-dev/llgo/cmd/internal/test"
@@ -52,6 +53,10 @@ type Cmd_lldb struct {
 type App struct {
 	xcmd.App
 }
+type Cmd_mod struct {
+	xcmd.Command
+	*App
+}
 type Cmd_monitor struct {
 	xcmd.Command
 	*App
@@ -90,13 +95,14 @@ func (this *App) Main() {
 	_xgo_obj4 := &Cmd_get{App: this}
 	_xgo_obj5 := &Cmd_install{App: this}
 	_xgo_obj6 := &Cmd_lldb{App: this}
-	_xgo_obj7 := &Cmd_monitor{App: this}
-	_xgo_obj8 := &Cmd_run{App: this}
-	_xgo_obj9 := &Cmd_test{App: this}
-	_xgo_obj10 := &Cmd_tool{App: this}
-	_xgo_obj11 := &Cmd_tool_compile{App: this}
-	_xgo_obj12 := &Cmd_version{App: this}
-	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11, _xgo_obj12)
+	_xgo_obj7 := &Cmd_mod{App: this}
+	_xgo_obj8 := &Cmd_monitor{App: this}
+	_xgo_obj9 := &Cmd_run{App: this}
+	_xgo_obj10 := &Cmd_test{App: this}
+	_xgo_obj11 := &Cmd_tool{App: this}
+	_xgo_obj12 := &Cmd_tool_compile{App: this}
+	_xgo_obj13 := &Cmd_version{App: this}
+	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11, _xgo_obj12, _xgo_obj13)
 }
 
 //line cmd/llgo/build_cmd.gox:20
@@ -228,6 +234,25 @@ func (this *Cmd_lldb) Main(_xgo_arg0 string) {
 }
 func (this *Cmd_lldb) Classfname() string {
 	return "lldb"
+}
+
+//line cmd/llgo/mod_cmd.gox:16
+func (this *Cmd_mod) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/mod_cmd.gox:16:1
+	this.Use("mod <command> [arguments]")
+//line cmd/llgo/mod_cmd.gox:18:1
+	this.Short("Manage modules using the Go toolchain")
+//line cmd/llgo/mod_cmd.gox:21:1
+	this.FlagOff()
+//line cmd/llgo/mod_cmd.gox:23:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/mod_cmd.gox:24:1
+		mod.Main(args)
+	})
+}
+func (this *Cmd_mod) Classfname() string {
+	return "mod"
 }
 
 //line cmd/llgo/monitor_cmd.gox:21
