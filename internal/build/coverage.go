@@ -101,17 +101,18 @@ func newCoverageBuild(conf *Config, commands commandEnv) (*coverageBuild, error)
 		if arg == "--" {
 			break
 		}
-		if conf.Mode == ModeTest && !conf.CompileOnly {
-			name, _, _ := strings.Cut(arg, "=")
-			switch name {
-			case "-test.gocoverdir", "--test.gocoverdir", "-test.coverprofile", "--test.coverprofile":
+		name, _, _ := strings.Cut(arg, "=")
+		switch name {
+		case "-test.gocoverdir", "--test.gocoverdir", "-test.coverprofile", "--test.coverprofile":
+			if conf.Mode == ModeTest && !conf.CompileOnly {
 				// Each test process needs its own metadata and profile fragment.
 				// Reject overrides before truncating the user's merged profile.
 				return nil, fmt.Errorf("%s is reserved for llgo test coverage; use -coverprofile to select the output profile", name)
 			}
-		}
-		if strings.HasPrefix(arg, "-test.fuzz=") && options.Profile != "" {
-			return nil, fmt.Errorf("cannot use -coverprofile flag with -fuzz flag")
+		case "-test.fuzz", "--test.fuzz":
+			if options.Profile != "" {
+				return nil, fmt.Errorf("cannot use -coverprofile flag with -fuzz flag")
+			}
 		}
 	}
 	if options.Profile != "" && !conf.CompileOnly {

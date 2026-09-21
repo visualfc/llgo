@@ -213,11 +213,6 @@ func TestCoverageOptions(t *testing.T) {
 			Target:   "wasi",
 			Coverage: &CoverageConfig{},
 		},
-		"fuzz profile": {
-			Mode:     ModeTest,
-			RunArgs:  []string{"-test.fuzz=Fuzz"},
-			Coverage: &CoverageConfig{Profile: "cover.out"},
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if c, err := newCoverageBuild(conf, commands); err == nil {
@@ -241,6 +236,46 @@ func TestCoverageOptions(t *testing.T) {
 			t.Fatalf("-c created a profile: %v", err)
 		}
 	})
+}
+
+func TestCoverageFuzzFlags(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		wantErr bool
+	}{
+		{[]string{"-test.fuzz=Fuzz"}, true},
+		{[]string{"--test.fuzz=Fuzz"}, true},
+		{[]string{"-test.fuzz", "Fuzz"}, true},
+		{[]string{"--test.fuzz", "Fuzz"}, true},
+		{[]string{"-test.fuzzworker"}, false},
+		{[]string{"--", "-test.fuzz=Fuzz"}, false},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			for _, profile := range []string{"", "cover.out"} {
+				dir := t.TempDir()
+				conf := &Config{
+					Mode:     ModeTest,
+					RunArgs:  tc.args,
+					Coverage: &CoverageConfig{Profile: profile},
+				}
+				c, err := newCoverageBuild(conf, commandEnv{dir: dir})
+				if c != nil {
+					c.close()
+				}
+				if tc.wantErr && profile != "" {
+					const want = "cannot use -coverprofile flag with -fuzz flag"
+					if err == nil || err.Error() != want {
+						t.Fatalf("error = %v; want %s", err, want)
+					}
+					if _, err := os.Stat(filepath.Join(dir, profile)); !os.IsNotExist(err) {
+						t.Fatalf("invalid arguments created a profile: %v", err)
+					}
+				} else if err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
 }
 
 func TestCoverageFailureResult(t *testing.T) {

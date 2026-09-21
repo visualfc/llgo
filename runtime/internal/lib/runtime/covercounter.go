@@ -13,7 +13,7 @@ type covCounterBlob struct {
 
 var coverageCounters []covCounterBlob
 
-// Only a covered test main installs this callback. Keep the normal runtime
+// Only a covered main installs this callback. Keep the normal runtime
 // independent of internal/coverage and its substantial reporting dependency tree.
 var coverageExitHook func(int)
 
@@ -42,7 +42,7 @@ func registerCoverage(
 ) uint32 {
 	id := addCoverageMeta(meta, size, hash, pkgpath, pkgid, mode, 1)
 	if id == 0 {
-		panic("runtime.addCovMeta: coverage package map collision")
+		panic("runtime.registerCoverage: coverage package map collision")
 	}
 	coverageCounters = append(coverageCounters, counters...)
 	return id
