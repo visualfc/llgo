@@ -4041,14 +4041,17 @@ func clFile(ctx *context, args []string, cFile, expFile, pkgPath string, verbose
 // fingerprint preprocessor pass and the object compilation pass. Keeping this
 // in one place prevents cache keys from drifting away from compilation.
 func llgoFileCompilerArgs(ctx *context, args []string, source string) []string {
-	args = append(slices.Clone(args), debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile)...)
-
-	// A configured C++ driver would otherwise treat a .c input as C++ and
-	// mangle its symbols.
-	if filepath.Ext(source) == ".c" {
-		args = append(args, "-x", "c")
+	// A configured C++ driver must not change the source language or mangle C
+	// symbols. Put these defaults before explicit flags so cgo can override
+	// the language of generated .c preambles (for example, -x objective-c).
+	var defaults []string
+	switch filepath.Ext(source) {
+	case ".c":
+		defaults = []string{"-x", "c"}
+	case ".m":
+		defaults = []string{"-x", "objective-c"}
 	}
-	return args
+	return slices.Concat(defaults, args, debugInfoCompilerArgs(ctx.buildConf, &ctx.crossCompile))
 }
 
 func removeFiles(files []string) {
