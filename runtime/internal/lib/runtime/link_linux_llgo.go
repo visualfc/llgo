@@ -4,11 +4,42 @@
 package runtime
 
 import (
-	_ "unsafe"
+	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 	cliteos "github.com/xgo-dev/llgo/runtime/internal/clite/os"
 )
+
+// auxv is the process auxiliary vector without the terminating AT_NULL pair.
+// Keep this contract in sync with the Go runtime: x/sys/cpu and x/sys/unix
+// access runtime.getAuxv through go:linkname.
+var auxv = processAuxv()
+
+func processAuxv() []uintptr {
+	// argc == 0 is valid: argv[0] is the nil terminator and envp starts at
+	// argv[1], so the same layout walk still applies.
+	if c.Argc < 0 || c.Argv == nil {
+		return nil
+	}
+
+	// argv is followed by a nil pointer, envp, another nil pointer, and auxv.
+	// These scans intentionally trust the kernel-provided process-start layout;
+	// do not reuse them for untrusted memory.
+	p := c.Advance(c.Argv, int(c.Argc)+1)
+	for *p != nil {
+		p = c.Advance(p, 1)
+	}
+	p = c.Advance(p, 1)
+	values := (*uintptr)(unsafe.Pointer(p))
+	pairs := 0
+	for c.Index(values, pairs*2) != 0 {
+		pairs++
+	}
+	return unsafe.Slice(values, pairs*2)
+}
+
+//go:linkname getAuxv runtime.getAuxv
+func getAuxv() []uintptr { return auxv }
 
 //go:linkname os_runtime_args os.runtime_args
 func os_runtime_args() []string {
