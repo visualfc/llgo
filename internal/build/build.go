@@ -457,7 +457,20 @@ func Do(args []string, conf *Config) ([]Package, error) {
 }
 
 // Build executes one build invocation.
-func Build(inv Invocation) (result []Package, resultErr error) {
+func Build(inv Invocation) ([]Package, error) {
+	var plan initialBuildPlan
+	result, err := buildInvocation(inv, &plan)
+	if len(plan.invocations) == 0 {
+		return result, err
+	}
+	// End the analysis frame (including its deferred LLVM cleanup) before
+	// loading a child graph. The plan contains names/configuration, not the
+	// parent's packages, syntax or SSA.
+	defer plan.finishTrace()
+	return buildInitialGroups(plan.invocations)
+}
+
+func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, resultErr error) {
 	var fallback *multiBuildFallback
 	defer func() {
 		if resultErr == nil || fallback == nil || inv.disableMultiFallback {
@@ -494,12 +507,17 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		"packages":    slices.Clone(inv.Args),
 		"parallelism": conf.parallelism(),
 	})
-	defer func() {
+	finishTrace := func() {
 		buildSpan.done()
 		if inv.parentBuildTrace == nil {
 			if closeErr := buildTrace.close(); closeErr != nil {
 				fmt.Fprintf(os.Stderr, "warning: write build trace: %v\n", closeErr)
 			}
+		}
+	}
+	defer func() {
+		if len(plan.invocations) == 0 {
+			finishTrace()
 		}
 	}()
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
@@ -810,6 +828,19 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// whole-program consumers alive through deadcode analysis and strong ABI type
 	// override emission, then release them on every normal, error, or panic path.
 	defer ctx.disposeBackendPrograms()
+	features := inv.initialFeatures
+	var groups []initialBuildGroup
+	if features == nil && target.GOARCH != "wasm" {
+		// Native locality requirements are known from the prepared package
+		// declarations. Do not construct union SSA that will be discarded.
+		groups = groupInitialBuilds(ctx, altPkgs)
+		if len(groups) > 1 {
+			plan.invocations = initialGroupInvocations(inv, ctx, groups)
+			plan.finishTrace = finishTrace
+			fallback = nil
+			return nil, nil
+		}
+	}
 
 	// default runtime globals must be registered before packages are built
 	// The generated program must report the GOROOT whose standard library is
@@ -830,15 +861,18 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
 	ctx.frontendOptions.ReceiverNilChecks = collectReceiverNilChecks(initial, altPkgs)
-	features := inv.initialFeatures
 	if features == nil {
-		groups := groupInitialBuilds(ctx, altPkgs)
+		if target.GOARCH == "wasm" {
+			groups = groupInitialBuilds(ctx, altPkgs)
+		}
 		if len(groups) > 1 {
 			// Rebuild each group's frontend deliberately: sharing the parent's
 			// union SSA would reintroduce cross-program feature dependencies.
 			// Compatible groups still reuse their package-archive cache entries.
 			fallback = nil // Each group retains its own normal error recovery.
-			return buildInitialGroups(inv, ctx, groups)
+			plan.invocations = initialGroupInvocations(inv, ctx, groups)
+			plan.finishTrace = finishTrace
+			return nil, nil
 		}
 		if len(groups) == 1 {
 			features = &groups[0].features

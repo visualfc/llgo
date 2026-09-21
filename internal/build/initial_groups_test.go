@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"weak"
 
 	"github.com/xgo-dev/llgo/internal/packages"
 	llssa "github.com/xgo-dev/llgo/ssa"
@@ -236,7 +237,34 @@ func TestInitialGroupUsesOriginalTestPackagePath(t *testing.T) {
 	conf := NewDefaultConf(ModeTest)
 	ctx := &context{mode: ModeTest, buildConf: conf, commands: commandEnv{dir: root}}
 	groups := []initialBuildGroup{{pkgs: []*packages.Package{{PkgPath: "example.com/multibuild/first.test"}}}}
-	if _, err := buildInitialGroups(Invocation{}, ctx, groups); err != nil {
+	if _, err := buildInitialGroups(initialGroupInvocations(Invocation{}, ctx, groups)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestInitialGroupInvocationsDoNotRetainParentPackages(t *testing.T) {
+	children, parent := func() ([]Invocation, weak.Pointer[packages.Package]) {
+		pkg := &packages.Package{PkgPath: "example.com/first.test"}
+		conf := NewDefaultConf(ModeTest)
+		conf.BuildParallelism = 3
+		ctx := &context{mode: ModeTest, buildConf: conf, commands: commandEnv{dir: "source"}}
+		groups := []initialBuildGroup{{features: initialBuildFeatures{localContext: true}, pkgs: []*packages.Package{pkg}}}
+		children := initialGroupInvocations(Invocation{disableMultiFallback: true}, ctx, groups)
+		// Mutating the original input must not change a prepared invocation.
+		groups[0].features.localContext = false
+		pkg.PkgPath = "changed"
+		conf.BuildParallelism = 7
+		return children, weak.Make(pkg)
+	}()
+	child := children[0]
+	if !slices.Equal(child.Args, []string{"example.com/first"}) || child.Dir != "source" ||
+		child.Config.BuildParallelism != 3 || !child.initialFeatures.localContext ||
+		!child.disableMultiFallback || !child.multipleInitials {
+		t.Fatalf("group invocation lost its independent snapshot: %+v", child)
+	}
+	runtime.GC()
+	if parent.Value() != nil {
+		t.Fatal("prepared child still retains the parent package graph")
+	}
+	runtime.KeepAlive(children)
 }

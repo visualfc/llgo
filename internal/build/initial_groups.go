@@ -22,6 +22,13 @@ type initialBuildGroup struct {
 	pkgs     []*packages.Package
 }
 
+// A plan crosses the analysis lifetime boundary without retaining its graph.
+// Trace ownership moves to Build so its parent span still encloses the children.
+type initialBuildPlan struct {
+	invocations []Invocation
+	finishTrace func()
+}
+
 func groupInitialBuilds(ctx *context, alts []*packages.Package) []initialBuildGroup {
 	if len(ctx.initial) < 2 || ctx.mode == ModeGen {
 		return nil
@@ -61,11 +68,8 @@ func groupInitialBuilds(ctx *context, alts []*packages.Package) []initialBuildGr
 	return groups
 }
 
-func buildInitialGroups(inv Invocation, ctx *context, groups []initialBuildGroup) ([]Package, error) {
-	var result []Package
-	var failures []error
-	// Keep the original package-worker budget. Ordinary test batches generally
-	// form a single group and retain the shared frontend and native test DAG.
+func initialGroupInvocations(inv Invocation, ctx *context, groups []initialBuildGroup) []Invocation {
+	children := make([]Invocation, 0, len(groups))
 	for _, group := range groups {
 		conf := ctx.buildConf.clone()
 		args := make([]string, len(group.pkgs))
@@ -80,8 +84,22 @@ func buildInitialGroups(inv Invocation, ctx *context, groups []initialBuildGroup
 		child := inv
 		child.Args, child.Config, child.Dir = args, conf, ctx.commands.dir
 		child.multipleInitials = true
-		child.initialFeatures = &group.features
+		// Taking &group.features would retain group.pkgs and their entire
+		// frontend graph even after the parent build frame has returned.
+		features := group.features
+		child.initialFeatures = &features
 		child.parentBuildTrace = ctx.buildTrace
+		children = append(children, child)
+	}
+	return children
+}
+
+func buildInitialGroups(children []Invocation) ([]Package, error) {
+	var result []Package
+	var failures []error
+	// Keep the original package-worker budget. Ordinary test batches generally
+	// form a single group and retain the shared frontend and native test DAG.
+	for _, child := range children {
 		pkgs, err := Build(child)
 		result = append(result, pkgs...)
 		if err != nil {
