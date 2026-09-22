@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/xgo-dev/llgo/cmd/internal/gotool"
@@ -77,7 +78,7 @@ func Main(command string, args []string) {
 
 // BuildMain runs a Go command after applying LLGo source-selection rules.
 func BuildMain(command string, args []string) {
-	inv, err := Build(command, args, true)
+	inv, err := Build(command, args)
 	if err == nil {
 		err = inv.Run()
 	}
@@ -101,8 +102,8 @@ func Exit(command string, err error) {
 
 // Build creates an invocation for a package-aware Go command. LLGo's -target
 // flag is consumed here; target and user build tags are merged with LLGo's
-// defaults when includeDefaults is true.
-func Build(command string, args []string, includeDefaults bool) (Invocation, error) {
+// defaults, except for list module queries which do not select source files.
+func Build(command string, args []string) (Invocation, error) {
 	query, err := parseBuildArgs(args)
 	if err != nil {
 		return Invocation{}, err
@@ -130,7 +131,7 @@ func Build(command string, args []string, includeDefaults bool) (Invocation, err
 		targetTags = config.BuildTags
 	}
 	var defaults []string
-	if includeDefaults {
+	if command != "list" || !query.module {
 		defaults = splitTags(build.DefaultBuildTags())
 	}
 	if tags := mergeTags(defaults, targetTags, query.tags); len(tags) != 0 {
@@ -165,10 +166,10 @@ func addBuildTags(args []string, tags string) ([]string, error) {
 }
 
 type buildQuery struct {
-	target    string
-	targetSet bool
-	tags      []string
-	goArgs    []string
+	target string
+	module bool
+	tags   []string
+	goArgs []string
 }
 
 func parseBuildArgs(args []string) (buildQuery, error) {
@@ -187,21 +188,32 @@ func parseBuildArgs(args []string) (buildQuery, error) {
 			index++
 			if arg == "-target" {
 				query.target = args[index]
-				query.targetSet = true
+				if query.target == "" {
+					return buildQuery{}, errors.New("-target requires a non-empty value")
+				}
 			} else {
 				query.tags = append(query.tags, splitTags(args[index])...)
 			}
 		case strings.HasPrefix(arg, "-target="):
 			query.target = strings.TrimPrefix(arg, "-target=")
-			query.targetSet = true
+			if query.target == "" {
+				return buildQuery{}, errors.New("-target requires a non-empty value")
+			}
 		case strings.HasPrefix(arg, "-tags="):
 			query.tags = append(query.tags, splitTags(strings.TrimPrefix(arg, "-tags="))...)
+		case arg == "-m":
+			query.module = true
+			query.goArgs = append(query.goArgs, arg)
+		case strings.HasPrefix(arg, "-m="):
+			// Preserve Go's boolean spellings and leave invalid values for Go
+			// to diagnose. Values consumed by -tags/-target never reach here.
+			if enabled, err := strconv.ParseBool(strings.TrimPrefix(arg, "-m=")); err == nil {
+				query.module = enabled
+			}
+			query.goArgs = append(query.goArgs, arg)
 		default:
 			query.goArgs = append(query.goArgs, arg)
 		}
-	}
-	if query.targetSet && query.target == "" {
-		return buildQuery{}, errors.New("-target requires a non-empty value")
 	}
 	return query, nil
 }

@@ -14,22 +14,6 @@ import (
 	"github.com/xgo-dev/llgo/internal/mockable"
 )
 
-func TestModuleMode(t *testing.T) {
-	for _, flag := range []string{"-m", "-m=1", "-m=t", "-m=T", "-m=TRUE", "-m=true", "-m=True"} {
-		if !moduleMode([]string{flag, "-json", "all"}) {
-			t.Errorf("module query %q was not detected", flag)
-		}
-	}
-	for _, flag := range []string{"-m=0", "-m=f", "-m=FALSE", "-m=false", "-m=False"} {
-		if moduleMode([]string{flag, "-json", "all"}) {
-			t.Errorf("package query %q was detected as module mode", flag)
-		}
-	}
-	if moduleMode([]string{"--", "-m"}) {
-		t.Fatal("-m after -- must not select module mode")
-	}
-}
-
 func TestListWailsSizesQuery(t *testing.T) {
 	var output bytes.Buffer
 	args := []string{"-f", "{{context.GOARCH}} {{context.Compiler}}", "--", "unsafe"}
@@ -89,13 +73,16 @@ func TestListSourceSelection(t *testing.T) {
 	write("user.go", "//go:build usertag\n\npackage listtest\n")
 	t.Chdir(module)
 
-	var output bytes.Buffer
-	if err := run([]string{"-tags=usertag", "-f", "{{join .GoFiles \",\"}}", "."}, nil, &output, &output); err != nil {
-		t.Fatalf("source selection: %v, %s", err, &output)
-	}
-	files := strings.Split(strings.TrimSpace(output.String()), ",")
-	if !slicesContain(files, "llgo.go") || !slicesContain(files, "user.go") || slicesContain(files, "goonly.go") {
-		t.Fatalf("selected files = %q", files)
+	for _, tags := range [][]string{{"-tags=usertag"}, {"-tags", "-m", "-tags=usertag"}} {
+		var output bytes.Buffer
+		args := append(tags, "-f", "{{join .GoFiles \",\"}}", ".")
+		if err := run(args, nil, &output, &output); err != nil {
+			t.Fatalf("source selection for %q: %v, %s", tags, err, &output)
+		}
+		files := strings.Split(strings.TrimSpace(output.String()), ",")
+		if !slicesContain(files, "llgo.go") || !slicesContain(files, "user.go") || slicesContain(files, "goonly.go") {
+			t.Fatalf("selected files for %q = %q", tags, files)
+		}
 	}
 }
 

@@ -20,18 +20,58 @@ func TestParseBuildArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := buildQuery{
-		target:    "board",
-		targetSet: true,
-		tags:      []string{"one", "two", "one"},
-		goArgs:    []string{"-x", "--", "-tags=literal"},
+		target: "board",
+		tags:   []string{"one", "two", "one"},
+		goArgs: []string{"-x", "--", "-tags=literal"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("parseBuildArgs = %#v, want %#v", got, want)
 	}
-	for _, args := range [][]string{{"-target"}, {"-target="}, {"-tags"}} {
+	for _, args := range [][]string{
+		{"-target"},
+		{"-target="},
+		{"-target", ""},
+		{"-target=", "-target=board"},
+		{"-tags"},
+	} {
 		if _, err := parseBuildArgs(args); err == nil {
 			t.Errorf("parseBuildArgs(%q) succeeded", args)
 		}
+	}
+}
+
+func TestBuildModuleMode(t *testing.T) {
+	for _, flag := range []string{"-m", "-m=1", "-m=t", "-m=T", "-m=TRUE", "-m=true", "-m=True"} {
+		args := []string{flag, "-json", "all"}
+		inv, err := Build("list", args)
+		if err != nil || !reflect.DeepEqual(inv.Args, args) {
+			t.Errorf("module query %q = %q, %v", flag, inv.Args, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"-m=0"},
+		{"-m=f"},
+		{"-m=FALSE"},
+		{"-m=false"},
+		{"-m=False"},
+		{"-m", "-m=false"},
+		{"--", "-m"},
+		{"-tags", "-m"},
+		{"-tags", "-m=true"},
+		{"-m=invalid"},
+	} {
+		inv, err := Build("list", args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(inv.Args) == 0 || !strings.HasPrefix(inv.Args[0], "-tags=llgo,") {
+			t.Errorf("package query %q lost LLGo defaults: %q", args, inv.Args)
+		}
+	}
+	// Flags from other commands must not select list's module-query behavior.
+	inv, err := Build("get", []string{"-m"})
+	if err != nil || len(inv.Args) == 0 || !strings.HasPrefix(inv.Args[0], "-tags=llgo,") {
+		t.Fatalf("get -m = %q, %v", inv.Args, err)
 	}
 }
 
@@ -83,7 +123,7 @@ func TestBuildTargetSelectionDoesNotCreateCache(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", cache)
 	t.Setenv("LOCALAPPDATA", cache)
 
-	inv, err := Build("list", []string{"-target", "board", "-tags=user,board", "."}, true)
+	inv, err := Build("list", []string{"-target", "board", "-tags=user,board", "."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +159,7 @@ func TestBuildAwareGenerateSelectsLLGoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
-	inv, err := Build("generate", []string{"."}, true)
+	inv, err := Build("generate", []string{"."})
 	if err != nil {
 		t.Fatal(err)
 	}

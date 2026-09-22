@@ -275,7 +275,7 @@ func (this *Cmd_generate) Classfname() string {
 func (this *Cmd_get) Main(_xgo_arg0 string) {
 	this.Command.Main(_xgo_arg0)
 //line cmd/llgo/get_cmd.gox:18:1
-	this.Use("get [flags] [packages]")
+	this.Use("get [-target name] [flags] [packages]")
 //line cmd/llgo/get_cmd.gox:20:1
 	this.Short("Add dependencies to the current module")
 //line cmd/llgo/get_cmd.gox:22:1

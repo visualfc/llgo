@@ -36,7 +36,7 @@ func TestGoProxyCommands(t *testing.T) {
 		"fix":      "fix [-target name] [build flags] [packages]",
 		"fmt":      "fmt [-n] [-x] [packages]",
 		"generate": "generate [-target name] [build flags] [file.go... | packages]",
-		"get":      "get [flags] [packages]",
+		"get":      "get [-target name] [flags] [packages]",
 		"vet":      "vet [-target name] [build flags] [packages]",
 		"work":     "work <command> [arguments]",
 	}
