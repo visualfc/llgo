@@ -17,6 +17,7 @@
 package build
 
 import (
+	"go/types"
 	"strings"
 
 	"golang.org/x/tools/go/callgraph/rta"
@@ -87,6 +88,37 @@ func analyzeWasmProgramUse(prog *ssa.Program, roots []*ssa.Function) *wasmProgra
 		use.reachable = rta.Analyze(roots, false).Reachable
 	} else {
 		use.all = ssautil.AllFunctions(prog)
+	}
+	return use
+}
+
+// analyzeWasmInitialUse keeps feature analysis local to one initial package.
+// Executables use RTA from init/main. Entry-less packages have no whole-program
+// roots, so start RTA from their own functions rather than the union SSA program.
+func analyzeWasmInitialUse(prog *ssa.Program, pkg *types.Package) *wasmProgramUse {
+	use := &wasmProgramUse{all: make(map[*ssa.Function]bool)}
+	if prog == nil || pkg == nil {
+		return use
+	}
+	ssaPkg := prog.Package(pkg)
+	if ssaPkg == nil {
+		return use
+	}
+	if main := ssaPkg.Func("main"); main != nil {
+		roots := []*ssa.Function{main}
+		if init := ssaPkg.Func("init"); init != nil {
+			roots = append(roots, init)
+		}
+		return analyzeWasmProgramUse(prog, roots)
+	}
+	var roots []*ssa.Function
+	for fn := range ssautil.AllFunctions(prog) {
+		if fnPkg := fn.Package(); fnPkg != nil && fnPkg.Pkg == pkg {
+			roots = append(roots, fn)
+		}
+	}
+	if len(roots) != 0 {
+		return analyzeWasmProgramUse(prog, roots)
 	}
 	return use
 }

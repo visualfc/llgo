@@ -23,6 +23,12 @@ type Invocation struct {
 	// caller-visible ModeBuild still has normal cmd/go output semantics.
 	compileOnly          bool
 	disableMultiFallback bool
+	// Feature groups preserve the original multi-build output contract while
+	// compiling only initials that can safely share package artifacts.
+	multipleInitials bool
+	initialFeatures  *initialBuildFeatures
+	// A child borrows this tracer; only its owning parent may close/write it.
+	parentBuildTrace *buildTracer
 }
 
 // commandEnv is the per-invocation process-execution state. It deliberately

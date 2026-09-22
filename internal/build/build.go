@@ -457,7 +457,20 @@ func Do(args []string, conf *Config) ([]Package, error) {
 }
 
 // Build executes one build invocation.
-func Build(inv Invocation) (result []Package, resultErr error) {
+func Build(inv Invocation) ([]Package, error) {
+	var plan initialBuildPlan
+	result, err := buildInvocation(inv, &plan)
+	if len(plan.invocations) == 0 {
+		return result, err
+	}
+	// End the analysis frame (including its deferred LLVM cleanup) before
+	// loading a child graph. The plan contains names/configuration, not the
+	// parent's packages, syntax or SSA.
+	defer plan.finishTrace()
+	return buildInitialGroups(plan.invocations)
+}
+
+func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, resultErr error) {
 	var fallback *multiBuildFallback
 	defer func() {
 		if resultErr == nil || fallback == nil || inv.disableMultiFallback {
@@ -483,18 +496,28 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// architecture level as the LLVM build. GOOS/GOARCH retain their existing
 	// per-command handling.
 	commands := commandEnv{dir: dir, environ: withEnv(environ, goarchEnv(conf)...)}
-	buildTrace, err := startBuildTrace(conf.BuildTrace, dir, conf.parallelism())
-	if err != nil {
-		return nil, fmt.Errorf("start build trace: %w", err)
+	buildTrace := inv.parentBuildTrace
+	if buildTrace == nil {
+		buildTrace, err = startBuildTrace(conf.BuildTrace, dir, conf.parallelism())
+		if err != nil {
+			return nil, fmt.Errorf("start build trace: %w", err)
+		}
 	}
 	buildSpan := buildTrace.startCoordinator("build", map[string]any{
 		"packages":    slices.Clone(inv.Args),
 		"parallelism": conf.parallelism(),
 	})
-	defer func() {
+	finishTrace := func() {
 		buildSpan.done()
-		if closeErr := buildTrace.close(); closeErr != nil {
-			fmt.Fprintf(os.Stderr, "warning: write build trace: %v\n", closeErr)
+		if inv.parentBuildTrace == nil {
+			if closeErr := buildTrace.close(); closeErr != nil {
+				fmt.Fprintf(os.Stderr, "warning: write build trace: %v\n", closeErr)
+			}
+		}
+	}
+	defer func() {
+		if len(plan.invocations) == 0 {
+			finishTrace()
 		}
 	}()
 	// Handle crosscompile configuration first to set correct GOOS/GOARCH
@@ -805,6 +828,19 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	// whole-program consumers alive through deadcode analysis and strong ABI type
 	// override emission, then release them on every normal, error, or panic path.
 	defer ctx.disposeBackendPrograms()
+	features := inv.initialFeatures
+	var groups []initialBuildGroup
+	if features == nil && target.GOARCH != "wasm" {
+		// Native locality requirements are known from the prepared package
+		// declarations. Do not construct union SSA that will be discarded.
+		groups = groupInitialBuilds(ctx, altPkgs)
+		if len(groups) > 1 {
+			plan.invocations = initialGroupInvocations(inv, ctx, groups)
+			plan.finishTrace = finishTrace
+			fallback = nil
+			return nil, nil
+		}
+	}
 
 	// default runtime globals must be registered before packages are built
 	// The generated program must report the GOROOT whose standard library is
@@ -825,8 +861,32 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
 	ctx.frontendOptions.ReceiverNilChecks = collectReceiverNilChecks(initial, altPkgs)
-	configureWasmReflectBridges(ctx)
-	configureWasmFuncInfoEntries(ctx)
+	if features == nil {
+		if target.GOARCH == "wasm" {
+			groups = groupInitialBuilds(ctx, altPkgs)
+		}
+		if len(groups) > 1 {
+			// Rebuild each group's frontend deliberately: sharing the parent's
+			// union SSA would reintroduce cross-program feature dependencies.
+			// Compatible groups still reuse their package-archive cache entries.
+			fallback = nil // Each group retains its own normal error recovery.
+			plan.invocations = initialGroupInvocations(inv, ctx, groups)
+			plan.finishTrace = finishTrace
+			return nil, nil
+		}
+		if len(groups) == 1 {
+			features = &groups[0].features
+		}
+	}
+	if features != nil {
+		// RTA over a union of roots can conservatively connect otherwise
+		// independent reflection uses. Keep the per-initial feature decision.
+		target.WasmReflectBridges = features.reflectBridges
+		target.WasmFuncInfoEntries = features.funcInfoEntries
+	} else {
+		configureWasmReflectBridges(ctx)
+		configureWasmFuncInfoEntries(ctx)
+	}
 
 	allPkgs := append([]*aPackage{}, pkgs...)
 	allPkgs = append(allPkgs, depPkgs...)
@@ -879,7 +939,7 @@ func Build(inv Invocation) (result []Package, resultErr error) {
 		return nil, fmt.Errorf("initial package not found")
 	}
 
-	linkMultiple := mode == ModeBuild && len(initial) > 1
+	linkMultiple := mode == ModeBuild && (len(initial) > 1 || inv.multipleInitials)
 	var linkErrs []error
 	var testPrograms []testProgram
 	for _, pkg := range initial {
@@ -958,7 +1018,10 @@ func prepareInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*a
 
 func planInitialPackageLink(ctx *context, pkg *packages.Package, allPkgs []*aPackage, conf *Config, discardOutput bool) (*initialPackageLink, error) {
 	name := defaultExecutableName(pkg.PkgPath)
-	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1, &ctx.crossCompile)
+	// A split group may contain only one initial while still belonging to a
+	// check-only multi-build. Choose a temporary path before linking, not just
+	// cleanup afterward: the default name may already be a user file/directory.
+	outFmts, err := buildOutFmts(name, conf, len(ctx.initial) > 1 || discardOutput, &ctx.crossCompile)
 	if err != nil {
 		return nil, err
 	}
@@ -3327,16 +3390,26 @@ func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) er
 		}
 	}
 
+	for _, pkg := range activeLocalityPackages(groups...) {
+		prog.ActivateLocalitiesFor(pkg)
+	}
+	return nil
+}
+
+// Match activation for a standalone build, including alternate packages only
+// when their canonical package is reachable from the selected initials.
+func activeLocalityPackages(groups ...[]*packages.Package) []*types.Package {
 	if len(groups) == 0 {
 		return nil
 	}
+	var result []*types.Package
 	active := make(map[string]bool)
 	activate := func(p *packages.Package) {
 		if p.Types == nil || p.IllTyped {
 			return
 		}
 		active[llssa.PathOf(p.Types)] = true
-		prog.ActivateLocalitiesFor(p.Types)
+		result = append(result, p.Types)
 	}
 	packages.Visit(groups[0], nil, activate)
 	for _, roots := range groups[1:] {
@@ -3347,7 +3420,7 @@ func prepareLocalVariables(prog llssa.Program, groups ...[]*packages.Package) er
 			packages.Visit([]*packages.Package{root}, nil, activate)
 		}
 	}
-	return nil
+	return result
 }
 
 type ssaBuildEntry struct {

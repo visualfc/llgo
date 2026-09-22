@@ -162,6 +162,48 @@ func TestNeedsLocalContextIgnoresInactiveDeclarations(t *testing.T) {
 	if !prog.NeedsLocalContext() {
 		t.Fatal("active alternate package storage did not require a local context")
 	}
+	if prog.NeedsLocalContextForPackages([]*types.Package{std}) {
+		t.Fatal("per-program query used an unrelated active declaration")
+	}
+	if !prog.NeedsLocalContextForPackages([]*types.Package{alt}) {
+		t.Fatal("per-program query ignored the selected alternate declaration")
+	}
+	if prog.NeedsLocalContextForPackages(nil) {
+		t.Fatal("empty package selection used active declarations")
+	}
+	if !prog.NeedsLocalContext() {
+		t.Fatal("per-program query mutated the shared active declarations")
+	}
+}
+
+func TestNeedsLocalContextForPackagesFiltersOwnerlessEntries(t *testing.T) {
+	prog := NewProgram(nil)
+	first := types.NewPackage("example.com/first", "first")
+	second := types.NewPackage("example.com/second", "second")
+	third := types.NewPackage("example.com/third", "third")
+	prog.SetLocalityInfo("example.com/first.state", LocalityInfo{Locality: GoroutineLocal})
+	prog.localities.mu.Lock()
+	prog.localities.entries["example.com/third.legacy"] = VariableLocality{
+		Info:         LocalityInfo{Locality: ThreadLocal},
+		LocalStorage: LocalStoragePackage,
+	}
+	prog.localities.mu.Unlock()
+
+	if !prog.NeedsLocalContextForPackages([]*types.Package{first}) {
+		t.Fatal("selected ownerless locality did not require a context")
+	}
+	if !prog.NeedsLocalContextForPackages([]*types.Package{third}) {
+		t.Fatal("selected legacy locality did not require a context")
+	}
+	if prog.NeedsLocalContextForPackages([]*types.Package{nil, second}) {
+		t.Fatal("ownerless or legacy locality contaminated an unrelated package")
+	}
+	if prog.NeedsLocalContextForPackages(nil) {
+		t.Fatal("ownerless locality contaminated an empty package selection")
+	}
+	if !prog.NeedsLocalContext() {
+		t.Fatal("legacy all-package query stopped considering ownerless metadata")
+	}
 }
 
 func TestLocalityMetadataFallbacks(t *testing.T) {

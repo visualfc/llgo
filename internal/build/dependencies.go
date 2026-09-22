@@ -20,6 +20,7 @@ import (
 	"sort"
 
 	"github.com/xgo-dev/llgo/internal/packages"
+	llssa "github.com/xgo-dev/llgo/ssa"
 )
 
 // effectiveDependencies returns every package whose source contributes to an
@@ -51,7 +52,8 @@ func effectiveDependencies(pkg *aPackage) []*packages.Package {
 
 // linkedPackageClosure returns dependency-first packages for one link. It
 // follows alternate-package-only imports as well as the ordinary Go graph and
-// includes the prepared runtime tree without pulling in unrelated roots.
+// includes the core runtime and its dependencies. Other prepared runtime-tree
+// packages may be alternate implementations needed only by a different root.
 func linkedPackageClosure(ctx *context, root *packages.Package, built []*aPackage) []Package {
 	seen := make(map[string]bool)
 	var order []Package
@@ -77,7 +79,7 @@ func linkedPackageClosure(ctx *context, root *packages.Package, built []*aPackag
 	}
 	visit(root)
 	for _, pkg := range built {
-		if isRuntimePkg(pkg.PkgPath) {
+		if pkg.PkgPath == llssa.PkgRuntime {
 			visit(pkg.Package)
 		}
 	}

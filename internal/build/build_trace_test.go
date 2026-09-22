@@ -193,6 +193,11 @@ func TestBuildTraceRefusesExistingOutput(t *testing.T) {
 	if _, err := startBuildTrace(path, dir, 1); err == nil {
 		t.Fatal("startBuildTrace(existing file) succeeded")
 	}
+	conf := NewDefaultConf(ModeBuild)
+	conf.BuildTrace = path
+	if _, err := Build(Invocation{Args: []string{"."}, Config: conf, Dir: dir}); err == nil {
+		t.Fatal("Build with existing trace output succeeded")
+	}
 	if got, err := os.ReadFile(path); err != nil || string(got) != "keep" {
 		t.Fatalf("existing output = %q, %v; want unchanged", got, err)
 	}
