@@ -92,7 +92,7 @@ func TestParseCgoDeclWithCommandEnvBranches(t *testing.T) {
 		{
 			name: "LDFLAGS with tag",
 			line: "#cgo darwin LDFLAGS: -framework CoreFoundation -lz",
-			want: []cgoDecl{{tag: "darwin", ldflags: []string{"-framework CoreFoundation", "-lz"}}},
+			want: []cgoDecl{{tag: "darwin", ldflags: []string{"-framework", "CoreFoundation", "-lz"}}},
 		},
 		{name: "missing colon", line: "#cgo CFLAGS -I/missing", wantErr: "invalid cgo format"},
 		{name: "missing directive", line: "CFLAGS: -I/missing", wantErr: "invalid cgo directive"},
@@ -411,7 +411,7 @@ func TestBuildCgoReportsSourceAndPreambleCompileErrors(t *testing.T) {
 	})
 }
 
-func TestParseCgoCollectsCXXFiles(t *testing.T) {
+func TestParseCgoCollectsNativeFiles(t *testing.T) {
 	dir := t.TempDir()
 	src := `package demo
 
@@ -425,7 +425,7 @@ import "unsafe"
 	if err := os.WriteFile(goFile, []byte(src), 0644); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"foo.c", "bar.cc", "baz.cpp", "qux.cxx", "skip_test.cpp"} {
+	for _, name := range []string{"foo.c", "bar.cc", "baz.cpp", "qux.cxx", "objc.m", "skip_test.cpp", "skip_test.m"} {
 		if err := os.WriteFile(filepath.Join(dir, name), nil, 0644); err != nil {
 			t.Fatal(err)
 		}
@@ -452,6 +452,7 @@ import "unsafe"
 		"bar.cc":  true,
 		"baz.cpp": true,
 		"qux.cxx": true,
+		"objc.m":  false,
 	}
 	if !reflect.DeepEqual(gotFiles, wantFiles) {
 		t.Fatalf("parseCgo_ files = %#v, want %#v", gotFiles, wantFiles)
@@ -500,7 +501,7 @@ import "unsafe"
 	}
 }
 
-func TestParseCgoSkipsBuildTaggedCXXFile(t *testing.T) {
+func TestParseCgoSkipsBuildTaggedNativeFiles(t *testing.T) {
 	dir := t.TempDir()
 	goSrc := `package demo
 
@@ -512,9 +513,10 @@ import "unsafe"
 	if err := os.WriteFile(goFile, []byte(goSrc), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cxxSrc := "//go:build missingtag\n\n"
-	if err := os.WriteFile(filepath.Join(dir, "skip.cpp"), []byte(cxxSrc), 0644); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"skip.cpp", "skip.m"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("//go:build missingtag\n\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(dir, "keep.cpp"), nil, 0644); err != nil {
 		t.Fatal(err)

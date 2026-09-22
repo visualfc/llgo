@@ -150,9 +150,9 @@ func buildCgo(ctx *context, pkg *aPackage, files []*ast.File, externs []string, 
 		}
 		llfiles = append(llfiles, linkFile)
 	}
-	for _, ldflag := range ldflags {
-		cgoLdflags = append(cgoLdflags, safesplit.SplitPkgConfigFlags(ldflag)...)
-	}
+	// Flags were already split when parsing the directives/pkg-config output.
+	// Re-splitting individual arguments corrupts standalone framework names.
+	cgoLdflags = ldflags
 	return
 }
 
@@ -351,6 +351,7 @@ func parseCgoWithCommandEnv(commands commandEnv, buildCtx *build.Context, pkg *a
 		name := filepath.Base(match)
 		switch {
 		case strings.HasSuffix(name, "_test.c"),
+			strings.HasSuffix(name, "_test.m"),
 			strings.HasSuffix(name, "_test.cc"),
 			strings.HasSuffix(name, "_test.cpp"),
 			strings.HasSuffix(name, "_test.cxx"):
@@ -374,6 +375,7 @@ func parseCgoWithCommandEnv(commands commandEnv, buildCtx *build.Context, pkg *a
 			isCXX bool
 		}{
 			{glob: "*.c"},
+			{glob: "*.m"},
 			{glob: "*.cc", isCXX: true},
 			{glob: "*.cpp", isCXX: true},
 			{glob: "*.cxx", isCXX: true},

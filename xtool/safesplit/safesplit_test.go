@@ -78,6 +78,13 @@ func TestSplitPkgConfigFlags(t *testing.T) {
 		ftest("-D VERSION=2.1 -D DEBUG=1", `["-DVERSION=2.1" "-DDEBUG=1"]`)
 	})
 
+	t.Run("frameworks", func(t *testing.T) {
+		ftest("-framework Foundation", `["-framework" "Foundation"]`)
+		ftest("-framework Cocoa -framework WebKit -lobjc", `["-framework" "Cocoa" "-framework" "WebKit" "-lobjc"]`)
+		ftest("-F /Library/Frameworks -weak_framework Metal", `["-F/Library/Frameworks" "-weak_framework" "Metal"]`)
+		ftest("-framework\t Foundation -framework", `["-framework" "Foundation" "-framework"]`)
+	})
+
 	// case for https://github.com/xgo-dev/llgo/issues/1244
 	t.Run("w_pipe", func(t *testing.T) {
 		ftest("-w -pipe", `["-w" "-pipe"]`)

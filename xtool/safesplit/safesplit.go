@@ -18,14 +18,27 @@ package safesplit
 
 import "strings"
 
-// SplitPkgConfigFlags splits a pkg-config outputs string into parts.
-// Each part starts with "-" followed by a single character flag.
-// Spaces after the flag character are ignored.
-// Content is read until the next space, unless escaped with "\".
+// SplitPkgConfigFlags splits pkg-config-style output into compiler arguments.
+// It joins a one-character option such as -I or -L to its value, preserving
+// spaces within paths. Other options remain intact, except that -framework and
+// -weak_framework retain their required separate name argument.
 func SplitPkgConfigFlags(s string) []string {
 	var result []string
 	var current strings.Builder
 	i := 0
+	flush := func() {
+		if current.Len() == 0 {
+			return
+		}
+		flag := strings.TrimSpace(current.String())
+		option, name, paired := strings.Cut(flag, " ")
+		if paired && (option == "-framework" || option == "-weak_framework") {
+			result = append(result, option, name)
+		} else {
+			result = append(result, flag)
+		}
+		current.Reset()
+	}
 
 	// Skip leading whitespace
 	for i < len(s) && (s[i] == ' ' || s[i] == '\t') {
@@ -34,10 +47,7 @@ func SplitPkgConfigFlags(s string) []string {
 
 	for i < len(s) {
 		// Start a new part
-		if current.Len() > 0 {
-			result = append(result, strings.TrimSpace(current.String()))
-			current.Reset()
-		}
+		flush()
 		// Write "-" and the flag character
 		current.WriteByte('-')
 		i++
@@ -86,8 +96,6 @@ func SplitPkgConfigFlags(s string) []string {
 		}
 	}
 	// Add the last part
-	if current.Len() > 0 {
-		result = append(result, strings.TrimSpace(current.String()))
-	}
+	flush()
 	return result
 }
