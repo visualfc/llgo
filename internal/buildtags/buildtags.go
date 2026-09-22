@@ -67,6 +67,26 @@ func CheckTags(buildFlags []string, testTags map[string]bool) {
 	}
 }
 
+// Match reports whether a build constraint matches buildCtx. Cgo directives
+// accept both the legacy comma/space syntax and go:build expressions.
+func Match(buildCtx *build.Context, expr string) bool {
+	if strings.ContainsAny(expr, "\r\n") {
+		return false
+	}
+	ctx := *buildCtx
+	const fileName = "constraint.go"
+	directive := "// +build "
+	if strings.Contains(expr, "&&") || strings.Contains(expr, "||") || strings.ContainsAny(expr, "()") {
+		directive = "//go:build "
+	}
+	content := directive + expr + "\n\npackage check\n"
+	ctx.OpenFile = func(string) (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader(content)), nil
+	}
+	match, err := ctx.MatchFile(".", fileName)
+	return err == nil && match
+}
+
 // virtualFile represents a virtual build tag check file
 type virtualFile struct {
 	name    string

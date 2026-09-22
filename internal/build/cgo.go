@@ -86,29 +86,7 @@ func buildCgo(ctx *context, pkg *aPackage, files []*ast.File, externs []string, 
 	if err != nil {
 		return
 	}
-	tagUsed := make(map[string]bool)
-	for _, cdecl := range cdecls {
-		if cdecl.tag != "" {
-			tagUsed[cdecl.tag] = false
-		}
-	}
-	buildtags.CheckTags(ctx.conf.BuildFlags, tagUsed)
-	cflags := []string{}
-	cxxflags := []string{}
-	ldflags := []string{}
-	for _, cdecl := range cdecls {
-		if cdecl.tag == "" || tagUsed[cdecl.tag] {
-			if len(cdecl.cflags) > 0 {
-				cflags = append(cflags, cdecl.cflags...)
-			}
-			if len(cdecl.cxxflags) > 0 {
-				cxxflags = append(cxxflags, cdecl.cxxflags...)
-			}
-			if len(cdecl.ldflags) > 0 {
-				ldflags = append(ldflags, cdecl.ldflags...)
-			}
-		}
-	}
+	cflags, cxxflags, ldflags := collectCgoFlags(cdecls)
 	incDirs := make(map[string]none)
 	for _, preamble := range preambles {
 		dir, _ := filepath.Split(preamble.goFile)
@@ -153,6 +131,15 @@ func buildCgo(ctx *context, pkg *aPackage, files []*ast.File, externs []string, 
 	// Flags were already split when parsing the directives/pkg-config output.
 	// Re-splitting individual arguments corrupts standalone framework names.
 	cgoLdflags = ldflags
+	return
+}
+
+func collectCgoFlags(decls []cgoDecl) (cflags, cxxflags, ldflags []string) {
+	for _, decl := range decls {
+		cflags = append(cflags, decl.cflags...)
+		cxxflags = append(cxxflags, decl.cxxflags...)
+		ldflags = append(ldflags, decl.ldflags...)
+	}
 	return
 }
 
@@ -401,7 +388,7 @@ func parseCgoWithCommandEnv(commands commandEnv, buildCtx *build.Context, pkg *a
 						spec := decl.Specs[0].(*ast.ImportSpec)
 						if spec.Path.Value == "\"unsafe\"" {
 							pos := pkg.Fset.Position(doc.Pos())
-							preamble, flags, err := parseCgoPreambleWithCommandEnv(commands, pos, doc.Text())
+							preamble, flags, err := parseCgoPreambleWithCommandEnv(commands, buildCtx, pos, doc.Text())
 							if err != nil {
 								panic(err)
 							}
@@ -417,10 +404,10 @@ func parseCgoWithCommandEnv(commands commandEnv, buildCtx *build.Context, pkg *a
 }
 
 func parseCgoPreamble(pos token.Position, text string) (preamble cgoPreamble, decls []cgoDecl, err error) {
-	return parseCgoPreambleWithCommandEnv(commandEnv{}, pos, text)
+	return parseCgoPreambleWithCommandEnv(commandEnv{}, nil, pos, text)
 }
 
-func parseCgoPreambleWithCommandEnv(commands commandEnv, pos token.Position, text string) (preamble cgoPreamble, decls []cgoDecl, err error) {
+func parseCgoPreambleWithCommandEnv(commands commandEnv, buildCtx *build.Context, pos token.Position, text string) (preamble cgoPreamble, decls []cgoDecl, err error) {
 	b := strings.Builder{}
 	fline := pos.Line
 	fname := pos.Filename
@@ -431,7 +418,7 @@ func parseCgoPreambleWithCommandEnv(commands commandEnv, pos token.Position, tex
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "#cgo ") {
 			var cgoDecls []cgoDecl
-			cgoDecls, err = parseCgoDeclWithCommandEnv(commands, line)
+			cgoDecls, err = parseCgoDeclWithCommandEnv(commands, buildCtx, line)
 			if err != nil {
 				return
 			}
@@ -458,10 +445,10 @@ func parseCgoPreambleWithCommandEnv(commands commandEnv, pos token.Position, tex
 // #cgo CXXFLAGS: -I/usr/include/c++/v1
 // #cgo LDFLAGS: -L/usr/lib/python3.12/config-3.12-x86_64-linux-gnu -lpython3.12
 func parseCgoDecl(line string) (cgoDecls []cgoDecl, err error) {
-	return parseCgoDeclWithCommandEnv(commandEnv{}, line)
+	return parseCgoDeclWithCommandEnv(commandEnv{}, nil, line)
 }
 
-func parseCgoDeclWithCommandEnv(commands commandEnv, line string) (cgoDecls []cgoDecl, err error) {
+func parseCgoDeclWithCommandEnv(commands commandEnv, buildCtx *build.Context, line string) (cgoDecls []cgoDecl, err error) {
 	idx := strings.Index(line, ":")
 	if idx == -1 {
 		err = fmt.Errorf("invalid cgo format: %v", line)
@@ -488,6 +475,11 @@ func parseCgoDeclWithCommandEnv(commands commandEnv, line string) (cgoDecls []cg
 		flag = strings.TrimSpace(remaining[lastSpace+1:])
 	} else {
 		flag = remaining
+	}
+	// Resolve only directives that apply to the requested target. In
+	// particular, do not start pkg-config for an inactive directive.
+	if tag != "" && buildCtx != nil && !buildtags.Match(buildCtx, tag) {
+		return nil, nil
 	}
 
 	switch flag {

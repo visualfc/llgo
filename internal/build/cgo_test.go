@@ -81,6 +81,22 @@ func TestParseCgoDeclFlags(t *testing.T) {
 	}
 }
 
+func TestCollectCgoFlags(t *testing.T) {
+	cflags, cxxflags, ldflags := collectCgoFlags([]cgoDecl{
+		{cflags: []string{"-I/a"}, ldflags: []string{"-la"}},
+		{cflags: []string{"-I/b"}, cxxflags: []string{"-std=c++17"}},
+	})
+	if want := []string{"-I/a", "-I/b"}; !reflect.DeepEqual(cflags, want) {
+		t.Fatalf("CFLAGS = %v, want %v", cflags, want)
+	}
+	if want := []string{"-std=c++17"}; !reflect.DeepEqual(cxxflags, want) {
+		t.Fatalf("CXXFLAGS = %v, want %v", cxxflags, want)
+	}
+	if want := []string{"-la"}; !reflect.DeepEqual(ldflags, want) {
+		t.Fatalf("LDFLAGS = %v, want %v", ldflags, want)
+	}
+}
+
 func TestParseCgoDeclWithCommandEnvBranches(t *testing.T) {
 	commands := commandEnv{dir: t.TempDir(), environ: []string{"CGO_TEST_MARKER=1"}}
 	tests := []struct {
@@ -100,7 +116,7 @@ func TestParseCgoDeclWithCommandEnvBranches(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseCgoDeclWithCommandEnv(commands, tt.line)
+			got, err := parseCgoDeclWithCommandEnv(commands, nil, tt.line)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("parseCgoDeclWithCommandEnv(%q) error = %v, want %q", tt.line, err, tt.wantErr)
@@ -140,7 +156,7 @@ printf '%s\n' '-I/request/include -DREQUEST="request value"'
 	t.Setenv("PATH", dir)
 
 	commands := commandEnv{dir: dir, environ: []string{"PATH=" + dir}}
-	got, err := parseCgoDeclWithCommandEnv(commands, "#cgo linux pkg-config: request")
+	got, err := parseCgoDeclWithCommandEnv(commands, nil, "#cgo linux pkg-config: request")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,10 +172,65 @@ printf '%s\n' '-I/request/include -DREQUEST="request value"'
 	for _, arg := range []string{"--libs", "--cflags"} {
 		t.Run("failed "+arg, func(t *testing.T) {
 			commands := commandEnv{dir: dir, environ: []string{"PATH=" + dir, "PKG_CONFIG_TEST_FAIL=" + arg}}
-			if _, err := parseCgoDeclWithCommandEnv(commands, "#cgo pkg-config: request"); err == nil || !strings.Contains(err.Error(), "pkg-config") {
+			if _, err := parseCgoDeclWithCommandEnv(commands, nil, "#cgo pkg-config: request"); err == nil || !strings.Contains(err.Error(), "pkg-config") {
 				t.Fatalf("parseCgoDeclWithCommandEnv(pkg-config) error = %v, want pkg-config failure", err)
 			}
 		})
+	}
+}
+
+func TestParseCgoPreambleRunsOnlyMatchingPkgConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test helper uses a shell script")
+	}
+
+	dir := t.TempDir()
+	tool := filepath.Join(dir, "pkg-config")
+	logFile := filepath.Join(dir, "calls.log")
+	script := `#!/bin/sh
+printf '%s\n' "$*" >> "$CGO_TEST_LOG"
+if [ "$1" = "--libs" ]; then
+	printf '%s\n' "-l$2"
+fi
+`
+	if err := os.WriteFile(tool, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commands := commandEnv{
+		dir:     dir,
+		environ: []string{"PATH=" + dir, "CGO_TEST_LOG=" + logFile},
+	}
+	buildCtx := build.Default
+	buildCtx.GOOS = "linux"
+	buildCtx.GOARCH = "amd64"
+	buildCtx.BuildTags = []string{"webkit2_41"}
+	text := `#cgo !webkit2_41 pkg-config: webkit2gtk-4.0
+#cgo webkit2_41 pkg-config: webkit2gtk-4.1
+#cgo amd64 arm64 CFLAGS: -DMULTI_ARCH
+#cgo windows plan9 CFLAGS: -DINACTIVE_OS`
+
+	_, decls, err := parseCgoPreambleWithCommandEnv(
+		commands,
+		&buildCtx,
+		token.Position{Filename: "request.go", Line: 1},
+		text,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []cgoDecl{
+		{tag: "webkit2_41", ldflags: []string{"-lwebkit2gtk-4.1"}},
+		{tag: "amd64 arm64", cflags: []string{"-DMULTI_ARCH"}},
+	}
+	if !reflect.DeepEqual(decls, want) {
+		t.Fatalf("cgo declarations = %#v, want %#v", decls, want)
+	}
+	calls, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(calls), "--libs webkit2gtk-4.1\n--cflags webkit2gtk-4.1\n"; got != want {
+		t.Fatalf("pkg-config calls = %q, want %q", got, want)
 	}
 }
 
@@ -172,7 +243,7 @@ func TestParseCgoDeclWithCommandEnvUsesPkgConfigSetting(t *testing.T) {
 		`PKG_CONFIG='`+executable+`' --ignored-like-go`,
 		"LLGO_TEST_PKG_CONFIG_HELPER=1",
 	)}
-	got, err := parseCgoDeclWithCommandEnv(commands, "#cgo windows pkg-config: request")
+	got, err := parseCgoDeclWithCommandEnv(commands, nil, "#cgo windows pkg-config: request")
 	if err != nil {
 		t.Fatal(err)
 	}

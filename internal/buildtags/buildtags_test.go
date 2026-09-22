@@ -4,10 +4,39 @@
 package buildtags
 
 import (
+	"go/build"
 	"reflect"
 	"runtime"
 	"testing"
 )
+
+func TestMatch(t *testing.T) {
+	ctx := build.Default
+	ctx.GOOS = "linux"
+	ctx.GOARCH = "amd64"
+	ctx.BuildTags = []string{"webkit2_41"}
+	for _, test := range []struct {
+		expr string
+		want bool
+	}{
+		{expr: "linux", want: true},
+		{expr: "windows", want: false},
+		{expr: "linux,amd64", want: true},
+		{expr: "linux arm64", want: true},
+		{expr: "linux && amd64", want: true},
+		{expr: "linux || windows", want: true},
+		{expr: "linux && (amd64 || arm64)", want: true},
+		{expr: "linux\nwindows", want: false},
+		{expr: "!webkit2_41", want: false},
+		{expr: "webkit2_41", want: true},
+	} {
+		t.Run(test.expr, func(t *testing.T) {
+			if got := Match(&ctx, test.expr); got != test.want {
+				t.Fatalf("Match(%q) = %v, want %v", test.expr, got, test.want)
+			}
+		})
+	}
+}
 
 func TestCheckTags(t *testing.T) {
 	tests := []struct {
@@ -99,12 +128,10 @@ func TestCheckTags(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testTags := make(map[string]bool)
-			for k := range tt.testTags {
-				testTags[k] = false
+			for tag := range tt.testTags {
+				testTags[tag] = false
 			}
-
 			CheckTags(tt.buildFlags, testTags)
-
 			if !reflect.DeepEqual(testTags, tt.want) {
 				t.Errorf("CheckTags() = %v, want %v", testTags, tt.want)
 			}
@@ -144,12 +171,10 @@ func TestParseBuildTags(t *testing.T) {
 			want:       []string{},
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := parseBuildTags(tt.buildFlags)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("name: %v, parseBuildTags() = %v, want %v", tt.name, got, tt.want)
+			if got := parseBuildTags(tt.buildFlags); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("parseBuildTags() = %v, want %v", got, tt.want)
 			}
 		})
 	}
