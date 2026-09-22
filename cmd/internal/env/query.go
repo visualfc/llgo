@@ -65,11 +65,11 @@ func runExtended(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 	if *write || *unset {
 		for _, arg := range fs.Args() {
 			if strings.HasPrefix(arg, "LLGO_") {
-				return fmt.Errorf("llgo env: %s is read-only; use the process environment to configure LLGo", strings.SplitN(arg, "=", 2)[0])
+				return fmt.Errorf("%s is read-only; use the process environment to configure LLGo", strings.SplitN(arg, "=", 2)[0])
 			}
 		}
 		if *target != "" {
-			return fmt.Errorf("llgo env: -target cannot be combined with -w or -u")
+			return fmt.Errorf("-target cannot be combined with -w or -u")
 		}
 		return runGo(args, stdin, stdout, stderr)
 	}
@@ -97,7 +97,7 @@ func runExtended(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 			return err
 		}
 		if err := json.Unmarshal(output.Bytes(), &values); err != nil {
-			return fmt.Errorf("llgo env: decode Go environment: %w", err)
+			return fmt.Errorf("decode Go environment: %w", err)
 		}
 	}
 	if all {
@@ -223,7 +223,7 @@ func llgoVariables(targetName string) (map[string]func() string, error) {
 	}
 	config, err := targets.NewDefaultResolver().Resolve(targetName)
 	if err != nil {
-		return nil, fmt.Errorf("llgo env -target %s: %w", targetName, err)
+		return nil, fmt.Errorf("-target %s: %w", targetName, err)
 	}
 	addTargetVariables(variables, config, existingDir(joinIfSet(root, llvmenv.CrosscompileClangPath)))
 	return variables, nil

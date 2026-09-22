@@ -10,6 +10,8 @@ import (
 	"github.com/xgo-dev/llgo/cmd/internal/clean"
 	"github.com/xgo-dev/llgo/cmd/internal/compile"
 	"github.com/xgo-dev/llgo/cmd/internal/env"
+	"github.com/xgo-dev/llgo/cmd/internal/get"
+	"github.com/xgo-dev/llgo/cmd/internal/gocommand"
 	"github.com/xgo-dev/llgo/cmd/internal/install"
 	"github.com/xgo-dev/llgo/cmd/internal/list"
 	"github.com/xgo-dev/llgo/cmd/internal/lldb"
@@ -36,6 +38,18 @@ type Cmd_cmptest struct {
 	*App
 }
 type Cmd_env struct {
+	xcmd.Command
+	*App
+}
+type Cmd_fix struct {
+	xcmd.Command
+	*App
+}
+type Cmd_fmt struct {
+	xcmd.Command
+	*App
+}
+type Cmd_generate struct {
 	xcmd.Command
 	*App
 }
@@ -86,6 +100,14 @@ type Cmd_version struct {
 	xcmd.Command
 	*App
 }
+type Cmd_vet struct {
+	xcmd.Command
+	*App
+}
+type Cmd_work struct {
+	xcmd.Command
+	*App
+}
 
 //line cmd/llgo/main_app.gox:1
 func (this *App) MainEntry() {
@@ -97,18 +119,23 @@ func (this *App) Main() {
 	_xgo_obj1 := &Cmd_clean{App: this}
 	_xgo_obj2 := &Cmd_cmptest{App: this}
 	_xgo_obj3 := &Cmd_env{App: this}
-	_xgo_obj4 := &Cmd_get{App: this}
-	_xgo_obj5 := &Cmd_install{App: this}
-	_xgo_obj6 := &Cmd_list{App: this}
-	_xgo_obj7 := &Cmd_lldb{App: this}
-	_xgo_obj8 := &Cmd_mod{App: this}
-	_xgo_obj9 := &Cmd_monitor{App: this}
-	_xgo_obj10 := &Cmd_run{App: this}
-	_xgo_obj11 := &Cmd_test{App: this}
-	_xgo_obj12 := &Cmd_tool{App: this}
-	_xgo_obj13 := &Cmd_tool_compile{App: this}
-	_xgo_obj14 := &Cmd_version{App: this}
-	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11, _xgo_obj12, _xgo_obj13, _xgo_obj14)
+	_xgo_obj4 := &Cmd_fix{App: this}
+	_xgo_obj5 := &Cmd_fmt{App: this}
+	_xgo_obj6 := &Cmd_generate{App: this}
+	_xgo_obj7 := &Cmd_get{App: this}
+	_xgo_obj8 := &Cmd_install{App: this}
+	_xgo_obj9 := &Cmd_list{App: this}
+	_xgo_obj10 := &Cmd_lldb{App: this}
+	_xgo_obj11 := &Cmd_mod{App: this}
+	_xgo_obj12 := &Cmd_monitor{App: this}
+	_xgo_obj13 := &Cmd_run{App: this}
+	_xgo_obj14 := &Cmd_test{App: this}
+	_xgo_obj15 := &Cmd_tool{App: this}
+	_xgo_obj16 := &Cmd_tool_compile{App: this}
+	_xgo_obj17 := &Cmd_version{App: this}
+	_xgo_obj18 := &Cmd_vet{App: this}
+	_xgo_obj19 := &Cmd_work{App: this}
+	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11, _xgo_obj12, _xgo_obj13, _xgo_obj14, _xgo_obj15, _xgo_obj16, _xgo_obj17, _xgo_obj18, _xgo_obj19)
 }
 
 //line cmd/llgo/build_cmd.gox:20
@@ -187,17 +214,76 @@ func (this *Cmd_env) Classfname() string {
 	return "env"
 }
 
-//line cmd/llgo/get_cmd.gox:16
+//line cmd/llgo/fix_cmd.gox:16
+func (this *Cmd_fix) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/fix_cmd.gox:16:1
+	this.Use("fix [-target name] [build flags] [packages]")
+//line cmd/llgo/fix_cmd.gox:18:1
+	this.Short("Update packages to use new APIs")
+//line cmd/llgo/fix_cmd.gox:20:1
+	this.FlagOff()
+//line cmd/llgo/fix_cmd.gox:22:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/fix_cmd.gox:23:1
+		gocommand.BuildMain("fix", args)
+	})
+}
+func (this *Cmd_fix) Classfname() string {
+	return "fix"
+}
+
+//line cmd/llgo/fmt_cmd.gox:16
+func (this *Cmd_fmt) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/fmt_cmd.gox:16:1
+	this.Use("fmt [-n] [-x] [packages]")
+//line cmd/llgo/fmt_cmd.gox:18:1
+	this.Short("Gofmt package sources")
+//line cmd/llgo/fmt_cmd.gox:20:1
+	this.FlagOff()
+//line cmd/llgo/fmt_cmd.gox:22:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/fmt_cmd.gox:23:1
+		gocommand.Main("fmt", args)
+	})
+}
+func (this *Cmd_fmt) Classfname() string {
+	return "fmt"
+}
+
+//line cmd/llgo/generate_cmd.gox:16
+func (this *Cmd_generate) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/generate_cmd.gox:16:1
+	this.Use("generate [-target name] [build flags] [file.go... | packages]")
+//line cmd/llgo/generate_cmd.gox:18:1
+	this.Short("Generate Go files by processing source")
+//line cmd/llgo/generate_cmd.gox:20:1
+	this.FlagOff()
+//line cmd/llgo/generate_cmd.gox:22:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/generate_cmd.gox:23:1
+		gocommand.BuildMain("generate", args)
+	})
+}
+func (this *Cmd_generate) Classfname() string {
+	return "generate"
+}
+
+//line cmd/llgo/get_cmd.gox:18
 func (this *Cmd_get) Main(_xgo_arg0 string) {
 	this.Command.Main(_xgo_arg0)
-//line cmd/llgo/get_cmd.gox:16:1
-	this.Use("get [flags] [packages]")
 //line cmd/llgo/get_cmd.gox:18:1
-	this.Short("Add dependencies to current module and install them")
+	this.Use("get [flags] [packages]")
 //line cmd/llgo/get_cmd.gox:20:1
+	this.Short("Add dependencies to the current module")
+//line cmd/llgo/get_cmd.gox:22:1
+	this.FlagOff()
+//line cmd/llgo/get_cmd.gox:24:1
 	this.Run__1(func(args []string) {
-//line cmd/llgo/get_cmd.gox:21:1
-		panic("todo")
+//line cmd/llgo/get_cmd.gox:25:1
+		get.Main(args)
 	})
 }
 func (this *Cmd_get) Classfname() string {
@@ -388,6 +474,44 @@ func (this *Cmd_version) Main(_xgo_arg0 string) {
 }
 func (this *Cmd_version) Classfname() string {
 	return "version"
+}
+
+//line cmd/llgo/vet_cmd.gox:16
+func (this *Cmd_vet) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/vet_cmd.gox:16:1
+	this.Use("vet [-target name] [build flags] [packages]")
+//line cmd/llgo/vet_cmd.gox:18:1
+	this.Short("Report likely mistakes in packages")
+//line cmd/llgo/vet_cmd.gox:20:1
+	this.FlagOff()
+//line cmd/llgo/vet_cmd.gox:22:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/vet_cmd.gox:23:1
+		gocommand.BuildMain("vet", args)
+	})
+}
+func (this *Cmd_vet) Classfname() string {
+	return "vet"
+}
+
+//line cmd/llgo/work_cmd.gox:16
+func (this *Cmd_work) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/work_cmd.gox:16:1
+	this.Use("work <command> [arguments]")
+//line cmd/llgo/work_cmd.gox:18:1
+	this.Short("Manage workspaces using the Go toolchain")
+//line cmd/llgo/work_cmd.gox:20:1
+	this.FlagOff()
+//line cmd/llgo/work_cmd.gox:22:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/work_cmd.gox:23:1
+		gocommand.Main("work", args)
+	})
+}
+func (this *Cmd_work) Classfname() string {
+	return "work"
 }
 func main() {
 	new(App).Main()

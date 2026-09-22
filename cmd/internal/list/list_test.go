@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -15,50 +14,19 @@ import (
 	"github.com/xgo-dev/llgo/internal/mockable"
 )
 
-func TestParseArgs(t *testing.T) {
-	got, err := parseArgs([]string{"-target=board", "-tags", "one,two one", "-export=false", "-json=ImportPath,Name", "--", "-package"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := listQuery{
-		target:    "board",
-		targetSet: true,
-		tags:      []string{"one", "two", "one"},
-		goArgs:    []string{"-export=false", "-json=ImportPath,Name", "--", "-package"},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("parseArgs = %#v, want %#v", got, want)
-	}
-	for _, args := range [][]string{{"-target"}, {"-target="}, {"-tags"}} {
-		if _, err := parseArgs(args); err == nil {
-			t.Errorf("parseArgs(%q) succeeded", args)
-		}
-	}
+func TestModuleMode(t *testing.T) {
 	for _, flag := range []string{"-m", "-m=1", "-m=t", "-m=T", "-m=TRUE", "-m=true", "-m=True"} {
-		module, err := parseArgs([]string{flag, "-json", "all"})
-		if err != nil || !module.moduleMode {
-			t.Errorf("module query %q = %#v, %v", flag, module, err)
+		if !moduleMode([]string{flag, "-json", "all"}) {
+			t.Errorf("module query %q was not detected", flag)
 		}
 	}
 	for _, flag := range []string{"-m=0", "-m=f", "-m=FALSE", "-m=false", "-m=False"} {
-		module, err := parseArgs([]string{flag, "-json", "all"})
-		if err != nil || module.moduleMode {
-			t.Errorf("package query %q = %#v, %v", flag, module, err)
+		if moduleMode([]string{flag, "-json", "all"}) {
+			t.Errorf("package query %q was detected as module mode", flag)
 		}
 	}
-}
-
-func TestMergeTagsAndEnvironment(t *testing.T) {
-	if got := mergeTags([]string{"llgo", "purego"}, []string{"board", "llgo"}, splitTags("user, purego")); !reflect.DeepEqual(got, []string{"llgo", "purego", "board", "user"}) {
-		t.Fatalf("mergeTags = %q", got)
-	}
-	environ := replaceEnv([]string{"PATH=/bin", "GOOS=old"}, "GOOS", "linux", "GOARCH", "arm")
-	if !slicesContain(environ, "GOOS=linux") || !slicesContain(environ, "GOARCH=arm") || !slicesContain(environ, "PATH=/bin") {
-		t.Fatalf("replaceEnv = %q", environ)
-	}
-	query := listQuery{moduleMode: true, tags: []string{"user", "board"}}
-	if got := effectiveTags(query, []string{"board", "target"}); !reflect.DeepEqual(got, []string{"board", "target", "user"}) {
-		t.Fatalf("module target tags = %q", got)
+	if moduleMode([]string{"--", "-m"}) {
+		t.Fatal("-m after -- must not select module mode")
 	}
 }
 

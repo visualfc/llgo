@@ -16,178 +16,46 @@
 package list
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/xgo-dev/llgo/cmd/internal/gotool"
-	"github.com/xgo-dev/llgo/internal/build"
-	"github.com/xgo-dev/llgo/internal/mockable"
-	"github.com/xgo-dev/llgo/internal/targets"
+	"github.com/xgo-dev/llgo/cmd/internal/gocommand"
 )
 
 // Main runs the list command with its original argument vector. Unlike normal
 // LLGo commands, list must preserve flags owned by the underlying Go command.
 func Main(args []string) {
-	if err := run(args, os.Stdin, os.Stdout, os.Stderr); err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() > 0 {
-			mockable.Exit(exit.ExitCode())
-		}
-		fmt.Fprintln(os.Stderr, "llgo list:", err)
-		mockable.Exit(1)
-	}
+	gocommand.Exit("list", run(args, os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	query, err := parseArgs(args)
+	// Module queries do not select package source files, so omit LLGo's
+	// implicit tags. Explicit target and user tags are still preserved.
+	inv, err := gocommand.Build("list", args, !moduleMode(args))
 	if err != nil {
 		return err
 	}
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	goExe, err := gotool.Find(self, os.Getenv("PATH"))
-	if err != nil {
-		return err
-	}
-
-	goos, goarch := os.Getenv("GOOS"), os.Getenv("GOARCH")
-	if goos == "" {
-		goos = runtime.GOOS
-	}
-	if goarch == "" {
-		goarch = runtime.GOARCH
-	}
-	var targetTags []string
-	if query.target != "" {
-		config, err := targets.NewDefaultResolver().Resolve(query.target)
-		if err != nil {
-			return err
-		}
-		if config.GOOS != "" {
-			goos = config.GOOS
-		}
-		if config.GOARCH != "" {
-			goarch = config.GOARCH
-		}
-		targetTags = config.BuildTags
-	}
-	if tags := effectiveTags(query, targetTags); len(tags) != 0 {
-		query.goArgs = append([]string{"-tags=" + strings.Join(tags, ",")}, query.goArgs...)
-	}
-
-	cmd := exec.Command(goExe, append([]string{"list"}, query.goArgs...)...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
-	cmd.Env = gotool.ChildEnv(replaceEnv(os.Environ(), "GOOS", goos, "GOARCH", goarch))
-	return cmd.Run()
+	inv.Stdin, inv.Stdout, inv.Stderr = stdin, stdout, stderr
+	return inv.Run()
 }
 
-func effectiveTags(query listQuery, targetTags []string) []string {
-	if query.moduleMode {
-		// Module queries omit LLGo defaults but retain target and user tags that
-		// the caller explicitly requested.
-		return mergeTags(targetTags, query.tags)
-	}
-	return mergeTags(strings.Split(build.DefaultBuildTags(), ","), targetTags, query.tags)
-}
-
-type listQuery struct {
-	target     string
-	targetSet  bool
-	tags       []string
-	moduleMode bool
-	goArgs     []string
-}
-
-func parseArgs(args []string) (listQuery, error) {
-	var query listQuery
-	for index := 0; index < len(args); index++ {
-		arg := args[index]
+func moduleMode(args []string) bool {
+	module := false
+	for _, arg := range args {
 		if arg == "--" {
-			query.goArgs = append(query.goArgs, args[index:]...)
 			break
 		}
-		switch {
-		case arg == "-target" || arg == "-tags":
-			if index+1 == len(args) {
-				return listQuery{}, fmt.Errorf("%s requires a value", arg)
-			}
-			index++
-			if arg == "-target" {
-				query.target = args[index]
-				query.targetSet = true
-			} else {
-				query.tags = append(query.tags, splitTags(args[index])...)
-			}
-		case strings.HasPrefix(arg, "-target="):
-			query.target = strings.TrimPrefix(arg, "-target=")
-			query.targetSet = true
-		case strings.HasPrefix(arg, "-tags="):
-			query.tags = append(query.tags, splitTags(strings.TrimPrefix(arg, "-tags="))...)
-		default:
-			if arg == "-m" {
-				query.moduleMode = true
-			} else if value, ok := strings.CutPrefix(arg, "-m="); ok {
-				// Match the boolean spellings accepted by Go flags. Invalid values
-				// remain forwarded so the real go command emits its diagnostic.
-				if enabled, err := strconv.ParseBool(value); err == nil {
-					query.moduleMode = enabled
-				}
-			}
-			query.goArgs = append(query.goArgs, arg)
-		}
-	}
-	if query.targetSet && query.target == "" {
-		return listQuery{}, errors.New("-target requires a non-empty value")
-	}
-	return query, nil
-}
-
-func splitTags(value string) []string {
-	return strings.FieldsFunc(value, func(char rune) bool { return char == ',' || char == ' ' })
-}
-
-func mergeTags(groups ...[]string) []string {
-	seen := make(map[string]bool)
-	var result []string
-	for _, group := range groups {
-		for _, tag := range group {
-			if tag != "" && !seen[tag] {
-				seen[tag] = true
-				result = append(result, tag)
+		if arg == "-m" {
+			module = true
+		} else if value, ok := strings.CutPrefix(arg, "-m="); ok {
+			// Match the boolean spellings accepted by Go flags. Invalid values
+			// remain forwarded so the real go command emits its diagnostic.
+			if enabled, err := strconv.ParseBool(value); err == nil {
+				module = enabled
 			}
 		}
 	}
-	return result
-}
-
-func replaceEnv(environ []string, pairs ...string) []string {
-	result := slices.Clone(environ)
-	for index := 0; index < len(pairs); index += 2 {
-		name, value := pairs[index], pairs[index+1]
-		prefix := name + "="
-		found := false
-		for envIndex, entry := range result {
-			match := strings.HasPrefix(entry, prefix)
-			if runtime.GOOS == "windows" {
-				match = len(entry) >= len(prefix) && strings.EqualFold(entry[:len(prefix)], prefix)
-			}
-			if match {
-				result[envIndex] = prefix + value
-				found = true
-			}
-		}
-		if !found {
-			result = append(result, prefix+value)
-		}
-	}
-	return result
+	return module
 }
