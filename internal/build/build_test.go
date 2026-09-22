@@ -350,6 +350,36 @@ func F(v reflect.Value) { _ = v.Seq() }
 	pkgs[0].LPkg.Prog.Dispose()
 }
 
+func TestBuildCheckFFIVerboseRestartMessage(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/checkffi\n\ngo 1.24\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const src = `package checkffi
+import "reflect"
+func F(v reflect.Value) { _ = v.Seq() }
+`
+	if err := os.WriteFile(filepath.Join(dir, "checkffi.go"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	conf := NewDefaultConf(ModeGen)
+	conf.CheckFFI = true
+	conf.Verbose = true
+	t.Setenv(llgoBuildCache, "0")
+	readStderr := captureStderr(t)
+	pkgs, err := Build(Invocation{Args: []string{"."}, Config: conf, Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pkgs) != 1 || pkgs[0].PkgPath != "example.com/checkffi" {
+		t.Fatalf("Build returned packages = %+v, want example.com/checkffi", pkgs)
+	}
+	pkgs[0].LPkg.Prog.Dispose()
+	if got := readStderr(); !strings.Contains(got, "check-libffi: no libffi uses; compiling reflect/runtime without libffi") {
+		t.Fatalf("verbose restart log = %q", got)
+	}
+}
+
 func TestShouldScanFFI(t *testing.T) {
 	if shouldScanFFI(nil) {
 		t.Fatal("nil config should not scan")

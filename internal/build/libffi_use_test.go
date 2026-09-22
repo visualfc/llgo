@@ -17,11 +17,18 @@
 package build
 
 import (
+	"go/ast"
+	"go/importer"
+	"go/parser"
+	"go/token"
+	"go/types"
+	"runtime"
 	"testing"
 
 	llssa "github.com/xgo-dev/llgo/ssa"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 )
 
 func TestProgramUsesLibffi(t *testing.T) {
@@ -155,4 +162,161 @@ func TestLibffiNameHelpers(t *testing.T) {
 	if setFinalizerCallNeedsFFI(nil) != true {
 		t.Fatal("nil SetFinalizer call must keep libffi")
 	}
+}
+
+func TestLibffiOptionsAndGuards(t *testing.T) {
+	if libffiOptionsFor(nil) != (libffiOptions{}) {
+		t.Fatal("nil context should use empty libffi options")
+	}
+	if libffiProgramUse(nil) == nil {
+		t.Fatal("nil context should still produce a program-use view")
+	}
+	if (*programUse)(nil).usesLibffi(libffiOptions{}) {
+		t.Fatal("nil program-use should not require libffi")
+	}
+	if programMayCallLibffiIndirectly(nil, libffiOptions{}) {
+		t.Fatal("nil program-use should not report indirect libffi")
+	}
+	if isLibffiIndirectFunction(nil, libffiOptions{windows: true}) {
+		t.Fatal("nil function is not an indirect libffi entry")
+	}
+	if programUseFor(nil) != nil {
+		t.Fatal("nil context has no cached program-use")
+	}
+	analyzeProgramUse(nil, nil).eachFunction(nil)
+	(*programUse)(nil).eachFunction(func(*ssa.Function) {
+		t.Fatal("nil program-use visited a function")
+	})
+
+	emptyGOOS := llssa.NewProgram(&llssa.Target{GOARCH: "amd64"})
+	defer emptyGOOS.Dispose()
+	if got := libffiOptionsFor(&context{prog: emptyGOOS}); got.windows != (runtime.GOOS == "windows") {
+		t.Fatalf("empty GOOS windows = %v, want host %s", got.windows, runtime.GOOS)
+	}
+	win := llssa.NewProgram(&llssa.Target{GOOS: "windows", GOARCH: "amd64"})
+	defer win.Dispose()
+	if !libffiOptionsFor(&context{prog: win}).windows {
+		t.Fatal("windows target should set windows libffi options")
+	}
+
+	pkg := buildWasmReflectTestProgram(t, `package main; func F() {}`)
+	ctx := &context{
+		progSSA: pkg.Prog,
+		initial: []*packages.Package{
+			nil,
+			{},
+			{Types: types.NewPackage("example.com/lib", "lib")},
+			{Types: types.NewPackage("example.com/missing", "main")},
+			{Types: pkg.Pkg},
+		},
+		buildConf: &Config{BuildMode: BuildModeExe},
+		mode:      ModeBuild,
+	}
+	if libffiUseExecutableRoots(ctx) {
+		t.Fatal("main package without main should not use executable roots")
+	}
+}
+
+func TestLibffiWindowsNewCallback(t *testing.T) {
+	pkg := buildSSAPackage(t, "syscall", `package syscall
+func NewCallback(fn any) uintptr { return 0 }
+func NewCallbackCDecl(fn any) uintptr { return 0 }
+func Open() {}
+func useCallback() { NewCallback(nil) }
+func useCDecl() { NewCallbackCDecl(nil) }
+func useOpen() { Open() }
+`)
+	opts := libffiOptions{windows: true}
+	if !isSyscallNewCallback(pkg.Func("NewCallback")) || !isSyscallNewCallback(pkg.Func("NewCallbackCDecl")) {
+		t.Fatal("syscall callback constructors should require libffi on windows")
+	}
+	if isSyscallNewCallback(nil) || isSyscallNewCallback(pkg.Func("Open")) {
+		t.Fatal("non-callback syscall functions should not require libffi")
+	}
+	if !functionCallsLibffi(pkg.Func("useCallback"), opts) || !functionCallsLibffi(pkg.Func("useCDecl"), opts) {
+		t.Fatal("direct NewCallback calls should require libffi on windows")
+	}
+	if functionCallsLibffi(pkg.Func("useOpen"), opts) || functionCallsLibffi(pkg.Func("useCallback"), libffiOptions{}) {
+		t.Fatal("Open and non-windows NewCallback should not require libffi")
+	}
+	if !isLibffiIndirectName("syscall", "NewCallback", opts) || !isLibffiIndirectName("syscall", "NewCallbackCDecl", opts) {
+		t.Fatal("escaped syscall callback names should require libffi on windows")
+	}
+	if isLibffiIndirectName("syscall", "NewCallback", libffiOptions{}) || isLibffiIndirectName("syscall", "Open", opts) {
+		t.Fatal("non-windows or non-callback syscall names should not require libffi")
+	}
+}
+
+func TestUnwrapSSAValue(t *testing.T) {
+	if unwrapSSAValue(&ssa.MakeInterface{}) != nil {
+		t.Fatal("MakeInterface with a nil operand should unwrap to nil")
+	}
+	pkg := buildWasmReflectTestProgram(t, `package p
+type I interface{ M() }
+type J interface{ M() }
+type T int
+type P *int
+func (T) M() {}
+func f(i I, t T, p P, n int) any {
+	var j J = i
+	q := (*int)(p)
+	_ = int(t)
+	_ = float64(n)
+	_ = q
+	return j
+}
+`)
+	fn := pkg.Func("f")
+	if fn == nil {
+		t.Fatal("missing f")
+	}
+	var sawChangeIface, sawChangeType, sawConvert bool
+	for _, block := range fn.Blocks {
+		for _, instr := range block.Instrs {
+			v, ok := instr.(ssa.Value)
+			if !ok {
+				continue
+			}
+			unwrapped := unwrapSSAValue(v)
+			switch instr.(type) {
+			case *ssa.ChangeInterface:
+				sawChangeIface = true
+				if unwrapped == v {
+					t.Fatal("ChangeInterface was not unwrapped")
+				}
+			case *ssa.ChangeType:
+				sawChangeType = true
+				if unwrapped == v {
+					t.Fatal("ChangeType was not unwrapped")
+				}
+			case *ssa.Convert:
+				sawConvert = true
+				if unwrapped == v {
+					t.Fatal("Convert was not unwrapped")
+				}
+			}
+		}
+	}
+	if !sawChangeIface || !sawChangeType || !sawConvert {
+		t.Fatalf("unwrap coverage changeIface=%v changeType=%v convert=%v", sawChangeIface, sawChangeType, sawConvert)
+	}
+}
+
+func buildSSAPackage(t *testing.T, path, src string) *ssa.Package {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := types.NewPackage(path, file.Name.Name)
+	pkg, _, err := ssautil.BuildPackage(
+		&types.Config{Importer: importer.Default()}, fset,
+		checked, []*ast.File{file},
+		ssa.SanityCheckFunctions|ssa.InstantiateGenerics,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pkg
 }

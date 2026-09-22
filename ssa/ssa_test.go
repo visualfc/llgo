@@ -158,6 +158,35 @@ func TestLowerSetFinalizerCallRejectsUnsupportedForms(t *testing.T) {
 	if _, _, ok := b.LowerSetFinalizerCall([]Expr{obj, unnamedFn.Expr}); !ok {
 		t.Fatal("rejected unnamed pointer finalizer")
 	}
+
+	namedPtr := types.NewNamed(types.NewTypeName(token.NoPos, typePkg, "P", nil), objType, nil)
+	namedFn := pkg.NewFunc("namedPtrFinalizer", types.NewSignatureType(nil, nil, nil,
+		types.NewTuple(types.NewVar(token.NoPos, nil, "", namedPtr)),
+		types.NewTuple(), false), InGo)
+	namedFn.MakeBody(1).Return()
+	if _, _, ok := b.LowerSetFinalizerCall([]Expr{obj, namedFn.Expr}); !ok {
+		t.Fatal("rejected named pointer finalizer")
+	}
+
+	nonFn := finalizerFn.Expr
+	nonFn.impl = llvm.ConstIntToPtr(llvm.ConstInt(prog.ctx.Int64Type(), 1, false), llvm.PointerType(prog.ctx.Int8Type(), 0))
+	if _, _, ok := b.LowerSetFinalizerCall([]Expr{obj, nonFn}); ok {
+		t.Fatal("accepted a function declaration whose value is not an LLVM function")
+	}
+}
+
+func TestAbiMethodValueThunkRequiresReceiver(t *testing.T) {
+	prog := NewProgram(nil)
+	defer prog.Dispose()
+	pkg := prog.NewPackage("p", "example.com/p")
+	fn := pkg.NewFunc("f", NoArgsNoRet, InGo)
+	b := fn.MakeBody(1)
+	defer func() {
+		if recover() != "ssa: method value thunk requires a receiver" {
+			t.Fatal("missing receiver did not panic")
+		}
+	}()
+	b.abiMethodValueThunk(fn, NoArgsNoRet)
 }
 
 func TestRuntimeSetFinalizerPtrMissing(t *testing.T) {

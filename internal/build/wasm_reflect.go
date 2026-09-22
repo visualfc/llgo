@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/ssa"
+	"golang.org/x/tools/go/ssa/ssautil"
 	"golang.org/x/tools/go/types/typeutil"
 )
 
@@ -64,8 +65,8 @@ func configureWasmFuncInfoEntries(ctx *context) {
 // analyzeWasmInitialUse keeps feature analysis local to one initial package.
 // Executables use RTA from init/main. Entry-less packages have no whole-program
 // roots, so start RTA from their own functions rather than the union SSA program.
-func analyzeWasmInitialUse(prog *ssa.Program, pkg *types.Package) *wasmProgramUse {
-	use := &wasmProgramUse{all: make(map[*ssa.Function]bool)}
+func analyzeWasmInitialUse(prog *ssa.Program, pkg *types.Package) *programUse {
+	use := &programUse{all: make(map[*ssa.Function]bool)}
 	if prog == nil || pkg == nil {
 		return use
 	}
@@ -78,7 +79,7 @@ func analyzeWasmInitialUse(prog *ssa.Program, pkg *types.Package) *wasmProgramUs
 		if init := ssaPkg.Func("init"); init != nil {
 			roots = append(roots, init)
 		}
-		return analyzeWasmProgramUse(prog, roots)
+		return analyzeProgramUse(prog, roots)
 	}
 	var roots []*ssa.Function
 	for fn := range ssautil.AllFunctions(prog) {
@@ -87,7 +88,7 @@ func analyzeWasmInitialUse(prog *ssa.Program, pkg *types.Package) *wasmProgramUs
 		}
 	}
 	if len(roots) != 0 {
-		return analyzeWasmProgramUse(prog, roots)
+		return analyzeProgramUse(prog, roots)
 	}
 	return use
 }

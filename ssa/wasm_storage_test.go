@@ -455,6 +455,47 @@ func TestWasm32NativeStructAndGCRootStorage(t *testing.T) {
 	}
 }
 
+func TestWasm32ToStorageConstantWidePointerAndArray(t *testing.T) {
+	prog := newJ32Program(t)
+	ptr := prog.Pointer(prog.Byte())
+	nullPtr := llvm.ConstNull(ptr.ll)
+	stored := prog.toStorageConstant(ptr, nullPtr)
+	storage := prog.widePointerStorageType()
+	if stored.Type() != storage {
+		t.Fatalf("wide pointer storage type = %s, want %s", stored.Type(), storage)
+	}
+	if got := prog.toStorageConstant(ptr, stored); got != stored {
+		t.Fatal("already-wide pointer storage was rewritten")
+	}
+
+	array := prog.rawType(types.NewArray(ptr.RawType(), 2))
+	if array.kind != vkArray {
+		t.Fatalf("array kind = %d, want vkArray", array.kind)
+	}
+	elem0 := llvm.ConstIntToPtr(llvm.ConstInt(prog.ctx.Int32Type(), 1, false), ptr.ll)
+	elem1 := llvm.ConstIntToPtr(llvm.ConstInt(prog.ctx.Int32Type(), 2, false), ptr.ll)
+	logical := llvm.ConstArray(ptr.ll, []llvm.Value{elem0, elem1})
+	if logical.Type() == array.ll {
+		t.Fatal("logical pointer array already used wide storage")
+	}
+	if logical.OperandsCount() != 2 {
+		t.Fatalf("logical array has %d operands, want 2", logical.OperandsCount())
+	}
+	converted := prog.toStorageConstant(array, logical)
+	want := llvm.ArrayType(prog.storageType(prog.Index(array)), 2)
+	if converted.Type() != want {
+		t.Fatalf("array storage type = %s, want %s", converted.Type(), want)
+	}
+	if converted.OperandsCount() != 2 {
+		t.Fatalf("converted array has %d elements, want 2", converted.OperandsCount())
+	}
+	for i := 0; i < 2; i++ {
+		if converted.Operand(i).Type() != storage {
+			t.Fatalf("element %d type = %s, want %s", i, converted.Operand(i).Type(), storage)
+		}
+	}
+}
+
 func TestWasm32AbiTypeDescriptorsVerify(t *testing.T) {
 	prog := newJ32Program(t)
 	prog.SetRuntime(func() *types.Package {
