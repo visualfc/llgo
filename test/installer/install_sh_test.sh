@@ -100,6 +100,7 @@ cat >"$mock_bin/powershell.exe" <<'EOF'
     printf 'msystem=%s\n' "$MSYSTEM"
     printf 'args=%s\n' "$*"
 } >"$LLGO_INSTALLER_TEST_CAPTURE"
+cp "${!#}" "$LLGO_INSTALLER_TEST_CAPTURE.ps1"
 EOF
 chmod +x "$mock_bin/powershell.exe"
 export PATH="$mock_bin:$PATH"
@@ -132,5 +133,42 @@ for profile in "$msys_home/.bashrc" "$msys_home/.profile"; do
     grep -Fq "$temporary/windows-root/bin" "$profile" ||
         fail 'MSYS2 shell profile did not receive its own PATH entry'
 done
+
+# File entrypoints must use the matching checkout's PowerShell script, while
+# piped entrypoints download it. Keep that network boundary deterministic and
+# check which script reaches the delegate, even before install.ps1 is on main.
+# shellcheck disable=SC2329 # The exported mocks run in the child Bash.
+(
+    uname() {
+        printf 'MINGW64_NT-10.0-26100\n'
+    }
+    curl() {
+        [[ "${!#}" == 'https://raw.githubusercontent.com/xgo-dev/llgo/main/install.ps1' ]] || return 1
+        printf '%s\n' "${!#}" >"$LLGO_INSTALLER_TEST_CAPTURE.download"
+        while [[ "$#" -gt 1 ]]; do
+            if [[ "$1" == --output ]]; then
+                cp "$LLGO_INSTALLER_TEST_PS1" "$2"
+                return
+            fi
+            shift
+        done
+        return 1
+    }
+    export -f uname curl
+    export LLGO_INSTALLER_LIBRARY_ONLY=0 LLGO_ARCHIVE_PATH="$archive"
+    export LLGO_INSTALLER_TEST_PS1="$root/install.ps1"
+
+    export LLGO_INSTALLER_TEST_CAPTURE="$temporary/windows-file"
+    bash "$root/install.sh"
+    [[ ! -e "$LLGO_INSTALLER_TEST_CAPTURE.download" ]] ||
+        fail 'file entrypoint downloaded the companion instead of using this checkout'
+    cmp "$root/install.ps1" "$LLGO_INSTALLER_TEST_CAPTURE.ps1"
+
+    export LLGO_INSTALLER_TEST_CAPTURE="$temporary/windows-pipe"
+    bash <"$root/install.sh"
+    [[ -s "$LLGO_INSTALLER_TEST_CAPTURE.download" ]] ||
+        fail 'piped entrypoint did not download its companion'
+    cmp "$root/install.ps1" "$LLGO_INSTALLER_TEST_CAPTURE.ps1"
+)
 
 printf 'install.sh tests passed\n'

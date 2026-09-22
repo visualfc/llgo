@@ -13,10 +13,12 @@ trap 'rm -rf "$temporary"' EXIT
 # Reuse the archive and versioned installation already checked by Release CI.
 # Only the test HOME is modified; the disposable runner also receives the
 # Windows user PATH update from the real PowerShell delegate.
+# Run the file so it finds this checkout's install.ps1, not main's companion.
+# LLGO_ARCHIVE_PATH selects release installation even inside a source checkout.
 env HOME="$temporary" SHELL=/bin/bash \
     LLGO_VERSION="$version" LLGO_INSTALL_ROOT="$install_root" \
     LLGO_ARCHIVE_PATH="$archive" LLGO_INSTALL_DEPS=0 LLGO_UPDATE_PATH=1 \
-    bash <"$repository/install.sh"
+    bash "$repository/install.sh"
 
 for mode in -ic -lic; do
     # Do not inherit the runner's PATH or use setup-deps' `inherit` setting:
