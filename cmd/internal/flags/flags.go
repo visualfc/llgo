@@ -250,6 +250,36 @@ func AddBuildModeFlags(fs *flag.FlagSet) {
 var Gen bool
 var CompileOnly bool
 
+// Coverage flags are shared by build and test. Profiles remain test-only;
+// covered applications write Go's binary coverage data through GOCOVERDIR.
+var (
+	Cover     bool
+	CoverMode string
+	CoverPkg  string
+)
+
+func AddCoverageFlags(fs *flag.FlagSet) {
+	// BoolVar resets Cover; Func does not reset its backing strings.
+	CoverMode = ""
+	CoverPkg = ""
+	fs.BoolVar(&Cover, "cover", false, "Enable coverage analysis")
+	fs.Func("covermode", "Coverage mode: set, count, atomic", func(value string) error {
+		switch value {
+		case "", "set", "count", "atomic":
+			CoverMode = value
+			Cover = true
+			return nil
+		default:
+			return fmt.Errorf("valid modes are %q, %q, or %q", "set", "count", "atomic")
+		}
+	})
+	fs.Func("coverpkg", "Apply coverage analysis to packages matching the patterns", func(value string) error {
+		CoverPkg = value
+		Cover = true
+		return nil
+	})
+}
+
 // Test binary flags
 var (
 	TestRun              string
@@ -258,10 +288,7 @@ var (
 	TestShort            bool
 	TestCount            int
 	TestCPU              string
-	TestCover            bool
-	TestCoverMode        string
 	TestCoverProfile     string
-	TestCoverPkg         string
 	TestParallel         int
 	TestFailfast         bool
 	TestJSON             bool
@@ -291,16 +318,19 @@ var (
 )
 
 func AddTestBinaryFlags(fs *flag.FlagSet) {
+	AddCoverageFlags(fs)
+	TestCoverProfile = ""
 	fs.StringVar(&TestRun, "run", "", "Run only tests matching the regular expression")
 	fs.StringVar(&TestBench, "bench", "", "Run benchmarks matching the regular expression")
 	fs.StringVar(&TestTimeout, "timeout", DefaultTestTimeout, "Test timeout duration (e.g., 10m, 30s)")
 	fs.BoolVar(&TestShort, "short", false, "Tell long-running tests to shorten their run time")
 	fs.IntVar(&TestCount, "count", 1, "Run each test and benchmark n times")
 	fs.StringVar(&TestCPU, "cpu", "", "Comma-separated list of GOMAXPROCS values for which the tests or benchmarks should be executed")
-	fs.BoolVar(&TestCover, "cover", false, "Enable coverage analysis")
-	fs.StringVar(&TestCoverMode, "covermode", "", "Coverage mode: set, count, atomic")
-	fs.StringVar(&TestCoverProfile, "coverprofile", "", "Write coverage profile to file")
-	fs.StringVar(&TestCoverPkg, "coverpkg", "", "Apply coverage analysis to packages matching the patterns")
+	fs.Func("coverprofile", "Write coverage profile to file", func(value string) error {
+		TestCoverProfile = value
+		Cover = true
+		return nil
+	})
 	fs.IntVar(&TestParallel, "parallel", 0, "Maximum number of tests to run simultaneously")
 	fs.BoolVar(&TestFailfast, "failfast", false, "Do not start new tests after the first test failure")
 	fs.BoolVar(&TestJSON, "json", false, "Log verbose output in JSON format")

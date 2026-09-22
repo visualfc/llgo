@@ -103,6 +103,45 @@ func TestGenMainModuleWindowsExitsAfterMain(t *testing.T) {
 	)
 }
 
+func TestGenMainModuleCoverageExit(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		t.Run(goos, func(t *testing.T) {
+			for _, covered := range []bool{false, true} {
+				ctx := &context{
+					prog: llssa.NewProgram(nil),
+					buildConf: &Config{
+						BuildMode: BuildModeExe,
+						Goos:      goos,
+						Goarch:    "amd64",
+					},
+				}
+				defer ctx.prog.Dispose()
+				if covered {
+					ctx.buildConf.Coverage = &CoverageConfig{}
+				}
+				pkg := &packages.Package{PkgPath: "example.com/app", ExportFile: "app.a"}
+				mod := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true, pyInit: true})
+				ir := mod.LPkg.String()
+				if !covered {
+					if strings.Contains(ir, "runtime.runCoverageExitHook") {
+						t.Fatal("ordinary executable acquired a coverage exit hook")
+					}
+					continue
+				}
+				order := []string{
+					`call void @"example.com/app.main"()`,
+					`call void @Py_Finalize()`,
+					`call void @runtime.runCoverageExitHook(i64 0)`,
+				}
+				if goos == "windows" {
+					order = append(order, `call void @runtime.exit(i32 0)`)
+				}
+				assertInOrder(t, ir, order...)
+			}
+		})
+	}
+}
+
 func TestGenMainModuleWindowsStdioNobufUsesUCRTStreams(t *testing.T) {
 	llvm.InitializeAllTargets()
 	t.Setenv(llgoStdioNobuf, "1")

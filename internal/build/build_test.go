@@ -132,6 +132,8 @@ func TestConfigCloneDoesNotAliasInput(t *testing.T) {
 		RunArgs:      []string{"run"},
 		GoBuildFlags: []string{"-tags=custom"},
 		Overlay:      map[string][]byte{"input.go": []byte("package input")},
+		Coverage:     &CoverageConfig{Mode: "count"},
+		coverage:     &coverageBuild{},
 		GlobalRewrites: map[string]Rewrites{
 			"example.com/p": {"value": "input"},
 			"nil":           nil,
@@ -143,6 +145,7 @@ func TestConfigCloneDoesNotAliasInput(t *testing.T) {
 	cloned.Overlay["input.go"][0] = 'P'
 	cloned.GlobalRewrites["example.com/p"]["value"] = "changed"
 	cloned.GlobalRewrites["new"] = Rewrites{"value": "new"}
+	cloned.Coverage.Mode = "atomic"
 
 	if got := input.RunArgs[0]; got != "run" {
 		t.Fatalf("input RunArgs changed to %q", got)
@@ -159,11 +162,37 @@ func TestConfigCloneDoesNotAliasInput(t *testing.T) {
 	if _, ok := input.GlobalRewrites["new"]; ok {
 		t.Fatal("cloned rewrite map aliases input map")
 	}
+	if input.Coverage.Mode != "count" || cloned.coverage != nil {
+		t.Fatalf("coverage clone = input %q, transient %#v", input.Coverage.Mode, cloned.coverage)
+	}
 	if rewrites, ok := cloned.GlobalRewrites["nil"]; !ok || rewrites != nil {
 		t.Fatalf("nil rewrite entry was not preserved: %#v", rewrites)
 	}
 	if got := (*Config)(nil).clone(); got != nil {
 		t.Fatalf("nil Config clone = %#v", got)
+	}
+}
+
+func TestConfigCloneDropsGeneratedCoverageOverlay(t *testing.T) {
+	base := map[string][]byte{"source.go": []byte("package source")}
+	input := &Config{
+		Overlay: map[string][]byte{
+			"source.go":            []byte("package source // covered"),
+			"z_llgo_cover_main.go": []byte("package main"),
+		},
+		Coverage: &CoverageConfig{},
+		coverage: &coverageBuild{
+			inputOverlay:    base,
+			inputOverlaySet: true,
+		},
+	}
+	cloned := input.clone()
+	if got := len(cloned.Overlay); got != 1 || string(cloned.Overlay["source.go"]) != "package source" {
+		t.Fatalf("cloned coverage overlay = %#v, want only the pre-instrumentation source", cloned.Overlay)
+	}
+	cloned.Overlay["source.go"][0] = 'P'
+	if got := string(base["source.go"]); got != "package source" {
+		t.Fatalf("cloned coverage overlay aliases its snapshot: %q", got)
 	}
 }
 

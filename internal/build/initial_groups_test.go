@@ -264,11 +264,49 @@ func TestInitialGroupUsesLoadablePackagePath(t *testing.T) {
 	})
 }
 
+func TestInitialGroupCoverageProfile(t *testing.T) {
+	root := writeMultiBuildModule(t, map[string]string{
+		"first/first.go":        "package first\nfunc Covered() int { return 1 }\n",
+		"first/first_test.go":   "package first\nimport \"testing\"\nfunc TestCovered(t *testing.T) { Covered() }\n",
+		"second/second.go":      "package second\nfunc Covered() int { return 2 }\n",
+		"second/second_test.go": "package second\nimport \"testing\"\nfunc TestCovered(t *testing.T) { Covered() }\n",
+	})
+	profile := filepath.Join(t.TempDir(), "cover.out")
+	conf := NewDefaultConf(ModeTest)
+	conf.Coverage = &CoverageConfig{Mode: "count", Profile: profile}
+	parent, err := newCoverageBuild(conf, commandEnv{dir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent.close()
+	ctx := &context{mode: ModeTest, buildConf: conf, commands: commandEnv{dir: root}}
+	groups := []initialBuildGroup{
+		{pkgs: []*packages.Package{{PkgPath: "example.com/multibuild/first.test"}}},
+		{pkgs: []*packages.Package{{PkgPath: "example.com/multibuild/second.test"}}},
+	}
+	if _, err := buildInitialGroups(initialGroupInvocations(Invocation{}, ctx, groups)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Count(text, "mode: count\n") != 1 ||
+		!strings.Contains(text, "example.com/multibuild/first/first.go:") ||
+		!strings.Contains(text, "example.com/multibuild/second/second.go:") {
+		t.Fatalf("grouped coverage profile lost a child fragment:\n%s", text)
+	}
+}
+
 func TestInitialGroupInvocationsDoNotRetainParentPackages(t *testing.T) {
 	children, parent := func() ([]Invocation, weak.Pointer[packages.Package]) {
 		pkg := &packages.Package{PkgPath: "example.com/first.test"}
 		conf := NewDefaultConf(ModeTest)
 		conf.BuildParallelism = 3
+		conf.Coverage = &CoverageConfig{Profile: "cover.out"}
+		conf.coverage = &coverageBuild{noTests: []*packages.Package{pkg}}
+		conf.coverageProfileInitialized = true
 		ctx := &context{mode: ModeTest, buildConf: conf, commands: commandEnv{dir: "source"}}
 		groups := []initialBuildGroup{{features: initialBuildFeatures{localContext: true}, pkgs: []*packages.Package{pkg}}}
 		children := initialGroupInvocations(Invocation{disableMultiFallback: true}, ctx, groups)
@@ -276,12 +314,15 @@ func TestInitialGroupInvocationsDoNotRetainParentPackages(t *testing.T) {
 		groups[0].features.localContext = false
 		pkg.PkgPath = "changed"
 		conf.BuildParallelism = 7
+		conf.Coverage.Profile = "changed"
 		return children, weak.Make(pkg)
 	}()
 	child := children[0]
 	if !slices.Equal(child.Args, []string{"example.com/first"}) || child.Dir != "source" ||
 		child.Config.BuildParallelism != 3 || !child.initialFeatures.localContext ||
-		!child.disableMultiFallback || !child.multipleInitials {
+		!child.disableMultiFallback || !child.multipleInitials ||
+		child.Config.Coverage.Profile != "cover.out" || child.Config.coverage != nil ||
+		!child.Config.coverageProfileInitialized {
 		t.Fatalf("group invocation lost its independent snapshot: %+v", child)
 	}
 	for range 10 {

@@ -16,6 +16,9 @@ concurrency:
 
 jobs:
   llgo:
+    permissions:
+      contents: read
+      id-token: write
     name: llgo + test (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}${{ matrix.windows_arch && format(', {0}', matrix.windows_arch) || '' }}, LLVM ${{ matrix.llvm }}, Go 1.27)
     timeout-minutes: 60
     strategy:
@@ -115,6 +118,8 @@ jobs:
           LLGO_BUILD_CACHE: "1"
           LLGO_TEST_BENCH_GO126: "1"
           LLGO_TEST_SUITE: "core"
+          LLGO_TEST_COVERPROFILE: "coverage-llgo.txt"
+          LLGO_TEST_COVERPKG: "github.com/xgo-dev/llgo/test/..."
         shell: bash
         run: |
           set -euo pipefail
@@ -128,10 +133,25 @@ jobs:
           export LLGO_TEST_LLGEN="$RUNNER_TEMP/llgo-bin/llgen${tool_suffix}"
           dev/test_go_version.sh 1.27
 
+          python .github/scripts/check_llgo_coverage.py coverage-llgo.txt
+
           if [[ "$RUNNER_OS" == Windows ]]; then
             # The TLS regression lives in the runtime submodule, outside test/.
             (cd runtime && "$LLGO" test -v -run '^TestSlotGCAllocation$' -count=20 -timeout=2m ./internal/clite/tls)
           fi
+
+      - name: Upload LLGo test coverage to Codecov
+        # Preserve any profile emitted by failing tests, without uploading
+        # unrelated profiles produced by child compiler integration tests.
+        if: ${{ !cancelled() && hashFiles('coverage-llgo.txt') != '' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          files: coverage-llgo.txt
+          flags: llgo-tests
+          disable_search: true
+          fail_ci_if_error: true
 
       - name: Test Hello World with Go 1.20
         if: matrix.os == 'ubuntu-latest'

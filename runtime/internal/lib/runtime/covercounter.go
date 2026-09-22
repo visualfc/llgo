@@ -4,16 +4,46 @@
 
 package runtime
 
-import (
-	_ "unsafe"
-)
+import "unsafe"
 
 type covCounterBlob struct {
 	Counters *uint32
 	Len      uint64
 }
 
-//go:linkname coverage_getCovCounterList internal/coverage/cfile.getCovCounterList
-func coverage_getCovCounterList() []covCounterBlob {
-	return nil
+var coverageCounters []covCounterBlob
+
+// Only a covered main installs this callback. Keep the normal runtime
+// independent of internal/coverage and its substantial reporting dependency tree.
+var coverageExitHook func(int)
+
+func setCoverageExitHook(hook func(int)) {
+	coverageExitHook = hook
+}
+
+func runCoverageExitHook(code int) {
+	if coverageExitHook != nil {
+		coverageExitHook(code)
+	}
+}
+
+// registerCoverage is called once per instrumented package, before its user
+// variable initializers. Native LLVM links do not have Go moduledata counter
+// sections, so generated static descriptors provide the same counter ranges.
+// Only package initialization writes this registry; readers run after init.
+func registerCoverage(
+	meta unsafe.Pointer,
+	size uint32,
+	hash [16]byte,
+	pkgpath string,
+	pkgid int,
+	mode uint8,
+	counters []covCounterBlob,
+) uint32 {
+	id := addCoverageMeta(meta, size, hash, pkgpath, pkgid, mode, 1)
+	if id == 0 {
+		panic("runtime.registerCoverage: coverage package map collision")
+	}
+	coverageCounters = append(coverageCounters, counters...)
+	return id
 }

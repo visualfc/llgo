@@ -227,6 +227,12 @@ type Config struct {
 	// fixtures that intentionally avoid importing github.com/goplus/lib/py.
 	// Production callers leave this nil; the provider is evaluated once per Do.
 	TestPythonPackage func() *types.Package
+
+	// Coverage enables source coverage for builds/tests. Nil leaves the build
+	// unchanged; coverage holds only per-invocation temporary state.
+	Coverage                   *CoverageConfig
+	coverage                   *coverageBuild
+	coverageProfileInitialized bool
 }
 
 type Rewrites map[string]string
@@ -239,9 +245,22 @@ func (c *Config) clone() *Config {
 		return nil
 	}
 	cloned := *c
+	// Per-invocation coverage state may retain loaded packages and temporary
+	// paths. A cloned invocation rebuilds that state from Coverage.
+	cloned.coverage = nil
+	if c.Coverage != nil {
+		options := *c.Coverage
+		cloned.Coverage = &options
+	}
 	cloned.RunArgs = slices.Clone(c.RunArgs)
 	cloned.GoBuildFlags = slices.Clone(c.GoBuildFlags)
 	cloned.Overlay = cloneOverlay(c.Overlay)
+	if c.coverage != nil && c.coverage.inputOverlaySet {
+		// Coverage-generated files belong to the current loaded graph. Carrying
+		// them into an isolated initial group can make a test main appear beside
+		// its source package (and can re-instrument stale generated sources).
+		cloned.Overlay = cloneOverlay(c.coverage.inputOverlay)
+	}
 	if c.GlobalRewrites != nil {
 		cloned.GlobalRewrites = make(map[string]Rewrites, len(c.GlobalRewrites))
 		for pkgPath, rewrites := range c.GlobalRewrites {
@@ -496,12 +515,23 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	// architecture level as the LLVM build. GOOS/GOARCH retain their existing
 	// per-command handling.
 	commands := commandEnv{dir: dir, environ: withEnv(environ, goarchEnv(conf)...)}
+	conf.coverage, err = newCoverageBuild(conf, commands)
+	if err != nil {
+		return nil, err
+	}
+	if conf.coverage != nil {
+		conf.coverage.local = len(inv.Args) == 0
+		defer conf.coverage.close()
+	}
 	buildTrace := inv.parentBuildTrace
 	if buildTrace == nil {
 		buildTrace, err = startBuildTrace(conf.BuildTrace, dir, conf.parallelism())
 		if err != nil {
 			return nil, fmt.Errorf("start build trace: %w", err)
 		}
+	}
+	if conf.coverage != nil {
+		conf.coverage.trace = buildTrace
 	}
 	buildSpan := buildTrace.startCoordinator("build", map[string]any{
 		"packages":    slices.Clone(inv.Args),
@@ -702,6 +732,12 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		const mode = parser.AllErrors | parser.ParseComments
 		return parser.ParseFile(fset, filename, src, mode)
 	}
+	if conf.coverage != nil {
+		dedup.SetPrepare(func(pkgs []*packages.Package, driver *packages.Config) error {
+			dedup.SetPrepare(nil)
+			return conf.coverage.prepare(pkgs, driver, conf, sourcePatchGOROOT)
+		})
+	}
 
 	loadSpan := buildTrace.startCoordinator("load packages", map[string]any{
 		"patterns": slices.Clone(patterns),
@@ -729,6 +765,9 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		initial, err = filterTestPackages(initial, conf.OutFile)
 		if err != nil {
 			return nil, err
+		}
+		if conf.coverage != nil {
+			initial = append(initial, conf.coverage.noTests...)
 		}
 		if len(initial) == 0 {
 			return nil, nil
@@ -917,10 +956,16 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 			}
 		}
 		ctx.testFail = dagResult.tests.failed
+		if conf.coverage != nil && buildErr == nil {
+			errs = append(errs, conf.coverage.reportNoTests(conf))
+		}
 		if dagResult.tests.skipped != 0 {
 			fmt.Fprintf(os.Stderr, "FAIL\t%d package(s) skipped by -failfast\n", dagResult.tests.skipped)
 		}
 		if ctx.testFail {
+			if conf.coverage != nil {
+				return allPkgs, coverageTestFailure(errs)
+			}
 			mockable.Exit(1)
 		}
 		return allPkgs, errors.Join(errs...)
@@ -928,6 +973,11 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	allPkgs, err = buildAllPkgs(ctx, allPkgs, verbose)
 	if err != nil {
 		return nil, err
+	}
+	if conf.coverage != nil {
+		if err := conf.coverage.reportNoTests(conf); err != nil {
+			return nil, err
+		}
 	}
 
 	if mode == ModeGen {
@@ -971,6 +1021,9 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	}
 
 	if mode == ModeTest && ctx.testFail {
+		if conf.coverage != nil {
+			return allPkgs, coverageTestFailure(linkErrs)
+		}
 		mockable.Exit(1)
 	}
 
@@ -1135,6 +1188,7 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 			runner := goCompatibleWasmRunner(link.conf)
 			if link.conf.Mode == ModeTest {
 				program := &testProgram{
+					coverage:  link.conf.coverage != nil,
 					app:       link.outFmts.Out,
 					pkgDir:    link.pkg.Dir,
 					pkgName:   strings.TrimSuffix(link.pkg.PkgPath, ".test"),

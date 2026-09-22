@@ -3,11 +3,42 @@
 package test
 
 import (
+	"flag"
 	"reflect"
 	"testing"
 
 	"github.com/xgo-dev/llgo/cmd/internal/flags"
 )
+
+func TestCoverageFlagsAfterPackages(t *testing.T) {
+	for _, args := range [][]string{
+		{"-covermode=count", ".", "-coverprofile=cover.out"},
+		{".", "-covermode", "count", "-coverprofile", "cover.out"},
+	} {
+		resetTestFlags()
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		flags.AddTestBinaryFlags(fs)
+		ordered, err := interspersedTestFlags(fs, args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fs.Parse(ordered); err != nil {
+			t.Fatal(err)
+		}
+		if !flags.Cover || flags.CoverMode != "count" || flags.TestCoverProfile != "cover.out" {
+			t.Fatalf("coverage flags not parsed: %v", args)
+		}
+		if !reflect.DeepEqual(fs.Args(), []string{"."}) {
+			t.Fatalf("packages = %v", fs.Args())
+		}
+	}
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags.AddTestBinaryFlags(fs)
+	if _, err := interspersedTestFlags(fs, []string{".", "-coverprofile"}); err == nil {
+		t.Fatal("package argument was consumed as a missing flag value")
+	}
+	resetTestFlags()
+}
 
 func TestBuildFlagsWiring(t *testing.T) {
 	if goBuildFlags.Flag != &Cmd.Flag || Cmd.Flag.Lookup("ldflags") == nil ||
@@ -25,10 +56,10 @@ func resetTestFlags() {
 	flags.TestShort = false
 	flags.TestCount = 1
 	flags.TestCPU = ""
-	flags.TestCover = false
-	flags.TestCoverMode = ""
+	flags.Cover = false
+	flags.CoverMode = ""
 	flags.TestCoverProfile = ""
-	flags.TestCoverPkg = ""
+	flags.CoverPkg = ""
 	flags.TestParallel = 0
 	flags.TestFailfast = false
 	flags.TestJSON = false
@@ -122,8 +153,8 @@ func TestTestRunsMustBeSequential(t *testing.T) {
 	}
 
 	flags.TestCoverProfile = "cover.out"
-	if !testRunsMustBeSequential() {
-		t.Fatal("shared coverage profile must force sequential test execution")
+	if testRunsMustBeSequential() {
+		t.Fatal("per-package coverage fragments must allow parallel test execution")
 	}
 	flags.TestCoverProfile = ""
 
@@ -233,15 +264,14 @@ func TestBuildTestArgs(t *testing.T) {
 			wantContain: []string{"-test.json", "-test.gocoverdir=/tmp/cover"},
 		},
 		{
-			name: "coverage profile forwarded",
+			name: "coverage is configured by the build driver",
 			setupFlags: func() {
 				flags.TestCoverProfile = "coverage.out"
-				flags.TestCover = true
-				flags.TestCoverMode = "atomic"
+				flags.Cover = true
+				flags.CoverMode = "atomic"
 			},
-			customArgs:  nil,
-			wantContain: []string{"-test.coverprofile=coverage.out"},
-			wantAbsent:  []string{"-test.cover", "-test.covermode=atomic"},
+			customArgs: nil,
+			wantAbsent: []string{"-test.cover", "-test.covermode=atomic", "-test.coverprofile=coverage.out"},
 		},
 		{
 			name: "count flag",

@@ -71,6 +71,17 @@ func TestBuildCommandHasSchedulerTraceFlag(t *testing.T) {
 	}
 }
 
+func TestBuildCommandCoverageFlags(t *testing.T) {
+	for _, name := range []string{"cover", "covermode", "coverpkg"} {
+		if Cmd.Flag.Lookup(name) == nil {
+			t.Fatalf("llgo build has no -%s flag", name)
+		}
+	}
+	if Cmd.Flag.Lookup("coverprofile") != nil {
+		t.Fatal("llgo build exposes test-only -coverprofile")
+	}
+}
+
 func TestRunCmdBuildsMultiplePackagesToDirectory(t *testing.T) {
 	root := t.TempDir()
 	for name, output := range map[string]string{"first": "first", "second": "second"} {
