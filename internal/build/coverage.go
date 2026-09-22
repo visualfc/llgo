@@ -30,17 +30,22 @@ type CoverageConfig struct {
 }
 
 type coverageBuild struct {
-	options   CoverageConfig
-	dir       string
-	commands  commandEnv
-	manifest  []byte
-	mergeMu   sync.Mutex
-	goCommand string
-	noTests   []*packages.Package
-	metaPaths map[string]string
-	trace     *buildTracer
-	go120     bool
-	local     bool
+	options  CoverageConfig
+	dir      string
+	commands commandEnv
+	// inputOverlay is the package-loader overlay before coverage adds generated
+	// sources or replaces instrumented files. Isolated initial groups must start
+	// from this snapshot and instrument their freshly loaded graphs themselves.
+	inputOverlay    map[string][]byte
+	inputOverlaySet bool
+	manifest        []byte
+	mergeMu         sync.Mutex
+	goCommand       string
+	noTests         []*packages.Package
+	metaPaths       map[string]string
+	trace           *buildTracer
+	go120           bool
+	local           bool
 }
 
 // These wire structs mirror cmd/internal/cov/covcmd in the selected GOROOT.
@@ -152,6 +157,8 @@ func (c *coverageBuild) prepare(
 	conf *Config,
 	goroot string,
 ) error {
+	c.inputOverlay = cloneOverlay(conf.Overlay)
+	c.inputOverlaySet = true
 	c.goCommand = filepath.Join(goroot, "bin", "go")
 	// Pattern expansion must see the same target and module environment as the
 	// package loader, not just the host environment used by native build tools.

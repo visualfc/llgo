@@ -255,6 +255,12 @@ func (c *Config) clone() *Config {
 	cloned.RunArgs = slices.Clone(c.RunArgs)
 	cloned.GoBuildFlags = slices.Clone(c.GoBuildFlags)
 	cloned.Overlay = cloneOverlay(c.Overlay)
+	if c.coverage != nil && c.coverage.inputOverlaySet {
+		// Coverage-generated files belong to the current loaded graph. Carrying
+		// them into an isolated initial group can make a test main appear beside
+		// its source package (and can re-instrument stale generated sources).
+		cloned.Overlay = cloneOverlay(c.coverage.inputOverlay)
+	}
 	if c.GlobalRewrites != nil {
 		cloned.GlobalRewrites = make(map[string]Rewrites, len(c.GlobalRewrites))
 		for pkgPath, rewrites := range c.GlobalRewrites {

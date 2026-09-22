@@ -173,6 +173,29 @@ func TestConfigCloneDoesNotAliasInput(t *testing.T) {
 	}
 }
 
+func TestConfigCloneDropsGeneratedCoverageOverlay(t *testing.T) {
+	base := map[string][]byte{"source.go": []byte("package source")}
+	input := &Config{
+		Overlay: map[string][]byte{
+			"source.go":            []byte("package source // covered"),
+			"z_llgo_cover_main.go": []byte("package main"),
+		},
+		Coverage: &CoverageConfig{},
+		coverage: &coverageBuild{
+			inputOverlay:    base,
+			inputOverlaySet: true,
+		},
+	}
+	cloned := input.clone()
+	if got := len(cloned.Overlay); got != 1 || string(cloned.Overlay["source.go"]) != "package source" {
+		t.Fatalf("cloned coverage overlay = %#v, want only the pre-instrumentation source", cloned.Overlay)
+	}
+	cloned.Overlay["source.go"][0] = 'P'
+	if got := string(base["source.go"]); got != "package source" {
+		t.Fatalf("cloned coverage overlay aliases its snapshot: %q", got)
+	}
+}
+
 func TestUseShadowStack(t *testing.T) {
 	t.Setenv(llgoShadowStack, "0")
 	if !useShadowStack("wasm") {
