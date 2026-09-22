@@ -19,9 +19,11 @@ local_checkout_root() {
     [[ -f "$script" ]] || return 1
     local root
     root="$(cd "$(dirname "$script")" && pwd)"
+    [[ -r "$root/go.mod" ]] || return 1
     local module
     IFS= read -r module <"$root/go.mod" || return 1
-    [[ "$module" == "module github.com/xgo-dev/llgo" ]] || return 1
+    # Git can check out go.mod with CRLF on Windows.
+    [[ "${module%$'\r'}" == "module github.com/xgo-dev/llgo" ]] || return 1
     printf '%s\n' "$root"
 }
 
@@ -30,7 +32,7 @@ install_local_checkout() {
     printf 'Installing llgo from local source...\n'
     (cd "$root" && go install ./cmd/llgo)
     if [[ -n "${GITHUB_ENV:-}" ]]; then
-        printf 'LLGO_ROOT=%s\n' "$root" >>"$GITHUB_ENV"
+        printf 'LLGO_ROOT=%s\n' "$(windows_native_path "$root")" >>"$GITHUB_ENV"
     fi
     printf 'Local installation complete.\n'
 }
