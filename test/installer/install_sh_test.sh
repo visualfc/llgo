@@ -17,8 +17,11 @@ assert_equal() {
     [[ "$1" == "$2" ]] || fail "got '$1', want '$2'"
 }
 
+assert_equal "$(local_checkout_root)" "$root"
 assert_equal "$(normalize_os Darwin)" darwin
 assert_equal "$(normalize_os Linux)" linux
+assert_equal "$(normalize_os MINGW64_NT-10.0-26100)" windows
+assert_equal "$(normalize_os MSYS_NT-10.0-26100)" windows
 assert_equal "$(normalize_arch x86_64)" amd64
 assert_equal "$(normalize_arch AMD64)" amd64
 assert_equal "$(normalize_arch aarch64)" arm64
@@ -53,10 +56,10 @@ update_shell_path "$install_root"
 
 profile_home="$temporary/home"
 mkdir -p "$profile_home"
+export LLGO_UPDATE_PATH=1
 (
     export HOME="$profile_home"
     export SHELL=/bin/bash
-    export LLGO_UPDATE_PATH=1
     update_shell_path "$install_root"
     update_shell_path "$install_root"
     update_shell_path "$temporary/other-root"
@@ -85,5 +88,35 @@ dependency_root="$temporary/dependency-root"
 install_dependencies "$dependency_root" linux amd64
 install_dependencies "$dependency_root" linux amd64
 assert_equal "$dependency_calls" 2
+
+mock_bin="$temporary/mock-bin"
+mkdir -p "$mock_bin"
+cat >"$mock_bin/powershell.exe" <<'EOF'
+#!/usr/bin/env bash
+{
+    printf 'abi=%s\n' "$LLGO_ABI"
+    printf 'root=%s\n' "$LLGO_INSTALL_ROOT"
+    printf 'version=%s\n' "$LLGO_VERSION"
+    printf 'msystem=%s\n' "$MSYSTEM"
+    printf 'args=%s\n' "$*"
+} >"$LLGO_INSTALLER_TEST_CAPTURE"
+EOF
+chmod +x "$mock_bin/powershell.exe"
+export PATH="$mock_bin:$PATH"
+export MSYSTEM=CLANG64
+export LLGO_VERSION=1.2.3
+export LLGO_INSTALL_ROOT="$temporary/windows-root"
+export LLGO_INSTALL_DEPS=0
+export LLGO_UPDATE_PATH=0
+export LLGO_INSTALLER_TEST_CAPTURE="$temporary/windows-installer.txt"
+install_windows_release ""
+grep -Fqx 'abi=mingw' "$LLGO_INSTALLER_TEST_CAPTURE" ||
+    fail 'MSYS2 installer did not select MinGW'
+grep -Fqx "root=$temporary/windows-root" "$LLGO_INSTALLER_TEST_CAPTURE" ||
+    fail 'MSYS2 installer did not forward the installation root'
+grep -Fqx 'version=1.2.3' "$LLGO_INSTALLER_TEST_CAPTURE" ||
+    fail 'MSYS2 installer did not forward the requested version'
+grep -Fq -- '-NoProfile -ExecutionPolicy Bypass -File ' "$LLGO_INSTALLER_TEST_CAPTURE" ||
+    fail 'MSYS2 installer did not invoke PowerShell safely'
 
 printf 'install.sh tests passed\n'

@@ -330,7 +330,7 @@ brew update
 brew install llvm@22 lld@22 bdw-gc openssl cjson libffi libuv pkg-config
 brew install python@3.12 # optional
 brew link --force --overwrite llvm@22 lld@22 libffi
-./install.sh --no-deps
+./install.sh
 ```
 
 Homebrew's versioned LLVM 22 formula does not ship LLDB and there is no `lldb@22` formula. LLGo checks common Homebrew and system locations, then `lldb` on `PATH`; use `LLGO_LLDB` or `llgo lldb -lldb` to select one explicitly.
@@ -347,7 +347,7 @@ wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
 sudo apt-get update
 sudo apt-get install -y llvm-22-dev clang-22 libclang-22-dev lld-22 lldb-22 libunwind-22-dev libc++-22-dev pkg-config libgc-dev libssl-dev zlib1g-dev libffi-dev libcjson-dev libsqlite3-dev libuv1-dev
 sudo apt-get install -y python3.12-dev # optional
-./install.sh --no-deps
+./install.sh
 ```
 
 #### Alpine Linux
@@ -360,7 +360,7 @@ export LLVM_CONFIG=/usr/lib/llvm22/bin/llvm-config
 export CGO_CPPFLAGS="$($LLVM_CONFIG --cppflags)"
 export CGO_CXXFLAGS=-std=c++17
 export CGO_LDFLAGS="$($LLVM_CONFIG --ldflags) $($LLVM_CONFIG --libs all)"
-./install.sh --no-deps
+./install.sh
 ```
 
 #### Fedora Linux 44 or newer
@@ -374,7 +374,7 @@ sudo dnf install -y llvm-devel clang-devel lld lldb libcxx-devel llvm-libunwind-
   pkgconf-pkg-config gc-devel openssl-devel libffi-devel libuv-devel \
   cjson-devel sqlite-devel zlib-ng-compat-devel
 llvm-config --version # must report 22.x
-./install.sh --no-deps
+./install.sh
 ```
 
 docker alpine 386 llgo environment
@@ -420,7 +420,7 @@ The native MSVC CI profile uses LLVM's official 22.1.8 development archive for h
 ```sh
 git clone https://github.com/xgo-dev/llgo.git
 cd llgo
-go install ./cmd/llgo
+./install.sh
 ```
 
 ### Fallback release installers
@@ -431,15 +431,16 @@ On macOS or Linux:
 curl -fsSL https://raw.githubusercontent.com/xgo-dev/llgo/main/install.sh | bash
 ```
 
-On Windows:
+On Windows with MSVC, run in PowerShell:
 
 ```powershell
-# MSVC (default)
 irm https://raw.githubusercontent.com/xgo-dev/llgo/main/install.ps1 | iex
+```
 
-# MinGW
-$env:LLGO_ABI = 'mingw'
-irm https://raw.githubusercontent.com/xgo-dev/llgo/main/install.ps1 | iex
+On Windows with MinGW, run in an MSYS2 `CLANG64` or `CLANGARM64` shell:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/xgo-dev/llgo/main/install.sh | bash
 ```
 
 ## Go environment
