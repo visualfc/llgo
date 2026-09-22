@@ -113,6 +113,11 @@ install_windows_release() {
         *) die "run the MinGW installer from an MSYS2 CLANG64 or CLANGARM64 shell" ;;
     esac
 
+    local shell_root="$LLGO_INSTALL_ROOT"
+    if command_exists cygpath; then
+        shell_root="$(cygpath -au "$shell_root")"
+    fi
+
     local powershell
     if command_exists powershell.exe; then
         powershell=powershell.exe
@@ -149,6 +154,12 @@ install_windows_release() {
     local status=0
     "$powershell" -NoProfile -ExecutionPolicy Bypass -File "$native_installer" || status=$?
     rm -rf "$temporary"
+    if [[ "$status" == 0 ]]; then
+        # MSYS2's default minimal PATH drops Windows user PATH entries. Its own
+        # shell profile needs the POSIX path, even after PowerShell updates the
+        # Windows PATH. PowerShell already wrote native paths to GITHUB_PATH.
+        GITHUB_PATH='' update_shell_path "$shell_root"
+    fi
     return "$status"
 }
 
@@ -400,23 +411,10 @@ install_release() {
     printf '%s\n' "$version"
 }
 
-update_shell_path() {
-    local root="$1"
-    export PATH="$root/bin:$PATH"
-    if [[ -n "${GITHUB_PATH:-}" ]]; then
-        printf '%s\n' "$root/bin" >>"$GITHUB_PATH"
-    fi
-    [[ "$LLGO_UPDATE_PATH" == 1 ]] || return 0
-
-    local profile
-    case "${SHELL##*/}" in
-        zsh) profile="${ZDOTDIR:-$HOME}/.zprofile" ;;
-        bash) profile="$HOME/.bashrc" ;;
-        *) profile="$HOME/.profile" ;;
-    esac
-    local quoted_root
-    printf -v quoted_root '%q' "$root/bin"
-    local line="export PATH=$quoted_root:\$PATH # LLGo installer"
+update_shell_profile() {
+    local profile="$1"
+    local line="$2"
+    mkdir -p "$(dirname "$profile")"
     if [[ -f "$profile" ]] && grep -Fq '# LLGo installer' "$profile"; then
         if grep -Fqx "$line" "$profile"; then
             return
@@ -442,6 +440,66 @@ update_shell_path() {
         printf '\n%s\n' "$line" >>"$profile"
         printf 'Updated PATH in %s\n' "$profile"
     fi
+}
+
+update_shell_path() {
+    local root="$1"
+    export PATH="$root/bin:$PATH"
+    if [[ -n "${GITHUB_PATH:-}" ]]; then
+        printf '%s\n' "$root/bin" >>"$GITHUB_PATH"
+    fi
+    [[ "$LLGO_UPDATE_PATH" == 1 ]] || return 0
+
+    local shell="${SHELL:-/bin/sh}"
+    local profiles=()
+    local profile
+    case "${shell##*/}" in
+        zsh)
+            # Both login and non-login interactive zsh read .zshrc.
+            profiles=("${ZDOTDIR:-$HOME}/.zshrc")
+            profile="${ZDOTDIR:-$HOME}/.zprofile"
+            # Refresh entries written by older installers, without otherwise
+            # adding a login-only configuration file.
+            if [[ -f "$profile" ]] && grep -Fq '# LLGo installer' "$profile"; then
+                profiles+=("$profile")
+            fi
+            ;;
+        bash)
+            profiles=("$HOME/.bashrc")
+            # Bash reads only the first available login file. Do not create a
+            # higher-priority file that would hide the user's existing profile.
+            for profile in "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.profile"; do
+                [[ -r "$profile" ]] && break
+            done
+            profiles+=("$profile")
+            ;;
+        fish) profiles=("${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d/llgo.fish") ;;
+        sh | dash) profiles=("$HOME/.profile") ;;
+        *)
+            printf 'Shell %s is not configured automatically; add %s/bin to PATH.\n' "$shell" "$root"
+            return
+            ;;
+    esac
+
+    local quoted_root="$root/bin"
+    if [[ "${shell##*/}" == fish ]]; then
+        # Unlike POSIX shells, fish interprets backslashes inside single quotes.
+        quoted_root="${quoted_root//\\/\\\\}"
+    fi
+    local escaped_quote="'\\''"
+    quoted_root="'${quoted_root//\'/$escaped_quote}'"
+    local line
+    if [[ "${shell##*/}" == fish ]]; then
+        line="contains -- $quoted_root \$PATH; or set -gx PATH $quoted_root \$PATH # LLGo installer"
+    else
+        # Login profiles often source the interactive rc file. Keep PATH unique
+        # even when both files (or a nested shell) load the installer entry.
+        line="case \":\$PATH:\" in *:$quoted_root:*) ;; *) export PATH=$quoted_root:\"\$PATH\" ;; esac # LLGo installer"
+    fi
+    for profile in "${profiles[@]}"; do
+        update_shell_profile "$profile" "$line"
+    done
+    printf 'Open a new terminal to use the updated PATH; the installer cannot change its parent shell.\n'
 }
 
 usage() {

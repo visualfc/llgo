@@ -119,4 +119,18 @@ grep -Fqx 'version=1.2.3' "$LLGO_INSTALLER_TEST_CAPTURE" ||
 grep -Fq -- '-NoProfile -ExecutionPolicy Bypass -File ' "$LLGO_INSTALLER_TEST_CAPTURE" ||
     fail 'MSYS2 installer did not invoke PowerShell safely'
 
+# The native delegate cannot configure MSYS2's filtered shell PATH for us.
+msys_home="$temporary/msys-home"
+mkdir -p "$msys_home"
+(
+    export HOME="$msys_home" SHELL=/bin/bash LLGO_UPDATE_PATH=1
+    export GITHUB_PATH="$temporary/github-path"
+    install_windows_release ""
+    [[ ! -e "$GITHUB_PATH" ]] || fail 'shell wrapper duplicated native GITHUB_PATH entries'
+) >/dev/null
+for profile in "$msys_home/.bashrc" "$msys_home/.profile"; do
+    grep -Fq "$temporary/windows-root/bin" "$profile" ||
+        fail 'MSYS2 shell profile did not receive its own PATH entry'
+done
+
 printf 'install.sh tests passed\n'

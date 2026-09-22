@@ -12,6 +12,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  installer-shells:
+    name: Installer shell startup (Linux distributions)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      # One lightweight job, not a compiler/toolchain build for each distro.
+      - name: Test Bash, zsh, fish, and sh in six Linux distributions
+        run: bash test/installer/install_shell_distro_test.sh
+
   remote_install:
     timeout-minutes: 30
     strategy:
@@ -28,6 +38,10 @@ jobs:
 
       - name: Test release installer helpers
         run: bash test/installer/install_sh_test.sh
+
+      - name: Test fresh login and non-login shells on macOS
+        if: startsWith(matrix.os, 'macos')
+        run: bash test/installer/install_shell_test.sh bash zsh sh
 
       - name: Set up Go
         uses: ./.github/actions/setup-go

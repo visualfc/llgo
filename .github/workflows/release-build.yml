@@ -289,6 +289,13 @@ jobs:
         with:
           windows-abi: ${{ matrix.abi }}
           windows-arch: ${{ matrix.goarch }}
+      - name: Test installed command in fresh MSYS2 shells
+        if: matrix.abi == 'mingw'
+        shell: msys2 {0}
+        run: >-
+          bash test/installer/install_msys_path_test.sh
+          .windows-dist/*.windows-${{ matrix.goarch }}-mingw.zip
+          "$RUNNER_TEMP/llgo-release-install"
       - name: Test extracted native and embedded compiler
         shell: pwsh
         run: >-
