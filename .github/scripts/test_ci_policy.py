@@ -197,6 +197,28 @@ class GitHistoryTests(unittest.TestCase):
         self.assertEqual(len(report["files"]), 3101)
         self.assertTrue(report["run_code_ci"])
 
+    def test_large_docs_only_pr_does_not_expand_paths_into_arguments(self):
+        for n in range(3100):
+            self.write(f"doc/{'long-name-' * 10}{n:04}.md")
+        head = self.commit()
+        with patch.object(ci_policy, "git", wraps=ci_policy.git) as git:
+            report = self.report(head=head)
+        self.assertEqual(len(report["files"]), 3100)
+        self.assertFalse(report["run_code_ci"])
+        self.assertTrue(report["run_doc_checks"])
+        git.assert_any_call("ls-tree", "-r", "-z", "--full-tree", head)
+        self.assertEqual(git.call_count, 3)
+
+    def test_tree_scan_ignores_unchanged_executables_and_symlinks(self):
+        Path("README.md").chmod(0o755)
+        Path("linked.md").symlink_to("README.md")
+        base = self.commit()
+        self.write("doc/space tab\tnewline\n[literal].md")
+        self.commit()
+        report = self.report(base=base)
+        self.assertFalse(report["run_code_ci"])
+        self.assertTrue(report["run_doc_checks"])
+
     def test_cli_emits_string_outputs_and_a_readable_summary(self):
         self.write("README.md", "updated prose\n")
         head = self.commit()

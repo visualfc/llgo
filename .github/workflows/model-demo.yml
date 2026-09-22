@@ -14,6 +14,7 @@ jobs:
     uses: ./.github/workflows/ci-prepare.yml
 
   llama2:
+    if: needs.prepare.outputs.run_code_ci == 'true'
     needs: prepare
     runs-on: ${{ fromJSON(needs.prepare.outputs.linux_large_runner) }}
     timeout-minutes: 30

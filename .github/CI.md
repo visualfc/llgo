@@ -51,6 +51,11 @@ checks nor replace pending checks. Workflow-level concurrency cannot consume
 prepare outputs; `test_ci_workflows.py` enforces the common expression instead.
 The reusable prepare workflow has no concurrency group of its own.
 
+Branch protection should require the relevant workflows' `prepare` checks as
+well as **CI policy**. A gated job can be skipped when its prepare job fails;
+requiring only downstream jobs does not distinguish that failure from an
+intentional docs-only skip.
+
 The benchmark publisher checks the triggering run's artifacts separately for
 native and WASM results before invoking either publisher. A successful docs-only
 run has no benchmark artifacts and is a normal no-op. External benchmark

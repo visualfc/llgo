@@ -86,9 +86,12 @@ def prepare(event_name: str, event: dict, owner: str) -> dict:
         report.update(classify(changes))
         if not report["run_code_ci"]:
             # An executable or symlink named *.md is not a prose-only change.
-            entries = git("--literal-pathspecs", "ls-tree", "-z", head, "--",
-                          *(f["path"] for f in report["files"]))
-            if any(entry.split(b" ", 1)[0] != b"100644"
+            # Walk the tree once and filter locally: passing every changed path
+            # as an argument can exceed ARG_MAX on large docs-only PRs.
+            paths = {f["path"].encode("utf-8", errors="surrogateescape")
+                     for f in report["files"]}
+            entries = git("ls-tree", "-r", "-z", "--full-tree", head)
+            if any(entry.split(b"\t", 1)[1] in paths and not entry.startswith(b"100644 ")
                    for entry in entries.split(b"\0") if entry):
                 report["run_code_ci"] = True
                 report["reason"] = "Documentation includes executable files or symlinks; all checks enabled"

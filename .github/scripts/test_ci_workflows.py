@@ -40,7 +40,7 @@ def matrix_size(job):
 
 class WorkflowContractTests(unittest.TestCase):
     def test_code_and_document_jobs_consume_the_shared_decision(self):
-        for filename in [*CODE_WORKFLOWS, "doc-link-checker.yml"]:
+        for filename in [*CODE_WORKFLOWS, "doc-link-checker.yml", "model-demo.yml"]:
             workflow = load(filename)
             flag = "run_doc_checks" if filename == "doc-link-checker.yml" else "run_code_ci"
             self.assertEqual(workflow["jobs"]["prepare"]["uses"], PREPARE)
@@ -149,6 +149,18 @@ class WorkflowContractTests(unittest.TestCase):
         request = next(step for step in job["steps"] if step.get("name", "").startswith("Request benchmarks"))
         self.assertNotIn("if", request)
         self.assertEqual(job["if"], "github.repository == 'xgo-dev/llgo' && github.event_name != 'pull_request'")
+
+    def test_wasm_baseline_metadata_requires_a_successful_measurement(self):
+        steps = load("benchmark.yml")["jobs"]["wasm-benchmark"]["steps"]
+        record = next(step for step in steps
+                      if step.get("name") == "Record WebAssembly benchmark result")
+        for key in ("baseline-benchmark-file", "baseline-repository", "baseline-sha", "baseline-ref"):
+            with self.subTest(input=key):
+                expression = " ".join(record["with"][key].split())
+                self.assertTrue(expression.startswith(
+                    "${{ github.event_name == 'pull_request' && "
+                    "steps.measure-wasm-base.outcome == 'success' && "))
+                self.assertTrue(expression.endswith(" || '' }}"))
 
     def test_publish_jobs_require_their_own_artifacts(self):
         jobs = load("benchmark-publish.yml")["jobs"]

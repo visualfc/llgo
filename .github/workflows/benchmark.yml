@@ -410,8 +410,17 @@ jobs:
             ${{ github.event_name == 'pull_request' &&
                 steps.measure-wasm-base.outcome == 'success' &&
                 '.benchmark/wasm-base-results/benchmark.txt' || '' }}
-          baseline-repository: ${{ github.event.pull_request.base.repo.full_name || '' }}
-          baseline-sha: ${{ needs.prepare.outputs.pr_merge_base }}
-          baseline-ref: ${{ github.event.pull_request.base.ref || '' }}
+          baseline-repository: >-
+            ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
+                github.event.pull_request.base.repo.full_name || '' }}
+          baseline-sha: >-
+            ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
+                needs.prepare.outputs.pr_merge_base || '' }}
+          baseline-ref: >-
+            ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
+                github.event.pull_request.base.ref || '' }}
           platform-id: wasm-linux
           platform-label: WebAssembly
