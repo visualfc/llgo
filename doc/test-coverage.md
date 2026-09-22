@@ -65,6 +65,8 @@ The differential cases explicitly include main in `-coverpkg`: the local Go 1.27
 
 ## CI reports
 
+`test/coverageprobe` and its imported `testdata` helper have `//go:build llgo` constraints. Before upload, CI requires both files to contain executed and deliberately unexecuted statements in the profile. This verifies collection by the LLGo lane and selection of imported `testdata` packages; ordinary host Go tests do not select these sources. Their two files should also appear under Codecov's `llgo-tests` flag. Source coverage is not a count of executed test cases: `_test.go` files remain excluded, as in Go.
+
 The existing native LLGo core lanes collect atomic coverage in the same test invocation by setting `LLGO_TEST_COVERPROFILE=coverage-llgo.txt` and `LLGO_TEST_COVERPKG=github.com/xgo-dev/llgo/test/...` for `dev/test_go_version.sh`. The package pattern includes helpers exercised by another package's tests, but only within the selected test dependency graph. The lanes upload only that profile with Codecov's `llgo-tests` flag. This does not add jobs, repeat the tests, or expand the core package selection to the full compatibility suite. As with Go, `_test.go` files themselves are not instrumented.
 
 Host `go test` still runs the repository tests, but its uploaded profiles exclude every source under `test/`. Those filtered profiles use the `go-tests` flag; the compiler-only dev LTO profiles retain their existing flag. Explicit file lists and disabled upload discovery prevent incidental child-process profiles from mixing the two sources. `test/go` is no longer globally ignored in Codecov, so its ordinary source files can contribute LLGo coverage without host Go results inflating it.

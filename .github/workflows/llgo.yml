@@ -133,6 +133,8 @@ jobs:
           export LLGO_TEST_LLGEN="$RUNNER_TEMP/llgo-bin/llgen${tool_suffix}"
           dev/test_go_version.sh 1.27
 
+          python .github/scripts/check_llgo_coverage.py coverage-llgo.txt
+
           if [[ "$RUNNER_OS" == Windows ]]; then
             # The TLS regression lives in the runtime submodule, outside test/.
             (cd runtime && "$LLGO" test -v -run '^TestSlotGCAllocation$' -count=20 -timeout=2m ./internal/clite/tls)

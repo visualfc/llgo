@@ -229,7 +229,12 @@ func (c *coverageBuild) prepare(
 			}
 			matched := false
 			for _, p := range all {
-				if matches[p.PkgPath] {
+				// go list pattern expansion intentionally skips testdata, dot,
+				// and underscore directories. -coverpkg instead matches the
+				// already-loaded dependency graph, so apply the same package
+				// pattern directly as well as retaining go list for special
+				// patterns such as std, cmd, tool, and work.
+				if matches[p.PkgPath] || matchLoadedCoveragePackage(pattern, cfg.Dir, p) {
 					selected[p.PkgPath], matched = true, true
 				}
 			}
