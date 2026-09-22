@@ -50,6 +50,7 @@ check_new_shell() {
         if [[ "$shell_name" == sh || "$shell_name" == dash ]] && [[ "$mode" == -ic ]]; then
             continue
         fi
+        printf 'START %s %s (%s)\n' "$shell_name" "$mode" "$scenario"
         if ! "${clean_env[@]}" LLGO_TEST_BIN="$install_root/bin" \
             "$shell_binary" "$mode" "$assertion" >"$temporary/shell.log" 2>&1; then
             cat "$temporary/install.log" "$temporary/shell.log" >&2
@@ -68,6 +69,7 @@ for shell_name in "$@"; do
         fish) scenarios+=(xdg_config) ;;
     esac
     for scenario in "${scenarios[@]}"; do
+        printf 'START installer for %s (%s)\n' "$shell_name" "$scenario"
         test_home="$temporary/$shell_name-$scenario"
         mkdir -p "$test_home"
         # Never inherit the installer's PATH: a fresh terminal must find llgo

@@ -30,11 +30,13 @@ for image in "$@"; do
         *) printf 'Unsupported shell-test image: %s\n' "$image" >&2; exit 1 ;;
     esac
     printf '::group::Installer shell startup: %s\n' "$image"
+    # Startup checks normally take seconds. Bound them separately from package
+    # downloads so a stuck interactive shell fails visibly, not at job timeout.
     if docker run --rm -v "$repository:/src:ro" -w /src "$image" \
-        sh -ec "$setup; exec bash test/installer/install_shell_test.sh bash zsh fish sh"; then
+        sh -ec "$setup; timeout -k 5 120 bash test/installer/install_shell_test.sh bash zsh fish sh"; then
         printf 'PASS %s\n' "$image"
     else
-        printf 'FAIL %s\n' "$image" >&2
+        printf 'FAIL %s (exit %s)\n' "$image" "$?" >&2
         status=1
     fi
     printf '::endgroup::\n'
