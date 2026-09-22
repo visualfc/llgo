@@ -1,0 +1,48 @@
+name: Prepare CI
+
+on:
+  workflow_call:
+    outputs:
+      run_code_ci:
+        description: Run compiler, runtime, install, release and benchmark checks
+        value: ${{ jobs.prepare.outputs.run_code_ci }}
+      run_doc_checks:
+        description: Run the existing README link and embedded-source checks
+        value: ${{ jobs.prepare.outputs.run_doc_checks }}
+      pr_head_sha:
+        description: PR head from the triggering event
+        value: ${{ jobs.prepare.outputs.pr_head_sha }}
+      pr_merge_base:
+        description: Merge base of the triggering PR base and head
+        value: ${{ jobs.prepare.outputs.pr_merge_base }}
+      linux_runner:
+        description: JSON runner labels for ordinary Linux jobs
+        value: ${{ jobs.prepare.outputs.linux_runner }}
+      linux_large_runner:
+        description: JSON runner labels for heavy Linux jobs
+        value: ${{ jobs.prepare.outputs.linux_large_runner }}
+
+permissions:
+  contents: read
+
+# Do not use the caller's concurrency group here: it would cancel the caller.
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run_code_ci: ${{ steps.policy.outputs.run_code_ci }}
+      run_doc_checks: ${{ steps.policy.outputs.run_doc_checks }}
+      pr_head_sha: ${{ steps.policy.outputs.pr_head_sha }}
+      pr_merge_base: ${{ steps.policy.outputs.pr_merge_base }}
+      linux_runner: ${{ steps.policy.outputs.linux_runner }}
+      linux_large_runner: ${{ steps.policy.outputs.linux_large_runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The PR merge checkout contains both event commits and their history.
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+          persist-credentials: false
+      - name: Resolve CI policy and changed paths
+        id: policy
+        run: python3 .github/scripts/ci_policy.py

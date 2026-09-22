@@ -4,22 +4,23 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "README.md"
   pull_request:
     branches: ["**"]
-    paths:
-      - "README.md"
   schedule:
     # Run daily at 00:00 UTC
     - cron: "0 0 * * *"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare:
+    uses: ./.github/workflows/ci-prepare.yml
+
   doc_verify:
+    if: needs.prepare.outputs.run_doc_checks == 'true'
+    needs: prepare
     # This small external-link check needs a reliable public-network route.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
