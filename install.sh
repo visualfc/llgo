@@ -249,12 +249,12 @@ install_dependencies() {
 }
 
 latest_version() {
-    local metadata
-    metadata="$(curl --fail --silent --show-error --location --retry 5 \
-        "https://api.github.com/repos/$LLGO_REPOSITORY/releases/latest")"
-    local tag
-    tag="$(printf '%s\n' "$metadata" | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1)"
-    [[ -n "$tag" ]] || die "the latest GitHub release does not have a tag"
+    local release_url
+    release_url="$(curl --fail --silent --show-error --location --head \
+        --retry 5 --output /dev/null --write-out '%{url_effective}' \
+        "https://github.com/$LLGO_REPOSITORY/releases/latest")" || return 1
+    local tag="${release_url##*/}"
+    [[ -n "$tag" && "$tag" != latest ]] || return 1
     printf '%s\n' "$tag"
 }
 
@@ -267,7 +267,7 @@ install_release() {
 
     local tag="$requested_version"
     if [[ -z "$tag" ]]; then
-        tag="$(latest_version)"
+        tag="$(latest_version)" || die "could not resolve the latest GitHub release"
     fi
     local version
     version="$(normalize_version "$tag")" || die "invalid LLGo version: $tag"

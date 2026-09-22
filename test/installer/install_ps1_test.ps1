@@ -16,6 +16,10 @@ Assert-Equal (ConvertTo-LLGoArchitecture 'x86') '386'
 Assert-Equal (ConvertTo-LLGoVersion 'v1.2.3-rc.1') '1.2.3-rc.1'
 Assert-Equal (ConvertTo-LLGoGoVersion 'go1.27rc1').ToString() '1.27.0'
 Assert-Equal (ConvertTo-LLGoGoVersion 'devel go1.28-abcdef').ToString() '1.28.0'
+$latestVersion = Get-LLGoLatestVersion
+if ($latestVersion -notmatch '^\d+\.\d+') {
+  throw "Unexpected latest LLGo version: $latestVersion"
+}
 $amd64Components = @(Get-LLGoVisualStudioComponents 'amd64')
 $arm64Components = @(Get-LLGoVisualStudioComponents 'arm64')
 Assert-Equal $amd64Components.Count 1

@@ -55,13 +55,22 @@ function Invoke-LLGoDownload {
 }
 
 function Get-LLGoLatestVersion {
-  $release = Invoke-RestMethod `
+  $response = Invoke-WebRequest `
     -UseBasicParsing `
-    -Uri "https://api.github.com/repos/$script:LLGoRepository/releases/latest"
-  if (-not $release.tag_name) {
-    throw 'The latest GitHub release does not have a tag'
+    -Method Head `
+    -Uri "https://github.com/$script:LLGoRepository/releases/latest"
+  $releaseUri = if ($response.BaseResponse.ResponseUri) {
+    $response.BaseResponse.ResponseUri
+  } elseif ($response.BaseResponse.RequestMessage.RequestUri) {
+    $response.BaseResponse.RequestMessage.RequestUri
+  } else {
+    throw 'The latest GitHub release redirect did not expose its destination'
   }
-  return (ConvertTo-LLGoVersion $release.tag_name)
+  $tag = [IO.Path]::GetFileName($releaseUri.AbsolutePath)
+  if (-not $tag -or $tag -eq 'latest') {
+    throw 'The latest GitHub release redirect does not have a tag'
+  }
+  return (ConvertTo-LLGoVersion $tag)
 }
 
 function Get-LLGoClangTarget {
