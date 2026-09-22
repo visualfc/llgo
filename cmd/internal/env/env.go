@@ -18,15 +18,11 @@
 package env
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"os"
-	"os/exec"
 
 	"github.com/xgo-dev/llgo/cmd/internal/base"
-	"github.com/xgo-dev/llgo/cmd/internal/gotool"
-	"github.com/xgo-dev/llgo/internal/mockable"
+	"github.com/xgo-dev/llgo/cmd/internal/gocommand"
 )
 
 var Cmd = &base.Command{
@@ -36,16 +32,7 @@ var Cmd = &base.Command{
 }
 
 func runCmd(_ *base.Command, args []string) {
-	if err := run(args, os.Stdin, os.Stdout, os.Stderr); err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() > 0 {
-			// The Go command already wrote its diagnostic to stderr.
-			mockable.Exit(exit.ExitCode())
-		} else {
-			fmt.Fprintln(os.Stderr, err)
-			mockable.Exit(1)
-		}
-	}
+	gocommand.Exit("env", run(args, os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -56,19 +43,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 }
 
 func runGo(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	goExe, err := gotool.Find(self, os.Getenv("PATH"))
-	if err != nil {
-		return fmt.Errorf("llgo env: %w", err)
-	}
 	// Delegate parsing and formatting to Go, including GOENV, GOTOOLCHAIN,
 	// target overrides and -json/-changed/-w/-u. These describe the underlying
 	// Go toolchain, not LLGo's LLVM backend or its cross-compilation targets.
-	cmd := exec.Command(goExe, append([]string{"env"}, args...)...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
-	cmd.Env = gotool.ChildEnv(os.Environ())
-	return cmd.Run()
+	return (gocommand.Invocation{
+		Command: "env",
+		Args:    args,
+		Stdin:   stdin,
+		Stdout:  stdout,
+		Stderr:  stderr,
+	}).Run()
 }

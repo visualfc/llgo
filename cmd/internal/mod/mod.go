@@ -15,14 +15,10 @@
 package mod
 
 import (
-	"errors"
-	"fmt"
 	"io"
 	"os"
-	"os/exec"
 
-	"github.com/xgo-dev/llgo/cmd/internal/gotool"
-	"github.com/xgo-dev/llgo/internal/mockable"
+	"github.com/xgo-dev/llgo/cmd/internal/gocommand"
 )
 
 // Main delegates module management to Go, preserving its diagnostics and exit
@@ -30,31 +26,15 @@ import (
 // In particular, Go's tidy/vendor scan all build tags except ignore, including
 // dependencies imported only by llgo-tagged files; neither accepts -tags.
 func Main(args []string) {
-	if err := run(args, os.Stdin, os.Stdout, os.Stderr); err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() > 0 {
-			// Go has already written its diagnostic to stderr.
-			mockable.Exit(exit.ExitCode())
-		} else {
-			fmt.Fprintln(os.Stderr, "llgo mod:", err)
-			mockable.Exit(1)
-		}
-	}
+	gocommand.Exit("mod", run(args, os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	self, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	goExe, err := gotool.Find(self, os.Getenv("PATH"))
-	if err != nil {
-		return err
-	}
-	// Keep the working directory and environment, including module/toolchain
-	// settings. Find and ChildEnv prevent recursion when "go" points to LLGo.
-	cmd := exec.Command(goExe, append([]string{"mod"}, args...)...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = stdin, stdout, stderr
-	cmd.Env = gotool.ChildEnv(os.Environ())
-	return cmd.Run()
+	return (gocommand.Invocation{
+		Command: "mod",
+		Args:    args,
+		Stdin:   stdin,
+		Stdout:  stdout,
+		Stderr:  stderr,
+	}).Run()
 }

@@ -17,20 +17,9 @@
 // Package get implements the "llgo get" command.
 package get
 
-import (
-	"github.com/xgo-dev/llgo/cmd/internal/base"
-)
+import "github.com/xgo-dev/llgo/cmd/internal/gocommand"
 
-// llgo get
-var Cmd = &base.Command{
-	UsageLine: "llgo get [-t -u -v] [build flags] [packages]",
-	Short:     "Add dependencies to current module and install them",
-}
-
-func init() {
-	Cmd.Run = runCmd
-}
-
-func runCmd(cmd *base.Command, args []string) {
-	panic("todo")
+// Main delegates dependency resolution to Go with LLGo source selection.
+func Main(args []string) {
+	gocommand.BuildMain("get", args)
 }

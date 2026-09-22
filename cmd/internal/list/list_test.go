@@ -7,60 +7,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/mockable"
 )
-
-func TestParseArgs(t *testing.T) {
-	got, err := parseArgs([]string{"-target=board", "-tags", "one,two one", "-export=false", "-json=ImportPath,Name", "--", "-package"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := listQuery{
-		target:    "board",
-		targetSet: true,
-		tags:      []string{"one", "two", "one"},
-		goArgs:    []string{"-export=false", "-json=ImportPath,Name", "--", "-package"},
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("parseArgs = %#v, want %#v", got, want)
-	}
-	for _, args := range [][]string{{"-target"}, {"-target="}, {"-tags"}} {
-		if _, err := parseArgs(args); err == nil {
-			t.Errorf("parseArgs(%q) succeeded", args)
-		}
-	}
-	for _, flag := range []string{"-m", "-m=1", "-m=t", "-m=T", "-m=TRUE", "-m=true", "-m=True"} {
-		module, err := parseArgs([]string{flag, "-json", "all"})
-		if err != nil || !module.moduleMode {
-			t.Errorf("module query %q = %#v, %v", flag, module, err)
-		}
-	}
-	for _, flag := range []string{"-m=0", "-m=f", "-m=FALSE", "-m=false", "-m=False"} {
-		module, err := parseArgs([]string{flag, "-json", "all"})
-		if err != nil || module.moduleMode {
-			t.Errorf("package query %q = %#v, %v", flag, module, err)
-		}
-	}
-}
-
-func TestMergeTagsAndEnvironment(t *testing.T) {
-	if got := mergeTags([]string{"llgo", "purego"}, []string{"board", "llgo"}, splitTags("user, purego")); !reflect.DeepEqual(got, []string{"llgo", "purego", "board", "user"}) {
-		t.Fatalf("mergeTags = %q", got)
-	}
-	environ := replaceEnv([]string{"PATH=/bin", "GOOS=old"}, "GOOS", "linux", "GOARCH", "arm")
-	if !slicesContain(environ, "GOOS=linux") || !slicesContain(environ, "GOARCH=arm") || !slicesContain(environ, "PATH=/bin") {
-		t.Fatalf("replaceEnv = %q", environ)
-	}
-	query := listQuery{moduleMode: true, tags: []string{"user", "board"}}
-	if got := effectiveTags(query, []string{"board", "target"}); !reflect.DeepEqual(got, []string{"board", "target", "user"}) {
-		t.Fatalf("module target tags = %q", got)
-	}
-}
 
 func TestListWailsSizesQuery(t *testing.T) {
 	var output bytes.Buffer
@@ -121,13 +73,16 @@ func TestListSourceSelection(t *testing.T) {
 	write("user.go", "//go:build usertag\n\npackage listtest\n")
 	t.Chdir(module)
 
-	var output bytes.Buffer
-	if err := run([]string{"-tags=usertag", "-f", "{{join .GoFiles \",\"}}", "."}, nil, &output, &output); err != nil {
-		t.Fatalf("source selection: %v, %s", err, &output)
-	}
-	files := strings.Split(strings.TrimSpace(output.String()), ",")
-	if !slicesContain(files, "llgo.go") || !slicesContain(files, "user.go") || slicesContain(files, "goonly.go") {
-		t.Fatalf("selected files = %q", files)
+	for _, tags := range [][]string{{"-tags=usertag"}, {"-tags", "-m", "-tags=usertag"}} {
+		var output bytes.Buffer
+		args := append(tags, "-f", "{{join .GoFiles \",\"}}", ".")
+		if err := run(args, nil, &output, &output); err != nil {
+			t.Fatalf("source selection for %q: %v, %s", tags, err, &output)
+		}
+		files := strings.Split(strings.TrimSpace(output.String()), ",")
+		if !slicesContain(files, "llgo.go") || !slicesContain(files, "user.go") || slicesContain(files, "goonly.go") {
+			t.Fatalf("selected files for %q = %q", tags, files)
+		}
 	}
 }
 
