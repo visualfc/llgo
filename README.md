@@ -319,7 +319,7 @@ llgo run .
 
 ## How to install
 
-Follow these steps to install the `llgo` command, whose usage is similar to the `go` command:
+Use the platform package manager instructions below whenever possible.
 
 ### on macOS
 
@@ -330,8 +330,7 @@ brew update
 brew install llvm@22 lld@22 bdw-gc openssl cjson libffi libuv pkg-config
 brew install python@3.12 # optional
 brew link --force --overwrite llvm@22 lld@22 libffi
-# curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
-./install.sh
+./install.sh --no-deps
 ```
 
 Homebrew's versioned LLVM 22 formula does not ship LLDB and there is no `lldb@22` formula. LLGo checks common Homebrew and system locations, then `lldb` on `PATH`; use `LLGO_LLDB` or `llgo lldb -lldb` to select one explicitly.
@@ -348,8 +347,7 @@ wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
 sudo apt-get update
 sudo apt-get install -y llvm-22-dev clang-22 libclang-22-dev lld-22 lldb-22 libunwind-22-dev libc++-22-dev pkg-config libgc-dev libssl-dev zlib1g-dev libffi-dev libcjson-dev libsqlite3-dev libuv1-dev
 sudo apt-get install -y python3.12-dev # optional
-#curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
-./install.sh
+./install.sh --no-deps
 ```
 
 #### Alpine Linux
@@ -362,7 +360,7 @@ export LLVM_CONFIG=/usr/lib/llvm22/bin/llvm-config
 export CGO_CPPFLAGS="$($LLVM_CONFIG --cppflags)"
 export CGO_CXXFLAGS=-std=c++17
 export CGO_LDFLAGS="$($LLVM_CONFIG --ldflags) $($LLVM_CONFIG --libs all)"
-curl https://raw.githubusercontent.com/xgo-dev/llgo/refs/heads/main/install.sh | bash
+./install.sh --no-deps
 ```
 
 #### Fedora Linux 44 or newer
@@ -376,6 +374,7 @@ sudo dnf install -y llvm-devel clang-devel lld lldb libcxx-devel llvm-libunwind-
   pkgconf-pkg-config gc-devel openssl-devel libffi-devel libuv-devel \
   cjson-devel sqlite-devel zlib-ng-compat-devel
 llvm-config --version # must report 22.x
+./install.sh --no-deps
 ```
 
 docker alpine 386 llgo environment
@@ -421,7 +420,26 @@ The native MSVC CI profile uses LLVM's official 22.1.8 development archive for h
 ```sh
 git clone https://github.com/xgo-dev/llgo.git
 cd llgo
-./install.sh
+go install ./cmd/llgo
+```
+
+### Fallback release installers
+
+On macOS or Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/xgo-dev/llgo/main/install.sh | bash
+```
+
+On Windows:
+
+```powershell
+# MSVC (default)
+irm https://raw.githubusercontent.com/xgo-dev/llgo/main/install.ps1 | iex
+
+# MinGW
+$env:LLGO_ABI = 'mingw'
+irm https://raw.githubusercontent.com/xgo-dev/llgo/main/install.ps1 | iex
 ```
 
 ## Go environment
