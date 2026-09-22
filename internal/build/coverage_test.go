@@ -249,6 +249,43 @@ func TestCoverageOptions(t *testing.T) {
 	})
 }
 
+func TestCoverageProfileSurvivesInvocationClone(t *testing.T) {
+	dir := t.TempDir()
+	conf := &Config{
+		Mode:     ModeTest,
+		Coverage: &CoverageConfig{Mode: "count", Profile: "cover.out"},
+	}
+	first, err := newCoverageBuild(conf, commandEnv{dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.close()
+	profile := filepath.Join(dir, "cover.out")
+	const fragment = "example.go:1.1,1.2 1 1\n"
+	f, err := os.OpenFile(profile, os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(fragment); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	child := conf.clone()
+	second, err := newCoverageBuild(child, commandEnv{dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.close()
+	data, err := os.ReadFile(profile)
+	if err != nil || string(data) != "mode: count\n"+fragment {
+		t.Fatalf("profile after child initialization = %q, %v", data, err)
+	}
+}
+
 func TestCoverageFuzzFlags(t *testing.T) {
 	for _, tc := range []struct {
 		args    []string

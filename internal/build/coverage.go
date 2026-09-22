@@ -121,8 +121,14 @@ func newCoverageBuild(conf *Config, commands commandEnv) (*coverageBuild, error)
 			outputDir = resolvePath(commands.dir, options.OutputDir)
 		}
 		options.Profile = resolvePath(outputDir, options.Profile)
-		if err := os.WriteFile(options.Profile, []byte("mode: "+options.Mode+"\n"), 0666); err != nil {
-			return nil, err
+		// An initial-group parent prepares the destination before its child
+		// invocations rebuild isolated package graphs. Do not let each child
+		// truncate fragments already appended by an earlier group.
+		if !conf.coverageProfileInitialized {
+			if err := os.WriteFile(options.Profile, []byte("mode: "+options.Mode+"\n"), 0666); err != nil {
+				return nil, err
+			}
+			conf.coverageProfileInitialized = true
 		}
 	}
 	dir, err := os.MkdirTemp("", "llgo-cover-")

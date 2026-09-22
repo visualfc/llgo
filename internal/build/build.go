@@ -230,8 +230,9 @@ type Config struct {
 
 	// Coverage enables source coverage for builds/tests. Nil leaves the build
 	// unchanged; coverage holds only per-invocation temporary state.
-	Coverage *CoverageConfig
-	coverage *coverageBuild
+	Coverage                   *CoverageConfig
+	coverage                   *coverageBuild
+	coverageProfileInitialized bool
 }
 
 type Rewrites map[string]string
@@ -244,6 +245,9 @@ func (c *Config) clone() *Config {
 		return nil
 	}
 	cloned := *c
+	// Per-invocation coverage state may retain loaded packages and temporary
+	// paths. A cloned invocation rebuilds that state from Coverage.
+	cloned.coverage = nil
 	if c.Coverage != nil {
 		options := *c.Coverage
 		cloned.Coverage = &options
