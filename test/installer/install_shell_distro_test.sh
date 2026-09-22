@@ -32,7 +32,9 @@ for image in "$@"; do
     printf '::group::Installer shell startup: %s\n' "$image"
     # Startup checks normally take seconds. Bound them separately from package
     # downloads so a stuck interactive shell fails visibly, not at job timeout.
-    if docker run --rm -v "$repository:/src:ro" -w /src "$image" \
+    # An init process keeps test tools out of PID 1's special signal semantics
+    # and reaps their children. In particular, GNU timeout must not be PID 1.
+    if docker run --rm --init -v "$repository:/src:ro" -w /src "$image" \
         sh -ec "$setup; timeout -k 5 120 bash test/installer/install_shell_test.sh bash zsh fish sh"; then
         printf 'PASS %s\n' "$image"
     else
