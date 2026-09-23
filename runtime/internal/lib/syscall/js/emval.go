@@ -57,8 +57,9 @@ func valueFromEmval(handle uintptr) Value {
 	}
 	p := new(ref)
 	*p = ref(handle)
+	owner := emvalOwner()
 	runtime.SetFinalizer(p, func(p *ref) {
-		cEmvalDecref(uintptr(*p))
+		releaseEmval(uintptr(*p), owner)
 	})
 	return Value{ref: *p, gcPtr: p}
 }

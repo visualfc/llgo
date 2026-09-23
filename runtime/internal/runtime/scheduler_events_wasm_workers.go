@@ -66,3 +66,9 @@ func (hooks wasmEventHooks) pollTimerEvents() {
 func WakeWasmScheduler() {
 	wakeWasmEventWorker()
 }
+
+// WakeWasmCallbackPoll interrupts every physical worker so realm-affine host
+// resource releases are observed by the worker that owns them.
+func WakeWasmCallbackPoll() {
+	wakeAllWasmWorkers()
+}

@@ -29,6 +29,15 @@ var callbackPoll struct {
 	registered bool
 }
 
+func ensureCallbackPoll() {
+	callbackPoll.Lock()
+	if !callbackPoll.registered {
+		llruntime.RegisterWasmCallbackPoll(pollCallbacks)
+		callbackPoll.registered = true
+	}
+	callbackPoll.Unlock()
+}
+
 // Func is a wrapped Go function to be called by JavaScript.
 type Func struct {
 	Value // the JavaScript function that invokes the Go function
@@ -54,12 +63,7 @@ func FuncOf(fn func(this Value, args []Value) any) Func {
 		// once per worker even if all callbacks are later released.
 		emval_install_invoke()
 	}
-	callbackPoll.Lock()
-	if !callbackPoll.registered {
-		llruntime.RegisterWasmCallbackPoll(pollCallbacks)
-		callbackPoll.registered = true
-	}
-	callbackPoll.Unlock()
+	ensureCallbackPoll()
 	id := nextFuncID
 	nextFuncID++
 	funcs[id] = fn
@@ -161,6 +165,7 @@ func dispatchCallback(handle uintptr) {
 }
 
 func pollCallbacks() {
+	pollEmvalReleases()
 	// The host sets a byte in wasm memory when it enqueues the first event, so
 	// an idle scheduler does not cross the wasm/JavaScript boundary merely to
 	// inspect an empty JavaScript array.
