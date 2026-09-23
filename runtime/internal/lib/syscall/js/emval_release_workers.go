@@ -3,6 +3,8 @@
 package js
 
 import (
+	"unsafe"
+
 	llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
 	"github.com/xgo-dev/llgo/runtime/internal/wasmsync"
 )
@@ -23,20 +25,24 @@ func emvalOwner() int {
 }
 
 func releaseEmval(handle uintptr, owner int) {
-	if llruntime.SchedulerProcID() == owner {
-		cEmvalDecref(handle)
-		return
-	}
-	release := &pendingEmvalRelease{handle: handle, owner: owner}
+	// This record crosses both a physical-worker boundary and the scheduler's
+	// host-event boundary. Keep it in the runtime's explicit root set until the
+	// owning realm has consumed it; a Go heap allocation is not reliably rooted
+	// while the scheduler hands the detached list to a new G. Always enqueue,
+	// even on the owner worker: a finalizer must not enter the JavaScript host
+	// ABI directly from the GC finalizer goroutine.
+	release := (*pendingEmvalRelease)(llruntime.AllocRoot(unsafe.Sizeof(pendingEmvalRelease{})))
+	*release = pendingEmvalRelease{handle: handle, owner: owner}
+	// Install the poll before publishing, so a worker waking for this release
+	// can observe it immediately. The worker profile keeps this hook installed.
+	ensureCallbackPoll()
 	pendingEmvalReleases.mutex.Lock(nil)
 	release.next = pendingEmvalReleases.head
 	pendingEmvalReleases.head = release
 	pendingEmvalReleases.mutex.Unlock()
 
-	// Install the callback poll even if the program never created a js.Func.
-	// The finalizer goroutine may belong to any scheduler worker, whereas an
-	// Emscripten emval handle belongs to the JavaScript realm that created it.
-	ensureCallbackPoll()
+	// The finalizer goroutine may belong to any worker, whereas an emval
+	// handle belongs to the realm that created it.
 	llruntime.WakeWasmCallbackPoll()
 }
 
@@ -69,5 +75,6 @@ func drainEmvalReleases(ready *pendingEmvalRelease) {
 		ready = release.next
 		release.next = nil
 		cEmvalDecref(release.handle)
+		llruntime.FreeRoot(unsafe.Pointer(release))
 	}
 }

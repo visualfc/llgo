@@ -813,10 +813,14 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-DPLATFORM_WEB",
 			"-sEXPORT_KEEPALIVE=1",
 			"-sEXPORT_ES6=1",
+			// Emscripten pthread workers instantiate the module in a fresh JS
+			// realm. Import Node's environment there as well as in the launcher,
+			// and expose ENV so browser hosts can provide the equivalent map.
+			"-sNODE_HOST_ENV=1",
 			"-sALLOW_MEMORY_GROWTH=1",
 			emscriptenAllowTableGrowth,
 			"-sRESERVED_FUNCTION_POINTERS=1",
-			"-sEXPORTED_RUNTIME_METHODS=cwrap,allocateUTF8,stringToUTF8,UTF8ToString,FS,setValue,getValue",
+			"-sEXPORTED_RUNTIME_METHODS=cwrap,allocateUTF8,stringToUTF8,UTF8ToString,FS,setValue,getValue,ENV",
 			"-sWASM=1",
 			"-sEXPORT_ALL=1",
 			"-sASYNCIFY=1",

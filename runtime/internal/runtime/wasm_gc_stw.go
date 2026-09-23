@@ -123,11 +123,14 @@ func wasmGCAllocatorYield() {
 	if worker == nil {
 		return
 	}
-	if getg() == nil {
-		wasmWorkerStopForGC(worker)
-		return
-	}
-	CooperativeSafepoint()
+	// This callback runs while an allocation is waiting for the GC mutex and
+	// can therefore sit below a foreign C/C++ frame. It may acknowledge an STW
+	// request in place, but must not schedule another G: doing so asks Asyncify
+	// to unwind and replay the active foreign allocation call, whose native
+	// locals are not a Go fiber continuation. The stopped root is published by
+	// wasmWorkerStopForGC and the same G resumes after the collector releases
+	// the world.
+	wasmWorkerStopForGC(worker)
 }
 
 func wasmGCWorldOwner(worker *wasmWorker) uint32 {

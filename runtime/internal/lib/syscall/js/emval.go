@@ -92,32 +92,72 @@ func emval_new_array() Value  { return valueFromEmval(cEmvalNewArray()) }
 
 func emval_set_property(object, key, value Value) {
 	cEmvalSetProperty(object.emvalHandle(), key.emvalHandle(), value.emvalHandle())
+	runtime.KeepAlive(object)
+	runtime.KeepAlive(key)
+	runtime.KeepAlive(value)
 }
 
 func emval_get_property(object, key Value) Value {
-	return valueFromEmval(cEmvalGetProperty(object.emvalHandle(), key.emvalHandle()))
+	result := valueFromEmval(cEmvalGetProperty(object.emvalHandle(), key.emvalHandle()))
+	runtime.KeepAlive(object)
+	runtime.KeepAlive(key)
+	return result
 }
 
 func emval_delete(object, property Value) bool {
-	return cEmvalDelete(object.emvalHandle(), property.emvalHandle())
+	deleted := cEmvalDelete(object.emvalHandle(), property.emvalHandle())
+	runtime.KeepAlive(object)
+	runtime.KeepAlive(property)
+	return deleted
 }
 
-func emval_is_number(object Value) bool { return cEmvalIsNumber(object.emvalHandle()) }
-func emval_is_string(object Value) bool { return cEmvalIsString(object.emvalHandle()) }
+func emval_is_number(object Value) bool {
+	result := cEmvalIsNumber(object.emvalHandle())
+	runtime.KeepAlive(object)
+	return result
+}
+func emval_is_string(object Value) bool {
+	result := cEmvalIsString(object.emvalHandle())
+	runtime.KeepAlive(object)
+	return result
+}
 func emval_in(item, object Value) bool {
-	return cEmvalIn(item.emvalHandle(), object.emvalHandle())
+	result := cEmvalIn(item.emvalHandle(), object.emvalHandle())
+	runtime.KeepAlive(item)
+	runtime.KeepAlive(object)
+	return result
 }
 func emval_typeof(value Value) Value {
-	return valueFromEmval(cEmvalTypeof(value.emvalHandle()))
+	result := valueFromEmval(cEmvalTypeof(value.emvalHandle()))
+	runtime.KeepAlive(value)
+	return result
 }
 func emval_instanceof(object, constructor Value) bool {
-	return cEmvalInstanceof(object.emvalHandle(), constructor.emvalHandle())
+	result := cEmvalInstanceof(object.emvalHandle(), constructor.emvalHandle())
+	runtime.KeepAlive(object)
+	runtime.KeepAlive(constructor)
+	return result
 }
-func emval_length(object Value) int   { return int(cEmvalLength(object.emvalHandle())) }
-func emval_as_double(v Value) float64 { return cEmvalAsDouble(v.emvalHandle()) }
-func emval_as_string(v Value) string  { return cEmvalAsString(v.emvalHandle()) }
+func emval_length(object Value) int {
+	result := int(cEmvalLength(object.emvalHandle()))
+	runtime.KeepAlive(object)
+	return result
+}
+func emval_as_double(v Value) float64 {
+	result := cEmvalAsDouble(v.emvalHandle())
+	runtime.KeepAlive(v)
+	return result
+}
+func emval_as_string(v Value) string {
+	result := cEmvalAsString(v.emvalHandle())
+	runtime.KeepAlive(v)
+	return result
+}
 func emval_equals(first, second Value) bool {
-	return cEmvalEquals(first.emvalHandle(), second.emvalHandle())
+	result := cEmvalEquals(first.emvalHandle(), second.emvalHandle())
+	runtime.KeepAlive(first)
+	runtime.KeepAlive(second)
+	return result
 }
 
 func emvalArgs(args *Value, nargs c.Int) []c.Ulong {
@@ -141,7 +181,10 @@ func emval_method_call(object Value, name *c.Char, nameLength c.SizeT, args *Val
 	if len(handles) != 0 {
 		data = &handles[0]
 	}
-	return valueFromEmval(cEmvalMethodCall(object.emvalHandle(), name, nameLength, data, nargs, err))
+	result := valueFromEmval(cEmvalMethodCall(object.emvalHandle(), name, nameLength, data, nargs, err))
+	runtime.KeepAlive(object)
+	runtime.KeepAlive(unsafe.Slice(args, int(nargs)))
+	return result
 }
 
 func emval_call(fn Value, args *Value, nargs c.Int, kind c.Int, err *c.Int) Value {
@@ -150,7 +193,10 @@ func emval_call(fn Value, args *Value, nargs c.Int, kind c.Int, err *c.Int) Valu
 	if len(handles) != 0 {
 		data = &handles[0]
 	}
-	return valueFromEmval(cEmvalCall(fn.emvalHandle(), data, nargs, kind, err))
+	result := valueFromEmval(cEmvalCall(fn.emvalHandle(), data, nargs, kind, err))
+	runtime.KeepAlive(fn)
+	runtime.KeepAlive(unsafe.Slice(args, int(nargs)))
+	return result
 }
 
 func emval_copy_bytes(data []byte, value Value, toGo bool) (int, bool) {
@@ -168,7 +214,10 @@ func emval_copy_bytes(data []byte, value Value, toGo bool) (int, bool) {
 	return n, n >= 0
 }
 
-func emval_dump(v Value) { cEmvalDump(v.emvalHandle()) }
+func emval_dump(v Value) {
+	cEmvalDump(v.emvalHandle())
+	runtime.KeepAlive(v)
+}
 
 //go:linkname cEmvalGetGlobal C.llgo_emval_get_global
 func cEmvalGetGlobal(name *c.Char) uintptr

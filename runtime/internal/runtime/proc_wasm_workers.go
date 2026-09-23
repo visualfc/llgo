@@ -152,7 +152,13 @@ func RunWasmMain() {
 	casgstatus(gp, _Grunning, _Grunnable)
 	enqueueWasmG(worker, gp)
 	runWasmWorker(worker, true)
-	c.Exit(0)
+	if wasmMultiSched.mainReturned {
+		c.Exit(0)
+	}
+	// The proxied main pthread must survive its initial entry returning. Later
+	// idle periods are entered through llgoWasmWorkerResume and return normally
+	// to the async-wait callback instead of repeatedly abandoning C frames.
+	wasmworkers.Suspend()
 }
 
 func wasmMainStart(arg unsafe.Pointer) {
@@ -181,7 +187,10 @@ func wasmWorkerStart(arg unsafe.Pointer) unsafe.Pointer {
 	setg(nil)
 	initWasmWorkerSystem(worker)
 	runWasmWorker(worker, false)
-	return nil
+	// Keep the pthread alive after its one native entry. Resume callbacks use
+	// the ordinary return path, which lets Emscripten restore their C stack.
+	wasmworkers.Suspend()
+	return nil // unreachable
 }
 
 //export llgo_wasm_worker_resume
@@ -197,7 +206,7 @@ func llgoWasmWorkerResume(arg unsafe.Pointer) {
 	worker.system.ResetCurrent()
 	resumeWasmWorkerGCSystem(worker)
 	runWasmWorker(worker, worker.index == 0)
-	if worker.index == 0 {
+	if worker.index == 0 && wasmMultiSched.mainReturned {
 		c.Exit(0)
 	}
 }
@@ -217,7 +226,7 @@ func runWasmWorker(worker *wasmWorker, stopAtMain bool) {
 	for {
 		gp := waitWasmWorkerRunq(worker)
 		if gp == nil {
-			continue
+			return
 		}
 		casgstatus(gp, _Grunnable, _Grunning)
 		runWasmG(worker, gp)
@@ -490,12 +499,19 @@ func waitWasmWorkerRunq(worker *wasmWorker) *g {
 			continue
 		}
 		if wasmworkers.ArmWait(&worker.wake, sequence, timeout, unsafe.Pointer(worker)) {
+			// A host callback can be queued after the poll above but before
+			// ArmWait publishes this worker's JavaScript wake function. Such a
+			// callback could not wake the worker when it was queued. Poll once
+			// more after the wait is armed; enqueueing its dispatch G changes the
+			// wake sequence and completes the async wait. Callbacks arriving after
+			// this point observe the published wake function themselves.
+			hooks.pollCallbackEvents(worker)
 			// A pthread cannot synchronously block and still receive JavaScript
-			// callbacks. Keep the async wait alive, discard roots for the stack
-			// being unwound, and re-enter on this worker when it is notified.
+			// callbacks. Keep the async wait alive and discard roots for the
+			// system stack being retired. The initial pthread entry unwinds once
+			// to stay alive; later resume callbacks return through their normal C
+			// epilogues when runWasmWorker observes this nil result.
 			suspendWasmWorkerGCSystem(worker)
-			wasmworkers.Suspend()
-			fatal("runtime: WebAssembly worker suspension returned")
 			return nil
 		}
 	}

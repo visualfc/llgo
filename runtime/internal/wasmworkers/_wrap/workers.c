@@ -1,7 +1,6 @@
 #include <emscripten/atomic.h>
 #include <emscripten/eventloop.h>
 #include <emscripten.h>
-#include <emscripten/stack.h>
 #include <math.h>
 #include <stdint.h>
 
@@ -12,7 +11,6 @@
 static _Thread_local void *llgo_wasm_current_worker;
 
 extern void llgo_wasm_worker_resume(void *worker);
-extern void _emscripten_stack_restore(uintptr_t stack_pointer);
 
 EM_JS(void, llgo_wasm_worker_install_host_wake, (uint32_t *address), {
   const index = Math.trunc(Number(address) / 4);
@@ -40,7 +38,11 @@ static void llgo_wasm_worker_wait_finished(
   (void)expected;
   (void)result;
   llgo_wasm_worker_clear_host_wake((uint32_t *)address);
-  llgo_wasm_worker_resume(worker);
+  // Let the atomic-wait callback return before entering the Go scheduler.
+  // Emscripten fibers use Asyncify underneath; switching fibers while this
+  // host callback is still active can make its callback frame part of the
+  // saved scheduler continuation.
+  emscripten_async_call(llgo_wasm_worker_resume, worker, 0);
 }
 
 int llgo_wasm_worker_count(void) {
@@ -85,11 +87,9 @@ int llgo_wasm_worker_arm_wait(
 }
 
 __attribute__((noreturn)) void llgo_wasm_worker_suspend(void) {
-  // The async wait callback abandons its native Wasm call stack by throwing
-  // back to the JavaScript event loop. Restore the empty-stack SP first;
-  // otherwise bypassing normal function epilogues leaks a few words on every
-  // idle/wake cycle and eventually corrupts the pthread stack.
-  _emscripten_stack_restore(emscripten_stack_get_base());
+  // This is used only to retire the pthread's initial native entry while
+  // keeping its JavaScript worker alive. Async-wait resume callbacks return
+  // normally, so their function epilogues restore the C stack themselves.
   emscripten_unwind_to_js_event_loop();
   __builtin_unreachable();
 }

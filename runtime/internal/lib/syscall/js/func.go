@@ -139,7 +139,10 @@ func runCallback(handle uintptr) {
 	funcsMu.Unlock()
 }
 
-func dispatchCallback(handle uintptr) {
+func dispatchCallback(handle uintptr, owner int) {
+	if current := llruntime.SchedulerProcID(); current != owner {
+		panic("syscall/js: callback dispatched outside its JavaScript realm")
+	}
 	defer cEmvalDecref(handle)
 	cb := Value{ref: ref(handle)}
 	id := uint32(cb.Get("id").Int())
