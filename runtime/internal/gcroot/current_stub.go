@@ -7,4 +7,6 @@ import "unsafe"
 var (
 	currentRootChain unsafe.Pointer
 	sjljReplaying    bool
+	activeContext    *Context
+	rebuilding       bool
 )

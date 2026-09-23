@@ -1,4 +1,4 @@
-//go:build llgo && wasm && llgo.wasm.gc.linear
+//go:build llgo && wasm && llgo.wasm.gc.linear && !llgo.wasm.workers
 
 package gcroot
 
@@ -9,3 +9,6 @@ var currentRootChain unsafe.Pointer
 
 //go:linkname sjljReplaying llvm_gc_root_sjlj_replaying
 var sjljReplaying bool
+
+var activeContext *Context
+var rebuilding bool

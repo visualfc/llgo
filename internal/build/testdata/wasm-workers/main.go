@@ -28,6 +28,8 @@ func main() {
 	testCrossWorkerSynchronization()
 	testInterleavedWorkerLocality()
 	testCrossWorkerTimerWake()
+	testRemoteWorkerGC()
+	testConcurrentWorkerAllocation()
 	println("wasm workers ok")
 }
 
@@ -235,5 +237,94 @@ func testCrossWorkerTimerWake() {
 	case <-done:
 	case <-time.After(time.Second):
 		panic("timer did not wake a worker")
+	}
+}
+
+type workerGCPayload struct {
+	value uint64
+	pad   [32]byte
+}
+
+func testRemoteWorkerGC() {
+	const want = uint64(0x76543210)
+	live := &workerGCPayload{value: want}
+	_, _, mainMID, _, _, _, _ := gmpForTesting()
+
+	for attempts := 0; attempts < int(configuredWorkerCount())*2; attempts++ {
+		start := make(chan bool)
+		ready := make(chan int64)
+		var (
+			done   atomic.Bool
+			result atomic.Uint64
+		)
+		go func() {
+			_, _, mid, _, _, _, _ := gmpForTesting()
+			ready <- mid
+			if !<-start {
+				done.Store(true)
+				return
+			}
+			remoteLive := &workerGCPayload{value: want}
+			runtime.GC()
+			result.Store(remoteLive.value)
+			done.Store(true)
+		}()
+
+		if mid := <-ready; mid == mainMID {
+			start <- false
+			for !done.Load() {
+			}
+			continue
+		}
+		start <- true
+		for !done.Load() {
+			if live.value != want {
+				panic("remote GC lost an active worker root")
+			}
+		}
+		if result.Load() != want || live.value != want {
+			panic("remote worker GC lost a live root")
+		}
+		return
+	}
+	panic("remote GC did not run on another worker")
+}
+
+func testConcurrentWorkerAllocation() {
+	const (
+		goroutines = 4
+		iterations = 512
+		liveCount  = 16
+	)
+	start := make(chan struct{})
+	done := make(chan int64, goroutines)
+	for id := range goroutines {
+		go func() {
+			<-start
+			var live [liveCount]*workerGCPayload
+			for i := range iterations {
+				slot := i % len(live)
+				live[slot] = &workerGCPayload{value: uint64(id*iterations + i + 1)}
+				if i == iterations/2 {
+					runtime.GC()
+				}
+			}
+			for _, value := range live {
+				if value == nil || value.value == 0 {
+					panic("concurrent allocation lost a live object")
+				}
+			}
+			_, _, mid, _, _, _, _ := gmpForTesting()
+			done <- mid
+		}()
+	}
+	close(start)
+
+	workers := make(map[int64]bool)
+	for range goroutines {
+		workers[<-done] = true
+	}
+	if len(workers) < 2 {
+		panic("concurrent GC did not cover multiple workers")
 	}
 }

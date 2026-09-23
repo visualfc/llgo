@@ -442,6 +442,7 @@ func GC() uintptr {
 // free bytes in the heap after the GC is finished.
 func gc() (freeBytes uintptr) {
 	lazyInit()
+	gcStopWorld()
 
 	if gcDebug {
 		println("running collection cycle...")
@@ -455,14 +456,11 @@ func gc() (freeBytes uintptr) {
 	preserveFinalizableObjects()
 	markHeads.reset()
 
-	// If we're using threads, resume all other threads before starting the
-	// sweep.
-	gcResumeWorld()
-
 	// Sweep phase: free all non-marked objects and unmark marked objects for
 	// the next collection cycle.
 	freeBytes = sweep()
 	gcNumGC++
+	gcResumeWorld()
 
 	return
 }
@@ -637,10 +635,6 @@ func growHeap() bool {
 	c.Memmove(metadataStart, oldMetadataStart, oldMetadataSize)
 	c.Memset(unsafe.Add(metadataStart, oldMetadataSize), 0, newMetadataSize-oldMetadataSize)
 	return true
-}
-
-func gcResumeWorld() {
-	// Nothing to do here (single threaded).
 }
 
 //go:linkname getsp llgo.stackSave

@@ -28,6 +28,10 @@ func adoptWasmGCRoot(ctx *wasmGCRootContext) {
 	gcroot.AdoptCurrent(ctx)
 }
 
+func publishWasmGCRoot() {
+	gcroot.PublishCurrent()
+}
+
 func finishWasmGCRootRebuild() {
 	gcroot.FinishRebuild()
 }

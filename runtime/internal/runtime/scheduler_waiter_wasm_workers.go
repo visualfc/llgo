@@ -43,7 +43,10 @@ func (w *SchedulerWaiter) Park() {
 	atomic.Add(&wasmMultiSched.active, ^uint32(0))
 	wakeWasmEventWorker()
 	worker := gp.context.platform.owner
-	gp.context.platform.context.Swap(&worker.system, nil)
+	gp.context.platform.context.Swap(
+		&worker.system,
+		wasmWorkerSystemRootPointer(worker),
+	)
 	atomic.Store(&w.notified, uint32(0))
 }
 

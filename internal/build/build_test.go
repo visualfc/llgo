@@ -926,11 +926,13 @@ func TestConfigureWasmWorkers(t *testing.T) {
 	if !export.WasmRuntime.RunMainTask {
 		t.Fatal("worker runtime did not select the host-owned main entry")
 	}
-	if _, err := configureWasmGC(&conf, &export, true); err != nil {
+	if enabled, err := configureWasmGC(&conf, &export, true); err != nil {
 		t.Fatalf("default worker GC selection failed: %v", err)
+	} else if !enabled {
+		t.Fatal("worker runtime did not enable the wasm collector")
 	}
-	if slices.Contains(splitSourcePatchBuildTags(conf.Tags), "llgo.wasm.gc.linear") {
-		t.Fatalf("M1 worker runtime unexpectedly enabled GC in tags %q", conf.Tags)
+	if !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "llgo.wasm.gc.linear") {
+		t.Fatalf("worker GC tag missing from %q", conf.Tags)
 	}
 }
 

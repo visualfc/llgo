@@ -94,6 +94,41 @@ func TestGCRootReservationAndClosureContext(t *testing.T) {
 	}
 }
 
+func TestThreadLocalGCRootFrameIR(t *testing.T) {
+	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "js", GOARCH: "wasm"})
+	if prog.ThreadLocalGCRootsEnabled() {
+		t.Fatal("thread-local GC roots enabled by default")
+	}
+	prog.EnableThreadLocalGCRoots(true)
+	if !prog.ThreadLocalGCRootsEnabled() {
+		t.Fatal("thread-local GC roots were not enabled")
+	}
+	pkg := prog.NewPackage("main", "main")
+
+	fn := pkg.NewFunc("main.keep", ssa.NoArgsNoRet, ssa.InGo)
+	b := fn.MakeBody(1)
+	fn.NewGCRoots(1)
+	b.Return()
+	b.EndBuild()
+
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatal(err)
+	}
+	ir := pkg.String()
+	for _, want := range []string{
+		`thread_local`,
+		`github.com/xgo-dev/llgo/runtime/internal/gcroot.currentRootChain`,
+		`github.com/xgo-dev/llgo/runtime/internal/gcroot.sjljReplaying`,
+	} {
+		if !strings.Contains(ir, want) {
+			t.Fatalf("thread-local compiler root IR missing %q:\n%s", want, ir)
+		}
+	}
+	if strings.Contains(ir, `@llvm_gc_root_chain`) || strings.Contains(ir, `@llvm_gc_root_sjlj_replaying`) {
+		t.Fatalf("thread-local roots also emitted single-worker state:\n%s", ir)
+	}
+}
+
 func TestAggregateGCRootPointers(t *testing.T) {
 	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "js", GOARCH: "wasm"})
 	pkg := prog.NewPackage("main", "main")
