@@ -315,7 +315,7 @@ xfails:
     platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue40954.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue46903.go
@@ -328,7 +328,7 @@ xfails:
     platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue46903.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue51733.go
@@ -341,7 +341,7 @@ xfails:
     platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue51733.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/bug514.go
@@ -354,7 +354,7 @@ xfails:
     platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/bug514.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue42032.go
@@ -367,7 +367,7 @@ xfails:
     platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42032.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue42076.go
@@ -380,7 +380,7 @@ xfails:
     platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42076.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - version: go1.26
     platform: windows-msvc/386
     directive: run
