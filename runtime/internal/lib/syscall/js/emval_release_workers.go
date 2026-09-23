@@ -3,9 +3,8 @@
 package js
 
 import (
-	"sync"
-
 	llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
+	"github.com/xgo-dev/llgo/runtime/internal/wasmsync"
 )
 
 type pendingEmvalRelease struct {
@@ -15,8 +14,8 @@ type pendingEmvalRelease struct {
 }
 
 var pendingEmvalReleases struct {
-	sync.Mutex
-	head *pendingEmvalRelease
+	mutex wasmsync.Mutex
+	head  *pendingEmvalRelease
 }
 
 func emvalOwner() int {
@@ -29,10 +28,10 @@ func releaseEmval(handle uintptr, owner int) {
 		return
 	}
 	release := &pendingEmvalRelease{handle: handle, owner: owner}
-	pendingEmvalReleases.Lock()
+	pendingEmvalReleases.mutex.Lock(nil)
 	release.next = pendingEmvalReleases.head
 	pendingEmvalReleases.head = release
-	pendingEmvalReleases.Unlock()
+	pendingEmvalReleases.mutex.Unlock()
 
 	// Install the callback poll even if the program never created a js.Func.
 	// The finalizer goroutine may belong to any scheduler worker, whereas an
@@ -44,7 +43,7 @@ func releaseEmval(handle uintptr, owner int) {
 func pollEmvalReleases() {
 	owner := llruntime.SchedulerProcID()
 	var ready *pendingEmvalRelease
-	pendingEmvalReleases.Lock()
+	pendingEmvalReleases.mutex.Lock(nil)
 	link := &pendingEmvalReleases.head
 	for *link != nil {
 		release := *link
@@ -56,8 +55,15 @@ func pollEmvalReleases() {
 		release.next = ready
 		ready = release
 	}
-	pendingEmvalReleases.Unlock()
+	pendingEmvalReleases.mutex.Unlock()
+	if ready != nil {
+		// pollEmvalReleases runs on the scheduler's system fiber. Start a G in
+		// the same worker realm before touching sync-backed callback state.
+		go drainEmvalReleases(ready)
+	}
+}
 
+func drainEmvalReleases(ready *pendingEmvalRelease) {
 	for ready != nil {
 		release := ready
 		ready = release.next
