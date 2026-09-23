@@ -2,11 +2,9 @@
 
 package gcroot
 
-import "unsafe"
-
 var (
-	currentRootChain unsafe.Pointer
+	currentRootChain uintptr
 	sjljReplaying    bool
-	activeContext    *Context
+	activeContext    uintptr
 	rebuilding       bool
 )

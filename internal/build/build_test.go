@@ -824,7 +824,7 @@ func TestConfigureWasmGC(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			export := crosscompile.Export{WasmProfile: test.profile}
-			enabled, err := configureWasmGC(&test.conf, &export, false)
+			enabled, err := configureWasmGC(&test.conf, &export)
 			if (err != nil) != test.err {
 				t.Fatalf("configureWasmGC error = %v, want error %v", err, test.err)
 			}
@@ -845,7 +845,7 @@ func TestConfigureWasmGC(t *testing.T) {
 func TestConfigureWasmGCRejectsWASIThreads(t *testing.T) {
 	t.Setenv("LLGO_WASI_THREADS", "1")
 	conf := Config{Goos: "wasip1", Goarch: "wasm", Tags: "llgo.wasm.gc.linear"}
-	if _, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}, false); err == nil {
+	if _, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err == nil {
 		t.Fatal("expected llgo.wasm.gc.linear with WASI threads to fail")
 	}
 	conf.Tags = ""
@@ -926,7 +926,7 @@ func TestConfigureWasmWorkers(t *testing.T) {
 	if !export.WasmRuntime.RunMainTask {
 		t.Fatal("worker runtime did not select the host-owned main entry")
 	}
-	if enabled, err := configureWasmGC(&conf, &export, true); err != nil {
+	if enabled, err := configureWasmGC(&conf, &export); err != nil {
 		t.Fatalf("default worker GC selection failed: %v", err)
 	} else if !enabled {
 		t.Fatal("worker runtime did not enable the wasm collector")

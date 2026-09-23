@@ -38,6 +38,14 @@ func initWasmWorkerGCSystem(worker *wasmWorker) {
 	wasmWorkerStopForGC(worker)
 }
 
+func suspendWasmWorkerGCSystem(worker *wasmWorker) {
+	suspendWasmGCRoot(&worker.gc.systemRoot)
+}
+
+func resumeWasmWorkerGCSystem(worker *wasmWorker) {
+	adoptWasmGCRoot(&worker.gc.systemRoot)
+}
+
 func wasmWorkerSystemRootPointer(worker *wasmWorker) unsafe.Pointer {
 	return wasmGCRootPointer(&worker.gc.systemRoot)
 }

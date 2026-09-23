@@ -8,6 +8,10 @@ type wasmWorkerGCState struct{}
 
 func initWasmWorkerGCSystem(*wasmWorker) {}
 
+func suspendWasmWorkerGCSystem(*wasmWorker) {}
+
+func resumeWasmWorkerGCSystem(*wasmWorker) {}
+
 func wasmWorkerSystemRootPointer(*wasmWorker) unsafe.Pointer { return nil }
 
 func wasmGCRequestPending(*wasmWorker) bool { return false }

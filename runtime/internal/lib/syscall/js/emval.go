@@ -11,12 +11,21 @@ import (
 	_ "github.com/xgo-dev/llgo/runtime/internal/embind"
 )
 
+// Emscripten emval handles belong to the JavaScript realm of the physical
+// worker that created them.
+//
+//llgointernal:tls
 var (
-	valueGlobal         = emval_get_global(nil)
-	objectConstructor   = emval_get_global(c.Str("Object"))
-	stringConstructor   = emval_get_global(c.Str("String"))
-	arrayConstructor    = emval_get_global(c.Str("Array"))
-	functionConstructor = emval_get_global(c.Str("Function"))
+	emvalGlobalsReady   bool
+	valueGlobal         Value
+	objectConstructor   Value
+	stringConstructor   Value
+	arrayConstructor    Value
+	functionConstructor Value
+	valueNaN            Value
+	valueZero           Value
+	uint8Array          Value
+	uint8ClampedArray   Value
 )
 
 var (
@@ -24,9 +33,23 @@ var (
 	valueNull      = Value{ref: 4}
 	valueTrue      = Value{ref: 6}
 	valueFalse     = Value{ref: 8}
-	valueNaN       = emval_get_global(c.Str("NaN"))
-	valueZero      = emval_new_double(0)
 )
+
+func ensureEmvalGlobals() {
+	if emvalGlobalsReady {
+		return
+	}
+	valueGlobal = emval_get_global(nil)
+	objectConstructor = emval_get_global(c.Str("Object"))
+	stringConstructor = emval_get_global(c.Str("String"))
+	arrayConstructor = emval_get_global(c.Str("Array"))
+	functionConstructor = emval_get_global(c.Str("Function"))
+	valueNaN = emval_get_global(c.Str("NaN"))
+	valueZero = emval_new_double(0)
+	uint8Array = emval_get_global(c.Str("Uint8Array"))
+	uint8ClampedArray = emval_get_global(c.Str("Uint8ClampedArray"))
+	emvalGlobalsReady = true
+}
 
 func valueFromEmval(handle uintptr) Value {
 	if handle == 0 {

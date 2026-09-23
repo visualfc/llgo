@@ -52,6 +52,14 @@ func Wait(addr *uint32, expected uint32, timeoutNanoseconds int64) {
 	workerWait(addr, expected, timeoutNanoseconds)
 }
 
+func ArmWait(addr *uint32, expected uint32, timeoutNanoseconds int64, worker unsafe.Pointer) bool {
+	return workerArmWait(addr, expected, timeoutNanoseconds, worker) != 0
+}
+
+func Suspend() {
+	workerSuspend()
+}
+
 func Wake(addr *uint32) {
 	workerWake(addr)
 }
@@ -67,6 +75,12 @@ func workerSetCurrent(unsafe.Pointer)
 
 //go:linkname workerWait C.llgo_wasm_worker_wait
 func workerWait(addr *uint32, expected uint32, timeoutNanoseconds int64) c.Int
+
+//go:linkname workerArmWait C.llgo_wasm_worker_arm_wait
+func workerArmWait(addr *uint32, expected uint32, timeoutNanoseconds int64, worker unsafe.Pointer) c.Int
+
+//go:linkname workerSuspend C.llgo_wasm_worker_suspend
+func workerSuspend()
 
 //go:linkname workerWake C.llgo_wasm_worker_wake
 func workerWake(addr *uint32) c.Int

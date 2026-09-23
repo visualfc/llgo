@@ -127,6 +127,13 @@ func TestThreadLocalGCRootFrameIR(t *testing.T) {
 	if strings.Contains(ir, `@llvm_gc_root_chain`) || strings.Contains(ir, `@llvm_gc_root_sjlj_replaying`) {
 		t.Fatalf("thread-local roots also emitted single-worker state:\n%s", ir)
 	}
+	chainType := `thread_local global i64`
+	if prog.PointerSize() == 4 {
+		chainType = `thread_local global i32`
+	}
+	if !strings.Contains(ir, chainType) || strings.Contains(ir, `thread_local global ptr`) {
+		t.Fatalf("thread-local root chain must use a pointer-free address word:\n%s", ir)
+	}
 }
 
 func TestAggregateGCRootPointers(t *testing.T) {

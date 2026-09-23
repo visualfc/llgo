@@ -14,6 +14,8 @@ func wasmGCRootPointer(*wasmGCRootContext) unsafe.Pointer { return nil }
 
 func adoptWasmGCRoot(*wasmGCRootContext) {}
 
+func suspendWasmGCRoot(*wasmGCRootContext) {}
+
 func publishWasmGCRoot() {}
 
 func finishWasmGCRootRebuild() {}

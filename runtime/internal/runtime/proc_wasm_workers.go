@@ -32,9 +32,12 @@ import (
 
 const maxWasmWorkers = 16
 
+func SchedulerMultiplexesGoroutinesForTesting() bool { return true }
+
 type runtimeContextPlatform struct {
 	context    wasmcontext.Context
 	gcRoot     wasmGCRootContext
+	glsContext LocalContext
 	runqNext   *g
 	runqQueued bool
 	owner      *wasmWorker
@@ -53,6 +56,8 @@ type wasmWorker struct {
 
 	system          wasmcontext.Context
 	systemReady     bool
+	localContext    LocalContext
+	pollingCallback bool
 	index           int
 	safepointBudget pollbudget.Budget
 	gc              wasmWorkerGCState
@@ -138,6 +143,7 @@ func RunWasmMain() {
 		fatal("runtime: invalid WebAssembly main goroutine")
 		return
 	}
+	adoptWasmWorkerLocalContext(&worker.localContext)
 	if !initWasmFiber(gp, wasmcontext.Entry(wasmMainStart), unsafe.Pointer(gp), wasmMainStackSize) {
 		panic("runtime: failed to allocate WebAssembly main stack")
 	}
@@ -168,13 +174,32 @@ func wasmWorkerStart(arg unsafe.Pointer) unsafe.Pointer {
 	}
 	// Goroutines interleave on this native worker, so generated GLS/TLS access
 	// needs one long-lived locality owner rather than a goroutine entry frame.
-	var localContext LocalContext
-	EnterLocalContext(&localContext)
+	// Keep it outside this entry stack: an idle pthread unwinds back to its JS
+	// event loop and later resumes through llgo_wasm_worker_resume.
+	adoptWasmWorkerLocalContext(&worker.localContext)
 	setCurrentWasmWorker(worker)
 	setg(nil)
 	initWasmWorkerSystem(worker)
 	runWasmWorker(worker, false)
 	return nil
+}
+
+//export llgo_wasm_worker_resume
+func llgoWasmWorkerResume(arg unsafe.Pointer) {
+	worker := (*wasmWorker)(arg)
+	if worker == nil || !worker.systemReady {
+		fatal("runtime: invalid WebAssembly worker resume")
+		return
+	}
+	setCurrentWasmWorker(worker)
+	adoptWasmWorkerLocalContext(&worker.localContext)
+	setg(nil)
+	worker.system.ResetCurrent()
+	resumeWasmWorkerGCSystem(worker)
+	runWasmWorker(worker, worker.index == 0)
+	if worker.index == 0 {
+		c.Exit(0)
+	}
 }
 
 func initWasmWorkerSystem(worker *wasmWorker) {
@@ -249,7 +274,16 @@ func releaseWasmWorkerG(worker *wasmWorker, gp *g) {
 
 func newprocBackend(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr, callergp *g) {
 	gp := newproc1(fn, arg, callergp)
-	worker := nextWasmWorker()
+	var worker *wasmWorker
+	current := currentWasmWorker()
+	if callergp == nil || current != nil && current.pollingCallback {
+		// Host callbacks carry thread-local JavaScript handles. Dispatch the G
+		// from the same physical worker/JS realm that received the callback.
+		worker = current
+	}
+	if worker == nil {
+		worker = nextWasmWorker()
+	}
 	gp.context.platform.owner = worker
 	if !initWasmFiber(gp, wasmcontext.Entry(wasmGStart), unsafe.Pointer(gp), stackSize) {
 		releaseG()
@@ -285,6 +319,7 @@ func releaseWasmContext(gp *g) {
 	if wasmGCRootEnabled {
 		unregisterWasmGCRoot(&platform.gcRoot)
 	}
+	releaseGoroutineLocalBlocks(&platform.glsContext)
 	platform.context.Close(FreeRoot)
 	freeRuntimeContext(ctx)
 }
@@ -297,7 +332,6 @@ func wasmGStart(arg unsafe.Pointer) {
 	}
 	fn, fnarg := gp.startfn, gp.startarg
 	gp.startfn = nil
-	gp.startarg = nil
 	fn(fnarg)
 	finishWasmG(gp)
 }
@@ -411,16 +445,23 @@ func waitWasmWorkerRunq(worker *wasmWorker) *g {
 		if gp := popWasmWorkerRunq(worker); gp != nil {
 			return gp
 		}
+		hooks := loadWasmEventHooks()
+		hooks.pollCallbackEvents(worker)
+		if gp := popWasmWorkerRunq(worker); gp != nil {
+			return gp
+		}
 		timeout := int64(-1)
+		asyncWait := hooks.pollCallbacks != nil
 		if worker.index == 0 {
-			pollWasmEvents()
+			hooks.pollTimerEvents()
 			if gp := popWasmWorkerRunq(worker); gp != nil {
 				return gp
 			}
-			hasWaitSource := wasmCallbackPollHook != nil
-			if wasmTimerWaitHook != nil {
-				if wait, active := wasmTimerWaitHook(); active {
+			hasWaitSource := hooks.pollCallbacks != nil
+			if hooks.timerWait != nil {
+				if wait, active := hooks.timerWait(); active {
 					hasWaitSource = true
+					asyncWait = true
 					if wait > uint64(^uint64(0)>>1) {
 						timeout = int64(^uint64(0) >> 1)
 					} else {
@@ -441,7 +482,22 @@ func waitWasmWorkerRunq(worker *wasmWorker) *g {
 		if gp := popWasmWorkerRunq(worker); gp != nil {
 			return gp
 		}
-		wasmworkers.Wait(&worker.wake, sequence, timeout)
+		if !asyncWait {
+			// Pure Go work can block in the futex without starving a host event.
+			// Keeping this path synchronous avoids one JavaScript callback per
+			// channel handoff or mutex wake.
+			wasmworkers.Wait(&worker.wake, sequence, timeout)
+			continue
+		}
+		if wasmworkers.ArmWait(&worker.wake, sequence, timeout, unsafe.Pointer(worker)) {
+			// A pthread cannot synchronously block and still receive JavaScript
+			// callbacks. Keep the async wait alive, discard roots for the stack
+			// being unwound, and re-enter on this worker when it is notified.
+			suspendWasmWorkerGCSystem(worker)
+			wasmworkers.Suspend()
+			fatal("runtime: WebAssembly worker suspension returned")
+			return nil
+		}
 	}
 }
 

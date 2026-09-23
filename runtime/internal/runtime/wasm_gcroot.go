@@ -28,6 +28,10 @@ func adoptWasmGCRoot(ctx *wasmGCRootContext) {
 	gcroot.AdoptCurrent(ctx)
 }
 
+func suspendWasmGCRoot(ctx *wasmGCRootContext) {
+	gcroot.SuspendCurrent(uintptr(unsafe.Pointer(ctx)))
+}
+
 func publishWasmGCRoot() {
 	gcroot.PublishCurrent()
 }

@@ -72,8 +72,27 @@ EM_VAL llgo_emval_get_module_property(const char *name) {
     return val::module_property(name).release_ownership();
 }
 
-static volatile uint8_t llgo_emval_invoke_pending;
+static _Thread_local volatile uint8_t llgo_emval_invoke_pending;
 
+#if defined(LLGO_WASM_WORKERS) && LLGO_WASM_WORKERS > 1
+EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *pending_flag, uintptr_t unused_callback, int unused_pointer_bytes), {
+    const pending = [];
+    const pendingFlag = Number(pending_flag);
+    Module['llgoWasmPendingInvokes'] = pending;
+    Module['_llgo_invoke'] = function(event) {
+        pending.push(event);
+        HEAPU8[pendingFlag] = 1;
+        const state = Module['llgoWasmHostWait'];
+        if (state !== undefined && state.wake !== undefined) {
+            const wake = state.wake;
+            delete state.wake;
+            setTimeout(wake, 0);
+        }
+        // A worker can be inside an Asyncify suspension. Dispatch later on
+        // its own G so the enclosing C/JS call is never reentered.
+    };
+});
+#else
 EM_JS_DEPS(llgo_emval_install_invoke_js, "$Emval,$getWasmTableEntry,$Asyncify,$Fibers");
 EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *pending_flag, uintptr_t callback, int pointer_bytes), {
     const pending = [];
@@ -110,6 +129,7 @@ EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *pending_flag, uintptr_t call
         return event.result;
     };
 });
+#endif
 
 void llgo_emval_install_invoke(void (*callback)(EM_VAL)) {
     llgo_emval_invoke_pending = 0;

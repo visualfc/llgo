@@ -80,8 +80,8 @@ func (p Function) NewGCRoots(count int) []Expr {
 	nextSlot := llvm.CreateStructGEP(b.impl, frameType, frame, 0)
 	reentered := llvm.CreateICmp(b.impl, llvm.IntEQ, prev.impl, frame)
 	sjljReplaying := llvm.CreateLoad(b.impl, prog.Bool().ll, p.gcRootSJLJReplaying())
-	// SJLJ/Asyncify replays discarded function entries on the way back to a
-	// setjmp. Their stack slots must be reused without publishing dead frames.
+	// SJLJ replays discarded function entries on the way back to a setjmp.
+	// Their stack slots must be reused without publishing dead frames.
 	reusingFrame := b.impl.CreateOr(reentered, sjljReplaying, "")
 
 	frameMap := p.newGCRootMap(count)

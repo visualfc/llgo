@@ -5,31 +5,59 @@
 
 package runtime
 
-var (
-	wasmPollTimersHook   func()
-	wasmTimerWaitHook    func() (wait uint64, active bool)
-	wasmCallbackPollHook func()
-)
+import "github.com/xgo-dev/llgo/runtime/internal/wasmsync"
 
-// RegisterWasmCallbackPoll connects a host callback source to worker zero.
-// Host bridges queue callbacks; worker zero turns them into ordinary Gs.
+type wasmEventHooks struct {
+	pollTimers    func()
+	timerWait     func() (wait uint64, active bool)
+	pollCallbacks func()
+}
+
+var wasmSchedulerEventHooks struct {
+	lock  wasmsync.Mutex
+	hooks wasmEventHooks
+}
+
+// RegisterWasmCallbackPoll connects a host callback source to every worker.
+// Emscripten values belong to one JavaScript realm, so each physical worker
+// must consume and dispatch its own callback queue.
 func RegisterWasmCallbackPoll(poll func()) {
-	wasmCallbackPollHook = poll
+	wasmSchedulerEventHooks.lock.Lock(wasmGCAllocatorYield)
+	wasmSchedulerEventHooks.hooks.pollCallbacks = poll
+	wasmSchedulerEventHooks.lock.Unlock()
 }
 
 // RegisterWasmTimerHooks connects the Go-derived timer heap. The timer
 // implementation serializes heap access across workers.
 func RegisterWasmTimerHooks(poll func(), wait func() (uint64, bool)) {
-	wasmPollTimersHook = poll
-	wasmTimerWaitHook = wait
+	wasmSchedulerEventHooks.lock.Lock(wasmGCAllocatorYield)
+	wasmSchedulerEventHooks.hooks.pollTimers = poll
+	wasmSchedulerEventHooks.hooks.timerWait = wait
+	wasmSchedulerEventHooks.lock.Unlock()
 }
 
-func pollWasmEvents() {
-	if wasmCallbackPollHook != nil {
-		wasmCallbackPollHook()
+func loadWasmEventHooks() wasmEventHooks {
+	wasmSchedulerEventHooks.lock.Lock(wasmGCAllocatorYield)
+	hooks := wasmSchedulerEventHooks.hooks
+	wasmSchedulerEventHooks.lock.Unlock()
+	return hooks
+}
+
+func (hooks wasmEventHooks) pollCallbackEvents(worker *wasmWorker) {
+	if hooks.pollCallbacks == nil || worker == nil || worker.pollingCallback {
+		return
 	}
-	if wasmPollTimersHook != nil {
-		wasmPollTimersHook()
+	// pollCallbacks starts one G per queued host event. Mark that narrow
+	// interval so newprocBackend keeps emval handles in their originating
+	// JavaScript realm even when polling happens from a running G's safepoint.
+	worker.pollingCallback = true
+	hooks.pollCallbacks()
+	worker.pollingCallback = false
+}
+
+func (hooks wasmEventHooks) pollTimerEvents() {
+	if hooks.pollTimers != nil {
+		hooks.pollTimers()
 	}
 }
 

@@ -1,4 +1,4 @@
-//go:build llgo && js && wasm
+//go:build llgo && js && wasm && !llgo.wasm.workers
 
 // Copyright 2018 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license.

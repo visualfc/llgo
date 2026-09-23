@@ -583,7 +583,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	if err != nil {
 		return nil, err
 	}
-	wasmGC, err := configureWasmGC(conf, &export, wasmWorkers.Enabled())
+	wasmGC, err := configureWasmGC(conf, &export)
 	if err != nil {
 		return nil, err
 	}
@@ -1446,7 +1446,7 @@ func configureWasmWorkers(conf *Config, export *crosscompile.Export) (wasmworker
 	return config, nil
 }
 
-func configureWasmGC(conf *Config, export *crosscompile.Export, wasmWorkers bool) (bool, error) {
+func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 	explicit := slices.Contains(splitSourcePatchBuildTags(conf.Tags), "llgo.wasm.gc.linear")
 	if conf.Goarch != "wasm" {
 		if explicit {

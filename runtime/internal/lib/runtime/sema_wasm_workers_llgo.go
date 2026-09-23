@@ -10,8 +10,9 @@ import (
 	"github.com/xgo-dev/llgo/runtime/internal/wasmsync"
 )
 
-var semaQueuesLock wasmSemaMutex
-var notifyQueuesLock wasmSemaMutex
+// wasmWaitQueuesLock protects both queue maps and their shared waiter free
+// list. Separate map locks would still race through wasmWaiterFree.
+var wasmWaitQueuesLock wasmSemaMutex
 
 type wasmSemaMutex struct {
 	mutex wasmsync.Mutex
@@ -30,30 +31,30 @@ func semaAcquire(addr *uint32, lifo bool) {
 	if value != 0 && atomic.CompareAndSwapUint32(addr, value, value-1) {
 		return
 	}
-	semaQueuesLock.Lock()
+	wasmWaitQueuesLock.Lock()
 	value = atomic.LoadUint32(addr)
 	if value != 0 && atomic.CompareAndSwapUint32(addr, value, value-1) {
-		semaQueuesLock.Unlock()
+		wasmWaitQueuesLock.Unlock()
 		return
 	}
 	w := acquireWasmWaiter(0)
 	semaQueue(addr).push(w, lifo)
-	semaQueuesLock.Unlock()
+	wasmWaitQueuesLock.Unlock()
 	w.waiter.Park()
-	semaQueuesLock.Lock()
+	wasmWaitQueuesLock.Lock()
 	releaseWasmWaiter(w)
-	semaQueuesLock.Unlock()
+	wasmWaitQueuesLock.Unlock()
 }
 
 func semaRelease(addr *uint32, handoff bool) {
 	key := uintptr(unsafe.Pointer(addr))
-	semaQueuesLock.Lock()
+	wasmWaitQueuesLock.Lock()
 	if q := semaQueues[key]; q != nil {
 		if w := q.pop(); w != nil {
 			if q.head == nil {
 				delete(semaQueues, key)
 			}
-			semaQueuesLock.Unlock()
+			wasmWaitQueuesLock.Unlock()
 			w.waiter.Ready()
 			if handoff {
 				llruntime.Gosched()
@@ -62,7 +63,7 @@ func semaRelease(addr *uint32, handoff bool) {
 		}
 	}
 	atomic.AddUint32(addr, 1)
-	semaQueuesLock.Unlock()
+	wasmWaitQueuesLock.Unlock()
 }
 
 //go:linkname sync_runtime_notifyListWait sync.runtime_notifyListWait
@@ -70,37 +71,37 @@ func sync_runtime_notifyListWait(l *notifyList, ticket uint32) {
 	if ticketLess(ticket, atomic.LoadUint32(&l.notify)) {
 		return
 	}
-	notifyQueuesLock.Lock()
+	wasmWaitQueuesLock.Lock()
 	if ticketLess(ticket, atomic.LoadUint32(&l.notify)) {
-		notifyQueuesLock.Unlock()
+		wasmWaitQueuesLock.Unlock()
 		return
 	}
 	w := acquireWasmWaiter(ticket)
 	notifyQueue(l).push(w, false)
-	notifyQueuesLock.Unlock()
+	wasmWaitQueuesLock.Unlock()
 	w.waiter.Park()
-	notifyQueuesLock.Lock()
+	wasmWaitQueuesLock.Lock()
 	releaseWasmWaiter(w)
-	notifyQueuesLock.Unlock()
+	wasmWaitQueuesLock.Unlock()
 }
 
 //go:linkname sync_runtime_notifyListNotifyAll sync.runtime_notifyListNotifyAll
 func sync_runtime_notifyListNotifyAll(l *notifyList) {
-	notifyQueuesLock.Lock()
+	wasmWaitQueuesLock.Lock()
 	wait := atomic.LoadUint32(&l.wait)
 	if atomic.LoadUint32(&l.notify) == wait {
-		notifyQueuesLock.Unlock()
+		wasmWaitQueuesLock.Unlock()
 		return
 	}
 	atomic.StoreUint32(&l.notify, wait)
 	key := uintptr(unsafe.Pointer(l))
 	q := notifyQueues[key]
 	if q == nil {
-		notifyQueuesLock.Unlock()
+		wasmWaitQueuesLock.Unlock()
 		return
 	}
 	delete(notifyQueues, key)
-	notifyQueuesLock.Unlock()
+	wasmWaitQueuesLock.Unlock()
 	for {
 		w := q.pop()
 		if w == nil {
@@ -112,24 +113,24 @@ func sync_runtime_notifyListNotifyAll(l *notifyList) {
 
 //go:linkname sync_runtime_notifyListNotifyOne sync.runtime_notifyListNotifyOne
 func sync_runtime_notifyListNotifyOne(l *notifyList) {
-	notifyQueuesLock.Lock()
+	wasmWaitQueuesLock.Lock()
 	notify := atomic.LoadUint32(&l.notify)
 	if notify == atomic.LoadUint32(&l.wait) {
-		notifyQueuesLock.Unlock()
+		wasmWaitQueuesLock.Unlock()
 		return
 	}
 	atomic.StoreUint32(&l.notify, notify+1)
 	key := uintptr(unsafe.Pointer(l))
 	q := notifyQueues[key]
 	if q == nil {
-		notifyQueuesLock.Unlock()
+		wasmWaitQueuesLock.Unlock()
 		return
 	}
 	w := q.removeTicket(notify)
 	if q.head == nil {
 		delete(notifyQueues, key)
 	}
-	notifyQueuesLock.Unlock()
+	wasmWaitQueuesLock.Unlock()
 	if w != nil {
 		w.waiter.Ready()
 	}

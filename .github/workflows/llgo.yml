@@ -652,6 +652,15 @@ jobs:
           LLGO_BUILD_CACHE: "1"
         run: dev/test_wasm_single_worker.sh "${{ matrix.suite }}"
 
+      - name: Test bounded browser workers
+        if: matrix.suite == 'runtime'
+        shell: bash
+        env:
+          CHROME: ${{ steps.setup-chrome.outputs.chrome-path }}
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+          LLGO_BUILD_CACHE: "1"
+        run: dev/test_wasm_workers.sh
+
       - name: Compare JavaScript call semantics with Go
         if: matrix.suite == 'test-command'
         shell: bash
