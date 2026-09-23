@@ -9,7 +9,12 @@ must stay in `needs` alongside `prepare`.
 The implementation is in `scripts/ci_policy.py`. Keep change rules there rather
 than adding path filters or independent diff commands to individual workflows.
 Each workflow executes its own small prepare job; the rule implementation is
-shared. The prepare job needs only Git and Python, not the LLGo toolchain.
+shared. The prepare job needs only Git and Python, not the LLGo toolchain. On a
+PR, it loads both `ci_policy.py` and `ci_changes.py` from the event's base
+commit, so edits to those modules in the PR cannot change this step's skip
+decision. If either base file is unavailable (including before this policy lands
+on main), prepare enables both suites. Main, tags and manual runs execute the
+checked-out policy and enable both suites.
 
 ## Execution decisions
 
@@ -51,10 +56,12 @@ checks nor replace pending checks. Workflow-level concurrency cannot consume
 prepare outputs; `test_ci_workflows.py` enforces the common expression instead.
 The reusable prepare workflow has no concurrency group of its own.
 
-Branch protection should require the relevant workflows' `prepare` checks as
-well as **CI policy**. A gated job can be skipped when its prepare job fails;
-requiring only downstream jobs does not distinguish that failure from an
-intentional docs-only skip.
+Every workflow that uses prepare has a uniquely named `CI gate (...)` job. It
+runs even if prepare fails and reports that failure. Branch protection should
+require the gates for PR workflows, the relevant code/document checks, and
+**CI policy**. Requiring only downstream jobs does not distinguish a prepare
+failure from an intentional docs-only skip. The gate checks preparation, not
+the result of every downstream job; it does not replace those required checks.
 
 The benchmark publisher checks the triggering run's artifacts separately for
 native and WASM results before invoking either publisher. A successful docs-only

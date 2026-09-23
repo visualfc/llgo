@@ -25,6 +25,15 @@ jobs:
   prepare:
     uses: ./.github/workflows/ci-prepare.yml
 
+  ci-gate:
+    name: CI gate (Release build)
+    needs: prepare
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify CI preparation succeeded
+        run: test "${{ needs.prepare.result }}" = "success"
+
   populate-linux-sysroot:
     if: needs.prepare.outputs.run_code_ci == 'true'
     needs: prepare

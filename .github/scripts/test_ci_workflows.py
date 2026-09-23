@@ -1,9 +1,11 @@
 """Guard the integration contract so workflow edits cannot silently bypass policy."""
 
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -45,7 +47,7 @@ class WorkflowContractTests(unittest.TestCase):
             flag = "run_doc_checks" if filename == "doc-link-checker.yml" else "run_code_ci"
             self.assertEqual(workflow["jobs"]["prepare"]["uses"], PREPARE)
             for name, job in workflow["jobs"].items():
-                if name == "prepare":
+                if name in {"prepare", "ci-gate"}:
                     continue
                 with self.subTest(workflow=filename, job=name):
                     self.assertIn("prepare", needs(job))
@@ -82,7 +84,7 @@ class WorkflowContractTests(unittest.TestCase):
         for filename, expected in CODE_WORKFLOWS.items():
             workflow = load(filename)
             count = sum(matrix_size(job) for name, job in workflow["jobs"].items()
-                        if name not in {"prepare", "release"})
+                        if name not in {"prepare", "ci-gate", "release"})
             with self.subTest(workflow=filename):
                 self.assertEqual(count, expected)
 
@@ -123,6 +125,78 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(checkout["with"]["fetch-depth"],
                          "${{ github.event_name == 'pull_request' && '0' || '1' }}")
         self.assertEqual(workflow["permissions"], {"contents": "read"})
+
+    def test_pr_policy_comes_from_base_and_missing_base_enables_all_checks(self):
+        step = load("ci-prepare.yml")["jobs"]["prepare"]["steps"][1]
+        self.assertEqual(step["env"]["PR_BASE_SHA"], "${{ github.event.pull_request.base.sha }}")
+        self.assertEqual(step["env"]["PR_HEAD_SHA"], "${{ github.event.pull_request.head.sha }}")
+        for case in ("base-policy", "missing-base-policy", "docs-only"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                repo = Path(directory)
+
+                def git(*args):
+                    return subprocess.check_output(["git", *args], cwd=repo,
+                                                   text=True, stderr=subprocess.PIPE).strip()
+
+                git("init", "-q")
+                git("config", "user.name", "CI Test")
+                git("config", "user.email", "ci@example.invalid")
+                (repo / "README.md").write_text("base\n")
+                scripts = repo / ".github" / "scripts"
+                if case != "missing-base-policy":
+                    scripts.mkdir(parents=True)
+                    for name in ("ci_policy.py", "ci_changes.py"):
+                        (scripts / name).write_text((Path(__file__).parent / name).read_text())
+                git("add", ".")
+                git("commit", "-qm", "base")
+                base = git("rev-parse", "HEAD")
+
+                if case == "docs-only":
+                    (repo / "README.md").write_text("updated prose\n")
+                else:
+                    scripts.mkdir(parents=True, exist_ok=True)
+                    # A PR-controlled policy would suppress code checks here.
+                    (scripts / "ci_policy.py").write_text(
+                        "import os\nopen(os.environ['GITHUB_OUTPUT'], 'a').write('run_code_ci=false\\n')\n")
+                    (repo / "compiler.go").write_text("package compiler\n")
+                git("add", ".")
+                git("commit", "-qm", "pr")
+                head = git("rev-parse", "HEAD")
+
+                event = repo / "event.json"
+                event.write_text(json.dumps({"pull_request": {
+                    "base": {"sha": base}, "head": {"sha": head}}}))
+                output = repo / "outputs"
+                summary = repo / "summary"
+                subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+                               cwd=repo, check=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True, env={**os.environ,
+                                   "GITHUB_EVENT_NAME": "pull_request",
+                                   "GITHUB_EVENT_PATH": str(event),
+                                   "GITHUB_REPOSITORY_OWNER": "cpunion",
+                                   "GITHUB_WORKSPACE": str(repo),
+                                   "GITHUB_OUTPUT": str(output),
+                                   "GITHUB_STEP_SUMMARY": str(summary),
+                                   "RUNNER_TEMP": directory,
+                                   "PR_BASE_SHA": base, "PR_HEAD_SHA": head})
+                values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                self.assertEqual(values["run_code_ci"],
+                                 "false" if case == "docs-only" else "true")
+                self.assertEqual(values["run_doc_checks"], "true")
+                self.assertEqual(values["pr_head_sha"], head)
+                self.assertEqual(values["pr_merge_base"], base)
+
+    def test_each_prepared_workflow_has_an_unskippable_gate(self):
+        names = set()
+        for filename in [*CODE_WORKFLOWS, "doc-link-checker.yml", "model-demo.yml"]:
+            gate = load(filename)["jobs"]["ci-gate"]
+            with self.subTest(workflow=filename):
+                self.assertNotIn(gate["name"], names)
+                names.add(gate["name"])
+                self.assertEqual(needs(gate), ["prepare"])
+                self.assertEqual(gate["if"], "always()")
+                self.assertIn("needs.prepare.result", gate["steps"][0]["run"])
+                self.assertIn('= "success"', gate["steps"][0]["run"])
 
     def test_policy_tests_cannot_skip_themselves(self):
         workflow = load("ci-policy.yml")

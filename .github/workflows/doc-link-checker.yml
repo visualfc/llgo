@@ -18,6 +18,15 @@ jobs:
   prepare:
     uses: ./.github/workflows/ci-prepare.yml
 
+  ci-gate:
+    name: CI gate (Doc links)
+    needs: prepare
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify CI preparation succeeded
+        run: test "${{ needs.prepare.result }}" = "success"
+
   doc_verify:
     if: needs.prepare.outputs.run_doc_checks == 'true'
     needs: prepare
