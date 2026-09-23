@@ -225,7 +225,8 @@ flakes:
     case: fixedbugs/issue39541.go
     reason: the one-million reflect.MakeFunc concurrent call loop can complete or exceed its run timeout on loaded Windows 386 runners
 xfails:
-  - platform: darwin/arm64
+  - version: go1.27
+    platform: darwin/arm64
     directive: runoutput
     case: rangegen.go
     reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
@@ -328,7 +329,8 @@ xfails:
     directive: run
     case: fixedbugs/issue40954.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue40954.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
@@ -340,7 +342,8 @@ xfails:
     directive: run
     case: fixedbugs/issue46903.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue46903.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
@@ -352,7 +355,8 @@ xfails:
     directive: run
     case: fixedbugs/issue51733.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue51733.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
@@ -364,7 +368,8 @@ xfails:
     directive: run
     case: fixedbugs/bug514.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/bug514.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
@@ -376,7 +381,8 @@ xfails:
     directive: run
     case: fixedbugs/issue42032.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42032.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
@@ -388,7 +394,8 @@ xfails:
     directive: run
     case: fixedbugs/issue42076.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42076.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
