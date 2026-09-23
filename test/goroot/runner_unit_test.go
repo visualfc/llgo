@@ -503,6 +503,26 @@ func TestWasmObservedResourceExceptions(t *testing.T) {
 	}
 }
 
+func TestBoundedCaseEnv(t *testing.T) {
+	rangegen := testCase{RelPath: "rangegen.go", Directive: "runoutput"}
+	for _, tt := range []struct {
+		goos, goarch string
+		tc           testCase
+		initial      []string
+		want         []string
+	}{
+		{"linux", "amd64", rangegen, nil, []string{"GOMEMLIMIT=3GiB"}},
+		{"linux", "amd64", rangegen, []string{"GOMEMLIMIT=1GiB"}, []string{"GOMEMLIMIT=3GiB"}},
+		{"linux", "arm64", rangegen, nil, nil},
+		{"darwin", "arm64", rangegen, nil, nil},
+		{"linux", "amd64", testCase{RelPath: "other.go", Directive: "runoutput"}, nil, nil},
+	} {
+		if got := boundedCaseEnv(tt.goos, tt.goarch, tt.tc, tt.initial); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s/%s %s: env=%v, want %v", tt.goos, tt.goarch, tt.tc.RelPath, got, tt.want)
+		}
+	}
+}
+
 func TestWindows386Index0IsFlakyWithTimeout(t *testing.T) {
 	repo := repoRoot(t)
 	cfg := loadXFailConfig(t, repo, filepath.Join("test", "goroot", "xfail.yaml"))

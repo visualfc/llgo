@@ -798,11 +798,7 @@ func runCase(t *testing.T, repoRoot, goroot, goCmd, llgoBin string, tc testCase,
 		// the Go tool's standard external-link selection for those baselines.
 		opts.ExtraEnv = upsertEnv(opts.ExtraEnv, "GO_EXTLINK_ENABLED=1")
 	}
-	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" && tc.Directive == "runoutput" && tc.RelPath == "rangegen.go" {
-		// The generated compiler torture test exceeded the 4 GiB hosted
-		// runner guard. Bound Go and LLGo's heaps for this case only.
-		opts.ExtraEnv = upsertEnv(opts.ExtraEnv, "GOMEMLIMIT=3GiB")
-	}
+	opts.ExtraEnv = boundedCaseEnv(runtime.GOOS, runtime.GOARCH, tc, opts.ExtraEnv)
 	switch tc.Directive {
 	case "compile":
 		return runCompileCase(t, repoRoot, goroot, llgoBin, tc, opts, buildTimeout)
@@ -823,6 +819,15 @@ func runCase(t *testing.T, repoRoot, goroot, goCmd, llgoBin string, tc testCase,
 	default:
 		return fmt.Errorf("unsupported directive %q", tc.Directive)
 	}
+}
+
+func boundedCaseEnv(goos, goarch string, tc testCase, extra []string) []string {
+	if goos == "linux" && goarch == "amd64" && tc.Directive == "runoutput" && tc.RelPath == "rangegen.go" {
+		// The generated compiler torture test exceeded the 4 GiB hosted
+		// runner guard. Bound Go and LLGo's heaps for this case only.
+		return upsertEnv(extra, "GOMEMLIMIT=3GiB")
+	}
+	return extra
 }
 
 func needsExternalCgoBaseline(goos, goarch string, tc testCase) (bool, error) {
