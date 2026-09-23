@@ -12,6 +12,7 @@ import (
 	_ "unsafe"
 
 	"github.com/xgo-dev/llgo/runtime/_test/workerlocality"
+	"github.com/xgo-dev/llgo/runtime/wasmworkers"
 )
 
 //go:linkname schedulerProcID github.com/xgo-dev/llgo/runtime/internal/runtime.SchedulerProcID
@@ -65,7 +66,7 @@ func TestWorkerEmvalFinalizersStayInRealm(t *testing.T) {
 	const goroutines = 8
 	created := make(chan workerCallbackResult, goroutines)
 	for range goroutines {
-		workerlocality.SpawnIndependent(func() {
+		wasmworkers.GoIndependent(func() {
 			owner := schedulerProcID()
 			var err error
 			for range 8 {
@@ -107,7 +108,7 @@ finalizersComplete:
 
 	checked := make(chan workerCallbackResult, goroutines)
 	for range goroutines {
-		workerlocality.SpawnIndependent(func() {
+		wasmworkers.GoIndependent(func() {
 			owner := schedulerProcID()
 			object := js.Global().Get("Object").New()
 			object.Set("owner", owner)
@@ -154,7 +155,7 @@ func TestConcurrentWorkerOutput(t *testing.T) {
 	const writers = 16
 	results := make(chan workerCallbackResult, writers)
 	for range writers {
-		workerlocality.SpawnIndependent(func() {
+		wasmworkers.GoIndependent(func() {
 			origin := schedulerProcID()
 			_, err := fmt.Fprint(os.Stdout, ".")
 			results <- workerCallbackResult{origin: origin, err: err}
@@ -181,7 +182,7 @@ func TestWorkerHostCallbackRealms(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan workerCallbackResult, callbacks)
 	for range callbacks {
-		workerlocality.SpawnIndependent(func() {
+		wasmworkers.GoIndependent(func() {
 			origin := schedulerProcID()
 			done := make(chan int, 1)
 			callback := js.FuncOf(func(js.Value, []js.Value) any {
