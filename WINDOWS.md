@@ -4,6 +4,14 @@ Choose the release matching your host architecture (`amd64` or `arm64`) and nati
 
 The integrated package contains LLGo, its own DLL dependencies, `runtime`, `targets`, licenses, and the ESP Clang under `crosscompile/clang`. Native Windows development tools are installed separately.
 
+The PowerShell installer prepends LLGo's `bin` directory and, when it installs
+dependencies, Go, native LLVM, and vcpkg or MSYS2 tool directories to the
+current process and persistent user PATH. This can change which `go`, `clang`,
+or `pkg-config` a later terminal selects from the user PATH. Set
+`LLGO_UPDATE_PATH=0` before installing to leave the persistent user PATH
+unchanged; the installer still adds these paths to its own process to verify
+the installation.
+
 | Operation | Additional requirements |
 |---|---|
 | `llgo version` | No Go or native Clang. Keep the packaged DLLs beside `llgo.exe`. |

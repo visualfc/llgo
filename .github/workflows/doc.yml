@@ -37,6 +37,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Test release installer helpers
+        run: bash test/installer/install_sh_test.sh
+
+      - name: Test fresh login and non-login shells on macOS
+        if: startsWith(matrix.os, 'macos')
+        run: bash test/installer/install_shell_test.sh bash zsh sh
+
       - name: Set up Go
         uses: ./.github/actions/setup-go
 
@@ -83,6 +90,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Test local installer with LF and CRLF checkouts
+        shell: bash
+        run: bash test/installer/install_local_test.sh
+
       - name: Set up Go
         uses: ./.github/actions/setup-go
 
@@ -106,6 +117,11 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      - name: Test PowerShell installer helpers
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: ./test/installer/install_ps1_test.ps1
 
       - name: Install dependencies on Windows
         if: startsWith(matrix.os, 'windows')

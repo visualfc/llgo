@@ -1,0 +1,42 @@
+name: Installer shells
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ["**"]
+    paths:
+      - install.sh
+      - install.ps1
+      - test/installer/**
+      - .github/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  installer-shells:
+    name: Installer shell startup (${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:24.04
+          - debian:12
+          - fedora:latest
+          - archlinux:latest
+          - alpine:latest
+          - opensuse/tumbleweed:latest
+    steps:
+      - uses: actions/checkout@v7
+      # Keep distro downloads independent without repeating compiler builds.
+      - name: Test Bash, zsh, fish, and sh
+        env:
+          INSTALLER_TEST_IMAGE: ${{ matrix.image }}
+        run: bash test/installer/install_shell_distro_test.sh "$INSTALLER_TEST_IMAGE"

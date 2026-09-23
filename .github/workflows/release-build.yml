@@ -259,6 +259,33 @@ jobs:
         with:
           name: llgo-windows-${{ matrix.goarch }}-${{ matrix.abi }}
           path: .windows-dist
+      - name: Test release installer with the built archive
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem ".windows-dist/llgo*.windows-${{ matrix.goarch }}-${{ matrix.abi }}.zip" |
+            Select-Object -First 1
+          if (-not $archive -or $archive.Name -notmatch '^llgo(.+)\.windows-[^.]+-[^.]+\.zip$') {
+            throw 'Could not determine the LLGo version from the Windows archive'
+          }
+          $env:LLGO_VERSION = $Matches[1]
+          $env:LLGO_ABI = '${{ matrix.abi }}'
+          $env:LLGO_ARCHIVE_PATH = $archive.FullName
+          $env:LLGO_INSTALL_ROOT = Join-Path $env:RUNNER_TEMP 'llgo-release-install'
+          $env:LLGO_INSTALL_DEPS = '0'
+          $env:LLGO_UPDATE_PATH = '0'
+          if ('${{ matrix.abi }}' -eq 'mingw') {
+            $msystem = if ('${{ matrix.goarch }}' -eq 'arm64') { 'CLANGARM64' } else { 'CLANG64' }
+            & bash.exe -c "MSYSTEM=$msystem ./install.sh"
+            if ($LASTEXITCODE -ne 0) { throw 'The MSYS2 installer failed' }
+          } else {
+            ./install.ps1
+          }
+          $current = Get-Item -Force -LiteralPath (Join-Path $env:LLGO_INSTALL_ROOT 'current')
+          $bin = Get-Item -Force -LiteralPath (Join-Path $env:LLGO_INSTALL_ROOT 'bin')
+          if (-not ($current.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+              -not ($bin.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'The installer did not create the current and bin junctions'
+          }
       # Execute the unpacked compiler before installing any LLVM or native
       # dependencies: this catches missing DLLs that the build runner can mask.
       - uses: actions/setup-python@v7
@@ -279,6 +306,13 @@ jobs:
         with:
           windows-abi: ${{ matrix.abi }}
           windows-arch: ${{ matrix.goarch }}
+      - name: Test installed command in fresh MSYS2 shells
+        if: matrix.abi == 'mingw'
+        shell: msys2 {0}
+        run: >-
+          bash test/installer/install_msys_path_test.sh
+          .windows-dist/*.windows-${{ matrix.goarch }}-mingw.zip
+          "$RUNNER_TEMP/llgo-release-install"
       - name: Test extracted native and embedded compiler
         shell: pwsh
         run: >-
@@ -353,14 +387,25 @@ jobs:
           name: llgo-${{ matrix.goos }}-${{ matrix.goarch }}
           path: .
 
-      - name: Extract LLGO Archive
+      - name: Install LLGo archive
         run: |
-          echo "Looking for ${{ matrix.goos }}_${{ matrix.goarch }} archive..."
-          ARCHIVE=$(ls *.tar.gz | head -n1)
-          mkdir -p release-llgo
-          tar -xzf "$ARCHIVE" -C release-llgo
-          ls -la release-llgo/
-          echo "${{ github.workspace }}/release-llgo/bin/" >> $GITHUB_PATH
+          archive=$(find . -maxdepth 1 -name 'llgo*.tar.gz' -print -quit)
+          pattern='^\./llgo(.+)\.${{ matrix.goos }}-${{ matrix.goarch }}\.tar\.gz$'
+          if [[ "$archive" =~ $pattern ]]; then
+            version=${BASH_REMATCH[1]}
+          else
+            echo 'Could not determine the LLGo version from the archive' >&2
+            exit 1
+          fi
+          export LLGO_VERSION="$version"
+          export LLGO_ARCHIVE_PATH="$archive"
+          export LLGO_INSTALL_ROOT="$RUNNER_TEMP/llgo-release-install"
+          export LLGO_INSTALL_DEPS=0
+          export LLGO_UPDATE_PATH=0
+          ./install.sh
+          test "$(readlink "$LLGO_INSTALL_ROOT/current")" = \
+            "versions/$version/${{ matrix.goos }}-${{ matrix.goarch }}"
+          echo "$LLGO_INSTALL_ROOT/bin" >> "$GITHUB_PATH"
 
       - name: Test Hello World
         uses: ./.github/actions/test-helloworld
