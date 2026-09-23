@@ -1,16 +1,6 @@
 # Windows platform selectors may use windows/ARCH for both ABIs or the more
 # specific windows-msvc/ARCH and windows-mingw/ARCH forms.
 host_skips:
-  - version: go1.26
-    platform: linux/amd64
-    directive: runoutput
-    case: rangegen.go
-    reason: the Go 1.26 generator exceeds the hosted runner's 4 GiB process-group limit before LLGo is invoked; see issue #2630
-  - version: go1.27
-    platform: linux/amd64
-    directive: runoutput
-    case: rangegen.go
-    reason: the Go 1.27 generator exceeds the hosted runner's 4 GiB process-group limit before LLGo is invoked
   - directive: run
     case: fixedbugs/issue16016.go
     reason: the test intentionally creates enough goroutines to exhaust LLGo's one-thread-per-goroutine host limit
@@ -123,12 +113,16 @@ timeouts:
     case: fixedbugs/issue39541.go
     timeout: 90s
     reason: the one-million reflect.MakeFunc concurrent call loop needs load-dependent runtime slack on Windows 386
-  - version: go1.26
-    platform: darwin/arm64
+  - platform: darwin/arm64
     directive: runoutput
     case: rangegen.go
     timeout: 20m
-    reason: rangegen runoutput compiles the generated stress test past 10m on darwin/arm64 CI
+    reason: rangegen generates a large compiler torture test; paired Go 1.26/1.27 builds exceeded the default 3m build timeout on darwin/arm64 CI
+  - platform: linux/amd64
+    directive: runoutput
+    case: rangegen.go
+    timeout: 10m
+    reason: rangegen generates a 6.4 MB compiler torture test; allow bounded build time while its 3 GiB heap target stays under the 4 GiB host guard
   - version: go1.26
     platform: linux/amd64
     directive: run
@@ -225,22 +219,6 @@ flakes:
     case: fixedbugs/issue39541.go
     reason: the one-million reflect.MakeFunc concurrent call loop can complete or exceed its run timeout on loaded Windows 386 runners
 xfails:
-  - platform: darwin/arm64
-    directive: runoutput
-    case: rangegen.go
-    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
-  - platform: linux/amd64
-    directive: runoutput
-    case: rangegen.go
-    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
-  - platform: windows/amd64
-    directive: runoutput
-    case: rangegen.go
-    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
-  - platform: windows/arm64
-    directive: runoutput
-    case: rangegen.go
-    reason: the current golang.org/x/tools/go/ssa dependency mishandles labeled branches in generated range-over-function code; update x/tools after https://github.com/golang/tools/pull/666 lands
   - directive: run
     case: genmeth1.go
     reason: the current go/types and x/tools SSA path panics while instantiating the new generic-method test
@@ -328,10 +306,11 @@ xfails:
     directive: run
     case: fixedbugs/issue40954.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue40954.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue46903.go
@@ -340,10 +319,11 @@ xfails:
     directive: run
     case: fixedbugs/issue46903.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue46903.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue51733.go
@@ -352,10 +332,11 @@ xfails:
     directive: run
     case: fixedbugs/issue51733.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue51733.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/bug514.go
@@ -364,10 +345,11 @@ xfails:
     directive: run
     case: fixedbugs/bug514.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/bug514.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue42032.go
@@ -376,10 +358,11 @@ xfails:
     directive: run
     case: fixedbugs/issue42032.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42032.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - platform: windows-msvc/386
     directive: run
     case: fixedbugs/issue42076.go
@@ -388,10 +371,11 @@ xfails:
     directive: run
     case: fixedbugs/issue42076.go
     reason: the Go baseline cannot build or run this cgo case in the Windows MSVC amd64 target environment
-  - platform: windows-msvc/arm64
+  - version: go1.26
+    platform: windows-msvc/arm64
     directive: run
     case: fixedbugs/issue42076.go
-    reason: the Go baseline cannot build or run this cgo case in the Windows MSVC arm64 target environment
+    reason: Go 1.26 cgo passes the unsupported -mthreads flag to Clang/MSVC; Go 1.27 no longer does (golang/go#80290)
   - version: go1.26
     platform: windows-msvc/386
     directive: run
