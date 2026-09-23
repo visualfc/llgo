@@ -23,6 +23,10 @@ type workerCallbackResult struct {
 	err      error
 }
 
+type workerFinalizerBarrier struct {
+	padding [128]uintptr
+}
+
 func TestWorkerTLSRoots(t *testing.T) {
 	result := make(chan int, 1)
 	go func() {
@@ -34,6 +38,95 @@ func TestWorkerTLSRoots(t *testing.T) {
 	if got := <-result; got != 85 {
 		t.Fatalf("worker TLS values = %d, want 85", got)
 	}
+}
+
+func TestWorkerEmvalFinalizersStayInRealm(t *testing.T) {
+	const goroutines = 8
+	created := make(chan workerCallbackResult, goroutines)
+	for range goroutines {
+		go func() {
+			owner := schedulerProcID()
+			var err error
+			for range 8 {
+				if got := js.ValueOf("temporary").String(); got != "temporary" {
+					err = fmt.Errorf("temporary JavaScript value = %q", got)
+					break
+				}
+			}
+			created <- workerCallbackResult{origin: owner, err: err}
+		}()
+	}
+	owners := make(map[int]bool)
+	for range goroutines {
+		result := <-created
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		owners[result.origin] = true
+	}
+	if len(owners) < 2 {
+		t.Fatalf("JavaScript values were created on %d worker, want at least 2", len(owners))
+	}
+
+	finalizersDone := make(chan struct{})
+	installWorkerFinalizerBarrier(finalizersDone)
+	for range 24 {
+		clobberWorkerStack(16, 1)
+		runtime.GC()
+		select {
+		case <-finalizersDone:
+			goto finalizersComplete
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	t.Fatal("JavaScript value finalizers did not make progress")
+
+finalizersComplete:
+
+	checked := make(chan workerCallbackResult, goroutines)
+	for range goroutines {
+		go func() {
+			owner := schedulerProcID()
+			object := js.Global().Get("Object").New()
+			object.Set("owner", owner)
+			got := object.Get("owner").Int()
+			var err error
+			if got != owner {
+				err = fmt.Errorf("JavaScript object owner = %d, want %d", got, owner)
+			}
+			checked <- workerCallbackResult{origin: owner, err: err}
+		}()
+	}
+	owners = make(map[int]bool)
+	for range goroutines {
+		result := <-checked
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		owners[result.origin] = true
+	}
+	if len(owners) < 2 {
+		t.Fatalf("JavaScript values were checked on %d worker, want at least 2", len(owners))
+	}
+}
+
+//go:noinline
+func installWorkerFinalizerBarrier(done chan<- struct{}) {
+	barrier := &workerFinalizerBarrier{}
+	runtime.SetFinalizer(barrier, func(*workerFinalizerBarrier) { close(done) })
+}
+
+//go:noinline
+func clobberWorkerStack(depth int, value uintptr) uintptr {
+	var words [32]uintptr
+	for i := range words {
+		words[i] = value + uintptr(i)
+	}
+	if depth != 0 {
+		return words[depth%len(words)] + clobberWorkerStack(depth-1, value+1)
+	}
+	return words[0]
 }
 
 func TestConcurrentWorkerOutput(t *testing.T) {
