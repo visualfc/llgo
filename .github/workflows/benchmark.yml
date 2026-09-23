@@ -11,15 +11,32 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  prepare:
+    uses: ./.github/workflows/ci-prepare.yml
+
+  ci-gate:
+    name: CI gate (Benchmark)
+    needs: prepare
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify CI preparation succeeded
+        run: test "${{ needs.prepare.result }}" = "success"
+
   benchmark:
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
     name: benchmark (${{ matrix.display }})
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
-            runner: [qiniu, ubuntu-24.04-large]
             id: linux
             display: Linux
             timeout: 20
@@ -69,7 +86,7 @@ jobs:
             windows_arch: "386"
             host_go_arch: x64
             timeout: 90
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && matrix.runner || matrix.os }}
+    runs-on: ${{ startsWith(matrix.os, 'ubuntu') && fromJSON(needs.prepare.outputs.linux_large_runner) || matrix.os }}
     timeout-minutes: ${{ matrix.timeout }}
     env:
       GOMAXPROCS: "2"
@@ -80,24 +97,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine pull request merge-base
+      - name: Read trusted pull request benchmark configuration
         if: github.event_name == 'pull_request'
-        id: merge-base
         shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_MERGE_BASE: ${{ needs.prepare.outputs.pr_merge_base }}
         run: |
-          git fetch https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git ${{ github.event.pull_request.base.ref }}
-          base_sha=$(git merge-base FETCH_HEAD ${{ github.event.pull_request.head.sha }})
+          test -n "$PR_MERGE_BASE"
           mkdir -p .benchmark
-          git show "${{ github.event.pull_request.base.sha }}:.github/llgo-benchmark.yml" > .benchmark/base-benchmark.yml
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
-          echo "Computed pull request merge-base: $base_sha (head: ${{ github.event.pull_request.head.sha }})"
+          git show "$PR_BASE_SHA:.github/llgo-benchmark.yml" > .benchmark/base-benchmark.yml
 
       - name: Check out pull request base benchmark source
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v7
         with:
           repository: ${{ github.event.pull_request.base.repo.full_name }}
-          ref: ${{ steps.merge-base.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.pr_merge_base }}
           path: .benchmark/base-source
           persist-credentials: false
 
@@ -106,7 +122,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.prepare.outputs.pr_head_sha }}
           path: .benchmark/head-source
           persist-credentials: false
 
@@ -254,8 +270,10 @@ jobs:
           platform-label: ${{ matrix.display }}
 
   wasm-benchmark:
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
     name: benchmark (WebAssembly)
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.prepare.outputs.linux_large_runner) }}
     timeout-minutes: 30
     env:
       GOMAXPROCS: "2"
@@ -269,36 +287,36 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine pull request merge-base
+      - name: Check trusted WebAssembly benchmark configuration and base
         if: github.event_name == 'pull_request'
         id: wasm-merge-base
         shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_MERGE_BASE: ${{ needs.prepare.outputs.pr_merge_base }}
         run: |
-          git fetch https://github.com/${{ github.event.pull_request.base.repo.full_name }}.git ${{ github.event.pull_request.base.ref }}
-          base_sha=$(git merge-base FETCH_HEAD ${{ github.event.pull_request.head.sha }})
+          test -n "$PR_MERGE_BASE"
           mkdir -p .benchmark
-          if git show "${{ github.event.pull_request.base.sha }}:.github/llgo-wasm-benchmark.yml" > .benchmark/wasm-base-benchmark.yml; then
+          if git show "$PR_BASE_SHA:.github/llgo-wasm-benchmark.yml" > .benchmark/wasm-base-benchmark.yml; then
             echo 'trusted-config=true' >> "$GITHUB_OUTPUT"
           else
             rm -f .benchmark/wasm-base-benchmark.yml
             echo 'trusted-config=false' >> "$GITHUB_OUTPUT"
           fi
-          if git cat-file -e "$base_sha:targets/emscripten.json" 2>/dev/null &&
-             git cat-file -e "$base_sha:targets/emscripten-memory64.json" 2>/dev/null &&
-             git cat-file -e "$base_sha:targets/wasi.json" 2>/dev/null; then
+          if git cat-file -e "$PR_MERGE_BASE:targets/emscripten.json" 2>/dev/null &&
+             git cat-file -e "$PR_MERGE_BASE:targets/emscripten-memory64.json" 2>/dev/null &&
+             git cat-file -e "$PR_MERGE_BASE:targets/wasi.json" 2>/dev/null; then
             echo 'compatible-base=true' >> "$GITHUB_OUTPUT"
           else
             echo 'compatible-base=false' >> "$GITHUB_OUTPUT"
           fi
-          echo "sha=$base_sha" >> "$GITHUB_OUTPUT"
-          echo "Computed pull request merge-base: $base_sha (head: ${{ github.event.pull_request.head.sha }})"
 
       - name: Check out pull request base source
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v7
         with:
           repository: ${{ github.event.pull_request.base.repo.full_name }}
-          ref: ${{ steps.wasm-merge-base.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.pr_merge_base }}
           path: .benchmark/wasm-base-source
           persist-credentials: false
 
@@ -307,7 +325,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.prepare.outputs.pr_head_sha }}
           path: .benchmark/wasm-head-source
           persist-credentials: false
 
@@ -401,8 +419,17 @@ jobs:
             ${{ github.event_name == 'pull_request' &&
                 steps.measure-wasm-base.outcome == 'success' &&
                 '.benchmark/wasm-base-results/benchmark.txt' || '' }}
-          baseline-repository: ${{ github.event.pull_request.base.repo.full_name || '' }}
-          baseline-sha: ${{ steps.wasm-merge-base.outputs.sha || '' }}
-          baseline-ref: ${{ github.event.pull_request.base.ref || '' }}
+          baseline-repository: >-
+            ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
+                github.event.pull_request.base.repo.full_name || '' }}
+          baseline-sha: >-
+            ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
+                needs.prepare.outputs.pr_merge_base || '' }}
+          baseline-ref: >-
+            ${{ github.event_name == 'pull_request' &&
+                steps.measure-wasm-base.outcome == 'success' &&
+                github.event.pull_request.base.ref || '' }}
           platform-id: wasm-linux
           platform-label: WebAssembly

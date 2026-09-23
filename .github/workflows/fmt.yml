@@ -8,12 +8,26 @@ on:
     branches: ["**"]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare:
+    uses: ./.github/workflows/ci-prepare.yml
+
+  ci-gate:
+    name: CI gate (Format)
+    needs: prepare
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify CI preparation succeeded
+        run: test "${{ needs.prepare.result }}" = "success"
+
   fmt:
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04"]') || 'ubuntu-24.04' }}
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
+    runs-on: ${{ fromJSON(needs.prepare.outputs.linux_runner) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7

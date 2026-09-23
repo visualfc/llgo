@@ -11,11 +11,25 @@ on:
     branches: ["**"]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare:
+    uses: ./.github/workflows/ci-prepare.yml
+
+  ci-gate:
+    name: CI gate (Go)
+    needs: prepare
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify CI preparation succeeded
+        run: test "${{ needs.prepare.result }}" = "success"
+
   test:
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
     permissions:
       contents: read
       id-token: write
@@ -33,7 +47,6 @@ jobs:
           - os: macos-latest
             llvm: 22
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04-large]
             llvm: 22
           - os: windows-2022
             llvm: 22
@@ -41,7 +54,7 @@ jobs:
           - os: windows-2022
             llvm: 22
             windows_abi: mingw
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && matrix.runner || matrix.os }}
+    runs-on: ${{ startsWith(matrix.os, 'ubuntu') && fromJSON(needs.prepare.outputs.linux_large_runner) || matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Install dependencies
@@ -221,6 +234,8 @@ jobs:
           disable_search: true
 
   macos-lto-plugin:
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
     name: macOS LTO plugin
     timeout-minutes: 45
     runs-on: macos-latest
@@ -259,12 +274,14 @@ jobs:
             ./cl
 
   dev-lto-globaldce:
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
     permissions:
       contents: read
       id-token: write
     name: Dev LTO GlobalDCE and Go Method Drop
     timeout-minutes: 60
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
+    runs-on: ${{ fromJSON(needs.prepare.outputs.linux_large_runner) }}
     steps:
       - uses: actions/checkout@v7
 

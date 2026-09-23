@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
 from pathlib import PurePosixPath
 import subprocess
 import sys
 from typing import Iterable, Sequence
+
+from ci_changes import Change, git as _git, parse_name_status_z
 
 
 CATEGORIES = (
@@ -66,12 +67,6 @@ COMPILER_DIRS = {
     "targets",
     "xtool",
 }
-
-
-@dataclass(frozen=True)
-class Change:
-    status: str
-    paths: tuple[str, ...]
 
 
 def _under(path: str, directory: str) -> bool:
@@ -126,32 +121,6 @@ def classify_path(raw_path: str) -> str:
     if _under_any(path, {"_xtool", "chore", "dev"}) or path == "install.sh":
         return "tooling"
     return "other"
-
-
-def parse_name_status_z(data: bytes) -> list[Change]:
-    """Parse ``git diff --name-status -z`` output."""
-    fields = data.decode("utf-8", errors="surrogateescape").split("\0")
-    if fields and not fields[-1]:
-        fields.pop()
-
-    changes: list[Change] = []
-    index = 0
-    while index < len(fields):
-        status = fields[index]
-        index += 1
-        path_count = 2 if status.startswith(("R", "C")) else 1
-        if index + path_count > len(fields):
-            raise ValueError(f"incomplete git name-status record for {status!r}")
-        paths = tuple(fields[index : index + path_count])
-        index += path_count
-        changes.append(Change(status=status, paths=paths))
-    return changes
-
-
-def _git(*args: str) -> bytes:
-    return subprocess.run(
-        ["git", *args], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    ).stdout
 
 
 def _valid_commit(revision: str) -> bool:

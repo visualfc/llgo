@@ -10,8 +10,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    uses: ./.github/workflows/ci-prepare.yml
+
+  ci-gate:
+    name: CI gate (Model demo)
+    needs: prepare
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify CI preparation succeeded
+        run: test "${{ needs.prepare.result }}" = "success"
+
   llama2:
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && fromJSON('["qiniu", "ubuntu-24.04-large"]') || 'ubuntu-24.04' }}
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
+    runs-on: ${{ fromJSON(needs.prepare.outputs.linux_large_runner) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7

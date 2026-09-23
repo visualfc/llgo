@@ -11,11 +11,25 @@ on:
     branches: ["**"]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  prepare:
+    uses: ./.github/workflows/ci-prepare.yml
+
+  ci-gate:
+    name: CI gate (Build cache)
+    needs: prepare
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify CI preparation succeeded
+        run: test "${{ needs.prepare.result }}" = "success"
+
   build-cache:
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    needs: prepare
     name: build-cache (${{ matrix.os }}${{ matrix.windows_abi && format(', {0}', matrix.windows_abi) || '' }}, ${{ matrix.llvm }})
     timeout-minutes: 30
     strategy:
@@ -24,7 +38,6 @@ jobs:
           - os: macos-latest
             llvm: 22
           - os: ubuntu-latest
-            runner: [qiniu, ubuntu-24.04-large]
             llvm: 22
           - os: windows-2022
             llvm: 22
@@ -32,7 +45,7 @@ jobs:
           - os: windows-2022
             llvm: 22
             windows_abi: mingw
-    runs-on: ${{ github.repository_owner == 'xgo-dev' && matrix.runner || matrix.os }}
+    runs-on: ${{ startsWith(matrix.os, 'ubuntu') && fromJSON(needs.prepare.outputs.linux_large_runner) || matrix.os }}
     steps:
       - uses: actions/checkout@v7
 

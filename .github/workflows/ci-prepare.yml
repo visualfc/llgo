@@ -1,0 +1,92 @@
+name: Prepare CI
+
+on:
+  workflow_call:
+    outputs:
+      run_code_ci:
+        description: Run compiler, runtime, install, release and benchmark checks
+        value: ${{ jobs.prepare.outputs.run_code_ci }}
+      run_doc_checks:
+        description: Run the existing README link and embedded-source checks
+        value: ${{ jobs.prepare.outputs.run_doc_checks }}
+      pr_head_sha:
+        description: PR head from the triggering event
+        value: ${{ jobs.prepare.outputs.pr_head_sha }}
+      pr_merge_base:
+        description: Merge base of the triggering PR base and head
+        value: ${{ jobs.prepare.outputs.pr_merge_base }}
+      linux_runner:
+        description: JSON runner labels for ordinary Linux jobs
+        value: ${{ jobs.prepare.outputs.linux_runner }}
+      linux_large_runner:
+        description: JSON runner labels for heavy Linux jobs
+        value: ${{ jobs.prepare.outputs.linux_large_runner }}
+
+permissions:
+  contents: read
+
+# Do not use the caller's concurrency group here: it would cancel the caller.
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      run_code_ci: ${{ steps.policy.outputs.run_code_ci }}
+      run_doc_checks: ${{ steps.policy.outputs.run_doc_checks }}
+      pr_head_sha: ${{ steps.policy.outputs.pr_head_sha }}
+      pr_merge_base: ${{ steps.policy.outputs.pr_merge_base }}
+      linux_runner: ${{ steps.policy.outputs.linux_runner }}
+      linux_large_runner: ${{ steps.policy.outputs.linux_large_runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The PR merge checkout contains both event commits and their history.
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+          persist-credentials: false
+      - name: Resolve CI policy and changed paths
+        id: policy
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            # Main, tags and manual runs execute the checked-out trusted code.
+            python3 .github/scripts/ci_policy.py
+            exit 0
+          fi
+
+          # The checkout is the PR merge commit. Load the policy modules from
+          # the base so PR edits to those modules cannot suppress code checks.
+          policy_dir="$RUNNER_TEMP/llgo-ci-policy"
+          mkdir -p "$policy_dir"
+          if [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ && "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             git show "$PR_BASE_SHA:.github/scripts/ci_policy.py" > "$policy_dir/ci_policy.py" &&
+             git show "$PR_BASE_SHA:.github/scripts/ci_changes.py" > "$policy_dir/ci_changes.py"; then
+            python3 "$policy_dir/ci_policy.py"
+            exit 0
+          fi
+
+          # Before this workflow lands on main, the base has no policy modules.
+          # A missing base commit or module must also enable every suite.
+          echo "::warning::Base CI policy unavailable; all checks enabled"
+          pr_head_sha=""
+          pr_merge_base=""
+          if [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ && "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            pr_head_sha="$PR_HEAD_SHA"
+            pr_merge_base="$(git merge-base "$PR_BASE_SHA" "$PR_HEAD_SHA")" || pr_merge_base=""
+          fi
+          {
+            echo "run_code_ci=true"
+            echo "run_doc_checks=true"
+            echo "pr_head_sha=$pr_head_sha"
+            echo "pr_merge_base=$pr_merge_base"
+            if [[ "$GITHUB_REPOSITORY_OWNER" == "xgo-dev" ]]; then
+              echo 'linux_runner=["qiniu", "ubuntu-24.04"]'
+              echo 'linux_large_runner=["qiniu", "ubuntu-24.04-large"]'
+            else
+              echo 'linux_runner=["ubuntu-24.04"]'
+              echo 'linux_large_runner=["ubuntu-24.04"]'
+            fi
+          } >> "$GITHUB_OUTPUT"
+          echo "Base CI policy unavailable; all checks enabled." >> "$GITHUB_STEP_SUMMARY"
