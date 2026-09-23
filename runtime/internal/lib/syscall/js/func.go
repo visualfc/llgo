@@ -128,11 +128,11 @@ func retainCallback() {
 
 func dispatchSynchronousCallback(handle c.Ulong) {
 	retainCallback()
-	runCallback(uintptr(handle))
+	runCallback(uintptr(handle), llruntime.SchedulerProcID())
 }
 
-func runCallback(handle uintptr) {
-	llruntime.HandleWasmEvent(func() { dispatchCallback(handle) })
+func runCallback(handle uintptr, owner int) {
+	llruntime.HandleWasmEvent(func() { dispatchCallback(handle, owner) })
 	funcsMu.Lock()
 	activeCallbacks--
 	stopCallbackPollLocked()
@@ -178,7 +178,8 @@ func pollCallbacks() {
 			break
 		}
 		retainCallback()
-		go runCallback(handle)
+		owner := llruntime.SchedulerProcID()
+		go runCallback(handle, owner)
 	}
 	llruntime.PollWasmEvent()
 }
