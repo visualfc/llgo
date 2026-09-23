@@ -398,7 +398,9 @@ func TestGoRootRunCases(t *testing.T) {
 			case err == nil && flaky:
 				t.Logf("flaky case passed: %s", flakyReason)
 			case err != nil && match:
-				t.Logf("expected failure: %s", reason)
+				// Keep the underlying diagnostic visible: an xfail can become a
+				// different failure when a toolchain or host environment changes.
+				t.Logf("expected failure: %s\n%.4096s", reason, err)
 			case err != nil && flaky:
 				t.Logf("known flaky failure: %s", flakyReason)
 			case err != nil:
