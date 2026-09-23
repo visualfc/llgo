@@ -95,7 +95,22 @@ func TestGCRootReservationAndClosureContext(t *testing.T) {
 }
 
 func TestThreadLocalGCRootFrameIR(t *testing.T) {
-	prog := ssatest.NewProgram(t, &ssa.Target{GOOS: "js", GOARCH: "wasm"})
+	for _, tt := range []struct {
+		name, triple, profile, chainType, frameType string
+	}{
+		{"J32", "wasm32-unknown-emscripten", "j32", "{ ptr, i32 }", "{ ptr, i32 }"},
+		{"J64", "wasm64-unknown-emscripten", "j64", "ptr", "ptr"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			testThreadLocalGCRootFrameIR(t, tt.triple, tt.profile, tt.chainType, tt.frameType)
+		})
+	}
+}
+
+func testThreadLocalGCRootFrameIR(t *testing.T, triple, profile, chainType, frameType string) {
+	prog := ssatest.NewProgram(t, &ssa.Target{
+		GOOS: "js", GOARCH: "wasm", LLVMTarget: triple, WasmProfile: profile,
+	})
 	if prog.ThreadLocalGCRootsEnabled() {
 		t.Fatal("thread-local GC roots enabled by default")
 	}
@@ -127,12 +142,12 @@ func TestThreadLocalGCRootFrameIR(t *testing.T) {
 	if strings.Contains(ir, `@llvm_gc_root_chain`) || strings.Contains(ir, `@llvm_gc_root_sjlj_replaying`) {
 		t.Fatalf("thread-local roots also emitted single-worker state:\n%s", ir)
 	}
-	chainType := `thread_local global i64`
-	if prog.PointerSize() == 4 {
-		chainType = `thread_local global i32`
+	if !strings.Contains(ir, `thread_local global `+chainType) ||
+		prog.SizeOf(prog.VoidPtr()) != prog.SizeOf(prog.Uintptr()) {
+		t.Fatalf("thread-local root chain must match the %s pointer storage:\n%s", profile, ir)
 	}
-	if !strings.Contains(ir, chainType) || strings.Contains(ir, `thread_local global ptr`) {
-		t.Fatalf("thread-local root chain must use a pointer-free address word:\n%s", ir)
+	if !strings.Contains(ir, `[1 x `+frameType+`]`) {
+		t.Fatalf("thread-local root frame must match the %s pointer storage:\n%s", profile, ir)
 	}
 }
 
