@@ -1,25 +1,29 @@
-//go:build wasm && !baremetal && !llgo.wasm.workers && !(wasip1 && llgo.wasi_threads)
+//go:build js && wasm && llgo.wasm.workers
 
 package runtime
 
-import _ "unsafe"
+import (
+	_ "unsafe"
 
-// The single-worker WebAssembly runtime is non-reentrant: host waits unwind
-// to Node/the WASI host and resume before another timer mutation can run. It
-// therefore uses the shared Go-style timer heap without a native mutex. The
-// scheduler calls wasmPollTimers at cooperative scheduling points and
-// wasmTimerWait when it has no runnable G.
-
-var (
-	timerSchedulerHeap []*timerState
-	timerSchedulerMap  map[*runtimeTimer]*timerState
+	llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
+	"github.com/xgo-dev/llgo/runtime/internal/wasmsync"
 )
 
 //go:linkname registerWasmTimerHooks github.com/xgo-dev/llgo/runtime/internal/runtime.RegisterWasmTimerHooks
 func registerWasmTimerHooks(poll func(), wait func() (uint64, bool))
 
+var (
+	timerSchedulerHeap []*timerState
+	timerSchedulerMap  map[*runtimeTimer]*timerState
+	timerSchedulerLock wasmsync.Mutex
+)
+
 func init() {
 	registerWasmTimerHooks(wasmPollTimers, wasmTimerWait)
+}
+
+func lockTimerScheduler() {
+	timerSchedulerLock.Lock(llruntime.CooperativeSafepoint)
 }
 
 func ensureTimerScheduler() {
@@ -32,6 +36,7 @@ func startRuntimeTimer(r *runtimeTimer) {
 	if r == nil {
 		return
 	}
+	lockTimerScheduler()
 	ensureTimerScheduler()
 	st := timerSchedulerMap[r]
 	if st == nil {
@@ -43,12 +48,15 @@ func startRuntimeTimer(r *runtimeTimer) {
 	st.callback = snapshotRuntimeTimer(r)
 	st.active = true
 	timerHeapAdd(st)
+	timerSchedulerLock.Unlock()
+	llruntime.WakeWasmScheduler()
 }
 
 func stopRuntimeTimer(r *runtimeTimer) bool {
 	if r == nil {
 		return false
 	}
+	lockTimerScheduler()
 	ensureTimerScheduler()
 	st := timerSchedulerMap[r]
 	wasActive := st != nil && st.active
@@ -57,15 +65,18 @@ func stopRuntimeTimer(r *runtimeTimer) bool {
 		st.active = false
 		delete(timerSchedulerMap, r)
 	}
+	timerSchedulerLock.Unlock()
+	if wasActive {
+		llruntime.WakeWasmScheduler()
+	}
 	return wasActive
 }
 
-// resetRuntimeTimer updates all fields before taking the new callback snapshot.
-// update is used only by the pre-Go 1.23 modTimer ABI.
 func resetRuntimeTimer(r *runtimeTimer, when, period int64, update func()) bool {
 	if r == nil {
 		return false
 	}
+	lockTimerScheduler()
 	ensureTimerScheduler()
 	st := timerSchedulerMap[r]
 	wasActive := st != nil && st.active
@@ -83,14 +94,19 @@ func resetRuntimeTimer(r *runtimeTimer, when, period int64, update func()) bool 
 	st.callback = snapshotRuntimeTimer(r)
 	st.active = true
 	timerHeapAdd(st)
+	timerSchedulerLock.Unlock()
+	llruntime.WakeWasmScheduler()
 	return wasActive
 }
 
 func wasmTimerWait() (wait uint64, active bool) {
+	lockTimerScheduler()
 	if len(timerSchedulerHeap) == 0 {
+		timerSchedulerLock.Unlock()
 		return 0, false
 	}
 	when := timerSchedulerHeap[0].r.when
+	timerSchedulerLock.Unlock()
 	now := runtimeNano()
 	if when <= now {
 		return 0, true
@@ -99,14 +115,15 @@ func wasmTimerWait() (wait uint64, active bool) {
 }
 
 func wasmPollTimers() {
-	now := runtimeNano()
-	for len(timerSchedulerHeap) != 0 {
-		st := timerSchedulerHeap[0]
-		when := st.r.when
-		if when > now {
+	for {
+		now := runtimeNano()
+		lockTimerScheduler()
+		if len(timerSchedulerHeap) == 0 || timerSchedulerHeap[0].r.when > now {
+			timerSchedulerLock.Unlock()
 			return
 		}
-
+		st := timerSchedulerHeap[0]
+		when := st.r.when
 		period := st.r.period
 		callback := st.callback
 		timerHeapRemove(0)
@@ -117,12 +134,12 @@ func wasmPollTimers() {
 			st.active = false
 			delete(timerSchedulerMap, st.r)
 		}
+		timerSchedulerLock.Unlock()
 
 		delay := now - when
 		if delay < 0 {
 			delay = 0
 		}
 		callback.run(delay)
-		now = runtimeNano()
 	}
 }

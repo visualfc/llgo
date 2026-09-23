@@ -62,9 +62,17 @@ type Export struct {
 	Emulator     string // Emulator command template (e.g., "qemu-system-arm -M {} -kernel {}")
 	DebugInfo    DebugInfoPolicy
 	WasmPostLink WasmPostLink
+	WasmRuntime  WasmRuntime
 
 	// Flashing/Debugging configuration
 	Device flash.Device // Device configuration for flashing/debugging
+}
+
+// WasmRuntime describes entry behavior implemented by the selected runtime.
+type WasmRuntime struct {
+	// RunMainTask asks the host-provided entry point to invoke LLGo's logical
+	// Go main task. Emscripten's PROXY_TO_PTHREAD owns main in worker mode.
+	RunMainTask bool
 }
 
 // NativeToolchain describes the externally visible ABI and the tools used to

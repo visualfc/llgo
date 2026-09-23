@@ -64,6 +64,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/pclnpost"
 	"github.com/xgo-dev/llgo/internal/quoted"
 	"github.com/xgo-dev/llgo/internal/typepatch"
+	"github.com/xgo-dev/llgo/internal/wasmworkers"
 	"github.com/xgo-dev/llgo/ssa/abi"
 	xenv "github.com/xgo-dev/llgo/xtool/env"
 	gllvm "github.com/xgo-dev/llvm"
@@ -578,7 +579,11 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
 	}
-	wasmGC, err := configureWasmGC(conf, &export)
+	wasmWorkers, err := configureWasmWorkers(conf, &export)
+	if err != nil {
+		return nil, err
+	}
+	wasmGC, err := configureWasmGC(conf, &export, wasmWorkers.Enabled())
 	if err != nil {
 		return nil, err
 	}
@@ -665,7 +670,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	prog.EnableGCRoots(wasmGC)
 	prog.EnableLogicalGoroutineLocality(usesSingleWorkerWasmScheduler(conf))
-	prog.EnableCooperativeSafepoints(wasmGC)
+	prog.EnableCooperativeSafepoints(wasmGC || wasmWorkers.Enabled())
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
@@ -1407,7 +1412,40 @@ func DefaultBuildTags() string {
 	return "llgo,math_big_pure_go,purego"
 }
 
-func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
+func configureWasmWorkers(conf *Config, export *crosscompile.Export) (wasmworkers.Config, error) {
+	config, err := wasmworkers.Parse(os.Getenv(llgoWasmWorkers))
+	if err != nil {
+		return config, err
+	}
+	if err := config.ValidateTarget(conf.Goos, conf.Goarch, export.WasmProfile, export.WasmProvider); err != nil {
+		return config, err
+	}
+	if !config.Enabled() {
+		return config, nil
+	}
+	preJS := wasmworkers.PreJSPath(env.LLGoROOT())
+	if _, err := os.Stat(preJS); err != nil {
+		return config, fmt.Errorf("locate WebAssembly worker host shim: %w", err)
+	}
+	workers := strconv.Itoa(config.Count)
+	export.BuildTags = append(export.BuildTags, "llgo.wasm.workers")
+	export.CCFLAGS = append(export.CCFLAGS, "-pthread", "-DLLGO_WASM_WORKERS="+workers)
+	export.LDFLAGS = append(export.LDFLAGS,
+		"--pre-js", preJS,
+		"-pthread",
+		"-sPTHREAD_POOL_SIZE="+workers,
+		"-sPROXY_TO_PTHREAD=1",
+		"-sEXIT_RUNTIME=1",
+		// EXPORT_ALL eagerly reads memory views while a pthread worker is still
+		// waiting for Emscripten to deliver its shared WebAssembly.Memory. The
+		// profile already lists the public runtime methods it needs explicitly.
+		"-sEXPORT_ALL=0",
+	)
+	export.WasmRuntime.RunMainTask = true
+	return config, nil
+}
+
+func configureWasmGC(conf *Config, export *crosscompile.Export, wasmWorkers bool) (bool, error) {
 	explicit := slices.Contains(splitSourcePatchBuildTags(conf.Tags), "llgo.wasm.gc.linear")
 	if conf.Goarch != "wasm" {
 		if explicit {
@@ -1419,6 +1457,12 @@ func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 	defaultEnabled := false
 	switch export.WasmProfile {
 	case crosscompile.WasmProfileJ32, crosscompile.WasmProfileJ64:
+		if wasmWorkers {
+			if explicit {
+				return false, errors.New("llgo.wasm.gc.linear does not yet support multiple WebAssembly workers")
+			}
+			return false, nil
+		}
 		defaultEnabled = true
 	case crosscompile.WasmProfileW32:
 		if IsWasiThreadsEnabled() {
@@ -3934,6 +3978,7 @@ const llgoTrace = "LLGO_TRACE"
 const llgoOptimize = "LLGO_OPTIMIZE"
 const llgoWasmRuntime = "LLGO_WASM_RUNTIME"
 const llgoWasiThreads = "LLGO_WASI_THREADS"
+const llgoWasmWorkers = "LLGO_WASM_WORKERS"
 const llgoStdioNobuf = "LLGO_STDIO_NOBUF"
 const llgoFullRpath = "LLGO_FULL_RPATH"
 const llgoBuildCache = "LLGO_BUILD_CACHE"

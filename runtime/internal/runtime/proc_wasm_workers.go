@@ -1,0 +1,449 @@
+//go:build llgo && js && wasm && llgo.wasm.workers
+
+/*
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package runtime
+
+import (
+	"unsafe"
+
+	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	"github.com/xgo-dev/llgo/runtime/internal/pollbudget"
+	"github.com/xgo-dev/llgo/runtime/internal/runqueue"
+	"github.com/xgo-dev/llgo/runtime/internal/sync/atomic"
+	"github.com/xgo-dev/llgo/runtime/internal/wasmcontext"
+	"github.com/xgo-dev/llgo/runtime/internal/wasmsync"
+	"github.com/xgo-dev/llgo/runtime/internal/wasmworkers"
+)
+
+const maxWasmWorkers = 16
+
+type runtimeContextPlatform struct {
+	context    wasmcontext.Context
+	gcRoot     wasmGCRootContext
+	runqNext   *g
+	runqQueued bool
+	owner      *wasmWorker
+	// Keep runqQueued inside unsafe.Sizeof(runtimeContext{}) on wasm32. LLVM
+	// aligns the preceding uint64 G fields more strictly than go/types does.
+	layoutEnd [8]byte
+}
+
+type wasmWorker struct {
+	m m
+	p p
+
+	lock wasmsync.Mutex
+	runq runqueue.Queue[*g]
+	wake uint32
+
+	system          wasmcontext.Context
+	systemReady     bool
+	index           int
+	safepointBudget pollbudget.Budget
+}
+
+var wasmMultiSched struct {
+	workers [maxWasmWorkers]wasmWorker
+	count   int
+
+	nextWorker uint32
+	active     uint32
+	started    bool
+
+	mainReturned bool
+	mainGoexit   bool
+}
+
+func runtimeContextAllocSize() uintptr {
+	const alignment = uintptr(unsafe.Sizeof(uint64(0)))
+	return (unsafe.Sizeof(runtimeContext{}) + alignment - 1) &^ (alignment - 1)
+}
+
+func initRuntimeContext(ctx *runtimeContext, callergp *g, status uint32) *g {
+	gp := initG(ctx, callergp, status)
+	if status == _Grunning {
+		initWasmScheduler(gp)
+	}
+	return gp
+}
+
+func initWasmScheduler(gp *g) {
+	if wasmMultiSched.started {
+		fatal("runtime: WebAssembly scheduler initialized twice")
+		return
+	}
+	count := wasmworkers.Count()
+	if count < 2 || count > maxWasmWorkers {
+		fatal("runtime: invalid WebAssembly worker count")
+		return
+	}
+	wasmMultiSched.count = count
+	// atomic.Add returns the pre-increment value, so the first child starts
+	// away from the main worker.
+	wasmMultiSched.nextWorker = 1
+	wasmMultiSched.active = 1
+
+	for i := 0; i < count; i++ {
+		worker := &wasmMultiSched.workers[i]
+		worker.index = i
+		worker.safepointBudget = pollbudget.New(wasmSafepointQuantum)
+		worker.m.id = nextMid(&worker.m)
+		worker.m.p = &worker.p
+		worker.p.id = nextPid(&worker.p)
+		worker.p.m = &worker.m
+		setpstatus(&worker.p, _Prunning)
+	}
+
+	mainWorker := &wasmMultiSched.workers[0]
+	setCurrentWasmWorker(mainWorker)
+	bindWasmWorkerG(mainWorker, gp)
+	gp.context.platform.owner = mainWorker
+	wasmMultiSched.started = true
+
+	for i := 1; i < count; i++ {
+		worker := &wasmMultiSched.workers[i]
+		if errno := wasmworkers.Start(wasmworkers.Entry(wasmWorkerStart), unsafe.Pointer(worker), 0); errno != 0 {
+			fatal("runtime: failed to start WebAssembly worker")
+			return
+		}
+	}
+}
+
+//go:linkname wasmMainTask __llgo_wasm_main
+func wasmMainTask(unsafe.Pointer) unsafe.Pointer
+
+func RunWasmMain() {
+	gp := getg()
+	worker := currentWasmWorker()
+	if gp == nil || !gp.isMain || worker == nil || worker.index != 0 {
+		fatal("runtime: invalid WebAssembly main goroutine")
+		return
+	}
+	if !initWasmFiber(gp, wasmcontext.Entry(wasmMainStart), unsafe.Pointer(gp), wasmMainStackSize) {
+		panic("runtime: failed to allocate WebAssembly main stack")
+	}
+	initWasmWorkerSystem(worker)
+	releaseWasmWorkerG(worker, gp)
+	casgstatus(gp, _Grunning, _Grunnable)
+	enqueueWasmG(worker, gp)
+	runWasmWorker(worker, true)
+	c.Exit(0)
+}
+
+func wasmMainStart(arg unsafe.Pointer) {
+	gp := (*g)(arg)
+	if gp == nil || getg() != gp {
+		fatal("runtime: invalid WebAssembly main entry")
+		return
+	}
+	wasmMainTask(nil)
+	wasmMultiSched.mainReturned = true
+	finishWasmG(gp)
+}
+
+func wasmWorkerStart(arg unsafe.Pointer) unsafe.Pointer {
+	worker := (*wasmWorker)(arg)
+	if worker == nil || worker.index == 0 {
+		fatal("runtime: invalid WebAssembly worker entry")
+		return nil
+	}
+	// Goroutines interleave on this native worker, so generated GLS/TLS access
+	// needs one long-lived locality owner rather than a goroutine entry frame.
+	var localContext LocalContext
+	EnterLocalContext(&localContext)
+	setCurrentWasmWorker(worker)
+	setg(nil)
+	initWasmWorkerSystem(worker)
+	runWasmWorker(worker, false)
+	return nil
+}
+
+func initWasmWorkerSystem(worker *wasmWorker) {
+	if worker.systemReady {
+		return
+	}
+	if !worker.system.InitCurrent(AllocRoot) {
+		panic("runtime: failed to allocate WebAssembly system context")
+	}
+	worker.systemReady = true
+}
+
+func runWasmWorker(worker *wasmWorker, stopAtMain bool) {
+	for {
+		gp := waitWasmWorkerRunq(worker)
+		if gp == nil {
+			continue
+		}
+		casgstatus(gp, _Grunnable, _Grunning)
+		bindWasmWorkerG(worker, gp)
+		setg(gp)
+		worker.system.Swap(
+			&gp.context.platform.context,
+			wasmGCRootPointer(&gp.context.platform.gcRoot),
+		)
+		setg(nil)
+		releaseWasmWorkerG(worker, gp)
+
+		if readgstatus(gp) != _Gdead {
+			continue
+		}
+		isMain := gp.isMain
+		releaseWasmContext(gp)
+		if isMain && stopAtMain {
+			if wasmMultiSched.mainReturned {
+				return
+			}
+			if wasmMultiSched.mainGoexit && atomic.Load(&wasmMultiSched.active) == 0 {
+				fatal("no goroutines (main called runtime.Goexit) - deadlock!")
+				return
+			}
+		}
+	}
+}
+
+func bindWasmWorkerG(worker *wasmWorker, gp *g) {
+	worker.m.curg = gp
+	gp.m = &worker.m
+}
+
+func releaseWasmWorkerG(worker *wasmWorker, gp *g) {
+	if gp != nil {
+		gp.m = nil
+	}
+	worker.m.curg = nil
+}
+
+func newprocBackend(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr, callergp *g) {
+	gp := newproc1(fn, arg, callergp)
+	worker := nextWasmWorker()
+	gp.context.platform.owner = worker
+	if !initWasmFiber(gp, wasmcontext.Entry(wasmGStart), unsafe.Pointer(gp), stackSize) {
+		releaseG()
+		releaseStartArg(gp)
+		freeRuntimeContext(gp.context)
+		panic("runtime: failed to allocate WebAssembly goroutine stack")
+	}
+	atomic.Add(&wasmMultiSched.active, uint32(1))
+	enqueueWasmG(worker, gp)
+}
+
+func nextWasmWorker() *wasmWorker {
+	index := atomic.Add(&wasmMultiSched.nextWorker, uint32(1))
+	return &wasmMultiSched.workers[int(index%uint32(wasmMultiSched.count))]
+}
+
+func initWasmFiber(gp *g, entry wasmcontext.Entry, arg unsafe.Pointer, stackSize uintptr) bool {
+	return gp.context.platform.context.Init(
+		entry,
+		arg,
+		stackSize,
+		AllocRoot,
+		FreeRoot,
+	)
+}
+
+func releaseWasmContext(gp *g) {
+	if gp == nil || gp.context == nil {
+		return
+	}
+	ctx := gp.context
+	ctx.platform.context.Close(FreeRoot)
+	freeRuntimeContext(ctx)
+}
+
+func wasmGStart(arg unsafe.Pointer) {
+	gp := (*g)(arg)
+	if gp == nil || getg() != gp {
+		fatal("runtime: invalid WebAssembly goroutine entry")
+		return
+	}
+	fn, fnarg := gp.startfn, gp.startarg
+	gp.startfn = nil
+	gp.startarg = nil
+	fn(fnarg)
+	finishWasmG(gp)
+}
+
+func finishWasmG(gp *g) {
+	releaseStartArg(gp)
+	casgstatus(gp, _Grunning, _Gdead)
+	atomic.Add(&wasmMultiSched.active, ^uint32(0))
+	releaseGAndCheckDeadlock()
+	wakeWasmEventWorker()
+	worker := gp.context.platform.owner
+	gp.context.platform.context.Swap(&worker.system, nil)
+	fatal("runtime: resumed dead WebAssembly goroutine")
+}
+
+func goschedBackend() {
+	gp := getg()
+	worker := currentWasmWorker()
+	casgstatus(gp, _Grunning, _Grunnable)
+	enqueueWasmG(worker, gp)
+	gp.context.platform.context.Swap(&worker.system, nil)
+}
+
+func gopark() {
+	gp := getg()
+	parkWasmG(gp)
+}
+
+func parkWasmG(gp *g) {
+	casgstatus(gp, _Grunning, _Gwaiting)
+	atomic.Add(&wasmMultiSched.active, ^uint32(0))
+	wakeWasmEventWorker()
+	worker := gp.context.platform.owner
+	gp.context.platform.context.Swap(&worker.system, nil)
+}
+
+func goready(gp *g) {
+	if gp == nil {
+		fatal("runtime: ready of nil goroutine")
+		return
+	}
+	casgstatus(gp, _Gwaiting, _Grunnable)
+	atomic.Add(&wasmMultiSched.active, uint32(1))
+	enqueueWasmG(gp.context.platform.owner, gp)
+}
+
+func goexitBackend(gp *g) {
+	if gp.isMain {
+		wasmMultiSched.mainGoexit = true
+		markMainExited()
+	}
+	finishWasmG(gp)
+}
+
+func enqueueWasmG(worker *wasmWorker, gp *g) {
+	if worker == nil {
+		fatal("runtime: enqueue on nil WebAssembly worker")
+		return
+	}
+	worker.lock.Lock(CooperativeSafepoint)
+	ok := worker.runq.Push(gp)
+	worker.lock.Unlock()
+	if !ok {
+		fatal("runtime: invalid WebAssembly run queue insertion")
+		return
+	}
+	wakeWasmWorker(worker)
+}
+
+func popWasmWorkerRunq(worker *wasmWorker) *g {
+	worker.lock.Lock(CooperativeSafepoint)
+	gp := worker.runq.Pop()
+	worker.lock.Unlock()
+	return gp
+}
+
+func wasmWorkerRunqLen(worker *wasmWorker) uintptr {
+	worker.lock.Lock(CooperativeSafepoint)
+	size := worker.runq.Len()
+	worker.lock.Unlock()
+	return size
+}
+
+func wakeWasmWorker(worker *wasmWorker) {
+	atomic.Add(&worker.wake, uint32(1))
+	wasmworkers.Wake(&worker.wake)
+}
+
+func wakeWasmEventWorker() {
+	if wasmMultiSched.count != 0 {
+		wakeWasmWorker(&wasmMultiSched.workers[0])
+	}
+}
+
+func waitWasmWorkerRunq(worker *wasmWorker) *g {
+	for {
+		if gp := popWasmWorkerRunq(worker); gp != nil {
+			return gp
+		}
+		timeout := int64(-1)
+		if worker.index == 0 {
+			pollWasmEvents()
+			if gp := popWasmWorkerRunq(worker); gp != nil {
+				return gp
+			}
+			hasWaitSource := wasmCallbackPollHook != nil
+			if wasmTimerWaitHook != nil {
+				if wait, active := wasmTimerWaitHook(); active {
+					hasWaitSource = true
+					if wait > uint64(^uint64(0)>>1) {
+						timeout = int64(^uint64(0) >> 1)
+					} else {
+						timeout = int64(wait)
+					}
+				}
+			}
+			if !hasWaitSource && atomic.Load(&wasmMultiSched.active) == 0 {
+				if wasmMultiSched.mainGoexit {
+					fatal("no goroutines (main called runtime.Goexit) - deadlock!")
+				} else {
+					fatal("all goroutines are asleep - deadlock!")
+				}
+				return nil
+			}
+		}
+
+		sequence := atomic.Load(&worker.wake)
+		if gp := popWasmWorkerRunq(worker); gp != nil {
+			return gp
+		}
+		wasmworkers.Wait(&worker.wake, sequence, timeout)
+	}
+}
+
+// CurrentGForTesting returns an opaque handle suitable for ReadyForTesting.
+func CurrentGForTesting() unsafe.Pointer {
+	return unsafe.Pointer(getg())
+}
+
+func ParkForTesting() {
+	gopark()
+}
+
+func ReadyForTesting(handle unsafe.Pointer) {
+	goready((*g)(handle))
+}
+
+func SchedulerStateForTesting() (runq uintptr, mid int64, pid int32) {
+	worker := currentWasmWorker()
+	if worker == nil {
+		return
+	}
+	for i := 0; i < wasmMultiSched.count; i++ {
+		runq += wasmWorkerRunqLen(&wasmMultiSched.workers[i])
+	}
+	return runq, worker.m.id, worker.p.id
+}
+
+func GMPForTesting() (goid, parentGoid uint64, mid int64, pid int32, gstatus, pstatus uint32, linked bool) {
+	gp := getg()
+	worker := currentWasmWorker()
+	if gp == nil || worker == nil || gp.m == nil || gp.m.p == nil {
+		return
+	}
+	mp := gp.m
+	pp := mp.p
+	ctx := gp.context
+	return gp.goid, gp.parentGoid, mp.id, pp.id, readgstatus(gp), readpstatus(pp),
+		mp == &worker.m && pp == &worker.p && mp.curg == gp &&
+			pp.m == mp && ctx != nil && &ctx.g == gp &&
+			ctx.platform.owner == worker
+}
