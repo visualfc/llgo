@@ -798,6 +798,11 @@ func runCase(t *testing.T, repoRoot, goroot, goCmd, llgoBin string, tc testCase,
 		// the Go tool's standard external-link selection for those baselines.
 		opts.ExtraEnv = upsertEnv(opts.ExtraEnv, "GO_EXTLINK_ENABLED=1")
 	}
+	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" && tc.Directive == "runoutput" && tc.RelPath == "rangegen.go" {
+		// The generated compiler torture test exceeded the 4 GiB hosted
+		// runner guard. Bound Go and LLGo's heaps for this case only.
+		opts.ExtraEnv = upsertEnv(opts.ExtraEnv, "GOMEMLIMIT=3GiB")
+	}
 	switch tc.Directive {
 	case "compile":
 		return runCompileCase(t, repoRoot, goroot, llgoBin, tc, opts, buildTimeout)

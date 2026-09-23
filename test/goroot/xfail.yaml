@@ -1,16 +1,6 @@
 # Windows platform selectors may use windows/ARCH for both ABIs or the more
 # specific windows-msvc/ARCH and windows-mingw/ARCH forms.
 host_skips:
-  - version: go1.26
-    platform: linux/amd64
-    directive: runoutput
-    case: rangegen.go
-    reason: the Go 1.26 generator exceeds the hosted runner's 4 GiB process-group limit before LLGo is invoked; see issue #2630
-  - version: go1.27
-    platform: linux/amd64
-    directive: runoutput
-    case: rangegen.go
-    reason: the Go 1.27 generator exceeds the hosted runner's 4 GiB process-group limit before LLGo is invoked
   - directive: run
     case: fixedbugs/issue16016.go
     reason: the test intentionally creates enough goroutines to exhaust LLGo's one-thread-per-goroutine host limit
@@ -128,6 +118,11 @@ timeouts:
     case: rangegen.go
     timeout: 20m
     reason: rangegen generates a large compiler torture test; paired Go 1.26/1.27 builds exceeded the default 3m build timeout on darwin/arm64 CI
+  - platform: linux/amd64
+    directive: runoutput
+    case: rangegen.go
+    timeout: 10m
+    reason: rangegen generates a 6.4 MB compiler torture test; allow bounded build time while its 3 GiB heap target stays under the 4 GiB host guard
   - version: go1.26
     platform: linux/amd64
     directive: run

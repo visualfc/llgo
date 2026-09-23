@@ -421,6 +421,7 @@ func TestObservedPassesDoNotHaveXFailClassifications(t *testing.T) {
 		{version: "go1.27.0", platform: "darwin/arm64", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
 		{version: "go1.26.7", platform: "windows-msvc/amd64", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
 		{version: "go1.27.0", platform: "windows-msvc/arm64", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
+		{version: "go1.26.0", platform: "linux/amd64", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
 		{version: "go1.27.0", platform: "linux/amd64", tc: testCase{RelPath: "rangegen.go", Directive: "runoutput"}},
 		{version: "go1.27.0", platform: "windows-msvc/arm64", tc: testCase{RelPath: "fixedbugs/issue40954.go", Directive: "run"}},
 		{version: "go1.27.0", platform: "darwin/arm64", tc: testCase{RelPath: "fixedbugs/issue34123.go", Directive: "run"}},
@@ -450,11 +451,14 @@ func TestWasmObservedResourceExceptions(t *testing.T) {
 	notApplicable := loadNotApplicableConfig(t, repo, filepath.Join("test", "goroot", "notapplicable.yaml"))
 	rangegen := testCase{RelPath: "rangegen.go", Directive: "runoutput"}
 	for _, version := range []string{"go1.26.7", "go1.27.0"} {
-		if match, _ := cfg.MatchHostSkip(version, "linux/amd64", rangegen); !match {
-			t.Errorf("%s linux/amd64 rangegen did not match its host resource skip", version)
+		if match, _ := cfg.MatchHostSkip(version, "linux/amd64", rangegen); match {
+			t.Errorf("%s linux/amd64 rangegen still matches its obsolete host resource skip", version)
 		}
 		if timeout, _, match := cfg.MatchTimeout(version, "darwin/arm64", rangegen); !match || timeout != 20*time.Minute {
 			t.Errorf("%s darwin/arm64 rangegen timeout = %s, %v; want 20m, true", version, timeout, match)
+		}
+		if timeout, _, match := cfg.MatchTimeout(version, "linux/amd64", rangegen); !match || timeout != 10*time.Minute {
+			t.Errorf("%s linux/amd64 rangegen timeout = %s, %v; want 10m, true", version, timeout, match)
 		}
 	}
 	for _, tt := range []struct {
