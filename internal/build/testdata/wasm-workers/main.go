@@ -122,7 +122,8 @@ func testBoundedWorkerLifecycle() {
 }
 
 func testCrossWorkerChannelHandoffs() {
-	const handoffs = 20_000
+	// Keep this above the historical async callback stack-exhaustion threshold.
+	const handoffs = 100_000
 	values := make(chan int)
 	done := make(chan struct{})
 	go func() {

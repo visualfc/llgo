@@ -1,6 +1,7 @@
 #include <emscripten/atomic.h>
 #include <emscripten/eventloop.h>
 #include <emscripten.h>
+#include <emscripten/stack.h>
 #include <math.h>
 #include <stdint.h>
 
@@ -11,6 +12,7 @@
 static _Thread_local void *llgo_wasm_current_worker;
 
 extern void llgo_wasm_worker_resume(void *worker);
+extern void _emscripten_stack_restore(uintptr_t stack_pointer);
 
 EM_JS(void, llgo_wasm_worker_install_host_wake, (uint32_t *address), {
   const index = Math.trunc(Number(address) / 4);
@@ -82,8 +84,14 @@ int llgo_wasm_worker_arm_wait(
   return 1;
 }
 
-void llgo_wasm_worker_suspend(void) {
+__attribute__((noreturn)) void llgo_wasm_worker_suspend(void) {
+  // The async wait callback abandons its native Wasm call stack by throwing
+  // back to the JavaScript event loop. Restore the empty-stack SP first;
+  // otherwise bypassing normal function epilogues leaks a few words on every
+  // idle/wake cycle and eventually corrupts the pthread stack.
+  _emscripten_stack_restore(emscripten_stack_get_base());
   emscripten_unwind_to_js_event_loop();
+  __builtin_unreachable();
 }
 
 int llgo_wasm_worker_wake(uint32_t *address) {
