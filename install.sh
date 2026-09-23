@@ -247,6 +247,27 @@ system_go_is_compatible() {
     [[ -n "$version" ]] && version_at_least "$version" "$LLGO_GO_VERSION"
 }
 
+go_archive_checksum() {
+    local metadata="$1"
+    local filename="$2"
+    awk -v filename="$filename" '
+        /"filename"[[:space:]]*:/ {
+            candidate = $0
+            sub(/^.*"filename"[[:space:]]*:[[:space:]]*"/, "", candidate)
+            sub(/".*$/, "", candidate)
+            if (found && candidate != filename) exit
+            found = (candidate == filename)
+        }
+        found && /"sha256"[[:space:]]*:/ {
+            checksum = $0
+            sub(/^.*"sha256"[[:space:]]*:[[:space:]]*"/, "", checksum)
+            sub(/".*$/, "", checksum)
+            print checksum
+            exit
+        }
+    ' "$metadata"
+}
+
 install_official_go() {
     local root="$1"
     local os="$2"
@@ -263,15 +284,7 @@ install_official_go() {
 
         download "https://go.dev/dl/?mode=json&include=all" "$metadata"
         local expected
-        expected="$(awk -v filename="$filename" '
-            $0 ~ "\\\"filename\\\": \\"" filename "\\\"" { found = 1; next }
-            found && /"sha256"/ {
-                gsub(/^.*"sha256": "/, "")
-                gsub(/".*$/, "")
-                print
-                exit
-            }
-        ' "$metadata")"
+        expected="$(go_archive_checksum "$metadata" "$filename")"
         [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || die "Go did not publish a checksum for $filename"
 
         download "https://go.dev/dl/$filename" "$archive"

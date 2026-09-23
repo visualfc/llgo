@@ -36,8 +36,46 @@ if version_at_least go1.26.9 1.27.0; then
     fail 'older Go version was accepted'
 fi
 
+# A small excerpt of go.dev/dl/?mode=json&include=all, including a compact
+# file record where filename and checksum appear on the same line.
+go_metadata="$root/test/installer/fixtures/go-releases.json"
+assert_equal "$(go_archive_checksum "$go_metadata" go1.27.0.linux-amd64.tar.gz)" \
+    675c26c449cbb18fc24b74650de1eabbae6e16f64326fd85a283fb3b58280685
+assert_equal "$(go_archive_checksum "$go_metadata" go1.27.0.linux-arm64.tar.gz)" \
+    51798d2c42d0e1c6ed7fd9f48728b4193abac9e8aad6dbac2fe96a81f5909bda
+[[ -z "$(go_archive_checksum "$go_metadata" go1.27.0.linux-386.tar.gz)" ]] ||
+    fail 'checksum parser accepted an unrelated archive'
+
 temporary="$(mktemp -d "${TMPDIR:-/tmp}/llgo-installer-test.XXXXXXXX")"
 trap 'rm -rf "$temporary"' EXIT
+
+# Exercise the no-system-Go download path without fetching the large toolchain.
+go_payload="$temporary/go-payload"
+mkdir -p "$go_payload/go/bin"
+printf '#!/usr/bin/env sh\nexit 0\n' >"$go_payload/go/bin/go"
+chmod +x "$go_payload/go/bin/go"
+printf '#!/usr/bin/env sh\nexit 0\n' >"$go_payload/go/bin/gofmt"
+chmod +x "$go_payload/go/bin/gofmt"
+go_archive="$temporary/go1.27.0.linux-amd64.tar.gz"
+tar -czf "$go_archive" -C "$go_payload" go
+go_checksum="$(sha256_file "$go_archive")"
+go_test_metadata="$temporary/go-releases.json"
+printf '[{"files":[{"filename":"go1.27.0.linux-amd64.tar.gz","sha256":"%s"}]}]\n' \
+    "$go_checksum" >"$go_test_metadata"
+(
+    # shellcheck disable=SC2329 # install_official_go invokes this mock.
+    download() {
+        case "$1" in
+            'https://go.dev/dl/?mode=json&include=all') cp "$go_test_metadata" "$2" ;;
+            'https://go.dev/dl/go1.27.0.linux-amd64.tar.gz') cp "$go_archive" "$2" ;;
+            *) return 1 ;;
+        esac
+    }
+    install_official_go "$temporary/go-root" linux amd64
+    [[ -x "$temporary/go-root/toolchains/go/1.27.0/linux-amd64/bin/go" ]] ||
+        fail 'official Go installation did not promote the verified toolchain'
+)
+
 payload="$temporary/payload"
 mkdir -p "$payload/bin" "$payload/runtime"
 printf '#!/usr/bin/env bash\nprintf "llgo version test\\n"\n' >"$payload/bin/llgo"

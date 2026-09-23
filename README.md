@@ -425,6 +425,10 @@ cd llgo
 
 ### Fallback release installers
 
+The Unix fallback installs LLGo and, by default, Go and native C libraries. It
+does not install LLVM/Clang/LLD 22; install those with the platform steps above
+before compiling programs with LLGo.
+
 On macOS or Linux:
 
 ```sh
