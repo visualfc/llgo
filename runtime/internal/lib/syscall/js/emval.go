@@ -9,6 +9,7 @@ import (
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 	_ "github.com/xgo-dev/llgo/runtime/internal/embind"
+	llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
 )
 
 // Emscripten emval handles belong to the JavaScript realm of the physical
@@ -36,6 +37,11 @@ var (
 )
 
 func ensureEmvalGlobals() {
+	llruntime.MarkCurrentJSRealm()
+	initEmvalGlobals()
+}
+
+func initEmvalGlobals() {
 	if emvalGlobalsReady {
 		return
 	}

@@ -45,6 +45,10 @@ static void llgo_wasm_worker_wait_finished(
   emscripten_async_call(llgo_wasm_worker_resume, worker, 0);
 }
 
+void llgo_wasm_worker_resume_soon(void *worker) {
+  emscripten_async_call(llgo_wasm_worker_resume, worker, 0);
+}
+
 int llgo_wasm_worker_count(void) {
   return LLGO_WASM_WORKERS;
 }

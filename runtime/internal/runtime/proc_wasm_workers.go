@@ -34,6 +34,21 @@ const maxWasmWorkers = 16
 
 func SchedulerMultiplexesGoroutinesForTesting() bool { return true }
 
+// SpawnIndependentWasmG starts work that captures no syscall/js values in a
+// worker chosen by the scheduler. Ordinary descendants inherit their
+// parent's JS realm because Emscripten emval handles are worker-local.
+func SpawnIndependentWasmG(fn func()) {
+	gp := getg()
+	if gp == nil {
+		fatal("runtime: independent goroutine without caller")
+		return
+	}
+	affine := gp.context.platform.jsRealm
+	gp.context.platform.jsRealm = false
+	go fn()
+	gp.context.platform.jsRealm = affine
+}
+
 type runtimeContextPlatform struct {
 	context    wasmcontext.Context
 	gcRoot     wasmGCRootContext
@@ -41,6 +56,7 @@ type runtimeContextPlatform struct {
 	runqNext   *g
 	runqQueued bool
 	owner      *wasmWorker
+	jsRealm    bool
 	// Keep runqQueued inside unsafe.Sizeof(runtimeContext{}) on wasm32. LLVM
 	// aligns the preceding uint64 G fields more strictly than go/types does.
 	layoutEnd [8]byte
@@ -58,6 +74,8 @@ type wasmWorker struct {
 	systemReady     bool
 	localContext    LocalContext
 	pollingCallback bool
+	jsEvents        []*wasmJSEvent
+	syncEventDepth  int
 	index           int
 	safepointBudget pollbudget.Budget
 	gc              wasmWorkerGCState
@@ -285,7 +303,9 @@ func newprocBackend(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr, cal
 	gp := newproc1(fn, arg, callergp)
 	var worker *wasmWorker
 	current := currentWasmWorker()
-	if callergp == nil || current != nil && current.pollingCallback {
+	if callergp == nil || current != nil &&
+		(current.pollingCallback || len(current.jsEvents) != 0 || current.syncEventDepth != 0 ||
+			callergp != nil && callergp.context.platform.jsRealm) {
 		// Host callbacks carry thread-local JavaScript handles. Dispatch the G
 		// from the same physical worker/JS realm that received the callback.
 		worker = current
@@ -294,6 +314,9 @@ func newprocBackend(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr, cal
 		worker = nextWasmWorker()
 	}
 	gp.context.platform.owner = worker
+	if callergp != nil {
+		gp.context.platform.jsRealm = callergp.context.platform.jsRealm
+	}
 	if !initWasmFiber(gp, wasmcontext.Entry(wasmGStart), unsafe.Pointer(gp), stackSize) {
 		releaseG()
 		releaseStartArg(gp)
@@ -490,6 +513,12 @@ func waitWasmWorkerRunq(worker *wasmWorker) *g {
 
 		if gp := popWasmWorkerRunq(worker); gp != nil {
 			return gp
+		}
+		// A synchronous JavaScript callback still owns the caller's JS stack.
+		// Do not unwind the pthread entry while its Go handler is parked; a
+		// cross-worker channel wake or a Go timer must resume it in place.
+		if len(worker.jsEvents) != 0 || worker.syncEventDepth != 0 {
+			asyncWait = false
 		}
 		if !asyncWait {
 			// Pure Go work can block in the futex without starving a host event.

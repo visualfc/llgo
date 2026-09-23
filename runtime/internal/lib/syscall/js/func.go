@@ -143,6 +143,7 @@ func dispatchCallback(handle uintptr, owner int) {
 	if current := llruntime.SchedulerProcID(); current != owner {
 		panic("syscall/js: callback dispatched outside its JavaScript realm")
 	}
+	llruntime.MarkCurrentJSRealm()
 	defer cEmvalDecref(handle)
 	cb := Value{ref: ref(handle)}
 	id := uint32(cb.Get("id").Int())

@@ -27,6 +27,27 @@ type workerFinalizerBarrier struct {
 	padding [128]uintptr
 }
 
+func TestWorkerJSRealmInheritance(t *testing.T) {
+	object := js.ValueOf(map[string]any{"value": 42})
+	owner := schedulerProcID()
+	result := make(chan workerCallbackResult, 1)
+	go func() {
+		// The intermediate G has not used syscall/js itself. Its child still
+		// needs the original realm when the handle is passed through a closure.
+		go func() {
+			worker := schedulerProcID()
+			if worker != owner || object.Get("value").Int() != 42 {
+				result <- workerCallbackResult{origin: owner, callback: worker, err: fmt.Errorf("JavaScript value moved from worker %d to %d", owner, worker)}
+				return
+			}
+			result <- workerCallbackResult{origin: owner, callback: worker}
+		}()
+	}()
+	if got := <-result; got.err != nil {
+		t.Fatal(got.err)
+	}
+}
+
 func TestWorkerTLSRoots(t *testing.T) {
 	result := make(chan int, 1)
 	go func() {
@@ -44,7 +65,7 @@ func TestWorkerEmvalFinalizersStayInRealm(t *testing.T) {
 	const goroutines = 8
 	created := make(chan workerCallbackResult, goroutines)
 	for range goroutines {
-		go func() {
+		workerlocality.SpawnIndependent(func() {
 			owner := schedulerProcID()
 			var err error
 			for range 8 {
@@ -54,7 +75,7 @@ func TestWorkerEmvalFinalizersStayInRealm(t *testing.T) {
 				}
 			}
 			created <- workerCallbackResult{origin: owner, err: err}
-		}()
+		})
 	}
 	owners := make(map[int]bool)
 	for range goroutines {
@@ -86,7 +107,7 @@ finalizersComplete:
 
 	checked := make(chan workerCallbackResult, goroutines)
 	for range goroutines {
-		go func() {
+		workerlocality.SpawnIndependent(func() {
 			owner := schedulerProcID()
 			object := js.Global().Get("Object").New()
 			object.Set("owner", owner)
@@ -96,7 +117,7 @@ finalizersComplete:
 				err = fmt.Errorf("JavaScript object owner = %d, want %d", got, owner)
 			}
 			checked <- workerCallbackResult{origin: owner, err: err}
-		}()
+		})
 	}
 	owners = make(map[int]bool)
 	for range goroutines {
@@ -133,11 +154,11 @@ func TestConcurrentWorkerOutput(t *testing.T) {
 	const writers = 16
 	results := make(chan workerCallbackResult, writers)
 	for range writers {
-		go func() {
+		workerlocality.SpawnIndependent(func() {
 			origin := schedulerProcID()
 			_, err := fmt.Fprint(os.Stdout, ".")
 			results <- workerCallbackResult{origin: origin, err: err}
-		}()
+		})
 	}
 
 	workers := make(map[int]bool)
@@ -160,7 +181,7 @@ func TestWorkerHostCallbackRealms(t *testing.T) {
 	start := make(chan struct{})
 	results := make(chan workerCallbackResult, callbacks)
 	for range callbacks {
-		go func() {
+		workerlocality.SpawnIndependent(func() {
 			origin := schedulerProcID()
 			done := make(chan int, 1)
 			callback := js.FuncOf(func(js.Value, []js.Value) any {
@@ -181,7 +202,7 @@ func TestWorkerHostCallbackRealms(t *testing.T) {
 			// event loop several seconds later.
 			callbackWorker := <-done
 			results <- workerCallbackResult{origin: origin, callback: callbackWorker}
-		}()
+		})
 	}
 	for range callbacks {
 		<-ready

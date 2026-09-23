@@ -75,21 +75,29 @@ EM_VAL llgo_emval_get_module_property(const char *name) {
 static _Thread_local volatile uint8_t llgo_emval_invoke_pending;
 
 #if defined(LLGO_WASM_WORKERS) && LLGO_WASM_WORKERS > 1
-EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *pending_flag, uintptr_t unused_callback, int unused_pointer_bytes), {
-    const pending = [];
-    const pendingFlag = Number(pending_flag);
-    Module['llgoWasmPendingInvokes'] = pending;
+EM_JS_DEPS(llgo_emval_install_invoke_js, "$Emval,$getWasmTableEntry,$Asyncify,$Fibers");
+EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *unused_pending_flag, uintptr_t callback, int pointer_bytes), {
+    const dispatch = Asyncify.instrumentFunction(getWasmTableEntry(Number(callback)));
     Module['_llgo_invoke'] = function(event) {
-        pending.push(event);
-        HEAPU8[pendingFlag] = 1;
-        const state = Module['llgoWasmHostWait'];
-        if (state !== undefined && state.wake !== undefined) {
-            const wake = state.wake;
-            delete state.wake;
-            setTimeout(wake, 0);
+        if (Asyncify.exportCallStack.length) {
+            const handle = Emval.toHandle(event);
+            const callStack = Asyncify.exportCallStack;
+            const trampolineRunning = Fibers.trampolineRunning;
+            Asyncify.exportCallStack = [];
+            Fibers.trampolineRunning = false;
+            try {
+                dispatch(pointer_bytes === 8 ? BigInt(handle) : handle);
+            } finally {
+                Asyncify.exportCallStack = callStack;
+                Fibers.trampolineRunning = trampolineRunning;
+            }
+            return event.result;
         }
-        // A worker can be inside an Asyncify suspension. Dispatch later on
-        // its own G so the enclosing C/JS call is never reentered.
+        // With no enclosing Go-to-JS call, run the callback on this realm.
+        // A suspended callback returns undefined and resumes asynchronously.
+        const handle = Emval.toHandle(event);
+        dispatch(pointer_bytes === 8 ? BigInt(handle) : handle);
+        return event.result;
     };
 });
 #else

@@ -2,6 +2,11 @@
 
 package workerlocality
 
+import llruntime "github.com/xgo-dev/llgo/runtime/internal/runtime"
+
+// SpawnIndependent is for probes whose closure carries no JavaScript values.
+func SpawnIndependent(fn func()) { llruntime.SpawnIndependentWasmG(fn) }
+
 // These values exercise cross-package GLS through the bounded worker runtime.
 //
 //llgointernal:gls

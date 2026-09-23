@@ -60,6 +60,10 @@ func Suspend() {
 	workerSuspend()
 }
 
+func ResumeSoon(worker unsafe.Pointer) {
+	workerResumeSoon(worker)
+}
+
 func Wake(addr *uint32) {
 	workerWake(addr)
 }
@@ -81,6 +85,9 @@ func workerArmWait(addr *uint32, expected uint32, timeoutNanoseconds int64, work
 
 //go:linkname workerSuspend C.llgo_wasm_worker_suspend
 func workerSuspend()
+
+//go:linkname workerResumeSoon C.llgo_wasm_worker_resume_soon
+func workerResumeSoon(unsafe.Pointer)
 
 //go:linkname workerWake C.llgo_wasm_worker_wake
 func workerWake(addr *uint32) c.Int

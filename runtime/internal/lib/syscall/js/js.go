@@ -115,6 +115,14 @@ func Global() Value {
 	return valueGlobal
 }
 
+// GlobalForHost is used by LLGo's worker-local filesystem adapter during
+// package initialization. Its handles stay in TLS and are never handed to a
+// child goroutine, so this setup must not pin the main goroutine to one realm.
+func GlobalForHost() Value {
+	initEmvalGlobals()
+	return valueGlobal
+}
+
 // ValueOf returns x as a JavaScript value:
 //
 //	| Go                     | JavaScript             |
@@ -544,7 +552,7 @@ func (v Value) New(args ...any) (res Value) {
 // func valueNew(v ref, args []ref) (ref, bool)
 
 func (v Value) isNumber() bool {
-	ensureEmvalGlobals()
+	initEmvalGlobals()
 	return v.ref == valueZero.ref ||
 		v.ref == valueNaN.ref ||
 		(v.ref != valueUndefined.ref && emval_is_number(v))

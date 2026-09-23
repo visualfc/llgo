@@ -2,7 +2,13 @@
 
 package syscall
 
-import "syscall/js"
+import (
+	"syscall/js"
+	_ "unsafe"
+)
+
+//go:linkname llgoHostJSGlobal syscall/js.GlobalForHost
+func llgoHostJSGlobal() js.Value
 
 // Node objects are represented by Emscripten emval handles, whose ownership
 // is local to one JavaScript worker. Integer flags and the Go file table stay
@@ -10,9 +16,9 @@ import "syscall/js"
 //
 //llgointernal:tls
 var (
-	jsProcess  = js.Global().Get("process")
-	jsPath     = js.Global().Get("path")
-	jsFS       = js.Global().Get("fs")
+	jsProcess  = llgoHostJSGlobal().Get("process")
+	jsPath     = llgoHostJSGlobal().Get("path")
+	jsFS       = llgoHostJSGlobal().Get("fs")
 	constants  = jsFS.Get("constants")
-	uint8Array = js.Global().Get("Uint8Array")
+	uint8Array = llgoHostJSGlobal().Get("Uint8Array")
 )

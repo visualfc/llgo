@@ -3,6 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export LLGO_ROOT="${LLGO_ROOT:-${repo_root}}"
 llgo_cmd="${LLGO:-llgo}"
 node_cmd="${NODE:-node}"
 wasmtime_cmd="${WASMTIME:-wasmtime}"
