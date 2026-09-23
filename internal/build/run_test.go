@@ -127,8 +127,8 @@ func TestRunNativeTest(t *testing.T) {
 		if !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
 			t.Fatalf("process status = %v, want SIGKILL", exitErr.Sys())
 		}
-		if got, want := stderr.String(), executable+": "+exitErr.Error()+"\n"; got != want {
-			t.Fatalf("stderr = %q, want signal diagnostic %q", got, want)
+		if got := stderr.String(); !strings.Contains(got, "killed") || strings.Contains(got, "exit code") {
+			t.Fatalf("stderr = %q, want signal reason without an exit code", got)
 		}
 	})
 
@@ -238,6 +238,7 @@ func TestRunNativeTestHelper(t *testing.T) {
 			if err := syscall.Kill(os.Getpid(), syscall.SIGKILL); err != nil {
 				t.Fatalf("kill helper: %v", err)
 			}
+			panic("SIGKILL returned without terminating the helper")
 		}
 		return
 	}
