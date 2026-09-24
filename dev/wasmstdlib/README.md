@@ -27,7 +27,7 @@ No test-name filter or blanket skip is used. The driver clears inherited `GOFLAG
 | GoJS-reference | Official Go compiler and the selected GOROOT's `go_js_wasm_exec` |
 | GoWASI-reference | Official Go compiler and the selected GOROOT's `go_wasip1_wasm_exec`, Wasmtime |
 
-Set `LLGO_WASI_THREADS=1` and place the LLGo-configured WAMR `iwasm` on `PATH` to run the W32-WASI row with pthreads and default threaded GC. The source inventory then includes `llgo.wasi_threads`; the report records the WAMR execution contract.
+Set `LLGO_WASI_THREADS=1` and place the LLGo-configured WAMR `iwasm` on `PATH` to run the W32-WASI row with pthreads and default threaded GC. The runner grants the working directory and `/tmp` for filesystem tests. The source inventory then includes `llgo.wasi_threads`; the report records the WAMR execution contract.
 
 The reference rows execute Go compiler output, not LLGo output. They establish the expected source behavior but do not substitute for any of the four LLGo paths. CI uses the repository-selected Go version and records it in every report.
 

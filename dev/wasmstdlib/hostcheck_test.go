@@ -54,7 +54,7 @@ func TestFullChildCommandWASIThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := fullPanicCommand(p, "/repo", "/goroot", "/compiled-test")
-	for _, want := range []string{"iwasm", "--heap-size=0", "/compiled-test"} {
+	for _, want := range []string{"iwasm", "--heap-size=0", "--dir=/tmp", "/compiled-test"} {
 		if !slices.Contains(cmd.Args, want) {
 			t.Fatalf("threaded W32 child command missing %q: %+v", want, cmd)
 		}

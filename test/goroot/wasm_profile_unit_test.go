@@ -99,12 +99,12 @@ func TestGOROOTWasiThreadRunCommand(t *testing.T) {
 	withGOROOTWasmProfile(t, "W32-WASI")
 	env := []string{"GOROOT=/go", "LLGO_ROOT=/llgo", "LLGO_WASI_THREADS=1"}
 	app, args, _, err := gorootArtifactCommand("/work", "out.wasm", true, env, "arg")
-	want := []string{"--max-threads=64", "--stack-size=1048576", "--heap-size=0", "--dir=.", "out.wasm", "arg"}
+	want := []string{"--max-threads=64", "--stack-size=1048576", "--heap-size=0", "--dir=.", "--dir=/tmp", "out.wasm", "arg"}
 	if err != nil || app != "iwasm" || !reflect.DeepEqual(args, want) {
 		t.Fatalf("WASI thread command: %q %v %v", app, args, err)
 	}
 	app, args, _, err = gorootArtifactCommand("/work", "go.wasm", false, env)
-	want = []string{"--max-threads=64", "--stack-size=1048576", "--heap-size=0", "--dir=.", "go.wasm"}
+	want = []string{"--max-threads=64", "--stack-size=1048576", "--heap-size=0", "--dir=.", "--dir=/tmp", "go.wasm"}
 	if err != nil || app != "iwasm" || !reflect.DeepEqual(args, want) {
 		t.Fatalf("official Go WAMR command: %q %v %v", app, args, err)
 	}

@@ -98,7 +98,8 @@ type WasmProfile string
 const (
 	// WASIThreadedEmulator runs the shared-memory module with WAMR's classic
 	// interpreter. wasi-libc manages its own heap inside the module memory.
-	WASIThreadedEmulator = `iwasm --max-threads=64 --stack-size=1048576 --heap-size=0 "{}"`
+	// The runner grants the working directory and Go's default /tmp directory.
+	WASIThreadedEmulator = `iwasm --max-threads=64 --stack-size=1048576 --heap-size=0 --dir=. --dir=/tmp "{}"`
 
 	WasmProfileNone WasmProfile = ""
 	WasmProfileJ32  WasmProfile = "j32"

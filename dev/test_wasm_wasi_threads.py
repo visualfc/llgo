@@ -28,7 +28,7 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout):
     )
     result = subprocess.run(
         [IWASM, "--max-threads=8", "--stack-size=1048576",
-         "--heap-size=0", str(module)],
+         "--heap-size=0", "--dir=.", "--dir=/tmp", str(module)],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -71,6 +71,9 @@ def main():
         run_llgo(env, ["run", "-target", "wasi", "-emulator",
                        str(ROOT / "internal/build/testdata/wasm-wasi-threads")],
                  "wasi threads ok")
+        run_llgo(env, ["run", "-target", "wasi", "-emulator",
+                       str(ROOT / "internal/build/testdata/wasm-wasi-threaded-fs")],
+                 "wasi threaded filesystem ok")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
         subprocess.run(

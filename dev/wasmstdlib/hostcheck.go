@@ -22,7 +22,7 @@ func fullChildCommand(p profile, root, goRoot, artifact, arg string) command {
 		env["GOWASIRUNTIME"] = "wasmtime"
 	case p.Target == "wasi":
 		if wasiThreadsSelected(p) {
-			args = []string{"iwasm", "--max-threads=64", "--stack-size=1048576", "--heap-size=0", "--dir=" + root, artifact, arg}
+			args = []string{"iwasm", "--max-threads=64", "--stack-size=1048576", "--heap-size=0", "--dir=" + root, "--dir=/tmp", artifact, arg}
 		} else {
 			args = []string{"wasmtime", "run", "-W", "exceptions=y", "--dir=" + root, artifact, arg}
 		}
