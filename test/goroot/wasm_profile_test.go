@@ -118,7 +118,7 @@ func gorootArtifactCommand(dir, artifact string, llgo bool, env []string, progra
 		return artifact, programArgs, env, nil
 	}
 	if p.runner == "wasmtime" && wasiThreadsInEnv(envEntry(env, "LLGO_WASI_THREADS")) {
-		args := []string{"--max-threads=128", "--stack-size=1048576", "--heap-size=0", "--dir=.", "--dir=/tmp", artifact}
+		args := []string{"--max-threads=128", "--stack-size=1048576", "--heap-size=0", "--dir=" + dir, "--dir=/tmp", artifact}
 		return "iwasm", append(args, programArgs...), gorootRuntimeEnv(env), nil
 	}
 	if !llgo {

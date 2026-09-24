@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -55,6 +56,35 @@ func TestRunInEmulatorValidation(t *testing.T) {
 	}
 	if err := runEmuCmd(commands, nil, "   ", nil, false, false, details); err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatalf("empty emulator command error = %v", err)
+	}
+}
+
+func TestWASIThreadedEmulatorHostContract(t *testing.T) {
+	dir := t.TempDir()
+	runner := filepath.Join(dir, "iwasm")
+	argsFile := filepath.Join(dir, "args")
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\n", argsFile)
+	if err := os.WriteFile(runner, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	commands := commandEnv{dir: dir, environ: append(os.Environ(), "PATH="+dir, "LLGO_STRESS_PROFILE=quick")}
+	artifact := filepath.Join(dir, "program.wasm")
+	err := runEmuCmd(commands, map[string]string{"": artifact}, crosscompile.WASIThreadedEmulator,
+		[]string{"-test.v"}, false, false, runnerDetails{phase: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if got, want := args[3], "--dir="+dir; got != want {
+		t.Fatalf("WAMR working directory = %q, want %q", got, want)
+	}
+	if got, want := args[len(args)-3:], []string{"--env=LLGO_STRESS_PROFILE=quick", artifact, "-test.v"}; !slices.Equal(got, want) {
+		t.Fatalf("runner tail = %q, want %q", got, want)
 	}
 }
 

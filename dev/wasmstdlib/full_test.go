@@ -666,7 +666,7 @@ func TestFullSourceExclusionsAreProfileSpecific(t *testing.T) {
 }
 
 func TestFullLongTimeoutIsTargeted(t *testing.T) {
-	for _, pkg := range []string{"test/std/crypto/dsa", "test/std/crypto/rsa", "test/std/go/types", "test/std/os", "test/std/runtime/pprof", "test/_stress/runtime/example"} {
+	for _, pkg := range []string{"test/std/crypto/dsa", "test/std/crypto/rsa", "test/std/go/types", "test/std/os", "test/std/runtime/pprof", "test/std/testing", "test/_stress/runtime/example"} {
 		if got := fullTestTimeout(pkg); got != "3m" {
 			t.Fatalf("%s timeout = %q", pkg, got)
 		}

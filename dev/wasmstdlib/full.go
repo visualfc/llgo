@@ -152,7 +152,7 @@ func fullTestTimeout(pkg string) string {
 	// Keep the global default strict while allowing reviewed, finite wasm work
 	// enough time to finish.
 	switch pkg {
-	case "test/std/crypto/dsa", "test/std/crypto/rsa", "test/std/go/types", "test/std/os", "test/std/runtime/pprof":
+	case "test/std/crypto/dsa", "test/std/crypto/rsa", "test/std/go/types", "test/std/os", "test/std/runtime/pprof", "test/std/testing":
 		return "3m"
 	}
 	if strings.HasPrefix(pkg, "test/_stress/") {

@@ -28,7 +28,7 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout):
     )
     result = subprocess.run(
         [IWASM, "--max-threads=8", "--stack-size=1048576",
-         "--heap-size=0", "--dir=.", "--dir=/tmp", str(module)],
+         "--heap-size=0", "--dir=" + str(ROOT), "--dir=/tmp", str(module)],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -76,6 +76,11 @@ def main():
                  "wasi threaded filesystem ok")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
+        run_llgo(env, ["test", "-target", "wasi", "-emulator",
+                       str(ROOT / "test/std/go/importer")], "PASS")
+        run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
+                       "^(TestTBasicMethods|FuzzExample)$",
+                       str(ROOT / "test/std/testing")], "PASS")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        "-run", "^TestConcurrentSelectProposeReplyStress$",
                        str(ROOT / "test")], "PASS")
