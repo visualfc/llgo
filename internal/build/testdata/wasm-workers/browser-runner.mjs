@@ -20,6 +20,7 @@ const chrome = spawn(browser, [
   "--remote-debugging-port=0",
   "about:blank",
 ], { stdio: ["ignore", "ignore", "pipe"] });
+const chromeExit = new Promise(resolve => chrome.once("exit", resolve));
 
 let chromeLog = "";
 chrome.stderr.setEncoding("utf8");
@@ -147,13 +148,15 @@ try {
   process.exitCode = 1;
 } finally {
   client?.socket.close();
-  chrome.kill("SIGTERM");
-  await Promise.race([
-    new Promise(resolve => chrome.once("exit", resolve)),
-    delay(2_000),
-  ]);
-  if (chrome.exitCode === null) {
-    chrome.kill("SIGKILL");
+  if (chrome.exitCode === null && chrome.signalCode === null) {
+    chrome.kill("SIGTERM");
+    await Promise.race([chromeExit, delay(2_000)]);
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      chrome.kill("SIGKILL");
+      await chromeExit;
+    }
   }
-  await rm(profile, { recursive: true, force: true });
+  // Chrome's child processes can still flush profile files after its main
+  // process exits. Node retries ENOTEMPTY for a recursive removal here.
+  await rm(profile, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }
