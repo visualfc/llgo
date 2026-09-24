@@ -1,4 +1,4 @@
-//go:build wasm && llgo.wasm.gc.linear && ((!llgo || !js || !llgo.wasm.workers) && (!llgo || !wasip1 || !llgo.wasi_threads))
+//go:build wasm && llgo.wasm.gc.linear && (!llgo || !js || !llgo.wasm.workers) && (!llgo || !wasip1 || !llgo.wasi_threads)
 
 package tinygogc
 
