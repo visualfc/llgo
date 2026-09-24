@@ -612,15 +612,7 @@ func (v Value) Field(i int) Value {
 		panic("reflect: Field index out of range")
 	}
 	field := &tt.Fields[i]
-	typ := field.Typ
-
-	// Check closure to func
-	kind := typ.Kind()
-	if kind == abi.Func {
-		typ = closureOf(typ.FuncType())
-	} else if typ.IsClosure() {
-		kind = abi.Func
-	}
+	typ, kind := funcElem(field.Typ)
 	// Inherit permission bits from v, but clear flagEmbedRO.
 	fl := v.flag&(flagStickyRO|flagIndir|flagAddr) | flag(kind)
 	// Using an unexported field forces flagRO.
@@ -745,6 +737,19 @@ func (v Value) Float() float64 {
 
 var uint8Type = rtypeOf(uint8(0))
 
+// funcElem returns the in-memory type and public kind of a function-typed
+// value. Function values occupy LLGo's two-word closure.
+func funcElem(typ *abi.Type) (*abi.Type, abi.Kind) {
+	kind := typ.Kind()
+	if kind == abi.Func {
+		return closureOf(typ.FuncType()), abi.Func
+	}
+	if typ.IsClosure() {
+		return typ, abi.Func
+	}
+	return typ, kind
+}
+
 // Index returns v's i'th element.
 // It panics if v's Kind is not Array, Slice, or String or i is out of range.
 func (v Value) Index(i int) Value {
@@ -757,9 +762,9 @@ func (v Value) Index(i int) Value {
 			panic("reflect: slice index out of range")
 		}
 		tt := (*sliceType)(unsafe.Pointer(v.typ()))
-		typ := tt.Elem
+		typ, kind := funcElem(tt.Elem)
 		val := arrayAt(s.Data, i, typ.Size(), "i < s.Len")
-		fl := flagAddr | flagIndir | v.flag.ro() | flag(typ.Kind())
+		fl := flagAddr | flagIndir | v.flag.ro() | flag(kind)
 		return Value{typ, val, fl}
 
 	case String:
@@ -776,7 +781,7 @@ func (v Value) Index(i int) Value {
 		if uint(i) >= uint(tt.Len) {
 			panic("reflect: array index out of range")
 		}
-		typ := tt.Elem
+		typ, kind := funcElem(tt.Elem)
 		offset := uintptr(i) * typ.Size()
 
 		// Either flagIndir is set and v.ptr points at array,
@@ -785,7 +790,7 @@ func (v Value) Index(i int) Value {
 		// In the latter case, we must be doing Index(0), so offset = 0,
 		// so v.ptr + offset is still the correct address.
 		val := add(v.ptr, offset, "same as &v[i], i < tt.len")
-		fl := v.flag&(flagIndir|flagAddr) | v.flag.ro() | flag(typ.Kind()) // bits same as overall array
+		fl := v.flag&(flagIndir|flagAddr) | v.flag.ro() | flag(kind) // bits same as overall array
 		return Value{typ, val, fl}
 	}
 	panic(&ValueError{"reflect.Value.Index", v.kind()})
@@ -1510,7 +1515,7 @@ func (v Value) Slice(i, j int) Value {
 	s.Len = j - i
 	s.Cap = cap - i
 	if cap-i > 0 {
-		s.Data = arrayAt(base, i, typ.Elem.Size(), "i < cap")
+		s.Data = arrayAt(base, i, physicalType(typ.Elem).Size(), "i < cap")
 	} else {
 		// do not advance pointer, to avoid pointing beyond end of slice
 		s.Data = base
@@ -1562,7 +1567,7 @@ func (v Value) Slice3(i, j, k int) Value {
 	s.Len = j - i
 	s.Cap = k - i
 	if k-i > 0 {
-		s.Data = arrayAt(base, i, typ.Elem.Size(), "i < k <= cap")
+		s.Data = arrayAt(base, i, physicalType(typ.Elem).Size(), "i < k <= cap")
 	} else {
 		// do not advance pointer, to avoid pointing beyond end of slice
 		s.Data = base
@@ -1839,7 +1844,7 @@ func (v Value) grow(n int) {
 	case oldLen+n < 0:
 		panic("reflect.Value.Grow: slice overflow")
 	case oldLen+n > p.Cap:
-		t := v.typ().Elem()
+		t := physicalType(v.typ().Elem())
 		// The linknamed growslice must use the same ABI as runtime slice helpers.
 		// LLGo lowers slice-like values (data,len,cap) as 3 registers, while a
 		// plain 3-word struct may use a different calling convention.
@@ -1927,10 +1932,10 @@ func Copy(dst, src Value) int {
 	}
 	src.mustBeExported()
 
-	de := dst.typ().Elem()
+	de := physicalType(dst.typ().Elem())
 	if !stringCopy {
-		se := src.typ().Elem()
-		typesMustMatch("reflect.Copy", toType(de), toType(se))
+		se := physicalType(src.typ().Elem())
+		typesMustMatch("reflect.Copy", toPublicType(de), toPublicType(se))
 	}
 
 	var ds, ss unsafeheaderSlice
@@ -3476,7 +3481,8 @@ func MakeSlice(typ Type, len, cap int) Value {
 		panic("reflect.MakeSlice: len > cap")
 	}
 
-	s := unsafeheaderSlice{Data: unsafe_NewArray(&(typ.Elem().(*rtype).t), cap), Len: len, Cap: cap}
+	et := physicalType((*sliceType)(unsafe.Pointer(&typ.(*rtype).t)).Elem)
+	s := unsafeheaderSlice{Data: unsafe_NewArray(et, cap), Len: len, Cap: cap}
 	return Value{&typ.(*rtype).t, unsafe.Pointer(&s), flagIndir | flag(Slice)}
 }
 
@@ -3561,7 +3567,7 @@ func (v Value) Clear() {
 			return
 		}
 		st := (*sliceType)(unsafe.Pointer(v.typ()))
-		elem := st.Elem
+		elem := physicalType(st.Elem)
 		step := elem.Size()
 		for i := 0; i < sh.Len; i++ {
 			typedmemclr(elem, unsafe.Add(sh.Data, uintptr(i)*step))
