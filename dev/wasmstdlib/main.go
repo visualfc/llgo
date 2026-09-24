@@ -53,6 +53,17 @@ func selectProfile(name string) (profile, error) {
 	return profile{}, fmt.Errorf("unknown profile %q", name)
 }
 
+func wasiThreadsSelected(p profile) bool {
+	if p.Reference || p.Target != "wasi" {
+		return false
+	}
+	switch strings.ToLower(os.Getenv("LLGO_WASI_THREADS")) {
+	case "1", "true", "on":
+		return true
+	}
+	return false
+}
+
 func sourceContext(p profile) (tags, cgo string) {
 	if p.Reference {
 		return "", "0"
@@ -64,7 +75,11 @@ func sourceContext(p profile) (tags, cgo string) {
 	case "emscripten-memory64":
 		return tags + ",llgo.wasm.emscripten,llgo.wasm.emscripten.memory64", "1"
 	case "wasi":
-		return tags + ",llgo.wasm.wasi", "1"
+		tags += ",llgo.wasm.wasi"
+		if wasiThreadsSelected(p) {
+			tags += ",llgo.wasi_threads"
+		}
+		return tags, "1"
 	default:
 		return tags, cgo
 	}
@@ -376,6 +391,8 @@ func run(name, reportPath, goCmd, llgo string) (retErr error) {
 	r.Implementation, r.Contract = "llgo", "LLGo profile behavior; not official-Go binary compatibility"
 	if p.Reference {
 		r.Implementation, r.Contract = "go-reference", "official Go compiler and host helper; not LLGo output"
+	} else if wasiThreadsSelected(p) {
+		r.Contract += "; WAMR WASI threads"
 	}
 	root, err := getwdForRun()
 	if err != nil {

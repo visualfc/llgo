@@ -23,9 +23,11 @@ No test-name filter or blanket skip is used. The driver clears inherited `GOFLAG
 | J32-GoJS | LLGo Memory32 with Go-compatible `js/wasm` source/API and the Emscripten-based JavaScript adapter, Node |
 | J32-Emscripten | LLGo Memory32 with the Emscripten JavaScript provider, Node |
 | J64-Emscripten | LLGo Memory64 with the Emscripten JavaScript provider, Node |
-| W32-WASI | LLGo Memory32 with WASI Preview 1, Wasmtime |
+| W32-WASI | LLGo Memory32 with WASI Preview 1; Wasmtime by default, WAMR when `LLGO_WASI_THREADS=1` |
 | GoJS-reference | Official Go compiler and the selected GOROOT's `go_js_wasm_exec` |
 | GoWASI-reference | Official Go compiler and the selected GOROOT's `go_wasip1_wasm_exec`, Wasmtime |
+
+Set `LLGO_WASI_THREADS=1` and place the LLGo-configured WAMR `iwasm` on `PATH` to run the W32-WASI row with pthreads and default threaded GC. The source inventory then includes `llgo.wasi_threads`; the report records the WAMR execution contract.
 
 The reference rows execute Go compiler output, not LLGo output. They establish the expected source behavior but do not substitute for any of the four LLGo paths. CI uses the repository-selected Go version and records it in every report.
 

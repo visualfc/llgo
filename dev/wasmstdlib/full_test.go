@@ -603,6 +603,7 @@ func TestFullStressCommandsUseQuickProfile(t *testing.T) {
 }
 
 func TestFullSourceContextMatchesCompilerProfiles(t *testing.T) {
+	t.Setenv("LLGO_WASI_THREADS", "0")
 	tests := []struct {
 		name, wantCGO string
 		wantTags      []string

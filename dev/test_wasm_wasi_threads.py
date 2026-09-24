@@ -73,6 +73,11 @@ def main():
                  "wasi threads ok")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
+        subprocess.run(
+            ["go", "run", "./dev/wasmstdlib", "-profile", "W32-WASI",
+             "-llgo", LLGO, "-report", str(pathlib.Path(directory) / "w32-wamr.json")],
+            check=True, cwd=ROOT, env=env, timeout=600,
+        )
 
 
 if __name__ == "__main__":
