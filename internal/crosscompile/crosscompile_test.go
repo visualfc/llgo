@@ -283,11 +283,20 @@ func TestUseWASIThreadsImportsMemory(t *testing.T) {
 	if !slices.Contains(export.CCFLAGS, "-pthread") {
 		t.Fatalf("CCFLAGS do not enable WASI threads: %v", export.CCFLAGS)
 	}
+	if i := slices.Index(export.CCFLAGS, "-target"); i < 0 || i+1 == len(export.CCFLAGS) || export.CCFLAGS[i+1] != "wasm32-wasip1-threads" {
+		t.Fatalf("CCFLAGS do not select the WASI threads startup files: %v", export.CCFLAGS)
+	}
+	if i := slices.Index(export.LDFLAGS, "-target"); i < 0 || i+1 == len(export.LDFLAGS) || export.LDFLAGS[i+1] != "wasm32-wasip1-threads" {
+		t.Fatalf("LDFLAGS do not select the WASI threads startup files: %v", export.LDFLAGS)
+	}
 	if !slices.Contains(export.BuildTags, "llgo.wasi_threads") {
 		t.Fatalf("BuildTags do not select the WASI pthread backend: %v", export.BuildTags)
 	}
 	if !slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
 		t.Fatalf("LDFLAGS do not import shared host memory: %v", export.LDFLAGS)
+	}
+	if slices.Contains(export.LDFLAGS, "-lwasi-emulated-pthread") {
+		t.Fatalf("LDFLAGS select the single-thread pthread shim: %v", export.LDFLAGS)
 	}
 	if !slices.Contains(export.LDFLAGS, "-Wl,--initial-memory=67108864") {
 		t.Fatalf("WASI pthread initial-memory contract changed: %v", export.LDFLAGS)

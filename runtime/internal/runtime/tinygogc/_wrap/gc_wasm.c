@@ -71,14 +71,15 @@ uintptr_t llgo_gc_stack_top(void) {
 	void *base = NULL;
 	size_t size = 0;
 	int status = pthread_getattr_np(pthread_self(), &attr);
-	// wasi-libc has no pthread stack descriptor for the process main thread.
+	// Older wasi-libc may not expose the process main thread's stack.
 	if (status == ENOSYS)
 		return (uintptr_t)&__stack_high;
 	if (status != 0)
 		__builtin_trap();
 	status = pthread_attr_getstack(&attr, &base, &size);
 	pthread_attr_destroy(&attr);
-	if (status != 0 || base == NULL || size == 0 ||
+	// A stack-first module legitimately gives the main thread base address 0.
+	if (status != 0 || size == 0 ||
 	    size > UINTPTR_MAX - (uintptr_t)base)
 		__builtin_trap();
 	return (uintptr_t)base + size;

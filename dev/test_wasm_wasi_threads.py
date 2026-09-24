@@ -14,7 +14,7 @@ LLGO = os.environ.get("LLGO", "llgo")
 IWASM = os.environ.get("IWASM", "iwasm")
 
 
-def run_probe(env, directory, name, fixture, tags, marker, timeout):
+def run_probe(env, directory, name, fixture, tags, marker, timeout, max_threads=8):
     module = pathlib.Path(directory) / f"{name}.wasm"
     command = [LLGO, "build", "-target", "wasi"]
     if tags:
@@ -27,7 +27,7 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout):
         timeout=180,
     )
     result = subprocess.run(
-        [IWASM, "--max-threads=8", "--stack-size=1048576",
+        [IWASM, f"--max-threads={max_threads}", "--stack-size=1048576",
          "--heap-size=0", "--dir=" + str(ROOT), "--dir=/tmp", str(module)],
         capture_output=True,
         text=True,
@@ -64,6 +64,8 @@ def main():
     env["LLGO_WASI_THREADS"] = "1"
     env["PATH"] = str(pathlib.Path(iwasm).resolve().parent) + os.pathsep + env["PATH"]
     with tempfile.TemporaryDirectory(prefix="llgo-wasi-threads-") as directory:
+        run_probe(env, directory, "startup", "wasm-wasi-thread-startup", "nogc",
+                  "wasi thread startup ok", 30, max_threads=32)
         run_probe(env, directory, "threads", "wasm-wasi-threads", "nogc",
                   "wasi threads ok", 30)
         run_probe(env, directory, "threaded-gc", "wasm-wasi-threaded-gc",
