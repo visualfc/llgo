@@ -46,6 +46,39 @@ func TestTypeKind(t *testing.T) {
 	}
 }
 
+func TestTypeForFuncMatchesTypeOf(t *testing.T) {
+	type Action func()
+	type Predicate func() bool
+
+	tests := []struct {
+		got  reflect.Type
+		want reflect.Type
+	}{
+		{reflect.TypeFor[func()](), reflect.TypeOf((func())(nil))},
+		{reflect.TypeFor[func() bool](), reflect.TypeOf((func() bool)(nil))},
+		{reflect.TypeFor[Action](), reflect.TypeOf((Action)(nil))},
+		{reflect.TypeFor[Predicate](), reflect.TypeOf((Predicate)(nil))},
+	}
+	for _, tt := range tests {
+		if tt.got.Kind() != reflect.Func {
+			t.Errorf("TypeFor kind = %v; want Func for %s", tt.got.Kind(), tt.got)
+		}
+		if tt.got != tt.want {
+			t.Errorf("TypeFor = %s kind %v; TypeOf = %s kind %v", tt.got, tt.got.Kind(), tt.want, tt.want.Kind())
+		}
+	}
+
+	called := 0
+	fn := reflect.MakeFunc(reflect.TypeFor[func()](), func([]reflect.Value) []reflect.Value {
+		called++
+		return nil
+	}).Interface().(func())
+	fn()
+	if called != 1 {
+		t.Fatalf("MakeFunc(TypeFor[func()]) called %d times; want 1", called)
+	}
+}
+
 func TestTypeForMatchesStructFieldType(t *testing.T) {
 	type holder struct {
 		Value *big.Int

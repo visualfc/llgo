@@ -862,6 +862,13 @@ func TypeOf(i any) Type {
 	return toType((*abi.Type)(unsafe.Pointer(eface.typ)))
 }
 
+// TypeFor returns the [Type] that represents the type argument T.
+func TypeFor[T any]() Type {
+	// abi.TypeFor keeps LLGo's closure struct for function types.
+	// Publish the same Func kind TypeOf reports.
+	return toPublicType(abi.TypeFor[T]())
+}
+
 // Use typed maps: LLGo's sync.Map compatibility implementation performs linear
 // searches. Both directions must identify the same canonical descriptor pair.
 var namedFuncTypes struct {
