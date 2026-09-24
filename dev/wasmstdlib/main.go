@@ -438,7 +438,7 @@ func run(name, reportPath, goCmd, llgo string) (retErr error) {
 	for _, e := range r.Packages {
 		counts[e.Status]++
 	}
-	summary := fmt.Sprintf("### W2 standard-library slice: %s\n\n%s\n\nGo version: %s; slice result: %s.\n\nPassed packages: %d; failed: %d; not run: %d; source-excluded (unclassified): %d.\n\nOnly this slice was checked; the complete inventory is a W3 gate.\n", name, r.Contract, r.GoVersion, r.Result, counts["pass"], counts["fail"], counts["not-run"], counts["source-excluded"])
+	summary := fmt.Sprintf("### Focused standard-library slice: %s\n\n%s\n\nGo version: %s; slice result: %s.\n\nPassed packages: %d; failed: %d; not run: %d; source-excluded (unclassified): %d.\n\nOnly this slice was checked; the full compatibility audit remains.\n", name, r.Contract, r.GoVersion, r.Result, counts["pass"], counts["fail"], counts["not-run"], counts["source-excluded"])
 	fmt.Print(summary)
 	if path := os.Getenv("GITHUB_STEP_SUMMARY"); path != "" {
 		f, openErr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
