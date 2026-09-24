@@ -153,3 +153,40 @@ func TestReflectClosureArrayOfSliceOf(t *testing.T) {
 		t.Fatalf("MakeSlice values = %d, %d; want %d, %d", got[0](), got[1](), n, n+1)
 	}
 }
+
+func TestReflectClosureSliceClear(t *testing.T) {
+	left, right := 3, 4
+	slice := make([]func() int, 2)
+	slice[0] = func() int { return left }
+	slice[1] = func() int { return right }
+
+	call := func(v reflect.Value) int {
+		t.Helper()
+		return v.Index(0).Interface().(func() int)()
+	}
+	tail := reflect.ValueOf(slice).Slice(1, 2)
+	if tail.Len() != 1 {
+		t.Fatalf("Slice(1, 2) len = %d, want 1", tail.Len())
+	}
+	if got, want := call(tail), right; got != want {
+		t.Fatalf("Slice(1, 2)[0] = %d, want %d", got, want)
+	}
+
+	mid := reflect.ValueOf(slice).Slice3(1, 2, 2)
+	if got, want := call(mid), right; got != want {
+		t.Fatalf("Slice3(1, 2, 2)[0] = %d, want %d", got, want)
+	}
+
+	var arr [2]func() int
+	arr[0] = func() int { return left }
+	arr[1] = func() int { return right }
+	sliced := reflect.ValueOf(&arr).Elem().Slice(1, 2)
+	if got, want := call(sliced), right; got != want {
+		t.Fatalf("array Slice(1, 2)[0] = %d, want %d", got, want)
+	}
+
+	reflect.ValueOf(slice).Clear()
+	if slice[0] != nil || slice[1] != nil {
+		t.Fatal("Clear left a stale function value")
+	}
+}

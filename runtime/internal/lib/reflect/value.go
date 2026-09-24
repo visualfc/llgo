@@ -612,15 +612,7 @@ func (v Value) Field(i int) Value {
 		panic("reflect: Field index out of range")
 	}
 	field := &tt.Fields[i]
-	typ := field.Typ
-
-	// Check closure to func
-	kind := typ.Kind()
-	if kind == abi.Func {
-		typ = closureOf(typ.FuncType())
-	} else if typ.IsClosure() {
-		kind = abi.Func
-	}
+	typ, kind := funcElem(field.Typ)
 	// Inherit permission bits from v, but clear flagEmbedRO.
 	fl := v.flag&(flagStickyRO|flagIndir|flagAddr) | flag(kind)
 	// Using an unexported field forces flagRO.
@@ -745,8 +737,8 @@ func (v Value) Float() float64 {
 
 var uint8Type = rtypeOf(uint8(0))
 
-// funcElem returns the in-memory type and public kind of an array or slice
-// element. Function values occupy LLGo's two-word closure, matching Field.
+// funcElem returns the in-memory type and public kind of a function-typed
+// value. Function values occupy LLGo's two-word closure.
 func funcElem(typ *abi.Type) (*abi.Type, abi.Kind) {
 	kind := typ.Kind()
 	if kind == abi.Func {
@@ -1523,7 +1515,7 @@ func (v Value) Slice(i, j int) Value {
 	s.Len = j - i
 	s.Cap = cap - i
 	if cap-i > 0 {
-		s.Data = arrayAt(base, i, typ.Elem.Size(), "i < cap")
+		s.Data = arrayAt(base, i, physicalType(typ.Elem).Size(), "i < cap")
 	} else {
 		// do not advance pointer, to avoid pointing beyond end of slice
 		s.Data = base
@@ -1575,7 +1567,7 @@ func (v Value) Slice3(i, j, k int) Value {
 	s.Len = j - i
 	s.Cap = k - i
 	if k-i > 0 {
-		s.Data = arrayAt(base, i, typ.Elem.Size(), "i < k <= cap")
+		s.Data = arrayAt(base, i, physicalType(typ.Elem).Size(), "i < k <= cap")
 	} else {
 		// do not advance pointer, to avoid pointing beyond end of slice
 		s.Data = base
@@ -3575,7 +3567,7 @@ func (v Value) Clear() {
 			return
 		}
 		st := (*sliceType)(unsafe.Pointer(v.typ()))
-		elem := st.Elem
+		elem := physicalType(st.Elem)
 		step := elem.Size()
 		for i := 0; i < sh.Len; i++ {
 			typedmemclr(elem, unsafe.Add(sh.Data, uintptr(i)*step))
