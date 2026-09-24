@@ -84,6 +84,14 @@ run_worker_llgo_test() {
 	grep -Fq "PASS" "${output}"
 }
 
+run_worker_pool_gc_test() {
+	local output="${work_dir}/test-pool-gc-emscripten.out"
+	run_with_timeout env LLGO_WASM_WORKERS=2 "${llgo_cmd}" test \
+		-target emscripten -emulator -v -count=1 -timeout=180s \
+		-run '^TestPoolAfterGC$' "${repo_root}/test/std/sync" 2>&1 | tee "${output}"
+	grep -Fq "PASS" "${output}"
+}
+
 find_browser() {
 	if [[ -n "${CHROME:-}" && -x "${CHROME}" ]]; then
 		printf '%s\n' "${CHROME}"
@@ -166,6 +174,7 @@ run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs \
 # Verify that the public test command selects and executes the worker runtime.
 run_worker_llgo_test emscripten test-workers-emscripten
 run_worker_llgo_test emscripten-memory64 test-workers-memory64
+run_worker_pool_gc_test
 
 run_browser_acceptance "$(find_browser)"
 

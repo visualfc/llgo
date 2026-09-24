@@ -1,7 +1,7 @@
-//go:build llgo && (nogc || baremetal || (wasm && !llgo.wasm.gc.linear))
+//go:build llgo && wasm && llgo.wasm.gc.linear && !nogc && !baremetal
 
 /*
- * Copyright (c) 2025 The XGo Authors (xgo.dev). All rights reserved.
+ * Copyright (c) 2026 The XGo Authors (xgo.dev). All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,12 @@
 
 package tls
 
-import c "github.com/xgo-dev/llgo/runtime/internal/clite"
+import (
+	"unsafe"
+
+	c "github.com/xgo-dev/llgo/runtime/internal/clite"
+	"github.com/xgo-dev/llgo/runtime/internal/runtime/tinygogc"
+)
 
 type slot[T any] struct {
 	value      T
@@ -26,9 +31,11 @@ type slot[T any] struct {
 }
 
 func allocSlot(size uintptr) c.Pointer {
-	return c.Calloc(1, size)
+	// Host TLS is outside the GC's scanned roots. Keep the slot and every Go
+	// pointer it contains reachable until the thread-local destructor runs.
+	return c.Pointer(tinygogc.AllocRoot(size))
 }
 
 func freeSlot(ptr c.Pointer) {
-	c.Free(ptr)
+	tinygogc.FreeRoot(unsafe.Pointer(ptr))
 }

@@ -42,9 +42,9 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout, max_threads=
         raise SystemExit(f"WAMR {name} probe failed with exit code {result.returncode}")
 
 
-def run_llgo(env, args, marker):
+def run_llgo(env, args, marker, timeout=180):
     result = subprocess.run([LLGO, *args], capture_output=True, text=True,
-                            env=env, timeout=180)
+                            env=env, timeout=timeout)
     print(result.stdout, end="")
     print(result.stderr, end="")
     if result.returncode != 0 or (
@@ -78,6 +78,9 @@ def main():
                  "wasi threaded filesystem ok")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
+        run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
+                       "^TestPoolAfterGC$", str(ROOT / "test/std/sync")], "PASS",
+                 timeout=300)
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/go/importer")], "PASS")
         run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
