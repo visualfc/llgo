@@ -76,7 +76,7 @@ func fullProfile(name string) (profile, error) {
 }
 
 func fullCommand(p profile, goCmd, llgo, goRoot, pkg string) command {
-	args := []string{"test", "-v", "-count=1", "-timeout=" + fullTestTimeout(pkg)}
+	args := []string{"test", "-v", "-count=1", "-timeout=" + fullTestTimeout(p, pkg)}
 	env := map[string]string{}
 	program := llgo
 	if p.Reference {
@@ -148,9 +148,14 @@ func fullNeedsPCLN(pkg string) bool {
 	return pkg == "test"
 }
 
-func fullTestTimeout(pkg string) string {
+func fullTestTimeout(p profile, pkg string) string {
 	// Keep the global default strict while allowing reviewed, finite wasm work
 	// enough time to finish.
+	if p.Name == "W32-WASI" && pkg == "test/std/net/http/httptest" {
+		// Two real TLS handshakes took about 50 and 75 seconds in WAMR's
+		// classic interpreter during the reviewed full-package run.
+		return "3m"
+	}
 	switch pkg {
 	case "test/std/crypto/dsa", "test/std/crypto/rsa", "test/std/go/types", "test/std/os", "test/std/runtime/pprof", "test/std/testing":
 		return "3m"

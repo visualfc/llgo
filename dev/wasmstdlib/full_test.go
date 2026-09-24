@@ -666,15 +666,22 @@ func TestFullSourceExclusionsAreProfileSpecific(t *testing.T) {
 }
 
 func TestFullLongTimeoutIsTargeted(t *testing.T) {
+	wasi := profile{Name: "W32-WASI"}
 	for _, pkg := range []string{"test/std/crypto/dsa", "test/std/crypto/rsa", "test/std/go/types", "test/std/os", "test/std/runtime/pprof", "test/std/testing", "test/_stress/runtime/example"} {
-		if got := fullTestTimeout(pkg); got != "3m" {
+		if got := fullTestTimeout(wasi, pkg); got != "3m" {
 			t.Fatalf("%s timeout = %q", pkg, got)
 		}
 	}
-	if got := fullTestTimeout("test/std/crypto/aes"); got != "60s" {
+	if got := fullTestTimeout(wasi, "test/std/net/http/httptest"); got != "3m" {
+		t.Fatalf("W32 httptest timeout = %q", got)
+	}
+	if got := fullTestTimeout(profile{Name: "J32-Emscripten"}, "test/std/net/http/httptest"); got != "60s" {
+		t.Fatalf("J32 httptest timeout = %q", got)
+	}
+	if got := fullTestTimeout(wasi, "test/std/crypto/aes"); got != "60s" {
 		t.Fatalf("default timeout = %q", got)
 	}
-	if got := fullTestTimeout("test/_stress/runtime/timer"); got != "3m" {
+	if got := fullTestTimeout(wasi, "test/_stress/runtime/timer"); got != "3m" {
 		t.Fatalf("stress timeout = %q", got)
 	}
 }
