@@ -875,6 +875,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		frontendOptions: frontendOptions,
 		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, cabiOptimize),
 		buildTrace:      buildTrace,
+		goVersion:       sourcePatchGoVersion,
 	}
 	defer ctx.closePackageMetas()
 	defer ctx.closePackageArchiveBuffers()
@@ -899,8 +900,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	// default runtime globals must be registered before packages are built
 	// The generated program must report the GOROOT whose standard library is
 	// being compiled, which may differ from the toolchain used to build llgo.
-	addGlobalString(conf, "runtime.defaultGOROOT="+sourcePatchGOROOT, nil)
-	addGlobalString(conf, "runtime.buildVersion="+runtime.Version(), nil)
+	addDefaultRuntimeGlobals(conf, sourcePatchGOROOT, sourcePatchGoVersion)
 	pkgs, pkgEntries, err := registerSSAPkgs(ctx, initial, verbose)
 	if err != nil {
 		return nil, err
@@ -1577,6 +1577,10 @@ type context struct {
 	// Cache related fields
 	cacheManager *cacheManager
 	llvmVersion  string
+	// goVersion is the GOVERSION of the GOROOT whose standard library is being
+	// compiled. collectEnvInputs records it through sourceGoVersion; compiled
+	// programs report it through addDefaultRuntimeGlobals as runtime.Version().
+	goVersion string
 
 	// go list derived file lists (SFiles, etc.)
 	sfilesCache       map[string][]string // pkg.ID -> absolute .s/.S file paths
@@ -2044,6 +2048,11 @@ const maxRewriteValueLength = 1 << 20 // 1 MiB cap per rewrite value
 
 func addGlobalString(conf *Config, arg string, mainPkgs []string) {
 	addGlobalStringWith(conf, arg, mainPkgs, true)
+}
+
+func addDefaultRuntimeGlobals(conf *Config, goroot, goversion string) {
+	addGlobalString(conf, "runtime.defaultGOROOT="+goroot, nil)
+	addGlobalString(conf, "runtime.buildVersion="+goversion, nil)
 }
 
 func addGlobalStringWith(conf *Config, arg string, mainPkgs []string, skipIfExists bool) {
