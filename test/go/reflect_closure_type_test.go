@@ -98,3 +98,58 @@ func TestReflectClosurePointerTypeIdentity(t *testing.T) {
 		t.Fatalf("canonical named function pointer type was not found as a reflect.Type map key")
 	}
 }
+
+func TestReflectClosureIndexSet(t *testing.T) {
+	left, right := 1, 2
+	var arr [2]func() int
+	reflect.ValueOf(&arr).Elem().Index(0).Set(reflect.ValueOf(func() int { return left }))
+	reflect.ValueOf(&arr).Elem().Index(1).Set(reflect.ValueOf(func() int { return right }))
+	if got, want := arr[0](), left; got != want {
+		t.Fatalf("array[0] = %d, want %d", got, want)
+	}
+	if got, want := arr[1](), right; got != want {
+		t.Fatalf("array[1] = %d, want %d", got, want)
+	}
+
+	slice := make([]func() int, 2)
+	reflect.ValueOf(slice).Index(0).Set(reflect.ValueOf(func() int { return left + 10 }))
+	reflect.ValueOf(slice).Index(1).Set(reflect.ValueOf(func() int { return right + 10 }))
+	if got, want := slice[0](), left+10; got != want {
+		t.Fatalf("slice[0] = %d, want %d", got, want)
+	}
+	if got, want := slice[1](), right+10; got != want {
+		t.Fatalf("slice[1] = %d, want %d", got, want)
+	}
+
+	var local struct {
+		Callbacks [2]func() int
+		Value     int
+	}
+	reflect.ValueOf(&local).Elem().Field(0).Index(0).Set(reflect.ValueOf(func() int { return left + 20 }))
+	reflect.ValueOf(&local).Elem().Field(0).Index(1).Set(reflect.ValueOf(func() int { return right + 20 }))
+	if got, want := local.Callbacks[0](), left+20; got != want {
+		t.Fatalf("struct array[0] = %d, want %d", got, want)
+	}
+	if got, want := local.Callbacks[1](), right+20; got != want {
+		t.Fatalf("struct array[1] = %d, want %d", got, want)
+	}
+}
+
+func TestReflectClosureArrayOfSliceOf(t *testing.T) {
+	fnType := reflect.TypeOf((func() int)(nil))
+	if got, want := reflect.ArrayOf(2, fnType).Size(), reflect.TypeOf([2]func() int{}).Size(); got != want {
+		t.Fatalf("ArrayOf size = %d, want %d", got, want)
+	}
+	if got, want := reflect.ArrayOf(2, fnType).Elem().Kind(), reflect.Func; got != want {
+		t.Fatalf("ArrayOf elem kind = %v, want %v", got, want)
+	}
+
+	n := 7
+	made := reflect.MakeSlice(reflect.SliceOf(fnType), 2, 2)
+	made.Index(0).Set(reflect.ValueOf(func() int { return n }))
+	made.Index(1).Set(reflect.ValueOf(func() int { return n + 1 }))
+	got := made.Interface().([]func() int)
+	if got[0]() != n || got[1]() != n+1 {
+		t.Fatalf("MakeSlice values = %d, %d; want %d, %d", got[0](), got[1](), n, n+1)
+	}
+}

@@ -514,6 +514,15 @@ func toPublicType(typ *abi.Type) Type {
 	return toType(typ)
 }
 
+// physicalType is the in-memory layout of t. Function values occupy LLGo's
+// two-word closure; the public Kind remains Func via toPublicType.
+func physicalType(t *abi.Type) *abi.Type {
+	if t != nil && t.Kind() == abi.Func {
+		return closureOf(t.FuncType())
+	}
+	return t
+}
+
 func (t *rtype) IsVariadic() bool {
 	if t.Kind() != Func {
 		panic("reflect: IsVariadic of non-func type " + t.String())
@@ -1292,19 +1301,20 @@ func haveIdenticalUnderlyingType(T, V *abi.Type, cmpTags bool) bool {
 // SliceOf returns the slice type with element type t.
 // For example, if t represents int, SliceOf(t) represents []int.
 func SliceOf(t Type) Type {
-	typ := t.common()
+	publicElem := t.common()
+	typ := physicalType(publicElem)
 
 	// Look in cache.
-	ckey := cacheKey{Slice, typ, nil, 0}
+	ckey := cacheKey{Slice, publicElem, nil, 0}
 	if slice, ok := lookupCache.Load(ckey); ok {
 		return slice.(Type)
 	}
 
 	// Look in known types.
-	s := "[]" + stringFor(typ)
+	s := "[]" + stringFor(publicElem)
 	for _, tt := range typesByString(s) {
 		slice := (*sliceType)(unsafe.Pointer(tt))
-		if slice.Elem == typ {
+		if toPublicType(slice.Elem).common() == publicElem {
 			ti, _ := lookupCache.LoadOrStore(ckey, toRType(tt))
 			return ti.(Type)
 		}
@@ -1316,7 +1326,7 @@ func SliceOf(t Type) Type {
 	slice := *prototype
 	slice.TFlag = 0
 	slice.Str_ = s
-	slice.Hash = fnv1(typ.Hash, '[')
+	slice.Hash = fnv1(publicElem.Hash, '[')
 	slice.Elem = typ
 	slice.PtrToThis_ = nil
 
@@ -1801,19 +1811,20 @@ func ArrayOf(length int, elem Type) Type {
 		panic("reflect: negative length passed to ArrayOf")
 	}
 
-	typ := elem.common()
+	publicElem := elem.common()
+	typ := physicalType(publicElem)
 
 	// Look in cache.
-	ckey := cacheKey{Array, typ, nil, uintptr(length)}
+	ckey := cacheKey{Array, publicElem, nil, uintptr(length)}
 	if array, ok := lookupCache.Load(ckey); ok {
 		return array.(Type)
 	}
 
 	// Look in known types.
-	s := "[" + strconv.Itoa(length) + "]" + stringFor(typ)
+	s := "[" + strconv.Itoa(length) + "]" + stringFor(publicElem)
 	for _, tt := range typesByString(s) {
 		array := (*arrayType)(unsafe.Pointer(tt))
-		if array.Elem == typ {
+		if toPublicType(array.Elem).common() == publicElem {
 			ti, _ := lookupCache.LoadOrStore(ckey, toRType(tt))
 			return ti.(Type)
 		}
@@ -1825,7 +1836,7 @@ func ArrayOf(length int, elem Type) Type {
 	array := *prototype
 	array.TFlag = typ.TFlag & abi.TFlagRegularMemory
 	array.Str_ = s
-	array.Hash = fnv1(typ.Hash, '[')
+	array.Hash = fnv1(publicElem.Hash, '[')
 	for n := uint32(length); n > 0; n >>= 8 {
 		array.Hash = fnv1(array.Hash, byte(n))
 	}
