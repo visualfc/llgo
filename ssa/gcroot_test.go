@@ -94,20 +94,21 @@ func TestGCRootReservationAndClosureContext(t *testing.T) {
 
 func TestThreadLocalGCRootFrameIR(t *testing.T) {
 	for _, tt := range []struct {
-		name, triple, profile, chainType, frameType string
+		name, goos, triple, profile, chainType, frameType string
 	}{
-		{"J32", "wasm32-unknown-emscripten", "j32", "{ ptr, i32 }", "{ ptr, i32 }"},
-		{"J64", "wasm64-unknown-emscripten", "j64", "ptr", "ptr"},
+		{"J32", "js", "wasm32-unknown-emscripten", "j32", "{ ptr, i32 }", "{ ptr, i32 }"},
+		{"J64", "js", "wasm64-unknown-emscripten", "j64", "ptr", "ptr"},
+		{"W32", "wasip1", "wasm32-unknown-wasip1", "w32", "{ ptr, i32 }", "{ ptr, i32 }"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			testThreadLocalGCRootFrameIR(t, tt.triple, tt.profile, tt.chainType, tt.frameType)
+			testThreadLocalGCRootFrameIR(t, tt.goos, tt.triple, tt.profile, tt.chainType, tt.frameType)
 		})
 	}
 }
 
-func testThreadLocalGCRootFrameIR(t *testing.T, triple, profile, chainType, frameType string) {
+func testThreadLocalGCRootFrameIR(t *testing.T, goos, triple, profile, chainType, frameType string) {
 	prog := ssatest.NewProgram(t, &ssa.Target{
-		GOOS: "js", GOARCH: "wasm", LLVMTarget: triple, WasmProfile: profile,
+		GOOS: goos, GOARCH: "wasm", LLVMTarget: triple, WasmProfile: profile,
 	})
 	if prog.ThreadLocalGCRootsEnabled() {
 		t.Fatal("thread-local GC roots enabled by default")
