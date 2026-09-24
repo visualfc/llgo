@@ -672,11 +672,13 @@ func TestFullLongTimeoutIsTargeted(t *testing.T) {
 			t.Fatalf("%s timeout = %q", pkg, got)
 		}
 	}
-	if got := fullTestTimeout(wasi, "test/std/net/http/httptest"); got != "3m" {
-		t.Fatalf("W32 httptest timeout = %q", got)
-	}
-	if got := fullTestTimeout(profile{Name: "J32-Emscripten"}, "test/std/net/http/httptest"); got != "60s" {
-		t.Fatalf("J32 httptest timeout = %q", got)
+	for _, pkg := range []string{"test/std/net/http/httptest", "test/std/crypto/x509"} {
+		if got := fullTestTimeout(wasi, pkg); got != "3m" {
+			t.Fatalf("W32 %s timeout = %q", pkg, got)
+		}
+		if got := fullTestTimeout(profile{Name: "J32-Emscripten"}, pkg); got != "60s" {
+			t.Fatalf("J32 %s timeout = %q", pkg, got)
+		}
 	}
 	if got := fullTestTimeout(wasi, "test/std/crypto/aes"); got != "60s" {
 		t.Fatalf("default timeout = %q", got)
