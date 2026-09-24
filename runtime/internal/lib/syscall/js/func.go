@@ -127,16 +127,23 @@ func retainCallback() {
 }
 
 func dispatchSynchronousCallback(handle c.Ulong) {
-	retainCallback()
+	// Bounded workers keep their callback poll installed. An external JS
+	// callback can enter on the scheduler's system fiber without a G, so it
+	// must not acquire funcsMu before HandleWasmEvent starts its handler G.
+	if !keepWasmCallbackPoll {
+		retainCallback()
+	}
 	runCallback(uintptr(handle), llruntime.SchedulerProcID())
 }
 
 func runCallback(handle uintptr, owner int) {
 	llruntime.HandleWasmEvent(func() { dispatchCallback(handle, owner) })
-	funcsMu.Lock()
-	activeCallbacks--
-	stopCallbackPollLocked()
-	funcsMu.Unlock()
+	if !keepWasmCallbackPoll {
+		funcsMu.Lock()
+		activeCallbacks--
+		stopCallbackPollLocked()
+		funcsMu.Unlock()
+	}
 }
 
 func dispatchCallback(handle uintptr, owner int) {
@@ -178,7 +185,12 @@ func pollCallbacks() {
 		if handle == 0 {
 			break
 		}
-		retainCallback()
+		// Only single-worker builds can remove the poll hook while a
+		// callback is pending. Bounded workers keep it installed, and polling
+		// may run without a G on the scheduler's system fiber.
+		if !keepWasmCallbackPoll {
+			retainCallback()
+		}
 		owner := llruntime.SchedulerProcID()
 		go runCallback(handle, owner)
 	}

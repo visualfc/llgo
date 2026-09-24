@@ -17,7 +17,11 @@ type SchedulerWaiter struct {
 }
 
 func CurrentSchedulerWaiter() SchedulerWaiter {
-	return SchedulerWaiter{gp: getg()}
+	gp := getg()
+	if gp == nil {
+		fatal("runtime: WebAssembly scheduler waiter created without a goroutine")
+	}
+	return SchedulerWaiter{gp: gp}
 }
 
 func (w *SchedulerWaiter) Park() {
