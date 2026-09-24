@@ -1482,15 +1482,12 @@ func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 		defaultEnabled = true
 	case crosscompile.WasmProfileW32:
 		if IsWasiThreadsEnabled() {
-			if !explicit && !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
-				return false, errors.New("WASI threads require -tags nogc or the experimental -tags llgo.wasm.gc.linear")
-			}
-			// Keep threaded GC explicit until the libc-disjoint Go heap can
-			// grow without a fixed arena limit.
-			if !explicit {
+			if slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
+				if explicit {
+					return false, errors.New("WASI threads cannot combine nogc with llgo.wasm.gc.linear")
+				}
 				return false, nil
 			}
-			break
 		}
 		defaultEnabled = true
 	case crosscompile.WasmProfileNone:

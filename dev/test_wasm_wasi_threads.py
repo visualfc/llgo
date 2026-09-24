@@ -16,9 +16,12 @@ IWASM = os.environ.get("IWASM", "iwasm")
 
 def run_probe(env, directory, name, fixture, tags, marker, timeout):
     module = pathlib.Path(directory) / f"{name}.wasm"
+    command = [LLGO, "build", "-target", "wasi"]
+    if tags:
+        command += ["-tags", tags]
+    command += ["-o", str(module), str(ROOT / "internal/build/testdata" / fixture)]
     subprocess.run(
-        [LLGO, "build", "-target", "wasi", "-tags", tags, "-o", str(module),
-         str(ROOT / "internal/build/testdata" / fixture)],
+        command,
         check=True,
         env=env,
         timeout=180,
@@ -50,7 +53,7 @@ def main():
         run_probe(env, directory, "threads", "wasm-wasi-threads", "nogc",
                   "wasi threads ok", 30)
         run_probe(env, directory, "threaded-gc", "wasm-wasi-threaded-gc",
-                  "llgo.wasm.gc.linear", "wasi threaded gc ok", 120)
+                  "", "wasi threaded gc ok", 120)
 
 
 if __name__ == "__main__":
