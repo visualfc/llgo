@@ -142,6 +142,23 @@ func main() {
 	if !<-recovered {
 		fail("worker panic/recover failed")
 	}
+	// Live Go allocations must grow beyond the first libc arena without
+	// overlapping the pthread stacks and TLS allocated between arenas.
+	retained := make([]byte, 33<<20)
+	retained[0] = 0x12
+	retained[len(retained)-1] = 0x34
+	runtime.GC()
+	if retained[0] != 0x12 || retained[len(retained)-1] != 0x34 {
+		fail("live allocation was lost across arena growth")
+	}
+	if value.value != 0x1234 {
+		fail("earlier arena was lost after growth")
+	}
+	runtime.ReadMemStats(&after)
+	if after.HeapSys <= 32<<20 {
+		fail("threaded GC heap did not grow")
+	}
+	runtime.KeepAlive(retained)
 	waitForRegistered(2)
 	println("wasi threaded gc ok")
 }

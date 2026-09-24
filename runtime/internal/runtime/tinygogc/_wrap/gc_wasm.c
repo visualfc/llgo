@@ -23,7 +23,8 @@ extern unsigned char __heap_base;
 #if defined(__wasi__) && defined(_REENTRANT)
 // wasi-libc allocates pthread stacks and TLS from its own heap. Reserve a
 // disjoint region before tinygogc starts, rather than treating all remaining
-// linear memory as a Go heap and corrupting later libc allocations.
+// linear memory as a Go heap and corrupting later libc allocations. Further
+// disjoint regions can be allocated as the Go heap grows.
 #define LLGO_WASI_GC_ARENA_SIZE (32u << 20)
 static uintptr_t llgo_wasi_gc_arena_start;
 static uintptr_t llgo_wasi_gc_arena_end;
@@ -36,6 +37,10 @@ static void llgo_wasi_gc_init_arena(void) {
     __builtin_trap();
   llgo_wasi_gc_arena_start = (uintptr_t)arena;
   llgo_wasi_gc_arena_end = (uintptr_t)arena + LLGO_WASI_GC_ARENA_SIZE;
+}
+
+uintptr_t llgo_gc_new_arena(uintptr_t size) {
+  return (uintptr_t)malloc(size);
 }
 #endif
 

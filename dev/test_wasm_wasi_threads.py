@@ -25,7 +25,7 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout):
     )
     result = subprocess.run(
         [IWASM, "--max-threads=8", "--stack-size=1048576",
-         "--heap-size=67108864", str(module)],
+         "--heap-size=134217728", str(module)],
         capture_output=True,
         text=True,
         timeout=timeout,

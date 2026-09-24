@@ -772,6 +772,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			export.LDFLAGS = append(
 				export.LDFLAGS,
 				"-Wl,--initial-memory=67108864", // Preserve the shared-memory backend's host contract.
+				"-Wl,--max-memory=268435456",    // Leave room for libc and additional Go GC arenas.
 				"-Wl,--import-memory",
 				"-lwasi-emulated-pthread",
 				"-lpthread",
