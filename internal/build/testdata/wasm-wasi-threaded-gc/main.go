@@ -87,6 +87,31 @@ func main() {
 	wg.Wait()
 	waitForBaseline(baseline)
 
+	// A parked channel receiver still owns a pthread in this backend. It
+	// must acknowledge a collection without requiring a sender to wake it.
+	parked := make(chan struct{})
+	parkedReady := make(chan struct{})
+	parkedDone := make(chan struct{})
+	go func() {
+		close(parkedReady)
+		<-parked
+		close(parkedDone)
+	}()
+	<-parkedReady
+	waitForRegistered(2)
+	for i := 0; i < 1000; i++ {
+		yieldC()
+	}
+	runtime.ReadMemStats(&before)
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	if after.NumGC <= before.NumGC {
+		fail("collection stalled while channel receiver was parked")
+	}
+	close(parked)
+	<-parkedDone
+	waitForBaseline(baseline)
+
 	blocked := make(chan *payload, 1)
 	unblocked := make(chan struct{})
 	go func() {

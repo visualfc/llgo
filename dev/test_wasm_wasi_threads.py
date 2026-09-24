@@ -67,7 +67,7 @@ def main():
         run_probe(env, directory, "threads", "wasm-wasi-threads", "nogc",
                   "wasi threads ok", 30)
         run_probe(env, directory, "threaded-gc", "wasm-wasi-threaded-gc",
-                  "", "wasi threaded gc ok", 120)
+                  "", "wasi threaded gc ok", 180)
         run_llgo(env, ["run", "-target", "wasi", "-emulator",
                        str(ROOT / "internal/build/testdata/wasm-wasi-threads")],
                  "wasi threads ok")
@@ -81,6 +81,8 @@ def main():
         run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
                        "^(TestTBasicMethods|FuzzExample)$",
                        str(ROOT / "test/std/testing")], "PASS")
+        run_llgo(env, ["test", "-target", "wasi", "-emulator",
+                       str(ROOT / "test/std/weak")], "PASS")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        "-run", "^TestConcurrentSelectProposeReplyStress$",
                        str(ROOT / "test")], "PASS")

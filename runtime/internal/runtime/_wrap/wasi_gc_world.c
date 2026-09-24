@@ -41,6 +41,23 @@ static void world_wait(void) {
     __builtin_trap();
 }
 
+// Wake hosted Go condition waiters often enough to publish their roots for a
+// stop-the-world request, even when no application signal is forthcoming.
+void llgo_wasi_gc_cond_timedwait(pthread_cond_t *condition,
+                                pthread_mutex_t *mutex) {
+  struct timespec deadline;
+  if (clock_gettime(CLOCK_REALTIME, &deadline) != 0)
+    __builtin_trap();
+  deadline.tv_nsec += 20000000;
+  if (deadline.tv_nsec >= 1000000000) {
+    deadline.tv_sec++;
+    deadline.tv_nsec -= 1000000000;
+  }
+  int status = pthread_cond_timedwait(condition, mutex, &deadline);
+  if (status != 0 && status != ETIMEDOUT)
+    __builtin_trap();
+}
+
 void llgo_wasi_gc_enter_begin(void) {
   world_lock();
   while (world_epoch & 1)
