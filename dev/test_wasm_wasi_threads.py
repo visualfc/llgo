@@ -76,6 +76,9 @@ def main():
                  "wasi threaded filesystem ok")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
+        run_llgo(env, ["test", "-target", "wasi", "-emulator",
+                       "-run", "^TestConcurrentSelectProposeReplyStress$",
+                       str(ROOT / "test")], "PASS")
         subprocess.run(
             ["go", "run", "./dev/wasmstdlib", "-profile", "W32-WASI",
              "-llgo", LLGO, "-report", str(pathlib.Path(directory) / "w32-wamr.json")],
