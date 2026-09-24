@@ -78,6 +78,15 @@ def main():
              "-llgo", LLGO, "-report", str(pathlib.Path(directory) / "w32-wamr.json")],
             check=True, cwd=ROOT, env=env, timeout=600,
         )
+        goroot = subprocess.check_output(["go", "env", "GOROOT"], env=env,
+                                         text=True).strip()
+        subprocess.run(
+            ["go", "test", "./test/goroot", "-run", "^TestGoRootRunCases$",
+             "-count=1", "-args", "-goroot", goroot, "-llgo", LLGO,
+             "-wasm-profile", "W32-WASI", "-directive-mode", "ci",
+             "-case", r"^helloworld\.go$", "-min-swap-free-mib=0"],
+            check=True, cwd=ROOT, env=env, timeout=180,
+        )
 
 
 if __name__ == "__main__":

@@ -785,6 +785,30 @@ func TestGenMainModuleInstallsLocalContextWhenNeeded(t *testing.T) {
 	)
 }
 
+func TestGenMainModuleWASIThreadsInstallsLocalContextWithoutUserLocality(t *testing.T) {
+	llvm.InitializeAllTargets()
+	t.Setenv(llgoWasiThreads, "1")
+	prog := llssa.NewProgram(nil)
+	installLocalContextTestRuntime(prog)
+	ctx := &context{
+		prog: prog,
+		buildConf: &Config{
+			BuildMode: BuildModeExe,
+			Goos:      "wasip1",
+			Goarch:    "wasm",
+			Target:    "wasi",
+		},
+	}
+	pkg := &packages.Package{PkgPath: "example.com/foo", ExportFile: "foo.a"}
+	ir := genMainModule(ctx, llssa.PkgRuntime, pkg, &genConfig{rtInit: true}).LPkg.String()
+	assertInOrder(t, ir,
+		"EnterLocalContext",
+		`call void @"github.com/xgo-dev/llgo/runtime/internal/runtime.init"()`,
+		`call void @"example.com/foo.main"()`,
+		"LeaveLocalContext",
+	)
+}
+
 func installLocalContextTestRuntime(prog llssa.Program) {
 	runtimePkg := types.NewPackage(llssa.PkgRuntime, "runtime")
 	contextName := types.NewTypeName(token.NoPos, runtimePkg, "LocalContext", nil)

@@ -483,7 +483,11 @@ func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa
 	// user program has no TLS/GLS declarations. Root that state on the host
 	// entry stack before runtime.init and keep it installed while logical Go
 	// stacks are dispatched by RunWasmMain.
-	hasLocalContext := prog.NeedsLocalContext() || fns.wasmRunMain != nil
+	// The WASI pthread runtime uses thread-local state during runtime.init,
+	// including caller-location storage. A small program may have no user
+	// locality declarations, so the linked-program query alone is insufficient.
+	hasLocalContext := prog.NeedsLocalContext() || fns.wasmRunMain != nil ||
+		(ctx.buildConf.Goos == "wasip1" && IsWasiThreadsEnabled())
 	if hasLocalContext {
 		localCtx, previousLocalCtx = b.EnterLocalContext()
 	}
