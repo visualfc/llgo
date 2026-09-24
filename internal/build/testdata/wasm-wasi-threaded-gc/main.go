@@ -134,7 +134,30 @@ func main() {
 	if after.NumGC <= before.NumGC {
 		fail("collection stalled after timer stopped")
 	}
+	if !recoverPayload(true) {
+		fail("main-thread panic/recover failed")
+	}
+	recovered := make(chan bool, 1)
+	go func() { recovered <- recoverPayload(false) }()
+	if !<-recovered {
+		fail("worker panic/recover failed")
+	}
+	waitForRegistered(2)
 	println("wasi threaded gc ok")
+}
+
+// LLVM lowers this recover path through legacy Wasm EH. It must keep working
+// on the WAMR build used by CI, including a collection in the active defer.
+func recoverPayload(collect bool) (ok bool) {
+	value := &payload{value: 0x5678}
+	defer func() {
+		recovered, valid := recover().(*payload)
+		if collect {
+			runtime.GC()
+		}
+		ok = valid && recovered != nil && recovered.value == value.value
+	}()
+	panic(value)
 }
 
 func waitForBaseline(baseline uint64) {

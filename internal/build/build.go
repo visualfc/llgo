@@ -1485,8 +1485,8 @@ func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 			if !explicit && !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
 				return false, errors.New("WASI threads require -tags nogc or the experimental -tags llgo.wasm.gc.linear")
 			}
-			// Keep threaded GC explicit while heap growth and exception
-			// compatibility are validated on WAMR.
+			// Keep threaded GC explicit until the libc-disjoint Go heap can
+			// grow without a fixed arena limit.
 			if !explicit {
 				return false, nil
 			}
