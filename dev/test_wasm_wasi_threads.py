@@ -28,7 +28,7 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout):
     )
     result = subprocess.run(
         [IWASM, "--max-threads=8", "--stack-size=1048576",
-         "--heap-size=134217728", str(module)],
+         "--heap-size=0", str(module)],
         capture_output=True,
         text=True,
         timeout=timeout,
@@ -42,18 +42,37 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout):
         raise SystemExit(f"WAMR {name} probe failed with exit code {result.returncode}")
 
 
+def run_llgo(env, args, marker):
+    result = subprocess.run([LLGO, *args], capture_output=True, text=True,
+                            env=env, timeout=180)
+    print(result.stdout, end="")
+    print(result.stderr, end="")
+    if result.returncode != 0 or (
+        marker not in result.stdout.splitlines()
+        and marker not in result.stderr.splitlines()
+    ):
+        raise SystemExit(f"LLGo {' '.join(args)} failed with exit code {result.returncode}")
+
+
 def main():
-    if shutil.which(IWASM) is None:
+    iwasm = shutil.which(IWASM)
+    if iwasm is None:
         raise SystemExit(f"WAMR runner not found: {IWASM}")
 
     env = os.environ.copy()
     env["LLGO_ROOT"] = str(ROOT)
     env["LLGO_WASI_THREADS"] = "1"
+    env["PATH"] = str(pathlib.Path(iwasm).resolve().parent) + os.pathsep + env["PATH"]
     with tempfile.TemporaryDirectory(prefix="llgo-wasi-threads-") as directory:
         run_probe(env, directory, "threads", "wasm-wasi-threads", "nogc",
                   "wasi threads ok", 30)
         run_probe(env, directory, "threaded-gc", "wasm-wasi-threaded-gc",
                   "", "wasi threaded gc ok", 120)
+        run_llgo(env, ["run", "-target", "wasi", "-emulator",
+                       str(ROOT / "internal/build/testdata/wasm-wasi-threads")],
+                 "wasi threads ok")
+        run_llgo(env, ["test", "-target", "wasi", "-emulator",
+                       str(ROOT / "test/std/errors")], "PASS")
 
 
 if __name__ == "__main__":

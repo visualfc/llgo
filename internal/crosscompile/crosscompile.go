@@ -96,6 +96,10 @@ type NativeToolchain struct {
 type WasmProfile string
 
 const (
+	// WASIThreadedEmulator runs the shared-memory module with WAMR's classic
+	// interpreter. wasi-libc manages its own heap inside the module memory.
+	WASIThreadedEmulator = `iwasm --max-threads=64 --stack-size=1048576 --heap-size=0 "{}"`
+
 	WasmProfileNone WasmProfile = ""
 	WasmProfileJ32  WasmProfile = "j32"
 	WasmProfileJ64  WasmProfile = "j64"
@@ -1206,6 +1210,9 @@ func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThread
 	export.GOOS = config.GOOS
 	export.GOARCH = config.GOARCH
 	export.Emulator = env.ExpandEnvWithDefault(config.Emulator, buildEnvMap(env.LLGoROOT()), "{}")
+	if wasiThreads && wasmProvider == WasmProviderWASI && (targetName == "wasi" || targetName == "wasip1") {
+		export.Emulator = WASIThreadedEmulator
+	}
 	export.BuildTags = appendUniqueStrings(export.BuildTags, config.BuildTags...)
 	if wasmProvider == WasmProviderEmscripten {
 		// The existing raw js/wasm path remains browser/worker-only. Named

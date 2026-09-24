@@ -298,6 +298,13 @@ func TestUseWASIThreadsImportsMemory(t *testing.T) {
 	if export.WasmPostLink.Asyncify {
 		t.Fatal("WASI pthread mode requests single-worker Asyncify processing")
 	}
+	named, err := Use("", "", "wasi", true, false, optlevel.O2, lto.Off, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if named.Emulator != WASIThreadedEmulator {
+		t.Fatalf("named WASI thread emulator = %q, want %q", named.Emulator, WASIThreadedEmulator)
+	}
 }
 
 func TestUseWASILTOEnablesSjLjAtLink(t *testing.T) {

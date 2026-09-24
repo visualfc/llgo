@@ -1273,6 +1273,9 @@ func goCompatibleWasmRunner(conf *Config) string {
 	case "js":
 		return fmt.Sprintf("node %q --browser-only %q", filepath.Join(env.LLGoROOT(), "targets", "emscripten-runner.mjs"), "{}")
 	case "wasip1":
+		if IsWasiThreadsEnabled() {
+			return crosscompile.WASIThreadedEmulator
+		}
 		runtimeCommand := WasmRuntime()
 		switch runtimeCommand {
 		case "wasmtime":

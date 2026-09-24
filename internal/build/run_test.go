@@ -32,6 +32,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/xgo-dev/llgo/internal/crosscompile"
 )
 
 func TestRunInEmulatorValidation(t *testing.T) {
@@ -309,6 +311,7 @@ func TestRunNativeTest(t *testing.T) {
 }
 
 func TestGoCompatibleWasmRunner(t *testing.T) {
+	t.Setenv("LLGO_WASI_THREADS", "0")
 	js := goCompatibleWasmRunner(&Config{Goos: "js", Goarch: "wasm"})
 	if !strings.Contains(js, "emscripten-runner.mjs") || !strings.Contains(js, "--browser-only") || !strings.Contains(js, "{}") {
 		t.Fatalf("js runner = %q", js)
@@ -346,6 +349,13 @@ func TestGoCompatibleWasmRunner(t *testing.T) {
 	}
 	if got := goCompatibleWasmRunner(&Config{Goos: "plan9", Goarch: "wasm"}); got != "" {
 		t.Fatalf("unsupported wasm host acquired raw runner %q", got)
+	}
+}
+
+func TestGoCompatibleWASIThreadRunner(t *testing.T) {
+	t.Setenv("LLGO_WASI_THREADS", "1")
+	if got := goCompatibleWasmRunner(&Config{Goos: "wasip1", Goarch: "wasm"}); got != crosscompile.WASIThreadedEmulator {
+		t.Fatalf("WASI thread runner = %q, want %q", got, crosscompile.WASIThreadedEmulator)
 	}
 }
 
