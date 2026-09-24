@@ -51,8 +51,8 @@ func (hooks wasmEventHooks) pollCallbackEvents(worker *wasmWorker) {
 	// interval so newprocBackend keeps emval handles in their originating
 	// JavaScript realm even when polling happens from a running G's safepoint.
 	worker.pollingCallback = true
+	defer func() { worker.pollingCallback = false }()
 	hooks.pollCallbacks()
-	worker.pollingCallback = false
 }
 
 func (hooks wasmEventHooks) pollTimerEvents() {

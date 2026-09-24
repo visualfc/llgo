@@ -459,9 +459,9 @@ func GC() uintptr {
 func gc() (freeBytes uintptr) {
 	lazyInit()
 	if !gcStopWorld() {
-		// A pthread may be blocked in uninstrumented C code. Leave all heap
-		// objects intact. Allocation can continue in a new libc arena until
-		// the host's shared-memory limit is reached.
+		// In WASI threads, a pthread may be blocked in uninstrumented C code.
+		// Leave all heap objects intact; allocation can continue in a new
+		// libc arena until the host's shared-memory limit is reached.
 		return 0
 	}
 
