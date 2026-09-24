@@ -1482,13 +1482,15 @@ func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 		defaultEnabled = true
 	case crosscompile.WasmProfileW32:
 		if IsWasiThreadsEnabled() {
-			if explicit {
-				return false, errors.New("llgo.wasm.gc.linear requires single-worker WASI (set LLGO_WASI_THREADS=0)")
+			if !explicit && !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
+				return false, errors.New("WASI threads require -tags nogc or the experimental -tags llgo.wasm.gc.linear")
 			}
-			if !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
-				return false, errors.New("WASI threads currently require -tags nogc until a threaded collector is available")
+			// Keep threaded GC explicit while heap growth and exception
+			// compatibility are validated on WAMR.
+			if !explicit {
+				return false, nil
 			}
-			return false, nil
+			break
 		}
 		defaultEnabled = true
 	case crosscompile.WasmProfileNone:

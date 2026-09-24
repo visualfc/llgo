@@ -912,11 +912,11 @@ func TestConfigureWasmGC(t *testing.T) {
 	}
 }
 
-func TestConfigureWasmGCRejectsWASIThreads(t *testing.T) {
+func TestConfigureWasmGCWASIThreads(t *testing.T) {
 	t.Setenv("LLGO_WASI_THREADS", "1")
 	conf := Config{Goos: "wasip1", Goarch: "wasm", Tags: "llgo.wasm.gc.linear"}
-	if _, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err == nil {
-		t.Fatal("expected llgo.wasm.gc.linear with WASI threads to fail")
+	if enabled, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err != nil || !enabled {
+		t.Fatalf("explicit WASI threaded GC = %v, %v; want true, nil", enabled, err)
 	}
 	conf.Tags = ""
 	if _, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err == nil || !strings.Contains(err.Error(), "-tags nogc") {

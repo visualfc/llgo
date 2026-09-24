@@ -442,7 +442,12 @@ func GC() uintptr {
 // free bytes in the heap after the GC is finished.
 func gc() (freeBytes uintptr) {
 	lazyInit()
-	gcStopWorld()
+	if !gcStopWorld() {
+		// A pthread may be blocked in uninstrumented C code. Leave all heap
+		// objects intact. Allocation can continue within the reserved arena;
+		// it fails if that arena fills before every thread can stop.
+		return 0
+	}
 
 	if gcDebug {
 		println("running collection cycle...")
@@ -644,7 +649,11 @@ func growHeap() bool {
 // syscall/js operation. The world hooks are no-ops on single-worker and
 // bare-metal targets.
 func growHeapWithWorldStopped() bool {
-	gcStopWorld()
+	if !gcStopWorld() {
+		// A mutator blocked in C prevents sweeping, but reserve any remaining
+		// heap capacity while allocator metadata is protected by gcMutex.
+		return growHeap()
+	}
 	grew := growHeap()
 	gcResumeWorld()
 	return grew

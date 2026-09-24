@@ -32,7 +32,7 @@ type mOS struct{}
 func newosproc(mp *m, stackSize uintptr) int {
 	return int(thread.CreateDetached(
 		stackSize,
-		thread.RoutineFunc(mstart),
+		thread.RoutineFunc(wasiGCThreadStart),
 		c.Pointer(unsafe.Pointer(mp)),
 	))
 }

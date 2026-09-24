@@ -81,6 +81,7 @@ func mstart(arg unsafe.Pointer) unsafe.Pointer {
 	}
 	gp := mp.curg
 	pp := mp.p
+	registerWasiGCThread()
 
 	setg(gp)
 	casgstatus(gp, _Grunnable, _Grunning)
@@ -120,6 +121,9 @@ func mexit(mp *m) {
 	setg(nil)
 	if !ownedByLifecycle {
 		freeRuntimeContext(ctx)
+	}
+	if !ownedByLifecycle {
+		unregisterWasiGCThread()
 	}
 }
 
