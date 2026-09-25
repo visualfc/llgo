@@ -135,6 +135,31 @@ finalizersComplete:
 	}
 }
 
+func TestRetiredWorkerFiberReleasesFinalizer(t *testing.T) {
+	finalized := make(chan struct{})
+	installed := make(chan struct{})
+	go func() {
+		installWorkerFinalizerBarrier(finalized)
+		close(installed)
+	}()
+	<-installed
+	runtime.Gosched()
+
+	// The G has exited, but a conservative reference in its retired fiber
+	// storage must not keep the finalizable object alive indefinitely.
+	for range 24 {
+		clobberWorkerStack(16, 1)
+		runtime.GC()
+		select {
+		case <-finalized:
+			return
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	t.Fatal("finalizer stayed reachable after its worker fiber exited")
+}
+
 //go:noinline
 func installWorkerFinalizerBarrier(done chan<- struct{}) {
 	barrier := &workerFinalizerBarrier{}
