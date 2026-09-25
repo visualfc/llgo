@@ -672,6 +672,12 @@ func TestFullLongTimeoutIsTargeted(t *testing.T) {
 			t.Fatalf("%s timeout = %q", pkg, got)
 		}
 	}
+	if got := fullTestTimeout(wasi, "test/go"); got != "12m" {
+		t.Fatalf("W32 test/go timeout = %q", got)
+	}
+	if got := fullTestTimeout(wasi, "test/std/crypto/ecdh"); got != "3m" {
+		t.Fatalf("W32 test/std/crypto/ecdh timeout = %q", got)
+	}
 	for _, pkg := range []string{"test/std/net/http/httptest", "test/std/crypto/x509"} {
 		if got := fullTestTimeout(wasi, pkg); got != "3m" {
 			t.Fatalf("W32 %s timeout = %q", pkg, got)
@@ -697,7 +703,10 @@ func TestFullCommandTimeoutIsTargeted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pkg := range []string{"test/std/net/rpc", "test/std/net/rpc/jsonrpc"} {
+	if got := fullCommandTimeout(wasi, "test/go"); got != "20m" {
+		t.Fatalf("W32 test/go command timeout = %q", got)
+	}
+	for _, pkg := range []string{"test/std/net/rpc", "test/std/net/rpc/jsonrpc", "test/std/crypto/rsa", "test/std/crypto/ecdh"} {
 		if got := fullCommandTimeout(wasi, pkg); got != "10m" {
 			t.Errorf("W32 %s command timeout = %q, want 10m", pkg, got)
 		}

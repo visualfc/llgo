@@ -128,6 +128,15 @@ func fullCommandTimeout(p profile, pkg string) string {
 		switch pkg {
 		case "test/std/net/rpc", "test/std/net/rpc/jsonrpc":
 			return "10m"
+		case "test/std/crypto/rsa", "test/std/crypto/ecdh":
+			// The crypto test binaries can take over two minutes to build on
+			// this target before their key-operation tests start.
+			return "10m"
+		case "test/go":
+			// This package runs child-process probes and a full suite whose
+			// reflect.MakeFunc/GC startup stress alone takes over three minutes
+			// in WAMR classic Release.
+			return "20m"
 		}
 	}
 	return "5m"
@@ -153,6 +162,14 @@ func fullTestTimeout(p profile, pkg string) string {
 	// enough time to finish.
 	if p.Name == "W32-WASI" {
 		switch pkg {
+		case "test/go":
+			// The complete interpreter run reaches several long stress cases;
+			// the isolated reflect.MakeFunc/GC startup test took 217 seconds.
+			return "12m"
+		case "test/std/crypto/ecdh":
+			// P521 key generation and shared-secret checks exceed the default
+			// minute in WAMR classic Release.
+			return "3m"
 		case "test/std/net/http/httptest":
 			// Two real TLS handshakes took about 50 and 75 seconds in WAMR's
 			// classic interpreter during the reviewed full-package run.
