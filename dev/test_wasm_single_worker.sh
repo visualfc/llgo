@@ -306,10 +306,11 @@ run_llgo_test() {
 	# This command builds and runs two packages. CI spent 258 seconds on the
 	# first WASI package alone, then hit the old 300-second aggregate limit
 	# while building the second. Budget 300 seconds per package; each binary
-	# still has its own 30-second test deadline and bounded host runner.
+	# has a finite 90-second test deadline and bounded host runner. The EC32
+	# reflection tests exceeded 30 seconds as a complete package on CI.
 	echo "testing public llgo test command for ${target}"
 	run_with_timeout_limit 600s env TMPDIR="${temp_dir}" "${llgo_cmd}" test -target "${target}" -emulator \
-		-v -count=1 -timeout=30s "${test_fixture}" "${secondary_test_fixture}" 2>&1 | tee "${output}"
+		-v -count=1 -timeout=90s "${test_fixture}" "${secondary_test_fixture}" 2>&1 | tee "${output}"
 	grep -Fq "PASS" "${output}"
 	grep -Fq "TestScheduler" "${output}"
 	grep -Fq "wasm secondary package ok" "${output}"
