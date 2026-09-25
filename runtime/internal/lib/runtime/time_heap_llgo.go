@@ -132,6 +132,7 @@ func resetRuntimeTimer(r *runtimeTimer, when, period int64, update func()) bool 
 }
 
 func timerSchedulerLoop() {
+	markTimerSystemG()
 	timerSchedulerMu.Lock()
 	for {
 		// The WASI threaded collector needs the timer pthread to reach a Go
