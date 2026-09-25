@@ -61,4 +61,5 @@ func FreeRoot(ptr unsafe.Pointer) {
 	root.prev = nil
 	root.next = nil
 	unlock(&gcMutex)
+	releaseRootStorage(unsafe.Pointer(root))
 }

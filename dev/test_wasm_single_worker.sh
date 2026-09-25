@@ -358,7 +358,9 @@ run_llgo_go_profile_test() {
 	local pattern="${3:-}"
 	local fixture="${4:-${test_fixture}}"
 	local output="${work_dir}/${name}.out"
-	local test_args=(-v -count=1 -timeout=30s)
+	# The GOOS=js route runs the same reflection-heavy package as EC32.
+	# Keep its package deadline aligned with the public target route above.
+	local test_args=(-v -count=1 -timeout=90s)
 	if [[ -n "${pattern}" ]]; then
 		test_args+=(-run "${pattern}")
 	fi
