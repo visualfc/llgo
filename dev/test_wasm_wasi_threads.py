@@ -14,7 +14,8 @@ LLGO = os.environ.get("LLGO", "llgo")
 IWASM = os.environ.get("IWASM", "iwasm")
 
 
-def run_probe(env, directory, name, fixture, tags, marker, timeout, max_threads=8):
+def run_probe(env, directory, name, fixture, tags, marker, timeout,
+              max_threads=8, expected_exit=0):
     module = pathlib.Path(directory) / f"{name}.wasm"
     command = [LLGO, "build", "-target", "wasi"]
     if tags:
@@ -35,7 +36,7 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout, max_threads=
     )
     print(result.stdout, end="")
     print(result.stderr, end="")
-    if result.returncode != 0 or (
+    if result.returncode != expected_exit or (
         marker not in result.stdout.splitlines()
         and marker not in result.stderr.splitlines()
     ):
@@ -66,6 +67,12 @@ def main():
     with tempfile.TemporaryDirectory(prefix="llgo-wasi-threads-") as directory:
         run_probe(env, directory, "startup", "wasm-wasi-thread-startup", "nogc",
                   "wasi thread startup ok", 30, max_threads=32)
+        run_probe(env, directory, "main-goexit", "wasm-wasi-main-goexit", "nogc",
+                  "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
+                  30, expected_exit=2)
+        run_probe(env, directory, "main-goexit-gc", "wasm-wasi-main-goexit", "",
+                  "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
+                  30, expected_exit=2)
         run_probe(env, directory, "threads", "wasm-wasi-threads", "nogc",
                   "wasi threads ok", 30)
         run_probe(env, directory, "threaded-gc", "wasm-wasi-threaded-gc",

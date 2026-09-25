@@ -38,6 +38,9 @@ func newosproc(mp *m, stackSize uintptr) int {
 }
 
 func goexitBackend(gp *g) {
+	if gp.isMain {
+		parkInitialWasiThread(gp)
+	}
 	leaveCurrentLocalContext()
 	mp := gp.m
 	mexit(mp)
