@@ -12,6 +12,7 @@ add the current Go panic/recover baseline; it is not translated here.
 import argparse
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -48,6 +49,16 @@ def verify_module(module, wasm_tools, dwarfdump):
     if "No errors." not in verification:
         raise RuntimeError(f"DWARF verification did not pass for {module}:\n{verification}")
     return run([wasm_tools, "print", str(module)])
+
+
+def require_node_version(node):
+    version = run([node, "-p", "process.versions.node"]).strip()
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not match or tuple(map(int, match.groups())) < (24, 15, 0):
+        raise SystemExit(
+            f"Emscripten 6.0.8 glue requires Node >=24.15.0; found {version}. "
+            "Set NODE to a compatible binary."
+        )
 
 
 def run_cpp(module, node):
@@ -102,7 +113,7 @@ def compare_optimization_level(directory, level, emxx, wasm_opt, wasm_tools, dwa
     print(f"O{level}: " + ", ".join(f"{name}={size} bytes" for name, size in sizes.items()))
 
 
-def run_go_baseline(directory, llgo, node, env):
+def run_go_baseline(directory, llgo, node, env, browser):
     script = directory / "go-panic-recover.mjs"
     go_env = env.copy()
     go_env["LLGO_ROOT"] = str(ROOT)
@@ -110,6 +121,8 @@ def run_go_baseline(directory, llgo, node, env):
     output = run([node, str(ROOT / "targets/emscripten-runner.mjs"), str(script)], env=go_env)
     if "js" not in output.splitlines():
         raise RuntimeError(f"Go panic/recover baseline failed:\n{output}")
+    if browser:
+        run_browser(script, "js", node, go_env)
     print("Go panic/recover baseline: passed")
 
 
@@ -139,6 +152,7 @@ def main():
     args = parser.parse_args()
     emxx = tool("em++", "EMXX")
     node = tool("node", "NODE")
+    require_node_version(node)
     wasm_tools = tool("wasm-tools", "WASM_TOOLS")
     dwarfdump = tool("llvm-dwarfdump", "LLVM_DWARFDUMP")
     wasm_opt = os.environ.get("WASMOPT")
@@ -152,7 +166,7 @@ def main():
             compare_optimization_level(directory, level, emxx, wasm_opt,
                                        wasm_tools, dwarfdump, node, env, args.browser)
         if llgo := os.environ.get("LLGO"):
-            run_go_baseline(directory, llgo, node, env)
+            run_go_baseline(directory, llgo, node, env, args.browser)
             run_go_cpp_boundary(directory, llgo, node, env, args.browser)
 
 
