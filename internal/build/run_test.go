@@ -414,6 +414,33 @@ func TestRunNativeTestProgramsSequential(t *testing.T) {
 	}
 }
 
+func TestRunNativeTestProgramsReportsRunnerTimeout(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	program := testProgram{
+		app:       "program.wasm",
+		pkgDir:    t.TempDir(),
+		pkgName:   "example/wasm",
+		runner:    fmt.Sprintf("%q -test.run=^TestRunNativeTestHelper$ -- hang %q", executable, "{}"),
+		runnerEnv: map[string]string{"": "program.wasm"},
+		profile:   "j32",
+	}
+	var stdout, stderr bytes.Buffer
+	commands := commandEnv{dir: t.TempDir(), environ: os.Environ()}
+	result := runNativeTestPrograms(commands, []testProgram{program},
+		&Config{Target: "emscripten", RunnerTimeout: 50 * time.Millisecond}, &stdout, &stderr)
+	if !result.failed || result.skipped != 0 {
+		t.Fatalf("runNativeTestPrograms result = %+v", result)
+	}
+	for _, want := range []string{"phase=test", "profile=j32", "status=timeout", "FAIL\texample/wasm"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr %q does not contain %q", stderr.String(), want)
+		}
+	}
+}
+
 func TestRunNativeTestProgramsCompileOnly(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	result := runNativeTestPrograms(commandEnv{}, []testProgram{{

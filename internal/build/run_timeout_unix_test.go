@@ -103,6 +103,63 @@ finally:
 	}
 }
 
+func TestRunnerTestDoesNotTakeForegroundTerminal(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is needed to create a controlling terminal")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const script = `
+import errno, os, pty, select, sys, time
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(sys.argv[1], [sys.argv[1], '-test.run=^TestRunnerTimeoutHelper$'])
+output = b''
+try:
+    deadline = time.monotonic() + 10
+    while b'terminal parent ready' not in output and time.monotonic() < deadline:
+        if select.select([fd], [], [], 0.02)[0]:
+            output += os.read(fd, 4096)
+    assert b'terminal parent ready' in output, output
+    while time.monotonic() < deadline:
+        if os.tcgetpgrp(fd) != pid:
+            raise AssertionError('test runner took the foreground terminal: ' + repr(output))
+        if not select.select([fd], [], [], 0.02)[0]:
+            continue
+        try:
+            output += os.read(fd, 4096)
+        except OSError as err:
+            if err.errno == errno.EIO:
+                break
+            raise
+        if b'terminal test runner done' in output:
+            break
+    assert b'terminal test child started' in output, output
+    assert b'terminal test runner done' in output, output
+    completed, status = os.waitpid(pid, 0)
+    pid = None
+    assert os.waitstatus_to_exitcode(status) == 0, output
+finally:
+    os.close(fd)
+    if pid is not None:
+        try:
+            os.kill(pid, 9)
+        except ProcessLookupError:
+            pass
+        os.waitpid(pid, 0)
+`
+	ctx, cancel := stdcontext.WithTimeout(stdcontext.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, python, "-c", script, executable)
+	cmd.Env = timeoutHelperCommands(t.TempDir(), "terminal-test-runner").environ
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("test terminal runner: %v\n%s", err, output)
+	}
+}
+
 func TestRunnerBoundsInheritedOutputPipes(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {

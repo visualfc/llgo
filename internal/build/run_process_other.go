@@ -20,4 +20,6 @@ package build
 
 import "os/exec"
 
-func configureRunnerCancellation(cmd *exec.Cmd) func() { return func() {} }
+func configureRunnerCancellation(cmd *exec.Cmd, _ bool) func() { return func() {} }
+
+func cleanupRunnerAfterExit(*exec.Cmd) {}

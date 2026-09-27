@@ -129,7 +129,7 @@ func TestRunnerTimeoutHelper(t *testing.T) {
 			t.Fatal(err)
 		}
 		err = runRunnerCommand(timeoutHelperCommands(dir, "terminal-input"), executable,
-			[]string{"-test.run=^TestRunnerTimeoutHelper$"}, runnerDetails{timeout: 5 * time.Second}, os.Stdout, os.Stderr)
+			[]string{"-test.run=^TestRunnerTimeoutHelper$"}, runnerDetails{phase: "run", timeout: 5 * time.Second}, os.Stdout, os.Stderr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -138,6 +138,25 @@ func TestRunnerTimeoutHelper(t *testing.T) {
 			t.Fatal(err)
 		}
 		fmt.Fprintln(os.Stdout, "terminal restored:", word)
+		return
+	}
+	if mode == "terminal-test-runner" {
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintln(os.Stdout, "terminal parent ready")
+		err = runRunnerCommand(timeoutHelperCommands(dir, "terminal-hold"), executable,
+			[]string{"-test.run=^TestRunnerTimeoutHelper$"}, runnerDetails{phase: "test", timeout: 5 * time.Second}, os.Stdout, os.Stderr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintln(os.Stdout, "terminal test runner done")
+		return
+	}
+	if mode == "terminal-hold" {
+		fmt.Fprintln(os.Stdout, "terminal test child started")
+		time.Sleep(500 * time.Millisecond)
 		return
 	}
 	if mode == "child" {

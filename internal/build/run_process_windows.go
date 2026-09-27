@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-func configureRunnerCancellation(cmd *exec.Cmd) func() {
+func configureRunnerCancellation(cmd *exec.Cmd, _ bool) func() {
 	cmd.Cancel = func() error {
 		ctx, cancel := stdcontext.WithTimeout(stdcontext.Background(), 2*time.Second)
 		defer cancel()
@@ -38,3 +38,7 @@ func configureRunnerCancellation(cmd *exec.Cmd) func() {
 	}
 	return func() {}
 }
+
+// Once the parent PID has exited, taskkill /T cannot reliably find its
+// descendants. A Windows Job Object is required for post-exit tree cleanup.
+func cleanupRunnerAfterExit(*exec.Cmd) {}

@@ -28,7 +28,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func configureRunnerCancellation(cmd *exec.Cmd) func() {
+func configureRunnerCancellation(cmd *exec.Cmd, attachTerminal bool) func() {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
@@ -36,6 +36,9 @@ func configureRunnerCancellation(cmd *exec.Cmd) func() {
 			return os.ErrProcessDone
 		}
 		return err
+	}
+	if !attachTerminal {
+		return func() {}
 	}
 	if input, ok := cmd.Stdin.(*os.File); ok {
 		fd := int(input.Fd())
@@ -55,4 +58,10 @@ func configureRunnerCancellation(cmd *exec.Cmd) func() {
 		}
 	}
 	return func() {}
+}
+
+func cleanupRunnerAfterExit(cmd *exec.Cmd) {
+	if cmd.Process != nil && cmd.Cancel != nil {
+		_ = cmd.Cancel()
+	}
 }

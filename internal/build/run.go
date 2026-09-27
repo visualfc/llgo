@@ -169,6 +169,8 @@ func runNativeTest(commands commandEnv, program testProgram, conf *Config, stdou
 	if conf.PrintCommands {
 		fmt.Fprintf(stderr, "%s %s\n", program.app, strings.Join(conf.RunArgs, " "))
 	}
+	// Native test binaries have their own testing watchdog. RunnerTimeout
+	// bounds only the external host runner used by cross-target tests.
 	cmd := exec.Command(program.app, conf.RunArgs...)
 	commands.configure(cmd)
 	cmd.Dir = program.pkgDir
@@ -223,6 +225,10 @@ func reportTestProgramResult(stdout, stderr io.Writer, result testProgramResult,
 		if result.output[len(result.output)-1] != '\n' {
 			fmt.Fprintln(stdout)
 		}
+	}
+	var failure *runnerFailure
+	if errors.As(result.err, &failure) {
+		fmt.Fprintln(stderr, failure)
 	}
 	if result.program.coverage {
 		return // Coverage reporting includes the Go-compatible package record.
@@ -419,18 +425,19 @@ func runRunnerCommand(commands commandEnv, name string, args []string, details r
 	commands.configure(cmd)
 	cmd.Stdin = os.Stdin
 	if details.timeout > 0 {
-		restore := configureRunnerCancellation(cmd)
+		restore := configureRunnerCancellation(cmd, details.phase == "run")
 		defer restore()
 		cmd.WaitDelay = time.Second
 	}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	err := cmd.Run()
-	if err != nil && details.timeout > 0 && cmd.Process != nil && cmd.Cancel != nil {
+	if err != nil && details.timeout > 0 {
 		// A failed runner can leave descendants holding output pipes. Wait
-		// preserves a nonzero exit status over ErrWaitDelay, so clean up after
-		// either result while keeping the original failure for diagnostics.
-		_ = cmd.Cancel()
+		// preserves a nonzero exit status over ErrWaitDelay. A Unix process
+		// group remains killable after the leader exits; Windows needs a Job
+		// Object for an equivalent post-exit guarantee.
+		cleanupRunnerAfterExit(cmd)
 	}
 	if err != nil {
 		status := runnerStatusStart
