@@ -18,4 +18,4 @@
 
 package build
 
-const useExternalPackageArchiver = false
+var useExternalPackageArchiver = false

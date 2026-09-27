@@ -112,6 +112,24 @@ func TestCreatePackageArchiveFileWithExternalArchiver(t *testing.T) {
 		t.Fatal("archive does not contain memory-member.bc")
 	}
 
+	t.Run("dispatch", func(t *testing.T) {
+		previous := useExternalPackageArchiver
+		useExternalPackageArchiver = true
+		t.Cleanup(func() { useExternalPackageArchiver = previous })
+
+		archivePath := filepath.Join(t.TempDir(), "external-dispatch.a")
+		if err := ctx.createPackageArchiveFile(archivePath, pkg, false); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(archivePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(data, []byte("memory-member.bc")) {
+			t.Fatal("archive does not contain memory-member.bc")
+		}
+	})
+
 	t.Run("invalid members", func(t *testing.T) {
 		for _, member := range []packageArchiveBuffer{
 			{buffer: buffer},
