@@ -17,7 +17,7 @@ func c_timerCondTimedWait(cond *psync.Cond, mutex *psync.Mutex, waitNanos int64)
 
 func initTimerSchedulerCond() {
 	if c_timerCondInit(&timerSchedulerCond) != 0 {
-		panic("runtime: failed to initialize monotonic timer condition")
+		panic("runtime: failed to initialize timer condition variable")
 	}
 }
 
