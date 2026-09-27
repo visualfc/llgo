@@ -68,6 +68,10 @@ func Wake(addr *uint32) {
 	workerWake(addr)
 }
 
+func WakeOne(addr *uint32) {
+	workerWakeOne(addr)
+}
+
 //go:linkname workerCount C.llgo_wasm_worker_count
 func workerCount() c.Int
 
@@ -91,3 +95,6 @@ func workerResumeSoon(unsafe.Pointer)
 
 //go:linkname workerWake C.llgo_wasm_worker_wake
 func workerWake(addr *uint32) c.Int
+
+//go:linkname workerWakeOne C.llgo_wasm_worker_wake_one
+func workerWakeOne(addr *uint32) c.Int

@@ -19,4 +19,5 @@ func libcRealloc(ptr unsafe.Pointer, size uintptr) unsafe.Pointer {
 
 //export __libc_free
 func libcFree(ptr unsafe.Pointer) {
+	// The linear collector reclaims unreachable objects during sweep.
 }

@@ -127,6 +127,17 @@ func (e *runnerFailure) Unwrap() error {
 	return e.err
 }
 
+// RunnerExitCode reports a guest program's exit status from llgo run. Setup,
+// timeout, and test-runner failures are host errors and keep the CLI's status 1.
+func RunnerExitCode(err error) (int, bool) {
+	var failure *runnerFailure
+	if errors.As(err, &failure) && failure.phase == "run" &&
+		failure.status == runnerStatusExit && failure.exitCode >= 0 {
+		return failure.exitCode, true
+	}
+	return 0, false
+}
+
 func newRunnerFailure(details runnerDetails, runner, status string, exitCode int, err error) error {
 	return &runnerFailure{
 		runnerDetails: details,

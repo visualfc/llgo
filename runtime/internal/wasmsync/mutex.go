@@ -13,14 +13,21 @@ const mutexWaitNanoseconds = int64(1_000_000)
 
 // Mutex is a zero-value-ready lock for worker-shared runtime state.
 type Mutex struct {
-	state uint32
+	state   uint32
+	waiters uint32
 }
 
 // Lock acquires m. A contended lock periodically calls yield so a worker
-// blocked behind the allocator can acknowledge a stop-the-world request.
+// blocked behind the allocator can acknowledge a stop-the-world request. The
+// bounded wait is necessary because a GC request does not unlock this mutex.
 func (m *Mutex) Lock(yield func()) {
+	if _, ok := atomic.CompareAndExchange(&m.state, uint32(0), uint32(1)); ok {
+		return
+	}
+	atomic.Add(&m.waiters, uint32(1))
 	for {
 		if _, ok := atomic.CompareAndExchange(&m.state, uint32(0), uint32(1)); ok {
+			atomic.Sub(&m.waiters, uint32(1))
 			return
 		}
 		if yield != nil {
@@ -30,8 +37,10 @@ func (m *Mutex) Lock(yield func()) {
 	}
 }
 
-// Unlock releases m and wakes all waiters.
+// Unlock releases m and wakes one waiter only if contention was observed.
 func (m *Mutex) Unlock() {
 	atomic.Store(&m.state, uint32(0))
-	wasmworkers.Wake(&m.state)
+	if atomic.Load(&m.waiters) != 0 {
+		wasmworkers.WakeOne(&m.state)
+	}
 }

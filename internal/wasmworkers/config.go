@@ -26,6 +26,7 @@ import (
 )
 
 const (
+	// A count of one selects the existing single-worker scheduler.
 	DefaultCount = 1
 	MaxCount     = 16
 )

@@ -102,3 +102,7 @@ int llgo_wasm_worker_wake(uint32_t *address) {
   return (int)emscripten_atomic_notify(
       address, EMSCRIPTEN_NOTIFY_ALL_WAITERS);
 }
+
+int llgo_wasm_worker_wake_one(uint32_t *address) {
+  return (int)emscripten_atomic_notify(address, 1);
+}

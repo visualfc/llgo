@@ -78,6 +78,9 @@ func TestRunInEmulatorFailureDiagnostics(t *testing.T) {
 		runnerErr.artifact != artifact || runnerErr.packageName != "example/main" || runnerErr.status != runnerStatusExit || runnerErr.exitCode != 3 {
 		t.Fatalf("runner failure = %+v", runnerErr)
 	}
+	if code, ok := RunnerExitCode(err); !ok || code != 3 {
+		t.Fatalf("RunnerExitCode(%v) = (%d, %v), want (3, true)", err, code, ok)
+	}
 	for _, want := range []string{
 		"phase=run",
 		"target=emscripten",
@@ -91,6 +94,29 @@ func TestRunInEmulatorFailureDiagnostics(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("runner error %q does not contain %q", err, want)
 		}
+	}
+}
+
+func TestRunnerExitCodeOnlyForGuestExit(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		phase  string
+		status string
+		code   int
+		want   bool
+	}{
+		{"guest exit", "run", runnerStatusExit, 7, true},
+		{"test exit", "test", runnerStatusExit, 7, false},
+		{"timeout", "run", runnerStatusTimeout, -1, false},
+		{"start failure", "run", runnerStatusStart, -1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := newRunnerFailure(runnerDetails{phase: tc.phase}, "runner", tc.status, tc.code, errors.New("runner failed"))
+			code, ok := RunnerExitCode(fmt.Errorf("wrapped: %w", err))
+			if ok != tc.want || (ok && code != tc.code) {
+				t.Fatalf("RunnerExitCode = (%d, %v), want (%d, %v)", code, ok, tc.code, tc.want)
+			}
+		})
 	}
 }
 
