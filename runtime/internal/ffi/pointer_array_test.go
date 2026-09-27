@@ -1,18 +1,32 @@
-//go:build !llgo
-
-package ffi
+package ffi_test
 
 import (
 	"runtime"
 	"testing"
 	"unsafe"
+
+	ffi "github.com/xgo-dev/llgo/runtime/internal/ffi"
 )
 
+// Keep these tests external: an in-package test variant imports testing, while
+// LLGo's runtime implementation imports ffi, forming a test-only package cycle.
+// Link directly to the storage constructor so the ownership invariant remains
+// covered without pulling a second ffi package variant into the test binary.
+//
+//go:linkname newSignatureStorage github.com/xgo-dev/llgo/runtime/internal/ffi.newSignatureStorage
+func newSignatureStorage(ret *ffi.Type, values []*ffi.Type) (*ffi.Signature, **ffi.Type)
+
+type signatureStorage struct {
+	cif  ffi.Signature
+	ret  *ffi.Type
+	args []*ffi.Type
+}
+
 func TestNewSignatureStorageOwnsTypes(t *testing.T) {
-	ret := &Type{}
-	first := &Type{}
-	second := &Type{}
-	args := []*Type{first}
+	ret := &ffi.Type{}
+	first := &ffi.Type{}
+	second := &ffi.Type{}
+	args := []*ffi.Type{first}
 	cif, atype := newSignatureStorage(ret, args)
 	args[0] = second
 
@@ -26,10 +40,10 @@ func TestNewSignatureStorageOwnsTypes(t *testing.T) {
 }
 
 func TestNewAggregateTypeOwnsElementArray(t *testing.T) {
-	first := &Type{}
-	second := &Type{}
-	elements := []*Type{first}
-	typ := StructOf(elements...)
+	first := &ffi.Type{}
+	second := &ffi.Type{}
+	elements := []*ffi.Type{first}
+	typ := ffi.StructOf(elements...)
 	elements[0] = second
 
 	if got := *typ.Elements; got != first {
@@ -39,13 +53,13 @@ func TestNewAggregateTypeOwnsElementArray(t *testing.T) {
 }
 
 func TestTypeElement(t *testing.T) {
-	typ := StructOf(TypeInt64, TypeInt8, TypeInt16)
-	for i, want := range []*Type{TypeInt64, TypeInt8, TypeInt16} {
-		if got := TypeElement(typ, uintptr(i)); got != want {
+	typ := ffi.StructOf(ffi.TypeInt64, ffi.TypeInt8, ffi.TypeInt16)
+	for i, want := range []*ffi.Type{ffi.TypeInt64, ffi.TypeInt8, ffi.TypeInt16} {
+		if got := ffi.TypeElement(typ, uintptr(i)); got != want {
 			t.Fatalf("TypeElement(%d) = %p, want %p", i, got, want)
 		}
 	}
-	if TypeElement(nil, 0) != nil || TypeElement(new(Type), 0) != nil {
+	if ffi.TypeElement(nil, 0) != nil || ffi.TypeElement(new(ffi.Type), 0) != nil {
 		t.Fatal("TypeElement accepted an absent element array")
 	}
 }

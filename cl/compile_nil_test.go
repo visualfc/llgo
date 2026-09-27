@@ -4,6 +4,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -152,6 +153,29 @@ func iface(v int) any {
 	makeInterface.X = untypedNil
 	if ret := ctx.compileInstrOrValue(b, makeInterface, false); ret.IsNil() {
 		t.Fatal("MakeInterface untyped nil lowered to an empty expression")
+	}
+}
+
+func TestCompileAllocOnDemand(t *testing.T) {
+	ssaPkg, _, _ := buildGoSSAPkg(t, `
+package foo
+
+func alloc() *int { return new(int) }
+`)
+	alloc := findFirstInstr[*gossa.Alloc](t, ssaPkg.Func("alloc"))
+	ctx, b := newNilCompileContext(t)
+
+	first := ctx.compileInstrOrValue(b, alloc, true)
+	if first.IsNil() {
+		t.Fatal("on-demand Alloc lowering returned an empty expression")
+	}
+
+	second := ctx.compileInstrOrValue(b, alloc, false)
+	if second.IsNil() {
+		t.Fatal("cached Alloc lowering returned an empty expression")
+	}
+	if !reflect.DeepEqual(second, first) {
+		t.Fatal("sequential Alloc lowering did not reuse the on-demand expression")
 	}
 }
 

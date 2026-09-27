@@ -1,4 +1,4 @@
-//go:build !llgo && (darwin || linux || windows)
+//go:build darwin || linux || windows
 
 package build
 
