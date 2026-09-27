@@ -269,6 +269,46 @@ func TestNewDefaultConfPthreadStackSize(t *testing.T) {
 	}
 }
 
+func TestResolveTestPthreadStackSize(t *testing.T) {
+	tests := []struct {
+		name string
+		conf Config
+		want int64
+	}{
+		{
+			name: "native default",
+			conf: Config{Mode: ModeTest, Goos: runtime.GOOS, Goarch: runtime.GOARCH, PthreadStackSize: defaultTestPthreadStackSize},
+			want: defaultTestPthreadStackSize,
+		},
+		{
+			name: "named target",
+			conf: Config{Mode: ModeTest, Goos: runtime.GOOS, Goarch: runtime.GOARCH, Target: "emscripten", PthreadStackSize: defaultTestPthreadStackSize},
+		},
+		{
+			name: "raw wasm target",
+			conf: Config{Mode: ModeTest, Goos: "js", Goarch: "wasm", PthreadStackSize: defaultTestPthreadStackSize},
+		},
+		{
+			name: "explicit named target",
+			conf: Config{Mode: ModeTest, Goos: runtime.GOOS, Goarch: runtime.GOARCH, Target: "emscripten", PthreadStackSize: defaultTestPthreadStackSize, PthreadStackSizeSet: true},
+			want: defaultTestPthreadStackSize,
+		},
+		{
+			name: "build mode",
+			conf: Config{Mode: ModeBuild, Goos: "js", Goarch: "wasm", PthreadStackSize: defaultTestPthreadStackSize},
+			want: defaultTestPthreadStackSize,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolveTestPthreadStackSize(&test.conf)
+			if test.conf.PthreadStackSize != test.want {
+				t.Fatalf("PthreadStackSize = %d, want %d", test.conf.PthreadStackSize, test.want)
+			}
+		})
+	}
+}
+
 func TestDoDoesNotModifyConfigOnValidationError(t *testing.T) {
 	input := &Config{
 		RunArgs: []string{"arg"},

@@ -409,6 +409,7 @@ func UpdateConfig(conf *build.Config) error {
 	conf.ForceRebuild = ForceRebuild
 	if PthreadStackSize.set {
 		conf.PthreadStackSize = PthreadStackSize.value
+		conf.PthreadStackSizeSet = true
 	}
 	if LTO.Specified {
 		conf.LTO = LTO.Mode

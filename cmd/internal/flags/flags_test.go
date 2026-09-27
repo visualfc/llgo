@@ -351,6 +351,9 @@ func TestBuildGoroutineStackSizeFlags(t *testing.T) {
 				if conf.PthreadStackSize != tt.want {
 					t.Fatalf("conf.PthreadStackSize = %d, want %d", conf.PthreadStackSize, tt.want)
 				}
+				if !conf.PthreadStackSizeSet {
+					t.Fatal("conf.PthreadStackSizeSet = false for an explicit flag")
+				}
 			})
 		}
 	}
@@ -369,6 +372,9 @@ func TestBuildPthreadStackSizeFlagPreservesDefaultWhenUnset(t *testing.T) {
 	}
 	if conf.PthreadStackSize != 32<<20 {
 		t.Fatalf("conf.PthreadStackSize = %d, want %d", conf.PthreadStackSize, 32<<20)
+	}
+	if conf.PthreadStackSizeSet {
+		t.Fatal("conf.PthreadStackSizeSet = true for an unset flag")
 	}
 }
 

@@ -212,6 +212,10 @@ type Config struct {
 	// PthreadStackSize sets a custom stack size, in bytes, for native and Wasm
 	// goroutines. A zero value keeps the backend's default.
 	PthreadStackSize int64
+	// PthreadStackSizeSet marks PthreadStackSize as explicitly requested. It
+	// keeps an explicit value, including zero, from being replaced by the
+	// host-only test default.
+	PthreadStackSizeSet bool
 
 	// DisableGoGlobalDCE disables Go-specific global DCE metadata emission
 	// when it would otherwise be enabled by full LTO.
@@ -575,6 +579,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	if conf.Target != "" && export.GOARCH != "" {
 		conf.Goarch = export.GOARCH
 	}
+	resolveTestPthreadStackSize(conf)
 	wasmGC, err := configureWasmGC(conf, &export)
 	if err != nil {
 		return nil, err
@@ -1033,6 +1038,15 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	}
 
 	return allPkgs, errors.Join(linkErrs...)
+}
+
+func resolveTestPthreadStackSize(conf *Config) {
+	if conf == nil || conf.Mode != ModeTest || conf.PthreadStackSizeSet {
+		return
+	}
+	if conf.Target != "" || conf.Goos != runtime.GOOS || conf.Goarch != runtime.GOARCH {
+		conf.PthreadStackSize = 0
+	}
 }
 
 func useShadowStack(goarch string) bool {
