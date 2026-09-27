@@ -36,7 +36,8 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout,
     )
     print(result.stdout, end="")
     print(result.stderr, end="")
-    if result.returncode != expected_exit or (
+    allowed_exits = (expected_exit,) if isinstance(expected_exit, int) else expected_exit
+    if result.returncode not in allowed_exits or (
         marker not in result.stdout.splitlines()
         and marker not in result.stderr.splitlines()
     ):
@@ -67,18 +68,21 @@ def main():
     with tempfile.TemporaryDirectory(prefix="llgo-wasi-threads-") as directory:
         run_probe(env, directory, "startup", "wasm-wasi-thread-startup", "nogc",
                   "wasi thread startup ok", 30, max_threads=32)
+        # WAMR can translate the terminal Wasm exception to process status 1
+        # instead of preserving the guest's status 2. Both are nonzero exits.
+        deadlock_exits = (1, 2)
         run_probe(env, directory, "main-goexit", "wasm-wasi-main-goexit", "nogc",
                   "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
-                  30, expected_exit=2)
+                  30, expected_exit=deadlock_exits)
         run_probe(env, directory, "main-goexit-gc", "wasm-wasi-main-goexit", "",
                   "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
-                  30, expected_exit=2)
+                  30, expected_exit=deadlock_exits)
         run_probe(env, directory, "main-goexit-timer", "wasm-wasi-main-goexit-timer",
                   "nogc", "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
-                  30, expected_exit=2)
+                  30, expected_exit=deadlock_exits)
         run_probe(env, directory, "main-goexit-timer-gc", "wasm-wasi-main-goexit-timer",
                   "", "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
-                  30, expected_exit=2)
+                  30, expected_exit=deadlock_exits)
         run_probe(env, directory, "threads", "wasm-wasi-threads", "nogc",
                   "wasi threads ok", 30)
         run_probe(env, directory, "threaded-gc", "wasm-wasi-threaded-gc",
