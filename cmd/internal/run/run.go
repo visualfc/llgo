@@ -103,6 +103,10 @@ func runCmdEx(cmd *base.Command, args []string, mode build.Mode, goBuildFlags *b
 	_, err = build.Do(args, conf)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		if code, ok := build.RunnerExitCode(err); ok {
+			mockable.Exit(code)
+			return
+		}
 		mockable.Exit(1)
 	}
 }

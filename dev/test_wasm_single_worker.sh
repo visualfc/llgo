@@ -95,8 +95,8 @@ expect_llgo_runner_failure() {
 	exit_code=$?
 	set -e
 	printf '%s\n' "${output}"
-	if [[ ${exit_code} -ne 1 ]]; then
-		echo "expected llgo runner failure status 1, got ${exit_code}" >&2
+	if [[ ${exit_code} -ne 2 ]]; then
+		echo "expected llgo guest exit status 2, got ${exit_code}" >&2
 		exit 1
 	fi
 	for expected in \
