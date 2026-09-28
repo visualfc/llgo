@@ -150,7 +150,13 @@ func (p goTypes) cvtType(typ types.Type) (raw types.Type, cvt bool) {
 	case *types.TypeParam:
 		return typ.Underlying(), false
 	case *types.Alias:
-		return p.cvtType(types.Unalias(t))
+		if !p.shouldConvertAlias(t) {
+			return t, false
+		}
+		if raw, changed := p.cvtType(t.Rhs()); changed {
+			return raw, true
+		}
+		return t, false
 	case *types.Union:
 		return p.cvtUnion(t)
 	default:
@@ -160,11 +166,19 @@ func (p goTypes) cvtType(typ types.Type) (raw types.Type, cvt bool) {
 }
 
 func namedLinkname(t *types.Named) string {
-	obj := t.Obj()
+	return typeNameLinkname(t.Obj())
+}
+
+func typeNameLinkname(obj *types.TypeName) string {
 	if obj.Pkg() != nil {
 		return obj.Pkg().Path() + "." + obj.Name()
 	}
 	return obj.Name()
+}
+
+func (p goTypes) shouldConvertAlias(t *types.Alias) bool {
+	background, ok := p.packageSyntax.typeBackground(typeNameLinkname(t.Obj()))
+	return !ok || !isNativeFuncBackground(background)
 }
 
 func (p goTypes) shouldConvertNamed(t *types.Named) bool {
@@ -307,7 +321,10 @@ func (p goTypes) needsTypeConversion(typ types.Type, query conversionNeedQuery) 
 	case *types.TypeParam:
 		return false
 	case *types.Alias:
-		return p.needsTypeConversion(types.Unalias(t), query)
+		if !p.shouldConvertAlias(t) {
+			return false
+		}
+		return p.needsTypeConversion(t.Rhs(), query)
 	case *types.Union:
 		// cvtUnion currently always creates a raw union.
 		return true
