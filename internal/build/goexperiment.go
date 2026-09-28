@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -48,7 +50,14 @@ func resolveSourceGoConfig(commands commandEnv, experiment string) (sourceGoConf
 	// builds may pass a separate -modfile to the source loader, and the real
 	// go.mod can require a newer Go version than the selected source compiler.
 	commands.environ = withEnv(commands.environ, "GO111MODULE=off", "GOWORK=off", "GOFLAGS=")
-	cmd = commands.configure(exec.Command("go", "list", "-f", "{{join context.ToolTags \",\"}}", "unsafe"))
+	// GO111MODULE=off disables GOTOOLCHAIN switching. Calling the launcher
+	// on PATH here can query an older Go even though GOROOT was resolved to
+	// a newer one, silently disabling that toolchain's default experiments.
+	goExe := "go"
+	if runtime.GOOS == "windows" {
+		goExe += ".exe"
+	}
+	cmd = commands.configure(exec.Command(filepath.Join(cfg.GOROOT, "bin", goExe), "list", "-f", "{{join context.ToolTags \",\"}}", "unsafe"))
 	output, err = cmd.Output()
 	if err != nil {
 		return cfg, sourceGoConfigError("resolve Go tool tags", err)

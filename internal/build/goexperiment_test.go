@@ -1,12 +1,14 @@
 package build
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -285,12 +287,17 @@ func runGoConfigHelper(mode string) {
 	case "missing-version":
 		fmt.Println(`{"GOROOT":"test-root"}`)
 	case "list-failure":
-		fmt.Println(`{"GOROOT":"test-root","GOVERSION":"go1.27.0"}`)
+		json.NewEncoder(os.Stdout).Encode(sourceGoConfig{GOROOT: os.Getenv("LLGO_TEST_SOURCE_GOROOT"), GOVERSION: "go1.27.0"})
+	case "selected-root":
+		json.NewEncoder(os.Stdout).Encode(sourceGoConfig{GOROOT: runtime.GOROOT(), GOVERSION: runtime.Version()})
 	}
 }
 
 func TestSourceGoConfigErrors(t *testing.T) {
-	bin := t.TempDir()
+	bin := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
 	writeBuildTestTool(t, bin, "go")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	for _, tc := range []struct{ mode, want string }{
@@ -301,7 +308,8 @@ func TestSourceGoConfigErrors(t *testing.T) {
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			commands := experimentCommands(t, "")
-			commands.environ = withEnv(commands.environ, "LLGO_TEST_GO_CONFIG_HELPER="+tc.mode)
+			commands.environ = withEnv(commands.environ, "LLGO_TEST_GO_CONFIG_HELPER="+tc.mode,
+				"LLGO_TEST_SOURCE_GOROOT="+filepath.Dir(bin))
 			_, err := resolveSourceGoConfig(commands, "")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("resolveSourceGoConfig() error = %v, want %q", err, tc.want)
@@ -322,4 +330,28 @@ func TestSourceGoConfigErrors(t *testing.T) {
 			t.Fatalf("expected source configuration error preserving missing-directory cause, got %v", err)
 		}
 	})
+}
+
+// The launcher on PATH need not be the selected source compiler. In particular,
+// GO111MODULE=off disables toolchain switching even with explicit GOTOOLCHAIN.
+func TestSourceGoToolTagsUseResolvedCompiler(t *testing.T) {
+	bin := t.TempDir()
+	writeBuildTestTool(t, bin, "go")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	commands := experimentCommands(t, "")
+	commands.environ = withEnv(commands.environ, "LLGO_TEST_GO_CONFIG_HELPER=selected-root")
+	cfg := mustResolveSourceGo(t, commands, "")
+	if !slices.Contains(cfg.toolTags, "goexperiment.jsonv2") {
+		t.Fatalf("lost selected Go 1.27 default experiment: %v", cfg.toolTags)
+	}
+	commands.environ = cfg.apply(commands.environ)
+	commands.environ = withEnv(commands.environ, "GO111MODULE=off", "GOWORK=off", "GOFLAGS=")
+	goExe := "go"
+	if runtime.GOOS == "windows" {
+		goExe += ".exe"
+	}
+	output, err := commands.configure(exec.Command(filepath.Join(cfg.GOROOT, "bin", goExe), "list", "encoding/json/v2", "encoding/json/jsontext")).CombinedOutput()
+	if err != nil {
+		t.Fatalf("selected JSON packages unavailable: %v\n%s", err, output)
+	}
 }
