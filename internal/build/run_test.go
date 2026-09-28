@@ -86,6 +86,23 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 	if got, want := args[len(args)-3:], []string{"--env=LLGO_STRESS_PROFILE=quick", artifact, "-test.v"}; !slices.Equal(got, want) {
 		t.Fatalf("runner tail = %q, want %q", got, want)
 	}
+	commands.dir = ""
+	if err := runEmuCmd(commands, map[string]string{"": artifact}, crosscompile.WASIThreadedEmulator,
+		nil, false, false, runnerDetails{phase: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args = strings.Split(strings.TrimSpace(string(data)), "\n")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := args[3], "--dir="+cwd; got != want {
+		t.Fatalf("WAMR default working directory = %q, want %q", got, want)
+	}
 }
 
 func TestRunInEmulatorFailureDiagnostics(t *testing.T) {

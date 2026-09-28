@@ -174,6 +174,16 @@ func TestDriverReportAndSummary(t *testing.T) {
 			}
 		})
 	}
+	t.Run("W32-WASI-threads", func(t *testing.T) {
+		t.Setenv("LLGO_WASI_THREADS", "1")
+		path := filepath.Join(root, "W32-WASI-threads.json")
+		if err := run("W32-WASI", path, program, program); err != nil {
+			t.Fatal(err)
+		}
+		if r := readReport(t, path); !strings.Contains(r.Contract, "WAMR WASI threads") {
+			t.Fatalf("threaded WASI contract = %q", r.Contract)
+		}
+	})
 	for _, mode := range []string{"bad-env", "env-failure", "list-failure", "bad-list", "missing-package", "test-failure"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("LLGO_WASMSTDLIB_TEST_MODE", mode)
