@@ -230,8 +230,9 @@ explicitly as `_Name@N`; LLGo preserves that spelling on 386 and normalizes it
 to `Name` on 64-bit Windows.
 
 Both forms accept only non-variadic function types. A native callback carries
-one function pointer and no LLGo closure environment, so only a direct Go
-function can cross this boundary. Pass callback state through an explicit
+one function pointer and no LLGo closure environment. Direct Go functions and
+function values with an empty environment can cross this boundary; a capturing
+closure panics before the C call. Pass callback state through an explicit
 context pointer.
 
 #### Handling char ** Type in C

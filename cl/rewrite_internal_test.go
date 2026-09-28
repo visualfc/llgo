@@ -280,27 +280,6 @@ func use(v int32) int32 {
 	}
 }
 
-func TestCCallbackRejectsCapturedClosure(t *testing.T) {
-	const header = `package p
-import _ "unsafe"
-//llgo:type C
-type Callback = func(int32) int32
-//go:linkname invoke C.invoke
-func invoke(Callback, int32) int32
-`
-	for name, body := range map[string]string{
-		"direct argument":   `return invoke(func(arg int32) int32 { return arg + v }, v)`,
-		"assigned callback": `callback := Callback(func(arg int32) int32 { return arg + v }); return invoke(callback, v)`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			src := header + "func use(v int32) int32 { " + body + " }"
-			mustPanicContains(t, "C callback must be a direct function reference", func() {
-				compileWithRewritesTarget(t, src, nil, &llssa.Target{GOOS: "linux", GOARCH: "amd64"})
-			})
-		})
-	}
-}
-
 func TestClosureEnvIntrinsicRequiresEnvBearingEntry(t *testing.T) {
 	valid := `package closureenv
 

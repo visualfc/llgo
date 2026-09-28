@@ -1019,9 +1019,17 @@ func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 	if b.Prog.isStdcallType(t.raw.Type) && !b.Prog.isStdcallType(x.raw.Type) {
 		return b.stdcallCallback(t.raw.Type, x)
 	}
-	// A direct function can carry a closure type without carrying an environment.
-	if t.kind == vkFuncPtr && x.kind == vkClosure && x.impl.IsAFunction().IsNil() {
-		panic("C callback must be a direct function reference")
+	if t.kind == vkFuncPtr && x.kind == vkClosure {
+		if direct := x.impl.IsAFunction(); !direct.IsNil() {
+			return Expr{direct, t}
+		}
+		// A native callback has no slot for the Go closure environment.
+		code, data := b.Field(x, 0), b.Field(x, 1)
+		b.assertRuntimeError(
+			llvm.CreateICmp(b.impl, llvm.IntNE, data.impl, b.Prog.Nil(b.Prog.VoidPtr()).impl),
+			"C callback must not capture variables",
+		)
+		return Expr{code.impl, t}
 	}
 	if t.kind == vkClosure {
 		switch x.kind {
@@ -2123,9 +2131,11 @@ func checkExpr(v Expr, t types.Type, b Builder) Expr {
 		data := prog.Nil(prog.VoidPtr())
 		return b.aggregateValue(tclosure, v.impl, data.impl)
 	}
-	if v.kind == vkClosure && v.impl.IsAFunction().IsNil() {
-		if _, ok := t.Underlying().(*types.Signature); ok && b.Prog.Type(t, InGo).kind == vkFuncPtr {
-			panic("C callback must be a direct function reference")
+	if v.kind == vkClosure {
+		if _, ok := t.Underlying().(*types.Signature); ok {
+			if dst := b.Prog.Type(t, InGo); dst.kind == vkFuncPtr {
+				return b.ChangeType(dst, v)
+			}
 		}
 	}
 	if types.Identical(v.raw.Type, t) || !types.AssignableTo(v.raw.Type, t) {
