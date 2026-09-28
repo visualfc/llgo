@@ -1,12 +1,14 @@
 package build
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -136,18 +138,54 @@ func TestResolveSourceGoUsesInvocationDir(t *testing.T) {
 	}
 }
 
-func TestSourceGoToolTagsIgnoreModuleMinimum(t *testing.T) {
-	commands := experimentCommands(t, "")
-	commands.environ = withEnv(commands.environ, "GOTOOLCHAIN=local")
-	if err := os.WriteFile(filepath.Join(commands.dir, "go.mod"), []byte("module example.org/versioned\n\ngo 1.999\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	// Versioned builds can supply a different module file to the package
-	// loader. Tool tags describe the already selected compiler, independently
-	// of that module's minimum Go version and the eventual source build flags.
-	cfg := mustResolveSourceGo(t, commands, "")
-	if !slices.Contains(cfg.toolTags, "amd64.v3") {
-		t.Fatalf("missing selected toolchain tags: %v", cfg.toolTags)
+func TestSourceGoToolTagsInheritBuildEnvironment(t *testing.T) {
+	for _, mode := range []string{"module-on", "module-off", "goflags-modfile", "buildflags-modfile", "workspace"} {
+		t.Run(mode, func(t *testing.T) {
+			commands := experimentCommands(t, "")
+			commands.environ = withEnv(commands.environ, "GOTOOLCHAIN=local", "GO111MODULE=on", "GOWORK=off")
+			write := func(name, content string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(commands.dir, name), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write("go.mod", "module example.org/versioned\n\ngo 1.999\n")
+			write("selected.mod", "module example.org/versioned\n\ngo 1.26\n")
+			var flags []string
+			switch mode {
+			case "module-off":
+				commands.environ = withEnv(commands.environ, "GO111MODULE=off")
+			case "goflags-modfile":
+				commands.environ = withEnv(commands.environ, "GOFLAGS=-modfile=selected.mod -p=1")
+			case "buildflags-modfile":
+				flags = []string{"-modfile=selected.mod"}
+			case "workspace":
+				write("go.mod", "module example.org/versioned\n\ngo 1.26\n")
+				write("go.work", "go 1.26\nuse .\n")
+				// -mod=mod is incompatible with workspace mode. Retaining both
+				// settings must report that conflict instead of hiding it.
+				commands.environ = withEnv(commands.environ, "GOWORK="+filepath.Join(commands.dir, "go.work"), "GOFLAGS=-mod=mod")
+			}
+			cfg, err := resolveSourceGoConfig(commands, "", flags...)
+			if mode == "module-on" {
+				if err == nil || !strings.Contains(err.Error(), "1.999") {
+					t.Fatalf("module minimum was ignored: %v", err)
+				}
+				return
+			}
+			if mode == "workspace" {
+				if err == nil || !strings.Contains(err.Error(), "workspace") {
+					t.Fatalf("workspace configuration was ignored: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(cfg.toolTags, "amd64.v3") {
+				t.Fatalf("missing selected toolchain tags: %v", cfg.toolTags)
+			}
+		})
 	}
 }
 
@@ -285,12 +323,17 @@ func runGoConfigHelper(mode string) {
 	case "missing-version":
 		fmt.Println(`{"GOROOT":"test-root"}`)
 	case "list-failure":
-		fmt.Println(`{"GOROOT":"test-root","GOVERSION":"go1.27.0"}`)
+		json.NewEncoder(os.Stdout).Encode(sourceGoConfig{GOROOT: os.Getenv("LLGO_TEST_SOURCE_GOROOT"), GOVERSION: "go1.27.0"})
+	case "selected-root":
+		json.NewEncoder(os.Stdout).Encode(sourceGoConfig{GOROOT: runtime.GOROOT(), GOVERSION: runtime.Version()})
 	}
 }
 
 func TestSourceGoConfigErrors(t *testing.T) {
-	bin := t.TempDir()
+	bin := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(bin, 0755); err != nil {
+		t.Fatal(err)
+	}
 	writeBuildTestTool(t, bin, "go")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	for _, tc := range []struct{ mode, want string }{
@@ -301,7 +344,8 @@ func TestSourceGoConfigErrors(t *testing.T) {
 	} {
 		t.Run(tc.mode, func(t *testing.T) {
 			commands := experimentCommands(t, "")
-			commands.environ = withEnv(commands.environ, "LLGO_TEST_GO_CONFIG_HELPER="+tc.mode)
+			commands.environ = withEnv(commands.environ, "LLGO_TEST_GO_CONFIG_HELPER="+tc.mode,
+				"LLGO_TEST_SOURCE_GOROOT="+filepath.Dir(bin))
 			_, err := resolveSourceGoConfig(commands, "")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("resolveSourceGoConfig() error = %v, want %q", err, tc.want)
@@ -322,4 +366,27 @@ func TestSourceGoConfigErrors(t *testing.T) {
 			t.Fatalf("expected source configuration error preserving missing-directory cause, got %v", err)
 		}
 	})
+}
+
+// The launcher on PATH need not be the selected source compiler. In particular,
+// GO111MODULE=off disables toolchain switching even with explicit GOTOOLCHAIN.
+func TestSourceGoToolTagsUseResolvedCompiler(t *testing.T) {
+	bin := t.TempDir()
+	writeBuildTestTool(t, bin, "go")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	commands := experimentCommands(t, "")
+	commands.environ = withEnv(commands.environ, "LLGO_TEST_GO_CONFIG_HELPER=selected-root")
+	cfg := mustResolveSourceGo(t, commands, "")
+	if !slices.Contains(cfg.toolTags, "goexperiment.jsonv2") {
+		t.Fatalf("lost selected Go 1.27 default experiment: %v", cfg.toolTags)
+	}
+	commands.environ = cfg.apply(commands.environ)
+	goExe := "go"
+	if runtime.GOOS == "windows" {
+		goExe += ".exe"
+	}
+	output, err := commands.configure(exec.Command(filepath.Join(cfg.GOROOT, "bin", goExe), "list", "encoding/json/v2", "encoding/json/jsontext")).CombinedOutput()
+	if err != nil {
+		t.Fatalf("selected JSON packages unavailable: %v\n%s", err, output)
+	}
 }

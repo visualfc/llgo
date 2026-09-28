@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -18,7 +20,7 @@ type sourceGoConfig struct {
 	toolTags     []string
 }
 
-func resolveSourceGoConfig(commands commandEnv, experiment string) (sourceGoConfig, error) {
+func resolveSourceGoConfig(commands commandEnv, experiment string, buildFlags ...string) (sourceGoConfig, error) {
 	if experiment != "" {
 		commands.environ = withEnv(commands.environ, "GOEXPERIMENT="+experiment)
 	}
@@ -43,12 +45,16 @@ func resolveSourceGoConfig(commands commandEnv, experiment string) (sourceGoConf
 	}
 	commands.environ = withResolvedGoToolchain(commands.environ, cfg.GOVERSION)
 	commands.environ = withEnv(commands.environ, "GOROOT="+cfg.GOROOT, "GOEXPERIMENT="+resolvedExperiment)
-	// The compiler has already been selected in the invocation directory.
-	// Inspect its build context without loading the user's module: versioned
-	// builds may pass a separate -modfile to the source loader, and the real
-	// go.mod can require a newer Go version than the selected source compiler.
-	commands.environ = withEnv(commands.environ, "GO111MODULE=off", "GOWORK=off", "GOFLAGS=")
-	cmd = commands.configure(exec.Command("go", "list", "-f", "{{join context.ToolTags \",\"}}", "unsafe"))
+	// Query the resolved compiler while preserving the invocation's module,
+	// workspace, and GOFLAGS settings. The launcher on PATH may be a different
+	// Go version, especially when module mode disables toolchain switching.
+	goExe := "go"
+	if runtime.GOOS == "windows" {
+		goExe += ".exe"
+	}
+	args := append([]string{"list", "-f", "{{join context.ToolTags \",\"}}"}, buildFlags...)
+	args = append(args, "unsafe")
+	cmd = commands.configure(exec.Command(filepath.Join(cfg.GOROOT, "bin", goExe), args...))
 	output, err = cmd.Output()
 	if err != nil {
 		return cfg, sourceGoConfigError("resolve Go tool tags", err)
