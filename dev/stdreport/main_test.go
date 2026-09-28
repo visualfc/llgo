@@ -275,10 +275,10 @@ func TestGenerateReportWasmFailures(t *testing.T) {
 	if !strings.Contains(rep, "| W32\\|WASI profile |") {
 		t.Fatalf("expected escaped profile in table, got:\n%s", rep)
 	}
-	if !strings.Contains(rep, "- `test/std/\\`net\\` pkg`: network unreachable") {
+	if !strings.Contains(rep, "- W32\\|WASI profile `test/std/\\`net\\` pkg`: network unreachable") {
 		t.Fatalf("expected failed package in list, got:\n%s", rep)
 	}
-	if !strings.Contains(rep, "- `test/std/os`: unspecified failure") {
+	if !strings.Contains(rep, "- W32\\|WASI profile `test/std/os`: unspecified failure") {
 		t.Fatalf("expected default failure reason, got:\n%s", rep)
 	}
 }

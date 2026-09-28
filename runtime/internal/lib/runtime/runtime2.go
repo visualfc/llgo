@@ -34,9 +34,15 @@ func Stack(buf []byte, all bool) int {
 	var small [64]uintptr
 	pcs := small[:]
 	n := 0
+	ensureRuntimePCLN()
+	skip := 2
+	if !fpUnwindAvailable() {
+		// The tracked-stack fallback has no Stack frame; skip only its
+		// synthetic Callers frame so the user caller remains visible.
+		skip = 1
+	}
 	for {
-		// Skip runtime.Callers and runtime.Stack itself, as Go does.
-		n = Callers(2, pcs)
+		n = Callers(skip, pcs)
 		if n < len(pcs) || len(pcs) >= maxTracebackFrames {
 			break
 		}

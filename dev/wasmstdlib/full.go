@@ -381,7 +381,7 @@ func runFullAt(root, name, reportPath, goCmd, llgo string, shard, shards int, st
 			}
 			e.Status = "pass"
 			if runErr != nil {
-				e.Status, e.Reason = "fail", runErr.Error()
+				e.Status, e.Reason = "fail", fullFailureReason(runErr, out)
 				writeFullFailureOutput(os.Stdout, name, e.Package, out)
 			}
 		}
@@ -404,6 +404,32 @@ func runFullAt(root, name, reportPath, goCmd, llgo string, shard, shards int, st
 		return fmt.Errorf("%s shard %d/%d: %d unresolved/failed packages", name, shard, shards, failures)
 	}
 	return nil
+}
+
+// fullFailureReason keeps the issue summary actionable without copying the
+// complete per-package log into it. The artifact retains the full output.
+func fullFailureReason(err error, out []byte) string {
+	var failed []string
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "--- FAIL: ") {
+			continue
+		}
+		fields := strings.Fields(strings.TrimPrefix(line, "--- FAIL: "))
+		if len(fields) != 0 && !seen[fields[0]] {
+			failed = append(failed, fields[0])
+			seen[fields[0]] = true
+		}
+	}
+	if len(failed) == 0 {
+		return err.Error()
+	}
+	const limit = 5
+	if len(failed) > limit {
+		return fmt.Sprintf("%s; failed tests: %s, and %d more", err, strings.Join(failed[:limit], ", "), len(failed)-limit)
+	}
+	return fmt.Sprintf("%s; failed tests: %s", err, strings.Join(failed, ", "))
 }
 
 // Show a failing package's diagnostics before the rest of a long shard finishes.
