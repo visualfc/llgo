@@ -743,6 +743,25 @@ func TestWithResolvedGoToolchain(t *testing.T) {
 	}
 }
 
+func TestNewLinkExecutionContextPropagatesGoVersion(t *testing.T) {
+	ctx := &context{
+		mode:      ModeBuild,
+		buildConf: &Config{BuildMode: BuildModeExe},
+		commands:  commandEnv{dir: t.TempDir()},
+		goVersion: "go1.21.13",
+	}
+	linkCtx := newLinkExecutionContext(ctx, &mainLinkPlan{})
+	if linkCtx == ctx {
+		t.Fatal("link context aliases coordinator")
+	}
+	if linkCtx.goVersion != ctx.goVersion {
+		t.Fatalf("link context goVersion = %q, want source GOROOT GOVERSION %q", linkCtx.goVersion, ctx.goVersion)
+	}
+	if got := linkCtx.sourceGoVersion(); got != ctx.goVersion {
+		t.Fatalf("link context sourceGoVersion() = %q, want %q", got, ctx.goVersion)
+	}
+}
+
 func TestClosePackageMetas(t *testing.T) {
 	b := meta.NewBuilder()
 	b.Sym("pkg.main")

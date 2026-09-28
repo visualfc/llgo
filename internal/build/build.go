@@ -1271,6 +1271,7 @@ func newLinkExecutionContext(ctx *context, plan *mainLinkPlan) *context {
 		commands:             ctx.commands,
 		pclnExternal:         plan.pclnExternal,
 		stripDarwinLTOLocals: plan.stripDarwinLTOLocals,
+		goVersion:            ctx.goVersion,
 	}
 }
 
