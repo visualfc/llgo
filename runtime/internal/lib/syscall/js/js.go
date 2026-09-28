@@ -116,8 +116,9 @@ func Global() Value {
 }
 
 // GlobalForHost is used by LLGo's worker-local filesystem adapter during
-// package initialization. Its handles stay in TLS and are never handed to a
-// child goroutine, so this setup must not pin the main goroutine to one realm.
+// package initialization and lazy initialization on other workers. Its handles
+// stay in TLS and are never handed to a child goroutine, so this setup must
+// not pin the current goroutine to one realm.
 func GlobalForHost() Value {
 	initEmvalGlobals()
 	return valueGlobal

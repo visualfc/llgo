@@ -5,7 +5,9 @@ package wasmtest
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"syscall"
 	"syscall/js"
 	"testing"
 	"time"
@@ -174,6 +176,77 @@ func TestConcurrentWorkerOutput(t *testing.T) {
 		t.Fatalf("output ran on %d scheduler worker, want at least 2", len(workers))
 	}
 	fmt.Fprintln(os.Stdout)
+}
+
+func TestWorkerJSFilesystemHandles(t *testing.T) {
+	const writers = 8
+	dir := t.TempDir()
+	results := make(chan workerCallbackResult, writers)
+	for i := range writers {
+		path := filepath.Join(dir, fmt.Sprintf("worker-%d.txt", i))
+		wasmworkers.GoIndependent(func() {
+			origin := schedulerProcID()
+			fd, err := syscall.Open(path, syscall.O_CREAT|syscall.O_WRONLY|syscall.O_TRUNC, 0o600)
+			if err == nil {
+				var n int
+				n, err = syscall.Write(fd, []byte("worker"))
+				if err == nil && n != len("worker") {
+					err = fmt.Errorf("write %s: wrote %d bytes", path, n)
+				}
+				if closeErr := syscall.Close(fd); err == nil {
+					err = closeErr
+				}
+			}
+			results <- workerCallbackResult{origin: origin, err: err}
+		})
+	}
+	workers := make(map[int]bool)
+	for range writers {
+		result := <-results
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		workers[result.origin] = true
+	}
+	if len(workers) < 2 {
+		t.Fatalf("file operations ran on %d worker, want at least 2", len(workers))
+	}
+	for i := range writers {
+		path := filepath.Join(dir, fmt.Sprintf("worker-%d.txt", i))
+		data, err := os.ReadFile(path)
+		if err != nil || string(data) != "worker" {
+			t.Fatalf("read %s = %q, %v", path, data, err)
+		}
+	}
+}
+
+func TestWorkerIndependentFromJSCallback(t *testing.T) {
+	const tasks = 16
+	results := make(chan workerCallbackResult, tasks)
+	callback := js.FuncOf(func(js.Value, []js.Value) any {
+		origin := schedulerProcID()
+		for range tasks {
+			wasmworkers.GoIndependent(func() {
+				results <- workerCallbackResult{origin: origin, callback: schedulerProcID()}
+			})
+		}
+		return nil
+	})
+	defer callback.Release()
+	js.Global().Call("setTimeout", callback, 0)
+	remote := false
+	timeout := time.After(30 * time.Second)
+	for range tasks {
+		select {
+		case result := <-results:
+			remote = remote || result.callback != result.origin
+		case <-timeout:
+			t.Fatal("independent work from JavaScript callback did not complete")
+		}
+	}
+	if !remote {
+		t.Fatal("independent work from JavaScript callback stayed on its origin worker")
+	}
 }
 
 func TestWorkerHostCallbackRealms(t *testing.T) {

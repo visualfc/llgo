@@ -43,20 +43,24 @@ func SpawnIndependentWasmG(fn func()) {
 		fatal("runtime: independent goroutine without caller")
 		return
 	}
-	affine := gp.context.platform.jsRealm
-	gp.context.platform.jsRealm = false
+	// The go statement below still enters newprocBackend through NewProc.
+	// Override both inherited realm affinity and callback-event pinning for
+	// exactly that spawn, without changing ordinary descendants of this G.
+	previous := gp.context.platform.independentSpawn
+	gp.context.platform.independentSpawn = true
 	go fn()
-	gp.context.platform.jsRealm = affine
+	gp.context.platform.independentSpawn = previous
 }
 
 type runtimeContextPlatform struct {
-	context    wasmcontext.Context
-	gcRoot     wasmGCRootContext
-	glsContext LocalContext
-	runqNext   *g
-	runqQueued bool
-	owner      *wasmWorker
-	jsRealm    bool
+	context          wasmcontext.Context
+	gcRoot           wasmGCRootContext
+	glsContext       LocalContext
+	runqNext         *g
+	runqQueued       bool
+	owner            *wasmWorker
+	jsRealm          bool
+	independentSpawn bool
 	// Keep runqQueued inside unsafe.Sizeof(runtimeContext{}) on wasm32. LLVM
 	// aligns the preceding uint64 G fields more strictly than go/types does.
 	layoutEnd [8]byte
@@ -303,7 +307,8 @@ func newprocBackend(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr, cal
 	gp := newproc1(fn, arg, callergp)
 	var worker *wasmWorker
 	current := currentWasmWorker()
-	if callergp == nil || current != nil &&
+	independent := callergp != nil && callergp.context.platform.independentSpawn
+	if callergp == nil || !independent && current != nil &&
 		(current.pollingCallback || len(current.jsEvents) != 0 || current.syncEventDepth != 0 ||
 			callergp != nil && callergp.context.platform.jsRealm) {
 		// Host callbacks carry thread-local JavaScript handles. Dispatch the G
@@ -314,7 +319,7 @@ func newprocBackend(fn goroutineFunc, arg unsafe.Pointer, stackSize uintptr, cal
 		worker = nextWasmWorker()
 	}
 	gp.context.platform.owner = worker
-	if callergp != nil {
+	if callergp != nil && !independent {
 		gp.context.platform.jsRealm = callergp.context.platform.jsRealm
 	}
 	if !initWasmFiber(gp, wasmcontext.Entry(wasmGStart), unsafe.Pointer(gp), stackSize) {
