@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -102,6 +103,22 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 	}
 	if got, want := args[3], "--dir="+cwd; got != want {
 		t.Fatalf("WAMR default working directory = %q, want %q", got, want)
+	}
+}
+
+func TestWASIThreadedEmulatorReportsInvalidWorkingDirectory(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux getcwd reports a removed working directory")
+	}
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	err := runEmuCmd(commandEnv{environ: os.Environ()}, map[string]string{"": "program.wasm"},
+		crosscompile.WASIThreadedEmulator, nil, false, false, runnerDetails{phase: "test"})
+	if err == nil || !strings.Contains(err.Error(), "resolve WAMR working directory") {
+		t.Fatalf("runner error = %v, want working-directory failure", err)
 	}
 }
 
