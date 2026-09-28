@@ -743,6 +743,25 @@ func TestWithResolvedGoToolchain(t *testing.T) {
 	}
 }
 
+func TestNewLinkExecutionContextPropagatesGoVersion(t *testing.T) {
+	ctx := &context{
+		mode:      ModeBuild,
+		buildConf: &Config{BuildMode: BuildModeExe},
+		commands:  commandEnv{dir: t.TempDir()},
+		goVersion: "go1.21.13",
+	}
+	linkCtx := newLinkExecutionContext(ctx, &mainLinkPlan{})
+	if linkCtx == ctx {
+		t.Fatal("link context aliases coordinator")
+	}
+	if linkCtx.goVersion != ctx.goVersion {
+		t.Fatalf("link context goVersion = %q, want source GOROOT GOVERSION %q", linkCtx.goVersion, ctx.goVersion)
+	}
+	if got := linkCtx.sourceGoVersion(); got != ctx.goVersion {
+		t.Fatalf("link context sourceGoVersion() = %q, want %q", got, ctx.goVersion)
+	}
+}
+
 func TestClosePackageMetas(t *testing.T) {
 	b := meta.NewBuilder()
 	b.Sym("pkg.main")
@@ -1408,6 +1427,32 @@ const (
 	rewriteDepPkg  = rewriteMainPkg + "/dep"
 	rewriteDirPath = "../../cl/_testgo/rewrite"
 )
+
+func TestAddDefaultRuntimeGlobalsUsesSourceGOROOTVersion(t *testing.T) {
+	conf := &Config{}
+	addDefaultRuntimeGlobals(conf, "/go/root", "go1.21.13")
+	runtimeVars := conf.GlobalRewrites["runtime"]
+	if got := runtimeVars["defaultGOROOT"]; got != "/go/root" {
+		t.Fatalf("defaultGOROOT = %q, want source GOROOT", got)
+	}
+	if got := runtimeVars["buildVersion"]; got != "go1.21.13" {
+		t.Fatalf("buildVersion = %q, want source GOROOT GOVERSION", got)
+	}
+}
+
+func TestAddDefaultRuntimeGlobalsKeepsExistingRewrites(t *testing.T) {
+	conf := &Config{}
+	addGlobalString(conf, "runtime.defaultGOROOT=custom-root", nil)
+	addGlobalString(conf, "runtime.buildVersion=custom-version", nil)
+	addDefaultRuntimeGlobals(conf, "/go/root", "go1.21.13")
+	runtimeVars := conf.GlobalRewrites["runtime"]
+	if got := runtimeVars["defaultGOROOT"]; got != "custom-root" {
+		t.Fatalf("defaultGOROOT = %q, want existing rewrite", got)
+	}
+	if got := runtimeVars["buildVersion"]; got != "custom-version" {
+		t.Fatalf("buildVersion = %q, want existing rewrite", got)
+	}
+}
 
 func TestLdFlagsRewriteVars(t *testing.T) {
 	buildRewriteBinary(t, false, "build-main", "build-pkg")
