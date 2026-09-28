@@ -93,9 +93,11 @@ func TestLowerWasmAggregateCopies(t *testing.T) {
 				})
 			}
 			mod := parseWasmAggregateIR(t, "define void @copy(ptr %p) { store volatile [8192 x i8] zeroinitializer, ptr %p\nret void }")
-			before := mod.String()
-			if lowerWasmAggregateCopies("amd64", td, mod, wasmAggregateConfig(bits, true)) != 0 || mod.String() != before {
-				t.Fatal("changed native aggregate operations")
+			if got := lowerWasmAggregateCopies("amd64", td, mod, wasmAggregateConfig(bits, true)); got != 1 {
+				t.Fatalf("native copy lowering changed %d operations, want 1:\n%s", got, mod.String())
+			}
+			if body := mod.NamedFunction("copy").String(); !strings.Contains(body, "@llvm.memset") {
+				t.Fatalf("native zero store was not lowered to memset:\n%s", body)
 			}
 		})
 	}

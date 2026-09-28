@@ -3189,7 +3189,7 @@ func compilePackageModule(ctx *context, aPkg *aPackage, externs []string, verbos
 	lowerWasmAggregateCopies(ctx.buildConf.Goarch, ctx.prog.TargetData(), ret.Module(), llabi.AggregateLoweringConfig{
 		GoWordSize: ctx.prog.GoWordSize(),
 		GCRoots:    ctx.prog.GCRootsEnabled(),
-		Wasm:       true,
+		Wasm:       ctx.buildConf.Goarch == "wasm",
 	})
 	applySizeOptimizationAttributes(ret.Module(), ctx.buildConf.OptLevel)
 	printCmds := ctx.shouldPrintCommands(verbose)
