@@ -11,8 +11,8 @@ on:
     branches: ["**"]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main') || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
   prepare:
@@ -618,7 +618,7 @@ jobs:
     if: needs.prepare.outputs.run_code_ci == 'true'
     needs: prepare
     name: wasm-runtime (${{ matrix.suite }})
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -670,6 +670,15 @@ jobs:
           dev/build_ci_tools.sh "$RUNNER_TEMP/llgo-bin"
           echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
 
+      - name: Compare WebAssembly EH encodings and Go/C++ boundary
+        if: matrix.suite == 'runtime'
+        timeout-minutes: 10
+        shell: bash
+        env:
+          CHROME: ${{ steps.setup-chrome.outputs.chrome-path }}
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+        run: python3 dev/compare_wasm_eh.py --browser
+
       - name: Test WebAssembly target profiles
         if: matrix.suite == 'runtime'
         shell: bash
@@ -677,6 +686,14 @@ jobs:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
           LLGO_BUILD_CACHE: "1"
         run: dev/test_wasm_target_profiles.sh
+
+      - name: Verify final WebAssembly DWARF
+        if: matrix.suite == 'runtime'
+        shell: bash
+        env:
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+          LLGO_BUILD_CACHE: "1"
+        run: python3 dev/test_wasm_debug_info.py --profile j32 --profile j64 --profile w32
 
       - name: Build standard runtime for wasm
         if: matrix.suite == 'runtime'
@@ -686,6 +703,11 @@ jobs:
           LLGO_BUILD_CACHE: "1"
         run: dev/test_wasm_runtime_go_versions.sh 1.24 1.27
 
+      - name: Test wasm coverage reporting
+        if: matrix.suite == 'runtime'
+        shell: bash
+        run: dev/wasm_ci_report_test.sh
+
       - name: Test single-worker wasm schedulers
         shell: bash
         env:
@@ -693,6 +715,15 @@ jobs:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
           LLGO_BUILD_CACHE: "1"
         run: dev/test_wasm_single_worker.sh "${{ matrix.suite }}"
+
+      - name: Test bounded browser workers
+        if: matrix.suite == 'runtime'
+        shell: bash
+        env:
+          CHROME: ${{ steps.setup-chrome.outputs.chrome-path }}
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+          LLGO_BUILD_CACHE: "1"
+        run: dev/test_wasm_workers.sh
 
       - name: Compare JavaScript call semantics with Go
         if: matrix.suite == 'test-command'
@@ -702,3 +733,14 @@ jobs:
             -exec="$(go env GOROOT)/lib/wasm/go_js_wasm_exec" \
             -run '^TestJS(Call|Host)' -count=1 -timeout=30s \
             ./internal/build/testdata/wasm-test
+
+      - name: Test wasm standard-library packages
+        if: matrix.suite == 'runtime'
+        timeout-minutes: 20
+        shell: bash
+        env:
+          LLGO: ${{ runner.temp }}/llgo-bin/llgo
+          LLGO_BUILD_CACHE: "off"
+        run: |
+          bash dev/test_wasm_stdlib_test.sh
+          bash dev/test_wasm_stdlib.sh

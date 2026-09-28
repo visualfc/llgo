@@ -1019,6 +1019,18 @@ func (b Builder) ChangeType(t Type, x Expr) (ret Expr) {
 	if b.Prog.isStdcallType(t.raw.Type) && !b.Prog.isStdcallType(x.raw.Type) {
 		return b.stdcallCallback(t.raw.Type, x)
 	}
+	if t.kind == vkFuncPtr && x.kind == vkClosure {
+		if direct := x.impl.IsAFunction(); !direct.IsNil() {
+			return Expr{direct, t}
+		}
+		// A native callback has no slot for the Go closure environment.
+		code, data := b.Field(x, 0), b.Field(x, 1)
+		b.assertRuntimeError(
+			llvm.CreateICmp(b.impl, llvm.IntNE, data.impl, b.Prog.Nil(b.Prog.VoidPtr()).impl),
+			"C callback must not capture variables",
+		)
+		return Expr{code.impl, t}
+	}
 	if t.kind == vkClosure {
 		switch x.kind {
 		case vkFuncDecl:
@@ -2118,6 +2130,13 @@ func checkExpr(v Expr, t types.Type, b Builder) Expr {
 		}
 		data := prog.Nil(prog.VoidPtr())
 		return b.aggregateValue(tclosure, v.impl, data.impl)
+	}
+	if v.kind == vkClosure {
+		if _, ok := t.Underlying().(*types.Signature); ok {
+			if dst := b.Prog.Type(t, InGo); dst.kind == vkFuncPtr {
+				return b.ChangeType(dst, v)
+			}
+		}
 	}
 	if types.Identical(v.raw.Type, t) || !types.AssignableTo(v.raw.Type, t) {
 		return v

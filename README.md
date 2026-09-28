@@ -109,7 +109,7 @@ func main() {
 }
 ```
 
-Or organize such bindings into a package, as [c/math](https://github.com/goplus/lib/tree/main/c/math/math.go) does:
+Or organize such bindings into a package, as [c/math](https://github.com/goplus/lib/blob/main/c/math/math.go) does:
 
 <!-- embedme doc/_readme/llgo_call_cmath/call_cmath.go -->
 

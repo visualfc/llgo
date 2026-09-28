@@ -138,7 +138,11 @@ retry:
 		typ = t.Underlying()
 		goto retry
 	case *types.Alias:
-		typ = types.Unalias(t)
+		prog := Program(unsafe.Pointer(p))
+		if background, ok := prog.packageTypeBackground(typeNameLinkname(t.Obj())); ok && isNativeFuncBackground(background) {
+			return 0
+		}
+		typ = t.Rhs()
 		goto retry
 	case *types.Signature:
 		return ptrSize

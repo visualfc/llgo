@@ -35,6 +35,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
@@ -63,6 +64,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/pclnpost"
 	"github.com/xgo-dev/llgo/internal/quoted"
 	"github.com/xgo-dev/llgo/internal/typepatch"
+	"github.com/xgo-dev/llgo/internal/wasmworkers"
 	"github.com/xgo-dev/llgo/ssa/abi"
 	xenv "github.com/xgo-dev/llgo/xtool/env"
 	gllvm "github.com/xgo-dev/llvm"
@@ -142,6 +144,7 @@ type Config struct {
 	GOAMD64            string // amd64 microarchitecture level: v1 through v4
 	GOARM              string // arm architecture and floating-point implementation
 	GOARM64            string // arm64 ISA version and optional lse/crypto extensions
+	GOEXPERIMENT       string // Go experiments; empty inherits cmd/go configuration, "none" disables defaults
 	Target             string // target name (e.g., "rp2040", "wasi") - takes precedence over Goos/Goarch
 	OptLevel           optlevel.Level
 	LTO                lto.Mode
@@ -155,6 +158,7 @@ type Config struct {
 	Port               string  // target port for flashing
 	BaudRate           int     // baudrate for serial communication
 	RunArgs            []string
+	RunnerTimeout      time.Duration // Host execution limit; zero disables it.
 	Mode               Mode
 	BuildMode          BuildMode // Build mode: exe, c-archive, c-shared
 	GenExpect          bool      // only valid for ModeCmpTest
@@ -239,6 +243,10 @@ type Config struct {
 	Coverage                   *CoverageConfig
 	coverage                   *coverageBuild
 	coverageProfileInitialized bool
+
+	// Resolved once per invocation, independently of the Go version that built LLGo.
+	sourceGoVersion string
+	toolTags        []string
 }
 
 type Rewrites map[string]string
@@ -260,6 +268,7 @@ func (c *Config) clone() *Config {
 	}
 	cloned.RunArgs = slices.Clone(c.RunArgs)
 	cloned.GoBuildFlags = slices.Clone(c.GoBuildFlags)
+	cloned.toolTags = slices.Clone(c.toolTags)
 	cloned.Overlay = cloneOverlay(c.Overlay)
 	if c.coverage != nil && c.coverage.inputOverlaySet {
 		// Coverage-generated files belong to the current loaded graph. Carrying
@@ -580,6 +589,10 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		conf.Goarch = export.GOARCH
 	}
 	resolveTestPthreadStackSize(conf)
+	wasmWorkers, err := configureWasmWorkers(conf, &export)
+	if err != nil {
+		return nil, err
+	}
 	wasmGC, err := configureWasmGC(conf, &export)
 	if err != nil {
 		return nil, err
@@ -667,7 +680,8 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	prog.EnableGCRoots(wasmGC)
 	prog.EnableLogicalGoroutineLocality(usesSingleWorkerWasmScheduler(conf))
-	prog.EnableCooperativeSafepoints(wasmGC)
+	prog.EnableThreadLocalGCRoots(wasmGC && wasmWorkers.Enabled())
+	prog.EnableCooperativeSafepoints(wasmGC || wasmWorkers.Enabled())
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
 	}
@@ -719,15 +733,22 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	if patterns == nil {
 		patterns = []string{"."}
 	}
-	sourcePatchGOROOT, sourcePatchGoVersion, err := env.GOROOTAndGOVERSIONWithEnv(cfg.Env)
+	sourceGo, err := resolveSourceGoConfig(commandEnv{dir: cfg.Dir, environ: cfg.Env}, conf.GOEXPERIMENT, cfg.BuildFlags...)
 	if err != nil {
 		return nil, err
 	}
+	sourcePatchGOROOT, sourcePatchGoVersion := sourceGo.GOROOT, sourceGo.GOVERSION
+	conf.GOEXPERIMENT = sourceGo.GOEXPERIMENT
+	conf.sourceGoVersion = sourceGo.GOVERSION
+	conf.toolTags = slices.Clone(sourceGo.toolTags)
+	cfg.Env = sourceGo.apply(cfg.Env)
+	commands.environ = sourceGo.apply(commands.environ)
 	var llgoFiles map[string][]string
 	conf.Overlay, llgoFiles, err = buildSourcePatchOverlayForGOROOT(conf.Overlay, env.LLGoRuntimeDir(), sourcePatchGOROOT, sourcePatchBuildContext{
 		goos:       conf.Goos,
 		goarch:     conf.Goarch,
 		goversion:  sourcePatchGoVersion,
+		toolTags:   sourceGo.toolTags,
 		buildFlags: cfg.BuildFlags,
 	})
 	if err != nil {
@@ -870,6 +891,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		frontendOptions: frontendOptions,
 		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, cabiOptimize),
 		buildTrace:      buildTrace,
+		goVersion:       sourcePatchGoVersion,
 	}
 	defer ctx.closePackageMetas()
 	defer ctx.closePackageArchiveBuffers()
@@ -894,8 +916,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	// default runtime globals must be registered before packages are built
 	// The generated program must report the GOROOT whose standard library is
 	// being compiled, which may differ from the toolchain used to build llgo.
-	addGlobalString(conf, "runtime.defaultGOROOT="+sourcePatchGOROOT, nil)
-	addGlobalString(conf, "runtime.buildVersion="+runtime.Version(), nil)
+	addDefaultRuntimeGlobals(conf, sourcePatchGOROOT, sourcePatchGoVersion)
 	pkgs, pkgEntries, err := registerSSAPkgs(ctx, initial, verbose)
 	if err != nil {
 		return nil, err
@@ -1213,6 +1234,7 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 					pkgName:   strings.TrimSuffix(link.pkg.PkgPath, ".test"),
 					runner:    runner,
 					runnerEnv: envMap,
+					profile:   string(linkCtx.crossCompile.WasmProfile),
 				}
 				if cleanupTemp {
 					program.temporaryOutputs = link.outFmts
@@ -1221,12 +1243,12 @@ func executeInitialPackageLink(ctx *context, link *initialPackageLink, verbose, 
 				return program, nil
 			}
 			if runner != "" && link.conf.Mode == ModeRun {
-				return nil, runInEmulator(linkCtx.commands, runner, envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
+				return nil, runInEmulator(linkCtx.commands, runner, string(linkCtx.crossCompile.WasmProfile), envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
 			}
 			return nil, runNative(linkCtx, link.outFmts.Out, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode)
 		}
 		if namedTargetUsesEmulatorPath(link.conf) {
-			return nil, runInEmulator(linkCtx.commands, linkCtx.crossCompile.Emulator, envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
+			return nil, runInEmulator(linkCtx.commands, linkCtx.crossCompile.Emulator, string(linkCtx.crossCompile.WasmProfile), envMap, link.pkg.Dir, link.pkg.PkgPath, link.conf, link.conf.Mode, verbose)
 		}
 		if err := flash.FlashDevice(linkCtx.crossCompile.Device, envMap, linkCtx.buildConf.Port, verbose); err != nil {
 			return nil, err
@@ -1274,6 +1296,7 @@ func newLinkExecutionContext(ctx *context, plan *mainLinkPlan) *context {
 		commands:             ctx.commands,
 		pclnExternal:         plan.pclnExternal,
 		stripDarwinLTOLocals: plan.stripDarwinLTOLocals,
+		goVersion:            ctx.goVersion,
 	}
 }
 
@@ -1408,6 +1431,39 @@ func cSharedImportLibraryArgs(toolchain crosscompile.NativeToolchain, output str
 // DefaultBuildTags returns the build tags LLGo always enables.
 func DefaultBuildTags() string {
 	return "llgo,math_big_pure_go,purego"
+}
+
+func configureWasmWorkers(conf *Config, export *crosscompile.Export) (wasmworkers.Config, error) {
+	config, err := wasmworkers.Parse(os.Getenv(llgoWasmWorkers))
+	if err != nil {
+		return config, err
+	}
+	if err := config.ValidateTarget(conf.Goos, conf.Goarch, export.WasmProfile, export.WasmProvider); err != nil {
+		return config, err
+	}
+	if !config.Enabled() {
+		return config, nil
+	}
+	preJS := wasmworkers.PreJSPath(env.LLGoROOT())
+	if _, err := os.Stat(preJS); err != nil {
+		return config, fmt.Errorf("locate WebAssembly worker host shim: %w", err)
+	}
+	workers := strconv.Itoa(config.Count)
+	export.BuildTags = append(export.BuildTags, "llgo.wasm.workers")
+	export.CCFLAGS = append(export.CCFLAGS, "-pthread", "-DLLGO_WASM_WORKERS="+workers)
+	export.LDFLAGS = append(export.LDFLAGS,
+		"--pre-js", preJS,
+		"-pthread",
+		"-sPTHREAD_POOL_SIZE="+workers,
+		"-sPROXY_TO_PTHREAD=1",
+		"-sEXIT_RUNTIME=1",
+		// EXPORT_ALL eagerly reads memory views while a pthread worker is still
+		// waiting for Emscripten to deliver its shared WebAssembly.Memory. The
+		// profile already lists the public runtime methods it needs explicitly.
+		"-sEXPORT_ALL=0",
+	)
+	export.WasmRuntime.RunMainTask = true
+	return config, nil
 }
 
 func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
@@ -1580,6 +1636,10 @@ type context struct {
 	// Cache related fields
 	cacheManager *cacheManager
 	llvmVersion  string
+	// goVersion is the GOVERSION of the GOROOT whose standard library is being
+	// compiled. collectEnvInputs records it through sourceGoVersion; compiled
+	// programs report it through addDefaultRuntimeGlobals as runtime.Version().
+	goVersion string
 
 	// go list derived file lists (SFiles, etc.)
 	sfilesCache       map[string][]string // pkg.ID -> absolute .s/.S file paths
@@ -2047,6 +2107,11 @@ const maxRewriteValueLength = 1 << 20 // 1 MiB cap per rewrite value
 
 func addGlobalString(conf *Config, arg string, mainPkgs []string) {
 	addGlobalStringWith(conf, arg, mainPkgs, true)
+}
+
+func addDefaultRuntimeGlobals(conf *Config, goroot, goversion string) {
+	addGlobalString(conf, "runtime.defaultGOROOT="+goroot, nil)
+	addGlobalString(conf, "runtime.buildVersion="+goversion, nil)
 }
 
 func addGlobalStringWith(conf *Config, arg string, mainPkgs []string, skipIfExists bool) {
@@ -3937,6 +4002,7 @@ const llgoTrace = "LLGO_TRACE"
 const llgoOptimize = "LLGO_OPTIMIZE"
 const llgoWasmRuntime = "LLGO_WASM_RUNTIME"
 const llgoWasiThreads = "LLGO_WASI_THREADS"
+const llgoWasmWorkers = "LLGO_WASM_WORKERS"
 const llgoStdioNobuf = "LLGO_STDIO_NOBUF"
 const llgoFullRpath = "LLGO_FULL_RPATH"
 const llgoBuildCache = "LLGO_BUILD_CACHE"

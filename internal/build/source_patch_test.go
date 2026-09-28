@@ -35,28 +35,39 @@ func TestWasmRuntimeSourcePatchTypeChecks(t *testing.T) {
 		{name: "WASI GC wasm32", goos: "wasip1", profile: crosscompile.WasmProfileW32, buildFlags: []string{"-tags=llgo,llgo.wasm.wasi,llgo.wasm.gc.linear"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			cfgEnv := append(os.Environ(), "GOOS="+test.goos, "GOARCH=wasm")
-			goroot, goversion, err := env.GOROOTAndGOVERSIONWithEnv(cfgEnv)
+			cfgEnv := withEnv(os.Environ(), "GOOS="+test.goos, "GOARCH=wasm")
+			sourceGo, err := resolveSourceGoConfig(commandEnv{environ: cfgEnv}, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			overlay, _, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), goroot, sourcePatchBuildContext{
+			cfgEnv = sourceGo.apply(cfgEnv)
+			overlay, llgoFiles, err := buildSourcePatchOverlayForGOROOT(nil, env.LLGoRuntimeDir(), sourceGo.GOROOT, sourcePatchBuildContext{
 				goos:       test.goos,
 				goarch:     "wasm",
-				goversion:  goversion,
+				goversion:  sourceGo.GOVERSION,
+				toolTags:   sourceGo.toolTags,
 				buildFlags: test.buildFlags,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			pkgs, err := packages.LoadEx(nil, func(sizes types.Sizes, _, _ string) types.Sizes {
+			// Use the same source-patch path as Build. Passing these overlays
+			// to cmd/go is invalid when a downloaded GOROOT is in GOMODCACHE.
+			dedup := packages.NewDeduper()
+			dedup.SetLLGoFiles(llgoFiles)
+			pkgs, err := packages.LoadEx(dedup, func(sizes types.Sizes, _, _ string) types.Sizes {
 				return effectiveTypeSizes(sizes, test.profile)
 			}, &packages.Config{
 				Mode:       loadSyntax | packages.NeedDeps | packages.NeedModule | packages.NeedExportFile,
 				Env:        cfgEnv,
 				Fset:       token.NewFileSet(),
-				Overlay:    overlay,
 				BuildFlags: test.buildFlags,
+				ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+					if data, ok := overlay[filename]; ok {
+						src = data
+					}
+					return parser.ParseFile(fset, filename, src, parser.AllErrors|parser.ParseComments)
+				},
 			}, "runtime")
 			if err != nil {
 				t.Fatal(err)
@@ -323,6 +334,45 @@ func TestSyscallSourcePatchPreservesTargetImplementations(t *testing.T) {
 	}
 	if changed || len(files) != 0 {
 		t.Fatalf("wasm syscall patch changed = %v, files = %v, want official implementation", changed, files)
+	}
+
+	changed, overlay, files, err := applySourcePatchForPkg(nil, nil, env.LLGoRuntimeDir(), runtime.GOROOT(), pkgPath, sourcePatchBuildContext{
+		goos:       "js",
+		goarch:     "wasm",
+		goversion:  runtime.Version(),
+		buildFlags: []string{"-tags=llgo.wasm.workers"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || len(files) != 1 || filepath.Base(files[0]) != "fs_js_wasm_workers.go" {
+		t.Fatalf("worker syscall patch changed = %v, files = %v, want only the worker handle patch", changed, files)
+	}
+	original := filepath.Join(runtime.GOROOT(), "src", "syscall", "fs_js.go")
+	filtered := string(overlay[original])
+	parsed, err := parser.ParseFile(token.NewFileSet(), original, filtered, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatalf("parse filtered syscall source: %v", err)
+	}
+	workerLocal := map[string]bool{
+		"jsProcess": true, "jsPath": true, "jsFS": true, "constants": true, "uint8Array": true,
+	}
+	for _, decl := range parsed.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			for _, name := range spec.(*ast.ValueSpec).Names {
+				if workerLocal[name.Name] {
+					t.Fatalf("official syscall source retained worker-local declaration %q:\n%s", name.Name, filtered)
+				}
+			}
+		}
+	}
+	patchFile := filepath.Join(runtime.GOROOT(), "src", "syscall", "z_llgo_patch_fs_js_wasm_workers.go")
+	if patch := string(overlay[patchFile]); !strings.Contains(patch, "//llgointernal:tls") {
+		t.Fatalf("worker syscall patch does not make host handles physical TLS:\n%s", patch)
 	}
 }
 

@@ -33,6 +33,21 @@ func TestFullFailureOutputIsImmediateAndLiteral(t *testing.T) {
 	}
 }
 
+func TestFullFailureReasonIncludesFailedTests(t *testing.T) {
+	err := errors.New("exit status 1")
+	out := []byte("=== RUN   TestFirst\n--- FAIL: TestFirst (0.01s)\n    --- FAIL: TestSecond/subcase (0.02s)\n")
+	if got, want := fullFailureReason(err, out), "exit status 1; failed tests: TestFirst, TestSecond/subcase"; got != want {
+		t.Fatalf("fullFailureReason = %q, want %q", got, want)
+	}
+	if got := fullFailureReason(err, []byte("compile failed\n")); got != err.Error() {
+		t.Fatalf("non-test failure reason = %q, want %q", got, err)
+	}
+	out = []byte("--- FAIL: TestA (0s)\n--- FAIL: TestA (0s)\n--- FAIL: TestB (0s)\n--- FAIL: TestC (0s)\n--- FAIL: TestD (0s)\n--- FAIL: TestE (0s)\n--- FAIL: TestF (0s)\n")
+	if got, want := fullFailureReason(err, out), "exit status 1; failed tests: TestA, TestB, TestC, TestD, TestE, and 1 more"; got != want {
+		t.Fatalf("bounded failure reason = %q, want %q", got, want)
+	}
+}
+
 func TestFullAuditContinuesAndPreservesShardAccounting(t *testing.T) {
 	root := t.TempDir()
 	var inventory []byte
@@ -57,11 +72,12 @@ func TestFullAuditContinuesAndPreservesShardAccounting(t *testing.T) {
 		return inventory, nil
 	}
 	var visited []string
+	failureOutput := "=== RUN   TestBroken\n--- FAIL: TestBroken (0.01s)\nFAIL\n"
 	run := func(_ string, c command) ([]byte, error) {
 		pkg := c.Args[len(c.Args)-1]
 		visited = append(visited, pkg)
 		if pkg == "./test/a" {
-			return []byte("compile failed"), errors.New("compile failed")
+			return []byte(failureOutput), errors.New("exit status 1")
 		}
 		return []byte("=== RUN   TestWorks\n--- PASS: TestWorks (0.00s)\nPASS\n"), nil
 	}
@@ -91,7 +107,10 @@ func TestFullAuditContinuesAndPreservesShardAccounting(t *testing.T) {
 			t.Fatalf("bad accounting: %s", data)
 		}
 	}
-	if log, err := os.ReadFile(filepath.Join(report+".logs", "test_a.log")); err != nil || string(log) != "compile failed" {
+	if got.Packages[0].Reason != "exit status 1; failed tests: TestBroken" {
+		t.Fatalf("missing failed test in report: %s", data)
+	}
+	if log, err := os.ReadFile(filepath.Join(report+".logs", "test_a.log")); err != nil || string(log) != failureOutput {
 		t.Fatalf("lost failure log: %q %v", log, err)
 	}
 }

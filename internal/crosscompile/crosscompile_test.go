@@ -109,9 +109,11 @@ func TestCompileWithConfigRejectsFileAsOutputDir(t *testing.T) {
 }
 
 func TestUseCrossCompileSDK(t *testing.T) {
-	// Skip long-running tests unless explicitly enabled
-	if testing.Short() {
-		t.Skip("Skipping test in short mode")
+	// This test checks SDK flags, so use a local SDK fixture instead of
+	// depending on a release download and external network availability.
+	writeWasmTargetFixture(t, "", "")
+	if err := os.MkdirAll(filepath.Join(os.Getenv("LLGO_ROOT"), "crosscompile", "wasi-libc"), 0o755); err != nil {
+		t.Fatal(err)
 	}
 
 	// Test cases
@@ -508,6 +510,15 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 			}
 			if !slices.Contains(export.LDFLAGS, emscriptenAsyncifyRemove) {
 				t.Errorf("named target does not preserve current libffi closure buffers during replay: %v", export.LDFLAGS)
+			}
+			if !slices.Contains(export.LDFLAGS, "-sALLOW_TABLE_GROWTH=1") {
+				t.Errorf("named target does not allow dynamic libffi closure entries: %v", export.LDFLAGS)
+			}
+			if !slices.Contains(export.LDFLAGS, "-sNODE_HOST_ENV=1") {
+				t.Errorf("named target does not propagate Node environment variables: %v", export.LDFLAGS)
+			}
+			if !slices.Contains(export.LDFLAGS, "-sEXPORTED_RUNTIME_METHODS=cwrap,allocateUTF8,stringToUTF8,UTF8ToString,FS,setValue,getValue,ENV") {
+				t.Errorf("named target does not expose its browser environment map: %v", export.LDFLAGS)
 			}
 			if !slices.Contains(export.LDFLAGS, "-sEXIT_RUNTIME=1") {
 				t.Errorf("named target does not let fatal Asyncify programs exit: %v", export.LDFLAGS)

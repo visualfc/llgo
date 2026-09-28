@@ -1,0 +1,71 @@
+# WebAssembly exception-handling comparison
+
+Run `python3 dev/compare_wasm_eh.py` with Emscripten, Node, `wasm-tools`,
+`llvm-dwarfdump`, and the selected Binaryen installation on `PATH`. Set
+`EM_BINARYEN_ROOT` to select a complete Binaryen installation; optionally set
+`LLGO` to include the existing Go panic/recover smoke test. Pass `--browser`
+to execute all six C++ variants and, with `LLGO`, the Go baseline and both
+Go/C++ wrappers in Chrome as well.
+Individual tool paths can be set with `EMXX`, `NODE`, `WASM_TOOLS`,
+`LLVM_DWARFDUMP`, and `WASMOPT`; `WASMOPT` takes precedence over
+`EM_BINARYEN_ROOT`.
+For reproducible DWARF verification, use Emscripten 6.0.8 with the
+[`llgo-v132.3` Binaryen release](https://github.com/xgo-dev/binaryen/releases/tag/llgo-v132.3)
+selected through `EM_BINARYEN_ROOT` (and `WASMOPT` if set). Upstream Binaryen
+132 can report DWARF range errors unrelated to this EH comparison.
+Emscripten 6.0.8-generated glue requires Node 24.15.0 or newer. The script
+checks this before building: Node 22 cannot run the glue even with
+`--experimental-wasm-exnref`, so `NODE` must point at a compatible binary.
+
+The script compiles the same C++ `throw`/`catch` and `setjmp`/`longjmp` fixture
+with Emscripten's legacy EH mode and its direct standard `exnref` mode. It
+also runs Binaryen's `--translate-to-exnref` pass on the legacy module. Each
+variant is validated, checked for the expected EH instruction family and valid
+DWARF structure, then executed with Node at `-O0` and `-O2`.
+The translated variant reuses legacy Emscripten JS glue with only its companion
+Wasm filename changed; it is not a full Emscripten exnref link.
+
+Local result on 2026-09-27 (Emscripten 6.0.8-git,
+[LLGo Binaryen `llgo-v132.3`](https://github.com/xgo-dev/binaryen/releases/tag/llgo-v132.3),
+Node 26.8.1, wasm-tools 1.258.0, LLVM 22.1.8):
+
+| Optimization | Legacy Wasm EH | Direct exnref | Binaryen translation |
+| --- | ---: | ---: | ---: |
+| `-O0` | 1,104,279 B | 1,107,030 B | 1,145,446 B |
+| `-O2` | 238,326 B | 239,045 B | 238,312 B |
+
+These columns compare candidate Wasm EH encodings, not LLGo's current browser
+output. The current Go/C++ boundary uses Emscripten JS EH, catches C++ inside
+the wrapper, and returns a C ABI status to Go.
+
+All six variants passed validation, DWARF verification, and execution. The
+separate Go panic/recover baseline passed. These measurements are a smoke
+comparison, not a performance result. The `--browser` run passed
+all six C++ variants, the Go panic/recover baseline, and both Go/C++ wrappers
+in Chrome. These checks never let a foreign exception unwind through a Go
+frame or a suspended goroutine.
+
+The optional LLGo boundary fixture additionally passed at O0 and O2: Go
+calls a C++ wrapper, the wrapper throws and catches internally, returns a C
+ABI status, and Go carries that status into a panic and recovers it. The
+wrapper uses Emscripten's JS exception mode (`-sDEFAULT_TO_CXX` and
+`-sDISABLE_EXCEPTION_CATCHING=0`) with `-fexceptions` on its C++ source.
+Placing the native file under `_wrap/` is necessary here: if a `.cpp` file
+also sits in the Go package directory, automatic C++ source collection and
+`LLGoFiles` compile it twice, and the linker may select the object lacking
+the requested EH flags. This wrapper result establishes a safe status
+translation boundary with the current Asyncify backend. It does not establish
+that a C++ exception can unwind through Go or that direct Wasm EH can be
+enabled for the whole LLGo browser link.
+
+## Supported EH boundary
+
+Keep the current validated Emscripten/LLGo EH encoding for browser builds.
+C++ exceptions are caught inside a C++ wrapper; the wrapper returns a C ABI
+status that Go may translate to a panic. Do not enable direct `exnref` or a
+post-link translation for the whole LLGo module based on the isolated C++
+comparison. Both remain compatible candidates for a later full-link test,
+provided panic/recover, Asyncify suspension, Go/C/JS callbacks, final DWARF,
+and the chosen runtime all pass together. [WAMR's documented EH support](https://github.com/bytecodealliance/wasm-micro-runtime/blob/main/doc/build_wamr.md)
+is currently limited to legacy EH in its classic interpreter, so the browser
+comparison alone does not change the W32/WAMR execution contract.

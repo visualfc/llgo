@@ -9,7 +9,7 @@ import (
 const LLGoFiles = "_wrap/stack.c"
 
 //go:linkname workerStackBounds C.llgo_wasi_worker_stack_bounds
-func workerStackBounds() int32
+func workerStackBounds(expectWorker int32) int32
 
 //go:linkname monotonicClock C.llgo_probe_monotonic_clock
 func monotonicClock() int64
@@ -28,6 +28,9 @@ func gStateForTesting() (count uint64, mainExited bool)
 
 func main() {
 	checkClocks()
+	if workerStackBounds(0) != 1 {
+		panic("WAMR main-thread C stack bounds unavailable")
+	}
 	_, _, mainMID, _, _, _, linked := gmpForTesting()
 	if !linked {
 		panic("main G/M/P is not linked")
@@ -46,7 +49,7 @@ func main() {
 		go func() {
 			defer wait.Done()
 			checkClocks()
-			if workerStackBounds() != 1 {
+			if workerStackBounds(1) != 1 {
 				panic("WAMR pthread C stack bounds unavailable")
 			}
 			_, _, mid, _, _, _, linked := gmpForTesting()

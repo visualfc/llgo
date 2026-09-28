@@ -97,10 +97,13 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 	m.env.Goamd64 = c.buildConf.GOAMD64
 	m.env.Goarm = c.buildConf.GOARM
 	m.env.Goarm64 = c.buildConf.GOARM64
+	m.env.Goexperiment = c.buildConf.GOEXPERIMENT
+	m.env.SourceGoVersion = c.buildConf.sourceGoVersion
+	m.env.ToolTags = slices.Clone(c.buildConf.toolTags)
 	m.env.LlvmTriple = c.crossCompile.LLVMTarget
 	m.env.LlgoVersion = env.Version()
 	m.env.LlgoCompilerHash = c.buildConf.CompilerHash
-	m.env.GoVersion = runtime.Version()
+	m.env.GoVersion = c.sourceGoVersion()
 	m.env.LlvmVersion = c.getLLVMVersion()
 
 	// Environment variables that affect build
@@ -109,6 +112,7 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 		llgoOptimize,
 		llgoWasmRuntime,
 		llgoWasiThreads,
+		llgoWasmWorkers,
 		llgoStdioNobuf,
 		llgoFullRpath,
 	}
@@ -122,6 +126,15 @@ func (c *context) collectEnvInputs(m *manifestBuilder) {
 		// true, on) share a cache entry.
 		m.env.Vars = m.env.Vars.Add(llgoFuncInfoSites, strconv.FormatBool(IsFuncInfoSitesEnabled()))
 	}
+}
+
+func (c *context) sourceGoVersion() string {
+	if c.goVersion != "" {
+		return c.goVersion
+	}
+	// Fallback for tests that construct a bare context. Production builds set
+	// goVersion from the source GOROOT before packages are fingerprinted.
+	return runtime.Version()
 }
 
 // collectCommonInputs collects common build configuration inputs.

@@ -34,6 +34,10 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if mode := os.Getenv("LLGO_TEST_GO_CONFIG_HELPER"); mode != "" {
+		runGoConfigHelper(mode)
+		os.Exit(0)
+	}
 	if os.Getenv("LLGO_TEST_NODE_HELPER") == "1" && strings.TrimSuffix(strings.ToLower(filepath.Base(os.Args[0])), ".exe") == "node" {
 		os.Exit(0)
 	}
@@ -786,6 +790,25 @@ func TestWithResolvedGoToolchain(t *testing.T) {
 	}
 }
 
+func TestNewLinkExecutionContextPropagatesGoVersion(t *testing.T) {
+	ctx := &context{
+		mode:      ModeBuild,
+		buildConf: &Config{BuildMode: BuildModeExe},
+		commands:  commandEnv{dir: t.TempDir()},
+		goVersion: "go1.21.13",
+	}
+	linkCtx := newLinkExecutionContext(ctx, &mainLinkPlan{})
+	if linkCtx == ctx {
+		t.Fatal("link context aliases coordinator")
+	}
+	if linkCtx.goVersion != ctx.goVersion {
+		t.Fatalf("link context goVersion = %q, want source GOROOT GOVERSION %q", linkCtx.goVersion, ctx.goVersion)
+	}
+	if got := linkCtx.sourceGoVersion(); got != ctx.goVersion {
+		t.Fatalf("link context sourceGoVersion() = %q, want %q", got, ctx.goVersion)
+	}
+}
+
 func TestClosePackageMetas(t *testing.T) {
 	b := meta.NewBuilder()
 	b.Sym("pkg.main")
@@ -933,6 +956,80 @@ func TestUsesSingleWorkerWasmScheduler(t *testing.T) {
 	}
 	if usesSingleWorkerWasmScheduler(nil) {
 		t.Fatal("nil configuration selected the single-worker scheduler")
+	}
+}
+
+func TestConfigureWasmWorkers(t *testing.T) {
+	t.Setenv(llgoWasmWorkers, "2")
+	conf := Config{Goos: "js", Goarch: "wasm"}
+	export := crosscompile.Export{WasmProfile: crosscompile.WasmProfileJ32, WasmProvider: crosscompile.WasmProviderEmscripten}
+	config, err := configureWasmWorkers(&conf, &export)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Count != 2 || !config.Enabled() {
+		t.Fatalf("worker config = %+v", config)
+	}
+	if !slices.Contains(export.BuildTags, "llgo.wasm.workers") {
+		t.Fatalf("worker build tag missing from %q", export.BuildTags)
+	}
+	for _, want := range []string{"-pthread", "-DLLGO_WASM_WORKERS=2"} {
+		if !slices.Contains(export.CCFLAGS, want) {
+			t.Fatalf("CCFLAGS %q missing %q", export.CCFLAGS, want)
+		}
+	}
+	for _, want := range []string{
+		"-pthread",
+		"-sPTHREAD_POOL_SIZE=2",
+		"-sPROXY_TO_PTHREAD=1",
+		"-sEXIT_RUNTIME=1",
+		"-sEXPORT_ALL=0",
+	} {
+		if !slices.Contains(export.LDFLAGS, want) {
+			t.Fatalf("LDFLAGS %q missing %q", export.LDFLAGS, want)
+		}
+	}
+	if !export.WasmRuntime.RunMainTask {
+		t.Fatal("worker runtime did not select the host-owned main entry")
+	}
+	if enabled, err := configureWasmGC(&conf, &export); err != nil {
+		t.Fatalf("default worker GC selection failed: %v", err)
+	} else if !enabled {
+		t.Fatal("worker runtime did not enable the wasm collector")
+	}
+	if !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "llgo.wasm.gc.linear") {
+		t.Fatalf("worker GC tag missing from %q", conf.Tags)
+	}
+}
+
+func TestConfigureWasmWorkersRejectsUnsupportedTargets(t *testing.T) {
+	t.Setenv(llgoWasmWorkers, "2")
+	for _, test := range []struct {
+		name   string
+		conf   Config
+		export crosscompile.Export
+	}{
+		{name: "raw js wasm", conf: Config{Goos: "js", Goarch: "wasm"}},
+		{name: "WASI", conf: Config{Goos: "wasip1", Goarch: "wasm"}, export: crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32, WasmProvider: crosscompile.WasmProviderWASI}},
+		{name: "native", conf: Config{Goos: "linux", Goarch: "amd64"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := configureWasmWorkers(&test.conf, &test.export); err == nil {
+				t.Fatal("worker configuration unexpectedly succeeded")
+			}
+		})
+	}
+}
+
+func TestConfigureWasmWorkersDisabledOutsideWasm(t *testing.T) {
+	t.Setenv(llgoWasmWorkers, "1")
+	conf := Config{Goos: "linux", Goarch: "amd64"}
+	config, err := configureWasmWorkers(&conf, &crosscompile.Export{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Enabled() {
+		t.Fatalf("worker config = %+v, want disabled", config)
 	}
 }
 
@@ -1451,6 +1548,32 @@ const (
 	rewriteDepPkg  = rewriteMainPkg + "/dep"
 	rewriteDirPath = "../../cl/_testgo/rewrite"
 )
+
+func TestAddDefaultRuntimeGlobalsUsesSourceGOROOTVersion(t *testing.T) {
+	conf := &Config{}
+	addDefaultRuntimeGlobals(conf, "/go/root", "go1.21.13")
+	runtimeVars := conf.GlobalRewrites["runtime"]
+	if got := runtimeVars["defaultGOROOT"]; got != "/go/root" {
+		t.Fatalf("defaultGOROOT = %q, want source GOROOT", got)
+	}
+	if got := runtimeVars["buildVersion"]; got != "go1.21.13" {
+		t.Fatalf("buildVersion = %q, want source GOROOT GOVERSION", got)
+	}
+}
+
+func TestAddDefaultRuntimeGlobalsKeepsExistingRewrites(t *testing.T) {
+	conf := &Config{}
+	addGlobalString(conf, "runtime.defaultGOROOT=custom-root", nil)
+	addGlobalString(conf, "runtime.buildVersion=custom-version", nil)
+	addDefaultRuntimeGlobals(conf, "/go/root", "go1.21.13")
+	runtimeVars := conf.GlobalRewrites["runtime"]
+	if got := runtimeVars["defaultGOROOT"]; got != "custom-root" {
+		t.Fatalf("defaultGOROOT = %q, want existing rewrite", got)
+	}
+	if got := runtimeVars["buildVersion"]; got != "custom-version" {
+		t.Fatalf("buildVersion = %q, want existing rewrite", got)
+	}
+}
 
 func TestLdFlagsRewriteVars(t *testing.T) {
 	buildRewriteBinary(t, false, "build-main", "build-pkg")
