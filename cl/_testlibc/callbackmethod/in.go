@@ -22,18 +22,6 @@ func chooseVisitor(useFirst bool) func(local.Node, unsafe.Pointer) int32 {
 	}
 }
 
-func rejectCaptured(node local.Node, data unsafe.Pointer, offset int32) {
-	defer func() {
-		err, ok := recover().(error)
-		if !ok || err.Error() != "runtime error: C callback must not capture variables" {
-			panic("capturing C callback was not rejected")
-		}
-	}()
-	node.Visit(func(node local.Node, _ unsafe.Pointer) int32 {
-		return node.Data + offset
-	}, data)
-}
-
 // CHECK-LABEL: define void @main.main(){{.*}} {
 // CHECK: call i32 @llgo_visit_node(
 func main() {
