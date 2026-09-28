@@ -5,9 +5,6 @@ import (
 	"github.com/xgo-dev/llvm"
 )
 
-func lowerWasmAggregateCopies(goarch string, td llvm.TargetData, mod llvm.Module, config abi.AggregateLoweringConfig) int {
-	if goarch != "wasm" {
-		return 0
-	}
+func lowerWasmAggregateCopies(_ string, td llvm.TargetData, mod llvm.Module, config abi.AggregateLoweringConfig) int {
 	return abi.LowerWasmAggregateCopies(td, mod, config)
 }
