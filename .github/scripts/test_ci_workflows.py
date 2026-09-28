@@ -97,7 +97,7 @@ else:
                     self.assertIn("prepare", needs(job))
                     self.assertIn(f"needs.prepare.outputs.{flag} == 'true'", job["if"])
 
-    def test_main_push_is_never_path_filtered_or_cancelled_by_another_run(self):
+    def test_main_push_is_not_path_filtered_and_cancels_older_main_runs(self):
         for path in WORKFLOWS.glob("*.yml"):
             workflow = load(path.name)
             events = workflow.get("on", {})
@@ -109,10 +109,12 @@ else:
                 self.assertNotIn("paths", push)
                 self.assertNotIn("paths-ignore", push)
                 concurrency = workflow["concurrency"]
+                # PRs retain their own groups; tags and other events keep
+                # unique run IDs and do not cancel each other.
                 self.assertEqual(concurrency["cancel-in-progress"],
-                                 "${{ github.event_name == 'pull_request' }}")
+                                 "${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}")
                 self.assertEqual(concurrency["group"],
-                                 "${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}")
+                                 "${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main') || github.run_id }}")
 
     def test_gated_pr_workflows_always_start_the_prepare_job(self):
         for filename in [*CODE_WORKFLOWS, "doc-link-checker.yml"]:
