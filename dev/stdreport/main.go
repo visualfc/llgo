@@ -278,7 +278,11 @@ func generateReport(
 		out.WriteString("### WebAssembly Standard Library Acceptance\n\n")
 		out.WriteString("| Profile | Shards | Total | Passed | Not-Applicable | Failed / Unresolved |\n")
 		out.WriteString("|---|---:|---:|---:|---:|---:|\n")
-		var allFailed []wasmPackage
+		type failedWasmPackage struct {
+			profile string
+			wasmPackage
+		}
+		var allFailed []failedWasmPackage
 		for _, w := range wasmSummaries {
 			if w.Failed > 0 || (w.ShardsTotal > 0 && w.ShardsFound < w.ShardsTotal) {
 				hasFailures = true
@@ -287,7 +291,7 @@ func generateReport(
 			fmt.Fprintf(&out, "| %s | %s | %d | %d | %d | %d |\n",
 				escapeMarkdown(w.Profile), shardStr, w.Total, w.Passed, w.NotApplicable, w.Failed)
 			for _, pkg := range w.FailedPkgs {
-				allFailed = append(allFailed, pkg)
+				allFailed = append(allFailed, failedWasmPackage{w.Profile, pkg})
 			}
 		}
 		out.WriteString("\n")
@@ -299,7 +303,7 @@ func generateReport(
 				if reason == "" {
 					reason = "unspecified failure"
 				}
-				fmt.Fprintf(&out, "- `%s`: %s\n", escapeCode(f.Package), escapeMarkdown(reason))
+				fmt.Fprintf(&out, "- %s `%s`: %s\n", escapeMarkdown(f.profile), escapeCode(f.Package), escapeMarkdown(reason))
 			}
 			out.WriteString("\n")
 		}
