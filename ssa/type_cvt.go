@@ -153,7 +153,10 @@ func (p goTypes) cvtType(typ types.Type) (raw types.Type, cvt bool) {
 		if !p.shouldConvertAlias(t) {
 			return t, false
 		}
-		return p.cvtType(types.Unalias(t))
+		if raw, changed := p.cvtType(t.Rhs()); changed {
+			return raw, true
+		}
+		return t, false
 	case *types.Union:
 		return p.cvtUnion(t)
 	default:
@@ -321,7 +324,7 @@ func (p goTypes) needsTypeConversion(typ types.Type, query conversionNeedQuery) 
 		if !p.shouldConvertAlias(t) {
 			return false
 		}
-		return p.needsTypeConversion(types.Unalias(t), query)
+		return p.needsTypeConversion(t.Rhs(), query)
 	case *types.Union:
 		// cvtUnion currently always creates a raw union.
 		return true

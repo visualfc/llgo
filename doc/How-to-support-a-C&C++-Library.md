@@ -198,10 +198,13 @@ For the size of Unused, if the methods bound to the structure do not need to cre
 #### Handling Function Pointers in C
 
 ```go
-// Convert function pointers to Go style and then declare function pointer types using aliases
+// Both defined types and aliases can represent C function pointers.
 
 //llgo:type C
 type Comp func(a c.Int)
+
+//llgo:type C
+type Visitor = func(a c.Int)
 
 ```
 

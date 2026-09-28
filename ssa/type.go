@@ -142,7 +142,7 @@ retry:
 		if background, ok := prog.packageTypeBackground(typeNameLinkname(t.Obj())); ok && isNativeFuncBackground(background) {
 			return 0
 		}
-		typ = types.Unalias(t)
+		typ = t.Rhs()
 		goto retry
 	case *types.Signature:
 		return ptrSize

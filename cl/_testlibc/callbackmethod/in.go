@@ -19,7 +19,7 @@ func main() {
 	var seen int32
 	node := local.Node{Kind: 21, Data: 21}
 	data := unsafe.Pointer(&seen)
-	var visitor local.Visitor = visit
+	var visitor local.VisitorAlias = visit
 	for _, got := range []int32{
 		local.VisitNode(node, visitor, data),
 		node.Visit(visitor, data),
