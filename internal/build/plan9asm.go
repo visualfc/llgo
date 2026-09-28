@@ -194,9 +194,10 @@ func shouldCheckDarwinDynimportTrampolineAsm(ctx *context, pkg *packages.Package
 	if ctx == nil || ctx.buildConf == nil || ctx.buildConf.Goos != "darwin" {
 		return false
 	}
-	// golang.org/x/sys/unix generates zsyscall_darwin_*.s trampolines for
-	// go:cgo_import_dynamic symbols. llgo emits equivalent trampolines from
-	// the Go pragmas, so the generated asm trampolines must be skipped there.
+	// golang.org/x/sys/unix ships zsyscall_darwin_*.s files that define
+	// trampolines for its go:cgo_import_dynamic symbols. llgo already emits
+	// equivalent trampolines from those pragmas, so the generated asm
+	// trampolines must be skipped here to avoid duplicate symbols.
 	if pkg == nil || pkg.PkgPath != "golang.org/x/sys/unix" {
 		return false
 	}

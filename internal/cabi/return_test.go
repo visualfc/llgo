@@ -1,5 +1,3 @@
-//go:build !llgo
-
 package cabi_test
 
 import (

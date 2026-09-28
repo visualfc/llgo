@@ -1497,14 +1497,26 @@ func (p *context) compilePhi(b llssa.Builder, v *ssa.Phi) (ret llssa.Expr) {
 }
 
 func (p *context) compileInstrOrValue(b llssa.Builder, iv instrOrValue, asValue bool) (ret llssa.Expr) {
-	if asValue {
-		if v, ok := p.bvals[iv]; ok {
-			return v
+	if cached, ok := p.bvals[iv]; ok {
+		if asValue {
+			return cached
 		}
-		// Do not format iv through its String method here. An incomplete SSA
-		// instruction can panic while formatting, hiding this compiler error and,
-		// on affected Windows hosts, turning the diagnostic into a hardware fault.
-		log.Panicf("unreachable: %T\n", iv)
+		if _, ok := iv.(*ssa.Alloc); ok {
+			return cached
+		}
+	}
+	if asValue {
+		// Allocations are order-independent and are normally emitted in their
+		// SSA instruction order. Some self-hosted go/ssa graphs expose an Alloc
+		// through an operand first; materialize it on demand and let the cache
+		// suppress the later duplicate emission. Keep rejecting every effectful
+		// or otherwise order-dependent instruction here.
+		if _, ok := iv.(*ssa.Alloc); !ok {
+			// Do not format iv through its String method here. An incomplete SSA
+			// instruction can panic while formatting, hiding this compiler error and,
+			// on affected Windows hosts, turning the diagnostic into a hardware fault.
+			log.Panicf("unreachable: %T\n", iv)
+		}
 	}
 	if _, ok := p.gcRoots[iv]; ok {
 		defer func() {

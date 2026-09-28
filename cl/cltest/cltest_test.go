@@ -32,6 +32,17 @@ func TestIROnlyGoldenAllowsFinalNewline(t *testing.T) {
 	}
 }
 
+func TestFilterRunOutputToolchainWarnings(t *testing.T) {
+	in := []byte("ld64.lld: warning: library is newer than target minimum\n" +
+		"'+zcm' is not a recognized feature for this target (ignoring feature)\n" +
+		"'+zcz' is not a recognized feature for this target (ignoring feature)\n" +
+		"pass\n")
+	want := []byte("pass\n")
+	if got := filterRunOutput(in); !bytes.Equal(got, want) {
+		t.Fatalf("filterRunOutput() = %q, want %q", got, want)
+	}
+}
+
 func TestAdditionalIRTargets(t *testing.T) {
 	targets := []littest.Target{
 		{GOOS: "darwin", GOARCH: "arm64"},

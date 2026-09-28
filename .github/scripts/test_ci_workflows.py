@@ -15,7 +15,7 @@ import yaml
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 PREPARE = "./.github/workflows/ci-prepare.yml"
 CODE_WORKFLOWS = {
-    "llgo.yml": 17, "go.yml": 6, "targets.yml": 2, "build-cache.yml": 4,
+    "llgo.yml": 19, "go.yml": 6, "targets.yml": 2, "build-cache.yml": 4,
     "benchmark.yml": 9, "release-build.yml": 15, "doc.yml": 6, "fmt.yml": 1,
 }
 
