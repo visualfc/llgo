@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <errno.h>
 #include <time.h>
 
 extern int llgo_timer_cond_init(pthread_cond_t *condition);
@@ -39,7 +38,7 @@ int32_t llgo_probe_timer_clock(void) {
 
 extern unsigned char __stack_high;
 
-int32_t llgo_wasi_worker_stack_bounds(void) {
+int32_t llgo_wasi_worker_stack_bounds(int32_t expect_worker) {
   pthread_attr_t attr;
   void *base = 0;
   size_t size = 0;
@@ -47,7 +46,7 @@ int32_t llgo_wasi_worker_stack_bounds(void) {
   uintptr_t sp = (uintptr_t)&attr;
   uintptr_t top = llgo_gc_stack_top();
   if (status == ENOSYS)
-    return top == (uintptr_t)&__stack_high && sp < top;
+    return !expect_worker && top == (uintptr_t)&__stack_high && sp < top;
   if (status != 0)
     return 0;
   status = pthread_attr_getstack(&attr, &base, &size);
