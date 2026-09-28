@@ -265,7 +265,15 @@ runs:
       run: |
         set -euo pipefail
 
-        pip3.12 install --user --break-system-packages numpy torch
+        pip3.12 install --user --break-system-packages numpy
+        if [[ "${RUNNER_OS}" == "Linux" ]]; then
+          # The demos use CPU tensors. The default PyPI wheel pulls CUDA
+          # libraries that can exhaust this job's one-hour time limit.
+          pip3.12 install --user --break-system-packages torch \
+            --index-url https://download.pytorch.org/whl/cpu
+        else
+          pip3.12 install --user --break-system-packages torch
+        fi
 
         pcdir="${HOME}/pc"
         mkdir -p "${pcdir}"
