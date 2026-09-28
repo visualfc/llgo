@@ -123,6 +123,97 @@ declare void @mutate(ptr)
 	}
 }
 
+func TestLowerMultiElementArrayCopies(t *testing.T) {
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	config := AggregateLoweringConfig{GoWordSize: 8}
+
+	t.Run("polynomial copy", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %v = load [256 x i32], ptr %src
+  store [256 x i32] %v, ptr %dst
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 1 {
+			t.Fatalf("lowered %d copies, want 1:\n%s", got, mod.String())
+		}
+		body := mod.NamedFunction("copy").String()
+		if !strings.Contains(body, "@llvm.memmove") || strings.Contains(body, "load [256 x i32]") {
+			t.Fatalf("multi-element array copy was not lowered to memmove:\n%s", body)
+		}
+	})
+
+	t.Run("one-element array", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %v = load [1 x i64], ptr %src
+  store [1 x i64] %v, ptr %dst
+  ret void
+}
+`)
+		before := mod.String()
+		if got := LowerAggregateCopies(td, mod, config); got != 0 || mod.String() != before {
+			t.Fatalf("one-element array copy was rewritten:\n%s", mod.String())
+		}
+	})
+
+	t.Run("call argument", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @take([2 x i64])
+define void @pass(ptr %src) {
+entry:
+  %v = load [2 x i64], ptr %src
+  call void @take([2 x i64] %v)
+  ret void
+}
+`)
+		before := mod.String()
+		if got := LowerAggregateCopies(td, mod, config); got != 0 || mod.String() != before {
+			t.Fatalf("array used as a call argument was rewritten:\n%s", mod.String())
+		}
+	})
+
+	t.Run("pre-C-ABI large aggregate pass", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %v = load [256 x i32], ptr %src
+  store [256 x i32] %v, ptr %dst
+  ret void
+}
+`)
+		before := mod.String()
+		LowerLargeAggregates(td, mod, config)
+		if mod.String() != before {
+			t.Fatalf("LowerLargeAggregates rewrote a 1KiB array copy before C ABI:\n%s", mod.String())
+		}
+	})
+}
+
+func parseAggregateIR(t *testing.T, source string) llvm.Module {
+	t.Helper()
+	ctx := llvm.NewContext()
+	t.Cleanup(ctx.Dispose)
+	path := filepath.Join(t.TempDir(), "copy.ll")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(mod.Dispose)
+	return mod
+}
+
 func TestLowerAggregateCopiesNestedConvergence(t *testing.T) {
 	for _, depth := range []int{1, 8, 32} {
 		t.Run(fmt.Sprint(depth), func(t *testing.T) {

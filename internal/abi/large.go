@@ -35,13 +35,16 @@ func LowerLargeAggregates(td llvm.TargetData, m llvm.Module, config AggregateLow
 }
 
 // LowerAggregateCopies applies snapshot lowering to copies of at least 4 KiB
-// on every target. LLVM scalarizes these too, notably in reflection's by-value
-// wrappers and mid-size array literals. Return types and the native stack/return
-// ABI limits are unchanged. config.Wasm still selects the wasm GC-root frame
-// layout and is independent of this pass.
+// and to multi-element arrays of any size. cmd/compile never represents arrays
+// with more than one element as SSA values; LLVM scalarizes first-class loads
+// of those arrays, notably NTT polynomials and mid-size literals. Function
+// signatures, return sret, and the native C ABI are unchanged: loads used as
+// call arguments are left alone. config.Wasm still selects the wasm GC-root
+// frame layout and is independent of this pass.
 func LowerAggregateCopies(td llvm.TargetData, m llvm.Module, config AggregateLoweringConfig) int {
 	l := newLargeAggregateLowerer(td, config)
 	l.copyMinSize = MinAggregateCopySize
+	l.copyMultiElementArrays = true
 	changed := 0
 	// The pass is monotonic: every rewrite removes one qualifying aggregate
 	// load, and can expose only projections into a strictly nested aggregate.
@@ -68,14 +71,15 @@ type aggregateRoot struct {
 }
 
 type largeAggregateLowerer struct {
-	td           llvm.TargetData
-	goWordSize   int
-	roots        bool
-	wasm         bool
-	copyMinSize  uint64
-	allocations  []llvm.Value
-	resultParams []llvm.Value
-	sourceRoots  []aggregateRoot
+	td                     llvm.TargetData
+	goWordSize             int
+	roots                  bool
+	wasm                   bool
+	copyMinSize            uint64
+	copyMultiElementArrays bool
+	allocations            []llvm.Value
+	resultParams           []llvm.Value
+	sourceRoots            []aggregateRoot
 }
 
 func newLargeAggregateLowerer(td llvm.TargetData, config AggregateLoweringConfig) largeAggregateLowerer {
@@ -104,7 +108,14 @@ func (l largeAggregateLowerer) indirectType(ctx llvm.Context, typ llvm.Type) llv
 	return llvm.FunctionType(ctx.VoidType(), params, typ.IsFunctionVarArg())
 }
 
+func (l largeAggregateLowerer) isMultiElementArray(typ llvm.Type) bool {
+	return typ.TypeKind() == llvm.ArrayTypeKind && typ.ArrayLength() > 1
+}
+
 func (l largeAggregateLowerer) isLargeCopy(typ llvm.Type) bool {
+	if l.copyMultiElementArrays && l.isMultiElementArray(typ) {
+		return true
+	}
 	if l.copyMinSize == 0 {
 		return l.isLargeAggregate(typ)
 	}
