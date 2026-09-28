@@ -717,7 +717,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	if patterns == nil {
 		patterns = []string{"."}
 	}
-	sourceGo, err := resolveSourceGoConfig(commandEnv{dir: cfg.Dir, environ: cfg.Env}, conf.GOEXPERIMENT)
+	sourceGo, err := resolveSourceGoConfig(commandEnv{dir: cfg.Dir, environ: cfg.Env}, conf.GOEXPERIMENT, cfg.BuildFlags...)
 	if err != nil {
 		return nil, err
 	}

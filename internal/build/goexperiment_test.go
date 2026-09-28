@@ -138,18 +138,54 @@ func TestResolveSourceGoUsesInvocationDir(t *testing.T) {
 	}
 }
 
-func TestSourceGoToolTagsIgnoreModuleMinimum(t *testing.T) {
-	commands := experimentCommands(t, "")
-	commands.environ = withEnv(commands.environ, "GOTOOLCHAIN=local")
-	if err := os.WriteFile(filepath.Join(commands.dir, "go.mod"), []byte("module example.org/versioned\n\ngo 1.999\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	// Versioned builds can supply a different module file to the package
-	// loader. Tool tags describe the already selected compiler, independently
-	// of that module's minimum Go version and the eventual source build flags.
-	cfg := mustResolveSourceGo(t, commands, "")
-	if !slices.Contains(cfg.toolTags, "amd64.v3") {
-		t.Fatalf("missing selected toolchain tags: %v", cfg.toolTags)
+func TestSourceGoToolTagsInheritBuildEnvironment(t *testing.T) {
+	for _, mode := range []string{"module-on", "module-off", "goflags-modfile", "buildflags-modfile", "workspace"} {
+		t.Run(mode, func(t *testing.T) {
+			commands := experimentCommands(t, "")
+			commands.environ = withEnv(commands.environ, "GOTOOLCHAIN=local", "GO111MODULE=on", "GOWORK=off")
+			write := func(name, content string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(commands.dir, name), []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write("go.mod", "module example.org/versioned\n\ngo 1.999\n")
+			write("selected.mod", "module example.org/versioned\n\ngo 1.26\n")
+			var flags []string
+			switch mode {
+			case "module-off":
+				commands.environ = withEnv(commands.environ, "GO111MODULE=off")
+			case "goflags-modfile":
+				commands.environ = withEnv(commands.environ, "GOFLAGS=-modfile=selected.mod -p=1")
+			case "buildflags-modfile":
+				flags = []string{"-modfile=selected.mod"}
+			case "workspace":
+				write("go.mod", "module example.org/versioned\n\ngo 1.26\n")
+				write("go.work", "go 1.26\nuse .\n")
+				// -mod=mod is incompatible with workspace mode. Retaining both
+				// settings must report that conflict instead of hiding it.
+				commands.environ = withEnv(commands.environ, "GOWORK="+filepath.Join(commands.dir, "go.work"), "GOFLAGS=-mod=mod")
+			}
+			cfg, err := resolveSourceGoConfig(commands, "", flags...)
+			if mode == "module-on" {
+				if err == nil || !strings.Contains(err.Error(), "1.999") {
+					t.Fatalf("module minimum was ignored: %v", err)
+				}
+				return
+			}
+			if mode == "workspace" {
+				if err == nil || !strings.Contains(err.Error(), "workspace") {
+					t.Fatalf("workspace configuration was ignored: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Contains(cfg.toolTags, "amd64.v3") {
+				t.Fatalf("missing selected toolchain tags: %v", cfg.toolTags)
+			}
+		})
 	}
 }
 
@@ -345,7 +381,6 @@ func TestSourceGoToolTagsUseResolvedCompiler(t *testing.T) {
 		t.Fatalf("lost selected Go 1.27 default experiment: %v", cfg.toolTags)
 	}
 	commands.environ = cfg.apply(commands.environ)
-	commands.environ = withEnv(commands.environ, "GO111MODULE=off", "GOWORK=off", "GOFLAGS=")
 	goExe := "go"
 	if runtime.GOOS == "windows" {
 		goExe += ".exe"
