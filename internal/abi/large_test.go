@@ -26,13 +26,13 @@ func TestLargeAggregateThreshold(t *testing.T) {
 	if !l.isLargeAggregate(llvm.ArrayType(ctx.Int8Type(), int(MaxImplicitStackVarSize+1))) {
 		t.Fatal("aggregate above the implicit stack limit was not classified as large")
 	}
-	l.copyMinSize = MinWasmAggregateCopySize
+	l.copyMinSize = MinAggregateCopySize
 	if l.isLargeCopy(ctx.Int64Type()) {
-		t.Fatal("scalar type was classified as a Wasm aggregate copy")
+		t.Fatal("scalar type was classified as an aggregate copy")
 	}
 }
 
-func TestLowerWasmAggregateCopies(t *testing.T) {
+func TestLowerAggregateCopies(t *testing.T) {
 	const testIR = `
 define void @copy(ptr %src, ptr %dst) {
 entry:
@@ -59,10 +59,10 @@ entry:
 	td := llvm.NewTargetData("e-p:32:32-i64:64-n32:64-S128")
 	defer td.Dispose()
 	config := AggregateLoweringConfig{GoWordSize: 8, GCRoots: true, Wasm: true}
-	if got := LowerWasmAggregateCopies(td, mod, config); got != 1 {
+	if got := LowerAggregateCopies(td, mod, config); got != 1 {
 		t.Fatalf("lowered %d copies, want 1", got)
 	}
-	if got := LowerWasmAggregateCopies(td, mod, config); got != 0 {
+	if got := LowerAggregateCopies(td, mod, config); got != 0 {
 		t.Fatalf("second pass lowered %d copies, want 0", got)
 	}
 	if body := mod.NamedFunction("copy").String(); !strings.Contains(body, "@llvm.memmove") {
@@ -73,7 +73,7 @@ entry:
 	}
 }
 
-func TestLowerWasmAggregateCopiesNestedConvergence(t *testing.T) {
+func TestLowerAggregateCopiesNestedConvergence(t *testing.T) {
 	for _, depth := range []int{1, 8, 32} {
 		t.Run(fmt.Sprint(depth), func(t *testing.T) {
 			var ir strings.Builder
@@ -106,10 +106,10 @@ func TestLowerWasmAggregateCopiesNestedConvergence(t *testing.T) {
 			td := llvm.NewTargetData("e-p:32:32-i64:64-n32:64-S128")
 			defer td.Dispose()
 			config := AggregateLoweringConfig{GoWordSize: 8, GCRoots: true, Wasm: true}
-			if got := LowerWasmAggregateCopies(td, mod, config); got != depth+1 {
+			if got := LowerAggregateCopies(td, mod, config); got != depth+1 {
 				t.Fatalf("lowered %d copies, want %d", got, depth+1)
 			}
-			if got := LowerWasmAggregateCopies(td, mod, config); got != 0 {
+			if got := LowerAggregateCopies(td, mod, config); got != 0 {
 				t.Fatalf("second pass lowered %d copies, want 0", got)
 			}
 			if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
