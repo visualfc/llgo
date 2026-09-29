@@ -59,10 +59,11 @@ func FuncOf(fn func(this Value, args []Value) any) Func {
 	if funcs == nil {
 		funcs = make(map[uint32]func(Value, []Value) any)
 		nextFuncID = 1
-		// The installed JavaScript closure retains its queue, so install it
-		// once per worker even if all callbacks are later released.
-		emval_install_invoke()
 	}
+	// Each JavaScript worker has its own Module. Install _llgo_invoke on
+	// this worker before wrapping; a process-wide C++ guard would leave
+	// later workers with a missing invoke.
+	emval_install_invoke()
 	ensureCallbackPoll()
 	id := nextFuncID
 	nextFuncID++
