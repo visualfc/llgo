@@ -92,7 +92,7 @@
     } catch (_) {}
   })();
 
-  if (global.fs) return;
+  if (global.fs || global.process?.versions?.node) return;
 
   const NativeTextDecoder = global.TextDecoder;
   let umaskValue = 0o022;
@@ -174,11 +174,14 @@
   }
 
   function call(callback, fn) {
+    let value;
     try {
-      callback(null, fn());
+      value = fn();
     } catch (e) {
       callback(toNodeError(e));
+      return;
     }
+    callback(null, value);
   }
 
   function toUint8(buf) {
@@ -384,7 +387,12 @@
     },
     stat(path, callback) { call(callback, () => statObject(emFS().stat(path))); },
     lstat(path, callback) { call(callback, () => statObject(emFS().lstat(path))); },
-    fstat(fd, callback) { call(callback, () => statObject(emFS().fstat(fd))); },
+    fstat(fd, callback) {
+      call(callback, () => {
+        const node = streamOf(fd).node;
+        return statObject(node.node_ops.getattr(node));
+      });
+    },
     mkdir(path, perm, callback) { call(callback, () => { emFS().mkdir(path, perm); }); },
     unlink(path, callback) { call(callback, () => { emFS().unlink(path); }); },
     rmdir(path, callback) { call(callback, () => { emFS().rmdir(path); }); },

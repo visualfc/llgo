@@ -17,13 +17,18 @@ try {
   const module = await import(`./${name}`);
   const output = [];
   const exit = new Promise((resolve, reject) => {
+    const record = line => {
+      output.push(String(line));
+      console.log(line);
+      if (name.startsWith("fs-single-") && line === "wasm filesystem ok") resolve(0);
+    };
     module.default({
       arguments: [name],
       print(line) {
-        output.push(String(line));
+        record(line);
       },
       printErr(line) {
-        output.push(String(line));
+        record(line);
       },
       onAbort(reason) {
         reject(new Error(`module aborted: ${reason}`));
@@ -35,9 +40,9 @@ try {
   });
   const status = await exit;
   if (status !== 0) {
-    throw new Error(`module exited with status ${status}`);
+    throw new Error(`module exited with status ${status}: ${output.join("\n")}`);
   }
-  if (!output.some(line => /wasm (workers|hardening) ok/.test(line))) {
+  if (!output.some(line => /wasm (workers|hardening|filesystem) ok/.test(line))) {
     throw new Error(`module produced no success marker: ${output.join("\n")}`);
   }
   body.dataset.result = "pass";

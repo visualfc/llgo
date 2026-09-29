@@ -1450,6 +1450,13 @@ func configureWasmWorkers(conf *Config, export *crosscompile.Export) (wasmworker
 	if err := config.ValidateTarget(conf.Goos, conf.Goarch, export.WasmProfile, export.WasmProvider); err != nil {
 		return config, err
 	}
+	if conf.Goos == "js" && export.WasmProvider == crosscompile.WasmProviderEmscripten {
+		export.LDFLAGS = append(export.LDFLAGS,
+			"--pre-js", filepath.Join(env.LLGoROOT(), "targets", "wasm_fs.js"),
+			"--js-library", filepath.Join(env.LLGoROOT(), "internal", "wasmworkers", "browser_fs.js"),
+			"-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$llgoBrowserFS",
+		)
+	}
 	if !config.Enabled() {
 		return config, nil
 	}
