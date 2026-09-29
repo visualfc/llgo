@@ -116,6 +116,11 @@ func (p *Transformer) SetSkipFuncs(names []string) {
 }
 
 func (p *Transformer) shouldSkipFunc(name string) bool {
+	// LLVM intrinsics use LLVM's own calling convention and can carry metadata
+	// or scalable-vector parameters. Neither is a C ABI value to size or wrap.
+	if strings.HasPrefix(name, "llvm.") {
+		return true
+	}
 	if name == "" || len(p.skipFns) == 0 {
 		return false
 	}
