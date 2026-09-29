@@ -76,8 +76,10 @@ run_worker_llgo_test() {
 	local name="$2"
 	local output="${work_dir}/${name}.out"
 
+	# The browser-worker fixture runs multiple Wasm tests in one binary. Keep
+	# its Go test alarm below the outer 300s process limit but allow CI variance.
 	run_with_timeout env LLGO_WASM_WORKERS=2 "${llgo_cmd}" test \
-		-target "${target}" -emulator -v -count=1 -timeout=30s \
+		-target "${target}" -emulator -v -count=1 -timeout=2m \
 		"${test_fixture}" 2>&1 | tee "${output}"
 	grep -Fq "PASS" "${output}"
 }
