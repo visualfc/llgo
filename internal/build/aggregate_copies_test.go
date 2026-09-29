@@ -46,21 +46,22 @@ func TestLowerAggregateCopies(t *testing.T) {
 			for _, tc := range []struct {
 				name, body, intrinsic string
 				volatile              bool
+				hostArrays            bool
 			}{
-				{"copy", "%v = load [8192 x i8], ptr %src\nstore [8192 x i8] %v, ptr %dst", "memmove", false},
-				{"volatile source", "%v = load volatile [8192 x i8], ptr %src\nstore [8192 x i8] %v, ptr %dst", "memmove", true},
-				{"volatile destination", "%v = load [8192 x i8], ptr %src\nstore volatile [8192 x i8] %v, ptr %dst", "memmove", true},
-				{"overlap", "%v = load volatile [8192 x i8], ptr %src\nstore volatile [8192 x i8] %v, ptr %src", "memmove", true},
-				{"zero", "store [8192 x i8] zeroinitializer, ptr %dst", "memset", false},
-				{"volatile zero", "store volatile [8192 x i8] zeroinitializer, ptr %dst", "memset", true},
-				{"pointer fields", "%v = load {ptr, [8192 x i8]}, ptr %src\nstore {ptr, [8192 x i8]} %v, ptr %dst", "memmove", false},
-				{"threshold", "%v = load [4096 x i8], ptr %src\nstore [4096 x i8] %v, ptr %dst", "memmove", false},
-				{"multi-element array", "%v = load [256 x i32], ptr %src\nstore [256 x i32] %v, ptr %dst", "memmove", false},
-				{"small two-element array", "%v = load [2 x i64], ptr %src\nstore [2 x i64] %v, ptr %dst", "", false},
-				{"one-element array", "%v = load [1 x i64], ptr %src\nstore [1 x i64] %v, ptr %dst", "", false},
-				{"scalar", "%v = load i64, ptr %src\nstore i64 %v, ptr %dst", "", false},
-				{"unsupported use", "%v = load [8192 x i8], ptr %src\n%w = insertvalue [8192 x i8] %v, i8 1, 0\nstore [8192 x i8] %w, ptr %dst", "", false},
-				{"unknown value", "store [8192 x i8] poison, ptr %dst", "", false},
+				{"copy", "%v = load [8192 x i8], ptr %src\nstore [8192 x i8] %v, ptr %dst", "memmove", false, false},
+				{"volatile source", "%v = load volatile [8192 x i8], ptr %src\nstore [8192 x i8] %v, ptr %dst", "memmove", true, false},
+				{"volatile destination", "%v = load [8192 x i8], ptr %src\nstore volatile [8192 x i8] %v, ptr %dst", "memmove", true, false},
+				{"overlap", "%v = load volatile [8192 x i8], ptr %src\nstore volatile [8192 x i8] %v, ptr %src", "memmove", true, false},
+				{"zero", "store [8192 x i8] zeroinitializer, ptr %dst", "memset", false, false},
+				{"volatile zero", "store volatile [8192 x i8] zeroinitializer, ptr %dst", "memset", true, false},
+				{"pointer fields", "%v = load {ptr, [8192 x i8]}, ptr %src\nstore {ptr, [8192 x i8]} %v, ptr %dst", "memmove", false, false},
+				{"threshold", "%v = load [4096 x i8], ptr %src\nstore [4096 x i8] %v, ptr %dst", "memmove", false, false},
+				{"multi-element array", "%v = load [256 x i32], ptr %src\nstore [256 x i32] %v, ptr %dst", "memmove", false, false},
+				{"small two-element array", "%v = load [2 x i64], ptr %src\nstore [2 x i64] %v, ptr %dst", "", false, false},
+				{"one-element array", "%v = load [1 x i64], ptr %src\nstore [1 x i64] %v, ptr %dst", "", false, false},
+				{"scalar", "%v = load i64, ptr %src\nstore i64 %v, ptr %dst", "", false, false},
+				{"unsupported use", "%v = load [8192 x i8], ptr %src\n%w = insertvalue [8192 x i8] %v, i8 1, 0\nstore [8192 x i8] %w, ptr %dst", "", false, false},
+				{"unknown value", "store [8192 x i8] poison, ptr %dst", "", false, false},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					mod := parseWasmAggregateIR(t, "declare void @other()\ndefine void @copy(ptr %dst, ptr %src) {\n"+tc.body+"\nret void\n}")
@@ -69,7 +70,8 @@ func TestLowerAggregateCopies(t *testing.T) {
 					if tc.intrinsic != "" {
 						want = 1
 					}
-					if got := lowerAggregateCopies(td, mod, aggregateCopyConfig(bits, true, true)); got != want {
+					cfg := aggregateCopyConfig(bits, true, !tc.hostArrays)
+					if got := lowerAggregateCopies(td, mod, cfg); got != want {
 						t.Fatalf("lowered %d operations, want %d:\n%s", got, want, mod.String())
 					}
 					if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
@@ -89,7 +91,7 @@ func TestLowerAggregateCopies(t *testing.T) {
 					if strings.Contains(body, "alloca ") || strings.Contains(body, "AllocU") || strings.Contains(body, "load ") || strings.Contains(body, "store ") {
 						t.Fatalf("copy allocated storage or retained aggregate accesses:\n%s", body)
 					}
-					if got := lowerAggregateCopies(td, mod, aggregateCopyConfig(bits, true, true)); got != 0 {
+					if got := lowerAggregateCopies(td, mod, cfg); got != 0 {
 						t.Fatal("copy lowering is not idempotent")
 					}
 				})

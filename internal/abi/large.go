@@ -35,11 +35,10 @@ func ShouldLowerArrayCopy(length int, size uint64, ptrSize int) bool {
 }
 
 // ShouldSnapshotAggregateLoad reports whether ABI copy lowering may heap-allocate
-// a snapshot of this load, which the frontend must treat as a GC safepoint.
-func ShouldSnapshotAggregateLoad(isArray bool, arrayLen int, isStruct bool, size uint64, ptrSize int) bool {
-	if isArray && ShouldLowerArrayCopy(arrayLen, size, ptrSize) {
-		return true
-	}
+// a snapshot of this load (AllocU), which the frontend must treat as a GC
+// safepoint. Copies smaller than MinAggregateCopySize use a stack alloca
+// instead, including CanSSA-sized arrays, so they are not safepoints.
+func ShouldSnapshotAggregateLoad(isArray bool, arrayLen int, isStruct bool, size uint64, ptrSize int, wasm bool) bool {
 	if (isArray || isStruct) && size >= MinAggregateCopySize {
 		return true
 	}
@@ -261,11 +260,14 @@ func (l *largeAggregateLowerer) transformStoredLoad(m llvm.Module, load llvm.Val
 		load.EraseFromParentAsInstruction()
 		return
 	}
-	snapshot := l.allocResult(m, ctx, b, typ, load.InstructionDebugLoc())
-	// This allocation is a new safepoint that was absent from the frontend's
-	// root plan. Keep the source alive before allocating, not only the result
-	// afterwards; reflection wrappers can have no original allocation at all.
-	l.sourceRoots = append(l.sourceRoots, aggregateRoot{value: load.Operand(0), before: snapshot})
+	snapshot, heap := l.allocSnapshot(m, ctx, b, typ, load.InstructionDebugLoc())
+	b.SetInsertPointBefore(load)
+	if heap {
+		// Heap snapshots are a new safepoint absent from the frontend root plan.
+		// Keep the source alive before allocating; reflection wrappers can have
+		// no original allocation at all.
+		l.sourceRoots = append(l.sourceRoots, aggregateRoot{value: load.Operand(0), before: snapshot})
+	}
 	copy := l.callMemcpy(ctx, b, snapshot, load.Operand(0), typ)
 	setCopyVolatile(ctx, copy, load.IsVolatile())
 	copy.InstructionSetDebugLoc(load.InstructionDebugLoc())
@@ -445,6 +447,26 @@ func setCopyVolatile(ctx llvm.Context, copy llvm.Value, volatile bool) {
 	if volatile {
 		copy.SetOperand(3, llvm.ConstInt(ctx.Int1Type(), 1, false))
 	}
+}
+
+func (l *largeAggregateLowerer) allocSnapshot(m llvm.Module, ctx llvm.Context, b llvm.Builder, typ llvm.Type, loc llvm.Metadata) (llvm.Value, bool) {
+	if l.td.TypeAllocSize(typ) < MinAggregateCopySize {
+		return l.allocaAtEntry(b, typ), false
+	}
+	return l.allocResult(m, ctx, b, typ, loc), true
+}
+
+func (l *largeAggregateLowerer) allocaAtEntry(b llvm.Builder, typ llvm.Type) llvm.Value {
+	bb := b.GetInsertBlock()
+	fn := bb.Parent()
+	entry := fn.FirstBasicBlock()
+	first := entry.FirstInstruction()
+	if first.IsNil() {
+		b.SetInsertPointAtEnd(entry)
+	} else {
+		b.SetInsertPointBefore(first)
+	}
+	return b.CreateAlloca(typ, "")
 }
 
 func (l *largeAggregateLowerer) allocResult(m llvm.Module, ctx llvm.Context, b llvm.Builder, typ llvm.Type, loc llvm.Metadata) llvm.Value {

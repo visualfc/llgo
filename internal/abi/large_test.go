@@ -27,14 +27,17 @@ func TestShouldLowerArrayCopy(t *testing.T) {
 		if got := ShouldLowerArrayCopy(tc.length, tc.size, tc.ptrSize); got != tc.want {
 			t.Errorf("ShouldLowerArrayCopy(%d, %d, %d) = %v, want %v", tc.length, tc.size, tc.ptrSize, got, tc.want)
 		}
-		if got := ShouldSnapshotAggregateLoad(true, tc.length, false, tc.size, tc.ptrSize); got != tc.want && tc.size < MinAggregateCopySize {
-			t.Errorf("ShouldSnapshotAggregateLoad(array %d, %d) = %v, want %v", tc.length, tc.size, got, tc.want)
+		if got := ShouldSnapshotAggregateLoad(true, tc.length, false, tc.size, tc.ptrSize, false); got && tc.size < MinAggregateCopySize {
+			t.Errorf("ShouldSnapshotAggregateLoad(array %d, %d) = true, want false below 4KiB (stack snapshot)", tc.length, tc.size)
+		}
+		if got := ShouldSnapshotAggregateLoad(true, tc.length, false, tc.size, tc.ptrSize, true); got && tc.size < MinAggregateCopySize {
+			t.Errorf("wasm ShouldSnapshotAggregateLoad(array %d, %d) = true, want false below 4KiB", tc.length, tc.size)
 		}
 	}
-	if !ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize, 8) {
+	if !ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize, 8, false) {
 		t.Fatal("struct at 4KiB should snapshot")
 	}
-	if ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize-1, 8) {
+	if ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize-1, 8, false) {
 		t.Fatal("struct below 4KiB should not snapshot")
 	}
 }
@@ -251,13 +254,16 @@ entry:
   ret ptr %src
 }
 `)
-		cfg := AggregateLoweringConfig{GoWordSize: 8, GCRoots: true, Wasm: true}
+		cfg := AggregateLoweringConfig{GoWordSize: 8, GCRoots: true, Wasm: false}
 		if got := LowerAggregateCopies(td, mod, cfg); got != 1 {
 			t.Fatalf("lowered %d copies, want 1:\n%s", got, mod.String())
 		}
 		body := mod.NamedFunction("copy").String()
-		if !strings.Contains(body, "AllocU") || !strings.Contains(body, "llvm_gc_root_chain") {
-			t.Fatalf("40-byte array snapshot missing AllocU roots:\n%s", body)
+		if strings.Contains(body, "AllocU") {
+			t.Fatalf("40-byte array snapshot used heap AllocU:\n%s", body)
+		}
+		if !strings.Contains(body, "alloca") {
+			t.Fatalf("40-byte array snapshot missing stack alloca:\n%s", body)
 		}
 	})
 
