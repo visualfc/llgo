@@ -675,9 +675,13 @@ func growHeap(minimum uintptr) bool {
 // syscall/js operation. The world hooks are no-ops on single-worker and
 // bare-metal targets.
 func growHeapWithWorldStopped(minimum uintptr) bool {
+	if segmentedHeap {
+		// A new libc arena neither moves existing objects nor invalidates
+		// Emscripten views. gcMutex already protects its metadata. Avoid a
+		// second STW timeout after a collection blocked by a C call.
+		return growHeap(minimum)
+	}
 	if !gcStopWorld() {
-		// A mutator blocked in C prevents sweeping. Grow a disjoint arena
-		// while allocator metadata is protected by gcMutex.
 		return growHeap(minimum)
 	}
 	grew := growHeap(minimum)

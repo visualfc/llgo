@@ -86,6 +86,8 @@ func main() {
 	stop.Store(true)
 	wg.Wait()
 	waitForBaseline(baseline)
+	testPrivateRootsAndLifecycle(baseline)
+	testIdleForeignThread(baseline)
 
 	// A parked channel receiver still owns a pthread in this backend. It
 	// must acknowledge a collection without requiring a sender to wake it.
@@ -186,6 +188,107 @@ func main() {
 	runtime.KeepAlive(retained)
 	waitForRegistered(2)
 	println("wasi threaded gc ok")
+}
+
+// Only the owning worker receives this pointer. A noinline factory prevents
+// the test allocation from becoming part of its caller's stack frame.
+//
+//go:noinline
+func privatePayload(index int) *payload {
+	return &payload{value: index + 200, next: &payload{value: index + 100}}
+}
+
+func testPrivateRootsAndLifecycle(baseline uint64) {
+	ready := make(chan struct{}, 2)
+	release := make(chan struct{})
+	done := make(chan struct{}, 2)
+	for index := 0; index < 2; index++ {
+		go func(index int) {
+			head := privatePayload(index)
+			ready <- struct{}{}
+			<-release
+			if head.value != index+200 || head.next.value != index+100 {
+				fail("worker-private root was lost")
+			}
+			runtime.KeepAlive(head)
+			done <- struct{}{}
+		}(index)
+	}
+	<-ready
+	<-ready
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for round := 0; round < 4; round++ {
+		// Register and retire another pthread while the collector requests
+		// stops. No pointer is transferred through the control channels.
+		retired := make(chan struct{})
+		go func() {
+			value := privatePayload(7)
+			runtime.Gosched()
+			if value.next.value != 107 {
+				fail("root lost during thread lifecycle")
+			}
+			close(retired)
+		}()
+		runtime.GC()
+		<-retired
+	}
+	runtime.ReadMemStats(&after)
+	if after.NumGC <= before.NumGC {
+		fail("private-root collections did not run")
+	}
+	close(release)
+	<-done
+	<-done
+	waitForBaseline(baseline)
+}
+
+//go:linkname enterForeignThread github.com/xgo-dev/llgo/runtime/internal/runtime.EnterForeignThread
+func enterForeignThread() bool
+
+//go:linkname exitForeignThread github.com/xgo-dev/llgo/runtime/internal/runtime.ExitForeignThread
+func exitForeignThread(bool)
+
+//export llgo_gc_foreign_callback
+func foreignCallback() {
+	registered := enterForeignThread()
+	value := privatePayload(9)
+	if value.next.value != 109 {
+		fail("foreign callback allocation failed")
+	}
+	exitForeignThread(registered)
+}
+
+//go:linkname startForeignThread C.llgo_gc_start_foreign_thread
+func startForeignThread() int32
+
+//go:linkname foreignThreadIdle C.llgo_gc_foreign_thread_idle
+func foreignThreadIdle() int32
+
+//go:linkname releaseForeignThread C.llgo_gc_release_foreign_thread
+func releaseForeignThread()
+
+func testIdleForeignThread(baseline uint64) {
+	if startForeignThread() != 0 {
+		fail("foreign pthread creation failed")
+	}
+	for foreignThreadIdle() == 0 {
+		yieldC()
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	if after.NumGC != before.NumGC {
+		fail("idle foreign thread did not prevent collection")
+	}
+	releaseForeignThread()
+	waitForBaseline(baseline)
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	if after.NumGC <= before.NumGC {
+		fail("foreign thread destruction did not restore collection")
+	}
 }
 
 // LLVM lowers this recover path through legacy Wasm EH. It must keep working

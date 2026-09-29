@@ -6,6 +6,9 @@ The supported build uses the LLGo-patched Binaryen release. Browser execution ke
 
 R1 through R3, including R2.1, are merged and remain the delivered foundation of this proposal. The remaining implementation work builds on that foundation to complete the supported WebAssembly profiles before advanced engine features are added.
 
+The [WASI threaded GC contract](wasm-threaded-gc.md) describes serial STW
+collection, arena ownership, and the reclamation limits of blocking C calls.
+
 ## Design overview
 
 - Go source layer: all three profiles use the official Go WebAssembly 64-bit word model. Go `int`, `uint`, `uintptr`, and pointer storage are 64-bit; valid Memory32 addresses use only the low 32 bits. Most pure Go standard-library code can therefore be shared, and implementations should prefer the same selected GOROOT sources.

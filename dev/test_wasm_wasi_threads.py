@@ -56,6 +56,29 @@ def run_llgo(env, args, marker, timeout=180):
         raise SystemExit(f"LLGo {' '.join(args)} failed with exit code {result.returncode}")
 
 
+def run_arena_boundaries(env, directory):
+    module = pathlib.Path(directory) / "gc-arena.wasm"
+    subprocess.run(
+        [LLGO, "build", "-target", "wasi", "-o", str(module),
+         str(ROOT / "internal/build/testdata/wasm-wasi-gc-arena")],
+        check=True, env=env, timeout=180,
+    )
+    # Each size needs a fresh heap: an earlier oversized arena could mask
+    # the bug by satisfying a later allocation from its unused capacity.
+    for size in ((32 << 20) - (128 << 10), (32 << 20) - 1,
+                 32 << 20, (32 << 20) + 1, 33 << 20):
+        result = subprocess.run(
+            [IWASM, "--max-threads=8", "--stack-size=1048576", "--heap-size=0",
+             str(module), str(size)], capture_output=True, text=True, timeout=180,
+        )
+        print(f"WAMR arena boundary: {size} bytes")
+        print(result.stdout, end="")
+        print(result.stderr, end="")
+        lines = result.stdout.splitlines() + result.stderr.splitlines()
+        if result.returncode != 0 or "wasi gc arena boundary ok" not in lines:
+            raise SystemExit(f"WAMR arena boundary {size} failed: {result.returncode}")
+
+
 def main():
     iwasm = shutil.which(IWASM)
     if iwasm is None:
@@ -87,6 +110,7 @@ def main():
                   "wasi threads ok", 30)
         run_probe(env, directory, "threaded-gc", "wasm-wasi-threaded-gc",
                   "", "wasi threaded gc ok", 180)
+        run_arena_boundaries(env, directory)
         run_llgo(env, ["run", "-target", "wasi", "-emulator",
                        str(ROOT / "internal/build/testdata/wasm-wasi-threads")],
                  "wasi threads ok")
