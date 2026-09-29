@@ -221,7 +221,7 @@ func (l *largeAggregateLowerer) transformStoredLoad(m llvm.Module, load llvm.Val
 		load.EraseFromParentAsInstruction()
 		return
 	}
-	snapshot := l.allocResult(m, ctx, b, typ)
+	snapshot := l.allocResult(m, ctx, b, typ, load.InstructionDebugLoc())
 	// This allocation is a new safepoint that was absent from the frontend's
 	// root plan. Keep the source alive before allocating, not only the result
 	// afterwards; reflection wrappers can have no original allocation at all.
@@ -241,7 +241,7 @@ func (l *largeAggregateLowerer) transformCall(m llvm.Module, call llvm.Value) {
 	defer b.Dispose()
 	b.SetInsertPointBefore(call)
 
-	result := l.allocResult(m, ctx, b, retType)
+	result := l.allocResult(m, ctx, b, retType, call.InstructionDebugLoc())
 	params := make([]llvm.Value, 1, oldType.ParamTypesCount()+1)
 	params[0] = result
 	reflectMethodByName := call.GetCallSiteStringAttribute(-1, "llgo.reflect.methodbyname")
@@ -407,7 +407,7 @@ func setCopyVolatile(ctx llvm.Context, copy llvm.Value, volatile bool) {
 	}
 }
 
-func (l *largeAggregateLowerer) allocResult(m llvm.Module, ctx llvm.Context, b llvm.Builder, typ llvm.Type) llvm.Value {
+func (l *largeAggregateLowerer) allocResult(m llvm.Module, ctx llvm.Context, b llvm.Builder, typ llvm.Type, loc llvm.Metadata) llvm.Value {
 	intType := ctx.IntType(l.goWordSize * 8)
 	ptrType := llvm.PointerType(ctx.Int8Type(), 0)
 	fnType := llvm.FunctionType(ptrType, []llvm.Type{intType}, false)
@@ -417,6 +417,7 @@ func (l *largeAggregateLowerer) allocResult(m llvm.Module, ctx llvm.Context, b l
 	}
 	size := llvm.ConstInt(intType, l.td.TypeAllocSize(typ), false)
 	result := llvm.CreateCall(b, fnType, fn, []llvm.Value{size})
+	result.InstructionSetDebugLoc(loc)
 	l.allocations = append(l.allocations, result)
 	return result
 }
