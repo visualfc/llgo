@@ -69,3 +69,33 @@ provided panic/recover, Asyncify suspension, Go/C/JS callbacks, final DWARF,
 and the chosen runtime all pass together. [WAMR's documented EH support](https://github.com/bytecodealliance/wasm-micro-runtime/blob/main/doc/build_wamr.md)
 is currently limited to legacy EH in its classic interpreter, so the browser
 comparison alone does not change the W32/WAMR execution contract.
+
+## Threaded WAMR regression
+
+`python3 dev/test_wasm_wasi_threads.py` also tests the supported W32 legacy EH
+path with the WAMR built by `dev/build_iwasm.sh`. It repeats cross-function
+panic/recover, C `setjmp`/`longjmp`, and deferred worker `Goexit` with GC on and
+off. Main/init `Goexit` must execute the defer and report deadlock; an
+unrecovered worker panic and a raw Wasm exception escaping `_start` must fail.
+
+WAMR 2.4.5 previously called `wasm_set_exception` while transferring a caught
+exception to its Wasm caller. With threads enabled, that publishes a
+cluster-wide termination signal before the caller can catch the exception.
+Sibling threads can then exit early or leave a channel waiter hung. The local
+interpreter patch unwinds directly to a Wasm caller and preserves the terminal
+exception path when the exception escapes to the native invocation boundary.
+The POSIX signal-handler backport from WAMR #5119 is applied separately.
+
+On macOS arm64, the same deferred-Goexit artifact passed 40/50 runs with stock
+WAMR 2.4.5 (six hangs and four premature successful exits), 44/50 with the
+signal-handler fix alone on WAMR main, and 100/100 with both fixes on 2.4.5.
+The threaded acceptance suite and the expanded GC/nogc EH probes passed with
+both fixes. These finite runs establish regression coverage, not a guarantee
+that every WAMR threading issue is resolved.
+
+The browser comparison was rerun on 2026-09-29 with the pinned LLGo Binaryen
+`llgo-v132.3`: all six C++ encoding/optimization variants passed in Node and
+Chrome, as did the Go baseline and the Go/C++ catch-status wrappers at O0/O2.
+This keeps the supported boundary above: browser encoding is unchanged,
+and WAMR uses legacy EH. Whole-module exnref across Go/Asyncify remains outside
+the supported contract.
