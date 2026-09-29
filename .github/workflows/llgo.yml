@@ -706,7 +706,9 @@ jobs:
         env:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
           LLGO_BUILD_CACHE: "1"
-        run: python3 dev/test_wasm_debug_info.py --profile j32 --profile j64 --profile w32
+        run: |
+          python3 -m unittest discover -s dev -p test_wasm_debug_info_test.py
+          python3 dev/test_wasm_debug_info.py --profile j32 --profile j64 --profile w32
 
       - name: Build standard runtime for wasm
         if: matrix.suite == 'runtime'
