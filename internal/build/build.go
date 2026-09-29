@@ -3600,11 +3600,7 @@ func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.
 				log.Println("==> BuildSSA", p.ID)
 			}
 			pkgSSA := prog.CreatePackage(typs, p.Syntax, p.TypesInfo, true)
-			path := typs.Path()
-			if strings.HasPrefix(p.ID, altPkgPathPrefix) {
-				path = p.ID[len(altPkgPathPrefix):]
-			}
-			payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(path, p.Syntax))
+			payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(typs, p.Syntax))
 			entries = append(entries, ssaBuildEntry{id: p.ID, pkg: pkgSSA, syntax: p.Syntax})
 			if strings.HasPrefix(p.ID, altPkgPathPrefix) {
 				path := p.ID[len(altPkgPathPrefix):]
@@ -3687,13 +3683,9 @@ func registerSSAPkgs(ctx *context, initial []*packages.Package, verbose bool) ([
 				}
 			}
 			rewrites := collectRewriteVars(ctx, pkgPath)
-			path := pkgPath
-			if p.Types != nil {
-				path = p.Types.Path()
-			}
-			payloads := cl.StripLargeStaticByteArrays(path, p.Syntax)
+			payloads := cl.StripLargeStaticByteArrays(p.Types, p.Syntax)
 			if altPkg != nil {
-				payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(path, altPkg.Syntax))
+				payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(altPkg.Types, altPkg.Syntax))
 			}
 			payloads = cl.MergeStaticByteArrays(payloads, ctx.staticByteArrays)
 			ctx.staticByteArrays = cl.MergeStaticByteArrays(ctx.staticByteArrays, payloads)

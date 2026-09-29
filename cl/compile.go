@@ -77,8 +77,9 @@ type Options struct {
 	// ReceiverNilChecks retains pointer-method selection semantics erased
 	// during Go SSA construction. It is collected from checked source info.
 	ReceiverNilChecks *ReceiverNilChecks
-	// StaticByteArrays are package-level [N]byte payloads extracted before
-	// SSA construction so go/ssa does not emit one store per element.
+	// StaticByteArrays are package-level [N]byte payloads extracted after
+	// type checking and before ssa.Package.Build so go/ssa does not emit
+	// one store per element. Keys use StaticByteArrayKey(PathOf(pkg), name).
 	StaticByteArrays map[string][]byte
 }
 
@@ -246,6 +247,9 @@ func (p *context) initStaticByteArrayGlobal(define bool, gbl *ssa.Global, g llss
 	if !ok || arr.Len() != int64(len(data)) {
 		return false
 	}
+	// Length is the restore-time check. Byte contents are trusted because
+	// StripLargeStaticByteArrays only accepts INT/CHAR literals; any future
+	// relaxation of that parser must keep the payload byte-exact.
 	basic, ok := arr.Elem().Underlying().(*types.Basic)
 	if !ok || (basic.Kind() != types.Byte && basic.Kind() != types.Uint8) {
 		return false

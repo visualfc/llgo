@@ -19,13 +19,16 @@ package cl
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"strconv"
+
+	llssa "github.com/xgo-dev/llgo/ssa"
 )
 
-// minStripStaticByteArray is the element count at which a package-level
-// [N]byte / [...]byte composite literal is taken out of go/ssa init
-// (IndexAddr+Store per byte) and restored as an LLVM constant. cmd/compile
-// puts these in rodata via staticinit; go/ssa does not.
+// minStripStaticByteArray is the number of composite-literal elements at which
+// a package-level [N]byte / [...]byte initializer is taken out of go/ssa init
+// (IndexAddr+Store per element) and restored as an LLVM constant. cmd/compile
+// places these in writable static data via staticinit; go/ssa does not.
 const minStripStaticByteArray = 4096
 
 // StaticByteArrayKey is the lookup key for a stripped package-level byte array.
@@ -53,11 +56,13 @@ func MergeStaticByteArrays(dst, src map[string][]byte) map[string][]byte {
 // StripLargeStaticByteArrays extracts payload from large package-level byte
 // array literals and clears CompositeLit.Elts so ssa.Package.Build does not
 // emit one store per element. The returned map is keyed by StaticByteArrayKey
-// of pkgPath and the variable name. Call this after type checking and before
-// SSA construction. Already-stripped literals (empty Elts) are skipped so a
-// second call does not replace a previous payload with zeros.
-func StripLargeStaticByteArrays(pkgPath string, files []*ast.File) map[string][]byte {
+// of llssa.PathOf(pkg) and the variable name, matching initStaticByteArrayGlobal
+// lookup. Call this after type checking and before ssa.Package.Build.
+// Already-stripped literals (empty Elts) are skipped so a second call does not
+// replace a previous payload with zeros.
+func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File) map[string][]byte {
 	out := make(map[string][]byte)
+	pkgPath := llssa.PathOf(pkg)
 	for _, file := range files {
 		if file == nil {
 			continue
@@ -102,6 +107,9 @@ func staticByteArrayLit(cl *ast.CompositeLit) ([]byte, bool) {
 	}
 	at, ok := cl.Type.(*ast.ArrayType)
 	if !ok || at.Len == nil || !isByteIdent(at.Elt) {
+		return nil, false
+	}
+	if len(cl.Elts) < minStripStaticByteArray {
 		return nil, false
 	}
 	n, ok := staticByteArrayLen(at, cl)
