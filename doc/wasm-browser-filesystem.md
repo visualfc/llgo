@@ -16,8 +16,10 @@ Worker-local Node-shaped methods proxy operations to the runtime thread using
 Emscripten's synchronous pthread proxy. Callback values stay in their originating
 JS realm. Response buffers are allocated on the requesting worker, because the
 browser main thread cannot block on the shared allocator's `Atomics.wait`.
-Operations currently serialize their arguments/results; this implementation
-establishes correctness and is not an I/O throughput optimization.
+Read/write payloads pass through bounded shared-memory buffers; JSON carries
+only metadata. The bridge validates methods and buffer ranges and installs
+its worker wrappers once. Read completion copies only the returned bytes into
+the caller's requested offset, preserving bytes outside that range.
 
 Node continues using `node:fs`. Its worker `process.cwd/chdir` methods proxy to
 the runtime thread so cwd changes are visible across workers. Node's C filesystem
