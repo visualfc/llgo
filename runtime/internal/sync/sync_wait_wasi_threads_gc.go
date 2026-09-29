@@ -3,24 +3,18 @@
 package sync
 
 import (
-	_ "unsafe"
+	"unsafe"
 
 	c "github.com/xgo-dev/llgo/runtime/internal/clite"
 )
 
-//go:linkname wasiGCCondTimedWait C.llgo_wasi_gc_cond_timedwait
-func wasiGCCondTimedWait(cond *Cond, mutex *Mutex)
+//go:linkname wasiGCCondTimedWait github.com/xgo-dev/llgo/runtime/internal/runtime.WasiGCCondTimedWait
+func wasiGCCondTimedWait(cond, mutex unsafe.Pointer, waitNanos int64, monotonic bool)
 
-//go:linkname wasiGCSafepoint github.com/xgo-dev/llgo/runtime/internal/runtime.wasiGCSafepoint
-func wasiGCSafepoint()
+//go:linkname mutexLock github.com/xgo-dev/llgo/runtime/internal/runtime.wasiGCMutexLock
+func mutexLock(m *Mutex)
 
 func condWait(cond *Cond, mutex *Mutex) c.Int {
-	// All hosted condition waiters must check their predicate after return.
-	// A timed wake lets a parked pthread acknowledge a collection. Release
-	// the application lock first so another mutator can also reach a safepoint.
-	wasiGCCondTimedWait(cond, mutex)
-	mutex.Unlock()
-	wasiGCSafepoint()
-	mutex.Lock()
+	wasiGCCondTimedWait(unsafe.Pointer(cond), unsafe.Pointer(mutex), 20*1e6, false)
 	return 0
 }

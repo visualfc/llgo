@@ -82,7 +82,7 @@ func (m *Mutex) Destroy() {
 }
 
 func (m *Mutex) Lock() {
-	pthreadMutexLock(m)
+	mutexLock(m)
 }
 
 func (m *Mutex) Unlock() {

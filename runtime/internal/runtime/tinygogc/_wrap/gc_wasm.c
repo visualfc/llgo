@@ -25,7 +25,7 @@ extern unsigned char __heap_base;
 // disjoint region before tinygogc starts, rather than treating all remaining
 // linear memory as a Go heap and corrupting later libc allocations. Further
 // disjoint regions can be allocated as the Go heap grows.
-#define LLGO_WASI_GC_ARENA_SIZE (32u << 20)
+#define LLGO_WASI_GC_ARENA_SIZE (1u << 20)
 static uintptr_t llgo_wasi_gc_arena_start;
 static uintptr_t llgo_wasi_gc_arena_end;
 
