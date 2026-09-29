@@ -66,7 +66,7 @@ func TestFSCallAsyncFallback(t *testing.T) {
 }
 
 func TestStdinReadDoesNotFreezeScheduler(t *testing.T) {
-	installDelayedFSMethod(t, "read", "readSync",
+	state := installDelayedFSMethod(t, "read", "readSync",
 		[]any{"fd", "buffer", "offset", "length", "position", "callback"},
 		"setTimeout(() => { callback(null, 1); }, 300);",
 	)
@@ -82,6 +82,9 @@ func TestStdinReadDoesNotFreezeScheduler(t *testing.T) {
 		t.Fatalf("Stdin.Read: %v", err)
 	}
 	readAt := time.Since(start)
+	if state.Get("syncCalls").Int() != 0 {
+		t.Fatal("stdin read used the blocking Sync path")
+	}
 
 	var timerDur time.Duration
 	select {
@@ -89,8 +92,8 @@ func TestStdinReadDoesNotFreezeScheduler(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timer did not fire while stdin read was pending")
 	}
-	if timerDur > 150*time.Millisecond {
-		t.Fatalf("timer fired after %v (read took %v); stdin read used a blocking Sync path", timerDur, readAt)
+	if timerDur >= readAt {
+		t.Fatalf("timer fired after %v, not before stdin read completed at %v", timerDur, readAt)
 	}
 	if readAt < 200*time.Millisecond {
 		t.Fatalf("stdin read returned after %v, want the 300ms async wait", readAt)
@@ -108,7 +111,7 @@ func TestFsyncDoesNotFreezeScheduler(t *testing.T) {
 		_ = os.Remove(name)
 	})
 
-	installDelayedFSMethod(t, "fsync", "fsyncSync",
+	state := installDelayedFSMethod(t, "fsync", "fsyncSync",
 		[]any{"fd", "callback"},
 		"setTimeout(() => { callback(null); }, 300);",
 	)
@@ -123,6 +126,9 @@ func TestFsyncDoesNotFreezeScheduler(t *testing.T) {
 		t.Fatalf("File.Sync: %v", err)
 	}
 	syncAt := time.Since(start)
+	if state.Get("syncCalls").Int() != 0 {
+		t.Fatal("fsync used the blocking Sync path")
+	}
 
 	var timerDur time.Duration
 	select {
@@ -130,8 +136,8 @@ func TestFsyncDoesNotFreezeScheduler(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timer did not fire while fsync was pending")
 	}
-	if timerDur > 150*time.Millisecond {
-		t.Fatalf("timer fired after %v (fsync took %v); fsync used a blocking Sync path", timerDur, syncAt)
+	if timerDur >= syncAt {
+		t.Fatalf("timer fired after %v, not before fsync completed at %v", timerDur, syncAt)
 	}
 	if syncAt < 200*time.Millisecond {
 		t.Fatalf("fsync returned after %v, want the 300ms async wait", syncAt)
@@ -140,9 +146,10 @@ func TestFsyncDoesNotFreezeScheduler(t *testing.T) {
 
 // installDelayedFSMethod replaces fs.name with a JS function that invokes its
 // callback after 300ms, and installs a busy-wait nameSync. Official fsCall
-// must use the async method; if anything picked *Sync, the Go timer could not
-// fire until the busy-wait finished.
-func installDelayedFSMethod(t *testing.T, name, syncName string, params []any, body string) {
+// must use the async method. Record Sync calls explicitly rather than inferring
+// that path from an absolute timer deadline on a loaded CI host. The tests also
+// verify the Go timer makes progress before the pending operation returns.
+func installDelayedFSMethod(t *testing.T, name, syncName string, params []any, body string) js.Value {
 	t.Helper()
 	fs := js.Global().Get("fs")
 	orig := fs.Get(name)
@@ -153,13 +160,19 @@ func installDelayedFSMethod(t *testing.T, name, syncName string, params []any, b
 	})
 
 	ctor := js.Global().Get("Function")
+	state := js.Global().Get("Object").New()
+	state.Set("syncCalls", 0)
 	args := append(append([]any{}, params...), body)
 	fs.Set(name, ctor.New(args...))
-	fs.Set(syncName, ctor.New(`
-		const start = Date.now();
-		while (Date.now() - start < 300) {}
-		return 1;
-	`))
+	fs.Set(syncName, ctor.New("state", `
+		return function() {
+			state.syncCalls++;
+			const start = Date.now();
+			while (Date.now() - start < 300) {}
+			return 1;
+		};
+	`).Invoke(state))
+	return state
 }
 
 func TestJSCallPreservesThrownError(t *testing.T) {
