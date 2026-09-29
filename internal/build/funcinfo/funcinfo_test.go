@@ -291,6 +291,7 @@ func legacySizeBytes(records []Record) int {
 }
 
 func TestBuildStringTableSharing(t *testing.T) {
+	// The embedded NUL checks encoded layout only, not a cstring round trip.
 	values := []string{"", "prefix-suffix", "suffix", "suffix", "prefix", "日本語.go", "語.go", "other-suffix", "embedded\x00value", "value"}
 	ids, offsets, data, err := buildStringTable(values)
 	if err != nil {
@@ -304,8 +305,9 @@ func TestBuildStringTableSharing(t *testing.T) {
 	if !reflect.DeepEqual(ids, wantIDs) {
 		t.Fatalf("ids = %v, want %v", ids, wantIDs)
 	}
-	// Suffixes share the first matching bytes; a prefix without a NUL
-	// terminator needs its own entry. Offsets count bytes, not runes.
+	// Suffixes reuse an existing entry's tail, including its NUL terminator.
+	// A prefix without a NUL terminator needs its own entry.
+	// Offsets count bytes, not runes.
 	wantOffsets := []uint32{0, 1, 8, 15, 22, 28, 35, 48, 57}
 	if !reflect.DeepEqual(offsets, wantOffsets) {
 		t.Fatalf("offsets = %v, want %v", offsets, wantOffsets)

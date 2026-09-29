@@ -251,13 +251,16 @@ func splitFileName(file string) (root, name string) {
 type stringPool struct {
 	offsets map[string]uint32
 	data    []byte
+	scratch []byte
 }
 
 func (p *stringPool) offset(s string) (uint32, error) {
 	if off, ok := p.offsets[s]; ok {
 		return off, nil
 	}
-	if off := bytes.Index(p.data, []byte(s+"\x00")); off >= 0 {
+	p.scratch = append(p.scratch[:0], s...)
+	p.scratch = append(p.scratch, 0)
+	if off := bytes.Index(p.data, p.scratch); off >= 0 {
 		uoff := uint32(off)
 		p.offsets[s] = uoff
 		return uoff, nil
