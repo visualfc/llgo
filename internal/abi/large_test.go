@@ -10,6 +10,35 @@ import (
 	"github.com/xgo-dev/llvm"
 )
 
+func TestShouldLowerArrayCopy(t *testing.T) {
+	for _, tc := range []struct {
+		length, ptrSize int
+		size            uint64
+		want            bool
+	}{
+		{length: 1, size: 64, ptrSize: 8, want: false},
+		{length: 2, size: 16, ptrSize: 8, want: false},
+		{length: 4, size: 32, ptrSize: 8, want: false},
+		{length: 5, size: 40, ptrSize: 8, want: true},
+		{length: 256, size: 1024, ptrSize: 8, want: true},
+		{length: 2, size: 16, ptrSize: 4, want: false},
+		{length: 3, size: 24, ptrSize: 4, want: true},
+	} {
+		if got := ShouldLowerArrayCopy(tc.length, tc.size, tc.ptrSize); got != tc.want {
+			t.Errorf("ShouldLowerArrayCopy(%d, %d, %d) = %v, want %v", tc.length, tc.size, tc.ptrSize, got, tc.want)
+		}
+		if got := ShouldSnapshotAggregateLoad(true, tc.length, false, tc.size, tc.ptrSize); got != tc.want && tc.size < MinAggregateCopySize {
+			t.Errorf("ShouldSnapshotAggregateLoad(array %d, %d) = %v, want %v", tc.length, tc.size, got, tc.want)
+		}
+	}
+	if !ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize, 8) {
+		t.Fatal("struct at 4KiB should snapshot")
+	}
+	if ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize-1, 8) {
+		t.Fatal("struct below 4KiB should not snapshot")
+	}
+}
+
 func TestLargeAggregateThreshold(t *testing.T) {
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()
@@ -146,6 +175,39 @@ entry:
 		}
 	})
 
+	t.Run("small two-element array", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %v = load [2 x i64], ptr %src
+  store [2 x i64] %v, ptr %dst
+  ret void
+}
+`)
+		before := mod.String()
+		if got := LowerAggregateCopies(td, mod, config); got != 0 || mod.String() != before {
+			t.Fatalf("register-sized array copy was rewritten:\n%s", mod.String())
+		}
+	})
+
+	t.Run("above CanSSA size", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %v = load [5 x i64], ptr %src
+  store [5 x i64] %v, ptr %dst
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 1 {
+			t.Fatalf("lowered %d copies, want 1:\n%s", got, mod.String())
+		}
+		body := mod.NamedFunction("copy").String()
+		if !strings.Contains(body, "@llvm.memmove") || strings.Contains(body, "load [5 x i64]") {
+			t.Fatalf("40-byte array copy was not lowered to memmove:\n%s", body)
+		}
+	})
+
 	t.Run("one-element array", func(t *testing.T) {
 		mod := parseAggregateIR(t, `
 define void @copy(ptr %src, ptr %dst) {
@@ -174,6 +236,28 @@ entry:
 		before := mod.String()
 		if got := LowerAggregateCopies(td, mod, config); got != 0 || mod.String() != before {
 			t.Fatalf("array used as a call argument was rewritten:\n%s", mod.String())
+		}
+	})
+
+	t.Run("snapshot roots", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define ptr @copy(ptr %src, ptr %dst, ptr %other) {
+entry:
+  %v = load [5 x i64], ptr %src
+  call void @mutate(ptr %src)
+  store [5 x i64] %v, ptr %dst
+  store [5 x i64] %v, ptr %other
+  ret ptr %src
+}
+`)
+		cfg := AggregateLoweringConfig{GoWordSize: 8, GCRoots: true, Wasm: true}
+		if got := LowerAggregateCopies(td, mod, cfg); got != 1 {
+			t.Fatalf("lowered %d copies, want 1:\n%s", got, mod.String())
+		}
+		body := mod.NamedFunction("copy").String()
+		if !strings.Contains(body, "AllocU") || !strings.Contains(body, "llvm_gc_root_chain") {
+			t.Fatalf("40-byte array snapshot missing AllocU roots:\n%s", body)
 		}
 	})
 

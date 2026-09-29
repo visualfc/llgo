@@ -15,9 +15,36 @@ const (
 	// stores are lowered to memory intrinsics to avoid LLVM scalarization.
 	// Return types and the native stack/return ABI still use MaxImplicitStackVarSize.
 	MinAggregateCopySize uint64 = 4 * 1024
+	// MaxSSAValueWords matches cmd/compile's ssa.MaxStruct: a value may occupy
+	// at most this many pointer-sized words and still be SSAable.
+	MaxSSAValueWords = 4
 
 	runtimeAllocU = "github.com/xgo-dev/llgo/runtime/internal/runtime.AllocU"
 )
+
+// MaxSSAValueSize is cmd/compile's CanSSA size limit (MaxStruct * PtrSize).
+func MaxSSAValueSize(ptrSize int) uint64 {
+	return uint64(MaxSSAValueWords * ptrSize)
+}
+
+// ShouldLowerArrayCopy reports whether a multi-element array should be copied
+// in memory instead of as a first-class LLVM value. Arrays larger than
+// MaxSSAValueSize are not SSAable in cmd/compile; smaller ones stay in registers.
+func ShouldLowerArrayCopy(length int, size uint64, ptrSize int) bool {
+	return length > 1 && size > MaxSSAValueSize(ptrSize)
+}
+
+// ShouldSnapshotAggregateLoad reports whether ABI copy lowering may heap-allocate
+// a snapshot of this load, which the frontend must treat as a GC safepoint.
+func ShouldSnapshotAggregateLoad(isArray bool, arrayLen int, isStruct bool, size uint64, ptrSize int) bool {
+	if isArray && ShouldLowerArrayCopy(arrayLen, size, ptrSize) {
+		return true
+	}
+	if (isArray || isStruct) && size >= MinAggregateCopySize {
+		return true
+	}
+	return false
+}
 
 // AggregateLoweringConfig describes the Go runtime ABI used by lowering-created
 // allocations and roots. GoWordSize can exceed the physical Wasm address size.
@@ -35,12 +62,11 @@ func LowerLargeAggregates(td llvm.TargetData, m llvm.Module, config AggregateLow
 }
 
 // LowerAggregateCopies applies snapshot lowering to copies of at least 4 KiB
-// and to multi-element arrays of any size. cmd/compile never represents arrays
-// with more than one element as SSA values; LLVM scalarizes first-class loads
-// of those arrays, notably NTT polynomials and mid-size literals. Function
-// signatures, return sret, and the native C ABI are unchanged: loads used as
-// call arguments are left alone. config.Wasm still selects the wasm GC-root
-// frame layout and is independent of this pass.
+// and to multi-element arrays larger than MaxSSAValueSize. LLVM scalarizes
+// first-class loads of those arrays, notably NTT polynomials. Smaller arrays
+// stay first-class so they can remain in registers. Function signatures, return
+// sret, and the native C ABI are unchanged: loads used as call arguments are
+// left alone. config.Wasm still selects the wasm GC-root frame layout.
 func LowerAggregateCopies(td llvm.TargetData, m llvm.Module, config AggregateLoweringConfig) int {
 	l := newLargeAggregateLowerer(td, config)
 	l.copyMinSize = MinAggregateCopySize
@@ -108,12 +134,15 @@ func (l largeAggregateLowerer) indirectType(ctx llvm.Context, typ llvm.Type) llv
 	return llvm.FunctionType(ctx.VoidType(), params, typ.IsFunctionVarArg())
 }
 
-func (l largeAggregateLowerer) isMultiElementArray(typ llvm.Type) bool {
-	return typ.TypeKind() == llvm.ArrayTypeKind && typ.ArrayLength() > 1
+func (l largeAggregateLowerer) isArrayCopyToLower(typ llvm.Type) bool {
+	if typ.TypeKind() != llvm.ArrayTypeKind {
+		return false
+	}
+	return ShouldLowerArrayCopy(typ.ArrayLength(), l.td.TypeAllocSize(typ), l.td.PointerSize())
 }
 
 func (l largeAggregateLowerer) isLargeCopy(typ llvm.Type) bool {
-	if l.copyMultiElementArrays && l.isMultiElementArray(typ) {
+	if l.copyMultiElementArrays && l.isArrayCopyToLower(typ) {
 		return true
 	}
 	if l.copyMinSize == 0 {
