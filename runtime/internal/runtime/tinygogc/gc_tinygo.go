@@ -109,14 +109,15 @@ func initGC() {
 	metadataStart = unsafe.Pointer(heapSegments[0].metadata)
 }
 
+// Contiguous (browser/bare-metal) growth moves existing metadata; unlike
+// addHeapSegment it must not zero the old allocation state.
 func configureHeap() {
-	totalSize := heapEnd - heapStart
-	metadataSize := (totalSize + blocksPerStateByte*bytesPerBlock) / (1 + blocksPerStateByte*bytesPerBlock)
-	metadataStart = unsafe.Pointer(heapEnd - metadataSize)
-	endBlock = (uintptr(metadataStart) - heapStart) / bytesPerBlock
-	heapSegments[0].end = heapEnd
-	heapSegments[0].metadata = uintptr(metadataStart)
-	heapSegments[0].last = endBlock
+	segment := &heapSegments[0]
+	if !segment.configure(heapEnd) {
+		gcPanic(c.Str("gc: invalid grown heap segment"))
+	}
+	metadataStart = unsafe.Pointer(segment.metadata)
+	endBlock = segment.last
 }
 
 func lazyInit() {
@@ -148,7 +149,10 @@ func gcPointerOf(blockAddr uintptr) unsafe.Pointer {
 
 // Return the address of the start of the allocated object.
 func gcAddressOf(blockAddr uintptr) uintptr {
-	segment := segmentForBlock(blockAddr)
+	return gcAddressOfIn(segmentForBlock(blockAddr), blockAddr)
+}
+
+func gcAddressOfIn(segment *heapSegment, blockAddr uintptr) uintptr {
 	addr := segment.start + (blockAddr-segment.first)*bytesPerBlock
 	if addr > segment.metadata {
 		gcPanic(c.Str("gc: block pointing inside metadata"))
@@ -160,7 +164,10 @@ func gcAddressOf(blockAddr uintptr) uintptr {
 // points to an allocated object. It returns the same block if this block
 // already points to the head.
 func gcFindHead(blockAddr uintptr) uintptr {
-	segment := segmentForBlock(blockAddr)
+	return gcFindHeadIn(segmentForBlock(blockAddr), blockAddr)
+}
+
+func gcFindHeadIn(segment *heapSegment, blockAddr uintptr) uintptr {
 	for {
 		// Optimization: check whether the current block state byte (which
 		// contains the state of multiple blocks) is composed entirely of tail
@@ -168,7 +175,7 @@ func gcFindHead(blockAddr uintptr) uintptr {
 		// state byte.
 		// This optimization speeds up findHead for pointers that point into a
 		// large allocation.
-		stateByte := gcStateByteOf(blockAddr)
+		stateByte := gcStateByteOfIn(segment, blockAddr)
 		if stateByte == blockStateByteAllTails {
 			blockAddr -= ((blockAddr - segment.first) % blocksPerStateByte) + 1
 			continue
@@ -176,13 +183,13 @@ func gcFindHead(blockAddr uintptr) uintptr {
 
 		// Check whether we've found a non-tail block, which means we found the
 		// head.
-		state := gcStateFromByte(blockAddr, stateByte)
+		state := gcStateFromByteIn(segment, blockAddr, stateByte)
 		if state != blockStateTail {
 			break
 		}
 		blockAddr--
 	}
-	if gcStateOf(blockAddr) != blockStateHead && gcStateOf(blockAddr) != blockStateMark {
+	if gcStateOfIn(segment, blockAddr) != blockStateHead && gcStateOfIn(segment, blockAddr) != blockStateMark {
 		gcPanic(c.Str("gc: found tail without head"))
 	}
 	return blockAddr
@@ -206,67 +213,89 @@ func gcFindHeadForMark(block uintptr) uintptr {
 // findNext returns the first block just past the end of the tail. This may or
 // may not be the head of an object.
 func gcFindNext(blockAddr uintptr) uintptr {
-	segment := segmentForBlock(blockAddr)
-	if gcStateOf(blockAddr) == blockStateHead || gcStateOf(blockAddr) == blockStateMark {
+	return gcFindNextIn(segmentForBlock(blockAddr), blockAddr)
+}
+
+func gcFindNextIn(segment *heapSegment, blockAddr uintptr) uintptr {
+	if gcStateOfIn(segment, blockAddr) == blockStateHead || gcStateOfIn(segment, blockAddr) == blockStateMark {
 		blockAddr++
 	}
-	for blockAddr < segment.last && gcStateOf(blockAddr) == blockStateTail {
+	for blockAddr < segment.last && gcStateOfIn(segment, blockAddr) == blockStateTail {
 		blockAddr++
 	}
 	return blockAddr
 }
 
 func gcStateByteOf(blockAddr uintptr) byte {
-	segment := segmentForBlock(blockAddr)
+	return gcStateByteOfIn(segmentForBlock(blockAddr), blockAddr)
+}
+
+func gcStateByteOfIn(segment *heapSegment, blockAddr uintptr) byte {
 	return *(*uint8)(unsafe.Pointer(segment.metadata + (blockAddr-segment.first)/blocksPerStateByte))
 }
 
 // Return the block state given a state byte. The state byte must have been
 // obtained using b.stateByte(), otherwise the result is incorrect.
 func gcStateFromByte(blockAddr uintptr, stateByte byte) uint8 {
-	segment := segmentForBlock(blockAddr)
+	return gcStateFromByteIn(segmentForBlock(blockAddr), blockAddr, stateByte)
+}
+
+func gcStateFromByteIn(segment *heapSegment, blockAddr uintptr, stateByte byte) uint8 {
 	return uint8(stateByte>>(((blockAddr-segment.first)%blocksPerStateByte)*stateBits)) & blockStateMask
 }
 
 // State returns the current block state.
 func gcStateOf(blockAddr uintptr) uint8 {
-	return gcStateFromByte(blockAddr, gcStateByteOf(blockAddr))
+	return gcStateOfIn(segmentForBlock(blockAddr), blockAddr)
+}
+
+func gcStateOfIn(segment *heapSegment, blockAddr uintptr) uint8 {
+	return gcStateFromByteIn(segment, blockAddr, gcStateByteOfIn(segment, blockAddr))
 }
 
 // setState sets the current block to the given state, which must contain more
 // bits than the current state. Allowed transitions: from free to any state and
 // from head to mark.
 func gcSetState(blockAddr uintptr, newState uint8) {
-	segment := segmentForBlock(blockAddr)
+	gcSetStateIn(segmentForBlock(blockAddr), blockAddr, newState)
+}
+
+func gcSetStateIn(segment *heapSegment, blockAddr uintptr, newState uint8) {
 	stateBytePtr := (*uint8)(unsafe.Pointer(segment.metadata + (blockAddr-segment.first)/blocksPerStateByte))
 	*stateBytePtr |= uint8(newState << (((blockAddr - segment.first) % blocksPerStateByte) * stateBits))
-	if gcStateOf(blockAddr) != newState {
+	if gcStateOfIn(segment, blockAddr) != newState {
 		gcPanic(c.Str("gc: setState() was not successful"))
 	}
 }
 
 // markFree sets the block state to free, no matter what state it was in before.
 func gcMarkFree(blockAddr uintptr) {
-	segment := segmentForBlock(blockAddr)
+	gcMarkFreeIn(segmentForBlock(blockAddr), blockAddr)
+}
+
+func gcMarkFreeIn(segment *heapSegment, blockAddr uintptr) {
 	stateBytePtr := (*uint8)(unsafe.Pointer(segment.metadata + (blockAddr-segment.first)/blocksPerStateByte))
 	*stateBytePtr &^= uint8(blockStateMask << (((blockAddr - segment.first) % blocksPerStateByte) * stateBits))
-	if gcStateOf(blockAddr) != blockStateFree {
+	if gcStateOfIn(segment, blockAddr) != blockStateFree {
 		gcPanic(c.Str("gc: markFree() was not successful"))
 	}
-	*(*[wordsPerBlock]uintptr)(unsafe.Pointer(gcAddressOf(blockAddr))) = [wordsPerBlock]uintptr{}
+	*(*[wordsPerBlock]uintptr)(unsafe.Pointer(gcAddressOfIn(segment, blockAddr))) = [wordsPerBlock]uintptr{}
 }
 
 // unmark changes the state of the block from mark to head. It must be marked
 // before calling this function.
 func gcUnmark(blockAddr uintptr) {
-	if gcStateOf(blockAddr) != blockStateMark {
+	gcUnmarkIn(segmentForBlock(blockAddr), blockAddr)
+}
+
+func gcUnmarkIn(segment *heapSegment, blockAddr uintptr) {
+	if gcStateOfIn(segment, blockAddr) != blockStateMark {
 		gcPanic(c.Str("gc: unmark() on a block that is not marked"))
 	}
 	clearMask := blockStateMask ^ blockStateHead // the bits to clear from the state
-	segment := segmentForBlock(blockAddr)
 	stateBytePtr := (*uint8)(unsafe.Pointer(segment.metadata + (blockAddr-segment.first)/blocksPerStateByte))
 	*stateBytePtr &^= uint8(clearMask << (((blockAddr - segment.first) % blocksPerStateByte) * stateBits))
-	if gcStateOf(blockAddr) != blockStateHead {
+	if gcStateOfIn(segment, blockAddr) != blockStateHead {
 		gcPanic(c.Str("gc: unmark() was not successful"))
 	}
 }
@@ -300,6 +329,7 @@ func Alloc(size uintptr) unsafe.Pointer {
 	// Continue looping until a run of free blocks has been found that fits the
 	// requested size.
 	index := nextAlloc
+	segment := segmentForBlock(index)
 	numFreeBlocks := uintptr(0)
 	heapScanCount := uint8(0)
 	for {
@@ -338,8 +368,13 @@ func Alloc(size uintptr) unsafe.Pointer {
 		}
 
 		// Wrap around the end of the heap.
-		if next, atEnd := nextSegmentBlock(index); atEnd {
-			index = next
+		if index == segment.last {
+			if index == endBlock {
+				index = 0
+			} else {
+				index++
+			}
+			segment = segmentForBlock(index)
 			// Reset numFreeBlocks as allocations cannot wrap.
 			numFreeBlocks = 0
 			// In rare cases, the initial heap might be so small that there are
@@ -352,7 +387,7 @@ func Alloc(size uintptr) unsafe.Pointer {
 		}
 
 		// Is the block we're looking at free?
-		if gcStateOf(index) != blockStateFree {
+		if gcStateOfIn(segment, index) != blockStateFree {
 			// This block is in use. Try again from this point.
 			numFreeBlocks = 0
 			index++
@@ -368,11 +403,11 @@ func Alloc(size uintptr) unsafe.Pointer {
 			thisAlloc := index - neededBlocks
 
 			// Set the following blocks as being allocated.
-			gcSetState(thisAlloc, blockStateHead)
+			gcSetStateIn(segment, thisAlloc, blockStateHead)
 			for i := thisAlloc + 1; i != nextAlloc; i++ {
-				gcSetState(i, blockStateTail)
+				gcSetStateIn(segment, i, blockStateTail)
 			}
-			ret := c.Memset(gcPointerOf(thisAlloc), 0, size)
+			ret := c.Memset(unsafe.Pointer(gcAddressOfIn(segment, thisAlloc)), 0, size)
 			unlock(&gcMutex)
 			scheduleFinalizers()
 			// Return a pointer to this allocation.
@@ -514,23 +549,25 @@ func startMark(root uintptr) {
 		stackLen--
 		block := stack[stackLen]
 
-		endBlock := gcFindNext(block)
+		segment := segmentForBlock(block)
+		endBlock := gcFindNextIn(segment, block)
 		markHeads.remember(block, endBlock)
-		start, end := gcAddressOf(block), gcAddressOf(endBlock)
+		start, end := gcAddressOfIn(segment, block), gcAddressOfIn(segment, endBlock)
 
 		for addr := start; addr != end; addr += gcScanWordSize {
 			// Load the word.
 			word := loadGCScanWord(addr)
 
-			if !isPointer(word) {
+			referencedSegment := segmentForAddress(word)
+			if referencedSegment == nil {
 				// Not a heap pointer.
 				continue
 			}
 
 			// Find the corresponding memory block.
-			referencedBlock := blockFromAddr(word)
+			referencedBlock := referencedSegment.first + (word-referencedSegment.start)/bytesPerBlock
 
-			if gcStateOf(referencedBlock) == blockStateFree {
+			if gcStateOfIn(referencedSegment, referencedBlock) == blockStateFree {
 				// The to-be-marked object doesn't actually exist.
 				// This is probably a false positive.
 				continue
@@ -540,13 +577,13 @@ func startMark(root uintptr) {
 			referencedBlock = gcFindHeadForMark(referencedBlock)
 			noteFinalizerReference(referencedBlock)
 
-			if gcStateOf(referencedBlock) == blockStateMark {
+			if gcStateOfIn(referencedSegment, referencedBlock) == blockStateMark {
 				// The block has already been marked by something else.
 				continue
 			}
 
 			// Mark block.
-			gcSetState(referencedBlock, blockStateMark)
+			gcSetStateIn(referencedSegment, referencedBlock, blockStateMark)
 
 			if stackLen == len(stack) {
 				// The stack is full.
@@ -573,7 +610,7 @@ func finishMark() {
 		for segmentIndex := 0; segmentIndex < heapSegmentCount; segmentIndex++ {
 			segment := &heapSegments[segmentIndex]
 			for block := segment.first; block < segment.last; block++ {
-				if gcStateOf(block) != blockStateMark {
+				if gcStateOfIn(segment, block) != blockStateMark {
 					continue
 				}
 				startMark(block)
@@ -609,10 +646,10 @@ func sweep() (freeBytes uintptr) {
 	for segmentIndex := 0; segmentIndex < heapSegmentCount; segmentIndex++ {
 		segment := &heapSegments[segmentIndex]
 		for block := segment.first; block < segment.last; block++ {
-			switch gcStateOf(block) {
+			switch gcStateOfIn(segment, block) {
 			case blockStateHead:
 				// Unmarked head. Free it, including all tail blocks following it.
-				gcMarkFree(block)
+				gcMarkFreeIn(segment, block)
 				freeCurrentObject = true
 				gcFrees++
 				freed++
@@ -620,14 +657,14 @@ func sweep() (freeBytes uintptr) {
 				if freeCurrentObject {
 					// This is a tail object following an unmarked head.
 					// Free it now.
-					gcMarkFree(block)
+					gcMarkFreeIn(segment, block)
 					freed++
 				}
 			case blockStateMark:
 				// This is a marked object. The next tail blocks must not be freed,
 				// but the mark bit must be removed so the next GC cycle will
 				// collect this object if it is unreferenced then.
-				gcUnmark(block)
+				gcUnmarkIn(segment, block)
 				freeCurrentObject = false
 			case blockStateFree:
 				freeBytes += bytesPerBlock

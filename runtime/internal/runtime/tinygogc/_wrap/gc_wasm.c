@@ -26,6 +26,8 @@ extern unsigned char __heap_base;
 // linear memory as a Go heap and corrupting later libc allocations. Further
 // disjoint regions can be allocated as the Go heap grows.
 #define LLGO_WASI_GC_ARENA_SIZE (1u << 20)
+// These bounds describe only the first malloc-backed segment. Later arenas
+// have independent descriptors in tinygogc; they do not extend this region.
 static uintptr_t llgo_wasi_gc_arena_start;
 static uintptr_t llgo_wasi_gc_arena_end;
 
@@ -101,6 +103,7 @@ int llgo_gc_grow_memory(uintptr_t required) {
 #if defined(__EMSCRIPTEN__)
 	return emscripten_resize_heap(required);
 #elif defined(__wasi__) && defined(_REENTRANT)
+  // WASI growth uses llgo_gc_new_arena, never in-place memory.grow.
   return required <= llgo_gc_memory_size();
 #else
 	uintptr_t current = llgo_gc_memory_size();
