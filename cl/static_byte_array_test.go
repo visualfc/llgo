@@ -204,4 +204,178 @@ func TestMergeStaticByteArraysQualifiedKeys(t *testing.T) {
 	if got[StaticByteArrayKey("a", "T")][0] != 1 || got[StaticByteArrayKey("b", "T")][0] != 2 {
 		t.Fatalf("qualified keys collided: %v", got)
 	}
+	if StaticByteArrayKey("", "T") != "T" {
+		t.Fatalf("empty pkg path key = %q", StaticByteArrayKey("", "T"))
+	}
+	mergedNil := MergeStaticByteArrays(nil, src)
+	if mergedNil[StaticByteArrayKey("b", "T")][0] != 2 {
+		t.Fatalf("merge into nil dst: %v", mergedNil)
+	}
+}
+
+func TestStripLargeStaticByteArraySkipsNonValues(t *testing.T) {
+	const n = minStripStaticByteArray
+	src := fmt.Sprintf("package p\n\nconst C = 1\nvar _ = [%d]byte{%s}\nvar Uninit [%d]byte\nvar Table = [%d]byte{%s}\n", n, strings.Repeat("1, ", n), n, n, strings.Repeat("2, ", n))
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("p", "p")
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{nil, file})
+	if payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")][0] != 2 {
+		t.Fatalf("Table payload = %v", payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")])
+	}
+	if _, ok := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "_")]; ok {
+		t.Fatal("blank identifier was stripped")
+	}
+	if _, ok := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Uninit")]; ok {
+		t.Fatal("uninitialized array was stripped")
+	}
+}
+
+func TestStaticByteArrayLitRejects(t *testing.T) {
+	if _, ok := staticByteArrayLit(nil); ok {
+		t.Fatal("nil literal accepted")
+	}
+	n := minStripStaticByteArray
+	mk := func(lenExpr ast.Expr, elt ast.Expr, values ...ast.Expr) *ast.CompositeLit {
+		return &ast.CompositeLit{
+			Type: &ast.ArrayType{Len: lenExpr, Elt: elt},
+			Elts: values,
+		}
+	}
+	intLit := func(s string) *ast.BasicLit { return &ast.BasicLit{Kind: token.INT, Value: s} }
+	many := make([]ast.Expr, n)
+	for i := range many {
+		many[i] = intLit("1")
+	}
+	if _, ok := staticByteArrayLit(mk(intLit("4096"), &ast.Ident{Name: "int"}, many...)); ok {
+		t.Fatal("[N]int accepted")
+	}
+	if _, ok := staticByteArrayLit(&ast.CompositeLit{Type: &ast.ArrayType{Elt: &ast.Ident{Name: "byte"}}, Elts: many}); ok {
+		t.Fatal("slice literal accepted")
+	}
+	if _, ok := staticByteArrayLit(mk(intLit("100"), &ast.Ident{Name: "byte"}, many...)); ok {
+		t.Fatal("declared length below threshold accepted")
+	}
+	badKey := append([]ast.Expr(nil), many...)
+	badKey[0] = &ast.KeyValueExpr{Key: &ast.Ident{Name: "x"}, Value: intLit("1")}
+	if _, ok := staticByteArrayLit(mk(intLit("4096"), &ast.Ident{Name: "byte"}, badKey...)); ok {
+		t.Fatal("non-int keyed index accepted")
+	}
+	oob := append([]ast.Expr(nil), many...)
+	oob[0] = &ast.KeyValueExpr{Key: intLit("8192"), Value: intLit("1")}
+	if _, ok := staticByteArrayLit(mk(intLit("4096"), &ast.Ident{Name: "byte"}, oob...)); ok {
+		t.Fatal("out-of-range keyed index accepted")
+	}
+	if _, ok := astIntLit(&ast.Ident{Name: "n"}); ok {
+		t.Fatal("non-literal int accepted")
+	}
+	if _, ok := astIntLit(&ast.BasicLit{Kind: token.INT, Value: "-1"}); ok {
+		t.Fatal("negative length accepted")
+	}
+	if _, ok := astByteLit(&ast.Ident{Name: "x"}); ok {
+		t.Fatal("non-literal byte accepted")
+	}
+	if _, ok := astByteLit(&ast.BasicLit{Kind: token.INT, Value: "256"}); ok {
+		t.Fatal("byte overflow accepted")
+	}
+	if _, ok := astByteLit(&ast.BasicLit{Kind: token.STRING, Value: `"a"`}); ok {
+		t.Fatal("string literal accepted as byte")
+	}
+	if _, ok := astByteLit(&ast.BasicLit{Kind: token.CHAR, Value: `'\x`}); ok {
+		t.Fatal("broken char literal accepted")
+	}
+
+	ellipsisBad := append([]ast.Expr(nil), many...)
+	ellipsisBad[0] = &ast.KeyValueExpr{Key: &ast.Ident{Name: "x"}, Value: intLit("1")}
+	if _, ok := staticByteArrayLit(mk(&ast.Ellipsis{}, &ast.Ident{Name: "byte"}, ellipsisBad...)); ok {
+		t.Fatal("ellipsis with non-int key accepted")
+	}
+
+	file := &ast.File{
+		Name: ast.NewIdent("p"),
+		Decls: []ast.Decl{
+			&ast.GenDecl{Tok: token.VAR, Specs: []ast.Spec{
+				&ast.TypeSpec{Name: ast.NewIdent("T"), Type: ast.NewIdent("int")},
+			}},
+		},
+	}
+	if got := StripLargeStaticByteArrays(types.NewPackage("p", "p"), []*ast.File{file}); got != nil {
+		t.Fatalf("non-value spec stripped: %v", got)
+	}
+}
+
+func TestStripLargeStaticByteArrayKeyedAndChar(t *testing.T) {
+	const n = minStripStaticByteArray
+	var b strings.Builder
+	b.WriteString("package p\n\nvar Table = [...]byte{")
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		if i%2 == 0 {
+			fmt.Fprintf(&b, "%d: 0x01", i)
+		} else {
+			fmt.Fprintf(&b, "%d: 'A'", i)
+		}
+	}
+	b.WriteString("}\n")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", b.String(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("p", "p")
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file})
+	got := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")]
+	if len(got) != n || got[0] != 1 || got[1] != 'A' || got[n-1] != 'A' {
+		t.Fatalf("keyed/char payload len %d [0]=%d [1]=%d [%d]=%d", len(got), got[0], got[1], n-1, got[n-1])
+	}
+}
+
+func TestInitStaticByteArrayGlobalRejects(t *testing.T) {
+	var g llssa.Global
+	p := &context{staticByteArrays: map[string][]byte{StaticByteArrayKey("p", "T"): {1, 2, 3}}}
+	if p.initStaticByteArrayGlobal(false, &ssa.Global{}, g) {
+		t.Fatal("define=false accepted")
+	}
+	empty := &context{}
+	if empty.initStaticByteArrayGlobal(true, &ssa.Global{}, g) {
+		t.Fatal("empty payloads accepted")
+	}
+	if p.initStaticByteArrayGlobal(true, &ssa.Global{}, g) {
+		t.Fatal("nil pkg accepted")
+	}
+}
+
+func compileWithPayload(t *testing.T, src string, payloads map[string][]byte) {
+	t.Helper()
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &types.Info{Types: make(map[ast.Expr]types.TypeAndValue), Defs: make(map[*ast.Ident]types.Object), Uses: make(map[*ast.Ident]types.Object)}
+	conf := types.Config{Importer: gpackages.NewImporter(fset)}
+	pkg, err := conf.Check("p", fset, []*ast.File{file}, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog := ssa.NewProgram(fset, ssa.SanityCheckFunctions|ssa.InstantiateGenerics)
+	ssaPkg := prog.CreatePackage(pkg, []*ast.File{file}, info, true)
+	ssaPkg.Build()
+	llprog := ssatest.NewProgramEx(t, nil, conf.Importer)
+	llprog.TypeSizes(types.SizesFor("gc", "arm64"))
+	if _, _, err := NewPackageExWithEmbedMetaOptions(llprog, nil, nil, nil, ssaPkg, []*ast.File{file}, nil, false, Options{StaticByteArrays: payloads}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInitStaticByteArrayGlobalTypeMismatch(t *testing.T) {
+	payload := map[string][]byte{StaticByteArrayKey("p", "Table"): {1, 2, 3, 4}}
+	compileWithPayload(t, "package p\nvar Table int\n", payload)
+	compileWithPayload(t, "package p\nvar Table [3]byte\n", payload)
+	compileWithPayload(t, "package p\nvar Table [4]int\n", payload)
 }
