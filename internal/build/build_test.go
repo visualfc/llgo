@@ -948,7 +948,7 @@ func TestUsesSingleWorkerWasmScheduler(t *testing.T) {
 	}{
 		{"Emscripten", "js", "wasm", false, true},
 		{"Emscripten ignores WASI setting", "js", "wasm", true, true},
-		{"single-worker WASI", "wasip1", "wasm", false, true},
+		{"WASI always uses pthreads", "wasip1", "wasm", false, false},
 		{"WASI threads", "wasip1", "wasm", true, false},
 		{"unsupported wasm host", "plan9", "wasm", false, false},
 		{"native", "linux", "amd64", false, false},
@@ -1212,11 +1212,6 @@ func TestWasmRuntimeBackendSelection(t *testing.T) {
 		{
 			name: "raw JS and Emscripten profiles", goos: "js", tags: []string{"llgo", "nogc"},
 			want: []string{"g_wasm.go", "os_wasm.go", "proc_wasm.go", "runqueue_wasm.go", "fatal_emscripten.go", "local_context_baremetal.go"},
-			omit: []string{"g_tls.go", "os_pthread.go", "proc_pthread.go", "fatal_default.go", "local_context_tls.go"},
-		},
-		{
-			name: "single-worker WASI", goos: "wasip1", tags: []string{"llgo", "nogc"},
-			want: []string{"g_wasm.go", "os_wasm.go", "proc_wasip1.go", "runqueue_wasm.go", "fatal_wasip1.go", "local_context_baremetal.go"},
 			omit: []string{"g_tls.go", "os_pthread.go", "proc_pthread.go", "fatal_default.go", "local_context_tls.go"},
 		},
 		{
@@ -2683,14 +2678,16 @@ func TestFullRpathArgs(t *testing.T) {
 	}
 }
 
-func TestWASIThreadsAreOptIn(t *testing.T) {
-	t.Setenv(llgoWasiThreads, "")
-	if IsWasiThreadsEnabled() {
-		t.Fatal("WASI threads are enabled by default")
-	}
-	t.Setenv(llgoWasiThreads, "1")
-	if !IsWasiThreadsEnabled() {
-		t.Fatal("WASI threads opt-in was ignored")
+func TestWASIThreadsRequired(t *testing.T) {
+	for _, value := range []string{"", "1", "true", "on", "0", "false", "off", "invalid"} {
+		t.Setenv(llgoWasiThreads, value)
+		wantError := value == "0" || value == "false" || value == "off" || value == "invalid"
+		if err := validateWASIThreads(&Config{Goos: "wasip1", Goarch: "wasm"}); (err != nil) != wantError {
+			t.Fatalf("LLGO_WASI_THREADS=%q: %v", value, err)
+		}
+		if err := validateWASIThreads(&Config{Goos: "linux", Goarch: "amd64"}); err != nil {
+			t.Fatalf("WASI setting affected native target: %v", err)
+		}
 	}
 }
 

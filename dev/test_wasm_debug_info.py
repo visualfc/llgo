@@ -91,7 +91,8 @@ def main():
                 )
                 check_module(module, dwarfdump=dwarfdump, addr2line=addr2line)
                 if profile == "w32":
-                    command = [os.environ.get("WASMTIME", "wasmtime"), "run", "-W", "exceptions=y", str(module)]
+                    command = [os.environ.get("IWASM", "iwasm"), "--max-threads=128",
+                               "--stack-size=1048576", "--heap-size=0", str(module)]
                 else:
                     runner = "emscripten-memory64-runner.mjs" if profile == "j64" else "emscripten-runner.mjs"
                     command = [os.environ.get("NODE", "node"), str(ROOT / "targets" / runner), str(output)]

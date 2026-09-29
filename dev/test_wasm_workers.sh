@@ -6,7 +6,6 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export LLGO_ROOT="${LLGO_ROOT:-${repo_root}}"
 llgo_cmd="${LLGO:-llgo}"
 node_cmd="${NODE:-node}"
-wasmtime_cmd="${WASMTIME:-wasmtime}"
 wasm_tools_cmd="${WASM_TOOLS:-wasm-tools}"
 wasm_opt_cmd="${WASMOPT:-wasm-opt}"
 worker_fixture="${repo_root}/internal/build/testdata/wasm-workers"
@@ -161,7 +160,6 @@ run_browser_acceptance() {
 
 require_tool "${llgo_cmd}"
 require_tool "${node_cmd}"
-require_tool "${wasmtime_cmd}"
 require_tool "${wasm_tools_cmd}"
 require_tool "${wasm_opt_cmd}"
 require_tool curl
@@ -170,13 +168,6 @@ export WASMOPT="${wasm_opt_cmd}"
 # Preserve the single-worker R2 behavior while adding the worker backend.
 run_single_hardening emscripten emscripten-runner.mjs hardening-single-emscripten
 run_single_hardening emscripten-memory64 emscripten-memory64-runner.mjs hardening-single-memory64
-"${llgo_cmd}" build -target wasi -o "${work_dir}/hardening-single-wasi.wasm" "${hardening_fixture}"
-"${wasm_tools_cmd}" validate --features all "${work_dir}/hardening-single-wasi.wasm"
-run_with_timeout "${wasmtime_cmd}" run -W exceptions=y \
-	--env LLGO_WASM_EXPECT_ARG=hardening-single-wasi \
-	--env LLGO_WASM_BLOCKED_G=1000 \
-	"${work_dir}/hardening-single-wasi.wasm" hardening-single-wasi 2>&1 | tee "${work_dir}/hardening-single-wasi.out"
-grep -Fxq "wasm hardening ok" "${work_dir}/hardening-single-wasi.out"
 
 # EC32 and EC64 run the same scheduler, GC, C-boundary, and lifecycle probes.
 run_emscripten emscripten emscripten-runner.mjs \

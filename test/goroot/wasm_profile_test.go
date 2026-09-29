@@ -27,7 +27,7 @@ func selectGOROOTWasmProfile(name string) (gorootWasmProfile, bool, error) {
 	case "J64-Emscripten":
 		return gorootWasmProfile{name: name, target: "emscripten-memory64", goos: "js", llgoSuffix: ".mjs", runner: "emscripten-memory64-runner.mjs"}, true, nil
 	case "W32-WASI":
-		return gorootWasmProfile{name: name, target: "wasi", goos: "wasip1", llgoSuffix: ".wasm", runner: "wasmtime"}, true, nil
+		return gorootWasmProfile{name: name, target: "wasi", goos: "wasip1", llgoSuffix: ".wasm", runner: "iwasm"}, true, nil
 	case "J32-GoJS":
 		return gorootWasmProfile{name: name, goos: "js", llgoSuffix: ".mjs", runner: "emscripten-runner.mjs", browserOnly: true}, true, nil
 	default:
@@ -62,7 +62,7 @@ func gorootRuntimeEnv(env []string) []string {
 	out := gorootTargetEnv(env)
 	if _, ok := activeGOROOTWasmProfile(); ok {
 		// Keep the official Go baseline deterministic. The LLGo pthread backend
-		// is selected separately by LLGO_WASI_THREADS and can still create Ms.
+		// uses WAMR and can still create Ms.
 		out = upsertEnv(out, "GOMAXPROCS=1")
 	}
 	return out
@@ -117,7 +117,7 @@ func gorootArtifactCommand(dir, artifact string, llgo bool, env []string, progra
 	if !ok {
 		return artifact, programArgs, env, nil
 	}
-	if p.runner == "wasmtime" && wasiThreadsInEnv(envEntry(env, "LLGO_WASI_THREADS")) {
+	if p.runner == "iwasm" {
 		args := []string{"--max-threads=128", "--stack-size=1048576", "--heap-size=0", "--dir=" + dir, "--dir=/tmp", artifact}
 		return "iwasm", append(args, programArgs...), gorootRuntimeEnv(env), nil
 	}
@@ -133,12 +133,6 @@ func gorootArtifactCommand(dir, artifact string, llgo bool, env []string, progra
 	if root == "" {
 		return "", nil, nil, errors.New("target LLGo execution requires LLGO_ROOT")
 	}
-	if p.runner == "wasmtime" {
-		args := []string{"run", "-W", "exceptions=y", "--dir=."}
-		args = append(args, artifact)
-		args = append(args, programArgs...)
-		return "wasmtime", args, gorootRuntimeEnv(env), nil
-	}
 	runner := filepath.Join(root, "targets", p.runner)
 	args := []string{runner}
 	if p.browserOnly {
@@ -147,14 +141,6 @@ func gorootArtifactCommand(dir, artifact string, llgo bool, env []string, progra
 	args = append(args, artifact)
 	args = append(args, programArgs...)
 	return "node", args, gorootRuntimeEnv(env), nil
-}
-
-func wasiThreadsInEnv(value string) bool {
-	switch strings.ToLower(value) {
-	case "1", "true", "on":
-		return true
-	}
-	return false
 }
 
 // uintptrescapes deliberately forces stack growth with 4096 recursive frames.

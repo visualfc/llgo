@@ -13,7 +13,7 @@ import (
 )
 
 func TestFullChildCommandProfiles(t *testing.T) {
-	t.Setenv("LLGO_WASI_THREADS", "0")
+	t.Setenv("LLGO_WASI_THREADS", "")
 	for _, name := range []string{"J32-GoJS", "J32-Emscripten", "J64-Emscripten", "W32-WASI", "GoJS-reference", "GoWASI-reference"} {
 		p, err := fullProfile(name)
 		if err != nil {
@@ -36,7 +36,7 @@ func TestFullChildCommandProfiles(t *testing.T) {
 				t.Fatalf("%s must use the official Go host helper: %+v", name, cmd)
 			}
 		case p.Target == "wasi":
-			if !slices.Contains(cmd.Args, "wasmtime") || !slices.Contains(cmd.Args, "exceptions=y") {
+			if !slices.Contains(cmd.Args, "iwasm") || !slices.Contains(cmd.Args, "--max-threads=128") {
 				t.Fatalf("%s missing WASI runner: %+v", name, cmd)
 			}
 		default:

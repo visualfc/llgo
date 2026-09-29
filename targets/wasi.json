@@ -6,5 +6,5 @@
 	"goarch": "wasm",
 	"wasm-profile": "w32",
 	"wasm-provider": "wasi",
-	"emulator": "wasmtime run --dir=/ --env PWD --env PATH -W exceptions=y -W multi-memory=y -W max-wasm-stack=8388608 {}"
+	"emulator": "iwasm --max-threads=128 --stack-size=1048576 --heap-size=0 --dir=. --dir=/tmp \"{}\""
 }

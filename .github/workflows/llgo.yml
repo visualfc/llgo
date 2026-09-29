@@ -569,7 +569,7 @@ jobs:
           # Check file type
           file hello.wasm
 
-          iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
+          iwasm --max-threads=128 --stack-size=1048576 --heap-size=0 hello.wasm
 
       - name: Set up wasm-tools for EH fixtures
         uses: bytecodealliance/actions/wasm-tools/setup@v1
@@ -661,6 +661,14 @@ jobs:
         uses: bytecodealliance/actions/wasmtime/setup@v1
         with:
           version: "39.0.1"
+
+      - name: Restore WAMR cache
+        uses: ./.github/actions/setup-llgo-cache
+        with:
+          wamr-cache-mode: readwrite
+
+      - name: Install WAMR for W32
+        run: bash dev/build_iwasm.sh
 
       - name: Set up wasm-tools
         uses: bytecodealliance/actions/wasm-tools/setup@v1

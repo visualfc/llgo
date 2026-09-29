@@ -546,15 +546,15 @@ func nativeSectionFlags(toolchain NativeToolchain) (ccflags, ldflags []string) {
 	}
 }
 
-func use(goos, goarch string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (Export, error) {
-	return useWithGOARM(goos, goarch, "", wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+func use(goos, goarch string, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (Export, error) {
+	return useWithGOARM(goos, goarch, "", forceEspClang, level, ltoMode, goGlobalDCE)
 }
 
-func useWithGOARM(goos, goarch, goarm string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
-	return useWithGOARMAndToolchain(goos, goarch, goarm, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE, NativeToolchainInput{}, WasmProfileNone, WasmProviderNone)
+func useWithGOARM(goos, goarch, goarm string, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
+	return useWithGOARMAndToolchain(goos, goarch, goarm, forceEspClang, level, ltoMode, goGlobalDCE, NativeToolchainInput{}, WasmProfileNone, WasmProviderNone)
 }
 
-func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool, nativeInput NativeToolchainInput, wasmProfile WasmProfile, wasmProvider WasmProvider) (export Export, err error) {
+func useWithGOARMAndToolchain(goos, goarch, goarm string, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool, nativeInput NativeToolchainInput, wasmProfile WasmProfile, wasmProvider WasmProvider) (export Export, err error) {
 	if !validWasmSelection(wasmProfile, wasmProvider) {
 		return export, fmt.Errorf("unsupported WebAssembly profile/provider %q/%q", wasmProfile, wasmProvider)
 	}
@@ -706,14 +706,10 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			}
 		}
 		// WASI-SDK configuration
-		triple := "wasm32-wasip1"
-		clangTriple := targetTriple
-		if wasiThreads {
-			triple = "wasm32-wasip1-threads"
-			// Clang selects crt1 from the target triple, independently of -L.
-			// The threads crt1 initializes the main pthread TLS before Go runs.
-			clangTriple = triple
-		}
+		// Clang selects crt1 from the target triple, independently of -L.
+		// The threads crt1 initializes the main pthread TLS before Go runs.
+		triple := "wasm32-wasip1-threads"
+		clangTriple := triple
 
 		// Set up flags for the WASI-SDK or wasi-libc
 		sysrootDir := filepath.Join(wasiSdkRoot, "share", "wasi-sysroot")
@@ -731,9 +727,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-matomics",
 			"-mbulk-memory",
 		}
-		if wasiThreads {
-			export.CCFLAGS = append(export.CCFLAGS, "-pthread")
-		}
+		export.CCFLAGS = append(export.CCFLAGS, "-pthread")
 		export.CFLAGS = []string{
 			"-I" + includeDir,
 			"-Qunused-arguments",
@@ -756,11 +750,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-L" + libDir,
 			"-Wl,--allow-undefined",
 			"-Wl,--export-memory",
-			// Some LLVM 19 wasm-ld distributions place static data before the
-			// process stack by default. The single-worker runtime and Binaryen
-			// Asyncify switch __stack_pointer; that host-dependent layout traps
-			// with an out-of-bounds access under WAMR on Linux. Put the process
-			// stack first so the post-link layout is stable on every host.
+			// Keep process-stack placement stable across host linker versions.
 			"-Wl,--stack-first",
 			"-mbulk-memory",
 			"-mmultimemory",
@@ -777,19 +767,14 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			"-lwasi-emulated-process-clocks",
 			"-lwasi-emulated-signal",
 		}...)
-		// Add thread support if enabled
-		if wasiThreads {
-			export.BuildTags = append(export.BuildTags, "llgo.wasi_threads")
-			export.LDFLAGS = append(
-				export.LDFLAGS,
-				"-Wl,--initial-memory=67108864", // Preserve the shared-memory backend's host contract.
-				"-Wl,--max-memory=268435456",    // Leave room for libc and additional Go GC arenas.
-				"-Wl,--import-memory",
-				"-lpthread",
-			)
-		} else {
-			export.WasmPostLink.Asyncify = true
-		}
+		export.BuildTags = append(export.BuildTags, "llgo.wasi_threads")
+		export.LDFLAGS = append(
+			export.LDFLAGS,
+			"-Wl,--initial-memory=67108864",
+			"-Wl,--max-memory=268435456",
+			"-Wl,--import-memory",
+			"-lpthread",
+		)
 
 	case "js":
 		// Emscripten configuration using system installation
@@ -1168,23 +1153,23 @@ func UseTarget(targetName string, level optlevel.Level, ltoMode lto.Mode) (expor
 
 // Use extends the original Use function to support target-based configuration
 // If targetName is provided, it takes precedence over goos/goarch
-func Use(goos, goarch, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
-	return UseWithGOARM(goos, goarch, "", targetName, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE)
+func Use(goos, goarch, targetName string, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
+	return UseWithGOARM(goos, goarch, "", targetName, forceEspClang, level, ltoMode, goGlobalDCE)
 }
 
 // UseWithGOARM is Use with an explicit Go ARM architecture setting. The
 // setting affects native GOARCH=arm clang and linker triples; named targets
 // retain their target configuration's LLVM triple.
-func UseWithGOARM(goos, goarch, goarm, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
-	return UseWithGOARMAndToolchain(goos, goarch, goarm, targetName, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE, NativeToolchainInput{})
+func UseWithGOARM(goos, goarch, goarm, targetName string, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool) (export Export, err error) {
+	return UseWithGOARMAndToolchain(goos, goarch, goarm, targetName, forceEspClang, level, ltoMode, goGlobalDCE, NativeToolchainInput{})
 }
 
 // UseWithGOARMAndToolchain is UseWithGOARM with explicit Go-compatible native
 // compiler commands. Named -target configurations intentionally ignore these
 // host commands and preserve their existing toolchain selection.
-func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThreads, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool, nativeInput NativeToolchainInput) (export Export, err error) {
+func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, forceEspClang bool, level optlevel.Level, ltoMode lto.Mode, goGlobalDCE bool, nativeInput NativeToolchainInput) (export Export, err error) {
 	if targetName == "" {
-		return useWithGOARMAndToolchain(goos, goarch, goarm, wasiThreads, forceEspClang, level, ltoMode, goGlobalDCE, nativeInput, WasmProfileNone, WasmProviderNone)
+		return useWithGOARMAndToolchain(goos, goarch, goarm, forceEspClang, level, ltoMode, goGlobalDCE, nativeInput, WasmProfileNone, WasmProviderNone)
 	}
 
 	// Resolve every named target before selecting its toolchain. Inherited wasm
@@ -1203,7 +1188,7 @@ func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThread
 	if !validWasmSelection(wasmProfile, wasmProvider) {
 		return export, fmt.Errorf("target %q has unsupported WebAssembly profile/provider %q/%q", targetName, config.WasmProfile, config.WasmProvider)
 	}
-	export, err = useWithGOARMAndToolchain(config.GOOS, config.GOARCH, "", wasiThreads, false, level, ltoMode, goGlobalDCE, nativeInput, wasmProfile, wasmProvider)
+	export, err = useWithGOARMAndToolchain(config.GOOS, config.GOARCH, "", false, level, ltoMode, goGlobalDCE, nativeInput, wasmProfile, wasmProvider)
 	if err != nil {
 		return export, err
 	}
@@ -1216,7 +1201,7 @@ func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThread
 	export.GOOS = config.GOOS
 	export.GOARCH = config.GOARCH
 	export.Emulator = env.ExpandEnvWithDefault(config.Emulator, buildEnvMap(env.LLGoROOT()), "{}")
-	if wasiThreads && wasmProvider == WasmProviderWASI && (targetName == "wasi" || targetName == "wasip1") {
+	if wasmProvider == WasmProviderWASI && (targetName == "wasi" || targetName == "wasip1") {
 		export.Emulator = WASIThreadedEmulator
 	}
 	export.BuildTags = appendUniqueStrings(export.BuildTags, config.BuildTags...)

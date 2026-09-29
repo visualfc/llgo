@@ -265,7 +265,7 @@ int mainCRTStartup(void) { return answer_from_dll() == 42 ? 0 : 23; }
 func newWindowsArtifactContext(t *testing.T, mode BuildMode) *context {
 	t.Helper()
 	export, err := crosscompile.UseWithGOARM(
-		"windows", runtime.GOARCH, "", "", false, false, optlevel.O0, lto.Off, false,
+		"windows", runtime.GOARCH, "", "", false, optlevel.O0, lto.Off, false,
 	)
 	if err != nil {
 		t.Fatal(err)

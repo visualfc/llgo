@@ -603,7 +603,7 @@ func TestFullStressCommandsUseQuickProfile(t *testing.T) {
 }
 
 func TestFullSourceContextMatchesCompilerProfiles(t *testing.T) {
-	t.Setenv("LLGO_WASI_THREADS", "0")
+	t.Setenv("LLGO_WASI_THREADS", "")
 	tests := []struct {
 		name, wantCGO string
 		wantTags      []string
@@ -611,7 +611,7 @@ func TestFullSourceContextMatchesCompilerProfiles(t *testing.T) {
 		{"J32-GoJS", "0", []string{"llgo", "osusergo", "llgo.wasm.gc.linear"}},
 		{"J32-Emscripten", "1", []string{"llgo", "osusergo", "llgo.wasm.gc.linear", "llgo.wasm.emscripten"}},
 		{"J64-Emscripten", "1", []string{"llgo", "osusergo", "llgo.wasm.gc.linear", "llgo.wasm.emscripten", "llgo.wasm.emscripten.memory64"}},
-		{"W32-WASI", "1", []string{"llgo", "osusergo", "llgo.wasm.gc.linear", "llgo.wasm.wasi"}},
+		{"W32-WASI", "1", []string{"llgo", "osusergo", "llgo.wasm.gc.linear", "llgo.wasm.wasi", "llgo.wasi_threads"}},
 		{"GoJS-reference", "0", nil},
 		{"GoWASI-reference", "0", nil},
 	}
