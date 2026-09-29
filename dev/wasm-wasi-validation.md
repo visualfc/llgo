@@ -46,9 +46,15 @@ address and block lookup use binary search, including out-of-order libc arenas.
 The host metadata regression covers all 128 segment slots, gaps, sentinels,
 metadata exclusion and preservation of marked objects during sweep.
 
-The focused `test/go` regression records compilation and verbose execution
-separately, each with its own 300-second deadline. This distinguishes cold
-compiler cost from a runtime stall and retains the last active test in CI logs.
+The focused `test/go` regression compiles once with a 300-second deadline.
+It then runs three groups in fresh WAMR invocations: finalizers/callback GC/
+function-info, the 20 pointer-argument startup races, and the 20 zero-argument
+startup races. Each invocation has a 300-second deadline and verbose output.
+On Linux CI the startup groups took 134 and 145 seconds in one combined run,
+while another run took 160 seconds for the pointer group and exceeded the
+combined deadline in the zero-argument group. Separate deadlines retain every
+case and repetition, distinguish slow interpreter work from a stalled test,
+and keep first-use checks independent of earlier test initialization.
 
 ## Reproducible checks
 

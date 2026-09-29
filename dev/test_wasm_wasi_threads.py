@@ -160,12 +160,25 @@ def main():
         subprocess.run([LLGO, "test", "-c", "-target", "wasi", "-o", str(module),
                         str(ROOT / "test/go")], env=env, check=True, timeout=300)
         print(f"WAMR GC test compilation: {time.monotonic() - started:.2f}s", flush=True)
-        started = time.monotonic()
-        subprocess.run([IWASM, "--max-threads=128", "--stack-size=1048576", "--heap-size=0",
-                        "--dir=" + str(ROOT), "--dir=/tmp", str(module), "-test.v",
-                        "-test.run=^(TestRuntimeSetFinalizer.*|TestReflectMakeFuncGoroutine.*|TestRuntimeFuncInfoConcurrentFirstUse)$"],
-                       env=env, check=True, timeout=300)
-        print(f"WAMR GC test execution: {time.monotonic() - started:.2f}s", flush=True)
+        # The two startup shapes each race 20 goroutines against continuous
+        # full GC. The classic interpreter takes over two minutes per shape
+        # on CI. Give each an independent runtime/deadline, and keep finalizer,
+        # callback GC and first-use symbol lookup in a third invocation. All
+        # cases and repetition counts remain enabled; a stalled case still
+        # fails within 300 seconds with its last active test visible.
+        runtime_cases = (
+            ("finalizers/callback/symbols",
+             "^(TestRuntimeSetFinalizer.*|TestReflectMakeFuncGoroutineGC|TestRuntimeFuncInfoConcurrentFirstUse)$"),
+            ("startup-pointer", "^TestReflectMakeFuncGoroutineStartup$/^pointer_argument$"),
+            ("startup-zero", "^TestReflectMakeFuncGoroutineStartup$/^zero_arguments$"),
+        )
+        for name, pattern in runtime_cases:
+            started = time.monotonic()
+            subprocess.run([IWASM, "--max-threads=128", "--stack-size=1048576", "--heap-size=0",
+                            "--dir=" + str(ROOT), "--dir=/tmp", str(module), "-test.v",
+                            "-test.run=" + pattern],
+                           env=env, check=True, timeout=300)
+            print(f"WAMR GC test {name}: {time.monotonic() - started:.2f}s", flush=True)
         run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
                        "^TestPoolAfterGC$", str(ROOT / "test/std/sync")], "PASS",
                  timeout=300)
