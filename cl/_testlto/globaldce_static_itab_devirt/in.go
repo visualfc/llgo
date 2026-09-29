@@ -5,7 +5,7 @@ import "reflect"
 
 // SYMBOL-DAG: main{{.*}}A{{.*}}M
 // SYMBOL-NOT: main{{.*}}B{{.*}}M
-// SYMBOL-NOT: _llgo_itab
+// SYMBOL-DAG: _llgo_itab
 
 type I interface {
 	M() int

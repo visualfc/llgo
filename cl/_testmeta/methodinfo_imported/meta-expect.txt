@@ -251,9 +251,9 @@ main.init:
 main.main:
     *_llgo_bytes.Buffer
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw
+    _llgo_itab$rDYHFzHM8ToJeVDHQNMl4dlq5ed22GhfgKkd01126as
     bytes.NewBuffer
     github.com/xgo-dev/llgo/runtime/internal/runtime.IfacePtrData
-    github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab
 
 [UseIface]
 main.main:

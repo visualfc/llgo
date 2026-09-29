@@ -743,8 +743,8 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 		t.Fatal("unassignable concrete type emitted a static itab template")
 	}
 	prog.EnableLTOPluginMarkers(false)
-	if _, ok := b.staticItab(intf, concrete, b.abiType(intf), b.abiType(concrete)); ok {
-		t.Fatal("static itab template emitted without LTO plugin markers")
+	if _, ok := b.staticItab(intf, concrete, b.abiType(intf), b.abiType(concrete)); !ok {
+		t.Fatal("runtime static itab was not emitted without LTO plugin markers")
 	}
 	prog.EnableLTOPluginMarkers(true)
 	noInterface := types.NewNamed(
@@ -768,7 +768,6 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 	interfaceTypeID := prog.interfaceCapabilityKey(intf)
 	for _, want := range []string{
 		`_llgo_itab$`,
-		`@llvm.compiler.used`,
 		`!"go.method.M:func()"`,
 		`!"go.method.N:func()"`,
 		`!llgo.static.itab.slot`,
@@ -781,8 +780,8 @@ func TestDevLTOGlobalDCEConcreteInterfaceEmitsStaticItabTemplate(t *testing.T) {
 			t.Fatalf("missing %s in static itab IR:\n%s", want, ir)
 		}
 	}
-	if !strings.Contains(ir, `call ptr @"github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab"`) {
-		t.Fatalf("static itab template replaced NewItab before LTO proof:\n%s", ir)
+	if strings.Contains(ir, `call ptr @"github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab"`) {
+		t.Fatalf("known T2I still called NewItab:\n%s", ir)
 	}
 	for _, typeID := range []string{
 		prog.interfaceMethodCapabilityKey(intf, 0),

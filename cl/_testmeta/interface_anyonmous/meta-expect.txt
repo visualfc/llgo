@@ -28,9 +28,9 @@ main.init:
     main.init$guard
 main.main:
     _llgo_iface$f14WsslTA1u5wwC83jLU0HU2u2mmAWxBVE38vPBbRAo
+    _llgo_itab$dACDlmxu21tSXRxXNpIHvwgX0x95CkEbRwSczvSHkCQ
     _llgo_main.T
     github.com/xgo-dev/llgo/runtime/internal/runtime.AllocU
-    github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab
     main.use
 main.use:
     github.com/xgo-dev/llgo/runtime/internal/runtime.IfacePtrData

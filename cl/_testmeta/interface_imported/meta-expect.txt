@@ -61,8 +61,8 @@ main.init:
 main.main:
     _llgo_github.com/xgo-dev/llgo/cl/_testmeta/interface_imported/api.Source
     _llgo_iface$uycIKA3bbxRhudEjW1hHKWKdLqHQsCVy8NdW1bkQmNw
+    _llgo_itab$ARsbupbM5LJaIg5IQKIp4jqIVyeW-KWKFWg1yvba33A
     github.com/xgo-dev/llgo/runtime/internal/runtime.AllocU
-    github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab
     main.use
 main.use:
     github.com/xgo-dev/llgo/runtime/internal/runtime.IfacePtrData

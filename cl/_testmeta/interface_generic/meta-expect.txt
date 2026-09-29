@@ -33,8 +33,8 @@ main.init:
 main.main:
     *_llgo_main.Box[int]
     _llgo_iface$Jvxc0PCI_drlfK7S5npMGdZkQLeRkQ_x2e2CifPE6w8
+    _llgo_itab$NaWLg_FrV5MHzdWJlwBZcXuNDhDi5hcF1S0TD-W3lj8
     github.com/xgo-dev/llgo/runtime/internal/runtime.AllocZ
-    github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab
     main.useInt
 main.useInt:
     github.com/xgo-dev/llgo/runtime/internal/runtime.IfacePtrData

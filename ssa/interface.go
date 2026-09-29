@@ -46,10 +46,10 @@ func (b Builder) newItab(tintf, typ Expr) Expr {
 
 func (b Builder) staticItab(rawIntf *types.Interface, concrete types.Type, tintf, typ Expr) (Expr, bool) {
 	prog := b.Prog
-	if !prog.enableGoGlobalDCE || !prog.enableLTOPluginMarker ||
-		rawIntf.NumMethods() == 0 || concrete == nil {
+	if rawIntf.NumMethods() == 0 || concrete == nil {
 		return Expr{}, false
 	}
+	rawIntf = rawIntf.Complete()
 	if !types.AssignableTo(concrete, rawIntf) {
 		return Expr{}, false
 	}
@@ -85,6 +85,7 @@ func (b Builder) staticItab(rawIntf *types.Interface, concrete types.Type, tintf
 	for i, method := range methods {
 		funcs[i], _ = b.abiMethodFuncs(concrete, method)
 	}
+	// Same hash as the concrete type descriptor (abiCommonFields).
 	hashBytes := sha256.Sum256([]byte(typeName))
 	hash := binary.LittleEndian.Uint32(hashBytes[:4])
 	global.impl.SetInitializer(prog.constStructValue(staticType, []llvm.Value{
@@ -102,26 +103,21 @@ func (b Builder) staticItab(rawIntf *types.Interface, concrete types.Type, tintf
 	global.impl.SetGlobalConstant(true)
 	b.Pkg.setODRLinkage(global.impl, llvm.WeakODRLinkage)
 
-	// Describe each function slot with private LLGo metadata. The template is a
-	// compile-time certificate, not a runtime vtable, so it must not participate
-	// in LLVM's type-test candidate sets before the plugin consumes it.
-	slotKind := prog.ctx.MDKindID("llgo.static.itab.slot")
-	funOffset := uint64(prog.td.ElementOffset(staticType.ll, 3))
-	stride := uint64(prog.td.TypeAllocSize(prog.storageType(ptr)))
-	interfaceTypeID := prog.interfaceCapabilityKey(rawIntf)
-	for i := range methods {
-		offset := funOffset + uint64(i)*stride
-		typeID := interfaceMethodCapabilityKeyFromID(interfaceTypeID, i)
-		node := prog.ctx.MDNode([]llvm.Metadata{
-			llvm.ConstInt(prog.Int64().ll, offset, false).ConstantAsMetadata(),
-			prog.ctx.MDString(typeID),
-		})
-		global.impl.AddMetadata(slotKind, node)
+	if prog.enableLTOPluginMarker {
+		slotKind := prog.ctx.MDKindID("llgo.static.itab.slot")
+		funOffset := uint64(prog.td.ElementOffset(staticType.ll, 3))
+		stride := uint64(prog.td.TypeAllocSize(prog.storageType(ptr)))
+		interfaceTypeID := prog.interfaceCapabilityKey(rawIntf)
+		for i := range methods {
+			offset := funOffset + uint64(i)*stride
+			typeID := interfaceMethodCapabilityKeyFromID(interfaceTypeID, i)
+			node := prog.ctx.MDNode([]llvm.Metadata{
+				llvm.ConstInt(prog.Int64().ll, offset, false).ConstantAsMetadata(),
+				prog.ctx.MDString(typeID),
+			})
+			global.impl.AddMetadata(slotKind, node)
+		}
 	}
-	// Keep the otherwise-dormant template through package optimization without
-	// perturbing function IR. The LTO plugin removes this compiler.used entry
-	// after using the template as a compile-time devirtualization certificate.
-	b.Pkg.markLLVMUsed(global.impl)
 	return Expr{global.impl, prog.Pointer(prog.rtType("Itab"))}, true
 }
 
@@ -130,11 +126,9 @@ func (b Builder) unsafeInterface(rawIntf *types.Interface, concrete types.Type, 
 		return b.unsafeEface(t.impl, data)
 	}
 	tintf := b.abiType(rawIntf)
-	// Emit a constant template for LTO analysis. Keep the runtime NewItab call
-	// even after devirtualization so dynamically-created interfaces continue to
-	// share the runtime's canonical itab pointer. Every template disappears
-	// before GlobalDCE.
-	b.staticItab(rawIntf, concrete, tintf, t)
+	if itab, ok := b.staticItab(rawIntf, concrete, tintf, t); ok {
+		return b.unsafeIface(itab.impl, data)
+	}
 	itab := b.newItab(tintf, t)
 	return b.unsafeIface(itab.impl, data)
 }

@@ -254,7 +254,15 @@ func strequal(p, q unsafe.Pointer) bool {
 func interequal(p, q unsafe.Pointer) bool {
 	x := *(*iface)(p)
 	y := *(*iface)(q)
-	return x.tab == y.tab && ifaceeq(x.tab, x.data, y.data)
+	if x.tab == y.tab {
+		return ifaceeq(x.tab, x.data, y.data)
+	}
+	// T2I uses a static itab global; I2I still goes through NewItab.
+	// Compare the type pair so both representations of the same iface are equal.
+	if x.tab == nil || y.tab == nil {
+		return false
+	}
+	return x.tab.inter == y.tab.inter && x.tab._type == y.tab._type && ifaceeq(x.tab, x.data, y.data)
 }
 func nilinterequal(p, q unsafe.Pointer) bool {
 	x := *(*eface)(p)

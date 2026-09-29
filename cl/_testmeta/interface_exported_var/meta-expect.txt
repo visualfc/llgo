@@ -135,11 +135,11 @@ main.init:
 main.main:
     _llgo_encoding/binary.littleEndian
     _llgo_iface$J1wM-rGcIPemx5jloXBmH7pUzUCSqpgNkOdb0QIFTxw
+    _llgo_itab$vggDeT47dwPKM_RcBnGpsdpFFhF_4t_0ENclFcOmnik
     encoding/binary.LittleEndian
     github.com/xgo-dev/llgo/runtime/internal/runtime.AllocU
     github.com/xgo-dev/llgo/runtime/internal/runtime.AllocZ
     github.com/xgo-dev/llgo/runtime/internal/runtime.IfacePtrData
-    github.com/xgo-dev/llgo/runtime/internal/runtime.NewItab
     github.com/xgo-dev/llgo/runtime/internal/runtime.Typedmemmove
 
 [UseIface]
