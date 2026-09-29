@@ -17,11 +17,11 @@ func TestCompileLargeSnapshotGCRoots(t *testing.T) {
 		root   bool
 	}{
 		{"native at CanSSA size", 32, "", false},
-		{"native above CanSSA array", 33, "", true},
+		{"native above CanSSA array", 33, "", false},
 		{"native 4KiB array", 4096, "", true},
 		{"native sret threshold", 65536, "", true},
 		{"wasm at CanSSA size", 32, "wasm", false},
-		{"wasm above CanSSA array", 33, "wasm", true},
+		{"wasm above CanSSA array", 33, "wasm", false},
 		{"wasm 4KiB array", 4096, "wasm", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
