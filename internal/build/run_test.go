@@ -69,7 +69,7 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	commands := commandEnv{dir: dir, environ: append(os.Environ(), "PATH="+dir, "LLGO_STRESS_PROFILE=quick")}
+	commands := commandEnv{dir: dir, environ: append(os.Environ(), "PATH="+dir, "LLGO_STRESS_PROFILE=quick", "LLGO_PRIVATE_SENTINEL=not-forwarded")}
 	artifact := filepath.Join(dir, "program.wasm")
 	err := runEmuCmd(commands, map[string]string{"": artifact}, crosscompile.WASIThreadedEmulator,
 		[]string{"-test.v"}, false, false, runnerDetails{phase: "test"})
@@ -83,6 +83,14 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 	args := strings.Split(strings.TrimSpace(string(data)), "\n")
 	if got, want := args[3], "--dir="+dir; got != want {
 		t.Fatalf("WAMR working directory = %q, want %q", got, want)
+	}
+	for _, want := range []string{"--env=PWD=" + dir, "--env=PATH=" + dir} {
+		if !slices.Contains(args, want) {
+			t.Fatalf("WAMR arguments omit %q: %q", want, args)
+		}
+	}
+	if slices.Contains(args, "--env=LLGO_PRIVATE_SENTINEL=not-forwarded") {
+		t.Fatal("WAMR forwarded an unrelated host environment variable")
 	}
 	if got, want := args[len(args)-3:], []string{"--env=LLGO_STRESS_PROFILE=quick", artifact, "-test.v"}; !slices.Equal(got, want) {
 		t.Fatalf("runner tail = %q, want %q", got, want)
