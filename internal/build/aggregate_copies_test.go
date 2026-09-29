@@ -56,6 +56,7 @@ func TestLowerAggregateCopies(t *testing.T) {
 				{"pointer fields", "%v = load {ptr, [8192 x i8]}, ptr %src\nstore {ptr, [8192 x i8]} %v, ptr %dst", "memmove", false},
 				{"threshold", "%v = load [4096 x i8], ptr %src\nstore [4096 x i8] %v, ptr %dst", "memmove", false},
 				{"multi-element array", "%v = load [256 x i32], ptr %src\nstore [256 x i32] %v, ptr %dst", "memmove", false},
+				{"small two-element array", "%v = load [2 x i64], ptr %src\nstore [2 x i64] %v, ptr %dst", "", false},
 				{"one-element array", "%v = load [1 x i64], ptr %src\nstore [1 x i64] %v, ptr %dst", "", false},
 				{"scalar", "%v = load i64, ptr %src\nstore i64 %v, ptr %dst", "", false},
 				{"unsupported use", "%v = load [8192 x i8], ptr %src\n%w = insertvalue [8192 x i8] %v, i8 1, 0\nstore [8192 x i8] %w, ptr %dst", "", false},
