@@ -144,7 +144,11 @@ EM_JS(void, llgo_emval_install_invoke_js, (uint8_t *pending_flag, uintptr_t call
 });
 #endif
 
+#if defined(LLGO_WASM_WORKERS) && LLGO_WASM_WORKERS > 1
+static _Thread_local bool llgo_emval_invoke_installed;
+#else
 static bool llgo_emval_invoke_installed;
+#endif
 
 void llgo_emval_install_invoke(void (*callback)(EM_VAL)) {
     if (llgo_emval_invoke_installed) {
