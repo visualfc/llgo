@@ -334,11 +334,9 @@ func TestWebAssemblyProfileTargets(t *testing.T) {
 				}
 			}
 			if test.provider == "wasi" {
-				// R1 translates LLVM's legacy Wasm SjLj encoding to standardized
-				// exnref instructions after Asyncify instrumentation. Wasmtime keeps
-				// that proposal opt-in, so the inherited public emulator must enable it.
-				if !strings.Contains(config.Emulator, "-W exceptions=y") {
-					t.Errorf("emulator %q does not enable the exception proposal", config.Emulator)
+				// WAMR is built with EH support; it has no Wasmtime proposal flag.
+				if !strings.HasPrefix(config.Emulator, "iwasm ") || !strings.Contains(config.Emulator, "--max-threads=128") {
+					t.Errorf("WASI profile omits its threaded WAMR runner: %+v", config)
 				}
 			}
 		})

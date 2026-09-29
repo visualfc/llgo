@@ -330,8 +330,8 @@ func runNative(ctx *context, app, pkgDir, pkgName string, conf *Config, mode Mod
 				args = append(args, "--wasm", "multi-memory=true", app)
 				args = append(args, conf.RunArgs...)
 			case "iwasm":
-				args = append(args, "--stack-size=819200000", "--heap-size=800000000", app)
-				args = append(args, conf.RunArgs...)
+				return runEmuCmd(ctx.commands, map[string]string{"": app}, crosscompile.WASIThreadedEmulator,
+					conf.RunArgs, false, conf.PrintCommands, details)
 			default:
 				args = append(args, wasmerArgs...)
 				args = append(args, app)

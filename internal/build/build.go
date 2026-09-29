@@ -1076,7 +1076,7 @@ func resolveTestPthreadStackSize(conf *Config) {
 // Shared-memory collectors need one root chain per host thread. The
 // single-worker scheduler and nogc builds keep their existing root model.
 func useThreadLocalGCRoots(conf *Config, wasmGC bool, workers wasmworkers.Config) bool {
-	return wasmGC && (workers.Enabled() || conf.Goos == "wasip1" && IsWasiThreadsEnabled())
+	return wasmGC && (workers.Enabled() || conf.Goos == "wasip1")
 }
 
 func useShadowStack(goarch string) bool {

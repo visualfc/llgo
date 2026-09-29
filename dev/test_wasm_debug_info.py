@@ -32,15 +32,13 @@ def check_source_lines(module, debug_line, addr2line):
     tables = re.split(r"(?=^debug_line\[)", debug_line, flags=re.MULTILINE)
     for filename, line in SOURCE_LINES.items():
         matches = []
-        line_pattern = re.compile(
-            rf"^0x([0-9a-fA-F]+)\s+{line}\s+\d+\s+1\s",
-            re.MULTILINE,
-        )
         for table in tables:
-            if f'name: "{filename}"' not in table:
-                continue
-            for match in line_pattern.finditer(table):
-                matches.append(match.group(1))
+            # DWARF v4/v5 and linked units do not assign a fixed file index.
+            files = re.findall(r'file_names\[\s*(\d+)\]:\s*name: "([^"\n]+)"', table)
+            indexes = {int(index) for index, name in files if Path(name).name == filename}
+            for match in re.finditer(r'^0x([0-9a-fA-F]+)\s+(\d+)\s+\d+\s+(\d+)\s', table, re.MULTILINE):
+                if int(match.group(2)) == line and int(match.group(3)) in indexes:
+                    matches.append(match.group(1))
         for address in matches:
             location = run([addr2line, "-e", str(module), "-f", f"0x{address}"])
             if re.search(rf"{re.escape(filename)}:{line}\b", location):
@@ -48,7 +46,8 @@ def check_source_lines(module, debug_line, addr2line):
         else:
             raise RuntimeError(
                 f"{module}: {filename}:{line} is not resolvable with llvm-addr2line "
-                f"({len(matches)} line-table rows)"
+                f"({len(matches)} line-table rows)\n"
+                + "\n".join(table for table in tables if filename in table)
             )
 
 

@@ -114,6 +114,35 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 	}
 }
 
+func TestNativeWAMRRunUsesThreadedHostContract(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args")
+	if err := os.WriteFile(filepath.Join(dir, "iwasm"), []byte(fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\n", argsFile)), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(llgoWasmRuntime, "iwasm")
+	commands := commandEnv{dir: dir, environ: os.Environ()}
+	conf := &Config{Goos: "wasip1", Goarch: "wasm", RunArgs: []string{"hello world"}}
+	artifact := filepath.Join(dir, "app.wasm")
+	if err := runNative(&context{commands: commands}, artifact, dir, "main", conf, ModeRun); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for _, want := range []string{"--max-threads=128", "--stack-size=1048576", "--heap-size=0", "--dir=" + dir, "--env=PWD=" + dir} {
+		if !slices.Contains(args, want) {
+			t.Fatalf("WAMR arguments omit %q: %q", want, args)
+		}
+	}
+	if !slices.Equal(args[len(args)-2:], []string{artifact, "hello world"}) {
+		t.Fatalf("artifact/arguments = %q", args)
+	}
+}
+
 func TestWASIThreadedEmulatorReportsInvalidWorkingDirectory(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Linux getcwd reports a removed working directory")

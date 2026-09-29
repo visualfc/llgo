@@ -9,8 +9,9 @@ WAMR is the first supported runner. Build the pinned, patched interpreter with
 `bash dev/build_iwasm.sh`, and add the printed cache `bin` directory to `PATH`.
 The public run/test commands configure WAMR's thread limit, stack, and preopens.
 The runner grants the absolute package working directory and `/tmp` rather than
-the entire host filesystem. Official Go reference tests may still use Wasmtime;
-that does not imply support for executing LLGo's threaded W32 artifact there.
+the entire host filesystem. The GOROOT comparison runs both W32 artifacts with WAMR. Only the separate
+`dev/wasmstdlib` official-Go reference profile uses Wasmtime; that does not imply
+support for executing LLGo's threaded W32 artifact there.
 
 The former `LLGO_WASI_THREADS=1` opt-in is unnecessary and remains accepted.
 Setting it to `0`/`false`/`off` now produces a migration error instead of silently
