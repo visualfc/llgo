@@ -55,6 +55,7 @@ func wasiGCMutexLock(mutex unsafe.Pointer) {
 
 // WasiGCCondTimedWait keeps the Go caller suspended while a pthread condition
 // wait releases and reacquires its lock. Only the C pthread state may change.
+// A negative waitNanos waits for a signal without a timer.
 func WasiGCCondTimedWait(cond, mutex unsafe.Pointer, waitNanos int64, monotonic bool) {
 	var clock c.Int
 	if monotonic {

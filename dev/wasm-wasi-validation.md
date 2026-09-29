@@ -17,7 +17,9 @@ that backend; they do not introduce an M:N scheduler on native or WASI targets.
   exceeded their three-second deadlines. Runtime mutex/condition waits now
   publish the suspended Go caller's roots before entering C and prevent a
   return to Go until collection finishes. This includes the timer scheduler.
-  Arbitrary user C calls retain the bounded-wait/skip-collection behavior.
+  Blocked callers no longer wake every 20 ms: normal conditions wait for a
+  signal, and timers wait for their actual deadline. Arbitrary user C calls
+  retain the bounded-wait/skip-collection behavior.
 - The initial thread parked after Goexit must unregister its roots, since it
   will never execute another Go safepoint. A worker now verifies that GC still
   advances after initial Goexit with the timer service active.
@@ -37,6 +39,16 @@ that backend; they do not introduce an M:N scheduler on native or WASI targets.
 - Reflection's whole-program type-name lookup compares encoded names without
   allocating a temporary string for each extra-star type. This preserves the
   existing type identity and name rules while reducing GC contention.
+
+Safepoint checks use an atomic epoch read before acquiring the rendezvous
+mutex. Heap scans carry the known segment through block-state operations;
+address and block lookup use binary search, including out-of-order libc arenas.
+The host metadata regression covers all 128 segment slots, gaps, sentinels,
+metadata exclusion and preservation of marked objects during sweep.
+
+The focused `test/go` regression records compilation and verbose execution
+separately, each with its own 300-second deadline. This distinguishes cold
+compiler cost from a runtime stall and retains the last active test in CI logs.
 
 ## Reproducible checks
 

@@ -135,29 +135,14 @@ func timerSchedulerLoop() {
 	markTimerSystemG()
 	timerSchedulerMu.Lock()
 	for {
-		// The WASI threaded collector needs the timer pthread to reach a Go
-		// safepoint even when no timers are due. Poll with the lock released so
-		// another thread waiting for this mutex can stop for collection too.
-		if timerGCWaitQuantum != 0 {
-			timerSchedulerMu.Unlock()
-			timerGCSafepoint()
-			timerSchedulerMu.Lock()
-		}
 		if len(timerSchedulerHeap) == 0 {
-			if timerGCWaitQuantum == 0 {
-				timerSchedulerCond.Wait(&timerSchedulerMu)
-			} else {
-				timerSchedulerTimedWait(timerGCWaitQuantum)
-			}
+			timerSchedulerCond.Wait(&timerSchedulerMu)
 			continue
 		}
 
 		st := timerSchedulerHeap[0]
 		now := runtimeNano()
 		if wait := timerSchedulerWaitDuration(st.r.when, now); wait > 0 {
-			if timerGCWaitQuantum != 0 && wait > timerGCWaitQuantum {
-				wait = timerGCWaitQuantum
-			}
 			timerSchedulerTimedWait(wait)
 			continue
 		}

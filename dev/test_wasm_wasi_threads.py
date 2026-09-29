@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -151,9 +152,20 @@ def main():
                  "wasi threaded filesystem ok")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
-        run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
-                       "^(TestRuntimeSetFinalizer.*|TestReflectMakeFuncGoroutine.*|TestRuntimeFuncInfoConcurrentFirstUse)$",
-                       str(ROOT / "test/go")], "PASS", timeout=300)
+        # Compiling test/go on a cold CI runner and running the GC race are
+        # separate budgets. Verbose, inherited output identifies a slow test
+        # immediately instead of discarding it when subprocess.run times out.
+        module = pathlib.Path(directory) / "runtime-gc-tests.wasm"
+        started = time.monotonic()
+        subprocess.run([LLGO, "test", "-c", "-target", "wasi", "-o", str(module),
+                        str(ROOT / "test/go")], env=env, check=True, timeout=300)
+        print(f"WAMR GC test compilation: {time.monotonic() - started:.2f}s", flush=True)
+        started = time.monotonic()
+        subprocess.run([IWASM, "--max-threads=128", "--stack-size=1048576", "--heap-size=0",
+                        "--dir=" + str(ROOT), "--dir=/tmp", str(module), "-test.v",
+                        "-test.run=^(TestRuntimeSetFinalizer.*|TestReflectMakeFuncGoroutine.*|TestRuntimeFuncInfoConcurrentFirstUse)$"],
+                       env=env, check=True, timeout=300)
+        print(f"WAMR GC test execution: {time.monotonic() - started:.2f}s", flush=True)
         run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
                        "^TestPoolAfterGC$", str(ROOT / "test/std/sync")], "PASS",
                  timeout=300)

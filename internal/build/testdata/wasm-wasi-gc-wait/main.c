@@ -37,7 +37,7 @@ static void *waiter(void *arg) {
   llgo_wasi_gc_enter_end();
   if (arg) {
     assert(pthread_mutex_lock(&application) == 0);
-    llgo_wasi_gc_cond_timedwait(&condition, &application, 1000000000,
+    llgo_wasi_gc_cond_timedwait(&condition, &application, -1,
                                0, 11, 22, 33);
   } else {
     llgo_wasi_gc_mutex_lock(&application, 11, 22, 33);

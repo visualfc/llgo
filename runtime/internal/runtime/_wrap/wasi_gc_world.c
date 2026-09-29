@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <time.h>
 
 // Count each entering thread before it registers Go roots and keep it counted
@@ -9,7 +10,10 @@
 // holding this mutex across Go allocation or TLS setup.
 static pthread_mutex_t world_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t world_changed = PTHREAD_COND_INITIALIZER;
-static uint32_t world_epoch;
+static _Atomic uint32_t world_epoch;
+// A C call that cannot rendezvous aborts this collection instead of sweeping
+// a running stack. This is a deadline, not a periodic mutator wakeup.
+#define LLGO_WASI_GC_STOP_TIMEOUT_NS 500000000L
 static uint32_t world_registered;
 static uint32_t world_stopped;
 static uint32_t world_blocked;
@@ -92,6 +96,12 @@ void llgo_wasi_gc_cond_timedwait(pthread_cond_t *condition,
                                 int monotonic, uintptr_t chain,
                                 uintptr_t bottom, uintptr_t top) {
   world_begin_wait(chain, bottom, top);
+  if (wait_nanos < 0) {
+    if (pthread_cond_wait(condition, mutex) != 0)
+      __builtin_trap();
+    world_end_wait();
+    return;
+  }
   struct timespec deadline;
   if (clock_gettime(monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME, &deadline) != 0)
     __builtin_trap();
@@ -140,6 +150,10 @@ void llgo_wasi_gc_leave_end(void) {
 }
 
 int llgo_wasi_gc_pending(void) {
+  // The overwhelmingly common case needs no process-wide pthread lock.
+  // Only inspect world_owner while holding the lock after observing a stop.
+  if (!(atomic_load_explicit(&world_epoch, memory_order_acquire) & 1))
+    return 0;
   world_lock();
   int pending = (world_epoch & 1) &&
       !pthread_equal(world_owner, pthread_self());
@@ -193,7 +207,7 @@ int llgo_wasi_gc_stop(void) {
   struct timespec deadline;
   if (clock_gettime(CLOCK_REALTIME, &deadline) != 0)
     __builtin_trap();
-  deadline.tv_nsec += 500000000;
+  deadline.tv_nsec += LLGO_WASI_GC_STOP_TIMEOUT_NS;
   if (deadline.tv_nsec >= 1000000000) {
     deadline.tv_sec++;
     deadline.tv_nsec -= 1000000000;
