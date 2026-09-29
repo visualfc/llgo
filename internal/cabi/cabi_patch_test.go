@@ -63,6 +63,18 @@ entry:
 	}
 }
 
+func TestShouldSkipLLVMIntrinsic(t *testing.T) {
+	transformer := &Transformer{}
+	for _, name := range []string{"llvm.test.scalable", "llvm.test.metadata"} {
+		if !transformer.shouldSkipFunc(name) {
+			t.Fatalf("LLVM intrinsic %q must bypass C ABI sizing", name)
+		}
+	}
+	if transformer.shouldSkipFunc("ordinary.function") {
+		t.Fatal("ordinary function was skipped")
+	}
+}
+
 func TestTargetArchAndNewTransformerArchSelection(t *testing.T) {
 	if got := targetArch("riscv64-unknown-linux-gnu"); got != "riscv64" {
 		t.Fatalf("targetArch(triple) = %q, want riscv64", got)
