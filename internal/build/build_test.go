@@ -2218,7 +2218,7 @@ func TestExecuteMainLinkReportsWasmPostLinkError(t *testing.T) {
 	}
 }
 
-func TestShouldDisableClangImplicitWasmOptOnlyForWasmPostLinkClang(t *testing.T) {
+func TestShouldDisableClangImplicitWasmOptOnlyForWasmClang(t *testing.T) {
 	ctx := &context{
 		buildConf: &Config{Goarch: "wasm"},
 		crossCompile: crosscompile.Export{
@@ -2237,8 +2237,8 @@ func TestShouldDisableClangImplicitWasmOptOnlyForWasmPostLinkClang(t *testing.T)
 	}
 	ctx.buildConf.Goarch = "wasm"
 	ctx.crossCompile.WasmPostLink.Asyncify = false
-	if ctx.shouldDisableClangImplicitWasmOpt("clang++") {
-		t.Fatal("non-Asyncify wasm link disabled wasm-opt")
+	if !ctx.shouldDisableClangImplicitWasmOpt("clang++") {
+		t.Fatal("WASI threads clang link did not disable implicit wasm-opt")
 	}
 	ctx.crossCompile.WasmPostLink.Asyncify = true
 	ctx.crossCompile.Linker = "custom-linker"
@@ -2251,35 +2251,39 @@ func TestShouldDisableClangImplicitWasmOptOnlyForWasmPostLinkClang(t *testing.T)
 }
 
 func TestLinkerDisablesClangImplicitWasmOpt(t *testing.T) {
-	for _, driver := range []string{"clang", "clang++"} {
-		t.Run(driver, func(t *testing.T) {
-			dir := t.TempDir()
-			tool := writeBuildTestTool(t, dir, driver)
-			argsFile := filepath.Join(dir, "args")
-			output := filepath.Join(dir, "linked.wasm")
-			t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
-			t.Setenv("LINK_ARGS_FILE", argsFile)
+	for _, asyncify := range []bool{false, true} {
+		t.Run(fmt.Sprintf("asyncify=%v", asyncify), func(t *testing.T) {
+			for _, driver := range []string{"clang", "clang++"} {
+				t.Run(driver, func(t *testing.T) {
+					dir := t.TempDir()
+					tool := writeBuildTestTool(t, dir, driver)
+					argsFile := filepath.Join(dir, "args")
+					output := filepath.Join(dir, "linked.wasm")
+					t.Setenv("LLGO_TEST_LINKER_HELPER", "write")
+					t.Setenv("LINK_ARGS_FILE", argsFile)
 
-			target := crosscompile.Export{
-				CC:           tool,
-				WasmPostLink: crosscompile.WasmPostLink{Asyncify: true},
-			}
-			if driver == "clang++" {
-				target.CXX = tool
-			}
-			ctx := &context{
-				buildConf:    &Config{Goarch: "wasm"},
-				crossCompile: target,
-			}
-			if err := ctx.linker().Link("-o", output); err != nil {
-				t.Fatal(err)
-			}
-			args, err := os.ReadFile(argsFile)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !slices.Contains(strings.Split(strings.TrimSpace(string(args)), "\n"), "--no-wasm-opt") {
-				t.Fatalf("%s link args did not disable implicit wasm-opt: %q", driver, args)
+					target := crosscompile.Export{
+						CC:           tool,
+						WasmPostLink: crosscompile.WasmPostLink{Asyncify: asyncify},
+					}
+					if driver == "clang++" {
+						target.CXX = tool
+					}
+					ctx := &context{
+						buildConf:    &Config{Goarch: "wasm"},
+						crossCompile: target,
+					}
+					if err := ctx.linker().Link("-o", output); err != nil {
+						t.Fatal(err)
+					}
+					args, err := os.ReadFile(argsFile)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !slices.Contains(strings.Split(strings.TrimSpace(string(args)), "\n"), "--no-wasm-opt") {
+						t.Fatalf("%s link args did not disable implicit wasm-opt: %q", driver, args)
+					}
+				})
 			}
 		})
 	}

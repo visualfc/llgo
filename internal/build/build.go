@@ -1887,13 +1887,14 @@ func (c *context) linker() *clang.Cmd {
 	return cmd
 }
 
-// shouldDisableClangImplicitWasmOpt reports whether LLGo owns the wasm-opt
-// pipeline and must disable clang's implicit post-link optimization.
+// shouldDisableClangImplicitWasmOpt keeps post-link optimization under LLGo's
+// control. Asyncify profiles run explicit passes with the requested debug
+// policy; WASI threads need no Binaryen pass. Clang's implicit invocation would
+// otherwise change the output (and discard DWARF) whenever wasm-opt is on PATH.
 func (c *context) shouldDisableClangImplicitWasmOpt(linkerProgram string) bool {
 	return c != nil &&
 		c.buildConf != nil &&
 		c.buildConf.Goarch == "wasm" &&
-		c.crossCompile.WasmPostLink.Asyncify &&
 		c.crossCompile.Linker == "" &&
 		clangDriverMayRunWasmOpt(linkerProgram)
 }
