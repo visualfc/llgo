@@ -22,11 +22,14 @@ that backend; they do not introduce an M:N scheduler on native or WASI targets.
   will never execute another Go safepoint. A worker now verifies that GC still
   advances after initial Goexit with the timer service active.
 - Repeated explicit GC must allow waiting allocations and resumed threads to
-  progress. The allocator uses an ordered lock, the next collection waits for
-  the previous rendezvous to finish, and compiler polls use a per-thread
-  1024-poll budget. Blocking runtime waits publish roots directly, and allocator
-  waits acknowledge requests directly. The budget is not a time guarantee;
-  an uncooperative C call can still prevent collection.
+  progress. The allocator uses the same GC-safe pthread mutex instead of
+  spinning through repeated host calls, and the next collection waits for the
+  previous rendezvous to finish. Compiler polls and runtime symbol-table
+  initialization waiters acknowledge collection requests. Arbitrary user C
+  calls can still prevent collection. The 32-thread/1000-round concurrent
+  function-info test timed out at 100 seconds with the spin lock; the blocking
+  allocator completed it in 10.72 seconds (nogc comparison: 7.26 seconds) on
+  macOS arm64. These are local regression timings, not cross-host benchmarks.
 - Small programs begin with a 1 MiB GC arena; subsequent arenas double up to
   32 MiB. This avoids sweeping a nearly empty 32 MiB arena on every explicit
   collection. WAMR is built in Release mode, with the same classic interpreter,

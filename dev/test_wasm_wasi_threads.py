@@ -152,7 +152,7 @@ def main():
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
         run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
-                       "^(TestRuntimeSetFinalizer.*|TestReflectMakeFuncGoroutine.*)$",
+                       "^(TestRuntimeSetFinalizer.*|TestReflectMakeFuncGoroutine.*|TestRuntimeFuncInfoConcurrentFirstUse)$",
                        str(ROOT / "test/go")], "PASS", timeout=300)
         run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
                        "^TestPoolAfterGC$", str(ROOT / "test/std/sync")], "PASS",
