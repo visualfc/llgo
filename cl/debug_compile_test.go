@@ -41,6 +41,15 @@ var anonymous = func(seed int) int {
 	value := seed + 1
 	return value
 }
+
+func snapshots(n int) complex128 {
+	var result complex128
+	for i := 0; i < n; i++ {
+		value := complex(float64(i), float64(i+1))
+		result += value
+	}
+	return result
+}
 `
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "debug_compile.go", source, 0)
@@ -92,7 +101,8 @@ var anonymous = func(seed int) int {
 	}
 	assertDebugRecords(t, ir, `name: "items", arg: 1`, true, false)
 	assertDebugRecords(t, ir, `name: "seed", arg: 2`, true, false)
-	assertDebugHomeStores(t, ir, `name: "seed", arg: 2`, 4)
+	assertDebugHomeStores(t, ir, pkg.Module().NamedFunction("debugcompile.inspect").String(), `name: "seed", arg: 2`, 4)
+	assertDebugLoopSnapshots(t, pkg.Module().NamedFunction("debugcompile.snapshots"))
 
 	optimizedProg := newLLSSAProgForTarget(t, &llssa.Target{
 		GOOS:     runtime.GOOS,
@@ -112,16 +122,43 @@ var anonymous = func(seed int) int {
 	assertDebugRecords(t, optimizedIR, `name: "seed", arg: 2`, false, true)
 }
 
-func assertDebugHomeStores(t *testing.T, ir, variable string, minimum int) {
+func assertDebugLoopSnapshots(t *testing.T, function llvm.Value) {
+	t.Helper()
+	if function.IsNil() {
+		t.Fatal("missing snapshot loop function")
+	}
+	entry := function.EntryBasicBlock()
+	allocations, loopStores := 0, 0
+	for block := entry; !block.IsNil(); block = llvm.NextBasicBlock(block) {
+		for inst := block.FirstInstruction(); !inst.IsNil(); inst = llvm.NextInstruction(inst) {
+			switch inst.InstructionOpcode() {
+			case llvm.Alloca:
+				allocations++
+				if block != entry {
+					t.Fatalf("debug snapshot repeatedly reserves stack space in a loop:\n%s", function.String())
+				}
+			case llvm.Store:
+				if block != entry {
+					loopStores++
+				}
+			}
+		}
+	}
+	if allocations == 0 || loopStores == 0 {
+		t.Fatalf("snapshot loop needs fixed homes and per-iteration value updates:\n%s", function.String())
+	}
+}
+
+func assertDebugHomeStores(t *testing.T, ir, functionIR, variable string, minimum int) {
 	t.Helper()
 	variableID := debugVariableID(t, ir, variable)
 	re := regexp.MustCompile(`#dbg_declare\(ptr ([^,]+), ` + regexp.QuoteMeta(variableID) + `,`)
-	match := re.FindStringSubmatch(ir)
+	match := re.FindStringSubmatch(functionIR)
 	if len(match) != 2 {
 		t.Fatalf("debug home for %q not found:\n%s", variable, ir)
 	}
 	stores := 0
-	for _, line := range strings.Split(ir, "\n") {
+	for _, line := range strings.Split(functionIR, "\n") {
 		if strings.Contains(line, "store ") && strings.Contains(line, ", ptr "+match[1]+",") {
 			stores++
 			if strings.Contains(line, "!dbg") {

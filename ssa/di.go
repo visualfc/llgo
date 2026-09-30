@@ -695,7 +695,13 @@ func (b Builder) doConstructDebugAddrWithStore(v Expr, t types.Type) (dbgPtr, st
 	default:
 		ty = v.Type
 	}
-	dbgPtr = b.AllocaT(ty)
+	// A debug snapshot reserves one slot per function invocation. Allocating
+	// it at a DebugRef inside a loop grows the stack on every iteration at O0.
+	// Keep the value update at its source position, but reserve the slot with
+	// the same entry-block builder used for ordinary stack locals.
+	entryBuilder := *b
+	entryBuilder.impl = b.Func.entryAllocaBuilder()
+	dbgPtr = entryBuilder.AllocaT(ty)
 	dbgPtr.Type = b.Prog.Pointer(v.Type)
 	store = b.Store(dbgPtr, v)
 	return dbgPtr, store
