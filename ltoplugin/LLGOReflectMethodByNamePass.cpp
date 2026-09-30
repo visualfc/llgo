@@ -1030,11 +1030,33 @@ bool collectExtractedStringSet(Value *Ptr, Value *Len, const DataLayout &DL,
   auto *LenExtract = dyn_cast<ExtractValueInst>(Len);
   auto PtrIndex = singleExtractValueIndex(PtrExtract);
   auto LenIndex = singleExtractValueIndex(LenExtract);
-  if (!PtrIndex || !LenIndex || *PtrIndex != 0 || *LenIndex != 1 ||
-      PtrExtract->getAggregateOperand() != LenExtract->getAggregateOperand())
+  if (!PtrIndex || *PtrIndex != 0)
     return false;
-  return collectStringSetFromStringValue(PtrExtract->getAggregateOperand(), DL,
-                                         Names, Depth + 1);
+  Value *StringValue = PtrExtract->getAggregateOperand();
+  if (LenIndex && *LenIndex == 1 &&
+      StringValue == LenExtract->getAggregateOperand())
+    return collectStringSetFromStringValue(StringValue, DL, Names, Depth + 1);
+
+  // Interprocedural constant propagation can replace just the length of a
+  // returned string. This occurs for same-length alternatives in optimized
+  // DWARF builds on x86-64. Recover the finite return set, but only accept the
+  // separate length when it agrees with every candidate: an unrelated length
+  // must not turn an unknown lookup into a different, supposedly known name.
+  auto *LenC = dyn_cast<ConstantInt>(Len);
+  if (!LenC)
+    return false;
+  SmallVector<std::string, 4> Candidates;
+  if (!collectStringSetFromStringValue(StringValue, DL, Candidates, Depth + 1))
+    return false;
+  for (const std::string &Name : Candidates) {
+    if (LenC->getValue() != Name.size())
+      return false;
+  }
+  for (const std::string &Name : Candidates) {
+    if (!addName(Names, Name))
+      return false;
+  }
+  return !Candidates.empty();
 }
 
 // Collect every possible string from a lowered (ptr, len) pair.

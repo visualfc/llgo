@@ -464,7 +464,6 @@ func (p Program) EnableCodeViewDebugInfo(enable bool) {
 // optimized for this program.
 func (p Program) DebugInfoOptimized() bool {
 	return p.debugInfoOptimized
-
 }
 
 func (p Program) SetNoInterfaceMethod(fullName string) {

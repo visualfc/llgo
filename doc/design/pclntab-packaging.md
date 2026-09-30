@@ -46,8 +46,9 @@ homes in functions with debug metadata so assignments and declarations agree.
 The former `LLGO_DEBUG` and `LLGO_DEBUG_SYMBOLS` environment switches are not
 part of this policy.
 
-Native acceptance checks verify default DWARF, O0 parameter updates, mixed
-Go/C callbacks, runtime panic source locations, and O2 inline frames. Darwin
+The build tests verify default DWARF. The LLDB suite verifies O0 parameter
+updates and mixed Go/C callbacks; the native acceptance suite verifies runtime
+panic source locations and O2 inline frames. Darwin
 cold and warm cache builds both use persistent archive paths in their debug
 maps, and runtime PC-line anchors remain present when DWARF is enabled.
 

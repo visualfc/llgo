@@ -58,7 +58,10 @@ func New(module llvm.Module, config Config) *Builder {
 		// traceback consumers, while lld-link can merge CodeView into a PDB.
 		b.addModuleFlag(2, "CodeView", 1)
 	}
-	b.addModuleFlag(1, "wchar_size", 4)
+	// Do not declare wchar_size: Go has no wchar_t, and this C/C++ ABI
+	// compatibility flag is not required for debug information. Let linked
+	// C/C++ modules provide it; their value depends on the target and flags
+	// such as -fshort-wchar, and imposing one here can reject valid LTO links.
 	b.addModuleFlag(8, "PIC Level", 2)
 	b.addModuleFlag(7, "uwtable", 1)
 	b.addModuleFlag(7, "frame-pointer", 1)
