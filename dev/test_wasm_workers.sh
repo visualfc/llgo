@@ -92,6 +92,24 @@ run_worker_pool_gc_test() {
 	grep -Fq "PASS" "${output}"
 }
 
+run_filesystem_acceptance() {
+	local target runner workers mode module
+	for target in emscripten emscripten-memory64; do
+		runner="${target}-runner.mjs"
+		for workers in 1 2; do
+			mode=single
+			if [[ "${workers}" = 2 ]]; then mode=workers; fi
+			module="${work_dir}/fs-${mode}-${target}.mjs"
+			LLGO_WASM_WORKERS="${workers}" "${llgo_cmd}" build -target "${target}" \
+				-o "${module}" "${repo_root}/internal/build/testdata/wasm-browser-fs"
+			"${wasm_tools_cmd}" validate --features all "${module%.mjs}.wasm"
+			run_with_timeout "${node_cmd}" "${repo_root}/targets/${runner}" "${module}" "fs-${mode}" \
+				2>&1 | tee "${module}.out"
+			grep -Fxq "wasm filesystem ok" "${module}.out"
+		done
+	done
+}
+
 find_browser() {
 	if [[ -n "${CHROME:-}" && -x "${CHROME}" ]]; then
 		printf '%s\n' "${CHROME}"
@@ -130,7 +148,8 @@ run_browser_acceptance() {
 	curl -fsS http://127.0.0.1:8123/ >/dev/null
 
 	local module
-	for module in workers-emscripten.mjs workers-memory64.mjs hardening-workers-emscripten.mjs hardening-workers-memory64.mjs; do
+	for module in workers-emscripten.mjs workers-memory64.mjs hardening-workers-emscripten.mjs hardening-workers-memory64.mjs \
+		fs-single-emscripten.mjs fs-workers-emscripten.mjs fs-single-emscripten-memory64.mjs fs-workers-emscripten-memory64.mjs; do
 		run_with_timeout "${node_cmd}" "${worker_fixture}/browser-runner.mjs" \
 			"${browser}" "http://127.0.0.1:8123/browser.html?module=${module}"
 	done
@@ -175,6 +194,7 @@ run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs \
 run_worker_llgo_test emscripten test-workers-emscripten
 run_worker_llgo_test emscripten-memory64 test-workers-memory64
 run_worker_pool_gc_test
+run_filesystem_acceptance
 
 run_browser_acceptance "$(find_browser)"
 
