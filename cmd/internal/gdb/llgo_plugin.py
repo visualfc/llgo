@@ -82,6 +82,7 @@ LLGO_RUNTIME_LAYOUTS = {
     if isinstance(layout, dict)
 }
 _TARGET_INFO_CACHE = {}
+_GOROUTINES_CACHE = {}
 
 
 class TargetInfo:
@@ -118,7 +119,7 @@ def _symbol_address(name):
     return int(match.group(1), 16) if match else None
 
 
-def _marker_versions():
+def _marker_versions(probe_known=True):
     versions = set()
     try:
         output = gdb.execute(
@@ -129,15 +130,17 @@ def _marker_versions():
         rf"\b{re.escape(LLGO_DEBUGGER_MARKER_PREFIX)}([0-9]+)\b")
     versions.update(
         int(match.group(1)) for match in pattern.finditer(output))
-    # Local object symbols do not appear in info variables on every GDB target.
-    # Marker versions are one byte, so probing the finite namespace also keeps
-    # unknown-version rejection deterministic.
-    for version in range(1, 256):
-        if version in versions:
-            continue
-        if _symbol_address(
-                f"{LLGO_DEBUGGER_MARKER_PREFIX}{version}") is not None:
-            versions.add(version)
+    # Some targets omit local object symbols from info variables. Probe only
+    # known legacy versions in that case. Structured records already identify
+    # their schema; enumerated unknown markers still detect conflicts without
+    # hundreds of speculative info-address requests.
+    if probe_known:
+        known_versions = {1}
+        known_versions.update(schema[0] for schema in LLGO_DEBUGGER_SCHEMAS.values())
+        for version in sorted(known_versions - versions):
+            if _symbol_address(
+                    f"{LLGO_DEBUGGER_MARKER_PREFIX}{version}") is not None:
+                versions.add(version)
     return tuple(sorted(versions))
 
 
@@ -210,7 +213,7 @@ def _target_cache_key():
         pid = inferior.pid
     except (gdb.error, AttributeError):
         return ()
-    return objfiles, architecture, pid
+    return objfiles, architecture, inferior.num, pid
 
 
 def inspect_target():
@@ -219,7 +222,8 @@ def inspect_target():
     if cached is not None:
         return cached
 
-    marker_versions = _marker_versions()
+    raw_record = _read_debugger_record()
+    marker_versions = _marker_versions(probe_known=raw_record is None)
     schema_version = None
     runtime_layout_version = None
     llgo_abi_version = None
@@ -233,7 +237,6 @@ def inspect_target():
         architecture = ""
     byte_order = _target_byte_order()
 
-    raw_record = _read_debugger_record()
     if raw_record is not None:
         record, compatibility_error = _decode_debugger_record(raw_record)
         if record is not None:
@@ -853,30 +856,48 @@ def _goroutine_layout(info):
 
 
 def _read_pointer(address, pointer_size, byte_order):
+    if byte_order not in ("little", "big") or pointer_size not in (4, 8):
+        return None
     try:
         raw = gdb.selected_inferior().read_memory(
             address, pointer_size).tobytes()
+        return int.from_bytes(raw, byte_order)
     except (gdb.error, ValueError):
         return None
-    return int.from_bytes(raw, byte_order)
 
 
-def _thread_for_procid(procid):
-    if procid < 0:
-        return None
+def _threads_by_procid():
     try:
         threads = gdb.selected_inferior().threads()
     except gdb.error:
+        return {}
+    return {
+        procid: thread
+        for thread in threads
+        for procid in thread.ptid[1:]
+        if procid > 0
+    }
+
+
+def _thread_for_procid(procid, threads=None):
+    if procid <= 0:
         return None
-    for thread in threads:
-        ptid = thread.ptid
-        if procid in (ptid[1], ptid[2]):
-            return thread
-    return None
+    if threads is None:
+        threads = _threads_by_procid()
+    return threads.get(procid)
+
+
+def _invalidate_caches(_event=None):
+    _TARGET_INFO_CACHE.clear()
+    _GOROUTINES_CACHE.clear()
 
 
 def _goroutines():
     info = _require_supported_target()
+    key = _target_cache_key()
+    cached = _GOROUTINES_CACHE.get(key)
+    if cached is not None:
+        return cached
     layout = _goroutine_layout(info)
     if not layout:
         raise gdb.GdbError(
@@ -894,6 +915,11 @@ def _goroutines():
 
     result = []
     visited = set()
+    status_names = {
+        int(status): name
+        for status, name in layout.get("status_names", {}).items()
+    }
+    threads = _threads_by_procid()
     while pointer and pointer not in visited:
         if len(result) >= LLGO_MAX_GOROUTINES:
             raise gdb.GdbError(
@@ -910,10 +936,6 @@ def _goroutines():
         goid = _value_as_int(_field(value, layout["id"]))
         parent = _value_as_int(_field(value, layout["parent_id"]))
         procid = _value_as_int(_field(value, layout["procid"]))
-        status_names = {
-            int(value): name
-            for value, name in layout.get("status_names", {}).items()
-        }
         result.append({
             "address": pointer,
             "goid": goid if goid is not None else -1,
@@ -923,9 +945,10 @@ def _goroutines():
                 status, f"unknown({status})"),
             "procid": procid if procid is not None else -1,
             "thread": _thread_for_procid(
-                procid if procid is not None else -1),
+                procid if procid is not None else -1, threads),
         })
         pointer = _value_as_int(_field(value, layout["next"])) or 0
+    _GOROUTINES_CACHE[key] = result
     return result
 
 
@@ -1030,6 +1053,16 @@ class LLGoGoroutine(gdb.Command):
 
 
 def register():
+    # Reuse a stopped-process snapshot for goroutine backtraces. Resume/stop,
+    # debugger writes and thread/objfile changes all invalidate target data.
+    for name in (
+        "stop", "cont", "exited", "new_objfile", "clear_objfiles",
+        "inferior_deleted", "memory_changed", "register_changed",
+        "new_thread", "thread_exited",
+    ):
+        event = getattr(gdb.events, name, None)
+        if event is not None:
+            event.connect(_invalidate_caches)
     gdb.pretty_printers[:] = [
         printer for printer in gdb.pretty_printers
         if getattr(printer, "name", None) != "llgo"

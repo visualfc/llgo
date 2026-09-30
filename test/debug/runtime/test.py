@@ -460,35 +460,71 @@ class LLDBDebugger:
             self.process = self.target.LaunchSimple(None, None, os.getcwd())
         else:
             self.process.Continue()
+        self.continue_gc_signals()
         if self.process.GetState() != lldb.eStateStopped:
             raise LLDBTestException("Process didn't stop at breakpoint")
 
         # Windows/386 reports the WoW64 exception dispatcher as frame zero
         # while handling a software breakpoint. Select the source frame that
         # owns the requested breakpoint before inspecting its variables.
-        thread = self.process.GetSelectedThread()
+        selected_thread = self.process.GetSelectedThread()
+        threads = [selected_thread] + [
+            thread for thread in self.process
+            if thread.GetThreadID() != selected_thread.GetThreadID()
+        ]
         expected_file = os.path.normcase(os.path.basename(file_spec))
         expected_line = self.breakpoint_line or line_number
         locations: List[str] = []
-        for index in range(thread.GetNumFrames()):
-            frame = thread.GetFrameAtIndex(index)
-            line_entry = frame.GetLineEntry()
-            if not line_entry.IsValid():
-                continue
-            source = line_entry.GetFileSpec().GetFilename() or ""
-            source_line = line_entry.GetLine()
+        for thread in threads:
             locations.append(
-                f"{index}:{frame.GetFunctionName() or '<unknown>'} "
-                f"at {source}:{source_line}")
-            if (os.path.normcase(source) == expected_file and
-                    source_line == expected_line):
-                thread.SetSelectedFrame(index)
-                self.frame = frame
-                return
+                f"thread {thread.GetThreadID()} stop: "
+                f"{thread.GetStopDescription(256)}")
+            for index in range(thread.GetNumFrames()):
+                frame = thread.GetFrameAtIndex(index)
+                line_entry = frame.GetLineEntry()
+                if not line_entry.IsValid():
+                    continue
+                source = line_entry.GetFileSpec().GetFilename() or ""
+                source_line = line_entry.GetLine()
+                locations.append(
+                    f"{index}:{frame.GetFunctionName() or '<unknown>'} "
+                    f"at {source}:{source_line}")
+                if (os.path.normcase(source) == expected_file and
+                        source_line == expected_line):
+                    self.process.SetSelectedThread(thread)
+                    thread.SetSelectedFrame(index)
+                    self.frame = frame
+                    return
         raise LLDBTestException(
             f"No frame for breakpoint {file_spec}:{line_number} "
             f"(resolved line {expected_line}); "
             f"frames: {', '.join(locations)}")
+
+    def continue_gc_signals(self) -> None:
+        # The Linux fixture uses Boehm's default thread suspend/restart
+        # signals. Pass them through to the collector rather than interpreting
+        # its internal handshake as the requested source breakpoint. Do not
+        # continue faults or other unexpected stops.
+        if "linux" not in (self.target.GetTriple() or ""):
+            return
+        signals = self.process.GetUnixSignals()
+        gc_signals = {
+            signals.GetSignalNumberFromName(name)
+            for name in ("SIGPWR", "SIGXCPU")
+        }
+        gc_signals.discard(-1)
+        for _attempt in range(4):
+            if self.process.GetState() != lldb.eStateStopped:
+                return
+            thread = self.process.GetSelectedThread()
+            if (thread.GetStopReason() != lldb.eStopReasonSignal or
+                    thread.GetStopReasonDataAtIndex(0) not in gc_signals):
+                return
+            for number in gc_signals:
+                signals.SetShouldStop(number, False)
+                signals.SetShouldNotify(number, False)
+                signals.SetShouldSuppress(number, False)
+            self.process.Continue()
 
     def get_selected_frame(self) -> lldb.SBFrame:
         if not self.frame or not self.frame.IsValid():

@@ -26,10 +26,18 @@ import (
 )
 
 func TestGDBSourceCommandEscapesPath(t *testing.T) {
-	got := gdbSourceCommand(`a\b"c.py`)
-	want := `source a\\b\"c.py`
-	if got != want {
-		t.Fatalf("gdbSourceCommand() = %q, want %q", got, want)
+	backslashPath := `source a\\b\"c.py`
+	if runtime.GOOS == "windows" {
+		// Windows separators are normalized before escaping GDB syntax.
+		backslashPath = `source a/b\"c.py`
+	}
+	for _, test := range []struct{ path, want string }{
+		{`a\b"c.py`, backslashPath},
+		{`a b/quoted"c.py`, `source a\ b/quoted\"c.py`},
+	} {
+		if got := gdbSourceCommand(test.path); got != test.want {
+			t.Errorf("gdbSourceCommand(%q) = %q, want %q", test.path, got, test.want)
+		}
 	}
 }
 

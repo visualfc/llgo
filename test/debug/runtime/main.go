@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 )
 
@@ -215,10 +216,13 @@ func InspectContainerValues(
 
 func RuntimeGoroutineValues() {
 	ready := make(chan int, 2)
+	collected := make(chan struct{})
 	release := make(chan struct{})
 	results := make(chan int, 2)
 	for worker := 1; worker <= 2; worker++ {
 		go func(value int) {
+			ready <- value
+			<-collected
 			ready <- value
 			<-release
 			results <- value * value
@@ -226,6 +230,14 @@ func RuntimeGoroutineValues() {
 	}
 	readySum := <-ready + <-ready
 	goroutineReadySum = readySum
+	// Collect while worker threads are live so debugger signal handling is tested.
+	runtime.GC()
+	close(collected)
+	// Wait until both workers have returned from collector signal handlers
+	// before asking debuggers to unwind their ordinary application stacks.
+	if <-ready+<-ready != readySum {
+		panic("goroutine ready mismatch")
+	}
 	InspectGoroutineValues(readySum)
 	close(release)
 	resultSum := <-results + <-results

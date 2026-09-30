@@ -60,6 +60,9 @@ func TestGDBIntegration(t *testing.T) {
 	args := []string{
 		"--nx", "--quiet", "--batch", executable,
 		"-ex", "set debuginfod enabled off",
+		// The fixture collects while pthreads are live; deliver Boehm's
+		// Linux handshake signals without stopping before the source break.
+		"-ex", "handle SIGPWR SIGXCPU nostop noprint pass",
 		"-ex", fmt.Sprintf("break %s:%d", source, runtimeLine),
 		"-ex", fmt.Sprintf("break %s:%d", source, interfaceLine),
 		"-ex", fmt.Sprintf("break %s:%d", source, functionLine),

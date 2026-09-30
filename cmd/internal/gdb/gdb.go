@@ -129,7 +129,7 @@ func findGDBFrom(configuredPath, environmentPath string, candidates, fallbacks [
 			continue
 		}
 		seen[path] = true
-		if path, err = validateGDB(path); err == nil {
+		if path, err = validateResolvedGDB(path); err == nil {
 			return path, nil
 		}
 	}
@@ -141,6 +141,10 @@ func validateGDB(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("llgo gdb: find GDB %q: %w", name, err)
 	}
+	return validateResolvedGDB(path)
+}
+
+func validateResolvedGDB(path string) (string, error) {
 	output, err := exec.Command(path, "--version").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("llgo gdb: query GDB %q version: %w", path, err)
