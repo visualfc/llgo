@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 
 lldb = ModuleType("lldb")
@@ -61,6 +61,7 @@ class CollectorSignalTests(unittest.TestCase):
         lldb.eStateStopped = 5
         lldb.eStopReasonSignal = 5
         lldb.eStopReasonBreakpoint = 3
+        lldb.eStopReasonException = 6
         fixture_path = Path(__file__).parents[2] / "llgo" / "lldbtest" / "test.py"
         fixture_spec = importlib.util.spec_from_file_location("lldb_fixture", fixture_path)
         fixture = importlib.util.module_from_spec(fixture_spec)
@@ -68,9 +69,10 @@ class CollectorSignalTests(unittest.TestCase):
         fixture_spec.loader.exec_module(fixture)
         debugger = fixture.LLDBDebugger.__new__(fixture.LLDBDebugger)
         debugger.target = SimpleNamespace(GetTriple=lambda: "aarch64-unknown-linux-gnu")
-        process = debugger.process = Mock()
+        process = debugger.process = MagicMock()
         process.GetState.return_value = lldb.eStateStopped
         thread = process.GetSelectedThread.return_value
+        process.__iter__.return_value = [thread]
         thread.GetStopReason.return_value = lldb.eStopReasonSignal
         signals = process.GetUnixSignals.return_value
         signals.GetSignalNumberFromName.side_effect = {"SIGPWR": 30, "SIGXCPU": 24}.get
@@ -91,6 +93,35 @@ class CollectorSignalTests(unittest.TestCase):
         process.Continue.reset_mock()
         debugger.continue_gc_signals()
         process.Continue.assert_not_called()
+        # A selected GC stop cannot resume past another thread's real fault.
+        other_fault = Mock()
+        other_fault.GetStopReason.return_value = lldb.eStopReasonSignal
+        other_fault.GetStopReasonDataAtIndex.return_value = 11
+        process.__iter__.return_value = [thread, other_fault]
+        thread.GetStopReasonDataAtIndex.return_value = 30
+        debugger.continue_gc_signals()
+        process.Continue.assert_not_called()
+        thread.GetStopReasonDataAtIndex.return_value = 11
+        # A second thread at the right source line cannot hide a real fault.
+        debugger.breakpoint_id = 1
+        breakpoint_thread = Mock()
+        breakpoint_thread.GetStopReason.return_value = lldb.eStopReasonBreakpoint
+        breakpoint_thread.GetStopDescription.return_value = "breakpoint 1.1"
+        breakpoint_thread.GetStopReasonDataCount.return_value = 2
+        breakpoint_thread.GetStopReasonDataAtIndex.side_effect = [1, 1]
+        thread.GetStopDescription.return_value = "signal SIGSEGV"
+        with self.assertRaisesRegex(fixture.LLDBTestException, "SIGSEGV"):
+            debugger.breakpoint_threads([thread, breakpoint_thread])
+        self.assertEqual(debugger.breakpoint_threads([breakpoint_thread]), [breakpoint_thread])
+        debugger.target = Mock()
+        debugger.target.GetTriple.return_value = "i686-pc-windows-msvc"
+        debugger.target.FindBreakpointByID.return_value.GetHitCount.return_value = 1
+        thread.GetStopReason.return_value = lldb.eStopReasonException
+        thread.GetStopDescription.return_value = "Exception 0x80000003 at address 0x1234"
+        self.assertEqual(debugger.breakpoint_threads([thread]), [thread])
+        thread.GetStopDescription.return_value = "Exception 0xc0000005 at address 0x1234"
+        with self.assertRaisesRegex(fixture.LLDBTestException, "0xc0000005"):
+            debugger.breakpoint_threads([thread])
 
 
 if __name__ == "__main__":

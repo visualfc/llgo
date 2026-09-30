@@ -405,6 +405,7 @@ class LLDBDebugger:
         self.process: Optional[lldb.SBProcess] = None
         self.frame: Optional[lldb.SBFrame] = None
         self.breakpoint_line: Optional[int] = None
+        self.breakpoint_id: Optional[int] = None
         self.type_mapping: Dict[str, str] = {
             'long': 'int',
             'unsigned long': 'uint',
@@ -449,6 +450,7 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"Expected one breakpoint at {file_spec}:{line_number}, "
                 f"found {bp.GetNumLocations()}")
+        self.breakpoint_id = bp.GetID()
         location = bp.GetLocationAtIndex(0)
         line_entry = location.GetAddress().GetLineEntry()
         self.breakpoint_line = (
@@ -472,6 +474,7 @@ class LLDBDebugger:
             thread for thread in self.process
             if thread.GetThreadID() != selected_thread.GetThreadID()
         ]
+        threads = self.breakpoint_threads(threads)
         expected_file = os.path.normcase(os.path.basename(file_spec))
         expected_line = self.breakpoint_line or line_number
         locations: List[str] = []
@@ -500,6 +503,36 @@ class LLDBDebugger:
             f"(resolved line {expected_line}); "
             f"frames: {', '.join(locations)}")
 
+    def breakpoint_threads(self, threads: List[lldb.SBThread]) -> List[lldb.SBThread]:
+        candidates = []
+        windows = "windows" in (self.target.GetTriple() or "")
+        stops = []
+        for thread in threads:
+            reason = thread.GetStopReason()
+            description = thread.GetStopDescription(256) or ""
+            stops.append(f"thread {thread.GetThreadID()}: {description}")
+            # WoW64 can report the software breakpoint through its exception
+            # dispatcher. Accept only the two Windows breakpoint exceptions,
+            # and only after the requested LLDB breakpoint has actually hit.
+            windows_break = (
+                windows and reason == lldb.eStopReasonException and
+                re.search(r"0x(?:80000003|4000001f)\b", description, re.IGNORECASE) and
+                self.target.FindBreakpointByID(self.breakpoint_id).GetHitCount() > 0
+            )
+            if (reason == lldb.eStopReasonSignal or
+                    (reason == lldb.eStopReasonException and not windows_break)):
+                raise LLDBTestException(f"Unexpected debugger stop: {stops[-1]}")
+            if windows_break or (
+                reason == lldb.eStopReasonBreakpoint and
+                any(thread.GetStopReasonDataAtIndex(index) == self.breakpoint_id
+                    for index in range(0, thread.GetStopReasonDataCount(), 2))
+            ):
+                candidates.append(thread)
+        if not candidates:
+            raise LLDBTestException(
+                "Process did not hit the requested breakpoint: " + "; ".join(stops))
+        return candidates
+
     def continue_gc_signals(self) -> None:
         # The Linux fixture uses Boehm's default thread suspend/restart
         # signals. Pass them through to the collector rather than interpreting
@@ -520,6 +553,12 @@ class LLDBDebugger:
             if (thread.GetStopReason() != lldb.eStopReasonSignal or
                     thread.GetStopReasonDataAtIndex(0) not in gc_signals):
                 return
+            for stopped_thread in self.process:
+                reason = stopped_thread.GetStopReason()
+                if (reason == lldb.eStopReasonException or
+                        (reason == lldb.eStopReasonSignal and
+                         stopped_thread.GetStopReasonDataAtIndex(0) not in gc_signals)):
+                    return
             for number in gc_signals:
                 signals.SetShouldStop(number, False)
                 signals.SetShouldNotify(number, False)
