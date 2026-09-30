@@ -12,6 +12,9 @@ func parkInitialWasiThread(gp *g) {
 	casgstatus(gp, _Grunning, _Gdead)
 	releaseGAndCheckDeadlock()
 	for {
+		// This pthread remains registered with the collector even though its
+		// main G is dead. Let a surviving worker stop it for collection.
+		CooperativeSafepoint()
 		c.Usleep(1000)
 	}
 }

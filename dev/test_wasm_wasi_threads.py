@@ -100,6 +100,9 @@ def main():
         run_probe(env, directory, "main-goexit-gc", "wasm-wasi-main-goexit", "",
                   "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
                   30, expected_exit=deadlock_exits)
+        run_probe(env, directory, "main-goexit-collect",
+                  "wasm-wasi-main-goexit-gc", "", "wasi goexit gc collected",
+                  30, expected_exit=deadlock_exits)
         run_probe(env, directory, "main-goexit-timer", "wasm-wasi-main-goexit-timer",
                   "nogc", "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
                   30, expected_exit=deadlock_exits)
