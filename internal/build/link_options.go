@@ -76,7 +76,9 @@ func (o LinkOptions) EffectiveOmitDWARF() bool {
 // omitDWARFRequested combines explicit Go linker flags with LLGo's typed
 // default. The default never overrides an explicit -w value.
 func omitDWARFRequested(conf *Config) bool {
-	if conf.LinkOptions.DWARF == DWARFDefault && conf.OmitDWARFByDefault {
+	if conf.LinkOptions.DWARF == DWARFDefault && (conf.OmitDWARFByDefault ||
+		(conf.Mode != ModeGen && (conf.Target != "" || conf.Goarch == "wasm" ||
+			(conf.Goos == "darwin" && conf.BuildMode == BuildModeCShared)))) {
 		return true
 	}
 	return conf.LinkOptions.EffectiveOmitDWARF()

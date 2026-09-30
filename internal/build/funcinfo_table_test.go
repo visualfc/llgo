@@ -671,6 +671,74 @@ func TestFuncInfoTableIgnoresInvalidMetadata(t *testing.T) {
 	}
 }
 
+func TestRuntimeSitePolicy(t *testing.T) {
+	tests := []struct {
+		name        string
+		conf        Config
+		enableSites bool
+		wantPCLine  bool
+		wantAddress bool
+	}{
+		{
+			name:        "linux embedded dwarf",
+			conf:        Config{Goos: "linux", PCLNMode: PCLNEmbedded},
+			enableSites: true,
+			wantPCLine:  true,
+			wantAddress: true,
+		},
+		{
+			name:        "darwin embedded dwarf",
+			conf:        Config{Goos: "darwin", PCLNMode: PCLNEmbedded},
+			enableSites: true,
+			wantPCLine:  true,
+		},
+		{
+			name: "darwin embedded without dwarf",
+			conf: Config{
+				Goos:        "darwin",
+				PCLNMode:    PCLNEmbedded,
+				LinkOptions: LinkOptions{DWARF: DWARFOmit},
+			},
+			enableSites: true,
+			wantPCLine:  true,
+			wantAddress: true,
+		},
+		{
+			name:        "darwin external dwarf",
+			conf:        Config{Goos: "darwin", PCLNMode: PCLNExternal},
+			enableSites: true,
+			wantPCLine:  true,
+			wantAddress: true,
+		},
+		{
+			name:        "fixed target",
+			conf:        Config{Goos: "darwin", Target: "rp2040", PCLNMode: PCLNEmbedded},
+			enableSites: true,
+		},
+		{
+			name: "program sites disabled",
+			conf: Config{Goos: "linux", PCLNMode: PCLNEmbedded},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prog := llssa.NewProgram(nil)
+			defer prog.Dispose()
+			prog.EnableFuncInfoSites(tt.enableSites)
+			ctx := &context{prog: prog, buildConf: &tt.conf}
+			if got := shouldEmitRuntimeSites(ctx); got != tt.wantPCLine {
+				t.Fatalf("shouldEmitRuntimeSites() = %v, want %v", got, tt.wantPCLine)
+			}
+			if got := shouldEmitRuntimeEntrySites(ctx); got != tt.wantAddress {
+				t.Fatalf("shouldEmitRuntimeEntrySites() = %v, want %v", got, tt.wantAddress)
+			}
+		})
+	}
+	if shouldEmitRuntimeSites(nil) || shouldEmitRuntimeEntrySites(nil) {
+		t.Fatal("nil context enabled runtime sites")
+	}
+}
+
 // TestFuncInfoTableEmissionMatrix sweeps the OS / pointer-size / content
 // combinations so both the ELF and Mach-O directive branches, the 32-bit
 // pointer directives, and the empty-table initializers stay covered on every
@@ -714,10 +782,11 @@ func TestFuncInfoTableEmissionMatrix(t *testing.T) {
 			ctx := &context{
 				prog: prog,
 				buildConf: &Config{
-					BuildMode: BuildModeExe,
-					Goos:      c.goos,
-					Goarch:    c.goarch,
-					LTO:       c.lto,
+					BuildMode:   BuildModeExe,
+					Goos:        c.goos,
+					Goarch:      c.goarch,
+					LTO:         c.lto,
+					LinkOptions: LinkOptions{DWARF: DWARFOmit},
 				},
 			}
 			records := collectFuncInfo([]Package{{LPkg: src}})

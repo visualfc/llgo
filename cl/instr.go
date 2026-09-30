@@ -2138,7 +2138,7 @@ func (p *context) emitPCLineLabel(b llssa.Builder, pos token.Pos) {
 		// the '$m' subsection suffix used for lexicographic merging.
 		pushSection = ".pushsection .llgopcl$$m,\"dr\",associative," + asmLabel
 	}
-	b.InlineAsm(
+	b.InlineAsmNoDebug(
 		asmLabel + ":\n" +
 			pushSection + "\n" +
 			".p2align " + align + "\n" +

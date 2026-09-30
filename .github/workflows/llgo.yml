@@ -415,6 +415,7 @@ jobs:
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash cmd/llgo/lldbtest/runtest.sh -v
+          bash cmd/llgo/debugtest/native/runtest.sh
 
       - name: LLDB integration tests (MSVC)
         if: ${{ matrix.windows_abi == 'msvc' }}

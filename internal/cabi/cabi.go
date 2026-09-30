@@ -873,6 +873,13 @@ func (p *Transformer) callMemcpy(_ llvm.Module, ctx llvm.Context, b llvm.Builder
 // incoming ABI storage can stand in for one parameter home, but independent
 // copies must remain distinct objects.
 func reuseParamHome(param, storage llvm.Value, entry llvm.BasicBlock, naturalAlign, storageAlign int) {
+	// Debug declarations must keep referring to the authoritative aggregate
+	// storage after assignments. Replacing it with an indirect ABI parameter
+	// can make a debugger apply an extra dereference. Keep source homes when
+	// the function has debug information; other ABI lowering stays optimized.
+	if !entry.Parent().Subprogram().IsNil() {
+		return
+	}
 	seen := make(map[llvm.Value]bool)
 	for instr := entry.FirstInstruction(); !instr.IsNil(); instr = llvm.NextInstruction(instr) {
 		store := instr.IsAStoreInst()

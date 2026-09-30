@@ -120,3 +120,21 @@ func TestReadGoldenReturnsVersionedReadError(t *testing.T) {
 		t.Fatal("readGolden() succeeded for a versioned golden directory")
 	}
 }
+
+func TestCaptureDWARFMode(t *testing.T) {
+	for _, mode := range []build.DWARFMode{build.DWARFDefault, build.DWARFPreserve, build.DWARFOmit} {
+		conf := build.NewDefaultConf(build.ModeRun)
+		conf.LinkOptions.DWARF = mode
+		got, _, _, _ := withModuleCapture(conf, t.TempDir())
+		want := mode
+		if want == build.DWARFDefault {
+			want = build.DWARFOmit
+		}
+		if got.LinkOptions.DWARF != want {
+			t.Fatalf("capture DWARF = %v, want %v", got.LinkOptions.DWARF, want)
+		}
+		if conf.LinkOptions.DWARF != mode {
+			t.Fatal("capture changed caller options")
+		}
+	}
+}
