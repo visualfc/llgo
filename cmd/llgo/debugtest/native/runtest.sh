@@ -19,11 +19,12 @@ cd "$script_dir"
 "$LLGO" build -O0 -o "$artifact" .
 "$LLGO" build -O2 -o "$optimized_artifact" .
 
+export LLGO_NATIVE_DEBUG_SOURCE="$script_dir"
+export LLGO_NATIVE_DEBUG_ARTIFACT="$artifact"
+export LLGO_NATIVE_DEBUG_OPTIMIZED_ARTIFACT="$optimized_artifact"
 lldb_output=$(
     "$LLDB_PATH" --batch "$artifact" \
-        -o "command script import \"$script_dir/acceptance.py\"" \
-        -o "script acceptance.run_all(\"$artifact\", \"$optimized_artifact\", \"$script_dir\")" \
-        2>&1
+        -o 'script import os, runpy; _ = runpy.run_path(os.path.join(os.environ["LLGO_NATIVE_DEBUG_SOURCE"], "acceptance.py"), run_name="__main__")' 2>&1
 ) || {
     printf '%s\n' "$lldb_output"
     exit 1

@@ -709,6 +709,8 @@ func (b Builder) di() diBuilder {
 	return b.Pkg.di
 }
 
+// DIParam emits parameter debug information without exposing its storage. Its
+// original signature is retained for callers that use Builder method values.
 func (b Builder) DIParam(variable *types.Var, v Expr, dv DIVar, scope DIScope, pos token.Position, blk BasicBlock) {
 	b.diParam(variable, v, dv, scope, pos, blk)
 }

@@ -1023,15 +1023,9 @@ func (p *context) debugRef(b llssa.Builder, v *ssa.DebugRef) {
 		if stable.value == v.X && stable.block == v.Block() {
 			return
 		}
-		var value llssa.Expr
-		if iv, ok := v.X.(instrOrValue); ok {
-			var exists bool
-			value, exists = p.bvals[iv]
-			if !exists {
-				return
-			}
-		} else {
-			value = p.compileValue(b, v.X)
+		value, exists := p.debugRefValue(b, v.X)
+		if !exists {
+			return
 		}
 		b.DIStore(stable.home, value)
 		stable.value = v.X
@@ -1040,17 +1034,9 @@ func (p *context) debugRef(b llssa.Builder, v *ssa.DebugRef) {
 		return
 	}
 	pos := p.goProg.Fset.Position(v.Pos())
-	var value llssa.Expr
-	if iv, ok := v.X.(instrOrValue); ok {
-		var exists bool
-		value, exists = p.bvals[iv]
-		if !exists {
-			// DebugRef is metadata-only. Do not rematerialize an SSA value that
-			// executable lowering deliberately omitted.
-			return
-		}
-	} else {
-		value = p.compileValue(b, v.X)
+	value, exists := p.debugRefValue(b, v.X)
+	if !exists {
+		return
 	}
 	fn := v.Parent()
 	dbgVar := p.getLocalVariable(b, fn, variable)
@@ -1061,6 +1047,16 @@ func (p *context) debugRef(b llssa.Builder, v *ssa.DebugRef) {
 	} else {
 		b.DIValue(variable, value, dbgVar, diScope, pos, b.Func.Block(v.Block().Index))
 	}
+}
+
+func (p *context) debugRefValue(b llssa.Builder, value ssa.Value) (llssa.Expr, bool) {
+	if iv, ok := value.(instrOrValue); ok {
+		// DebugRef is metadata-only. Do not rematerialize an SSA value that
+		// executable lowering deliberately omitted.
+		result, exists := p.bvals[iv]
+		return result, exists
+	}
+	return p.compileValue(b, value), true
 }
 
 func (p *context) debugParams(b llssa.Builder, f *ssa.Function) {

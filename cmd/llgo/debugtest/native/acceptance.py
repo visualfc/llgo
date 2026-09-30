@@ -1,5 +1,6 @@
 """Native LLGo source-debug acceptance for faults and Go/host frames."""
 
+import os
 from pathlib import Path
 from typing import Iterable, List
 
@@ -220,3 +221,11 @@ def run_all(executable: str, optimized_executable: str, source_root: str) -> Non
         )
     check_optimized_inline(optimized_executable, cwd, root)
     print("NATIVE_DEBUG_ACCEPTANCE_OK")
+
+
+if __name__ == "__main__":
+    run_all(
+        os.environ["LLGO_NATIVE_DEBUG_ARTIFACT"],
+        os.environ["LLGO_NATIVE_DEBUG_OPTIMIZED_ARTIFACT"],
+        os.environ["LLGO_NATIVE_DEBUG_SOURCE"],
+    )
