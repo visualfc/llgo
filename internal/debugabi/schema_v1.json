@@ -82,7 +82,9 @@
         "type_name": "github.com/xgo-dev/llgo/runtime/abi.Type",
         "tflag": "TFlag",
         "extra_star_flag": 2,
-        "string": "Str_"
+        "string": "Str_",
+        "kind": "Kind_",
+        "direct_interface_flag": 32
       },
       "function": {
         "type_pattern": "^struct\\{\\$f func.*; \\$data unsafe\\.Pointer\\}$",

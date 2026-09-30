@@ -125,6 +125,17 @@ func TestSchemaV1Contract(t *testing.T) {
 		t.Fatalf("map state constants = %+v", mapLayout)
 	}
 
+	var runtimeType struct {
+		Kind                string `json:"kind"`
+		DirectInterfaceFlag int    `json:"direct_interface_flag"`
+	}
+	if err := json.Unmarshal(categories["runtime_type"], &runtimeType); err != nil {
+		t.Fatal(err)
+	}
+	if runtimeType.Kind != "Kind_" || runtimeType.DirectInterfaceFlag != 32 {
+		t.Fatalf("direct interface contract = %+v", runtimeType)
+	}
+
 	first := SchemaV1()
 	first[0] = 0
 	if bytes.Equal(first, SchemaV1()) {
