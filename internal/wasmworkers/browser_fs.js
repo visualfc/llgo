@@ -126,6 +126,9 @@ addToLibrary({
   llgo_browser_fs_call(request) {
     let reply;
     try {
+      // The requesting worker's payload malloc can grow shared memory.
+      // Refresh this realm before inspecting pointers or creating byte views.
+      if (typeof updateMemoryViews === 'function') updateMemoryViews();
       const { target, name, args } = JSON.parse(UTF8ToString(request));
       if (typeof target !== 'string' || typeof name !== 'string' ||
           !Array.isArray(args) || !llgoBrowserFS.allowed(target, name)) {
