@@ -111,8 +111,9 @@ func TestLLGoEnvironment(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(cacheHome, "config"))
 	t.Setenv("APPDATA", filepath.Join(cacheHome, "config"))
 	t.Setenv("LOCALAPPDATA", filepath.Join(cacheHome, "cache"))
-	// The Go command starts a telemetry sidecar by default. Disable it before
-	// invoking go env so it cannot race with TempDir cleanup on macOS.
+	// Resolve against the redirected HOME/XDG_CONFIG_HOME/APPDATA above.
+	// Disable Go telemetry before go env starts a sidecar that could outlive
+	// the command and race with TempDir cleanup.
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		t.Fatal(err)
@@ -162,8 +163,8 @@ func TestLLGoEnvironment(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["GOTELEMETRY"] != "off" {
-		t.Fatalf("Go telemetry mode = %q, want off", got["GOTELEMETRY"])
+	if value, ok := got["GOTELEMETRY"]; !ok || value != "off" {
+		t.Fatalf("Go telemetry mode = %q (present %v), want off", value, ok)
 	}
 	if got["LLGO_LLVM_CONFIG"] != filepath.Join(root, "missing-llvm-config") || got["LLGO_LLVM_VERSION"] != "" {
 		t.Fatalf("LLVM diagnostics = %#v", got)
