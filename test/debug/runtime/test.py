@@ -3,6 +3,7 @@
 import os
 import sys
 import argparse
+import re
 import signal
 from dataclasses import dataclass, field
 from typing import List, Optional, Set, Dict, Any
@@ -250,6 +251,71 @@ TEST_CASES = [
             "ordered_frames",
         )],
     ),
+    test_case("interface_values", [
+        ("nilAny", "nil", "summary"),
+        ("anyInt", "type=int", "summary"),
+        ("anyText", "type=string", "summary"),
+        ("nilFoo", "nil", "summary"),
+        ("foo", "type=*main.Struct", "summary"),
+        ("err", "type=*errors.errorString", "summary"),
+        ("results.intResult", "43"),
+        ("results.textResult", '"interface!"'),
+        ("results.fooResult", "1"),
+        ("results.errResult", '"interface error"'),
+    ]),
+    test_case("function_values", [
+        ("plain", "main.Plain", "summary"),
+        ("named", "main.Plain", "summary"),
+        ("closure", "main.RuntimeFunctionValues$1 (closure)", "summary"),
+        ("bound", "main.(*Counter).Add$bound (bound method)", "summary"),
+        ("nilFunc", "nil", "summary"),
+        ("plainResult", "2"),
+        ("namedResult", "3"),
+        ("closureResult", "7"),
+        ("boundResult", "13"),
+    ]),
+    test_case("container_values", [
+        ("nilMap", "nil", "summary"),
+        ("single", "len=1", "summary"),
+        ("single", "len=1"),
+        ("single", 'key[0]="answer", value[0]=42', "synthetic"),
+        ("named", "len=1", "summary"),
+        ("named", 'key[0]="named", value[0]=17', "synthetic"),
+        ("many", "len=24", "summary"),
+        ("many", "48", "synthetic-count"),
+        ("pointers", "len=1", "summary"),
+        ("pointers", "key[0]=string, value[0]=*lldbtest.Counter",
+         "synthetic-types"),
+        ("large", "len=1", "summary"),
+        ("large", "key[0]=lldbtest.LargeKey, value[0]=lldbtest.LargeValue",
+         "synthetic-types"),
+        ("nilChannel", "nil", "summary"),
+        ("queued", "len=2 cap=4", "summary"),
+        ("queued", "len=2 cap=4"),
+        ("queued", "[0]=8, [1]=9", "synthetic"),
+        ("namedChannel", "len=1 cap=2", "summary"),
+        ("namedChannel", "[0]=31", "synthetic"),
+        ("pointerChannel", "len=1 cap=1", "summary"),
+        ("pointerChannel", "[0]=*lldbtest.Counter", "synthetic-types"),
+        ("closedChannel", "len=1 cap=2 closed", "summary"),
+        ("closedChannel", '[0]="remaining"', "synthetic"),
+        ("containerResults.mapValue", "42"),
+        ("containerResults.namedValue", "17"),
+        ("containerResults.largeValue", "29"),
+        ("containerResults.channelHead", "7"),
+        ("containerResults.channelLen", "2"),
+        ("containerResults.channelCap", "4"),
+        ("containerResults.closedHead", '"first"'),
+        ("containerResults.closedOK", "true"),
+    ]),
+    test_case("goroutine_values", [
+        ("goroutineReadySum", "3"),
+        ("goroutines",
+         "count=3 roots=1 children=2 running=3 mapped=3 "
+         "unique-threads=3",
+         "goroutines"),
+        ("goroutine stacks", "root=1 children=2", "goroutine-stacks"),
+    ]),
     test_case("struct_values_initial", STRUCT_VALUES_INITIAL),
     test_case("struct_values_updated", STRUCT_VALUES_UPDATED),
     test_case("struct_ptrs_initial", STRUCT_VALUES_INITIAL),
@@ -366,7 +432,9 @@ class LLDBDebugger:
         if llgo_plugin.inspect_target(self.target) is not target_info:
             raise LLDBTestException("LLGo target inspection was not cached")
         if (target_info.schema_version != 1 or
-                target_info.runtime_layout_version != 1):
+                target_info.runtime_layout_version != 2 or
+                target_info.record_version != 1 or
+                target_info.llgo_abi_version != 1):
             raise LLDBTestException(
                 f"Unexpected LLGo debugger schema: {target_info}")
         if (target_info.pointer_size != self.target.GetAddressByteSize() or
@@ -458,6 +526,28 @@ class LLDBDebugger:
             children.append(f"{child.GetName()}={child_value}")
         return ", ".join(children)
 
+    def get_synthetic_child_types(self, var_expression: str) -> Optional[str]:
+        value = self.get_variable(var_expression)
+        if not value or not value.IsValid():
+            return None
+        value = value.GetSyntheticValue()
+        if not value or not value.IsValid():
+            return None
+        children: List[str] = []
+        for index in range(value.GetNumChildren()):
+            child = value.GetChildAtIndex(index)
+            children.append(
+                f"{child.GetName()}={llgo_plugin.map_type_name(child.GetTypeName())}")
+        return ", ".join(children)
+
+    def get_synthetic_child_count(self, var_expression: str) -> Optional[str]:
+        value = self.get_variable(var_expression)
+        if not value or not value.IsValid():
+            return None
+        value = value.GetSyntheticValue()
+        return (str(value.GetNumChildren())
+                if value and value.IsValid() else None)
+
     def get_all_variable_names(self) -> Set[str]:
         frame = self.get_selected_frame()
         return set(var.GetName() for var in frame.GetVariables(True, True, False, True))
@@ -480,6 +570,80 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"llgo print {expression!r} did not fail with {expected!r}: "
                 f"{result.GetOutput()!r} {result.GetError()!r}")
+
+    def get_goroutines(self) -> Optional[List[Dict[str, Any]]]:
+        result = lldb.SBCommandReturnObject()
+        self.debugger.GetCommandInterpreter().HandleCommand(
+            "llgo goroutines", result)
+        if not result.Succeeded():
+            return None
+        lines = [line.strip() for line in (result.GetOutput() or "").splitlines()
+                 if line.strip()]
+        pattern = re.compile(
+            r"^goroutine ([0-9]+) \[([^]]+)\] parent=([0-9]+) "
+            r"tid=([0-9]+) thread=(unavailable|[0-9]+)$")
+        goroutines = []
+        for line in lines:
+            match = pattern.fullmatch(line)
+            if match is None:
+                return None
+            goroutines.append({
+                "goid": int(match.group(1)),
+                "status": match.group(2),
+                "parent": int(match.group(3)),
+                "tid": int(match.group(4)),
+                "thread": match.group(5),
+            })
+        return goroutines
+
+    def get_goroutine_summary(self) -> Optional[str]:
+        goroutines = self.get_goroutines()
+        if goroutines is None:
+            return None
+        ids = {goroutine["goid"] for goroutine in goroutines}
+        roots = sum(goroutine["parent"] == 0 for goroutine in goroutines)
+        children = sum(
+            goroutine["parent"] in ids and goroutine["parent"] != 0
+            for goroutine in goroutines)
+        running = sum(
+            goroutine["status"] == "running" for goroutine in goroutines)
+        mapped = sum(
+            goroutine["thread"] != "unavailable" for goroutine in goroutines)
+        unique_threads = len({goroutine["thread"] for goroutine in goroutines
+                              if goroutine["thread"] != "unavailable"})
+        return (
+            f"count={len(goroutines)} roots={roots} children={children} "
+            f"running={running} mapped={mapped} "
+            f"unique-threads={unique_threads}")
+
+    def get_goroutine_stack_summary(self) -> Optional[str]:
+        goroutines = self.get_goroutines()
+        if goroutines is None:
+            return None
+        roots = [goroutine for goroutine in goroutines
+                 if goroutine["parent"] == 0]
+        if len(roots) != 1:
+            return None
+        children = [goroutine for goroutine in goroutines
+                    if goroutine["parent"] == roots[0]["goid"]]
+        if len(children) != 2:
+            return None
+
+        expected_functions = [(roots[0], "main.InspectGoroutineValues")]
+        expected_functions.extend(
+            (goroutine, "main.RuntimeGoroutineValues")
+            for goroutine in children)
+        for goroutine, expected_function in expected_functions:
+            result = lldb.SBCommandReturnObject()
+            self.debugger.GetCommandInterpreter().HandleCommand(
+                f"llgo goroutine {goroutine['goid']} bt", result)
+            output = result.GetOutput() or ""
+            if (not result.Succeeded() or
+                    expected_function not in output or
+                    f"goroutine {goroutine['goid']} [running] thread "
+                    not in output):
+                return None
+        return f"root={len(roots)} children={len(children)}"
 
     def cleanup(self) -> None:
         if self.process and self.process.IsValid():
@@ -676,6 +840,10 @@ def execute_single_variable_test(debugger: LLDBDebugger, test: Test) -> TestResu
         actual_value = debugger.get_variable_summary(test.variable)
     elif test.mode == "synthetic":
         actual_value = debugger.get_synthetic_children(test.variable)
+    elif test.mode == "synthetic-types":
+        actual_value = debugger.get_synthetic_child_types(test.variable)
+    elif test.mode == "synthetic-count":
+        actual_value = debugger.get_synthetic_child_count(test.variable)
     elif test.mode == "limited":
         debugger.debugger.HandleCommand(
             "settings set target.max-children-count 1")
@@ -684,6 +852,10 @@ def execute_single_variable_test(debugger: LLDBDebugger, test: Test) -> TestResu
         finally:
             debugger.debugger.HandleCommand(
                 "settings set target.max-children-count 256")
+    elif test.mode == "goroutines":
+        actual_value = debugger.get_goroutine_summary()
+    elif test.mode == "goroutine-stacks":
+        actual_value = debugger.get_goroutine_stack_summary()
     else:
         actual_value = debugger.get_variable_value(test.variable)
     if actual_value is None:

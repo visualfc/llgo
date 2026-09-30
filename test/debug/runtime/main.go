@@ -58,6 +58,186 @@ func (s *Struct) Foo(a []int, b string) int {
 	return 1
 }
 
+type Counter struct {
+	base int
+}
+
+func (c *Counter) Add(value int) int {
+	return c.base + value
+}
+
+func Plain(value int) int {
+	return value + 1
+}
+
+type IntFunc func(int) int
+
+type NamedMap map[string]int
+type NamedChan chan int
+
+type LargeKey struct {
+	ID  int
+	Pad [128]byte
+}
+
+type LargeValue struct {
+	Value int
+	Pad   [128]byte
+}
+
+type InterfaceResults struct {
+	intResult  int
+	textResult string
+	fooResult  int
+	errResult  string
+}
+
+type ContainerResults struct {
+	mapValue    uint64
+	namedValue  int
+	largeValue  int
+	channelHead int
+	channelLen  int
+	channelCap  int
+	closedHead  string
+	closedOK    bool
+}
+
+var containerResults *ContainerResults
+var goroutineReadySum int
+
+func RuntimeInterfaceValues() {
+	var nilAny any
+	anyInt := any(42)
+	anyText := any("interface")
+	var nilFoo Interface
+	foo := Interface(&Struct{})
+	err := errors.New("interface error")
+	results := &InterfaceResults{
+		intResult:  anyInt.(int) + 1,
+		textResult: anyText.(string) + "!",
+		fooResult:  foo.Foo([]int{1, 2}, "x"),
+		errResult:  err.Error(),
+	}
+	InspectInterfaceValues(nilAny, anyInt, anyText, nilFoo, foo, err, results)
+}
+
+func InspectInterfaceValues(nilAny, anyInt, anyText any, nilFoo, foo Interface, err error, results *InterfaceResults) {
+	println(nilAny, anyInt, anyText, nilFoo, foo, err,
+		results.intResult, results.textResult, results.fooResult, results.errResult) // LLDB_BREAK: interface_values
+}
+
+func RuntimeFunctionValues() {
+	plain := Plain
+	named := IntFunc(Plain)
+	base := 5
+	closure := func(value int) int { return base + value }
+	counter := &Counter{base: 10}
+	bound := counter.Add
+	var nilFunc func(int) int
+	plainResult := plain(1)
+	namedResult := named(2)
+	closureResult := closure(2)
+	boundResult := bound(3)
+	println(plain, named, closure, bound, nilFunc, plainResult, namedResult, closureResult, boundResult) // LLDB_BREAK: function_values
+}
+
+func RuntimeContainerValues() {
+	var nilMap map[string]uint64
+	single := map[string]uint64{"answer": 42}
+	named := NamedMap{"named": 17}
+	many := make(map[int]int, 24)
+	for index := 0; index < 24; index++ {
+		many[index] = index * index
+	}
+	counter := &Counter{base: 23}
+	pointers := map[string]*Counter{"counter": counter}
+	largeKey := LargeKey{ID: 5}
+	large := map[LargeKey]LargeValue{
+		largeKey: {Value: 29},
+	}
+
+	var nilChannel chan int
+	queued := make(chan int, 4)
+	queued <- 7
+	queued <- 8
+	channelHead := <-queued
+	queued <- 9
+	namedChannel := NamedChan(make(chan int, 2))
+	namedChannel <- 31
+	pointerChannel := make(chan *Counter, 1)
+	pointerChannel <- counter
+	closedChannel := make(chan string, 2)
+	closedChannel <- "first"
+	closedChannel <- "remaining"
+	close(closedChannel)
+	closedHead, closedOK := <-closedChannel
+
+	results := &ContainerResults{
+		mapValue:    single["answer"],
+		namedValue:  named["named"],
+		largeValue:  large[largeKey].Value,
+		channelHead: channelHead,
+		channelLen:  len(queued),
+		channelCap:  cap(queued),
+		closedHead:  closedHead,
+		closedOK:    closedOK,
+	}
+	containerResults = results
+	InspectContainerValues(
+		nilMap, single, named, many, pointers, large,
+		nilChannel, queued, namedChannel, pointerChannel, closedChannel,
+	)
+}
+
+func InspectContainerValues(
+	nilMap map[string]uint64,
+	single map[string]uint64,
+	named NamedMap,
+	many map[int]int,
+	pointers map[string]*Counter,
+	large map[LargeKey]LargeValue,
+	nilChannel chan int,
+	queued chan int,
+	namedChannel NamedChan,
+	pointerChannel chan *Counter,
+	closedChannel chan string,
+) {
+	println( // LLDB_BREAK: container_values
+		nilMap, single, named, many, pointers, large,
+		nilChannel, queued, namedChannel, pointerChannel, closedChannel,
+		containerResults.mapValue, containerResults.namedValue,
+		containerResults.largeValue, containerResults.channelHead,
+		containerResults.channelLen, containerResults.channelCap,
+		containerResults.closedHead, containerResults.closedOK,
+	)
+}
+
+func RuntimeGoroutineValues() {
+	ready := make(chan int, 2)
+	release := make(chan struct{})
+	results := make(chan int, 2)
+	for worker := 1; worker <= 2; worker++ {
+		go func(value int) {
+			ready <- value
+			<-release
+			results <- value * value
+		}(worker)
+	}
+	readySum := <-ready + <-ready
+	goroutineReadySum = readySum
+	InspectGoroutineValues(readySum)
+	close(release)
+	resultSum := <-results + <-results
+	if resultSum != 5 {
+		panic("goroutine result mismatch")
+	}
+}
+
+func InspectGoroutineValues(readySum int) {
+	println(readySum) // LLDB_BREAK: goroutine_values
+}
+
 func RuntimeValues() {
 	text := "hello"
 	empty := ""
@@ -340,6 +520,10 @@ func main() {
 	println("s:", &s) // LLDB_BREAK: main_globals
 	FuncWithAllTypeStructParam(s)
 	RuntimeValues()
+	RuntimeInterfaceValues()
+	RuntimeFunctionValues()
+	RuntimeContainerValues()
+	RuntimeGoroutineValues()
 	println("called function with struct")
 	i, err := FuncWithAllTypeParams(
 		s.i8, s.i16, s.i32, s.i64, s.i, s.u8, s.u16, s.u32, s.u64, s.u,

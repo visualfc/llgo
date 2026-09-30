@@ -92,8 +92,8 @@ run_test_suite './debug.out' "['main.go']"
 run_test_suite './debug-mixed.out' "['mixed/mixed.go', 'mixed/_wrap/mixed.c']" fault
 
 llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
-    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.schema_version == 1 and info.runtime_layout_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown") or os._exit(1)' \
-    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "LLGo debugger schema v1 (runtime layout v1)" in result.GetOutput()) or os._exit(1)' \
+    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.schema_version == 1 and info.runtime_layout_version == 2 and info.record_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown") or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "LLGo debugger schema v1 (runtime layout v2)" in result.GetOutput()) or os._exit(1)' \
     -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); (not result.Succeeded() and "requires a stopped process" in result.GetError()) or os._exit(1)' \
     -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo print s", result); (not result.Succeeded() and "requires a stopped process" in result.GetError()) or os._exit(1)'
 

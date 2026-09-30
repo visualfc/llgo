@@ -3,9 +3,11 @@
 package debuginfo
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/xgo-dev/llgo/internal/debugabi"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -17,15 +19,16 @@ const (
 	// access to LLGo's otherwise Go-shaped DWARF.
 	dwarfSourceLanguageC llvm.DwarfLang = 1
 
-	debuggerMarkerSymbol = "__llgo_debugger_marker_v1"
+	debuggerMarkerSymbol = debugabi.LegacyMarkerSymbol
 )
 
 // Config describes properties of the generated debug information. Optimized
 // reports what the compilation pipeline does; it does not select any pass.
 type Config struct {
-	Producer     string
-	Optimized    bool
-	EmitCodeView bool
+	Producer       string
+	Optimized      bool
+	EmitCodeView   bool
+	DebuggerRecord debugabi.Record
 }
 
 // Builder is a package-local owner of an LLVM DIBuilder. Finalize must be
@@ -79,30 +82,45 @@ func (b *Builder) addDebuggerMarker() {
 	i8 := ctx.Int8Type()
 	marker := llvm.AddGlobal(b.module, i8, debuggerMarkerSymbol)
 	marker.SetInitializer(llvm.ConstInt(i8, 1, false))
-	marker.SetGlobalConstant(true)
-	marker.SetLinkage(llvm.LinkOnceODRLinkage)
-	if strings.Contains(strings.ToLower(b.module.Target()), "windows") {
-		// COFF does not turn linkonce_odr into a coalescible section on its
-		// own. Every debug-enabled package emits this marker, so associate it
-		// with an any-selection COMDAT just like other ODR definitions. Export
-		// the selected definition because llvm.used keeps the global during
-		// code generation but does not make its COFF section a linker GC root.
-		// The export directive both retains the marker and makes it discoverable
-		// through LLDB's PE symbol enumeration.
-		comdat := b.module.Comdat(debuggerMarkerSymbol)
-		comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
-		marker.SetComdat(comdat)
-		marker.SetDLLStorageClass(llvm.DLLExportStorageClass)
-	} else {
-		marker.SetVisibility(llvm.HiddenVisibility)
-	}
+	b.retainDebuggerGlobal(marker, debuggerMarkerSymbol)
 
 	ptr := llvm.PointerType(i8, 0)
-	usedInit := llvm.ConstArray(ptr, []llvm.Value{llvm.ConstBitCast(marker, ptr)})
+	retained := []llvm.Value{llvm.ConstBitCast(marker, ptr)}
+	if b.config.DebuggerRecord.RecordVersion != 0 {
+		raw, err := b.config.DebuggerRecord.MarshalBinary()
+		if err != nil {
+			panic(fmt.Sprintf("debuginfo: invalid debugger ABI record: %v", err))
+		}
+		values := make([]llvm.Value, len(raw))
+		for i, value := range raw {
+			values[i] = llvm.ConstInt(i8, uint64(value), false)
+		}
+		initializer := llvm.ConstArray(i8, values)
+		record := llvm.AddGlobal(b.module, initializer.Type(), debugabi.NativeRecordSymbol)
+		record.SetInitializer(initializer)
+		record.SetAlignment(len(raw))
+		b.retainDebuggerGlobal(record, debugabi.NativeRecordSymbol)
+		retained = append(retained, llvm.ConstBitCast(record, ptr))
+	}
+	usedInit := llvm.ConstArray(ptr, retained)
 	used := llvm.AddGlobal(b.module, usedInit.Type(), "llvm.used")
 	used.SetInitializer(usedInit)
 	used.SetLinkage(llvm.AppendingLinkage)
 	used.SetSection("llvm.metadata")
+}
+
+// Give both marker records the same target-specific retention semantics.
+func (b *Builder) retainDebuggerGlobal(value llvm.Value, symbol string) {
+	value.SetGlobalConstant(true)
+	value.SetLinkage(llvm.LinkOnceODRLinkage)
+	if strings.Contains(strings.ToLower(b.module.Target()), "windows") {
+		comdat := b.module.Comdat(symbol)
+		comdat.SetSelectionKind(llvm.AnyComdatSelectionKind)
+		value.SetComdat(comdat)
+		value.SetDLLStorageClass(llvm.DLLExportStorageClass)
+	} else {
+		value.SetVisibility(llvm.HiddenVisibility)
+	}
 }
 
 func (b *Builder) addModuleFlag(behavior int, name string, value int) {

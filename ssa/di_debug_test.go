@@ -195,12 +195,14 @@ func TestDebugGoTypeEncodings(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "types.go", `package p
 type Named int64
+type Large [129]byte
 type Recursive struct { Next *Recursive }
 type Shape struct {
 	Complex complex128
 	Text string
 	Values []Named
 	Lookup map[string]Named
+	LargeLookup map[Large]Large
 	Queue chan Named
 	Callback func(Named) (Named, error)
 	Any any
@@ -245,7 +247,14 @@ type Shape struct {
 		"DW_ATE_complex_float",
 		"!DISubroutineType",
 		`name: "map[string]example.com/p.Named"`,
+		`name: "hash<string,example.com/p.Named>"`,
+		`name: "bucket<string,example.com/p.Named>"`,
+		`name: "indirectkeys"`,
+		`name: "indirectvalues"`,
 		`name: "chan example.com/p.Named"`,
+		`name: "hchan<example.com/p.Named>"`,
+		`name: "waitq<example.com/p.Named>"`,
+		`name: "sudog<example.com/p.Named>"`,
 		`name: "example.com/p.Recursive"`,
 	} {
 		if !strings.Contains(ir, want) {
@@ -513,18 +522,58 @@ func newDebugRuntimePackage() *types.Package {
 			types.NewField(token.NoPos, pkg, "type", unsafePointer, false),
 			types.NewField(token.NoPos, pkg, "data", unsafePointer, false),
 		},
-		"Map": {
-			types.NewField(token.NoPos, pkg, "count", types.Typ[types.Int], false),
-		},
-		"Chan": {
-			types.NewField(token.NoPos, pkg, "count", types.Typ[types.Int], false),
-		},
 	}
 	for name, fields := range members {
 		obj := types.NewTypeName(token.NoPos, pkg, name, nil)
 		types.NewNamed(obj, types.NewStruct(fields, nil), nil)
 		pkg.Scope().Insert(obj)
 	}
+	mapObj := types.NewTypeName(token.NoPos, pkg, "Map", nil)
+	types.NewNamed(mapObj, types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "count", types.Typ[types.Int], false),
+		types.NewField(token.NoPos, pkg, "flags", types.Typ[types.Uint8], false),
+		types.NewField(token.NoPos, pkg, "B", types.Typ[types.Uint8], false),
+		types.NewField(token.NoPos, pkg, "noverflow", types.Typ[types.Uint16], false),
+		types.NewField(token.NoPos, pkg, "hash0", types.Typ[types.Uint32], false),
+		types.NewField(token.NoPos, pkg, "buckets", unsafePointer, false),
+		types.NewField(token.NoPos, pkg, "oldbuckets", unsafePointer, false),
+		types.NewField(token.NoPos, pkg, "nevacuate", types.Typ[types.Uintptr], false),
+		types.NewField(token.NoPos, pkg, "extra", unsafePointer, false),
+	}, nil), nil)
+	pkg.Scope().Insert(mapObj)
+
+	waiterObj := types.NewTypeName(token.NoPos, pkg, "chanWaiter", nil)
+	waiter := types.NewNamed(waiterObj, nil, nil)
+	queueObj := types.NewTypeName(token.NoPos, pkg, "chanWaitq", nil)
+	queue := types.NewNamed(queueObj, nil, nil)
+	chanObj := types.NewTypeName(token.NoPos, pkg, "Chan", nil)
+	channel := types.NewNamed(chanObj, nil, nil)
+	waiterPtr := types.NewPointer(waiter)
+	waiter.SetUnderlying(types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "prev", waiterPtr, false),
+		types.NewField(token.NoPos, pkg, "next", waiterPtr, false),
+		types.NewField(token.NoPos, pkg, "all", waiterPtr, false),
+		types.NewField(token.NoPos, pkg, "ch", types.NewPointer(channel), false),
+		types.NewField(token.NoPos, pkg, "elem", unsafePointer, false),
+	}, nil))
+	queue.SetUnderlying(types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "first", waiterPtr, false),
+		types.NewField(token.NoPos, pkg, "last", waiterPtr, false),
+	}, nil))
+	channel.SetUnderlying(types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "qcount", types.Typ[types.Int], false),
+		types.NewField(token.NoPos, pkg, "dataqsiz", types.Typ[types.Int], false),
+		types.NewField(token.NoPos, pkg, "buf", unsafePointer, false),
+		types.NewField(token.NoPos, pkg, "elemsize", types.Typ[types.Int], false),
+		types.NewField(token.NoPos, pkg, "closed", types.Typ[types.Bool], false),
+		types.NewField(token.NoPos, pkg, "recvx", types.Typ[types.Int], false),
+		types.NewField(token.NoPos, pkg, "sendx", types.Typ[types.Int], false),
+		types.NewField(token.NoPos, pkg, "sendq", queue, false),
+		types.NewField(token.NoPos, pkg, "recvq", queue, false),
+	}, nil))
+	pkg.Scope().Insert(waiterObj)
+	pkg.Scope().Insert(queueObj)
+	pkg.Scope().Insert(chanObj)
 	return pkg
 }
 

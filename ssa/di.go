@@ -6,7 +6,9 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/xgo-dev/llgo/internal/debugabi"
 	"github.com/xgo-dev/llgo/internal/debuginfo"
+	ssaabi "github.com/xgo-dev/llgo/ssa/abi"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -24,11 +26,16 @@ type aDIBuilder struct {
 type diBuilder = *aDIBuilder
 
 func newDIBuilder(prog Program, pkg Package, positioner Positioner) diBuilder {
+	byteOrder := debugabi.ByteOrderLittle
+	if prog.TargetData().ByteOrder() == llvm.BigEndian {
+		byteOrder = debugabi.ByteOrderBig
+	}
 	return &aDIBuilder{
 		di: debuginfo.New(pkg.mod, debuginfo.Config{
-			Producer:     "LLGo",
-			Optimized:    prog.debugInfoOptimized,
-			EmitCodeView: prog.emitCodeViewDebugInfo,
+			Producer:       "LLGo",
+			Optimized:      prog.debugInfoOptimized,
+			EmitCodeView:   prog.emitCodeViewDebugInfo,
+			DebuggerRecord: debugabi.NewRecord(uint8(prog.PointerSize()), byteOrder),
 		}),
 		prog:       prog,
 		types:      make(map[*aType]DIType),
@@ -257,9 +264,9 @@ func (b diBuilder) createType(name string, ty Type, pos token.Position) DIType {
 	case *types.Array:
 		return b.createArrayType(ty, t.Len())
 	case *types.Chan:
-		return b.createOpaquePointerType(name, ty)
+		return b.createChanType(name, ty, t)
 	case *types.Map:
-		return b.createOpaquePointerType(name, ty)
+		return b.createMapType(name, ty, t)
 	case *types.Tuple:
 		return b.createTupleType(name, ty, pos)
 	default:
@@ -460,14 +467,6 @@ func (b diBuilder) createMemberTypeEx(name string, tyStruct, tyField Type, idxFi
 	)
 }
 
-func (b diBuilder) createOpaquePointerType(name string, ty Type) DIType {
-	return &aDIType{ll: b.di.CreatePointerType(llvm.DIPointerType{
-		Name:        name,
-		SizeInBits:  b.prog.SizeOf(ty) * 8,
-		AlignInBits: uint32(b.prog.sizes.Alignof(ty.RawType()) * 8),
-	})}
-}
-
 func (b diBuilder) createPointerType(name string, ty Type, pos token.Position) DIType {
 	ptrType := b.prog.VoidPtr()
 	return &aDIType{ll: b.di.CreatePointerType(llvm.DIPointerType{
@@ -476,6 +475,222 @@ func (b diBuilder) createPointerType(name string, ty Type, pos token.Position) D
 		SizeInBits:  b.prog.SizeOf(ptrType) * 8,
 		AlignInBits: uint32(b.prog.sizes.Alignof(ptrType.RawType())) * 8,
 	})}
+}
+
+func (b diBuilder) createMapType(name string, ty Type, mapType *types.Map) DIType {
+	pos := token.Position{}
+	ptr := b.prog.VoidPtr()
+	runtimeMap := b.prog.rtType("Map")
+	key := b.prog.rawType(mapType.Key())
+	elem := b.prog.rawType(mapType.Elem())
+	hashName := fmt.Sprintf("hash<%s,%s>", mapType.Key(), mapType.Elem())
+	hash := b.createSyntheticStructPlaceholder(hashName, runtimeMap, pos)
+	hashPtr := b.di.CreatePointerType(llvm.DIPointerType{
+		Name:        "*" + hashName,
+		Pointee:     hash.ll,
+		SizeInBits:  b.prog.SizeOf(ptr) * 8,
+		AlignInBits: uint32(b.prog.sizes.Alignof(ptr.RawType()) * 8),
+	})
+	ret := &aDIType{ll: b.createRuntimeContainerTypedef(name, hashPtr, pos)}
+	// Map values may be recursive through their key or element type. Cache the
+	// pointer before constructing the typed bucket, as the Go linker does when
+	// synthesizing map DWARF.
+	b.types[ty] = ret
+
+	bucket := b.createMapBucketType(mapType, key, elem, pos)
+	bucketPtr := b.createDIPointerType(
+		fmt.Sprintf("*bucket<%s,%s>", mapType.Key(), mapType.Elem()),
+		bucket.ll,
+	)
+	replacements := map[string]llvm.Metadata{
+		"buckets":    bucketPtr,
+		"oldbuckets": bucketPtr,
+	}
+	b.finishSyntheticStruct(hash, hashName, runtimeMap,
+		b.syntheticStructFields(hash, runtimeMap, replacements, pos), pos)
+	return ret
+}
+
+func (b diBuilder) createMapBucketType(mapType *types.Map, key, elem Type,
+	pos token.Position) DIType {
+	bucketStorage := b.prog.rawType(ssaabi.MapBucketType(mapType, b.prog.sizes))
+	bucketStruct := bucketStorage.RawType().Underlying().(*types.Struct)
+	name := fmt.Sprintf("bucket<%s,%s>", key.RawType(), elem.RawType())
+	bucket := b.createSyntheticStructPlaceholder(name, bucketStorage, pos)
+	overflow := b.createDIPointerType("*"+name, bucket.ll)
+	fields := make([]llvm.Metadata, bucketStruct.NumFields())
+	for index := range fields {
+		field := bucketStruct.Field(index)
+		fieldName := field.Name()
+		fieldType := b.prog.rawType(field.Type())
+		diType := b.diType(fieldType, pos).ll
+		switch fieldName {
+		case "topbits":
+			fieldName = "tophash"
+		case "keys":
+			if b.prog.SizeOf(key) > ssaabi.MAXKEYSIZE {
+				fieldName = "indirectkeys"
+			}
+		case "elems":
+			fieldName = "values"
+			if b.prog.SizeOf(elem) > ssaabi.MAXELEMSIZE {
+				fieldName = "indirectvalues"
+			}
+		case "overflow":
+			diType = overflow
+		}
+		fields[index] = b.createDIMemberType(bucket, fieldName,
+			b.prog.SizeOf(fieldType), b.prog.sizes.Alignof(field.Type()),
+			b.prog.OffsetOf(bucketStorage, index), diType)
+	}
+	b.finishSyntheticStruct(bucket, name, bucketStorage, fields, pos)
+	return bucket
+}
+
+func (b diBuilder) createChanType(name string, ty Type, chanType *types.Chan) DIType {
+	pos := token.Position{}
+	ptr := b.prog.VoidPtr()
+	runtimeChan := b.prog.rtType("Chan")
+	chanName := fmt.Sprintf("hchan<%s>", chanType.Elem())
+	channel := b.createSyntheticStructPlaceholder(chanName, runtimeChan, pos)
+	channelPtr := b.di.CreatePointerType(llvm.DIPointerType{
+		Name:        "*" + chanName,
+		Pointee:     channel.ll,
+		SizeInBits:  b.prog.SizeOf(ptr) * 8,
+		AlignInBits: uint32(b.prog.sizes.Alignof(ptr.RawType()) * 8),
+	})
+	ret := &aDIType{ll: b.createRuntimeContainerTypedef(name, channelPtr, pos)}
+	b.types[ty] = ret
+
+	chanStruct := runtimeChan.RawType().Underlying().(*types.Struct)
+	queueIndex := structFieldIndex(chanStruct, "recvq")
+	queue := b.prog.rawType(chanStruct.Field(queueIndex).Type())
+	queueStruct := queue.RawType().Underlying().(*types.Struct)
+	waiterPtrType := queueStruct.Field(structFieldIndex(queueStruct, "first")).Type().(*types.Pointer)
+	waiter := b.prog.rawType(waiterPtrType.Elem())
+
+	waiterName := fmt.Sprintf("sudog<%s>", chanType.Elem())
+	typedWaiter := b.createSyntheticStructPlaceholder(waiterName, waiter, pos)
+	typedWaiterPtr := b.createDIPointerType("*"+waiterName, typedWaiter.ll)
+	elem := b.prog.rawType(chanType.Elem())
+	elemPtr := b.createDIPointerType("*"+chanType.Elem().String(), b.diType(elem, pos).ll)
+	waiterReplacements := map[string]llvm.Metadata{
+		"prev": typedWaiterPtr,
+		"next": typedWaiterPtr,
+		"all":  typedWaiterPtr,
+		"ch":   ret.ll,
+		"elem": elemPtr,
+	}
+	b.finishSyntheticStruct(typedWaiter, waiterName, waiter,
+		b.syntheticStructFields(typedWaiter, waiter, waiterReplacements, pos), pos)
+
+	queueName := fmt.Sprintf("waitq<%s>", chanType.Elem())
+	typedQueue := b.createSyntheticStructPlaceholder(queueName, queue, pos)
+	queueReplacements := map[string]llvm.Metadata{
+		"first": typedWaiterPtr,
+		"last":  typedWaiterPtr,
+	}
+	b.finishSyntheticStruct(typedQueue, queueName, queue,
+		b.syntheticStructFields(typedQueue, queue, queueReplacements, pos), pos)
+
+	channelReplacements := map[string]llvm.Metadata{
+		"sendq": typedQueue.ll,
+		"recvq": typedQueue.ll,
+	}
+	b.finishSyntheticStruct(channel, chanName, runtimeChan,
+		b.syntheticStructFields(channel, runtimeChan, channelReplacements, pos), pos)
+	return ret
+}
+
+func (b diBuilder) createSyntheticStructPlaceholder(name string, ty Type,
+	pos token.Position) DIType {
+	scope := b.file(pos.Filename)
+	return &aDIType{ll: b.di.CreateReplaceableCompositeType(
+		scope.ll,
+		llvm.DIReplaceableCompositeType{
+			Tag:         dwarf.TagStructType,
+			Name:        name,
+			File:        scope.ll,
+			Line:        pos.Line,
+			SizeInBits:  b.prog.SizeOf(ty) * 8,
+			AlignInBits: uint32(b.prog.sizes.Alignof(ty.RawType()) * 8),
+		},
+	)}
+}
+
+func (b diBuilder) createRuntimeContainerTypedef(name string,
+	typeMeta llvm.Metadata, pos token.Position) llvm.Metadata {
+	ptr := b.prog.VoidPtr()
+	return b.di.CreateTypedef(llvm.DITypedef{
+		Name:        name,
+		Type:        typeMeta,
+		File:        b.file(pos.Filename).ll,
+		Line:        pos.Line,
+		AlignInBits: uint32(b.prog.sizes.Alignof(ptr.RawType()) * 8),
+	})
+}
+
+func (b diBuilder) finishSyntheticStruct(placeholder DIType, name string, ty Type,
+	fields []llvm.Metadata, pos token.Position) {
+	scope := b.file(pos.Filename)
+	value := b.di.CreateStructType(scope.ll, llvm.DIStructType{
+		Name:        name,
+		File:        scope.ll,
+		Line:        pos.Line,
+		SizeInBits:  b.prog.SizeOf(ty) * 8,
+		AlignInBits: uint32(b.prog.sizes.Alignof(ty.RawType()) * 8),
+		Elements:    fields,
+	})
+	placeholder.ll.ReplaceAllUsesWith(value)
+	placeholder.ll = value
+}
+
+func (b diBuilder) syntheticStructFields(owner DIType, ty Type,
+	replacements map[string]llvm.Metadata, pos token.Position) []llvm.Metadata {
+	structure := ty.RawType().Underlying().(*types.Struct)
+	fields := make([]llvm.Metadata, structure.NumFields())
+	for index := 0; index < structure.NumFields(); index++ {
+		field := structure.Field(index)
+		fieldType := b.prog.rawType(field.Type())
+		diType := b.diType(fieldType, pos).ll
+		if replacement, ok := replacements[field.Name()]; ok {
+			diType = replacement
+		}
+		fields[index] = b.createDIMemberType(owner, field.Name(),
+			b.prog.SizeOf(fieldType), b.prog.sizes.Alignof(field.Type()),
+			b.prog.OffsetOf(ty, index), diType)
+	}
+	return fields
+}
+
+func (b diBuilder) createDIPointerType(name string, pointee llvm.Metadata) llvm.Metadata {
+	ptr := b.prog.VoidPtr()
+	return b.di.CreatePointerType(llvm.DIPointerType{
+		Name:        name,
+		Pointee:     pointee,
+		SizeInBits:  b.prog.SizeOf(ptr) * 8,
+		AlignInBits: uint32(b.prog.sizes.Alignof(ptr.RawType()) * 8),
+	})
+}
+
+func (b diBuilder) createDIMemberType(owner DIType, name string, size uint64,
+	align int64, offset uint64, ty llvm.Metadata) llvm.Metadata {
+	return b.di.CreateMemberType(owner.ll, llvm.DIMemberType{
+		Name:         name,
+		SizeInBits:   size * 8,
+		AlignInBits:  uint32(align * 8),
+		OffsetInBits: offset * 8,
+		Type:         ty,
+	})
+}
+
+func structFieldIndex(structure *types.Struct, name string) int {
+	for index := 0; index < structure.NumFields(); index++ {
+		if structure.Field(index).Name() == name {
+			return index
+		}
+	}
+	panic(fmt.Sprintf("runtime field %q not found in %s", name, structure))
 }
 
 func (b diBuilder) doCreateStructType(name string, ty Type, pos token.Position, fn func(ty DIType) []llvm.Metadata) (ret DIType) {
