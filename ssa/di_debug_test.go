@@ -528,6 +528,73 @@ func newDebugRuntimePackage() *types.Package {
 	return pkg
 }
 
+func TestDebugMapSnapshotUsesMapValueStorage(t *testing.T) {
+	for _, target := range []*Target{
+		{GOOS: "linux", GOARCH: "amd64", LLVMTarget: "x86_64-unknown-linux-gnu"},
+		{GOOS: "js", GOARCH: "wasm", LLVMTarget: "wasm32-unknown-emscripten"},
+		{GOOS: "js", GOARCH: "wasm", LLVMTarget: "wasm64-unknown-emscripten"},
+	} {
+		t.Run(target.LLVMTarget, func(t *testing.T) {
+			prog := NewProgram(target)
+			defer prog.Dispose()
+			prog.TypeSizes(types.SizesFor("gc", target.GOARCH))
+			prog.SetRuntime(newDebugRuntimePackage())
+			pkg := prog.NewPackage("mapsnapshot", "mapsnapshot")
+			pkg.InitDebug("mapsnapshot", "mapsnapshot", token.NewFileSet())
+			mapType := types.NewMap(types.Typ[types.String], types.Typ[types.Int])
+			mapVar := types.NewVar(token.NoPos, nil, "mapping", mapType)
+			chanVar := types.NewVar(token.NoPos, nil, "queue", types.NewChan(types.SendRecv, types.Typ[types.Int]))
+			sig := types.NewSignatureType(nil, nil, nil,
+				types.NewTuple(mapVar, chanVar), nil, false)
+			fn := pkg.NewFunc("snapshot", sig, InGo)
+			b := fn.MakeBody(2)
+			defer b.Dispose()
+			pos := token.Position{Filename: "snapshot.go", Line: 1, Column: 1}
+			b.DebugFunction(fn, nil, pos, pos)
+			b.Jump(fn.Block(1))
+			b.SetBlock(fn.Block(1))
+			value := fn.Param(0)
+			home, store := b.constructDebugAddrWithStore(value)
+			// A Go map value holds a header pointer. Its debug snapshot must
+			// reserve that pointer's physical storage, not the Map header itself.
+			// Wasm32 uses an eight-byte Go slot despite four-byte host pointers.
+			want := prog.storageType(value.Type)
+			if got := home.impl.AllocatedType(); got != want {
+				t.Fatalf("map snapshot reserves %s, want map-value storage %s", got.String(), want.String())
+			}
+			if home.impl.InstructionParent() != fn.impl.EntryBasicBlock() {
+				t.Fatal("map snapshot reserves storage inside the loop")
+			}
+			if store.impl.InstructionParent() != fn.Block(1).first {
+				t.Fatal("map snapshot does not update at the source location")
+			}
+			// Local map/channel values use their pointer SSA values directly.
+			// Do not route them through a frame-index plus DW_OP_deref: Wasm's
+			// backend can discard that expression after promoting the slot.
+			for i, variable := range []*types.Var{mapVar, chanVar} {
+				value := fn.Param(i)
+				dv := b.DIVarAuto(fn, pos, variable.Name(), value.Type)
+				b.DIValue(variable, value, dv, fn, pos, fn.Block(1))
+			}
+			b.Return()
+			b.EndBuild()
+			pkg.FinalizeDebug()
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("map snapshot module is invalid: %v\n%s", err, pkg.String())
+			}
+			ir := fn.impl.String()
+			for i := range 2 {
+				if !strings.Contains(ir, "#dbg_value("+fn.Param(i).impl.String()+",") {
+					t.Fatalf("pointer value %d has no direct debug location:\n%s", i, ir)
+				}
+			}
+			if strings.Contains(ir, "DW_OP_deref") {
+				t.Fatalf("pointer debug values use an indirect snapshot:\n%s", ir)
+			}
+		})
+	}
+}
+
 func TestInlineAsmNoDebugPreservesBuilderLocation(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "asm.go", `package p

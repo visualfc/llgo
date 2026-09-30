@@ -690,8 +690,6 @@ func (b Builder) doConstructDebugAddrWithStore(v Expr, t types.Type) (dbgPtr, st
 		ty = b.Prog.Closure(t)
 	case *types.Named:
 		ty = b.Prog.Type(t.Underlying(), InGo)
-	case *types.Map:
-		ty = b.Prog.Type(b.Prog.rtType("Map").RawType().Underlying(), InGo)
 	default:
 		ty = v.Type
 	}
@@ -790,7 +788,10 @@ func needConstructAddr(t types.Type) bool {
 			return true
 		}
 		return false
-	case *types.Pointer:
+	case *types.Pointer, *types.Map, *types.Chan:
+		// Map and channel values are pointers to runtime headers. Like other
+		// pointers, describe the value itself; a snapshot plus DW_OP_deref can
+		// lose its location when LLVM promotes the entry-block slot on Wasm.
 		return false
 	default:
 		return true
