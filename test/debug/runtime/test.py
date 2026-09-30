@@ -696,14 +696,17 @@ class LLDBDebugger:
     def get_goroutine_stack_summary(self) -> Optional[str]:
         goroutines = self.get_goroutines()
         if goroutines is None:
+            log("Unable to enumerate goroutines for the stack assertion")
             return None
         roots = [goroutine for goroutine in goroutines
                  if goroutine["parent"] == 0]
         if len(roots) != 1:
+            log(f"Expected one root goroutine, got {goroutines!r}")
             return None
         children = [goroutine for goroutine in goroutines
                     if goroutine["parent"] == roots[0]["goid"]]
         if len(children) != 2:
+            log(f"Expected two child goroutines, got {goroutines!r}")
             return None
 
         expected_functions = [(roots[0], "main.InspectGoroutineValues")]
@@ -719,6 +722,18 @@ class LLDBDebugger:
                     expected_function not in output or
                     f"goroutine {goroutine['goid']} [{goroutine['status']}] thread "
                     not in output):
+                log(f"Goroutine stack assertion failed: {goroutine!r}; "
+                    f"expected function {expected_function!r}")
+                log(f"Adapter output:\n{output}\nAdapter error: {result.GetError() or ''}")
+                log(f"Debugger: {lldb.SBDebugger.GetVersionString()}; "
+                    f"target: {self.target.GetTriple()}")
+                # Keep native diagnostics alongside the adapter failure: thread
+                # mapping can succeed even when the debugger cannot unwind a
+                # blocked worker through a platform library.
+                for command in ("thread list", "thread backtrace all"):
+                    native = lldb.SBCommandReturnObject()
+                    self.debugger.GetCommandInterpreter().HandleCommand(command, native)
+                    log(f"{command}:\n{native.GetOutput() or ''}\n{native.GetError() or ''}")
                 return None
         return f"root={len(roots)} children={len(children)}"
 
