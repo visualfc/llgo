@@ -99,6 +99,7 @@ func TestGDBIntegration(t *testing.T) {
 		"-ex", "continue",
 		"-ex", "echo LLGO_CASE=goroutine\\n",
 		"-ex", "llgo goroutines",
+		"-ex", "python original_thread = gdb.selected_thread(); [gdb.execute('llgo goroutine %d bt' % item['goid']) for item in _goroutines()]; print('LLGO_THREAD_PRESERVED=' + str(gdb.selected_thread() == original_thread))",
 		"-ex", "llgo goroutine 1 bt 3",
 	}
 	output := integrationRunGDB(t, gdbPath, fixtureDir, args...)
@@ -127,6 +128,9 @@ func TestGDBIntegration(t *testing.T) {
 		"len=1 cap=2 = {31}",
 		`len=1 cap=2 closed = {"remaining"}`,
 		"LLGO_CASE=goroutine",
+		"main.InspectGoroutineValues",
+		"main.RuntimeGoroutineValues",
+		"LLGO_THREAD_PRESERVED=True",
 		"goroutine 1 [running] parent=0",
 		"tid=",
 		"main.InspectGoroutineValues",
