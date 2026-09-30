@@ -727,6 +727,17 @@ class LLDBDebugger:
                 log(f"Adapter output:\n{output}\nAdapter error: {result.GetError() or ''}")
                 log(f"Debugger: {lldb.SBDebugger.GetVersionString()}; "
                     f"target: {self.target.GetTriple()}")
+                if hasattr(self.process, "GetAddressMask"):
+                    log(f"Code address mask: "
+                        f"{self.process.GetAddressMask(lldb.eAddressMaskTypeCode):#x}")
+                for thread_index in range(self.process.GetNumThreads()):
+                    thread = self.process.GetThreadAtIndex(thread_index)
+                    frame = thread.GetFrameAtIndex(0)
+                    if frame and frame.IsValid():
+                        lr = frame.FindRegister("lr")
+                        log(f"Thread {thread.GetIndexID()} registers: "
+                            f"pc={frame.GetPC():#x} sp={frame.GetSP():#x} "
+                            f"fp={frame.GetFP():#x} lr={lr.GetValue() if lr else None}")
                 # Keep native diagnostics alongside the adapter failure: thread
                 # mapping can succeed even when the debugger cannot unwind a
                 # blocked worker through a platform library.
