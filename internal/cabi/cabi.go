@@ -118,6 +118,9 @@ func (p *Transformer) SetSkipFuncs(names []string) {
 func (p *Transformer) shouldSkipFunc(name string) bool {
 	// LLVM intrinsics use LLVM's own calling convention and can carry metadata
 	// or scalable-vector parameters. Neither is a C ABI value to size or wrap.
+	// Some llvm.* declarations have IntrinsicID() == 0 (for example, an
+	// unrecognized intrinsic in a test module), so the ID checks at the ABI
+	// rewrite sites alone cannot keep them out of C ABI processing.
 	if strings.HasPrefix(name, "llvm.") {
 		return true
 	}

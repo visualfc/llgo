@@ -70,8 +70,10 @@ func TestShouldSkipLLVMIntrinsic(t *testing.T) {
 			t.Fatalf("LLVM intrinsic %q must bypass C ABI sizing", name)
 		}
 	}
-	if transformer.shouldSkipFunc("ordinary.function") {
-		t.Fatal("ordinary function was skipped")
+	for _, name := range []string{"ordinary.function", "example.com/myllvm.Helper"} {
+		if transformer.shouldSkipFunc(name) {
+			t.Fatalf("ordinary function %q was skipped", name)
+		}
 	}
 }
 
