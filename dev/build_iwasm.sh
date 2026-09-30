@@ -27,6 +27,8 @@ IWASM_BUILD_ID=$(
     printf '%s\n' "${WAMR_VERSION}" "$(uname -s)" "$(uname -m)" \
         "${LLGO_WINDOWS_ABI:-}" "${MINGW_PREFIX:-}" "${CC:-}" "${CXX:-}" \
         "$(git hash-object "${SCRIPT_DIR}/build_iwasm.sh")" \
+        "$(git hash-object "${SCRIPT_DIR}/patches/wamr-2.4.5-threaded-eh.patch")" \
+        "$(git hash-object "${SCRIPT_DIR}/patches/wamr-2.4.5-posix-signal.patch")" \
         "$(git hash-object "${SCRIPT_DIR}/patches/wamr-2.4.5-mingw.patch")" \
         | git hash-object --stdin
 )
@@ -54,6 +56,13 @@ cd "${TEMP_DIR}"
 
 echo "Cloning wasm-micro-runtime ${WAMR_VERSION}..."
 git clone --branch "${WAMR_VERSION}" --depth 1 https://github.com/wasm-micro-runtime/wasm-micro-runtime.git
+
+# Keep exception propagation within one interpreter thread until it escapes
+# the Wasm invocation. Otherwise a caught longjmp can terminate sibling Gs.
+git -C wasm-micro-runtime apply \
+    "${SCRIPT_DIR}/patches/wamr-2.4.5-threaded-eh.patch"
+git -C wasm-micro-runtime apply \
+    "${SCRIPT_DIR}/patches/wamr-2.4.5-posix-signal.patch"
 
 CMAKE_GENERATOR_ARGS=()
 case "$(uname -s)" in
@@ -145,7 +154,7 @@ cmake "${CMAKE_GENERATOR_ARGS[@]}" \
     -D WAMR_BUILD_SHARED_MEMORY=1 \
     -D WAMR_BUILD_LIB_WASI_THREADS=1 \
     -D WAMR_BUILD_LIB_PTHREAD=1 \
-    -D CMAKE_BUILD_TYPE=Debug \
+    -D CMAKE_BUILD_TYPE=Release \
     -D WAMR_BUILD_DEBUG_INTERP=0 \
     ..
 

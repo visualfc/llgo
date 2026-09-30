@@ -571,6 +571,11 @@ jobs:
 
           iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
 
+      - name: Set up wasm-tools for EH fixtures
+        uses: bytecodealliance/actions/wasm-tools/setup@v1
+        with:
+          version: "1.243.0"
+
       - name: Test WASI pthread backend and threaded GC (WAMR)
         shell: bash
         run: python3 dev/test_wasm_wasi_threads.py

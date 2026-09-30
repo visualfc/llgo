@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -15,7 +16,7 @@ IWASM = os.environ.get("IWASM", "iwasm")
 
 
 def run_probe(env, directory, name, fixture, tags, marker, timeout,
-              max_threads=8, expected_exit=0):
+              max_threads=8, expected_exit=0, args=(), runs=1):
     module = pathlib.Path(directory) / f"{name}.wasm"
     command = [LLGO, "build", "-target", "wasi"]
     if tags:
@@ -27,21 +28,23 @@ def run_probe(env, directory, name, fixture, tags, marker, timeout,
         env=env,
         timeout=180,
     )
-    result = subprocess.run(
-        [IWASM, f"--max-threads={max_threads}", "--stack-size=1048576",
-         "--heap-size=0", "--dir=" + str(ROOT), "--dir=/tmp", str(module)],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    print(result.stdout, end="")
-    print(result.stderr, end="")
     allowed_exits = (expected_exit,) if isinstance(expected_exit, int) else expected_exit
-    if result.returncode not in allowed_exits or (
-        marker not in result.stdout.splitlines()
-        and marker not in result.stderr.splitlines()
-    ):
-        raise SystemExit(f"WAMR {name} probe failed with exit code {result.returncode}")
+    for attempt in range(runs):
+        result = subprocess.run(
+            [IWASM, f"--max-threads={max_threads}", "--stack-size=1048576",
+             "--heap-size=0", "--dir=" + str(ROOT), "--dir=/tmp", str(module), *args],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        print(result.stdout, end="")
+        print(result.stderr, end="")
+        markers = (marker,) if isinstance(marker, str) else marker
+        lines = result.stdout.splitlines() + result.stderr.splitlines()
+        if result.returncode not in allowed_exits or any(m not in lines for m in markers):
+            raise SystemExit(
+                f"WAMR {name} probe {attempt + 1}/{runs} failed "
+                f"with exit code {result.returncode}")
 
 
 def run_llgo(env, args, marker, timeout=180):
@@ -94,6 +97,33 @@ def main():
         # WAMR can translate the terminal Wasm exception to process status 1
         # instead of preserving the guest's status 2. Both are nonzero exits.
         deadlock_exits = (1, 2)
+        # LLVM lowers both Go defer/Goexit and C setjmp/longjmp through legacy
+        # Wasm EH. A caught exception must not terminate unrelated pthreads.
+        for tags in ("nogc", ""):
+            suffix = tags or "gc"
+            run_probe(env, directory, f"deferred-goexit-{suffix}",
+                      "wasm-wasi-goexit-defer", tags,
+                      "wasi worker defer ok", 30, runs=10)
+            for mode in ("init", "main"):
+                run_probe(env, directory, f"{mode}-defer-{suffix}",
+                          "wasm-wasi-goexit-defer", tags,
+                          (f"wasi {mode} defer ok",
+                           "fatal error: no goroutines (main called runtime.Goexit) - deadlock!"),
+                          30, expected_exit=deadlock_exits, args=(mode,))
+            run_probe(env, directory, f"uncaught-{suffix}",
+                      "wasm-wasi-goexit-defer", tags,
+                      "panic: wasi uncaught sentinel", 30,
+                      expected_exit=deadlock_exits, args=("uncaught",))
+        # A raw exception escaping the Wasm entry point must still fail. Go's
+        # unrecovered panic exits explicitly, so it cannot test this boundary.
+        uncaught = pathlib.Path(directory) / "uncaught-eh.wasm"
+        subprocess.run([os.environ.get("WASM_TOOLS", "wasm-tools"), "parse",
+                        str(ROOT / "internal/build/testdata/wasm-wasi-goexit-defer/uncaught.wat"),
+                        "-o", str(uncaught)], check=True, timeout=30)
+        result = subprocess.run([IWASM, str(uncaught)], capture_output=True,
+                                text=True, timeout=30)
+        if result.returncode == 0 or "uncaught wasm exception" not in result.stdout + result.stderr:
+            raise SystemExit(f"WAMR swallowed an escaping exception: {result}")
         run_probe(env, directory, "main-goexit", "wasm-wasi-main-goexit", "nogc",
                   "fatal error: no goroutines (main called runtime.Goexit) - deadlock!",
                   30, expected_exit=deadlock_exits)
@@ -122,6 +152,33 @@ def main():
                  "wasi threaded filesystem ok")
         run_llgo(env, ["test", "-target", "wasi", "-emulator",
                        str(ROOT / "test/std/errors")], "PASS")
+        # Compiling test/go on a cold CI runner and running the GC race are
+        # separate budgets. Verbose, inherited output identifies a slow test
+        # immediately instead of discarding it when subprocess.run times out.
+        module = pathlib.Path(directory) / "runtime-gc-tests.wasm"
+        started = time.monotonic()
+        subprocess.run([LLGO, "test", "-c", "-target", "wasi", "-o", str(module),
+                        str(ROOT / "test/go")], env=env, check=True, timeout=300)
+        print(f"WAMR GC test compilation: {time.monotonic() - started:.2f}s", flush=True)
+        # The two startup shapes each race 20 goroutines against continuous
+        # full GC. The classic interpreter takes over two minutes per shape
+        # on CI. Give each an independent runtime/deadline, and keep finalizer,
+        # callback GC and first-use symbol lookup in a third invocation. All
+        # cases and repetition counts remain enabled; a stalled case still
+        # fails within 300 seconds with its last active test visible.
+        runtime_cases = (
+            ("finalizers/callback/symbols",
+             "^(TestRuntimeSetFinalizer.*|TestReflectMakeFuncGoroutineGC|TestRuntimeFuncInfoConcurrentFirstUse)$"),
+            ("startup-pointer", "^TestReflectMakeFuncGoroutineStartup$/^pointer_argument$"),
+            ("startup-zero", "^TestReflectMakeFuncGoroutineStartup$/^zero_arguments$"),
+        )
+        for name, pattern in runtime_cases:
+            started = time.monotonic()
+            subprocess.run([IWASM, "--max-threads=128", "--stack-size=1048576", "--heap-size=0",
+                            "--dir=" + str(ROOT), "--dir=/tmp", str(module), "-test.v",
+                            "-test.run=" + pattern],
+                           env=env, check=True, timeout=300)
+            print(f"WAMR GC test {name}: {time.monotonic() - started:.2f}s", flush=True)
         run_llgo(env, ["test", "-target", "wasi", "-emulator", "-run",
                        "^TestPoolAfterGC$", str(ROOT / "test/std/sync")], "PASS",
                  timeout=300)

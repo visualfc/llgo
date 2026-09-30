@@ -11,10 +11,10 @@ func parkInitialWasiThread(gp *g) {
 	releaseStartArg(gp)
 	casgstatus(gp, _Grunning, _Gdead)
 	releaseGAndCheckDeadlock()
+	// This thread will never return to Go. Leaving it registered would make
+	// every later worker collection time out waiting for its safepoint.
+	unregisterWasiGCThread()
 	for {
-		// This pthread remains registered with the collector even though its
-		// main G is dead. Let a surviving worker stop it for collection.
-		CooperativeSafepoint()
 		c.Usleep(1000)
 	}
 }

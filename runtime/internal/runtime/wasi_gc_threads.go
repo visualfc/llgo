@@ -48,6 +48,29 @@ func wasiGCSafepoint() {
 	wasiGCPark(uintptr(gcroot.CurrentChain()), bottom, top)
 }
 
+func wasiGCMutexLock(mutex unsafe.Pointer) {
+	wasiGCMutexWait(mutex, uintptr(gcroot.CurrentChain()),
+		uintptr(wasiGCStackPointer()), wasiGCStackTop())
+}
+
+// WasiGCCondTimedWait keeps the Go caller suspended while a pthread condition
+// wait releases and reacquires its lock. Only the C pthread state may change.
+// A negative waitNanos waits for a signal without a timer.
+func WasiGCCondTimedWait(cond, mutex unsafe.Pointer, waitNanos int64, monotonic bool) {
+	var clock c.Int
+	if monotonic {
+		clock = 1
+	}
+	wasiGCCondWait(cond, mutex, waitNanos, clock, uintptr(gcroot.CurrentChain()),
+		uintptr(wasiGCStackPointer()), wasiGCStackTop())
+}
+
+//go:linkname wasiGCMutexWait C.llgo_wasi_gc_mutex_lock
+func wasiGCMutexWait(mutex unsafe.Pointer, chain, bottom, top uintptr)
+
+//go:linkname wasiGCCondWait C.llgo_wasi_gc_cond_timedwait
+func wasiGCCondWait(cond, mutex unsafe.Pointer, waitNanos int64, monotonic c.Int, chain, bottom, top uintptr)
+
 //go:linkname wasiGCEnterBegin C.llgo_wasi_gc_enter_begin
 func wasiGCEnterBegin()
 

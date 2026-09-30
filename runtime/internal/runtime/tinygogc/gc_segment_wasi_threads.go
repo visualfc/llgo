@@ -7,8 +7,13 @@ import _ "unsafe"
 const segmentedHeap = true
 
 func newHeapSegment(minimum uintptr) (uintptr, uintptr) {
-	const segmentSize = uintptr(32 << 20)
-	size := segmentSize
+	// Begin with a small heap so explicit GC does not sweep 32 MiB for tiny
+	// programs. Double successive arenas up to the former 32 MiB size.
+	shift := heapSegmentCount
+	if shift > 5 {
+		shift = 5
+	}
+	size := uintptr(1<<20) << shift
 	// The nominal arena size includes its metadata. Account for that and
 	// alignment at both ends before comparing with the default arena size;
 	// even an object slightly smaller than 32 MiB may not fit in that arena.

@@ -23,7 +23,8 @@ func TestWasmGCHeadCacheWorkloads(t *testing.T) {
 	dir := filepath.Join("..", "..", "runtime", "internal", "runtime", "tinygogc")
 	functions := map[string]bool{
 		"gcFindHead": true, "gcFindHeadForMark": true,
-		"gcStateByteOf": true, "gcStateFromByte": true, "gcStateOf": true,
+		"gcStateByteOfIn": true, "gcStateFromByteIn": true, "gcStateOf": true,
+		"gcFindHeadIn": true, "gcStateOfIn": true,
 	}
 	var source bytes.Buffer
 	source.WriteString(gcHeadCacheWorkloadSource)

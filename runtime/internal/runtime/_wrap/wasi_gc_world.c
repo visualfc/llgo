@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <time.h>
 
 // Count each entering thread before it registers Go roots and keep it counted
@@ -9,12 +10,18 @@
 // holding this mutex across Go allocation or TLS setup.
 static pthread_mutex_t world_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t world_changed = PTHREAD_COND_INITIALIZER;
-static uint32_t world_epoch;
+static _Atomic uint32_t world_epoch;
+// A C call that cannot rendezvous aborts this collection instead of sweeping
+// a running stack. This is a deadline, not a periodic mutator wakeup.
+#define LLGO_WASI_GC_STOP_TIMEOUT_NS 500000000L
 static uint32_t world_registered;
 static uint32_t world_stopped;
+static uint32_t world_blocked;
+static uint32_t world_resuming;
 static pthread_t world_owner;
 static _Thread_local uint32_t world_seen_epoch;
 static _Thread_local int world_is_registered;
+static _Thread_local int world_is_blocked;
 
 extern void llgo_gcroot_publish_thread(uintptr_t chain, uintptr_t bottom,
                                        uintptr_t top);
@@ -41,14 +48,65 @@ static void world_wait(void) {
     __builtin_trap();
 }
 
-// Wake hosted Go condition waiters often enough to publish their roots for a
-// stop-the-world request, even when no application signal is forthcoming.
-void llgo_wasi_gc_cond_timedwait(pthread_cond_t *condition,
-                                pthread_mutex_t *mutex) {
-  struct timespec deadline;
-  if (clock_gettime(CLOCK_REALTIME, &deadline) != 0)
+// These waits only access pthread state. Publish the suspended Go caller's
+// roots before entering C and prevent its return to Go during collection.
+// In particular, cond_wait may block while reacquiring a mutex whose owner
+// has already stopped at an allocation safepoint.
+static void world_begin_wait(uintptr_t chain, uintptr_t bottom, uintptr_t top) {
+  if (!world_is_registered)
+    return;
+  llgo_gcroot_publish_thread(chain, bottom, top);
+  world_lock();
+  if (world_is_blocked)
     __builtin_trap();
-  deadline.tv_nsec += 20000000;
+  world_is_blocked = 1;
+  world_blocked++;
+  if (pthread_cond_broadcast(&world_changed) != 0)
+    __builtin_trap();
+  world_unlock();
+}
+
+static void world_end_wait(void) {
+  if (!world_is_registered)
+    return;
+  world_lock();
+  world_resuming++;
+  while (world_epoch & 1)
+    world_wait();
+  if (!world_is_blocked || world_blocked == 0)
+    __builtin_trap();
+  world_blocked--;
+  world_is_blocked = 0;
+  world_resuming--;
+  if (pthread_cond_broadcast(&world_changed) != 0)
+    __builtin_trap();
+  world_unlock();
+}
+
+void llgo_wasi_gc_mutex_lock(pthread_mutex_t *mutex, uintptr_t chain,
+                             uintptr_t bottom, uintptr_t top) {
+  world_begin_wait(chain, bottom, top);
+  if (pthread_mutex_lock(mutex) != 0)
+    __builtin_trap();
+  world_end_wait();
+}
+
+void llgo_wasi_gc_cond_timedwait(pthread_cond_t *condition,
+                                pthread_mutex_t *mutex, int64_t wait_nanos,
+                                int monotonic, uintptr_t chain,
+                                uintptr_t bottom, uintptr_t top) {
+  world_begin_wait(chain, bottom, top);
+  if (wait_nanos < 0) {
+    if (pthread_cond_wait(condition, mutex) != 0)
+      __builtin_trap();
+    world_end_wait();
+    return;
+  }
+  struct timespec deadline;
+  if (clock_gettime(monotonic ? CLOCK_MONOTONIC : CLOCK_REALTIME, &deadline) != 0)
+    __builtin_trap();
+  deadline.tv_sec += (time_t)(wait_nanos / 1000000000);
+  deadline.tv_nsec += (long)(wait_nanos % 1000000000);
   if (deadline.tv_nsec >= 1000000000) {
     deadline.tv_sec++;
     deadline.tv_nsec -= 1000000000;
@@ -56,6 +114,7 @@ void llgo_wasi_gc_cond_timedwait(pthread_cond_t *condition,
   int status = pthread_cond_timedwait(condition, mutex, &deadline);
   if (status != 0 && status != ETIMEDOUT)
     __builtin_trap();
+  world_end_wait();
 }
 
 void llgo_wasi_gc_enter_begin(void) {
@@ -91,6 +150,10 @@ void llgo_wasi_gc_leave_end(void) {
 }
 
 int llgo_wasi_gc_pending(void) {
+  // The overwhelmingly common case needs no process-wide pthread lock.
+  // Only inspect world_owner while holding the lock after observing a stop.
+  if (!(atomic_load_explicit(&world_epoch, memory_order_acquire) & 1))
+    return 0;
   world_lock();
   int pending = (world_epoch & 1) &&
       !pthread_equal(world_owner, pthread_self());
@@ -108,6 +171,7 @@ int llgo_wasi_gc_registered(void) {
 void llgo_wasi_gc_park(uintptr_t chain, uintptr_t bottom, uintptr_t top) {
   llgo_gcroot_publish_thread(chain, bottom, top);
   world_lock();
+  world_resuming++;
   while ((world_epoch & 1) && !pthread_equal(world_owner, pthread_self())) {
     uint32_t epoch = world_epoch;
     if (world_seen_epoch != epoch) {
@@ -119,6 +183,9 @@ void llgo_wasi_gc_park(uintptr_t chain, uintptr_t bottom, uintptr_t top) {
     while (world_epoch == epoch)
       world_wait();
   }
+  world_resuming--;
+  if (pthread_cond_broadcast(&world_changed) != 0)
+    __builtin_trap();
   world_unlock();
 }
 
@@ -129,6 +196,10 @@ int llgo_wasi_gc_stop(void) {
   world_lock();
   if ((world_epoch & 1) || !world_is_registered || world_registered == 0)
     __builtin_trap();
+  // A new collection must let waiters leave the previous rendezvous first.
+  // Otherwise repeated runtime.GC calls can re-park them without Go progress.
+  while (world_resuming != 0)
+    world_wait();
   world_owner = pthread_self();
   world_stopped = 0;
   world_epoch++;
@@ -136,12 +207,13 @@ int llgo_wasi_gc_stop(void) {
   struct timespec deadline;
   if (clock_gettime(CLOCK_REALTIME, &deadline) != 0)
     __builtin_trap();
-  deadline.tv_nsec += 500000000;
+  deadline.tv_nsec += LLGO_WASI_GC_STOP_TIMEOUT_NS;
   if (deadline.tv_nsec >= 1000000000) {
     deadline.tv_sec++;
     deadline.tv_nsec -= 1000000000;
   }
-  while (world_stopped < world_registered - (uint32_t)world_is_registered) {
+  while (world_stopped + world_blocked <
+         world_registered - (uint32_t)world_is_registered) {
     int status = pthread_cond_timedwait(&world_changed, &world_mutex,
                                         &deadline);
     if (status == ETIMEDOUT) {

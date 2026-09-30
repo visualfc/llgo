@@ -680,8 +680,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	prog.EnableGCRoots(wasmGC)
 	prog.EnableLogicalGoroutineLocality(usesSingleWorkerWasmScheduler(conf))
-	prog.EnableThreadLocalGCRoots(wasmGC &&
-		(wasmWorkers.Enabled() || conf.Goos == "wasip1" && IsWasiThreadsEnabled()))
+	prog.EnableThreadLocalGCRoots(useThreadLocalGCRoots(conf, wasmGC, wasmWorkers))
 	prog.EnableCooperativeSafepoints(wasmGC || wasmWorkers.Enabled())
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
@@ -1069,6 +1068,12 @@ func resolveTestPthreadStackSize(conf *Config) {
 	if conf.Target != "" || conf.Goos != runtime.GOOS || conf.Goarch != runtime.GOARCH {
 		conf.PthreadStackSize = 0
 	}
+}
+
+// Shared-memory collectors need one root chain per host thread. The
+// single-worker scheduler and nogc builds keep their existing root model.
+func useThreadLocalGCRoots(conf *Config, wasmGC bool, workers wasmworkers.Config) bool {
+	return wasmGC && (workers.Enabled() || conf.Goos == "wasip1" && IsWasiThreadsEnabled())
 }
 
 func useShadowStack(goarch string) bool {

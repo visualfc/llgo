@@ -708,6 +708,7 @@ func initRuntimeFuncPCFramesSlow() {
 				return
 			}
 		}
+		pollRuntimeTableWait()
 		c.Usleep(1)
 	}
 }
@@ -853,6 +854,7 @@ func materializePrebuiltEntries() {
 			latomic.StoreUint32(&runtimePrebuiltEntriesOnce, 2)
 			return
 		default:
+			pollRuntimeTableWait()
 			c.Usleep(1)
 		}
 	}
@@ -1590,6 +1592,7 @@ func initRuntimePCLineFramesSlow() {
 				return
 			}
 		}
+		pollRuntimeTableWait()
 		c.Usleep(1)
 	}
 }

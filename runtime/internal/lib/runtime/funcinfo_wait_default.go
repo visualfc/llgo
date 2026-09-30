@@ -2,6 +2,4 @@
 
 package runtime
 
-const timerGCWaitQuantum = int64(0)
-
-func timerGCSafepoint() {}
+func pollRuntimeTableWait() {}

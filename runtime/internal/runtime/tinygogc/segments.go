@@ -21,6 +21,19 @@ const maxHeapSegments = 128
 var heapSegments [maxHeapSegments]heapSegment
 var heapSegmentCount int
 
+// libc arenas need not be returned in address order. Keep a separate sorted
+// index for conservative pointer lookup; logical block indices stay append-only.
+var heapSegmentsByAddress [maxHeapSegments]*heapSegment
+
+func (segment *heapSegment) configure(end uintptr) bool {
+	segment.end = end
+	totalSize := end - segment.start
+	metadataSize := (totalSize + blocksPerStateByte*bytesPerBlock) / (1 + blocksPerStateByte*bytesPerBlock)
+	segment.metadata = end - metadataSize
+	segment.last = segment.first + (segment.metadata-segment.start)/bytesPerBlock
+	return segment.last > segment.first
+}
+
 func addHeapSegment(start, end uintptr) bool {
 	if heapSegmentCount == maxHeapSegments || start >= end {
 		return false
@@ -33,13 +46,15 @@ func addHeapSegment(start, end uintptr) bool {
 	if heapSegmentCount != 0 {
 		segment.first = endBlock + 1
 	}
-	totalSize := end - start
-	metadataSize := (totalSize + blocksPerStateByte*bytesPerBlock) / (1 + blocksPerStateByte*bytesPerBlock)
-	segment.metadata = end - metadataSize
-	segment.last = segment.first + (segment.metadata-start)/bytesPerBlock
-	if segment.last <= segment.first || segment.last < segment.first {
+	if !segment.configure(end) {
 		return false
 	}
+	position := heapSegmentCount
+	for position > 0 && heapSegmentsByAddress[position-1].start > start {
+		heapSegmentsByAddress[position] = heapSegmentsByAddress[position-1]
+		position--
+	}
+	heapSegmentsByAddress[position] = segment
 	c.Memset(unsafe.Pointer(segment.metadata), 0, end-segment.metadata)
 	heapSegmentCount++
 	endBlock = segment.last
@@ -47,9 +62,15 @@ func addHeapSegment(start, end uintptr) bool {
 }
 
 func segmentForBlock(block uintptr) *heapSegment {
-	for index := 0; index < heapSegmentCount; index++ {
-		segment := &heapSegments[index]
-		if block >= segment.first && block <= segment.last {
+	low, high := 0, heapSegmentCount
+	for low < high {
+		mid := low + (high-low)/2
+		segment := &heapSegments[mid]
+		if block < segment.first {
+			high = mid
+		} else if block > segment.last {
+			low = mid + 1
+		} else {
 			return segment
 		}
 	}
@@ -58,25 +79,22 @@ func segmentForBlock(block uintptr) *heapSegment {
 }
 
 func segmentForAddress(address uintptr) *heapSegment {
-	for index := 0; index < heapSegmentCount; index++ {
-		segment := &heapSegments[index]
-		if address >= segment.start && address < segment.metadata {
-			return segment
+	low, high := 0, heapSegmentCount
+	for low < high {
+		mid := low + (high-low)/2
+		segment := heapSegmentsByAddress[mid]
+		if address < segment.start {
+			high = mid
+		} else if address >= segment.end {
+			low = mid + 1
+		} else {
+			if address < segment.metadata {
+				return segment
+			}
+			return nil
 		}
 	}
 	return nil
-}
-
-func nextSegmentBlock(block uintptr) (uintptr, bool) {
-	for index := 0; index < heapSegmentCount; index++ {
-		if heapSegments[index].last == block {
-			if index+1 < heapSegmentCount {
-				return heapSegments[index+1].first, true
-			}
-			return 0, true
-		}
-	}
-	return 0, false
 }
 
 func heapUsableSize() uintptr {
