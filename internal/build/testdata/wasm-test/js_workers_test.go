@@ -135,6 +135,56 @@ finalizersComplete:
 	}
 }
 
+func TestRetiredWorkerFiberReleasesFinalizer(t *testing.T) {
+	// A finalizable allocation can itself be kept alive by an unrelated
+	// conservative root. Check independent retired fibers before concluding
+	// that the fiber storage remains rooted.
+	for range 3 {
+		if retiredWorkerFiberReleasesFinalizer(t) {
+			return
+		}
+	}
+	t.Fatal("finalizers stayed reachable after their worker fibers exited")
+}
+
+//go:noinline
+func retiredWorkerFiberReleasesFinalizer(t *testing.T) bool {
+	finalized := make(chan struct{})
+	installed := make(chan struct{})
+	go func() {
+		installWorkerFinalizerBarrier(finalized)
+		close(installed)
+	}()
+	<-installed
+	// The notification precedes the goroutine's return. Run a later task on
+	// each worker so its scheduler has retired the finished fiber before GC.
+	settled := make(chan int, 2)
+	for range 2 {
+		wasmworkers.GoIndependent(func() { settled <- schedulerProcID() })
+	}
+	owners := map[int]bool{}
+	for range 2 {
+		owners[<-settled] = true
+	}
+	if len(owners) != 2 {
+		t.Fatalf("fiber retirement reached %d workers, want 2", len(owners))
+	}
+
+	// The G has exited, but a conservative reference in its retired fiber
+	// storage must not keep the finalizable object alive indefinitely.
+	for range 24 {
+		clobberWorkerStack(16, 1)
+		runtime.GC()
+		select {
+		case <-finalized:
+			return true
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	return false
+}
+
 //go:noinline
 func installWorkerFinalizerBarrier(done chan<- struct{}) {
 	barrier := &workerFinalizerBarrier{}

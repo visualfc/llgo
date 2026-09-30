@@ -79,8 +79,16 @@ run_worker_llgo_test() {
 	# The worker test fixture runs multiple Wasm tests in one binary. Keep
 	# its Go test alarm below the outer 300s process limit but allow CI variance.
 	run_with_timeout env LLGO_WASM_WORKERS=2 "${llgo_cmd}" test \
-		-target "${target}" -emulator -v -count=1 -timeout=2m \
+		-target "${target}" -emulator -v -count=1 -timeout=180s \
 		"${test_fixture}" 2>&1 | tee "${output}"
+	grep -Fq "PASS" "${output}"
+}
+
+run_worker_pool_gc_test() {
+	local output="${work_dir}/test-pool-gc-emscripten.out"
+	run_with_timeout env LLGO_WASM_WORKERS=2 "${llgo_cmd}" test \
+		-target emscripten -emulator -v -count=1 -timeout=180s \
+		-run '^TestPoolAfterGC$' "${repo_root}/test/std/sync" 2>&1 | tee "${output}"
 	grep -Fq "PASS" "${output}"
 }
 
@@ -166,6 +174,7 @@ run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs \
 # Verify that the public test command selects and executes the worker runtime.
 run_worker_llgo_test emscripten test-workers-emscripten
 run_worker_llgo_test emscripten-memory64 test-workers-memory64
+run_worker_pool_gc_test
 
 run_browser_acceptance "$(find_browser)"
 

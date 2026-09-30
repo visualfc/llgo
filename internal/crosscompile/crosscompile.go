@@ -96,6 +96,13 @@ type NativeToolchain struct {
 type WasmProfile string
 
 const (
+	// WASIThreadedEmulator runs the shared-memory module with WAMR's classic
+	// interpreter. wasi-libc manages its own heap inside the module memory.
+	// The runner resolves the working-directory preopen to an absolute path
+	// before execution and also grants Go's default /tmp directory.
+	// The 64-client select stress needs more than 64 concurrent pthreads.
+	WASIThreadedEmulator = `iwasm --max-threads=128 --stack-size=1048576 --heap-size=0 --dir=. --dir=/tmp "{}"`
+
 	WasmProfileNone WasmProfile = ""
 	WasmProfileJ32  WasmProfile = "j32"
 	WasmProfileJ64  WasmProfile = "j64"
@@ -700,8 +707,12 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		}
 		// WASI-SDK configuration
 		triple := "wasm32-wasip1"
+		clangTriple := targetTriple
 		if wasiThreads {
 			triple = "wasm32-wasip1-threads"
+			// Clang selects crt1 from the target triple, independently of -L.
+			// The threads crt1 initializes the main pthread TLS before Go runs.
+			clangTriple = triple
 		}
 
 		// Set up flags for the WASI-SDK or wasi-libc
@@ -714,7 +725,7 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 		// Add compiler flags
 		export.CCFLAGS = []string{
 			level.Flag(),
-			"-target", targetTriple,
+			"-target", clangTriple,
 			"--sysroot=" + sysrootDir,
 			"-resource-dir=" + libclangDir,
 			"-matomics",
@@ -772,8 +783,8 @@ func useWithGOARMAndToolchain(goos, goarch, goarm string, wasiThreads, forceEspC
 			export.LDFLAGS = append(
 				export.LDFLAGS,
 				"-Wl,--initial-memory=67108864", // Preserve the shared-memory backend's host contract.
+				"-Wl,--max-memory=268435456",    // Leave room for libc and additional Go GC arenas.
 				"-Wl,--import-memory",
-				"-lwasi-emulated-pthread",
 				"-lpthread",
 			)
 		} else {
@@ -1205,6 +1216,9 @@ func UseWithGOARMAndToolchain(goos, goarch, goarm, targetName string, wasiThread
 	export.GOOS = config.GOOS
 	export.GOARCH = config.GOARCH
 	export.Emulator = env.ExpandEnvWithDefault(config.Emulator, buildEnvMap(env.LLGoROOT()), "{}")
+	if wasiThreads && wasmProvider == WasmProviderWASI && (targetName == "wasi" || targetName == "wasip1") {
+		export.Emulator = WASIThreadedEmulator
+	}
 	export.BuildTags = appendUniqueStrings(export.BuildTags, config.BuildTags...)
 	if wasmProvider == WasmProviderEmscripten {
 		// The existing raw js/wasm path remains browser/worker-only. Named

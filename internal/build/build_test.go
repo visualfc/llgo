@@ -912,19 +912,23 @@ func TestConfigureWasmGC(t *testing.T) {
 	}
 }
 
-func TestConfigureWasmGCRejectsWASIThreads(t *testing.T) {
+func TestConfigureWasmGCWASIThreads(t *testing.T) {
 	t.Setenv("LLGO_WASI_THREADS", "1")
 	conf := Config{Goos: "wasip1", Goarch: "wasm", Tags: "llgo.wasm.gc.linear"}
-	if _, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err == nil {
-		t.Fatal("expected llgo.wasm.gc.linear with WASI threads to fail")
+	if enabled, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err != nil || !enabled {
+		t.Fatalf("explicit WASI threaded GC = %v, %v; want true, nil", enabled, err)
 	}
 	conf.Tags = ""
-	if _, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err == nil || !strings.Contains(err.Error(), "-tags nogc") {
-		t.Fatalf("WASI threads without a collector returned %v, want an actionable error", err)
+	if enabled, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err != nil || !enabled || !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "llgo.wasm.gc.linear") {
+		t.Fatalf("default WASI threaded GC = %v, %v, tags %q; want enabled", enabled, err, conf.Tags)
 	}
 	conf.Tags = "nogc"
 	if enabled, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err != nil || enabled {
-		t.Fatalf("experimental WASI threads with nogc = %v, %v; want false, nil", enabled, err)
+		t.Fatalf("WASI threads with nogc = %v, %v; want false, nil", enabled, err)
+	}
+	conf.Tags = "nogc,llgo.wasm.gc.linear"
+	if _, err := configureWasmGC(&conf, &crosscompile.Export{WasmProfile: crosscompile.WasmProfileW32}); err == nil {
+		t.Fatal("WASI threads accepted conflicting collector tags")
 	}
 }
 
@@ -1003,6 +1007,36 @@ func TestConfigureWasmWorkers(t *testing.T) {
 	}
 	if !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "llgo.wasm.gc.linear") {
 		t.Fatalf("worker GC tag missing from %q", conf.Tags)
+	}
+}
+
+func TestConfigureWasmWorkersReportsInvalidConfiguration(t *testing.T) {
+	t.Setenv(llgoWasmWorkers, "invalid")
+	conf := &Config{Goos: "js", Goarch: "wasm"}
+	export := &crosscompile.Export{WasmProfile: crosscompile.WasmProfileJ32, WasmProvider: crosscompile.WasmProviderEmscripten}
+	if _, err := configureWasmWorkers(conf, export); err == nil {
+		t.Fatal("invalid worker count was accepted")
+	}
+	if _, err := Do(nil, conf); err == nil || !strings.Contains(err.Error(), llgoWasmWorkers) {
+		t.Fatalf("build error = %v, want invalid worker configuration", err)
+	}
+}
+
+func TestConfigureWasmWorkersReportsMissingHostShim(t *testing.T) {
+	root := t.TempDir()
+	runtimeDir := filepath.Join(root, env.LLGoRuntimePkgName)
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(runtimeDir, "go.mod"), []byte("module "+env.LLGoRuntimePkg+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_ROOT", root)
+	t.Setenv(llgoWasmWorkers, "2")
+	conf := &Config{Goos: "js", Goarch: "wasm"}
+	export := &crosscompile.Export{WasmProfile: crosscompile.WasmProfileJ32, WasmProvider: crosscompile.WasmProviderEmscripten}
+	if _, err := configureWasmWorkers(conf, export); err == nil || !strings.Contains(err.Error(), "worker host shim") {
+		t.Fatalf("worker configuration error = %v, want missing host shim", err)
 	}
 }
 

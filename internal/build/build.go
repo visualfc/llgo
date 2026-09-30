@@ -680,7 +680,8 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	prog.EnableDeadcodeDrop(conf.deadcodeDropEnabled())
 	prog.EnableGCRoots(wasmGC)
 	prog.EnableLogicalGoroutineLocality(usesSingleWorkerWasmScheduler(conf))
-	prog.EnableThreadLocalGCRoots(wasmGC && wasmWorkers.Enabled())
+	prog.EnableThreadLocalGCRoots(wasmGC &&
+		(wasmWorkers.Enabled() || conf.Goos == "wasip1" && IsWasiThreadsEnabled()))
 	prog.EnableCooperativeSafepoints(wasmGC || wasmWorkers.Enabled())
 	if conf.PthreadStackSize > 0 {
 		prog.SetPthreadStackSize(uint64(conf.PthreadStackSize))
@@ -1272,6 +1273,9 @@ func goCompatibleWasmRunner(conf *Config) string {
 	case "js":
 		return fmt.Sprintf("node %q --browser-only %q", filepath.Join(env.LLGoROOT(), "targets", "emscripten-runner.mjs"), "{}")
 	case "wasip1":
+		if IsWasiThreadsEnabled() {
+			return crosscompile.WASIThreadedEmulator
+		}
 		runtimeCommand := WasmRuntime()
 		switch runtimeCommand {
 		case "wasmtime":
@@ -1481,13 +1485,12 @@ func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 		defaultEnabled = true
 	case crosscompile.WasmProfileW32:
 		if IsWasiThreadsEnabled() {
-			if explicit {
-				return false, errors.New("llgo.wasm.gc.linear requires single-worker WASI (set LLGO_WASI_THREADS=0)")
+			if slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
+				if explicit {
+					return false, errors.New("WASI threads cannot combine nogc with llgo.wasm.gc.linear")
+				}
+				return false, nil
 			}
-			if !slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
-				return false, errors.New("WASI threads currently require -tags nogc until a threaded collector is available")
-			}
-			return false, nil
 		}
 		defaultEnabled = true
 	case crosscompile.WasmProfileNone:

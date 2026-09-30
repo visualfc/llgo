@@ -174,6 +174,16 @@ func TestDriverReportAndSummary(t *testing.T) {
 			}
 		})
 	}
+	t.Run("W32-WASI-threads", func(t *testing.T) {
+		t.Setenv("LLGO_WASI_THREADS", "1")
+		path := filepath.Join(root, "W32-WASI-threads.json")
+		if err := run("W32-WASI", path, program, program); err != nil {
+			t.Fatal(err)
+		}
+		if r := readReport(t, path); !strings.Contains(r.Contract, "WAMR WASI threads") {
+			t.Fatalf("threaded WASI contract = %q", r.Contract)
+		}
+	})
 	for _, mode := range []string{"bad-env", "env-failure", "list-failure", "bad-list", "missing-package", "test-failure"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("LLGO_WASMSTDLIB_TEST_MODE", mode)
@@ -337,6 +347,7 @@ func TestProfilesAndCommands(t *testing.T) {
 }
 
 func TestProfileSourceContexts(t *testing.T) {
+	t.Setenv("LLGO_WASI_THREADS", "0")
 	tests := map[string]struct{ tags, cgo string }{
 		"J32-GoJS":         {"llgo,osusergo,llgo.wasm.gc.linear", "0"},
 		"J32-Emscripten":   {"llgo,osusergo,llgo.wasm.gc.linear,llgo.wasm.emscripten", "1"},
@@ -354,6 +365,18 @@ func TestProfileSourceContexts(t *testing.T) {
 		if tags != expected.tags || cgo != expected.cgo {
 			t.Errorf("%s source context = (%q, %q), want (%q, %q)", name, tags, cgo, expected.tags, expected.cgo)
 		}
+	}
+}
+
+func TestWASIThreadSourceContext(t *testing.T) {
+	t.Setenv("LLGO_WASI_THREADS", "1")
+	p, err := selectProfile("W32-WASI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags, cgo := sourceContext(p)
+	if !strings.Contains(tags, "llgo.wasi_threads") || cgo != "1" {
+		t.Fatalf("threaded W32 source context = (%q, %q)", tags, cgo)
 	}
 }
 

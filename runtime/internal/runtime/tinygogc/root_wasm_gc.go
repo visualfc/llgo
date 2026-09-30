@@ -1,4 +1,4 @@
-//go:build llgo && js && wasm && llgo.wasm.gc.linear && llgo.wasm.workers
+//go:build llgo && wasm && llgo.wasm.gc.linear && !nogc && !baremetal
 
 package tinygogc
 
@@ -12,8 +12,8 @@ import (
 // FreeRoot removes them. The intrusive links live in the allocations, so
 // publishing a root does not require another potentially collecting
 // allocation. This provides the same scanned, uncollectable lifetime as
-// BDWGC's GC_malloc_uncollectable for scheduler records that cross host
-// boundaries.
+// BDWGC's GC_malloc_uncollectable for scheduler records and TLS slots that
+// cross host boundaries or outlive a Go stack frame.
 var rootAllocations *rootAllocation
 
 type rootAllocation struct {
@@ -61,4 +61,5 @@ func FreeRoot(ptr unsafe.Pointer) {
 	root.prev = nil
 	root.next = nil
 	unlock(&gcMutex)
+	releaseRootStorage(unsafe.Pointer(root))
 }

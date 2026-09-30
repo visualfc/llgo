@@ -8,7 +8,9 @@ if (!browser || !url) {
   throw new Error("usage: node browser-runner.mjs <chrome> <url>");
 }
 
-const deadline = Date.now() + 30_000;
+// Shared CI runners can spend tens of seconds starting Chrome and the memory64
+// worker even after the Node acceptance run has passed.
+const deadline = Date.now() + 90_000;
 const profile = await mkdtemp(join(tmpdir(), "llgo-wasm-chrome-"));
 const chrome = spawn(browser, [
   "--headless=new",
