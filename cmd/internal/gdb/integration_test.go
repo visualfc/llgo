@@ -155,7 +155,7 @@ __attribute__((used)) int __llgo_debugger_marker_v1 = 1;
 __attribute__((used, visibility("hidden")))
 unsigned char __llgo_debugger_abi_v1[16] = {
 	0x4c, 0x4c, 0x47, 0x4f, 0x44, 0x42, 0x47, 0,
-	1, 2, 1, 1, 2, sizeof(void *), 1, 0
+	1, 2, 2, 1, 0, sizeof(void *), 1, 0
 };
 #endif
 int main(void) { return 0; }

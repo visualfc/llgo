@@ -311,7 +311,7 @@ TEST_CASES = [
     test_case("goroutine_values", [
         ("goroutineReadySum", "3"),
         ("goroutines",
-         "count=3 roots=1 children=2 running=3 mapped=3 "
+         "count=3 roots=1 children=2 running=1 waiting=2 mapped=3 "
          "unique-threads=3",
          "goroutines"),
         ("goroutine stacks", "root=1 children=2", "goroutine-stacks"),
@@ -607,13 +607,15 @@ class LLDBDebugger:
             for goroutine in goroutines)
         running = sum(
             goroutine["status"] == "running" for goroutine in goroutines)
+        waiting = sum(
+            goroutine["status"] == "waiting" for goroutine in goroutines)
         mapped = sum(
             goroutine["thread"] != "unavailable" for goroutine in goroutines)
         unique_threads = len({goroutine["thread"] for goroutine in goroutines
                               if goroutine["thread"] != "unavailable"})
         return (
             f"count={len(goroutines)} roots={roots} children={children} "
-            f"running={running} mapped={mapped} "
+            f"running={running} waiting={waiting} mapped={mapped} "
             f"unique-threads={unique_threads}")
 
     def get_goroutine_stack_summary(self) -> Optional[str]:
@@ -640,7 +642,7 @@ class LLDBDebugger:
             output = result.GetOutput() or ""
             if (not result.Succeeded() or
                     expected_function not in output or
-                    f"goroutine {goroutine['goid']} [running] thread "
+                    f"goroutine {goroutine['goid']} [{goroutine['status']}] thread "
                     not in output):
                 return None
         return f"root={len(roots)} children={len(children)}"

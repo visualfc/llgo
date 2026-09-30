@@ -316,8 +316,7 @@ def register_commands(debugger: lldb.SBDebugger) -> None:
         'command script add -f llgo_plugin.print_goroutines llgo goroutines')
     debugger.HandleCommand(
         'command script add -f llgo_plugin.print_goroutine llgo goroutine')
-    if inspect_target(debugger.GetSelectedTarget()).supported:
-        register_type_formatters(debugger)
+    register_type_formatters(debugger)
 
 
 def _type_options(hide_children: bool = False) -> int:
@@ -439,10 +438,19 @@ def _read_debugger_record(target: lldb.SBTarget) -> Optional[bytes]:
                 symbol = module.GetSymbolAtIndex(symbol_index)
                 if symbol.GetName() != LLGO_DEBUGGER_RECORD_SYMBOL:
                     continue
-                error = lldb.SBError()
-                raw = target.ReadMemory(
-                    symbol.GetStartAddress(), LLGO_DEBUGGER_RECORD_SIZE, error)
-                if error.Success() and raw is not None:
+                address = symbol.GetStartAddress()
+                # Before launch there may be no readable process address. The
+                # constant record is also available in the module's file data.
+                section = address.GetSection()
+                raw = _sbdata_bytes(section.GetSectionData(
+                    address.GetOffset(), LLGO_DEBUGGER_RECORD_SIZE),
+                    LLGO_DEBUGGER_RECORD_SIZE) if section.IsValid() else None
+                if raw is None:
+                    error = lldb.SBError()
+                    raw = target.ReadMemory(address, LLGO_DEBUGGER_RECORD_SIZE, error)
+                    if not error.Success():
+                        raw = None
+                if raw is not None:
                     records.append(bytes(raw))
 
     if not records:

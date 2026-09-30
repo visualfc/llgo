@@ -40,7 +40,7 @@ typedef struct thread_node {
 } thread_node;
 static void *registry_lock;
 /* Read only while all debugger threads are stopped. Owned by registry_lock. */
-thread_node *llgo_debugger_threads_v1;
+__declspec(dllexport) thread_node *llgo_debugger_threads_v1;
 static _Thread_local thread_node *current;
 static _Thread_local uintptr_t *fault_buffer;
 

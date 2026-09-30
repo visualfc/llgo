@@ -44,7 +44,7 @@ a thin compatibility wrapper. Adapter commands live under `llgo`, including
 `llgo goroutine ID bt`; stock LLDB commands and aliases
 such as `p` and `v` are left unchanged. `llgo status` reports the recognized
 debugger schema, runtime-layout version, target triple, pointer size, and byte
-order. Unknown marker versions disable only the LLGo-specific commands; raw
+order. Unknown or missing structured runtime records disable only the LLGo-specific commands; raw
 LLDB debugging remains available.
 
 For recognized LLGo targets, the adapter provides runtime-aware views for
@@ -53,7 +53,9 @@ goroutines. Maps expose
 their length and typed key/value children, including indirect large entries;
 channels expose length, capacity, closed state, and buffered values in receive
 order. `llgo goroutines` reports each live goroutine's runtime state, parent,
-G/M/P ownership, and matching debugger thread. `llgo goroutine ID bt` prints
+native OS thread ID, and matching debugger thread. The adapter reuses the
+production traceback registry on Darwin, Linux, and Windows; targets without
+that registry report goroutine inspection unavailable. `llgo goroutine ID bt` prints
 that goroutine's native stack without changing the selected LLDB thread. Named
 container types are covered as well as predeclared types. Explicit
 `llgo print` slice views respect LLDB's `target.max-children-count` setting.
