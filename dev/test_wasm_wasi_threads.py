@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Exercise the experimental WASI pthread backend under WAMR."""
+"""Exercise the default WASI pthread backend under WAMR."""
 
 import os
 import pathlib
@@ -89,7 +89,7 @@ def main():
 
     env = os.environ.copy()
     env["LLGO_ROOT"] = str(ROOT)
-    env["LLGO_WASI_THREADS"] = "1"
+    env.pop("LLGO_WASI_THREADS", None)
     env["PATH"] = str(pathlib.Path(iwasm).resolve().parent) + os.pathsep + env["PATH"]
     with tempfile.TemporaryDirectory(prefix="llgo-wasi-threads-") as directory:
         run_probe(env, directory, "startup", "wasm-wasi-thread-startup", "nogc",

@@ -186,7 +186,7 @@ func TestWasmReflectTypeDescriptorsCarryBridges(t *testing.T) {
 	buildContext := build.Default
 	build.Default.GOOS = "wasip1"
 	build.Default.GOARCH = "wasm"
-	build.Default.BuildTags = []string{"llgo"}
+	build.Default.BuildTags = []string{"llgo", "llgo.wasi_threads"}
 	t.Cleanup(func() { build.Default = buildContext })
 	prog.SetRuntime(func() *types.Package {
 		pkg, err := importer.For("source", nil).Import(PkgRuntime)

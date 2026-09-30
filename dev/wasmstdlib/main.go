@@ -54,14 +54,7 @@ func selectProfile(name string) (profile, error) {
 }
 
 func wasiThreadsSelected(p profile) bool {
-	if p.Reference || p.Target != "wasi" {
-		return false
-	}
-	switch strings.ToLower(os.Getenv("LLGO_WASI_THREADS")) {
-	case "1", "true", "on":
-		return true
-	}
-	return false
+	return !p.Reference && p.Target == "wasi"
 }
 
 func sourceContext(p profile) (tags, cgo string) {

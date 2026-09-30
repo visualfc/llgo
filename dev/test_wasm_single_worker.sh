@@ -6,7 +6,6 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${repo_root}/dev/wasm_ci_report.sh"
 llgo_cmd="${LLGO:-llgo}"
 node_cmd="${NODE:-node}"
-wasmtime_cmd="${WASMTIME:-wasmtime}"
 scheduler_fixture="${repo_root}/internal/build/testdata/wasm-scheduler"
 timer_fixture="${repo_root}/internal/build/testdata/wasm-timers"
 callback_fixture="${repo_root}/internal/build/testdata/wasm-callback"
@@ -33,7 +32,7 @@ trap finish EXIT
 export LLGO_WASM_TEST_ENV=wasm-env-ok
 
 case "${suite}" in
-all | runtime | test-command | gc-heap) ;;
+all | runtime | test-command) ;;
 *)
 	echo "unknown single-worker WebAssembly suite: ${suite}" >&2
 	exit 2
@@ -160,19 +159,6 @@ run_emscripten() {
 	grep -Fq "${expected}" "${work_dir}/${name}.out"
 }
 
-run_wasi() {
-	local target="$1"
-	local fixture="$2"
-	local expected="$3"
-	local name="$4"
-	local module="${work_dir}/${name}.wasm"
-
-	"${llgo_cmd}" build -target "${target}" -o "${module}" "${fixture}"
-	wasm-tools validate --features all "${module}"
-	run_with_timeout "${wasmtime_cmd}" run -W exceptions=y \
-		--env LLGO_WASM_TEST_ENV="${LLGO_WASM_TEST_ENV}" "${module}" 2>&1 | tee "${work_dir}/${name}.out"
-	grep -Fq "${expected}" "${work_dir}/${name}.out"
-}
 
 run_browser() {
 	local module="$1"
@@ -220,64 +206,6 @@ run_host_call_boundaries() {
 	done
 }
 
-wasi_heap_layout() {
-	# Instantiate without starting Go: startup itself needs the GC heap. These
-	# linker exports let the test derive the boundary from the actual module.
-	"${node_cmd}" - "$1" <<'JS'
-const fs = require('node:fs');
-const {WASI} = require('node:wasi');
-const wasi = new WASI({version: 'preview1', args: ['heap-layout'], env: {}, preopens: {}});
-const module = new WebAssembly.Module(fs.readFileSync(process.argv[2]));
-const instance = new WebAssembly.Instance(module, {wasi_snapshot_preview1: wasi.wasiImport});
-console.log(instance.exports.__global_base.value, instance.exports.__heap_base.value,
-  instance.exports.memory.buffer.byteLength);
-JS
-}
-
-run_wasi_empty_heap() {
-	local response="${work_dir}/heap-objects.rsp"
-	local module="${work_dir}/gc-wasi-objects.wasm"
-	local heap_flags base heap memory aligned_base boundary_heap boundary_memory
-	local wasm_page_size=65536
-	# An object-only user response file must not acquire an implicit 54 MiB
-	# heap. No response-file parsing is needed to preserve user memory policy.
-	clang --target=wasm32-unknown-unknown -c -x c /dev/null -o "${work_dir}/heap-empty.o"
-	printf '"%s"\n' "${work_dir}/heap-empty.o" > "${response}"
-	heap_flags="${LDFLAGS:-} -Wl,@${response} -Wl,--export=__heap_base,--export=__global_base"
-	# Reuse package archives between these links. Changing only linker options
-	# must not require rebuilding the runtime; the rest of the suite keeps its
-	# caller-selected cache policy.
-	LLGO_BUILD_CACHE=on LDFLAGS="${heap_flags}" \
-		run_wasi wasi "${gc_fixture}" "wasm gc ok" "gc-wasi-objects"
-	read -r base heap memory < <(wasi_heap_layout "${module}")
-	echo "WASI object response: heap base=${heap}, initial memory=${memory}"
-	if (( heap > memory || memory - heap >= wasm_page_size )); then
-		echo "unexpected initial heap for object response: base=${heap}, memory=${memory}" >&2
-		exit 1
-	fi
-
-	# Shift static data by its page-rounding slack to create an exact, real
-	# __heap_base == memory.size boundary, independent of fixture/code size.
-	aligned_base=$((base + memory - heap))
-	heap_flags+=" -Wl,--initial-heap=0,--global-base=${aligned_base}"
-	LLGO_BUILD_CACHE=on LDFLAGS="${heap_flags}" \
-		run_wasi wasi "${gc_fixture}" "wasm gc ok" "gc-wasi-empty"
-	read -r base boundary_heap boundary_memory < <(wasi_heap_layout "${work_dir}/gc-wasi-empty.wasm")
-	echo "WASI zero heap: heap base=${boundary_heap}, initial memory=${boundary_memory}"
-	if (( boundary_heap != boundary_memory )); then
-		echo "zero-heap test missed boundary: base=${boundary_heap}, memory=${boundary_memory}" >&2
-		exit 1
-	fi
-
-	# The same valid module must fail clearly if the host cannot grow its empty
-	# heap. Neither an arbitrary trap nor a link failure satisfies this check.
-	module="${work_dir}/gc-wasi-empty-limited.wasm"
-	LLGO_BUILD_CACHE=on LDFLAGS="${heap_flags} -Wl,--max-memory=${boundary_memory}" \
-		"${llgo_cmd}" build -target wasi -o "${module}" "${gc_fixture}"
-	wasm-tools validate --features all "${module}"
-	expect_failure "gc: invalid heap range" "${wasmtime_cmd}" run -W exceptions=y "${module}"
-}
-
 run_llgo_run() {
 	local target="$1"
 	local fixture="$2"
@@ -289,7 +217,7 @@ run_llgo_run() {
 
 	# Exercise the public command and its target-owned runner. Other fixtures in
 	# this script retain explicit artifacts for wasm-tools validation, while this
-	# path verifies that users do not need to assemble Node or Wasmtime commands.
+	# path verifies that users do not need to assemble host runner commands.
 	echo "testing public llgo run command for ${target}"
 	run_with_timeout env TMPDIR="${temp_dir}" "${llgo_cmd}" run -target "${target}" -emulator "${fixture}" 2>&1 | tee "${output}"
 	grep -Fq "${expected}" "${output}"
@@ -387,14 +315,12 @@ if [[ "${suite}" == "all" || "${suite}" == "runtime" ]]; then
 # conservative-root assumptions, alongside the real Wasm lifecycle fixtures.
 go -C "${repo_root}" test ./internal/build -run '^TestWasmFinalizerCandidates$' -count=1
 
-# Canonical hosted targets exercise the same scheduler semantics under J32
-# Emscripten, J64 Emscripten Memory64, and W32 WASI Preview 1.
+# Single-worker browser targets exercise Fiber/Asyncify scheduling.
+# W32 pthread scheduling and segmented GC live in test_wasm_wasi_threads.py.
 wasm_ci_run_case EC32/emscripten scheduler 1 0 0 0 0 \
 	run_emscripten emscripten emscripten-runner.mjs "${scheduler_fixture}" "wasm scheduler ok" "scheduler-emscripten"
 wasm_ci_run_case EC64/emscripten-memory64 scheduler 1 0 0 0 0 \
 	run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs "${scheduler_fixture}" "wasm scheduler ok" "scheduler-memory64"
-wasm_ci_run_case WC32/wasi scheduler 1 0 0 0 0 \
-	run_wasi wasi "${scheduler_fixture}" "wasm scheduler ok" "scheduler-wasi"
 
 wasm_ci_run_case EC32/emscripten scheduler-deadlock 1 1 0 0 0 \
 	expect_failure "fatal error: all goroutines are asleep - deadlock!" \
@@ -408,12 +334,6 @@ wasm_ci_run_case EC64/emscripten-memory64 scheduler-deadlock 1 1 0 0 0 \
 wasm_ci_run_case EC64/emscripten-memory64 scheduler-main-goexit 1 1 0 0 0 \
 	expect_failure "fatal error: no goroutines (main called runtime.Goexit) - deadlock!" \
 	env LLGO_WASM_SCHEDULER_MAIN_GOEXIT=1 "${node_cmd}" "${repo_root}/targets/emscripten-memory64-runner.mjs" "${work_dir}/scheduler-memory64.mjs"
-wasm_ci_run_case WC32/wasi scheduler-deadlock 1 1 0 0 0 \
-	expect_failure "fatal error: all goroutines are asleep - deadlock!" \
-	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_DEADLOCK=1 "${work_dir}/scheduler-wasi.wasm"
-wasm_ci_run_case WC32/wasi scheduler-main-goexit 1 1 0 0 0 \
-	expect_failure "fatal error: no goroutines (main called runtime.Goexit) - deadlock!" \
-	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_MAIN_GOEXIT=1 "${work_dir}/scheduler-wasi.wasm"
 
 # Reuse the scheduler artifacts to verify that unrecovered panics retain Go
 # function names under every canonical host provider.
@@ -421,8 +341,6 @@ expect_failure "main.panicTracebackCaller" \
 	env LLGO_WASM_SCHEDULER_PANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-runner.mjs" "${work_dir}/scheduler-emscripten.mjs"
 expect_failure "main.panicTracebackCaller" \
 	env LLGO_WASM_SCHEDULER_PANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-memory64-runner.mjs" "${work_dir}/scheduler-memory64.mjs"
-expect_failure "main.panicTracebackCaller" \
-	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_PANIC_TRACEBACK=1 "${work_dir}/scheduler-wasi.wasm"
 
 # A recovered panic rethrown from nested deferred activations keeps the
 # original panic site, matching Go's same-value repanic traceback semantics.
@@ -430,8 +348,6 @@ expect_failure "main.repanicTracebackOrigin" \
 	env LLGO_WASM_SCHEDULER_REPANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-runner.mjs" "${work_dir}/scheduler-emscripten.mjs"
 expect_failure "main.repanicTracebackOrigin" \
 	env LLGO_WASM_SCHEDULER_REPANIC_TRACEBACK=1 "${node_cmd}" "${repo_root}/targets/emscripten-memory64-runner.mjs" "${work_dir}/scheduler-memory64.mjs"
-expect_failure "main.repanicTracebackOrigin" \
-	"${wasmtime_cmd}" run -W exceptions=y --env LLGO_WASM_SCHEDULER_REPANIC_TRACEBACK=1 "${work_dir}/scheduler-wasi.wasm"
 
 # Exercise the CLI-level failure boundary in CI, not only the runners in
 # isolation. The other public run calls below cover successful EC32, EC64,
@@ -446,8 +362,6 @@ wasm_ci_run_case EC32/emscripten timers 1 0 0 0 0 \
 	run_emscripten emscripten emscripten-runner.mjs "${timer_fixture}" "wasm timers ok" "timers-emscripten"
 wasm_ci_run_case EC64/emscripten-memory64 timers 1 0 0 0 0 \
 	run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs "${timer_fixture}" "wasm timers ok" "timers-memory64"
-wasm_ci_run_case WC32/wasi timers 1 0 0 0 0 \
-	run_wasi wasi "${timer_fixture}" "wasm timers ok" "timers-wasi"
 
 # R2 enables the non-moving collector by default for each canonical
 # single-worker hosted target. This fixture covers active and suspended G roots,
@@ -457,8 +371,6 @@ wasm_ci_run_case EC32/emscripten gc 1 0 0 0 0 \
 	run_emscripten emscripten emscripten-runner.mjs "${gc_fixture}" "wasm gc ok" "gc-emscripten"
 wasm_ci_run_case EC64/emscripten-memory64 gc 1 0 0 0 0 \
 	run_emscripten emscripten-memory64 emscripten-memory64-runner.mjs "${gc_fixture}" "wasm gc ok" "gc-memory64"
-wasm_ci_run_case WC32/wasi gc 1 0 0 0 0 \
-	run_wasi wasi "${gc_fixture}" "wasm gc ok" "gc-wasi"
 
 # Finalizers, cleanups, and weak references share the collector lifecycle but
 # have additional ordering, cancellation, and dynamic-call ABI requirements.
@@ -466,8 +378,6 @@ wasm_ci_run_case EC32/emscripten lifecycle 1 0 0 0 0 \
 	run_llgo_run emscripten "${lifecycle_fixture}" "wasm lifecycle ok" "lifecycle-emscripten"
 wasm_ci_run_case EC64/emscripten-memory64 lifecycle 1 0 0 0 0 \
 	run_llgo_run emscripten-memory64 "${lifecycle_fixture}" "wasm lifecycle ok" "lifecycle-memory64"
-wasm_ci_run_case WC32/wasi lifecycle 1 0 0 0 0 \
-	run_llgo_run wasi "${lifecycle_fixture}" "wasm lifecycle ok" "lifecycle-wasi"
 
 # A registered JS callback is a host wake source even when no Go timer exists.
 # This catches treating an empty timer heap as an immediate deadlock.
@@ -489,8 +399,6 @@ run_browser "${work_dir}/callback-gojs.mjs" "wasm callback-only wake ok"
 # browser/worker-only compatibility path defined by R0.
 wasm_ci_run_case L32/wasm-alias scheduler 1 0 0 0 0 \
 	run_llgo_run wasm "${scheduler_fixture}" "wasm scheduler ok" "scheduler-legacy-wasm"
-wasm_ci_run_case LW32/wasip1-alias scheduler 1 0 0 0 0 \
-	run_llgo_run wasip1 "${scheduler_fixture}" "wasm scheduler ok" "scheduler-legacy-wasip1"
 
 # Reuse both callback modules: no extra compilations for the JS boundary cases.
 run_host_call_boundaries "${work_dir}/callback-emscripten.mjs"
@@ -498,9 +406,6 @@ run_host_call_boundaries "${work_dir}/callback-memory64.mjs"
 
 fi
 
-if [[ "${suite}" != "test-command" ]]; then
-run_wasi_empty_heap
-fi
 
 if [[ "${suite}" == "all" || "${suite}" == "test-command" ]]; then
 # Exercise test-main generation, process exit, verbose output, and host runners

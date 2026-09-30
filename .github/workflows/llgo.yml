@@ -569,7 +569,7 @@ jobs:
           # Check file type
           file hello.wasm
 
-          iwasm --stack-size=819200000 --heap-size=800000000 hello.wasm
+          iwasm --max-threads=128 --stack-size=1048576 --heap-size=0 hello.wasm
 
       - name: Set up wasm-tools for EH fixtures
         uses: bytecodealliance/actions/wasm-tools/setup@v1
@@ -662,6 +662,14 @@ jobs:
         with:
           version: "39.0.1"
 
+      - name: Restore WAMR cache
+        uses: ./.github/actions/setup-llgo-cache
+        with:
+          wamr-cache-mode: readwrite
+
+      - name: Install WAMR for W32
+        run: bash dev/build_iwasm.sh
+
       - name: Set up wasm-tools
         uses: bytecodealliance/actions/wasm-tools/setup@v1
         with:
@@ -698,7 +706,9 @@ jobs:
         env:
           LLGO: ${{ runner.temp }}/llgo-bin/llgo
           LLGO_BUILD_CACHE: "1"
-        run: python3 dev/test_wasm_debug_info.py --profile j32 --profile j64 --profile w32
+        run: |
+          python3 -m unittest discover -s dev -p test_wasm_debug_info_test.py
+          python3 dev/test_wasm_debug_info.py --profile j32 --profile j64 --profile w32
 
       - name: Build standard runtime for wasm
         if: matrix.suite == 'runtime'

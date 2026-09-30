@@ -168,7 +168,7 @@ func TestUseCrossCompileSDK(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			export, err := use(tc.goos, tc.goarch, false, false, optlevel.O2, lto.Off, false)
+			export, err := use(tc.goos, tc.goarch, false, optlevel.O2, lto.Off, false)
 
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
@@ -215,14 +215,14 @@ func TestUseCrossCompileSDK(t *testing.T) {
 							!hasMllvmOption(export.CCFLAGS, "-wasm-enable-sjlj") {
 							t.Errorf("CCFLAGS do not enable WebAssembly SjLj lowering: %v", export.CCFLAGS)
 						}
-						if !export.WasmPostLink.Asyncify {
-							t.Error("WASI target does not request Asyncify post-link processing")
+						if export.WasmPostLink.Asyncify {
+							t.Error("WASI threads unexpectedly request Asyncify")
 						}
-						if slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
-							t.Errorf("single-worker WASI imports host memory: %v", export.LDFLAGS)
+						if !slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
+							t.Errorf("WASI threads must import shared memory: %v", export.LDFLAGS)
 						}
 						if !slices.Contains(export.LDFLAGS, "-Wl,--stack-first") {
-							t.Errorf("single-worker WASI does not fix the Asyncify stack layout: %v", export.LDFLAGS)
+							t.Errorf("WASI does not fix the process stack layout: %v", export.LDFLAGS)
 						}
 					} else if tc.name == "Same Platform" {
 						// For same platform, we expect sysroot only on macOS
@@ -276,7 +276,7 @@ func TestUseWASIThreadsImportsMemory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping the external WASI SDK link test in short mode")
 	}
-	export, err := use("wasip1", "wasm", true, false, optlevel.O2, lto.Off, false)
+	export, err := use("wasip1", "wasm", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,7 +307,7 @@ func TestUseWASIThreadsImportsMemory(t *testing.T) {
 	if export.WasmPostLink.Asyncify {
 		t.Fatal("WASI pthread mode requests single-worker Asyncify processing")
 	}
-	named, err := Use("", "", "wasi", true, false, optlevel.O2, lto.Off, false)
+	named, err := Use("", "", "wasi", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestUseWASILTOEnablesSjLjAtLink(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping the external WASI SDK link test in short mode")
 	}
-	export, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Thin, false)
+	export, err := use("wasip1", "wasm", false, optlevel.O2, lto.Thin, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +496,7 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			export, err := Use("", "", test.name, false, false, optlevel.O2, lto.Off, false)
+			export, err := Use("", "", test.name, false, optlevel.O2, lto.Off, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -557,7 +557,7 @@ func TestEmscriptenTargetProfiles(t *testing.T) {
 func TestEmscriptenAsyncifyLinkOptimization(t *testing.T) {
 	for _, level := range []optlevel.Level{optlevel.O3, optlevel.Os, optlevel.Oz} {
 		t.Run(level.Name(), func(t *testing.T) {
-			export, err := Use("", "", "emscripten", false, false, level, lto.Off, false)
+			export, err := Use("", "", "emscripten", false, level, lto.Off, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -577,7 +577,7 @@ func TestEmscriptenAsyncifyLinkOptimization(t *testing.T) {
 func TestWASIProfileTarget(t *testing.T) {
 	for _, target := range []string{"wasi", "wasip1"} {
 		t.Run(target, func(t *testing.T) {
-			export, err := Use("", "", target, false, false, optlevel.O2, lto.Off, false)
+			export, err := Use("", "", target, false, optlevel.O2, lto.Off, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -588,19 +588,17 @@ func TestWASIProfileTarget(t *testing.T) {
 			if !slices.Contains(export.BuildTags, "llgo.wasm.wasi") {
 				t.Errorf("build tags %v do not contain llgo.wasm.wasi", export.BuildTags)
 			}
-			if slices.Contains(export.LDFLAGS, "-Wl,--import-memory,") || slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
-				t.Fatalf("single-worker WASI unexpectedly imports host memory: %v", export.LDFLAGS)
+			if !slices.Contains(export.LDFLAGS, "-Wl,--import-memory") {
+				t.Fatalf("WASI threads must import shared memory: %v", export.LDFLAGS)
 			}
-			if !export.WasmPostLink.Asyncify {
-				t.Fatal("single-worker WASI does not request Asyncify post-link processing")
+			if export.WasmPostLink.Asyncify {
+				t.Fatal("WASI threads unexpectedly request Asyncify")
 			}
-			if slices.Contains(export.LDFLAGS, "-Wl,--initial-memory=67108864") {
-				t.Fatalf("WASI C profile caps initial memory independently of static data: %v", export.LDFLAGS)
+			if !slices.Contains(export.BuildTags, "llgo.wasi_threads") {
+				t.Fatalf("WASI threads source tag missing: %v", export.BuildTags)
 			}
-			if !strings.Contains(export.Emulator, "--dir=/") ||
-				!strings.Contains(export.Emulator, "--env PWD") ||
-				!strings.Contains(export.Emulator, "--env PATH") {
-				t.Fatalf("WASI emulator does not expose the Go-compatible filesystem and process environment: %q", export.Emulator)
+			if export.Emulator != WASIThreadedEmulator {
+				t.Fatalf("WASI emulator = %q, want %q", export.Emulator, WASIThreadedEmulator)
 			}
 		})
 	}
@@ -645,7 +643,7 @@ func TestEmscriptenLibffiSearchPath(t *testing.T) {
 	}
 	wantL := "-L" + libDir
 
-	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
+	js, err := use("js", "wasm", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -656,7 +654,7 @@ func TestEmscriptenLibffiSearchPath(t *testing.T) {
 		t.Errorf("raw js/wasm LDFLAGS %v do not search %s", js.LDFLAGS, wantL)
 	}
 
-	named, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+	named, err := Use("", "", "emscripten", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +665,7 @@ func TestEmscriptenLibffiSearchPath(t *testing.T) {
 		t.Errorf("emscripten LDFLAGS %v do not search %s", named.LDFLAGS, wantL)
 	}
 
-	memory64, err := Use("", "", "emscripten-memory64", false, false, optlevel.O2, lto.Off, false)
+	memory64, err := Use("", "", "emscripten-memory64", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -682,7 +680,7 @@ func TestEmscriptenLibffiSearchPath(t *testing.T) {
 		t.Fatalf("vendored wasm64 libffi archive: %v", err)
 	}
 
-	wasi, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Off, false)
+	wasi, err := use("wasip1", "wasm", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -692,7 +690,7 @@ func TestEmscriptenLibffiSearchPath(t *testing.T) {
 }
 
 func TestRawWasmProfiles(t *testing.T) {
-	js, err := use("js", "wasm", false, false, optlevel.O2, lto.Off, false)
+	js, err := use("js", "wasm", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,21 +708,21 @@ func TestRawWasmProfiles(t *testing.T) {
 		t.Fatalf("raw js/wasm acquired an Emscripten source tag: %v", js.BuildTags)
 	}
 
-	wasi, err := use("wasip1", "wasm", false, false, optlevel.O2, lto.Off, false)
+	wasi, err := use("wasip1", "wasm", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if wasi.WasmProfile != WasmProfileW32 || wasi.WasmProvider != WasmProviderWASI || wasi.LLVMTarget != "wasm32-unknown-wasip1" {
 		t.Fatalf("raw wasip1/wasm = profile/provider %q/%q, LLVM profile %q", wasi.WasmProfile, wasi.WasmProvider, wasi.LLVMTarget)
 	}
-	if slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory,") || slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory") {
-		t.Fatal("raw single-worker WASI unexpectedly imports host memory")
+	if !slices.Contains(wasi.LDFLAGS, "-Wl,--import-memory") {
+		t.Fatal("raw WASI threads must import shared memory")
 	}
-	if !wasi.WasmPostLink.Asyncify {
-		t.Fatal("raw single-worker WASI does not request Asyncify post-link processing")
+	if wasi.WasmPostLink.Asyncify {
+		t.Fatal("raw WASI threads unexpectedly request Asyncify")
 	}
-	if slices.Contains(wasi.LDFLAGS, "-Wl,--initial-memory=67108864") {
-		t.Fatalf("raw Go WASI profile caps initial memory independently of static data: %v", wasi.LDFLAGS)
+	if !slices.Contains(wasi.BuildTags, "llgo.wasi_threads") {
+		t.Fatalf("raw WASI threads source tag missing: %v", wasi.BuildTags)
 	}
 	if !slices.Contains(wasi.BuildTags, "llgo.wasm.wasi") {
 		t.Fatalf("raw wasip1/wasm did not select the WASI provider source tag: %v", wasi.BuildTags)
@@ -772,7 +770,7 @@ func TestNamedWasmTargetUsesInheritedProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	export, err := Use("", "", "custom-wasm-alias", false, false, optlevel.O2, lto.Off, false)
+	export, err := Use("", "", "custom-wasm-alias", false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -798,7 +796,7 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := useWithGOARMAndToolchain(
-				"js", "wasm", "", false, false, optlevel.O2, lto.Off, false,
+				"js", "wasm", "", false, optlevel.O2, lto.Off, false,
 				NativeToolchainInput{}, test.profile, test.provider,
 			)
 			if err == nil || !strings.Contains(err.Error(), "unsupported WebAssembly profile/provider") {
@@ -824,7 +822,7 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 
 	t.Run("missing named target", func(t *testing.T) {
 		writeWasmTargetFixture(t, "", "")
-		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		_, err := Use("", "", "emscripten", false, optlevel.O2, lto.Off, false)
 		if err == nil || !strings.Contains(err.Error(), "failed to resolve target emscripten") {
 			t.Fatalf("missing named target error = %v", err)
 		}
@@ -838,7 +836,7 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 			"wasm-profile":"invalid",
 			"wasm-provider":"emscripten"
 		}`)
-		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		_, err := Use("", "", "emscripten", false, optlevel.O2, lto.Off, false)
 		if err == nil || !strings.Contains(err.Error(), "unsupported WebAssembly profile/provider") {
 			t.Fatalf("invalid named profile error = %v", err)
 		}
@@ -852,7 +850,7 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 			"wasm-profile":"j32",
 			"wasm-provider":"emscripten"
 		}`)
-		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		_, err := Use("", "", "emscripten", false, optlevel.O2, lto.Off, false)
 		if err == nil || !strings.Contains(err.Error(), "unsupported GOOS for WebAssembly") {
 			t.Fatalf("invalid named platform error = %v", err)
 		}
@@ -866,7 +864,7 @@ func TestWasmProfileValidationErrors(t *testing.T) {
 			"wasm-profile":"j32",
 			"wasm-provider":"emscripten"
 		}`)
-		_, err := Use("", "", "emscripten", false, false, optlevel.O2, lto.Off, false)
+		_, err := Use("", "", "emscripten", false, optlevel.O2, lto.Off, false)
 		if err == nil || !strings.Contains(err.Error(), "requires \"wasm32-unknown-emscripten\"") {
 			t.Fatalf("mismatched target error = %v", err)
 		}
@@ -941,7 +939,7 @@ func TestUseTargetESPClangDownloadError(t *testing.T) {
 
 func TestUseWithTarget(t *testing.T) {
 	// Test target-based configuration takes precedence
-	export, err := Use("linux", "amd64", "esp32", false, true, optlevel.Oz, lto.Thin, false)
+	export, err := Use("linux", "amd64", "esp32", true, optlevel.Oz, lto.Thin, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -953,7 +951,7 @@ func TestUseWithTarget(t *testing.T) {
 	}
 
 	// Test fallback to goos/goarch when no target specified
-	export, err = Use(runtime.GOOS, runtime.GOARCH, "", false, false, optlevel.O2, lto.Thin, false)
+	export, err = Use(runtime.GOOS, runtime.GOARCH, "", false, optlevel.O2, lto.Thin, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -1019,7 +1017,7 @@ func TestOptimizationFlagPlacement(t *testing.T) {
 		t.Fatalf("target CCFLAGS = %v, want first flag -Oz", export.CCFLAGS)
 	}
 
-	export, err = Use(runtime.GOOS, runtime.GOARCH, "", false, false, optlevel.O3, lto.Off, false)
+	export, err = Use(runtime.GOOS, runtime.GOARCH, "", false, optlevel.O3, lto.Off, false)
 	if err != nil {
 		t.Fatalf("UseWithOptLevel(host, O3) failed: %v", err)
 	}
@@ -1131,7 +1129,7 @@ func TestNativeWindowsExportFlags(t *testing.T) {
 		t.Skip("requires a native Windows host")
 	}
 
-	export, err := use("windows", runtime.GOARCH, false, false, optlevel.O2, lto.Thin, false)
+	export, err := use("windows", runtime.GOARCH, false, optlevel.O2, lto.Thin, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1221,7 +1219,7 @@ func TestUsesNativePlatformToolchain(t *testing.T) {
 }
 
 func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
-	export, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.O2, lto.Off, false)
+	export, err := use(runtime.GOOS, runtime.GOARCH, false, optlevel.O2, lto.Off, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -1236,7 +1234,7 @@ func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 		}
 	}
 
-	thin, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.O2, lto.Thin, false)
+	thin, err := use(runtime.GOOS, runtime.GOARCH, false, optlevel.O2, lto.Thin, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -1257,7 +1255,7 @@ func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 		t.Fatalf("missing thin LTO linker opt flag: %v", thin.LDFLAGS)
 	}
 
-	thinSize, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.Oz, lto.Thin, false)
+	thinSize, err := use(runtime.GOOS, runtime.GOARCH, false, optlevel.Oz, lto.Thin, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -1268,7 +1266,7 @@ func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 		t.Fatalf("invalid size-valued thin LTO linker opt flag: %v", thinSize.LDFLAGS)
 	}
 
-	full, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.O2, lto.Full, false)
+	full, err := use(runtime.GOOS, runtime.GOARCH, false, optlevel.O2, lto.Full, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -1285,7 +1283,7 @@ func TestDevLTOGlobalDCEUseLTOFlagsControlledByOption(t *testing.T) {
 		t.Fatalf("missing full LTO link driver flag: %v", full.LDFLAGS)
 	}
 
-	fullGlobalDCE, err := use(runtime.GOOS, runtime.GOARCH, false, false, optlevel.O2, lto.Full, true)
+	fullGlobalDCE, err := use(runtime.GOOS, runtime.GOARCH, false, optlevel.O2, lto.Full, true)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

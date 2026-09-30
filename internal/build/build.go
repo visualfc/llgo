@@ -577,7 +577,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 			return nil, err
 		}
 	}
-	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, IsWasiThreadsEnabled(), forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
+	export, err := crosscompile.UseWithGOARMAndToolchain(conf.Goos, conf.Goarch, conf.GOARM, conf.Target, forceEspClang, conf.OptLevel, conf.ltoMode(), conf.goGlobalDCEEnabled(), nativeInput)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup crosscompile: %w", err)
 	}
@@ -589,6 +589,9 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		conf.Goarch = export.GOARCH
 	}
 	resolveTestPthreadStackSize(conf)
+	if err := validateWASIThreads(conf); err != nil {
+		return nil, err
+	}
 	wasmWorkers, err := configureWasmWorkers(conf, &export)
 	if err != nil {
 		return nil, err
@@ -1073,7 +1076,7 @@ func resolveTestPthreadStackSize(conf *Config) {
 // Shared-memory collectors need one root chain per host thread. The
 // single-worker scheduler and nogc builds keep their existing root model.
 func useThreadLocalGCRoots(conf *Config, wasmGC bool, workers wasmworkers.Config) bool {
-	return wasmGC && (workers.Enabled() || conf.Goos == "wasip1" && IsWasiThreadsEnabled())
+	return wasmGC && (workers.Enabled() || conf.Goos == "wasip1")
 }
 
 func useShadowStack(goarch string) bool {
@@ -1278,20 +1281,7 @@ func goCompatibleWasmRunner(conf *Config) string {
 	case "js":
 		return fmt.Sprintf("node %q --browser-only %q", filepath.Join(env.LLGoROOT(), "targets", "emscripten-runner.mjs"), "{}")
 	case "wasip1":
-		if IsWasiThreadsEnabled() {
-			return crosscompile.WASIThreadedEmulator
-		}
-		runtimeCommand := WasmRuntime()
-		switch runtimeCommand {
-		case "wasmtime":
-			// Match Go's go_wasip1_wasm_exec helper by exposing the host
-			// filesystem and package working directory to run/test binaries.
-			return `wasmtime run --dir=/ --env PWD --env PATH -W exceptions=y -W multi-memory=y -W max-wasm-stack=8388608 "{}"`
-		case "iwasm":
-			return `iwasm --stack-size=819200000 --heap-size=800000000 "{}"`
-		default:
-			return runtimeCommand + ` "{}"`
-		}
+		return crosscompile.WASIThreadedEmulator
 	}
 	return ""
 }
@@ -1496,13 +1486,11 @@ func configureWasmGC(conf *Config, export *crosscompile.Export) (bool, error) {
 	case crosscompile.WasmProfileJ32, crosscompile.WasmProfileJ64:
 		defaultEnabled = true
 	case crosscompile.WasmProfileW32:
-		if IsWasiThreadsEnabled() {
-			if slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
-				if explicit {
-					return false, errors.New("WASI threads cannot combine nogc with llgo.wasm.gc.linear")
-				}
-				return false, nil
+		if slices.Contains(splitSourcePatchBuildTags(conf.Tags), "nogc") {
+			if explicit {
+				return false, errors.New("WASI threads cannot combine nogc with llgo.wasm.gc.linear")
 			}
+			return false, nil
 		}
 		defaultEnabled = true
 	case crosscompile.WasmProfileNone:
@@ -1534,8 +1522,6 @@ func usesSingleWorkerWasmScheduler(conf *Config) bool {
 	switch conf.Goos {
 	case "js":
 		return true
-	case "wasip1":
-		return !IsWasiThreadsEnabled()
 	default:
 		return false
 	}
@@ -1901,13 +1887,14 @@ func (c *context) linker() *clang.Cmd {
 	return cmd
 }
 
-// shouldDisableClangImplicitWasmOpt reports whether LLGo owns the wasm-opt
-// pipeline and must disable clang's implicit post-link optimization.
+// shouldDisableClangImplicitWasmOpt keeps post-link optimization under LLGo's
+// control. Asyncify profiles run explicit passes with the requested debug
+// policy; WASI threads need no Binaryen pass. Clang's implicit invocation would
+// otherwise change the output (and discard DWARF) whenever wasm-opt is on PATH.
 func (c *context) shouldDisableClangImplicitWasmOpt(linkerProgram string) bool {
 	return c != nil &&
 		c.buildConf != nil &&
 		c.buildConf.Goarch == "wasm" &&
-		c.crossCompile.WasmPostLink.Asyncify &&
 		c.crossCompile.Linker == "" &&
 		clangDriverMayRunWasmOpt(linkerProgram)
 }
@@ -4033,7 +4020,7 @@ const llgoShadowStack = "LLGO_SHADOW_STACK"
 // for Plan9 asm translation debug
 const llgoPlan9ASMPkgs = "LLGO_PLAN9ASM_PKGS"
 
-const defaultWasmRuntime = "wasmtime"
+const defaultWasmRuntime = "iwasm"
 
 func defaultEnv(env string, defVal string) string {
 	envVal := os.Getenv(env)
@@ -4132,8 +4119,11 @@ func shouldRunLLVMPasses(mode Mode) bool {
 	return mode != ModeGen
 }
 
-func IsWasiThreadsEnabled() bool {
-	return isEnvOn(llgoWasiThreads, false)
+func validateWASIThreads(conf *Config) error {
+	if conf.Goos == "wasip1" && conf.Goarch == "wasm" && !isEnvOn(llgoWasiThreads, true) {
+		return errors.New("single-thread WASI is no longer supported; unset LLGO_WASI_THREADS and use WAMR with WASI threads")
+	}
+	return nil
 }
 
 func IsFullRpathEnabled() bool {

@@ -330,8 +330,8 @@ func runNative(ctx *context, app, pkgDir, pkgName string, conf *Config, mode Mod
 				args = append(args, "--wasm", "multi-memory=true", app)
 				args = append(args, conf.RunArgs...)
 			case "iwasm":
-				args = append(args, "--stack-size=819200000", "--heap-size=800000000", app)
-				args = append(args, conf.RunArgs...)
+				return runEmuCmd(ctx.commands, map[string]string{"": app}, crosscompile.WASIThreadedEmulator,
+					conf.RunArgs, false, conf.PrintCommands, details)
 			default:
 				args = append(args, wasmerArgs...)
 				args = append(args, app)
@@ -434,6 +434,12 @@ func runEmuCmdTo(commands commandEnv, envMap map[string]string, emulatorTemplate
 			}
 		}
 		// iwasm does not inherit host environment variables into the guest.
+		// Preserve the raw WASI run/test PWD and PATH contract without exposing
+		// every host variable. PWD follows the package directory/preopen.
+		cmdParts = slices.Insert(cmdParts, len(cmdParts)-1, "--env=PWD="+cwd)
+		if path := commands.lookup("PATH"); path != "" {
+			cmdParts = slices.Insert(cmdParts, len(cmdParts)-1, "--env=PATH="+path)
+		}
 		// Preserve the reviewed timer-stress profile used by the full audit.
 		if stress := commands.lookup("LLGO_STRESS_PROFILE"); stress != "" {
 			cmdParts = slices.Insert(cmdParts, len(cmdParts)-1,

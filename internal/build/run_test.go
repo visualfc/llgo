@@ -69,7 +69,7 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	commands := commandEnv{dir: dir, environ: append(os.Environ(), "PATH="+dir, "LLGO_STRESS_PROFILE=quick")}
+	commands := commandEnv{dir: dir, environ: append(os.Environ(), "PATH="+dir, "LLGO_STRESS_PROFILE=quick", "LLGO_PRIVATE_SENTINEL=not-forwarded")}
 	artifact := filepath.Join(dir, "program.wasm")
 	err := runEmuCmd(commands, map[string]string{"": artifact}, crosscompile.WASIThreadedEmulator,
 		[]string{"-test.v"}, false, false, runnerDetails{phase: "test"})
@@ -83,6 +83,14 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 	args := strings.Split(strings.TrimSpace(string(data)), "\n")
 	if got, want := args[3], "--dir="+dir; got != want {
 		t.Fatalf("WAMR working directory = %q, want %q", got, want)
+	}
+	for _, want := range []string{"--env=PWD=" + dir, "--env=PATH=" + dir} {
+		if !slices.Contains(args, want) {
+			t.Fatalf("WAMR arguments omit %q: %q", want, args)
+		}
+	}
+	if slices.Contains(args, "--env=LLGO_PRIVATE_SENTINEL=not-forwarded") {
+		t.Fatal("WAMR forwarded an unrelated host environment variable")
 	}
 	if got, want := args[len(args)-3:], []string{"--env=LLGO_STRESS_PROFILE=quick", artifact, "-test.v"}; !slices.Equal(got, want) {
 		t.Fatalf("runner tail = %q, want %q", got, want)
@@ -103,6 +111,35 @@ func TestWASIThreadedEmulatorHostContract(t *testing.T) {
 	}
 	if got, want := args[3], "--dir="+cwd; got != want {
 		t.Fatalf("WAMR default working directory = %q, want %q", got, want)
+	}
+}
+
+func TestNativeWAMRRunUsesThreadedHostContract(t *testing.T) {
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args")
+	if err := os.WriteFile(filepath.Join(dir, "iwasm"), []byte(fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\n", argsFile)), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(llgoWasmRuntime, "iwasm")
+	commands := commandEnv{dir: dir, environ: os.Environ()}
+	conf := &Config{Goos: "wasip1", Goarch: "wasm", RunArgs: []string{"hello world"}}
+	artifact := filepath.Join(dir, "app.wasm")
+	if err := runNative(&context{commands: commands}, artifact, dir, "main", conf, ModeRun); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Split(strings.TrimSpace(string(data)), "\n")
+	for _, want := range []string{"--max-threads=128", "--stack-size=1048576", "--heap-size=0", "--dir=" + dir, "--env=PWD=" + dir} {
+		if !slices.Contains(args, want) {
+			t.Fatalf("WAMR arguments omit %q: %q", want, args)
+		}
+	}
+	if !slices.Equal(args[len(args)-2:], []string{artifact, "hello world"}) {
+		t.Fatalf("artifact/arguments = %q", args)
 	}
 }
 
@@ -375,38 +412,13 @@ func TestRunNativeTest(t *testing.T) {
 }
 
 func TestGoCompatibleWasmRunner(t *testing.T) {
-	t.Setenv("LLGO_WASI_THREADS", "0")
+	t.Setenv("LLGO_WASI_THREADS", "")
 	js := goCompatibleWasmRunner(&Config{Goos: "js", Goarch: "wasm"})
 	if !strings.Contains(js, "emscripten-runner.mjs") || !strings.Contains(js, "--browser-only") || !strings.Contains(js, "{}") {
 		t.Fatalf("js runner = %q", js)
 	}
-	for _, test := range []struct {
-		name    string
-		runtime string
-		want    string
-	}{
-		{
-			name:    "wasmtime",
-			runtime: "wasmtime",
-			want:    `wasmtime run --dir=/ --env PWD --env PATH -W exceptions=y -W multi-memory=y -W max-wasm-stack=8388608 "{}"`,
-		},
-		{
-			name:    "iwasm",
-			runtime: "iwasm",
-			want:    `iwasm --stack-size=819200000 --heap-size=800000000 "{}"`,
-		},
-		{
-			name:    "custom",
-			runtime: "wasmer run",
-			want:    `wasmer run "{}"`,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("LLGO_WASM_RUNTIME", test.runtime)
-			if got := goCompatibleWasmRunner(&Config{Goos: "wasip1", Goarch: "wasm"}); got != test.want {
-				t.Fatalf("WASI runner = %q, want %q", got, test.want)
-			}
-		})
+	if got := goCompatibleWasmRunner(&Config{Goos: "wasip1", Goarch: "wasm"}); got != crosscompile.WASIThreadedEmulator {
+		t.Fatalf("WASI runner = %q", got)
 	}
 	if got := goCompatibleWasmRunner(&Config{Target: "wasi", Goos: "wasip1", Goarch: "wasm"}); got != "" {
 		t.Fatalf("named target acquired raw runner %q", got)

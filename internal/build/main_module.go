@@ -487,7 +487,7 @@ func defineEntryFunction(ctx *context, pkg llssa.Package, argcVar, argvVar llssa
 	// including caller-location storage. A small program may have no user
 	// locality declarations, so the linked-program query alone is insufficient.
 	hasLocalContext := prog.NeedsLocalContext() || fns.wasmRunMain != nil ||
-		(ctx.buildConf.Goos == "wasip1" && IsWasiThreadsEnabled())
+		ctx.buildConf.Goos == "wasip1"
 	if hasLocalContext {
 		localCtx, previousLocalCtx = b.EnterLocalContext()
 	}
