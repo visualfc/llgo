@@ -385,6 +385,13 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: sudo apt-get install -y lldb-${{matrix.llvm}} gdb
 
+      - name: GDB runtime adapter integration tests
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        timeout-minutes: 15
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
+
       - name: Install MinGW LLDB for integration tests
         # R12 qualifies debugger behavior for the new GNU architectures. Keep
         # R11 focused on their language/runtime and C interoperability gates.
@@ -415,13 +422,6 @@ jobs:
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash test/debug/runtime/runtest.sh -v
-
-      - name: GDB runtime adapter integration tests
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        timeout-minutes: 15
-        env:
-          LLGO_GDB_INTEGRATION: "1"
-        run: go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
 
       - name: LLDB integration tests (MSVC)
         if: ${{ matrix.windows_abi == 'msvc' }}
