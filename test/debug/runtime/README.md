@@ -37,6 +37,11 @@ argument begins with `-`:
 llgo lldb -lldb /opt/homebrew/bin/lldb -- --batch ./cl/_testdata/debug/out
 ```
 
+On Windows, `LLGO_WINDOWS_LLDB_PYTHON_HOME` and the optional
+`LLGO_WINDOWS_LLDB_PYTHONPATH` select the Python runtime matching the installed
+LLDB. The launcher applies them only to LLDB and its version probe; other
+Python tools started by LLGo keep their host environment.
+
 The command embeds and loads the LLGo Python adapter, so an installed `llgo`
 does not depend on a source checkout. `test/debug/runtime/runlldb.sh` remains as
 a thin compatibility wrapper. Adapter commands live under `llgo`, including

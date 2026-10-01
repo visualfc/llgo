@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -105,6 +106,7 @@ func run(configuredPath string, args []string, stdin io.Reader, stdout, stderr i
 	lldbArgs = append(lldbArgs, args...)
 
 	command := exec.Command(path, lldbArgs...)
+	command.Env = lldbEnvironment(os.Environ(), runtime.GOOS)
 	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr
@@ -150,7 +152,9 @@ func validateLLDB(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("llgo lldb: find %q: %w", name, err)
 	}
-	output, err := exec.Command(path, "--version").CombinedOutput()
+	command := exec.Command(path, "--version")
+	command.Env = lldbEnvironment(os.Environ(), runtime.GOOS)
+	output, err := command.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("llgo lldb: query %q version: %w", path, err)
 	}
@@ -187,4 +191,41 @@ func parseLLDBVersion(output string) (lldbVersion, bool) {
 func lldbImportCommand(path string) string {
 	path = strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
 	return `command script import "` + path + `"`
+}
+
+// lldbEnvironment configures only the debugger process. LLGo may also start a
+// host Python (for example, a remote-debug transport), whose interpreter ABI
+// must not inherit the different Python home required by native Windows LLDB.
+func lldbEnvironment(environ []string, goos string) []string {
+	if goos != "windows" {
+		return environ
+	}
+	value := func(name string) string {
+		for i := len(environ) - 1; i >= 0; i-- {
+			key, val, ok := strings.Cut(environ[i], "=")
+			if ok && strings.EqualFold(key, name) {
+				return val
+			}
+		}
+		return ""
+	}
+	home := value("LLGO_WINDOWS_LLDB_PYTHON_HOME")
+	if home == "" {
+		return environ
+	}
+	result := make([]string, 0, len(environ)+5)
+	for _, item := range environ {
+		key, _, _ := strings.Cut(item, "=")
+		switch strings.ToUpper(key) {
+		case "PATH", "PYTHONHOME", "PYTHONPATH", "PYTHONUTF8", "PYTHONIOENCODING":
+			continue
+		}
+		result = append(result, item)
+	}
+	result = append(result, "PYTHONHOME="+home, "PATH="+home+";"+value("PATH"),
+		"PYTHONUTF8=1", "PYTHONIOENCODING=utf-8")
+	if pythonPath := value("LLGO_WINDOWS_LLDB_PYTHONPATH"); pythonPath != "" {
+		result = append(result, "PYTHONPATH="+pythonPath)
+	}
+	return result
 }

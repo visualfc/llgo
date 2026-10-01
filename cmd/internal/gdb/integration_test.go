@@ -127,7 +127,8 @@ func TestGDBIntegration(t *testing.T) {
 
 // TestGDBCompleteWorkerUnwind deliberately remains strict on every host. The
 // native-values test is a separate capability: stock Darwin and Windows ARM64
-// GDB currently cannot unwind blocked system frames, even in plain C programs.
+// GDB currently cannot unwind blocked system frames. Darwin also reproduces
+// this limitation with a plain C program.
 // Their CI lanes run TestGDBIntegration and document that boundary instead of
 // weakening this test or treating partial worker stacks as a pass.
 func TestGDBCompleteWorkerUnwind(t *testing.T) {

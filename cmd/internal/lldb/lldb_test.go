@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -227,4 +228,43 @@ func writeFakeLLDB(t *testing.T, version, body string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestLLDBEnvironmentIsolatesWindowsPython(t *testing.T) {
+	original := []string{
+		`Path=C:\host-tools;C:\Windows`, `PythonHome=C:\python312`,
+		`PYTHONPATH=C:\python312\site-packages`, "PYTHONUTF8=0",
+		`LLGO_WINDOWS_LLDB_PYTHON_HOME=C:\python311`, "UNCHANGED=1",
+	}
+	snapshot := append([]string(nil), original...)
+	got := lldbEnvironment(original, "windows")
+	for _, expected := range []string{
+		`PATH=C:\python311;C:\host-tools;C:\Windows`,
+		`PYTHONHOME=C:\python311`, "PYTHONUTF8=1", "PYTHONIOENCODING=utf-8", "UNCHANGED=1",
+	} {
+		if !slices.Contains(got, expected) {
+			t.Errorf("Windows debugger environment missing %q: %q", expected, got)
+		}
+	}
+	for _, item := range got {
+		if strings.HasPrefix(strings.ToUpper(item), "PYTHONPATH=") {
+			t.Errorf("host Python module path leaked into LLDB: %q", item)
+		}
+	}
+	if !slices.Equal(original, snapshot) {
+		t.Fatalf("debugger setup mutated the parent environment: %q", original)
+	}
+	for _, goos := range []string{"darwin", "linux"} {
+		if got := lldbEnvironment(original, goos); !slices.Equal(got, original) {
+			t.Errorf("%s environment changed: %q", goos, got)
+		}
+	}
+	explicit := append(append([]string(nil), original...), `LLGO_WINDOWS_LLDB_PYTHONPATH=C:\lldb\python`)
+	if got := lldbEnvironment(explicit, "windows"); !slices.Contains(got, `PYTHONPATH=C:\lldb\python`) {
+		t.Errorf("explicit debugger module path missing: %q", got)
+	}
+	unconfigured := []string{`PATH=C:\tools`, `PYTHONHOME=C:\custom-debugger-python`}
+	if got := lldbEnvironment(unconfigured, "windows"); !slices.Equal(got, unconfigured) {
+		t.Errorf("unconfigured debugger environment changed: %q", got)
+	}
 }
