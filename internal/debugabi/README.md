@@ -26,6 +26,13 @@ Goroutines not yet attached to a thread have no native backtrace. Targets withou
 this registry, including Wasm fibers and bare metal, report the capability as
 unavailable rather than treating a goroutine as a host thread.
 
+On a native Windows ARM64 host, the LLDB adapter supplies an unset code-address
+mask from the operating system's user-address bounds before unwinding. This
+allows LLDB to interpret authenticated return addresses in Windows library
+frames. Explicit debugger masks, data addresses, remote targets, and crash dumps
+are unchanged. Backtraces still depend on the debugger's native unwind support;
+this does not add an ARM64 PE unwind-table decoder to LLDB.
+
 Run `llgo lldb program` or `llgo gdb program` to load the installed adapters.
 Both support `llgo status`, `llgo goroutines`, and `llgo goroutine ID bt`, plus
 runtime-aware string, slice, interface, function, map, and channel values.

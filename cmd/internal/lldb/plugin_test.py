@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock, Mock, patch
 
 
 lldb = ModuleType("lldb")
@@ -54,6 +54,110 @@ class TypeNameTests(unittest.TestCase):
             self.assertEqual(plugin.go_type_name(go_type), name)
             self.assertEqual(plugin.go_type_name(ValueType(name + " *", pointee=go_type)), "*" + name)
         self.assertEqual(plugin.go_type_name(ValueType("int")), "int32")
+
+
+class WindowsCodeAddressTests(unittest.TestCase):
+    def setUp(self):
+        lldb.eAddressMaskTypeCode = 1
+        lldb.LLDB_INVALID_ADDRESS_MASK = (1 << 64) - 1
+        self.target = Mock()
+        self.target.GetTriple.return_value = "aarch64-pc-windows-msvc"
+        self.target.GetAddressByteSize.return_value = 8
+        self.target.GetPlatform.return_value.IsHost.return_value = True
+        self.process = Mock()
+        self.process.GetPluginName.return_value = "windows"
+        self.process.GetAddressMask.return_value = lldb.LLDB_INVALID_ADDRESS_MASK
+
+    def test_native_host_sets_only_an_unset_code_mask(self):
+        with patch.object(plugin.sys, "platform", "win32"), \
+                patch.object(plugin, "_windows_arm64_user_address_bits", return_value=47) as query:
+            plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+            self.process.SetAddressableBits.assert_called_once_with(lldb.eAddressMaskTypeCode, 47)
+            self.process.SetAddressableBits.reset_mock()
+            for mask in (0, 0xffff000000000000):
+                self.process.GetAddressMask.return_value = mask
+                query.reset_mock()
+                plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+                self.process.SetAddressableBits.assert_not_called()
+                query.assert_not_called()
+
+    def test_other_platforms_remote_targets_and_dumps_are_unchanged(self):
+        with patch.object(plugin.sys, "platform", "win32"), \
+                patch.object(plugin, "_windows_arm64_user_address_bits", return_value=47) as query:
+            for triple in ("aarch64-unknown-linux-gnu", "x86_64-pc-windows-msvc", "arm64-apple-darwin"):
+                self.target.GetTriple.return_value = triple
+                plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+            self.target.GetTriple.return_value = "aarch64-pc-windows-msvc"
+            self.target.GetPlatform.return_value.IsHost.return_value = False
+            plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+            self.target.GetPlatform.return_value.IsHost.return_value = True
+            for process_plugin in ("minidump", "gdb-remote"):
+                self.process.GetPluginName.return_value = process_plugin
+                plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+            self.process.SetAddressableBits.assert_not_called()
+            query.assert_not_called()
+        with patch.object(plugin.sys, "platform", "linux"):
+            self.process.GetPluginName.return_value = "windows"
+            plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+            self.process.SetAddressableBits.assert_not_called()
+
+    def test_unavailable_host_information_preserves_raw_debugging(self):
+        with patch.object(plugin.sys, "platform", "win32"), \
+                patch.object(plugin, "_windows_arm64_user_address_bits", return_value=None):
+            plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+            self.process.SetAddressableBits.assert_not_called()
+        with patch.object(plugin.sys, "platform", "win32"), \
+                patch.object(plugin.ctypes, "WinDLL", create=True, side_effect=OSError("unavailable")):
+            self.assertIsNone(plugin._windows_arm64_user_address_bits())
+
+    def test_old_debugger_apis_preserve_raw_debugging(self):
+        with patch.object(plugin.sys, "platform", "win32"):
+            self.target.GetPlatform.return_value = SimpleNamespace()
+            plugin._configure_windows_arm64_code_addresses(self.target, self.process)
+            self.process.SetAddressableBits.assert_not_called()
+            self.target.GetPlatform.return_value = SimpleNamespace(IsHost=lambda: True)
+            old_process = SimpleNamespace(IsValid=lambda: True)
+            plugin._configure_windows_arm64_code_addresses(self.target, old_process)
+
+    def test_address_width_comes_from_native_windows_system_information(self):
+        architecture = 12
+        maximum = 0x7ffffffeffff
+
+        def populate(pointer):
+            info = pointer._obj
+            info.processor = architecture
+            info.page_size = 4096
+            info.minimum = 0x10000
+            info.maximum = maximum
+
+        kernel = SimpleNamespace(GetSystemInfo=Mock(side_effect=populate))
+        with patch.object(plugin.sys, "platform", "win32"), \
+                patch.object(plugin.ctypes, "WinDLL", create=True, return_value=kernel):
+            self.assertEqual(plugin._windows_arm64_user_address_bits(), 47)
+            architecture = 9
+            self.assertIsNone(plugin._windows_arm64_user_address_bits())
+            architecture, maximum = 12, 0
+            self.assertIsNone(plugin._windows_arm64_user_address_bits())
+
+    def test_stop_hook_is_installed_once_before_launch_and_never_continues(self):
+        debugger = Mock()
+        debugger.GetSelectedTarget.return_value = self.target
+        self.target.GetGloballyUniqueID.return_value = 7
+        result = Mock()
+        result.Succeeded.return_value = True
+        with patch.object(plugin.sys, "platform", "win32"), \
+                patch.object(plugin, "inspect_target", return_value=SimpleNamespace(supported=True)), \
+                patch.object(plugin, "_CODE_ADDRESS_HOOK_TARGETS", set()), \
+                patch.object(plugin, "_configure_windows_arm64_code_addresses") as configure, \
+                patch.object(lldb, "SBCommandReturnObject", return_value=result):
+            plugin.configure_target(debugger)
+            plugin.configure_target(debugger)
+            debugger.GetCommandInterpreter.return_value.HandleCommand.assert_called_once_with(
+                "target stop-hook add -P llgo_plugin.WindowsARM64CodeAddressHook", result)
+            hook = plugin.WindowsARM64CodeAddressHook(self.target, None)
+            context = SimpleNamespace(GetProcess=lambda: self.process)
+            self.assertTrue(hook.handle_stop(context, None))
+            configure.assert_called_with(self.target, self.process)
 
 
 class CollectorSignalTests(unittest.TestCase):

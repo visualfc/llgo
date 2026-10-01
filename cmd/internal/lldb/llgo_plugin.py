@@ -1,10 +1,12 @@
 # pylint: disable=missing-module-docstring,missing-class-docstring,missing-function-docstring
 
 from dataclasses import dataclass
+import ctypes
 import json
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 import re
+import sys
 import lldb
 
 
@@ -18,6 +20,7 @@ LLGO_MAX_CONTAINER_SCAN_BUCKETS = 65536
 LLGO_MAX_GOROUTINES = 65536
 LLGO_MAX_STACK_FRAMES = 256
 _TARGET_INFO_CACHE: Dict[Tuple[Any, ...], "LLGoTargetInfo"] = {}
+_CODE_ADDRESS_HOOK_TARGETS = set()
 
 
 def _load_debugger_schema() -> Tuple[Dict[str, Any], Optional[str]]:
@@ -388,8 +391,98 @@ def register_type_formatters(debugger: lldb.SBDebugger) -> None:
 
 
 def configure_target(debugger: lldb.SBDebugger) -> None:
+    target = debugger.GetSelectedTarget()
+    supported = inspect_target(target).supported
     debugger.GetCategory(LLGO_TYPE_CATEGORY).SetEnabled(
-        inspect_target(debugger.GetSelectedTarget()).supported)
+        supported)
+    if supported and _local_windows_arm64_target(target):
+        # Install before launch: unwound frames are cached, and changing the
+        # address mask after a backtrace does not invalidate those frames.
+        identity = target.GetGloballyUniqueID() if hasattr(target, "GetGloballyUniqueID") else None
+        if identity is None or identity not in _CODE_ADDRESS_HOOK_TARGETS:
+            result = lldb.SBCommandReturnObject()
+            debugger.GetCommandInterpreter().HandleCommand(
+                "target stop-hook add -P llgo_plugin.WindowsARM64CodeAddressHook", result)
+            if result.Succeeded() and identity is not None:
+                _CODE_ADDRESS_HOOK_TARGETS.add(identity)
+        _configure_windows_arm64_code_addresses(target, target.GetProcess())
+
+
+def _local_windows_arm64_target(target: lldb.SBTarget) -> bool:
+    if sys.platform != "win32" or not target or not target.IsValid():
+        return False
+    try:
+        triple = (target.GetTriple() or "").lower()
+        return (triple.split("-", 1)[0] in ("arm64", "aarch64") and
+                "windows" in triple.split("-") and
+                target.GetAddressByteSize() == 8 and target.GetPlatform().IsHost())
+    except (AttributeError, TypeError):
+        # Older public APIs cannot establish whether this target is local.
+        return False
+
+
+def _windows_arm64_user_address_bits() -> Optional[int]:
+    if sys.platform != "win32" or ctypes.sizeof(ctypes.c_void_p) != 8:
+        return None
+
+    class SystemInfo(ctypes.Structure):
+        _fields_ = [
+            ("processor", ctypes.c_uint32), ("page_size", ctypes.c_uint32),
+            ("minimum", ctypes.c_void_p), ("maximum", ctypes.c_void_p),
+            ("cpu_mask", ctypes.c_size_t), ("cpu_count", ctypes.c_uint32),
+            ("cpu_type", ctypes.c_uint32), ("granularity", ctypes.c_uint32),
+            ("cpu_level", ctypes.c_uint16), ("cpu_revision", ctypes.c_uint16),
+        ]
+
+    try:
+        info = SystemInfo()
+        get_info = ctypes.WinDLL("kernel32", use_last_error=True).GetSystemInfo
+        get_info.argtypes = [ctypes.POINTER(SystemInfo)]
+        get_info.restype = None
+        get_info(ctypes.byref(info))
+        # PROCESSOR_ARCHITECTURE_ARM64. A different or emulated host cannot
+        # establish the native target's address bounds from this API.
+        if ((info.processor & 0xffff) != 12 or not info.page_size or
+                not info.minimum or not info.maximum or info.maximum < info.minimum):
+            return None
+        bits = info.maximum.bit_length()
+        return bits if 32 < bits < 64 else None
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+
+
+def _configure_windows_arm64_code_addresses(target: lldb.SBTarget,
+                                            process: lldb.SBProcess) -> None:
+    try:
+        if (not _local_windows_arm64_target(target) or not process or
+                not process.IsValid() or process.GetPluginName() != "windows"):
+            return
+        code = lldb.eAddressMaskTypeCode
+        # Zero is an explicit mask too. Respect both API masks and a user's
+        # target.process.virtual-addressable-bits setting.
+        if process.GetAddressMask(code) != lldb.LLDB_INVALID_ADDRESS_MASK:
+            return
+        bits = _windows_arm64_user_address_bits()
+        if bits is not None:
+            # LLDB 22 does not derive Windows ARM64 PAC masks. Use its public
+            # code-address API so authenticated saved LRs can be unwound;
+            # leave data addresses, target registers and memory unchanged.
+            process.SetAddressableBits(code, bits)
+    except (AttributeError, OSError, TypeError, ValueError):
+        # Older debugger APIs or unavailable host information must not prevent
+        # ordinary debugging. Never guess an address width for remote/dump targets.
+        return
+
+
+class WindowsARM64CodeAddressHook:
+    def __init__(self, target: lldb.SBTarget, _args: Any,
+                 _internal_dict: Any = None) -> None:
+        self.target = target
+
+    def handle_stop(self, exe_ctx: lldb.SBExecutionContext, _stream: Any) -> bool:
+        if inspect_target(self.target).supported:
+            _configure_windows_arm64_code_addresses(self.target, exe_ctx.GetProcess())
+        return True
 
 
 def _marker_versions(target: lldb.SBTarget) -> Tuple[int, ...]:
@@ -670,6 +763,7 @@ def _stopped_process(debugger: lldb.SBDebugger, result: lldb.SBCommandReturnObje
             process.GetState() != lldb.eStateStopped):
         result.SetError("LLGo command requires a stopped process.")
         return None
+    _configure_windows_arm64_code_addresses(target, process)
     return process
 
 

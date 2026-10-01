@@ -466,6 +466,16 @@ class LLDBDebugger:
         if self.process.GetState() != lldb.eStateStopped:
             raise LLDBTestException("Process didn't stop at breakpoint")
 
+        # The production stop hook must prepare authenticated return addresses
+        # before any worker frames are cached, not only when an LLGo command is
+        # later requested. Keep all goroutine backtrace assertions below strict.
+        if (llgo_plugin._local_windows_arm64_target(self.target) and
+                self.process.GetPluginName() == "windows" and
+                llgo_plugin._windows_arm64_user_address_bits() is not None and
+                self.process.GetAddressMask(lldb.eAddressMaskTypeCode) ==
+                lldb.LLDB_INVALID_ADDRESS_MASK):
+            raise LLDBTestException("Windows ARM64 code address mask was not configured before unwind")
+
         # Windows/386 reports the WoW64 exception dispatcher as frame zero
         # while handling a software breakpoint. Select the source frame that
         # owns the requested breakpoint before inspecting its variables.
