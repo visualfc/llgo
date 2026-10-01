@@ -406,6 +406,7 @@ class LLDBDebugger:
         self.frame: Optional[lldb.SBFrame] = None
         self.breakpoint_line: Optional[int] = None
         self.breakpoint_id: Optional[int] = None
+        self.target_info: Optional[llgo_plugin.LLGoTargetInfo] = None
         self.type_mapping: Dict[str, str] = {
             'long': 'int',
             'unsigned long': 'uint',
@@ -430,8 +431,9 @@ class LLDBDebugger:
         if not target_info.supported:
             raise LLDBTestException(
                 "Target does not contain a supported LLGo debugger marker")
-        if llgo_plugin.inspect_target(self.target) is not target_info:
-            raise LLDBTestException("LLGo target inspection was not cached")
+        if (llgo_plugin._target_cache_key(self.target) is not None or
+                llgo_plugin.inspect_target(self.target) is target_info):
+            raise LLDBTestException("Offline LLGo target inspection was cached")
         if (target_info.schema_version != 1 or
                 target_info.runtime_layout_version != 2 or
                 target_info.record_version != 1 or
@@ -443,6 +445,7 @@ class LLDBDebugger:
                 not target_info.triple):
             raise LLDBTestException(
                 f"Incomplete LLGo target properties: {target_info}")
+        self.target_info = target_info
 
     def set_breakpoint(self, file_spec: str, line_number: int) -> lldb.SBBreakpoint:
         bp = self.target.BreakpointCreateByLocation(file_spec, line_number)
@@ -465,6 +468,22 @@ class LLDBDebugger:
         self.continue_gc_signals()
         if self.process.GetState() != lldb.eStateStopped:
             raise LLDBTestException("Process didn't stop at breakpoint")
+
+        # Launch/resume must not reuse an offline or previous-stop result.
+        # Keep the complete supported metadata checks from setup, then require
+        # reuse only when the process and every module have a stable identity.
+        target_info = llgo_plugin.inspect_target(self.target)
+        if not target_info.supported or target_info != self.target_info:
+            raise LLDBTestException(
+                f"LLGo target metadata changed after launch/resume: {target_info}")
+        if target_info is self.target_info:
+            raise LLDBTestException("LLGo target inspection survived launch/resume")
+        repeated = llgo_plugin.inspect_target(self.target)
+        cacheable = llgo_plugin._target_cache_key(self.target) is not None
+        if repeated != target_info or (repeated is target_info) != cacheable:
+            raise LLDBTestException(
+                f"Unexpected stopped LLGo target inspection reuse (cacheable={cacheable})")
+        self.target_info = target_info
 
         # The production stop hook must prepare authenticated return addresses
         # before any worker frames are cached, not only when an LLGo command is
