@@ -552,6 +552,55 @@ jobs:
             throw "GDB integration tests failed with exit code $LASTEXITCODE"
           }
 
+  native-debuggers-intel:
+    name: Native debugger acceptance (macOS Intel)
+    needs: prepare
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    permissions:
+      contents: read
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install compiler dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: "22"
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+      - name: Build LLGo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/llgo-bin"
+          go build -o "$RUNNER_TEMP/llgo-bin/llgo" ./cmd/llgo
+          echo "$RUNNER_TEMP/llgo-bin" >> "$GITHUB_PATH"
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Install GDB
+        uses: ./.github/actions/setup-gdb
+      - name: Enable native GDB on the ephemeral Intel runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Unsigned Homebrew GDB cannot obtain the inferior's task port as
+          # the runner user. Elevate only the debugger, not builds or Go tests.
+          # This does not change host trust settings or pretend Apple Silicon
+          # has the native Darwin process backend.
+          wrapper="$RUNNER_TEMP/llgo-gdb-native"
+          printf '#!/bin/bash\nexec sudo -n %q "$@"\n' "$LLGO_GDB" > "$wrapper"
+          chmod +x "$wrapper"
+          "$wrapper" --batch --nx -ex 'python import gdb; print(gdb.VERSION)'
+          echo "LLGO_GDB=$wrapper" >> "$GITHUB_ENV"
+      - name: LLDB runtime adapter integration tests
+        env:
+          LLGO_LLDB: /usr/bin/lldb
+        run: bash test/debug/runtime/runtest.sh -v
+      - name: GDB runtime adapter integration tests
+        timeout-minutes: 15
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
+
   cross-compile:
     if: needs.prepare.outputs.run_code_ci == 'true'
     needs: prepare

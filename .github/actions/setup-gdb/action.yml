@@ -17,7 +17,12 @@ runs:
     - name: Install macOS GDB
       if: runner.os == 'macOS'
       shell: bash
-      run: brew install gdb
+      env:
+        # Intel runners retain bottled versions from their image; refreshing
+        # metadata can force a source build on this Homebrew Tier 3 host.
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+        HOMEBREW_NO_INSTALL_UPGRADE: "1"
+      run: brew list --versions gdb || brew install gdb
 
     - name: Export Unix GDB
       if: runner.os != 'Windows'

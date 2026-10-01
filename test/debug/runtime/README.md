@@ -177,9 +177,9 @@ request DWARF 4, including when Clang otherwise defaults to CodeView.
 The CI matrix runs Linux amd64 and Windows amd64, 386 and ARM64 with both
 Microsoft and GNU ABIs. Linux ARM64 has also been exercised locally in a native
 container; it is not an additional CI runner in this matrix. The Windows jobs install Python-enabled MSYS2 GDB 18+ in an independent
-directory, including its multiarch executable; they explicitly select
-`Windows-MSVC` or `Windows-GNU` before reading target symbols. This is separate
-from LLGo's single internal C ABI. The integration test checks each of the two
+directory, including its multiarch executable. GDB reads the native PE and
+DWARF metadata for the selected target; both ABI profiles are tested with their
+actual compiler/CRT. The integration test checks each of the two
 worker stacks independently, requires distinct native threads, and checks that
 backtrace commands preserve the debugger's selected thread. A partial stack or
 an unexpected signal stop fails; it is not counted as platform support.
@@ -188,6 +188,9 @@ Darwin GDB uses debugger-local Mach ports in its native thread identifiers.
 The adapter asks the host kernel for each port's system thread ID so that it
 can match the runtime registry. Remote target identifiers are not passed to
 host Mach APIs. Intel macOS native launch additionally needs a debugger with
-permission to obtain task ports. Apple Silicon GDB native process debugging is
+permission to obtain task ports. The dedicated Intel CI job runs only GDB
+through an explicit `sudo -n` wrapper on its ephemeral runner; compilation and
+Go test orchestration remain unprivileged. It also runs the full native LLDB
+suite using Apple's signed `/usr/bin/lldb`. Apple Silicon GDB native process debugging is
 not supported; the native acceptance command reports that limitation directly.
 `llgo gdb` still supports cross-target/remote sessions on Apple Silicon.

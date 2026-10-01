@@ -259,17 +259,6 @@ int main(void) { return 0; }
 func integrationRunGDB(t *testing.T, gdbPath, dir string, args ...string) string {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	if runtime.GOOS == "windows" {
-		// A MinGW-hosted GDB otherwise defaults to Windows-GNU even when
-		// this CI lane deliberately builds Microsoft-ABI targets. GDB 18
-		// names both flavors; select before loading any executable symbols.
-		switch os.Getenv("LLGO_WINDOWS_ABI") {
-		case "msvc":
-			args = append([]string{"-iex", "set osabi Windows-MSVC"}, args...)
-		case "mingw":
-			args = append([]string{"-iex", "set osabi Windows-GNU"}, args...)
-		}
-	}
 	oldDir, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)

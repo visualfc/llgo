@@ -15,7 +15,7 @@ import yaml
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 PREPARE = "./.github/workflows/ci-prepare.yml"
 CODE_WORKFLOWS = {
-    "llgo.yml": 19, "go.yml": 6, "targets.yml": 2, "build-cache.yml": 4,
+    "llgo.yml": 20, "go.yml": 6, "targets.yml": 2, "build-cache.yml": 4,
     "benchmark.yml": 9, "release-build.yml": 15, "doc.yml": 6, "fmt.yml": 1,
 }
 
@@ -63,6 +63,16 @@ class WorkflowContractTests(unittest.TestCase):
         shell_tests = [index for index, step in enumerate(steps)
                        if step.get("name", "").startswith(("LLDB integration", "Test from the"))]
         self.assertGreater(steps.index(install), max(shell_tests))
+
+    def test_intel_macos_runs_both_native_debuggers(self):
+        job = load("llgo.yml")["jobs"]["native-debuggers-intel"]
+        self.assertEqual(job["runs-on"], "macos-15-intel")
+        commands = "\n".join(step.get("run", "") for step in job["steps"])
+        self.assertIn("test/debug/runtime/runtest.sh -v", commands)
+        self.assertIn("TestGDBIntegration", commands)
+        self.assertIn("exec sudo -n", commands)
+        self.assertNotIn("continue-on-error", job)
+        self.assertTrue(all("continue-on-error" not in step for step in job["steps"]))
 
     def test_traceback_coverage_uses_bash_on_every_host(self):
         steps = load("go.yml")["jobs"]["test"]["steps"]
