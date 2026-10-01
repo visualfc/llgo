@@ -234,6 +234,24 @@ func (p Package) VarOf(name string) Global {
 	return p.vars[name]
 }
 
+// ReplaceVarWith replaces a non-alias global with an existing value, removing
+// the original global and its attached debug information. It returns false if
+// a previous lowering pass already removed the variable.
+func (p Package) ReplaceVarWith(name string, replacement Expr) bool {
+	global := p.vars[name]
+	if global == nil {
+		return false
+	}
+	if global.isZeroSizedAlias {
+		panic("ReplaceVarWith: cannot replace a shared zero-sized alias")
+	}
+	global.impl.ReplaceAllUsesWith(replacement.impl)
+	global.impl.EraseFromParentAsGlobal()
+	delete(p.glbDbgVars, global.Expr)
+	delete(p.vars, name)
+	return true
+}
+
 // Init initializes the global variable with the given value.
 func (g Global) Init(v Expr) {
 	// Zero-sized globals alias the shared moduleZeroName sentinel, which already has
