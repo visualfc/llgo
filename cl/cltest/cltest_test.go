@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/xgo-dev/llgo/internal/build"
 	"github.com/xgo-dev/llgo/internal/littest"
 )
 
