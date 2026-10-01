@@ -39,7 +39,7 @@ func TestGDBIntegration(t *testing.T) {
 	gdbPath := integrationTool(t, os.Getenv("LLGO_GDB"), "gdb-multiarch", "gdb")
 	llgoPath := integrationTool(t, os.Getenv("LLGO"), "llgo")
 	root := integrationRepoRoot(t)
-	fixtureDir := filepath.Join(root, "cmd", "llgo", "lldbtest")
+	fixtureDir := filepath.Join(root, "test", "debug", "runtime")
 	source := filepath.Join(fixtureDir, "main.go")
 	executable := filepath.Join(t.TempDir(), "debug.out")
 

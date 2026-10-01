@@ -166,7 +166,7 @@ class CollectorSignalTests(unittest.TestCase):
         lldb.eStopReasonSignal = 5
         lldb.eStopReasonBreakpoint = 3
         lldb.eStopReasonException = 6
-        fixture_path = Path(__file__).parents[2] / "llgo" / "lldbtest" / "test.py"
+        fixture_path = Path(__file__).resolve().parents[3] / "test" / "debug" / "runtime" / "test.py"
         fixture_spec = importlib.util.spec_from_file_location("lldb_fixture", fixture_path)
         fixture = importlib.util.module_from_spec(fixture_spec)
         sys.modules[fixture_spec.name] = fixture
