@@ -17,6 +17,7 @@
 import json
 from pathlib import Path
 import re
+import sys
 
 import gdb
 
@@ -866,17 +867,55 @@ def _read_pointer(address, pointer_size, byte_order):
         return None
 
 
+def _darwin_thread_id(port):
+    # Darwin GDB's native ptid contains a Mach port in the debugger's task,
+    # while the runtime stores pthread_threadid_np's 64-bit thread_id.
+    # Query the kernel from this debugger process; never call the inferior.
+    try:
+        import ctypes
+
+        class ThreadIdentifierInfo(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_uint64) for name in (
+                "thread_id", "thread_handle", "dispatch_qaddr")]
+
+        system = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+        thread_info = system.thread_info
+        thread_info.argtypes = [ctypes.c_uint32, ctypes.c_int,
+                                ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+        thread_info.restype = ctypes.c_int
+        info = ThreadIdentifierInfo()
+        count = ctypes.c_uint32(ctypes.sizeof(info) // ctypes.sizeof(ctypes.c_uint32))
+        if thread_info(port, 4, ctypes.byref(info), ctypes.byref(count)) != 0:
+            return None
+        if count.value < 6:
+            return None
+        return info.thread_id or None
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        return None
+
+
 def _threads_by_procid():
     try:
-        threads = gdb.selected_inferior().threads()
+        inferior = gdb.selected_inferior()
+        threads = inferior.threads()
+        connection = getattr(inferior, "connection", None)
+        local_darwin = (sys.platform == "darwin" and
+                        getattr(connection, "type", None) == "native")
     except gdb.error:
         return {}
-    return {
-        procid: thread
-        for thread in threads
-        for procid in thread.ptid[1:]
-        if procid > 0
-    }
+    result = {}
+    for thread in threads:
+        if local_darwin:
+            # Do not mistake the local Mach port for a system thread ID if
+            # thread_info fails, or reinterpret remote target thread IDs.
+            procid = _darwin_thread_id(thread.ptid[2])
+            if procid:
+                result[procid] = thread
+        else:
+            for procid in thread.ptid[1:]:
+                if procid > 0:
+                    result[procid] = thread
+    return result
 
 
 def _thread_for_procid(procid, threads=None):

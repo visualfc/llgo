@@ -100,3 +100,10 @@ fi
 	}
 	return path
 }
+
+func TestIntegrationBreakpointQuotesSourcePath(t *testing.T) {
+	path := filepath.FromSlash("C:/source tree/main.go")
+	if got := integrationBreakpoint(path, 42); got != `break -source "C:/source tree/main.go" -line 42` {
+		t.Fatalf("breakpoint = %q", got)
+	}
+}

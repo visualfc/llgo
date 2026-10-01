@@ -42,6 +42,28 @@ def matrix_size(job):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_gdb_windows_acceptance_covers_both_abis_and_all_native_architectures(self):
+        job = load("llgo.yml")["jobs"]["llgo"]
+        entries = job["strategy"]["matrix"]["include"]
+        windows = {(entry["windows_abi"], entry["windows_arch"])
+                   for entry in entries if entry["os"].startswith("windows")}
+        self.assertEqual(windows, {(abi, arch) for abi in ("msvc", "mingw")
+                                   for arch in ("amd64", "386", "arm64")})
+        steps = job["steps"]
+        install = next(step for step in steps
+                       if step.get("name") == "Install Windows GDB")
+        test = next(step for step in steps
+                    if step.get("name") == "GDB runtime adapter integration tests (Windows)")
+        self.assertEqual(install["if"], "runner.os == 'Windows'")
+        self.assertEqual(test["if"], "runner.os == 'Windows'")
+        self.assertNotIn("continue-on-error", test)
+        self.assertEqual(test["env"]["LLGO_GDB_INTEGRATION"], "1")
+        # Its isolated MSYS2 setup changes the shell helper: it belongs after
+        # all existing LLDB/host-shell gates, not before target qualification.
+        shell_tests = [index for index, step in enumerate(steps)
+                       if step.get("name", "").startswith(("LLDB integration", "Test from the"))]
+        self.assertGreater(steps.index(install), max(shell_tests))
+
     def test_traceback_coverage_uses_bash_on_every_host(self):
         steps = load("go.yml")["jobs"]["test"]["steps"]
         step = next(step for step in steps

@@ -24,16 +24,19 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/xgo-dev/llgo/internal/quoted"
 )
 
 func TestGDBIntegration(t *testing.T) {
 	if os.Getenv("LLGO_GDB_INTEGRATION") == "" {
 		t.Skip("set LLGO_GDB_INTEGRATION=1 to run the native GDB acceptance test")
 	}
-	if runtime.GOOS != "linux" {
-		t.Skip("native GDB acceptance currently runs on Linux")
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		t.Fatal("GDB does not support native Apple Silicon processes; use native LLDB or GDB with a remote target")
 	}
 
 	gdbPath := integrationTool(t, os.Getenv("LLGO_GDB"), "gdb-multiarch", "gdb")
@@ -41,7 +44,7 @@ func TestGDBIntegration(t *testing.T) {
 	root := integrationRepoRoot(t)
 	fixtureDir := filepath.Join(root, "test", "debug", "runtime")
 	source := filepath.Join(fixtureDir, "main.go")
-	executable := filepath.Join(t.TempDir(), "debug.out")
+	executable := filepath.Join(t.TempDir(), integrationExecutable("debug"))
 
 	build := exec.Command(
 		llgoPath, "build", "-O0", "-ldflags=-w=false",
@@ -60,13 +63,19 @@ func TestGDBIntegration(t *testing.T) {
 	args := []string{
 		"--nx", "--quiet", "--batch", executable,
 		"-ex", "set debuginfod enabled off",
-		// The fixture collects while pthreads are live; deliver Boehm's
-		// Linux handshake signals without stopping before the source break.
-		"-ex", "handle SIGPWR SIGXCPU nostop noprint pass",
-		"-ex", fmt.Sprintf("break %s:%d", source, runtimeLine),
-		"-ex", fmt.Sprintf("break %s:%d", source, interfaceLine),
-		"-ex", fmt.Sprintf("break %s:%d", source, functionLine),
-		"-ex", fmt.Sprintf("break %s:%d", source, containerLine),
+		"-ex", "set startup-with-shell off",
+		"-ex", "python _llgo_last_stop = []; gdb.events.stop.connect(lambda event: _llgo_last_stop.__setitem__(slice(None), [event]))",
+	}
+	if runtime.GOOS == "linux" {
+		// Only Linux uses these Boehm handshake signals. Do not hide other
+		// signals, access violations, or an unexpected platform-specific stop.
+		args = append(args, "-ex", "handle SIGPWR SIGXCPU nostop noprint pass")
+	}
+	args = append(args,
+		"-ex", integrationBreakpoint(source, runtimeLine),
+		"-ex", integrationBreakpoint(source, interfaceLine),
+		"-ex", integrationBreakpoint(source, functionLine),
+		"-ex", integrationBreakpoint(source, containerLine),
 		"-ex", "break main.InspectGoroutineValues",
 		"-ex", "run",
 		"-ex", "echo LLGO_CASE=runtime\\n",
@@ -102,9 +111,9 @@ func TestGDBIntegration(t *testing.T) {
 		"-ex", "continue",
 		"-ex", "echo LLGO_CASE=goroutine\\n",
 		"-ex", "llgo goroutines",
-		"-ex", "python original_thread = gdb.selected_thread(); [gdb.execute('llgo goroutine %d bt' % item['goid']) for item in _goroutines()]; print('LLGO_THREAD_PRESERVED=' + str(gdb.selected_thread() == original_thread))",
+		"-ex", gdbSourceCommand(filepath.Join(fixtureDir, "gdb_goroutines.py")),
 		"-ex", "llgo goroutine 1 bt 3",
-	}
+	)
 	output := integrationRunGDB(t, gdbPath, fixtureDir, args...)
 	for _, expected := range []string{
 		"LLGO_CASE=runtime",
@@ -134,6 +143,7 @@ func TestGDBIntegration(t *testing.T) {
 		"main.InspectGoroutineValues",
 		"main.RuntimeGoroutineValues",
 		"LLGO_THREAD_PRESERVED=True",
+		"LLGO_GOROUTINE_STACKS=root+2workers",
 		"goroutine 1 [running] parent=0",
 		"tid=",
 		"main.InspectGoroutineValues",
@@ -147,20 +157,41 @@ func TestGDBIntegration(t *testing.T) {
 }
 
 func integrationTestFallback(t *testing.T, gdbPath string) {
-	cc := integrationTool(t, "cc")
+	cc, err := quoted.Split(os.Getenv("CC"))
+	if err != nil {
+		t.Fatalf("parse target CC: %v", err)
+	}
+	if len(cc) == 0 {
+		cc = []string{integrationTool(t, "cc", "clang")}
+	}
+	compileFixture := func(source, executable string, defines ...string) {
+		t.Helper()
+		// Clang's MSVC target defaults to CodeView; GDB needs DWARF. Keep
+		// target/CRT/linker arguments from CC, including a quoted compiler path.
+		args := append(append([]string(nil), cc[1:]...), "-gdwarf-4", "-O0")
+		args = append(args, defines...)
+		args = append(args, "-o", executable, source)
+		if output, err := exec.Command(cc[0], args...).CombinedOutput(); err != nil {
+			t.Fatalf("compile fallback fixture: %v\n%s", err, output)
+		}
+	}
 	dir := t.TempDir()
 	source := filepath.Join(dir, "fallback.c")
-	executable := filepath.Join(dir, "fallback")
+	executable := filepath.Join(dir, integrationExecutable("fallback"))
 	code := `
-typedef struct { const char *data; unsigned long len; } string;
+#ifdef _WIN32
+#define EXPORTED __attribute__((used, dllexport))
+#else
+#define EXPORTED __attribute__((used, visibility("hidden")))
+#endif
+typedef struct { const char *data; __SIZE_TYPE__ len; } string;
 string cstring = {"raw", 3};
 #ifdef LLGO_MARKER_V2
-__attribute__((used)) int __llgo_debugger_marker_v2 = 2;
+EXPORTED int __llgo_debugger_marker_v2 = 2;
 #endif
 #ifdef LLGO_BAD_RECORD
-__attribute__((used)) int __llgo_debugger_marker_v1 = 1;
-__attribute__((used, visibility("hidden")))
-unsigned char __llgo_debugger_abi_v1[16] = {
+EXPORTED int __llgo_debugger_marker_v1 = 1;
+EXPORTED unsigned char __llgo_debugger_abi_v1[16] = {
 	0x4c, 0x4c, 0x47, 0x4f, 0x44, 0x42, 0x47, 0,
 	1, 2, 2, 1, 0, sizeof(void *), 1, 0
 };
@@ -170,10 +201,7 @@ int main(void) { return 0; }
 	if err := os.WriteFile(source, []byte(code), 0600); err != nil {
 		t.Fatal(err)
 	}
-	compile := exec.Command(cc, "-g", "-o", executable, source)
-	if output, err := compile.CombinedOutput(); err != nil {
-		t.Fatalf("compile fallback fixture: %v\n%s", err, output)
-	}
+	compileFixture(source, executable)
 	output := integrationRunGDB(
 		t, gdbPath, dir,
 		"--nx", "--quiet", "--batch", executable,
@@ -192,10 +220,7 @@ int main(void) { return 0; }
 		}
 	}
 
-	compile = exec.Command(cc, "-g", "-DLLGO_MARKER_V2", "-o", executable, source)
-	if output, err := compile.CombinedOutput(); err != nil {
-		t.Fatalf("compile unsupported marker fixture: %v\n%s", err, output)
-	}
+	compileFixture(source, executable, "-DLLGO_MARKER_V2")
 	output = integrationRunGDB(
 		t, gdbPath, dir,
 		"--nx", "--quiet", "--batch", executable,
@@ -212,10 +237,7 @@ int main(void) { return 0; }
 		}
 	}
 
-	compile = exec.Command(cc, "-g", "-DLLGO_BAD_RECORD", "-o", executable, source)
-	if output, err := compile.CombinedOutput(); err != nil {
-		t.Fatalf("compile unsupported record fixture: %v\n%s", err, output)
-	}
+	compileFixture(source, executable, "-DLLGO_BAD_RECORD")
 	output = integrationRunGDB(
 		t, gdbPath, dir,
 		"--nx", "--quiet", "--batch", executable,
@@ -237,6 +259,17 @@ int main(void) { return 0; }
 func integrationRunGDB(t *testing.T, gdbPath, dir string, args ...string) string {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
+	if runtime.GOOS == "windows" {
+		// A MinGW-hosted GDB otherwise defaults to Windows-GNU even when
+		// this CI lane deliberately builds Microsoft-ABI targets. GDB 18
+		// names both flavors; select before loading any executable symbols.
+		switch os.Getenv("LLGO_WINDOWS_ABI") {
+		case "msvc":
+			args = append([]string{"-iex", "set osabi Windows-MSVC"}, args...)
+		case "mingw":
+			args = append([]string{"-iex", "set osabi Windows-GNU"}, args...)
+		}
+	}
 	oldDir, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -296,4 +329,17 @@ func integrationRepoRoot(t *testing.T) string {
 		t.Fatal("locate integration test source")
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+}
+
+func integrationExecutable(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+func integrationBreakpoint(source string, line int) string {
+	// Explicit locations avoid ambiguity between drive-letter colons and line
+	// numbers, and quoted forward-slash paths handle spaces on every host.
+	return fmt.Sprintf("break -source %s -line %d", strconv.Quote(filepath.ToSlash(source)), line)
 }

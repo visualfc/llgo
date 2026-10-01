@@ -164,3 +164,30 @@ var globalStruct github.com/xgo-dev/llgo/cl/_testdata/debug.StructWithAllTypeFie
 var globalInt int = 301
 var err error = {type = 0x0000000100112900, data = 0x000000000000001a}
 ```
+
+### GDB runtime acceptance
+
+The same fixture runs in GDB with `LLGO_GDB_INTEGRATION=1 go test
+./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v` from the repository
+root. Set `LLGO` and `LLGO_GDB` to select the compiler and debugger. `CC` is
+parsed with Go's compiler-argument quoting rules and must build the same native
+target, including its architecture and CRT. The fallback C programs explicitly
+request DWARF 4, including when Clang otherwise defaults to CodeView.
+
+The CI matrix runs Linux amd64 and Windows amd64, 386 and ARM64 with both
+Microsoft and GNU ABIs. Linux ARM64 has also been exercised locally in a native
+container; it is not an additional CI runner in this matrix. The Windows jobs install Python-enabled MSYS2 GDB 18+ in an independent
+directory, including its multiarch executable; they explicitly select
+`Windows-MSVC` or `Windows-GNU` before reading target symbols. This is separate
+from LLGo's single internal C ABI. The integration test checks each of the two
+worker stacks independently, requires distinct native threads, and checks that
+backtrace commands preserve the debugger's selected thread. A partial stack or
+an unexpected signal stop fails; it is not counted as platform support.
+
+Darwin GDB uses debugger-local Mach ports in its native thread identifiers.
+The adapter asks the host kernel for each port's system thread ID so that it
+can match the runtime registry. Remote target identifiers are not passed to
+host Mach APIs. Intel macOS native launch additionally needs a debugger with
+permission to obtain task ports. Apple Silicon GDB native process debugging is
+not supported; the native acceptance command reports that limitation directly.
+`llgo gdb` still supports cross-target/remote sessions on Apple Silicon.

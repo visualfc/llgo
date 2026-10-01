@@ -529,6 +529,29 @@ jobs:
             throw "Cygwin host-shell qualification failed with exit code $LASTEXITCODE"
           }
 
+      # Install the debugger in an isolated MSYS2 tree after shell/LLDB
+      # qualification: rolling GDB dependencies must not update pinned LLVM
+      # packages or replace the compiler lane's shell configuration early.
+      - name: Install Windows GDB
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-gdb
+
+      - name: GDB runtime adapter integration tests (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: |
+          Remove-Item Env:PYTHONHOME, Env:PYTHONPATH -ErrorAction SilentlyContinue
+          # This package is pure Go. Its target-native driver can run on 386
+          # without linking the x64 host LLVM libraries; CC retains the
+          # selected target ABI, architecture and CRT for C fallback fixtures.
+          go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
+          if ($LASTEXITCODE -ne 0) {
+            throw "GDB integration tests failed with exit code $LASTEXITCODE"
+          }
+
   cross-compile:
     if: needs.prepare.outputs.run_code_ci == 'true'
     needs: prepare

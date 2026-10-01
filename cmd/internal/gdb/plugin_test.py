@@ -87,6 +87,33 @@ class PluginTests(unittest.TestCase):
         self.inferior.threads.assert_not_called()
         self.assertIs(plugin._thread_for_procid(42), thread)
 
+    def test_windows_tid_uses_ptid_lwp_component(self):
+        thread = SimpleNamespace(ptid=(100, 73, 0))
+        self.inferior.threads.return_value = [thread]
+        with patch.object(plugin.sys, "platform", "win32"):
+            self.assertEqual(plugin._threads_by_procid(), {73: thread})
+
+    def test_darwin_native_mach_port_is_converted_to_system_id(self):
+        thread = SimpleNamespace(ptid=(100, 0, 259))
+        self.inferior.threads.return_value = [thread]
+        self.inferior.connection = SimpleNamespace(type="native")
+        with patch.object(plugin.sys, "platform", "darwin"), patch.object(
+                plugin, "_darwin_thread_id", return_value=987654321) as lookup:
+            self.assertEqual(plugin._threads_by_procid(), {987654321: thread})
+            lookup.assert_called_once_with(259)
+        with patch.object(plugin.sys, "platform", "darwin"), patch.object(
+                plugin, "_darwin_thread_id", return_value=None):
+            self.assertEqual(plugin._threads_by_procid(), {})
+
+    def test_darwin_remote_thread_ids_do_not_use_host_mach_ports(self):
+        thread = SimpleNamespace(ptid=(100, 0, 987654321))
+        self.inferior.threads.return_value = [thread]
+        self.inferior.connection = SimpleNamespace(type="remote")
+        with patch.object(plugin.sys, "platform", "darwin"), patch.object(
+                plugin, "_darwin_thread_id") as lookup:
+            self.assertEqual(plugin._threads_by_procid(), {987654321: thread})
+            lookup.assert_not_called()
+
     def test_goroutine_snapshot_is_reused_and_invalidated(self):
         info = SimpleNamespace(runtime_layout_version=2, pointer_size=8, byte_order="little")
         node = {"state": 1, "goid": 1, "parent_goid": 0, "debugger_thread_id": 42, "next": 0}
