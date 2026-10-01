@@ -19,6 +19,7 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -87,6 +88,9 @@ func TestDWARFPCLNLineSites(t *testing.T) {
 
 	conf := NewDefaultConf(ModeBuild)
 	conf.OutFile = filepath.Join(dir, "probe")
+	if runtime.GOOS == "windows" {
+		conf.OutFile += ".exe"
+	}
 	if _, err := Do([]string{file}, conf); err != nil {
 		t.Fatal(err)
 	}
