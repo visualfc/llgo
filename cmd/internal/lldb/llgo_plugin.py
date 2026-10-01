@@ -603,20 +603,35 @@ def _byte_order_name(byte_order: int) -> str:
     }.get(byte_order, "unknown")
 
 
-def _target_cache_key(target: lldb.SBTarget) -> Tuple[Any, ...]:
-    modules = []
-    for index in range(target.GetNumModules()):
-        module = target.GetModuleAtIndex(index)
-        modules.append((
-            module.GetUUIDString() or "",
-            str(module.GetFileSpec()),
-        ))
-    return (
-        target.GetTriple() or "",
-        target.GetAddressByteSize(),
-        target.GetByteOrder(),
-        tuple(modules),
-    )
+def _target_cache_key(target: lldb.SBTarget) -> Optional[Tuple[Any, ...]]:
+    # File paths are not identities: a target can be rebuilt in place, and a
+    # record unreadable before launch can become available in process memory.
+    # Only reuse a successful inspection within one stopped process generation.
+    try:
+        process = target.GetProcess()
+        if not process or not process.IsValid() or process.GetState() != lldb.eStateStopped:
+            return None
+        # A process belongs to one target. Its debugger-issued unique ID,
+        # unlike the OS PID, changes on relaunch and distinguishes targets;
+        # GetGloballyUniqueID is not available in current Apple SBTarget APIs.
+        debugger_id, process_id = target.GetDebugger().GetID(), process.GetUniqueID()
+        if not process_id:
+            return None
+        modules = []
+        for index in range(target.GetNumModules()):
+            module = target.GetModuleAtIndex(index)
+            uuid = module.GetUUIDString()
+            if not uuid:
+                return None
+            modules.append((uuid, str(module.GetFileSpec())))
+        return (
+            debugger_id, process_id, process.GetStopID(True),
+            target.GetTriple() or "", target.GetAddressByteSize(),
+            target.GetByteOrder(), tuple(modules),
+        )
+    except (AttributeError, TypeError):
+        # Older LLDBs may lack an identity API. Uncached inspection is safe.
+        return None
 
 
 def inspect_target(target: lldb.SBTarget) -> LLGoTargetInfo:
@@ -624,9 +639,12 @@ def inspect_target(target: lldb.SBTarget) -> LLGoTargetInfo:
         return LLGoTargetInfo((), None, None, "", 0, "unknown")
 
     cache_key = _target_cache_key(target)
-    cached = _TARGET_INFO_CACHE.get(cache_key)
+    cached = _TARGET_INFO_CACHE.get(cache_key) if cache_key is not None else None
     if cached is not None:
         return cached
+    # Bound the cache to the current target/process/stop and module set. A
+    # launch, resume, stop or module change cannot reuse the previous result.
+    _TARGET_INFO_CACHE.clear()
 
     marker_versions = _marker_versions(target)
     schema_version: Optional[int] = None
@@ -705,7 +723,10 @@ def inspect_target(target: lldb.SBTarget) -> LLGoTargetInfo:
         llgo_abi_version=llgo_abi_version,
         compatibility_error=compatibility_error,
     )
-    _TARGET_INFO_CACHE[cache_key] = info
+    # Retry missing or incompatible records even in the same stop: an image
+    # may have loaded before its debug information or memory became readable.
+    if cache_key is not None and raw_record is not None and info.supported:
+        _TARGET_INFO_CACHE[cache_key] = info
     return info
 
 

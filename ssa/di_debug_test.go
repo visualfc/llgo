@@ -1,7 +1,9 @@
 package ssa
 
 import (
+	"bytes"
 	"go/ast"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -12,6 +14,61 @@ import (
 	"github.com/xgo-dev/llgo/internal/optlevel"
 	"github.com/xgo-dev/llvm"
 )
+
+// The synthetic map/channel DWARF follows these runtime fields by name and
+// replaces their pointer types. Check the real declarations, not only the
+// reduced runtime package used by the metadata unit tests below.
+func TestDebugRuntimeContainerFieldContract(t *testing.T) {
+	for _, test := range []struct {
+		file  string
+		types map[string]map[string]string
+	}{
+		{"../runtime/internal/runtime/z_chan.go", map[string]map[string]string{
+			"Chan":      {"sendq": "chanWaitq", "recvq": "chanWaitq"},
+			"chanWaitq": {"first": "*chanWaiter", "last": "*chanWaiter"},
+			"chanWaiter": {
+				"prev": "*chanWaiter", "next": "*chanWaiter", "all": "*chanWaiter",
+				"ch": "*Chan", "elem": "unsafe.Pointer",
+			},
+		}},
+		{"../runtime/internal/runtime/map.go", map[string]map[string]string{
+			"hmap": {"buckets": "unsafe.Pointer", "oldbuckets": "unsafe.Pointer"},
+		}},
+	} {
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, test.file, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, want := range test.types {
+			t.Run(name, func(t *testing.T) {
+				object := file.Scope.Lookup(name)
+				if object == nil {
+					t.Fatalf("debugger runtime type %s missing in %s", name, test.file)
+				}
+				structure, ok := object.Decl.(*ast.TypeSpec).Type.(*ast.StructType)
+				if !ok {
+					t.Fatalf("debugger runtime type %s is no longer a struct", name)
+				}
+				fields := make(map[string]string)
+				for _, field := range structure.Fields.List {
+					var spelling bytes.Buffer
+					if err := format.Node(&spelling, fset, field.Type); err != nil {
+						t.Fatal(err)
+					}
+					for _, fieldName := range field.Names {
+						fields[fieldName.Name] = spelling.String()
+					}
+				}
+				for field, typ := range want {
+					if got := fields[field]; got != typ {
+						t.Errorf("debugger field %s.%s = %q, want %q; update the synthetic DWARF contract", name, field, got, typ)
+					}
+				}
+			})
+		}
+	}
+}
 
 func TestDebugRecursiveNamedTypesFinalize(t *testing.T) {
 	fset := token.NewFileSet()

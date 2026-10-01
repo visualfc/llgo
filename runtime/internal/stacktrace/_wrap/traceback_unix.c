@@ -33,7 +33,10 @@ typedef struct thread_node {
 
 static pthread_mutex_t registry_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t handler_once = PTHREAD_ONCE_INIT;
-/* Read only while all debugger threads are stopped. Owned by registry_lock. */
+/* Read only while all debugger threads are stopped. Owned by registry_lock.
+ * Debuggers discover this by name, without a link-time reference. Keep it
+ * externally visible through LTO and retain its section during linker GC. */
+__attribute__((used, retain, visibility("default")))
 thread_node *llgo_debugger_threads_v1;
 static _Thread_local thread_node *current;
 static _Thread_local uintptr_t *fault_buffer;

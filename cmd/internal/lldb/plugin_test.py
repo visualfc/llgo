@@ -56,6 +56,101 @@ class TypeNameTests(unittest.TestCase):
         self.assertEqual(plugin.go_type_name(ValueType("int")), "int32")
 
 
+class TargetCacheTests(unittest.TestCase):
+    def setUp(self):
+        lldb.eStateStopped, lldb.eStateRunning = 5, 6
+        lldb.eByteOrderLittle = 4
+        plugin._TARGET_INFO_CACHE.clear()
+        self.target = Mock()
+        self.target.GetDebugger.return_value.GetID.return_value = 10
+        self.target.GetTriple.return_value = "x86_64-unknown-linux-gnu"
+        self.target.GetAddressByteSize.return_value = 8
+        self.target.GetByteOrder.return_value = lldb.eByteOrderLittle
+        self.process = self.target.GetProcess.return_value
+        self.process.GetState.return_value = lldb.eStateStopped
+        self.process.GetUniqueID.return_value = 20
+        self.process.GetStopID.return_value = 1
+        self.module = Mock()
+        self.module.GetUUIDString.return_value = "original-build"
+        self.module.GetFileSpec.return_value = "/same/path/program"
+        self.target.GetNumModules.return_value = 1
+        self.target.GetModuleAtIndex.return_value = self.module
+        self.record = b"LLGODBG\0" + bytes([1, 1, 2, 1, 0, 8, 1, 0])
+        self.markers = patch.object(plugin, "_marker_versions", return_value=(1,))
+        self.reader = patch.object(plugin, "_read_debugger_record", return_value=self.record)
+        self.markers.start()
+        self.read = self.reader.start()
+        self.addCleanup(self.markers.stop)
+        self.addCleanup(self.reader.stop)
+        self.addCleanup(plugin._TARGET_INFO_CACHE.clear)
+
+    def test_success_is_reused_only_in_same_process_stop_and_module_set(self):
+        first = plugin.inspect_target(self.target)
+        self.assertTrue(first.supported)
+        self.assertIs(plugin.inspect_target(self.target), first)
+        self.read.assert_called_once()
+        # Stop IDs include expression stops; a relaunch must also have a new
+        # process identity even if its first stop has the same numeric ID.
+        for getter, value in (
+            (self.process.GetStopID, 2),
+            (self.process.GetUniqueID, 21),
+            (self.target.GetDebugger.return_value.GetID, 11),
+            (self.module.GetUUIDString, "rebuilt-at-same-path"),
+            (self.target.GetNumModules, 2),
+        ):
+            getter.return_value = value
+            updated = plugin.inspect_target(self.target)
+            self.assertTrue(updated.supported)
+            self.assertIsNot(updated, first)
+            first = updated
+        self.assertEqual(self.read.call_count, 6)
+        self.process.GetStopID.assert_called_with(True)
+        self.assertEqual(len(plugin._TARGET_INFO_CACHE), 1)
+
+    def test_offline_and_unidentified_modules_are_rechecked(self):
+        for getter, value in (
+            (self.process.IsValid, False),
+            (self.process.GetState, lldb.eStateRunning),
+            (self.module.GetUUIDString, ""),
+        ):
+            with self.subTest(getter=getter):
+                old = getter.return_value
+                getter.return_value = value
+                self.read.return_value = self.record
+                self.assertTrue(plugin.inspect_target(self.target).supported)
+                # Simulate an in-place rebuild with the same file path and no
+                # usable UUID, or an offline target whose bytes have changed.
+                self.read.return_value = b"LLGODBG\0" + bytes([1, 1, 99, 1, 0, 8, 1, 0])
+                self.assertFalse(plugin.inspect_target(self.target).supported)
+                self.assertFalse(plugin._TARGET_INFO_CACHE)
+                getter.return_value = old
+
+    def test_missing_record_is_retried_after_launch_and_within_same_stop(self):
+        self.process.IsValid.return_value = False
+        self.read.return_value = None
+        self.assertFalse(plugin.inspect_target(self.target).supported)
+        self.process.IsValid.return_value = True
+        self.assertFalse(plugin.inspect_target(self.target).supported)
+        self.read.return_value = self.record
+        self.assertTrue(plugin.inspect_target(self.target).supported)
+        self.assertEqual(self.read.call_count, 3)
+
+    def test_missing_public_identity_api_uses_uncached_inspection(self):
+        self.process.GetUniqueID.side_effect = AttributeError("old LLDB")
+        self.assertTrue(plugin.inspect_target(self.target).supported)
+        self.assertTrue(plugin.inspect_target(self.target).supported)
+        self.assertEqual(self.read.call_count, 2)
+
+    def test_marker_only_compatibility_does_not_cache_an_unreadable_record(self):
+        with patch.object(plugin, "LLGO_DEBUGGER_SCHEMAS", {"legacy": (1, 2, 1)}):
+            self.read.return_value = None
+            self.assertTrue(plugin.inspect_target(self.target).supported)
+            self.assertFalse(plugin._TARGET_INFO_CACHE)
+            self.read.return_value = b"LLGODBG\0" + bytes([1, 1, 99, 1, 0, 8, 1, 0])
+            self.assertFalse(plugin.inspect_target(self.target).supported)
+            self.assertEqual(self.read.call_count, 2)
+
+
 class WindowsCodeAddressTests(unittest.TestCase):
     def setUp(self):
         lldb.eAddressMaskTypeCode = 1

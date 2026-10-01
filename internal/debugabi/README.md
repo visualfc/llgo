@@ -36,3 +36,15 @@ this does not add an ARM64 PE unwind-table decoder to LLDB.
 Run `llgo lldb program` or `llgo gdb program` to load the installed adapters.
 Both support `llgo status`, `llgo goroutines`, and `llgo goroutine ID bt`, plus
 runtime-aware string, slice, interface, function, map, and channel values.
+
+Interface summaries in the native LLDB/GDB adapters currently identify the
+dynamic type and nil state; the raw data field remains available through normal
+debugger field inspection. They do not decode the concrete payload. The schema's
+`runtime_type.kind` (`Kind_`) and
+`direct_interface_flag` (`KindDirectIface`, 32) describe the runtime contract
+for portable frontends and future concrete-value inspection. They are not a
+claim that native payload decoding is implemented. A decoder must check this
+flag: direct interface data is the value itself, while indirect interface data
+points to value storage. The interface's payload address alone is insufficient
+to decide whether to dereference it. Debug-artifact processing transports this
+schema and record; it does not provide a concrete-value decoder either.
