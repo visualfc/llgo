@@ -63,8 +63,11 @@ func TestGDBIntegration(t *testing.T) {
 	args := []string{
 		"--nx", "--quiet", "--batch", executable,
 		"-ex", "set debuginfod enabled off",
-		"-ex", "set startup-with-shell off",
 		"-ex", "python _llgo_last_stop = []; gdb.events.stop.connect(lambda event: _llgo_last_stop.__setitem__(slice(None), [event]))",
+	}
+	if runtime.GOOS != "windows" {
+		// GDB's Windows-native build has no startup-with-shell parameter.
+		args = append(args, "-ex", "set startup-with-shell off")
 	}
 	if runtime.GOOS == "linux" {
 		// Only Linux uses these Boehm handshake signals. Do not hide other
