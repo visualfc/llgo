@@ -714,9 +714,7 @@ func shouldEmitRuntimeWasmSites(ctx *context) bool {
 // references (the anchor inside the function body) is live, which is the same
 // records-follow-function semantics. COFF uses associative COMDAT sections,
 // which follow the function section containing the anchor under /OPT:REF.
-// Sites are additionally gated per Program:
-// debug builds keep the funcinfo tables but drop the body-embedded site records
-// (see Program.EnableFuncInfoSites).
+// Sites are additionally gated per Program (see Program.EnableFuncInfoSites).
 func shouldEmitRuntimeSites(ctx *context) bool {
 	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() {
 		return false
@@ -724,8 +722,16 @@ func shouldEmitRuntimeSites(ctx *context) bool {
 	return runtimeSiteObjectFormat(ctx) != siteObjectUnsupported
 }
 
+// Entry-block inline assembly disturbs LLDB's initial lexical scope on Darwin.
+// PC-line anchors carry no source location and remain safe with DWARF. External
+// pclntab still needs final entry addresses to construct its sidecar.
 func shouldEmitRuntimeEntrySites(ctx *context) bool {
-	return shouldEmitRuntimeSites(ctx)
+	if !shouldEmitRuntimeSites(ctx) {
+		return false
+	}
+	conf := ctx.buildConf
+	return conf.Goos != "darwin" || conf.PCLNMode == PCLNExternal ||
+		!shouldEmitDebugInfo(conf, &ctx.crossCompile)
 }
 
 // siteSectionInfo names one metadata site section in each supported object format.

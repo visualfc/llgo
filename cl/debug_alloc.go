@@ -28,13 +28,12 @@ func collectDebugAllocVariables(fn *ssa.Function) map[*ssa.Alloc]*types.Var {
 	return variables
 }
 
-func hasDebugAlloc(variables map[*ssa.Alloc]*types.Var, variable *types.Var) bool {
-	for _, candidate := range variables {
-		if candidate == variable {
-			return true
-		}
+func collectDebugAllocObjects(variables map[*ssa.Alloc]*types.Var) map[*types.Var]bool {
+	objects := make(map[*types.Var]bool, len(variables))
+	for _, variable := range variables {
+		objects[variable] = true
 	}
-	return false
+	return objects
 }
 
 func (p *context) debugAlloc(b llssa.Builder, alloc *ssa.Alloc, addr llssa.Expr) {

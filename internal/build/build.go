@@ -420,13 +420,12 @@ func NewDefaultConf(mode Mode) *Config {
 		goarch = runtime.GOARCH
 	}
 	conf := &Config{
-		Goos:               goos,
-		Goarch:             goarch,
-		BinPath:            bin,
-		Mode:               mode,
-		BuildMode:          BuildModeExe,
-		OmitDWARFByDefault: mode != ModeGen,
-		PCLNMode:           PCLNEmbedded,
+		Goos:      goos,
+		Goarch:    goarch,
+		BinPath:   bin,
+		Mode:      mode,
+		BuildMode: BuildModeExe,
+		PCLNMode:  PCLNEmbedded,
 	}
 	if mode == ModeTest {
 		conf.PthreadStackSize = defaultTestPthreadStackSize
@@ -692,12 +691,9 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	prog.EnableCodeViewDebugInfo(emitCodeView)
 	funcInfo := conf.Mode != ModeGen && conf.PCLNMode != PCLNNone
 	prog.EnableFuncInfoMetadata(funcInfo)
-	// Site records are inline-asm fragments inside function bodies. Darwin
-	// DWARF builds avoid them because they disturb LLDB lexical scopes; Linux
-	// still needs them because its restricted dynamic symbol table cannot
-	// reconstruct every Go entry PC through dlsym. External mode always needs
-	// final-PC sites for sidecar construction.
-	prog.EnableFuncInfoSites(shouldEnablePCLNSites(conf, funcInfo, emitDebugInfo))
+	// Keep PC-line anchors for precise runtime locations. Darwin DWARF builds
+	// suppress only entry-address sites, which disturb LLDB lexical scopes.
+	prog.EnableFuncInfoSites(shouldEnablePCLNSites(conf, funcInfo))
 	sizes := func(sizes types.Sizes, _, _ string) types.Sizes {
 		sizes = effectiveTypeSizes(sizes, export.WasmProfile)
 		return prog.TypeSizes(sizes)
@@ -852,11 +848,9 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	prog.SetPython(func() *types.Package { return pythonPackage })
 
 	buildMode := ssaBuildMode
-	cabiOptimize := true
 	passOpt := shouldRunLLVMPasses(mode)
 	if emitDebugInfo {
 		buildMode |= ssa.GlobalDebug
-		cabiOptimize = false
 	}
 	if !IsOptimizeEnabled() {
 		buildMode |= ssa.NaiveForm
@@ -892,7 +886,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		crossCompile:    export,
 		commands:        commands,
 		frontendOptions: frontendOptions,
-		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, cabiOptimize),
+		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, true),
 		buildTrace:      buildTrace,
 		goVersion:       sourcePatchGoVersion,
 	}
@@ -2241,7 +2235,7 @@ func compileExtraFiles(ctx *context, verbose bool) ([]string, error) {
 // internal/pclnpost and doc/design/pclntab-linkphase.md). Any failure leaves
 // the binary fully functional on the first-use construction fallback.
 func rewritePrebuiltFuncTab(ctx *context, out string, verbose bool) {
-	if ctx == nil || ctx.prog == nil || !ctx.prog.FuncInfoSitesEnabled() || !shouldEmitRuntimeSites(ctx) {
+	if !shouldEmitRuntimeEntrySites(ctx) {
 		return
 	}
 	if ctx.buildConf.BuildMode != BuildModeExe {

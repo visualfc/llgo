@@ -79,6 +79,9 @@ func TestMultiBuildRuntimeIsolationAndCache(t *testing.T) {
 	build := func(names []string, warm bool) {
 		t.Helper()
 		conf := NewDefaultConf(ModeBuild)
+		// Compare runtime/cache isolation independently of debug maps, which
+		// record per-link temporary main archive paths on Darwin.
+		conf.LinkOptions.DWARF = DWARFOmit
 		if runtime.GOOS == "windows" {
 			// Build resolves a private Config copy; choose the expected suffix
 			// explicitly instead of reading unresolved conf.AppExt afterward.

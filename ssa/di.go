@@ -652,13 +652,22 @@ func (b diBuilder) createExpression(ops []uint64) DIExpression {
 // -----------------------------------------------------------------------------
 
 // Copy to alloca'd memory to get declareable address.
-func (b Builder) constructDebugAddr(v Expr) (dbgPtr Expr, dbgVal Expr, exists bool) {
+func (b Builder) constructDebugAddr(v Expr) Expr {
 	t := v.Type.RawType().Underlying()
-	dbgPtr, dbgVal = b.doConstructDebugAddr(v, t)
-	return dbgPtr, dbgVal, false
+	return b.doConstructDebugAddr(v, t)
 }
 
-func (b Builder) doConstructDebugAddr(v Expr, t types.Type) (dbgPtr Expr, dbgVal Expr) {
+func (b Builder) constructDebugAddrWithStore(v Expr) (Expr, Expr) {
+	t := v.Type.RawType().Underlying()
+	return b.doConstructDebugAddrWithStore(v, t)
+}
+
+func (b Builder) doConstructDebugAddr(v Expr, t types.Type) (dbgPtr Expr) {
+	dbgPtr, _ = b.doConstructDebugAddrWithStore(v, t)
+	return dbgPtr
+}
+
+func (b Builder) doConstructDebugAddrWithStore(v Expr, t types.Type) (dbgPtr, store Expr) {
 	var ty Type
 	switch t := t.(type) {
 	case *types.Basic:
@@ -681,32 +690,60 @@ func (b Builder) doConstructDebugAddr(v Expr, t types.Type) (dbgPtr Expr, dbgVal
 		ty = b.Prog.Closure(t)
 	case *types.Named:
 		ty = b.Prog.Type(t.Underlying(), InGo)
-	case *types.Map:
-		ty = b.Prog.Type(b.Prog.rtType("Map").RawType().Underlying(), InGo)
 	default:
 		ty = v.Type
 	}
-	dbgPtr = b.AllocaT(ty)
+	// A debug snapshot reserves one slot per function invocation. Allocating
+	// it at a DebugRef inside a loop grows the stack on every iteration at O0.
+	// Keep the value update at its source position, but reserve the slot with
+	// the same entry-block builder used for ordinary stack locals.
+	entryBuilder := *b
+	entryBuilder.impl = b.Func.entryAllocaBuilder()
+	dbgPtr = entryBuilder.AllocaT(ty)
 	dbgPtr.Type = b.Prog.Pointer(v.Type)
-	b.Store(dbgPtr, v)
-	dbgVal = b.Load(dbgPtr)
-	return dbgPtr, dbgVal
+	store = b.Store(dbgPtr, v)
+	return dbgPtr, store
 }
 
 func (b Builder) di() diBuilder {
 	return b.Pkg.di
 }
 
+// DIParam emits parameter debug information without exposing its storage. Its
+// original signature is retained for callers that use Builder method values.
 func (b Builder) DIParam(variable *types.Var, v Expr, dv DIVar, scope DIScope, pos token.Position, blk BasicBlock) {
-	if b.Prog.Target().effectiveGOOS() == "windows" {
-		if _, ok := v.Type.RawType().Underlying().(*types.Pointer); ok {
-			addr := b.AllocaT(v.Type)
-			b.Store(addr, v)
-			b.DIDeclare(variable, addr, dv, scope, pos, blk)
-			return
+	b.diParam(variable, v, dv, scope, pos, blk)
+}
+
+// DIParamWithHome returns the stable O0 storage backing the parameter.
+func (b Builder) DIParamWithHome(variable *types.Var, v Expr, dv DIVar, scope DIScope, pos token.Position, blk BasicBlock) Expr {
+	return b.diParam(variable, v, dv, scope, pos, blk)
+}
+
+func (b Builder) diParam(variable *types.Var, v Expr, dv DIVar, scope DIScope, pos token.Position, blk BasicBlock) Expr {
+	if b.Prog.debugInfoOptimized {
+		// Preserve the Windows pointer location policy for optimized CodeView.
+		if b.Prog.Target().effectiveGOOS() == "windows" {
+			if _, ok := v.Type.RawType().Underlying().(*types.Pointer); ok {
+				addr := b.AllocaT(v.Type)
+				b.Store(addr, v)
+				b.DIDeclare(variable, addr, dv, scope, pos, blk)
+				return Nil
+			}
 		}
+		b.DIValue(variable, v, dv, scope, pos, blk)
+		return Nil
 	}
-	b.DIValue(variable, v, dv, scope, pos, blk)
+	dbgPtr, store := b.constructDebugAddrWithStore(v)
+	store.impl.InstructionSetDebugLoc(llvm.Metadata{})
+	b.DIDeclare(variable, dbgPtr, dv, scope, pos, blk)
+	return dbgPtr
+}
+
+// DIStore updates the stable debug-only storage for an O0 parameter.
+func (b Builder) DIStore(ptr, value Expr) {
+	store := b.Store(ptr, value)
+	store.impl.InstructionSetDebugLoc(llvm.Metadata{})
 }
 
 func (b Builder) DIDeclare(variable *types.Var, v Expr, dv DIVar, scope DIScope, pos token.Position, blk BasicBlock) {
@@ -720,7 +757,7 @@ func (b Builder) DIValue(variable *types.Var, v Expr, dv DIVar, scope DIScope, p
 		expr := b.di().createExpression(nil)
 		b.di().dbgValue(v, dv, scope, pos, expr, blk)
 	} else {
-		dbgPtr, _, _ := b.constructDebugAddr(v)
+		dbgPtr := b.constructDebugAddr(v)
 		expr := b.di().createExpression([]uint64{opDeref})
 		b.di().dbgValue(dbgPtr, dv, scope, pos, expr, blk)
 	}
@@ -753,7 +790,10 @@ func needConstructAddr(t types.Type) bool {
 			return true
 		}
 		return false
-	case *types.Pointer:
+	case *types.Pointer, *types.Map, *types.Chan:
+		// Map and channel values are pointers to runtime headers. Like other
+		// pointers, describe the value itself; a snapshot plus DW_OP_deref can
+		// lose its location when LLVM promotes the entry-block slot on Wasm.
 		return false
 	default:
 		return true

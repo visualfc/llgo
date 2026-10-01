@@ -101,6 +101,96 @@ func inspect() {
 	}
 }
 
+func TestDebugParameterHomes(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		opt       optlevel.Level
+		wantHomes bool
+	}{
+		{"O0", optlevel.O0, true},
+		{"O2", optlevel.O2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fset := token.NewFileSet()
+			file, err := parser.ParseFile(fset, "params.go", `package p
+func inspect(first, second int) {}
+`, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			typesPkg, err := (&types.Config{}).Check("example.com/p", fset, []*ast.File{file}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			object := typesPkg.Scope().Lookup("inspect").(*types.Func)
+			signature := object.Type().(*types.Signature)
+
+			prog := NewProgram(&Target{OptLevel: tc.opt})
+			defer prog.Dispose()
+			prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+			pkg := prog.NewPackage("p", "example.com/p")
+			pkg.InitDebug("p", "example.com/p", fset)
+			function := pkg.NewFunc("example.com/p.inspect", signature, InGo)
+			builder := function.MakeBody(1)
+			defer builder.Dispose()
+			decl := file.Decls[0].(*ast.FuncDecl)
+			builder.DebugFunction(
+				function,
+				object.Scope(),
+				fset.Position(object.Pos()),
+				fset.Position(decl.Body.Lbrace),
+			)
+
+			first := signature.Params().At(0)
+			firstPos := fset.Position(first.Pos())
+			firstVar := builder.DIVarParam(function, firstPos, first.Name(), prog.Int(), 1)
+			home := builder.DIParamWithHome(first, function.Param(0), firstVar, function, firstPos, function.Block(0))
+			if got := !home.IsNil(); got != tc.wantHomes {
+				t.Fatalf("stable parameter home: %v, want %v", got, tc.wantHomes)
+			}
+			if !home.IsNil() {
+				builder.DIStore(home, function.Param(0))
+			}
+
+			second := signature.Params().At(1)
+			secondPos := fset.Position(second.Pos())
+			secondVar := builder.DIVarParam(function, secondPos, second.Name(), prog.Int(), 2)
+			builder.DIParam(second, function.Param(1), secondVar, function, secondPos, function.Block(0))
+			builder.Return()
+			builder.EndBuild()
+			pkg.FinalizeDebug()
+
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("parameter debug metadata is invalid: %v\n%s", err, pkg.Module().String())
+			}
+			ir := pkg.Module().String()
+			hasDeclare := strings.Contains(ir, "#dbg_declare")
+			hasValue := strings.Contains(ir, "#dbg_value")
+			if hasDeclare != tc.wantHomes || hasValue == tc.wantHomes {
+				t.Fatalf("debug records: declare=%v value=%v, want homes=%v\n%s",
+					hasDeclare, hasValue, tc.wantHomes, ir)
+			}
+			if tc.wantHomes {
+				stores := 0
+				for _, line := range strings.Split(ir, "\n") {
+					if strings.Contains(line, " load ") {
+						t.Fatalf("debug home emits an unused load: %s", line)
+					}
+					if strings.Contains(line, "store ") {
+						stores++
+						if strings.Contains(line, "!dbg") {
+							t.Fatalf("debug home store has a source location: %s", line)
+						}
+					}
+				}
+				if stores < 3 {
+					t.Fatalf("found %d debug home stores, want at least 3\n%s", stores, ir)
+				}
+			}
+		})
+	}
+}
+
 func TestDebugGoTypeEncodings(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "types.go", `package p
@@ -170,7 +260,7 @@ func TestWindowsDebugPointerParameter(t *testing.T) {
 		goos        string
 		wantDeclare bool
 	}{
-		{goos: "linux"},
+		{goos: "linux", wantDeclare: true},
 		{goos: "windows", wantDeclare: true},
 	} {
 		t.Run(test.goos, func(t *testing.T) {
@@ -436,4 +526,115 @@ func newDebugRuntimePackage() *types.Package {
 		pkg.Scope().Insert(obj)
 	}
 	return pkg
+}
+
+func TestDebugMapSnapshotUsesMapValueStorage(t *testing.T) {
+	for _, target := range []*Target{
+		{GOOS: "linux", GOARCH: "amd64", LLVMTarget: "x86_64-unknown-linux-gnu"},
+		{GOOS: "js", GOARCH: "wasm", LLVMTarget: "wasm32-unknown-emscripten"},
+		{GOOS: "js", GOARCH: "wasm", LLVMTarget: "wasm64-unknown-emscripten"},
+	} {
+		t.Run(target.LLVMTarget, func(t *testing.T) {
+			prog := NewProgram(target)
+			defer prog.Dispose()
+			prog.TypeSizes(types.SizesFor("gc", target.GOARCH))
+			prog.SetRuntime(newDebugRuntimePackage())
+			pkg := prog.NewPackage("mapsnapshot", "mapsnapshot")
+			pkg.InitDebug("mapsnapshot", "mapsnapshot", token.NewFileSet())
+			mapType := types.NewMap(types.Typ[types.String], types.Typ[types.Int])
+			mapVar := types.NewVar(token.NoPos, nil, "mapping", mapType)
+			chanVar := types.NewVar(token.NoPos, nil, "queue", types.NewChan(types.SendRecv, types.Typ[types.Int]))
+			sig := types.NewSignatureType(nil, nil, nil,
+				types.NewTuple(mapVar, chanVar), nil, false)
+			fn := pkg.NewFunc("snapshot", sig, InGo)
+			b := fn.MakeBody(2)
+			defer b.Dispose()
+			pos := token.Position{Filename: "snapshot.go", Line: 1, Column: 1}
+			b.DebugFunction(fn, nil, pos, pos)
+			b.Jump(fn.Block(1))
+			b.SetBlock(fn.Block(1))
+			value := fn.Param(0)
+			home, store := b.constructDebugAddrWithStore(value)
+			// A Go map value holds a header pointer. Its debug snapshot must
+			// reserve that pointer's physical storage, not the Map header itself.
+			// Wasm32 uses an eight-byte Go slot despite four-byte host pointers.
+			want := prog.storageType(value.Type)
+			if got := home.impl.AllocatedType(); got != want {
+				t.Fatalf("map snapshot reserves %s, want map-value storage %s", got.String(), want.String())
+			}
+			if home.impl.InstructionParent() != fn.impl.EntryBasicBlock() {
+				t.Fatal("map snapshot reserves storage inside the loop")
+			}
+			if store.impl.InstructionParent() != fn.Block(1).first {
+				t.Fatal("map snapshot does not update at the source location")
+			}
+			// Local map/channel values use their pointer SSA values directly.
+			// Do not route them through a frame-index plus DW_OP_deref: Wasm's
+			// backend can discard that expression after promoting the slot.
+			for i, variable := range []*types.Var{mapVar, chanVar} {
+				value := fn.Param(i)
+				dv := b.DIVarAuto(fn, pos, variable.Name(), value.Type)
+				b.DIValue(variable, value, dv, fn, pos, fn.Block(1))
+			}
+			b.Return()
+			b.EndBuild()
+			pkg.FinalizeDebug()
+			if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("map snapshot module is invalid: %v\n%s", err, pkg.String())
+			}
+			ir := fn.impl.String()
+			for i := range 2 {
+				if !strings.Contains(ir, "#dbg_value("+fn.Param(i).impl.String()+",") {
+					t.Fatalf("pointer value %d has no direct debug location:\n%s", i, ir)
+				}
+			}
+			if strings.Contains(ir, "DW_OP_deref") {
+				t.Fatalf("pointer debug values use an indirect snapshot:\n%s", ir)
+			}
+		})
+	}
+}
+
+func TestInlineAsmNoDebugPreservesBuilderLocation(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "asm.go", `package p
+func f() {}
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	typesPkg, err := (&types.Config{}).Check("example.com/p", fset, []*ast.File{file}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prog := NewProgram(&Target{OptLevel: optlevel.O0})
+	defer prog.Dispose()
+	prog.TypeSizes(types.SizesFor("gc", runtime.GOARCH))
+	pkg := prog.NewPackage("p", "example.com/p")
+	pkg.InitDebug("p", "example.com/p", fset)
+	decl := file.Decls[0].(*ast.FuncDecl)
+	object := typesPkg.Scope().Lookup("f").(*types.Func)
+	fn := pkg.NewFunc("example.com/p.f", object.Type().(*types.Signature), InGo)
+	b := fn.MakeBody(1)
+	defer b.Dispose()
+	pos := fset.Position(decl.Body.Lbrace)
+	b.DebugFunction(fn, object.Scope(), fset.Position(object.Pos()), pos)
+	b.DISetCurrentDebugLocation(fn, pos)
+	b.InlineAsmNoDebug("nop")
+	b.Return()
+	b.EndBuild()
+	pkg.FinalizeDebug()
+
+	asm := fn.impl.EntryBasicBlock().FirstInstruction()
+	if !asm.InstructionDebugLoc().IsNil() {
+		t.Fatal("inline assembly retained the current debug location")
+	}
+	ret := llvm.NextInstruction(asm)
+	if ret.IsNil() || ret.InstructionDebugLoc().IsNil() {
+		t.Fatal("inline assembly cleared the builder debug location")
+	}
+	if err := llvm.VerifyModule(pkg.Module(), llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("inline assembly debug metadata is invalid: %v\n%s", err, pkg.Module().String())
+	}
 }

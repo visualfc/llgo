@@ -2,11 +2,91 @@ package debuginfo
 
 import (
 	"debug/dwarf"
+	"fmt"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/xgo-dev/llvm"
 )
+
+func TestBuilderLinksWithClangWcharABI(t *testing.T) {
+	clang, err := exec.LookPath("clang")
+	if err != nil {
+		t.Skip("clang is required to verify C/Go debug module linking")
+	}
+	for _, tt := range []struct {
+		name       string
+		target     string
+		wcharSize  int
+		shortWchar bool
+	}{
+		{name: "windows_amd64", target: "x86_64-pc-windows-msvc", wcharSize: 2},
+		{name: "windows_386", target: "i686-pc-windows-msvc", wcharSize: 2},
+		{name: "windows_arm64", target: "aarch64-pc-windows-msvc", wcharSize: 2},
+		{name: "windows_gnu", target: "x86_64-w64-windows-gnu", wcharSize: 2},
+		{name: "windows_gnu_386", target: "i686-w64-windows-gnu", wcharSize: 2},
+		{name: "darwin", target: "aarch64-apple-darwin", wcharSize: 4},
+		{name: "linux", target: "x86_64-unknown-linux-gnu", wcharSize: 4},
+		{name: "linux_short_wchar", target: "x86_64-unknown-linux-gnu", wcharSize: 2, shortWchar: true},
+		{name: "wasm", target: "wasm32-unknown-wasip1", wcharSize: 4},
+		{name: "cortex_m", target: "thumbv7m-unknown-unknown-eabi", wcharSize: 4},
+		{name: "avr", target: "avr", wcharSize: 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// Compile without system headers or libraries so this exercises real
+			// target ABI flags on every host, including Windows cross-targets.
+			path := filepath.Join(t.TempDir(), "c.ll")
+			args := []string{"--target=" + tt.target, "-x", "c", "-g", "-S", "-emit-llvm", "-o", path, "-"}
+			if tt.shortWchar {
+				args = append(args, "-fshort-wchar")
+			}
+			cmd := exec.Command(clang, args...)
+			cmd.Stdin = strings.NewReader("int c_wchar_size(void) { return sizeof(__WCHAR_TYPE__); }")
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("compile C module: %v\n%s", err, out)
+			}
+			ctx := llvm.NewContext()
+			defer ctx.Dispose()
+			buf, err := llvm.NewMemoryBufferFromFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cModule, err := ctx.ParseIR(buf)
+			if err != nil {
+				t.Fatalf("parse C module: %v", err)
+			}
+			wantFlag := fmt.Sprintf(`!{i32 1, !"wchar_size", i32 %d}`, tt.wcharSize)
+			if !strings.Contains(cModule.String(), wantFlag) {
+				t.Fatalf("C module is missing %s:\n%s", wantFlag, cModule.String())
+			}
+
+			module := ctx.NewModule("go-debug-test")
+			defer module.Dispose()
+			module.SetTarget(cModule.Target())
+			module.SetDataLayout(cModule.DataLayout())
+			builder := New(module, Config{EmitCodeView: strings.Contains(tt.target, "windows")})
+			builder.CompileUnit("main.go", "/src/example")
+			builder.Finalize()
+
+			// LLVM's LTO linker must accept the Go debug module and retain the
+			// ABI selected by the C compiler. LinkModules consumes cModule.
+			if err := llvm.LinkModules(module, cModule); err != nil {
+				t.Fatalf("link C and Go debug modules: %v", err)
+			}
+			if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
+				t.Fatalf("linked module is invalid: %v\n%s", err, module.String())
+			}
+			if module.NamedFunction("c_wchar_size").IsNil() || module.NamedGlobal(debuggerMarkerSymbol).IsNil() {
+				t.Fatalf("linked module lost C code or the Go debugger marker:\n%s", module.String())
+			}
+			if !strings.Contains(module.String(), wantFlag) {
+				t.Fatalf("linked module lost C ABI flag %s:\n%s", wantFlag, module.String())
+			}
+		})
+	}
+}
 
 func TestBuilderLifecycleAndModuleMetadata(t *testing.T) {
 	ctx := llvm.NewContext()

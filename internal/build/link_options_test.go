@@ -313,3 +313,37 @@ func elfHasDebugInfo(t *testing.T, path string) bool {
 	}
 	return false
 }
+
+func TestNativeDWARFDefaults(t *testing.T) {
+	for _, tt := range []struct {
+		name, goos, goarch, target string
+		mode                       BuildMode
+		wantOmit                   bool
+	}{
+		{name: "darwin executable", goos: "darwin", goarch: "arm64"},
+		{name: "linux executable", goos: "linux", goarch: "amd64"},
+		{name: "windows executable", goos: "windows", goarch: "amd64"},
+		{name: "darwin archive", goos: "darwin", goarch: "arm64", mode: BuildModeCArchive},
+		{name: "linux shared", goos: "linux", goarch: "amd64", mode: BuildModeCShared},
+		{name: "darwin shared", goos: "darwin", goarch: "arm64", mode: BuildModeCShared, wantOmit: true},
+		{name: "browser", goos: "js", goarch: "wasm", wantOmit: true},
+		{name: "wasi", goos: "wasip1", goarch: "wasm", wantOmit: true},
+		{name: "embedded", target: "cortex-m-qemu", wantOmit: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			conf := NewDefaultConf(ModeBuild)
+			conf.Goos, conf.Goarch, conf.Target, conf.BuildMode = tt.goos, tt.goarch, tt.target, tt.mode
+			if got := omitDWARFRequested(conf); got != tt.wantOmit {
+				t.Fatalf("omit DWARF = %v, want %v", got, tt.wantOmit)
+			}
+			conf.LinkOptions.DWARF = DWARFPreserve
+			if omitDWARFRequested(conf) {
+				t.Fatal("explicit preserve must override the default")
+			}
+			conf.LinkOptions.DWARF = DWARFOmit
+			if !omitDWARFRequested(conf) {
+				t.Fatal("explicit omit must override the default")
+			}
+		})
+	}
+}

@@ -153,6 +153,12 @@ type pkgInfo struct {
 
 type none = struct{}
 
+type debugStableParam struct {
+	home  llssa.Expr
+	value ssa.Value
+	block *ssa.BasicBlock
+}
+
 type context struct {
 	prog                 llssa.Program
 	pkg                  llssa.Package
@@ -176,6 +182,8 @@ type context struct {
 	recoverFacts         *recoverFacts
 	debugDIVars          map[*types.Var]llssa.DIVar
 	debugAllocVars       map[*ssa.Alloc]*types.Var
+	debugAllocObjects    map[*types.Var]bool
+	debugStableParams    map[*types.Var]debugStableParam
 	runtimeCallerFuncs   map[*ssa.Function]bool
 	panicSiteFuncs       map[*ssa.Function]bool
 	gcRoots              map[ssa.Value][]llssa.Expr
@@ -741,9 +749,13 @@ func (p *context) compileFuncDecl(pkg llssa.Package, f *ssa.Function) (llssa.Fun
 			if dbgSymsEnabled {
 				p.debugDIVars = make(map[*types.Var]llssa.DIVar)
 				p.debugAllocVars = collectDebugAllocVariables(f)
+				p.debugAllocObjects = collectDebugAllocObjects(p.debugAllocVars)
+				p.debugStableParams = make(map[*types.Var]debugStableParam)
 			} else {
 				p.debugDIVars = nil
 				p.debugAllocVars = nil
+				p.debugAllocObjects = nil
+				p.debugStableParams = nil
 			}
 			dbgGoSSADump(f)
 			dbgInstrln("==> FuncBody", name)
@@ -1002,18 +1014,30 @@ func (p *context) debugRef(b llssa.Builder, v *ssa.DebugRef) {
 		// avoid generate local variable debug info of global variable in function
 		return
 	}
-	pos := p.goProg.Fset.Position(v.Pos())
-	var value llssa.Expr
-	if iv, ok := v.X.(instrOrValue); ok {
-		var exists bool
-		value, exists = p.bvals[iv]
-		if !exists {
-			// DebugRef is metadata-only. Do not rematerialize an SSA value that
-			// executable lowering deliberately omitted.
+	if p.debugAllocObjects[variable] {
+		// The variable already has a declaration tied to its real storage.
+		// At any optimization level, a value DebugRef for an aggregate would
+		// replace it with a snapshot instead of tracking later memory writes.
+		return
+	}
+	if stable, ok := p.debugStableParams[variable]; ok {
+		if stable.value == v.X && stable.block == v.Block() {
 			return
 		}
-	} else {
-		value = p.compileValue(b, v.X)
+		value, exists := p.debugRefValue(b, v.X)
+		if !exists {
+			return
+		}
+		b.DIStore(stable.home, value)
+		stable.value = v.X
+		stable.block = v.Block()
+		p.debugStableParams[variable] = stable
+		return
+	}
+	pos := p.goProg.Fset.Position(v.Pos())
+	value, exists := p.debugRefValue(b, v.X)
+	if !exists {
+		return
 	}
 	fn := v.Parent()
 	dbgVar := p.getLocalVariable(b, fn, variable)
@@ -1026,10 +1050,20 @@ func (p *context) debugRef(b llssa.Builder, v *ssa.DebugRef) {
 	}
 }
 
+func (p *context) debugRefValue(b llssa.Builder, value ssa.Value) (llssa.Expr, bool) {
+	if iv, ok := value.(instrOrValue); ok {
+		// DebugRef is metadata-only. Do not rematerialize an SSA value that
+		// executable lowering deliberately omitted.
+		result, exists := p.bvals[iv]
+		return result, exists
+	}
+	return p.compileValue(b, value), true
+}
+
 func (p *context) debugParams(b llssa.Builder, f *ssa.Function) {
 	for i, param := range f.Params {
 		variable := param.Object().(*types.Var)
-		if hasDebugAlloc(p.debugAllocVars, variable) {
+		if p.debugAllocObjects[variable] {
 			continue
 		}
 		pos := p.goProg.Fset.Position(param.Pos())
@@ -1040,7 +1074,11 @@ func (p *context) debugParams(b llssa.Builder, f *ssa.Function) {
 		if p.debugDIVars != nil {
 			p.debugDIVars[variable] = div
 		}
-		b.DIParam(variable, v, div, p.fn, pos, p.fn.Block(0))
+		if home := b.DIParamWithHome(variable, v, div, p.fn, pos, p.fn.Block(0)); !home.IsNil() {
+			p.debugStableParams[variable] = debugStableParam{
+				home: home, value: param, block: f.Blocks[0],
+			}
+		}
 	}
 }
 
@@ -2229,10 +2267,7 @@ func (p *context) jumpTo(v *ssa.Jump) llssa.BasicBlock {
 }
 
 func (p *context) getDebugLocScope(v *ssa.Function, pos token.Pos) *types.Scope {
-	if v.Object() == nil {
-		return nil
-	}
-	funcScope := v.Object().(*types.Func).Scope()
+	funcScope := debugFunctionScope(v)
 	if funcScope == nil {
 		return nil
 	}

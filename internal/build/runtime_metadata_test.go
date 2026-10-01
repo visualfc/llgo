@@ -72,6 +72,10 @@ func TestRuntimeFreeNativeMetadata(t *testing.T) {
 	for _, mode := range []lto.Mode{lto.Off, lto.Full} {
 		t.Run(mode.String(), func(t *testing.T) {
 			conf := NewDefaultConf(ModeBuild)
+			// Inspect the retained entry-site IDs. Darwin DWARF deliberately
+			// omits these sites, allowing unused symbol-index data to be stripped
+			// from this runtime-free program. The site policy is tested separately.
+			conf.LinkOptions.DWARF = DWARFOmit
 			if runtime.GOOS == "windows" {
 				// An explicit -o file name is exact; Windows execution needs the
 				// suffix before Build resolves its private configuration copy.
