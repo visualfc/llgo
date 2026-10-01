@@ -4,9 +4,9 @@ set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
 
-# shellcheck source=../../lldbtest/common.sh
+# shellcheck source=../runtime/common.sh
 # shellcheck disable=SC1091
-source "$script_dir/../../lldbtest/common.sh"
+source "$script_dir/../runtime/common.sh"
 
 LLGO=${LLGO:-llgo}
 
