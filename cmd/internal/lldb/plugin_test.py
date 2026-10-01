@@ -4,6 +4,7 @@
 """Type spelling regressions that do not require an LLDB installation."""
 
 import importlib.util
+from dataclasses import replace
 from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
@@ -256,6 +257,38 @@ class WindowsCodeAddressTests(unittest.TestCase):
 
 
 class CollectorSignalTests(unittest.TestCase):
+    def test_launch_can_refine_triple_but_cannot_change_runtime_contract(self):
+        fixture_path = Path(__file__).resolve().parents[3] / "test" / "debug" / "runtime" / "test.py"
+        fixture_spec = importlib.util.spec_from_file_location("lldb_fixture", fixture_path)
+        fixture = importlib.util.module_from_spec(fixture_spec)
+        sys.modules[fixture_spec.name] = fixture
+        fixture_spec.loader.exec_module(fixture)
+        debugger = fixture.LLDBDebugger.__new__(fixture.LLDBDebugger)
+        before = debugger.target_info = plugin.LLGoTargetInfo(
+            marker_versions=(1,), schema_version=1, runtime_layout_version=2,
+            triple="x86_64--linux", pointer_size=8, byte_order="little",
+            record_version=1, llgo_abi_version=1)
+        after = replace(before, triple="x86_64-pc-linux-gnu")
+        debugger.target = Mock()
+        debugger.target.GetTriple.return_value = after.triple
+        debugger.check_target_contract(after)
+        # A missing/changed marker, schema or representation remains a hard
+        # failure; accepting triple refinement must not hide ABI corruption.
+        for name, value in (
+            ("marker_versions", (2,)), ("schema_version", 2),
+            ("runtime_layout_version", 3), ("record_version", 2),
+            ("llgo_abi_version", 2), ("pointer_size", 4),
+            ("byte_order", "big"), ("compatibility_error", "bad record"),
+        ):
+            with self.subTest(field=name), self.assertRaises(fixture.LLDBTestException):
+                debugger.check_target_contract(replace(after, **{name: value}))
+        with self.assertRaises(fixture.LLDBTestException):
+            debugger.check_target_contract(before)  # stale prelaunch triple
+        for triple in ("", "aarch64-pc-linux-gnu"):
+            debugger.target.GetTriple.return_value = triple
+            with self.assertRaises(fixture.LLDBTestException):
+                debugger.check_target_contract(replace(after, triple=triple))
+
     def test_only_collector_signals_are_delivered_and_continued(self):
         lldb.eStateStopped = 5
         lldb.eStopReasonSignal = 5

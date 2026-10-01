@@ -5,7 +5,7 @@ import sys
 import argparse
 import re
 import signal
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Optional, Set, Dict, Any
 import lldb
 import llgo_plugin
@@ -460,6 +460,21 @@ class LLDBDebugger:
             line_entry.GetLine() if line_entry.IsValid() else line_number)
         return bp
 
+    def check_target_contract(self, target_info: llgo_plugin.LLGoTargetInfo) -> None:
+        # LLDB refines its target triple on launch, for example from an ELF
+        # object's x86_64--linux to the process's x86_64-pc-linux-gnu. The triple
+        # is debugger metadata, not a field of the encoded LLGo ABI record.
+        # Keep every contract field and the architecture invariant, and verify
+        # the inspection reports the debugger's current (possibly fuller) triple.
+        previous = self.target_info
+        if (not target_info.supported or previous is None or
+                replace(target_info, triple=previous.triple) != previous or
+                not target_info.triple or
+                target_info.triple != self.target.GetTriple() or
+                target_info.triple.split("-", 1)[0] != previous.triple.split("-", 1)[0]):
+            raise LLDBTestException(
+                f"LLGo target contract changed after launch/resume: {previous} -> {target_info}")
+
     def run_to_breakpoint(self, file_spec: str, line_number: int) -> None:
         if not self.process:
             self.process = self.target.LaunchSimple(None, None, os.getcwd())
@@ -473,9 +488,7 @@ class LLDBDebugger:
         # Keep the complete supported metadata checks from setup, then require
         # reuse only when the process and every module have a stable identity.
         target_info = llgo_plugin.inspect_target(self.target)
-        if not target_info.supported or target_info != self.target_info:
-            raise LLDBTestException(
-                f"LLGo target metadata changed after launch/resume: {target_info}")
+        self.check_target_contract(target_info)
         if target_info is self.target_info:
             raise LLDBTestException("LLGo target inspection survived launch/resume")
         repeated = llgo_plugin.inspect_target(self.target)
