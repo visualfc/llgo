@@ -7,16 +7,32 @@ import (
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/debuginfo"
+	llssa "github.com/xgo-dev/llgo/ssa"
 	"github.com/xgo-dev/llvm"
 )
 
 func TestParamHomeReusePreservesDebugStorage(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+	for _, optimized := range []bool{false, true} {
+		name := "O0"
+		if optimized {
+			name = "O2"
+		}
+		t.Run(name, func(t *testing.T) {
+			testParamHomeReuseWithDebug(t, optimized)
+		})
+	}
+}
+
+func testParamHomeReuseWithDebug(t *testing.T, optimized bool) {
 	ctx := llvm.NewContext()
 	defer ctx.Dispose()
 	mod := ctx.NewModule("cabi-debug")
 	defer mod.Dispose()
 
-	di := debuginfo.New(mod, debuginfo.Config{Producer: "LLGo"})
+	di := debuginfo.New(mod, debuginfo.Config{Producer: "LLGo", Optimized: optimized})
 	cu := di.CompileUnit("cabi.go", "/src")
 	file := di.File("/src/cabi.go")
 	intType := di.CreateBasicType(llvm.DIBasicType{Name: "int", SizeInBits: 64, Encoding: 5})
@@ -51,18 +67,32 @@ func TestParamHomeReusePreservesDebugStorage(t *testing.T) {
 	block := llvm.AddBasicBlock(fn, "entry")
 	builder.SetInsertPointAtEnd(block)
 	home := builder.CreateAlloca(int64Type, "home")
-	di.InsertDeclareAtEnd(home, variable, di.CreateExpression(nil), llvm.DebugLoc{Line: 1, Scope: subprogram}, block)
+	if optimized {
+		di.InsertValueAtEnd(param, variable, di.CreateExpression(nil), llvm.DebugLoc{Line: 1, Scope: subprogram}, block)
+	} else {
+		di.InsertDeclareAtEnd(home, variable, di.CreateExpression(nil), llvm.DebugLoc{Line: 1, Scope: subprogram}, block)
+	}
 	builder.CreateStore(param, home)
 	loaded := builder.CreateLoad(int64Type, home, "loaded")
 	builder.CreateStore(loaded, replacement)
 	builder.CreateRetVoid()
 
-	reuseParamHome(param, replacement, block, 8, 8)
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	prog.SetDebugInfoOptimized(optimized)
+	transformer := &Transformer{prog: prog}
+	transformer.reuseParamHome(param, replacement, block, 8, 8)
 	di.Finalize()
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("rewritten module is invalid: %v\n%s", err, mod.String())
 	}
 	ir := mod.String()
+	if optimized {
+		if !strings.Contains(ir, "#dbg_value(i64 %param") || loaded.Operand(0) != replacement {
+			t.Fatalf("optimized DWARF prevented parameter-home reuse:\n%s", ir)
+		}
+		return
+	}
 	if !strings.Contains(ir, "#dbg_declare(ptr %home") {
 		t.Fatalf("dbg.declare lost its authoritative home:\n%s", ir)
 	}

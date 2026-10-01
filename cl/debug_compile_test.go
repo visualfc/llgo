@@ -50,6 +50,12 @@ func snapshots(n int) complex128 {
 	}
 	return result
 }
+
+func inspectAddressable(seed int) [2]int {
+	backed := [2]int{seed, seed + 1}
+	backed[0] = 42
+	return backed
+}
 `
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "debug_compile.go", source, 0)
@@ -101,6 +107,7 @@ func snapshots(n int) complex128 {
 	}
 	assertDebugRecords(t, ir, `name: "items", arg: 1`, true, false)
 	assertDebugRecords(t, ir, `name: "seed", arg: 2`, true, false)
+	assertDebugRecords(t, ir, `name: "backed"`, true, false)
 	assertDebugHomeStores(t, ir, pkg.Module().NamedFunction("debugcompile.inspect").String(), `name: "seed", arg: 2`, 4)
 	assertDebugLoopSnapshots(t, pkg.Module().NamedFunction("debugcompile.snapshots"))
 
@@ -120,6 +127,10 @@ func snapshots(n int) complex128 {
 	optimizedIR := optimizedPkg.Module().String()
 	assertDebugRecords(t, optimizedIR, `name: "items", arg: 1`, true, false)
 	assertDebugRecords(t, optimizedIR, `name: "seed", arg: 2`, false, true)
+	// Addressable aggregates must keep their real storage at O2 too. A value
+	// DebugRef after the field update must not replace it with a snapshot.
+	assertDebugRecords(t, optimizedIR, `name: "local"`, true, false)
+	assertDebugRecords(t, optimizedIR, `name: "backed"`, true, false)
 }
 
 func assertDebugLoopSnapshots(t *testing.T, function llvm.Value) {

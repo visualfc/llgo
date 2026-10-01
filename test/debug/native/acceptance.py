@@ -203,6 +203,26 @@ def check_optimized_inline(executable: str, cwd: str, root: Path) -> None:
         destroy_session(debugger, process)
 
 
+def check_optimized_aggregate(executable: str, cwd: str, root: Path) -> None:
+    debugger, target = create_session(executable)
+    process = lldb.SBProcess()
+    try:
+        line = marker_line(root / "aggregate.go", "LLDB_STOP: aggregate_updated")
+        breakpoint = target.BreakpointCreateByLocation("aggregate.go", line)
+        if not breakpoint.IsValid() or breakpoint.GetNumLocations() == 0:
+            raise AcceptanceError("optimized aggregate has no source breakpoint")
+        process = launch(target, "aggregate", cwd)
+        index = find_frame(process, "main.optimizedAggregate", "aggregate.go", line)
+        frame = frames(process)[index]
+        for name in ("parameter", "local"):
+            value = frame.FindVariable(name)
+            member = value.GetChildAtIndex(1)
+            if not member.IsValid() or member.GetValueAsSigned(-1) != 12:
+                raise AcceptanceError(f"optimized {name} lost its updated storage: {value}")
+    finally:
+        destroy_session(debugger, process)
+
+
 def run_all(executable: str, optimized_executable: str, source_root: str) -> None:
     root = Path(source_root).resolve()
     cwd = str(root)
@@ -220,12 +240,17 @@ def run_all(executable: str, optimized_executable: str, source_root: str) -> Non
             marker_line(root / "main.go", marker),
         )
     check_optimized_inline(optimized_executable, cwd, root)
+    check_optimized_aggregate(optimized_executable, cwd, root)
     print("NATIVE_DEBUG_ACCEPTANCE_OK")
 
 
-if __name__ == "__main__":
+def main() -> None:
     run_all(
         os.environ["LLGO_NATIVE_DEBUG_ARTIFACT"],
         os.environ["LLGO_NATIVE_DEBUG_OPTIMIZED_ARTIFACT"],
         os.environ["LLGO_NATIVE_DEBUG_SOURCE"],
     )
+
+
+if __name__ == "__main__":
+    main()

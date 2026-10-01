@@ -24,7 +24,7 @@ export LLGO_NATIVE_DEBUG_ARTIFACT="$artifact"
 export LLGO_NATIVE_DEBUG_OPTIMIZED_ARTIFACT="$optimized_artifact"
 lldb_output=$(
     "$LLDB_PATH" --batch "$artifact" \
-        -o 'script import os, runpy; _ = runpy.run_path(os.path.join(os.environ["LLGO_NATIVE_DEBUG_SOURCE"], "acceptance.py"), run_name="__main__")' 2>&1
+        -o 'script import os, runpy; _ = runpy.run_path(os.path.join(os.environ["LLGO_NATIVE_DEBUG_SOURCE"], "acceptance.py")); _["main"]()' 2>&1
 ) || {
     printf '%s\n' "$lldb_output"
     exit 1

@@ -31,6 +31,10 @@ func main() {
 		if got := optimizedInlineCaller(len(os.Args) * 10); got != 46 {
 			panic("bad optimized inline result")
 		}
+	case "aggregate":
+		if got := optimizedAggregate([3]int{1, 2, 3}); got != 24 {
+			panic("bad optimized aggregate result")
+		}
 	default:
 		panic("unknown debug scenario")
 	}

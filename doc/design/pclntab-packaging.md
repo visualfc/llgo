@@ -41,8 +41,9 @@ linker step: `-w` controls their compiled members.
 
 Use `-O0` for stable parameter and local-variable homes. Optimized builds run
 LLVM and C ABI lowering while retaining source metadata; debugger variables
-can still be optimized out. C ABI lowering preserves authoritative aggregate
-homes in functions with debug metadata so assignments and declarations agree.
+can still be optimized out. At O0, C ABI lowering preserves authoritative
+aggregate homes so assignments and declarations agree. Optimized builds retain
+parameter-home reuse even when DWARF is enabled.
 The former `LLGO_DEBUG` and `LLGO_DEBUG_SYMBOLS` environment switches are not
 part of this policy.
 

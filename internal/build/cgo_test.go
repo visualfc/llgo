@@ -5,6 +5,7 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -368,6 +369,47 @@ printf '%s\n' '{"kind":"TranslationUnitDecl"}'
 				t.Fatalf("genExternDeclsByClang() error = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestGenExternDeclsSkipsMissingAddressPlaceholders(t *testing.T) {
+	gllvm.InitializeAllTargets()
+	gllvm.InitializeAllTargetMCs()
+	gllvm.InitializeAllTargetInfos()
+	prog := llssa.NewProgram(nil)
+	defer prog.Dispose()
+	lpkg := prog.NewPackage("p", "example.com/p")
+	pkg := &aPackage{LPkg: lpkg}
+	const existing = "example.com/p.__cgo_callback"
+	placeholder := lpkg.NewVar(existing, types.NewPointer(types.Typ[types.UnsafePointer]), llssa.InGo)
+	keep := lpkg.NewVar("example.com/p.keep", types.NewPointer(types.NewPointer(types.Typ[types.UnsafePointer])), llssa.InGo)
+	keep.Init(placeholder.Expr)
+	compiler := llclang.NewCompiler(llclang.Config{})
+	for pass := range 2 {
+		// The second file can list an already-lowered placeholder, or an
+		// address that executable compilation did not materialize at all.
+		symbols := map[string]string{
+			existing:                      "__cgo_callback",
+			"example.com/p.__cgo_missing": "__cgo_missing",
+		}
+		if _, err := genExternDeclsByClang(compiler, pkg, "void callback(void);", nil, symbols, false); err != nil {
+			t.Fatal(err)
+		}
+		if len(symbols) != 0 {
+			t.Fatalf("pass %d retained resolved symbols: %v", pass, symbols)
+		}
+		if lpkg.VarOf(existing) != nil || lpkg.FuncOf("callback") == nil {
+			t.Fatalf("pass %d lost the real callback address replacement", pass)
+		}
+		if lpkg.Module().NamedGlobal("example.com/p.keep").Initializer() != lpkg.Module().NamedFunction("callback") {
+			t.Fatalf("pass %d did not preserve the callback address", pass)
+		}
+		if lpkg.FuncOf("missing") != nil || !lpkg.Module().NamedFunction("missing").IsNil() {
+			t.Fatalf("pass %d created a C declaration for a missing placeholder:\n%s", pass, lpkg.Module().String())
+		}
+		if err := gllvm.VerifyModule(lpkg.Module(), gllvm.ReturnStatusAction); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

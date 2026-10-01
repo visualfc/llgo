@@ -204,6 +204,10 @@ func genExternDeclsByClang(compiler *llclang.Cmd, pkg *aPackage, src string, cfl
 			// These globals are generated address placeholders, not C storage.
 			// Delete them after replacement so DWARF cannot retain a relocation
 			// to their undefined symbols. Alternate cgo files may revisit them.
+			toRemove = append(toRemove, cgoName)
+			if pkg.LPkg.VarOf(cgoName) == nil {
+				continue
+			}
 			gofuncName := strings.Replace(cgoName, ".__cgo_", ".", 1)
 			gofn := pkg.LPkg.FuncOf(gofuncName)
 			if gofn != nil {
@@ -213,7 +217,6 @@ func genExternDeclsByClang(compiler *llclang.Cmd, pkg *aPackage, src string, cfl
 				cfn := pkg.LPkg.NewFunc(cfuncName, types.NewSignatureType(nil, nil, nil, nil, nil, false), llssa.InC)
 				pkg.LPkg.ReplaceVarWith(cgoName, cfn.Expr)
 			}
-			toRemove = append(toRemove, cgoName)
 		} else {
 			usePtr := ""
 			if symbolNames[symbolName] {
