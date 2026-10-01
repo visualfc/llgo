@@ -48,6 +48,7 @@ import (
 	"github.com/xgo-dev/llgo/internal/crosscompile"
 	"github.com/xgo-dev/llgo/internal/dcepass"
 	"github.com/xgo-dev/llgo/internal/deadcode"
+	"github.com/xgo-dev/llgo/internal/debugabi"
 	"github.com/xgo-dev/llgo/internal/env"
 	"github.com/xgo-dev/llgo/internal/firmware"
 	"github.com/xgo-dev/llgo/internal/flash"
@@ -2404,6 +2405,7 @@ func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainL
 	if IsFullRpathEnabled() {
 		linkArgs = append(linkArgs, fullRpathArgs(ctx.crossCompile.Toolchain, linkArgs)...)
 	}
+	linkArgs = append(linkArgs, debuggerABIRootArgs(ctx)...)
 	linkArgs = append(linkArgs, cSharedExportArgs(ctx, linkedOrder)...)
 	darwinSymbols := planDarwinSizeSymbols(ctx, linkedOrder, linkArgs)
 	linkArgs = append(linkArgs, darwinSymbols.linkerArgs...)
@@ -2789,6 +2791,29 @@ INSERT BEFORE .bss;
 		return nil, func() {}, fmt.Errorf("close funcinfo linker script: %w", err)
 	}
 	return []string{"-Wl,-T," + name}, cleanup, nil
+}
+
+// debuggerABIRootArgs retains the structured record through native section GC.
+// COFF records use dllexport/COMDAT. Wasm uses the portable custom section.
+func debuggerABIRootArgs(ctx *context) []string {
+	if ctx == nil || ctx.buildConf == nil || !ctx.frontendOptions.Debug || ctx.buildConf.Goarch == "wasm" || ctx.buildConf.Goos == "windows" {
+		return nil
+	}
+	var args []string
+	for _, symbol := range []string{debugabi.LegacyMarkerSymbol, debugabi.NativeRecordSymbol} {
+		if ctx.buildConf.Goos == "darwin" {
+			if ctx.crossCompile.Linker != "" {
+				args = append(args, "-u", "_"+symbol)
+			} else {
+				args = append(args, "-Wl,-u,_"+symbol)
+			}
+		} else if ctx.crossCompile.Linker != "" {
+			args = append(args, "--undefined="+symbol)
+		} else {
+			args = append(args, "-Wl,--undefined="+symbol)
+		}
+	}
+	return args
 }
 
 // cSharedExportArgs keeps //export functions and synthetic test entry points as

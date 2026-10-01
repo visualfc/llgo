@@ -37,26 +37,43 @@ argument begins with `-`:
 llgo lldb -lldb /opt/homebrew/bin/lldb -- --batch ./cl/_testdata/debug/out
 ```
 
+On Windows, `LLGO_WINDOWS_LLDB_PYTHON_HOME` and the optional
+`LLGO_WINDOWS_LLDB_PYTHONPATH` select the Python runtime matching the installed
+LLDB. The launcher applies them only to LLDB and its version probe; other
+Python tools started by LLGo keep their host environment.
+
 The command embeds and loads the LLGo Python adapter, so an installed `llgo`
 does not depend on a source checkout. `test/debug/runtime/runlldb.sh` remains as
 a thin compatibility wrapper. Adapter commands live under `llgo`, including
-`llgo status`, `llgo print`, and `llgo vars`; stock LLDB commands and aliases
+`llgo status`, `llgo print`, `llgo vars`, `llgo goroutines`, and
+`llgo goroutine ID bt`; stock LLDB commands and aliases
 such as `p` and `v` are left unchanged. `llgo status` reports the recognized
 debugger schema, runtime-layout version, target triple, pointer size, and byte
-order. Unknown marker versions disable only the LLGo-specific commands; raw
+order. Unknown or missing structured runtime records disable only the LLGo-specific commands; raw
 LLDB debugging remains available.
 
-For recognized LLGo targets, the adapter also gives strings length-bounded
-quoted summaries and slices `len`/`cap` summaries with indexed synthetic
-children. These views cover named string and slice types as well as the
-predeclared types. Explicit `llgo print` slice views respect LLDB's
-`target.max-children-count` setting. Ordinary C targets and targets with
-unknown or ambiguous LLGo markers retain LLDB's raw presentation.
+For recognized LLGo targets, the adapter provides runtime-aware views for
+strings, slices, interfaces, function values, maps, channels, and live
+goroutines. Maps expose
+their length and typed key/value children, including indirect large entries;
+channels expose length, capacity, closed state, and buffered values in receive
+order. `llgo goroutines` reports each live goroutine's runtime state, parent,
+native OS thread ID, and matching debugger thread. The adapter reuses the
+production traceback registry on Darwin, Linux, and Windows; targets without
+that registry report goroutine inspection unavailable. `llgo goroutine ID bt` prints
+that goroutine's native stack without changing the selected LLDB thread. Named
+container types are covered as well as predeclared types. Explicit
+`llgo print` slice views respect LLDB's `target.max-children-count` setting.
+Ordinary C targets and targets with unknown or ambiguous LLGo markers retain
+LLDB's raw presentation.
 
 The integration fixture follows LLDB's API-test style: `main.go` marks
 executable breakpoint lines with `LLDB_BREAK`, while `test.py` keeps the
 expected variables and values in an explicit SB API test table. Assertions are
-not parsed from source comments.
+not parsed from source comments. The goroutine fixture forces a collection
+while workers are live. On Linux, the harness delivers Boehm's default
+`SIGPWR`/`SIGXCPU` handshake signals without stopping; faults and other
+unexpected stops still fail with their stop reason and source frames.
 
 ```text
 # github.com/xgo-dev/llgo/cl/_testdata/debug
@@ -152,3 +169,10 @@ var globalStruct github.com/xgo-dev/llgo/cl/_testdata/debug.StructWithAllTypeFie
 var globalInt int = 301
 var err error = {type = 0x0000000100112900, data = 0x000000000000001a}
 ```
+
+### GDB runtime acceptance
+
+The fixture also supports GDB's native values, goroutine registry and main
+stack, with a separate strict complete worker-unwind test. See the
+[GDB acceptance guide and platform matrix](gdb.md) for commands, CI coverage
+and the current upstream limitations on macOS and Windows ARM64.

@@ -15,7 +15,7 @@ import yaml
 WORKFLOWS = Path(__file__).resolve().parents[1] / "workflows"
 PREPARE = "./.github/workflows/ci-prepare.yml"
 CODE_WORKFLOWS = {
-    "llgo.yml": 19, "go.yml": 6, "targets.yml": 2, "build-cache.yml": 4,
+    "llgo.yml": 20, "go.yml": 6, "targets.yml": 2, "build-cache.yml": 4,
     "benchmark.yml": 9, "release-build.yml": 15, "doc.yml": 6, "fmt.yml": 1,
 }
 
@@ -42,6 +42,47 @@ def matrix_size(job):
 
 
 class WorkflowContractTests(unittest.TestCase):
+    def test_gdb_windows_acceptance_covers_both_abis_and_all_native_architectures(self):
+        job = load("llgo.yml")["jobs"]["llgo"]
+        entries = job["strategy"]["matrix"]["include"]
+        windows = {(entry["windows_abi"], entry["windows_arch"])
+                   for entry in entries if entry["os"].startswith("windows")}
+        self.assertEqual(windows, {(abi, arch) for abi in ("msvc", "mingw")
+                                   for arch in ("amd64", "386", "arm64")})
+        steps = job["steps"]
+        install = next(step for step in steps
+                       if step.get("name") == "Install Windows GDB")
+        test = next(step for step in steps
+                    if step.get("name") == "GDB native values and registry (Windows)")
+        self.assertEqual(install["if"], "runner.os == 'Windows'")
+        self.assertEqual(test["if"], "runner.os == 'Windows'")
+        self.assertNotIn("continue-on-error", test)
+        self.assertEqual(test["env"]["LLGO_GDB_INTEGRATION"], "1")
+        # Its isolated MSYS2 setup changes the shell helper: it belongs after
+        # all existing LLDB/host-shell gates, not before target qualification.
+        shell_tests = [index for index, step in enumerate(steps)
+                       if step.get("name", "").startswith(("LLDB integration", "Test from the"))]
+        self.assertGreater(steps.index(install), max(shell_tests))
+        complete = next(step for step in steps
+                        if step.get("name") == "GDB complete worker unwind (Windows amd64 and 386)")
+        self.assertEqual(complete["if"], "runner.os == 'Windows' && matrix.windows_arch != 'arm64'")
+        self.assertIn("^TestGDBCompleteWorkerUnwind$", complete["run"])
+        self.assertNotIn("continue-on-error", complete)
+        linux = next(step for step in steps
+                     if step.get("name") == "GDB values, registry and complete worker unwind (Linux)")
+        self.assertIn("^TestGDB(Integration|CompleteWorkerUnwind)$", linux["run"])
+
+    def test_intel_macos_runs_both_native_debuggers(self):
+        job = load("llgo.yml")["jobs"]["native-debuggers-intel"]
+        self.assertEqual(job["runs-on"], "macos-15-intel")
+        commands = "\n".join(step.get("run", "") for step in job["steps"])
+        self.assertIn("test/debug/runtime/runtest.sh -v", commands)
+        self.assertIn("^TestGDBIntegration$", commands)
+        self.assertNotIn("^TestGDBCompleteWorkerUnwind$", commands)
+        self.assertIn("exec sudo -n", commands)
+        self.assertNotIn("continue-on-error", job)
+        self.assertTrue(all("continue-on-error" not in step for step in job["steps"]))
+
     def test_traceback_coverage_uses_bash_on_every_host(self):
         steps = load("go.yml")["jobs"]["test"]["steps"]
         step = next(step for step in steps

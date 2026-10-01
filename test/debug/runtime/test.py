@@ -3,8 +3,9 @@
 import os
 import sys
 import argparse
+import re
 import signal
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import List, Optional, Set, Dict, Any
 import lldb
 import llgo_plugin
@@ -250,6 +251,71 @@ TEST_CASES = [
             "ordered_frames",
         )],
     ),
+    test_case("interface_values", [
+        ("nilAny", "nil", "summary"),
+        ("anyInt", "type=int", "summary"),
+        ("anyText", "type=string", "summary"),
+        ("nilFoo", "nil", "summary"),
+        ("foo", "type=*main.Struct", "summary"),
+        ("err", "type=*errors.errorString", "summary"),
+        ("results.intResult", "43"),
+        ("results.textResult", '"interface!"'),
+        ("results.fooResult", "1"),
+        ("results.errResult", '"interface error"'),
+    ]),
+    test_case("function_values", [
+        ("plain", "main.Plain", "summary"),
+        ("named", "main.Plain", "summary"),
+        ("closure", "main.RuntimeFunctionValues$1 (closure)", "summary"),
+        ("bound", "main.(*Counter).Add$bound (bound method)", "summary"),
+        ("nilFunc", "nil", "summary"),
+        ("plainResult", "2"),
+        ("namedResult", "3"),
+        ("closureResult", "7"),
+        ("boundResult", "13"),
+    ]),
+    test_case("container_values", [
+        ("nilMap", "nil", "summary"),
+        ("single", "len=1", "summary"),
+        ("single", "len=1"),
+        ("single", 'key[0]="answer", value[0]=42', "synthetic"),
+        ("named", "len=1", "summary"),
+        ("named", 'key[0]="named", value[0]=17', "synthetic"),
+        ("many", "len=24", "summary"),
+        ("many", "48", "synthetic-count"),
+        ("pointers", "len=1", "summary"),
+        ("pointers", "key[0]=string, value[0]=*lldbtest.Counter",
+         "synthetic-types"),
+        ("large", "len=1", "summary"),
+        ("large", "key[0]=lldbtest.LargeKey, value[0]=lldbtest.LargeValue",
+         "synthetic-types"),
+        ("nilChannel", "nil", "summary"),
+        ("queued", "len=2 cap=4", "summary"),
+        ("queued", "len=2 cap=4"),
+        ("queued", "[0]=8, [1]=9", "synthetic"),
+        ("namedChannel", "len=1 cap=2", "summary"),
+        ("namedChannel", "[0]=31", "synthetic"),
+        ("pointerChannel", "len=1 cap=1", "summary"),
+        ("pointerChannel", "[0]=*lldbtest.Counter", "synthetic-types"),
+        ("closedChannel", "len=1 cap=2 closed", "summary"),
+        ("closedChannel", '[0]="remaining"', "synthetic"),
+        ("containerResults.mapValue", "42"),
+        ("containerResults.namedValue", "17"),
+        ("containerResults.largeValue", "29"),
+        ("containerResults.channelHead", "7"),
+        ("containerResults.channelLen", "2"),
+        ("containerResults.channelCap", "4"),
+        ("containerResults.closedHead", '"first"'),
+        ("containerResults.closedOK", "true"),
+    ]),
+    test_case("goroutine_values", [
+        ("goroutineReadySum", "3"),
+        ("goroutines",
+         "count=3 roots=1 children=2 running=1 waiting=2 mapped=3 "
+         "unique-threads=3",
+         "goroutines"),
+        ("goroutine stacks", "root=1 children=2", "goroutine-stacks"),
+    ]),
     test_case("struct_values_initial", STRUCT_VALUES_INITIAL),
     test_case("struct_values_updated", STRUCT_VALUES_UPDATED),
     test_case("struct_ptrs_initial", STRUCT_VALUES_INITIAL),
@@ -339,6 +405,8 @@ class LLDBDebugger:
         self.process: Optional[lldb.SBProcess] = None
         self.frame: Optional[lldb.SBFrame] = None
         self.breakpoint_line: Optional[int] = None
+        self.breakpoint_id: Optional[int] = None
+        self.target_info: Optional[llgo_plugin.LLGoTargetInfo] = None
         self.type_mapping: Dict[str, str] = {
             'long': 'int',
             'unsigned long': 'uint',
@@ -363,10 +431,13 @@ class LLDBDebugger:
         if not target_info.supported:
             raise LLDBTestException(
                 "Target does not contain a supported LLGo debugger marker")
-        if llgo_plugin.inspect_target(self.target) is not target_info:
-            raise LLDBTestException("LLGo target inspection was not cached")
+        if (llgo_plugin._target_cache_key(self.target) is not None or
+                llgo_plugin.inspect_target(self.target) is target_info):
+            raise LLDBTestException("Offline LLGo target inspection was cached")
         if (target_info.schema_version != 1 or
-                target_info.runtime_layout_version != 1):
+                target_info.runtime_layout_version != 2 or
+                target_info.record_version != 1 or
+                target_info.llgo_abi_version != 1):
             raise LLDBTestException(
                 f"Unexpected LLGo debugger schema: {target_info}")
         if (target_info.pointer_size != self.target.GetAddressByteSize() or
@@ -374,6 +445,7 @@ class LLDBDebugger:
                 not target_info.triple):
             raise LLDBTestException(
                 f"Incomplete LLGo target properties: {target_info}")
+        self.target_info = target_info
 
     def set_breakpoint(self, file_spec: str, line_number: int) -> lldb.SBBreakpoint:
         bp = self.target.BreakpointCreateByLocation(file_spec, line_number)
@@ -381,46 +453,159 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"Expected one breakpoint at {file_spec}:{line_number}, "
                 f"found {bp.GetNumLocations()}")
+        self.breakpoint_id = bp.GetID()
         location = bp.GetLocationAtIndex(0)
         line_entry = location.GetAddress().GetLineEntry()
         self.breakpoint_line = (
             line_entry.GetLine() if line_entry.IsValid() else line_number)
         return bp
 
+    def check_target_contract(self, target_info: llgo_plugin.LLGoTargetInfo) -> None:
+        # LLDB refines its target triple on launch, for example from an ELF
+        # object's x86_64--linux to the process's x86_64-pc-linux-gnu. The triple
+        # is debugger metadata, not a field of the encoded LLGo ABI record.
+        # Keep every contract field and the architecture invariant, and verify
+        # the inspection reports the debugger's current (possibly fuller) triple.
+        previous = self.target_info
+        if (not target_info.supported or previous is None or
+                replace(target_info, triple=previous.triple) != previous or
+                not target_info.triple or
+                target_info.triple != self.target.GetTriple() or
+                target_info.triple.split("-", 1)[0] != previous.triple.split("-", 1)[0]):
+            raise LLDBTestException(
+                f"LLGo target contract changed after launch/resume: {previous} -> {target_info}")
+
     def run_to_breakpoint(self, file_spec: str, line_number: int) -> None:
         if not self.process:
             self.process = self.target.LaunchSimple(None, None, os.getcwd())
         else:
             self.process.Continue()
+        self.continue_gc_signals()
         if self.process.GetState() != lldb.eStateStopped:
             raise LLDBTestException("Process didn't stop at breakpoint")
+
+        # Launch/resume must not reuse an offline or previous-stop result.
+        # Keep the complete supported metadata checks from setup, then require
+        # reuse only when the process and every module have a stable identity.
+        target_info = llgo_plugin.inspect_target(self.target)
+        self.check_target_contract(target_info)
+        if target_info is self.target_info:
+            raise LLDBTestException("LLGo target inspection survived launch/resume")
+        repeated = llgo_plugin.inspect_target(self.target)
+        cacheable = llgo_plugin._target_cache_key(self.target) is not None
+        if repeated != target_info or (repeated is target_info) != cacheable:
+            raise LLDBTestException(
+                f"Unexpected stopped LLGo target inspection reuse (cacheable={cacheable})")
+        self.target_info = target_info
+
+        # The production stop hook must prepare authenticated return addresses
+        # before any worker frames are cached, not only when an LLGo command is
+        # later requested. Keep all goroutine backtrace assertions below strict.
+        if (llgo_plugin._local_windows_arm64_target(self.target) and
+                self.process.GetPluginName() == "windows" and
+                llgo_plugin._windows_arm64_user_address_bits() is not None and
+                self.process.GetAddressMask(lldb.eAddressMaskTypeCode) ==
+                lldb.LLDB_INVALID_ADDRESS_MASK):
+            raise LLDBTestException("Windows ARM64 code address mask was not configured before unwind")
 
         # Windows/386 reports the WoW64 exception dispatcher as frame zero
         # while handling a software breakpoint. Select the source frame that
         # owns the requested breakpoint before inspecting its variables.
-        thread = self.process.GetSelectedThread()
+        selected_thread = self.process.GetSelectedThread()
+        threads = [selected_thread] + [
+            thread for thread in self.process
+            if thread.GetThreadID() != selected_thread.GetThreadID()
+        ]
+        threads = self.breakpoint_threads(threads)
         expected_file = os.path.normcase(os.path.basename(file_spec))
         expected_line = self.breakpoint_line or line_number
         locations: List[str] = []
-        for index in range(thread.GetNumFrames()):
-            frame = thread.GetFrameAtIndex(index)
-            line_entry = frame.GetLineEntry()
-            if not line_entry.IsValid():
-                continue
-            source = line_entry.GetFileSpec().GetFilename() or ""
-            source_line = line_entry.GetLine()
+        for thread in threads:
             locations.append(
-                f"{index}:{frame.GetFunctionName() or '<unknown>'} "
-                f"at {source}:{source_line}")
-            if (os.path.normcase(source) == expected_file and
-                    source_line == expected_line):
-                thread.SetSelectedFrame(index)
-                self.frame = frame
-                return
+                f"thread {thread.GetThreadID()} stop: "
+                f"{thread.GetStopDescription(256)}")
+            for index in range(thread.GetNumFrames()):
+                frame = thread.GetFrameAtIndex(index)
+                line_entry = frame.GetLineEntry()
+                if not line_entry.IsValid():
+                    continue
+                source = line_entry.GetFileSpec().GetFilename() or ""
+                source_line = line_entry.GetLine()
+                locations.append(
+                    f"{index}:{frame.GetFunctionName() or '<unknown>'} "
+                    f"at {source}:{source_line}")
+                if (os.path.normcase(source) == expected_file and
+                        source_line == expected_line):
+                    self.process.SetSelectedThread(thread)
+                    thread.SetSelectedFrame(index)
+                    self.frame = frame
+                    return
         raise LLDBTestException(
             f"No frame for breakpoint {file_spec}:{line_number} "
             f"(resolved line {expected_line}); "
             f"frames: {', '.join(locations)}")
+
+    def breakpoint_threads(self, threads: List[lldb.SBThread]) -> List[lldb.SBThread]:
+        candidates = []
+        windows = "windows" in (self.target.GetTriple() or "")
+        stops = []
+        for thread in threads:
+            reason = thread.GetStopReason()
+            description = thread.GetStopDescription(256) or ""
+            stops.append(f"thread {thread.GetThreadID()}: {description}")
+            # WoW64 can report the software breakpoint through its exception
+            # dispatcher. Accept only the two Windows breakpoint exceptions,
+            # and only after the requested LLDB breakpoint has actually hit.
+            windows_break = (
+                windows and reason == lldb.eStopReasonException and
+                re.search(r"0x(?:80000003|4000001f)\b", description, re.IGNORECASE) and
+                self.target.FindBreakpointByID(self.breakpoint_id).GetHitCount() > 0
+            )
+            if (reason == lldb.eStopReasonSignal or
+                    (reason == lldb.eStopReasonException and not windows_break)):
+                raise LLDBTestException(f"Unexpected debugger stop: {stops[-1]}")
+            if windows_break or (
+                reason == lldb.eStopReasonBreakpoint and
+                any(thread.GetStopReasonDataAtIndex(index) == self.breakpoint_id
+                    for index in range(0, thread.GetStopReasonDataCount(), 2))
+            ):
+                candidates.append(thread)
+        if not candidates:
+            raise LLDBTestException(
+                "Process did not hit the requested breakpoint: " + "; ".join(stops))
+        return candidates
+
+    def continue_gc_signals(self) -> None:
+        # The Linux fixture uses Boehm's default thread suspend/restart
+        # signals. Pass them through to the collector rather than interpreting
+        # its internal handshake as the requested source breakpoint. Do not
+        # continue faults or other unexpected stops.
+        if "linux" not in (self.target.GetTriple() or ""):
+            return
+        signals = self.process.GetUnixSignals()
+        gc_signals = {
+            signals.GetSignalNumberFromName(name)
+            for name in ("SIGPWR", "SIGXCPU")
+        }
+        gc_signals.discard(-1)
+        for _attempt in range(4):
+            if self.process.GetState() != lldb.eStateStopped:
+                return
+            thread = self.process.GetSelectedThread()
+            if (thread.GetStopReason() != lldb.eStopReasonSignal or
+                    thread.GetStopReasonDataAtIndex(0) not in gc_signals):
+                return
+            for stopped_thread in self.process:
+                reason = stopped_thread.GetStopReason()
+                if (reason == lldb.eStopReasonException or
+                        (reason == lldb.eStopReasonSignal and
+                         stopped_thread.GetStopReasonDataAtIndex(0) not in gc_signals)):
+                    return
+            for number in gc_signals:
+                signals.SetShouldStop(number, False)
+                signals.SetShouldNotify(number, False)
+                signals.SetShouldSuppress(number, False)
+            self.process.Continue()
 
     def get_selected_frame(self) -> lldb.SBFrame:
         if not self.frame or not self.frame.IsValid():
@@ -458,6 +643,28 @@ class LLDBDebugger:
             children.append(f"{child.GetName()}={child_value}")
         return ", ".join(children)
 
+    def get_synthetic_child_types(self, var_expression: str) -> Optional[str]:
+        value = self.get_variable(var_expression)
+        if not value or not value.IsValid():
+            return None
+        value = value.GetSyntheticValue()
+        if not value or not value.IsValid():
+            return None
+        children: List[str] = []
+        for index in range(value.GetNumChildren()):
+            child = value.GetChildAtIndex(index)
+            children.append(
+                f"{child.GetName()}={llgo_plugin.map_type_name(child.GetTypeName())}")
+        return ", ".join(children)
+
+    def get_synthetic_child_count(self, var_expression: str) -> Optional[str]:
+        value = self.get_variable(var_expression)
+        if not value or not value.IsValid():
+            return None
+        value = value.GetSyntheticValue()
+        return (str(value.GetNumChildren())
+                if value and value.IsValid() else None)
+
     def get_all_variable_names(self) -> Set[str]:
         frame = self.get_selected_frame()
         return set(var.GetName() for var in frame.GetVariables(True, True, False, True))
@@ -480,6 +687,108 @@ class LLDBDebugger:
             raise LLDBTestException(
                 f"llgo print {expression!r} did not fail with {expected!r}: "
                 f"{result.GetOutput()!r} {result.GetError()!r}")
+
+    def get_goroutines(self) -> Optional[List[Dict[str, Any]]]:
+        result = lldb.SBCommandReturnObject()
+        self.debugger.GetCommandInterpreter().HandleCommand(
+            "llgo goroutines", result)
+        if not result.Succeeded():
+            return None
+        lines = [line.strip() for line in (result.GetOutput() or "").splitlines()
+                 if line.strip()]
+        pattern = re.compile(
+            r"^goroutine ([0-9]+) \[([^]]+)\] parent=([0-9]+) "
+            r"tid=([0-9]+) thread=(unavailable|[0-9]+)$")
+        goroutines = []
+        for line in lines:
+            match = pattern.fullmatch(line)
+            if match is None:
+                return None
+            goroutines.append({
+                "goid": int(match.group(1)),
+                "status": match.group(2),
+                "parent": int(match.group(3)),
+                "tid": int(match.group(4)),
+                "thread": match.group(5),
+            })
+        return goroutines
+
+    def get_goroutine_summary(self) -> Optional[str]:
+        goroutines = self.get_goroutines()
+        if goroutines is None:
+            return None
+        ids = {goroutine["goid"] for goroutine in goroutines}
+        roots = sum(goroutine["parent"] == 0 for goroutine in goroutines)
+        children = sum(
+            goroutine["parent"] in ids and goroutine["parent"] != 0
+            for goroutine in goroutines)
+        running = sum(
+            goroutine["status"] == "running" for goroutine in goroutines)
+        waiting = sum(
+            goroutine["status"] == "waiting" for goroutine in goroutines)
+        mapped = sum(
+            goroutine["thread"] != "unavailable" for goroutine in goroutines)
+        unique_threads = len({goroutine["thread"] for goroutine in goroutines
+                              if goroutine["thread"] != "unavailable"})
+        return (
+            f"count={len(goroutines)} roots={roots} children={children} "
+            f"running={running} waiting={waiting} mapped={mapped} "
+            f"unique-threads={unique_threads}")
+
+    def get_goroutine_stack_summary(self) -> Optional[str]:
+        goroutines = self.get_goroutines()
+        if goroutines is None:
+            log("Unable to enumerate goroutines for the stack assertion")
+            return None
+        roots = [goroutine for goroutine in goroutines
+                 if goroutine["parent"] == 0]
+        if len(roots) != 1:
+            log(f"Expected one root goroutine, got {goroutines!r}")
+            return None
+        children = [goroutine for goroutine in goroutines
+                    if goroutine["parent"] == roots[0]["goid"]]
+        if len(children) != 2:
+            log(f"Expected two child goroutines, got {goroutines!r}")
+            return None
+
+        expected_functions = [(roots[0], "main.InspectGoroutineValues")]
+        expected_functions.extend(
+            (goroutine, "main.RuntimeGoroutineValues")
+            for goroutine in children)
+        for goroutine, expected_function in expected_functions:
+            result = lldb.SBCommandReturnObject()
+            self.debugger.GetCommandInterpreter().HandleCommand(
+                f"llgo goroutine {goroutine['goid']} bt", result)
+            output = result.GetOutput() or ""
+            if (not result.Succeeded() or
+                    expected_function not in output or
+                    f"goroutine {goroutine['goid']} [{goroutine['status']}] thread "
+                    not in output):
+                log(f"Goroutine stack assertion failed: {goroutine!r}; "
+                    f"expected function {expected_function!r}")
+                log(f"Adapter output:\n{output}\nAdapter error: {result.GetError() or ''}")
+                log(f"Debugger: {lldb.SBDebugger.GetVersionString()}; "
+                    f"target: {self.target.GetTriple()}")
+                if hasattr(self.process, "GetAddressMask"):
+                    log(f"Code address mask: "
+                        f"{self.process.GetAddressMask(lldb.eAddressMaskTypeCode):#x}")
+                for thread_index in range(self.process.GetNumThreads()):
+                    thread = self.process.GetThreadAtIndex(thread_index)
+                    frame = thread.GetFrameAtIndex(0)
+                    if frame and frame.IsValid():
+                        lr = frame.FindRegister("lr")
+                        log(f"Thread {thread.GetIndexID()} registers: "
+                            f"pc={frame.GetPC():#x} sp={frame.GetSP():#x} "
+                            f"fp={frame.GetFP():#x} lr={lr.GetValue() if lr else None}")
+                # Keep native diagnostics alongside the adapter failure: thread
+                # mapping can succeed even when the debugger cannot unwind a
+                # blocked worker through a platform library.
+                for command in ("thread list", "thread backtrace all"):
+                    native = lldb.SBCommandReturnObject()
+                    self.debugger.GetCommandInterpreter().HandleCommand(command, native)
+                    log(f"{command}:\n{native.GetOutput() or ''}\n{native.GetError() or ''}")
+                return None
+        return f"root={len(roots)} children={len(children)}"
 
     def cleanup(self) -> None:
         if self.process and self.process.IsValid():
@@ -676,6 +985,10 @@ def execute_single_variable_test(debugger: LLDBDebugger, test: Test) -> TestResu
         actual_value = debugger.get_variable_summary(test.variable)
     elif test.mode == "synthetic":
         actual_value = debugger.get_synthetic_children(test.variable)
+    elif test.mode == "synthetic-types":
+        actual_value = debugger.get_synthetic_child_types(test.variable)
+    elif test.mode == "synthetic-count":
+        actual_value = debugger.get_synthetic_child_count(test.variable)
     elif test.mode == "limited":
         debugger.debugger.HandleCommand(
             "settings set target.max-children-count 1")
@@ -684,6 +997,10 @@ def execute_single_variable_test(debugger: LLDBDebugger, test: Test) -> TestResu
         finally:
             debugger.debugger.HandleCommand(
                 "settings set target.max-children-count 256")
+    elif test.mode == "goroutines":
+        actual_value = debugger.get_goroutine_summary()
+    elif test.mode == "goroutine-stacks":
+        actual_value = debugger.get_goroutine_stack_summary()
     else:
         actual_value = debugger.get_variable_value(test.variable)
     if actual_value is None:

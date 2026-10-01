@@ -13,10 +13,14 @@
 #include <time.h>
 #include <ucontext.h>
 #include <unistd.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
 
 typedef struct thread_node {
     struct thread_node *next, *prev;
     uint64_t id, parent;
+    uint64_t debugger_thread_id;
     uintptr_t created, low, high;
     pthread_t thread;
     int attached;
@@ -29,7 +33,11 @@ typedef struct thread_node {
 
 static pthread_mutex_t registry_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_once_t handler_once = PTHREAD_ONCE_INIT;
-static thread_node *threads;
+/* Read only while all debugger threads are stopped. Owned by registry_lock.
+ * Debuggers discover this by name, without a link-time reference. Keep it
+ * externally visible through LTO and retain its section during linker GC. */
+__attribute__((used, retain, visibility("default")))
+thread_node *llgo_debugger_threads_v1;
 static _Thread_local thread_node *current;
 static _Thread_local uintptr_t *fault_buffer;
 static _Thread_local sigjmp_buf capture_recovery;
@@ -208,9 +216,9 @@ void *llgo_traceback_register(uint64_t id, uint64_t parent, uintptr_t created)
     node->id = id; node->parent = parent; node->created = created;
     node->state = 1; /* runnable */
     pthread_mutex_lock(&registry_lock);
-    node->next = threads;
-    if (threads) threads->prev = node;
-    threads = node;
+    node->next = llgo_debugger_threads_v1;
+    if (llgo_debugger_threads_v1) llgo_debugger_threads_v1->prev = node;
+    llgo_debugger_threads_v1 = node;
     pthread_mutex_unlock(&registry_lock);
     return node;
 }
@@ -243,6 +251,11 @@ void llgo_traceback_attach(void *raw)
     pthread_mutex_lock(&registry_lock);
     node->low = low; node->high = high;
     node->thread = pthread_self();
+#if defined(__APPLE__)
+    pthread_threadid_np(0, &node->debugger_thread_id);
+#elif defined(__linux__)
+    node->debugger_thread_id = (uint64_t)syscall(SYS_gettid);
+#endif
     node->attached = 1;
     node->state = 2;
     current = node;
@@ -260,7 +273,7 @@ void llgo_traceback_unregister(void *raw)
     __atomic_store_n(&node->state, 6, __ATOMIC_RELEASE);
     pthread_mutex_lock(&registry_lock);
     if (node->prev) node->prev->next = node->next;
-    else threads = node->next;
+    else llgo_debugger_threads_v1 = node->next;
     if (node->next) node->next->prev = node->prev;
     pthread_mutex_unlock(&registry_lock);
     if (current == node) {
@@ -294,7 +307,7 @@ llgo_traceback_snapshot *llgo_traceback_capture(uint64_t except)
     llgo_traceback_snapshot *head = 0, **tail = &head;
     uint64_t deadline = nanotime() + 2000000000u;
     pthread_mutex_lock(&registry_lock);
-    for (thread_node *node = threads; node; node = node->next) {
+    for (thread_node *node = llgo_debugger_threads_v1; node; node = node->next) {
         unsigned state = __atomic_load_n(&node->state, __ATOMIC_ACQUIRE);
         if (node->id == except || state == 6)
             continue;

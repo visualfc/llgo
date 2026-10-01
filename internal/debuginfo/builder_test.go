@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/xgo-dev/llgo/internal/debugabi"
 	"github.com/xgo-dev/llvm"
 )
 
@@ -195,6 +196,34 @@ func TestBuilderCodeViewRetainsDWARF(t *testing.T) {
 		if !strings.Contains(ir, want) {
 			t.Fatalf("Windows debug module is missing %q:\n%s", want, ir)
 		}
+	}
+}
+
+func TestStructuredDebuggerRecordTargets(t *testing.T) {
+	for _, triple := range []string{"aarch64-apple-darwin", "x86_64-unknown-linux", "aarch64-pc-windows-msvc"} {
+		t.Run(triple, func(t *testing.T) {
+			ctx := llvm.NewContext()
+			defer ctx.Dispose()
+			module := ctx.NewModule("record")
+			defer module.Dispose()
+			module.SetTarget(triple)
+			builder := New(module, Config{DebuggerRecord: debugabi.NewRecord(8, debugabi.ByteOrderLittle)})
+			builder.CompileUnit("main.go", "/src")
+			builder.Finalize()
+			if err := llvm.VerifyModule(module, llvm.ReturnStatusAction); err != nil {
+				t.Fatal(err)
+			}
+			record := module.NamedGlobal(debugabi.NativeRecordSymbol)
+			if record.IsNil() || record.Alignment() != debugabi.RecordSize {
+				t.Fatal("structured debugger record missing or misaligned")
+			}
+			if strings.Contains(triple, "windows") && record.DLLStorageClass() != llvm.DLLExportStorageClass {
+				t.Fatal("COFF record is not exported")
+			}
+			if !strings.Contains(module.String(), "[2 x ptr] [ptr @__llgo_debugger_marker_v1, ptr @__llgo_debugger_abi_v1]") {
+				t.Fatal("both debugger records must survive code generation")
+			}
+		})
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/xgo-dev/llgo/cmd/internal/clean"
 	"github.com/xgo-dev/llgo/cmd/internal/compile"
 	"github.com/xgo-dev/llgo/cmd/internal/env"
+	"github.com/xgo-dev/llgo/cmd/internal/gdb"
 	"github.com/xgo-dev/llgo/cmd/internal/get"
 	"github.com/xgo-dev/llgo/cmd/internal/gocommand"
 	"github.com/xgo-dev/llgo/cmd/internal/install"
@@ -62,6 +63,10 @@ type Cmd_install struct {
 	*App
 }
 type Cmd_list struct {
+	xcmd.Command
+	*App
+}
+type Cmd_gdb struct {
 	xcmd.Command
 	*App
 }
@@ -135,7 +140,8 @@ func (this *App) Main() {
 	_xgo_obj17 := &Cmd_version{App: this}
 	_xgo_obj18 := &Cmd_vet{App: this}
 	_xgo_obj19 := &Cmd_work{App: this}
-	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11, _xgo_obj12, _xgo_obj13, _xgo_obj14, _xgo_obj15, _xgo_obj16, _xgo_obj17, _xgo_obj18, _xgo_obj19)
+	_xgo_obj20 := &Cmd_gdb{App: this}
+	xcmd.Gopt_App_Main(this, _xgo_obj0, _xgo_obj1, _xgo_obj2, _xgo_obj3, _xgo_obj4, _xgo_obj5, _xgo_obj6, _xgo_obj7, _xgo_obj8, _xgo_obj9, _xgo_obj10, _xgo_obj11, _xgo_obj12, _xgo_obj13, _xgo_obj14, _xgo_obj15, _xgo_obj16, _xgo_obj17, _xgo_obj18, _xgo_obj19, _xgo_obj20)
 }
 
 //line cmd/llgo/build_cmd.gox:20
@@ -326,6 +332,25 @@ func (this *Cmd_list) Main(_xgo_arg0 string) {
 }
 func (this *Cmd_list) Classfname() string {
 	return "list"
+}
+
+//line cmd/llgo/gdb_cmd.gox:20
+func (this *Cmd_gdb) Main(_xgo_arg0 string) {
+	this.Command.Main(_xgo_arg0)
+//line cmd/llgo/gdb_cmd.gox:20:1
+	this.Use("gdb [-gdb path] [--] executable [gdb arguments...]")
+//line cmd/llgo/gdb_cmd.gox:22:1
+	this.Short("Debug an LLGo executable with GDB")
+//line cmd/llgo/gdb_cmd.gox:24:1
+	this.FlagOff()
+//line cmd/llgo/gdb_cmd.gox:26:1
+	this.Run__1(func(args []string) {
+//line cmd/llgo/gdb_cmd.gox:27:1
+		gdb.Cmd.Run(gdb.Cmd, args)
+	})
+}
+func (this *Cmd_gdb) Classfname() string {
+	return "gdb"
 }
 
 //line cmd/llgo/lldb_cmd.gox:20

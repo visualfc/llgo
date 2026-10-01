@@ -92,8 +92,8 @@ run_test_suite './debug.out' "['main.go']"
 run_test_suite './debug-mixed.out' "['mixed/mixed.go', 'mixed/_wrap/mixed.c']" fault
 
 llgo lldb -lldb "$LLDB_PATH" -- --batch "./debug.out" \
-    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.schema_version == 1 and info.runtime_layout_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown") or os._exit(1)' \
-    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "LLGo debugger schema v1 (runtime layout v1)" in result.GetOutput()) or os._exit(1)' \
+    -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.schema_version == 1 and info.runtime_layout_version == 2 and info.record_version == 1 and info.pointer_size == lldb.target.GetAddressByteSize() and info.byte_order != "unknown") or os._exit(1)' \
+    -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "LLGo debugger schema v1 (runtime layout v2)" in result.GetOutput()) or os._exit(1)' \
     -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo vars", result); (not result.Succeeded() and "requires a stopped process" in result.GetError()) or os._exit(1)' \
     -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo print s", result); (not result.Succeeded() and "requires a stopped process" in result.GetError()) or os._exit(1)'
 
@@ -139,3 +139,20 @@ llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/ambiguous-llgo$host_exe_e
     -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.marker_versions == (1, 2) and not info.supported) or os._exit(1)' \
     -o 'script import os; value = lldb.target.FindFirstGlobalVariable("cstring"); (value.IsValid() and value.GetSummary() is None and value.GetNumChildren() == 2) or os._exit(1)' \
     -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("llgo status", result); (result.Succeeded() and "Unsupported LLGo debugger marker version(s): v1, v2" in result.GetOutput()) or os._exit(1)'
+
+# A legacy marker alone cannot select the newer runtime layout. Reject invalid
+# structured records while keeping ordinary LLDB commands available.
+for record_case in legacy schema layout pointer reserved; do
+    case "$record_case" in
+        legacy) record_decl='' ;;
+        schema) record_decl="$marker_attribute unsigned char __llgo_debugger_abi_v1[16] = {76,76,71,79,68,66,71,0,1,2,2,1,0,sizeof(void*),1,0};" ;;
+        layout) record_decl="$marker_attribute unsigned char __llgo_debugger_abi_v1[16] = {76,76,71,79,68,66,71,0,1,1,1,1,0,sizeof(void*),1,0};" ;;
+        pointer) record_decl="$marker_attribute unsigned char __llgo_debugger_abi_v1[16] = {76,76,71,79,68,66,71,0,1,1,2,1,0,sizeof(void*) == 8 ? 4 : 8,1,0};" ;;
+        reserved) record_decl="$marker_attribute unsigned char __llgo_debugger_abi_v1[16] = {76,76,71,79,68,66,71,0,1,1,2,1,1,sizeof(void*),1,0};" ;;
+    esac
+    printf '%s int __llgo_debugger_marker_v1 = 1; %s int main(void) { return 0; }\n' "$marker_attribute" "$record_decl" | \
+        "${cc_command[@]}" -x c "${cc_debug_flags[@]}" -o "$non_llgo_dir/record-$record_case$host_exe_ext" -
+    llgo lldb -lldb "$LLDB_PATH" -- --batch "$non_llgo_dir/record-$record_case$host_exe_ext" \
+        -o 'script import os; info = llgo_plugin.inspect_target(lldb.target); (info.marker_versions == (1,) and not info.supported) or os._exit(1)' \
+        -o 'script import os; result = lldb.SBCommandReturnObject(); lldb.debugger.GetCommandInterpreter().HandleCommand("p 1+1", result); (result.Succeeded() and "2" in result.GetOutput()) or os._exit(1)'
+done

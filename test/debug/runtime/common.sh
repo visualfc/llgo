@@ -18,7 +18,9 @@ find_lldb() {
     for lldb_path in "${lldb_paths[@]}"; do
         if command -v "$lldb_path" >/dev/null 2>&1; then
             local version
-            version=$("$lldb_path" --version | grep -oE '[0-9]+' | head -1)
+            # The launcher supplies Windows LLDB's Python environment only to
+            # the debugger child, including this version probe.
+            version=$(llgo lldb -lldb "$lldb_path" -- --version | grep -oE '[0-9]+' | head -1)
             if [[ "$version" =~ ^[0-9]+$ ]] && [ "$version" -ge 18 ]; then
                 echo "$lldb_path"
                 return 0
@@ -33,7 +35,7 @@ find_lldb() {
 # Find LLDB 18+
 LLDB_PATH=$(find_lldb)
 echo "LLDB_PATH: $LLDB_PATH"
-"$LLDB_PATH" --version
+llgo lldb -lldb "$LLDB_PATH" -- --version
 export LLDB_PATH
 
 # Default package path

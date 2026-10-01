@@ -383,7 +383,14 @@ jobs:
 
       - name: Install LLDB for integration tests
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: sudo apt-get install -y lldb-${{matrix.llvm}}
+        run: sudo apt-get install -y lldb-${{matrix.llvm}} gdb
+
+      - name: GDB values, registry and complete worker unwind (Linux)
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        timeout-minutes: 15
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: go test ./cmd/internal/gdb -run '^TestGDB(Integration|CompleteWorkerUnwind)$' -count=1 -v
 
       - name: Install MinGW LLDB for integration tests
         # R12 qualifies debugger behavior for the new GNU architectures. Keep
@@ -420,11 +427,6 @@ jobs:
         if: ${{ matrix.windows_abi == 'msvc' }}
         shell: pwsh
         run: |
-          $env:PYTHONHOME = $env:LLGO_WINDOWS_LLDB_PYTHON_HOME
-          $env:PYTHONPATH = $env:LLGO_WINDOWS_LLDB_PYTHONPATH
-          $env:PYTHONUTF8 = "1"
-          $env:PYTHONIOENCODING = "utf-8"
-          $env:PATH = "$env:LLGO_WINDOWS_LLDB_PYTHON_HOME;$env:PATH"
           Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash test/debug/runtime/runtest.sh -v
           if ($LASTEXITCODE -ne 0) {
@@ -444,11 +446,6 @@ jobs:
         if: ${{ matrix.windows_abi == 'mingw' && matrix.windows_arch != 'amd64' }}
         shell: pwsh
         run: |
-          $env:PYTHONHOME = $env:LLGO_WINDOWS_LLDB_PYTHON_HOME
-          $env:PYTHONPATH = $env:LLGO_WINDOWS_LLDB_PYTHONPATH
-          $env:PYTHONUTF8 = "1"
-          $env:PYTHONIOENCODING = "utf-8"
-          $env:PATH = "$env:LLGO_WINDOWS_LLDB_PYTHON_HOME;$env:PATH"
           Write-Host "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash test/debug/runtime/runtest.sh -v
           if ($LASTEXITCODE -ne 0) {
@@ -521,6 +518,96 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Cygwin host-shell qualification failed with exit code $LASTEXITCODE"
           }
+
+      # Install the debugger in an isolated MSYS2 tree after shell/LLDB
+      # qualification: rolling GDB dependencies must not update pinned LLVM
+      # packages or replace the compiler lane's shell configuration early.
+      - name: Install Windows GDB
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/setup-gdb
+
+      - name: GDB native values and registry (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: |
+          Remove-Item Env:PYTHONHOME, Env:PYTHONPATH -ErrorAction SilentlyContinue
+          # This package is pure Go. Its target-native driver can run on 386
+          # without linking the x64 host LLVM libraries; CC retains the
+          # selected target ABI, architecture and CRT for C fallback fixtures.
+          go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
+          if ($LASTEXITCODE -ne 0) {
+            throw "GDB integration tests failed with exit code $LASTEXITCODE"
+          }
+
+      - name: GDB complete worker unwind (Windows amd64 and 386)
+        # ARM64 native GDB 18 lacks PAC masks. Its values/registry gate above
+        # remains required; blocked-worker unwind is an explicit limitation.
+        if: runner.os == 'Windows' && matrix.windows_arch != 'arm64'
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: |
+          Remove-Item Env:PYTHONHOME, Env:PYTHONPATH -ErrorAction SilentlyContinue
+          go test ./cmd/internal/gdb -run '^TestGDBCompleteWorkerUnwind$' -count=1 -v
+          if ($LASTEXITCODE -ne 0) {
+            throw "Complete GDB worker unwind failed with exit code $LASTEXITCODE"
+          }
+
+  native-debuggers-intel:
+    name: Native debuggers (macOS Intel, GDB values and registry)
+    needs: prepare
+    if: needs.prepare.outputs.run_code_ci == 'true'
+    permissions:
+      contents: read
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install compiler dependencies
+        uses: ./.github/actions/setup-deps
+        with:
+          llvm-version: "22"
+      - name: Set up Go
+        uses: ./.github/actions/setup-go
+      - name: Build LLGo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/llgo-bin"
+          go build -o "$RUNNER_TEMP/llgo-bin/llgo" ./cmd/llgo
+          echo "$RUNNER_TEMP/llgo-bin" >> "$GITHUB_PATH"
+          echo "LLGO_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+      - name: Install GDB
+        uses: ./.github/actions/setup-gdb
+      - name: Enable native GDB on the ephemeral Intel runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Unsigned Homebrew GDB cannot obtain the inferior's task port as
+          # the runner user. Elevate only the debugger, not builds or Go tests.
+          # This does not change host trust settings or pretend Apple Silicon
+          # has the native Darwin process backend.
+          wrapper="$RUNNER_TEMP/llgo-gdb-native"
+          printf '#!/bin/bash\nexec sudo -n %q "$@"\n' "$LLGO_GDB" > "$wrapper"
+          chmod +x "$wrapper"
+          "$wrapper" --batch --nx -ex 'python import gdb; print(gdb.VERSION)'
+          echo "LLGO_GDB=$wrapper" >> "$GITHUB_ENV"
+      - name: LLDB runtime adapter integration tests
+        env:
+          LLGO_LLDB: /usr/bin/lldb
+        run: bash test/debug/runtime/runtest.sh -v
+      # GDB 17/18 cannot load dyld 17 shared libraries or unwind blocked
+      # system frames here; a plain pthread C control reproduces the failure.
+      # Keep TestGDBCompleteWorkerUnwind strict and separately runnable.
+      - name: GDB native values and registry (Intel, worker unwind unavailable)
+        timeout-minutes: 15
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
 
   cross-compile:
     if: needs.prepare.outputs.run_code_ci == 'true'
