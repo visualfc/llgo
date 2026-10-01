@@ -415,7 +415,6 @@ jobs:
         run: |
           echo "Test lldb with llgo plugin on ${{matrix.os}} with LLVM ${{matrix.llvm}}"
           bash test/debug/runtime/runtest.sh -v
-          bash test/debug/native/runtest.sh
 
       - name: LLDB integration tests (MSVC)
         if: ${{ matrix.windows_abi == 'msvc' }}
@@ -455,6 +454,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "LLDB integration tests failed with exit code $LASTEXITCODE"
           }
+
+      - name: Native source-debug acceptance tests
+        if: runner.os != 'Windows'
+        run: bash test/debug/native/runtest.sh
 
       - name: Native debug metadata tests
         if: ${{ startsWith(matrix.os, 'macos') && matrix.os != 'macos-15-intel' }}
