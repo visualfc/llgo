@@ -13,12 +13,25 @@ Run the native LLDB suite from the repository root:
 bash test/debug/runtime/runtest.sh -v
 ```
 
-Run the GDB suite on a supported native host with Python-enabled GDB 12+
-(the Windows ARM64 jobs use GDB 18+):
+Run GDB's native values, registry and main-stack acceptance with Python-enabled
+GDB 12+ (the Windows ARM64 jobs use GDB 18+):
 
 ```sh
 LLGO_GDB_INTEGRATION=1 go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
 ```
+
+Complete blocked-worker unwind is a separate strict acceptance test:
+
+```sh
+LLGO_GDB_INTEGRATION=1 go test ./cmd/internal/gdb -run '^TestGDBCompleteWorkerUnwind$' -count=1 -v
+```
+
+The latter remains a required gate on Linux and Windows amd64/386. Stock GDB
+cannot currently complete that test on Intel macOS (dyld shared-library support)
+or Windows ARM64 (PAC masks), although native values, the goroutine registry
+and the main application stack are tested there. See the
+[runtime coverage matrix](runtime/README.md#gdb-runtime-acceptance). These
+limitations do not apply to the native LLDB suite.
 
 The runtime fixtures retain their own `go.mod` and the `lldbtest` module name
 used by debugger type assertions. The nested module excludes these programs

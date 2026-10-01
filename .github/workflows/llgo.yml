@@ -385,12 +385,12 @@ jobs:
         if: ${{ matrix.os == 'ubuntu-latest' }}
         run: sudo apt-get install -y lldb-${{matrix.llvm}} gdb
 
-      - name: GDB runtime adapter integration tests
+      - name: GDB values, registry and complete worker unwind (Linux)
         if: ${{ matrix.os == 'ubuntu-latest' }}
         timeout-minutes: 15
         env:
           LLGO_GDB_INTEGRATION: "1"
-        run: go test ./cmd/internal/gdb -run '^TestGDBIntegration$' -count=1 -v
+        run: go test ./cmd/internal/gdb -run '^TestGDB(Integration|CompleteWorkerUnwind)$' -count=1 -v
 
       - name: Install MinGW LLDB for integration tests
         # R12 qualifies debugger behavior for the new GNU architectures. Keep
@@ -536,7 +536,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: ./.github/actions/setup-gdb
 
-      - name: GDB runtime adapter integration tests (Windows)
+      - name: GDB native values and registry (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 15
         shell: pwsh
@@ -552,8 +552,23 @@ jobs:
             throw "GDB integration tests failed with exit code $LASTEXITCODE"
           }
 
+      - name: GDB complete worker unwind (Windows amd64 and 386)
+        # ARM64 native GDB 18 lacks PAC masks. Its values/registry gate above
+        # remains required; blocked-worker unwind is an explicit limitation.
+        if: runner.os == 'Windows' && matrix.windows_arch != 'arm64'
+        timeout-minutes: 15
+        shell: pwsh
+        env:
+          LLGO_GDB_INTEGRATION: "1"
+        run: |
+          Remove-Item Env:PYTHONHOME, Env:PYTHONPATH -ErrorAction SilentlyContinue
+          go test ./cmd/internal/gdb -run '^TestGDBCompleteWorkerUnwind$' -count=1 -v
+          if ($LASTEXITCODE -ne 0) {
+            throw "Complete GDB worker unwind failed with exit code $LASTEXITCODE"
+          }
+
   native-debuggers-intel:
-    name: Native debugger acceptance (macOS Intel)
+    name: Native debuggers (macOS Intel, GDB values and registry)
     needs: prepare
     if: needs.prepare.outputs.run_code_ci == 'true'
     permissions:
@@ -595,7 +610,10 @@ jobs:
         env:
           LLGO_LLDB: /usr/bin/lldb
         run: bash test/debug/runtime/runtest.sh -v
-      - name: GDB runtime adapter integration tests
+      # GDB 17/18 cannot load dyld 17 shared libraries or unwind blocked
+      # system frames here; a plain pthread C control reproduces the failure.
+      # Keep TestGDBCompleteWorkerUnwind strict and separately runnable.
+      - name: GDB native values and registry (Intel, worker unwind unavailable)
         timeout-minutes: 15
         env:
           LLGO_GDB_INTEGRATION: "1"

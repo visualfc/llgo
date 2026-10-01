@@ -32,48 +32,14 @@ import (
 )
 
 func TestGDBIntegration(t *testing.T) {
-	if os.Getenv("LLGO_GDB_INTEGRATION") == "" {
-		t.Skip("set LLGO_GDB_INTEGRATION=1 to run the native GDB acceptance test")
-	}
-	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
-		t.Fatal("GDB does not support native Apple Silicon processes; use native LLDB or GDB with a remote target")
-	}
-
-	gdbPath := integrationConfiguredTool(t, "LLGO_GDB", "gdb-multiarch", "gdb")
-	llgoPath := integrationConfiguredTool(t, "LLGO", "llgo")
-	root := integrationRepoRoot(t)
-	fixtureDir := filepath.Join(root, "test", "debug", "runtime")
+	gdbPath, fixtureDir, executable := integrationBuildFixture(t)
 	source := filepath.Join(fixtureDir, "main.go")
-	executable := filepath.Join(t.TempDir(), integrationExecutable("debug"))
-
-	build := exec.Command(
-		llgoPath, "build", "-O0", "-ldflags=-w=false",
-		"-o", executable, ".",
-	)
-	build.Dir = fixtureDir
-	build.Env = append(os.Environ(), "LLGO_ROOT="+root)
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build GDB fixture: %v\n%s", err, output)
-	}
 
 	runtimeLine := integrationMarkerLine(t, source, "LLDB_BREAK: runtime_values")
 	interfaceLine := integrationMarkerLine(t, source, "LLDB_BREAK: interface_values")
 	functionLine := integrationMarkerLine(t, source, "LLDB_BREAK: function_values")
 	containerLine := integrationMarkerLine(t, source, "LLDB_BREAK: container_values")
-	args := []string{
-		"--nx", "--quiet", "--batch", executable,
-		"-ex", "set debuginfod enabled off",
-		"-ex", "python _llgo_last_stop = []; gdb.events.stop.connect(lambda event: _llgo_last_stop.__setitem__(slice(None), [event]))",
-	}
-	if runtime.GOOS != "windows" {
-		// GDB's Windows-native build has no startup-with-shell parameter.
-		args = append(args, "-ex", "set startup-with-shell off")
-	}
-	if runtime.GOOS == "linux" {
-		// Only Linux uses these Boehm handshake signals. Do not hide other
-		// signals, access violations, or an unexpected platform-specific stop.
-		args = append(args, "-ex", "handle SIGPWR SIGXCPU nostop noprint pass")
-	}
+	args := integrationGDBArgs(executable)
 	args = append(args,
 		"-ex", integrationBreakpoint(source, runtimeLine),
 		"-ex", integrationBreakpoint(source, interfaceLine),
@@ -114,7 +80,7 @@ func TestGDBIntegration(t *testing.T) {
 		"-ex", "continue",
 		"-ex", "echo LLGO_CASE=goroutine\\n",
 		"-ex", "llgo goroutines",
-		"-ex", gdbSourceCommand(filepath.Join(fixtureDir, "gdb_goroutines.py")),
+		"-ex", gdbSourceCommand(filepath.Join(fixtureDir, "gdb_registry.py")),
 		"-ex", "llgo goroutine 1 bt 3",
 	)
 	output := integrationRunGDB(t, gdbPath, fixtureDir, args...)
@@ -146,7 +112,7 @@ func TestGDBIntegration(t *testing.T) {
 		"main.InspectGoroutineValues",
 		"main.RuntimeGoroutineValues",
 		"LLGO_THREAD_PRESERVED=True",
-		"LLGO_GOROUTINE_STACKS=root+2workers",
+		"LLGO_GOROUTINE_REGISTRY=root+2workers",
 		"goroutine 1 [running] parent=0",
 		"tid=",
 		"main.InspectGoroutineValues",
@@ -157,6 +123,75 @@ func TestGDBIntegration(t *testing.T) {
 	}
 
 	integrationTestFallback(t, gdbPath)
+}
+
+// TestGDBCompleteWorkerUnwind deliberately remains strict on every host. The
+// native-values test is a separate capability: stock Darwin and Windows ARM64
+// GDB currently cannot unwind blocked system frames, even in plain C programs.
+// Their CI lanes run TestGDBIntegration and document that boundary instead of
+// weakening this test or treating partial worker stacks as a pass.
+func TestGDBCompleteWorkerUnwind(t *testing.T) {
+	gdbPath, fixtureDir, executable := integrationBuildFixture(t)
+	args := append(integrationGDBArgs(executable),
+		"-ex", "break main.InspectGoroutineValues",
+		"-ex", "run",
+		"-ex", "llgo goroutines",
+		"-ex", gdbSourceCommand(filepath.Join(fixtureDir, "gdb_goroutines.py")),
+	)
+	output := integrationRunGDB(t, gdbPath, fixtureDir, args...)
+	for _, expected := range []string{
+		"LLGO_THREAD_PRESERVED=True", "LLGO_GOROUTINE_STACKS=root+2workers",
+	} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("complete worker unwind missing %q:\n%s", expected, output)
+		}
+	}
+}
+
+func integrationBuildFixture(t *testing.T) (gdbPath, fixtureDir, executable string) {
+	t.Helper()
+	if os.Getenv("LLGO_GDB_INTEGRATION") == "" {
+		t.Skip("set LLGO_GDB_INTEGRATION=1 to run the native GDB acceptance test")
+	}
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		t.Fatal("GDB does not support native Apple Silicon processes; use native LLDB or GDB with a remote target")
+	}
+
+	gdbPath = integrationConfiguredTool(t, "LLGO_GDB", "gdb-multiarch", "gdb")
+	llgoPath := integrationConfiguredTool(t, "LLGO", "llgo")
+	root := integrationRepoRoot(t)
+	fixtureDir = filepath.Join(root, "test", "debug", "runtime")
+	executable = filepath.Join(t.TempDir(), integrationExecutable("debug"))
+
+	build := exec.Command(
+		llgoPath, "build", "-O0", "-ldflags=-w=false",
+		"-o", executable, ".",
+	)
+	build.Dir = fixtureDir
+	build.Env = append(os.Environ(), "LLGO_ROOT="+root)
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build GDB fixture: %v\n%s", err, output)
+	}
+
+	return gdbPath, fixtureDir, executable
+}
+
+func integrationGDBArgs(executable string) []string {
+	args := []string{
+		"--nx", "--quiet", "--batch", executable,
+		"-ex", "set debuginfod enabled off",
+		"-ex", "python _llgo_last_stop = []; gdb.events.stop.connect(lambda event: _llgo_last_stop.__setitem__(slice(None), [event]))",
+	}
+	if runtime.GOOS != "windows" {
+		// GDB's Windows-native build has no startup-with-shell parameter.
+		args = append(args, "-ex", "set startup-with-shell off")
+	}
+	if runtime.GOOS == "linux" {
+		// Only Linux uses these Boehm handshake signals. Do not hide other
+		// signals, access violations, or an unexpected platform-specific stop.
+		args = append(args, "-ex", "handle SIGPWR SIGXCPU nostop noprint pass")
+	}
+	return args
 }
 
 func integrationTestFallback(t *testing.T, gdbPath string) {
