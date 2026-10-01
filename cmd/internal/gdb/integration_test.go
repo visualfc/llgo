@@ -39,8 +39,8 @@ func TestGDBIntegration(t *testing.T) {
 		t.Fatal("GDB does not support native Apple Silicon processes; use native LLDB or GDB with a remote target")
 	}
 
-	gdbPath := integrationTool(t, os.Getenv("LLGO_GDB"), "gdb-multiarch", "gdb")
-	llgoPath := integrationTool(t, os.Getenv("LLGO"), "llgo")
+	gdbPath := integrationConfiguredTool(t, "LLGO_GDB", "gdb-multiarch", "gdb")
+	llgoPath := integrationConfiguredTool(t, "LLGO", "llgo")
 	root := integrationRepoRoot(t)
 	fixtureDir := filepath.Join(root, "test", "debug", "runtime")
 	source := filepath.Join(fixtureDir, "main.go")
@@ -274,7 +274,11 @@ func integrationRunGDB(t *testing.T, gdbPath, dir string, args ...string) string
 	if err := Run(gdbPath, nil, args, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("run GDB: %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
-	return stdout.String() + stderr.String()
+	output := stdout.String() + stderr.String()
+	// Keep actual frames and debugger diagnostics in successful CI logs too;
+	// a PASS line alone is insufficient evidence for a new host/architecture.
+	t.Logf("GDB output:\n%s", output)
+	return output
 }
 
 func integrationMarkerLine(t *testing.T, path, marker string) int {
@@ -295,6 +299,16 @@ func integrationMarkerLine(t *testing.T, path, marker string) int {
 	}
 	t.Fatalf("marker %q not found in %s", marker, path)
 	return 0
+}
+
+func integrationConfiguredTool(t *testing.T, environment string, candidates ...string) string {
+	t.Helper()
+	if configured := os.Getenv(environment); configured != "" {
+		// Never silently test a different debugger when an explicit path is
+		// unavailable (for example, an incorrectly installed native GDB).
+		return integrationTool(t, configured)
+	}
+	return integrationTool(t, candidates...)
 }
 
 func integrationTool(t *testing.T, candidates ...string) string {
