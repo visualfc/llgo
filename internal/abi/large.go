@@ -95,6 +95,23 @@ type aggregateRoot struct {
 	value, before llvm.Value
 }
 
+// snapshotRange is the live interval of one occupant of a stack snapshot slot:
+// from the snapshot copy through every read of that copy.
+type snapshotRange struct {
+	start llvm.Value
+	uses  []llvm.Value
+}
+
+// stackSnapshotSlot is a loop-safe entry alloca that disjoint snapshots of the
+// same type can share. Mutually exclusive branches therefore reserve peak
+// simultaneous size rather than the sum of every snapshot.
+type stackSnapshotSlot struct {
+	ptr    llvm.Value
+	typ    llvm.Type
+	fn     llvm.Value
+	ranges []snapshotRange
+}
+
 type largeAggregateLowerer struct {
 	td                     llvm.TargetData
 	goWordSize             int
@@ -105,6 +122,7 @@ type largeAggregateLowerer struct {
 	allocations            []llvm.Value
 	resultParams           []llvm.Value
 	sourceRoots            []aggregateRoot
+	stackSlots             []stackSnapshotSlot
 }
 
 func newLargeAggregateLowerer(td llvm.TargetData, config AggregateLoweringConfig) largeAggregateLowerer {
@@ -260,18 +278,27 @@ func (l *largeAggregateLowerer) transformStoredLoad(m llvm.Module, load llvm.Val
 		load.EraseFromParentAsInstruction()
 		return
 	}
-	snapshot, heap := l.allocSnapshot(m, ctx, b, typ, load.InstructionDebugLoc())
+	uses := make([]llvm.Value, 0, len(stores)+len(extracts))
+	uses = append(uses, stores...)
+	uses = append(uses, extracts...)
+	snapshot, heap := l.allocSnapshot(m, ctx, b, typ, load.InstructionDebugLoc(), load, uses)
 	b.SetInsertPointBefore(load)
 	if heap {
 		// Heap snapshots are a new safepoint absent from the frontend root plan.
 		// Keep the source alive before allocating; reflection wrappers can have
 		// no original allocation at all.
 		l.sourceRoots = append(l.sourceRoots, aggregateRoot{value: load.Operand(0), before: snapshot})
+	} else {
+		l.callLifetime(ctx, b, true, snapshot)
 	}
 	copy := l.callMemcpy(ctx, b, snapshot, load.Operand(0), typ)
 	setCopyVolatile(ctx, copy, load.IsVolatile())
 	copy.InstructionSetDebugLoc(load.InstructionDebugLoc())
-	l.rewriteMemoryUsers(ctx, load, snapshot, typ, stores, extracts)
+	newUses := l.rewriteMemoryUsers(ctx, load, snapshot, typ, stores, extracts)
+	if !heap {
+		l.recordStackSnapshotUses(snapshot, copy, newUses)
+		l.markSnapshotLifetimeEnd(ctx, snapshot, copy, newUses)
+	}
 }
 
 func (l *largeAggregateLowerer) transformCall(m llvm.Module, call llvm.Value) {
@@ -418,15 +445,17 @@ func (l largeAggregateLowerer) rewriteStoredResult(ctx llvm.Context, value, resu
 // Root publication extracts pointer members from aggregate SSA values. Rewrite
 // those projections as loads from the same immutable snapshot as its stores;
 // leaving even one aggregate use expands the entire value in SelectionDAG.
-func (l largeAggregateLowerer) rewriteMemoryUsers(ctx llvm.Context, value, result llvm.Value, typ llvm.Type, stores, extracts []llvm.Value) {
+func (l largeAggregateLowerer) rewriteMemoryUsers(ctx llvm.Context, value, result llvm.Value, typ llvm.Type, stores, extracts []llvm.Value) []llvm.Value {
 	b := ctx.NewBuilder()
 	defer b.Dispose()
+	uses := make([]llvm.Value, 0, len(stores)+len(extracts))
 	for _, store := range stores {
 		b.SetInsertPointBefore(store)
 		copy := l.callMemcpy(ctx, b, store.Operand(1), result, typ)
 		setCopyVolatile(ctx, copy, store.IsVolatile())
 		copy.InstructionSetDebugLoc(store.InstructionDebugLoc())
 		store.EraseFromParentAsInstruction()
+		uses = append(uses, copy)
 	}
 	for _, extract := range extracts {
 		b.SetInsertPointBefore(extract)
@@ -439,8 +468,10 @@ func (l largeAggregateLowerer) rewriteMemoryUsers(ctx llvm.Context, value, resul
 		projected.InstructionSetDebugLoc(extract.InstructionDebugLoc())
 		extract.ReplaceAllUsesWith(projected)
 		extract.EraseFromParentAsInstruction()
+		uses = append(uses, projected)
 	}
 	value.EraseFromParentAsInstruction()
+	return uses
 }
 
 func setCopyVolatile(ctx llvm.Context, copy llvm.Value, volatile bool) {
@@ -449,13 +480,71 @@ func setCopyVolatile(ctx llvm.Context, copy llvm.Value, volatile bool) {
 	}
 }
 
-func (l *largeAggregateLowerer) allocSnapshot(m llvm.Module, ctx llvm.Context, b llvm.Builder, typ llvm.Type, loc llvm.Metadata) (llvm.Value, bool) {
-	if l.td.TypeAllocSize(typ) < MinAggregateCopySize {
-		return l.allocaAtEntry(b, typ), false
+func (l *largeAggregateLowerer) allocSnapshot(m llvm.Module, ctx llvm.Context, b llvm.Builder, typ llvm.Type, loc llvm.Metadata, load llvm.Value, uses []llvm.Value) (llvm.Value, bool) {
+	if l.td.TypeAllocSize(typ) >= MinAggregateCopySize {
+		return l.allocResult(m, ctx, b, typ, loc), true
 	}
-	return l.allocResult(m, ctx, b, typ, loc), true
+	fn := load.InstructionParent().Parent()
+	newRange := snapshotRange{start: load, uses: uses}
+	for i := range l.stackSlots {
+		slot := &l.stackSlots[i]
+		if slot.fn != fn || slot.typ != typ {
+			continue
+		}
+		if snapshotRangesInterfere(slot.ranges, newRange) {
+			continue
+		}
+		slot.ranges = append(slot.ranges, newRange)
+		return slot.ptr, false
+	}
+	ptr := l.allocaAtEntry(b, typ)
+	l.stackSlots = append(l.stackSlots, stackSnapshotSlot{
+		ptr:    ptr,
+		typ:    typ,
+		fn:     fn,
+		ranges: []snapshotRange{newRange},
+	})
+	return ptr, false
 }
 
+func (l *largeAggregateLowerer) recordStackSnapshotUses(snapshot, start llvm.Value, uses []llvm.Value) {
+	for i := range l.stackSlots {
+		slot := &l.stackSlots[i]
+		if slot.ptr != snapshot || len(slot.ranges) == 0 {
+			continue
+		}
+		slot.ranges[len(slot.ranges)-1] = snapshotRange{start: start, uses: uses}
+		return
+	}
+}
+
+func (l largeAggregateLowerer) markSnapshotLifetimeEnd(ctx llvm.Context, snapshot, start llvm.Value, uses []llvm.Value) {
+	b := ctx.NewBuilder()
+	defer b.Dispose()
+	for _, use := range uses {
+		if !isLastSnapshotUse(use, uses, start) {
+			continue
+		}
+		next := llvm.NextInstruction(use)
+		if next.IsNil() {
+			continue
+		}
+		b.SetInsertPointBefore(next)
+		l.callLifetime(ctx, b, false, snapshot)
+	}
+}
+
+func (l largeAggregateLowerer) callLifetime(ctx llvm.Context, b llvm.Builder, start bool, ptr llvm.Value) {
+	name := "llvm.lifetime.end"
+	if start {
+		name = "llvm.lifetime.start"
+	}
+	// LLVM 22 dropped the i64 size operand; the intrinsic is alloca-only.
+	b.CreateIntrinsic(ctx.VoidType(), llvm.LookupIntrinsicID(name), []llvm.Value{ptr}, "")
+}
+
+// allocaAtEntry keeps the slot in the entry block so a loop reuses one
+// reservation instead of allocating per iteration.
 func (l *largeAggregateLowerer) allocaAtEntry(b llvm.Builder, typ llvm.Type) llvm.Value {
 	bb := b.GetInsertBlock()
 	fn := bb.Parent()
@@ -547,4 +636,91 @@ func copyClosureEnvCallAttrs(from, to llvm.Value, paramOffset int) {
 func hasSingleUse(value, user llvm.Value) bool {
 	use := value.FirstUse()
 	return !use.IsNil() && use.User() == user && use.NextUse().IsNil()
+}
+
+func snapshotRangesInterfere(ranges []snapshotRange, next snapshotRange) bool {
+	for _, existing := range ranges {
+		if existing.liveAt(next.start) || next.liveAt(existing.start) {
+			return true
+		}
+	}
+	return false
+}
+
+// liveAt reports whether this snapshot's storage is still needed at p.
+// Paths that re-enter start are a later iteration of the same slot, so they
+// do not keep the current occupant live.
+func (r snapshotRange) liveAt(p llvm.Value) bool {
+	if p == r.start {
+		return true
+	}
+	if !canReach(r.start, p, r.start) {
+		return false
+	}
+	for _, use := range r.uses {
+		if canReach(p, use, r.start) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLastSnapshotUse(use llvm.Value, uses []llvm.Value, start llvm.Value) bool {
+	for _, other := range uses {
+		if use == other {
+			continue
+		}
+		if canReach(use, other, start) {
+			return false
+		}
+	}
+	return true
+}
+
+func canReach(from, to, avoid llvm.Value) bool {
+	if from.IsNil() || to.IsNil() {
+		return false
+	}
+	seen := make(map[llvm.Value]struct{})
+	queue := []llvm.Value{from}
+	seen[from] = struct{}{}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur == to {
+			return true
+		}
+		if !avoid.IsNil() && cur == avoid && cur != from {
+			continue
+		}
+		for _, next := range nextInstructions(cur) {
+			if !avoid.IsNil() && next == avoid {
+				continue
+			}
+			if _, ok := seen[next]; ok {
+				continue
+			}
+			seen[next] = struct{}{}
+			queue = append(queue, next)
+		}
+	}
+	return false
+}
+
+func nextInstructions(instr llvm.Value) []llvm.Value {
+	if next := llvm.NextInstruction(instr); !next.IsNil() {
+		return []llvm.Value{next}
+	}
+	n := instr.SuccessorsCount()
+	if n == 0 {
+		return nil
+	}
+	succs := make([]llvm.Value, 0, n)
+	for i := 0; i < n; i++ {
+		first := instr.Successor(i).FirstInstruction()
+		if !first.IsNil() {
+			succs = append(succs, first)
+		}
+	}
+	return succs
 }

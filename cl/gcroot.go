@@ -209,7 +209,7 @@ func (p *context) isGCSafepoint(instr ssa.Instruction) bool {
 	if load, ok := instr.(*ssa.UnOp); ok && load.Op == token.MUL {
 		// ABI lowering may snapshot these loads with AllocU after this root
 		// plan is built. Keep the predicate in sync with abi.ShouldSnapshotAggregateLoad.
-		size := p.prog.SizeOf(p.type_(load.Type(), llssa.InGo))
+		size := p.prog.SizeOf(p.type_(load.Type(), llssa.GoDecl))
 		ptrSize := p.prog.PointerSize()
 		wasm := p.prog.Target().GOARCH == "wasm"
 		switch t := load.Type().Underlying().(type) {
