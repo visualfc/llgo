@@ -284,6 +284,150 @@ entry:
 	})
 }
 
+func TestLowerMultiElementArrayCopyStackReuse(t *testing.T) {
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	config := AggregateLoweringConfig{GoWordSize: 8}
+
+	t.Run("disjoint switch cases share one slot", func(t *testing.T) {
+		mod := parseAggregateIR(t, switchCopyIR(8))
+		if got := LowerAggregateCopies(td, mod, config); got != 8 {
+			t.Fatalf("lowered %d copies, want 8:\n%s", got, mod.String())
+		}
+		if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+			t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+		}
+		fn := mod.NamedFunction("copy")
+		body := fn.String()
+		if got := strings.Count(body, "alloca [256 x i32]"); got != 1 {
+			t.Fatalf("disjoint snapshots reserved %d slots, want 1:\n%s", got, body)
+		}
+		if strings.Contains(body, "AllocU") {
+			t.Fatalf("sub-4KiB snapshots used heap AllocU:\n%s", body)
+		}
+		if got := strings.Count(body, "llvm.lifetime.start"); got != 8 {
+			t.Fatalf("lifetime.start count = %d, want 8:\n%s", got, body)
+		}
+		if got := strings.Count(body, "llvm.lifetime.end"); got != 8 {
+			t.Fatalf("lifetime.end count = %d, want 8:\n%s", got, body)
+		}
+		if !allocaInEntry(fn) {
+			t.Fatalf("snapshot slot left the entry block:\n%s", body)
+		}
+	})
+
+	t.Run("overlapping snapshots keep separate slots", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @copy(ptr %src1, ptr %src2, ptr %dst1, ptr %dst2) {
+entry:
+  %a = load [256 x i32], ptr %src1
+  %b = load [256 x i32], ptr %src2
+  call void @mutate(ptr %src1)
+  store [256 x i32] %a, ptr %dst1
+  store [256 x i32] %b, ptr %dst2
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 2 {
+			t.Fatalf("lowered %d copies, want 2:\n%s", got, mod.String())
+		}
+		if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+			t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+		}
+		body := mod.NamedFunction("copy").String()
+		if got := strings.Count(body, "alloca [256 x i32]"); got != 2 {
+			t.Fatalf("overlapping snapshots reserved %d slots, want 2:\n%s", got, body)
+		}
+	})
+
+	t.Run("sequential snapshots reuse one slot", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %a = load [256 x i32], ptr %src
+  call void @mutate(ptr %src)
+  store [256 x i32] %a, ptr %dst
+  %b = load [256 x i32], ptr %src
+  call void @mutate(ptr %src)
+  store [256 x i32] %b, ptr %dst
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 2 {
+			t.Fatalf("lowered %d copies, want 2:\n%s", got, mod.String())
+		}
+		if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+			t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+		}
+		body := mod.NamedFunction("copy").String()
+		if got := strings.Count(body, "alloca [256 x i32]"); got != 1 {
+			t.Fatalf("sequential snapshots reserved %d slots, want 1:\n%s", got, body)
+		}
+	})
+
+	t.Run("loop keeps one entry alloca", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @copy(ptr %src, ptr %dst, i32 %n) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %loop ]
+  %v = load [256 x i32], ptr %src
+  call void @mutate(ptr %src)
+  store [256 x i32] %v, ptr %dst
+  %next = add i32 %i, 1
+  %cmp = icmp slt i32 %next, %n
+  br i1 %cmp, label %loop, label %done
+done:
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 1 {
+			t.Fatalf("lowered %d copies, want 1:\n%s", got, mod.String())
+		}
+		if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+			t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+		}
+		fn := mod.NamedFunction("copy")
+		body := fn.String()
+		if got := strings.Count(body, "alloca [256 x i32]"); got != 1 {
+			t.Fatalf("loop snapshots reserved %d slots, want 1:\n%s", got, body)
+		}
+		if !allocaInEntry(fn) {
+			t.Fatalf("loop snapshot left the entry block:\n%s", body)
+		}
+	})
+}
+
+func switchCopyIR(cases int) string {
+	var b strings.Builder
+	b.WriteString("declare void @mutate(ptr, i32)\n")
+	b.WriteString("define void @copy(ptr %src, ptr %dst, i32 %id) {\nentry:\n")
+	b.WriteString("  switch i32 %id, label %dflt [\n")
+	for i := 0; i < cases; i++ {
+		fmt.Fprintf(&b, "    i32 %d, label %%c%d\n", i, i)
+	}
+	b.WriteString("  ]\n")
+	for i := 0; i < cases; i++ {
+		fmt.Fprintf(&b, "c%d:\n  %%v%d = load [256 x i32], ptr %%src\n  call void @mutate(ptr %%src, i32 %d)\n  store [256 x i32] %%v%d, ptr %%dst\n  br label %%end\n", i, i, i, i)
+	}
+	b.WriteString("dflt:\n  br label %end\nend:\n  ret void\n}\n")
+	return b.String()
+}
+
+func allocaInEntry(fn llvm.Value) bool {
+	entry := fn.FirstBasicBlock()
+	for instr := entry.FirstInstruction(); !instr.IsNil(); instr = llvm.NextInstruction(instr) {
+		if !instr.IsAAllocaInst().IsNil() {
+			return true
+		}
+	}
+	return false
+}
+
 func parseAggregateIR(t *testing.T, source string) llvm.Module {
 	t.Helper()
 	ctx := llvm.NewContext()
