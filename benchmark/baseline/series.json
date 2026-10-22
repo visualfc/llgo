@@ -7,10 +7,10 @@
       "label": "Main",
       "path": "series/main/main/summary.json",
       "configPath": "series/main/main/config.json",
-      "commitPath": "commits/1f27d9d8b5600c05d37e1e0641b9743929d3fc3d.json",
-      "sha": "1f27d9d8b5600c05d37e1e0641b9743929d3fc3d",
-      "sourceUrl": "https://github.com/visualfc/llgo/commit/1f27d9d8b5600c05d37e1e0641b9743929d3fc3d",
-      "updatedAt": "2026-09-22T07:48:30.330Z"
+      "commitPath": "commits/0578518757341c5663e764c189a5f9b1e99a254d.json",
+      "sha": "0578518757341c5663e764c189a5f9b1e99a254d",
+      "sourceUrl": "https://github.com/visualfc/llgo/commit/0578518757341c5663e764c189a5f9b1e99a254d",
+      "updatedAt": "2026-10-22T01:50:06.569Z"
     }
   ]
 }
