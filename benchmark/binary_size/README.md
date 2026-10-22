@@ -81,3 +81,24 @@ Sparse maps retain all records. Emscripten, library outputs and entry-bearing PC
 packaging policy. `dev/test_wasm_wasi_threads.py` and
 `dev/test_wasm_wasi_lto.py` check initialization, map/reflect behavior and source
 locations, including an unrecovered panic, across the default and LTO paths.
+
+## WebAssembly runtime requirements
+
+Optimized WASI executables can omit Go runtime startup and instrumentation when
+all reachable initializers and functions are proven to need no Go allocation,
+panic handling, callbacks or scheduler. The proof accepts scalar operations,
+print/println and constant C strings passed to a no-argument C printf. Unknown
+calls, recursion, external inputs/exports, owner-local globals, linker overrides,
+coverage hooks, debugger frames and non-WASI targets retain the full runtime.
+Package cache keys include this decision; development-only DCE flags retain
+their existing policy.
+
+On Wasm, constant fmt.Printf/Fprintf/Sprintf calls with no formatting arguments
+can use a literal path. Only escaped percent signs are decoded. Other formats
+use the general formatter; Writer.Write calls, counts, errors and current Stdout
+are preserved. Neither optimization applies at -O0 or with debugger frames.
+
+For size comparisons, report linked bytes and final optimized bytes separately,
+with the same Binaryen version and flags for each compiler. Include JavaScript,
+manifest and symbol sidecars in deployment totals where present; a minimal WASI
+result does not establish parity for fmt, browser or embedded workloads.
