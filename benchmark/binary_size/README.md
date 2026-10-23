@@ -86,8 +86,9 @@ locations, including an unrecovered panic, across the default and LTO paths.
 
 Optimized WASI executables can omit Go runtime startup and instrumentation when
 all reachable initializers and functions are proven to need no Go allocation,
-panic handling, callbacks or scheduler. The proof accepts scalar operations,
-print/println and constant C strings passed to a no-argument C printf. Unknown
+panic handling, callbacks or scheduler. The proof accepts restricted integer
+and boolean operations, string values, print/println and constant C strings
+passed to a no-argument C printf. Unknown
 calls, recursion, external inputs/exports, owner-local globals, linker overrides,
 coverage hooks, debugger frames and non-WASI targets retain the full runtime.
 Package cache keys include this decision; development-only DCE flags retain
