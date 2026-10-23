@@ -82,7 +82,7 @@ packaging policy. `dev/test_wasm_wasi_threads.py` and
 `dev/test_wasm_wasi_lto.py` check initialization, map/reflect behavior and source
 locations, including an unrecovered panic, across the default and LTO paths.
 
-## WebAssembly runtime requirements
+## Startup and literal formatting
 
 Optimized WASI executables can omit Go runtime startup and instrumentation when
 all reachable initializers and functions are proven to need no Go allocation,
@@ -94,8 +94,9 @@ coverage hooks, debugger frames and non-WASI targets retain the full runtime.
 Package cache keys include this decision; development-only DCE flags retain
 their existing policy.
 
-On Wasm, constant fmt.Printf/Fprintf/Sprintf calls with no formatting arguments
-can use a literal path. Only escaped percent signs are decoded. Other formats
+Constant fmt.Printf/Sprintf calls with no formatting arguments can use a literal
+path; Wasm also specializes Fprintf. Native Fprintf retains its original caller
+identity for user Writers. Only escaped percent signs are decoded. Other formats
 use the general formatter; Writer.Write calls, counts, errors and current Stdout
 are preserved. Neither optimization applies at -O0 or with debugger frames.
 

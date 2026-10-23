@@ -4221,7 +4221,7 @@ func recordPackageSSAInstructions(ctx *context) {
 	defer span.done()
 	counts := make(map[*ssa.Package]int64)
 	var total int64
-	literalFormats := canSpecializeWasmLiteralFormats(ctx)
+	literalFormats := canSpecializeLiteralFormats(ctx)
 	for fn := range ssautil.AllFunctions(ctx.progSSA) {
 		if fn == nil || fn.Pkg == nil && !literalFormats {
 			continue
@@ -4229,7 +4229,7 @@ func recordPackageSSAInstructions(ctx *context) {
 		for _, block := range fn.Blocks {
 			if literalFormats {
 				for _, instruction := range block.Instrs {
-					specializeLiteralFormat(instruction)
+					specializeLiteralFormat(instruction, ctx.buildConf.Goarch == "wasm")
 				}
 			}
 			if fn.Pkg == nil {
