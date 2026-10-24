@@ -4,6 +4,7 @@
 
 import os
 import pathlib
+import shlex
 import subprocess
 import tempfile
 
@@ -19,10 +20,15 @@ def build(env, directory, mode, fixture, tags="", test=False, extra_flags=(), op
     link_object = module.with_suffix(".lto.o")
     build_env = env.copy()
     # An actual LTO backend output catches flags that are accepted but ignored.
-    flags = f"-Wl,--lto-obj-path={link_object}"
-    if mode == "full":
-        flags += " -Wl,--save-temps"
-    build_env["LDFLAGS"] = (env.get("LDFLAGS", "") + " " + flags).strip()
+    if mode == "thin":
+        # --lto-obj-path forces an empty regular-LTO object even for ThinLTO.
+        # LLVM 22 can mark that synthetic object memory64. A fresh cache proves
+        # actual ThinLTO codegen without adding an object to the link.
+        cache = pathlib.Path(tempfile.mkdtemp(prefix="thinlto-", dir=directory))
+        flags = [f"-Wl,--thinlto-cache-dir={cache}"]
+    else:
+        flags = [f"-Wl,--lto-obj-path={link_object}", "-Wl,--save-temps"]
+    build_env["LDFLAGS"] = (env.get("LDFLAGS", "") + " " + shlex.join(flags)).strip()
     command = [LLGO, "test", "-c"] if test else [LLGO, "build"]
     command += ["-target", "wasi", f"-{opt}", f"-lto={mode}"]
     command += extra_flags
@@ -30,8 +36,10 @@ def build(env, directory, mode, fixture, tags="", test=False, extra_flags=(), op
         command += ["-tags", tags]
     subprocess.run(command + ["-o", str(module), str(fixture)],
                    cwd=ROOT, env=build_env, check=True, timeout=300)
-    if not link_object.is_file() or link_object.stat().st_size == 0:
-        raise SystemExit(f"{module.name}: missing LTO backend object")
+    objects = list(cache.glob("llvmcache-*")) if mode == "thin" else [link_object]
+    if not objects or any(not obj.is_file() or obj.read_bytes()[:8] != b"\0asm\1\0\0\0"
+                          for obj in objects):
+        raise SystemExit(f"{module.name}: missing or invalid LTO backend object")
     if mode == "full":
         bitcode = pathlib.Path(str(module) + ".0.0.preopt.bc")
         if not bitcode.is_file() or bitcode.read_bytes()[:4] != b"BC\xc0\xde":
