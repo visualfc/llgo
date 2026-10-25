@@ -95,7 +95,7 @@ Package cache keys include this decision; development-only DCE flags retain
 their existing policy.
 
 Constant fmt.Printf/Sprintf calls with no formatting arguments can use a literal
-path; Wasm also specializes Fprintf. Native Fprintf retains its original caller
+path. Fprintf retains its original caller
 identity for user Writers. Only escaped percent signs are decoded. Other formats
 use the general formatter; Writer.Write calls, counts, errors and current Stdout
 are preserved. Neither optimization applies at -O0 or with debugger frames.

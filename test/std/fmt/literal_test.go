@@ -106,3 +106,83 @@ func TestLiteralFormattingDeferredAndGo(t *testing.T) {
 		t.Fatalf("goroutine write = %q", got)
 	}
 }
+
+// The parameter keeps the reference call on fmt's dynamic-format path.
+func dynamicPrintf(format string) (int, error) { return fmt.Printf(format, []any(nil)...) }
+
+func capturePrintf(t *testing.T, closed bool, print func() (int, error)) (string, int, error) {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "printf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if closed {
+		f.Close()
+	}
+	previous := os.Stdout
+	defer func() { os.Stdout = previous }()
+	os.Stdout = f
+	n, writeErr := print()
+	os.Stdout = previous
+	data, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data), n, writeErr
+}
+
+func TestLiteralPrintfEmptyAndClosedStdout(t *testing.T) {
+	for _, test := range []struct {
+		name, format, want string
+		literal            func() (int, error)
+	}{
+		{"empty", "", "", func() (int, error) { return fmt.Printf("") }},
+		{"escaped", "literal%%", "literal%", func() (int, error) { return fmt.Printf("literal%%") }},
+	} {
+		for _, closed := range []bool{false, true} {
+			text, n, err := capturePrintf(t, closed, test.literal)
+			reference, rn, re := capturePrintf(t, closed, func() (int, error) { return dynamicPrintf(test.format) })
+			if text != reference || n != rn || (err == nil) != (re == nil) ||
+				errors.Is(err, os.ErrClosed) != errors.Is(re, os.ErrClosed) {
+				t.Fatalf("%s closed=%v: literal=(%q,%d,%v), dynamic=(%q,%d,%v)", test.name, closed, text, n, err, reference, rn, re)
+			}
+			if closed {
+				if text != "" || n != 0 || !errors.Is(err, os.ErrClosed) {
+					t.Fatalf("closed stdout accepted write: %q,%d,%v", text, n, err)
+				}
+			} else if text != test.want || n != len(test.want) || err != nil {
+				t.Fatalf("open stdout: %q,%d,%v", text, n, err)
+			}
+		}
+	}
+}
+
+func TestLiteralPrintfDeferredAndGo(t *testing.T) {
+	literal := func() (int, error) {
+		func() { defer fmt.Printf("deferred%%") }()
+		done := make(chan struct{})
+		var n int
+		var err error
+		go func() {
+			n, err = fmt.Printf("goroutine%%")
+			close(done)
+		}()
+		<-done // The write and its result must complete before restoring stdout.
+		return n, err
+	}
+	dynamic := func() (int, error) {
+		func() { defer dynamicPrintf("deferred%%") }()
+		done := make(chan struct{})
+		var n int
+		var err error
+		go func() { n, err = dynamicPrintf("goroutine%%"); close(done) }()
+		<-done
+		return n, err
+	}
+	text, n, err := capturePrintf(t, false, literal)
+	reference, rn, re := capturePrintf(t, false, dynamic)
+	if text != "deferred%goroutine%" || text != reference || n != len("goroutine%") || n != rn || err != nil || re != nil {
+		t.Fatalf("literal=(%q,%d,%v), dynamic=(%q,%d,%v)", text, n, err, reference, rn, re)
+	}
+}

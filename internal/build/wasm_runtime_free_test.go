@@ -126,6 +126,8 @@ func TestConfigureWasmRuntimeFree(t *testing.T) {
 		{"asyncify", func(_ *testing.T, c *context, _ *aPackage) { c.crossCompile.WasmPostLink.Asyncify = true }, false},
 		{"linker flags", func(_ *testing.T, c *context, _ *aPackage) { c.buildConf.LinkOptions.ExternalLinkerFlags = "-lforeign" }, false},
 		{"environment linker flags", func(_ *testing.T, c *context, _ *aPackage) { c.commands.environ = []string{"LDFLAGS=-lforeign"} }, false},
+		{"diagnostic linker flags", func(t *testing.T, _ *context, _ *aPackage) { t.Setenv("LDFLAGS", "-Wl,-Map=diagnostic.map") }, false},
+		{"response linker flags", func(_ *testing.T, c *context, _ *aPackage) { c.commands.environ = []string{"LDFLAGS=@local.rsp"} }, false},
 		{"process linker flags", func(t *testing.T, _ *context, _ *aPackage) { t.Setenv("LDFLAGS", "-lforeign") }, false},
 		{"missing source directory", func(_ *testing.T, _ *context, p *aPackage) { p.Dir = filepath.Join(p.Dir, "missing") }, false},
 		{"native source", func(_ *testing.T, _ *context, p *aPackage) { p.OtherFiles = []string{"entry.c"} }, false},

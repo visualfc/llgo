@@ -52,13 +52,19 @@ def runtime_free_cache_probe(llgo, wasmer, directory, env):
     print("WASI runtime-free/full-runtime cache switching and stderr semantics passed", flush=True)
 
 
+def controlled_environment(source):
+    env = dict(source, LLGO_ROOT=str(ROOT), LLGO_BUILD_CACHE="1")
+    # Ambient compiler/linker flags can invalidate the runtime-free proof.
+    for name in ("LLGO_LTO_PLUGIN", "LLGO_PLAN9ASM_PKGS", "CCFLAGS", "CFLAGS", "LDFLAGS"):
+        env.pop(name, None)
+    return env
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target", choices=("wasi", "esp32c3"), required=True)
     args = parser.parse_args()
-    env = dict(os.environ, LLGO_ROOT=str(ROOT), LLGO_BUILD_CACHE="1")
-    env.pop("LLGO_LTO_PLUGIN", None)
-    env.pop("LLGO_PLAN9ASM_PKGS", None)
+    env = controlled_environment(os.environ)
     with tempfile.TemporaryDirectory(prefix="llgo-size-build-") as directory:
         directory = pathlib.Path(directory)
         suffix = ".exe" if os.name == "nt" else ""
