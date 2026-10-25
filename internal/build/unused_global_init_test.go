@@ -64,8 +64,8 @@ func main() { Read() }
 	p.OtherFiles = append(p.OtherFiles, filepath.Join(dir, "opaque.c"))
 	ctx.frontendOptions.UnusedGlobalInits = nil
 	configureUnusedGlobalInits(ctx)
-	if ctx.frontendOptions.UnusedGlobalInits != nil {
-		t.Fatal("pruned initializers despite opaque native inputs")
+	if ctx.frontendOptions.UnusedGlobalInits != nil || canPruneWasmTypeMetadata(ctx) {
+		t.Fatal("pruning remained enabled despite opaque native inputs")
 	}
 }
 
@@ -121,8 +121,11 @@ func TestUnusedGlobalInitScope(t *testing.T) {
 			prog := llssa.NewProgram(&llssa.Target{GOOS: "wasip1", GOARCH: tc.arch})
 			defer prog.Dispose()
 			ctx := &context{prog: prog, progSSA: pkg.Prog, mode: tc.mode,
-				buildConf: &Config{BuildMode: tc.buildMode, OptLevel: tc.level}}
+				buildConf: &Config{BuildMode: tc.buildMode, Goarch: tc.arch, OptLevel: tc.level}}
 			configureUnusedGlobalInits(ctx)
+			if got := canPruneWasmTypeMetadata(ctx); got != tc.want {
+				t.Fatalf("metadata pruning=%v, want %v", got, tc.want)
+			}
 			if got := len(ctx.frontendOptions.UnusedGlobalInits.Names(pkg)) != 0; got != tc.want {
 				t.Fatalf("pruned=%v, want %v", got, tc.want)
 			}
@@ -227,9 +230,29 @@ func TestUnusedGlobalInitNativeInputs(t *testing.T) {
 				t.Setenv(llgoPlan9ASMPkgs, "none")
 			}
 			configureUnusedGlobalInits(ctx)
+			if got := canPruneWasmTypeMetadata(ctx); got != tc.prune {
+				t.Fatalf("metadata pruning=%v, want %v", got, tc.prune)
+			}
 			if got := len(ctx.frontendOptions.UnusedGlobalInits.Names(pkg)) != 0; got != tc.prune {
 				t.Fatalf("pruned=%v, want %v", got, tc.prune)
 			}
 		})
+	}
+}
+
+func TestWasmMetadataEligibilityWithoutInitializerPlan(t *testing.T) {
+	t.Setenv("LDFLAGS", "")
+	pkg := buildWasmReflectTestProgram(t, "package main; func main() {}")
+	prog := llssa.NewProgram(&llssa.Target{GOOS: "wasip1", GOARCH: "wasm"})
+	defer prog.Dispose()
+	ctx := &context{prog: prog, progSSA: pkg.Prog, mode: ModeBuild, buildConf: &Config{Goos: "wasip1", Goarch: "wasm", BuildMode: BuildModeExe, OptLevel: optlevel.O2}}
+	configureUnusedGlobalInits(ctx)
+	if !canPruneWasmTypeMetadata(ctx) {
+		t.Fatal("closed optimized Wasm program was rejected")
+	}
+	// An empty initializer-removal plan is not a change in native visibility.
+	ctx.frontendOptions.UnusedGlobalInits = nil
+	if !canPruneWasmTypeMetadata(ctx) {
+		t.Fatal("metadata eligibility depends on the initializer-removal plan")
 	}
 }
