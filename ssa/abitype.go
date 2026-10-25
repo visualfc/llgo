@@ -169,7 +169,8 @@ func (b Builder) abiCommonFields(t types.Type, name string, hasUncommon bool, gl
 func (p Package) regularMemoryEqual(size uint64) Expr {
 	switch size {
 	case 0, 1, 2, 4, 8, 16:
-		return p.rtFunc("memequal" + strconv.FormatUint(size*8, 10))
+		return p.rtFunc(RuntimeSymbol("memequal"+strconv.FormatUint(size*8, 10),
+			"memequal0", "memequal8", "memequal16", "memequal32", "memequal64", "memequal128"))
 	}
 	name := "_llgo_memequal." + strconv.FormatUint(size, 10)
 	fn := p.FuncOf(name)
