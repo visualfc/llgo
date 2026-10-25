@@ -1040,6 +1040,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		configureWasmReflectBridges(ctx)
 		configureWasmFuncInfoEntries(ctx)
 	}
+	configureWasmRuntimeFree(ctx)
 
 	allPkgs := append([]*aPackage{}, pkgs...)
 	configureUnusedGlobalInits(ctx)
@@ -1789,6 +1790,7 @@ type context struct {
 	crossCompile    crosscompile.Export
 	commands        commandEnv
 	frontendOptions cl.Options
+	wasmRuntimeFree bool
 
 	cTransformer *cabi.Transformer
 
@@ -2585,7 +2587,7 @@ func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainL
 	}
 	gen := genConfig{
 		defaultGODEBUG: ctx.defaultGODEBUG[pkg.ID],
-		rtInit:         needRuntime,
+		rtInit:         needRuntime && !ctx.wasmRuntimeFree,
 		pyInit:         needPyInit,
 		abiInit:        needAbiInit,
 		packageInits:   packageInits,
@@ -4219,11 +4221,20 @@ func recordPackageSSAInstructions(ctx *context) {
 	defer span.done()
 	counts := make(map[*ssa.Package]int64)
 	var total int64
+	literalFormats := canSpecializeLiteralFormats(ctx)
 	for fn := range ssautil.AllFunctions(ctx.progSSA) {
-		if fn == nil || fn.Pkg == nil {
+		if fn == nil || fn.Pkg == nil && !literalFormats {
 			continue
 		}
 		for _, block := range fn.Blocks {
+			if literalFormats {
+				for _, instruction := range block.Instrs {
+					specializeLiteralFormat(instruction)
+				}
+			}
+			if fn.Pkg == nil {
+				continue
+			}
 			instructions := int64(len(block.Instrs))
 			counts[fn.Pkg] += instructions
 			total += instructions
