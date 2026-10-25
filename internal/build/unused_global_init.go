@@ -101,13 +101,14 @@ func configureUnusedGlobalInits(ctx *context) {
 // linker-summary join, so retain all initializers in their presence.
 func opaqueGlobalInitPackage(ctx *context, exported map[string]bool) string {
 	// Arbitrary linker arguments can add objects or force exported symbols.
-	// Permit output-only diagnostics used by the LTO/size qualification jobs.
+	// Permit output-only diagnostics and backend caches used by LTO/size jobs.
 	for _, flags := range []string{os.Getenv("LDFLAGS"), ctx.buildConf.LinkOptions.ExternalLinkerFlags} {
 		for _, flag := range safesplit.SplitPkgConfigFlags(flags) {
 			// Clang splits -Wl on every comma; a diagnostic option can be
 			// followed by an export, forced root or native object.
 			if strings.Count(flag, ",") != 1 || flag != "-Wl,--save-temps" && flag != "-Wl,--print-map" &&
-				!strings.HasPrefix(flag, "-Wl,--lto-obj-path=") && !strings.HasPrefix(flag, "-Wl,-Map=") {
+				!strings.HasPrefix(flag, "-Wl,--lto-obj-path=") && !strings.HasPrefix(flag, "-Wl,--thinlto-cache-dir=") &&
+				!strings.HasPrefix(flag, "-Wl,-Map=") {
 				return "linker flags"
 			}
 		}

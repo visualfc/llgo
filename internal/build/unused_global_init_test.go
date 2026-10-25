@@ -113,6 +113,8 @@ func TestUnusedGlobalInitScope(t *testing.T) {
 		{"native object", "wasm", "extra.o", ModeBuild, BuildModeExe, optlevel.Oz, false},
 		{"link export", "wasm", "-Wl,--export=main.M", ModeBuild, BuildModeExe, optlevel.Oz, false},
 		{"LTO diagnostics", "wasm", "-Wl,--save-temps -Wl,--lto-obj-path=out.o", ModeBuild, BuildModeExe, optlevel.Oz, true},
+		{"ThinLTO cache", "wasm", "-Wl,--thinlto-cache-dir=cache", ModeBuild, BuildModeExe, optlevel.Oz, true},
+		{"combined cache and root", "wasm", "-Wl,--thinlto-cache-dir=cache,--undefined=main.M", ModeBuild, BuildModeExe, optlevel.Oz, false},
 		{"combined map and export", "wasm", "-Wl,-Map=out.map,--export=main.M", ModeBuild, BuildModeExe, optlevel.Oz, false},
 		{"combined LTO output and root", "wasm", "-Wl,--lto-obj-path=out.o,--undefined=main.M", ModeBuild, BuildModeExe, optlevel.Oz, false},
 	} {
