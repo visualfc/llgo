@@ -202,12 +202,13 @@ def run_inherited_memory_overrides(env, directory, parent):
     try:
         child.write_text(json.dumps({"inherits": [parent.stem], "wasm-max-memory": 8 << 20}), encoding="utf-8")
         response = pathlib.Path(directory) / "memory.rsp"
-        response.write_text("-Wl,--initial-memory=8388608", encoding="utf-8")
+        response.write_text("--initial-memory=8388608", encoding="utf-8")
+        response_flag = "-Wl,@" + response.as_posix().replace(" ", "\\ ")
         for name, flags, success in (
             ("conflict", "", False),
             ("initial", "-Wl,--initial-memory=8388608", True),
             ("heap", "-Wl,--initial-heap=1048576", True),
-            ("response", f'"@{response}"', True),
+            ("response", response_flag, True),
         ):
             module = pathlib.Path(directory) / f"memory-override-{name}.wasm"
             result = subprocess.run([LLGO, "build", "-target", child.stem,
