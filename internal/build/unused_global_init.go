@@ -39,7 +39,7 @@ import (
 func configureUnusedGlobalInits(ctx *context) {
 	ctx.wasmClosedProgram = false
 	ctx.frontendOptions.UnusedGlobalInits = nil
-	if ctx.buildConf.BuildMode != BuildModeExe || ctx.mode == ModeGen || ctx.prog.Target().GOARCH != "wasm" {
+	if ctx.buildConf.BuildMode != BuildModeExe || ctx.mode == ModeGen || ctx.buildConf.Goarch != "wasm" {
 		return
 	}
 	if ctx.buildConf.OptLevel == optlevel.O0 {

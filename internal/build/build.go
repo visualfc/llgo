@@ -1791,7 +1791,7 @@ type context struct {
 	commands          commandEnv
 	frontendOptions   cl.Options
 	wasmRuntimeFree   bool
-	wasmClosedProgram bool // native inputs cannot introduce untracked Go references
+	wasmClosedProgram bool // true when native inputs cannot introduce untracked Go references
 
 	cTransformer *cabi.Transformer
 

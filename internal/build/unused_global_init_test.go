@@ -87,7 +87,7 @@ func TestUnusedGlobalInitLinkAliases(t *testing.T) {
 		if alias == "goroutine local" {
 			prog.SetLocalityInfo(name, llssa.LocalityInfo{Locality: llssa.GoroutineLocal})
 		}
-		ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe}}
+		ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe, Goarch: "wasm"}}
 		configureUnusedGlobalInits(ctx)
 		if got := len(ctx.frontendOptions.UnusedGlobalInits.Names(pkg)) != 0; got != (alias == "") {
 			t.Fatalf("alias %q: pruned = %v", alias, got)
@@ -144,7 +144,7 @@ func TestUnusedGlobalInitExportAnnotation(t *testing.T) {
 	prog := llssa.NewProgram(&llssa.Target{GOOS: "wasip1", GOARCH: "wasm"})
 	defer prog.Dispose()
 	p := &packages.Package{ID: "main", PkgPath: "main", Types: pkg.Pkg, Syntax: []*ast.File{file}}
-	ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe},
+	ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe, Goarch: "wasm"},
 		pkgByID: map[string]*aPackage{"main": {Package: p, SSA: pkg}}}
 	for _, alternate := range []bool{false, true} {
 		if alternate {
@@ -164,7 +164,7 @@ func TestUnusedGlobalInitRewrite(t *testing.T) {
 	prog := llssa.NewProgram(&llssa.Target{GOOS: "wasip1", GOARCH: "wasm"})
 	defer prog.Dispose()
 	p := &packages.Package{ID: "main", PkgPath: "main", Types: pkg.Pkg}
-	ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe},
+	ctx := &context{prog: prog, progSSA: pkg.Prog, buildConf: &Config{BuildMode: BuildModeExe, Goarch: "wasm"},
 		pkgByID: map[string]*aPackage{"main": {Package: p, SSA: pkg, rewriteVars: map[string]string{"Version": "release"}}}}
 	configureUnusedGlobalInits(ctx)
 	if names := ctx.frontendOptions.UnusedGlobalInits.Names(pkg); len(names) != 0 {
@@ -250,7 +250,7 @@ func TestWasmMetadataEligibilityWithoutInitializerPlan(t *testing.T) {
 	if !canPruneWasmTypeMetadata(ctx) {
 		t.Fatal("closed optimized Wasm program was rejected")
 	}
-	// An empty initializer-removal plan is not a change in native visibility.
+	// An absent initializer-removal plan is not a change in native visibility.
 	ctx.frontendOptions.UnusedGlobalInits = nil
 	if !canPruneWasmTypeMetadata(ctx) {
 		t.Fatal("metadata eligibility depends on the initializer-removal plan")
