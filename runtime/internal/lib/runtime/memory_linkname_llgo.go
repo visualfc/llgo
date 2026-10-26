@@ -19,10 +19,13 @@ const (
 //go:linkname memmove runtime.memmove
 //go:nosplit
 func memmove(dst, src unsafe.Pointer, n uintptr) {
-	if n == 0 || dst == src {
+	if n == 0 {
 		return
 	}
 	if (uintptr(dst)|uintptr(src)|n)&(memoryHookWordSize-1) == 0 {
+		if dst == src {
+			return
+		}
 		// Go requires indivisible pointer-sized writes for aligned ranges.
 		// Unordered stores preserve that guarantee without synchronization
 		// fences, and prevent LLVM from introducing tearing stores or libc
