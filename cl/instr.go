@@ -603,6 +603,13 @@ func (p *context) atomicStore(b llssa.Builder, args []llssa.Expr) llssa.Expr {
 	panic("atomicStore(addr *T, val T) T: invalid arguments")
 }
 
+func (p *context) atomicStoreUnordered(b llssa.Builder, args []llssa.Expr) llssa.Expr {
+	if len(args) == 2 {
+		return b.Store(args[0], args[1]).SetOrdering(llssa.OrderingUnordered)
+	}
+	panic("atomicStoreUnordered(addr *T, val T): invalid arguments")
+}
+
 func (p *context) atomicCmpXchg(b llssa.Builder, args []llssa.Expr) llssa.Expr {
 	if len(args) == 3 {
 		addr := args[0]
@@ -666,11 +673,12 @@ var llgoInstrs = map[string]int{
 	"deferData":         llgoDeferData,
 	"unreachable":       llgoUnreachable,
 
-	"atomicLoad":         llgoAtomicLoad,
-	"atomicStore":        llgoAtomicStore,
-	"atomicCmpXchg":      llgoAtomicCmpXchg,
-	"atomicCmpXchgOK":    llgoAtomicCmpXchgOK,
-	"atomicAddReturnNew": llgoAtomicAddReturnNew,
+	"atomicLoad":           llgoAtomicLoad,
+	"atomicStore":          llgoAtomicStore,
+	"atomicStoreUnordered": llgoAtomicStoreUnordered,
+	"atomicCmpXchg":        llgoAtomicCmpXchg,
+	"atomicCmpXchgOK":      llgoAtomicCmpXchgOK,
+	"atomicAddReturnNew":   llgoAtomicAddReturnNew,
 
 	"atomicXchg": int(llgoAtomicXchg),
 	"atomicAdd":  int(llgoAtomicAdd),
@@ -2835,6 +2843,11 @@ func (p *context) callEx(b llssa.Builder, act llssa.DoAction, call *ssa.CallComm
 			args := p.compileValues(b, args, kind)
 			p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
 				return p.atomicStore(b, args)
+			}, args...)
+		case llgoAtomicStoreUnordered:
+			args := p.compileValues(b, args, kind)
+			p.emitDo(b, act, ds, false, llssa.Nil, func(b llssa.Builder, _ llssa.Expr, args ...llssa.Expr) llssa.Expr {
+				return p.atomicStoreUnordered(b, args)
 			}, args...)
 		case llgoAtomicCmpXchg:
 			args := p.compileValues(b, args, kind)

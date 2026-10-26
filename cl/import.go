@@ -781,22 +781,23 @@ const (
 	llgoCgoCheckPointer = llgoCgoBase + 0x6
 	llgoCgoCgocall      = llgoCgoBase + 0x7
 
-	llgoAsm                = llgoInstrBase + 0x40
-	llgoStackSave          = llgoInstrBase + 0x41
-	llgoFuncPCABI0         = llgoInstrBase + 0x42
-	llgoSkip               = llgoInstrBase + 0x43
-	llgoSyscall            = llgoInstrBase + 0x44
-	llgoAtomicCmpXchgOK    = llgoInstrBase + 0x45
-	llgoAtomicAddReturnNew = llgoInstrBase + 0x46
-	llgoBoolToUint8        = llgoInstrBase + 0x47
-	llgoClosureEnv         = llgoInstrBase + 0x48
-	llgoFloat32FromBits    = llgoInstrBase + 0x49
-	llgoFloat32Bits        = llgoInstrBase + 0x4a
-	llgoFloat64FromBits    = llgoInstrBase + 0x4b
-	llgoFloat64Bits        = llgoInstrBase + 0x4c
-	llgoUMulOverflow       = llgoInstrBase + 0x4d
-	llgoSIMD               = llgoInstrBase + 0x4e
-	llgoInterfaceKindUsed  = llgoInstrBase + 0x4f
+	llgoAsm                  = llgoInstrBase + 0x40
+	llgoStackSave            = llgoInstrBase + 0x41
+	llgoFuncPCABI0           = llgoInstrBase + 0x42
+	llgoSkip                 = llgoInstrBase + 0x43
+	llgoSyscall              = llgoInstrBase + 0x44
+	llgoAtomicCmpXchgOK      = llgoInstrBase + 0x45
+	llgoAtomicAddReturnNew   = llgoInstrBase + 0x46
+	llgoBoolToUint8          = llgoInstrBase + 0x47
+	llgoClosureEnv           = llgoInstrBase + 0x48
+	llgoFloat32FromBits      = llgoInstrBase + 0x49
+	llgoFloat32Bits          = llgoInstrBase + 0x4a
+	llgoFloat64FromBits      = llgoInstrBase + 0x4b
+	llgoFloat64Bits          = llgoInstrBase + 0x4c
+	llgoUMulOverflow         = llgoInstrBase + 0x4d
+	llgoSIMD                 = llgoInstrBase + 0x4e
+	llgoInterfaceKindUsed    = llgoInstrBase + 0x4f
+	llgoAtomicStoreUnordered = llgoInstrBase + 0x50
 
 	llgoAtomicOpLast = llgoAtomicOpBase + int(llssa.OpUMin)
 )

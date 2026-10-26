@@ -126,3 +126,70 @@ func TestMemoryHooksAtomicWrites(t *testing.T) {
 		t.Fatalf("observed a torn memory-hook write: %#x", invalid)
 	}
 }
+
+func TestMemoryHooksLargeAlignedRanges(t *testing.T) {
+	word := unsafe.Sizeof(uintptr(0))
+	for _, size := range []int{32, 512, 8192} {
+		for _, offsets := range [][2]int{{1, 1}, {1, 2}, {2, 1}, {size + 2, 1}} {
+			got := make([]uintptr, 2*size+4)
+			for i := range got {
+				got[i] = ^uintptr(i*31 + 7)
+			}
+			want := append([]uintptr(nil), got...)
+			dst, src := offsets[0], offsets[1]
+			copy(want[dst:dst+size], want[src:src+size])
+			runtimeMove(unsafe.Pointer(&got[dst]), unsafe.Pointer(&got[src]), uintptr(size)*word)
+			for i := range got {
+				if got[i] != want[i] {
+					t.Fatalf("memmove words=%d dst=%d src=%d: word %d = %#x, want %#x", size, dst, src, i, got[i], want[i])
+				}
+			}
+			runtimeClear(unsafe.Pointer(&got[dst]), uintptr(size)*word)
+			for i := range got {
+				if i >= dst && i < dst+size {
+					want[i] = 0
+				}
+				if got[i] != want[i] {
+					t.Fatalf("memclr words=%d offset=%d: word %d = %#x, want %#x", size, dst, i, got[i], want[i])
+				}
+			}
+		}
+	}
+}
+
+func TestMemoryHooksLargeAtomicWrites(t *testing.T) {
+	const words = 1024
+	var a, b, dst [words]uintptr
+	patternA := ^uintptr(0) / 3
+	patternB := ^patternA
+	for i := range a {
+		a[i], b[i] = patternA, patternB
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 1000; i++ {
+			runtimeMove(unsafe.Pointer(&dst[0]), unsafe.Pointer(&a[0]), unsafe.Sizeof(dst))
+			runtimeMove(unsafe.Pointer(&dst[0]), unsafe.Pointer(&b[0]), unsafe.Sizeof(dst))
+			runtimeClear(unsafe.Pointer(&dst[0]), unsafe.Sizeof(dst))
+			if i%10 == 0 {
+				runtime.Gosched()
+			}
+		}
+	}()
+	var invalid uintptr
+	for i := 0; i < 1000; i++ {
+		for j := range dst {
+			if value := atomic.LoadUintptr(&dst[j]); value != 0 && value != patternA && value != patternB {
+				invalid = value
+			}
+		}
+		if i%10 == 0 {
+			runtime.Gosched()
+		}
+	}
+	<-done
+	if invalid != 0 {
+		t.Fatalf("observed a torn large memory-hook write: %#x", invalid)
+	}
+}
