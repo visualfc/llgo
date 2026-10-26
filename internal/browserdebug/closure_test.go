@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/wasmdebug"
@@ -172,10 +173,16 @@ func TestFunctionValuesUnavailableMetadata(t *testing.T) {
 			t.Fatalf("absent names produced values or errors: %+v", builder.index)
 		}
 	}
-	for _, raw := range [][]byte{[]byte("invalid"), appendBrowserCustomSection(module, "name", []byte{1})} {
+	for _, tc := range []struct {
+		raw    []byte
+		prefix string
+	}{
+		{[]byte("invalid"), "function table: "},
+		{appendBrowserCustomSection(module, "name", []byte{1}), "function names: "},
+	} {
 		var builder indexBuilder
-		builder.addFunctionValues(raw)
-		if len(builder.index.FunctionValues) != 0 || len(builder.index.Diagnostics) != 1 {
+		builder.addFunctionValues(tc.raw)
+		if len(builder.index.FunctionValues) != 0 || len(builder.index.Diagnostics) != 1 || !strings.HasPrefix(builder.index.Diagnostics[0], tc.prefix) {
 			t.Fatalf("invalid optional metadata = %+v", builder.index)
 		}
 	}

@@ -326,6 +326,8 @@ func Load(mainPath string, mappings []PathMapping, sourceRoots ...string) (*Bund
 	if err := builder.build(); err != nil {
 		return nil, err
 	}
+	// Externalize preserves element/name sections; the build_id check above
+	// ensures the sidecar describes the same linked module as main.
 	builder.addFunctionValues(symbols)
 	builder.index.Contract = "llgo.browser.debug"
 	builder.index.Version = IndexVersion

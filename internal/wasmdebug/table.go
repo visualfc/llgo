@@ -6,6 +6,7 @@ import "fmt"
 // indirect-call table. Unsupported element encodings disable this optional
 // debugger view rather than guessing a mapping. LLGo's static browser links
 // use active function-index segments with constant offsets in table zero.
+// The result maps table indices to function indices.
 func FunctionTable(module []byte) (map[uint32]uint32, error) {
 	sections, err := parse(module)
 	if err != nil {
@@ -30,6 +31,8 @@ func FunctionTable(module []byte) (map[uint32]uint32, error) {
 			if err != nil {
 				return nil, err
 			}
+			// Flags 0 imply table zero and funcref; flags 2 encode the table
+			// index and element kind explicitly.
 			if flags != 0 && flags != 2 {
 				return nil, fmt.Errorf("unsupported WebAssembly element encoding %d", flags)
 			}

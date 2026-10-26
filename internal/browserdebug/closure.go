@@ -63,12 +63,12 @@ func (b *indexBuilder) addClosureEnv(entry *dwarf.Entry, name string) {
 func (b *indexBuilder) addFunctionValues(module []byte) {
 	table, err := wasmdebug.FunctionTable(module)
 	if err != nil {
-		b.index.Diagnostics = append(b.index.Diagnostics, fmt.Sprintf("function values: %v", err))
+		b.index.Diagnostics = append(b.index.Diagnostics, fmt.Sprintf("function table: %v", err))
 		return
 	}
 	names, err := wasmdebug.FunctionNames(module)
 	if err != nil {
-		b.index.Diagnostics = append(b.index.Diagnostics, fmt.Sprintf("function values: %v", err))
+		b.index.Diagnostics = append(b.index.Diagnostics, fmt.Sprintf("function names: %v", err))
 		return
 	}
 	counts := make(map[string]int)
