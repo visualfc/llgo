@@ -93,6 +93,42 @@ func TestMemoryHooksAlignedWords(t *testing.T) {
 	}
 }
 
+func TestMemoryHooksAlignedBoundaries(t *testing.T) {
+	// Cover every remainder around several unrolled blocks, with overlap
+	// distances both smaller and larger than a block, in both directions.
+	// Compare the entire allocation so underruns and overruns fail too.
+	word := unsafe.Sizeof(uintptr(0))
+	for size := 0; size <= 65; size++ {
+		offsets := [][2]int{{1, 1}, {1, size + 2}, {size + 2, 1}}
+		for distance := 1; distance <= 17; distance++ {
+			offsets = append(offsets, [2]int{1, 1 + distance}, [2]int{1 + distance, 1})
+		}
+		for _, offset := range offsets {
+			var got, want [166]uintptr
+			for i := range got {
+				got[i] = ^uintptr(i*31 + 7)
+				want[i] = got[i]
+			}
+			dst, src := offset[0], offset[1]
+			// Read from the untouched input, independently of either hook.
+			for i := 0; i < size; i++ {
+				want[dst+i] = got[src+i]
+			}
+			runtimeMove(unsafe.Pointer(&got[dst]), unsafe.Pointer(&got[src]), uintptr(size)*word)
+			if got != want {
+				t.Fatalf("memmove words=%d dst=%d src=%d changed the wrong words", size, dst, src)
+			}
+			for i := 0; i < size; i++ {
+				want[dst+i] = 0
+			}
+			runtimeClear(unsafe.Pointer(&got[dst]), uintptr(size)*word)
+			if got != want {
+				t.Fatalf("memclr words=%d offset=%d changed the wrong words", size, dst)
+			}
+		}
+	}
+}
+
 func TestMemoryHooksAtomicWrites(t *testing.T) {
 	// An atomic reader may observe either complete pattern or zero, but never
 	// a partially copied/cleared pointer-sized word. The patterns work on both

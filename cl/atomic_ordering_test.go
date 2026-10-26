@@ -25,6 +25,7 @@ func Deferred(p *uintptr, v uintptr) { defer storeUnordered(p, v) }
 func Asynchronous(p *uintptr, v uintptr) { go storeUnordered(p, v) }
 `
 	for _, target := range []llssa.Target{
+		{GOOS: "linux", GOARCH: "386"},
 		{GOOS: "linux", GOARCH: "amd64"},
 		{GOOS: "darwin", GOARCH: "arm64"},
 		{GOOS: "wasip1", GOARCH: "wasm"},
