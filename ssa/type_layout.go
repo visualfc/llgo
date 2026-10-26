@@ -19,7 +19,6 @@ package ssa
 import (
 	"fmt"
 	"go/types"
-	"unsafe"
 
 	"github.com/xgo-dev/llvm"
 )
@@ -61,7 +60,7 @@ func (p Program) toLLVMStructBody(raw *types.Struct, native bool) ([]llvm.Type, 
 	if native || len(fields) == 0 {
 		return fields, nil
 	}
-	_, vectorLayout := (*goProgram)(unsafe.Pointer(p)).vectorLayout(raw, false)
+	_, vectorLayout := (*goProgram)(p).vectorLayout(raw, false)
 	if goarch != "386" && !(goarch == "wasm" && p.target.WasmProfile != "") && !vectorLayout {
 		return fields, nil
 	}
@@ -76,7 +75,7 @@ func (p Program) toLLVMStructBody(raw *types.Struct, native bool) ([]llvm.Type, 
 	goAlign := int64(1)
 	goSize := int64(0)
 	for i, field := range fields {
-		fieldAlign := (*goProgram)(unsafe.Pointer(p)).Alignof(raw.Field(i).Type())
+		fieldAlign := (*goProgram)(p).Alignof(raw.Field(i).Type())
 		if p.hasNativeTypeLayout(raw.Field(i).Type()) {
 			fieldAlign = int64(p.td.ABITypeAlignment(field))
 		}

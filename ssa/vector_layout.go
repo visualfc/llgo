@@ -19,7 +19,6 @@ package ssa
 import (
 	"go/types"
 	"math"
-	"unsafe"
 )
 
 type vectorSourceLayout struct{ size, align int64 }
@@ -29,7 +28,7 @@ type vectorSourceLayout struct{ size, align int64 }
 // types must not be cached before the checker completes them. Unaffected Go
 // types continue to use the existing sizes implementation.
 func (p *goProgram) vectorLayout(t types.Type, native bool) (vectorSourceLayout, bool) {
-	prog := Program(unsafe.Pointer(p))
+	prog := Program(p)
 	if index, ok := simdTagIndex(t); ok {
 		return vectorSourceLayout{0, p.simdAlignments[index]}, true
 	}
@@ -68,7 +67,7 @@ func (p *goProgram) vectorLayout(t types.Type, native bool) (vectorSourceLayout,
 func (p *goProgram) vectorStructLayout(fields []*types.Var, native bool) (vectorSourceLayout, []int64, bool) {
 	// Inspect types before allocating layout scratch space. SIMD layout must
 	// not depend on import order or prior LLVM type construction.
-	prog := Program(unsafe.Pointer(p))
+	prog := Program(p)
 	changed := false
 	for _, field := range fields {
 		if prog.containsVectorStorage(field.Type()) {
