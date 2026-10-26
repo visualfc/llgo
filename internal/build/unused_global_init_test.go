@@ -18,7 +18,7 @@ import (
 )
 
 func TestUnusedGlobalInitCache(t *testing.T) {
-	pkg := buildWasmReflectTestProgram(t, `package main; var M = 42; func main() {}`)
+	pkg := buildWasmReflectTestProgram(t, `package main; var M = map[string]int{"key":42}; func main() {}`)
 	ctx := &context{conf: &packages.Config{}, mode: ModeGen, buildConf: &Config{Goos: "wasip1", Goarch: "wasm"}, progSSA: pkg.Prog}
 	fingerprint := func(preserve bool) (string, string) {
 		ctx.frontendOptions.UnusedGlobalInits = cl.FindUnusedGlobalInits(pkg.Prog, func(*ssa.Global) bool { return preserve })
@@ -71,7 +71,7 @@ func main() { Read() }
 
 func TestUnusedGlobalInitLinkAliases(t *testing.T) {
 	t.Setenv("LDFLAGS", "")
-	pkg := buildWasmReflectTestProgram(t, `package main; var M = 42; func main() {}`)
+	pkg := buildWasmReflectTestProgram(t, `package main; var M = map[string]int{"key":42}; func main() {}`)
 	for _, alias := range []string{"", "source", "target", "thread local", "goroutine local"} {
 		prog := llssa.NewProgram(&llssa.Target{GOOS: "wasip1", GOARCH: "wasm"})
 		name := llssa.FullName(pkg.Pkg, "M")
