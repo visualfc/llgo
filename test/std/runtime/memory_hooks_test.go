@@ -2,6 +2,8 @@ package runtime_test
 
 import (
 	"bytes"
+	"runtime"
+	"sync/atomic"
 	"testing"
 	"unsafe"
 )
@@ -69,5 +71,58 @@ func TestMemoryClearHook(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestMemoryHooksAlignedWords(t *testing.T) {
+	word := unsafe.Sizeof(uintptr(0))
+	for _, offsets := range [][2]int{{0, 0}, {0, 1}, {1, 0}, {4, 0}} {
+		got := [8]uintptr{1, 2, 3, 4, 5, 6, 7, 8}
+		want := got
+		dst, src := offsets[0], offsets[1]
+		copy(want[dst:dst+3], want[src:src+3])
+		runtimeMove(unsafe.Pointer(&got[dst]), unsafe.Pointer(&got[src]), 3*word)
+		if got != want {
+			t.Fatalf("aligned memmove dst=%d src=%d: got %v, want %v", dst, src, got, want)
+		}
+	}
+	got := [5]uintptr{1, 2, 3, 4, 5}
+	runtimeClear(unsafe.Pointer(&got[1]), 3*word)
+	if want := [5]uintptr{1, 0, 0, 0, 5}; got != want {
+		t.Fatalf("aligned memclr: got %v, want %v", got, want)
+	}
+}
+
+func TestMemoryHooksAtomicWrites(t *testing.T) {
+	// An atomic reader may observe either complete pattern or zero, but never
+	// a partially copied/cleared pointer-sized word. The patterns work on both
+	// 32-bit and 64-bit targets.
+	a := ^uintptr(0) / 3
+	b := ^a
+	dst := a
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 10000; i++ {
+			runtimeMove(unsafe.Pointer(&dst), unsafe.Pointer(&a), unsafe.Sizeof(a))
+			runtimeMove(unsafe.Pointer(&dst), unsafe.Pointer(&b), unsafe.Sizeof(b))
+			runtimeClear(unsafe.Pointer(&dst), unsafe.Sizeof(dst))
+			if i%100 == 0 {
+				runtime.Gosched()
+			}
+		}
+	}()
+	var invalid uintptr
+	for i := 0; i < 10000; i++ {
+		if value := atomic.LoadUintptr(&dst); value != 0 && value != a && value != b {
+			invalid = value
+		}
+		if i%100 == 0 {
+			runtime.Gosched()
+		}
+	}
+	<-done
+	if invalid != 0 {
+		t.Fatalf("observed a torn memory-hook write: %#x", invalid)
 	}
 }
