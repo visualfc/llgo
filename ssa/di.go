@@ -1189,6 +1189,25 @@ func (b Builder) DebugFunction(f Function, funcScope *types.Scope, pos token.Pos
 	})
 }
 
+// DIClosureEnv describes the compiler-owned environment separately from source
+// parameters. Its type lets debuggers inspect a closure value even when that
+// closure is not executing. Opaque //llgo:env entries intentionally keep their
+// unsafe.Pointer type and cannot be expanded as captures.
+func (b Builder) DIClosureEnv(pos token.Position, blk BasicBlock) {
+	if !b.Func.NeedsEnv() {
+		return
+	}
+	ty := b.di().diType(b.Func.EnvType(), pos)
+	dv := &aDIVar{ll: b.di().di.CreateAutoVariable(
+		b.Func.scopeMeta(b.di(), pos).ll,
+		llvm.DIAutoVariable{
+			Name: "$env", File: b.di().file(pos.Filename).ll, Line: pos.Line,
+			Type: ty.ll, Flags: llvm.FlagArtificial, AlwaysPreserve: true,
+		},
+	)}
+	b.DIValue(nil, b.Func.Env(), dv, b.Func, pos, blk)
+}
+
 func (b Builder) Param(idx int) Expr {
 	return b.logicalValue(b.Func.Param(idx))
 }

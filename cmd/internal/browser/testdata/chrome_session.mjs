@@ -219,11 +219,12 @@ try {
             result.growing = (await plugin.readNamedUnsigned(plugin.module(context.rawModuleId),
               object.hashType, object.address, object.spec.old_buckets, stopId)) !== 0n;
           }
-          // Function values expose a table index and context address. There is
-          // no typed closure-environment view; do not dereference raw code/data.
-          if (value.hasChildren && depth < 6 && !value.description?.startsWith('func[')) {
+          if (value.hasChildren && depth < 8) {
+            let properties = await plugin.getProperties(value.objectId);
+            // Expand the compiler-described captures, never raw code pointers.
+            if (value.description?.startsWith('func[')) properties = properties.filter(p => p.name === 'captures');
             result.properties = Object.fromEntries(await Promise.all(
-              (await plugin.getProperties(value.objectId)).map(async p => [p.name, await expand(p.value, depth + 1)])));
+              properties.map(async p => [p.name, await expand(p.value, depth + 1)])));
           }
           return result;
         }
@@ -256,8 +257,15 @@ try {
       for (const name of ['Nil', 'NilFunction', 'NilMap', 'NilChannel']) {
         assert.equal(views[name].type, 'null', name);
       }
-      assert.match(views.Function.description, /^func\[\d+\]$/);
-      assert.match(views.Closure.description, /^func\[\d+\] data=0x[1-9a-f][0-9a-f]*$/);
+      assert.match(views.Function.description, /^func\[\d+\] main.debugAnswer$/);
+      assert.match(views.Closure.description, /^func\[\d+\] main.prepareDebugViews\$1 data=0x[1-9a-f][0-9a-f]*$/);
+      node(views.Closure.properties.captures.properties.node.properties['*'].properties['*'],
+        'runtime 世界', [first, 5, 8]);
+      const captured = value => value.properties.captures.properties;
+      node(captured(views.Bound).recv.properties['*'], 'runtime 世界', [first, 5, 8]);
+      assert.equal(captured(views.Nested).value.properties['*'].value, 29);
+      assert.equal(captured(views.Counter).value.properties['*'].value, afterResume ? 12 : 11);
+      assert.equal(captured(views.OtherCounter).value.properties['*'].value, afterResume ? 22 : 21);
       const count = afterResume ? 48 : 49;
       assert.equal(views.Mapping.description, `len=${count}`);
       if (!afterResume) assert.equal(views.Mapping.growing, true, 'inspect a partially evacuated map');
