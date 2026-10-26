@@ -57,24 +57,18 @@ func TestWasmMapMetadata(t *testing.T) {
 		{types.NewInterfaceType(nil, nil).Complete(), ".typehash"},
 	}
 	for _, tc := range []struct {
-		name, goos, arch, triple string
-		dce                      bool
+		name, goos, arch, triple, profile string
+		dce                               bool
 	}{
-		{"w32", "wasip1", "wasm", "wasm32-unknown-wasip1", true},
-		{"j32", "js", "wasm", "wasm32-unknown-emscripten", true},
-		{"j64", "js", "wasm", "wasm64-unknown-emscripten", true},
-		{"legacy32", "wasip1", "wasm", "wasm32-unknown-wasip1", true},
-		{"no-dce", "wasip1", "wasm", "wasm32-unknown-wasip1", false},
-		{"native", "linux", "amd64", "x86_64-unknown-linux", true},
+		{"w32", "wasip1", "wasm", "wasm32-unknown-wasip1", "w32", true},
+		{"j32", "js", "wasm", "wasm32-unknown-emscripten", "j32", true},
+		{"j64", "js", "wasm", "wasm64-unknown-emscripten", "j64", true},
+		{"legacy32", "wasip1", "wasm", "wasm32-unknown-wasip1", "", true},
+		{"no-dce", "wasip1", "wasm", "wasm32-unknown-wasip1", "w32", false},
+		{"native", "linux", "amd64", "x86_64-unknown-linux", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			profile := tc.name
-			if tc.name == "no-dce" {
-				profile = "w32"
-			} else if tc.name == "native" || tc.name == "legacy32" {
-				profile = ""
-			}
-			prog := NewProgram(&Target{GOOS: tc.goos, GOARCH: tc.arch, LLVMTarget: tc.triple, WasmProfile: profile})
+			prog := NewProgram(&Target{GOOS: tc.goos, GOARCH: tc.arch, LLVMTarget: tc.triple, WasmProfile: tc.profile})
 			defer prog.Dispose()
 			prog.TypeSizes(&types.StdSizes{WordSize: 8, MaxAlign: 8})
 			prog.SetRuntime(func() *types.Package { return runtimePkg })

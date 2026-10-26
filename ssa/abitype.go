@@ -183,6 +183,8 @@ func (p Package) regularMemoryEqual(size uint64) Expr {
 
 // Match typehashImpl exactly, including its distinct 4/8-byte algorithms.
 func (p Package) regularMemoryHash(size uint64) Expr {
+	// Omit size 0: typehashImpl calls memhash(p, seed, 0), whereas memhash0
+	// returns the seed unchanged. Zero-sized keys need the wrapper below.
 	switch size {
 	case 1, 2, 4, 8, 16:
 		return p.rtFunc("memhash" + strconv.FormatUint(size*8, 10))
@@ -194,8 +196,6 @@ func (p Package) regularMemoryHash(size uint64) Expr {
 		fn.impl.SetLinkage(llvm.WeakODRLinkage)
 		builder := fn.MakeBody(1)
 		defer builder.Dispose()
-		// memhash0 returns the seed unchanged; typehashImpl instead calls
-		// memhash(p, seed, 0), so zero-sized keys also need this wrapper.
 		builder.Return(builder.Call(p.rtFunc("memhash"), fn.Param(0), fn.Param(1), p.Prog.IntVal(size, p.Prog.Uintptr())))
 		builder.EndBuild()
 	}
