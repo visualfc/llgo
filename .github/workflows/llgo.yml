@@ -1146,6 +1146,8 @@ jobs:
               ./internal/build/testdata/wasm-fmt-literal-callers
             "$LLGO" run -target "$target" -emulator -tags=llgo.wasm.debugger \
               ./internal/build/testdata/wasm-fmt-literal-debugger
+            "$LLGO" run -target "$target" -emulator -deadcodedrop -Oz \
+              ./internal/build/testdata/wasm-map-metadata
           done
 
       - name: Run caller and large-function regressions on browser targets
