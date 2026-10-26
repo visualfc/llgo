@@ -24,6 +24,7 @@ func TestUnusedGlobalInitializers(t *testing.T) {
 		{"nested function ABI", `func f() {}; var F = &struct{ V []func() }{[]func(){f}}`, nil, 0},
 		{"nil source", `var P *int; var M = map[int]*int{1: P}`, []string{"M", "P"}, 1},
 		{"nested constant maps", `var M = map[int]map[int]int{1: {2: 3}}`, []string{"M"}, 2},
+		{"inline map allocation remains a root", `var M = map[int]*int{0: new(int)}`, nil, 0},
 		{"live source root", `var P = new(int); var M = map[int]*int{1: P}; func use() *int { return P }`, []string{"M"}, 1},
 		{"used alias", `var A = map[string]int{"a": 1}; var B = A; func use() int { return B["a"] }`, nil, 0},
 		{"method read", `type T int; var M = map[int]int{1: 2}; func (T) Read() int { return M[1] }`, nil, 0},

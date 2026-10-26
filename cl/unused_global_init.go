@@ -22,6 +22,7 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"maps"
 	"slices"
 
 	"golang.org/x/tools/go/ssa"
@@ -84,7 +85,7 @@ func FindUnusedGlobalInits(prog *ssa.Program, preserve func(*ssa.Global) bool) *
 	for global := range uses {
 		preserved[global] = preserve(global)
 	}
-	proof := globalInitRootProof{uses: uses, exported: preserved, checked: make(map[*ssa.Global]bool), safe: make(map[*ssa.Global]bool)}
+	proof := globalInitRootProof{uses: uses, preserved: maps.Clone(preserved), checked: make(map[*ssa.Global]bool), safe: make(map[*ssa.Global]bool)}
 	keepRoots := make(map[*ssa.Global]bool)
 	for global := range uses {
 		// A global is a GC root even if no SSA instruction reads it. Calls
@@ -224,14 +225,14 @@ func FindUnusedGlobalInits(prog *ssa.Program, preserve func(*ssa.Global) bool) *
 // through its address. Any remaining load keeps the source root alive in the
 // fixed point; removing its last load requires the same proof for its contents.
 type globalInitRootProof struct {
-	uses     map[*ssa.Global][]ssa.Instruction
-	exported map[*ssa.Global]bool
-	checked  map[*ssa.Global]bool
-	safe     map[*ssa.Global]bool
+	uses      map[*ssa.Global][]ssa.Instruction
+	preserved map[*ssa.Global]bool
+	checked   map[*ssa.Global]bool
+	safe      map[*ssa.Global]bool
 }
 
 func (p *globalInitRootProof) global(global *ssa.Global) bool {
-	if p.exported[global] || p.checked[global] {
+	if p.preserved[global] || p.checked[global] {
 		return p.safe[global]
 	}
 	p.checked[global] = true // Cycles fail closed.
@@ -312,8 +313,8 @@ func staticInitRootStores(stores []staticInitStore) bool {
 	for _, store := range stores {
 		// SSA free variables do not describe implicit //llgo:env contexts.
 		// Their final ABI is resolved later during static initializer lowering.
-		if store.function != nil || store.slice != nil && !staticInitRootStores(store.slice.stores) ||
-			store.pointer != nil && !staticInitRootStores(store.pointer.stores) {
+		if store.function != nil || (store.slice != nil && !staticInitRootStores(store.slice.stores)) ||
+			(store.pointer != nil && !staticInitRootStores(store.pointer.stores)) {
 			return false
 		}
 	}
