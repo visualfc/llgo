@@ -272,10 +272,8 @@ func (p *globalInitRootProof) value(value ssa.Value, consumer ssa.Instruction) b
 		if !discardableMap(value) {
 			return false
 		}
-		refs, ok := nonDebugReferrers(value)
-		if !ok {
-			return false
-		}
+		// Without referrers, the consumer check below fails closed.
+		refs, _ := nonDebugReferrers(value)
 		seenConsumer := false
 		for _, ref := range refs {
 			if ref == consumer {
