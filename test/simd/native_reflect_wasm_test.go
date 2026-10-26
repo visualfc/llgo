@@ -27,3 +27,21 @@ func TestSIMDNativeReflectResult(t *testing.T) {
 		}
 	}
 }
+
+func TestSIMDNativeReflectZeroTail(t *testing.T) {
+	type padded struct {
+		X   uint64
+		Pad [0]archsimd.Float32x4
+	}
+	fn := reflect.ValueOf(func(v padded) padded { v.X++; return v })
+	for _, f := range []reflect.Value{fn, reflect.MakeFunc(fn.Type(), func(in []reflect.Value) []reflect.Value {
+		v := in[0].Interface().(padded)
+		v.X++
+		return []reflect.Value{reflect.ValueOf(v)}
+	})} {
+		out := f.Call([]reflect.Value{reflect.ValueOf(padded{X: 12344})})[0].Interface().(padded)
+		if out.X != 12345 {
+			t.Fatal(out.X)
+		}
+	}
+}

@@ -73,7 +73,7 @@ func (p Program) validateVectorMap(t *types.Map) error {
 		typ  types.Type
 	}{{"key", t.Key()}, {"value", t.Elem()}} {
 		if p.containsVectorStorage(part.typ) {
-			return fmt.Errorf("vector storage is not supported in map %s type %s; use an ordinary Go array or a pointer", part.name, part.typ)
+			return fmt.Errorf("vector storage is not supported in map %s type %s; use an array of scalars or a pointer", part.name, part.typ)
 		}
 	}
 	return nil

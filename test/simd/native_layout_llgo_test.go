@@ -17,6 +17,28 @@ type nativeVectorBox struct {
 }
 type definedVector archsimd.Float32x4
 
+//llgo:cdecl
+type nativeCallbackBox struct {
+	Tag   uint64
+	Value archsimd.Float32x4
+	Fn    func(uint64) uint64
+	Tail  uint64
+}
+
+func TestSIMDNativeCallbackFieldReflection(t *testing.T) {
+	holder := struct {
+		Box      nativeCallbackBox
+		Sentinel uint64
+	}{Sentinel: 77}
+	if unsafe.Sizeof(holder.Box) != 48 || unsafe.Offsetof(holder.Box.Tail) != 40 || reflect.TypeFor[nativeCallbackBox]().Field(3).Offset != 40 {
+		t.Fatal("native callback field changed source/reflection offsets")
+	}
+	reflect.ValueOf(&holder.Box).Elem().FieldByName("Tail").SetUint(99)
+	if holder.Box.Tail != 99 || holder.Sentinel != 77 {
+		t.Fatalf("reflection wrote outside Tail: tail=%d sentinel=%d", holder.Box.Tail, holder.Sentinel)
+	}
+}
+
 var nativeVectorGlobal nativeVectorBox
 var nativeVectorHeap []*nativeVectorBox
 var nativeVectorZero [0]archsimd.Float32x4

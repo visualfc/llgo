@@ -108,7 +108,7 @@ func (p *goProgram) Offsetsof(fields []*types.Var) (ret []int64) {
 	if abi.IsClosureFields(fields) {
 		return []int64{0, ptrSize}
 	}
-	if _, offsets, ok := p.vectorStructLayout(fields, false); ok {
+	if _, offsets, ok := p.vectorStructLayout(fields, prog.nativeFields(fields)); ok {
 		return offsets
 	}
 	extra := int64(0)

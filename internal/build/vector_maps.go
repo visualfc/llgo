@@ -2,9 +2,13 @@ package build
 
 import (
 	"fmt"
+	"go/ast"
+	"go/token"
+	"go/types"
+
 	"github.com/xgo-dev/llgo/internal/packages"
 	llssa "github.com/xgo-dev/llgo/ssa"
-	"go/ast"
+	"golang.org/x/tools/go/ssa"
 )
 
 func validateVectorMaps(prog llssa.Program, groups ...[]*packages.Package) error {
@@ -40,4 +44,40 @@ func validateVectorMaps(prog llssa.Program, groups ...[]*packages.Package) error
 		})
 	}
 	return firstErr
+}
+
+// Source types still contain type parameters inside generic bodies. Check the
+// concrete SSA instances before LLVM lowering, including methods and closures.
+func validateSSAVectorMaps(fn *ssa.Function, validate func(types.Type) error) error {
+	check := func(typ types.Type, pos token.Pos) error {
+		if err := validate(typ); err != nil {
+			if !pos.IsValid() {
+				pos = fn.Pos()
+			}
+			return fmt.Errorf("%s: %w", fn.Prog.Fset.Position(pos), err)
+		}
+		return nil
+	}
+	if err := check(fn.Signature, fn.Pos()); err != nil {
+		return err
+	}
+	var operands []*ssa.Value
+	for _, block := range fn.Blocks {
+		for _, instruction := range block.Instrs {
+			if value, ok := instruction.(ssa.Value); ok {
+				if err := check(value.Type(), instruction.Pos()); err != nil {
+					return err
+				}
+			}
+			operands = instruction.Operands(operands[:0])
+			for _, operand := range operands {
+				if operand != nil && *operand != nil {
+					if err := check((*operand).Type(), instruction.Pos()); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
 }

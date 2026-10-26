@@ -72,8 +72,14 @@ not change the Go/C calling convention or add support for new native aggregate
 signatures.
 
 Vector storage cannot appear by value in map keys or values, including inside
-arrays or structs. Use an ordinary scalar array or a pointer instead. Layout is
+arrays or structs. Use an array of scalars or a pointer instead. Layout is
 recognized directly from type identity, without import-order prerequisites.
+
+On native targets, `reflect.Call`, `CallSlice`, and `MakeFunc` reject signatures
+that pass or return vector storage by value through libffi. This includes arrays,
+structs, and zero-length vector fields. Pointers to vectors and slices of vectors
+use their ordinary scalar ABI and remain supported. WASM reflection bridges
+continue to support SIMD128 values.
 
 ## Portable SIMD Midway
 

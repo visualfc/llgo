@@ -2364,6 +2364,13 @@ var (
 )
 
 func toFFIType(typ *abi.Type) *ffi.Type {
+	// Vector storage (including zero-length arrays and enclosing aggregates)
+	// has alignment above the ordinary Go maximum of 8. libffi's scalar/struct
+	// descriptions cannot represent its vector calling convention. Check before
+	// skipping zero-sized fields; pointers and slice headers retain scalar ABI.
+	if typ.Align_ > 8 {
+		panic("reflect: libffi calls with vector storage are not supported")
+	}
 	kind := typ.Kind()
 	switch kind {
 	case abi.Bool, abi.Int, abi.Int8, abi.Int16, abi.Int32, abi.Int64,

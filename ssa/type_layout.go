@@ -28,6 +28,9 @@ type structLayout struct {
 }
 
 func (p Program) hasNativeStructLayout(raw *types.Named) bool {
+	if !p.packageSyntax.hasNativeTypeMetadata.Load() {
+		return false
+	}
 	background, ok := p.packageTypeCallConv(namedLinkname(raw))
 	return ok && isNativeCallConv(background)
 }
@@ -60,8 +63,9 @@ func (p Program) toLLVMStructBody(raw *types.Struct, native bool) ([]llvm.Type, 
 	if native || len(fields) == 0 {
 		return fields, nil
 	}
-	_, vectorLayout := (*goProgram)(p).vectorLayout(raw, false)
-	if goarch != "386" && !(goarch == "wasm" && p.target.WasmProfile != "") && !vectorLayout {
+	// Only presence is needed here. Computing the source layout would query
+	// sizes before the standalone SSA API's fallback below is initialized.
+	if goarch != "386" && !(goarch == "wasm" && p.target.WasmProfile != "") && !p.containsVectorStorage(raw) {
 		return fields, nil
 	}
 

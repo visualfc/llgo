@@ -1013,7 +1013,9 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		return nil, err
 	}
 	buildSSAPkgs(ctx, append(append(altEntries, pkgEntries...), depEntries...))
-	recordPackageSSAInstructions(ctx)
+	if err := recordPackageSSAInstructions(ctx); err != nil {
+		return nil, err
+	}
 	callerSpan := buildTrace.startCoordinator("precompute caller tracking", nil)
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
@@ -4221,18 +4223,28 @@ func syntaxNodeCount(files []*ast.File) (nodes int64) {
 // recordPackageSSAInstructions makes backend ordering a single linear pass
 // over the SSA that was already built. It includes methods, wrappers, and
 // closures without repeating a whole-program reachability scan per package.
-func recordPackageSSAInstructions(ctx *context) {
+// Reuse that traversal to validate concrete map types before LLVM lowering.
+func recordPackageSSAInstructions(ctx *context) error {
 	if ctx == nil || ctx.progSSA == nil {
-		return
+		return nil
 	}
 	span := ctx.buildTrace.startCoordinator("count SSA instructions", nil)
 	defer span.done()
 	counts := make(map[*ssa.Package]int64)
 	var total int64
 	literalFormats := canSpecializeLiteralFormats(ctx)
+	var validateMaps func(types.Type) error
+	if ctx.prog != nil {
+		validateMaps = ctx.prog.VectorMapValidator()
+	}
 	for fn := range ssautil.AllFunctions(ctx.progSSA) {
-		if fn == nil || fn.Pkg == nil && !literalFormats {
+		if fn == nil {
 			continue
+		}
+		if validateMaps != nil {
+			if err := validateSSAVectorMaps(fn, validateMaps); err != nil {
+				return err
+			}
 		}
 		for _, block := range fn.Blocks {
 			if literalFormats {
@@ -4259,6 +4271,7 @@ func recordPackageSSAInstructions(ctx *context) {
 	}
 	span.setArg("packages", len(counts))
 	span.setArg("instructions", total)
+	return nil
 }
 
 func formatPackageError(err packages.Error, noColumn bool) string {

@@ -55,6 +55,112 @@ func TestOrdinarySourceLayoutAllocations(t *testing.T) {
 	}
 }
 
+func TestOrdinaryNamedLayoutAllocations(t *testing.T) {
+	prog := NewProgram(&Target{GOOS: "linux", GOARCH: "amd64"})
+	defer prog.Dispose()
+	base := types.SizesFor("gc", "amd64")
+	sizes := prog.TypeSizes(base)
+	pkg := types.NewPackage("example.com/ordinary/package/path", "ordinary")
+	named := func(name string, underlying types.Type) *types.Named {
+		return types.NewNamed(types.NewTypeName(token.NoPos, pkg, name, nil), underlying, nil)
+	}
+	integer := named("Integer", types.Typ[types.Int64])
+	record := named("Record", types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "X", integer, false),
+	}, nil))
+	nested := named("Nested", types.NewArray(record, 8))
+	for _, metadata := range []bool{false, true} {
+		if metadata {
+			// An unrelated native declaration must not make ordinary named
+			// layout queries construct linknames and consult the metadata map.
+			prog.SetTypeCallConv("other.Native", CDecl)
+		}
+		for _, typ := range []types.Type{integer, record, nested} {
+			t.Run(fmt.Sprintf("%s/native-metadata=%t", typ, metadata), func(t *testing.T) {
+				want := testing.AllocsPerRun(100, func() { base.Alignof(typ) })
+				got := testing.AllocsPerRun(100, func() { sizes.Alignof(typ) })
+				if got != want {
+					t.Fatalf("Alignof allocations = %g, baseline = %g", got, want)
+				}
+				if sizes.Alignof(typ) != base.Alignof(typ) || sizes.Sizeof(typ) != base.Sizeof(typ) {
+					t.Fatal("ordinary named layout changed")
+				}
+			})
+		}
+	}
+}
+
+func TestFreshProgramVectorLayout(t *testing.T) {
+	for _, arch := range []string{"amd64", "arm64", "386"} {
+		t.Run(arch, func(t *testing.T) {
+			prog := NewProgram(&Target{GOOS: "linux", GOARCH: arch})
+			defer prog.Dispose()
+			// Standalone SSA API users need not call TypeSizes first.
+			_, vector := layoutTestVector()
+			typ := prog.Type(vector, GoDecl)
+			if prog.SizeOf(typ) != 16 || prog.AlignOf(typ) != 16 {
+				t.Fatal("fresh vector layout")
+			}
+			box := types.NewStruct([]*types.Var{
+				types.NewField(token.NoPos, nil, "Tag", types.Typ[types.Byte], false),
+				types.NewField(token.NoPos, nil, "Value", vector, false),
+			}, nil)
+			boxType := prog.Type(box, GoDecl)
+			if prog.SizeOf(boxType) != 32 || prog.AlignOf(boxType) != 16 || prog.OffsetOf(boxType, 1) != 16 {
+				t.Fatal("fresh containing struct layout")
+			}
+		})
+	}
+}
+
+func TestNativeVectorFieldOffsets(t *testing.T) {
+	for _, arch := range []string{"amd64", "arm64", "386"} {
+		for _, sourcePositions := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/positions=%t", arch, sourcePositions), func(t *testing.T) {
+				prog := NewProgram(&Target{GOOS: "linux", GOARCH: arch})
+				defer prog.Dispose()
+				sizes := prog.TypeSizes(types.SizesFor("gc", arch))
+				_, vector := layoutTestVector()
+				pkg := types.NewPackage("example.com/native", "native")
+				fields := []*types.Var{
+					types.NewField(10, pkg, "Vector", vector, false),
+					types.NewField(11, pkg, "Callback", NoArgsNoRet, false),
+					types.NewField(12, pkg, "Tail", types.Typ[types.Byte], false),
+				}
+				if sourcePositions {
+					prog.SetTypeCallConv("example.com/native.Native", CDecl)
+					prog.SetNativeStructFields([]token.Pos{10, 11, 12})
+				} else {
+					for i, f := range fields {
+						fields[i] = types.NewField(token.NoPos, pkg, f.Name(), f.Type(), false)
+					}
+					prog.SetTypeCallConv("example.com/native.Native", CDecl, fields...)
+				}
+				native := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "Native", nil), types.NewStruct(fields, nil), nil)
+				// Query offsets before any LLVM type or other source layout query.
+				offsets := sizes.Offsetsof(fields)
+				if offsets[1] != 16 || offsets[2] != int64(16+prog.ptrSize) || sizes.Sizeof(native) != 32 {
+					t.Fatalf("native offsets=%v size=%d", offsets, sizes.Sizeof(native))
+				}
+				storage := prog.rawType(native)
+				for i, want := range offsets {
+					if got := prog.OffsetOf(storage, i); got != uint64(want) {
+						t.Fatalf("field %d: storage=%d source=%d", i, got, want)
+					}
+				}
+				ordinary := []*types.Var{
+					types.NewField(token.NoPos, pkg, "Vector", vector, false),
+					types.NewField(token.NoPos, pkg, "Callback", NoArgsNoRet, false),
+					types.NewField(token.NoPos, pkg, "Tail", types.Typ[types.Byte], false),
+				}
+				if sizes.Offsetsof(ordinary)[2] != int64(16+2*prog.ptrSize) {
+					t.Fatal("unregistered fields lost Go closure layout")
+				}
+			})
+		}
+	}
+}
+
 func layoutTestVector() (tag, vector *types.Named) {
 	pkg := types.NewPackage("simd/archsimd", "archsimd")
 	tag = types.NewNamed(types.NewTypeName(token.NoPos, pkg, "v128", nil), types.NewStruct([]*types.Var{

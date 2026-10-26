@@ -34,6 +34,12 @@ func (p *goProgram) vectorLayout(t types.Type, native bool) (vectorSourceLayout,
 	}
 	switch t := types.Unalias(t).(type) {
 	case *types.Named:
+		// Ordinary named types need neither a linkname nor native metadata.
+		// Keep this check type-only: callers may query types before imports or
+		// calling conventions have been registered.
+		if !prog.containsVectorStorage(t) {
+			return vectorSourceLayout{}, false
+		}
 		return p.vectorLayout(t.Underlying(), prog.hasNativeStructLayout(t))
 	case *types.Array:
 		// Element layout propagates SIMD alignment through arrays, including
@@ -58,8 +64,8 @@ func (p *goProgram) vectorLayout(t types.Type, native bool) (vectorSourceLayout,
 		for i := range fields {
 			fields[i] = t.Field(i)
 		}
-		layout, _, changed := p.vectorStructLayout(fields, native)
-		return layout, changed
+		layout, _ := p.vectorFieldsLayout(fields, native)
+		return layout, true
 	}
 	return vectorSourceLayout{}, false
 }
@@ -78,6 +84,14 @@ func (p *goProgram) vectorStructLayout(fields []*types.Var, native bool) (vector
 	if !changed {
 		return vectorSourceLayout{}, nil, false
 	}
+	layout, offsets := p.vectorFieldsLayout(fields, native)
+	return layout, offsets, true
+}
+
+// vectorFieldsLayout computes a layout after the caller has found vector
+// storage. Keep the presence check outside to avoid scratch allocations for
+// ordinary fields and a repeated scan when vectorLayout already checked them.
+func (p *goProgram) vectorFieldsLayout(fields []*types.Var, native bool) (vectorSourceLayout, []int64) {
 	layouts := make([]vectorSourceLayout, len(fields))
 	changedFields := make([]bool, len(fields))
 	for i, field := range fields {
@@ -116,7 +130,7 @@ func (p *goProgram) vectorStructLayout(fields []*types.Var, native bool) (vector
 		}
 	}
 	result.size = vectorLayoutAlign(result.size, result.align)
-	return result, offsets, true
+	return result, offsets
 }
 
 func vectorLayoutAlign(size, alignment int64) int64 {
