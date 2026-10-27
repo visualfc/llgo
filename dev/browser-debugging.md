@@ -93,9 +93,14 @@ Runtime views expand strings, slices, arrays, interface payloads, maps and
 buffered channels, including nested values and zero-sized elements. Named
 interface payloads use runtime import-path metadata to find their DWARF types;
 unresolved types retain the summary without guessing a payload layout. Function
-values show their Wasm table index and closure-context address; typed closure
-captures are not yet decoded. Container expansion is bounded to 100 elements
-and map scans to 4096 buckets.
+values show their Wasm table index, known function name and closure-context
+address. Expand `captures` to inspect the compiler-described environment;
+reference captures retain their pointer indirection and observe later writes.
+This uses the final module's static function table and artificial `$env` DWARF
+type, including nested closures and bound methods. Missing or ambiguous types
+keep the raw code/data view. Dynamic table rebinding is outside this static
+mapping contract. Inspection never calls the function. Container expansion is
+bounded to 100 elements and map scans to 4096 buckets.
 
 WASI source sessions remain unavailable for current W32 pthread artifacts.
 Their shared `env.memory`, `wasi.thread-spawn` and `wasix_32v1.thread_exit` imports
@@ -137,3 +142,10 @@ elements. A second stop verifies mutations and drained channels; object release
 checks include every expanded child. The compiler now uses the runtime's
 canonical package paths in DWARF. Native macOS LLDB O0/O2 panic, inline and
 aggregate acceptance also passes with this change.
+
+The 2026-10-27 macOS arm64 run used Go 1.27.3, LLVM 22.1.8, Emscripten
+6.0.8, Binaryen `llgo-v132.3` and Chrome for Testing 152.0.7977.54. All twelve
+sessions passed with typed captures, including nested closures, bound methods
+and independent counter closures before and after mutation. Captures remain
+readable after memory growth and GC, and releasing the function view releases
+its expanded children. Native LLDB O0/O2 regression acceptance also passes.

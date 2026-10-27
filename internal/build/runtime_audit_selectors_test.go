@@ -28,8 +28,10 @@ func TestRuntimeAuditBoundedSelectors(t *testing.T) {
 			a := runtimeAuditFixture(t)
 			for path, src := range map[string]string{
 				"runtime/internal/runtime/base.go": "package runtime\nfunc Present() {}",
-				"ssa/use.go":                       "package ssa\nfunc use() { p.rtFunc(" + tc.expression + ") }",
-				"cl/use.go":                        "package cl",
+				// Include the real declaration shape so ParseFile resolves the
+				// unqualified call to its package-level function object.
+				"ssa/use.go": "package ssa\nfunc RuntimeSymbol(name string, candidates ...string) string { return name }\nfunc use() { p.rtFunc(" + tc.expression + ") }",
+				"cl/use.go":  "package cl",
 			} {
 				path = filepath.Join(filepath.Dir(a.runtimeDir), path)
 				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -105,6 +107,10 @@ func TestRuntimeAuditForwarderMustBeTransparent(t *testing.T) {
 func TestRuntimeAuditRejectsShadowedSelector(t *testing.T) {
 	for _, src := range []string{
 		`package ssa; func use() { RuntimeSymbol := other; _ = RuntimeSymbol(name, "Known") }`,
+		`package ssa; func RuntimeSymbol(name string, candidates ...string) string { return name }; func use() { RuntimeSymbol := other; _ = RuntimeSymbol(name, "Known") }`,
+		`package ssa; var RuntimeSymbol = other; func use() { _ = RuntimeSymbol(name, "Known") }`,
+		`package ssa; func use(RuntimeSymbol func(string, ...string) string) { _ = RuntimeSymbol(name, "Known") }`,
+		`package ssa; type T struct{}; func (RuntimeSymbol T) use() { _ = RuntimeSymbol(name, "Known") }`,
 		`package cl; import low "github.com/xgo-dev/llgo/ssa"; func use() { low := other; _ = low.RuntimeSymbol(name, "Known") }`,
 	} {
 		file, err := parser.ParseFile(token.NewFileSet(), "shadow.go", src, 0)

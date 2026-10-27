@@ -29,7 +29,13 @@ func runtimeAuditCandidates(file *ast.File, expr ast.Expr) ([]string, bool) {
 	checked := false
 	switch fun := call.Fun.(type) {
 	case *ast.Ident:
-		checked = file.Name.Name == "ssa" && fun.Name == "RuntimeSymbol" && fun.Obj == nil
+		checked = file.Name.Name == "ssa" && fun.Name == "RuntimeSymbol"
+		if checked && fun.Obj != nil {
+			// ParseFile resolves a same-file package function, but leaves
+			// cross-file declarations unresolved. Both denote the helper;
+			// local bindings and package variables must still be rejected.
+			checked = fun.Obj.Kind == ast.Fun && file.Scope != nil && file.Scope.Lookup(fun.Name) == fun.Obj
+		}
 	case *ast.SelectorExpr:
 		if recv, ok := fun.X.(*ast.Ident); ok && fun.Sel.Name == "RuntimeSymbol" && recv.Obj == nil {
 			for _, imp := range file.Imports {

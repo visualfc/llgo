@@ -781,22 +781,23 @@ const (
 	llgoCgoCheckPointer = llgoCgoBase + 0x6
 	llgoCgoCgocall      = llgoCgoBase + 0x7
 
-	llgoAsm                = llgoInstrBase + 0x40
-	llgoStackSave          = llgoInstrBase + 0x41
-	llgoFuncPCABI0         = llgoInstrBase + 0x42
-	llgoSkip               = llgoInstrBase + 0x43
-	llgoSyscall            = llgoInstrBase + 0x44
-	llgoAtomicCmpXchgOK    = llgoInstrBase + 0x45
-	llgoAtomicAddReturnNew = llgoInstrBase + 0x46
-	llgoBoolToUint8        = llgoInstrBase + 0x47
-	llgoClosureEnv         = llgoInstrBase + 0x48
-	llgoFloat32FromBits    = llgoInstrBase + 0x49
-	llgoFloat32Bits        = llgoInstrBase + 0x4a
-	llgoFloat64FromBits    = llgoInstrBase + 0x4b
-	llgoFloat64Bits        = llgoInstrBase + 0x4c
-	llgoUMulOverflow       = llgoInstrBase + 0x4d
-	llgoSIMD               = llgoInstrBase + 0x4e
-	llgoInterfaceKindUsed  = llgoInstrBase + 0x4f
+	llgoAsm                  = llgoInstrBase + 0x40
+	llgoStackSave            = llgoInstrBase + 0x41
+	llgoFuncPCABI0           = llgoInstrBase + 0x42
+	llgoSkip                 = llgoInstrBase + 0x43
+	llgoSyscall              = llgoInstrBase + 0x44
+	llgoAtomicCmpXchgOK      = llgoInstrBase + 0x45
+	llgoAtomicAddReturnNew   = llgoInstrBase + 0x46
+	llgoBoolToUint8          = llgoInstrBase + 0x47
+	llgoClosureEnv           = llgoInstrBase + 0x48
+	llgoFloat32FromBits      = llgoInstrBase + 0x49
+	llgoFloat32Bits          = llgoInstrBase + 0x4a
+	llgoFloat64FromBits      = llgoInstrBase + 0x4b
+	llgoFloat64Bits          = llgoInstrBase + 0x4c
+	llgoUMulOverflow         = llgoInstrBase + 0x4d
+	llgoSIMD                 = llgoInstrBase + 0x4e
+	llgoInterfaceKindUsed    = llgoInstrBase + 0x4f
+	llgoAtomicStoreUnordered = llgoInstrBase + 0x50
 
 	llgoAtomicOpLast = llgoAtomicOpBase + int(llssa.OpUMin)
 )
@@ -1142,7 +1143,35 @@ func handleTypeDecl(prog llssa.Program, fset *token.FileSet, pkg *types.Package,
 		fmt.Fprintf(os.Stderr, "DEPRECATED: %s is deprecated at %s; use %s instead\n", cc.name, fset.Position(cc.pos), cc.replacement)
 	}
 	prog.SetTypeCallConv(pkg.Path()+"."+spec.Name.Name, toCallConv(cc.bg))
+	if st, ok := spec.Type.(*ast.StructType); ok {
+		var positions []token.Pos
+		for _, field := range st.Fields.List {
+			if len(field.Names) == 0 {
+				positions = append(positions, embeddedStructFieldPos(field.Type))
+			}
+			for _, name := range field.Names {
+				positions = append(positions, name.Pos())
+			}
+		}
+		prog.SetNativeStructFields(positions)
+	}
 	return nil
+}
+
+// go/types assigns an embedded field the position of its identifier, rather
+// than the start of a pointer or qualified type expression.
+func embeddedStructFieldPos(expr ast.Expr) token.Pos {
+	switch expr := expr.(type) {
+	case *ast.StarExpr:
+		return embeddedStructFieldPos(expr.X)
+	case *ast.SelectorExpr:
+		return expr.Sel.Pos()
+	case *ast.IndexExpr:
+		return embeddedStructFieldPos(expr.X)
+	case *ast.IndexListExpr:
+		return embeddedStructFieldPos(expr.X)
+	}
+	return expr.Pos()
 }
 
 // Directive names, normalized by the directive package (the "//" / "// "

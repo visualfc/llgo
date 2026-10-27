@@ -953,6 +953,10 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		prepareSpan.done()
 		return nil, err
 	}
+	if err := validateVectorMaps(prog, initial, altPkgs); err != nil {
+		prepareSpan.done()
+		return nil, err
+	}
 	prepareSpan.done()
 	frontendOptions.PreloadedSyntax = true
 
@@ -1009,7 +1013,9 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		return nil, err
 	}
 	buildSSAPkgs(ctx, append(append(altEntries, pkgEntries...), depEntries...))
-	recordPackageSSAInstructions(ctx)
+	if err := recordPackageSSAInstructions(ctx); err != nil {
+		return nil, err
+	}
 	callerSpan := buildTrace.startCoordinator("precompute caller tracking", nil)
 	ctx.callerTracking.Precompute(ctx.progSSA.AllPackages())
 	callerSpan.done()
@@ -1040,6 +1046,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 		configureWasmReflectBridges(ctx)
 		configureWasmFuncInfoEntries(ctx)
 	}
+	configureWasmRuntimeFree(ctx)
 
 	allPkgs := append([]*aPackage{}, pkgs...)
 	configureUnusedGlobalInits(ctx)
@@ -1785,10 +1792,12 @@ type context struct {
 	output         bool
 	passOpt        bool
 
-	buildConf       *Config
-	crossCompile    crosscompile.Export
-	commands        commandEnv
-	frontendOptions cl.Options
+	buildConf         *Config
+	crossCompile      crosscompile.Export
+	commands          commandEnv
+	frontendOptions   cl.Options
+	wasmRuntimeFree   bool
+	wasmClosedProgram bool // true when native inputs cannot introduce untracked Go references
 
 	cTransformer *cabi.Transformer
 
@@ -2585,7 +2594,7 @@ func planMainLink(ctx *context, pkg *packages.Package, pkgs []*aPackage) (*mainL
 	}
 	gen := genConfig{
 		defaultGODEBUG: ctx.defaultGODEBUG[pkg.ID],
-		rtInit:         needRuntime,
+		rtInit:         needRuntime && !ctx.wasmRuntimeFree,
 		pyInit:         needPyInit,
 		abiInit:        needAbiInit,
 		packageInits:   packageInits,
@@ -2633,9 +2642,8 @@ func buildMainLink(ctx *context, pkg *packages.Package, preparation *mainLinkPre
 		return nil, err
 	}
 	if ctx.buildConf.deadcodeDropEnabled() {
-		// The initializer plan exists only after accounting for native inputs.
-		// Reuse that boundary before pruning unobservable method metadata.
-		trimMethods := ctx.buildConf.Goarch == "wasm" && ctx.buildConf.BuildMode == BuildModeExe && ctx.frontendOptions.UnusedGlobalInits != nil
+		// Share the native-input visibility proof with initializer pruning.
+		trimMethods := canPruneWasmTypeMetadata(ctx)
 		if err := applyDeadcodeDropOverrides(preparation.linkedOrder, entryPkg, preparation.gen.rtInit, trimMethods, verbose); err != nil {
 			return nil, err
 		}
@@ -3404,6 +3412,10 @@ func isWasmTarget(goos string) bool {
 }
 
 func needStart(ctx *context) bool {
+	if ctx.crossCompile.WasmProvider == crosscompile.WasmProviderWASI {
+		// Inherited WASI targets use the same libc startup as wasi/wasip1.
+		return false
+	}
 	if ctx.buildConf.Target == "" {
 		return !isWasmTarget(ctx.buildConf.Goos)
 	}
@@ -4211,19 +4223,38 @@ func syntaxNodeCount(files []*ast.File) (nodes int64) {
 // recordPackageSSAInstructions makes backend ordering a single linear pass
 // over the SSA that was already built. It includes methods, wrappers, and
 // closures without repeating a whole-program reachability scan per package.
-func recordPackageSSAInstructions(ctx *context) {
+// Reuse that traversal to validate concrete map types before LLVM lowering.
+func recordPackageSSAInstructions(ctx *context) error {
 	if ctx == nil || ctx.progSSA == nil {
-		return
+		return nil
 	}
 	span := ctx.buildTrace.startCoordinator("count SSA instructions", nil)
 	defer span.done()
 	counts := make(map[*ssa.Package]int64)
 	var total int64
+	literalFormats := canSpecializeLiteralFormats(ctx)
+	var validateMaps func(types.Type) error
+	if ctx.prog != nil {
+		validateMaps = ctx.prog.VectorMapValidator()
+	}
 	for fn := range ssautil.AllFunctions(ctx.progSSA) {
-		if fn == nil || fn.Pkg == nil {
+		if fn == nil {
 			continue
 		}
+		if validateMaps != nil {
+			if err := validateSSAVectorMaps(fn, validateMaps); err != nil {
+				return err
+			}
+		}
 		for _, block := range fn.Blocks {
+			if literalFormats {
+				for _, instruction := range block.Instrs {
+					specializeLiteralFormat(instruction)
+				}
+			}
+			if fn.Pkg == nil {
+				continue
+			}
 			instructions := int64(len(block.Instrs))
 			counts[fn.Pkg] += instructions
 			total += instructions
@@ -4240,6 +4271,7 @@ func recordPackageSSAInstructions(ctx *context) {
 	}
 	span.setArg("packages", len(counts))
 	span.setArg("instructions", total)
+	return nil
 }
 
 func formatPackageError(err packages.Error, noColumn bool) string {

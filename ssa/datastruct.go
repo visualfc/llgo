@@ -555,7 +555,13 @@ func (b Builder) MakeSlice(t Type, len, cap Expr) (ret Expr) {
 		len = b.FitIntSize(len)
 		cap = b.FitIntSize(cap)
 	}
-	ret = b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(fn, "MakeSlice", "MakeSlice64")), len, cap, prog.IntVal(prog.SizeOf(telem), prog.Int()))
+	args := []Expr{len, cap, prog.IntVal(prog.SizeOf(telem), prog.Int())}
+	if alignment := prog.AlignOf(telem); alignment > uint64(prog.GoWordSize()) {
+		fn += "Aligned"
+		args = append(args, prog.IntVal(alignment, prog.Int()))
+	}
+	ret = b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(fn,
+		"MakeSlice", "MakeSlice64", "MakeSliceAligned", "MakeSlice64Aligned")), args...)
 	ret.Type = t
 	return
 }
@@ -953,7 +959,13 @@ func (b Builder) MakeChan(t Type, size Expr) (ret Expr) {
 		size = b.FitIntSize(size)
 	}
 	ret.Type = t
-	ret.impl = b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(fn, "NewChan", "NewChan64")), eltSize, size).impl
+	args := []Expr{eltSize, size}
+	if alignment := prog.AlignOf(prog.Elem(t)); alignment > uint64(prog.GoWordSize()) {
+		fn += "Aligned"
+		args = append(args, prog.IntVal(alignment, prog.Int()))
+	}
+	ret.impl = b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(fn,
+		"NewChan", "NewChan64", "NewChanAligned", "NewChan64Aligned")), args...).impl
 	return
 }
 
@@ -1130,3 +1142,14 @@ func (b Builder) chanOp(s *SelectState) Expr {
 }
 
 // -----------------------------------------------------------------------------
+
+// appendSlice selects aligned storage only for element types that need it.
+func (b Builder) appendSlice(src, data, count Expr, size uint64) Expr {
+	args := []Expr{src, data, count, b.Prog.Val(int(size))}
+	fn := "SliceAppend"
+	if alignment := b.Prog.AlignOf(b.Prog.Elem(src.Type)); alignment > uint64(b.Prog.GoWordSize()) {
+		fn += "Aligned"
+		args = append(args, b.Prog.IntVal(alignment, b.Prog.Int()))
+	}
+	return b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(fn, "SliceAppend", "SliceAppendAligned")), args...)
+}

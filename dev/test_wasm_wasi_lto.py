@@ -89,6 +89,7 @@ def main():
             for fixture, marker in (
                 ("wasm-type-fields", "wasm type fields passed"),
                 ("wasm-type-fields-reflect", "wasm type fields reflection passed"),
+                ("wasm-map-metadata", "wasm map metadata passed"),
                 ("wasm-finalizer-direct", "wasm direct finalizers passed"),
                 ("wasm-root-sharing", "wasm root sharing passed"),
             ):
