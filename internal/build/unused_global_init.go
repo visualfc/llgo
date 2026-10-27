@@ -37,7 +37,9 @@ import (
 )
 
 func configureUnusedGlobalInits(ctx *context) {
-	if ctx.buildConf.BuildMode != BuildModeExe || ctx.mode == ModeGen || ctx.prog.Target().GOARCH != "wasm" {
+	ctx.wasmClosedProgram = false
+	ctx.frontendOptions.UnusedGlobalInits = nil
+	if ctx.buildConf.BuildMode != BuildModeExe || ctx.mode == ModeGen || ctx.buildConf.Goarch != "wasm" {
 		return
 	}
 	if ctx.buildConf.OptLevel == optlevel.O0 {
@@ -50,6 +52,9 @@ func configureUnusedGlobalInits(ctx *context) {
 		}
 		return
 	}
+	// Both pruning passes require this proof, even when no initializer plan
+	// is produced. Its representation is independent of the initializer plan.
+	ctx.wasmClosedProgram = true
 	// A one-name go:linkname is an export annotation, with no alias entry in
 	// Program. Preserve those declarations as well as two-name link aliases.
 	inspect := func(pkg *types.Package, files []*ast.File) {
@@ -194,4 +199,10 @@ func collectAsmGlobalInitReferences(ctx *context, pkg *packages.Package, exporte
 		tr.Module.Dispose()
 	}
 	return true
+}
+
+// canPruneWasmTypeMetadata shares the closed-program boundary with initializer
+// pruning while retaining the metadata pass's executable/target restrictions.
+func canPruneWasmTypeMetadata(ctx *context) bool {
+	return ctx.buildConf.Goarch == "wasm" && ctx.buildConf.BuildMode == BuildModeExe && ctx.wasmClosedProgram
 }

@@ -1792,11 +1792,12 @@ type context struct {
 	output         bool
 	passOpt        bool
 
-	buildConf       *Config
-	crossCompile    crosscompile.Export
-	commands        commandEnv
-	frontendOptions cl.Options
-	wasmRuntimeFree bool
+	buildConf         *Config
+	crossCompile      crosscompile.Export
+	commands          commandEnv
+	frontendOptions   cl.Options
+	wasmRuntimeFree   bool
+	wasmClosedProgram bool // true when native inputs cannot introduce untracked Go references
 
 	cTransformer *cabi.Transformer
 
@@ -2641,9 +2642,8 @@ func buildMainLink(ctx *context, pkg *packages.Package, preparation *mainLinkPre
 		return nil, err
 	}
 	if ctx.buildConf.deadcodeDropEnabled() {
-		// The initializer plan exists only after accounting for native inputs.
-		// Reuse that boundary before pruning unobservable method metadata.
-		trimMethods := ctx.buildConf.Goarch == "wasm" && ctx.buildConf.BuildMode == BuildModeExe && ctx.frontendOptions.UnusedGlobalInits != nil
+		// Share the native-input visibility proof with initializer pruning.
+		trimMethods := canPruneWasmTypeMetadata(ctx)
 		if err := applyDeadcodeDropOverrides(preparation.linkedOrder, entryPkg, preparation.gen.rtInit, trimMethods, verbose); err != nil {
 			return nil, err
 		}
