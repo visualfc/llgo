@@ -21,8 +21,11 @@ import (
 	"go/token"
 	"go/types"
 	"strconv"
+	"strings"
 
-	llssa "github.com/xgo-dev/llgo/ssa"
+	"github.com/xgo-dev/llgo/internal/directive"
+	"github.com/xgo-dev/llgo/internal/locality"
+	"golang.org/x/tools/go/ssa"
 )
 
 // minStripStaticByteArray is the number of composite-literal elements at which
@@ -32,6 +35,8 @@ import (
 const minStripStaticByteArray = 4096
 
 // StaticByteArrayKey is the lookup key for a stripped package-level byte array.
+// pkgPath must be types.Package.Path(), not llssa.PathOf: PathOf maps every
+// ordinary main package to "main" and would collide across commands.
 func StaticByteArrayKey(pkgPath, name string) string {
 	if pkgPath == "" {
 		return name
@@ -54,15 +59,22 @@ func MergeStaticByteArrays(dst, src map[string][]byte) map[string][]byte {
 }
 
 // StripLargeStaticByteArrays extracts payload from large package-level byte
-// array literals and clears CompositeLit.Elts so ssa.Package.Build does not
-// emit one store per element. The returned map is keyed by StaticByteArrayKey
-// of llssa.PathOf(pkg) and the variable name, matching initStaticByteArrayGlobal
-// lookup. Call this after type checking and before ssa.Package.Build.
-// Already-stripped literals (empty Elts) are skipped so a second call does not
-// replace a previous payload with zeros.
-func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File) map[string][]byte {
+// array literals and replaces `var x = [N]byte{...}` with `var x [N]byte`.
+// Clearing only CompositeLit.Elts leaves `= [N]byte{}`, and go/ssa then
+// memclr's large arrays in init, wiping the restored LLVM initializer.
+// The returned map is keyed by StaticByteArrayKey of pkg.Path() and the
+// variable name, matching initStaticByteArrayGlobal lookup. Call this after
+// type checking and before ssa.Package.Build. Already-stripped specs (no
+// values) are skipped so a second call does not replace a previous payload
+// with zeros. info.InitOrder entries for stripped variables are removed so
+// go/ssa does not rebuild the initializer from the type checker.
+func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File, info *types.Info) map[string][]byte {
 	out := make(map[string][]byte)
-	pkgPath := llssa.PathOf(pkg)
+	pkgPath := ""
+	if pkg != nil {
+		pkgPath = pkg.Path()
+	}
+	aliases := linknameAliasNames(files)
 	for _, file := range files {
 		if file == nil {
 			continue
@@ -77,21 +89,38 @@ func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File) map[strin
 				if !ok {
 					continue
 				}
-				for i, name := range vs.Names {
-					if name == nil || name.Name == "_" || i >= len(vs.Values) {
-						continue
-					}
-					cl, ok := vs.Values[i].(*ast.CompositeLit)
-					if !ok || len(cl.Elts) == 0 {
-						continue
-					}
-					data, ok := staticByteArrayLit(cl)
-					if !ok {
-						continue
-					}
-					cl.Elts = nil
-					out[StaticByteArrayKey(pkgPath, name.Name)] = data
+				if len(vs.Names) != 1 || len(vs.Values) != 1 {
+					continue
 				}
+				name := vs.Names[0]
+				if name == nil || name.Name == "_" {
+					continue
+				}
+				if hasLocalityDirective(gd, vs) || aliases[name.Name] {
+					continue
+				}
+				cl, ok := vs.Values[0].(*ast.CompositeLit)
+				if !ok || len(cl.Elts) == 0 {
+					continue
+				}
+				data, ok := staticByteArrayLit(cl)
+				if !ok {
+					continue
+				}
+				if !byteArrayVar(info, name, len(data)) {
+					continue
+				}
+				vs.Type = &ast.ArrayType{
+					Len: &ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(len(data))},
+					Elt: &ast.Ident{Name: "byte"},
+				}
+				vs.Values = nil
+				if info != nil {
+					if v, _ := info.Defs[name].(*types.Var); v != nil {
+						dropStaticByteArrayInit(info, v)
+					}
+				}
+				out[StaticByteArrayKey(pkgPath, name.Name)] = data
 			}
 		}
 	}
@@ -99,6 +128,20 @@ func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File) map[strin
 		return nil
 	}
 	return out
+}
+
+func dropStaticByteArrayInit(info *types.Info, v *types.Var) {
+	if info == nil || v == nil {
+		return
+	}
+	kept := info.InitOrder[:0]
+	for _, init := range info.InitOrder {
+		if len(init.Lhs) == 1 && init.Lhs[0] == v {
+			continue
+		}
+		kept = append(kept, init)
+	}
+	info.InitOrder = kept
 }
 
 func staticByteArrayLit(cl *ast.CompositeLit) ([]byte, bool) {
@@ -136,9 +179,7 @@ func staticByteArrayLit(cl *ast.CompositeLit) ([]byte, bool) {
 		}
 		buf[idx] = b
 		if _, isKV := elt.(*ast.KeyValueExpr); isKV {
-			if idx+1 > next {
-				next = idx + 1
-			}
+			next = idx + 1
 		}
 	}
 	return buf, true
@@ -157,9 +198,7 @@ func staticByteArrayLen(at *ast.ArrayType, cl *ast.CompositeLit) (int, bool) {
 				if idx+1 > n {
 					n = idx + 1
 				}
-				if idx+1 > next {
-					next = idx + 1
-				}
+				next = idx + 1
 				continue
 			}
 			next++
@@ -170,6 +209,93 @@ func staticByteArrayLen(at *ast.ArrayType, cl *ast.CompositeLit) (int, bool) {
 		return n, n > 0
 	}
 	return astIntLit(at.Len)
+}
+
+func staticByteArrayDeclKey(gbl *ssa.Global) string {
+	if gbl == nil {
+		return ""
+	}
+	if obj := gbl.Object(); obj != nil {
+		if pkg := obj.Pkg(); pkg != nil {
+			return StaticByteArrayKey(pkg.Path(), obj.Name())
+		}
+	}
+	if gbl.Pkg != nil && gbl.Pkg.Pkg != nil {
+		return StaticByteArrayKey(gbl.Pkg.Pkg.Path(), gbl.Name())
+	}
+	return ""
+}
+
+func linknameAliasNames(files []*ast.File) map[string]bool {
+	out := make(map[string]bool)
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		for _, group := range file.Comments {
+			collectLinknameAliasNames(group, out)
+		}
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			collectLinknameAliasNames(gd.Doc, out)
+			for _, spec := range gd.Specs {
+				if vs, ok := spec.(*ast.ValueSpec); ok {
+					collectLinknameAliasNames(vs.Doc, out)
+					collectLinknameAliasNames(vs.Comment, out)
+				}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func collectLinknameAliasNames(group *ast.CommentGroup, out map[string]bool) {
+	for _, item := range directive.ParseGroup(group) {
+		if item.Name != "go:linkname" && item.Name != "llgo:link" {
+			continue
+		}
+		fields := strings.Fields(item.Args)
+		if len(fields) < 2 {
+			continue
+		}
+		out[fields[0]] = true
+	}
+}
+
+func hasLocalityDirective(decl *ast.GenDecl, spec *ast.ValueSpec) bool {
+	groups := []*ast.CommentGroup{decl.Doc}
+	if spec != nil {
+		groups = append(groups, spec.Doc, spec.Comment)
+	}
+	for _, group := range groups {
+		kind, _, err := locality.FromDoc(nil, group)
+		if err == nil && kind != locality.None {
+			return true
+		}
+	}
+	return false
+}
+
+func byteArrayVar(info *types.Info, name *ast.Ident, n int) bool {
+	if info == nil || name == nil {
+		return true
+	}
+	v, _ := info.Defs[name].(*types.Var)
+	if v == nil {
+		return false
+	}
+	arr, ok := v.Type().Underlying().(*types.Array)
+	if !ok || arr.Len() != int64(n) {
+		return false
+	}
+	basic, ok := arr.Elem().Underlying().(*types.Basic)
+	return ok && (basic.Kind() == types.Byte || basic.Kind() == types.Uint8)
 }
 
 func isByteIdent(e ast.Expr) bool {

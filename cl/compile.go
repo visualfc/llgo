@@ -84,7 +84,7 @@ type Options struct {
 	UnusedGlobalInits *UnusedGlobalInits
 	// StaticByteArrays are package-level [N]byte payloads extracted after
 	// type checking and before ssa.Package.Build so go/ssa does not emit
-	// one store per element. Keys use StaticByteArrayKey(PathOf(pkg), name).
+	// one store per element. Keys use StaticByteArrayKey(pkg.Path(), name).
 	StaticByteArrays map[string][]byte
 }
 
@@ -250,7 +250,7 @@ func (p *context) initStaticByteArrayGlobal(define bool, gbl *ssa.Global, g llss
 	if !define || len(p.staticByteArrays) == 0 || gbl.Pkg == nil || gbl.Pkg.Pkg == nil {
 		return false
 	}
-	data, ok := p.staticByteArrays[StaticByteArrayKey(llssa.PathOf(gbl.Pkg.Pkg), gbl.Name())]
+	data, ok := p.staticByteArrays[staticByteArrayDeclKey(gbl)]
 	if !ok {
 		return false
 	}

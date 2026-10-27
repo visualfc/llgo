@@ -4032,7 +4032,7 @@ func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.
 			if debugBuild || verbose {
 				log.Println("==> BuildSSA", p.ID)
 			}
-			payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(typs, p.Syntax))
+			payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(typs, p.Syntax, p.TypesInfo))
 			pkgSSA := prog.CreatePackage(typs, p.Syntax, p.TypesInfo, true)
 			entries = append(entries, ssaBuildEntry{id: p.ID, pkg: pkgSSA, syntax: p.Syntax})
 			if strings.HasPrefix(p.ID, altPkgPathPrefix) {
@@ -4116,10 +4116,12 @@ func registerSSAPkgs(ctx *context, initial []*packages.Package, verbose bool) ([
 				}
 			}
 			rewrites := collectRewriteVars(ctx, pkgPath)
-			payloads := cl.StripLargeStaticByteArrays(p.Types, p.Syntax)
+			payloads := cl.StripLargeStaticByteArrays(p.Types, p.Syntax, p.TypesInfo)
 			if altPkg != nil {
-				payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(altPkg.Types, altPkg.Syntax))
+				payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(altPkg.Types, altPkg.Syntax, altPkg.TypesInfo))
 			}
+			// Alt-package visits may already have stripped shared Syntax/InitOrder
+			// and stored the payload on the context. Keep that map for restore.
 			ctx.staticByteArrays = cl.MergeStaticByteArrays(ctx.staticByteArrays, payloads)
 			aPkg := &aPackage{
 				Package:          p,
@@ -4131,7 +4133,7 @@ func registerSSAPkgs(ctx *context, initial []*packages.Package, verbose bool) ([
 				LinkArgs:         nil,
 				ObjFiles:         nil,
 				rewriteVars:      rewrites,
-				staticByteArrays: payloads,
+				staticByteArrays: ctx.staticByteArrays,
 			}
 			ctx.pkgs[p] = aPkg
 			ctx.pkgByID[p.ID] = aPkg

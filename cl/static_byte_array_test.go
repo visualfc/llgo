@@ -38,14 +38,18 @@ func TestStripLargeStaticByteArraySkipsSSAStores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file})
-	got := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")]
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file}, info)
+	got := payloads[StaticByteArrayKey(pkg.Path(), "Table")]
 	if len(got) != n || got[0] != 1 || got[n-1] != 1 {
 		t.Fatalf("payload = len %d data[0]=%d data[%d]=%d", len(got), got[0], n-1, got[n-1])
 	}
-	cl, ok := file.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec).Values[0].(*ast.CompositeLit)
-	if !ok || len(cl.Elts) != 0 {
-		t.Fatalf("composite literal was not stripped: %#v", cl)
+	vs := file.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	if len(vs.Values) != 0 {
+		t.Fatalf("initializer was not removed: %#v", vs.Values)
+	}
+	at, ok := vs.Type.(*ast.ArrayType)
+	if !ok || at.Len == nil {
+		t.Fatalf("stripped type = %#v, want [N]byte", vs.Type)
 	}
 
 	prog := ssa.NewProgram(fset, ssa.SanityCheckFunctions|ssa.InstantiateGenerics)
@@ -58,6 +62,11 @@ func TestStripLargeStaticByteArraySkipsSSAStores(t *testing.T) {
 			for _, instr := range b.Instrs {
 				if _, ok := instr.(*ssa.Store); ok {
 					stores++
+				}
+				if call, ok := instr.(*ssa.Call); ok {
+					if callee := call.Call.Value; callee != nil && strings.Contains(callee.String(), "memclr") {
+						t.Fatalf("init still memclr's stripped array: %v", call)
+					}
 				}
 			}
 		}
@@ -88,7 +97,7 @@ func TestStripLargeStaticByteArrayIgnoresSmallTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := StripLargeStaticByteArrays(types.NewPackage("p", "p"), []*ast.File{file}); got != nil {
+	if got := StripLargeStaticByteArrays(types.NewPackage("p", "p"), []*ast.File{file}, nil); got != nil {
 		t.Fatalf("small table was stripped: %v", got)
 	}
 	cl := file.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec).Values[0].(*ast.CompositeLit)
@@ -106,11 +115,11 @@ func TestStripLargeStaticByteArrayEllipsis(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg := types.NewPackage("p", "p")
-	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file})
-	if len(payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")]) != minStripStaticByteArray {
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file}, nil)
+	if len(payloads[StaticByteArrayKey(pkg.Path(), "Table")]) != minStripStaticByteArray {
 		t.Fatalf("ellipsis payload len = %d, want %d", len(payloads["Table"]), minStripStaticByteArray)
 	}
-	for i, b := range payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")] {
+	for i, b := range payloads[StaticByteArrayKey(pkg.Path(), "Table")] {
 		if b != 1 {
 			t.Fatalf("payload[%d] = %d, want 1", i, b)
 		}
@@ -127,21 +136,21 @@ func TestStripLargeStaticByteArrayIdempotent(t *testing.T) {
 	}
 	files := []*ast.File{file}
 	pkg := types.NewPackage("p", "p")
-	first := StripLargeStaticByteArrays(pkg, files)
-	fixed := first[StaticByteArrayKey(llssa.PathOf(pkg), "Fixed")]
-	ellipsis := first[StaticByteArrayKey(llssa.PathOf(pkg), "Ellipsis")]
+	first := StripLargeStaticByteArrays(pkg, files, nil)
+	fixed := first[StaticByteArrayKey(pkg.Path(), "Fixed")]
+	ellipsis := first[StaticByteArrayKey(pkg.Path(), "Ellipsis")]
 	if len(fixed) != n || fixed[0] != 9 || fixed[n-1] != 9 {
 		t.Fatalf("first Fixed payload = len %d", len(fixed))
 	}
 	if len(ellipsis) != n || ellipsis[0] != 7 {
 		t.Fatalf("first Ellipsis payload = len %d", len(ellipsis))
 	}
-	second := StripLargeStaticByteArrays(pkg, files)
+	second := StripLargeStaticByteArrays(pkg, files, nil)
 	if second != nil {
 		t.Fatalf("second strip should skip empty literals, got %d keys", len(second))
 	}
 	merged := MergeStaticByteArrays(first, second)
-	if merged[StaticByteArrayKey(llssa.PathOf(pkg), "Fixed")][0] != 9 || merged[StaticByteArrayKey(llssa.PathOf(pkg), "Ellipsis")][0] != 7 {
+	if merged[StaticByteArrayKey(pkg.Path(), "Fixed")][0] != 9 || merged[StaticByteArrayKey(pkg.Path(), "Ellipsis")][0] != 7 {
 		t.Fatal("merging a nil second strip overwrote payloads")
 	}
 }
@@ -154,7 +163,7 @@ func TestStripLargeStaticByteArraySkipsSparse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := StripLargeStaticByteArrays(types.NewPackage("p", "p"), []*ast.File{file}); got != nil {
+	if got := StripLargeStaticByteArrays(types.NewPackage("p", "p"), []*ast.File{file}, nil); got != nil {
 		t.Fatalf("sparse table was stripped: %v", got)
 	}
 	cl := file.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec).Values[0].(*ast.CompositeLit)
@@ -163,22 +172,32 @@ func TestStripLargeStaticByteArraySkipsSparse(t *testing.T) {
 	}
 }
 
-func TestStripLargeStaticByteArrayUsesPathOf(t *testing.T) {
+func TestStripLargeStaticByteArrayDistinctPackagePaths(t *testing.T) {
 	const n = minStripStaticByteArray
-	src := fmt.Sprintf("package main\n\nvar Table = [%d]byte{%s}\n", n, strings.Repeat("1, ", n))
+	srcA := fmt.Sprintf("package main\n\nvar Table = [%d]byte{%s}\n", n, strings.Repeat("1, ", n))
+	srcB := fmt.Sprintf("package main\n\nvar Table = [%d]byte{%s}\n", n, strings.Repeat("2, ", n))
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "main.go", src, 0)
+	fileA, err := parser.ParseFile(fset, "a.go", srcA, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pkg := types.NewPackage("command-line-arguments", "main")
-	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file})
-	if payloads[StaticByteArrayKey("command-line-arguments", "Table")] != nil {
-		t.Fatal("strip key used types.Path instead of PathOf")
+	fileB, err := parser.ParseFile(fset, "b.go", srcB, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	got := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")]
-	if len(got) != n || llssa.PathOf(pkg) != "main" {
-		t.Fatalf("main payload key = %q len %d", llssa.PathOf(pkg), len(got))
+	first := types.NewPackage("example.com/cmd/a", "main")
+	second := types.NewPackage("example.com/cmd/b", "main")
+	payloads := MergeStaticByteArrays(
+		StripLargeStaticByteArrays(first, []*ast.File{fileA}, nil),
+		StripLargeStaticByteArrays(second, []*ast.File{fileB}, nil),
+	)
+	if payloads[StaticByteArrayKey(llssa.PathOf(first), "Table")] != nil {
+		t.Fatal("payloads collided under PathOf(\"main\")")
+	}
+	gotA := payloads[StaticByteArrayKey(first.Path(), "Table")]
+	gotB := payloads[StaticByteArrayKey(second.Path(), "Table")]
+	if len(gotA) != n || gotA[0] != 1 || len(gotB) != n || gotB[0] != 2 {
+		t.Fatalf("distinct main paths missing: a=%v b=%v", gotA[:1], gotB[:1])
 	}
 
 	patched := types.NewPackage(abi.PatchPathPrefix+"runtime", "runtime")
@@ -187,13 +206,10 @@ func TestStripLargeStaticByteArrayUsesPathOf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payloads = StripLargeStaticByteArrays(patched, []*ast.File{file2})
-	if payloads[StaticByteArrayKey(abi.PatchPathPrefix+"runtime", "Table")] != nil {
-		t.Fatal("strip key used untrimmed patch path")
-	}
-	got = payloads[StaticByteArrayKey(llssa.PathOf(patched), "Table")]
-	if len(got) != n || got[0] != 2 || llssa.PathOf(patched) != "runtime" {
-		t.Fatalf("patched payload PathOf=%q len %d data[0]=%d", llssa.PathOf(patched), len(got), got[0])
+	payloads = StripLargeStaticByteArrays(patched, []*ast.File{file2}, nil)
+	got := payloads[StaticByteArrayKey(patched.Path(), "Table")]
+	if len(got) != n || got[0] != 2 {
+		t.Fatalf("patched payload path=%q len %d data[0]=%d", patched.Path(), len(got), got[0])
 	}
 }
 
@@ -222,14 +238,14 @@ func TestStripLargeStaticByteArraySkipsNonValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg := types.NewPackage("p", "p")
-	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{nil, file})
-	if payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")][0] != 2 {
-		t.Fatalf("Table payload = %v", payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")])
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{nil, file}, nil)
+	if payloads[StaticByteArrayKey(pkg.Path(), "Table")][0] != 2 {
+		t.Fatalf("Table payload = %v", payloads[StaticByteArrayKey(pkg.Path(), "Table")])
 	}
-	if _, ok := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "_")]; ok {
+	if _, ok := payloads[StaticByteArrayKey(pkg.Path(), "_")]; ok {
 		t.Fatal("blank identifier was stripped")
 	}
-	if _, ok := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Uninit")]; ok {
+	if _, ok := payloads[StaticByteArrayKey(pkg.Path(), "Uninit")]; ok {
 		t.Fatal("uninitialized array was stripped")
 	}
 }
@@ -302,7 +318,7 @@ func TestStaticByteArrayLitRejects(t *testing.T) {
 			}},
 		},
 	}
-	if got := StripLargeStaticByteArrays(types.NewPackage("p", "p"), []*ast.File{file}); got != nil {
+	if got := StripLargeStaticByteArrays(types.NewPackage("p", "p"), []*ast.File{file}, nil); got != nil {
 		t.Fatalf("non-value spec stripped: %v", got)
 	}
 }
@@ -328,10 +344,152 @@ func TestStripLargeStaticByteArrayKeyedAndChar(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkg := types.NewPackage("p", "p")
-	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file})
-	got := payloads[StaticByteArrayKey(llssa.PathOf(pkg), "Table")]
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file}, nil)
+	got := payloads[StaticByteArrayKey(pkg.Path(), "Table")]
 	if len(got) != n || got[0] != 1 || got[1] != 'A' || got[n-1] != 'A' {
 		t.Fatalf("keyed/char payload len %d [0]=%d [1]=%d [%d]=%d", len(got), got[0], got[1], n-1, got[n-1])
+	}
+}
+
+func TestStripLargeStaticByteArrayDecreasingKeys(t *testing.T) {
+	const n = minStripStaticByteArray
+	var b strings.Builder
+	b.WriteString("package p\n\nvar Table = [8192]byte{4095: 7, 0: 1")
+	for i := 0; i < n-2; i++ {
+		b.WriteString(", 2")
+	}
+	b.WriteString("}\n")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", b.String(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("p", "p")
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file}, nil)
+	got := payloads[StaticByteArrayKey(pkg.Path(), "Table")]
+	if len(got) != 8192 || got[0] != 1 || got[1] != 2 || got[4095] != 7 || got[4096] != 0 {
+		t.Fatalf("decreasing keys: len=%d [0]=%d [1]=%d [4095]=%d [4096]=%d", len(got), got[0], got[1], got[4095], got[4096])
+	}
+
+	var ellipsis strings.Builder
+	ellipsis.WriteString("package p\n\nvar Table = [...]byte{4095: 7, 0: 1")
+	for i := 0; i < n-2; i++ {
+		ellipsis.WriteString(", 2")
+	}
+	ellipsis.WriteString("}\n")
+	file2, err := parser.ParseFile(fset, "e.go", ellipsis.String(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = StripLargeStaticByteArrays(pkg, []*ast.File{file2}, nil)[StaticByteArrayKey(pkg.Path(), "Table")]
+	if len(got) != n || got[0] != 1 || got[1] != 2 || got[n-1] != 7 {
+		t.Fatalf("ellipsis decreasing keys: len=%d [0]=%d [1]=%d [%d]=%d", len(got), got[0], got[1], n-1, got[n-1])
+	}
+}
+
+func TestStripLargeStaticByteArrayRequiresByteArrayType(t *testing.T) {
+	const n = minStripStaticByteArray
+	check := func(src string) *ast.File {
+		t.Helper()
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, "p.go", src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info := &types.Info{Types: make(map[ast.Expr]types.TypeAndValue), Defs: make(map[*ast.Ident]types.Object), Uses: make(map[*ast.Ident]types.Object)}
+		conf := types.Config{Importer: gpackages.NewImporter(fset)}
+		pkg, err := conf.Check("p", fset, []*ast.File{file}, info)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := StripLargeStaticByteArrays(pkg, []*ast.File{file}, info); got != nil {
+			t.Fatalf("unexpected strip of %q: %v", src, got)
+		}
+		vs := file.Decls[len(file.Decls)-1].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+		if len(vs.Values) != 1 {
+			t.Fatalf("initializer removed for %q", src)
+		}
+		return file
+	}
+	check(fmt.Sprintf("package p\n\nvar Table any = [%d]byte{%s}\n", n, strings.Repeat("1, ", n)))
+	check(fmt.Sprintf("package p\n\ntype byte = uint16\nvar Table = [%d]byte{%s}\n", n, strings.Repeat("1, ", n)))
+}
+
+func TestStripLargeStaticByteArraySkipsLocality(t *testing.T) {
+	const n = minStripStaticByteArray
+	src := fmt.Sprintf("package p\n\n//llgointernal:gls\nvar Table = [%d]byte{%s}\n", n, strings.Repeat("1, ", n))
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("p", "p")
+	if got := StripLargeStaticByteArrays(pkg, []*ast.File{file}, nil); got != nil {
+		t.Fatalf("gls table was stripped: %v", got)
+	}
+	vs := file.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	if len(vs.Values) != 1 {
+		t.Fatal("gls initializer was removed")
+	}
+}
+
+func TestStripLargeStaticByteArraySkipsLinknameAlias(t *testing.T) {
+	const n = minStripStaticByteArray
+	src := fmt.Sprintf("package p\n\nimport _ \"unsafe\"\n\n//go:linkname alias example.com/target.Table\nvar alias = [%d]byte{%s}\n", n, strings.Repeat("1, ", n))
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("p", "p")
+	if got := StripLargeStaticByteArrays(pkg, []*ast.File{file}, nil); got != nil {
+		t.Fatalf("linkname alias was stripped: %v", got)
+	}
+	vs := file.Decls[len(file.Decls)-1].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	if len(vs.Values) != 1 {
+		t.Fatal("linkname alias initializer was removed")
+	}
+}
+
+func TestInitStaticByteArrayGlobalUsesObjectPackage(t *testing.T) {
+	const n = minStripStaticByteArray
+	src := fmt.Sprintf("package p\n\nvar Table = [%d]byte{%s}\n\nfunc Use() byte { return Table[0] + Table[%d] }\n", n, strings.Repeat("1, ", n), n-1)
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Defs:  make(map[*ast.Ident]types.Object),
+		Uses:  make(map[*ast.Ident]types.Object),
+	}
+	conf := types.Config{Importer: gpackages.NewImporter(fset)}
+	pkg, err := conf.Check("p", fset, []*ast.File{file}, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloads := StripLargeStaticByteArrays(pkg, []*ast.File{file}, info)
+	if len(payloads[StaticByteArrayKey(pkg.Path(), "Table")]) != n {
+		t.Fatalf("payload missing: %v", payloads)
+	}
+	prog := ssa.NewProgram(fset, ssa.SanityCheckFunctions|ssa.InstantiateGenerics)
+	ssaPkg := prog.CreatePackage(pkg, []*ast.File{file}, info, true)
+	ssaPkg.Build()
+	ssaPkg.Pkg = types.NewPackage("github.com/xgo-dev/llgo/runtime/internal/lib/p", "p")
+
+	llprog := ssatest.NewProgramEx(t, nil, conf.Importer)
+	llprog.TypeSizes(types.SizesFor("gc", "arm64"))
+	ret, _, err := NewPackageExWithEmbedMetaOptions(llprog, nil, nil, nil, ssaPkg, []*ast.File{file}, nil, false, Options{StaticByteArrays: payloads})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir := ret.String()
+	if !strings.Contains(ir, fmt.Sprintf("@p.Table = global [%d x i8]", n)) {
+		t.Fatalf("missing static byte array global:\n%s", ir)
+	}
+	if strings.Contains(ir, "zeroinitializer") {
+		t.Fatalf("patched package path missed payload restore:\n%s", ir)
 	}
 }
 
