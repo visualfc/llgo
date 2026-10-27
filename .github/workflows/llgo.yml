@@ -242,6 +242,7 @@ jobs:
           "$LLGO" run -O0 ./internal/build/testdata/wasm-fmt-literal-debugger
 
           # Native thread and TLS regressions live outside test/.
+          (cd runtime && "$LLGO" test -v -count=1 -timeout=2m ./internal/wordmap)
           (cd runtime && "$LLGO" test -v -run '^TestSlot(GCAllocation|DestructorGCRegistration)$' -count=20 -timeout=2m ./internal/clite/tls)
           if [[ "$RUNNER_OS" != Windows ]]; then
             (cd runtime && "$LLGO" test -v -run '^Test(KeyNativeLayout|DetachedStateNativeValue)$' -timeout=2m ./internal/thread)
@@ -1142,6 +1143,7 @@ jobs:
           llgo_dev="$RUNNER_TEMP/llgo-map-metadata"
           go build -tags=dev -o "$llgo_dev" ./cmd/llgo
           for target in wasi emscripten emscripten-memory64; do
+            (cd runtime && "$LLGO" test -target "$target" -emulator -v -count=1 -timeout=2m ./internal/wordmap)
             "$LLGO" test -target "$target" -emulator -v -count=1 -timeout=2m \
               -run '^TestLiteral' ./test/std/fmt
             "$LLGO" run -target "$target" -emulator -O2 \
