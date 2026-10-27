@@ -198,6 +198,7 @@
       const layout = runtimeLayouts[String(record.runtime_layout_version)] || null;
       this.modules.set(rawModuleId, {
         rawModuleId, rawModule, symbolsURL, record, index, sources, sourceByURL, types, typesByName, layout,
+        functionValues: new Map((index.function_values || []).map(value => [String(value.index), value])),
       });
       const ready = await this.fetcher(new URL('/__llgo/plugin-ready', rawModule.url).href, {
         cache: 'no-store',
@@ -678,12 +679,17 @@
       const data = await this.readUnsigned(
           address + BigInt(dataField.offset), module.record.pointer_size, stopId);
       if (code === 0n) return {type: 'null', value: null, description: 'nil', hasChildren: false};
-      // A Wasm function pointer is a table index, not a code-section offset.
-      // Resolving it needs the table/element mapping, which the index does not
-      // yet contain. Keep the index explicit instead of guessing a DWARF name.
+      // Join through the final module's table, never treat a table index as a
+      // DWARF code offset. Unknown entries retain their raw code/data view.
+      const info = module.functionValues?.get(String(code));
       let name = `func[${code}]`;
+      if (info) name += ` ${info.name}`;
       if (data !== 0n) name += ` data=0x${data.toString(16)}`;
-      const objectId = this.storeObject(module, type, address, stopId, 'aggregate');
+      const environment = info?.environment && resolvePointee(module, module.types.get(info.environment));
+      const objectId = this.storeObject(module, type, address, stopId, 'function', {
+        environment: environment?.kind === 'struct' && environment.complete ? environment : null,
+        context: data,
+      });
       return {
         type: 'object', className: originalType.name || type.name, description: name,
         objectId, hasChildren: true,
@@ -848,6 +854,10 @@
         result.push({name: field.name, value: await this.remoteObject(module, fieldType, {
           kind: 'address', value: object.address + BigInt(field.offset),
         }, object.stopId)});
+      }
+      if (object.kind === 'function' && object.environment && object.context !== 0n) {
+        result.push({name: 'captures', value: await this.remoteObject(module, object.environment,
+          {kind: 'address', value: object.context}, object.stopId)});
       }
       return result;
     }
