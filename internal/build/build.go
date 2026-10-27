@@ -943,7 +943,7 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	prog.SetDebugInfoOptimized(passOpt && conf.OptLevel != optlevel.O0)
 	progSSA := ssa.NewProgram(initial[0].Fset, buildMode)
 	patches := make(cl.Patches, len(altPkgPaths))
-	altEntries := registerAltSSAPkgs(progSSA, patches, altPkgs[1:], conf, verbose)
+	altEntries, altByteArrays := registerAltSSAPkgs(progSSA, patches, altPkgs[1:], conf, verbose)
 	prepareSpan := buildTrace.startCoordinator("prepare shared backend state", nil)
 	if err := preloadPatchedPackageSyntax(prog, patches, dedup, preloadOptions, sourcePatchGOROOT); err != nil {
 		prepareSpan.done()
@@ -964,21 +964,22 @@ func buildInvocation(inv Invocation, plan *initialBuildPlan) (result []Package, 
 	ctx := &context{conf: cfg, progSSA: progSSA, prog: prog, dedup: dedup,
 		patches: patches, callerTracking: cl.NewCallerTracking(),
 		initial: initial, mode: mode,
-		fingerprinting:  make(map[string]bool),
-		pkgs:            map[*packages.Package]Package{},
-		pkgByID:         map[string]Package{},
-		cacheManager:    newCacheManager(),
-		patchFiles:      llgoFiles,
-		output:          output,
-		passOpt:         passOpt,
-		buildConf:       conf,
-		crossCompile:    export,
-		commands:        commands,
-		frontendOptions: frontendOptions,
-		cTransformer:    cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, true),
-		buildTrace:      buildTrace,
-		goVersion:       sourcePatchGoVersion,
-		defaultGODEBUG:  defaultGODEBUG,
+		fingerprinting:   make(map[string]bool),
+		pkgs:             map[*packages.Package]Package{},
+		pkgByID:          map[string]Package{},
+		cacheManager:     newCacheManager(),
+		patchFiles:       llgoFiles,
+		output:           output,
+		passOpt:          passOpt,
+		buildConf:        conf,
+		crossCompile:     export,
+		commands:         commands,
+		frontendOptions:  frontendOptions,
+		staticByteArrays: altByteArrays,
+		cTransformer:     cabi.NewTransformer(prog, export.LLVMTarget, export.TargetABI, true),
+		buildTrace:       buildTrace,
+		goVersion:        sourcePatchGoVersion,
+		defaultGODEBUG:   defaultGODEBUG,
 	}
 	defer ctx.closePackageMetas()
 	defer ctx.closePackageArchiveBuffers()
@@ -1796,6 +1797,7 @@ type context struct {
 	crossCompile      crosscompile.Export
 	commands          commandEnv
 	frontendOptions   cl.Options
+	staticByteArrays  map[string][]byte
 	wasmRuntimeFree   bool
 	wasmClosedProgram bool // true when native inputs cannot introduce untracked Go references
 
@@ -3474,6 +3476,7 @@ func preparePackageModule(ctx *context, aPkg *aPackage, verbose bool) ([]string,
 	// wrappers are generated in the uncached final-link module.
 	// package C retains its direct, unqualified definitions in its own module.
 	options.CExportWrappers = needsCExportWrappers(ctx, aPkg)
+	options.StaticByteArrays = aPkg.staticByteArrays
 	ret, externs, err := cl.NewPackageExWithEmbedMetaOptions(
 		ctx.prog, ctx.callerTracking, ctx.patches, aPkg.rewriteVars,
 		aPkg.SSA, syntax, embedMap, needMeta, options)
@@ -4021,13 +4024,15 @@ type ssaBuildEntry struct {
 	complexity int64
 }
 
-func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.Package, conf *Config, verbose bool) []ssaBuildEntry {
+func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.Package, conf *Config, verbose bool) ([]ssaBuildEntry, map[string][]byte) {
 	var entries []ssaBuildEntry
+	var payloads map[string][]byte
 	packages.Visit(alts, nil, func(p *packages.Package) {
 		if typs := p.Types; typs != nil && !p.IllTyped {
 			if debugBuild || verbose {
 				log.Println("==> BuildSSA", p.ID)
 			}
+			payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(typs, p.Syntax))
 			pkgSSA := prog.CreatePackage(typs, p.Syntax, p.TypesInfo, true)
 			entries = append(entries, ssaBuildEntry{id: p.ID, pkg: pkgSSA, syntax: p.Syntax})
 			if strings.HasPrefix(p.ID, altPkgPathPrefix) {
@@ -4045,7 +4050,7 @@ func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.
 			}
 		}
 	})
-	return entries
+	return entries, payloads
 }
 
 type aPackage struct {
@@ -4059,13 +4064,14 @@ type aPackage struct {
 	ssaInstructions int64
 	linkSnapshot    *packageLinkSnapshot
 
-	LinkArgs     []string
-	ObjFiles     []string               // file-backed archive members: .o or .ll
-	ObjBuffers   []packageArchiveBuffer // LLVM-produced in-memory archive members
-	ArchiveFile  string                 // archive file: .a (output of archiver, used for linking)
-	Meta         *meta.PackageMeta
-	rewriteVars  map[string]string
-	tempObjFiles []string // process-private C/C++/assembly objects consumed by ArchiveFile
+	LinkArgs         []string
+	ObjFiles         []string               // file-backed archive members: .o or .ll
+	ObjBuffers       []packageArchiveBuffer // LLVM-produced in-memory archive members
+	ArchiveFile      string                 // archive file: .a (output of archiver, used for linking)
+	Meta             *meta.PackageMeta
+	rewriteVars      map[string]string
+	staticByteArrays map[string][]byte
+	tempObjFiles     []string // process-private C/C++/assembly objects consumed by ArchiveFile
 
 	// Cache related fields
 	Fingerprint string // fingerprint digest
@@ -4110,6 +4116,12 @@ func registerSSAPkgs(ctx *context, initial []*packages.Package, verbose bool) ([
 				}
 			}
 			rewrites := collectRewriteVars(ctx, pkgPath)
+			payloads := cl.StripLargeStaticByteArrays(p.Types, p.Syntax)
+			if altPkg != nil {
+				payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(altPkg.Types, altPkg.Syntax))
+			}
+			payloads = cl.MergeStaticByteArrays(payloads, ctx.staticByteArrays)
+			ctx.staticByteArrays = cl.MergeStaticByteArrays(ctx.staticByteArrays, payloads)
 			aPkg := &aPackage{
 				Package:     p,
 				SSA:         ssaPkg,

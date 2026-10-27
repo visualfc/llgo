@@ -405,6 +405,7 @@ func (ctx *context) newBackendTask(session backendSession) *context {
 		crossCompile:      ctx.crossCompile,
 		commands:          ctx.commands,
 		frontendOptions:   ctx.frontendOptions,
+		staticByteArrays:  ctx.staticByteArrays,
 		wasmClosedProgram: ctx.wasmClosedProgram,
 		cTransformer:      session.transformer,
 		buildTrace:        ctx.buildTrace,
