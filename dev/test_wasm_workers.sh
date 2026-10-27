@@ -160,7 +160,7 @@ run_worker_pool_gc_test() {
 	local output="${work_dir}/test-pool-gc-emscripten.out"
 	run_with_timeout env LLGO_WASM_WORKERS=2 "${llgo_cmd}" test \
 		-target emscripten -emulator -v -count=1 -timeout=180s \
-		-run '^TestPoolAfterGC$' "${repo_root}/test/std/sync" 2>&1 | tee "${output}"
+		-run '^TestPool(AfterGC|ManyOwners)$' "${repo_root}/test/std/sync" 2>&1 | tee "${output}"
 	grep -Fq "PASS" "${output}"
 }
 

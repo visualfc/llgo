@@ -282,7 +282,7 @@ jobs:
       - name: Test traceback formatter with coverage
         shell: bash
         working-directory: runtime
-        run: python ../.github/scripts/run_go_tests.py --output-dir ../go-test-timings traceback go test -json -coverprofile=../coverage-traceback.txt -covermode=set ./internal/traceback
+        run: python ../.github/scripts/run_go_tests.py --output-dir ../go-test-timings traceback go test -json -coverprofile=../coverage-traceback.txt -covermode=set ./internal/traceback ./internal/wordmap
 
       - name: Test with embedded emulator env
         env:
