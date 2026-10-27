@@ -1139,6 +1139,8 @@ jobs:
         run: |
           bash dev/test_wasm_stdlib_test.sh
           bash dev/test_wasm_stdlib.sh
+          llgo_dev="$RUNNER_TEMP/llgo-map-metadata"
+          go build -tags=dev -o "$llgo_dev" ./cmd/llgo
           for target in wasi emscripten emscripten-memory64; do
             "$LLGO" test -target "$target" -emulator -v -count=1 -timeout=2m \
               -run '^TestLiteral' ./test/std/fmt
@@ -1146,6 +1148,8 @@ jobs:
               ./internal/build/testdata/wasm-fmt-literal-callers
             "$LLGO" run -target "$target" -emulator -tags=llgo.wasm.debugger \
               ./internal/build/testdata/wasm-fmt-literal-debugger
+            "$llgo_dev" run -target "$target" -emulator -deadcodedrop -Oz \
+              ./internal/build/testdata/wasm-map-metadata
           done
 
       - name: Run caller and large-function regressions on browser targets

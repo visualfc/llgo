@@ -181,6 +181,97 @@ func (p Package) regularMemoryEqual(size uint64) Expr {
 	return fn.Expr
 }
 
+// Match typehashImpl exactly, including its distinct 4/8-byte algorithms.
+func (p Package) regularMemoryHash(size uint64) Expr {
+	// Omit size 0: typehashImpl calls memhash(p, seed, 0), whereas memhash0
+	// returns the seed unchanged. Zero-sized keys need the wrapper below.
+	switch size {
+	case 1, 2, 4, 8, 16:
+		return p.rtFunc("memhash" + strconv.FormatUint(size*8, 10))
+	}
+	name := "_llgo_memhash." + strconv.FormatUint(size, 10)
+	fn := p.FuncOf(name)
+	if fn == nil {
+		fn = p.NewFunc(name, hashFunc, GoDecl)
+		fn.impl.SetLinkage(llvm.WeakODRLinkage)
+		builder := fn.MakeBody(1)
+		defer builder.Dispose()
+		builder.Return(builder.Call(p.rtFunc("memhash"), fn.Param(0), fn.Param(1), p.Prog.IntVal(size, p.Prog.Uintptr())))
+		builder.EndBuild()
+	}
+	return fn.Expr
+}
+
+func (b Builder) abiMapHasher(key types.Type, global llvm.Value) Expr {
+	prog, pkg := b.Prog, b.Pkg
+	var hash Expr
+	if prog.enableDeadcodeDrop && prog.target.effectiveGOARCH() == "wasm" {
+		if prog.abi.IsRegularMemory(key) {
+			hash = pkg.regularMemoryHash(uint64(prog.abi.Size(key)))
+		} else if basic, ok := key.Underlying().(*types.Basic); ok {
+			var name string
+			switch basic.Kind() {
+			case types.String:
+				name = "strhash"
+			case types.Float32:
+				name = "f32hash"
+			case types.Float64:
+				name = "f64hash"
+			case types.Complex64:
+				name = "c64hash"
+			case types.Complex128:
+				name = "c128hash"
+			}
+			if name != "" {
+				hash = pkg.rtFunc(name)
+			}
+		}
+	}
+	if !hash.IsNil() {
+		pkg.recordAbiTypeFakeUse(global, hash.impl)
+		return checkExpr(hash, prog.Type(hashFunc, GoDecl).raw.Type, b)
+	}
+	hash = pkg.rtEnvFunc("typehash")
+	pkg.recordAbiTypeFakeUse(global, hash.impl)
+	return b.aggregateValue(prog.Type(hashFunc, GoDecl), hash.impl, b.abiType(key).impl)
+}
+
+func (b Builder) abiMapBucket(t *types.Map, bucket types.Type) Expr {
+	prog, pkg := b.Prog, b.Pkg
+	if !prog.enableDeadcodeDrop || prog.target.effectiveGOARCH() != "wasm" {
+		return b.abiType(bucket)
+	}
+	// Buckets are allocator records, not source Go values. Like reflect.bucketOf,
+	// retain their physical layout without comparison algorithms or fields.
+	// A separate symbol prevents sharing the stripped descriptor with any Go
+	// struct of the same layout, and keeps it out of the reflection type list.
+	name, _ := prog.abi.TypeName(t)
+	name += "$bucket"
+	g := pkg.VarOf(name)
+	if g == nil {
+		ab := prog.abi
+		typ := prog.AbiType()
+		g = pkg.doNewVar(name, prog.AbiTypePtr())
+		fields := []llvm.Value{
+			prog.IntVal(uint64(ab.Size(bucket)), prog.Uintptr()).impl,
+			prog.IntVal(uint64(ab.PtrBytes(bucket)), prog.Uintptr()).impl,
+			prog.IntVal(0, prog.Uint32()).impl, // Hash
+			prog.IntVal(0, prog.Byte()).impl,   // TFlag
+			prog.IntVal(uint64(ab.Align(bucket)), prog.Byte()).impl,
+			prog.IntVal(uint64(ab.FieldAlign(bucket)), prog.Byte()).impl,
+			prog.IntVal(uint64(ab.Kind(bucket)), prog.Byte()).impl,
+			prog.Nil(prog.Type(equalFunc, GoDecl)).impl,
+			prog.Nil(prog.Pointer(prog.Byte())).impl, // GCData, as for other static types
+			b.Str("bucket").impl,
+			prog.Nil(prog.AbiTypePtr()).impl,
+		}
+		g.impl.SetInitializer(prog.constStructValue(typ, fields))
+		g.impl.SetGlobalConstant(true)
+		pkg.setODRLinkage(g.impl, llvm.WeakODRLinkage)
+	}
+	return Expr{g.impl, prog.AbiTypePtr()}
+}
+
 /*
 type StructField struct {
 	Name_  string  // name is always non-empty
@@ -354,17 +445,14 @@ func (b Builder) abiExtendedFields(t types.Type, name string, global llvm.Value)
 		if flags&2 != 0 {
 			elemSize = prog.abi.PtrSize
 		}
-		hash := b.Pkg.rtEnvFunc("typehash")
-		b.Pkg.recordAbiTypeFakeUse(global, hash.impl)
-		env := b.abiType(t.Key())
-		hasher := b.aggregateValue(prog.Type(hashFunc, GoDecl), hash.impl, env.impl)
+		hasher := b.abiMapHasher(t.Key(), global)
 		fields = []llvm.Value{
 			b.abiType(abi.PublicType(t.Key())).impl,
 			// Map operations use Elem for physical copies during bucket
 			// evacuation. Keep LLGo's two-word closure representation here;
 			// reflect converts it back to the public function type in Elem.
 			b.abiType(t.Elem()).impl,
-			b.abiType(bucket).impl,
+			b.abiMapBucket(t, bucket).impl,
 			hasher.impl,
 			prog.IntVal(uint64(keySize), prog.Byte()).impl,
 			prog.IntVal(uint64(elemSize), prog.Byte()).impl,
