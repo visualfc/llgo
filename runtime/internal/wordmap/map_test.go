@@ -87,6 +87,29 @@ func TestWrappedCollisionDeletion(t *testing.T) {
 	}
 }
 
+func TestOverwriteAtGrowthThreshold(t *testing.T) {
+	var table Map[uintptr, int]
+	for k := uintptr(1); k <= 6; k++ {
+		table.Set(k, int(k))
+	}
+	capacity := len(table.entries)
+	for repeat := 0; repeat < 100; repeat++ {
+		for k := uintptr(1); k <= 6; k++ {
+			table.Set(k, repeat)
+			if table.Get(k) != repeat {
+				t.Fatal("overwrite lost its value")
+			}
+		}
+	}
+	if len(table.entries) != capacity || table.count != 6 {
+		t.Fatal("overwriting existing keys grew the table")
+	}
+	table.Set(7, 7)
+	if len(table.entries) <= capacity || table.Get(7) != 7 {
+		t.Fatal("inserting a new key did not grow the table")
+	}
+}
+
 func TestPointerRoots(t *testing.T) {
 	var table Map[unsafe.Pointer, *[64]int]
 	for i := 0; i < 256; i++ {
