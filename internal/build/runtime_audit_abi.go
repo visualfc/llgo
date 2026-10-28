@@ -20,6 +20,10 @@ import (
 // Layouts are measured from the selected sources, using gc's target sizes for
 // GOROOT and LLVM's actual LLGo representation (including two-word funcvals)
 // for LLGo. Matching an offset alone would not establish ABI compatibility.
+// Blockers combines measured layout differences with standing compatibility
+// gates for representations, calling conventions and scheduler/stack support.
+// GoRuntimeASMReady stays false until those gates are independently qualified;
+// it is not inferred from matching sizes or offsets.
 type RuntimeABI struct {
 	LLGoTarget         string            `json:"llgo_target"`
 	GoType             RuntimeTypeLayout `json:"go_type"`
@@ -77,12 +81,6 @@ func auditRuntimeABI(runtimeDir, goroot, goVersion string, target *llssa.Target)
 		LLGoType:         RuntimeTypeLayout{Size: prog.SizeOf(lltyp), Align: prog.AlignOf(lltyp)},
 		GoFuncValueBytes: uint64(sizes.Sizeof(sig)), LLGoFuncValueBytes: prog.SizeOf(prog.Type(sig, llssa.GoDecl)),
 		ClosureTransport: target.ClosureEnvBuildTag(),
-		Blockers: []string{
-			"Go and LLGo type descriptors and function values have different representations; matching fields do not permit reinterpretation",
-			"LLVM nest/swiftself or explicit environments are not Go ABIInternal register/argument transport",
-			"LLGo g/m/p and backend contexts do not provide Go g0, gobuf, getg/TLS or generated runtime offsets",
-			"Native pthread stacks and Wasm contexts do not provide Go stack growth, stack maps, write barriers or preemption",
-		},
 	}
 	var fields []*types.Var
 	for i := 0; i < gc.NumFields(); i++ {
@@ -97,7 +95,28 @@ func auditRuntimeABI(runtimeDir, goroot, goVersion string, target *llssa.Target)
 		ft := prog.Type(field.Type(), llssa.GoDecl)
 		report.LLGoType.Fields = append(report.LLGoType.Fields, RuntimeFieldLayout{field.Name(), field.Type().String(), prog.OffsetOf(lltyp, i), prog.SizeOf(ft)})
 	}
+	report.Blockers = runtimeABIBlockers(report)
 	return report, nil
+}
+
+func runtimeABIBlockers(abi *RuntimeABI) []string {
+	var blockers []string
+	// Compare physical layout only: matching geometry does not qualify the
+	// field meanings or the representations behind pointers and funcvals.
+	if abi.GoType.Size != abi.LLGoType.Size || abi.GoType.Align != abi.LLGoType.Align ||
+		!slices.EqualFunc(abi.GoType.Fields, abi.LLGoType.Fields, func(a, b RuntimeFieldLayout) bool {
+			return a.Offset == b.Offset && a.Size == b.Size
+		}) {
+		blockers = append(blockers, "Go and LLGo type descriptor sizes, alignments or field layouts differ")
+	}
+	if abi.GoFuncValueBytes != abi.LLGoFuncValueBytes {
+		blockers = append(blockers, fmt.Sprintf("Go and LLGo function-value sizes differ: %d and %d bytes", abi.GoFuncValueBytes, abi.LLGoFuncValueBytes))
+	}
+	return append(blockers,
+		"Type descriptor semantics, function-value representations and LLVM nest/swiftself or explicit environments still require Go ABIInternal qualification",
+		"LLGo g/m/p and backend contexts do not provide Go g0, gobuf, getg/TLS or generated runtime offsets",
+		"Native pthread stacks and Wasm contexts do not provide Go stack growth, stack maps, write barriers or preemption",
+	)
 }
 
 // Keep only the descriptor and its boundary scalar types. This intentionally

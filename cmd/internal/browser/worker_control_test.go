@@ -450,7 +450,7 @@ func TestCDPCanceledWritePreservesOtherTargets(t *testing.T) {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		// Exceed socket buffering so cancellation occurs during the write.
+		// Keep the server's first request outstanding until cancellation.
 		result <- client.call(request, "exiting", "Runtime.evaluate", map[string]any{
 			"expression": strings.Repeat(" ", 32<<20),
 		}, nil)
@@ -461,16 +461,14 @@ func TestCDPCanceledWritePreservesOtherTargets(t *testing.T) {
 		t.Fatal("request did not reach the server")
 	}
 	cancel()
-	// Let cancellation interrupt an incorrectly request-scoped write before
-	// allowing the server to drain the message and accept the next command.
+	close(release)
 	select {
 	case err := <-result:
-		result <- err
-	case <-time.After(50 * time.Millisecond):
-	}
-	close(release)
-	if err := <-result; !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled request: %v", err)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled request: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("canceled request did not finish")
 	}
 	if err := client.call(ctx, "surviving", "Runtime.getIsolateId", map[string]any{}, nil); err != nil {
 		t.Fatalf("canceling one request closed the shared connection: %v", err)

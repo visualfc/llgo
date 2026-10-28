@@ -24,6 +24,10 @@ type RuntimeBoundary struct {
 }
 
 func (a *runtimeAuditor) externalBoundaries(report *RuntimeOwnership) error {
+	nativeProviders, err := runtimeNativeProviders(runtimeNativeOwners)
+	if err != nil {
+		return err
+	}
 	// Resolving a Go alias can add a provider outside the four inventoried
 	// runtime packages, such as internal/coverage/rtcov.AddMeta.
 	for _, symbol := range append([]RuntimeSymbol(nil), report.Symbols...) {
@@ -32,7 +36,7 @@ func (a *runtimeAuditor) externalBoundaries(report *RuntimeOwnership) error {
 		}
 		boundary := RuntimeBoundary{Symbol: symbol.Name, Target: symbol.Linkname}
 		if strings.HasPrefix(symbol.Linkname, "C.") || strings.HasPrefix(symbol.Linkname, "stdcall.") {
-			provider, ok := runtimeNativeProvider(symbol.Linkname)
+			provider, ok := nativeProviders[symbol.Linkname]
 			if !ok {
 				report.UnresolvedBoundaries = append(report.UnresolvedBoundaries, RuntimeUse{symbol.Linkname, symbol.Source, "native-provider"})
 				continue
@@ -207,13 +211,15 @@ C.llgo_wasi_gc_wait_uint32`,
 	{"C.llgo_windows_syscall", "LLGo Windows variable-arity syscall bridge", "runtime/internal/lib/runtime/_wrap/syscall_windows.S"},
 }
 
-func runtimeNativeProvider(symbol string) (runtimeNativeOwner, bool) {
-	for _, owner := range runtimeNativeOwners {
+func runtimeNativeProviders(owners []runtimeNativeOwner) (map[string]runtimeNativeOwner, error) {
+	providers := make(map[string]runtimeNativeOwner)
+	for _, owner := range owners {
 		for _, name := range strings.Fields(owner.symbols) {
-			if symbol == name {
-				return owner, true
+			if previous, ok := providers[name]; ok {
+				return nil, fmt.Errorf("runtime native provider %s has multiple entries: %q and %q", name, previous.owner, owner.owner)
 			}
+			providers[name] = owner
 		}
 	}
-	return runtimeNativeOwner{}, false
+	return providers, nil
 }

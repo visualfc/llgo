@@ -204,8 +204,12 @@ Upstream `newproc` runs through `systemstack` and expects Go's `g0`, `gobuf`,
 `getg`/TLS, scheduler fields and generated offsets. LLGo's pthread and Wasm
 execution contexts do not satisfy that contract. A rename or register shim
 cannot supply growable stacks, stack maps, write barriers, safe points and
-preemption. The report therefore keeps `go_runtime_assembly_ready=false` and
-lists the blockers. Scheduler/stack/GC migration requires a separate design
+preemption. The report's `blockers` includes measured descriptor-layout and
+function-value size differences only when present, followed by standing
+representation, calling-convention and scheduler/stack/GC compatibility gates.
+Matching sizes or offsets does not waive those gates, so
+`go_runtime_assembly_ready` remains false until they are independently qualified.
+Scheduler/stack/GC migration requires a separate design
 and runtime validation before adopting `newproc`, `morestack` or `mcall`.
 
 This closes the incremental reuse qualification, with platform backends as

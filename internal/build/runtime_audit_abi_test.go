@@ -3,11 +3,59 @@ package build
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/env"
 )
+
+func TestRuntimeABIBlockersFollowLayouts(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		size, align, offset uint64
+		fields              int
+		funcSize            uint64
+		wantType, wantFunc  bool
+	}{
+		{"matching-layouts", 16, 8, 8, 2, 8, false, false},
+		{"descriptor-size", 24, 8, 8, 2, 8, true, false},
+		{"descriptor-align", 16, 4, 8, 2, 8, true, false},
+		{"descriptor-offset", 16, 8, 4, 2, 8, true, false},
+		{"descriptor-fields", 16, 8, 8, 1, 8, true, false},
+		{"funcval-size", 16, 8, 8, 2, 16, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			abi := &RuntimeABI{
+				GoType: RuntimeTypeLayout{Size: 16, Align: 8, Fields: []RuntimeFieldLayout{
+					{Name: "first", Offset: 0, Size: 8}, {Name: "second", Offset: 8, Size: 8},
+				}},
+				LLGoType: RuntimeTypeLayout{Size: tc.size, Align: tc.align, Fields: []RuntimeFieldLayout{
+					{Name: "first", Offset: 0, Size: 8}, {Name: "second", Offset: tc.offset, Size: 8},
+				}},
+				GoFuncValueBytes: 8, LLGoFuncValueBytes: tc.funcSize,
+			}
+			abi.LLGoType.Fields = abi.LLGoType.Fields[:tc.fields]
+			blockers := runtimeABIBlockers(abi)
+			for _, check := range []struct {
+				prefix string
+				want   bool
+			}{
+				{"Go and LLGo type descriptor", tc.wantType},
+				{"Go and LLGo function-value sizes", tc.wantFunc},
+			} {
+				if got := slices.ContainsFunc(blockers, func(b string) bool { return strings.HasPrefix(b, check.prefix) }); got != check.want {
+					t.Fatalf("blocker %q present = %v, want %v: %v", check.prefix, got, check.want, blockers)
+				}
+			}
+			for _, gate := range []string{"Go ABIInternal qualification", "Go g0", "Go stack growth"} {
+				if !slices.ContainsFunc(blockers, func(b string) bool { return strings.Contains(b, gate) }) {
+					t.Fatalf("matching layout must not waive compatibility gate %q: %v", gate, blockers)
+				}
+			}
+		})
+	}
+}
 
 func TestRuntimeMetadataRejectsInvalidBoundary(t *testing.T) {
 	src, err := os.ReadFile(filepath.Join(env.LLGoRuntimeDir(), "abi/type.go"))

@@ -290,6 +290,9 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 			if signed {
 				panicIndex = "PanicExtendIndex"
 			}
+		}
+		fn := b.Pkg.rtFunc(RuntimeSymbol(panicIndex, "PanicIndex", "PanicIndexU", "PanicExtendIndex", "PanicExtendIndexU"))
+		if extended {
 			checkBytes := prog.SizeOf(checkIdx.Type)
 			wordBytes := prog.SizeOf(prog.Uint())
 			if checkBytes != 8 || wordBytes != 4 {
@@ -302,9 +305,9 @@ func (b Builder) checkIndex(idx Expr, max Expr) Expr {
 				hiType = prog.Int()
 			}
 			hi := Expr{castInt(b, hi64, prog.Uint64(), hiType), hiType}
-			b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(panicIndex, "PanicIndex", "PanicIndexU", "PanicExtendIndex", "PanicExtendIndexU")), hi, lo, max)
+			b.InlineCall(fn, hi, lo, max)
 		} else {
-			b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(panicIndex, "PanicIndex", "PanicIndexU", "PanicExtendIndex", "PanicExtendIndexU")), nativeIdx, max)
+			b.InlineCall(fn, nativeIdx, max)
 		}
 		// Keep the failure path disconnected from the successful continuation,
 		// while retaining a post-call instruction for return-address line info.

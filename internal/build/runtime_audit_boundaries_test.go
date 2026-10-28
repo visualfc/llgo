@@ -41,16 +41,39 @@ func TestRuntimeAuditExternalProviders(t *testing.T) {
 }
 
 func TestRuntimeNativeOwnersAreUnique(t *testing.T) {
-	seen := make(map[string]bool)
+	providers, err := runtimeNativeProviders(runtimeNativeOwners)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, owner := range runtimeNativeOwners {
 		if owner.owner == "" {
 			t.Fatal("missing native provider")
 		}
 		for _, symbol := range strings.Fields(owner.symbols) {
-			if seen[symbol] {
-				t.Fatalf("multiple native owners for %s", symbol)
+			if got := providers[symbol]; got != owner {
+				t.Fatalf("provider for %s = %+v, want %+v", symbol, got, owner)
 			}
-			seen[symbol] = true
+		}
+	}
+}
+
+func TestRuntimeNativeProvidersRejectDuplicates(t *testing.T) {
+	for _, symbol := range []string{"C.shared", "stdcall.Shared"} {
+		for _, sameEntry := range []bool{false, true} {
+			owners := []runtimeNativeOwner{
+				{symbol + " C.first", "first adapter", "first.c"},
+				{"C.other\n" + symbol, "second adapter", "second.c"},
+			}
+			if sameEntry {
+				owners = []runtimeNativeOwner{{symbol + "\n" + symbol, "same adapter", "same.c"}}
+			}
+			providers, err := runtimeNativeProviders(owners)
+			if err == nil || !strings.Contains(err.Error(), symbol) || !strings.Contains(err.Error(), "multiple entries") {
+				t.Fatalf("duplicate %s (same entry: %v): providers=%v, error=%v", symbol, sameEntry, providers, err)
+			}
+			if providers != nil {
+				t.Fatalf("returned partial providers after duplicate %s: %v", symbol, providers)
+			}
 		}
 	}
 }
