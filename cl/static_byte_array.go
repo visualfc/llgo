@@ -69,6 +69,15 @@ func MergeStaticByteArrays(dst, src map[string][]byte) map[string][]byte {
 // with zeros. info.InitOrder entries for stripped variables are removed so
 // go/ssa does not rebuild the initializer from the type checker.
 func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File, info *types.Info) map[string][]byte {
+	return StripLargeStaticByteArraysExcept(pkg, files, info, nil)
+}
+
+// StripLargeStaticByteArraysExcept is StripLargeStaticByteArrays, leaving
+// names in skipped untouched. Partial patches collect skipped from the
+// alternate package via SkipNamesRetainingInit: processPkg omits those
+// original globals, so their InitOrder stores are the only initialization
+// of the replacement when original init is retained.
+func StripLargeStaticByteArraysExcept(pkg *types.Package, files []*ast.File, info *types.Info, skipped map[string]bool) map[string][]byte {
 	out := make(map[string][]byte)
 	pkgPath := ""
 	if pkg != nil {
@@ -96,7 +105,7 @@ func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File, info *typ
 				if name == nil || name.Name == "_" {
 					continue
 				}
-				if hasLocalityDirective(gd, vs) || aliases[name.Name] {
+				if skipped[name.Name] || hasLocalityDirective(gd, vs) || aliases[name.Name] {
 					continue
 				}
 				cl, ok := vs.Values[0].(*ast.CompositeLit)
@@ -128,6 +137,52 @@ func StripLargeStaticByteArrays(pkg *types.Package, files []*ast.File, info *typ
 		return nil
 	}
 	return out
+}
+
+// SkipNamesRetainingInit returns original globals that must keep executable
+// initialization. The alternate package skips them, but original init still
+// runs; processPkg then omits the original global, so restoring via
+// ConstByteArray never happens. skipall and //llgo:skip init drop original
+// init, so stripping those arrays remains valid.
+func SkipNamesRetainingInit(altFiles []*ast.File) map[string]bool {
+	names, skipall := patchSkipNames(altFiles)
+	if skipall || names["init"] {
+		return nil
+	}
+	return names
+}
+
+func patchSkipNames(files []*ast.File) (map[string]bool, bool) {
+	ctx := &context{skips: make(map[string]none)}
+	for _, file := range files {
+		if file == nil {
+			continue
+		}
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			switch gd.Tok {
+			case token.CONST, token.TYPE:
+				ctx.collectSkipNamesByDoc(gd.Doc)
+			case token.IMPORT:
+				if doc := gd.Doc; doc != nil {
+					if n := len(doc.List); n > 0 {
+						ctx.collectSkipNames(doc.List[n-1].Text)
+					}
+				}
+			}
+		}
+	}
+	if len(ctx.skips) == 0 && !ctx.skipall {
+		return nil, false
+	}
+	names := make(map[string]bool, len(ctx.skips))
+	for name := range ctx.skips {
+		names[name] = true
+	}
+	return names, ctx.skipall
 }
 
 func dropStaticByteArrayInit(info *types.Info, v *types.Var) {

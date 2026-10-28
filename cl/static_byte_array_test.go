@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	gpackages "github.com/goplus/gogen/packages"
+	"github.com/xgo-dev/llgo/internal/typepatch"
 	llssa "github.com/xgo-dev/llgo/ssa"
 	"github.com/xgo-dev/llgo/ssa/abi"
 	"github.com/xgo-dev/llgo/ssa/ssatest"
@@ -448,6 +449,224 @@ func TestStripLargeStaticByteArraySkipsLinknameAlias(t *testing.T) {
 	vs := file.Decls[len(file.Decls)-1].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
 	if len(vs.Values) != 1 {
 		t.Fatal("linkname alias initializer was removed")
+	}
+}
+
+func TestSkipNamesRetainingInit(t *testing.T) {
+	parse := func(src string) *ast.File {
+		t.Helper()
+		file, err := parser.ParseFile(token.NewFileSet(), "alt.go", src, parser.ParseComments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return file
+	}
+	got := SkipNamesRetainingInit([]*ast.File{parse("package p\n//llgo:skip Table Other\ntype marker int\nvar Table [4096]byte\n")})
+	if !got["Table"] || !got["Other"] || got["init"] {
+		t.Fatalf("skip names = %v", got)
+	}
+	if got := SkipNamesRetainingInit([]*ast.File{parse("package p\n//llgo:skipall\ntype marker int\nvar Table [4096]byte\n")}); got != nil {
+		t.Fatalf("skipall still retained names: %v", got)
+	}
+	if got := SkipNamesRetainingInit([]*ast.File{parse("package p\n//llgo:skip init Table\ntype marker int\n")}); got != nil {
+		t.Fatalf("skip init still retained names: %v", got)
+	}
+	if got := SkipNamesRetainingInit([]*ast.File{parse("package p\nvar Table [4096]byte\n")}); got != nil {
+		t.Fatalf("no skip directive returned %v", got)
+	}
+}
+
+func TestStripLargeStaticByteArraySkipsPatchSkipSet(t *testing.T) {
+	const n = minStripStaticByteArray
+	src := fmt.Sprintf("package p\n\nvar Table = [%d]byte{%s}\nvar Other = [%d]byte{%s}\n", n, strings.Repeat("1, ", n), n, strings.Repeat("2, ", n))
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &types.Info{
+		Types:     make(map[ast.Expr]types.TypeAndValue),
+		Defs:      make(map[*ast.Ident]types.Object),
+		Uses:      make(map[*ast.Ident]types.Object),
+		InitOrder: nil,
+	}
+	conf := types.Config{Importer: gpackages.NewImporter(fset)}
+	pkg, err := conf.Check("p", fset, []*ast.File{file}, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.InitOrder) != 2 {
+		t.Fatalf("InitOrder before strip = %d, want 2", len(info.InitOrder))
+	}
+	payloads := StripLargeStaticByteArraysExcept(pkg, []*ast.File{file}, info, map[string]bool{"Table": true})
+	if payloads[StaticByteArrayKey(pkg.Path(), "Table")] != nil {
+		t.Fatal("skipped Table was stripped")
+	}
+	gotOther := payloads[StaticByteArrayKey(pkg.Path(), "Other")]
+	if len(gotOther) != n || gotOther[0] != 2 {
+		t.Fatalf("Other payload = %v", gotOther)
+	}
+	table := file.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	if len(table.Values) != 1 {
+		t.Fatal("skipped Table initializer was removed")
+	}
+	other := file.Decls[1].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	if len(other.Values) != 0 {
+		t.Fatal("Other initializer was kept")
+	}
+	if len(info.InitOrder) != 1 || info.InitOrder[0].Lhs[0].Name() != "Table" {
+		t.Fatalf("InitOrder after strip = %v, want Table", info.InitOrder)
+	}
+}
+
+func TestStripLargeStaticByteArraySkipAllStillStrips(t *testing.T) {
+	const n = minStripStaticByteArray
+	alt, err := parser.ParseFile(token.NewFileSet(), "alt.go", "package p\n//llgo:skipall\ntype marker int\n", parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if SkipNamesRetainingInit([]*ast.File{alt}) != nil {
+		t.Fatal("skipall should not retain original init stores")
+	}
+	src := fmt.Sprintf("package p\n\nvar Table = [%d]byte{%s}\n", n, strings.Repeat("1, ", n))
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg := types.NewPackage("p", "p")
+	payloads := StripLargeStaticByteArraysExcept(pkg, []*ast.File{file}, nil, SkipNamesRetainingInit([]*ast.File{alt}))
+	if len(payloads[StaticByteArrayKey(pkg.Path(), "Table")]) != n {
+		t.Fatalf("skipall unexpectedly kept Table: %v", payloads)
+	}
+}
+
+func TestStripLargeStaticByteArrayKeepsStoresWhenPatchSkipsGlobal(t *testing.T) {
+	const n = minStripStaticByteArray
+	origSrc := fmt.Sprintf("package p\n\nvar Table = [%d]byte{%s}\n\nfunc Use() byte { return Table[0] + Table[%d] }\n", n, strings.Repeat("1, ", n), n-1)
+	altSrc := fmt.Sprintf("package p\n\n//llgo:skip Table\ntype marker int\nvar Table [%d]byte\n", n)
+
+	strippedStores := staticByteArrayPatchStores(t, origSrc, altSrc, false)
+	if strippedStores >= n {
+		t.Fatalf("stripped original still has %d init stores", strippedStores)
+	}
+	keptStores := staticByteArrayPatchStores(t, origSrc, altSrc, true)
+	if keptStores < n {
+		t.Fatalf("patch-skip original has %d init stores, want at least %d", keptStores, n)
+	}
+}
+
+func staticByteArrayPatchStores(t *testing.T, origSrc, altSrc string, keepSkipInit bool) int {
+	t.Helper()
+	fset := token.NewFileSet()
+	origFile, err := parser.ParseFile(fset, "p.go", origSrc, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	altFile, err := parser.ParseFile(fset, "alt.go", altSrc, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Defs:  make(map[*ast.Ident]types.Object),
+		Uses:  make(map[*ast.Ident]types.Object),
+	}
+	conf := types.Config{Importer: gpackages.NewImporter(fset)}
+	pkg, err := conf.Check("p", fset, []*ast.File{origFile}, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var except map[string]bool
+	if keepSkipInit {
+		except = SkipNamesRetainingInit([]*ast.File{altFile})
+		if !except["Table"] {
+			t.Fatal("expected Table in skip set")
+		}
+	}
+	StripLargeStaticByteArraysExcept(pkg, []*ast.File{origFile}, info, except)
+	prog := ssa.NewProgram(fset, ssa.SanityCheckFunctions|ssa.InstantiateGenerics)
+	ssaPkg := prog.CreatePackage(pkg, []*ast.File{origFile}, info, true)
+	ssaPkg.Build()
+	return countInitStores(ssaPkg)
+}
+
+func countInitStores(pkg *ssa.Package) int {
+	initFn := pkg.Func("init")
+	if initFn == nil {
+		return 0
+	}
+	stores := 0
+	for _, b := range initFn.Blocks {
+		for _, instr := range b.Instrs {
+			if _, ok := instr.(*ssa.Store); ok {
+				stores++
+			}
+		}
+	}
+	return stores
+}
+
+func TestInitStaticByteArrayGlobalKeepsPatchSkipStores(t *testing.T) {
+	const n = minStripStaticByteArray
+	origSrc := fmt.Sprintf("package p\n\nvar Table = [%d]byte{%s}\n\nfunc Use() byte { return Table[0] + Table[%d] }\n", n, strings.Repeat("1, ", n), n-1)
+	altSrc := fmt.Sprintf("package p\n\n//llgo:skip Table\ntype marker int\nvar Table [%d]byte\n", n)
+	fset := token.NewFileSet()
+	origFile, err := parser.ParseFile(fset, "p.go", origSrc, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	altFile, err := parser.ParseFile(fset, "alt.go", altSrc, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	origInfo := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Defs:  make(map[*ast.Ident]types.Object),
+		Uses:  make(map[*ast.Ident]types.Object),
+	}
+	altInfo := &types.Info{
+		Types: make(map[ast.Expr]types.TypeAndValue),
+		Defs:  make(map[*ast.Ident]types.Object),
+		Uses:  make(map[*ast.Ident]types.Object),
+	}
+	conf := types.Config{Importer: gpackages.NewImporter(fset)}
+	origPkg, err := conf.Check("p", fset, []*ast.File{origFile}, origInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	altPkg, err := conf.Check(abi.PatchPathPrefix+"p", fset, []*ast.File{altFile}, altInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	except := SkipNamesRetainingInit([]*ast.File{altFile})
+	payloads := StripLargeStaticByteArraysExcept(origPkg, []*ast.File{origFile}, origInfo, except)
+	if payloads[StaticByteArrayKey(origPkg.Path(), "Table")] != nil {
+		t.Fatal("skipped original Table was stripped")
+	}
+	prog := ssa.NewProgram(fset, ssa.SanityCheckFunctions|ssa.InstantiateGenerics)
+	origSSA := prog.CreatePackage(origPkg, []*ast.File{origFile}, origInfo, true)
+	altSSA := prog.CreatePackage(altPkg, []*ast.File{altFile}, altInfo, true)
+	origSSA.Build()
+	altSSA.Build()
+	if stores := countInitStores(origSSA); stores < n {
+		t.Fatalf("original init stores = %d, want at least %d", stores, n)
+	}
+
+	llprog := ssatest.NewProgramEx(t, nil, conf.Importer)
+	llprog.TypeSizes(types.SizesFor("gc", "arm64"))
+	ret, _, err := NewPackageExWithEmbedMetaOptions(llprog, nil, Patches{
+		"p": {Alt: altSSA, Types: typepatch.Clone(altPkg)},
+	}, nil, origSSA, []*ast.File{origFile, altFile}, nil, false, Options{StaticByteArrays: payloads})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir := ret.String()
+	if !strings.Contains(ir, fmt.Sprintf("@p.Table = global [%d x i8]", n)) {
+		t.Fatalf("missing replacement table:\n%s", ir)
+	}
+	if strings.Count(ir, "store i8") < n {
+		t.Fatalf("compiled init lost original stores:\n%s", ir)
 	}
 }
 

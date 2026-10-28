@@ -4032,10 +4032,17 @@ func registerAltSSAPkgs(prog *ssa.Program, patches cl.Patches, alts []*packages.
 			if debugBuild || verbose {
 				log.Println("==> BuildSSA", p.ID)
 			}
-			payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(typs, p.Syntax, p.TypesInfo))
+			// Only strip alt packages here. Original packages in this graph
+			// are stripped in registerSSAPkgs, where the alt skip set is
+			// known. Stripping them now would drop InitOrder before that
+			// eligibility check.
+			isAlt := strings.HasPrefix(p.ID, altPkgPathPrefix)
+			if isAlt {
+				payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(typs, p.Syntax, p.TypesInfo))
+			}
 			pkgSSA := prog.CreatePackage(typs, p.Syntax, p.TypesInfo, true)
 			entries = append(entries, ssaBuildEntry{id: p.ID, pkg: pkgSSA, syntax: p.Syntax})
-			if strings.HasPrefix(p.ID, altPkgPathPrefix) {
+			if isAlt {
 				path := p.ID[len(altPkgPathPrefix):]
 				// Even if an alt package exists and is pulled in as a dependency of other
 				// patches (e.g. runtime/reflect), we should only apply it when it is
@@ -4116,7 +4123,11 @@ func registerSSAPkgs(ctx *context, initial []*packages.Package, verbose bool) ([
 				}
 			}
 			rewrites := collectRewriteVars(ctx, pkgPath)
-			payloads := cl.StripLargeStaticByteArrays(p.Types, p.Syntax, p.TypesInfo)
+			var skipInit map[string]bool
+			if altPkg != nil {
+				skipInit = cl.SkipNamesRetainingInit(altPkg.Syntax)
+			}
+			payloads := cl.StripLargeStaticByteArraysExcept(p.Types, p.Syntax, p.TypesInfo, skipInit)
 			if altPkg != nil {
 				payloads = cl.MergeStaticByteArrays(payloads, cl.StripLargeStaticByteArrays(altPkg.Types, altPkg.Syntax, altPkg.TypesInfo))
 			}

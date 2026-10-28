@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+
+	"golang.org/x/tools/go/ssa"
 )
 
 func TestStaticByteArrayGlobalRoundTrip(t *testing.T) {
@@ -169,4 +172,98 @@ func TestStaticByteArrayLinknameAlias(t *testing.T) {
 	if strings.TrimSpace(string(got)) != "1 1" {
 		t.Fatalf("output = %q, want %q", got, "1 1")
 	}
+}
+
+func TestStaticByteArrayPatchSkipKeepsInit(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LLGO_ROOT", root)
+
+	origPath := filepath.Join(runtime.GOROOT(), "src", "internal", "abi", "abi.go")
+	orig, err := os.ReadFile(origPath)
+	if err != nil {
+		t.Skip(err)
+	}
+	altPath := filepath.Join(root, "runtime", "internal", "lib", "internal", "abi", "abi.go")
+	alt, err := os.ReadFile(altPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 4096
+	var lit strings.Builder
+	lit.Grow(n * 2)
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			lit.WriteByte(',')
+		}
+		lit.WriteByte('1')
+	}
+	orig = append(append([]byte{}, orig...), []byte(fmt.Sprintf("\nvar ReviewStaticTable = [%d]byte{%s}\nfunc init() { println(ReviewStaticTable[0], ReviewStaticTable[%d]) }\n", n, lit.String(), n-1))...)
+	alt = append(append([]byte{}, alt...), []byte("\n//llgo:skip ReviewStaticTable\ntype reviewStaticByteArraySkip int\nvar ReviewStaticTable [4096]byte\n")...)
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.local/patchskip\n\ngo 1.22\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(\"ok\") }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(t.TempDir(), "app")
+	if runtime.GOOS == "windows" {
+		out += ".exe"
+	}
+	conf := NewDefaultConf(ModeBuild)
+	conf.OutFile = out
+	conf.Overlay = map[string][]byte{origPath: orig, altPath: alt}
+	var mu sync.Mutex
+	var abiStores int
+	var sawTable bool
+	conf.ModuleHook = func(pkg Package) {
+		if pkg.PkgPath != "internal/abi" || pkg.SSA == nil {
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		_, sawTable = pkg.SSA.Members["ReviewStaticTable"]
+		abiStores = countBuildInitStores(pkg.SSA)
+	}
+	if _, err := Build(Invocation{Args: []string{"."}, Dir: dir, Config: conf}); err != nil {
+		t.Fatal(err)
+	}
+	if !sawTable {
+		t.Fatal("internal/abi overlay did not define ReviewStaticTable")
+	}
+	if abiStores < n {
+		t.Fatalf("internal/abi init stores = %d, want at least %d", abiStores, n)
+	}
+	got, err := exec.Command(out).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run: %v\n%s", err, got)
+	}
+	if !strings.Contains(string(got), "1 1") || !strings.Contains(string(got), "ok") {
+		t.Fatalf("output = %q, want 1 1 and ok", got)
+	}
+}
+
+func countBuildInitStores(pkg *ssa.Package) int {
+	if pkg == nil {
+		return 0
+	}
+	initFn := pkg.Func("init")
+	if initFn == nil {
+		return 0
+	}
+	stores := 0
+	for _, b := range initFn.Blocks {
+		for _, instr := range b.Instrs {
+			if _, ok := instr.(*ssa.Store); ok {
+				stores++
+			}
+		}
+	}
+	return stores
 }
