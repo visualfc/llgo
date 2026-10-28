@@ -205,9 +205,9 @@ func (b Builder) AllocU(elem Type, n ...int64) (ret Expr) {
 func (b Builder) allocTyped(helper string, elem Type, size Expr) Expr {
 	alignment := b.Prog.AlignOf(elem)
 	if alignment > uint64(b.Prog.GoWordSize()) {
-		return b.InlineCall(b.Pkg.rtFunc(helper+"Aligned"), size, b.Prog.IntVal(alignment, b.Prog.Uintptr()))
+		return b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(helper+"Aligned", "AllocUAligned", "AllocZAligned")), size, b.Prog.IntVal(alignment, b.Prog.Uintptr()))
 	}
-	return b.InlineCall(b.Pkg.rtFunc(helper), size)
+	return b.InlineCall(b.Pkg.rtFunc(RuntimeSymbol(helper, "AllocU", "AllocZ")), size)
 }
 
 func (b Builder) allocUninited(size Expr) (ret Expr) {
