@@ -400,6 +400,76 @@ done:
 			t.Fatalf("loop snapshot left the entry block:\n%s", body)
 		}
 	})
+
+	t.Run("different types keep separate slots", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @copy(ptr %src32, ptr %src16, ptr %dst32, ptr %dst16) {
+entry:
+  %a = load [256 x i32], ptr %src32
+  call void @mutate(ptr %src32)
+  store [256 x i32] %a, ptr %dst32
+  %b = load [256 x i16], ptr %src16
+  call void @mutate(ptr %src16)
+  store [256 x i16] %b, ptr %dst16
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 2 {
+			t.Fatalf("lowered %d copies, want 2:\n%s", got, mod.String())
+		}
+		body := mod.NamedFunction("copy").String()
+		if !strings.Contains(body, "alloca [256 x i32]") || !strings.Contains(body, "alloca [256 x i16]") {
+			t.Fatalf("different array types shared a slot:\n%s", body)
+		}
+	})
+
+	t.Run("mixed call and store is left first-class", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @take([256 x i32])
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %v = load [256 x i32], ptr %src
+  call void @take([256 x i32] %v)
+  store [256 x i32] %v, ptr %dst
+  ret void
+}
+`)
+		before := mod.String()
+		if got := LowerAggregateCopies(td, mod, config); got != 0 || strings.Contains(mod.String(), "@llvm.memmove") {
+			t.Fatalf("ABI-facing array load was rewritten:\n%s", mod.String())
+		}
+		if mod.String() != before {
+			t.Fatalf("mixed call/store copy changed:\n%s", mod.String())
+		}
+	})
+}
+
+func TestSnapshotReachability(t *testing.T) {
+	if canReach(llvm.Value{}, llvm.Value{}, llvm.Value{}) {
+		t.Fatal("canReach(nil) = true")
+	}
+	mod := parseAggregateIR(t, `
+define void @copy(ptr %src, ptr %dst) {
+entry:
+  %v = load [256 x i32], ptr %src
+  store [256 x i32] %v, ptr %dst
+  ret void
+}
+`)
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	if LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8}) != 1 {
+		t.Fatal("expected one lowered copy")
+	}
+	start := mod.NamedFunction("copy").FirstBasicBlock().FirstInstruction()
+	if start.IsNil() {
+		t.Fatal("missing lowered copy instruction")
+	}
+	r := snapshotRange{start: start, uses: nil}
+	if !r.liveAt(start) {
+		t.Fatal("snapshot should be live at its start")
+	}
 }
 
 func switchCopyIR(cases int) string {
