@@ -471,11 +471,26 @@ func (l *largeAggregateLowerer) rewriteMemoryUsers(ctx llvm.Context, value, resu
 	for _, extract := range extracts {
 		b.SetInsertPointBefore(extract)
 		indices := []llvm.Value{llvm.ConstInt(ctx.Int32Type(), 0, false)}
+		fieldType := typ
+		var offset uint64
 		for _, index := range extract.Indices() {
 			indices = append(indices, llvm.ConstInt(ctx.Int32Type(), uint64(index), false))
+			if fieldType.TypeKind() == llvm.StructTypeKind {
+				offset += l.td.ElementOffset(fieldType, int(index))
+				fieldType = fieldType.StructElementTypes()[index]
+			} else {
+				fieldType = fieldType.ElementType()
+				offset += uint64(index) * l.td.TypeAllocSize(fieldType)
+			}
 		}
 		field := b.CreateInBoundsGEP(typ, result, indices, "")
 		projected := b.CreateLoad(extract.Type(), field, "")
+		// Packed fields can have less alignment than their own ABI type.
+		align := l.td.ABITypeAlignment(typ)
+		for offset%uint64(align) != 0 {
+			align /= 2
+		}
+		projected.SetAlignment(align)
 		projected.InstructionSetDebugLoc(extract.InstructionDebugLoc())
 		extract.ReplaceAllUsesWith(projected)
 		l.replaceTrackedUse(extract, projected)

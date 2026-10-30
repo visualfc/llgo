@@ -652,34 +652,39 @@ func TestLowerNestedPointerArrayGCRootSnapshots(t *testing.T) {
 	defer td.Dispose()
 	mod := parseAggregateIR(t, `
 declare void @mutate()
-define void @Copy(ptr %A, ptr %B, ptr %Parent, ptr %OutA, ptr %OutB, ptr %OutParent) {
+define void @Copy(ptr %A, ptr %B, ptr %Parent, ptr %OutA, ptr %OutB, ptr %OutChild) {
 entry:
+  br label %first
+second:
   %a = load [5 x ptr], ptr %A
-  %b = load [5 x ptr], ptr %B
-  %p = load [2 x [5 x ptr]], ptr %Parent
-  %p0 = extractvalue [2 x [5 x ptr]] %p, 0
-  %p1 = extractvalue [2 x [5 x ptr]] %p, 1
   call void @mutate()
-  store [2 x [5 x ptr]] %p, ptr %OutParent
-  store [5 x ptr] %p0, ptr %OutB
-  store [5 x ptr] %p1, ptr %OutB
+  br label %third
+first:
+  %b = load [5 x ptr], ptr %B
+  call void @mutate()
   store [5 x ptr] %b, ptr %OutB
+  br label %second
+third:
+  %p = load [2 x [5 x ptr]], ptr %Parent
+  %child = extractvalue [2 x [5 x ptr]] %p, 0
+  call void @mutate()
+  store [5 x ptr] %child, ptr %OutChild
   store [5 x ptr] %a, ptr %OutA
   ret void
 }
 `)
-	if got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8, GCRoots: true}); got < 3 {
-		t.Fatalf("lowered %d copies, want at least 3:\n%s", got, mod.String())
+	if got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8, GCRoots: true}); got != 4 {
+		t.Fatalf("lowered %d copies, want 4:\n%s", got, mod.String())
 	}
 	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
 		t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
 	}
 	body := mod.NamedFunction("Copy").String()
-	// a, b, and a projected Parent child are live together until OutA/OutB.
-	// A broken live cache reuses a's slot for that child and still has two
-	// allocas (a and b). Require three distinct [5 x ptr] slots.
-	if got := strings.Count(body, "alloca [5 x ptr]"); got < 3 {
-		t.Fatalf("nested pointer snapshots reused live storage (%d allocas, want >= 3):\n%s", got, body)
+	// Layout visits a before b, caching a's live range while lowering b.
+	// Execution consumes b before a starts, but the next round's child load
+	// overlaps a. That new instruction must be included in a's live range.
+	if got := strings.Count(body, "alloca [5 x ptr]"); got != 2 {
+		t.Fatalf("nested pointer snapshots reserved %d slots, want 2:\n%s", got, body)
 	}
 }
 
@@ -914,16 +919,17 @@ func benchmarkSequentialSnapshots(b *testing.B, src string, n int) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		mod := parseAggregateIRB(b, src)
+		ctx, mod := parseAggregateIRB(b, src)
 		b.StartTimer()
 		if got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8}); got != n {
 			b.Fatalf("lowered %d copies, want %d", got, n)
 		}
 		mod.Dispose()
+		ctx.Dispose()
 	}
 }
 
-func parseAggregateIRB(b *testing.B, source string) llvm.Module {
+func parseAggregateIRB(b *testing.B, source string) (llvm.Context, llvm.Module) {
 	b.Helper()
 	ctx := llvm.NewContext()
 	path := filepath.Join(b.TempDir(), "copy.ll")
@@ -938,7 +944,7 @@ func parseAggregateIRB(b *testing.B, source string) llvm.Module {
 	if err != nil {
 		b.Fatal(err)
 	}
-	return mod
+	return ctx, mod
 }
 
 func parseAggregateIR(t *testing.T, source string) llvm.Module {
