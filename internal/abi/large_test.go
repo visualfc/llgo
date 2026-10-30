@@ -6,9 +6,30 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/xgo-dev/llvm"
 )
+
+func TestCanReachAcrossBlocks(t *testing.T) {
+	mod := parseAggregateIR(t, `
+define void @f() {
+entry:
+  %a = add i32 1, 1
+  br label %next
+next:
+  %b = add i32 2, 2
+  ret void
+}
+`)
+	fn := mod.NamedFunction("f")
+	entry := fn.FirstBasicBlock().FirstInstruction()
+	nextBB := llvm.NextBasicBlock(fn.FirstBasicBlock())
+	b := nextBB.FirstInstruction()
+	if !canReach(entry, b, entry) {
+		t.Fatalf("canReach across br failed:\n%s", fn.String())
+	}
+}
 
 func TestShouldLowerArrayCopy(t *testing.T) {
 	for _, tc := range []struct {
@@ -401,6 +422,147 @@ done:
 		}
 	})
 
+	t.Run("nested round keeps ancestor uses after extract rewrite", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @review(ptr %srcA, ptr %srcB, ptr %dstA, ptr %dstB) {
+entry:
+  %a = load [2 x [5 x i64]], ptr %srcA
+  %parent = load [2 x [2 x [5 x i64]]], ptr %srcB
+  call void @mutate(ptr %srcA)
+  br label %middle
+late:
+  %x = extractvalue [2 x [5 x i64]] %a, 0
+  store [5 x i64] %x, ptr %dstA
+  ret void
+middle:
+  %b = extractvalue [2 x [2 x [5 x i64]]] %parent, 0
+  %y = extractvalue [2 x [5 x i64]] %b, 0
+  store [5 x i64] %y, ptr %dstB
+  br label %late
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got < 2 {
+			t.Fatalf("lowered %d copies, want at least 2:\n%s", got, mod.String())
+		}
+		if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+			t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+		}
+		body := mod.NamedFunction("review").String()
+		if got := strings.Count(body, "alloca [2 x [5 x i64]]"); got != 2 {
+			t.Fatalf("nested snapshots shared a slot (%d allocas, want 2):\n%s", got, body)
+		}
+	})
+
+	t.Run("loop-separated sequential occupants share one slot", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @copy(ptr %src, ptr %dst, i32 %n) {
+entry:
+  br label %header
+header:
+  %i = phi i32 [0, %entry], [%next, %body]
+  %a = load [256 x i32], ptr %src
+  call void @mutate(ptr %src)
+  br label %body
+body:
+  store [256 x i32] %a, ptr %dst
+  %b = load [256 x i32], ptr %src
+  call void @mutate(ptr %src)
+  store [256 x i32] %b, ptr %dst
+  %next = add i32 %i, 1
+  %again = icmp slt i32 %next, %n
+  br i1 %again, label %header, label %exit
+exit:
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 2 {
+			t.Fatalf("lowered %d copies, want 2:\n%s", got, mod.String())
+		}
+		body := mod.NamedFunction("copy").String()
+		if slots := strings.Count(body, "alloca [256 x i32]"); slots != 1 {
+			t.Fatalf("loop-separated occupants reserved %d slots, want 1:\n%s", slots, body)
+		}
+	})
+
+	t.Run("loop-repeated store does not end snapshot lifetime", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+declare void @observe(ptr)
+define void @Copy(i32 %n, ptr %src, ptr %dst) {
+entry:
+  %v = load [256 x i32], ptr %src
+  call void @mutate(ptr %src)
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %next, %loop ]
+  store [256 x i32] %v, ptr %dst
+  call void @observe(ptr %dst)
+  %next = add i32 %i, 1
+  %cmp = icmp slt i32 %next, %n
+  br i1 %cmp, label %loop, label %exit
+exit:
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got != 1 {
+			t.Fatalf("lowered %d copies, want 1:\n%s", got, mod.String())
+		}
+		if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+			t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+		}
+		body := mod.NamedFunction("Copy").String()
+		if !strings.Contains(body, "alloca [256 x i32]") {
+			t.Fatalf("missing snapshot alloca:\n%s", body)
+		}
+		loopStart := strings.Index(body, "\nloop:")
+		exitStart := strings.Index(body, "\nexit:")
+		if loopStart < 0 || exitStart < 0 || exitStart <= loopStart {
+			t.Fatalf("missing loop/exit labels:\n%s", body)
+		}
+		if strings.Contains(body[loopStart:exitStart], "llvm.lifetime.end") {
+			t.Fatalf("lifetime.end inside loop after first copy:\n%s", body)
+		}
+	})
+
+	t.Run("adjacent memmove fast path updates ancestor uses", func(t *testing.T) {
+		mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @review(ptr %srcA, ptr %srcB, ptr %dstA, ptr %dstB) {
+entry:
+  %a = load [2 x [5 x i64]], ptr %srcA
+  %parent = load [2 x [2 x [5 x i64]]], ptr %srcB
+  call void @mutate(ptr %srcA)
+  br label %middle
+late:
+  %i = phi i32 [0, %middle], [%next, %late]
+  %x = extractvalue [2 x [5 x i64]] %a, 0
+  store [5 x i64] %x, ptr %dstA
+  %next = add i32 %i, 1
+  %again = icmp slt i32 %next, 3
+  br i1 %again, label %late, label %exit
+middle:
+  %b = extractvalue [2 x [2 x [5 x i64]]] %parent, 0
+  %y = extractvalue [2 x [5 x i64]] %b, 0
+  store [5 x i64] %y, ptr %dstB
+  br label %late
+exit:
+  ret void
+}
+`)
+		if got := LowerAggregateCopies(td, mod, config); got < 2 {
+			t.Fatalf("lowered %d copies, want at least 2:\n%s", got, mod.String())
+		}
+		if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+			t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+		}
+		body := mod.NamedFunction("review").String()
+		if got := strings.Count(body, "alloca [2 x [5 x i64]]"); got != 2 {
+			t.Fatalf("fast-path loop snapshots shared a slot (%d allocas, want 2):\n%s", got, body)
+		}
+	})
+
 	t.Run("different types keep separate slots", func(t *testing.T) {
 		mod := parseAggregateIR(t, `
 declare void @mutate(ptr)
@@ -466,9 +628,22 @@ entry:
 	if start.IsNil() {
 		t.Fatal("missing lowered copy instruction")
 	}
+	l := newLargeAggregateLowerer(td, AggregateLoweringConfig{GoWordSize: 8})
+	l.ensureCFG(mod.NamedFunction("copy"))
 	r := snapshotRange{start: start, uses: nil}
-	if !r.liveAt(start) {
+	if !l.liveAt(&r, start) {
 		t.Fatal("snapshot should be live at its start")
+	}
+	if l.liveAt(&snapshotRange{}, start) {
+		t.Fatal("nil start should not be live at p")
+	}
+	if empty := l.computeLive(llvm.Value{}, nil); len(empty) != 0 {
+		t.Fatal("computeLive(nil) should be empty")
+	}
+	l.stackSlots = []stackSnapshotSlot{{ranges: []snapshotRange{r}}}
+	l.invalidateLive()
+	if l.stackSlots[0].ranges[0].live != nil {
+		t.Fatal("invalidateLive left a cached region")
 	}
 }
 
@@ -496,6 +671,231 @@ func allocaInEntry(fn llvm.Value) bool {
 		}
 	}
 	return false
+}
+
+func TestLowerNestedPointerArrayGCRootSnapshots(t *testing.T) {
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	mod := parseAggregateIR(t, `
+declare void @mutate()
+define void @Copy(ptr %A, ptr %B, ptr %Parent, ptr %OutA, ptr %OutB, ptr %OutParent) {
+entry:
+  %a = load [5 x ptr], ptr %A
+  %b = load [5 x ptr], ptr %B
+  %p = load [2 x [5 x ptr]], ptr %Parent
+  %p0 = extractvalue [2 x [5 x ptr]] %p, 0
+  %p1 = extractvalue [2 x [5 x ptr]] %p, 1
+  call void @mutate()
+  store [2 x [5 x ptr]] %p, ptr %OutParent
+  store [5 x ptr] %p0, ptr %OutB
+  store [5 x ptr] %p1, ptr %OutB
+  store [5 x ptr] %b, ptr %OutB
+  store [5 x ptr] %a, ptr %OutA
+  ret void
+}
+`)
+	if got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8, GCRoots: true}); got < 3 {
+		t.Fatalf("lowered %d copies, want at least 3:\n%s", got, mod.String())
+	}
+	if err := llvm.VerifyModule(mod, llvm.ReturnStatusAction); err != nil {
+		t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
+	}
+	body := mod.NamedFunction("Copy").String()
+	if got := strings.Count(body, "alloca [5 x ptr]"); got < 2 {
+		t.Fatalf("nested pointer snapshots shared a slot (%d allocas, want >= 2):\n%s", got, body)
+	}
+}
+
+func TestHeapSnapshotUsesAlignedAlloc(t *testing.T) {
+	td := llvm.NewTargetData("e-p:64:64-i64:64-v256:256-n32:64-S128")
+	defer td.Dispose()
+	mod := parseAggregateIR(t, `
+declare void @mutate(ptr)
+define void @review(ptr %src, ptr %dst) {
+entry:
+  %v = load [128 x <4 x i64>], ptr %src, align 32
+  call void @mutate(ptr %src)
+  %first = extractvalue [128 x <4 x i64>] %v, 0
+  store <4 x i64> %first, ptr %dst, align 32
+  ret void
+}
+`)
+	if got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8}); got < 1 {
+		t.Fatalf("lowered %d copies, want at least 1:\n%s", got, mod.String())
+	}
+	ir := mod.String()
+	if !strings.Contains(ir, "AllocUAligned") {
+		t.Fatalf("over-aligned heap snapshot used unaligned AllocU:\n%s", ir)
+	}
+	if strings.Contains(ir, "runtime.AllocU(") && !strings.Contains(ir, "AllocUAligned") {
+		t.Fatalf("unaligned AllocU without AllocUAligned:\n%s", ir)
+	}
+}
+
+func sequentialCopyIR(n int) string {
+	var b strings.Builder
+	b.WriteString("declare void @mutate(ptr)\n")
+	b.WriteString("define void @copy(ptr %src, ptr %dst) {\nentry:\n")
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "  %%v%d = load [256 x i32], ptr %%src\n", i)
+		b.WriteString("  call void @mutate(ptr %src)\n")
+		fmt.Fprintf(&b, "  store [256 x i32] %%v%d, ptr %%dst\n", i)
+	}
+	b.WriteString("  ret void\n}\n")
+	return b.String()
+}
+
+func sequentialCopyIRCond(n int) string {
+	var b strings.Builder
+	b.WriteString("declare void @mutate(ptr)\n")
+	b.WriteString("define void @copy(i1 %cond, ptr %src, ptr %dst) {\n")
+	if n == 0 {
+		b.WriteString("entry:\n  ret void\n}\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "entry:\n  %%v0 = load [256 x i32], ptr %%src\n  br i1 %%cond, label %%m0, label %%j0\n")
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "m%d:\n  call void @mutate(ptr %%src)\n  br label %%j%d\n", i, i)
+		fmt.Fprintf(&b, "j%d:\n  store [256 x i32] %%v%d, ptr %%dst\n", i, i)
+		if i+1 < n {
+			fmt.Fprintf(&b, "  %%v%d = load [256 x i32], ptr %%src\n  br i1 %%cond, label %%m%d, label %%j%d\n", i+1, i+1, i+1)
+		} else {
+			b.WriteString("  ret void\n")
+		}
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+func TestLowerSequentialSnapshotsScale(t *testing.T) {
+	const n = 256
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	mod := parseAggregateIR(t, sequentialCopyIR(n))
+	start := time.Now()
+	got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8})
+	elapsed := time.Since(start)
+	if got != n {
+		t.Fatalf("lowered %d copies, want %d", got, n)
+	}
+	body := mod.NamedFunction("copy").String()
+	if slots := strings.Count(body, "alloca [256 x i32]"); slots != 1 {
+		t.Fatalf("sequential snapshots reserved %d slots, want 1:\n%s", slots, body)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("LowerAggregateCopies(%d sequential) took %s, want <1s", n, elapsed)
+	}
+}
+
+func sequentialCopyIRLoopCond(n int) string {
+	var b strings.Builder
+	b.WriteString("declare void @mutate(ptr)\n")
+	b.WriteString("define void @copy(i1 %cond, i32 %n, ptr %src, ptr %dst) {\n")
+	b.WriteString("entry:\n  br label %header\n")
+	b.WriteString("header:\n  %j = phi i32 [ 0, %entry ], [ %jnext, %latch ]\n")
+	if n == 0 {
+		b.WriteString("  br label %latch\n")
+	} else {
+		fmt.Fprintf(&b, "  %%v0 = load [256 x i32], ptr %%src\n  br i1 %%cond, label %%m0, label %%j0\n")
+		for i := 0; i < n; i++ {
+			fmt.Fprintf(&b, "m%d:\n  call void @mutate(ptr %%src)\n  br label %%j%d\n", i, i)
+			fmt.Fprintf(&b, "j%d:\n  store [256 x i32] %%v%d, ptr %%dst\n", i, i)
+			if i+1 < n {
+				fmt.Fprintf(&b, "  %%v%d = load [256 x i32], ptr %%src\n  br i1 %%cond, label %%m%d, label %%j%d\n", i+1, i+1, i+1)
+			} else {
+				b.WriteString("  br label %latch\n")
+			}
+		}
+	}
+	b.WriteString("latch:\n  %jnext = add i32 %j, 1\n  %again = icmp slt i32 %jnext, %n\n  br i1 %again, label %header, label %exit\n")
+	b.WriteString("exit:\n  ret void\n}\n")
+	return b.String()
+}
+
+func TestLowerSequentialSnapshotsScaleCond(t *testing.T) {
+	const n = 256
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	mod := parseAggregateIR(t, sequentialCopyIRCond(n))
+	start := time.Now()
+	got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8})
+	elapsed := time.Since(start)
+	if got != n {
+		t.Fatalf("lowered %d copies, want %d:\n%s", got, n, mod.String())
+	}
+	body := mod.NamedFunction("copy").String()
+	if slots := strings.Count(body, "alloca [256 x i32]"); slots != 1 {
+		t.Fatalf("conditional sequential snapshots reserved %d slots, want 1", slots)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("LowerAggregateCopies(%d conditional sequential) took %s, want <1s", n, elapsed)
+	}
+}
+
+func TestLowerSequentialSnapshotsScaleLoopCond(t *testing.T) {
+	const n = 256
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	mod := parseAggregateIR(t, sequentialCopyIRLoopCond(n))
+	start := time.Now()
+	got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8})
+	elapsed := time.Since(start)
+	if got != n {
+		t.Fatalf("lowered %d copies, want %d", got, n)
+	}
+	body := mod.NamedFunction("copy").String()
+	if slots := strings.Count(body, "alloca [256 x i32]"); slots != 1 {
+		t.Fatalf("loop+conditional sequential snapshots reserved %d slots, want 1", slots)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("LowerAggregateCopies(%d loop+conditional sequential) took %s, want <1s", n, elapsed)
+	}
+}
+
+func BenchmarkLowerSequentialSnapshots(b *testing.B) {
+	benchmarkSequentialSnapshots(b, sequentialCopyIR(128), 128)
+}
+
+func BenchmarkLowerSequentialSnapshotsCond(b *testing.B) {
+	benchmarkSequentialSnapshots(b, sequentialCopyIRCond(128), 128)
+}
+
+func BenchmarkLowerSequentialSnapshotsLoopCond(b *testing.B) {
+	benchmarkSequentialSnapshots(b, sequentialCopyIRLoopCond(128), 128)
+}
+
+func benchmarkSequentialSnapshots(b *testing.B, src string, n int) {
+	b.Helper()
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		mod := parseAggregateIRB(b, src)
+		b.StartTimer()
+		if got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8}); got != n {
+			b.Fatalf("lowered %d copies, want %d", got, n)
+		}
+		mod.Dispose()
+	}
+}
+
+func parseAggregateIRB(b *testing.B, source string) llvm.Module {
+	b.Helper()
+	ctx := llvm.NewContext()
+	path := filepath.Join(b.TempDir(), "copy.ll")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		b.Fatal(err)
+	}
+	buf, err := llvm.NewMemoryBufferFromFile(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	mod, err := ctx.ParseIR(buf)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return mod
 }
 
 func parseAggregateIR(t *testing.T, source string) llvm.Module {

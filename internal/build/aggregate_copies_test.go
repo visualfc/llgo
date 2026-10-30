@@ -8,7 +8,10 @@ import (
 	"testing"
 
 	"github.com/xgo-dev/llgo/internal/abi"
+	"github.com/xgo-dev/llgo/internal/cabi"
+	llssa "github.com/xgo-dev/llgo/ssa"
 	"github.com/xgo-dev/llvm"
+	"golang.org/x/tools/go/packages"
 )
 
 func aggregateCopyConfig(bits int, roots, wasm bool) abi.AggregateLoweringConfig {
@@ -221,5 +224,53 @@ second:
 				}
 			})
 		}
+	}
+}
+
+func TestCompilePackageModuleLowersNativeArrayCopies(t *testing.T) {
+	llvm.InitializeAllTargets()
+	llvm.InitializeAllTargetMCs()
+	llvm.InitializeAllTargetInfos()
+	for _, tc := range []struct {
+		name, goos, goarch string
+		target             *llssa.Target
+	}{
+		{name: "native", goos: "linux", goarch: "amd64", target: &llssa.Target{GOOS: "linux", GOARCH: "amd64"}},
+		{name: "wasm", goos: "js", goarch: "wasm", target: &llssa.Target{GOOS: "js", GOARCH: "wasm", WasmProfile: "j32", WasmProvider: "emscripten"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prog := llssa.NewProgram(tc.target)
+			defer prog.Dispose()
+			lpkg := prog.NewPackage("p", "p")
+			mod := lpkg.Module()
+			ctxIR := mod.Context()
+			typ := llvm.ArrayType(ctxIR.Int32Type(), 256)
+			ptr := llvm.PointerType(ctxIR.Int8Type(), 0)
+			fn := llvm.AddFunction(mod, "copy", llvm.FunctionType(ctxIR.VoidType(), []llvm.Type{ptr, ptr}, false))
+			b := ctxIR.NewBuilder()
+			defer b.Dispose()
+			b.SetInsertPointAtEnd(ctxIR.AddBasicBlock(fn, "entry"))
+			val := b.CreateLoad(typ, fn.FirstParam(), "")
+			b.CreateStore(val, llvm.NextParam(fn.FirstParam()))
+			b.CreateRetVoid()
+			ctx := &context{
+				prog:         prog,
+				mode:         ModeGen,
+				buildConf:    &Config{Goos: tc.goos, Goarch: tc.goarch},
+				cTransformer: cabi.NewTransformer(prog, tc.target.Spec().Triple, "", true),
+			}
+			pkg := &aPackage{
+				Package: &packages.Package{PkgPath: "p"},
+				LPkg:    lpkg,
+			}
+			if err := compilePackageModule(ctx, pkg, nil, false); err != nil {
+				t.Fatal(err)
+			}
+			body := mod.NamedFunction("copy").String()
+			if strings.Contains(body, "load [256 x i32]") || strings.Contains(body, "store [256 x i32]") ||
+				!strings.Contains(body, "@llvm.mem") {
+				t.Fatalf("%s compilePackageModule retained a first-class array copy:\n%s", tc.name, body)
+			}
+		})
 	}
 }
