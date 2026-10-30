@@ -39,7 +39,7 @@ func ShouldLowerArrayCopy(length int, size uint64, ptrSize int) bool {
 // a snapshot of this load (AllocU), which the frontend must treat as a GC
 // safepoint. Copies smaller than MinAggregateCopySize use a stack alloca
 // instead, including CanSSA-sized arrays, so they are not safepoints.
-func ShouldSnapshotAggregateLoad(isArray bool, arrayLen int, isStruct bool, size uint64, ptrSize int, wasm bool) bool {
+func ShouldSnapshotAggregateLoad(isArray bool, arrayLen int, isStruct bool, size uint64, ptrSize int) bool {
 	if (isArray || isStruct) && size >= MinAggregateCopySize {
 		return true
 	}
@@ -529,7 +529,7 @@ func (l *largeAggregateLowerer) allocSnapshot(m llvm.Module, ctx llvm.Context, b
 		if slot.fn != fn || slot.typ != typ {
 			continue
 		}
-		if l.snapshotRangesInterfere(slot.ranges, newRange) {
+		if l.snapshotRangesInterfere(slot.ranges, &newRange) {
 			continue
 		}
 		slot.ranges = append(slot.ranges, newRange)
@@ -696,9 +696,9 @@ func (l *largeAggregateLowerer) invalidateLive() {
 	}
 }
 
-func (l *largeAggregateLowerer) snapshotRangesInterfere(ranges []snapshotRange, next snapshotRange) bool {
+func (l *largeAggregateLowerer) snapshotRangesInterfere(ranges []snapshotRange, next *snapshotRange) bool {
 	for i := range ranges {
-		if l.liveAt(&ranges[i], next.start) || l.liveAt(&next, ranges[i].start) {
+		if l.liveAt(&ranges[i], next.start) || l.liveAt(next, ranges[i].start) {
 			return true
 		}
 	}
@@ -855,36 +855,6 @@ func (l *largeAggregateLowerer) isLastSnapshotUse(r *snapshotRange, use llvm.Val
 		}
 	}
 	return true
-}
-
-func canReach(from, to, avoid llvm.Value) bool {
-	if from.IsNil() || to.IsNil() {
-		return false
-	}
-	seen := make(map[llvm.Value]struct{})
-	queue := []llvm.Value{from}
-	seen[from] = struct{}{}
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		if cur == to {
-			return true
-		}
-		if !avoid.IsNil() && cur == avoid && cur != from {
-			continue
-		}
-		for _, next := range nextInstructions(cur) {
-			if !avoid.IsNil() && next == avoid {
-				continue
-			}
-			if _, ok := seen[next]; ok {
-				continue
-			}
-			seen[next] = struct{}{}
-			queue = append(queue, next)
-		}
-	}
-	return false
 }
 
 func nextInstructions(instr llvm.Value) []llvm.Value {

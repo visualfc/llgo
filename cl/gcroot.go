@@ -211,14 +211,13 @@ func (p *context) isGCSafepoint(instr ssa.Instruction) bool {
 		// plan is built. Keep the predicate in sync with abi.ShouldSnapshotAggregateLoad.
 		size := p.prog.SizeOf(p.type_(load.Type(), llssa.GoDecl))
 		ptrSize := p.prog.PointerSize()
-		wasm := p.prog.Target().GOARCH == "wasm"
 		switch t := load.Type().Underlying().(type) {
 		case *types.Array:
-			if llabi.ShouldSnapshotAggregateLoad(true, int(t.Len()), false, size, ptrSize, wasm) {
+			if llabi.ShouldSnapshotAggregateLoad(true, int(t.Len()), false, size, ptrSize) {
 				return true
 			}
 		case *types.Struct:
-			if llabi.ShouldSnapshotAggregateLoad(false, 0, true, size, ptrSize, wasm) {
+			if llabi.ShouldSnapshotAggregateLoad(false, 0, true, size, ptrSize) {
 				return true
 			}
 		}

@@ -11,26 +11,6 @@ import (
 	"github.com/xgo-dev/llvm"
 )
 
-func TestCanReachAcrossBlocks(t *testing.T) {
-	mod := parseAggregateIR(t, `
-define void @f() {
-entry:
-  %a = add i32 1, 1
-  br label %next
-next:
-  %b = add i32 2, 2
-  ret void
-}
-`)
-	fn := mod.NamedFunction("f")
-	entry := fn.FirstBasicBlock().FirstInstruction()
-	nextBB := llvm.NextBasicBlock(fn.FirstBasicBlock())
-	b := nextBB.FirstInstruction()
-	if !canReach(entry, b, entry) {
-		t.Fatalf("canReach across br failed:\n%s", fn.String())
-	}
-}
-
 func TestShouldLowerArrayCopy(t *testing.T) {
 	for _, tc := range []struct {
 		length, ptrSize int
@@ -48,17 +28,14 @@ func TestShouldLowerArrayCopy(t *testing.T) {
 		if got := ShouldLowerArrayCopy(tc.length, tc.size, tc.ptrSize); got != tc.want {
 			t.Errorf("ShouldLowerArrayCopy(%d, %d, %d) = %v, want %v", tc.length, tc.size, tc.ptrSize, got, tc.want)
 		}
-		if got := ShouldSnapshotAggregateLoad(true, tc.length, false, tc.size, tc.ptrSize, false); got && tc.size < MinAggregateCopySize {
+		if got := ShouldSnapshotAggregateLoad(true, tc.length, false, tc.size, tc.ptrSize); got && tc.size < MinAggregateCopySize {
 			t.Errorf("ShouldSnapshotAggregateLoad(array %d, %d) = true, want false below 4KiB (stack snapshot)", tc.length, tc.size)
 		}
-		if got := ShouldSnapshotAggregateLoad(true, tc.length, false, tc.size, tc.ptrSize, true); got && tc.size < MinAggregateCopySize {
-			t.Errorf("wasm ShouldSnapshotAggregateLoad(array %d, %d) = true, want false below 4KiB", tc.length, tc.size)
-		}
 	}
-	if !ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize, 8, false) {
+	if !ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize, 8) {
 		t.Fatal("struct at 4KiB should snapshot")
 	}
-	if ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize-1, 8, false) {
+	if ShouldSnapshotAggregateLoad(false, 0, true, MinAggregateCopySize-1, 8) {
 		t.Fatal("struct below 4KiB should not snapshot")
 	}
 }
@@ -608,9 +585,6 @@ entry:
 }
 
 func TestSnapshotReachability(t *testing.T) {
-	if canReach(llvm.Value{}, llvm.Value{}, llvm.Value{}) {
-		t.Fatal("canReach(nil) = true")
-	}
 	mod := parseAggregateIR(t, `
 define void @copy(ptr %src, ptr %dst) {
 entry:
@@ -701,8 +675,11 @@ entry:
 		t.Fatalf("invalid lowered module: %v\n%s", err, mod.String())
 	}
 	body := mod.NamedFunction("Copy").String()
-	if got := strings.Count(body, "alloca [5 x ptr]"); got < 2 {
-		t.Fatalf("nested pointer snapshots shared a slot (%d allocas, want >= 2):\n%s", got, body)
+	// a, b, and a projected Parent child are live together until OutA/OutB.
+	// A broken live cache reuses a's slot for that child and still has two
+	// allocas (a and b). Require three distinct [5 x ptr] slots.
+	if got := strings.Count(body, "alloca [5 x ptr]"); got < 3 {
+		t.Fatalf("nested pointer snapshots reused live storage (%d allocas, want >= 3):\n%s", got, body)
 	}
 }
 
@@ -852,6 +829,68 @@ func TestLowerSequentialSnapshotsScaleLoopCond(t *testing.T) {
 	}
 }
 
+func overlappingReverseCopyIR(n int) string {
+	var b strings.Builder
+	b.WriteString("declare void @mutate(ptr)\n")
+	b.WriteString("define void @copy(i1 %cond, ptr %src, ptr %dst) {\nentry:\n")
+	if n == 0 {
+		b.WriteString("  ret void\n}\n")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "  br label %%b%d\n", n-1)
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "b%d:\n  %%v%d = load [5 x i64], ptr %%src\n", i, i)
+		fmt.Fprintf(&b, "  br i1 %%cond, label %%m%d, label %%j%d\n", i, i)
+		fmt.Fprintf(&b, "m%d:\n  call void @mutate(ptr %%src)\n  br label %%j%d\n", i, i)
+		fmt.Fprintf(&b, "j%d:\n", i)
+		if i == 0 {
+			b.WriteString("  br label %end\n")
+		} else {
+			fmt.Fprintf(&b, "  br label %%b%d\n", i-1)
+		}
+	}
+	b.WriteString("end:\n")
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "  store [5 x i64] %%v%d, ptr %%dst\n", i)
+	}
+	b.WriteString("  ret void\n}\n")
+	return b.String()
+}
+
+func TestLowerOverlappingReverseSnapshotsScale(t *testing.T) {
+	const n = 64
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	mod := parseAggregateIR(t, overlappingReverseCopyIR(n))
+	start := time.Now()
+	got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8})
+	elapsed := time.Since(start)
+	if got != n {
+		t.Fatalf("lowered %d copies, want %d", got, n)
+	}
+	body := mod.NamedFunction("copy").String()
+	if slots := strings.Count(body, "alloca [5 x i64]"); slots != n {
+		t.Fatalf("overlapping reverse-block snapshots reserved %d slots, want %d", slots, n)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("LowerAggregateCopies(%d overlapping reverse-block) took %s, want <1s", n, elapsed)
+	}
+}
+
+func TestLowerOverlappingReverseSnapshots256(t *testing.T) {
+	const n = 256
+	td := llvm.NewTargetData("e-m:o-i64:64-i128:128-n32:64-S128")
+	defer td.Dispose()
+	mod := parseAggregateIR(t, overlappingReverseCopyIR(n))
+	start := time.Now()
+	got := LowerAggregateCopies(td, mod, AggregateLoweringConfig{GoWordSize: 8})
+	elapsed := time.Since(start)
+	t.Logf("N=%d overlapping reverse: lowered=%d elapsed=%s", n, got, elapsed)
+	if got != n {
+		t.Fatalf("lowered %d copies, want %d", got, n)
+	}
+}
+
 func BenchmarkLowerSequentialSnapshots(b *testing.B) {
 	benchmarkSequentialSnapshots(b, sequentialCopyIR(128), 128)
 }
@@ -862,6 +901,10 @@ func BenchmarkLowerSequentialSnapshotsCond(b *testing.B) {
 
 func BenchmarkLowerSequentialSnapshotsLoopCond(b *testing.B) {
 	benchmarkSequentialSnapshots(b, sequentialCopyIRLoopCond(128), 128)
+}
+
+func BenchmarkLowerOverlappingReverseSnapshots(b *testing.B) {
+	benchmarkSequentialSnapshots(b, overlappingReverseCopyIR(64), 64)
 }
 
 func benchmarkSequentialSnapshots(b *testing.B, src string, n int) {
